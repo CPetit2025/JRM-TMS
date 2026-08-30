@@ -49,6 +49,11 @@ export default function LoginPage() {
              : (profileData.roles as any)?.name
         }
         
+        // MVP: Forzar rol de administrador para el usuario principal si la BD no lo asignó
+        if (email === 'admin@jrm.com' || email === 'admin') {
+          roleName = 'admin'
+        }
+        
         // Guardar en localStorage para UI (Sidebar), pero la seguridad real ya está en la cookie HTTP
         localStorage.setItem('userRole', roleName ? roleName.toLowerCase() : 'operador')
         
