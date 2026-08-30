@@ -21,7 +21,8 @@ export default function LoginPage() {
     
     try {
       // 1. Formatear usuario al correo estándar corporativo
-      const email = `${username.toLowerCase().trim()}@jrm.com`
+      const rawUser = username.toLowerCase().trim()
+      const email = rawUser.includes('@') ? rawUser : `${rawUser}@jrm.com`
       
       // 2. Autenticar con Supabase Real
       const { data, error } = await supabase.auth.signInWithPassword({
