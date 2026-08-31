@@ -51,7 +51,7 @@ export default function LoginPage() {
       if (data.user) {
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('roles(name), is_active')
+          .select('roles(name, permissions), is_active')
           .eq('id', data.user.id)
           .single()
 
@@ -61,19 +61,23 @@ export default function LoginPage() {
         }
 
         let roleName = 'operador'
+        let permissions: string[] = []
+        
         if (profileData && profileData.roles) {
-           roleName = Array.isArray(profileData.roles) 
-             ? profileData.roles[0]?.name 
-             : (profileData.roles as any)?.name
+           const roleObj = Array.isArray(profileData.roles) ? profileData.roles[0] : (profileData.roles as any)
+           roleName = roleObj?.name || 'operador'
+           permissions = roleObj?.permissions || []
         }
         
         // MVP: Forzar rol de administrador para el usuario principal si la BD no lo asignó
-        if (email === 'admin@jrm.com' || email === 'admin') {
+        if (email === 'admin@jrm.com' || email === 'admin' || email === 'admin@jrmsac.com.pe') {
           roleName = 'admin'
+          permissions = ['dashboard', 'clientes', 'ot', 'solicitudes', 'despacho', 'monitoreo', 'servicios-realizados', 'mantenimiento-dashboard', 'mantenimiento-flota', 'mantenimiento-fallas', 'mantenimiento-ot', 'mantenimiento-planes', 'flota', 'tarifas', 'productos', 'usuarios', 'permisos', 'configuracion']
         }
         
-        // Guardar en localStorage para UI (Sidebar), pero la seguridad real ya está en la cookie HTTP
+        // Guardar en localStorage para UI (Sidebar)
         localStorage.setItem('userRole', roleName ? roleName.toLowerCase() : 'operador')
+        localStorage.setItem('userPermissions', JSON.stringify(permissions))
         
         toast.success('Sesión iniciada correctamente')
         router.push('/')

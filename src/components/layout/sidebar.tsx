@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react'
 
 export function Sidebar() {
   const [role, setRole] = useState<string>('operador')
+  const [permissions, setPermissions] = useState<string[]>([])
   const pathname = usePathname()
 
   useEffect(() => {
@@ -18,7 +19,19 @@ export function Sidebar() {
     if (storedRole) {
       setRole(storedRole)
     }
+    const storedPermissions = localStorage.getItem('userPermissions')
+    if (storedPermissions) {
+      try {
+        setPermissions(JSON.parse(storedPermissions))
+      } catch (e) {}
+    }
   }, [])
+
+  const hasPermission = (perm: string) => {
+    // Si es admin tiene acceso a todo para retrocompatibilidad
+    if (role === 'admin') return true
+    return permissions.includes(perm)
+  }
 
   const NavItem = ({ href, icon: Icon, label, isActive }: { href: string, icon: any, label: string, isActive?: boolean }) => {
     const active = isActive ?? pathname === href;
@@ -68,49 +81,66 @@ export function Sidebar() {
           
           <NavItem href="/" icon={role === 'admin' ? BarChart3 : Home} label={role === 'admin' ? 'Analítica / KPIs' : 'Dashboard'} />
 
-          {role === 'operador' && (
+          {/* Generación de Demanda */}
+          {(hasPermission('clientes') || hasPermission('ot') || hasPermission('solicitudes')) && (
             <>
               <div className="mt-8 mb-3 px-4">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Generación de Demanda</p>
               </div>
-              <NavItem href="/clientes" icon={Users} label="Clientes" />
-              <NavItem href="/ot" icon={FileText} label="Órdenes de Trabajo" />
-              <NavItem href="/solicitudes" icon={Send} label="Solicitudes" />
-              
-              <div className="mt-8 mb-3 px-4">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Operación Logística</p>
-              </div>
-              <NavItem href="/despacho" icon={Truck} label="Despacho" />
-              <NavItem href="/monitoreo" icon={MapIcon} label="Monitoreo GPS" />
-              <NavItem href="/servicios-realizados" icon={ArchiveRestore} label="Servicios Realizados" />
-              
-              <div className="mt-8 mb-3 px-4">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Mantenimiento de Flota</p>
-              </div>
-              <NavItem href="/mantenimiento" icon={BarChart3} label="Dashboard" />
-              <NavItem href="/mantenimiento/flota" icon={MapIcon} label="Unidades y Documentos" />
-              <NavItem href="/mantenimiento/vencimientos" icon={Clock} label="Proyección y Vencimientos" />
-              <NavItem href="/mantenimiento/fallas" icon={ShieldAlert} label="Solicitudes y Fallas" />
-              <NavItem href="/mantenimiento/ot" icon={Wrench} label="Órdenes de Trabajo" />
-              <NavItem href="/mantenimiento/planes" icon={Settings} label="Planes Preventivos" />
-
-              <div className="mt-8 mb-3 px-4">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Maestros y Costos</p>
-              </div>
-              <NavItem href="/flota" icon={MapIcon} label="Unidades y Conductores" />
-              <NavItem href="/maestros/tarifas" icon={Zap} label="Tarifas por KM" />
-              <NavItem href="/configuracion/productos" icon={Settings} label="Maestro de Productos" />
+              {hasPermission('clientes') && <NavItem href="/clientes" icon={Users} label="Clientes" />}
+              {hasPermission('ot') && <NavItem href="/ot" icon={FileText} label="Órdenes de Trabajo" />}
+              {hasPermission('solicitudes') && <NavItem href="/solicitudes" icon={Send} label="Solicitudes" />}
             </>
           )}
 
-          {role === 'admin' && (
+          {/* Operación Logística */}
+          {(hasPermission('despacho') || hasPermission('monitoreo') || hasPermission('servicios-realizados')) && (
+            <>
+              <div className="mt-8 mb-3 px-4">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Operación Logística</p>
+              </div>
+              {hasPermission('despacho') && <NavItem href="/despacho" icon={Truck} label="Despacho" />}
+              {hasPermission('monitoreo') && <NavItem href="/monitoreo" icon={MapIcon} label="Monitoreo GPS" />}
+              {hasPermission('servicios-realizados') && <NavItem href="/servicios-realizados" icon={ArchiveRestore} label="Servicios Realizados" />}
+            </>
+          )}
+
+          {/* Mantenimiento de Flota */}
+          {(hasPermission('mantenimiento-dashboard') || hasPermission('mantenimiento-flota') || hasPermission('mantenimiento-fallas') || hasPermission('mantenimiento-ot') || hasPermission('mantenimiento-planes')) && (
+            <>
+              <div className="mt-8 mb-3 px-4">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Mantenimiento de Flota</p>
+              </div>
+              {hasPermission('mantenimiento-dashboard') && <NavItem href="/mantenimiento" icon={BarChart3} label="Dashboard" />}
+              {hasPermission('mantenimiento-flota') && <NavItem href="/mantenimiento/flota" icon={MapIcon} label="Unidades y Documentos" />}
+              {hasPermission('mantenimiento-vencimientos') && <NavItem href="/mantenimiento/vencimientos" icon={Clock} label="Proyección y Vencimientos" />}
+              {hasPermission('mantenimiento-fallas') && <NavItem href="/mantenimiento/fallas" icon={ShieldAlert} label="Solicitudes y Fallas" />}
+              {hasPermission('mantenimiento-ot') && <NavItem href="/mantenimiento/ot" icon={Wrench} label="Órdenes de Trabajo" />}
+              {hasPermission('mantenimiento-planes') && <NavItem href="/mantenimiento/planes" icon={Settings} label="Planes Preventivos" />}
+            </>
+          )}
+
+          {/* Maestros y Costos */}
+          {(hasPermission('flota') || hasPermission('tarifas') || hasPermission('productos')) && (
+            <>
+              <div className="mt-8 mb-3 px-4">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Maestros y Costos</p>
+              </div>
+              {hasPermission('flota') && <NavItem href="/flota" icon={MapIcon} label="Unidades y Conductores" />}
+              {hasPermission('tarifas') && <NavItem href="/maestros/tarifas" icon={Zap} label="Tarifas por KM" />}
+              {hasPermission('productos') && <NavItem href="/configuracion/productos" icon={Settings} label="Maestro de Productos" />}
+            </>
+          )}
+
+          {/* Administración */}
+          {(hasPermission('usuarios') || hasPermission('permisos') || hasPermission('configuracion')) && (
             <>
               <div className="mt-8 mb-3 px-4">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Administración</p>
               </div>
-              <NavItem href="/usuarios" icon={Users} label="Usuarios" />
-              <NavItem href="/permisos" icon={ShieldAlert} label="Roles y Permisos" />
-              <NavItem href="/configuracion" icon={Settings} label="Configuración General" />
+              {hasPermission('usuarios') && <NavItem href="/usuarios" icon={Users} label="Usuarios" />}
+              {hasPermission('permisos') && <NavItem href="/permisos" icon={ShieldAlert} label="Roles y Permisos" />}
+              {hasPermission('configuracion') && <NavItem href="/configuracion" icon={Settings} label="Configuración General" />}
             </>
           )}
           
