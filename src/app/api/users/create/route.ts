@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       }
     )
 
-    const email = `${username.toLowerCase().trim()}@jrm.com`
+    const email = `${username.toLowerCase().trim()}@jrmsac.com.pe`
 
     // Verificar si la petición viene de un usuario autenticado (Admin)
     const { cookies } = await import('next/headers')

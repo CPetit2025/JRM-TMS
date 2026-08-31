@@ -22,19 +22,30 @@ export default function LoginPage() {
     setIsLoading(true)
     
     try {
-      // 1. Formatear usuario al correo estándar corporativo
+      // 1. Formatear usuario al correo estándar corporativo nuevo
       const rawUser = username.toLowerCase().trim()
-      const email = rawUser.includes('@') ? rawUser : `${rawUser}@jrm.com`
+      const email = rawUser.includes('@') ? rawUser : `${rawUser}@jrmsac.com.pe`
       
       // 2. Autenticar con Supabase Real
-      const { data, error } = await supabase.auth.signInWithPassword({
+      let authResponse = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      if (error) {
+      // Fallback temporal: Si falla y no habían puesto '@', intentar con el dominio antiguo '@jrm.com'
+      if (authResponse.error && !rawUser.includes('@')) {
+        const oldEmail = `${rawUser}@jrm.com`
+        authResponse = await supabase.auth.signInWithPassword({
+          email: oldEmail,
+          password,
+        })
+      }
+
+      if (authResponse.error) {
         throw new Error('Credenciales incorrectas.')
       }
+
+      const { data } = authResponse;
 
       // 3. Obtener el perfil real de la BD para sacar el rol y estado
       if (data.user) {

@@ -257,17 +257,20 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Usuario</label>
-            <input 
-              type="text" 
-              required
-              placeholder="Nombre de usuario"
-              className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
-              value={newUser.username}
-              onChange={(e) => setNewUser({...newUser, username: e.target.value})}
-            />
-          </div>
+              <div className="relative">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Usuario</label>
+                <input
+                  type="text"
+                  required
+                  value={newUser.username}
+                  onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                  placeholder="Ej: jperez"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none transition-all text-slate-700"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Su correo corporativo será: <span className="font-medium text-slate-700">{newUser.username || 'usuario'}@jrmsac.com.pe</span>
+                </p>
+              </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
               {editingUser ? 'Nueva Contraseña (Opcional)' : 'Contraseña de Acceso'}
