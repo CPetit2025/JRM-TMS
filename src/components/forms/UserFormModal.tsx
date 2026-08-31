@@ -119,25 +119,23 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
         onSuccess(data)
         onClose()
       } else {
-        const { data, error } = await supabase
-          .from('profiles')
-          .insert([{ 
-            id: crypto.randomUUID(),
-            first_name: newUser.first_name,
-            last_name: newUser.last_name,
-            username: newUser.username,
-            document_number: newUser.document_number,
-            phone: newUser.phone,
-            role_id: newUser.role_id,
-            mock_password: newUser.password,
-            is_active: true
-          }])
-          .select()
-          .single()
+        // Crear usuario mediante la API para que se cree en auth.users
+        const res = await fetch('/api/users/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(newUser)
+        })
 
-        if (error) throw error
+        const resData = await res.json()
+
+        if (!res.ok) {
+          throw new Error(resData.error || 'Error al crear usuario')
+        }
+
         toast.success('Usuario creado correctamente')
-        setCreatedUser({...data, password: newUser.password})
+        setCreatedUser({...newUser, id: resData.userId, password: newUser.password})
         setSuccessView(true)
       }
     } catch (error: any) {
