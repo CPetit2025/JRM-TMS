@@ -35,6 +35,29 @@ export async function POST(request: Request) {
 
     const email = `${username.toLowerCase().trim()}@jrm.com`
 
+    // Verificar si la petición viene de un usuario autenticado (Admin)
+    const { cookies } = await import('next/headers')
+    const { createServerClient } = await import('@supabase/ssr')
+    const cookieStore = cookies()
+    
+    const supabaseSession = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll()
+          },
+          setAll() {}
+        },
+      }
+    )
+    
+    const { data: { user: currentUser } } = await supabaseSession.auth.getUser()
+    
+    // Si hay un admin logueado, se crea activo. Si es registro público, inactivo.
+    const is_active = currentUser ? true : false;
+
     // 1. Crear el usuario en auth.users
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: email,
@@ -68,7 +91,7 @@ export async function POST(request: Request) {
           phone,
           role_id,
           mock_password: password, // Solo para MVP, normalmente no se guarda
-          is_active: true
+          is_active: is_active
         }
       ])
 

@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { PublicRegistrationModal } from '@/components/forms/PublicRegistrationModal'
 
 export default function LoginPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
 
   const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('admin')
@@ -31,16 +33,21 @@ export default function LoginPage() {
       })
 
       if (error) {
-        throw new Error('Credenciales incorrectas o usuario inactivo.')
+        throw new Error('Credenciales incorrectas.')
       }
 
-      // 3. Obtener el perfil real de la BD para sacar el rol
+      // 3. Obtener el perfil real de la BD para sacar el rol y estado
       if (data.user) {
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('roles(name)')
+          .select('roles(name), is_active')
           .eq('id', data.user.id)
           .single()
+
+        if (profileData && profileData.is_active === false) {
+          await supabase.auth.signOut()
+          throw new Error('Tu cuenta está pendiente de aprobación por un Administrador.')
+        }
 
         let roleName = 'operador'
         if (profileData && profileData.roles) {
@@ -148,8 +155,23 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+
+          <div className="mt-8 text-center text-sm text-slate-600">
+            ¿No tienes cuenta?{' '}
+            <button 
+              onClick={() => setIsRegisterModalOpen(true)}
+              className="text-[#cf152d] hover:text-red-700 font-semibold hover:underline"
+            >
+              Regístrate aquí
+            </button>
+          </div>
         </div>
       </div>
+
+      <PublicRegistrationModal 
+        isOpen={isRegisterModalOpen}
+        onClose={() => setIsRegisterModalOpen(false)}
+      />
     </div>
   )
 }
