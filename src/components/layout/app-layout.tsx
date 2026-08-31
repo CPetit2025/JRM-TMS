@@ -6,6 +6,7 @@ import { useNotifications } from '@/components/NotificationProvider'
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState('operador')
+  const [email, setEmail] = useState('')
   const [showNotifications, setShowNotifications] = useState(false)
   const { notifications, unreadCount, markAllAsRead } = useNotifications()
 
@@ -14,6 +15,20 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     if (storedRole) {
       setRole(storedRole)
     }
+    
+    const fetchUser = async () => {
+      try {
+        const { createClient } = await import('@/lib/supabase/client')
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user && user.email) {
+          setEmail(user.email)
+        }
+      } catch (err) {
+        console.error(err)
+      }
+    }
+    fetchUser()
   }, [])
 
   return (
@@ -81,7 +96,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </div>
               <div>
                 <p className="text-sm font-semibold text-slate-700 capitalize">{role}</p>
-                <p className="text-xs text-slate-500">{role}@jrm.com.pe</p>
+                <p className="text-xs text-slate-500">{email || `${role}@jrm.com.pe`}</p>
               </div>
             </div>
           </div>

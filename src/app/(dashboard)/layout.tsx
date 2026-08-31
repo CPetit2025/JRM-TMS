@@ -7,9 +7,8 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <>
-      <NotificationProvider role="admin" />
+    <NotificationProvider role="admin">
       <AppLayout>{children}</AppLayout>
-    </>
+    </NotificationProvider>
   );
 }
