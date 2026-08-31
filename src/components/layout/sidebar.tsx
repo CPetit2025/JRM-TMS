@@ -163,14 +163,24 @@ export function Sidebar() {
           <Settings className="w-4 h-4 text-slate-500 group-hover:text-white transition-colors group-hover:rotate-90 duration-500" />
         </Link>
         
-        <Link 
-          href="/login" 
-          onClick={() => localStorage.removeItem('userRole')}
+        <button 
+          onClick={async () => {
+            try {
+              const { createClient } = await import('@/lib/supabase/client')
+              const supabase = createClient()
+              await supabase.auth.signOut()
+              localStorage.removeItem('userRole')
+              localStorage.removeItem('userPermissions')
+              window.location.href = '/login'
+            } catch (err) {
+              console.error('Error al cerrar sesión', err)
+            }
+          }}
           className="mt-2 flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-colors group text-sm font-medium"
         >
           <LogOut className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
           <span>Cerrar Sesión</span>
-        </Link>
+        </button>
       </div>
       
       {/* Global Style for scrollbar in sidebar */}

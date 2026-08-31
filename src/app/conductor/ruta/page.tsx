@@ -178,7 +178,7 @@ export default function RutaActivaPage() {
 
   const handleLogout = () => {
     localStorage.removeItem('jrm_driver')
-    router.push('/conductor/login')
+    window.location.href = '/conductor/login'
   }
 
   const handleChangePassword = async (e: React.FormEvent) => {
