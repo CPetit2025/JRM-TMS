@@ -89,29 +89,29 @@ export function PublicRegistrationModal({ isOpen, onClose }: PublicRegistrationM
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Nombres</label>
-              <input required type="text" value={newUser.first_name} onChange={e => setNewUser({...newUser, first_name: e.target.value})} className="w-full px-3 py-2 border rounded-md" />
+              <input required type="text" value={newUser.first_name} onChange={e => setNewUser({...newUser, first_name: e.target.value})} className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Apellidos</label>
-              <input required type="text" value={newUser.last_name} onChange={e => setNewUser({...newUser, last_name: e.target.value})} className="w-full px-3 py-2 border rounded-md" />
+              <input required type="text" value={newUser.last_name} onChange={e => setNewUser({...newUser, last_name: e.target.value})} className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">DNI / Documento</label>
-              <input required type="text" value={newUser.document_number} onChange={e => setNewUser({...newUser, document_number: e.target.value})} className="w-full px-3 py-2 border rounded-md" />
+              <input required type="text" value={newUser.document_number} onChange={e => setNewUser({...newUser, document_number: e.target.value})} className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
-              <input required type="text" value={newUser.phone} onChange={e => setNewUser({...newUser, phone: e.target.value})} className="w-full px-3 py-2 border rounded-md" />
+              <input required type="text" value={newUser.phone} onChange={e => setNewUser({...newUser, phone: e.target.value})} className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" />
             </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Rol Solicitado</label>
-            <select required value={newUser.role_id} onChange={e => setNewUser({...newUser, role_id: e.target.value})} className="w-full px-3 py-2 border rounded-md bg-white">
-              <option value="">Seleccione un rol...</option>
+            <select required value={newUser.role_id} onChange={e => setNewUser({...newUser, role_id: e.target.value})} className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none">
+              <option value="" className="text-slate-500">Seleccione un rol...</option>
               {roles.map(role => (
                 <option key={role.id} value={role.id}>{role.name}</option>
               ))}
@@ -121,18 +121,18 @@ export function PublicRegistrationModal({ isOpen, onClose }: PublicRegistrationM
           <div className="grid grid-cols-2 gap-4 pt-4 border-t">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Correo Corporativo</label>
-              <input required type="email" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} placeholder="ejemplo@jrmsac.com.pe" className="w-full px-3 py-2 border rounded-md" />
+              <input required type="email" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} placeholder="ejemplo@jrmsac.com.pe" className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none placeholder:text-slate-400" />
               <p className="text-xs text-slate-500 mt-1">Debe terminar en @jrmsac.com.pe</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña</label>
-              <input required type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full px-3 py-2 border rounded-md" minLength={6} />
+              <input required type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" minLength={6} />
             </div>
           </div>
 
           <div className="flex justify-end gap-3 mt-8">
-            <button type="button" onClick={onClose} className="px-4 py-2 border rounded-md hover:bg-slate-50 transition-colors">Cancelar</button>
-            <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-[#002855] text-white rounded-md flex items-center hover:bg-[#001d3d] transition-colors disabled:opacity-50">
+            <button type="button" onClick={onClose} className="px-4 py-2 border border-slate-300 bg-white text-slate-700 font-medium rounded-md hover:bg-slate-50 hover:text-slate-900 transition-colors">Cancelar</button>
+            <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-[#002855] text-white font-medium rounded-md flex items-center hover:bg-[#001d3d] transition-colors disabled:opacity-50">
               {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Registrarse
             </button>
