@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     // Verificar si la petición viene de un usuario autenticado (Admin)
     const { cookies } = await import('next/headers')
     const { createServerClient } = await import('@supabase/ssr')
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     
     const supabaseSession = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
