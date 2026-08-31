@@ -6,38 +6,84 @@ import { toast } from 'sonner'
 export default function PerfilPage() {
   const [role, setRole] = useState('cargando...')
   const [isLoading, setIsLoading] = useState(false)
+  const [isFetching, setIsFetching] = useState(true)
 
-  // Estados del formulario (simulados por ahora, en un caso real se cargarían de Supabase)
   const [profileData, setProfileData] = useState({
-    firstName: 'Juan',
-    lastName: 'Pérez',
-    email: 'juan.perez@jrmsac.com.pe',
-    phone: '987654321',
-    document: '76543210'
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    document: ''
   })
 
   useEffect(() => {
-    const storedRole = localStorage.getItem('userRole')
-    if (storedRole) {
-      setRole(storedRole)
-      // Actualizar los datos falsos dependiendo del rol para el mockup
-      if (storedRole === 'admin') {
-        setProfileData(prev => ({ ...prev, firstName: 'Administrador', lastName: 'Sistema' }))
-      } else {
-        setProfileData(prev => ({ ...prev, firstName: 'Operador', lastName: 'Logístico' }))
+    const fetchProfile = async () => {
+      try {
+        const storedRole = localStorage.getItem('userRole')
+        if (storedRole) {
+          setRole(storedRole)
+        }
+        
+        const { createClient } = await import('@/lib/supabase/client')
+        const supabase = createClient()
+        
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (user) {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('first_name, last_name, document_number, phone')
+            .eq('id', user.id)
+            .single()
+            
+          if (data && !error) {
+            setProfileData({
+              firstName: data.first_name || '',
+              lastName: data.last_name || '',
+              email: user.email || '',
+              phone: data.phone || '',
+              document: data.document_number || ''
+            })
+          }
+        }
+      } catch (err) {
+        console.error('Error al cargar perfil', err)
+      } finally {
+        setIsFetching(false)
       }
     }
+    
+    fetchProfile()
   }, [])
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     
-    // Simular el guardado
-    setTimeout(() => {
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (user) {
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            first_name: profileData.firstName,
+            last_name: profileData.lastName,
+            phone: profileData.phone,
+            document_number: profileData.document
+          })
+          .eq('id', user.id)
+          
+        if (error) throw error
+        toast.success('Perfil actualizado correctamente')
+      }
+    } catch (err: any) {
+      toast.error('Error al guardar el perfil: ' + err.message)
+    } finally {
       setIsLoading(false)
-      toast.success('Perfil actualizado correctamente')
-    }, 1000)
+    }
   }
 
   return (
@@ -61,7 +107,9 @@ export default function PerfilPage() {
               </div>
             </div>
             
-            <h2 className="text-xl font-bold text-slate-800">{profileData.firstName} {profileData.lastName}</h2>
+            <h2 className="text-xl font-bold text-slate-800">
+              {isFetching ? 'Cargando...' : `${profileData.firstName} ${profileData.lastName}`}
+            </h2>
             <div className="flex items-center gap-2 mt-2 text-sm font-medium text-[#002855] bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
               <Shield className="w-4 h-4" />
               <span className="capitalize">{role}</span>
@@ -76,8 +124,14 @@ export default function PerfilPage() {
               <h3 className="text-lg font-semibold text-slate-800">Información Personal</h3>
             </div>
             
-            <form onSubmit={handleSave} className="p-6 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {isFetching ? (
+              <div className="p-12 flex flex-col items-center justify-center">
+                <Loader2 className="w-8 h-8 animate-spin text-[#002855] mb-4" />
+                <p className="text-slate-500 font-medium">Cargando datos de perfil...</p>
+              </div>
+            ) : (
+              <form onSubmit={handleSave} className="p-6 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Nombres</label>
                   <input 
@@ -151,6 +205,7 @@ export default function PerfilPage() {
                 </button>
               </div>
             </form>
+            )}
           </div>
         </div>
 
