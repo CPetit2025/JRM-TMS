@@ -120,9 +120,9 @@ export function PublicRegistrationModal({ isOpen, onClose }: PublicRegistrationM
 
           <div className="grid grid-cols-2 gap-4 pt-4 border-t">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Usuario de Acceso</label>
-              <input required type="text" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} placeholder="Ej: jperez" className="w-full px-3 py-2 border rounded-md" />
-              <p className="text-xs text-slate-500 mt-1">Tu correo será {newUser.username || 'usuario'}@jrmsac.com.pe</p>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Correo Corporativo</label>
+              <input required type="email" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} placeholder="ejemplo@jrmsac.com.pe" className="w-full px-3 py-2 border rounded-md" />
+              <p className="text-xs text-slate-500 mt-1">Debe terminar en @jrmsac.com.pe</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña</label>

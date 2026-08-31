@@ -33,7 +33,12 @@ export async function POST(request: Request) {
       }
     )
 
-    const email = `${username.toLowerCase().trim()}@jrmsac.com.pe`
+    // El "username" que viene del front ahora es el correo completo
+    const email = username.toLowerCase().trim()
+    
+    if (!email.endsWith('@jrmsac.com.pe')) {
+      return NextResponse.json({ error: 'Solo se permiten correos corporativos (@jrmsac.com.pe)' }, { status: 400 })
+    }
 
     // Verificar si la petición viene de un usuario autenticado (Admin)
     const { cookies } = await import('next/headers')

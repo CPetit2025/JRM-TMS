@@ -258,17 +258,17 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
 
         <div className="grid grid-cols-2 gap-4">
               <div className="relative">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Usuario</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Correo Corporativo</label>
                 <input
-                  type="text"
+                  type="email"
                   required
                   value={newUser.username}
                   onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
-                  placeholder="Ej: jperez"
+                  placeholder="ejemplo@jrmsac.com.pe"
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none transition-all text-slate-700"
                 />
                 <p className="text-xs text-slate-500 mt-1">
-                  Su correo corporativo será: <span className="font-medium text-slate-700">{newUser.username || 'usuario'}@jrmsac.com.pe</span>
+                  Debe terminar en @jrmsac.com.pe
                 </p>
               </div>
           <div>
