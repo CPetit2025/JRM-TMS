@@ -40,36 +40,55 @@ export default function MonitoreoPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null)
 
-  // Simular actualización en tiempo real o leer desde el GPS del conductor
+  // Simular actualización en tiempo real y leer desde el GPS del conductor
   useEffect(() => {
-    const interval = setInterval(() => {
-      // Leer GPS real desde localStorage (solo para demo local/MVP)
-      const realGpsData = localStorage.getItem('driver_current_location')
-      let realLat = null
-      let realLng = null
-      
-      if (realGpsData) {
-        try {
-          const parsed = JSON.parse(realGpsData)
-          realLat = parsed.lat
-          realLng = parsed.lng
-        } catch (e) {}
-      }
+    let supabase: any = null;
+    let channel: any = null;
 
+    const setupRealtime = async () => {
+      supabase = await import('@/lib/supabase/client').then(m => m.createClient())
+      
+      channel = supabase.channel('gps_tracking')
+        .on('broadcast', { event: 'location_update' }, (payload: any) => {
+          const data = payload.payload;
+          setVehicles(prev => {
+            // Buscamos si el vehículo ya existe por conductor o placa
+            const exists = prev.find(v => v.driver.toLowerCase().includes(data.driver_name.split(' ')[0].toLowerCase()))
+            
+            if (exists) {
+              return prev.map(v => v.id === exists.id ? {
+                ...v,
+                lat: data.lat,
+                lng: data.lng,
+                status: 'en_ruta',
+                lastUpdate: 'En vivo (Realtime)'
+              } : v)
+            } else {
+              // Si no existe en el mock inicial, lo inyectamos temporalmente
+              return [{
+                id: data.driver_id,
+                plate: 'NUEVA-U',
+                driver: data.driver_name,
+                status: 'en_ruta',
+                speed: 40,
+                lat: data.lat,
+                lng: data.lng,
+                lastUpdate: 'En vivo (Realtime)'
+              }, ...prev]
+            }
+          })
+        })
+        .subscribe()
+    }
+
+    setupRealtime()
+
+    const interval = setInterval(() => {
       setVehicles(prev => prev.map(v => {
-        // Al vehículo 1 le inyectaremos el GPS real del conductor
-        if (v.id === '1' && realLat && realLng) {
-          return {
-            ...v,
-            lat: realLat,
-            lng: realLng,
-            status: 'en_ruta',
-            lastUpdate: 'GPS Real (Activo)'
-          }
-        }
+        // Solo simular movimiento para los que no están en vivo
+        if (v.lastUpdate.includes('Realtime')) return v;
 
         if (v.status === 'en_ruta') {
-          // Movimiento aleatorio pequeño para los demás
           const moveLat = (Math.random() - 0.5) * 0.002
           const moveLng = (Math.random() - 0.5) * 0.002
           const newSpeed = Math.max(30, Math.min(80, v.speed + (Math.random() - 0.5) * 10))

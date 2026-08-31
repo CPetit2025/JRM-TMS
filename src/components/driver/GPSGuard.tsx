@@ -22,7 +22,7 @@ export default function GPSGuard({ children }: GPSGuardProps) {
 
     // Solicitar y observar la ubicación
     const watchId = navigator.geolocation.watchPosition(
-      (position) => {
+      async (position) => {
         setPermissionGranted(true)
         setIsChecking(false)
         setError(null)
@@ -33,9 +33,30 @@ export default function GPSGuard({ children }: GPSGuardProps) {
         }
         setLocation(coords)
         
-        // Aquí se enviaría la ubicación al backend real. 
-        // Para el MVP, guardamos en localStorage para que la pantalla de ruta la lea.
+        // MVP: Guardamos en localStorage local
         localStorage.setItem('driver_current_location', JSON.stringify(coords))
+
+        // REALTIME: Emitir a Supabase para que la Torre de Control lo vea en vivo
+        const driverData = localStorage.getItem('jrm_driver')
+        if (driverData) {
+          try {
+            const driver = JSON.parse(driverData)
+            const supabase = (window as any).supabaseClient || await import('@/lib/supabase/client').then(m => m.createClient())
+            ;(window as any).supabaseClient = supabase
+
+            supabase.channel('gps_tracking').send({
+              type: 'broadcast',
+              event: 'location_update',
+              payload: {
+                driver_id: driver.id || driver.document_number,
+                driver_name: `${driver.first_name} ${driver.last_name}`,
+                lat: coords.lat,
+                lng: coords.lng,
+                timestamp: new Date().toISOString()
+              }
+            })
+          } catch(e) { console.error('Error broadcasting GPS:', e) }
+        }
       },
       (err) => {
         setIsChecking(false)
