@@ -26,17 +26,11 @@ interface VehicleLocation {
   lastUpdate: string
 }
 
-// Datos iniciales mockeados
-const INITIAL_VEHICLES: VehicleLocation[] = [
-  { id: '1', plate: 'F8V-892', driver: 'Juan Pérez', status: 'en_ruta', speed: 65, lat: -12.052, lng: -77.045, lastUpdate: 'Hace 1 min' },
-  { id: '2', plate: 'M1T-743', driver: 'Carlos Gómez', status: 'detenido', speed: 0, lat: -12.021, lng: -77.051, lastUpdate: 'Hace 15 min' },
-  { id: '3', plate: 'A3D-991', driver: 'Luis Ramírez', status: 'en_ruta', speed: 45, lat: -12.067, lng: -77.022, lastUpdate: 'Hace 2 min' },
-  { id: '4', plate: 'B5C-221', driver: 'Miguel Rojas', status: 'incidencia', speed: 0, lat: -12.030, lng: -77.080, lastUpdate: 'Hace 5 min' },
-  { id: '5', plate: 'C7X-442', driver: 'Fernando Ruiz', status: 'en_ruta', speed: 55, lat: -12.080, lng: -77.015, lastUpdate: 'Hace 1 min' },
-]
+// Quitamos datos mockeados para usar solo los reales
+const INITIAL_VEHICLES: VehicleLocation[] = []
 
 export default function MonitoreoPage() {
-  const [vehicles, setVehicles] = useState<VehicleLocation[]>(INITIAL_VEHICLES)
+  const [vehicles, setVehicles] = useState<VehicleLocation[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null)
 
@@ -52,8 +46,7 @@ export default function MonitoreoPage() {
         .on('broadcast', { event: 'location_update' }, (payload: any) => {
           const data = payload.payload;
           setVehicles(prev => {
-            // Buscamos si el vehículo ya existe por conductor o placa
-            const exists = prev.find(v => v.driver.toLowerCase().includes(data.driver_name.split(' ')[0].toLowerCase()))
+            const exists = prev.find(v => v.id === data.driver_id)
             
             if (exists) {
               return prev.map(v => v.id === exists.id ? {
@@ -61,19 +54,18 @@ export default function MonitoreoPage() {
                 lat: data.lat,
                 lng: data.lng,
                 status: 'en_ruta',
-                lastUpdate: 'En vivo (Realtime)'
+                lastUpdate: 'En vivo'
               } : v)
             } else {
-              // Si no existe en el mock inicial, lo inyectamos temporalmente
               return [{
                 id: data.driver_id,
-                plate: 'NUEVA-U',
+                plate: 'EN-RUTA',
                 driver: data.driver_name,
                 status: 'en_ruta',
                 speed: 40,
                 lat: data.lat,
                 lng: data.lng,
-                lastUpdate: 'En vivo (Realtime)'
+                lastUpdate: 'En vivo'
               }, ...prev]
             }
           })
@@ -83,28 +75,9 @@ export default function MonitoreoPage() {
 
     setupRealtime()
 
-    const interval = setInterval(() => {
-      setVehicles(prev => prev.map(v => {
-        // Solo simular movimiento para los que no están en vivo
-        if (v.lastUpdate.includes('Realtime')) return v;
-
-        if (v.status === 'en_ruta') {
-          const moveLat = (Math.random() - 0.5) * 0.002
-          const moveLng = (Math.random() - 0.5) * 0.002
-          const newSpeed = Math.max(30, Math.min(80, v.speed + (Math.random() - 0.5) * 10))
-          
-          return {
-            ...v,
-            lat: v.lat + moveLat,
-            lng: v.lng + moveLng,
-            speed: Math.round(newSpeed),
-            lastUpdate: 'Ahora'
-          }
-        }
-        return v
-      }))
-    }, 5000)
-    return () => clearInterval(interval)
+    return () => {
+      if (channel) supabase.removeChannel(channel)
+    }
   }, [])
 
   const filteredVehicles = vehicles.filter(v => 

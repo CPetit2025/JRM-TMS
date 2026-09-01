@@ -20,6 +20,28 @@ export default function GPSGuard({ children }: GPSGuardProps) {
       return
     }
 
+    let channel: any = null;
+    let isSubscribed = false;
+
+    // Inicializar Supabase y canal una sola vez
+    const initSupabase = async () => {
+      try {
+        const supabase = (window as any).supabaseClient || await import('@/lib/supabase/client').then(m => m.createClient())
+        ;(window as any).supabaseClient = supabase
+
+        channel = supabase.channel('gps_tracking')
+        channel.subscribe((status: string) => {
+          if (status === 'SUBSCRIBED') {
+            isSubscribed = true
+          }
+        })
+      } catch (e) {
+        console.error("Error init Supabase in GPSGuard", e)
+      }
+    }
+    
+    initSupabase()
+
     // Solicitar y observar la ubicación
     const watchId = navigator.geolocation.watchPosition(
       async (position) => {
@@ -38,13 +60,10 @@ export default function GPSGuard({ children }: GPSGuardProps) {
 
         // REALTIME: Emitir a Supabase para que la Torre de Control lo vea en vivo
         const driverData = localStorage.getItem('jrm_driver')
-        if (driverData) {
+        if (driverData && channel && isSubscribed) {
           try {
             const driver = JSON.parse(driverData)
-            const supabase = (window as any).supabaseClient || await import('@/lib/supabase/client').then(m => m.createClient())
-            ;(window as any).supabaseClient = supabase
-
-            supabase.channel('gps_tracking').send({
+            channel.send({
               type: 'broadcast',
               event: 'location_update',
               payload: {
@@ -76,7 +95,10 @@ export default function GPSGuard({ children }: GPSGuardProps) {
       }
     )
 
-    return () => navigator.geolocation.clearWatch(watchId)
+    return () => {
+      navigator.geolocation.clearWatch(watchId)
+      if (channel) channel.unsubscribe()
+    }
   }, [])
 
   const requestPermission = () => {
