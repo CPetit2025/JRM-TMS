@@ -49,6 +49,7 @@ export default function GPSGuard({ children }: GPSGuardProps) {
                       driver_name: `${driver.first_name} ${driver.last_name}`,
                       lat: latestCoords.lat,
                       lng: latestCoords.lng,
+                      speed: latestCoords.speed,
                       timestamp: new Date().toISOString()
                     }
                   })
@@ -71,9 +72,12 @@ export default function GPSGuard({ children }: GPSGuardProps) {
         setIsChecking(false)
         setError(null)
         
+        const speedKmh = position.coords.speed !== null ? Math.round(position.coords.speed * 3.6) : 0;
+        
         const coords = {
           lat: position.coords.latitude,
-          lng: position.coords.longitude
+          lng: position.coords.longitude,
+          speed: speedKmh
         }
         latestCoords = coords
         setLocation(coords)
@@ -95,6 +99,7 @@ export default function GPSGuard({ children }: GPSGuardProps) {
                 driver_name: `${driver.first_name} ${driver.last_name}`,
                 lat: coords.lat,
                 lng: coords.lng,
+                speed: coords.speed,
                 timestamp: new Date().toISOString()
               }
             })

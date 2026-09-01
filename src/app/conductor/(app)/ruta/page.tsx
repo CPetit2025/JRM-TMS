@@ -89,13 +89,13 @@ export default function RutaActivaPage() {
     try {
       const { error } = await supabase
         .from('dispatches')
-        .update({ status: 'EN_CURSO' })
+        .update({ status: 'EN RUTA' })
         .eq('id', dispatch.id)
       
       if (error) throw error
       
       toast.success('Ruta iniciada con éxito. Conduzca con cuidado.')
-      setDispatch({ ...dispatch, status: 'EN_CURSO' })
+      setDispatch({ ...dispatch, status: 'EN RUTA' })
     } catch (err: any) {
       toast.error('Error al iniciar: ' + err.message)
     } finally {
@@ -310,7 +310,7 @@ export default function RutaActivaPage() {
         </div>
         <div className={`border px-3 py-1 rounded-full text-[10px] font-bold tracking-wide text-center
           ${dispatch.status === 'PROGRAMADO' ? 'bg-amber-500/20 text-amber-300 border-amber-400' : 
-            dispatch.status === 'EN_CURSO' ? 'bg-green-500/20 text-green-300 border-green-400' :
+            dispatch.status === 'EN RUTA' ? 'bg-green-500/20 text-green-300 border-green-400' :
             dispatch.status === 'ESPERANDO_AUTORIZACION' ? 'bg-orange-500/20 text-orange-300 border-orange-400' :
             'bg-blue-500/20 text-blue-300 border-blue-400'
           }`}
@@ -337,7 +337,7 @@ export default function RutaActivaPage() {
       ) : (
         <div className="space-y-4">
           {dispatch.dispatch_requests?.map((req: any, index: number) => {
-            const isActive = index === activeStep && dispatch.status === 'EN_CURSO'
+            const isActive = index === activeStep && dispatch.status === 'EN RUTA'
             const isPast = index < activeStep
             const ot = req.transport_requests
             const typeLabel = ot?.request_type || (ot?.pickup_address.includes('Lurin') ? 'RECOJO' : 'ENTREGA')
@@ -441,7 +441,7 @@ export default function RutaActivaPage() {
       )}
 
       {/* Fin de ruta - Esperando Autorización */}
-      {dispatch.status === 'EN_CURSO' && activeStep >= (dispatch.dispatch_requests?.length || 0) && (
+      {dispatch.status === 'EN RUTA' && activeStep >= (dispatch.dispatch_requests?.length || 0) && (
         <div className="mt-8 bg-green-50 border border-green-200 p-6 rounded-xl text-center">
           <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle2 className="w-10 h-10" />

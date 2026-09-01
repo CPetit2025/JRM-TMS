@@ -54,6 +54,7 @@ export default function MonitoreoPage() {
                 ...v,
                 lat: data.lat,
                 lng: data.lng,
+                speed: data.speed || 0,
                 status: 'en_ruta',
                 lastUpdate: 'En vivo'
               } : v)
@@ -63,7 +64,7 @@ export default function MonitoreoPage() {
                 plate: 'EN-RUTA',
                 driver: data.driver_name,
                 status: 'en_ruta',
-                speed: 40,
+                speed: data.speed || 0,
                 lat: data.lat,
                 lng: data.lng,
                 lastUpdate: 'En vivo'
