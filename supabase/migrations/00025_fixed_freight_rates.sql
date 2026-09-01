@@ -1,6 +1,14 @@
 -- 00025_fixed_freight_rates.sql
 -- Crea la tabla para almacenar tarifas fijas punto a punto
 
+CREATE OR REPLACE FUNCTION public.update_modified_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = timezone('utc'::text, now());
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
 CREATE TABLE IF NOT EXISTS public.freight_rates (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     origin VARCHAR(255) NOT NULL,
@@ -23,6 +31,7 @@ USING (true)
 WITH CHECK (true);
 
 -- Trigger to update updated_at
+DROP TRIGGER IF EXISTS update_freight_rates_modtime ON public.freight_rates;
 CREATE TRIGGER update_freight_rates_modtime
     BEFORE UPDATE ON public.freight_rates
     FOR EACH ROW
