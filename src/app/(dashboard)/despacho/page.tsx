@@ -268,39 +268,48 @@ export default function DespachoPage() {
       let dispatchId: string;
 
       if (newDispatch.document_type !== 'NOTA_SALIDA') {
-        // Check if there is an active dispatch for this vehicle
-        const { data: activeDispatch, error: checkError } = await supabase
+        // ✅ REGLA DE NEGOCIO: Un conductor solo puede tener UNA ruta activa a la vez.
+        // Verificar si el conductor ya tiene un despacho activo
+        const { data: driverActiveDispatch, error: driverCheckError } = await supabase
           .from('dispatches')
-          .select('id, status')
-          .eq('vehicle_plate', newDispatch.vehicle_plate)
-          .in('status', ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'])
-          .order('created_at', { ascending: false })
+          .select('id, dispatch_number, status')
+          .eq('driver_name', newDispatch.driver_name)
+          .in('status', ['PROGRAMADO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'])
           .limit(1)
           .maybeSingle()
 
-        if (checkError) {
-          console.error("Error checking active dispatch:", checkError)
-          throw checkError
+        if (driverCheckError) {
+          console.error("Error checking driver active dispatch:", driverCheckError)
+          throw driverCheckError
         }
 
-        if (activeDispatch) {
-           dispatchId = activeDispatch.id
-           const updatePayload: any = {}
-           
-           // Update status to EN_CURSO to resume the trip
-           if (['ESPERANDO_AUTORIZACION', 'RETORNO'].includes(activeDispatch.status)) {
-              updatePayload.status = 'EN_CURSO'
-           }
-           
-           // Always update driver_name to the selected driver to fix the bug where routes aren't shown
-           const finalDriverName = newDispatch.driver_name
-           if (finalDriverName) {
-              updatePayload.driver_name = finalDriverName
-           }
-           
-           if (Object.keys(updatePayload).length > 0) {
-              await supabase.from('dispatches').update(updatePayload).eq('id', dispatchId)
-           }
+        if (driverActiveDispatch) {
+          toast.error(
+            `⚠️ El conductor "${newDispatch.driver_name}" ya tiene el despacho ${driverActiveDispatch.dispatch_number} activo (estado: ${driverActiveDispatch.status}). Debe completar o liquidar esa ruta antes de asignar una nueva.`,
+            { duration: 8000 }
+          )
+          setIsSubmitting(false)
+          return
+        }
+
+        // Verificar si el vehículo ya tiene un despacho activo
+        const { data: vehicleActiveDispatch, error: vehicleCheckError } = await supabase
+          .from('dispatches')
+          .select('id, dispatch_number, driver_name, status')
+          .eq('vehicle_plate', newDispatch.vehicle_plate)
+          .in('status', ['PROGRAMADO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'])
+          .limit(1)
+          .maybeSingle()
+
+        if (vehicleCheckError) throw vehicleCheckError
+
+        if (vehicleActiveDispatch) {
+          toast.error(
+            `⚠️ El vehículo ${newDispatch.vehicle_plate} ya está asignado al despacho ${vehicleActiveDispatch.dispatch_number} con el conductor "${vehicleActiveDispatch.driver_name}". Use otro vehículo.`,
+            { duration: 8000 }
+          )
+          setIsSubmitting(false)
+          return
         }
       }
 
