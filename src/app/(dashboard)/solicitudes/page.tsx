@@ -475,7 +475,7 @@ export default function SolicitudesPage() {
           cargo_description: compiledDescription,
           estimated_weight: totalWeight,
           request_type: newRequest.request_type,
-          status: 'PENDIENTE'
+          status: 'PENDIENTE DE APROBACIÓN'
         }])
         .select()
         .single()
@@ -597,9 +597,11 @@ export default function SolicitudesPage() {
 
   const getStatusBadge = (status: string) => {
     switch(status) {
+      case 'PENDIENTE DE APROBACIÓN':
       case 'PENDIENTE':
-        return <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs font-semibold">Pendiente</span>
+        return <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs font-semibold">Pendiente de Aprobación</span>
       case 'APROBADA':
+      case 'APROBADO':
         return <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-semibold">Aprobada</span>
       case 'RECHAZADA':
         return <span className="bg-red-100 text-red-800 px-2 py-1 rounded text-xs font-semibold">Rechazada</span>
@@ -778,7 +780,7 @@ export default function SolicitudesPage() {
                       {getStatusBadge(req.status)}
                     </td>
                     <td className="p-4 text-right">
-                      {req.status === 'PENDIENTE' && (userRole === 'admin' || userRole === 'dispatcher') && (
+                      {req.status === 'PENDIENTE DE APROBACIÓN' && (userRole.includes('admin') || userRole.includes('supervisor') || userRole.includes('despacho') || userRole.includes('transporte')) && (
                         <div className="flex justify-end gap-2 mb-2">
                           <button 
                             onClick={() => updateStatus(req.id, 'APROBADA')}
@@ -796,7 +798,7 @@ export default function SolicitudesPage() {
                           </button>
                         </div>
                       )}
-                      {(req.status === 'PENDIENTE' || req.status === 'APROBADA') && (
+                      {(req.status === 'PENDIENTE DE APROBACIÓN' || req.status === 'APROBADA') && (
                         <div className="flex justify-end gap-2 mt-1">
                           <button 
                             onClick={() => {
