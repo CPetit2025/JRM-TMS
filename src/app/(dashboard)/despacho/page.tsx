@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect, useRef } from 'react'
-import { Truck, MapPin, Loader2, PlayCircle, Calendar, Plus, FileText, ArrowRight, CheckCircle2 } from 'lucide-react'
+import { Truck, MapPin, Loader2, PlayCircle, Calendar, Plus, FileText, ArrowRight, CheckCircle2, DollarSign, Tag } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -63,6 +63,10 @@ export default function DespachoPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [calculatingDistance, setCalculatingDistance] = useState(false)
   const reqDistances = useRef<Record<string, number>>({})
+
+  // Freight rate lookup state
+  const [detectedFreightRate, setDetectedFreightRate] = useState<{ rate: number; district: string; zone: string } | null>(null)
+  const [loadingRate, setLoadingRate] = useState(false)
   
   const [newDispatch, setNewDispatch] = useState<{
     selected_requests: { id: string, document_number: string }[],
@@ -79,6 +83,52 @@ export default function DespachoPage() {
     estimated_distance_km: '',
     document_type: 'GR'
   })
+
+  // Districts known list for address parsing
+  const DISTRICTS = [
+    'San Juan de Lurigancho','San Juan de Miraflores','San Martin de Porres',
+    'Villa el Salvador','Lima Cercado','Jesús María','Jesus Maria',
+    'El Agustino','Punta Hermosa','Punta Negra','Puente Piedra',
+    'Carabayllo','Lurigancho','Pachacamac','Chorrillos','Independencia',
+    'Los Olivos','La Victoria','San Isidro','Santa Anita','Miraflores',
+    'Surquillo','Ventanilla','Jicamarca','Huachipa','Barranco','Callao',
+    'Chincha','Cañete','Canete','Comas','Huaral','Lurin','San Luis',
+    'Ate','Ica','Pisco','Pucusana','Surco','Breña','Brena',
+  ]
+  const extractDistrict = (address: string): string => {
+    const upper = address.toUpperCase()
+    for (const d of DISTRICTS) {
+      if (upper.includes(d.toUpperCase())) return d
+    }
+    const parts = address.split(',')
+    return parts[parts.length - 1].trim()
+  }
+
+  const lookupFreightRate = async (plate: string, selectedReqIds: string[]) => {
+    if (!plate || selectedReqIds.length === 0) { setDetectedFreightRate(null); return }
+    setLoadingRate(true)
+    try {
+      const selectedReqs = pendingRequests.filter(r => selectedReqIds.includes(r.id))
+      const deliveries = selectedReqs.map(r => r.delivery_address).filter(Boolean)
+      let found = null
+      for (const addr of deliveries) {
+        const district = extractDistrict(addr)
+        const { data } = await supabase
+          .from('freight_rates')
+          .select('rate, district, zone')
+          .eq('plate_number', plate)
+          .ilike('district', district)
+          .limit(1)
+          .maybeSingle()
+        if (data) { found = { rate: data.rate, district: data.district, zone: data.zone }; break }
+      }
+      setDetectedFreightRate(found)
+    } catch (e) {
+      setDetectedFreightRate(null)
+    } finally {
+      setLoadingRate(false)
+    }
+  }
 
   useEffect(() => {
     fetchData()
@@ -381,12 +431,13 @@ export default function DespachoPage() {
 
   const toggleRequestSelection = async (reqId: string, pickup: string, delivery: string) => {
     const isSelected = newDispatch.selected_requests.some(r => r.id === reqId)
+    let nextRequests: { id: string, document_number: string }[]
     
     if (isSelected) {
-      // 1. Quitar selección de inmediato
-      setNewDispatch(prev => ({ ...prev, selected_requests: prev.selected_requests.filter(r => r.id !== reqId) }))
+      nextRequests = newDispatch.selected_requests.filter(r => r.id !== reqId)
+      setNewDispatch(prev => ({ ...prev, selected_requests: nextRequests }))
 
-      // 2. Restar distancia (si ya estaba calculada)
+      // Restar distancia (si ya estaba calculada)
       const distanceToSubtract = reqDistances.current[reqId]
       if (distanceToSubtract) {
         setNewDispatch(prev => {
@@ -396,43 +447,48 @@ export default function DespachoPage() {
         })
       }
     } else {
-      // 1. Agregar selección de inmediato
-      setNewDispatch(prev => ({ ...prev, selected_requests: [...prev.selected_requests, { id: reqId, document_number: '' }] }))
+      nextRequests = [...newDispatch.selected_requests, { id: reqId, document_number: '' }]
+      setNewDispatch(prev => ({ ...prev, selected_requests: nextRequests }))
       
-      // 2. Si ya tenemos la distancia en caché, la sumamos al instante
+      // Si ya tenemos la distancia en caché, la sumamos al instante
       if (reqDistances.current[reqId]) {
         setNewDispatch(prev => {
           const currentKm = Number(prev.estimated_distance_km) || 0
           return { ...prev, estimated_distance_km: parseFloat((currentKm + reqDistances.current[reqId]).toFixed(1)) }
         })
-        return; // Terminamos aquí, sin llamar a la API
-      }
+      } else {
+        // Si no la tenemos, bloqueamos UI y consultamos la API
+        setCalculatingDistance(true)
+        const loadingToast = toast.loading('Calculando ruta sugerida...')
+        try {
+          const km = await calculateRouteDistance(pickup, delivery)
+          if (km) {
+            reqDistances.current[reqId] = km // Guardar en caché para la próxima
+            
+            setNewDispatch(prev => {
+              // Control anti-cruce: Solo sumar si el usuario NO LO DESMARCÓ mientras esperábamos la API
+              if (!prev.selected_requests.some(r => r.id === reqId)) return prev;
 
-      // 3. Si no la tenemos, bloqueamos UI y consultamos la API
-      setCalculatingDistance(true)
-      const loadingToast = toast.loading('Calculando ruta sugerida...')
-      try {
-        const km = await calculateRouteDistance(pickup, delivery)
-        if (km) {
-          reqDistances.current[reqId] = km // Guardar en caché para la próxima
-          
-          setNewDispatch(prev => {
-            // Control anti-cruce: Solo sumar si el usuario NO LO DESMARCÓ mientras esperábamos la API
-            if (!prev.selected_requests.some(r => r.id === reqId)) return prev;
-
-            const currentKm = Number(prev.estimated_distance_km) || 0
-            return { ...prev, estimated_distance_km: parseFloat((currentKm + km).toFixed(1)) }
-          })
-          toast.success(`+${km.toFixed(1)} KM agregados`, { id: loadingToast })
-        } else {
-          toast.error('No se pudo geocodificar la ruta.', { id: loadingToast })
+              const currentKm = Number(prev.estimated_distance_km) || 0
+              return { ...prev, estimated_distance_km: parseFloat((currentKm + km).toFixed(1)) }
+            })
+            toast.success(`+${km.toFixed(1)} KM agregados`, { id: loadingToast })
+          } else {
+            toast.error('No se pudo geocodificar la ruta.', { id: loadingToast })
+          }
+        } catch (e) {
+          toast.error('Error al calcular distancia', { id: loadingToast })
+        } finally {
+          setCalculatingDistance(false)
         }
-      } catch (e) {
-        toast.error('Error al calcular distancia', { id: loadingToast })
-      } finally {
-        setCalculatingDistance(false)
       }
     }
+
+    // Always re-lookup freight rate after selection changes
+    const updatedIds = isSelected
+      ? newDispatch.selected_requests.filter(r => r.id !== reqId).map(r => r.id)
+      : [...newDispatch.selected_requests.map(r => r.id), reqId]
+    lookupFreightRate(newDispatch.vehicle_plate, updatedIds)
   }
 
   return (
@@ -695,7 +751,11 @@ export default function DespachoPage() {
                         required
                         className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none text-sm font-medium"
                         value={newDispatch.vehicle_plate}
-                        onChange={(e) => setNewDispatch({...newDispatch, vehicle_plate: e.target.value})}
+                        onChange={(e) => {
+                          const plate = e.target.value
+                          setNewDispatch({...newDispatch, vehicle_plate: plate})
+                          lookupFreightRate(plate, newDispatch.selected_requests.map(r => r.id))
+                        }}
                       >
                         <option value="">Seleccione vehículo...</option>
                         {vehicles.map((v, i) => (
@@ -704,6 +764,22 @@ export default function DespachoPage() {
                           </option>
                         ))}
                       </select>
+                      {/* Tarifa detectada */}
+                      {loadingRate && (
+                        <p className="text-xs text-slate-400 flex items-center gap-1 mt-1"><Loader2 className="w-3 h-3 animate-spin" /> Buscando tarifa...</p>
+                      )}
+                      {!loadingRate && detectedFreightRate && (
+                        <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2">
+                          <Tag className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <div>
+                            <p className="text-xs font-bold text-emerald-800">Tarifa Fija: <span className="text-base">S/ {detectedFreightRate.rate.toLocaleString('es-PE')}</span></p>
+                            <p className="text-[10px] text-emerald-600">{detectedFreightRate.district} • {detectedFreightRate.zone}</p>
+                          </div>
+                        </div>
+                      )}
+                      {!loadingRate && !detectedFreightRate && newDispatch.vehicle_plate && newDispatch.selected_requests.length > 0 && (
+                        <p className="text-xs text-slate-400 mt-1">Sin tarifa fija registrada para esta ruta.</p>
+                      )}
                     </div>
                     
                     <div>

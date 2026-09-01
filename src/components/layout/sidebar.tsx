@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { 
   Home, Users, FileText, Truck, Map as MapIcon, Settings, 
   LogOut, ShieldAlert, BarChart3, Send, DollarSign, 
-  ArchiveRestore, Zap, ChevronRight, Wrench, Clock
+  ArchiveRestore, Zap, ChevronRight, Wrench, Clock, BarChart2
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -102,6 +102,7 @@ export function Sidebar() {
               {hasPermission('despacho') && <NavItem href="/despacho" icon={Truck} label="Despacho" />}
               {hasPermission('monitoreo') && <NavItem href="/monitoreo" icon={MapIcon} label="Monitoreo GPS" />}
               {hasPermission('servicios-realizados') && <NavItem href="/servicios-realizados" icon={ArchiveRestore} label="Servicios Realizados" />}
+              {(hasPermission('despacho') || hasPermission('reportes')) && <NavItem href="/reportes" icon={BarChart2} label="Reporte Desp. y Recojo" />}
             </>
           )}
 
@@ -127,7 +128,7 @@ export function Sidebar() {
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Maestros y Costos</p>
               </div>
               {hasPermission('flota') && <NavItem href="/flota" icon={MapIcon} label="Unidades y Conductores" />}
-              {hasPermission('tarifas') && <NavItem href="/maestros/tarifas" icon={Zap} label="Tarifas por KM" />}
+              {hasPermission('tarifas') && <NavItem href="/maestros/tarifas" icon={Zap} label="Tarifas de Flete" />}
               {hasPermission('productos') && <NavItem href="/configuracion/productos" icon={Settings} label="Maestro de Productos" />}
             </>
           )}
