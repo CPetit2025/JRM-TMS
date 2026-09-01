@@ -13,42 +13,14 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 })
 
-// Geocercas operativas de JRM en Lima
-const GEOFENCES = [
-  {
-    id: 'callao-cedi',
-    name: 'CEDI Principal - Callao',
-    color: '#3B82F6',
-    positions: [
-      [-12.052, -77.130] as [number, number],
-      [-12.052, -77.100] as [number, number],
-      [-12.075, -77.100] as [number, number],
-      [-12.075, -77.130] as [number, number],
-    ]
-  },
-  {
-    id: 'sjl-depot',
-    name: 'Depot B - San Juan de Lurigancho',
-    color: '#F59E0B',
-    positions: [
-      [-11.975, -77.010] as [number, number],
-      [-11.975, -76.985] as [number, number],
-      [-12.000, -76.985] as [number, number],
-      [-12.000, -77.010] as [number, number],
-    ]
-  },
-  {
-    id: 'ate-zona',
-    name: 'Zona Distribución - Ate',
-    color: '#10B981',
-    positions: [
-      [-12.020, -76.920] as [number, number],
-      [-12.020, -76.895] as [number, number],
-      [-12.040, -76.895] as [number, number],
-      [-12.040, -76.920] as [number, number],
-    ]
-  },
-]
+// Geocercas - se cargan dinámicamente desde Supabase
+interface GeofenceData {
+  id: string
+  name: string
+  color: string
+  coordinates: [number, number][]
+  is_active: boolean
+}
 
 // Create directional truck icon based on status and speed
 function createTruckIcon(status: string, speed: number) {
@@ -137,6 +109,24 @@ function FlyToVehicle({ vehicles, selectedVehicleId }: { vehicles: VehicleLocati
 
 export default function MapComponent({ vehicles, selectedVehicleId, onVehicleSelect, showGeofences }: MapComponentProps) {
   const defaultCenter: [number, number] = [-12.0464, -77.0428]
+  const [geofences, setGeofences] = useState<GeofenceData[]>([])
+
+  useEffect(() => {
+    const loadGeofences = async () => {
+      try {
+        const { createClient } = await import('@/lib/supabase/client')
+        const supabase = createClient()
+        const { data } = await supabase
+          .from('geofences')
+          .select('id, name, color, coordinates, is_active')
+          .eq('is_active', true)
+        if (data) setGeofences(data)
+      } catch (e) {
+        // Silently fail — map still works without geofences
+      }
+    }
+    loadGeofences()
+  }, [])
 
   return (
     <div className="w-full h-full rounded-xl overflow-hidden border border-slate-200 shadow-sm relative z-0">
@@ -153,11 +143,11 @@ export default function MapComponent({ vehicles, selectedVehicleId, onVehicleSel
         <ZoomControl position="bottomright" />
         <FlyToVehicle vehicles={vehicles} selectedVehicleId={selectedVehicleId} />
 
-        {/* Geocercas operativas */}
-        {showGeofences && GEOFENCES.map(geo => (
+        {/* Geocercas operativas (desde la BD) */}
+        {showGeofences && geofences.filter(g => g.coordinates.length >= 3).map(geo => (
           <Polygon
             key={geo.id}
-            positions={geo.positions}
+            positions={geo.coordinates.map(c => [c[0], c[1]] as [number, number])}
             pathOptions={{
               color: geo.color,
               fillColor: geo.color,

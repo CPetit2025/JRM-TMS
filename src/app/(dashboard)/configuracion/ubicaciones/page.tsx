@@ -1,365 +1,413 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { MapPin, Plus, Edit, Trash2, CheckCircle, XCircle, Loader2 } from 'lucide-react'
+import { MapPin, Plus, Edit2, Trash2, Eye, EyeOff, Layers, Save, X, Circle } from 'lucide-react'
 
-type AuthorizedLocation = {
+const GeofenceMap = dynamic(() => import('@/components/map/GeofenceMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full bg-slate-100 flex items-center justify-center rounded-xl">
+      <div className="w-8 h-8 border-4 border-[#002855] border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+})
+
+type Geofence = {
   id: string
   name: string
-  address: string
-  latitude: number
-  longitude: number
-  radius_km: number
+  color: string
+  type: string
+  coordinates: [number, number][]
   is_active: boolean
+  description: string | null
+  created_at: string
 }
 
-export default function UbicacionesPage() {
-  const [locations, setLocations] = useState<AuthorizedLocation[]>([])
+const TYPE_LABELS: Record<string, string> = {
+  cedi:              'CEDI / Almacén',
+  depot:             'Depósito',
+  zona_distribucion: 'Zona de Distribución',
+  restringida:       'Zona Restringida',
+}
+
+const COLORS = ['#3B82F6', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316']
+
+export default function GeocercasPage() {
+  const supabase = createClient()
+  const [geofences, setGeofences] = useState<Geofence[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [editingLocation, setEditingLocation] = useState<AuthorizedLocation | null>(null)
-  
-  const [formData, setFormData] = useState({
+  const [editingGeo, setEditingGeo] = useState<Geofence | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const [form, setForm] = useState({
     name: '',
-    address: '',
-    latitude: '',
-    longitude: '',
-    radius_km: '0.5',
-    is_active: true
+    color: '#3B82F6',
+    type: 'zona_distribucion',
+    description: '',
+    is_active: true,
+    // Coordenadas ingresadas manualmente como texto lat,lng por punto
+    rawCoords: '',
   })
 
-  const supabase = createClient()
+  useEffect(() => { fetchGeofences() }, [])
 
-  useEffect(() => {
-    fetchLocations()
-  }, [])
-
-  const fetchLocations = async () => {
+  const fetchGeofences = async () => {
+    setLoading(true)
     try {
       const { data, error } = await supabase
-        .from('authorized_locations')
+        .from('geofences')
         .select('*')
-        .order('name', { ascending: true })
-
+        .order('name')
       if (error) throw error
-      setLocations(data || [])
+      setGeofences(data || [])
     } catch (err: any) {
-      toast.error('Error al cargar ubicaciones: ' + err.message)
+      toast.error('Error al cargar geocercas: ' + err.message)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleOpenModal = (loc?: AuthorizedLocation) => {
-    if (loc) {
-      setEditingLocation(loc)
-      setFormData({
-        name: loc.name,
-        address: loc.address || '',
-        latitude: loc.latitude.toString(),
-        longitude: loc.longitude.toString(),
-        radius_km: loc.radius_km.toString(),
-        is_active: loc.is_active
+  const openModal = (geo?: Geofence) => {
+    if (geo) {
+      setEditingGeo(geo)
+      setForm({
+        name: geo.name,
+        color: geo.color,
+        type: geo.type,
+        description: geo.description || '',
+        is_active: geo.is_active,
+        rawCoords: geo.coordinates.map(c => `${c[0]},${c[1]}`).join('\n'),
       })
     } else {
-      setEditingLocation(null)
-      setFormData({
-        name: '',
-        address: '',
-        latitude: '',
-        longitude: '',
-        radius_km: '0.5',
-        is_active: true
-      })
+      setEditingGeo(null)
+      setForm({ name: '', color: '#3B82F6', type: 'zona_distribucion', description: '', is_active: true, rawCoords: '' })
     }
     setIsModalOpen(true)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const parseCoords = (raw: string): [number, number][] => {
+    return raw.trim().split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .map(line => {
+        const parts = line.split(',')
+        return [parseFloat(parts[0]), parseFloat(parts[1])] as [number, number]
+      })
+      .filter(c => !isNaN(c[0]) && !isNaN(c[1]))
+  }
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    if (!formData.name || !formData.latitude || !formData.longitude || !formData.radius_km) {
-      toast.error('Por favor completa los campos obligatorios (Nombre, Latitud, Longitud, Radio)')
+    const coords = parseCoords(form.rawCoords)
+    if (coords.length < 3) {
+      toast.error('Se necesitan al menos 3 puntos (filas) para formar un polígono.')
       return
     }
-
+    setSaving(true)
     try {
       const payload = {
-        name: formData.name,
-        address: formData.address,
-        latitude: parseFloat(formData.latitude),
-        longitude: parseFloat(formData.longitude),
-        radius_km: parseFloat(formData.radius_km),
-        is_active: formData.is_active
+        name: form.name,
+        color: form.color,
+        type: form.type,
+        description: form.description || null,
+        is_active: form.is_active,
+        coordinates: coords,
+        updated_at: new Date().toISOString(),
       }
 
-      if (editingLocation) {
-        const { error } = await supabase
-          .from('authorized_locations')
-          .update(payload)
-          .eq('id', editingLocation.id)
+      if (editingGeo) {
+        const { error } = await supabase.from('geofences').update(payload).eq('id', editingGeo.id)
         if (error) throw error
-        toast.success('Ubicación actualizada correctamente')
+        toast.success('Geocerca actualizada')
       } else {
-        const { error } = await supabase
-          .from('authorized_locations')
-          .insert([payload])
+        const { error } = await supabase.from('geofences').insert([payload])
         if (error) throw error
-        toast.success('Ubicación creada correctamente')
+        toast.success('Geocerca creada correctamente')
       }
-      
       setIsModalOpen(false)
-      fetchLocations()
+      fetchGeofences()
     } catch (err: any) {
       toast.error('Error al guardar: ' + err.message)
+    } finally {
+      setSaving(false)
     }
   }
 
-  const handleToggleActive = async (loc: AuthorizedLocation) => {
+  const handleToggleActive = async (geo: Geofence) => {
     try {
       const { error } = await supabase
-        .from('authorized_locations')
-        .update({ is_active: !loc.is_active })
-        .eq('id', loc.id)
+        .from('geofences')
+        .update({ is_active: !geo.is_active })
+        .eq('id', geo.id)
       if (error) throw error
-      toast.success(loc.is_active ? 'Ubicación desactivada' : 'Ubicación activada')
-      fetchLocations()
+      toast.success(geo.is_active ? 'Geocerca desactivada' : 'Geocerca activada')
+      fetchGeofences()
     } catch (err: any) {
-      toast.error('Error al cambiar estado: ' + err.message)
+      toast.error('Error: ' + err.message)
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar esta ubicación? Esta acción no se puede deshacer.')) return
-    
+  const handleDelete = async (geo: Geofence) => {
+    if (!confirm(`¿Eliminar la geocerca "${geo.name}"? Esta acción no se puede deshacer.`)) return
     try {
-      const { error } = await supabase
-        .from('authorized_locations')
-        .delete()
-        .eq('id', id)
+      const { error } = await supabase.from('geofences').delete().eq('id', geo.id)
       if (error) throw error
-      toast.success('Ubicación eliminada')
-      fetchLocations()
+      toast.success('Geocerca eliminada')
+      if (selectedId === geo.id) setSelectedId(null)
+      fetchGeofences()
     } catch (err: any) {
-      toast.error('Error al eliminar: ' + err.message)
+      toast.error('Error: ' + err.message)
     }
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-[#002855]" />
-      </div>
-    )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Geocercas (Bases Autorizadas)</h1>
-          <p className="text-sm text-slate-500">Administra las ubicaciones permitidas para iniciar el Checklist</p>
+    <div className="h-[calc(100vh-2rem)] flex flex-col gap-3">
+      {/* Header */}
+      <div className="flex items-center justify-between bg-white px-5 py-3 rounded-xl shadow-sm border border-slate-200 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-[#002855] rounded-lg flex items-center justify-center">
+            <Layers className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-lg font-black text-slate-800">Gestión de Geocercas</h1>
+            <p className="text-xs text-slate-500">Zonas operativas y de control sobre el mapa</p>
+          </div>
         </div>
-        <button 
-          onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#001d3d] transition-colors"
+        <button
+          onClick={() => openModal()}
+          className="flex items-center gap-2 bg-[#002855] text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-[#001d3d] transition-colors shadow"
         >
           <Plus className="w-4 h-4" />
-          Nueva Ubicación
+          Nueva Geocerca
         </button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50 text-slate-500 text-xs text-left border-b border-slate-100 uppercase tracking-wider">
-              <tr>
-                <th className="p-4 font-semibold">Ubicación</th>
-                <th className="p-4 font-semibold">Coordenadas</th>
-                <th className="p-4 font-semibold">Radio (KM)</th>
-                <th className="p-4 font-semibold">Estado</th>
-                <th className="p-4 font-semibold text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {locations.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="p-8 text-center text-slate-500">
-                    No hay ubicaciones registradas.
-                  </td>
-                </tr>
-              ) : (
-                locations.map(loc => (
-                  <tr key={loc.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                          <MapPin className="w-5 h-5 text-blue-600" />
-                        </div>
-                        <div>
-                          <p className="font-bold text-[#002855]">{loc.name}</p>
-                          <p className="text-xs text-slate-500">{loc.address}</p>
-                        </div>
+      {/* Main */}
+      <div className="flex-1 flex gap-3 min-h-0">
+        {/* Left panel */}
+        <div className="w-80 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col shrink-0 overflow-hidden">
+          <div className="p-3 border-b border-slate-100 bg-slate-50">
+            <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">
+              {geofences.length} zona{geofences.length !== 1 ? 's' : ''} configurada{geofences.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
+            {loading ? (
+              <div className="p-8 text-center">
+                <div className="w-6 h-6 border-2 border-[#002855] border-t-transparent rounded-full animate-spin mx-auto" />
+              </div>
+            ) : geofences.length === 0 ? (
+              <div className="p-8 text-center text-slate-400">
+                <MapPin className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No hay geocercas configuradas</p>
+                <p className="text-xs mt-1">Crea la primera con el botón de arriba</p>
+              </div>
+            ) : (
+              geofences.map(geo => (
+                <div
+                  key={geo.id}
+                  onClick={() => setSelectedId(geo.id === selectedId ? null : geo.id)}
+                  className={`p-3 cursor-pointer transition-all ${
+                    selectedId === geo.id ? 'bg-blue-50 border-l-4 border-l-[#002855]' : 'hover:bg-slate-50 border-l-4 border-l-transparent'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <div className="w-4 h-4 rounded-full shrink-0 border-2 border-white shadow" style={{ backgroundColor: geo.color }} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-800 truncate">{geo.name}</p>
+                        <p className="text-[10px] text-slate-500">{TYPE_LABELS[geo.type] || geo.type} · {geo.coordinates.length} puntos</p>
                       </div>
-                    </td>
-                    <td className="p-4">
-                      <p className="text-sm text-slate-700">{loc.latitude}, {loc.longitude}</p>
-                      <a 
-                        href={`https://www.google.com/maps/search/?api=1&query=${loc.latitude},${loc.longitude}`}
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="text-xs text-blue-600 hover:underline"
+                    </div>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
+                      geo.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      {geo.is_active ? 'ACTIVA' : 'INACTIVA'}
+                    </span>
+                  </div>
+
+                  {geo.description && (
+                    <p className="text-[10px] text-slate-400 mt-1.5 pl-6 line-clamp-1">{geo.description}</p>
+                  )}
+
+                  {selectedId === geo.id && (
+                    <div className="flex gap-1.5 mt-2.5 pl-6">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openModal(geo) }}
+                        className="flex items-center gap-1 text-[10px] bg-white border border-slate-200 text-slate-700 px-2 py-1 rounded-lg hover:bg-slate-50 font-medium"
                       >
-                        Ver en Google Maps
-                      </a>
-                    </td>
-                    <td className="p-4">
-                      <p className="text-sm font-semibold text-slate-700">{loc.radius_km} km</p>
-                      <p className="text-xs text-slate-500">Tolerancia GPS</p>
-                    </td>
-                    <td className="p-4">
-                      <button 
-                        onClick={() => handleToggleActive(loc)}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-colors ${
-                          loc.is_active 
-                            ? 'bg-green-100 text-green-700 hover:bg-green-200' 
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        <Edit2 className="w-3 h-3" /> Editar
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleToggleActive(geo) }}
+                        className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg font-medium border ${
+                          geo.is_active
+                            ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                            : 'bg-green-50 border-green-200 text-green-700'
                         }`}
                       >
-                        {loc.is_active ? (
-                          <><CheckCircle className="w-3 h-3" /> Activo</>
-                        ) : (
-                          <><XCircle className="w-3 h-3" /> Inactivo</>
-                        )}
+                        {geo.is_active ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                        {geo.is_active ? 'Desactivar' : 'Activar'}
                       </button>
-                    </td>
-                    <td className="p-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button 
-                          onClick={() => handleOpenModal(loc)}
-                          className="p-2 text-slate-400 hover:text-blue-600 transition-colors bg-white border border-slate-200 rounded-lg shadow-sm"
-                          title="Editar"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(loc.id)}
-                          className="p-2 text-slate-400 hover:text-red-600 transition-colors bg-white border border-slate-200 rounded-lg shadow-sm"
-                          title="Eliminar"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDelete(geo) }}
+                        className="flex items-center gap-1 text-[10px] bg-red-50 border border-red-200 text-red-600 px-2 py-1 rounded-lg hover:bg-red-100 font-medium"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Legend */}
+          <div className="p-3 border-t border-slate-100 bg-slate-50">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Tipos de Zona</p>
+            <div className="space-y-1">
+              {Object.entries(TYPE_LABELS).map(([key, label]) => (
+                <div key={key} className="flex items-center gap-2">
+                  <Circle className="w-2.5 h-2.5 text-slate-300 fill-slate-200 shrink-0" />
+                  <span className="text-[10px] text-slate-500">{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Map */}
+        <div className="flex-1 rounded-xl overflow-hidden relative">
+          <GeofenceMap geofences={geofences} selectedId={selectedId} onSelect={setSelectedId} />
         </div>
       </div>
 
+      {/* Modal: Crear/Editar Geocerca */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-blue-600" />
-                {editingLocation ? 'Editar Ubicación' : 'Nueva Ubicación'}
-              </h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                <XCircle className="w-6 h-6" />
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[1000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h2 className="text-lg font-black text-slate-800">
+                {editingGeo ? 'Editar Geocerca' : 'Nueva Geocerca'}
+              </h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
               </button>
             </div>
-            
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+
+            <form onSubmit={handleSave} className="p-6 space-y-4">
+              {/* Nombre */}
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Nombre de la Base *</label>
-                <input 
-                  type="text" 
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nombre de la Zona *</label>
+                <input
                   required
-                  value={formData.name}
-                  onChange={e => setFormData({...formData, name: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-[#002855] focus:border-[#002855]"
-                  placeholder="Ej. Planta Chilca"
+                  type="text"
+                  placeholder="Ej: CEDI Principal - Callao"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-[#002855] outline-none"
+                  value={form.name}
+                  onChange={e => setForm({ ...form, name: e.target.value })}
                 />
               </div>
 
+              {/* Tipo + Color */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Tipo</label>
+                  <select
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={form.type}
+                    onChange={e => setForm({ ...form, type: e.target.value })}
+                  >
+                    {Object.entries(TYPE_LABELS).map(([k, v]) => (
+                      <option key={k} value={k}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Color en el mapa</label>
+                  <div className="flex gap-1.5 flex-wrap pt-0.5">
+                    {COLORS.map(c => (
+                      <button
+                        key={c} type="button"
+                        onClick={() => setForm({ ...form, color: c })}
+                        className="w-6 h-6 rounded-full border-2 transition-all"
+                        style={{ backgroundColor: c, borderColor: form.color === c ? '#1e3a5f' : 'transparent', transform: form.color === c ? 'scale(1.2)' : 'scale(1)' }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Descripción */}
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Dirección</label>
-                <input 
-                  type="text" 
-                  value={formData.address}
-                  onChange={e => setFormData({...formData, address: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-[#002855] focus:border-[#002855]"
-                  placeholder="Ej. Panamericana Sur Km 62"
+                <label className="block text-xs font-bold text-slate-700 mb-1">Descripción (opcional)</label>
+                <input
+                  type="text"
+                  placeholder="Ej: Zona de descarga principal, horario 7am - 5pm"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-[#002855] outline-none"
+                  value={form.description}
+                  onChange={e => setForm({ ...form, description: e.target.value })}
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Latitud *</label>
-                  <input 
-                    type="number" 
-                    step="any"
-                    required
-                    value={formData.latitude}
-                    onChange={e => setFormData({...formData, latitude: e.target.value})}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-[#002855] focus:border-[#002855]"
-                    placeholder="-12.5204"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Longitud *</label>
-                  <input 
-                    type="number" 
-                    step="any"
-                    required
-                    value={formData.longitude}
-                    onChange={e => setFormData({...formData, longitude: e.target.value})}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-[#002855] focus:border-[#002855]"
-                    placeholder="-76.7371"
-                  />
-                </div>
+              {/* Coordenadas */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Coordenadas del polígono * <span className="text-slate-400 font-normal">(una por línea: latitud,longitud)</span>
+                </label>
+                <textarea
+                  required
+                  rows={5}
+                  placeholder={`-12.052,-77.130\n-12.052,-77.100\n-12.075,-77.100\n-12.075,-77.130`}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 font-mono focus:ring-2 focus:ring-[#002855] outline-none resize-none"
+                  value={form.rawCoords}
+                  onChange={e => setForm({ ...form, rawCoords: e.target.value })}
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  💡 Puedes obtener coordenadas haciendo clic derecho en Google Maps → "¿Qué hay aquí?" y copiar latitud,longitud.
+                  Mínimo 3 puntos para formar un polígono.
+                </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 items-center pt-2">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Radio Tolerancia (KM) *</label>
-                  <input 
-                    type="number" 
-                    step="0.1"
-                    min="0.1"
-                    required
-                    value={formData.radius_km}
-                    onChange={e => setFormData({...formData, radius_km: e.target.value})}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-[#002855] focus:border-[#002855]"
-                  />
-                  <p className="text-xs text-slate-500 mt-1">Ej. 0.5 (500 metros)</p>
-                </div>
-                
-                <div className="flex items-center gap-2 mt-4">
-                  <input 
-                    type="checkbox"
-                    id="isActive"
-                    checked={formData.is_active}
-                    onChange={e => setFormData({...formData, is_active: e.target.checked})}
-                    className="w-4 h-4 rounded border-slate-300 text-[#002855] focus:ring-[#002855]"
-                  />
-                  <label htmlFor="isActive" className="text-sm font-semibold text-slate-700 cursor-pointer">
-                    Geocerca Activa
-                  </label>
-                </div>
+              {/* Activa */}
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, is_active: !form.is_active })}
+                  className={`w-12 h-6 rounded-full transition-colors relative ${form.is_active ? 'bg-[#002855]' : 'bg-slate-300'}`}
+                >
+                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${form.is_active ? 'left-6' : 'left-0.5'}`} />
+                </button>
+                <span className="text-sm text-slate-700 font-medium">
+                  {form.is_active ? 'Geocerca activa (visible en el mapa)' : 'Geocerca inactiva (oculta del mapa)'}
+                </span>
               </div>
 
-              <div className="pt-6 flex gap-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-bold">
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-50"
+                >
                   Cancelar
                 </button>
-                <button type="submit" className="flex-1 px-4 py-2 bg-[#002855] text-white rounded-lg font-bold hover:bg-[#001d3d]">
-                  Guardar Ubicación
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex-1 py-2.5 bg-[#002855] text-white rounded-xl text-sm font-bold hover:bg-[#001d3d] disabled:opacity-70 flex items-center justify-center gap-2"
+                >
+                  {saving ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  {editingGeo ? 'Guardar cambios' : 'Crear Geocerca'}
                 </button>
               </div>
             </form>
