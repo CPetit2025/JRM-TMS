@@ -1,8 +1,8 @@
 "use client"
 import Image from 'next/image'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Truck, LogIn, Loader2 } from 'lucide-react'
+import { Truck, LogIn, Loader2, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 
@@ -11,6 +11,16 @@ export default function DriverLogin() {
   const [dni, setDni] = useState('')
   const [pin, setPin] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showPin, setShowPin] = useState(false)
+  const [rememberMe, setRememberMe] = useState(false)
+
+  useEffect(() => {
+    const savedDni = localStorage.getItem('jrm_saved_driver_dni')
+    if (savedDni) {
+      setDni(savedDni)
+      setRememberMe(true)
+    }
+  }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -55,6 +65,13 @@ export default function DriverLogin() {
 
       toast.success(`Bienvenido, ${driver.first_name} ${driver.last_name}`)
       localStorage.setItem('jrm_driver', JSON.stringify(driver))
+      
+      if (rememberMe) {
+        localStorage.setItem('jrm_saved_driver_dni', cleanDni)
+      } else {
+        localStorage.removeItem('jrm_saved_driver_dni')
+      }
+      
       router.push('/conductor/ruta')
     } catch (err) {
       toast.error('Ocurrió un error al intentar acceder')
@@ -84,7 +101,7 @@ export default function DriverLogin() {
               type="tel"
               maxLength={8}
               placeholder="Ej. 45678901"
-              className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#002855] outline-none font-medium"
+              className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#002855] outline-none font-medium text-slate-900"
               value={dni}
               onChange={(e) => setDni(e.target.value)}
             />
@@ -92,14 +109,36 @@ export default function DriverLogin() {
           
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">PIN de Acceso</label>
-            <input 
-              type="password"
-              maxLength={4}
-              placeholder="****"
-              className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#002855] outline-none font-medium text-center tracking-widest text-lg"
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
+            <div className="relative">
+              <input 
+                type={showPin ? "text" : "password"}
+                maxLength={4}
+                placeholder="****"
+                className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#002855] outline-none font-medium text-center tracking-widest text-lg text-slate-900"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+              />
+              <button 
+                type="button"
+                onClick={() => setShowPin(!showPin)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+              >
+                {showPin ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center mt-2">
+            <input
+              id="remember"
+              type="checkbox"
+              className="w-4 h-4 rounded border-slate-300 text-[#002855] focus:ring-[#002855]"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
             />
+            <label htmlFor="remember" className="ml-2 text-sm text-slate-600 font-medium cursor-pointer">
+              Recordar mis credenciales
+            </label>
           </div>
 
           <button 
