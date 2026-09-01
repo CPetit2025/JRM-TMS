@@ -45,6 +45,7 @@ export default function MonitoreoPage() {
       channel = supabase.channel('gps_tracking')
         .on('broadcast', { event: 'location_update' }, (payload: any) => {
           const data = payload.payload;
+          console.log('Recibida actualización GPS de conductor:', data)
           setVehicles(prev => {
             const exists = prev.find(v => v.id === data.driver_id)
             

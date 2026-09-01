@@ -22,6 +22,7 @@ export default function GPSGuard({ children }: GPSGuardProps) {
 
     let channel: any = null;
     let isSubscribed = false;
+    let latestCoords: any = null;
 
     // Inicializar Supabase y canal una sola vez
     const initSupabase = async () => {
@@ -33,6 +34,27 @@ export default function GPSGuard({ children }: GPSGuardProps) {
         channel.subscribe((status: string) => {
           if (status === 'SUBSCRIBED') {
             isSubscribed = true
+            
+            // Si ya teníamos coordenadas, las enviamos inmediatamente al conectarse
+            if (latestCoords) {
+              const driverData = localStorage.getItem('jrm_driver')
+              if (driverData) {
+                try {
+                  const driver = JSON.parse(driverData)
+                  channel.send({
+                    type: 'broadcast',
+                    event: 'location_update',
+                    payload: {
+                      driver_id: driver.id || driver.document_number,
+                      driver_name: `${driver.first_name} ${driver.last_name}`,
+                      lat: latestCoords.lat,
+                      lng: latestCoords.lng,
+                      timestamp: new Date().toISOString()
+                    }
+                  })
+                } catch(e) { console.error(e) }
+              }
+            }
           }
         })
       } catch (e) {
@@ -53,6 +75,7 @@ export default function GPSGuard({ children }: GPSGuardProps) {
           lat: position.coords.latitude,
           lng: position.coords.longitude
         }
+        latestCoords = coords
         setLocation(coords)
         
         // MVP: Guardamos en localStorage local
@@ -63,6 +86,7 @@ export default function GPSGuard({ children }: GPSGuardProps) {
         if (driverData && channel && isSubscribed) {
           try {
             const driver = JSON.parse(driverData)
+            console.log('Enviando broadcast GPS a Torre de Control:', coords)
             channel.send({
               type: 'broadcast',
               event: 'location_update',
