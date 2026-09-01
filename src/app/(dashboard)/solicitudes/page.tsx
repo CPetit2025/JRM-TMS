@@ -780,7 +780,7 @@ export default function SolicitudesPage() {
                       {getStatusBadge(req.status)}
                     </td>
                     <td className="p-4 text-right">
-                      {req.status === 'PENDIENTE DE APROBACIÓN' && (userRole.includes('admin') || userRole.includes('supervisor') || userRole.includes('despacho') || userRole.includes('transporte')) && (
+                      {(req.status === 'PENDIENTE DE APROBACIÓN' || req.status === 'PENDIENTE') && (userRole.includes('admin') || userRole.includes('supervisor') || userRole.includes('despacho') || userRole.includes('transporte')) && (
                         <div className="flex justify-end gap-2 mb-2">
                           <button 
                             onClick={() => updateStatus(req.id, 'APROBADA')}
@@ -798,7 +798,7 @@ export default function SolicitudesPage() {
                           </button>
                         </div>
                       )}
-                      {(req.status === 'PENDIENTE DE APROBACIÓN' || req.status === 'APROBADA') && (
+                      {(req.status === 'PENDIENTE DE APROBACIÓN' || req.status === 'PENDIENTE' || req.status === 'APROBADA') && (
                         <div className="flex justify-end gap-2 mt-1">
                           <button 
                             onClick={() => {
