@@ -293,7 +293,7 @@ export default function DespachoPage() {
            }
            
            // Always update driver_name to the selected driver to fix the bug where routes aren't shown
-           const finalDriverName = newDispatch.document_type === 'NOTA_SALIDA' ? 'CLIENTE' : newDispatch.driver_name
+           const finalDriverName = newDispatch.driver_name
            if (finalDriverName) {
               updatePayload.driver_name = finalDriverName
            }

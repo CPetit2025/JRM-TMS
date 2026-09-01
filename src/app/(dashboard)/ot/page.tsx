@@ -1442,6 +1442,7 @@ export default function OTPage() {
                   const subcontractNumber = `${selectedOTForView.ot_number}-S${nextS}`;
                   
                   setNewOT({
+                    ...initialOTState,
                     client_id: selectedOTForView.client_id,
                     contract_administrator_id: selectedOTForView.contract_administrator_id || '',
                     budget_amount: selectedOTForView.budget_amount || '',
