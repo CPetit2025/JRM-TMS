@@ -64,6 +64,13 @@ export default function DriverLogin() {
       }
 
       toast.success(`Bienvenido, ${driver.first_name} ${driver.last_name}`)
+      
+      // ✅ SEGURIDAD: Limpiar cualquier sesión anterior antes de guardar la nueva
+      // Esto evita que queden datos de un conductor anterior en caché
+      localStorage.removeItem('jrm_driver')
+      localStorage.removeItem('driver_current_location')
+      
+      // Guardar los datos del conductor autenticado
       localStorage.setItem('jrm_driver', JSON.stringify(driver))
       
       if (rememberMe) {

@@ -26,9 +26,43 @@ export default function RutaActivaPage() {
       router.push('/conductor/login')
       return
     }
+    
     const parsedDriver = JSON.parse(driverData)
-    setDriver(parsedDriver)
-    fetchActiveDispatch(parsedDriver)
+    
+    // ✅ SEGURIDAD: Verificar que la sesión en localStorage corresponde
+    // a un conductor real en la base de datos usando su ID y document_number
+    const verifySession = async () => {
+      try {
+        const { data: dbDriver, error } = await supabase
+          .from('drivers')
+          .select('id, first_name, last_name, document_number')
+          .eq('id', parsedDriver.id)
+          .eq('document_number', parsedDriver.document_number)
+          .single()
+        
+        if (error || !dbDriver) {
+          // La sesión no es válida — forzar logout
+          console.warn('Sesión inválida detectada, redirigiendo al login.')
+          localStorage.removeItem('jrm_driver')
+          localStorage.removeItem('driver_current_location')
+          router.push('/conductor/login')
+          return
+        }
+        
+        // La sesión es válida — usar los datos frescos de la BD (no los del caché)
+        const freshDriver = dbDriver
+        localStorage.setItem('jrm_driver', JSON.stringify(freshDriver))
+        setDriver(freshDriver)
+        fetchActiveDispatch(freshDriver)
+      } catch (err) {
+        // En caso de error de red, usar los datos locales pero advertir
+        console.error('Error verificando sesión:', err)
+        setDriver(parsedDriver)
+        fetchActiveDispatch(parsedDriver)
+      }
+    }
+    
+    verifySession()
   }, [router])
 
   const fetchActiveDispatch = async (driverData: any) => {
