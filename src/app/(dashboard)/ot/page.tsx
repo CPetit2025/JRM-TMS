@@ -100,7 +100,13 @@ export default function OTPage() {
     budget_amount: string
     parent_work_order_id: string | null
     origin: string
+    origin_department: string
+    origin_province: string
+    origin_district: string
     destination: string
+    destination_department: string
+    destination_province: string
+    destination_district: string
     delivery_address: string
     cargo_details: string
     required_date: string
@@ -111,7 +117,13 @@ export default function OTPage() {
     budget_amount: '',
     parent_work_order_id: null,
     origin: 'Planta Chilca',
+    origin_department: 'LIMA',
+    origin_province: 'CAÑETE',
+    origin_district: 'CHILCA',
     destination: '',
+    destination_department: '',
+    destination_province: '',
+    destination_district: '',
     delivery_address: '',
     cargo_details: '',
     required_date: ''
@@ -267,8 +279,14 @@ export default function OTPage() {
           parent_work_order_id: newOT.parent_work_order_id || null,
           origin: newOT.origin,
           origin_address: newOT.origin || 'Planta Chilca',
+          origin_department: newOT.origin_department,
+          origin_province: newOT.origin_province,
+          origin_district: newOT.origin_district,
           destination: newOT.destination,
           destination_address: newOT.destination,
+          destination_department: newOT.destination_department,
+          destination_province: newOT.destination_province,
+          destination_district: newOT.destination_district,
           required_date: newOT.required_date ? new Date(newOT.required_date).toISOString() : new Date().toISOString(),
           cargo_details: `OT con ${otItems.length} ítems. Peso total estimado: ${otItems.reduce((acc, item) => acc + item.total_weight, 0).toFixed(2)}`,
           status: 'GENERADA'
@@ -947,28 +965,95 @@ export default function OTPage() {
                     </button>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Punto de Origen</label>
-                  <input 
-                    type="text" 
-                    required
-                    className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
-                    value={newOT.origin}
-                    onChange={(e) => setNewOT({...newOT, origin: e.target.value})}
-                  />
+              <div className="border border-slate-200 rounded-lg p-3 bg-slate-50/50 mt-4">
+                <h4 className="text-sm font-semibold text-slate-800 mb-2">Origen</h4>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="md:col-span-1">
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Punto de Origen Exacto</label>
+                    <input 
+                      type="text" 
+                      required
+                      className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                      value={newOT.origin}
+                      onChange={(e) => setNewOT({...newOT, origin: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Departamento</label>
+                    <input 
+                      type="text" 
+                      placeholder="Ej. LIMA"
+                      className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                      value={newOT.origin_department}
+                      onChange={(e) => setNewOT({...newOT, origin_department: e.target.value.toUpperCase()})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Provincia</label>
+                    <input 
+                      type="text" 
+                      placeholder="Ej. CAÑETE"
+                      className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                      value={newOT.origin_province}
+                      onChange={(e) => setNewOT({...newOT, origin_province: e.target.value.toUpperCase()})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Distrito</label>
+                    <input 
+                      type="text" 
+                      placeholder="Ej. CHILCA"
+                      className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                      value={newOT.origin_district}
+                      onChange={(e) => setNewOT({...newOT, origin_district: e.target.value.toUpperCase()})}
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Punto de Destino / Dirección</label>
-                  <input 
-                    type="text" 
-                    required
-                    className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
-                    value={newOT.destination}
-                    onChange={(e) => setNewOT({...newOT, destination: e.target.value})}
-                  />
+              <div className="border border-slate-200 rounded-lg p-3 bg-slate-50/50 mt-4">
+                <h4 className="text-sm font-semibold text-slate-800 mb-2">Destino</h4>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="md:col-span-1">
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Punto de Destino Exacto</label>
+                    <input 
+                      type="text" 
+                      required
+                      className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                      value={newOT.destination}
+                      onChange={(e) => setNewOT({...newOT, destination: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Departamento</label>
+                    <input 
+                      type="text" 
+                      placeholder="Ej. LIMA"
+                      className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                      value={newOT.destination_department}
+                      onChange={(e) => setNewOT({...newOT, destination_department: e.target.value.toUpperCase()})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Provincia</label>
+                    <input 
+                      type="text" 
+                      placeholder="Ej. LIMA"
+                      className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                      value={newOT.destination_province}
+                      onChange={(e) => setNewOT({...newOT, destination_province: e.target.value.toUpperCase()})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Distrito</label>
+                    <input 
+                      type="text" 
+                      placeholder="Ej. ATE"
+                      className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                      value={newOT.destination_district}
+                      onChange={(e) => setNewOT({...newOT, destination_district: e.target.value.toUpperCase()})}
+                    />
+                  </div>
                 </div>
               </div>
             </>

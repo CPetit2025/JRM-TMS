@@ -285,9 +285,21 @@ export default function DespachoPage() {
 
         if (activeDispatch) {
            dispatchId = activeDispatch.id
+           const updatePayload: any = {}
+           
            // Update status to EN_CURSO to resume the trip
            if (['ESPERANDO_AUTORIZACION', 'RETORNO'].includes(activeDispatch.status)) {
-              await supabase.from('dispatches').update({ status: 'EN_CURSO' }).eq('id', dispatchId)
+              updatePayload.status = 'EN_CURSO'
+           }
+           
+           // Always update driver_name to the selected driver to fix the bug where routes aren't shown
+           const finalDriverName = newDispatch.document_type === 'NOTA_SALIDA' ? 'CLIENTE' : newDispatch.driver_name
+           if (finalDriverName) {
+              updatePayload.driver_name = finalDriverName
+           }
+           
+           if (Object.keys(updatePayload).length > 0) {
+              await supabase.from('dispatches').update(updatePayload).eq('id', dispatchId)
            }
         }
       }

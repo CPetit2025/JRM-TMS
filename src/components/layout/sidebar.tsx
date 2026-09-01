@@ -141,6 +141,7 @@ export function Sidebar() {
               </div>
               {hasPermission('usuarios') && <NavItem href="/usuarios" icon={Users} label="Usuarios" />}
               {hasPermission('permisos') && <NavItem href="/permisos" icon={ShieldAlert} label="Roles y Permisos" />}
+              {hasPermission('configuracion') && <NavItem href="/configuracion/ubicaciones" icon={MapIcon} label="Geocercas (Bases)" />}
               {hasPermission('configuracion') && <NavItem href="/configuracion" icon={Settings} label="Configuración General" />}
             </>
           )}

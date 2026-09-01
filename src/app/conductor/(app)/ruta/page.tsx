@@ -33,7 +33,7 @@ export default function RutaActivaPage() {
 
   const fetchActiveDispatch = async (driverData: any) => {
     try {
-      const driverName = `${driverData.first_name} ${driverData.last_name}`
+      const driverName = `${driverData.first_name} ${driverData.last_name}`.trim()
       
       const { data, error } = await supabase
         .from('dispatches')
@@ -54,7 +54,7 @@ export default function RutaActivaPage() {
           )
         `)
         .eq('driver_name', driverName)
-        .in('status', ['PROGRAMADO', 'EN_CURSO', 'ESPERANDO_AUTORIZACION', 'RETORNO'])
+        .in('status', ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
@@ -225,22 +225,37 @@ export default function RutaActivaPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-        <Loader2 className="w-8 h-8 animate-spin text-[#002855] mb-4" />
-        <p className="text-slate-600 font-medium">Cargando su ruta asignada...</p>
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-[#002855]" />
+        <p className="mt-4 text-slate-500 font-medium">Cargando ruta...</p>
       </div>
     )
   }
 
-  if (!dispatch) {
+  if (!dispatch || !dispatch.dispatch_requests || dispatch.dispatch_requests.length === 0) {
+    const debugDriverName = driver ? `${driver.first_name} ${driver.last_name}`.trim() : 'Ninguno';
     return (
-      <div className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-center text-center">
-        <div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center mb-4">
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center">
+        <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-4">
           <AlertCircle className="w-10 h-10 text-slate-400" />
         </div>
         <h2 className="text-xl font-bold text-slate-800 mb-2">No hay rutas activas</h2>
-        <p className="text-slate-500 mb-8">No tienes ningún despacho programado ni en curso en este momento.</p>
-        <button onClick={() => fetchActiveDispatch(driver)} className="px-6 py-2 bg-[#002855] text-white rounded-lg font-bold">
+        <p className="text-slate-500 mb-6 max-w-xs mx-auto">
+          No tienes ningún despacho programado ni en curso en este momento.
+        </p>
+        
+        {/* INFO DEBUG */}
+        <div className="bg-red-50 text-red-800 p-3 rounded-lg text-xs w-full max-w-sm mb-6 text-left font-mono">
+          <strong>Debug:</strong><br/>
+          Buscando para: "{debugDriverName}"<br/>
+          Estado de Dispatch: {dispatch ? 'Encontrado' : 'No encontrado'}<br/>
+          Items de Dispatch: {dispatch?.dispatch_requests?.length || 0}
+        </div>
+
+        <button 
+          onClick={() => { setLoading(true); fetchActiveDispatch(driver); }}
+          className="bg-[#002855] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#001d3d] transition-colors shadow-md"
+        >
           Actualizar
         </button>
       </div>

@@ -38,17 +38,16 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "max-w-lg" 
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center"
-      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-0"
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
         onClick={onClose}
       />
       {/* Modal panel */}
       <div
-        className={`relative bg-white rounded-2xl shadow-2xl w-[calc(100vw-2rem)] ${maxWidth} overflow-hidden flex flex-col`}
+        className={`relative bg-white rounded-2xl shadow-2xl w-full sm:w-[calc(100vw-2rem)] ${maxWidth} overflow-hidden flex flex-col`}
         style={{ maxHeight: '90vh' }}
       >
         {/* Header */}

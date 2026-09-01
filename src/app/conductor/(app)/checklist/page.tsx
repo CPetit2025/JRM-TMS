@@ -4,8 +4,7 @@ import { Camera, CheckCircle, MapPin, AlertTriangle, Loader2 } from 'lucide-reac
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 
-const PLANTA_CHILCA = { lat: -12.5204, lon: -76.7371 }
-const GEOFENCE_RADIUS_KM = 0.5 // 500 metros de tolerancia
+import { createClient } from '@/lib/supabase/client'
 
 // Fórmula de Haversine para distancia en KM
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -22,9 +21,11 @@ function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon
 
 export default function ChecklistPage() {
   const router = useRouter()
+  const supabase = createClient()
   const [checkingLocation, setCheckingLocation] = useState(true)
   const [locationValid, setLocationValid] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [currentDistanceInfo, setCurrentDistanceInfo] = useState<string | null>(null)
   
   const [checklist, setChecklist] = useState<Record<string, 'OK' | 'MAL' | null | string>>({
     llantas: null,
@@ -49,33 +50,67 @@ export default function ChecklistPage() {
         console.error(e)
       }
     }
-    // Verificar Geocerca al cargar
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords
-          const distance = getDistanceFromLatLonInKm(latitude, longitude, PLANTA_CHILCA.lat, PLANTA_CHILCA.lon)
+    
+    // Función para verificar ubicación contra BD
+    const verifyLocation = async () => {
+      try {
+        const { data: locations, error } = await supabase
+          .from('authorized_locations')
+          .select('*')
+          .eq('is_active', true)
           
-          if (distance <= GEOFENCE_RADIUS_KM) {
-            setLocationValid(true)
-          } else {
-            // Permitir bypass para efectos de demostración si estamos muy lejos
-            setLocationValid(false) 
-            toast.error(`Estás a ${distance.toFixed(1)} KM de la base. No puedes iniciar.`, { duration: 5000 })
-          }
+        if (error || !locations || locations.length === 0) {
+          // Fallback if no locations defined, allow bypass or deny
+          toast.warning("No hay geocercas configuradas en el sistema.")
+          setLocationValid(true) // For demo purposes when DB is empty
           setCheckingLocation(false)
-        },
-        (error) => {
-          console.error("Error GPS:", error.message || "Error desconocido")
-          toast.error("No se pudo obtener la ubicación para validar geocerca.")
+          return
+        }
+
+        if ("geolocation" in navigator) {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              const { latitude, longitude } = position.coords
+              
+              let isValid = false
+              let closestDistance = Infinity
+              
+              for (const loc of locations) {
+                const distance = getDistanceFromLatLonInKm(latitude, longitude, loc.latitude, loc.longitude)
+                if (distance < closestDistance) closestDistance = distance
+                if (distance <= loc.radius_km) {
+                  isValid = true
+                  break
+                }
+              }
+              
+              if (isValid) {
+                setLocationValid(true)
+              } else {
+                setLocationValid(false) 
+                setCurrentDistanceInfo(`Estás a ${closestDistance.toFixed(1)} KM de la base más cercana.`)
+                toast.error(`Estás a ${closestDistance.toFixed(1)} KM de la base más cercana. No puedes iniciar.`, { duration: 5000 })
+              }
+              setCheckingLocation(false)
+            },
+            (error) => {
+              console.error("Error GPS:", error.message || "Error desconocido")
+              toast.error("No se pudo obtener la ubicación para validar geocerca.")
+              setCheckingLocation(false)
+            },
+            { enableHighAccuracy: true, timeout: 30000, maximumAge: 60000 }
+          )
+        } else {
+          toast.error("Tu dispositivo no soporta GPS.")
           setCheckingLocation(false)
-        },
-        { enableHighAccuracy: true, timeout: 30000, maximumAge: 60000 }
-      )
-    } else {
-      toast.error("Tu dispositivo no soporta GPS.")
-      setCheckingLocation(false)
+        }
+      } catch (err) {
+        console.error(err)
+        setCheckingLocation(false)
+      }
     }
+
+    verifyLocation()
   }, [])
 
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -146,8 +181,8 @@ export default function ChecklistPage() {
           </div>
           <h3 className="font-black text-red-900 text-base">Fuera de Base Autorizada</h3>
           <p className="text-sm text-red-700 mt-2">
-            El sistema detecta que no estás en Planta Chilca o en una cochera autorizada.
-            Acércate a la base para desbloquear el checklist.
+            El sistema detecta que no estás en una base o cochera autorizada.
+            {currentDistanceInfo ? ` ${currentDistanceInfo}` : ' Acércate a la base para desbloquear el checklist.'}
           </p>
           <button
             onClick={enableBypass}

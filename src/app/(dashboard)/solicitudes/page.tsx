@@ -82,7 +82,13 @@ export default function SolicitudesPage() {
     department: '',
     request_type: 'DESPACHO',
     pickup_address: 'Planta Chilca',
+    pickup_department: 'LIMA',
+    pickup_province: 'CAÑETE',
+    pickup_district: 'CHILCA',
     delivery_address: '',
+    delivery_department: '',
+    delivery_province: '',
+    delivery_district: '',
     required_date: '',
     time_window: '',
     ot_reference: '',
@@ -457,7 +463,13 @@ export default function SolicitudesPage() {
           requester_name: newRequest.requester_name,
           department: finalDepartment,
           pickup_address: newRequest.pickup_address,
+          pickup_department: newRequest.pickup_department,
+          pickup_province: newRequest.pickup_province,
+          pickup_district: newRequest.pickup_district,
           delivery_address: newRequest.delivery_address,
+          delivery_department: newRequest.delivery_department,
+          delivery_province: newRequest.delivery_province,
+          delivery_district: newRequest.delivery_district,
           required_date: newRequest.required_date,
           time_window: newRequest.time_window,
           cargo_description: compiledDescription,
@@ -503,7 +515,13 @@ export default function SolicitudesPage() {
         ...prev, 
         department: '',
         pickup_address: 'Planta Chilca',
+        pickup_department: 'LIMA',
+        pickup_province: 'CAÑETE',
+        pickup_district: 'CHILCA',
         delivery_address: '',
+        delivery_department: '',
+        delivery_province: '',
+        delivery_district: '',
         required_date: '',
         time_window: '',
         ot_reference: '',
@@ -953,27 +971,100 @@ export default function SolicitudesPage() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-            <div className="col-span-2 md:col-span-1">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Dirección de Origen</label>
-              <input 
-                type="text" 
-                required
-                className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
-                value={newRequest.pickup_address}
-                onChange={(e) => setNewRequest({...newRequest, pickup_address: e.target.value})}
-              />
+            <div className="col-span-2 md:col-span-2 border border-slate-200 rounded-lg p-3 bg-slate-50/50">
+              <h4 className="text-sm font-semibold text-slate-800 mb-2">Origen de Carga</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="md:col-span-3">
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Dirección Exacta</label>
+                  <input 
+                    type="text" 
+                    required
+                    className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={newRequest.pickup_address}
+                    onChange={(e) => setNewRequest({...newRequest, pickup_address: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Departamento</label>
+                  <input 
+                    type="text" 
+                    placeholder="Ej. LIMA"
+                    className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={newRequest.pickup_department}
+                    onChange={(e) => setNewRequest({...newRequest, pickup_department: e.target.value.toUpperCase()})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Provincia</label>
+                  <input 
+                    type="text" 
+                    placeholder="Ej. CAÑETE"
+                    className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={newRequest.pickup_province}
+                    onChange={(e) => setNewRequest({...newRequest, pickup_province: e.target.value.toUpperCase()})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Distrito *</label>
+                  <input 
+                    type="text" 
+                    required
+                    placeholder="Ej. CHILCA"
+                    className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={newRequest.pickup_district}
+                    onChange={(e) => setNewRequest({...newRequest, pickup_district: e.target.value.toUpperCase()})}
+                  />
+                </div>
+              </div>
             </div>
-            <div className="col-span-2 md:col-span-1">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Dirección de Destino</label>
-              <input 
-                type="text" 
-                required
-                className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
-                value={newRequest.delivery_address}
-                onChange={(e) => setNewRequest({...newRequest, delivery_address: e.target.value})}
-              />
+            
+            <div className="col-span-2 md:col-span-2 border border-slate-200 rounded-lg p-3 bg-slate-50/50">
+              <h4 className="text-sm font-semibold text-slate-800 mb-2">Destino de Carga</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="md:col-span-3">
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Dirección Exacta</label>
+                  <input 
+                    type="text" 
+                    required
+                    className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={newRequest.delivery_address}
+                    onChange={(e) => setNewRequest({...newRequest, delivery_address: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Departamento</label>
+                  <input 
+                    type="text" 
+                    placeholder="Ej. LIMA"
+                    className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={newRequest.delivery_department}
+                    onChange={(e) => setNewRequest({...newRequest, delivery_department: e.target.value.toUpperCase()})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Provincia</label>
+                  <input 
+                    type="text" 
+                    placeholder="Ej. LIMA"
+                    className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={newRequest.delivery_province}
+                    onChange={(e) => setNewRequest({...newRequest, delivery_province: e.target.value.toUpperCase()})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Distrito *</label>
+                  <input 
+                    type="text" 
+                    required
+                    placeholder="Ej. ATE"
+                    className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={newRequest.delivery_district}
+                    onChange={(e) => setNewRequest({...newRequest, delivery_district: e.target.value.toUpperCase()})}
+                  />
+                </div>
+              </div>
             </div>
-            <div className="col-span-1">
+            <div className="col-span-2 md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Fecha Requerida</label>
               <input 
                 type="date" 
@@ -983,7 +1074,7 @@ export default function SolicitudesPage() {
                 onChange={(e) => setNewRequest({...newRequest, required_date: e.target.value})}
               />
             </div>
-            <div className="col-span-1">
+            <div className="col-span-2 md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Ventana Horaria (Opcional)</label>
               <input 
                 type="text" 
