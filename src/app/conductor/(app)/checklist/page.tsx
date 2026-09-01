@@ -118,43 +118,56 @@ export default function ChecklistPage() {
   }
 
   return (
-    <div className="p-4 max-w-md mx-auto">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-[#002855]">Checklist Pre-Ruta</h2>
-        <p className="text-slate-500 text-sm">Inspección obligatoria de la unidad</p>
+    <div className="min-h-full bg-slate-100 pb-6">
+      {/* Page Header */}
+      <div className="bg-white border-b border-slate-200 px-4 py-4 mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+            <CheckCircle className="w-5 h-5 text-blue-600" />
+          </div>
+          <div>
+            <h1 className="text-lg font-black text-[#002855]">Checklist Pre-Ruta</h1>
+            <p className="text-xs text-slate-500">Inspección obligatoria de la unidad</p>
+          </div>
+        </div>
       </div>
 
+      <div className="px-4 max-w-md mx-auto space-y-4">
       {checkingLocation ? (
-        <div className="bg-blue-50 border border-blue-100 rounded-xl p-6 flex flex-col items-center justify-center text-center mb-6">
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 flex flex-col items-center justify-center text-center">
           <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-3" />
           <h3 className="font-bold text-blue-900">Verificando Cerco de Seguridad</h3>
           <p className="text-xs text-blue-700 mt-1">Obteniendo coordenadas GPS...</p>
         </div>
       ) : !locationValid ? (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center text-center mb-6">
-          <AlertTriangle className="w-10 h-10 text-red-500 mb-3" />
-          <h3 className="font-bold text-red-900">Fuera de Base Autorizada</h3>
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6 flex flex-col items-center text-center">
+          <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mb-3">
+            <AlertTriangle className="w-7 h-7 text-red-500" />
+          </div>
+          <h3 className="font-black text-red-900 text-base">Fuera de Base Autorizada</h3>
           <p className="text-sm text-red-700 mt-2">
-            El sistema detecta que no estás en Planta Chilca o en una cochera autorizada. 
+            El sistema detecta que no estás en Planta Chilca o en una cochera autorizada.
             Acércate a la base para desbloquear el checklist.
           </p>
-          <button 
+          <button
             onClick={enableBypass}
-            className="mt-4 px-4 py-2 bg-red-100 text-red-800 rounded-lg text-xs font-bold uppercase tracking-wider"
+            className="mt-4 px-6 py-2 bg-red-100 text-red-800 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-red-200 transition-colors"
           >
             Bypass Demo
           </button>
         </div>
       ) : (
-        <div className="space-y-6">
-          <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-3">
-            <MapPin className="w-5 h-5 text-green-600" />
-            <span className="text-sm font-semibold text-green-800">Ubicación Validada (Planta Chilca)</span>
+        <div className="space-y-4">
+          <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
+              <MapPin className="w-4 h-4 text-green-600" />
+            </div>
+            <span className="text-sm font-bold text-green-800">Ubicación Validada — Planta Chilca</span>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
-              <h3 className="font-bold text-slate-800">Puntos de Revisión</h3>
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-slate-50 px-4 py-3 border-b border-slate-100">
+              <h3 className="font-bold text-slate-800 text-sm">Puntos de Revisión Obligatorios</h3>
             </div>
             <div className="divide-y divide-slate-100">
               {[
@@ -166,18 +179,18 @@ export default function ChecklistPage() {
               ].map((item) => {
                 const val = checklist[item.id]
                 return (
-                  <div key={item.id} className="flex flex-col gap-2 p-4 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
+                  <div key={item.id} className="flex flex-col gap-2 p-4 hover:bg-slate-50 transition-colors">
                     <span className="text-sm font-semibold text-slate-800">{item.label}</span>
                     <div className="flex gap-2">
-                      <button 
+                      <button
                         onClick={() => updateChecklist(item.id, 'OK')}
-                        className={`flex-1 py-2 rounded-lg font-bold text-xs border ${val === 'OK' ? 'bg-green-100 border-green-300 text-green-800 shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                        className={`flex-1 py-2.5 rounded-xl font-bold text-xs border-2 transition-all ${val === 'OK' ? 'bg-green-500 border-green-500 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
                       >
                         ✔ OK
                       </button>
-                      <button 
+                      <button
                         onClick={() => updateChecklist(item.id, 'MAL')}
-                        className={`flex-1 py-2 rounded-lg font-bold text-xs border ${val === 'MAL' ? 'bg-red-100 border-red-300 text-red-800 shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                        className={`flex-1 py-2.5 rounded-xl font-bold text-xs border-2 transition-all ${val === 'MAL' ? 'bg-red-500 border-red-500 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
                       >
                         ✖ MALO
                       </button>
@@ -186,11 +199,11 @@ export default function ChecklistPage() {
                 )
               })}
             </div>
-            
-            <div className="p-4 bg-slate-50 border-t border-slate-200">
-              <label className="block text-xs font-semibold text-slate-700 mb-2">Observaciones Generales</label>
-              <textarea 
-                className="w-full rounded-lg border-slate-300 text-sm focus:ring-[#002855] focus:border-[#002855]"
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100">
+              <label className="block text-xs font-bold text-slate-600 mb-2 uppercase tracking-wide">Observaciones Generales</label>
+              <textarea
+                className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-[#002855] outline-none text-sm text-slate-900 bg-white resize-none transition-colors"
                 rows={2}
                 placeholder="Ej. Parachoque con ligero quiñe..."
                 value={checklist.observaciones as string}
@@ -199,46 +212,43 @@ export default function ChecklistPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 text-center">
-            <h3 className="font-bold text-slate-800 text-sm mb-3">Evidencia Fotográfica Frontal</h3>
-            
-            {photo ? (
-              <div className="relative rounded-lg overflow-hidden border border-slate-200">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={photo} alt="Evidencia" className="w-full h-48 object-cover" />
-                <button 
-                  onClick={() => setPhoto(null)}
-                  className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded"
-                >
-                  Cambiar
-                </button>
-              </div>
-            ) : (
-              <label className="border-2 border-dashed border-slate-300 rounded-lg h-32 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 hover:border-[#002855] transition-colors">
-                <Camera className="w-8 h-8 text-slate-400 mb-2" />
-                <span className="text-sm font-semibold text-[#002855]">Tomar Foto (Cámara)</span>
-                {/* Atributo capture="environment" abre la cámara trasera en celulares */}
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  capture="environment" 
-                  className="hidden" 
-                  onChange={handlePhotoCapture}
-                />
-              </label>
-            )}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+              <h3 className="font-bold text-slate-800 text-sm">Evidencia Fotográfica Frontal</h3>
+            </div>
+            <div className="p-4">
+              {photo ? (
+                <div className="relative rounded-xl overflow-hidden border-2 border-slate-200">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={photo} alt="Evidencia" className="w-full h-48 object-cover" />
+                  <button
+                    onClick={() => setPhoto(null)}
+                    className="absolute top-2 right-2 bg-black/60 text-white text-xs px-3 py-1 rounded-full font-bold"
+                  >
+                    Cambiar
+                  </button>
+                </div>
+              ) : (
+                <label className="border-2 border-dashed border-slate-300 rounded-xl h-32 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 hover:border-[#002855] transition-all group">
+                  <Camera className="w-8 h-8 text-slate-400 group-hover:text-[#002855] mb-2 transition-colors" />
+                  <span className="text-sm font-bold text-slate-500 group-hover:text-[#002855] transition-colors">Tomar Foto del Vehículo</span>
+                  <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoCapture} />
+                </label>
+              )}
+            </div>
           </div>
 
-          <button 
+          <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="w-full bg-[#002855] text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-[#001f44] flex justify-center items-center gap-2"
+            className="w-full bg-[#002855] text-white py-4 rounded-2xl font-black text-base shadow-lg hover:bg-[#001f44] active:scale-95 flex justify-center items-center gap-2 transition-all"
           >
             {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle className="w-5 h-5" />}
             Guardar y Habilitar Ruta
           </button>
         </div>
       )}
+      </div>
     </div>
   )
 }

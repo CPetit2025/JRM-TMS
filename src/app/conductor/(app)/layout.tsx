@@ -84,7 +84,7 @@ export default function DriverLayout({ children }: { children: ReactNode }) {
           </li>
 
           <li className="flex justify-center col-start-4">
-            <Link href="/conductor/liquidacion" className="flex flex-col items-center text-slate-500 hover:text-[#002855] focus:text-[#002855] transition-colors">
+            <Link href="/conductor/gastos" className="flex flex-col items-center text-slate-500 hover:text-[#002855] focus:text-[#002855] transition-colors">
               <DollarSign className="w-6 h-6 mb-1" />
               <span className="text-[10px] font-semibold">Gastos</span>
             </Link>
