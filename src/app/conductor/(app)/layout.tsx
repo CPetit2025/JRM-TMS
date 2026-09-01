@@ -1,4 +1,6 @@
-import { ReactNode } from 'react'
+"use client"
+
+import { ReactNode, useEffect, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { ClipboardCheck, Map, DollarSign, LogOut, Wrench } from 'lucide-react'
@@ -6,6 +8,26 @@ import GPSGuard from '@/components/driver/GPSGuard'
 import NotificationProvider from '@/components/NotificationProvider'
 
 export default function DriverLayout({ children }: { children: ReactNode }) {
+  const [driverName, setDriverName] = useState('Conductor')
+  const [plate, setPlate] = useState('--')
+
+  useEffect(() => {
+    const driverData = localStorage.getItem('jrm_driver')
+    if (driverData) {
+      try {
+        const parsed = JSON.parse(driverData)
+        setDriverName(`${parsed.first_name} ${parsed.last_name}`)
+        // Asumiendo que guardamos la placa del vehículo asignado si la tuviéramos
+        // setPlate(parsed.plate)
+      } catch (e) {}
+    }
+  }, [])
+
+  const handleLogout = () => {
+    localStorage.removeItem('jrm_driver')
+    window.location.href = '/conductor/login'
+  }
+
   return (
     <GPSGuard>
       <NotificationProvider role="driver" />
@@ -24,10 +46,10 @@ export default function DriverLayout({ children }: { children: ReactNode }) {
         </div>
         <div className="flex items-center gap-3">
           <div className="text-right hidden sm:block">
-            <p className="text-sm font-bold">Pedro Quispe</p>
-            <p className="text-xs text-blue-200">ABC-123</p>
+            <p className="text-sm font-bold">{driverName}</p>
+            <p className="text-xs text-blue-200">{plate}</p>
           </div>
-          <button className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors">
+          <button onClick={handleLogout} className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors">
             <LogOut className="w-5 h-5 text-white" />
           </button>
         </div>

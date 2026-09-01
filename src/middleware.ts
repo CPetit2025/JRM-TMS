@@ -35,16 +35,9 @@ export async function middleware(request: NextRequest) {
   const isDriverRoute = request.nextUrl.pathname.startsWith('/conductor')
   const isApiRoute = request.nextUrl.pathname.startsWith('/api')
   
-  // Si no está autenticado y NO está en una página de login ni API
-  if (!user && !isLoginPage && !isDriverLoginPage && !isApiRoute) {
-    // Si intenta entrar a una ruta de conductor, lo mandamos al login de conductor
-    if (isDriverRoute) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/conductor/login'
-      return NextResponse.redirect(url)
-    }
-    
-    // De lo contrario, lo mandamos al login principal (Admin)
+  // Si no está autenticado y NO está en una página de login ni API ni ruta de conductor
+  if (!user && !isLoginPage && !isDriverRoute && !isApiRoute) {
+    // Lo mandamos al login principal (Admin)
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
