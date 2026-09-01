@@ -193,13 +193,13 @@ export default function RutaActivaPage() {
       // Verificar contraseña actual
       const { data: currentDriver, error: currentError } = await supabase
         .from('drivers')
-        .select('password')
+        .select('pin')
         .eq('id', driver.id)
         .single()
         
       if (currentError) throw currentError
       
-      if (currentDriver.password !== passwords.current) {
+      if (currentDriver.pin !== passwords.current) {
         toast.error('La contraseña actual es incorrecta')
         setProcessing(false)
         return
@@ -208,7 +208,7 @@ export default function RutaActivaPage() {
       // Actualizar contraseña
       const { error: updateError } = await supabase
         .from('drivers')
-        .update({ password: passwords.new })
+        .update({ pin: passwords.new })
         .eq('id', driver.id)
         
       if (updateError) throw updateError
