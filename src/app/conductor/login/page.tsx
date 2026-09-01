@@ -30,14 +30,24 @@ export default function DriverLogin() {
     try {
       const supabase = createClient()
       
+      const cleanDni = dni.trim()
+      const cleanPin = pin.trim()
+
       const { data: driver, error } = await supabase
         .from('drivers')
-        .select('first_name, last_name, document_number')
-        .eq('document_number', dni)
-        .eq('pin', pin)
+        .select('id, first_name, last_name, document_number')
+        .eq('document_number', cleanDni)
+        .eq('pin', cleanPin)
         .single()
 
-      if (error || !driver) {
+      if (error) {
+        console.error('Supabase error en login:', error)
+        toast.error(error.message === 'PGRST116' ? 'DNI o PIN incorrectos' : `Error: ${error.message}`)
+        setLoading(false)
+        return
+      }
+      
+      if (!driver) {
         toast.error('DNI o PIN incorrectos')
         setLoading(false)
         return
