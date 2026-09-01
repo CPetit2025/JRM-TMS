@@ -965,6 +965,7 @@ export default function OTPage() {
                     </button>
                   </div>
                 </div>
+              </div>
               <div className="border border-slate-200 rounded-lg p-3 bg-slate-50/50 mt-4">
                 <h4 className="text-sm font-semibold text-slate-800 mb-2">Origen</h4>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
