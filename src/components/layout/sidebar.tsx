@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { 
   Home, Users, FileText, Truck, Map as MapIcon, Settings, 
   LogOut, ShieldAlert, BarChart3, Send, DollarSign, 
-  ArchiveRestore, Zap, ChevronRight, Wrench, Clock, BarChart2
+  ArchiveRestore, Zap, ChevronRight, Wrench, Clock, BarChart2, CheckCircle
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -102,6 +102,7 @@ export function Sidebar() {
               {hasPermission('despacho') && <NavItem href="/despacho" icon={Truck} label="Despacho" />}
               {hasPermission('monitoreo') && <NavItem href="/monitoreo" icon={MapIcon} label="Monitoreo GPS" />}
               {(hasPermission('monitoreo') || hasPermission('operaciones-live')) && <NavItem href="/operaciones/live" icon={Clock} label="Tareo en Vivo" />}
+              {(hasPermission('monitoreo') || hasPermission('operaciones-revision')) && <NavItem href="/operaciones/revision" icon={CheckCircle} label="Revisión de Tareos" />}
               {hasPermission('servicios-realizados') && <NavItem href="/servicios-realizados" icon={ArchiveRestore} label="Servicios Realizados" />}
               {(hasPermission('despacho') || hasPermission('reportes')) && <NavItem href="/reportes" icon={BarChart2} label="Reporte Desp. y Recojo" />}
             </>
