@@ -143,7 +143,7 @@ export default function ChecklistPage() {
     // Simular guardado en BD
     await new Promise(r => setTimeout(r, 1500))
     toast.success('Checklist guardado con éxito')
-    router.push('/conductor/ruta')
+    router.push('/app/ruta')
   }
 
   // Bypass para demos

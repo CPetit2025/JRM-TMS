@@ -31,13 +31,19 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   const isLoginPage = request.nextUrl.pathname.startsWith('/login')
-  const isDriverLoginPage = request.nextUrl.pathname.startsWith('/conductor/login')
-  const isDriverRoute = request.nextUrl.pathname.startsWith('/conductor')
+  const isDriverLoginPage = request.nextUrl.pathname.startsWith('/app/login')
+  const isDriverRoute = request.nextUrl.pathname.startsWith('/app')
   const isApiRoute = request.nextUrl.pathname.startsWith('/api')
   
-  // Si no está autenticado y NO está en una página de login ni API ni ruta de conductor
-  if (!user && !isLoginPage && !isDriverRoute && !isApiRoute) {
-    // Lo mandamos al login principal (Admin)
+  // Si no está autenticado y NO está en una página de login ni API
+  if (!user && !isLoginPage && !isDriverLoginPage && !isApiRoute) {
+    // Si intenta ir a la app operativa, mandarlo a su login
+    if (isDriverRoute) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/app/login'
+      return NextResponse.redirect(url)
+    }
+    // Sino, mandarlo al login principal (Admin)
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)

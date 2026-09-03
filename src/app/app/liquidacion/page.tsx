@@ -22,7 +22,7 @@ export default function LiquidacionPage() {
   useEffect(() => {
     const driverData = localStorage.getItem('jrm_driver')
     if (!driverData) {
-      router.push('/conductor/login')
+      router.push('/app/login')
       return
     }
     const parsedDriver = JSON.parse(driverData)
@@ -198,7 +198,7 @@ export default function LiquidacionPage() {
           <DollarSign className="w-12 h-12 text-slate-300 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-slate-800 mb-2">Sin Ruta Activa</h2>
           <p className="text-slate-500 mb-6 text-sm">No tienes ningún despacho activo para liquidar gastos.</p>
-          <button onClick={() => router.push('/conductor/ruta')} className="px-6 py-2 bg-[#002855] text-white rounded-lg font-bold w-full">
+          <button onClick={() => router.push('/app/ruta')} className="px-6 py-2 bg-[#002855] text-white rounded-lg font-bold w-full">
             Ir a Mi Ruta
           </button>
         </div>

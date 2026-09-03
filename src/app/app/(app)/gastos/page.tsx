@@ -20,7 +20,7 @@ export default function GastosPage() {
 
   useEffect(() => {
     const driverData = localStorage.getItem('jrm_driver')
-    if (!driverData) { router.push('/conductor/login'); return }
+    if (!driverData) { router.push('/app/login'); return }
     fetchActiveDispatch(JSON.parse(driverData))
   }, [router])
 
@@ -135,7 +135,7 @@ export default function GastosPage() {
         </div>
         <h2 className="text-lg font-black text-slate-800 mb-2">Sin Ruta Activa</h2>
         <p className="text-slate-500 text-sm mb-6">No tienes despacho activo para registrar gastos.</p>
-        <button onClick={() => router.push('/conductor/ruta')} className="w-full bg-[#002855] text-white py-3 rounded-xl font-bold">
+        <button onClick={() => router.push('/app/ruta')} className="w-full bg-[#002855] text-white py-3 rounded-xl font-bold">
           Ir a Mi Ruta
         </button>
       </div>

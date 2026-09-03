@@ -32,7 +32,7 @@ export default function PerfilPage() {
 
   const handleLogout = () => {
     localStorage.removeItem('jrm_driver')
-    window.location.href = '/conductor/login'
+    window.location.href = '/app/login'
   }
 
   const getInitials = () => {

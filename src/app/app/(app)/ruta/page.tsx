@@ -23,7 +23,7 @@ export default function RutaActivaPage() {
   useEffect(() => {
     const driverData = localStorage.getItem('jrm_driver')
     if (!driverData) {
-      router.push('/conductor/login')
+      router.push('/app/login')
       return
     }
     
@@ -45,7 +45,7 @@ export default function RutaActivaPage() {
           console.warn('Sesión inválida detectada, redirigiendo al login.')
           localStorage.removeItem('jrm_driver')
           localStorage.removeItem('driver_current_location')
-          router.push('/conductor/login')
+          router.push('/app/login')
           return
         }
         
@@ -212,7 +212,7 @@ export default function RutaActivaPage() {
 
   const handleLogout = () => {
     localStorage.removeItem('jrm_driver')
-    window.location.href = '/conductor/login'
+    window.location.href = '/app/login'
   }
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -517,7 +517,7 @@ export default function RutaActivaPage() {
           </div>
           <h2 className="text-xl font-bold text-blue-900 mb-2">Retorno Autorizado</h2>
           <p className="text-sm text-blue-700 mb-6">Puede retornar a Base. Conduzca con cuidado.</p>
-          <a href="/conductor/liquidacion" className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-xl font-bold shadow hover:bg-blue-700">
+          <a href="/app/liquidacion" className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-xl font-bold shadow hover:bg-blue-700">
             <FileText className="w-5 h-5" />
             Ir a Liquidar Gastos
           </a>
