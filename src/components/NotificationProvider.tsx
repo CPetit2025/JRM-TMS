@@ -26,7 +26,7 @@ const NotificationContext = createContext<NotificationContextType>({
 export const useNotifications = () => useContext(NotificationContext)
 
 type NotificationProviderProps = {
-  role: 'admin' | 'driver'
+  role: 'admin' | 'driver' | 'operario'
   children?: React.ReactNode
 }
 
