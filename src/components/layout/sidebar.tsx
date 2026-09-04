@@ -104,6 +104,7 @@ export function Sidebar() {
               {(hasPermission('monitoreo') || hasPermission('operaciones-live')) && <NavItem href="/operaciones/live" icon={Clock} label="Tareo en Vivo" />}
               {(hasPermission('monitoreo') || hasPermission('operaciones-revision')) && <NavItem href="/operaciones/revision" icon={CheckCircle} label="Revisión de Tareos" />}
               {(hasPermission('reportes') || hasPermission('operaciones-kpis')) && <NavItem href="/operaciones/kpis" icon={BarChart3} label="Dashboard Analítico" />}
+              {(hasPermission('reportes') || hasPermission('operaciones-kpis')) && <NavItem href="/reportes/actividades" icon={FileText} label="FR-DT.005 (Actividades)" />}
               {hasPermission('servicios-realizados') && <NavItem href="/servicios-realizados" icon={ArchiveRestore} label="Servicios Realizados" />}
               {(hasPermission('despacho') || hasPermission('reportes')) && <NavItem href="/reportes" icon={BarChart2} label="Reporte Desp. y Recojo" />}
             </>

@@ -25,6 +25,7 @@ type TurnoFinalizado = {
     start_time: string
     end_time: string
     status: string
+    referencia_ot?: string
   }[]
 }
 
@@ -47,7 +48,7 @@ export default function RevisionTareosPage() {
         .select(`
           id, start_time, end_time, status, supervisor_status, supervisor_comments,
           profiles(first_name, last_name, document_number),
-          operaciones_actividades(id, tipo_actividad, start_time, end_time, status)
+          operaciones_actividades(id, tipo_actividad, start_time, end_time, status, referencia_ot)
         `)
         .eq('status', 'FINALIZADO')
         .order('end_time', { ascending: false })
@@ -262,7 +263,14 @@ export default function RevisionTareosPage() {
                                           {idx + 1}
                                         </div>
                                         <div>
-                                          <p className="font-bold text-slate-700 text-sm">{act.tipo_actividad}</p>
+                                          <p className="font-bold text-slate-700 text-sm">
+                                            {act.tipo_actividad}
+                                            {act.referencia_ot && (
+                                              <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
+                                                OT: {act.referencia_ot}
+                                              </span>
+                                            )}
+                                          </p>
                                           <p className="text-xs text-slate-500">
                                             {formatHora(act.start_time)} - {act.end_time ? formatHora(act.end_time) : '...'}
                                           </p>

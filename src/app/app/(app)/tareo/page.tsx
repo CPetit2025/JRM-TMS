@@ -1,17 +1,20 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { Play, Square, Clock, Settings2, Loader2, CheckCircle2 } from 'lucide-react'
+import { Play, Square, Clock, Settings2, Loader2, CheckCircle2, ClipboardList, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 
-// Tipos de actividad estándar para un almacén/operación logística
+// Tipos de actividad alineados con FR-DT.005
 const TIPOS_ACTIVIDAD = [
-  { id: 'RECEPCION', label: 'Recepción', color: 'bg-blue-500' },
-  { id: 'ALMACENAJE', label: 'Almacenaje', color: 'bg-indigo-500' },
-  { id: 'PREPARACION', label: 'Preparación (Picking)', color: 'bg-emerald-500' },
-  { id: 'DESPACHO', label: 'Despacho', color: 'bg-amber-500' },
-  { id: 'INVENTARIO', label: 'Inventario', color: 'bg-purple-500' },
+  { id: 'Descarga de materiales', label: 'Descarga de materiales', color: 'bg-blue-600' },
+  { id: 'Embalaje', label: 'Embalaje (Packing)', color: 'bg-amber-500' },
+  { id: 'Carguio de Despacho', label: 'Carguío de Despacho', color: 'bg-orange-500' },
+  { id: 'Transporte', label: 'Transporte', color: 'bg-cyan-600' },
+  { id: 'Descarguio de despacho', label: 'Descarguío de despacho', color: 'bg-blue-400' },
+  { id: 'Conduccion de Montacargas', label: 'Conducción Montacargas', color: 'bg-emerald-500' },
+  { id: 'Conduccion de Camion o camioneta', label: 'Conducción Vehículo', color: 'bg-teal-500' },
+  { id: 'Otros', label: 'Otros', color: 'bg-indigo-500' },
   { id: 'BREAK', label: 'Break / Descanso', color: 'bg-slate-400' },
 ]
 
@@ -22,6 +25,15 @@ export default function TareoPage() {
   const [elapsedTime, setElapsedTime] = useState(0) // en segundos
   const [activityElapsedTime, setActivityElapsedTime] = useState(0)
   const [isChangingActivity, setIsChangingActivity] = useState(false)
+  
+  // Nuevos estados para Contexto OT
+  const [activeOT, setActiveOT] = useState<string | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [tempOT, setTempOT] = useState('')
+  const [tempTipoHora, setTempTipoHora] = useState<'NORMAL' | 'EXTRA'>('NORMAL')
+  const [tempObservaciones, setTempObservaciones] = useState('')
+  const [pendingActivity, setPendingActivity] = useState<string | null>(null)
+
   const supabase = createClient()
 
   // Formateador de tiempo (segundos a HH:MM:SS)
@@ -64,6 +76,7 @@ export default function TareoPage() {
 
         if (actividad) {
           setActividadActiva(actividad)
+          setActiveOT(actividad.referencia_ot || null)
           const actStart = new Date(actividad.start_time).getTime()
           setActivityElapsedTime(Math.floor((Date.now() - actStart) / 1000))
         }
@@ -110,24 +123,12 @@ export default function TareoPage() {
         .single()
 
       if (errorTurno) throw errorTurno
-
-      // Crear actividad inicial por defecto (ej. Preparación de operaciones)
-      const { data: actividad, error: errorAct } = await supabase
-        .from('operaciones_actividades')
-        .insert({
-          turno_id: turno.id,
-          tipo_actividad: 'RECEPCION' // Por defecto
-        })
-        .select()
-        .single()
-
-      if (errorAct) throw errorAct
-
-      toast.success('Turno iniciado exitosamente')
+      
       setTurnoActivo(turno)
-      setActividadActiva(actividad)
       setElapsedTime(0)
-      setActivityElapsedTime(0)
+      
+      toast.success('Turno iniciado. Selecciona tu actividad para empezar.')
+
     } catch (error) {
       console.error(error)
       toast.error('Error al iniciar el turno')
@@ -136,8 +137,7 @@ export default function TareoPage() {
     }
   }
 
-  const handleCambiarActividad = async (tipo: string) => {
-    if (!turnoActivo || tipo === actividadActiva?.tipo_actividad) return
+  const executeCambioActividad = async (tipo: string, otValue: string | null, tipoHora: string = 'NORMAL', obs: string = '') => {
     setIsChangingActivity(true)
 
     try {
@@ -157,7 +157,10 @@ export default function TareoPage() {
         .from('operaciones_actividades')
         .insert({
           turno_id: turnoActivo.id,
-          tipo_actividad: tipo
+          tipo_actividad: tipo,
+          referencia_ot: otValue,
+          tipo_hora: tipoHora,
+          observaciones: obs
         })
         .select()
         .single()
@@ -165,12 +168,48 @@ export default function TareoPage() {
       if (error) throw error
 
       setActividadActiva(nuevaActividad)
+      setActiveOT(otValue)
       setActivityElapsedTime(0)
-      toast.success(`Actividad cambiada a ${tipo}`)
+      toast.success(`Actividad iniciada: ${tipo}`)
     } catch (error) {
-      toast.error('Error al cambiar de actividad')
+      toast.error('Error al iniciar actividad')
     } finally {
       setIsChangingActivity(false)
+    }
+  }
+
+  const handleCambiarActividad = (tipo: string) => {
+    if (!turnoActivo || tipo === actividadActiva?.tipo_actividad) return
+    
+    // Si la actividad NO es break, pedimos OT, Tipo de Hora y Obs.
+    if (tipo !== 'BREAK') {
+      setPendingActivity(tipo)
+      setTempOT(activeOT || '')
+      setTempTipoHora('NORMAL')
+      setTempObservaciones('')
+      setIsModalOpen(true)
+      return
+    }
+
+    // Si es BREAK, no pasamos OT
+    if (tipo === 'BREAK') {
+      executeCambioActividad(tipo, null)
+      return
+    }
+  }
+
+  const saveOTFromModal = () => {
+    if (!tempOT.trim()) {
+      toast.error('La OT no puede estar vacía')
+      return
+    }
+    
+    setIsModalOpen(false)
+    
+    if (pendingActivity) {
+      // Iniciar nueva actividad
+      executeCambioActividad(pendingActivity, tempOT.trim(), tempTipoHora, tempObservaciones.trim())
+      setPendingActivity(null)
     }
   }
 
@@ -189,15 +228,16 @@ export default function TareoPage() {
           .eq('id', actividadActiva.id)
       }
 
-      // Cerrar turno
+      // Cerrar turno y marcar como FINALIZADO para que pase a Revisión
       await supabase
         .from('operaciones_turnos')
-        .update({ end_time: endTime, status: 'CERRADO' })
+        .update({ end_time: endTime, status: 'FINALIZADO' })
         .eq('id', turnoActivo.id)
 
-      toast.success('Turno finalizado correctamente')
+      toast.success('Turno finalizado y enviado a revisión')
       setTurnoActivo(null)
       setActividadActiva(null)
+      setActiveOT(null)
     } catch (error) {
       toast.error('Error al finalizar el turno')
     } finally {
@@ -215,10 +255,10 @@ export default function TareoPage() {
   }
 
   return (
-    <div className="p-4 flex flex-col h-full bg-slate-50">
+    <div className="p-4 flex flex-col h-full bg-slate-50 relative pb-20">
       <div className="mb-6">
         <h1 className="text-2xl font-black text-[#002855]">Tareo Móvil</h1>
-        <p className="text-sm text-slate-500">Registra tus tiempos operativos</p>
+        <p className="text-sm text-slate-500">Formato FR-DT.005 Digital</p>
       </div>
 
       {!turnoActivo ? (
@@ -290,15 +330,28 @@ export default function TareoPage() {
               </div>
             </div>
             
-            <p className="text-lg font-black text-[#002855] bg-blue-50/50 p-4 rounded-xl border border-blue-100 text-center">
-              {actividadActiva?.tipo_actividad || 'Cargando...'}
+            <p className="text-lg font-black text-[#002855] bg-blue-50/50 p-4 rounded-xl border border-blue-100 text-center mb-4">
+              {actividadActiva?.tipo_actividad || 'Ninguna (Seleccione abajo)'}
             </p>
+
+            {actividadActiva?.tipo_actividad && actividadActiva?.tipo_actividad !== 'BREAK' && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">OT / Contrato</p>
+                  <p className="font-black text-sm text-slate-700 truncate">{actividadActiva?.referencia_ot || '-'}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tipo de Hora</p>
+                  <p className="font-black text-sm text-slate-700">{actividadActiva?.tipo_hora === 'EXTRA' ? 'Extra (E)' : 'Normal (N)'}</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Grid de Selector de Actividades */}
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 ml-1 mt-2">
-              Cambiar de Actividad
+              Iniciar nueva actividad
             </p>
             <div className="grid grid-cols-2 gap-3">
               {TIPOS_ACTIVIDAD.map(act => (
@@ -317,9 +370,6 @@ export default function TareoPage() {
                   {actividadActiva?.tipo_actividad === act.id && (
                     <CheckCircle2 className="absolute top-3 right-3 w-4 h-4 text-white opacity-80" />
                   )}
-                  <span className={`block text-xs font-bold ${actividadActiva?.tipo_actividad === act.id ? 'text-white/80' : 'text-slate-400'} mb-1`}>
-                    Actividad
-                  </span>
                   <span className="block text-sm font-black leading-tight">
                     {act.label}
                   </span>
@@ -329,6 +379,88 @@ export default function TareoPage() {
           </div>
         </div>
       )}
+
+      {/* Modal de Detalle de Actividad */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-indigo-50/50 shrink-0">
+              <div>
+                <h3 className="font-black text-indigo-900">Iniciar Actividad</h3>
+                <p className="text-xs text-indigo-600 font-medium">{pendingActivity}</p>
+              </div>
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 bg-white rounded-full p-2"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-5 overflow-y-auto">
+              {/* Campo OT */}
+              <div className="mb-5">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                  Orden de Contrato (OT) *
+                </label>
+                <input 
+                  type="text" 
+                  autoFocus
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
+                  placeholder="Ej. OT-1042"
+                  value={tempOT}
+                  onChange={(e) => setTempOT(e.target.value)}
+                />
+              </div>
+
+              {/* Campo Tipo de Hora */}
+              <div className="mb-5">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                  Tipo de Hora *
+                </label>
+                <div className="flex bg-slate-100 p-1 rounded-xl">
+                  <button 
+                    onClick={() => setTempTipoHora('NORMAL')}
+                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${tempTipoHora === 'NORMAL' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}
+                  >
+                    Normal (N)
+                  </button>
+                  <button 
+                    onClick={() => setTempTipoHora('EXTRA')}
+                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${tempTipoHora === 'EXTRA' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500'}`}
+                  >
+                    Extra (E)
+                  </button>
+                </div>
+              </div>
+
+              {/* Campo Observaciones */}
+              <div className="mb-2">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                  Detalle u Observaciones
+                </label>
+                <textarea 
+                  rows={2}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 resize-none"
+                  placeholder="Opcional..."
+                  value={tempObservaciones}
+                  onChange={(e) => setTempObservaciones(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-slate-100 shrink-0">
+              <button 
+                onClick={saveOTFromModal}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-lg shadow-indigo-500/30"
+              >
+                Iniciar Actividad
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

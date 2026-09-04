@@ -33,9 +33,14 @@ export default function DashboardKPIsPage() {
         // Procesamiento de datos para KPIs
         let totalMins = 0
         const minPorActividad: Record<string, number> = {
+          'OT': 0,
+          'DESPACHO': 0,
+          'RECOJO': 0,
           'RECEPCION': 0,
           'ALMACENAJE': 0,
-          'PREPARACION': 0,
+          'PICKING': 0,
+          'PACKING': 0,
+          'TRANSPORTE': 0,
           'BREAK': 0
         }
 
@@ -52,14 +57,19 @@ export default function DashboardKPIsPage() {
         })
 
         const horasTotal = (totalMins / 60).toFixed(1)
-        const productivas = ((minPorActividad['RECEPCION'] + minPorActividad['ALMACENAJE'] + minPorActividad['PREPARACION']) / 60).toFixed(1)
+        const productivas = ((minPorActividad['OT'] + minPorActividad['DESPACHO'] + minPorActividad['RECOJO'] + minPorActividad['RECEPCION'] + minPorActividad['ALMACENAJE'] + minPorActividad['PICKING'] + minPorActividad['PACKING'] + minPorActividad['TRANSPORTE']) / 60).toFixed(1)
         const muertas = (minPorActividad['BREAK'] / 60).toFixed(1)
 
         // Formato para Recharts
         const chartData = [
+          { name: 'OT', horas: Number((minPorActividad['OT'] / 60).toFixed(1)) },
+          { name: 'Despacho', horas: Number((minPorActividad['DESPACHO'] / 60).toFixed(1)) },
+          { name: 'Recojo', horas: Number((minPorActividad['RECOJO'] / 60).toFixed(1)) },
           { name: 'Recepción', horas: Number((minPorActividad['RECEPCION'] / 60).toFixed(1)) },
           { name: 'Almacenaje', horas: Number((minPorActividad['ALMACENAJE'] / 60).toFixed(1)) },
-          { name: 'Preparación', horas: Number((minPorActividad['PREPARACION'] / 60).toFixed(1)) },
+          { name: 'Picking', horas: Number((minPorActividad['PICKING'] / 60).toFixed(1)) },
+          { name: 'Packing', horas: Number((minPorActividad['PACKING'] / 60).toFixed(1)) },
+          { name: 'Transporte', horas: Number((minPorActividad['TRANSPORTE'] / 60).toFixed(1)) },
           { name: 'Break', horas: Number((minPorActividad['BREAK'] / 60).toFixed(1)) },
         ]
 
