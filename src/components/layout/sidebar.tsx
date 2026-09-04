@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { 
   Home, Users, FileText, Truck, Map as MapIcon, Settings, 
   LogOut, ShieldAlert, BarChart3, Send, DollarSign, 
-  ArchiveRestore, Zap, ChevronRight, Wrench, Clock, BarChart2, CheckCircle
+  ArchiveRestore, Zap, ChevronRight, Wrench, Clock, BarChart2, CheckCircle, Settings2
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
