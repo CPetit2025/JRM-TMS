@@ -103,6 +103,7 @@ export function Sidebar() {
               {hasPermission('monitoreo') && <NavItem href="/monitoreo" icon={MapIcon} label="Monitoreo GPS" />}
               {(hasPermission('monitoreo') || hasPermission('operaciones-live')) && <NavItem href="/operaciones/live" icon={Clock} label="Tareo en Vivo" />}
               {(hasPermission('monitoreo') || hasPermission('operaciones-revision')) && <NavItem href="/operaciones/revision" icon={CheckCircle} label="Revisión de Tareos" />}
+              {(hasPermission('monitoreo') || hasPermission('operaciones-revision')) && <NavItem href="/operaciones/tareo-automatico" icon={Settings2} label="Tareo Automático" />}
               {(hasPermission('reportes') || hasPermission('operaciones-kpis')) && <NavItem href="/operaciones/kpis" icon={BarChart3} label="Dashboard Analítico" />}
               {(hasPermission('reportes') || hasPermission('operaciones-kpis')) && <NavItem href="/reportes/actividades" icon={FileText} label="FR-DT.005 (Actividades)" />}
               {hasPermission('servicios-realizados') && <NavItem href="/servicios-realizados" icon={ArchiveRestore} label="Servicios Realizados" />}
@@ -132,6 +133,7 @@ export function Sidebar() {
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Maestros y Costos</p>
               </div>
               {hasPermission('flota') && <NavItem href="/flota" icon={MapIcon} label="Unidades y Conductores" />}
+              {hasPermission('usuarios') && <NavItem href="/maestros/trabajadores" icon={Users} label="Maestro de Trabajadores" />}
               {hasPermission('tarifas') && <NavItem href="/maestros/tarifas" icon={Zap} label="Tarifas de Flete" />}
               {hasPermission('productos') && <NavItem href="/configuracion/productos" icon={Settings} label="Maestro de Productos" />}
             </>

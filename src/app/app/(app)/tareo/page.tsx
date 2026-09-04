@@ -79,6 +79,29 @@ export default function TareoPage() {
           setActiveOT(actividad.referencia_ot || null)
           const actStart = new Date(actividad.start_time).getTime()
           setActivityElapsedTime(Math.floor((Date.now() - actStart) / 1000))
+        } else {
+          setActividadActiva(null)
+          
+          // INTENTO DE HERENCIA AUTOMÁTICA DE OT (Fase 6)
+          // Si no hay actividad activa, buscar si el usuario tiene rutas programadas hoy como conductor o auxiliar
+          const today = new Date().toISOString().split('T')[0]
+          const { data: rutas } = await supabase
+            .from('dispatches')
+            .select(`
+              dispatch_requests(transport_requests(request_number))
+            `)
+            .or(`driver_id.eq.${session.user.id},auxiliary_id.eq.${session.user.id}`)
+            .gte('scheduled_departure', `${today}T00:00:00.000Z`)
+            .lt('scheduled_departure', `${today}T23:59:59.999Z`)
+            .limit(1)
+
+          if (rutas && rutas.length > 0) {
+            // Extraer la primera OT de la ruta para pre-llenar
+            const ots = rutas[0].dispatch_requests?.map((dr: any) => dr.transport_requests?.request_number).filter(Boolean)
+            if (ots && ots.length > 0) {
+              setActiveOT(ots.join(', ')) // Si hay varias OTs en la misma ruta, las concatena
+            }
+          }
         }
       } else {
         setTurnoActivo(null)
