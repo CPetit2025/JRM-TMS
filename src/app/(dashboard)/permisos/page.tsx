@@ -165,15 +165,22 @@ export default function PermisosPage() {
     }
   }
 
-  const togglePermission = (moduleId: string) => {
+  const setModulePermission = (moduleId: string, level: 'none' | 'read' | 'write') => {
     setNewRole(prev => {
-      const perms = prev.permissions
-      if (perms.includes(moduleId)) {
-        return { ...prev, permissions: perms.filter(id => id !== moduleId) }
+      // Filtrar permisos anteriores de este módulo
+      const perms = prev.permissions.filter(id => !id.startsWith(moduleId + ':') && id !== moduleId)
+      if (level === 'none') {
+        return { ...prev, permissions: perms }
       } else {
-        return { ...prev, permissions: [...perms, moduleId] }
+        return { ...prev, permissions: [...perms, `${moduleId}:${level}`] }
       }
     })
+  }
+
+  const getModuleLevel = (moduleId: string, permissions: string[]) => {
+    if (permissions.includes(`${moduleId}:write`) || permissions.includes(moduleId)) return 'write'
+    if (permissions.includes(`${moduleId}:read`)) return 'read'
+    return 'none'
   }
 
   return (
@@ -243,11 +250,29 @@ export default function PermisosPage() {
                     <td className="p-4 text-sm text-slate-600 hidden md:table-cell">
                       {role.permissions && role.permissions.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
-                          {role.permissions.map(p => (
-                            <span key={p} className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs">
-                              {p}
-                            </span>
-                          ))}
+                          {role.permissions.map(p => {
+                            const isRead = p.endsWith(':read')
+                            const label = p.replace(':read', '').replace(':write', '')
+                            // Buscar el label amigable en MODULE_GROUPS
+                            let friendlyLabel = label
+                            MODULE_GROUPS.forEach(g => {
+                              const found = g.modules.find(m => m.id === label)
+                              if (found) friendlyLabel = found.label
+                            })
+
+                            return (
+                              <span 
+                                key={p} 
+                                className={`px-2 py-0.5 rounded text-xs border ${
+                                  isRead 
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200' 
+                                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                }`}
+                              >
+                                {friendlyLabel} {isRead ? '(Solo Lectura)' : ''}
+                              </span>
+                            )
+                          })}
                         </div>
                       ) : (
                         <span className="text-slate-400 italic">Todos / Ninguno (Legado)</span>
@@ -319,20 +344,24 @@ export default function PermisosPage() {
                   <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 pb-2 border-b border-slate-200">
                     {group.title}
                   </h4>
-                  <div className="space-y-2">
-                    {group.modules.map(module => (
-                      <label key={module.id} className="flex items-start gap-3 p-2 rounded-lg cursor-pointer hover:bg-white hover:shadow-sm transition-all">
-                        <div className="flex items-center h-5 mt-0.5">
-                          <input 
-                            type="checkbox"
-                            className="w-4 h-4 text-[#002855] rounded border-slate-300 focus:ring-[#002855]"
-                            checked={newRole.permissions.includes(module.id)}
-                            onChange={() => togglePermission(module.id)}
-                          />
+                  <div className="space-y-3">
+                    {group.modules.map(module => {
+                      const level = getModuleLevel(module.id, newRole.permissions)
+                      return (
+                        <div key={module.id} className="flex flex-col gap-1 p-2 rounded-lg hover:bg-white hover:shadow-sm transition-all border border-transparent hover:border-slate-200">
+                          <span className="text-sm font-semibold text-slate-700 leading-tight">{module.label}</span>
+                          <select 
+                            className="w-full text-xs p-1.5 mt-1 border border-slate-300 rounded focus:ring-[#002855] focus:outline-none bg-slate-50"
+                            value={level}
+                            onChange={(e) => setModulePermission(module.id, e.target.value as 'none' | 'read' | 'write')}
+                          >
+                            <option value="none">⛔ Sin Acceso</option>
+                            <option value="read">👁️ Solo Lectura</option>
+                            <option value="write">✏️ Lectura y Escritura</option>
+                          </select>
                         </div>
-                        <span className="text-sm font-medium text-slate-700 leading-tight">{module.label}</span>
-                      </label>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               ))}

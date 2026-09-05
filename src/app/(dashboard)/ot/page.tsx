@@ -1,12 +1,13 @@
 "use client"
 import { useState, useEffect } from 'react'
-import { Plus, FileText, Search, Filter, Loader2, Edit2, Calendar, Upload, Download, UserPlus } from 'lucide-react'
+import { Plus, FileText, Search, Filter, Loader2, Edit2, Calendar, Upload, Download, UserPlus, Ban } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { ClientFormModal, ClientData } from '@/components/forms/ClientFormModal'
 import { UserFormModal, UserData } from '@/components/forms/UserFormModal'
+import { usePermissions } from '@/hooks/usePermissions'
 
 interface WorkOrder {
   id: string
@@ -56,6 +57,7 @@ interface Budget {
 }
 
 export default function OTPage() {
+  const { canWrite } = usePermissions()
   const supabase = createClient()
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([])
   const [clients, setClients] = useState<Client[]>([])
@@ -131,6 +133,7 @@ export default function OTPage() {
 
   const [newOT, setNewOT] = useState(initialOTState)
   const [otItems, setOtItems] = useState<OTItem[]>([])
+  const [editingOTId, setEditingOTId] = useState<string | null>(null)
 
   const handleAddItem = () => {
     setOtItems([...otItems, {
@@ -241,6 +244,92 @@ export default function OTPage() {
     }
   }
 
+  const openEditModal = async (ot: any) => {
+    // 1. Fetch OT items
+    let fetchedItems: any[] = []
+    try {
+      const { data, error } = await supabase
+        .from('work_order_items')
+        .select('*')
+        .eq('work_order_id', ot.id)
+      
+      if (error) throw error
+      fetchedItems = data || []
+    } catch (error: any) {
+      toast.error("Error cargando ítems de la OT: " + error.message)
+      return
+    }
+
+    // 2. Set newOT state
+    setNewOT({
+      ot_number: ot.ot_number,
+      client_id: ot.client_id || '',
+      contract_administrator_id: ot.contract_administrator_id || '',
+      budget_amount: ot.budget_amount ? String(ot.budget_amount) : '',
+      parent_work_order_id: ot.parent_work_order_id || null,
+      origin: ot.origin || '',
+      origin_department: ot.origin_department || '',
+      origin_province: ot.origin_province || '',
+      origin_district: ot.origin_district || '',
+      destination: ot.destination || '',
+      destination_department: ot.destination_department || '',
+      destination_province: ot.destination_province || '',
+      destination_district: ot.destination_district || '',
+      delivery_address: ot.destination_address || ot.destination || '',
+      cargo_details: ot.cargo_details || '',
+      required_date: ot.required_date ? ot.required_date.split('T')[0] : ''
+    })
+
+    // Setup client search box correctly
+    const foundClient = clients.find(c => c.id === ot.client_id)
+    if (foundClient) {
+      setClientSearch(`${foundClient.business_name} (RUC: ${foundClient.tax_id})`)
+    } else {
+      setClientSearch('')
+    }
+    
+    const foundAdmin = profiles.find(p => p.id === ot.contract_administrator_id)
+    if (foundAdmin) {
+      setAdminSearch(`${foundAdmin.first_name} ${foundAdmin.last_name}`)
+    } else {
+      setAdminSearch('')
+    }
+
+    // Set otItems state
+    const formattedItems = fetchedItems.map(item => ({
+      id: item.id || Math.random().toString(36).substring(7),
+      sku: item.sku || '',
+      description: item.description,
+      quantity: item.quantity,
+      unit_weight: item.unit_weight || 0,
+      total_weight: item.total_weight || (Number(item.quantity) * Number(item.unit_weight))
+    }))
+    
+    setOtItems(formattedItems.length > 0 ? formattedItems : [{
+      id: Math.random().toString(36).substring(7),
+      sku: '',
+      description: '',
+      quantity: 1,
+      unit_weight: 0,
+      total_weight: 0
+    }])
+    
+    setEditingOTId(ot.id)
+    setIsModalOpen(true)
+  }
+
+  const handleCancelOT = async (id: string) => {
+    if (!confirm('¿Estás seguro de cancelar (anular) esta OT?')) return;
+    try {
+      const { error } = await supabase.from('work_orders').update({ status: 'CANCELADA' }).eq('id', id);
+      if (error) throw error;
+      toast.success('OT cancelada exitosamente.');
+      fetchData();
+    } catch (err: any) {
+      toast.error('Error al cancelar OT: ' + err.message);
+    }
+  }
+
   const handleCreateOT = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
@@ -269,36 +358,71 @@ export default function OTPage() {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('work_orders')
-        .insert([{ 
-          ot_number: otNumber,
-          client_id: newOT.client_id,
-          contract_administrator_id: newOT.contract_administrator_id || null,
-          budget_amount: newOT.budget_amount ? Number(newOT.budget_amount) : 0,
-          parent_work_order_id: newOT.parent_work_order_id || null,
-          origin: newOT.origin,
-          origin_address: newOT.origin || 'Planta Chilca',
-          origin_department: newOT.origin_department,
-          origin_province: newOT.origin_province,
-          origin_district: newOT.origin_district,
-          destination: newOT.destination,
-          destination_address: newOT.destination,
-          destination_department: newOT.destination_department,
-          destination_province: newOT.destination_province,
-          destination_district: newOT.destination_district,
-          required_date: newOT.required_date ? new Date(newOT.required_date).toISOString() : new Date().toISOString(),
-          cargo_details: `OT con ${otItems.length} ítems. Peso total estimado: ${otItems.reduce((acc, item) => acc + item.total_weight, 0).toFixed(2)}`,
-          status: 'GENERADA'
-        }])
-        .select()
-        .single()
-        
-      if (error) throw error
+      let targetOTId = editingOTId;
 
-      if (data && otItems.length > 0) {
+      if (editingOTId) {
+        // UPDATE Existing OT
+        const { error } = await supabase
+          .from('work_orders')
+          .update({
+            ot_number: otNumber,
+            client_id: newOT.client_id,
+            contract_administrator_id: newOT.contract_administrator_id || null,
+            budget_amount: newOT.budget_amount ? Number(newOT.budget_amount) : 0,
+            parent_work_order_id: newOT.parent_work_order_id || null,
+            origin: newOT.origin,
+            origin_address: newOT.origin || 'Planta Chilca',
+            origin_department: newOT.origin_department,
+            origin_province: newOT.origin_province,
+            origin_district: newOT.origin_district,
+            destination: newOT.destination,
+            destination_address: newOT.destination,
+            destination_department: newOT.destination_department,
+            destination_province: newOT.destination_province,
+            destination_district: newOT.destination_district,
+            required_date: newOT.required_date ? new Date(newOT.required_date).toISOString() : new Date().toISOString(),
+            cargo_details: `OT con ${otItems.length} ítems. Peso total estimado: ${otItems.reduce((acc, item) => acc + item.total_weight, 0).toFixed(2)}`
+          })
+          .eq('id', editingOTId)
+          
+        if (error) throw error
+
+        // Delete old items
+        await supabase.from('work_order_items').delete().eq('work_order_id', editingOTId)
+      } else {
+        // INSERT New OT
+        const { data, error } = await supabase
+          .from('work_orders')
+          .insert([{ 
+            ot_number: otNumber,
+            client_id: newOT.client_id,
+            contract_administrator_id: newOT.contract_administrator_id || null,
+            budget_amount: newOT.budget_amount ? Number(newOT.budget_amount) : 0,
+            parent_work_order_id: newOT.parent_work_order_id || null,
+            origin: newOT.origin,
+            origin_address: newOT.origin || 'Planta Chilca',
+            origin_department: newOT.origin_department,
+            origin_province: newOT.origin_province,
+            origin_district: newOT.origin_district,
+            destination: newOT.destination,
+            destination_address: newOT.destination,
+            destination_department: newOT.destination_department,
+            destination_province: newOT.destination_province,
+            destination_district: newOT.destination_district,
+            required_date: newOT.required_date ? new Date(newOT.required_date).toISOString() : new Date().toISOString(),
+            cargo_details: `OT con ${otItems.length} ítems. Peso total estimado: ${otItems.reduce((acc, item) => acc + item.total_weight, 0).toFixed(2)}`,
+            status: 'GENERADA'
+          }])
+          .select()
+          .single()
+          
+        if (error) throw error
+        targetOTId = data.id
+      }
+
+      if (targetOTId && otItems.length > 0) {
         const itemsToInsert = otItems.map(item => ({
-          work_order_id: data.id,
+          work_order_id: targetOTId,
           sku: item.sku,
           description: item.description,
           quantity: item.quantity,
@@ -310,20 +434,20 @@ export default function OTPage() {
           .from('work_order_items')
           .insert(itemsToInsert)
 
-        if (itemsError) {
-          console.error("Error guardando ítems:", itemsError)
-          toast.error("OT creada pero hubo un error al guardar los ítems.")
-        }
+        if (itemsError) throw itemsError
       }
-      
-      toast.success('Orden de Trabajo generada correctamente')
+
+      toast.success(editingOTId ? 'OT actualizada exitosamente' : 'OT generada exitosamente')
       setIsModalOpen(false)
       setNewOT(initialOTState)
       setOtItems([])
+      setClientSearch('')
       setPartidaSearch('')
+      setAdminSearch('')
+      setEditingOTId(null)
       fetchData()
     } catch (error: any) {
-      toast.error('Error al generar OT: ' + error.message)
+      toast.error('Error al guardar la OT: ' + error.message)
     } finally {
       setIsSubmitting(false)
     }
@@ -665,11 +789,13 @@ export default function OTPage() {
             Plantilla
           </button>
           
-          <label className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-emerald-700 transition-colors shadow-sm cursor-pointer">
-            {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-            Carga Masiva
-            <input type="file" id="bulkUpload" className="hidden" accept=".xlsx" onChange={handleBulkUpload} disabled={isUploading} />
-          </label>
+          {canWrite('ot') && (
+            <label className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-emerald-700 transition-colors shadow-sm cursor-pointer">
+              {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              Carga Masiva
+              <input type="file" id="bulkUpload" className="hidden" accept=".xlsx" onChange={handleBulkUpload} disabled={isUploading} />
+            </label>
+          )}
 
           <button 
             onClick={handleExportMassive}
@@ -680,17 +806,19 @@ export default function OTPage() {
             Exportar Lista
           </button>
 
-          <button 
-            onClick={() => {
-              setNewOT(initialOTState)
-              setPartidaSearch('')
-              setIsModalOpen(true)
-            }}
-            className="flex items-center gap-2 bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#001d3d] transition-colors shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            Generar OT
-          </button>
+          {canWrite('ot') && (
+            <button 
+              onClick={() => {
+                setNewOT(initialOTState)
+                setPartidaSearch('')
+                setIsModalOpen(true)
+              }}
+              className="flex items-center gap-2 bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#001d3d] transition-colors shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Generar OT
+            </button>
+          )}
         </div>
       </div>
 
@@ -798,13 +926,15 @@ export default function OTPage() {
                         >
                           <FileText className="w-4 h-4" />
                         </button>
-                        <button 
-                          onClick={() => handleViewOT(ot)}
-                          title="Ver / Editar Detalle"
-                          className="p-2 text-slate-400 hover:text-[#002855] transition-colors rounded hover:bg-blue-50"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
+                        {canWrite('ot') && (
+                          <button 
+                            onClick={() => openEditModal(ot)}
+                            title="Editar OT"
+                            className="p-2 text-slate-400 hover:text-[#002855] transition-colors rounded hover:bg-blue-50"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        )}
                         <button 
                           onClick={() => handleExportIndividual(ot)}
                           title="Exportar a Excel"
@@ -812,6 +942,15 @@ export default function OTPage() {
                         >
                           <Download className="w-4 h-4" />
                         </button>
+                        {canWrite('ot') && (ot.status === 'GENERADA' || ot.status === 'ASIGNADA') && (
+                          <button 
+                            onClick={() => handleCancelOT(ot.id)}
+                            title="Cancelar OT"
+                            className="p-2 text-slate-400 hover:text-red-600 transition-colors rounded hover:bg-red-50"
+                          >
+                            <Ban className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -116,8 +116,7 @@ export default function FlotaPage() {
       setIsVehicleModalOpen(false)
       fetchData()
     } catch (err: any) {
-      console.error('Error guardando vehículo:', err)
-      alert('Error al guardar vehículo. Verifique los datos o si la placa ya existe.')
+      toast.error('Error al guardar vehículo. Verifique los datos o si la placa ya existe.')
     } finally {
       setIsSubmitting(false)
     }
@@ -169,8 +168,7 @@ export default function FlotaPage() {
       setIsDriverModalOpen(false)
       fetchData()
     } catch (err: any) {
-      console.error('Error guardando conductor:', err)
-      alert('Error al guardar conductor. Verifique los datos o si el documento ya existe.')
+      toast.error('Error al guardar conductor. Verifique los datos o si el documento ya existe.')
     } finally {
       setIsSubmitting(false)
     }
@@ -330,9 +328,9 @@ export default function FlotaPage() {
                           <td className="p-4 text-sm text-slate-600">{v.carriers?.business_name || 'N/A'}</td>
                           <td className="p-4">
                             <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                              v.status === 'DISPONIBLE' ? 'bg-green-100 text-green-700' :
+                              v.status === 'DISPONIBLE' ? 'bg-emerald-100 text-emerald-700' :
                               v.status === 'EN_RUTA' ? 'bg-blue-100 text-blue-700' :
-                              v.status === 'EN_MANTENIMIENTO' ? 'bg-yellow-100 text-yellow-700' :
+                              v.status === 'EN_MANTENIMIENTO' ? 'bg-amber-100 text-amber-700' :
                               'bg-slate-100 text-slate-700'
                             }`}>
                               {v.status}
@@ -393,7 +391,7 @@ export default function FlotaPage() {
                           <td className="p-4 font-bold text-slate-700">{d.pin || '----'}</td>
                           <td className="p-4">
                             <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                              d.is_active !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                              d.is_active !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
                             }`}>
                               {d.is_active !== false ? 'ACTIVO' : 'INACTIVO'}
                             </span>

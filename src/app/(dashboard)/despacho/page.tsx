@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { calculateRouteDistance } from '@/lib/routing'
+import { usePermissions } from '@/hooks/usePermissions'
 
 interface TransportRequest {
   id: string
@@ -49,6 +50,7 @@ interface Dispatch {
 }
 
 export default function DespachoPage() {
+  const { canWrite } = usePermissions()
   const supabase = createClient()
   const [pendingRequests, setPendingRequests] = useState<TransportRequest[]>([])
   const [dispatches, setDispatches] = useState<Dispatch[]>([])
@@ -519,13 +521,15 @@ export default function DespachoPage() {
           <h1 className="text-2xl font-bold text-slate-800">Programación de Despachos y Ruteo</h1>
           <p className="text-sm text-slate-500">Asignación de unidades de transporte a Solicitudes</p>
         </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#001d3d] transition-colors shadow-sm"
-        >
-          <Plus className="w-4 h-4" />
-          Armar Ruta
-        </button>
+        {canWrite('despacho') && (
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#001d3d] transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Armar Ruta
+          </button>
+        )}
       </div>
 
       <div className="flex flex-col gap-6">

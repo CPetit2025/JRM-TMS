@@ -8,30 +8,11 @@ import {
   ArchiveRestore, Zap, ChevronRight, Wrench, Clock, BarChart2, CheckCircle, Settings2
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { usePermissions } from '@/hooks/usePermissions'
 
 export function Sidebar() {
-  const [role, setRole] = useState<string>('operador')
-  const [permissions, setPermissions] = useState<string[]>([])
+  const { role, hasAccess: hasPermission } = usePermissions()
   const pathname = usePathname()
-
-  useEffect(() => {
-    const storedRole = localStorage.getItem('userRole')
-    if (storedRole) {
-      setRole(storedRole)
-    }
-    const storedPermissions = localStorage.getItem('userPermissions')
-    if (storedPermissions) {
-      try {
-        setPermissions(JSON.parse(storedPermissions))
-      } catch (e) {}
-    }
-  }, [])
-
-  const hasPermission = (perm: string) => {
-    // Si es admin tiene acceso a todo para retrocompatibilidad
-    if (role === 'admin') return true
-    return permissions.includes(perm)
-  }
 
   const NavItem = ({ href, icon: Icon, label, isActive }: { href: string, icon: any, label: string, isActive?: boolean }) => {
     const active = isActive ?? pathname === href;

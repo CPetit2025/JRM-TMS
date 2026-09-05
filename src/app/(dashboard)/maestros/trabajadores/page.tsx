@@ -147,13 +147,13 @@ export default function TrabajadoresPage() {
           </div>
         ) : (
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-slate-600 uppercase bg-slate-50 border-b border-slate-200">
+            <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b">
               <tr>
-                <th className="px-6 py-4 font-bold">Apellidos y Nombres</th>
-                <th className="px-6 py-4 font-bold">DNI</th>
-                <th className="px-6 py-4 font-bold">Puesto</th>
-                <th className="px-6 py-4 font-bold text-center">Estado</th>
-                <th className="px-6 py-4 font-bold text-right">Acciones</th>
+                <th className="p-4 font-semibold">Apellidos y Nombres</th>
+                <th className="p-4 font-semibold">DNI</th>
+                <th className="p-4 font-semibold">Puesto</th>
+                <th className="p-4 font-semibold text-center">Estado</th>
+                <th className="p-4 font-semibold text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -178,7 +178,8 @@ export default function TrabajadoresPage() {
                   <td className="px-6 py-4 text-right">
                     <button 
                       onClick={() => openEdit(t)}
-                      className="text-slate-400 hover:text-indigo-600 transition-colors p-1"
+                      className="p-2 text-slate-400 hover:text-[#002855] transition-colors rounded hover:bg-blue-50"
+                      title="Editar"
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>

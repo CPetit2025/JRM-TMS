@@ -385,18 +385,18 @@ export default function MaestroProductosPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
-                <th className="px-6 py-4 font-medium">SKU</th>
-                <th className="px-6 py-4 font-medium">Descripción</th>
-                <th className="px-6 py-4 font-medium">Categoría</th>
-                <th className="px-6 py-4 font-medium">Color</th>
-                <th className="px-6 py-4 font-medium">Largo (m)</th>
-                <th className="px-6 py-4 font-medium">Ancho (m)</th>
-                <th className="px-6 py-4 font-medium">Espesor (m)</th>
-                <th className="px-6 py-4 font-medium">Peso (kg)</th>
-                <th className="px-6 py-4 font-medium">Volumen (m³)</th>
-                <th className="px-6 py-4 font-medium">Estado</th>
-                <th className="px-6 py-4 font-medium text-right">Acciones</th>
+              <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b">
+                <th className="p-4 font-semibold">SKU</th>
+                <th className="p-4 font-semibold">Descripción</th>
+                <th className="p-4 font-semibold">Categoría</th>
+                <th className="p-4 font-semibold">Color</th>
+                <th className="p-4 font-semibold">Largo (m)</th>
+                <th className="p-4 font-semibold">Ancho (m)</th>
+                <th className="p-4 font-semibold">Espesor (m)</th>
+                <th className="p-4 font-semibold">Peso (kg)</th>
+                <th className="p-4 font-semibold">Volumen (m³)</th>
+                <th className="p-4 font-semibold">Estado</th>
+                <th className="p-4 font-semibold text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-sm">
@@ -426,8 +426,8 @@ export default function MaestroProductosPage() {
                     <td className="px-6 py-4">{product.weight}</td>
                     <td className="px-6 py-4">{product.volume_m3}</td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                        product.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${
+                        product.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
                       }`}>
                         {product.is_active ? 'Activo' : 'Inactivo'}
                       </span>

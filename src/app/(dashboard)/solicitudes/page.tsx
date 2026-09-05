@@ -1,11 +1,12 @@
 "use client"
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Send, Check, X, Search, Filter, Loader2, Calendar, Trash2, Clock, Upload, Download, FileSpreadsheet, CalendarClock, Ban, Activity } from 'lucide-react'
+import { Plus, Send, Check, X, Search, Filter, Loader2, Calendar, Trash2, Clock, Upload, Download, FileSpreadsheet, CalendarClock, Ban, Activity, Edit2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import * as XLSX from 'xlsx'
 import ExcelJS from 'exceljs'
+import { usePermissions } from '@/hooks/usePermissions'
 
 interface TransportRequest {
   id: string
@@ -61,6 +62,7 @@ interface WorkOrder {
 }
 
 export default function SolicitudesPage() {
+  const { canWrite } = usePermissions()
   const supabase = createClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   
@@ -83,7 +85,7 @@ export default function SolicitudesPage() {
     request_type: 'DESPACHO',
     pickup_address: 'Planta Chilca',
     pickup_department: 'LIMA',
-    pickup_province: 'CAÑETE',
+    pickup_province: 'CAETE',
     pickup_district: 'CHILCA',
     delivery_address: '',
     delivery_department: '',
@@ -95,6 +97,7 @@ export default function SolicitudesPage() {
     notes: ''
   })
   const [requestItems, setRequestItems] = useState<RequestItem[]>([])
+  const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
 
   useEffect(() => {
     fetchRequests()
@@ -414,6 +417,50 @@ export default function SolicitudesPage() {
     reader.readAsBinaryString(file)
   }
 
+  const openEditModal = async (request: TransportRequest) => {
+    // Extract notes from cargo_description (Format is "Ítems: ...\nNotas: {notes}")
+    let extractedNotes = ''
+    if (request.cargo_description.includes('Notas: ')) {
+      extractedNotes = request.cargo_description.split('Notas: ')[1] || ''
+    }
+
+    setNewRequest({
+      requester_name: request.requester_name,
+      department: request.department,
+      request_type: request.request_type,
+      pickup_address: request.pickup_address,
+      pickup_department: (request as any).pickup_department || '',
+      pickup_province: (request as any).pickup_province || '',
+      pickup_district: (request as any).pickup_district || '',
+      delivery_address: request.delivery_address,
+      delivery_department: (request as any).delivery_department || '',
+      delivery_province: (request as any).delivery_province || '',
+      delivery_district: (request as any).delivery_district || '',
+      required_date: request.required_date ? request.required_date.split('T')[0] : '',
+      time_window: request.time_window || '',
+      ot_reference: request.ot_reference || '',
+      notes: extractedNotes
+    })
+
+    // Transform items
+    const formattedItems = (request.transport_request_items || []).map((i: any) => ({
+      id: Math.random().toString(36).substring(7),
+      product_id: i.product_id || '',
+      product_description: i.description || 'Producto Editado',
+      quantity: i.quantity,
+      weight: i.weight,
+      volume_m3: i.volume_m3,
+      length_m: i.length_m || 0,
+      width_m: i.width_m || 0,
+      is_fragile: i.is_fragile || false,
+      needs_stowage: i.needs_stowage || false,
+      needs_forklift: i.needs_forklift || false
+    }))
+    setRequestItems(formattedItems)
+    setEditingRequestId(request.id)
+    setIsModalOpen(true)
+  }
+
   const handleCreateRequest = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -427,10 +474,6 @@ export default function SolicitudesPage() {
     if (isOTDepartment) {
       if (!newRequest.ot_reference) {
         toast.error('Para este departamento, es OBLIGATORIO seleccionar una OT registrada.')
-        return
-      }
-      if (requestItems.some(i => !i.product_id)) {
-        toast.error('Para OTs, debes seleccionar un producto del maestro para todas las filas.')
         return
       }
     } else {
@@ -455,39 +498,73 @@ export default function SolicitudesPage() {
       const productsList = requestItems.map(i => `${i.quantity}x ${i.product_description}`).join(', ')
       const compiledDescription = `Ítems: ${productsList}\nNotas: ${newRequest.notes}`
 
-      // Insert Request Header
-      const { data: requestData, error: requestError } = await supabase
-        .from('transport_requests')
-        .insert([{ 
-          request_number: requestNumber,
-          requester_name: newRequest.requester_name,
-          department: finalDepartment,
-          pickup_address: newRequest.pickup_address,
-          pickup_department: newRequest.pickup_department,
-          pickup_province: newRequest.pickup_province,
-          pickup_district: newRequest.pickup_district,
-          delivery_address: newRequest.delivery_address,
-          delivery_department: newRequest.delivery_department,
-          delivery_province: newRequest.delivery_province,
-          delivery_district: newRequest.delivery_district,
-          required_date: newRequest.required_date,
-          time_window: newRequest.time_window,
-          cargo_description: compiledDescription,
-          estimated_weight: totalWeight,
-          request_type: newRequest.request_type,
-          status: 'PENDIENTE DE APROBACIÓN'
-        }])
-        .select()
-        .single()
+      let targetRequestId = editingRequestId
 
-      if (requestError) throw requestError
+      if (editingRequestId) {
+        // UPDATE
+        const { error: updateError } = await supabase
+          .from('transport_requests')
+          .update({
+            requester_name: newRequest.requester_name,
+            department: finalDepartment,
+            pickup_address: newRequest.pickup_address,
+            pickup_department: newRequest.pickup_department,
+            pickup_province: newRequest.pickup_province,
+            pickup_district: newRequest.pickup_district,
+            delivery_address: newRequest.delivery_address,
+            delivery_department: newRequest.delivery_department,
+            delivery_province: newRequest.delivery_province,
+            delivery_district: newRequest.delivery_district,
+            required_date: newRequest.required_date,
+            time_window: newRequest.time_window,
+            cargo_description: compiledDescription,
+            estimated_weight: totalWeight,
+            request_type: newRequest.request_type,
+            ot_reference: newRequest.ot_reference || null
+          })
+          .eq('id', editingRequestId)
+          
+        if (updateError) throw updateError
+        
+        // Delete old items and insert new ones
+        await supabase.from('transport_request_items').delete().eq('transport_request_id', editingRequestId)
+      } else {
+        // INSERT
+        const { data: requestData, error: requestError } = await supabase
+          .from('transport_requests')
+          .insert([{ 
+            request_number: requestNumber,
+            requester_name: newRequest.requester_name,
+            department: finalDepartment,
+            pickup_address: newRequest.pickup_address,
+            pickup_department: newRequest.pickup_department,
+            pickup_province: newRequest.pickup_province,
+            pickup_district: newRequest.pickup_district,
+            delivery_address: newRequest.delivery_address,
+            delivery_department: newRequest.delivery_department,
+            delivery_province: newRequest.delivery_province,
+            delivery_district: newRequest.delivery_district,
+            required_date: newRequest.required_date,
+            time_window: newRequest.time_window,
+            cargo_description: compiledDescription,
+            estimated_weight: totalWeight,
+            request_type: newRequest.request_type,
+            ot_reference: newRequest.ot_reference || null,
+            status: 'PENDIENTE DE APROBACIÓN'
+          }])
+          .select()
+          .single()
+
+        if (requestError) throw requestError
+        targetRequestId = requestData.id
+      }
 
       // Insert Items
-      if (requestData && requestItems.length > 0) {
+      if (targetRequestId && requestItems.length > 0) {
         const itemsToInsert = requestItems.map(item => {
           const product = products.find(p => p.id === item.product_id)
           return {
-            transport_request_id: requestData.id,
+            transport_request_id: targetRequestId,
             product_id: item.product_id || null,
             sku: product?.sku || null,
             description: item.product_description,
@@ -636,17 +713,38 @@ export default function SolicitudesPage() {
           <h1 className="text-2xl font-bold text-slate-800">Solicitudes de Transporte</h1>
           <p className="text-sm text-slate-500">Gestión de requerimientos internos de servicio</p>
         </div>
-        <button 
-          onClick={() => {
-            if (products.length === 0) fetchProducts()
-            if (workOrders.length === 0) fetchWorkOrders()
-            setIsModalOpen(true)
-          }}
-          className="flex items-center gap-2 bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#001d3d] transition-colors shadow-sm"
-        >
-          <Plus className="w-4 h-4" />
-          Nueva Solicitud
-        </button>
+        {canWrite('solicitudes') && (
+          <button 
+            onClick={() => {
+              if (products.length === 0) fetchProducts()
+              if (workOrders.length === 0) fetchWorkOrders()
+              setEditingRequestId(null)
+              setNewRequest({
+                requester_name: '',
+                department: '',
+                request_type: 'DESPACHO',
+                pickup_address: 'Planta Chilca',
+                pickup_department: 'LIMA',
+                pickup_province: 'CAETE',
+                pickup_district: 'CHILCA',
+                delivery_address: '',
+                delivery_department: '',
+                delivery_province: '',
+                delivery_district: '',
+                required_date: '',
+                time_window: '',
+                ot_reference: '',
+                notes: ''
+              })
+              setRequestItems([])
+              setIsModalOpen(true)
+            }}
+            className="flex items-center gap-2 bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#001d3d] transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Nueva Solicitud
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -798,8 +896,15 @@ export default function SolicitudesPage() {
                           </button>
                         </div>
                       )}
-                      {(req.status === 'PENDIENTE DE APROBACIÓN' || req.status === 'PENDIENTE' || req.status === 'APROBADA') && (
+                      {canWrite('solicitudes') && (req.status === 'PENDIENTE DE APROBACIÓN' || req.status === 'PENDIENTE' || req.status === 'APROBADA') && (
                         <div className="flex justify-end gap-2 mt-1">
+                          <button 
+                            onClick={() => openEditModal(req)}
+                            title="Editar Solicitud"
+                            className="p-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors rounded border border-blue-200"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
                           <button 
                             onClick={() => {
                               setSelectedRequestId(req.id)
