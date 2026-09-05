@@ -22,7 +22,7 @@ interface TransportRequest {
   status: string
   request_type: string
   created_at: string
-  ot_reference?: string
+  contract_id?: string
   service_cost?: number
   transport_request_items?: Array<{ weight: number, volume_m3: number, quantity: number }>
 }
@@ -61,6 +61,14 @@ interface WorkOrder {
   consumed_budget?: number
 }
 
+interface Contract {
+  id: string
+  code: string
+  type: string
+  status: string
+  balance_pen: number
+}
+
 export default function SolicitudesPage() {
   const { canWrite } = usePermissions()
   const supabase = createClient()
@@ -69,6 +77,7 @@ export default function SolicitudesPage() {
   const [requests, setRequests] = useState<TransportRequest[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([])
+  const [contracts, setContracts] = useState<Contract[]>([])
   const [loading, setLoading] = useState(true)
   
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -93,7 +102,7 @@ export default function SolicitudesPage() {
     delivery_district: '',
     required_date: '',
     time_window: '',
-    ot_reference: '',
+    contract_id: '',
     notes: ''
   })
   const [requestItems, setRequestItems] = useState<RequestItem[]>([])
@@ -103,6 +112,7 @@ export default function SolicitudesPage() {
     fetchRequests()
     fetchProducts()
     fetchWorkOrders()
+    fetchContracts()
     checkUser()
   }, [])
 
@@ -188,15 +198,37 @@ export default function SolicitudesPage() {
     }
   }
 
-  // Handle OT reference change to prefill delivery address
-  const handleOtReferenceChange = (val: string) => {
+  const fetchContracts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contracts')
+        .select(`
+          id, code, type, status,
+          contract_budgets (
+            balance_pen
+          )
+        `)
+        .eq('status', 'ACTIVO')
+
+      if (error) throw error
+      
+      const formatted = (data || []).map((c: any) => ({
+        id: c.id,
+        code: c.code,
+        type: c.type,
+        status: c.status,
+        balance_pen: Number(c.contract_budgets?.[0]?.balance_pen) || 0
+      }))
+      setContracts(formatted)
+    } catch (error: any) {
+      console.error('Error al cargar contratos:', error.message)
+    }
+  }
+
+  // Handle Contract change
+  const handleContractChange = (contractId: string) => {
     setNewRequest(prev => {
-      const updated = { ...prev, ot_reference: val }
-      // Attempt to find matching OT
-      const matchedOt = workOrders.find(ot => ot.ot_number.toLowerCase() === val.toLowerCase())
-      if (matchedOt && matchedOt.destination_address) {
-        updated.delivery_address = matchedOt.destination_address
-      }
+      const updated = { ...prev, contract_id: contractId }
       return updated
     })
   }
@@ -438,7 +470,7 @@ export default function SolicitudesPage() {
       delivery_district: (request as any).delivery_district || '',
       required_date: request.required_date ? request.required_date.split('T')[0] : '',
       time_window: request.time_window || '',
-      ot_reference: request.ot_reference || '',
+      contract_id: (request as any).contract_id || '',
       notes: extractedNotes
     })
 
@@ -472,8 +504,15 @@ export default function SolicitudesPage() {
     const isOTDepartment = newRequest.department === 'OT (Administración de Contratos)' || newRequest.department.startsWith('OT -');
 
     if (isOTDepartment) {
-      if (!newRequest.ot_reference) {
-        toast.error('Para este departamento, es OBLIGATORIO seleccionar una OT registrada.')
+      if (!newRequest.contract_id) {
+        toast.error('Para este departamento, es OBLIGATORIO seleccionar un Contrato/OT.')
+        return
+      }
+      
+      // Validar saldo
+      const selectedContract = contracts.find(c => c.id === newRequest.contract_id)
+      if (selectedContract && selectedContract.balance_pen <= 0) {
+        toast.error(`El contrato ${selectedContract.code} tiene saldo agotado o negativo. No se pueden generar más solicitudes.`)
         return
       }
     } else {
@@ -487,8 +526,8 @@ export default function SolicitudesPage() {
     const requestNumber = `SOL-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`
 
     try {
-      const finalDepartment = newRequest.department === 'OT (Administración de Contratos)' && newRequest.ot_reference
-        ? `OT - ${newRequest.ot_reference}`
+      const finalDepartment = newRequest.department === 'OT (Administración de Contratos)' && newRequest.contract_id
+        ? `OT - ${newRequest.contract_id}`
         : newRequest.department;
 
       // Calcular totales invisibles en la UI pero persistidos en BD
@@ -520,7 +559,7 @@ export default function SolicitudesPage() {
             cargo_description: compiledDescription,
             estimated_weight: totalWeight,
             request_type: newRequest.request_type,
-            ot_reference: newRequest.ot_reference || null
+            contract_id: newRequest.contract_id || null
           })
           .eq('id', editingRequestId)
           
@@ -549,7 +588,7 @@ export default function SolicitudesPage() {
             cargo_description: compiledDescription,
             estimated_weight: totalWeight,
             request_type: newRequest.request_type,
-            ot_reference: newRequest.ot_reference || null,
+            contract_id: newRequest.contract_id || null,
             status: 'PENDIENTE DE APROBACIÓN'
           }])
           .select()
@@ -601,7 +640,7 @@ export default function SolicitudesPage() {
         delivery_district: '',
         required_date: '',
         time_window: '',
-        ot_reference: '',
+        contract_id: '',
         notes: ''
       }))
       setRequestItems([])
@@ -691,20 +730,7 @@ export default function SolicitudesPage() {
     }
   }
 
-  // Computed values for OT budget check
-  const selectedOt = workOrders.find(ot => ot.ot_number.toLowerCase() === newRequest.ot_reference.toLowerCase())
-  const hasOtSelected = !!selectedOt
-  const hasBudgetLimit = hasOtSelected && (selectedOt.budget_amount || 0) > 0
-  
-  // Calculate consumed budget using the already fetched `requests` array
-  const dynamicConsumedBudget = hasOtSelected 
-    ? requests
-        .filter(r => r.status !== 'CANCELADA' && r.ot_reference === selectedOt.ot_number)
-        .reduce((sum, r) => sum + (Number(r.service_cost) || 0), 0)
-    : 0
-
-  const availableBudget = hasOtSelected ? (selectedOt.budget_amount || 0) - dynamicConsumedBudget : 0
-  const isBudgetExhausted = hasBudgetLimit && availableBudget <= 0
+  // (Budget check is now done real-time against contracts.balance_pen)
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -717,7 +743,7 @@ export default function SolicitudesPage() {
           <button 
             onClick={() => {
               if (products.length === 0) fetchProducts()
-              if (workOrders.length === 0) fetchWorkOrders()
+              if (contracts.length === 0) fetchContracts()
               setEditingRequestId(null)
               setNewRequest({
                 requester_name: '',
@@ -733,7 +759,7 @@ export default function SolicitudesPage() {
                 delivery_district: '',
                 required_date: '',
                 time_window: '',
-                ot_reference: '',
+                contract_id: '',
                 notes: ''
               })
               setRequestItems([])
@@ -961,7 +987,7 @@ export default function SolicitudesPage() {
                 className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
                 value={newRequest.department}
                 onChange={(e) => {
-                  setNewRequest({...newRequest, department: e.target.value, ot_reference: ''})
+                  setNewRequest({...newRequest, department: e.target.value, contract_id: ''})
                 }}
               >
                 <option value="" disabled>Seleccionar Área...</option>
@@ -977,29 +1003,29 @@ export default function SolicitudesPage() {
             
             {newRequest.department === 'OT (Administración de Contratos)' && (
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Número de OT Asociada (Obligatorio)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Contrato / OT Asociada (Obligatorio)</label>
                 <select
                   required
                   className="w-full px-3 py-2 bg-yellow-50 text-slate-900 border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-500 outline-none"
-                  value={newRequest.ot_reference}
-                  onChange={(e) => handleOtReferenceChange(e.target.value)}
+                  value={newRequest.contract_id}
+                  onChange={(e) => handleContractChange(e.target.value)}
                 >
-                  <option value="" disabled>Seleccione una OT registrada...</option>
-                  {workOrders.map(ot => (
-                    <option key={ot.id} value={ot.ot_number}>{ot.ot_number} - {ot.destination_address || 'Sin destino'}</option>
+                  <option value="" disabled>Seleccione un Contrato o Subcontrato...</option>
+                  {contracts.map(c => (
+                    <option key={c.id} value={c.id}>{c.code} - {c.type}</option>
                   ))}
                 </select>
-                {hasBudgetLimit && (
-                  <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-semibold ${isBudgetExhausted ? 'text-red-600' : 'text-emerald-600'}`}>
-                    {isBudgetExhausted ? (
+                {newRequest.contract_id && (
+                  <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-semibold ${(contracts.find(c => c.id === newRequest.contract_id)?.balance_pen || 0) <= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {(contracts.find(c => c.id === newRequest.contract_id)?.balance_pen || 0) <= 0 ? (
                       <>
                         <Ban className="w-3.5 h-3.5" />
-                        Partida Agotada (S/ {availableBudget.toLocaleString('en-US', { minimumFractionDigits: 2 })})
+                        Partida Agotada o Negativa (S/ {(contracts.find(c => c.id === newRequest.contract_id)?.balance_pen || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })})
                       </>
                     ) : (
                       <>
                         <Check className="w-3.5 h-3.5" />
-                        Partida Disponible: S/ {availableBudget.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        Partida Disponible: S/ {(contracts.find(c => c.id === newRequest.contract_id)?.balance_pen || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                       </>
                     )}
                   </div>
@@ -1008,28 +1034,28 @@ export default function SolicitudesPage() {
             )}
             {newRequest.department !== 'OT (Administración de Contratos)' && (
               <div className="col-span-2 mt-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">¿Asociar a Número de OT? (Opcional)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">¿Asociar a Contrato/OT? (Opcional)</label>
                 <select
                   className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
-                  value={newRequest.ot_reference}
-                  onChange={(e) => handleOtReferenceChange(e.target.value)}
+                  value={newRequest.contract_id}
+                  onChange={(e) => handleContractChange(e.target.value)}
                 >
-                  <option value="">Sin asociar a OT</option>
-                  {workOrders.map(ot => (
-                    <option key={ot.id} value={ot.ot_number}>{ot.ot_number} - {ot.destination_address || 'Sin destino'}</option>
+                  <option value="">Sin asociar a Contrato/OT</option>
+                  {contracts.map(c => (
+                    <option key={c.id} value={c.id}>{c.code} - {c.type}</option>
                   ))}
                 </select>
-                {hasBudgetLimit && (
-                  <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-semibold ${isBudgetExhausted ? 'text-red-600' : 'text-emerald-600'}`}>
-                    {isBudgetExhausted ? (
+                {newRequest.contract_id && (
+                  <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-semibold ${(contracts.find(c => c.id === newRequest.contract_id)?.balance_pen || 0) <= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {(contracts.find(c => c.id === newRequest.contract_id)?.balance_pen || 0) <= 0 ? (
                       <>
                         <Ban className="w-3.5 h-3.5" />
-                        Partida Agotada (S/ {availableBudget.toLocaleString('en-US', { minimumFractionDigits: 2 })})
+                        Partida Agotada o Negativa (S/ {(contracts.find(c => c.id === newRequest.contract_id)?.balance_pen || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })})
                       </>
                     ) : (
                       <>
                         <Check className="w-3.5 h-3.5" />
-                        Partida Disponible: S/ {availableBudget.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        Partida Disponible: S/ {(contracts.find(c => c.id === newRequest.contract_id)?.balance_pen || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                       </>
                     )}
                   </div>
@@ -1408,7 +1434,7 @@ export default function SolicitudesPage() {
             </button>
             <button 
               type="submit" 
-              disabled={isSubmitting || isBudgetExhausted}
+              disabled={isSubmitting || (newRequest.contract_id ? (contracts.find(c => c.id === newRequest.contract_id)?.balance_pen || 0) <= 0 : false)}
               className="px-4 py-2 bg-[#002855] text-white font-medium rounded-lg hover:bg-[#001d3d] transition-colors disabled:opacity-50 flex items-center gap-2"
             >
               {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
