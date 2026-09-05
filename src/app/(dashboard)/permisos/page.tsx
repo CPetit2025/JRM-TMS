@@ -25,7 +25,11 @@ const MODULE_GROUPS = [
       { id: 'solicitudes', label: 'Solicitudes de Transporte' },
       { id: 'despacho', label: 'Despacho (Programación)' },
       { id: 'monitoreo', label: 'Monitoreo GPS' },
-      { id: 'servicios-realizados', label: 'Servicios Realizados' }
+      { id: 'operaciones-live', label: 'Tareo en Vivo' },
+      { id: 'operaciones-revision', label: 'Revisión de Tareos' },
+      { id: 'operaciones-kpis', label: 'Dashboard Analítico' },
+      { id: 'servicios-realizados', label: 'Servicios Realizados' },
+      { id: 'reportes', label: 'Reporte Desp. y Recojo' }
     ]
   },
   {
@@ -33,6 +37,7 @@ const MODULE_GROUPS = [
     modules: [
       { id: 'mantenimiento-dashboard', label: 'Dashboard' },
       { id: 'mantenimiento-flota', label: 'Unidades y Documentos' },
+      { id: 'mantenimiento-vencimientos', label: 'Proyección y Vencimientos' },
       { id: 'mantenimiento-fallas', label: 'Solicitudes y Fallas' },
       { id: 'mantenimiento-ot', label: 'Órdenes de Trabajo' },
       { id: 'mantenimiento-planes', label: 'Planes Preventivos' }
