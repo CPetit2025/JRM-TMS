@@ -7,6 +7,7 @@ import {
   CalendarDays, Clock, FileText, ChevronDown, ChevronUp, Edit2
 } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
+import { toast } from 'sonner'
 
 type TurnoFinalizado = {
   id: string

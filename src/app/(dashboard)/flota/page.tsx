@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2 } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
+import { toast } from 'sonner'
 
 export default function FlotaPage() {
   const supabase = createClient()
