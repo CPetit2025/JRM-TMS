@@ -15,27 +15,37 @@ interface Role {
 const MODULE_GROUPS = [
   {
     title: 'Analítica y General',
-    modules: [{ id: 'dashboard', label: 'Analítica / KPIs' }]
+    modules: [{ id: 'dashboard', label: 'Dashboard Principal' }]
   },
   {
-    title: 'Comercial y Despacho',
+    title: 'Generación de Demanda',
     modules: [
       { id: 'clientes', label: 'Clientes' },
-      { id: 'ot', label: 'Órdenes de Trabajo (Comercial)' },
-      { id: 'solicitudes', label: 'Solicitudes de Transporte' },
+      { id: 'ot', label: 'Órdenes de Trabajo' },
+      { id: 'solicitudes', label: 'Solicitudes de Transporte' }
+    ]
+  },
+  {
+    title: 'Operación Logística',
+    modules: [
       { id: 'despacho', label: 'Despacho (Programación)' },
       { id: 'monitoreo', label: 'Monitoreo GPS' },
       { id: 'operaciones-live', label: 'Tareo en Vivo' },
       { id: 'operaciones-revision', label: 'Revisión de Tareos' },
+      { id: 'servicios-realizados', label: 'Servicios Realizados' }
+    ]
+  },
+  {
+    title: 'Reportes y Analítica',
+    modules: [
       { id: 'operaciones-kpis', label: 'Dashboard Analítico' },
-      { id: 'servicios-realizados', label: 'Servicios Realizados' },
       { id: 'reportes', label: 'Reporte Desp. y Recojo' }
     ]
   },
   {
     title: 'Mantenimiento de Flota',
     modules: [
-      { id: 'mantenimiento-dashboard', label: 'Dashboard' },
+      { id: 'mantenimiento-dashboard', label: 'Dashboard Mantenimiento' },
       { id: 'mantenimiento-flota', label: 'Unidades y Documentos' },
       { id: 'mantenimiento-vencimientos', label: 'Proyección y Vencimientos' },
       { id: 'mantenimiento-fallas', label: 'Solicitudes y Fallas' },
@@ -44,7 +54,7 @@ const MODULE_GROUPS = [
     ]
   },
   {
-    title: 'Maestros',
+    title: 'Maestros y Costos',
     modules: [
       { id: 'flota', label: 'Unidades y Conductores' },
       { id: 'tarifas', label: 'Tarifas por KM' },
