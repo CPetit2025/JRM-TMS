@@ -8,6 +8,7 @@ import { Modal } from '@/components/ui/modal'
 import { ClientFormModal, ClientData } from '@/components/forms/ClientFormModal'
 import { UserFormModal, UserData } from '@/components/forms/UserFormModal'
 import { usePermissions } from '@/hooks/usePermissions'
+import { BulkUploadModal } from '@/components/ot/BulkUploadModal'
 
 interface WorkOrder {
   id: string
@@ -70,6 +71,7 @@ export default function OTPage() {
   const [isExtensionModalOpen, setIsExtensionModalOpen] = useState(false)
   const [isClientModalOpen, setIsClientModalOpen] = useState(false)
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false)
+  const [isBulkUploadModalOpen, setIsBulkUploadModalOpen] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   
   // View OT State
@@ -789,6 +791,16 @@ export default function OTPage() {
             Plantilla
           </button>
           
+          {canWrite('ot') && (
+            <button
+              onClick={() => setIsBulkUploadModalOpen(true)}
+              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm"
+            >
+              <Upload className="w-4 h-4" />
+              Carga Saldos (Contratos)
+            </button>
+          )}
+
           {canWrite('ot') && (
             <label className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-emerald-700 transition-colors shadow-sm cursor-pointer">
               {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
@@ -1633,6 +1645,15 @@ export default function OTPage() {
           setAdminSearch(`${user.first_name} ${user.last_name}`)
           setNewOT({...newOT, contract_administrator_id: user.id})
           setIsAdminModalOpen(false)
+        }}
+      />
+
+      <BulkUploadModal
+        isOpen={isBulkUploadModalOpen}
+        onClose={() => setIsBulkUploadModalOpen(false)}
+        onSuccess={() => {
+          // If needed, refresh any local contracts state here
+          fetchData()
         }}
       />
     </div>
