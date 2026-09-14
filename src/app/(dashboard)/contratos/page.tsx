@@ -1,9 +1,10 @@
 "use client"
-import { useState, useEffect } from 'react'
-import { Plus, Search, Layers, FileWarning, Briefcase, FilePlus2, CheckCircle2 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Plus, Search, Layers, FileWarning, Briefcase, FilePlus2, CheckCircle2, Upload, Download } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import * as XLSX from 'xlsx'
 
 interface Contract {
   id: string
@@ -27,8 +28,12 @@ export default function ContratosPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   
+  // Bulk upload
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isUploading, setIsUploading] = useState(false)
+
   const [newContract, setNewContract] = useState({
-    code: '',
+    correlative: '',
     type: 'CONTRATO',
     client_id: '',
     parent_contract_id: '',
@@ -42,7 +47,6 @@ export default function ContratosPage() {
   const fetchContracts = async () => {
     setLoading(true)
     try {
-      // Usaremos una query simulada por ahora hasta que se sincronicen las tablas
       const { data, error } = await supabase
         .from('contracts')
         .select(`
@@ -73,23 +77,38 @@ export default function ContratosPage() {
     setIsSubmitting(true)
 
     try {
-      // 1. Crear el contrato
+      let finalCode = newContract.correlative.trim()
+      
+      // Si es Subcontrato o Error, prefijamos con el código del contrato madre
+      if (newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR') {
+        if (!newContract.parent_contract_id) {
+          throw new Error('Debe seleccionar un Contrato Madre')
+        }
+        const parentContract = contracts.find(c => c.id === newContract.parent_contract_id)
+        if (parentContract) {
+          finalCode = `${parentContract.code}-${finalCode}`
+        }
+      }
+
       const { data: contractData, error: contractError } = await supabase
         .from('contracts')
         .insert([{
-          code: newContract.code,
+          code: finalCode,
           type: newContract.type,
           parent_contract_id: newContract.parent_contract_id || null,
-          client_id: newContract.client_id || null, // Requiere client_id real
+          client_id: newContract.client_id || null,
           status: 'ACTIVO'
         }])
         .select()
         .single()
 
-      if (contractError) throw contractError
+      if (contractError) {
+        if (contractError.code === '23505') {
+          throw new Error(`El código "${finalCode}" ya está en uso. No se permiten duplicados.`)
+        }
+        throw contractError
+      }
 
-      // 2. El trigger (creado en la migración 00029) crea la partida de transporte automáticamente
-      // pero si el usuario especificó un presupuesto inicial, lo actualizamos:
       if (newContract.budget_pen && Number(newContract.budget_pen) > 0) {
         await supabase
           .from('contract_budgets')
@@ -101,22 +120,111 @@ export default function ContratosPage() {
 
       toast.success('Contrato creado exitosamente')
       setIsModalOpen(false)
-      setNewContract({ code: '', type: 'CONTRATO', client_id: '', parent_contract_id: '', budget_pen: '' })
+      setNewContract({ correlative: '', type: 'CONTRATO', client_id: '', parent_contract_id: '', budget_pen: '' })
       fetchContracts()
     } catch (error: any) {
-      toast.error('Error: ' + error.message)
+      toast.error(error.message)
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const getTypeIcon = (type: string) => {
-    switch(type) {
-      case 'CONTRATO': return <Briefcase className="w-4 h-4 text-blue-600" />
-      case 'SUBCONTRATO': return <Layers className="w-4 h-4 text-purple-600" />
-      case 'ERROR': return <FileWarning className="w-4 h-4 text-red-600" />
-      default: return <FilePlus2 className="w-4 h-4 text-slate-600" />
+  const downloadTemplate = () => {
+    const ws = XLSX.utils.json_to_sheet([
+      { Tipo: 'CONTRATO', Codigo: '16584', CodigoMadre: '', Presupuesto: 5000 },
+      { Tipo: 'SUBCONTRATO', Codigo: 'S001', CodigoMadre: '16584', Presupuesto: 1000 },
+      { Tipo: 'ERROR', Codigo: 'E001', CodigoMadre: '16584', Presupuesto: 0 }
+    ])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Plantilla')
+    XLSX.writeFile(wb, 'plantilla_carga_contratos.xlsx')
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsUploading(true)
+    const reader = new FileReader()
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result
+        const wb = XLSX.read(bstr, { type: 'binary' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const data = XLSX.utils.sheet_to_json(ws) as any[]
+
+        let successCount = 0
+        let errorCount = 0
+
+        // Traemos contratos de la BD para mapear CodigoMadre -> UUID en memoria
+        const { data: dbContracts } = await supabase.from('contracts').select('id, code')
+        const contractMap = new Map(dbContracts?.map(c => [c.code, c.id]))
+
+        for (const row of data) {
+          try {
+            const tipo = row.Tipo?.toUpperCase()
+            let codigo = String(row.Codigo || '').trim()
+            const codigoMadre = String(row.CodigoMadre || '').trim()
+            const presupuesto = Number(row.Presupuesto || 0)
+
+            if (!codigo) continue
+
+            let parentId = null
+            let finalCode = codigo
+
+            if (tipo === 'SUBCONTRATO' || tipo === 'ERROR') {
+              if (codigoMadre && contractMap.has(codigoMadre)) {
+                parentId = contractMap.get(codigoMadre)
+                finalCode = `${codigoMadre}-${codigo}`
+              } else {
+                throw new Error(`Contrato Madre "${codigoMadre}" no existe en base de datos.`)
+              }
+            }
+
+            // Insert contract
+            const { data: insertedContract, error: insertError } = await supabase
+              .from('contracts')
+              .insert([{
+                code: finalCode,
+                type: tipo,
+                parent_contract_id: parentId,
+                status: 'ACTIVO'
+              }])
+              .select()
+              .single()
+
+            if (insertError) {
+              if (insertError.code === '23505') throw new Error(`El código "${finalCode}" ya existe.`)
+              throw insertError
+            }
+            
+            // Register memory map just in case a sub-contract references it in the same file
+            contractMap.set(finalCode, insertedContract.id)
+
+            // Update Budget
+            if (presupuesto > 0) {
+              await supabase
+                .from('contract_budgets')
+                .update({ allocated_pen: presupuesto })
+                .eq('contract_id', insertedContract.id)
+            }
+            successCount++
+          } catch (err: any) {
+            console.error(err)
+            errorCount++
+          }
+        }
+
+        toast.success(`Carga Masiva completada. Éxitos: ${successCount}, Errores: ${errorCount}`)
+        fetchContracts()
+      } catch (error: any) {
+        toast.error('Error al procesar el archivo: ' + error.message)
+      } finally {
+        setIsUploading(false)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+      }
     }
+    reader.readAsBinaryString(file)
   }
 
   const getTypeBadge = (type: string) => {
@@ -128,6 +236,13 @@ export default function ContratosPage() {
     }
   }
 
+  // Helper
+  const getSelectedParentCode = () => {
+    if (!newContract.parent_contract_id) return ''
+    const p = contracts.find(c => c.id === newContract.parent_contract_id)
+    return p ? p.code + '-' : ''
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -135,13 +250,38 @@ export default function ContratosPage() {
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Alta de Contratos</h1>
           <p className="text-sm text-slate-500 mt-1">Gestión unificada de Contratos, Subcontratos y Errores (Partidas de Transporte)</p>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-slate-900 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-slate-800 transition-all shadow-md hover:shadow-lg"
-        >
-          <Plus className="w-4 h-4" />
-          Nuevo Contrato
-        </button>
+        <div className="flex items-center gap-3">
+          <input
+            type="file"
+            accept=".xlsx, .xls"
+            className="hidden"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+          />
+          <button
+            onClick={downloadTemplate}
+            className="flex items-center gap-2 bg-white text-slate-700 border border-slate-300 px-4 py-2.5 rounded-lg font-medium hover:bg-slate-50 transition-all text-sm"
+          >
+            <Download className="w-4 h-4" />
+            Plantilla Excel
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2.5 rounded-lg font-medium hover:bg-emerald-700 transition-all text-sm disabled:opacity-50"
+          >
+            <Upload className="w-4 h-4" />
+            {isUploading ? 'Procesando...' : 'Carga Masiva'}
+          </button>
+
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 bg-slate-900 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-slate-800 transition-all shadow-md hover:shadow-lg text-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Nuevo Contrato
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
@@ -220,22 +360,11 @@ export default function ContratosPage() {
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Código (Ej. 16584)</label>
-            <input
-              type="text"
-              required
-              value={newContract.code}
-              onChange={(e) => setNewContract({...newContract, code: e.target.value})}
-              className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-900 transition-all"
-              placeholder={newContract.type === 'SUBCONTRATO' ? 'Ej. 16584-S001' : newContract.type === 'ERROR' ? 'Ej. 16584-E001' : 'Ej. 16584'}
-            />
-          </div>
-
           {(newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR') && (
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Contrato Madre (Opcional)</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Contrato Madre <span className="text-red-500">*</span></label>
               <select
+                required
                 value={newContract.parent_contract_id}
                 onChange={(e) => setNewContract({...newContract, parent_contract_id: e.target.value})}
                 className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-900 transition-all"
@@ -249,18 +378,36 @@ export default function ContratosPage() {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Partida de Transporte (S/)</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Código o Correlativo</label>
+            <div className="flex border border-slate-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-slate-900/20 focus-within:border-slate-900 transition-all">
+              {getSelectedParentCode() && (
+                <div className="bg-slate-100 px-3 py-2.5 text-slate-600 font-medium border-r border-slate-300">
+                  {getSelectedParentCode()}
+                </div>
+              )}
+              <input
+                type="text"
+                required
+                value={newContract.correlative}
+                onChange={(e) => setNewContract({...newContract, correlative: e.target.value})}
+                className="w-full p-2.5 outline-none"
+                placeholder={newContract.type === 'SUBCONTRATO' ? 'S001' : newContract.type === 'ERROR' ? 'E001' : '16584'}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Partida de Transporte Inicial (S/)</label>
             <input
               type="number"
               step="0.01"
-              required
               value={newContract.budget_pen}
               onChange={(e) => setNewContract({...newContract, budget_pen: e.target.value})}
               className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-900 transition-all"
-              placeholder="Presupuesto asignado"
+              placeholder="0.00 (Opcional)"
             />
             <p className="text-xs text-slate-500 mt-1">
-              Esta partida se reservará y consumirá automáticamente al planificar rutas.
+              Esta partida se reservará y consumirá automáticamente al planificar rutas. Puede añadir saldo más adelante.
             </p>
           </div>
 
@@ -277,7 +424,7 @@ export default function ContratosPage() {
               disabled={isSubmitting}
               className="px-6 py-2 bg-slate-900 text-white font-medium rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 shadow-md"
             >
-              {isSubmitting ? 'Guardando...' : 'Guardar Contrato'}
+              {isSubmitting ? 'Guardando...' : 'Guardar Registro'}
             </button>
           </div>
         </form>
