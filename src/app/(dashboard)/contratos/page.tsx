@@ -192,15 +192,19 @@ export default function ContratosPage() {
             if (tipo === 'SUBCONTRATO' || tipo === 'ERROR') {
               if (codigoMadre && contractMap.has(codigoMadre)) {
                 const parent = contractMap.get(codigoMadre)
-                parentId = parent.id
-                finalCode = `${codigoMadre}-${codigo}`
+                if (parent) {
+                  parentId = parent.id
+                  finalCode = `${codigoMadre}-${codigo}`
 
-                // Heredar destino si los campos están vacíos
-                if (tipo === 'SUBCONTRATO' || tipo === 'ERROR') {
-                  if (!dep) dep = parent.destination_department || ''
-                  if (!prov) prov = parent.destination_province || ''
-                  if (!dist) dist = parent.destination_district || ''
-                  if (!dir) dir = parent.destination_address || ''
+                  // Heredar destino si los campos están vacíos
+                  if (tipo === 'SUBCONTRATO' || tipo === 'ERROR') {
+                    if (!dep) dep = parent.destination_department || ''
+                    if (!prov) prov = parent.destination_province || ''
+                    if (!dist) dist = parent.destination_district || ''
+                    if (!dir) dir = parent.destination_address || ''
+                  }
+                } else {
+                  throw new Error(`Contrato Madre "${codigoMadre}" no existe en base de datos.`)
                 }
               } else {
                 throw new Error(`Contrato Madre "${codigoMadre}" no existe en base de datos.`)
