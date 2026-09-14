@@ -224,7 +224,9 @@ export default function FlotaPage() {
                   year: new Date().getFullYear(),
                   weight_capacity: 0,
                   volume_capacity: 0,
-                  status: 'DISPONIBLE'
+                  status: 'DISPONIBLE',
+                  soat_expiration: '',
+                  technical_review_expiration: ''
                 })
                 setIsVehicleModalOpen(true)
               }}
