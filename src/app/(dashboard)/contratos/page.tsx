@@ -168,8 +168,8 @@ export default function ContratosPage() {
         let errorCount = 0
 
         // Traemos contratos de la BD para mapear CodigoMadre -> UUID en memoria
-        const { data: dbContracts } = await supabase.from('contracts').select('id, code')
-        const contractMap = new Map(dbContracts?.map(c => [c.code, c.id]))
+        const { data: dbContracts } = await supabase.from('contracts').select('id, code, destination_department, destination_province, destination_district, destination_address')
+        const contractMap = new Map(dbContracts?.map(c => [c.code, c]))
 
         for (const row of data) {
           try {
@@ -179,10 +179,10 @@ export default function ContratosPage() {
             const presupuesto = Number(row.Presupuesto_Soles || row.Presupuesto || 0)
             const peso = Number(row.Peso_Total_KG || 0)
             const volumen = Number(row.Volumen_Total_M3 || 0)
-            const dep = String(row.Destino_Departamento || '').trim().toUpperCase()
-            const prov = String(row.Destino_Provincia || '').trim().toUpperCase()
-            const dist = String(row.Destino_Distrito || '').trim().toUpperCase()
-            const dir = String(row.Destino_Direccion || '').trim()
+            let dep = String(row.Destino_Departamento || '').trim().toUpperCase()
+            let prov = String(row.Destino_Provincia || '').trim().toUpperCase()
+            let dist = String(row.Destino_Distrito || '').trim().toUpperCase()
+            let dir = String(row.Destino_Direccion || '').trim()
 
             if (!codigo) continue
 
@@ -191,8 +191,17 @@ export default function ContratosPage() {
 
             if (tipo === 'SUBCONTRATO' || tipo === 'ERROR') {
               if (codigoMadre && contractMap.has(codigoMadre)) {
-                parentId = contractMap.get(codigoMadre)
+                const parent = contractMap.get(codigoMadre)
+                parentId = parent.id
                 finalCode = `${codigoMadre}-${codigo}`
+
+                // Heredar destino si es subcontrato y los campos están vacíos
+                if (tipo === 'SUBCONTRATO') {
+                  if (!dep) dep = parent.destination_department || ''
+                  if (!prov) prov = parent.destination_province || ''
+                  if (!dist) dist = parent.destination_district || ''
+                  if (!dir) dir = parent.destination_address || ''
+                }
               } else {
                 throw new Error(`Contrato Madre "${codigoMadre}" no existe en base de datos.`)
               }
@@ -222,7 +231,7 @@ export default function ContratosPage() {
             }
             
             // Register memory map just in case a sub-contract references it in the same file
-            contractMap.set(finalCode, insertedContract.id)
+            contractMap.set(finalCode, insertedContract)
 
             // Update Budget
             if (presupuesto > 0) {
@@ -404,7 +413,20 @@ export default function ContratosPage() {
                   <select
                     required
                     value={newContract.parent_contract_id}
-                    onChange={(e) => setNewContract({...newContract, parent_contract_id: e.target.value})}
+                    onChange={(e) => {
+                      const parentId = e.target.value
+                      const parent = contracts.find(c => c.id === parentId)
+                      setNewContract({
+                        ...newContract,
+                        parent_contract_id: parentId,
+                        ...(parent && newContract.type === 'SUBCONTRATO' ? {
+                          destination_department: parent.destination_department || '',
+                          destination_province: parent.destination_province || '',
+                          destination_district: parent.destination_district || '',
+                          destination_address: parent.destination_address || ''
+                        } : {})
+                      })
+                    }}
                     className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-white"
                   >
                     <option value="">-- Seleccionar Contrato Padre --</option>
