@@ -14,6 +14,8 @@ interface Contract {
   parent_contract_id?: string | null
   status: string
   created_at: string
+  total_weight_kg?: number
+  total_volume_m3?: number
   budget?: {
     allocated_usd: number
     allocated_pen: number
@@ -37,7 +39,9 @@ export default function ContratosPage() {
     type: 'CONTRATO',
     client_id: '',
     parent_contract_id: '',
-    budget_pen: ''
+    budget_pen: '',
+    total_weight_kg: '',
+    total_volume_m3: ''
   })
 
   useEffect(() => {
@@ -97,7 +101,9 @@ export default function ContratosPage() {
           type: newContract.type,
           parent_contract_id: newContract.parent_contract_id || null,
           client_id: newContract.client_id || null,
-          status: 'ACTIVO'
+          status: 'ACTIVO',
+          total_weight_kg: newContract.total_weight_kg ? Number(newContract.total_weight_kg) : 0,
+          total_volume_m3: newContract.total_volume_m3 ? Number(newContract.total_volume_m3) : 0
         }])
         .select()
         .single()
@@ -120,7 +126,7 @@ export default function ContratosPage() {
 
       toast.success('Contrato creado exitosamente')
       setIsModalOpen(false)
-      setNewContract({ correlative: '', type: 'CONTRATO', client_id: '', parent_contract_id: '', budget_pen: '' })
+      setNewContract({ correlative: '', type: 'CONTRATO', client_id: '', parent_contract_id: '', budget_pen: '', total_weight_kg: '', total_volume_m3: '' })
       fetchContracts()
     } catch (error: any) {
       toast.error(error.message)
@@ -130,14 +136,7 @@ export default function ContratosPage() {
   }
 
   const downloadTemplate = () => {
-    const ws = XLSX.utils.json_to_sheet([
-      { Tipo: 'CONTRATO', Codigo: '16584', CodigoMadre: '', Presupuesto: 5000 },
-      { Tipo: 'SUBCONTRATO', Codigo: 'S001', CodigoMadre: '16584', Presupuesto: 1000 },
-      { Tipo: 'ERROR', Codigo: 'E001', CodigoMadre: '16584', Presupuesto: 0 }
-    ])
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Plantilla')
-    XLSX.writeFile(wb, 'plantilla_carga_contratos.xlsx')
+    window.open('/api/templates/contratos', '_blank')
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -165,7 +164,9 @@ export default function ContratosPage() {
             const tipo = row.Tipo?.toUpperCase()
             let codigo = String(row.Codigo || '').trim()
             const codigoMadre = String(row.CodigoMadre || '').trim()
-            const presupuesto = Number(row.Presupuesto || 0)
+            const presupuesto = Number(row.Presupuesto_Soles || row.Presupuesto || 0)
+            const peso = Number(row.Peso_Total_KG || 0)
+            const volumen = Number(row.Volumen_Total_M3 || 0)
 
             if (!codigo) continue
 
@@ -188,7 +189,9 @@ export default function ContratosPage() {
                 code: finalCode,
                 type: tipo,
                 parent_contract_id: parentId,
-                status: 'ACTIVO'
+                status: 'ACTIVO',
+                total_weight_kg: peso,
+                total_volume_m3: volumen
               }])
               .select()
               .single()
@@ -291,6 +294,7 @@ export default function ContratosPage() {
               <tr>
                 <th className="px-6 py-4 font-semibold">Código / Jerarquía</th>
                 <th className="px-6 py-4 font-semibold">Tipo</th>
+                <th className="px-6 py-4 font-semibold">Carga</th>
                 <th className="px-6 py-4 font-semibold">Partida de Transporte (S/)</th>
                 <th className="px-6 py-4 font-semibold">Saldo Disponible (S/)</th>
                 <th className="px-6 py-4 font-semibold">Estado</th>
@@ -322,6 +326,10 @@ export default function ContratosPage() {
                     </td>
                     <td className="px-6 py-4">
                       {getTypeBadge(contract.type)}
+                    </td>
+                    <td className="px-6 py-4 text-xs text-slate-500">
+                      {contract.total_weight_kg ? `${contract.total_weight_kg} KG` : '0 KG'}<br/>
+                      {contract.total_volume_m3 ? `${contract.total_volume_m3} M3` : '0 M3'}
                     </td>
                     <td className="px-6 py-4 font-medium text-slate-700">
                       S/ {contract.budget?.allocated_pen?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}
@@ -409,6 +417,33 @@ export default function ContratosPage() {
             <p className="text-xs text-slate-500 mt-1">
               Esta partida se reservará y consumirá automáticamente al planificar rutas. Puede añadir saldo más adelante.
             </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Peso Total (KG)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={newContract.total_weight_kg}
+                onChange={(e) => setNewContract({...newContract, total_weight_kg: e.target.value})}
+                className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-900 transition-all"
+                placeholder="Ej. 15000 (Opcional)"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Volumen Total (M3)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={newContract.total_volume_m3}
+                onChange={(e) => setNewContract({...newContract, total_volume_m3: e.target.value})}
+                className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-900 transition-all"
+                placeholder="Ej. 35.5 (Opcional)"
+              />
+            </div>
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">

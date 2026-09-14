@@ -17,6 +17,7 @@ interface TransportRequest {
   time_window: string
   cargo_description: string
   estimated_weight: number
+  estimated_volume: number
   status: string
   request_type: string
   created_at: string
@@ -74,7 +75,8 @@ export default function SolicitudesPage() {
     time_window: '',
     contract_id: '',
     cargo_description: '',
-    estimated_weight: ''
+    estimated_weight: '',
+    estimated_volume: ''
   })
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
 
@@ -195,7 +197,8 @@ export default function SolicitudesPage() {
       time_window: request.time_window || '',
       contract_id: request.contract_id || '',
       cargo_description: request.cargo_description || '',
-      estimated_weight: request.estimated_weight ? request.estimated_weight.toString() : ''
+      estimated_weight: request.estimated_weight ? request.estimated_weight.toString() : '',
+      estimated_volume: request.estimated_volume ? request.estimated_volume.toString() : ''
     })
 
     setEditingRequestId(request.id)
@@ -235,6 +238,7 @@ export default function SolicitudesPage() {
         : newRequest.department;
 
       const totalWeight = newRequest.estimated_weight ? parseFloat(newRequest.estimated_weight) : 0;
+      const totalVolume = newRequest.estimated_volume ? parseFloat(newRequest.estimated_volume) : 0;
 
       if (editingRequestId) {
         const { error: updateError } = await supabase
@@ -254,6 +258,7 @@ export default function SolicitudesPage() {
             time_window: newRequest.time_window,
             cargo_description: newRequest.cargo_description,
             estimated_weight: totalWeight,
+            estimated_volume: totalVolume,
             request_type: newRequest.request_type,
             contract_id: newRequest.contract_id || null
           })
@@ -280,6 +285,7 @@ export default function SolicitudesPage() {
             time_window: newRequest.time_window,
             cargo_description: newRequest.cargo_description,
             estimated_weight: totalWeight,
+            estimated_volume: totalVolume,
             request_type: newRequest.request_type,
             contract_id: newRequest.contract_id || null,
             status: 'PENDIENTE DE APROBACIÓN'
@@ -305,7 +311,8 @@ export default function SolicitudesPage() {
         time_window: '',
         contract_id: '',
         cargo_description: '',
-        estimated_weight: ''
+        estimated_weight: '',
+        estimated_volume: ''
       }))
       fetchRequests()
     } catch (error: any) {
@@ -419,7 +426,8 @@ export default function SolicitudesPage() {
                 time_window: '',
                 contract_id: '',
                 cargo_description: '',
-                estimated_weight: ''
+                estimated_weight: '',
+                estimated_volume: ''
               })
               setIsModalOpen(true)
             }}
@@ -544,7 +552,7 @@ export default function SolicitudesPage() {
                         )}
                         {req.estimated_weight > 0 && (
                           <div className="text-[10px] text-slate-400 font-medium">
-                            {req.estimated_weight} KG Estimados
+                            {req.estimated_weight} KG | {req.estimated_volume} M3 Estimados
                           </div>
                         )}
                       </div>
@@ -898,15 +906,26 @@ export default function SolicitudesPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Peso Estimado Total (kg) - Opcional</label>
-                <input 
-                  type="number" 
-                  min="0"
-                  step="0.01"
-                  placeholder="Ej. 2500"
-                  className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
-                  value={newRequest.estimated_weight}
-                  onChange={(e) => setNewRequest({...newRequest, estimated_weight: e.target.value})}
-                />
+                <div className="flex gap-2">
+                  <input 
+                    type="number" 
+                    min="0"
+                    step="0.01"
+                    placeholder="Peso (KG)"
+                    className="w-1/2 px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={newRequest.estimated_weight}
+                    onChange={(e) => setNewRequest({...newRequest, estimated_weight: e.target.value})}
+                  />
+                  <input 
+                    type="number" 
+                    min="0"
+                    step="0.01"
+                    placeholder="Volumen (M3)"
+                    className="w-1/2 px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={newRequest.estimated_volume}
+                    onChange={(e) => setNewRequest({...newRequest, estimated_volume: e.target.value})}
+                  />
+                </div>
               </div>
             </div>
           </div>
