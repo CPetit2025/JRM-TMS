@@ -37,10 +37,10 @@ export async function GET() {
       'Saldo inicial de partida',
       'Peso en KG (Opcional)',
       'Volumen en M3 (Opcional)',
-      'Ej. LIMA',
-      'Ej. LIMA',
-      'Ej. ATE',
-      'Dirección exacta (Opcional)'
+      'Ej. LIMA (Obligatorio)',
+      'Ej. LIMA (Obligatorio)',
+      'Ej. ATE (Obligatorio)',
+      'Dirección exacta (Obligatorio)'
     ];
     worksheet.addRow(instructions);
     

@@ -205,6 +205,10 @@ export default function ContratosPage() {
               } else {
                 throw new Error(`Contrato Madre "${codigoMadre}" no existe en base de datos.`)
               }
+            } else if (tipo === 'CONTRATO') {
+              if (!dep || !prov || !dist || !dir) {
+                throw new Error(`Los campos de destino (Departamento, Provincia, Distrito, Dirección) son obligatorios para un CONTRATO principal.`)
+              }
             }
 
             // Insert contract
@@ -508,45 +512,49 @@ export default function ContratosPage() {
               <h3 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Destino / Proyecto</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Dirección Exacta</label>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Dirección Exacta <span className="text-red-500">*</span></label>
                   <input
                     type="text"
+                    required
                     value={newContract.destination_address}
                     onChange={(e) => setNewContract({...newContract, destination_address: e.target.value})}
                     className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-slate-50"
-                    placeholder="Ej. Av. Industrial 123 (Opcional)"
+                    placeholder="Ej. Av. Industrial 123"
                   />
                 </div>
                 <div className="grid grid-cols-1 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Departamento</label>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Departamento <span className="text-red-500">*</span></label>
                   <input
                     type="text"
+                    required
                     value={newContract.destination_department}
                     onChange={(e) => setNewContract({...newContract, destination_department: e.target.value.toUpperCase()})}
                     className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-slate-50"
-                    placeholder="Ej. LIMA (Opcional)"
+                    placeholder="Ej. LIMA"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Provincia</label>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Provincia <span className="text-red-500">*</span></label>
                   <input
                     type="text"
+                    required
                     value={newContract.destination_province}
                     onChange={(e) => setNewContract({...newContract, destination_province: e.target.value.toUpperCase()})}
                     className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-slate-50"
-                    placeholder="Ej. LIMA (Opcional)"
+                    placeholder="Ej. LIMA"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Distrito</label>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Distrito <span className="text-red-500">*</span></label>
                   <input
                     type="text"
+                    required
                     value={newContract.destination_district}
                     onChange={(e) => setNewContract({...newContract, destination_district: e.target.value.toUpperCase()})}
                     className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-slate-50"
-                    placeholder="Ej. ATE (Opcional)"
+                    placeholder="Ej. ATE"
                   />
                 </div>
                 </div>
