@@ -280,6 +280,18 @@ export default function DespachoPage() {
       return
     }
 
+    // Validar saldo del contrato de las solicitudes seleccionadas
+    const selectedReqsFull = pendingRequests.filter(pr => newDispatch.selected_requests.some(sr => sr.id === pr.id))
+    for (const req of selectedReqsFull) {
+      if (req.contracts && req.contracts.contract_budgets && req.contracts.contract_budgets.length > 0) {
+        const balance = req.contracts.contract_budgets[0].balance_pen || 0;
+        if (balance <= 0) {
+          toast.error(`⚠️ ALERTA DE PRESUPUESTO: La solicitud ${req.request_number} pertenece al contrato ${req.contracts.code} que no tiene saldo disponible (S/ ${balance}). No se puede despachar sin ampliación de presupuesto.`, { duration: 8000 })
+          return
+        }
+      }
+    }
+
     setIsSubmitting(true)
 
     try {

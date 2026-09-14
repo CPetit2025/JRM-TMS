@@ -75,17 +75,14 @@ export function Sidebar() {
           )}
 
           {/* Operación Logística */}
-          {(hasPermission('despacho') || hasPermission('monitoreo') || hasPermission('servicios-realizados') || hasPermission('operaciones-live')) && (
+          {(hasPermission('despacho') || hasPermission('monitoreo') || hasPermission('torre-control') || hasPermission('operaciones-live')) && (
             <>
               <div className="mt-8 mb-3 px-4">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Operación Logística</p>
               </div>
               {hasPermission('despacho') && <NavItem href="/despacho" icon={Truck} label="Despacho" />}
               {hasPermission('monitoreo') && <NavItem href="/monitoreo" icon={MapIcon} label="Monitoreo GPS" />}
-              {(hasPermission('monitoreo') || hasPermission('operaciones-live')) && <NavItem href="/operaciones/live" icon={Clock} label="Tareo en Vivo" />}
-              {(hasPermission('monitoreo') || hasPermission('operaciones-revision')) && <NavItem href="/operaciones/revision" icon={CheckCircle} label="Revisión de Tareos" />}
-              {(hasPermission('monitoreo') || hasPermission('operaciones-revision')) && <NavItem href="/operaciones/tareo-automatico" icon={Settings2} label="Tareo Automático" />}
-              {hasPermission('servicios-realizados') && <NavItem href="/servicios-realizados" icon={ArchiveRestore} label="Servicios Realizados" />}
+              {(hasPermission('monitoreo') || hasPermission('despacho') || hasPermission('torre-control')) && <NavItem href="/torre-control" icon={Clock} label="Torre de Control" />}
             </>
           )}
 
