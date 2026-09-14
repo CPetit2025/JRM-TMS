@@ -23,6 +23,7 @@ interface TransportRequest {
   created_at: string
   contract_id?: string
   service_cost?: number
+  purchase_order?: string
 }
 
 interface WorkOrder {
@@ -40,6 +41,10 @@ interface Contract {
   type: string
   status: string
   balance_pen: number
+  destination_address?: string
+  destination_department?: string
+  destination_province?: string
+  destination_district?: string
 }
 
 export default function SolicitudesPage() {
@@ -76,7 +81,8 @@ export default function SolicitudesPage() {
     contract_id: '',
     cargo_description: '',
     estimated_weight: '',
-    estimated_volume: ''
+    estimated_volume: '',
+    purchase_order: ''
   })
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
 
@@ -152,6 +158,7 @@ export default function SolicitudesPage() {
         .from('contracts')
         .select(`
           id, code, type, status,
+          destination_address, destination_department, destination_province, destination_district,
           contract_budgets (
             balance_pen
           )
@@ -165,6 +172,10 @@ export default function SolicitudesPage() {
         code: c.code,
         type: c.type,
         status: c.status,
+        destination_address: c.destination_address,
+        destination_department: c.destination_department,
+        destination_province: c.destination_province,
+        destination_district: c.destination_district,
         balance_pen: Number(c.contract_budgets?.[0]?.balance_pen) || 0
       }))
       setContracts(formatted)
@@ -174,8 +185,18 @@ export default function SolicitudesPage() {
   }
 
   const handleContractChange = (contractId: string) => {
+    const selectedContract = contracts.find(c => c.id === contractId)
     setNewRequest(prev => {
-      const updated = { ...prev, contract_id: contractId }
+      let updated = { ...prev, contract_id: contractId }
+      
+      // Si es despacho, heredamos la dirección del contrato al destino
+      if (prev.request_type === 'DESPACHO' && selectedContract) {
+        updated.delivery_address = selectedContract.destination_address || ''
+        updated.delivery_department = selectedContract.destination_department || ''
+        updated.delivery_province = selectedContract.destination_province || ''
+        updated.delivery_district = selectedContract.destination_district || ''
+      }
+      
       return updated
     })
   }
@@ -198,7 +219,8 @@ export default function SolicitudesPage() {
       contract_id: request.contract_id || '',
       cargo_description: request.cargo_description || '',
       estimated_weight: request.estimated_weight ? request.estimated_weight.toString() : '',
-      estimated_volume: request.estimated_volume ? request.estimated_volume.toString() : ''
+      estimated_volume: request.estimated_volume ? request.estimated_volume.toString() : '',
+      purchase_order: request.purchase_order || ''
     })
 
     setEditingRequestId(request.id)
@@ -260,7 +282,8 @@ export default function SolicitudesPage() {
             estimated_weight: totalWeight,
             estimated_volume: totalVolume,
             request_type: newRequest.request_type,
-            contract_id: newRequest.contract_id || null
+            contract_id: newRequest.contract_id || null,
+            purchase_order: newRequest.purchase_order || null
           })
           .eq('id', editingRequestId)
           
@@ -288,6 +311,7 @@ export default function SolicitudesPage() {
             estimated_volume: totalVolume,
             request_type: newRequest.request_type,
             contract_id: newRequest.contract_id || null,
+            purchase_order: newRequest.purchase_order || null,
             status: 'PENDIENTE DE APROBACIÓN'
           }])
 
@@ -312,7 +336,8 @@ export default function SolicitudesPage() {
         contract_id: '',
         cargo_description: '',
         estimated_weight: '',
-        estimated_volume: ''
+        estimated_volume: '',
+        purchase_order: ''
       }))
       fetchRequests()
     } catch (error: any) {
@@ -427,7 +452,8 @@ export default function SolicitudesPage() {
                 contract_id: '',
                 cargo_description: '',
                 estimated_weight: '',
-                estimated_volume: ''
+                estimated_volume: '',
+                purchase_order: ''
               })
               setIsModalOpen(true)
             }}
@@ -547,7 +573,7 @@ export default function SolicitudesPage() {
                         </div>
                         {req.cargo_description && (
                           <div className="text-[10px] text-slate-400 font-medium truncate" title={req.cargo_description}>
-                            Glosa: {req.cargo_description}
+                            Glosa: {req.cargo_description} {req.purchase_order ? `| OC/OS: ${req.purchase_order}` : ''}
                           </div>
                         )}
                         {req.estimated_weight > 0 && (
@@ -744,7 +770,18 @@ export default function SolicitudesPage() {
                   name="request_type" 
                   value="DESPACHO"
                   checked={newRequest.request_type === 'DESPACHO'}
-                  onChange={(e) => setNewRequest({...newRequest, request_type: e.target.value, pickup_address: 'Planta Chilca', delivery_address: ''})}
+                  onChange={(e) => {
+                    const selC = contracts.find(c => c.id === newRequest.contract_id)
+                    setNewRequest({
+                      ...newRequest, 
+                      request_type: e.target.value, 
+                      pickup_address: 'Planta Chilca', 
+                      delivery_address: selC?.destination_address || '',
+                      delivery_department: selC?.destination_department || '',
+                      delivery_province: selC?.destination_province || '',
+                      delivery_district: selC?.destination_district || ''
+                    })
+                  }}
                   className="w-4 h-4 text-[#002855] focus:ring-[#002855]"
                 />
                 <span className="text-sm font-medium text-slate-700">Despacho (Salida de Planta)</span>
@@ -755,7 +792,7 @@ export default function SolicitudesPage() {
                   name="request_type" 
                   value="RECOJO"
                   checked={newRequest.request_type === 'RECOJO'}
-                  onChange={(e) => setNewRequest({...newRequest, request_type: e.target.value, pickup_address: '', delivery_address: 'Planta Chilca'})}
+                  onChange={(e) => setNewRequest({...newRequest, request_type: e.target.value, pickup_address: '', pickup_department: '', pickup_province: '', pickup_district: '', delivery_address: 'Planta Chilca', delivery_department: 'LIMA', delivery_province: 'CAÑETE', delivery_district: 'CHILCA'})}
                   className="w-4 h-4 text-[#002855] focus:ring-[#002855]"
                 />
                 <span className="text-sm font-medium text-slate-700">Recojo (Retorno a Planta)</span>
@@ -766,7 +803,7 @@ export default function SolicitudesPage() {
                   name="request_type" 
                   value="TRASLADO"
                   checked={newRequest.request_type === 'TRASLADO'}
-                  onChange={(e) => setNewRequest({...newRequest, request_type: e.target.value, pickup_address: '', delivery_address: ''})}
+                  onChange={(e) => setNewRequest({...newRequest, request_type: e.target.value, pickup_address: '', pickup_department: '', pickup_province: '', pickup_district: '', delivery_address: '', delivery_department: '', delivery_province: '', delivery_district: ''})}
                   className="w-4 h-4 text-[#002855] focus:ring-[#002855]"
                 />
                 <span className="text-sm font-medium text-slate-700">Traslado (Punto a Punto)</span>
@@ -902,6 +939,16 @@ export default function SolicitudesPage() {
                   className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none resize-none"
                   value={newRequest.cargo_description}
                   onChange={(e) => setNewRequest({...newRequest, cargo_description: e.target.value})}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Orden de Compra / Orden de Servicio (Opcional)</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. OC-2023-001"
+                  className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
+                  value={newRequest.purchase_order || ''}
+                  onChange={(e) => setNewRequest({...newRequest, purchase_order: e.target.value})}
                 />
               </div>
               <div>
