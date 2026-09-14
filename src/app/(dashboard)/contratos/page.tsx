@@ -16,6 +16,9 @@ interface Contract {
   created_at: string
   total_weight_kg?: number
   total_volume_m3?: number
+  destination_department?: string
+  destination_province?: string
+  destination_district?: string
   budget?: {
     allocated_usd: number
     allocated_pen: number
@@ -41,7 +44,10 @@ export default function ContratosPage() {
     parent_contract_id: '',
     budget_pen: '',
     total_weight_kg: '',
-    total_volume_m3: ''
+    total_volume_m3: '',
+    destination_department: '',
+    destination_province: '',
+    destination_district: ''
   })
 
   useEffect(() => {
@@ -103,7 +109,10 @@ export default function ContratosPage() {
           client_id: newContract.client_id || null,
           status: 'ACTIVO',
           total_weight_kg: newContract.total_weight_kg ? Number(newContract.total_weight_kg) : 0,
-          total_volume_m3: newContract.total_volume_m3 ? Number(newContract.total_volume_m3) : 0
+          total_volume_m3: newContract.total_volume_m3 ? Number(newContract.total_volume_m3) : 0,
+          destination_department: newContract.destination_department,
+          destination_province: newContract.destination_province,
+          destination_district: newContract.destination_district
         }])
         .select()
         .single()
@@ -126,7 +135,7 @@ export default function ContratosPage() {
 
       toast.success('Contrato creado exitosamente')
       setIsModalOpen(false)
-      setNewContract({ correlative: '', type: 'CONTRATO', client_id: '', parent_contract_id: '', budget_pen: '', total_weight_kg: '', total_volume_m3: '' })
+      setNewContract({ correlative: '', type: 'CONTRATO', client_id: '', parent_contract_id: '', budget_pen: '', total_weight_kg: '', total_volume_m3: '', destination_department: '', destination_province: '', destination_district: '' })
       fetchContracts()
     } catch (error: any) {
       toast.error(error.message)
@@ -167,6 +176,9 @@ export default function ContratosPage() {
             const presupuesto = Number(row.Presupuesto_Soles || row.Presupuesto || 0)
             const peso = Number(row.Peso_Total_KG || 0)
             const volumen = Number(row.Volumen_Total_M3 || 0)
+            const dep = String(row.Destino_Departamento || '').trim().toUpperCase()
+            const prov = String(row.Destino_Provincia || '').trim().toUpperCase()
+            const dist = String(row.Destino_Distrito || '').trim().toUpperCase()
 
             if (!codigo) continue
 
@@ -191,7 +203,10 @@ export default function ContratosPage() {
                 parent_contract_id: parentId,
                 status: 'ACTIVO',
                 total_weight_kg: peso,
-                total_volume_m3: volumen
+                total_volume_m3: volumen,
+                destination_department: dep || null,
+                destination_province: prov || null,
+                destination_district: dist || null
               }])
               .select()
               .single()
@@ -325,7 +340,14 @@ export default function ContratosPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      {getTypeBadge(contract.type)}
+                      <div className="flex flex-col gap-1">
+                        {getTypeBadge(contract.type)}
+                        {contract.destination_district && (
+                          <span className="text-[10px] text-slate-500 font-medium">
+                            📍 {contract.destination_district}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-xs text-slate-500">
                       {contract.total_weight_kg ? `${contract.total_weight_kg} KG` : '0 KG'}<br/>
@@ -442,6 +464,39 @@ export default function ContratosPage() {
                 onChange={(e) => setNewContract({...newContract, total_volume_m3: e.target.value})}
                 className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-900 transition-all"
                 placeholder="Ej. 35.5 (Opcional)"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Destino: Departamento</label>
+              <input
+                type="text"
+                value={newContract.destination_department}
+                onChange={(e) => setNewContract({...newContract, destination_department: e.target.value.toUpperCase()})}
+                className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-900 transition-all text-sm"
+                placeholder="Ej. LIMA (Opcional)"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Destino: Provincia</label>
+              <input
+                type="text"
+                value={newContract.destination_province}
+                onChange={(e) => setNewContract({...newContract, destination_province: e.target.value.toUpperCase()})}
+                className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-900 transition-all text-sm"
+                placeholder="Ej. LIMA (Opcional)"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Destino: Distrito</label>
+              <input
+                type="text"
+                value={newContract.destination_district}
+                onChange={(e) => setNewContract({...newContract, destination_district: e.target.value.toUpperCase()})}
+                className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-900 transition-all text-sm"
+                placeholder="Ej. ATE (Opcional)"
               />
             </div>
           </div>

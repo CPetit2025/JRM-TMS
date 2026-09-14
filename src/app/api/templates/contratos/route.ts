@@ -14,6 +14,9 @@ export async function GET() {
       { header: 'Presupuesto_Soles', key: 'presupuesto', width: 20 },
       { header: 'Peso_Total_KG', key: 'peso', width: 18 },
       { header: 'Volumen_Total_M3', key: 'volumen', width: 18 },
+      { header: 'Destino_Departamento', key: 'dep', width: 22 },
+      { header: 'Destino_Provincia', key: 'prov', width: 22 },
+      { header: 'Destino_Distrito', key: 'dist', width: 22 },
     ];
 
     // Style the header row
@@ -32,7 +35,10 @@ export async function GET() {
       'Dejar vacío para CONTRATO',
       'Saldo inicial de partida',
       'Peso en KG (Opcional)',
-      'Volumen en M3 (Opcional)'
+      'Volumen en M3 (Opcional)',
+      'Ej. LIMA',
+      'Ej. LIMA',
+      'Ej. ATE'
     ];
     worksheet.addRow(instructions);
     
@@ -51,7 +57,10 @@ export async function GET() {
       codigoMadre: '',
       presupuesto: 5000,
       peso: 10000,
-      volumen: 25
+      volumen: 25,
+      dep: 'LIMA',
+      prov: 'LIMA',
+      dist: 'LURIN'
     });
     worksheet.addRow({
       tipo: 'SUBCONTRATO',
@@ -59,7 +68,10 @@ export async function GET() {
       codigoMadre: '16584',
       presupuesto: 1000,
       peso: 500,
-      volumen: 2.5
+      volumen: 2.5,
+      dep: 'CUSCO',
+      prov: 'CUSCO',
+      dist: 'WANCHAQ'
     });
 
     // Add Data Validation for "Tipo" column
