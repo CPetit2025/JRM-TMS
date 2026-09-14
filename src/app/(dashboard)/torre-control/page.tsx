@@ -43,10 +43,14 @@ export default function TorreControlPage() {
   const [loading, setLoading] = useState(true)
   const [selectedDispatch, setSelectedDispatch] = useState<Dispatch | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState('ACTIVOS')
+  const [dateFilter, setDateFilter] = useState('')
 
   useEffect(() => {
     fetchDispatches()
+  }, [statusFilter, dateFilter])
 
+  useEffect(() => {
     const channel = supabase.channel('torre_control_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches' }, () => {
         fetchDispatches()
@@ -56,11 +60,12 @@ export default function TorreControlPage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [statusFilter, dateFilter])
 
   const fetchDispatches = async () => {
     try {
-      const { data, error } = await supabase
+      setLoading(true)
+      let query = supabase
         .from('dispatches')
         .select(`
           id, dispatch_number, driver_name, vehicle_plate, status, estimated_distance_km, scheduled_departure,
@@ -76,7 +81,21 @@ export default function TorreControlPage() {
           )
         `)
         .order('scheduled_departure', { ascending: false })
-        .limit(100)
+        .limit(200)
+
+      if (statusFilter === 'ACTIVOS') {
+        query = query.not('status', 'in', '("LIQUIDADO","ENTREGADO")')
+      } else if (statusFilter === 'HISTORIAL') {
+        query = query.in('status', ['LIQUIDADO', 'ENTREGADO'])
+      } else if (statusFilter !== 'TODOS') {
+        query = query.eq('status', statusFilter)
+      }
+
+      if (dateFilter) {
+        query = query.gte('scheduled_departure', `${dateFilter}T00:00:00`).lte('scheduled_departure', `${dateFilter}T23:59:59`)
+      }
+
+      const { data, error } = await query
 
       if (error) throw error
       setDispatches((data || []) as any)
@@ -114,20 +133,39 @@ export default function TorreControlPage() {
 
   return (
     <div className="space-y-6 w-full mx-auto max-w-7xl p-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Torre de Control</h1>
           <p className="text-sm text-slate-500 mt-1">Visualización lineal y dinámica de los servicios programados</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="date"
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            className="px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none text-slate-600 bg-slate-50"
+            title="Filtrar por fecha programada"
+          />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none text-slate-600 bg-slate-50"
+          >
+            <option value="ACTIVOS">Activos (En Proceso)</option>
+            <option value="HISTORIAL">Historial (Liquidados/Entregados)</option>
+            <option value="TODOS">Todos los Estados</option>
+            <option value="PROGRAMADO">Solo Programados</option>
+            <option value="EN RUTA">Solo En Ruta</option>
+          </select>
+
+          <div className="relative flex-1 min-w-[250px]">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input 
               type="text" 
               placeholder="Buscar placa, conductor o N°..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none w-64 md:w-80 transition-all bg-slate-50"
+              className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none transition-all bg-slate-50"
             />
           </div>
         </div>
