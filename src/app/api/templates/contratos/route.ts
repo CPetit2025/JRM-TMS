@@ -17,6 +17,7 @@ export async function GET() {
       { header: 'Destino_Departamento', key: 'dep', width: 22 },
       { header: 'Destino_Provincia', key: 'prov', width: 22 },
       { header: 'Destino_Distrito', key: 'dist', width: 22 },
+      { header: 'Destino_Direccion', key: 'dir', width: 35 },
     ];
 
     // Style the header row
@@ -38,7 +39,8 @@ export async function GET() {
       'Volumen en M3 (Opcional)',
       'Ej. LIMA',
       'Ej. LIMA',
-      'Ej. ATE'
+      'Ej. ATE',
+      'Dirección exacta (Opcional)'
     ];
     worksheet.addRow(instructions);
     
@@ -60,7 +62,8 @@ export async function GET() {
       volumen: 25,
       dep: 'LIMA',
       prov: 'LIMA',
-      dist: 'LURIN'
+      dist: 'LURIN',
+      dir: 'Av. Industrial 123'
     });
     worksheet.addRow({
       tipo: 'SUBCONTRATO',
@@ -71,7 +74,8 @@ export async function GET() {
       volumen: 2.5,
       dep: 'CUSCO',
       prov: 'CUSCO',
-      dist: 'WANCHAQ'
+      dist: 'WANCHAQ',
+      dir: 'Calle Principal 456'
     });
 
     // Add Data Validation for "Tipo" column

@@ -19,6 +19,7 @@ interface Contract {
   destination_department?: string
   destination_province?: string
   destination_district?: string
+  destination_address?: string
   budget?: {
     allocated_usd: number
     allocated_pen: number
@@ -47,7 +48,8 @@ export default function ContratosPage() {
     total_volume_m3: '',
     destination_department: '',
     destination_province: '',
-    destination_district: ''
+    destination_district: '',
+    destination_address: ''
   })
 
   useEffect(() => {
@@ -112,7 +114,8 @@ export default function ContratosPage() {
           total_volume_m3: newContract.total_volume_m3 ? Number(newContract.total_volume_m3) : 0,
           destination_department: newContract.destination_department,
           destination_province: newContract.destination_province,
-          destination_district: newContract.destination_district
+          destination_district: newContract.destination_district,
+          destination_address: newContract.destination_address
         }])
         .select()
         .single()
@@ -135,7 +138,7 @@ export default function ContratosPage() {
 
       toast.success('Contrato creado exitosamente')
       setIsModalOpen(false)
-      setNewContract({ correlative: '', type: 'CONTRATO', client_id: '', parent_contract_id: '', budget_pen: '', total_weight_kg: '', total_volume_m3: '', destination_department: '', destination_province: '', destination_district: '' })
+      setNewContract({ correlative: '', type: 'CONTRATO', client_id: '', parent_contract_id: '', budget_pen: '', total_weight_kg: '', total_volume_m3: '', destination_department: '', destination_province: '', destination_district: '', destination_address: '' })
       fetchContracts()
     } catch (error: any) {
       toast.error(error.message)
@@ -179,6 +182,7 @@ export default function ContratosPage() {
             const dep = String(row.Destino_Departamento || '').trim().toUpperCase()
             const prov = String(row.Destino_Provincia || '').trim().toUpperCase()
             const dist = String(row.Destino_Distrito || '').trim().toUpperCase()
+            const dir = String(row.Destino_Direccion || '').trim()
 
             if (!codigo) continue
 
@@ -206,7 +210,8 @@ export default function ContratosPage() {
                 total_volume_m3: volumen,
                 destination_department: dep || null,
                 destination_province: prov || null,
-                destination_district: dist || null
+                destination_district: dist || null,
+                destination_address: dir || null
               }])
               .select()
               .single()
@@ -480,9 +485,19 @@ export default function ContratosPage() {
             <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
               <h3 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Destino / Proyecto</h3>
               <div className="space-y-4">
-
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Departamento</label>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Dirección Exacta</label>
+                  <input
+                    type="text"
+                    value={newContract.destination_address}
+                    onChange={(e) => setNewContract({...newContract, destination_address: e.target.value})}
+                    className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-slate-50"
+                    placeholder="Ej. Av. Industrial 123 (Opcional)"
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Departamento</label>
                   <input
                     type="text"
                     value={newContract.destination_department}
@@ -511,6 +526,7 @@ export default function ContratosPage() {
                     className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-slate-50"
                     placeholder="Ej. ATE (Opcional)"
                   />
+                </div>
                 </div>
               </div>
             </div>
