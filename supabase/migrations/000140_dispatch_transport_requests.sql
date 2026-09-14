@@ -1,3 +1,16 @@
+CREATE TABLE IF NOT EXISTS public.transport_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_number VARCHAR(50) UNIQUE NOT NULL,
+    requester_name VARCHAR(200),
+    pickup_address TEXT,
+    delivery_address TEXT,
+    request_type VARCHAR(50) DEFAULT 'DESPACHO',
+    status VARCHAR(50) DEFAULT 'PENDIENTE',
+    required_date DATE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Crear tabla intermedia para vincular despachos (unidades) a solicitudes
 CREATE TABLE IF NOT EXISTS public.dispatch_requests (
     dispatch_id UUID NOT NULL REFERENCES public.dispatches(id) ON DELETE CASCADE,

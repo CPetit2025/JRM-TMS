@@ -21,7 +21,7 @@ export default function VehicleFailuresPage() {
     setLoading(true)
     try {
       const { data, error } = await supabase
-        .from('vehicle_maintenance_records')
+        .from('vehicle_failures')
         .select('*')
         .order('created_at', { ascending: false })
       
@@ -38,7 +38,7 @@ export default function VehicleFailuresPage() {
     setStatusUpdating(true)
     try {
       const { error } = await supabase
-        .from('vehicle_maintenance_records')
+        .from('vehicle_failures')
         .update({ status: newStatus })
         .eq('id', id)
 
@@ -124,7 +124,7 @@ export default function VehicleFailuresPage() {
                     <td className="px-6 py-3 font-bold text-[#002855]">{record.vehicle_plate}</td>
                     <td className="px-6 py-3">
                       <span className="text-xs font-semibold bg-slate-100 px-2 py-1 rounded">
-                        {record.record_type.replace('_', ' ')}
+                        Falla Reportada
                       </span>
                     </td>
                     <td className="px-6 py-3 text-slate-600 max-w-xs truncate" title={record.description}>

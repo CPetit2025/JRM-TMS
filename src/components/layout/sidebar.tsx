@@ -69,7 +69,7 @@ export function Sidebar() {
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Generación de Demanda</p>
               </div>
               {hasPermission('clientes') && <NavItem href="/clientes" icon={Users} label="Clientes" />}
-              {hasPermission('ot') && <NavItem href="/ot" icon={FileText} label="Órdenes de Trabajo" />}
+              {hasPermission('ot') && <NavItem href="/contratos" icon={FileText} label="Contratos y OTs" />}
               {hasPermission('solicitudes') && <NavItem href="/solicitudes" icon={Send} label="Solicitudes" />}
             </>
           )}
@@ -117,7 +117,7 @@ export function Sidebar() {
           )}
 
           {/* Maestros y Costos */}
-          {(hasPermission('flota') || hasPermission('tarifas') || hasPermission('productos')) && (
+          {(hasPermission('flota') || hasPermission('tarifas')) && (
             <>
               <div className="mt-8 mb-3 px-4">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Maestros y Costos</p>
@@ -125,7 +125,6 @@ export function Sidebar() {
               {hasPermission('flota') && <NavItem href="/flota" icon={MapIcon} label="Unidades y Conductores" />}
               {hasPermission('usuarios') && <NavItem href="/maestros/trabajadores" icon={Users} label="Maestro de Trabajadores" />}
               {hasPermission('tarifas') && <NavItem href="/maestros/tarifas" icon={Zap} label="Tarifas de Flete" />}
-              {hasPermission('productos') && <NavItem href="/configuracion/productos" icon={Settings} label="Maestro de Productos" />}
             </>
           )}
 

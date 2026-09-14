@@ -43,7 +43,7 @@ export default function MantenimientoDashboardPage() {
       const { data: fData } = await supabase.from('vehicle_failures').select('id').in('status', ['ABIERTO', 'EN_REVISION'])
       const { data: fRecent } = await supabase
         .from('vehicle_failures')
-        .select('*, vehicles(plate)')
+        .select('*')
         .in('status', ['ABIERTO', 'EN_REVISION'])
         .order('created_at', { ascending: false })
         .limit(5)
@@ -156,7 +156,7 @@ export default function MantenimientoDashboardPage() {
                     {recentFailures.map(f => (
                       <li key={f.id} className="p-4 hover:bg-slate-50">
                         <div className="flex justify-between mb-1">
-                          <span className="font-semibold text-slate-900">{f.vehicles?.plate}</span>
+                          <span className="font-semibold text-slate-900">{f.vehicle_plate}</span>
                           <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${f.criticality === 'CRITICA' ? 'bg-red-600 text-white animate-pulse' : 'bg-orange-100 text-orange-700'}`}>
                             {f.criticality}
                           </span>

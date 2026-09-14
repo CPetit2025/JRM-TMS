@@ -20,7 +20,7 @@ export default function MaintenanceWorkOrdersPage() {
   const [isExtracting, setIsExtracting] = useState(false)
 
   const [form, setForm] = useState({
-    vehicle_id: '',
+    vehicle_plate: '',
     source_type: 'MANUAL',
     priority: 'NORMAL',
     description: '',
@@ -80,9 +80,9 @@ export default function MaintenanceWorkOrdersPage() {
       const otCode = `MOT-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`
       
       const { error } = await supabase.from('maintenance_work_orders').insert([{
-        ot_code: otCode,
-        vehicle_id: form.vehicle_id,
-        source_type: form.source_type,
+        ot_number: otCode,
+        vehicle_plate: form.vehicle_plate,
+        type: form.source_type,
         priority: form.priority,
         description: form.description,
         workshop_name: form.workshop_name,
@@ -253,7 +253,7 @@ export default function MaintenanceWorkOrdersPage() {
       }
 
       // 3. Actualizar Historial del Vehículo y liberarlo
-      const { data: vData } = await supabase.from('vehicles').select('id, current_mileage, accumulated_cost').eq('id', selectedOt.vehicle_id).single()
+      const { data: vData } = await supabase.from('vehicles').select('id, plate, current_mileage, accumulated_cost').eq('plate', selectedOt.vehicle_plate).single()
       
       if (vData) {
         const newCost = (vData.accumulated_cost || 0) + (costNum || 0)
@@ -267,9 +267,9 @@ export default function MaintenanceWorkOrdersPage() {
 
         // Registrar trazabilidad
         await supabase.from('vehicle_maintenance_history').insert([{
-          vehicle_id: vData.id,
+          vehicle_plate: vData.plate,
           action_type: 'OT_FINALIZADA',
-          description: `OT ${selectedOt.ot_code} finalizada. Costo: S/ ${costNum || 0}`,
+          description: `OT ${selectedOt.ot_number} finalizada. Costo: S/ ${costNum || 0}`,
           mileage_at_time: vData.current_mileage
         }])
       }
@@ -334,10 +334,10 @@ export default function MaintenanceWorkOrdersPage() {
                     <tr key={ot.id} className="hover:bg-slate-50">
                       <td className="p-4">
                         <button onClick={() => openDetailsModal(ot)} className="font-bold text-[#002855] hover:underline flex items-center gap-1">
-                          {ot.ot_code}
+                          {ot.ot_number}
                         </button>
                       </td>
-                      <td className="p-4 font-semibold text-slate-900">{ot.vehicles?.plate || 'S/N'}</td>
+                      <td className="p-4 font-semibold text-slate-900">{ot.vehicle_plate}</td>
                       <td className="p-4 max-w-xs truncate" title={ot.description}>{ot.description}</td>
                       <td className="p-4">{ot.workshop_name || 'Interno'}</td>
                       <td className="p-4 text-xs">
@@ -371,9 +371,9 @@ export default function MaintenanceWorkOrdersPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Unidad</label>
-              <select required value={form.vehicle_id} onChange={e => setForm({...form, vehicle_id: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900">
+              <select required value={form.vehicle_plate} onChange={e => setForm({...form, vehicle_plate: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900">
                 <option value="">Seleccione...</option>
-                {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate}</option>)}
+                {vehicles.map(v => <option key={v.id} value={v.plate}>{v.plate}</option>)}
               </select>
             </div>
             
@@ -415,7 +415,7 @@ export default function MaintenanceWorkOrdersPage() {
       </Modal>
 
       {/* Modal Cerrar OT */}
-      <Modal isOpen={isCloseModalOpen} onClose={() => setIsCloseModalOpen(false)} title={`Finalizar OT - ${selectedOt?.ot_code}`}>
+      <Modal isOpen={isCloseModalOpen} onClose={() => setIsCloseModalOpen(false)} title={`Finalizar OT - ${selectedOt?.ot_number}`}>
         <form onSubmit={handleCloseOT} className="space-y-4">
           <div className="bg-blue-50 p-3 rounded-lg flex items-start gap-3 border border-blue-100 mb-4">
             <AlertCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
@@ -458,14 +458,14 @@ export default function MaintenanceWorkOrdersPage() {
       </Modal>
 
       {/* Modal Detalles y Costos OT */}
-      <Modal isOpen={isDetailsModalOpen} onClose={() => setIsDetailsModalOpen(false)} title={`Detalle OT - ${otDetails?.ot_code}`} maxWidth="max-w-2xl">
+      <Modal isOpen={isDetailsModalOpen} onClose={() => setIsDetailsModalOpen(false)} title={`Detalle OT - ${otDetails?.ot_number}`} maxWidth="max-w-2xl">
         {otDetails && (
           <div className="space-y-6">
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-slate-500 block text-xs">Unidad</span>
-                  <span className="font-bold text-[#002855]">{otDetails.vehicles?.plate}</span>
+                  <span className="font-bold text-[#002855]">{otDetails.vehicle_plate}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-xs">Estado</span>

@@ -1,8 +1,13 @@
-const { createClient } = require('@supabase/supabase-js')
-const supabase = createClient('https://eojfsbogysifxrlrnjvx.supabase.co', 'sb_publishable_kMujry845FSdVQa9Qi3Gpg_r1_r9tjm')
+const { createSupabaseClient } = require('./scripts/supabase-client.cjs')
+const supabase = createSupabaseClient({ useServiceRole: true })
 
 async function setupCarrier() {
   const { data, error } = await supabase.from('carriers').select('id').eq('ruc', '20123456789').limit(1)
+  if (error) {
+    console.error('Error checking carrier:', error);
+    return;
+  }
+
   if (data && data.length > 0) {
     console.log('Default carrier already exists');
     return;

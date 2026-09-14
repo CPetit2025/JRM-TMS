@@ -1,17 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
-import fs from 'fs'
-
-const envFile = fs.readFileSync('.env.local', 'utf8')
-const env = {}
-envFile.split('\n').forEach(line => {
-  const match = line.match(/^([^=]+)=(.*)$/)
-  if (match) env[match[1]] = match[2].trim().replace(/^"|"$/g, '')
-})
-
-const supabaseUrl = env['NEXT_PUBLIC_SUPABASE_URL']
-const supabaseKey = env['NEXT_PUBLIC_SUPABASE_ANON_KEY']
-
-const supabase = createClient(supabaseUrl, supabaseKey)
+const { createSupabaseClient } = require('./scripts/supabase-client.cjs')
+const supabase = createSupabaseClient()
 
 async function checkSchema() {
   console.log("Fetching work_orders with limit(1)...")

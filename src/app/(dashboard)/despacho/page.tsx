@@ -17,6 +17,14 @@ interface TransportRequest {
   status: string
   created_at: string
   required_date?: string
+  contract_id?: string
+  contracts?: {
+    code: string
+    contract_budgets?: Array<{
+      balance_pen: number
+      allocated_pen: number
+    }>
+  }
 }
 
 interface DispatchRequest {
@@ -175,6 +183,14 @@ export default function DespachoPage() {
             weight,
             volume_m3,
             quantity
+          ),
+          contracts (
+            id,
+            code,
+            contract_budgets (
+              balance_pen,
+              allocated_pen
+            )
           )
         `)
         .in('status', ['APROBADA', 'REPROGRAMADA'])
@@ -586,6 +602,18 @@ export default function DespachoPage() {
                         <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-red-400" />
                         <span className="truncate" title={req.delivery_address}>{req.delivery_address}</span>
                       </div>
+                      
+                      {/* Presupuesto Alert */}
+                      {req.contracts && req.contracts.contract_budgets && req.contracts.contract_budgets.length > 0 && (
+                        <div className={`mt-2 p-1.5 rounded border text-[10px] font-bold flex justify-between items-center ${
+                          (req.contracts.contract_budgets[0].balance_pen || 0) < 500 
+                            ? 'bg-red-50 text-red-700 border-red-200' 
+                            : 'bg-slate-50 text-slate-700 border-slate-200'
+                        }`}>
+                          <span>{req.contracts.code}</span>
+                          <span>Saldo: S/ {(req.contracts.contract_budgets[0].balance_pen || 0).toLocaleString('es-PE')}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
@@ -802,6 +830,29 @@ export default function DespachoPage() {
                           </div>
                         </div>
                       )}
+                      
+                      {/* Alerta de Presupuesto Insuficiente en Modal */}
+                      {!loadingRate && detectedFreightRate && newDispatch.selected_requests.length > 0 && (() => {
+                        // Tomamos el primer request seleccionado para ver su contrato
+                        const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
+                        const budget = firstReq?.contracts?.contract_budgets?.[0]?.balance_pen || 0
+                        
+                        if (firstReq?.contracts && budget < detectedFreightRate.rate) {
+                          return (
+                            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg flex flex-col gap-1 animate-pulse">
+                              <p className="text-xs font-bold text-red-800 flex items-center gap-1">
+                                ⚠️ ALERTA DE PRESUPUESTO
+                              </p>
+                              <p className="text-[10px] text-red-700">
+                                El contrato <strong>{firstReq.contracts.code}</strong> tiene un saldo de <strong>S/ {budget.toLocaleString('es-PE')}</strong>, 
+                                lo cual es insuficiente para cubrir la tarifa de <strong>S/ {detectedFreightRate.rate.toLocaleString('es-PE')}</strong>.
+                              </p>
+                            </div>
+                          )
+                        }
+                        return null
+                      })()}
+                      
                       {!loadingRate && !detectedFreightRate && newDispatch.vehicle_plate && newDispatch.selected_requests.length > 0 && (
                         <p className="text-xs text-slate-400 mt-1">Sin tarifa fija registrada para esta ruta.</p>
                       )}

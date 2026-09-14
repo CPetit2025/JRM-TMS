@@ -6,7 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "lint:fix": "eslint --fix",
+    "typecheck": "tsc --noEmit",
+    "check:supabase": "node scripts/check-supabase-connection.cjs",
+    "check:vercel": "node scripts/check-vercel-config.cjs",
+    "check:infra": "npm run check:supabase && npm run check:vercel"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
