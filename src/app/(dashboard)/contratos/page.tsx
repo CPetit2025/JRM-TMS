@@ -195,8 +195,8 @@ export default function ContratosPage() {
                 parentId = parent.id
                 finalCode = `${codigoMadre}-${codigo}`
 
-                // Heredar destino si es subcontrato y los campos están vacíos
-                if (tipo === 'SUBCONTRATO') {
+                // Heredar destino si los campos están vacíos
+                if (tipo === 'SUBCONTRATO' || tipo === 'ERROR') {
                   if (!dep) dep = parent.destination_department || ''
                   if (!prov) prov = parent.destination_province || ''
                   if (!dist) dist = parent.destination_district || ''
@@ -419,7 +419,7 @@ export default function ContratosPage() {
                       setNewContract({
                         ...newContract,
                         parent_contract_id: parentId,
-                        ...(parent && newContract.type === 'SUBCONTRATO' ? {
+                        ...(parent && (newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR') ? {
                           destination_department: parent.destination_department || '',
                           destination_province: parent.destination_province || '',
                           destination_district: parent.destination_district || '',
