@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { AlertTriangle, Search, Eye, Wrench, CheckCircle, Clock } from 'lucide-react'
+import { AlertTriangle, Search, Eye, Wrench, CheckCircle, Clock, Plus } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 
@@ -11,7 +11,13 @@ export default function VehicleFailuresPage() {
   const [loading, setLoading] = useState(true)
   const [selectedRecord, setSelectedRecord] = useState<any>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [statusUpdating, setStatusUpdating] = useState(false)
+  const [newFailure, setNewFailure] = useState({
+    vehicle_plate: '',
+    description: '',
+    criticality: 'MEDIA'
+  })
 
   useEffect(() => {
     fetchFailures()
@@ -61,6 +67,42 @@ export default function VehicleFailuresPage() {
     }
   }
 
+  const handleCreateFailure = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setStatusUpdating(true)
+    try {
+      if (!newFailure.vehicle_plate || !newFailure.description) {
+        throw new Error('Faltan campos obligatorios')
+      }
+
+      // Check if vehicle exists
+      const { data: vData } = await supabase.from('vehicles').select('plate').eq('plate', newFailure.vehicle_plate.toUpperCase()).single()
+      if (!vData) {
+        throw new Error('La placa ingresada no existe')
+      }
+
+      const { error } = await supabase
+        .from('vehicle_failures')
+        .insert({
+          vehicle_plate: newFailure.vehicle_plate.toUpperCase(),
+          description: newFailure.description,
+          criticality: newFailure.criticality,
+          status: 'PENDIENTE',
+          report_date: new Date().toISOString()
+        })
+      if (error) throw error
+
+      toast.success('Falla reportada correctamente')
+      setIsCreateModalOpen(false)
+      setNewFailure({ vehicle_plate: '', description: '', criticality: 'MEDIA' })
+      fetchFailures()
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setStatusUpdating(false)
+    }
+  }
+
   const getStatusBadge = (status: string) => {
     switch(status) {
       case 'PENDIENTE': return <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs font-bold">Pendiente</span>
@@ -79,6 +121,12 @@ export default function VehicleFailuresPage() {
           <h1 className="text-2xl font-bold text-slate-900">Taller y Mantenimiento</h1>
           <p className="text-slate-500">Gestión de fallas reportadas y vehículos en taller</p>
         </div>
+        <button 
+          onClick={() => setIsCreateModalOpen(true)}
+          className="bg-[#002855] text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-[#003566] transition-colors"
+        >
+          <Plus className="w-5 h-5" /> Reportar Falla (Manual)
+        </button>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200">
@@ -215,6 +263,55 @@ export default function VehicleFailuresPage() {
           </div>
         )}
       </Modal>
+
+      {/* CREATE MODAL */}
+      <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Reportar Nueva Falla (Manual)">
+        <form onSubmit={handleCreateFailure} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Placa de la Unidad</label>
+            <input 
+              type="text" 
+              required
+              value={newFailure.vehicle_plate}
+              onChange={e => setNewFailure({...newFailure, vehicle_plate: e.target.value})}
+              className="w-full uppercase p-2 border border-slate-300 rounded-lg focus:ring-[#002855]"
+              placeholder="Ej: ABC-123"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Criticidad</label>
+            <select 
+              value={newFailure.criticality}
+              onChange={e => setNewFailure({...newFailure, criticality: e.target.value})}
+              className="w-full p-2 border border-slate-300 rounded-lg focus:ring-[#002855]"
+            >
+              <option value="BAJA">Baja</option>
+              <option value="MEDIA">Media</option>
+              <option value="ALTA">Alta</option>
+              <option value="CRITICA">Crítica</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Descripción de la Falla</label>
+            <textarea 
+              required
+              rows={4}
+              value={newFailure.description}
+              onChange={e => setNewFailure({...newFailure, description: e.target.value})}
+              className="w-full p-2 border border-slate-300 rounded-lg focus:ring-[#002855]"
+              placeholder="Detalle la falla reportada..."
+            />
+          </div>
+          
+          <div className="pt-4 flex justify-end gap-2 border-t mt-4">
+            <button type="button" onClick={() => setIsCreateModalOpen(false)} className="px-4 py-2 text-slate-700 hover:bg-slate-100 border border-slate-300 rounded-lg font-medium">Cancelar</button>
+            <button type="submit" disabled={statusUpdating} className="px-4 py-2 bg-[#002855] text-white rounded-lg font-medium hover:bg-[#001d3d]">
+              {statusUpdating ? 'Guardando...' : 'Reportar Falla'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
     </div>
   )
 }

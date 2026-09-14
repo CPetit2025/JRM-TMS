@@ -21,6 +21,7 @@ export default function VencimientosPage() {
   const supabase = createClient()
   const [loading, setLoading] = useState(true)
   const [records, setRecords] = useState<ExpirationRecord[]>([])
+  const [activeTab, setActiveTab] = useState<'maintenance' | 'documents'>('maintenance')
   const [searchTerm, setSearchTerm] = useState('')
 
   useEffect(() => {
@@ -101,6 +102,57 @@ export default function VencimientosPage() {
         }
       }
 
+      // 4. Generate Document Records
+      const now = new Date()
+      const in30Days = new Date(now)
+      in30Days.setDate(in30Days.getDate() + 30)
+
+      for (const vehicle of vehiclesData || []) {
+        if (vehicle.soat_expiration) {
+          const soatDate = new Date(vehicle.soat_expiration)
+          let status: 'VENCIDO' | 'ALERTA' | 'AL_DIA' = 'AL_DIA'
+          if (soatDate < now) status = 'VENCIDO'
+          else if (soatDate <= in30Days) status = 'ALERTA'
+
+          const diffTime = soatDate.getTime() - now.getTime()
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+          generatedRecords.push({
+            vehicle_plate: vehicle.plate,
+            vehicle_type: vehicle.type,
+            current_km: vehicle.current_mileage || 0,
+            plan_id: 'doc_soat',
+            plan_name: 'SOAT',
+            frequency_km: 0,
+            due_km: 0,
+            remaining_km: diffDays, // Using remaining_km as days for docs
+            status
+          })
+        }
+
+        if (vehicle.technical_review_expiration) {
+          const revDate = new Date(vehicle.technical_review_expiration)
+          let status: 'VENCIDO' | 'ALERTA' | 'AL_DIA' = 'AL_DIA'
+          if (revDate < now) status = 'VENCIDO'
+          else if (revDate <= in30Days) status = 'ALERTA'
+
+          const diffTime = revDate.getTime() - now.getTime()
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+          generatedRecords.push({
+            vehicle_plate: vehicle.plate,
+            vehicle_type: vehicle.type,
+            current_km: vehicle.current_mileage || 0,
+            plan_id: 'doc_revtec',
+            plan_name: 'Revisión Técnica',
+            frequency_km: 0,
+            due_km: 0,
+            remaining_km: diffDays, // Using remaining_km as days for docs
+            status
+          })
+        }
+      }
+
       // Sort by status (VENCIDO first, then ALERTA, then AL_DIA) and then by remaining_km ascending
       const statusWeight = { 'VENCIDO': 1, 'ALERTA': 2, 'AL_DIA': 3 }
       generatedRecords.sort((a, b) => {
@@ -132,8 +184,25 @@ export default function VencimientosPage() {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Proyección de Vencimientos</h1>
-          <p className="text-slate-500">Cruza el KM actual de la flota con los planes de mantenimiento para prevenir fallas.</p>
+          <p className="text-slate-500">Cruza el KM actual de la flota con los planes de mantenimiento y alerta sobre documentos por vencer.</p>
         </div>
+      </div>
+
+      <div className="flex gap-2 mb-6 border-b border-slate-200">
+        <button
+          onClick={() => setActiveTab('maintenance')}
+          className={`px-6 py-3 font-semibold text-sm transition-colors relative ${activeTab === 'maintenance' ? 'text-[#002855]' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          Mantenimiento Preventivo (KM)
+          {activeTab === 'maintenance' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#002855]" />}
+        </button>
+        <button
+          onClick={() => setActiveTab('documents')}
+          className={`px-6 py-3 font-semibold text-sm transition-colors relative ${activeTab === 'documents' ? 'text-[#002855]' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          Documentos y Seguros (Fechas)
+          {activeTab === 'documents' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#002855]" />}
+        </button>
       </div>
 
       {/* Resumen KPIs */}
@@ -184,34 +253,35 @@ export default function VencimientosPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-              <tr>
-                <th className="px-6 py-3">Unidad</th>
-                <th className="px-6 py-3">Plan Preventivo</th>
-                <th className="px-6 py-3">KM Actual</th>
-                <th className="px-6 py-3">KM Vencimiento</th>
-                <th className="px-6 py-3">Restante</th>
-                <th className="px-6 py-3">Estado</th>
-                <th className="px-6 py-3 text-right">Acción</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
+          {activeTab === 'maintenance' ? (
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-slate-500">
-                    Calculando proyecciones de flota...
-                  </td>
+                  <th className="px-6 py-3">Unidad</th>
+                  <th className="px-6 py-3">Plan Preventivo</th>
+                  <th className="px-6 py-3">KM Actual</th>
+                  <th className="px-6 py-3">KM Vencimiento</th>
+                  <th className="px-6 py-3">Restante</th>
+                  <th className="px-6 py-3">Estado</th>
+                  <th className="px-6 py-3 text-right">Acción</th>
                 </tr>
-              ) : filteredRecords.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-slate-500">
-                    No se encontraron proyecciones
-                  </td>
-                </tr>
-              ) : (
-                filteredRecords.map((r, idx) => (
-                  <tr key={`${r.vehicle_plate}-${r.plan_id}-${idx}`} className="hover:bg-slate-50">
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-8 text-center text-slate-500">
+                      Calculando proyecciones de flota...
+                    </td>
+                  </tr>
+                ) : filteredRecords.filter(r => !r.plan_id.startsWith('doc_')).length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-8 text-center text-slate-500">
+                      No se encontraron proyecciones
+                    </td>
+                  </tr>
+                ) : (
+                  filteredRecords.filter(r => !r.plan_id.startsWith('doc_')).map((r, idx) => (
+                    <tr key={`${r.vehicle_plate}-${r.plan_id}-${idx}`} className="hover:bg-slate-50">
                     <td className="px-6 py-4">
                       <div className="font-bold text-[#002855]">{r.vehicle_plate}</div>
                       <div className="text-xs text-slate-500">{r.vehicle_type}</div>
@@ -259,6 +329,63 @@ export default function VencimientosPage() {
               )}
             </tbody>
           </table>
+          ) : (
+          <table className="w-full text-sm text-left">
+            <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+              <tr>
+                <th className="px-6 py-3">Unidad</th>
+                <th className="px-6 py-3">Documento</th>
+                <th className="px-6 py-3">Días Restantes</th>
+                <th className="px-6 py-3">Estado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8 text-center text-slate-500">
+                    Calculando proyecciones de flota...
+                  </td>
+                </tr>
+              ) : filteredRecords.filter(r => r.plan_id.startsWith('doc_')).length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8 text-center text-slate-500">
+                    No se encontraron documentos
+                  </td>
+                </tr>
+              ) : (
+                filteredRecords.filter(r => r.plan_id.startsWith('doc_')).map((r, idx) => (
+                  <tr key={`${r.vehicle_plate}-${r.plan_id}-${idx}`} className="hover:bg-slate-50">
+                    <td className="px-6 py-4">
+                      <div className="font-bold text-[#002855]">{r.vehicle_plate}</div>
+                      <div className="text-xs text-slate-500">{r.vehicle_type}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="font-semibold text-slate-800">{r.plan_name}</div>
+                    </td>
+                    <td className="px-6 py-4 font-mono font-bold">
+                      {r.remaining_km <= 0 ? (
+                        <span className="text-red-600">Vencido hace {Math.abs(r.remaining_km)} días</span>
+                      ) : (
+                        <span className="text-slate-700">Faltan {r.remaining_km} días</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      {r.status === 'VENCIDO' && (
+                        <span className="bg-red-100 text-red-800 px-2 py-1 rounded text-xs font-bold border border-red-200">Vencido</span>
+                      )}
+                      {r.status === 'ALERTA' && (
+                        <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs font-bold border border-yellow-200">Por Vencer</span>
+                      )}
+                      {r.status === 'AL_DIA' && (
+                        <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-bold border border-green-200">Al Día</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+          )}
         </div>
       </div>
     </div>

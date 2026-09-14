@@ -86,18 +86,6 @@ export function Sidebar() {
             </>
           )}
 
-          {/* Reportes y Analítica */}
-          {(hasPermission('reportes') || hasPermission('operaciones-kpis')) && (
-            <>
-              <div className="mt-8 mb-3 px-4">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Reportes y Analítica</p>
-              </div>
-              {(hasPermission('reportes') || hasPermission('operaciones-kpis')) && <NavItem href="/operaciones/kpis" icon={BarChart3} label="Dashboard Analítico" />}
-              {(hasPermission('reportes') || hasPermission('operaciones-kpis')) && <NavItem href="/reportes/actividades" icon={FileText} label="FR-DT.005 (Actividades)" />}
-              {(hasPermission('despacho') || hasPermission('reportes')) && <NavItem href="/reportes" icon={BarChart2} label="Reporte Desp. y Recojo" />}
-            </>
-          )}
-
           {/* Mantenimiento de Flota */}
           {(hasPermission('mantenimiento-dashboard') || hasPermission('mantenimiento-flota') || hasPermission('mantenimiento-fallas') || hasPermission('mantenimiento-ot') || hasPermission('mantenimiento-planes')) && (
             <>
@@ -114,12 +102,11 @@ export function Sidebar() {
           )}
 
           {/* Maestros y Costos */}
-          {(hasPermission('flota') || hasPermission('tarifas')) && (
+          {(hasPermission('tarifas') || hasPermission('usuarios')) && (
             <>
               <div className="mt-8 mb-3 px-4">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Maestros y Costos</p>
               </div>
-              {hasPermission('flota') && <NavItem href="/flota" icon={MapIcon} label="Unidades y Conductores" />}
               {hasPermission('usuarios') && <NavItem href="/maestros/trabajadores" icon={Users} label="Maestro de Trabajadores" />}
               {hasPermission('tarifas') && <NavItem href="/maestros/tarifas" icon={Zap} label="Tarifas de Flete" />}
             </>

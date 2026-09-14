@@ -102,9 +102,14 @@ export default function MaintenanceWorkOrdersPage() {
     }
   }
 
-  const openCloseModal = (ot: any) => {
+  const openCloseModal = async (ot: any) => {
     setSelectedOt(ot)
-    setCloseForm({ activities_performed: '', diagnostic: '', cost_amount: '', cost_description: 'Servicio de mantenimiento' })
+    
+    // Fetch costs to calculate accumulated
+    const { data: costs } = await supabase.from('work_order_costs').select('amount').eq('work_order_id', ot.id)
+    const accumulated = costs?.reduce((sum: number, c: any) => sum + Number(c.amount), 0) || 0
+
+    setCloseForm({ activities_performed: '', diagnostic: '', cost_amount: accumulated > 0 ? String(accumulated) : '', cost_description: 'Servicio de mantenimiento' })
     setIsCloseModalOpen(true)
   }
 
@@ -243,20 +248,40 @@ export default function MaintenanceWorkOrdersPage() {
       const costNum = parseFloat(closeForm.cost_amount)
 
       // 2. Insertar Costos
-      if (costNum > 0) {
+      // 2. Costos: Only insert if it's a new manual cost not already in work_order_costs
+      // We check if they changed the amount or if it's a completely new amount.
+      // A better way is: if they entered a cost here and it's not the exact accumulated cost, we might log it,
+      // but if we pre-filled it with accumulated, we don't duplicate it.
+      const { data: existingCosts } = await supabase.from('work_order_costs').select('amount').eq('work_order_id', selectedOt.id)
+      const accumulated = existingCosts?.reduce((sum: number, c: any) => sum + Number(c.amount), 0) || 0
+
+      let finalCost = accumulated
+      
+      // If the user entered a cost that is different from accumulated, and accumulated is 0, we insert it
+      if (costNum > 0 && accumulated === 0) {
         await supabase.from('work_order_costs').insert([{
           work_order_id: selectedOt.id,
           cost_type: 'SERVICIO_EXTERNO',
           amount: costNum,
           description: closeForm.cost_description
         }])
+        finalCost = costNum
+      } else if (costNum > accumulated) {
+        // They added extra cost
+        await supabase.from('work_order_costs').insert([{
+          work_order_id: selectedOt.id,
+          cost_type: 'OTROS',
+          amount: costNum - accumulated,
+          description: 'Ajuste de cierre OT'
+        }])
+        finalCost = costNum
       }
 
       // 3. Actualizar Historial del Vehículo y liberarlo
       const { data: vData } = await supabase.from('vehicles').select('id, plate, current_mileage, accumulated_cost').eq('plate', selectedOt.vehicle_plate).single()
       
       if (vData) {
-        const newCost = (vData.accumulated_cost || 0) + (costNum || 0)
+        const newCost = (vData.accumulated_cost || 0) + (finalCost || 0)
         await supabase.from('vehicles').update({
           status: 'DISPONIBLE', // Liberar unidad
           maintenance_status: 'AL_DIA', // Resetear alertas
@@ -269,7 +294,7 @@ export default function MaintenanceWorkOrdersPage() {
         await supabase.from('vehicle_maintenance_history').insert([{
           vehicle_plate: vData.plate,
           action_type: 'OT_FINALIZADA',
-          description: `OT ${selectedOt.ot_number} finalizada. Costo: S/ ${costNum || 0}`,
+          description: `OT ${selectedOt.ot_number} finalizada. Costo: S/ ${finalCost || 0}`,
           mileage_at_time: vData.current_mileage
         }])
       }
@@ -435,15 +460,16 @@ export default function MaintenanceWorkOrdersPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Costo Total (S/)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Costo Total Final (S/)</label>
                 <div className="relative">
                   <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input type="number" step="0.01" min="0" required value={closeForm.cost_amount} onChange={e => setCloseForm({...closeForm, cost_amount: e.target.value})} className="w-full pl-9 p-2 border border-slate-300 rounded-lg" placeholder="0.00" />
+                  <input type="number" step="0.01" min="0" required value={closeForm.cost_amount} onChange={e => setCloseForm({...closeForm, cost_amount: e.target.value})} className="w-full pl-9 p-2 border border-slate-300 rounded-lg bg-slate-50 font-bold" placeholder="0.00" />
                 </div>
+                <p className="text-xs text-slate-500 mt-1">Suma automática de costos agregados al detalle.</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Concepto de Costo</label>
-                <input type="text" value={closeForm.cost_description} onChange={e => setCloseForm({...closeForm, cost_description: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg" />
+                <label className="block text-sm font-medium text-slate-700 mb-1">Concepto de Ajuste (Si aplica)</label>
+                <input type="text" value={closeForm.cost_description} onChange={e => setCloseForm({...closeForm, cost_description: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900" />
               </div>
             </div>
           </div>
