@@ -9,6 +9,7 @@ export default function MaintenanceWorkOrdersPage() {
   const supabase = createClient()
   const [ots, setOts] = useState<any[]>([])
   const [vehicles, setVehicles] = useState<any[]>([])
+  const [spareParts, setSpareParts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false)
@@ -39,6 +40,7 @@ export default function MaintenanceWorkOrdersPage() {
 
   const [newCostForm, setNewCostForm] = useState({
     cost_type: 'REPUESTOS',
+    spare_part_id: '',
     amount: '',
     description: '',
     supplier_name: '',
@@ -51,11 +53,17 @@ export default function MaintenanceWorkOrdersPage() {
   useEffect(() => {
     fetchOts()
     fetchVehicles()
+    fetchSpareParts()
   }, [])
 
   const fetchVehicles = async () => {
     const { data } = await supabase.from('vehicles').select('id, plate').order('plate')
     setVehicles(data || [])
+  }
+
+  const fetchSpareParts = async () => {
+    const { data } = await supabase.from('spare_parts').select('*').order('name')
+    setSpareParts(data || [])
   }
 
   const fetchOts = async () => {
@@ -217,6 +225,7 @@ export default function MaintenanceWorkOrdersPage() {
       await supabase.from('work_order_costs').insert([{
         work_order_id: otDetails.id,
         cost_type: newCostForm.cost_type,
+        spare_part_id: newCostForm.spare_part_id || null,
         amount: parseFloat(newCostForm.amount),
         description: newCostForm.description,
         supplier_name: newCostForm.supplier_name,
@@ -226,7 +235,7 @@ export default function MaintenanceWorkOrdersPage() {
         evidence_url: evidenceUrl
       }])
       toast.success('Costo agregado')
-      setNewCostForm({ cost_type: 'REPUESTOS', amount: '', description: '', supplier_name: '', supplier_ruc: '', document_type: 'FACTURA', document_number: '', evidence_url: '' })
+      setNewCostForm({ cost_type: 'REPUESTOS', spare_part_id: '', amount: '', description: '', supplier_name: '', supplier_ruc: '', document_type: 'FACTURA', document_number: '', evidence_url: '' })
       setCostFile(null)
       fetchOtDetails(otDetails.id)
       fetchOts()
@@ -589,7 +598,7 @@ export default function MaintenanceWorkOrdersPage() {
                   <div className="grid grid-cols-2 gap-3 mb-3">
                     <div>
                       <label className="block text-xs font-medium text-slate-700 mb-1">Tipo de Costo</label>
-                      <select required value={newCostForm.cost_type} onChange={e => setNewCostForm({...newCostForm, cost_type: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-sm text-slate-900">
+                      <select required value={newCostForm.cost_type} onChange={e => setNewCostForm({...newCostForm, cost_type: e.target.value, spare_part_id: ''})} className="w-full p-2 border border-slate-300 rounded-lg text-sm text-slate-900">
                         <option value="REPUESTOS">Repuestos</option>
                         <option value="MANO_DE_OBRA">Mano de Obra</option>
                         <option value="SERVICIO_EXTERNO">Servicio Externo</option>
@@ -627,7 +636,29 @@ export default function MaintenanceWorkOrdersPage() {
                     </div>
 
                     <div className="col-span-2">
-                      <label className="block text-xs font-medium text-slate-700 mb-1">Descripción del Ítem / Servicio</label>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Ítem de Catálogo (Opcional)</label>
+                      <select 
+                        value={newCostForm.spare_part_id} 
+                        onChange={e => {
+                          const selectedPart = spareParts.find(p => p.id === e.target.value);
+                          setNewCostForm({
+                            ...newCostForm, 
+                            spare_part_id: e.target.value,
+                            description: selectedPart ? `${selectedPart.internal_code} - ${selectedPart.name}` : newCostForm.description
+                          })
+                        }} 
+                        className="w-full p-2 border border-slate-300 rounded-lg text-sm text-slate-900"
+                      >
+                        <option value="">-- Seleccionar del Catálogo --</option>
+                        {spareParts.map(part => (
+                          <option key={part.id} value={part.id}>
+                            {part.internal_code} | {part.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Descripción Final del Costo *</label>
                       <input type="text" required value={newCostForm.description} onChange={e => setNewCostForm({...newCostForm, description: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-sm text-slate-900" placeholder="Ej. Cambio de filtro de aceite" />
                     </div>
                   </div>
