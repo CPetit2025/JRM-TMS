@@ -46,7 +46,8 @@ export default function TrackingPage() {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-          <div className="flex justify-center mb-6">
+          <div className="flex flex-col items-center justify-center mb-6">
+            <img src="/logo-jrm.png" alt="JRM Logo" className="h-12 mb-4 object-contain drop-shadow-sm" />
             <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center">
               <ShieldCheck className="w-8 h-8" />
             </div>
@@ -95,9 +96,11 @@ export default function TrackingPage() {
       <div className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-2">
-              <Truck className="w-6 h-6 text-blue-600" />
-              <span className="font-bold text-xl text-slate-800">JRM Seguimiento</span>
+            <div className="flex items-center gap-3">
+              <img src="/logo-jrm.png" alt="JRM" className="h-8 object-contain" />
+              <div className="h-6 w-px bg-slate-300"></div>
+              <Truck className="w-5 h-5 text-blue-600" />
+              <span className="font-bold text-lg text-slate-800">Seguimiento</span>
             </div>
             <div className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
               {trackingData.status}

@@ -42,7 +42,7 @@ export function Sidebar() {
         <div className="absolute inset-0 bg-gradient-to-b from-[#002855]/40 to-transparent opacity-50"></div>
         <div className="flex flex-col items-center gap-2 relative z-10 w-full">
           <img 
-            src="https://jrmsac.com.pe/wp-content/themes/JRMTheme/static/img/logo-jrm-borde-blaco-lema.png" 
+            src="/logo-jrm.png" 
             alt="JRM Logo" 
             className="h-12 object-contain drop-shadow-lg"
           />

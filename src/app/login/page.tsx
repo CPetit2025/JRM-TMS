@@ -97,7 +97,7 @@ export default function LoginPage() {
         <div className="absolute top-0 left-0 w-full h-2 bg-[#cf152d]"></div>
         <div className="z-10 px-12 text-white">
           <img 
-            src="https://jrmsac.com.pe/wp-content/themes/JRMTheme/static/img/logo-jrm-borde-blaco-lema.png" 
+            src="/logo-jrm.png" 
             alt="JRM Logo" 
             className="h-16 mb-8 object-contain"
           />
