@@ -347,6 +347,10 @@ export default function DespachoPage() {
       if (!dispatchId!) {
         const dispatchNumber = `DESP-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`
 
+        // Determinamos el contrato asociado (usando el de la primera OT seleccionada)
+        const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
+        const activeContractId = firstReq?.contracts?.id || null
+
         const { data: insertData, error: insertError } = await supabase
           .from('dispatches')
           .insert([{
@@ -355,13 +359,27 @@ export default function DespachoPage() {
             vehicle_plate: newDispatch.document_type === 'NOTA_SALIDA' ? 'EXTERNO' : newDispatch.vehicle_plate,
             scheduled_departure: newDispatch.scheduled_departure,
             status: 'PROGRAMADO',
-            estimated_distance_km: newDispatch.estimated_distance_km || 0
+            estimated_distance_km: newDispatch.estimated_distance_km || 0,
+            freight_cost: detectedFreightRate ? detectedFreightRate.rate : 0,
+            contract_id: activeContractId
           }])
           .select()
           .single()
 
         if (insertError) throw insertError
         dispatchId = insertData.id
+
+        // Llamar a RPC para reservar el presupuesto si hay contrato y tarifa
+        if (activeContractId && detectedFreightRate && detectedFreightRate.rate > 0) {
+          const { error: reserveError } = await supabase.rpc('reserve_transport_budget', {
+            p_contract_id: activeContractId,
+            p_estimated_cost_pen: detectedFreightRate.rate
+          })
+          if (reserveError) {
+            console.error('Error al reservar presupuesto:', reserveError)
+            toast.error('⚠️ Despacho creado, pero hubo un error al reservar el presupuesto del contrato.')
+          }
+        }
       }
 
       // 2. Insertar los dispatch_requests con su GR
@@ -438,10 +456,10 @@ export default function DespachoPage() {
 
       if (drError) throw drError
 
-      // 1.5 Obtener datos del despacho para el kilometraje
+      // 1.5 Obtener datos del despacho para el kilometraje y presupuesto
       const { data: dispatchData } = await supabase
         .from('dispatches')
-        .select('vehicle_plate, estimated_distance_km')
+        .select('vehicle_plate, estimated_distance_km, freight_cost, contract_id')
         .eq('id', dispatchId)
         .single()
 
@@ -471,6 +489,19 @@ export default function DespachoPage() {
         await supabase.from('transport_requests').update({ status: 'ENTREGADA' }).in('id', reqIds)
         // 4. Marcar detalle como ENTREGADO
         await supabase.from('dispatch_requests').update({ status: 'ENTREGADO' }).eq('dispatch_id', dispatchId)
+      }
+
+      // 5. Liquidar el presupuesto del contrato si estaba reservado
+      if (dispatchData && dispatchData.contract_id && dispatchData.freight_cost > 0) {
+        const { error: liquidateError } = await supabase.rpc('liquidate_transport_budget', {
+          p_contract_id: dispatchData.contract_id,
+          p_reserved_pen: dispatchData.freight_cost,
+          p_actual_cost_pen: dispatchData.freight_cost
+        })
+        if (liquidateError) {
+          console.error('Error al liquidar presupuesto:', liquidateError)
+          toast.error('⚠️ Ruta cerrada, pero hubo un error al liquidar el presupuesto del contrato.')
+        }
       }
 
       toast.success('Ruta cerrada exitosamente y solicitudes entregadas.')
