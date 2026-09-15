@@ -32,6 +32,7 @@ interface ContractService {
   hours?: number
   provider_ruc?: string
   provider_name?: string
+  category?: string
   created_at: string
   contracts?: {
     code: string
@@ -63,7 +64,8 @@ export default function ContractServicesPage() {
     hours: '',
     isThirdParty: false,
     provider_ruc: '',
-    provider_name: ''
+    provider_name: '',
+    category: 'Contrato'
   })
 
   useEffect(() => {
@@ -130,7 +132,8 @@ export default function ContractServicesPage() {
         p_driver_name: newService.service_type === 'FLETE' ? newService.driver_name : null,
         p_hours: newService.service_type === 'MONTACARGA' ? parseFloat(newService.hours) : null,
         p_provider_ruc: newService.isThirdParty ? newService.provider_ruc : null,
-        p_provider_name: newService.isThirdParty ? newService.provider_name : null
+        p_provider_name: newService.isThirdParty ? newService.provider_name : null,
+        p_category: newService.category
       })
 
       if (error) throw error
@@ -158,19 +161,13 @@ export default function ContractServicesPage() {
       hours: '',
       isThirdParty: false,
       provider_ruc: '',
-      provider_name: ''
+      provider_name: '',
+      category: 'Contrato'
     })
   }
 
   const downloadTemplate = () => {
-    const data = [
-      { RUC_Contrato: '20123456789', Tipo_Servicio: 'FLETE', Fecha_Servicio: '2026-10-01', Monto: 1500.50, Descripcion: 'Viaje a Piura', Horas: '', Placa: 'ABC-123', Conductor: 'Juan Perez', Proveedor_RUC: '20987654321', Proveedor_Nombre: 'Transportes XYZ' },
-      { RUC_Contrato: '20123456789', Tipo_Servicio: 'MONTACARGA', Fecha_Servicio: '2026-10-02', Monto: 500, Descripcion: 'Descarga en almacén', Horas: 4, Placa: '', Conductor: '', Proveedor_RUC: '', Proveedor_Nombre: '' }
-    ]
-    const ws = XLSX.utils.json_to_sheet(data)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Servicios")
-    XLSX.writeFile(wb, "Plantilla_Carga_Servicios.xlsx")
+    window.location.href = '/api/templates/servicios'
   }
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
@@ -214,7 +211,8 @@ export default function ContractServicesPage() {
             p_driver_name: row.Conductor || null,
             p_hours: row.Horas ? parseFloat(row.Horas) : null,
             p_provider_ruc: row.Proveedor_RUC ? String(row.Proveedor_RUC) : null,
-            p_provider_name: row.Proveedor_Nombre || null
+            p_provider_name: row.Proveedor_Nombre || null,
+            p_category: row.Categoria || 'Contrato'
           })
 
           if (error) {
@@ -347,9 +345,20 @@ export default function ContractServicesPage() {
                       </div>
                     </td>
                     <td className="p-4">
-                      <span className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-semibold">
-                        {srv.service_type}
-                      </span>
+                      <div className="flex flex-col gap-1">
+                        <span className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-semibold w-fit">
+                          {srv.service_type}
+                        </span>
+                        {srv.category && (
+                          <span className={`px-2 py-1 rounded text-[10px] font-bold w-fit ${
+                            srv.category === 'Error' ? 'bg-red-100 text-red-700' :
+                            srv.category === 'Subcontrato' ? 'bg-amber-100 text-amber-700' :
+                            'bg-blue-100 text-blue-700'
+                          }`}>
+                            {srv.category}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="p-4 text-xs text-slate-600">
                       <div className="flex flex-col gap-0.5">
@@ -421,6 +430,20 @@ export default function ContractServicesPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Categoría</label>
+                <select
+                  required
+                  className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
+                  value={newService.category}
+                  onChange={(e) => setNewService({...newService, category: e.target.value})}
+                >
+                  <option value="Contrato">Contrato Principal</option>
+                  <option value="Subcontrato">Subcontrato</option>
+                  <option value="Error">Error Operativo</option>
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Servicio</label>
                 <select
                   required
@@ -438,17 +461,17 @@ export default function ContractServicesPage() {
                   <option value="OTROS">Otros</option>
                 </select>
               </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de Servicio</label>
-                <input 
-                  type="date"
-                  required
-                  className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
-                  value={newService.service_date}
-                  onChange={(e) => setNewService({...newService, service_date: e.target.value})}
-                />
-              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de Servicio</label>
+              <input 
+                type="date"
+                required
+                className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
+                value={newService.service_date}
+                onChange={(e) => setNewService({...newService, service_date: e.target.value})}
+              />
             </div>
 
             {/* Dynamic Fields */}
