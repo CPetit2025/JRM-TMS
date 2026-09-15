@@ -46,9 +46,7 @@ export default function FondosPage() {
         .from('cash_funds')
         .select(`
           *,
-          received_by_profile:profiles!cash_funds_received_by_fkey(first_name, last_name),
-          trip:dispatches(code, origin, destination),
-          vehicle:vehicles(plate, brand, model)
+          received_by_profile:profiles!cash_funds_received_by_fkey(first_name, last_name)
         `)
         .order('created_at', { ascending: false })
       

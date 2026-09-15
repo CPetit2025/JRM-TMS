@@ -57,15 +57,8 @@ export default function GastosMobilePage() {
   }, [user, activeTab])
 
   const fetchActiveTrip = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('dispatches')
-        .select('id, vehicle_plate, code')
-        .eq('driver_id', user?.id)
-        .eq('status', 'EN_RUTA')
-        .single()
-      if (!error && data) setActiveTrip(data)
-    } catch (err) {}
+    // Ya no se requiere vincular automáticamente a un viaje de conductor
+    // dado que el registro es administrativo.
   }
 
   const fetchMyFunds = async () => {
