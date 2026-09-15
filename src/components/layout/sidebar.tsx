@@ -59,8 +59,17 @@ export function Sidebar() {
       {/* Navigation */}
       <div className="flex flex-col flex-1 overflow-y-auto mt-2 px-3 pb-6 custom-scrollbar">
         <nav className="flex-1 space-y-1">
-          
           <NavItem href="/" icon={role === 'admin' ? BarChart3 : Home} label={role === 'admin' ? 'Analítica / KPIs' : 'Dashboard'} />
+
+          {/* FORZADO: Caja Chica y Liquidaciones siempre visible */}
+          <div className="mt-8 mb-3 px-4 flex items-center justify-between">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Finanzas y Caja (TEST)</p>
+            <span className="text-[8px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full font-bold uppercase">NUEVO</span>
+          </div>
+          <NavItem href="/caja" icon={DollarSign} label="Dashboard Financiero" />
+          <NavItem href="/caja/fondos" icon={ArchiveRestore} label="Entrega de Fondos" />
+          <NavItem href="/caja/gastos" icon={FileText} label="Registro de Gastos (Mobile)" />
+          <NavItem href="/caja/liquidaciones" icon={CheckCircle} label="Liquidaciones y Aprobaciones" />
 
           {/* Generación de Demanda */}
           {(hasPermission('clientes') || hasPermission('ot') || hasPermission('solicitudes')) && (
