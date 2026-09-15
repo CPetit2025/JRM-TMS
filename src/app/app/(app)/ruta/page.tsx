@@ -269,29 +269,67 @@ export default function RutaActivaPage() {
   if (!dispatch || !dispatch.dispatch_requests || dispatch.dispatch_requests.length === 0) {
     const debugDriverName = driver ? `${driver.first_name} ${driver.last_name}`.trim() : 'Ninguno';
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center">
-        <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-4">
-          <AlertCircle className="w-10 h-10 text-slate-400" />
-        </div>
-        <h2 className="text-xl font-bold text-slate-800 mb-2">No hay rutas activas</h2>
-        <p className="text-slate-500 mb-6 max-w-xs mx-auto">
-          No tienes ningún despacho programado ni en curso en este momento.
-        </p>
-        
-        {/* INFO DEBUG */}
-        <div className="bg-red-50 text-red-800 p-3 rounded-lg text-xs w-full max-w-sm mb-6 text-left font-mono">
-          <strong>Debug:</strong><br/>
-          Buscando para: "{debugDriverName}"<br/>
-          Estado de Dispatch: {dispatch ? 'Encontrado' : 'No encontrado'}<br/>
-          Items de Dispatch: {dispatch?.dispatch_requests?.length || 0}
+      <div className="p-4 max-w-md mx-auto pb-24 relative">
+        {/* Navbar Minimalista del Conductor (Empty State) */}
+        <div className="flex justify-between items-start mb-6 px-2">
+          <div>
+            <h1 className="text-xl font-black text-[#002855] tracking-tight">Ruta Activa</h1>
+            <p className="text-xs text-slate-500 font-medium mt-1">
+              Placa Asignada: <span className="font-bold text-[#002855]">Sin asignar</span>
+            </p>
+          </div>
+          <div className="relative flex flex-col items-end">
+            <button 
+              onClick={() => setShowProfileMenu(!showProfileMenu)}
+              className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full hover:bg-slate-200 transition-colors"
+            >
+              <span className="text-xs font-bold text-[#002855] max-w-[100px] truncate">
+                {driver?.first_name} {driver?.last_name}
+              </span>
+              <UserCircle className="w-5 h-5 text-[#002855]" />
+            </button>
+            
+            {showProfileMenu && (
+              <div className="absolute right-0 top-10 mt-1 w-48 bg-white rounded-xl shadow-xl border border-slate-100 z-50 overflow-hidden">
+                <div className="p-3 border-b border-slate-100 bg-slate-50">
+                  <p className="text-xs font-bold text-slate-800 line-clamp-1">{driver?.first_name} {driver?.last_name}</p>
+                  <p className="text-[10px] text-slate-500">{driver?.document_number}</p>
+                </div>
+                <button 
+                  onClick={() => { setShowPasswordModal(true); setShowProfileMenu(false); }}
+                  className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
+                >
+                  <KeyRound className="w-4 h-4 text-slate-400" />
+                  Cambiar Contraseña
+                </button>
+                <button 
+                  onClick={handleLogout}
+                  className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors border-t border-slate-50"
+                >
+                  <LogOut className="w-4 h-4 text-red-400" />
+                  Cerrar Sesión
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        <button 
-          onClick={() => { setLoading(true); fetchActiveDispatch(driver); }}
-          className="bg-[#002855] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#001d3d] transition-colors shadow-md"
-        >
-          Actualizar
-        </button>
+        <div className="flex flex-col items-center justify-center min-h-[40vh] p-6 text-center mt-10">
+          <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+            <AlertCircle className="w-10 h-10 text-slate-400" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-800 mb-2">No hay rutas activas</h2>
+          <p className="text-slate-500 mb-6 max-w-xs mx-auto">
+            No tienes ningún despacho programado ni en curso en este momento.
+          </p>
+          
+          <button 
+            onClick={() => { setLoading(true); fetchActiveDispatch(driver); }}
+            className="bg-[#002855] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#001d3d] transition-colors shadow-md"
+          >
+            Actualizar
+          </button>
+        </div>
       </div>
     )
   }
@@ -299,18 +337,26 @@ export default function RutaActivaPage() {
   return (
     <div className="p-4 max-w-md mx-auto pb-24 relative">
       {/* Navbar Minimalista del Conductor */}
-      <div className="flex justify-between items-center mb-6 px-2">
-        <h1 className="text-xl font-black text-[#002855] tracking-tight">Ruta Activa</h1>
-        <div className="relative">
+      <div className="flex justify-between items-start mb-6 px-2">
+        <div>
+          <h1 className="text-xl font-black text-[#002855] tracking-tight">Ruta Activa</h1>
+          <p className="text-xs text-slate-500 font-medium mt-1">
+            Placa Asignada: <span className="font-bold text-[#002855]">{dispatch?.vehicle_plate || 'Sin asignar'}</span>
+          </p>
+        </div>
+        <div className="relative flex flex-col items-end">
           <button 
             onClick={() => setShowProfileMenu(!showProfileMenu)}
-            className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-[#002855] hover:bg-slate-300 transition-colors"
+            className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full hover:bg-slate-200 transition-colors"
           >
-            <UserCircle className="w-6 h-6" />
+            <span className="text-xs font-bold text-[#002855] max-w-[100px] truncate">
+              {driver?.first_name} {driver?.last_name}
+            </span>
+            <UserCircle className="w-5 h-5 text-[#002855]" />
           </button>
           
           {showProfileMenu && (
-            <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 z-50 overflow-hidden">
+            <div className="absolute right-0 top-10 mt-1 w-48 bg-white rounded-xl shadow-xl border border-slate-100 z-50 overflow-hidden">
               <div className="p-3 border-b border-slate-100 bg-slate-50">
                 <p className="text-xs font-bold text-slate-800 line-clamp-1">{driver?.first_name} {driver?.last_name}</p>
                 <p className="text-[10px] text-slate-500">{driver?.document_number}</p>
@@ -340,7 +386,7 @@ export default function RutaActivaPage() {
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-bold">{dispatch.dispatch_number}</h2>
           </div>
-          <p className="text-blue-200 text-sm mt-1">{dispatch.vehicle_plate} • {dispatch.dispatch_requests?.length || 0} Paradas</p>
+          <p className="text-blue-200 text-sm mt-1">{dispatch.dispatch_requests?.length || 0} Paradas asignadas</p>
         </div>
         <div className={`border px-3 py-1 rounded-full text-[10px] font-bold tracking-wide text-center
           ${dispatch.status === 'PROGRAMADO' ? 'bg-amber-500/20 text-amber-300 border-amber-400' : 

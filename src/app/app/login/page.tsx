@@ -68,11 +68,12 @@ export default function OperativeLogin() {
       // Check if user is a driver (exists in drivers table)
       const { data: driver } = await supabase
         .from('drivers')
-        .select('id')
+        .select('*')
         .eq('profile_id', data.user.id)
         .single()
         
       if (driver) {
+        localStorage.setItem('jrm_driver', JSON.stringify(driver))
         router.push('/app/ruta')
       } else {
         router.push('/app/actividades')
