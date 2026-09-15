@@ -152,7 +152,7 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
     onClose()
   }
 
-  const shareText = createdUser ? `Hola ${createdUser.first_name}, tus credenciales de acceso al sistema JRM son:\nUsuario: ${createdUser.username}\nContraseña: ${createdUser.password}\n\nRecuerda que tienes un máximo de 24 horas para cambiar esta contraseña por seguridad.` : ''
+  const shareText = createdUser ? `Hola ${createdUser.first_name}, tus credenciales de acceso al sistema JRM son:\nEnlace: https://jrm-tms.vercel.app/login\nUsuario: ${createdUser.username}\nContraseña: ${createdUser.password}\n\nRecuerda que tienes un máximo de 24 horas para cambiar esta contraseña por seguridad.` : ''
 
   const handleWhatsApp = () => {
     window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank')
