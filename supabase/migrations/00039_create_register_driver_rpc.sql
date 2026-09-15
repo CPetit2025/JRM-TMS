@@ -13,7 +13,7 @@ DECLARE
   v_driver_id UUID;
 BEGIN
   -- Check if driver already exists with this DNI
-  SELECT id INTO v_driver_id FROM public.drivers WHERE document_id = p_dni;
+  SELECT id INTO v_driver_id FROM public.drivers WHERE document_number = p_dni;
   
   IF v_driver_id IS NOT NULL THEN
     -- Link existing driver to the new auth user and update info
@@ -31,7 +31,7 @@ BEGIN
     INSERT INTO public.drivers (
       carrier_id,
       profile_id,
-      document_id,
+      document_number,
       first_name,
       last_name,
       phone,
