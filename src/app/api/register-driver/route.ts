@@ -44,41 +44,19 @@ export async function POST(request: Request) {
 
     const userId = authData.user.id
 
-    // NOTE: Profile row is created automatically via trigger or on first login.
-    // All driver info is stored in auth user_metadata + drivers table.
+    // 2. Use RPC function to upsert driver - bypasses PostgREST schema cache issues
+    const { error: rpcError } = await supabaseAdmin.rpc('register_driver', {
+      p_auth_user_id: userId,
+      p_dni: dni,
+      p_first_name: firstName,
+      p_last_name: lastName,
+      p_phone: phone || '',
+      p_license_number: licenseNumber,
+      p_pin: pin,
+      p_carrier_id: carrierId
+    })
 
-    // 2. Check if driver already exists
-    const { data: existingDriver } = await supabaseAdmin
-      .from('drivers')
-      .select('id')
-      .eq('document_id', dni)
-      .single()
-
-    if (existingDriver) {
-      await supabaseAdmin.from('drivers').update({
-        profile_id: userId,
-        first_name: firstName,
-        last_name: lastName,
-        phone: phone || null,
-        license_number: licenseNumber,
-        pin: pin,
-        carrier_id: carrierId
-      }).eq('id', existingDriver.id)
-    } else {
-      const { error: driverError } = await supabaseAdmin.from('drivers').insert([{
-        carrier_id: carrierId,
-        profile_id: userId,
-        document_id: dni,
-        first_name: firstName,
-        last_name: lastName,
-        phone: phone || null,
-        license_number: licenseNumber,
-        license_category: 'A-I',
-        pin: pin,
-        is_active: true
-      }])
-      if (driverError) throw driverError
-    }
+    if (rpcError) throw rpcError
 
     return NextResponse.json({ success: true, userId })
 
