@@ -65,13 +65,13 @@ export default function TorreControlPage() {
   const [isSharing, setIsSharing] = useState(false)
 
   const handleShareTracking = async () => {
-    if (!selectedDispatch) return
+    // Tomar fecha del filtro o la fecha actual si está vacío
+    const targetDate = dateFilter || new Date().toISOString().split('T')[0]
     setIsSharing(true)
     
     try {
-      // Llamar al RPC que genera o renueva el token
-      const { data, error } = await supabase.rpc('generate_tracking_link', {
-        p_dispatch_id: selectedDispatch.id
+      const { data, error } = await supabase.rpc('generate_daily_tracking_link', {
+        p_date: targetDate
       })
       
       if (error) throw error
@@ -82,7 +82,7 @@ export default function TorreControlPage() {
         
         const mailBody = `Estimado equipo,
         
-Se adjunta el enlace de seguimiento para la planificación de ruta. Puede realizar el monitoreo en tiempo real accediendo al siguiente portal de visibilidad.
+Se adjunta el enlace de seguimiento para la planificación de ruta del día ${targetDate}. Puede realizar el monitoreo en tiempo real de todas las unidades accediendo al siguiente portal de visibilidad.
 
 🔗 Enlace de Seguimiento: ${trackingUrl}
 🔑 Contraseña de Acceso: ${pin}
@@ -93,12 +93,12 @@ Se adjunta el enlace de seguimiento para la planificación de ruta. Puede realiz
 Saludos cordiales,
 Equipo JRM TMS`
 
-        const formattedDate = new Date(selectedDispatch.scheduled_departure).toLocaleDateString('es-PE')
-        window.open(`mailto:?subject=Seguimiento de Ruta JRM - ${formattedDate}&body=${encodeURIComponent(mailBody)}`, '_blank')
-        toast.success('Enlace de seguimiento generado y copiado al correo.')
+        const formattedDate = new Date(`${targetDate}T00:00:00`).toLocaleDateString('es-PE')
+        window.open(`mailto:?subject=Seguimiento de Planificación JRM - ${formattedDate}&body=${encodeURIComponent(mailBody)}`, '_blank')
+        toast.success('Enlace de planificación generado y copiado al correo.')
       }
     } catch (error: any) {
-      toast.error('Error al generar enlace de seguimiento: ' + error.message)
+      toast.error('Error al generar enlace de planificación: ' + error.message)
     } finally {
       setIsSharing(false)
     }
@@ -210,6 +210,15 @@ Equipo JRM TMS`
               className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none transition-all bg-slate-50"
             />
           </div>
+
+          <button 
+            onClick={handleShareTracking}
+            disabled={isSharing}
+            className="flex items-center gap-2 bg-[#002855] text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-[#001f42] transition-colors disabled:opacity-50 shadow-sm"
+          >
+            {isSharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+            Compartir Planificación
+          </button>
         </div>
       </div>
 
@@ -293,17 +302,6 @@ Equipo JRM TMS`
       >
         {selectedDispatch && (
           <div className="space-y-6">
-            <div className="flex justify-end">
-              <button 
-                onClick={handleShareTracking}
-                disabled={isSharing}
-                className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-900 transition-colors disabled:opacity-50"
-              >
-                {isSharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
-                Compartir Visibilidad
-              </button>
-            </div>
-            
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-5 bg-slate-50 rounded-xl border border-slate-200 shadow-inner">
               <div>
                 <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Vehículo</p>

@@ -24,7 +24,7 @@ export default function TrackingPage() {
 
     setIsLoading(true)
     try {
-      const { data, error } = await supabase.rpc('get_public_tracking_info', {
+      const { data, error } = await supabase.rpc('get_public_daily_tracking_info', {
         p_token: token,
         p_pin: pin
       })
@@ -52,9 +52,9 @@ export default function TrackingPage() {
               <ShieldCheck className="w-8 h-8" />
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-center text-slate-800 mb-2">Portal de Seguimiento</h1>
+          <h1 className="text-2xl font-bold text-center text-slate-800 mb-2">Seguimiento de Planificación</h1>
           <p className="text-center text-slate-500 mb-8">
-            Ingrese el PIN de 4 dígitos que le fue enviado por correo para visualizar el estado de la ruta.
+            Ingrese el PIN de 4 dígitos que le fue enviado por correo para visualizar el estado de todas las rutas del día.
           </p>
           
           <form onSubmit={handleAuth} className="space-y-6">
@@ -78,7 +78,7 @@ export default function TrackingPage() {
               disabled={isLoading || pin.length !== 4}
               className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white p-4 rounded-xl font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
-              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Ver Despacho'}
+              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Ver Planificación'}
             </button>
           </form>
           
@@ -100,10 +100,10 @@ export default function TrackingPage() {
               <img src="/logo-jrm.png" alt="JRM" className="h-8 object-contain" />
               <div className="h-6 w-px bg-slate-300"></div>
               <Truck className="w-5 h-5 text-blue-600" />
-              <span className="font-bold text-lg text-slate-800">Seguimiento</span>
+              <span className="font-bold text-lg text-slate-800">Seguimiento de Planificación</span>
             </div>
-            <div className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
-              {trackingData.status}
+            <div className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-medium border border-blue-200">
+              {trackingData.planning_date ? new Date(`${trackingData.planning_date}T00:00:00`).toLocaleDateString('es-PE') : 'Fecha'}
             </div>
           </div>
         </div>
@@ -119,66 +119,89 @@ export default function TrackingPage() {
           </div>
         </div>
 
-        {/* Resumen del Despacho */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <h2 className="text-lg font-semibold text-slate-800 mb-4 border-b pb-4">Detalles del Despacho {trackingData.dispatch_number}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <p className="text-sm text-slate-500 mb-1">Conductor Asignado</p>
-              <p className="font-medium text-slate-800">{trackingData.driver_name || 'Por asignar'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-500 mb-1">Vehículo / Placa</p>
-              <p className="font-medium text-slate-800">{trackingData.vehicle_plate || 'Por asignar'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-500 mb-1">Salida Programada</p>
-              <p className="font-medium text-slate-800">
-                {trackingData.scheduled_departure ? new Date(trackingData.scheduled_departure).toLocaleString('es-PE') : 'Pendiente'}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-500 mb-1">Distancia Estimada</p>
-              <p className="font-medium text-slate-800">{trackingData.estimated_distance_km || 0} km</p>
-            </div>
-          </div>
-        </div>
+        {/* Lista de Despachos del día */}
+        <h2 className="text-xl font-bold text-slate-800 pt-4 border-b border-slate-200 pb-2">
+          Unidades en Ruta ({trackingData.dispatches?.length || 0})
+        </h2>
 
-        {/* Órdenes Asociadas */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="p-6 border-b border-slate-200">
-            <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-              <Package className="w-5 h-5 text-slate-500" />
-              Entregas Programadas
-            </h2>
+        {(!trackingData.dispatches || trackingData.dispatches.length === 0) ? (
+          <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
+            <p className="text-slate-500">No hay unidades programadas para esta fecha.</p>
           </div>
-          <div className="divide-y divide-slate-100">
-            {trackingData.requests && trackingData.requests.map((req: any, i: number) => (
-              <div key={req.id} className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="font-medium text-slate-800">Orden: {req.request_number}</span>
-                  <span className="text-sm bg-slate-100 text-slate-600 px-2 py-1 rounded-md">{req.status}</span>
+        ) : (
+          <div className="space-y-6">
+            {trackingData.dispatches.map((dispatch: any) => (
+              <div key={dispatch.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="bg-slate-50 border-b border-slate-200 p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-bold text-lg text-[#002855]">Despacho {dispatch.dispatch_number}</h3>
+                    <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-slate-600">
+                      <div className="flex items-center gap-1.5">
+                        <Truck className="w-4 h-4 text-slate-400" />
+                        <span className="font-medium">{dispatch.vehicle_plate || 'Sin asignar'}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4 text-slate-400" />
+                        <span className="font-medium">{dispatch.driver_name || 'Sin asignar'}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="px-3 py-1.5 bg-green-100 text-green-700 rounded-full text-sm font-bold border border-green-200 text-center w-fit">
+                    {dispatch.status}
+                  </div>
                 </div>
-                
-                <div className="relative pl-6 space-y-6">
-                  <div className="absolute left-2.5 top-2 bottom-2 w-0.5 bg-slate-200"></div>
+
+                {/* Órdenes Asociadas a este despacho */}
+                <div className="p-4 sm:p-6">
+                  <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-2 mb-4">
+                    <Package className="w-4 h-4 text-slate-500" />
+                    Entregas Programadas ({dispatch.requests?.length || 0})
+                  </h4>
                   
-                  <div className="relative">
-                    <div className="absolute -left-6 top-1 w-3 h-3 bg-white border-2 border-slate-300 rounded-full"></div>
-                    <p className="text-xs font-medium text-slate-500 mb-1 uppercase tracking-wider">Origen</p>
-                    <p className="text-sm text-slate-800">{req.pickup_address}</p>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {dispatch.requests && dispatch.requests.map((req: any) => (
+                      <div key={req.id} className="bg-slate-50 rounded-lg p-4 border border-slate-200 relative overflow-hidden group">
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></div>
+                        <div className="flex justify-between items-start mb-3">
+                          <span className="font-bold text-slate-900 text-sm">
+                            {req.request_number}
+                          </span>
+                          <span className="text-[10px] bg-white text-slate-600 px-2 py-0.5 rounded border border-slate-200 font-semibold uppercase">
+                            {req.status}
+                          </span>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          <div className="flex gap-2 items-start">
+                            <MapPin className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                            <div>
+                              <p className="text-[10px] uppercase font-bold text-slate-400">Origen</p>
+                              <p className="text-xs font-medium text-slate-700 line-clamp-1" title={req.pickup_address}>
+                                {req.pickup_address}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2 items-start">
+                            <MapPin className="w-3.5 h-3.5 text-blue-500 mt-0.5 shrink-0" />
+                            <div>
+                              <p className="text-[10px] uppercase font-bold text-slate-400">Destino</p>
+                              <p className="text-xs font-medium text-slate-700 line-clamp-2" title={req.delivery_address}>
+                                {req.delivery_address}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  
-                  <div className="relative">
-                    <div className="absolute -left-6 top-1 w-3 h-3 bg-blue-600 rounded-full shadow-[0_0_0_4px_rgba(37,99,235,0.1)]"></div>
-                    <p className="text-xs font-medium text-blue-600 mb-1 uppercase tracking-wider">Destino</p>
-                    <p className="text-sm text-slate-800">{req.delivery_address}</p>
-                  </div>
+                  {(!dispatch.requests || dispatch.requests.length === 0) && (
+                    <p className="text-sm text-slate-400 italic">No hay rutas asociadas a este vehículo.</p>
+                  )}
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
