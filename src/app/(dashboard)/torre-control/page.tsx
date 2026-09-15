@@ -80,9 +80,9 @@ export default function TorreControlPage() {
         const { token, pin } = data[0]
         const trackingUrl = `https://jrm-tms.vercel.app/tracking/${token}`
         
-        const mailBody = `Estimado cliente/equipo,
+        const mailBody = `Estimado equipo,
         
-Se ha programado su despacho (${selectedDispatch.dispatch_number}). Puede realizar el seguimiento y monitoreo en tiempo real accediendo al siguiente portal de visibilidad.
+Se adjunta el enlace de seguimiento para la planificación de ruta. Puede realizar el monitoreo en tiempo real accediendo al siguiente portal de visibilidad.
 
 🔗 Enlace de Seguimiento: ${trackingUrl}
 🔑 Contraseña de Acceso: ${pin}
@@ -93,7 +93,8 @@ Se ha programado su despacho (${selectedDispatch.dispatch_number}). Puede realiz
 Saludos cordiales,
 Equipo JRM TMS`
 
-        window.open(`mailto:?subject=Seguimiento de Ruta JRM - ${selectedDispatch.dispatch_number}&body=${encodeURIComponent(mailBody)}`, '_blank')
+        const formattedDate = new Date(selectedDispatch.scheduled_departure).toLocaleDateString('es-PE')
+        window.open(`mailto:?subject=Seguimiento de Ruta JRM - ${formattedDate}&body=${encodeURIComponent(mailBody)}`, '_blank')
         toast.success('Enlace de seguimiento generado y copiado al correo.')
       }
     } catch (error: any) {
