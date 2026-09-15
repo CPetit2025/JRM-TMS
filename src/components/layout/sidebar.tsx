@@ -7,7 +7,7 @@ import {
   LogOut, ShieldCheck, BarChart3, Send, DollarSign, 
   ArchiveRestore, Zap, ChevronRight, Wrench, Clock, BarChart2, CheckCircle, Settings2,
   Building2, FileSignature, ClipboardList, PackageCheck, Activity, HardHat, BadgeDollarSign,
-  PackageSearch, Wallet
+  PackageSearch, Wallet, Receipt
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -71,6 +71,7 @@ export function Sidebar() {
               </div>
               {hasPermission('clientes') && <NavItem href="/clientes" icon={Building2} label="Directorio Clientes" />}
               {hasPermission('ot') && <NavItem href="/contratos" icon={FileSignature} label="Contratos y OTs" />}
+              {hasPermission('ot') && <NavItem href="/contratos/servicios" icon={Receipt} label="Servicios de Contrato" />}
               {hasPermission('solicitudes') && <NavItem href="/solicitudes" icon={ClipboardList} label="Solicitudes de Carga" />}
             </>
           )}
