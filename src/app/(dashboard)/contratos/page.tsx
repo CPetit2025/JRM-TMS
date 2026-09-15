@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Search, Layers, FileWarning, Briefcase, FilePlus2, CheckCircle2, Upload, Download } from 'lucide-react'
+import { Plus, Search, Layers, FileWarning, Briefcase, FilePlus2, CheckCircle2, Upload, Download, Edit2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -42,6 +42,17 @@ export default function ContratosPage() {
   // Bulk upload
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const [editingContract, setEditingContract] = useState<Contract | null>(null)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [editFormData, setEditFormData] = useState({
+    budget_pen: '',
+    total_weight_kg: '',
+    total_volume_m3: '',
+    destination_department: '',
+    destination_province: '',
+    destination_district: '',
+    destination_address: ''
+  })
 
   const [newContract, setNewContract] = useState({
     correlative: '',
@@ -158,6 +169,71 @@ export default function ContratosPage() {
       fetchContracts()
     } catch (error: any) {
       toast.error(error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleEditClick = (contract: Contract) => {
+    setEditingContract(contract)
+    setEditFormData({
+      budget_pen: contract.budget?.allocated_pen?.toString() || '',
+      total_weight_kg: contract.total_weight_kg?.toString() || '',
+      total_volume_m3: contract.total_volume_m3?.toString() || '',
+      destination_department: contract.destination_department || '',
+      destination_province: contract.destination_province || '',
+      destination_district: contract.destination_district || '',
+      destination_address: contract.destination_address || ''
+    })
+    setIsEditModalOpen(true)
+  }
+
+  const handleUpdateContract = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingContract) return
+    setIsSubmitting(true)
+
+    try {
+      // 1. Update contract basic fields
+      const { error: contractError } = await supabase
+        .from('contracts')
+        .update({
+          total_weight_kg: editFormData.total_weight_kg ? Number(editFormData.total_weight_kg) : 0,
+          total_volume_m3: editFormData.total_volume_m3 ? Number(editFormData.total_volume_m3) : 0,
+          destination_department: editFormData.destination_department,
+          destination_province: editFormData.destination_province,
+          destination_district: editFormData.destination_district,
+          destination_address: editFormData.destination_address
+        })
+        .eq('id', editingContract.id)
+
+      if (contractError) throw contractError
+
+      // 2. Update or insert budget
+      const newBudget = Number(editFormData.budget_pen)
+      if (newBudget >= 0) {
+        if (editingContract.budget) {
+          // Update existing
+          const { error: budgetError } = await supabase
+            .from('contract_budgets')
+            .update({ allocated_pen: newBudget })
+            .eq('contract_id', editingContract.id)
+          if (budgetError) throw budgetError
+        } else if (newBudget > 0) {
+          // Insert new budget if it didn't exist
+          const { error: insertError } = await supabase
+            .from('contract_budgets')
+            .insert([{ contract_id: editingContract.id, allocated_pen: newBudget }])
+          if (insertError) throw insertError
+        }
+      }
+
+      toast.success('Contrato actualizado exitosamente')
+      setIsEditModalOpen(false)
+      setEditingContract(null)
+      fetchContracts()
+    } catch (error: any) {
+      toast.error('Error al actualizar: ' + error.message)
     } finally {
       setIsSubmitting(false)
     }
@@ -362,6 +438,7 @@ export default function ContratosPage() {
                 <th className="px-6 py-4 font-semibold">Partida de Transporte (S/)</th>
                 <th className="px-6 py-4 font-semibold">Saldo Disponible (S/)</th>
                 <th className="px-6 py-4 font-semibold">Estado</th>
+                <th className="px-6 py-4 font-semibold text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -418,6 +495,15 @@ export default function ContratosPage() {
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         {contract.status}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <button 
+                        onClick={() => handleEditClick(contract)}
+                        className="p-1.5 text-slate-400 hover:text-[#002855] hover:bg-slate-100 rounded-lg transition-colors"
+                        title="Editar Contrato/Partidas"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -625,6 +711,119 @@ export default function ContratosPage() {
               className="px-6 py-2 bg-[#002855] text-white font-medium rounded-lg hover:bg-[#001d3d] transition-colors disabled:opacity-50 shadow-md"
             >
               {isSubmitting ? 'Guardando...' : 'Guardar Registro'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Modal */}
+      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={`Editar Contrato: ${editingContract?.code}`} maxWidth="max-w-4xl">
+        <form onSubmit={handleUpdateContract} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+              <h3 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Presupuesto y Carga</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Partida de Transporte Inicial (S/)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editFormData.budget_pen}
+                    onChange={(e) => setEditFormData({...editFormData, budget_pen: e.target.value})}
+                    className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm"
+                    placeholder="0.00"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1 leading-tight">
+                    Este monto es la partida principal reservada para servicios. Si ya hay servicios consumidos, se recalculará el saldo disponible automáticamente.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Peso (KG)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editFormData.total_weight_kg}
+                      onChange={(e) => setEditFormData({...editFormData, total_weight_kg: e.target.value})}
+                      className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Volumen (M3)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editFormData.total_volume_m3}
+                      onChange={(e) => setEditFormData({...editFormData, total_volume_m3: e.target.value})}
+                      className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+              <h3 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Destino / Proyecto</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Dirección Exacta</label>
+                  <input
+                    type="text"
+                    value={editFormData.destination_address}
+                    onChange={(e) => setEditFormData({...editFormData, destination_address: e.target.value})}
+                    className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-slate-50"
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Departamento</label>
+                    <input
+                      type="text"
+                      value={editFormData.destination_department}
+                      onChange={(e) => setEditFormData({...editFormData, destination_department: e.target.value.toUpperCase()})}
+                      className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-slate-50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Provincia</label>
+                    <input
+                      type="text"
+                      value={editFormData.destination_province}
+                      onChange={(e) => setEditFormData({...editFormData, destination_province: e.target.value.toUpperCase()})}
+                      className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-slate-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Distrito</label>
+                    <input
+                      type="text"
+                      value={editFormData.destination_district}
+                      onChange={(e) => setEditFormData({...editFormData, destination_district: e.target.value.toUpperCase()})}
+                      className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-slate-50"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setIsEditModalOpen(false)}
+              className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-6 py-2 bg-[#002855] text-white font-medium rounded-lg hover:bg-[#001d3d] transition-colors disabled:opacity-50 shadow-md"
+            >
+              {isSubmitting ? 'Guardando...' : 'Guardar Cambios'}
             </button>
           </div>
         </form>
