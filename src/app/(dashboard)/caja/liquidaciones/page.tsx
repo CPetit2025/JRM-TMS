@@ -39,7 +39,7 @@ export default function LiquidacionesPage() {
         .from('cash_funds')
         .select(`
           *,
-          received_by_profile:profiles!cash_funds_received_by_fkey(full_name, role)
+          received_by_profile:profiles!cash_funds_received_by_fkey(first_name, last_name)
         `)
         .order('created_at', { ascending: false })
       
@@ -114,7 +114,8 @@ export default function LiquidacionesPage() {
 
   const filtered = funds.filter(f => 
     f.code?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    f.received_by_profile?.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
+    f.received_by_profile?.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    f.received_by_profile?.last_name?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const totalGastos = expenses.reduce((sum, e) => e.status !== 'RECHAZADO' && e.status !== 'ANULADO' ? sum + Number(e.total_amount) : sum, 0)
@@ -165,8 +166,7 @@ export default function LiquidacionesPage() {
                     <tr key={f.id} className="hover:bg-slate-50 transition-colors">
                       <td className="p-4 font-bold text-[#002855]">{f.code}</td>
                       <td className="p-4">
-                        <span className="font-semibold text-slate-800 block">{f.received_by_profile?.full_name}</span>
-                        <span className="text-xs text-slate-400">{f.received_by_profile?.role}</span>
+                        <span className="font-semibold text-slate-800 block">{f.received_by_profile?.first_name} {f.received_by_profile?.last_name}</span>
                       </td>
                       <td className="p-4 text-right font-black text-slate-800">{formatMoney(f.amount, f.currency)}</td>
                       <td className="p-4 text-center">
