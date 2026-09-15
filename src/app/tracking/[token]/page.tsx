@@ -247,6 +247,12 @@ export default function TrackingPage() {
                               </span>
                             </div>
                             
+                            {req.client_name && (
+                              <div className="mb-3 px-2 py-1 bg-[#002855]/5 rounded text-[#002855] text-xs font-semibold w-fit">
+                                Cliente: {req.client_name}
+                              </div>
+                            )}
+
                             <div className="space-y-3">
                               <div className="flex gap-2 items-start">
                                 <MapPin className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />

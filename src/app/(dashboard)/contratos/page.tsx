@@ -20,6 +20,10 @@ interface Contract {
   destination_province?: string
   destination_district?: string
   destination_address?: string
+  clients?: {
+    id: string
+    business_name: string
+  }
   budget?: {
     allocated_usd: number
     allocated_pen: number
@@ -30,6 +34,7 @@ interface Contract {
 export default function ContratosPage() {
   const supabase = createClient()
   const [contracts, setContracts] = useState<Contract[]>([])
+  const [clients, setClients] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -54,7 +59,17 @@ export default function ContratosPage() {
 
   useEffect(() => {
     fetchContracts()
+    fetchClients()
   }, [])
+
+  const fetchClients = async () => {
+    try {
+      const { data, error } = await supabase.from('clients').select('id, business_name, document_id').eq('is_active', true)
+      if (!error && data) setClients(data)
+    } catch (e) {
+      console.error('Error fetching clients', e)
+    }
+  }
 
   const fetchContracts = async () => {
     setLoading(true)
@@ -63,6 +78,7 @@ export default function ContratosPage() {
         .from('contracts')
         .select(`
           *,
+          clients(id, business_name),
           contract_budgets (
             allocated_usd, allocated_pen, balance_pen
           )
@@ -171,6 +187,10 @@ export default function ContratosPage() {
         const { data: dbContracts } = await supabase.from('contracts').select('id, code, destination_department, destination_province, destination_district, destination_address')
         const contractMap = new Map(dbContracts?.map(c => [c.code, c]))
 
+        // Traemos clientes para mapear RUC -> UUID
+        const { data: dbClients } = await supabase.from('clients').select('id, document_id')
+        const clientMap = new Map(dbClients?.map(c => [c.document_id, c.id]))
+
         for (const row of data) {
           try {
             const tipo = row.Tipo?.toUpperCase()
@@ -183,6 +203,12 @@ export default function ContratosPage() {
             let prov = String(row.Destino_Provincia || '').trim().toUpperCase()
             let dist = String(row.Destino_Distrito || '').trim().toUpperCase()
             let dir = String(row.Destino_Direccion || '').trim()
+            
+            const rucCliente = String(row.Cliente_RUC || row.RUC || '').trim()
+            let clientId = null
+            if (rucCliente && clientMap.has(rucCliente)) {
+              clientId = clientMap.get(rucCliente)
+            }
 
             if (!codigo) continue
 
@@ -222,6 +248,7 @@ export default function ContratosPage() {
                 code: finalCode,
                 type: tipo,
                 parent_contract_id: parentId,
+                client_id: clientId,
                 status: 'ACTIVO',
                 total_weight_kg: peso,
                 total_volume_m3: volumen,
@@ -356,6 +383,9 @@ export default function ContratosPage() {
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <span className="font-semibold text-slate-900 text-base">{contract.code}</span>
+                        {contract.clients && (
+                          <span className="text-sm text-[#002855] font-medium mt-0.5">{contract.clients.business_name}</span>
+                        )}
                         {contract.parent_contract_id && (
                           <span className="text-xs text-slate-400 mt-0.5">↳ Derivado de otro contrato</span>
                         )}
@@ -412,6 +442,20 @@ export default function ContratosPage() {
                   <option value="CONTRATO">Contrato Principal / OT Madre</option>
                   <option value="SUBCONTRATO">Subcontrato</option>
                   <option value="ERROR">Error / Reproceso</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Cliente</label>
+                <select
+                  value={newContract.client_id}
+                  onChange={(e) => setNewContract({...newContract, client_id: e.target.value})}
+                  className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-white"
+                >
+                  <option value="">-- Seleccionar Cliente (Opcional) --</option>
+                  {clients.map(c => (
+                    <option key={c.id} value={c.id}>{c.business_name} ({c.document_id})</option>
+                  ))}
                 </select>
               </div>
 

@@ -24,6 +24,12 @@ interface TransportRequest {
   contract_id?: string
   service_cost?: number
   purchase_order?: string
+  contracts?: {
+    code: string
+    clients?: {
+      business_name: string
+    }
+  }
 }
 
 interface WorkOrder {
@@ -117,7 +123,13 @@ export default function SolicitudesPage() {
     try {
       const { data, error } = await supabase
         .from('transport_requests')
-        .select('*')
+        .select(`
+          *,
+          contracts(
+            code,
+            clients(business_name)
+          )
+        `)
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -526,7 +538,9 @@ export default function SolicitudesPage() {
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b">
                 <th className="p-4 font-semibold">Código</th>
                 <th className="p-4 font-semibold">Solicitante</th>
-                <th className="p-4 font-semibold">Ruta (Origen - Destino)</th>
+                <th className="px-6 py-4 font-semibold w-1/4">Origen y Destino</th>
+                <th className="px-6 py-4 font-semibold">Cliente</th>
+                <th className="px-6 py-4 font-semibold">Carga</th>
                 <th className="p-4 font-semibold">Fecha Req.</th>
                 <th className="p-4 font-semibold">Estado</th>
                 <th className="p-4 font-semibold text-right">Acciones</th>
@@ -535,14 +549,14 @@ export default function SolicitudesPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-500">
+                  <td colSpan={8} className="p-8 text-center text-slate-500">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                     Cargando solicitudes...
                   </td>
                 </tr>
               ) : requests.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-500">
+                  <td colSpan={8} className="p-8 text-center text-slate-500">
                     No hay solicitudes registradas.
                   </td>
                 </tr>
@@ -564,15 +578,39 @@ export default function SolicitudesPage() {
                         )}
                       </div>
                     </td>
-                    <td className="p-4 text-sm max-w-[250px]">
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1.5 text-slate-700 font-medium truncate" title={`${req.pickup_address} → ${req.delivery_address}`}>
-                          <span className="truncate max-w-[120px]" title={req.pickup_address}>{req.pickup_address || '-'}</span>
-                          <span className="text-slate-300">→</span>
-                          <span className="truncate max-w-[120px]" title={req.delivery_address}>{req.delivery_address || '-'}</span>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-start gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2"></div>
+                          <div className="flex flex-col flex-1">
+                            <span className="text-xs font-semibold text-slate-500 uppercase">Origen</span>
+                            <span className="text-sm font-medium text-slate-900 truncate max-w-[200px]" title={req.pickup_address}>
+                              {req.pickup_address || '-'}
+                            </span>
+                          </div>
                         </div>
+                        <div className="flex items-start gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-2"></div>
+                          <div className="flex flex-col flex-1">
+                            <span className="text-xs font-semibold text-slate-500 uppercase">Destino</span>
+                            <span className="text-sm font-medium text-slate-900 truncate max-w-[200px]" title={req.delivery_address}>
+                              {req.delivery_address || '-'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {req.contracts?.clients?.business_name ? (
+                        <span className="text-sm font-medium text-[#002855]">{req.contracts.clients.business_name}</span>
+                      ) : (
+                        <span className="text-sm text-slate-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm max-w-[250px]">
+                      <div className="flex flex-col gap-1">
                         {req.cargo_description && (
-                          <div className="text-[10px] text-slate-400 font-medium truncate" title={req.cargo_description}>
+                          <div className="text-xs text-slate-700 font-medium truncate" title={req.cargo_description}>
                             Glosa: {req.cargo_description} {req.purchase_order ? `| OC/OS: ${req.purchase_order}` : ''}
                           </div>
                         )}

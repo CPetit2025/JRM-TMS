@@ -21,6 +21,9 @@ interface TransportRequest {
   contracts?: {
     id: string
     code: string
+    clients?: {
+      business_name: string
+    }
     contract_budgets?: Array<{
       balance_pen: number
       allocated_pen: number
@@ -188,6 +191,9 @@ export default function DespachoPage() {
           contracts (
             id,
             code,
+            clients (
+              business_name
+            ),
             contract_budgets (
               balance_pen,
               allocated_pen
@@ -637,6 +643,11 @@ export default function DespachoPage() {
                       </span>
                     </div>
                     <p className="text-sm font-semibold text-slate-800 mb-1 truncate" title={req.requester_name}>{req.requester_name}</p>
+                    {req.contracts?.clients?.business_name && (
+                      <p className="text-xs font-medium text-[#002855] mb-1 truncate" title={req.contracts.clients.business_name}>
+                        {req.contracts.clients.business_name}
+                      </p>
+                    )}
                     <div className="text-xs text-slate-500 flex flex-col gap-1 mt-2">
                       <div className="flex items-start gap-1">
                         <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-blue-500" />

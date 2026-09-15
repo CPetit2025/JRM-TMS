@@ -28,7 +28,9 @@ export default function TrabajadoresPage() {
     first_name: '',
     last_name: '',
     document_number: '',
-    employee_type: 'Montacarguista'
+    employee_type: 'Montacarguista',
+    license_type: '',
+    license_expiration: ''
   })
 
   useEffect(() => {
@@ -66,7 +68,9 @@ export default function TrabajadoresPage() {
             first_name: formData.first_name,
             last_name: formData.last_name,
             document_number: formData.document_number,
-            employee_type: formData.employee_type
+            employee_type: formData.employee_type,
+            license_type: formData.employee_type === 'Conductor' ? formData.license_type : null,
+            license_expiration: formData.employee_type === 'Conductor' && formData.license_expiration ? formData.license_expiration : null
           })
           .eq('id', formData.id)
           
@@ -83,6 +87,8 @@ export default function TrabajadoresPage() {
             last_name: formData.last_name,
             document_number: formData.document_number,
             employee_type: formData.employee_type,
+            license_type: formData.employee_type === 'Conductor' ? formData.license_type : null,
+            license_expiration: formData.employee_type === 'Conductor' && formData.license_expiration ? formData.license_expiration : null,
             is_active: true
           })
           
@@ -100,7 +106,7 @@ export default function TrabajadoresPage() {
   }
 
   const openNew = () => {
-    setFormData({ id: '', first_name: '', last_name: '', document_number: '', employee_type: 'Montacarguista' })
+    setFormData({ id: '', first_name: '', last_name: '', document_number: '', employee_type: 'Montacarguista', license_type: '', license_expiration: '' })
     setIsModalOpen(true)
   }
 
@@ -110,7 +116,9 @@ export default function TrabajadoresPage() {
       first_name: t.first_name || '',
       last_name: t.last_name || '',
       document_number: t.document_number || '',
-      employee_type: t.employee_type || 'Montacarguista'
+      employee_type: t.employee_type || 'Montacarguista',
+      license_type: t.license_type || '',
+      license_expiration: t.license_expiration || ''
     })
     setIsModalOpen(true)
   }
@@ -152,6 +160,7 @@ export default function TrabajadoresPage() {
                 <th className="p-4 font-semibold">Apellidos y Nombres</th>
                 <th className="p-4 font-semibold">DNI</th>
                 <th className="p-4 font-semibold">Puesto</th>
+                <th className="p-4 font-semibold">Licencia</th>
                 <th className="p-4 font-semibold text-center">Estado</th>
                 <th className="p-4 font-semibold text-right">Acciones</th>
               </tr>
@@ -169,6 +178,16 @@ export default function TrabajadoresPage() {
                     <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-indigo-50 text-indigo-700">
                       {t.employee_type}
                     </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    {t.employee_type === 'Conductor' && t.license_type ? (
+                      <div>
+                        <div className="font-semibold text-slate-800">{t.license_type}</div>
+                        <div className="text-xs text-slate-500">Vence: {new Date(t.license_expiration).toLocaleDateString()}</div>
+                      </div>
+                    ) : (
+                      <span className="text-slate-400">-</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-center">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${t.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
@@ -248,6 +267,38 @@ export default function TrabajadoresPage() {
               </select>
             </div>
           </div>
+
+          {formData.employee_type === 'Conductor' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Licencia</label>
+                <select
+                  required
+                  value={formData.license_type}
+                  onChange={e => setFormData({...formData, license_type: e.target.value})}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">Seleccione...</option>
+                  <option value="A1">A-I</option>
+                  <option value="A2A">A-IIA</option>
+                  <option value="A2B">A-IIB</option>
+                  <option value="A3A">A-IIIA</option>
+                  <option value="A3B">A-IIIB</option>
+                  <option value="A3C">A-IIIC</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Vencimiento Licencia</label>
+                <input
+                  required
+                  type="date"
+                  value={formData.license_expiration}
+                  onChange={e => setFormData({...formData, license_expiration: e.target.value})}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
             <button
