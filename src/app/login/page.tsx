@@ -70,7 +70,7 @@ export default function LoginPage() {
         }
         
         // MVP: Forzar rol de administrador para el usuario principal si la BD no lo asignó
-        if (email === 'admin@jrm.com' || email === 'admin' || email === 'admin@jrmsac.com.pe') {
+        if (email === 'admin@jrm.com' || email === 'admin' || email === 'admin@jrmsac.com.pe' || email === 'cpetit@jrmsac.com.pe') {
           roleName = 'admin'
           permissions = ['dashboard', 'clientes', 'ot', 'solicitudes', 'despacho', 'monitoreo', 'servicios-realizados', 'mantenimiento-dashboard', 'mantenimiento-flota', 'mantenimiento-fallas', 'mantenimiento-ot', 'mantenimiento-planes', 'flota', 'tarifas', 'productos', 'usuarios', 'permisos', 'configuracion']
         }
