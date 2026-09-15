@@ -48,73 +48,25 @@ export default function RegisterDriver() {
     setLoading(true)
     
     try {
-      const email = `${form.dni}@jrm.com`
-
-      // 1. Crear usuario en Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password: form.pin
+      const res = await fetch('/api/register-driver', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form)
       })
 
-      if (authError) throw new Error(authError.message)
-      if (!authData.user) throw new Error('No se pudo crear el usuario')
+      const result = await res.json()
 
-      const userId = authData.user.id
-
-      // 2. Insertar en profiles
-      const { error: profileError } = await supabase.from('profiles').insert([{
-        id: userId,
-        email: email,
-        first_name: form.firstName,
-        last_name: form.lastName,
-        document_id: form.dni,
-        employee_type: 'CONDUCTOR'
-      }])
-
-      if (profileError) throw profileError
-
-      // 3. Verificar si el conductor ya existe en la tabla drivers
-      const { data: existingDriver } = await supabase
-        .from('drivers')
-        .select('id')
-        .eq('document_id', form.dni)
-        .single()
-
-      if (existingDriver) {
-        // Actualizar registro existente
-        await supabase.from('drivers').update({
-          profile_id: userId,
-          first_name: form.firstName,
-          last_name: form.lastName,
-          phone: form.phone,
-          license_number: form.licenseNumber,
-          pin: form.pin,
-          carrier_id: form.carrierId
-        }).eq('id', existingDriver.id)
-      } else {
-        // Crear nuevo registro
-        await supabase.from('drivers').insert([{
-          carrier_id: form.carrierId,
-          profile_id: userId,
-          document_id: form.dni,
-          first_name: form.firstName,
-          last_name: form.lastName,
-          phone: form.phone,
-          license_number: form.licenseNumber,
-          license_category: 'A-I', // Default
-          pin: form.pin,
-          is_active: true
-        }])
+      if (!res.ok) {
+        toast.error(result.error || 'Error al registrar la cuenta')
+        return
       }
 
-      toast.success('Cuenta creada exitosamente')
-      
-      // Auto login o redirigir al login
+      toast.success('¡Cuenta creada exitosamente! Ya puedes iniciar sesión.')
       router.push('/app/login')
       
     } catch (err: any) {
       console.error(err)
-      toast.error(err.message === 'User already registered' ? 'El DNI ya se encuentra registrado' : 'Error al registrar la cuenta')
+      toast.error('Error de conexión. Inténtalo de nuevo.')
     } finally {
       setLoading(false)
     }
