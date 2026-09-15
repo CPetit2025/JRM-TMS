@@ -46,7 +46,7 @@ export default function FondosPage() {
         .from('cash_funds')
         .select(`
           *,
-          received_by_profile:profiles!cash_funds_received_by_fkey(first_name, last_name, email),
+          received_by_profile:profiles!cash_funds_received_by_fkey(first_name, last_name),
           trip:dispatches(code, origin, destination),
           vehicle:vehicles(plate, brand, model)
         `)
@@ -58,7 +58,7 @@ export default function FondosPage() {
       // Fetch possible receivers
       const { data: uData, error: uError } = await supabase
         .from('profiles')
-        .select('id, first_name, last_name, email')
+        .select('id, first_name, last_name')
         .order('first_name')
       
       if (uError) throw uError
@@ -105,25 +105,21 @@ export default function FondosPage() {
   const filtered = funds.filter(f => 
     f.code?.toLowerCase().includes(searchTerm.toLowerCase()) || 
     f.received_by_profile?.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    f.received_by_profile?.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    f.received_by_profile?.email?.toLowerCase().includes(searchTerm.toLowerCase())
+    f.received_by_profile?.last_name?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   return (
     <div className="p-6 w-full max-w-7xl mx-auto space-y-6">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-black text-[#002855] tracking-tight">Entrega de Fondos</h1>
-          <p className="text-sm text-slate-500 font-medium mt-1">Gestión de anticipos y caja chica asignada</p>
+          <h2 className="text-xl font-bold text-slate-800">Fondos de Caja Chica</h2>
+          <p className="text-sm text-slate-500 mt-1">Dinero asignado por Finanzas para la gestión del área</p>
         </div>
         <button 
-          onClick={() => {
-            setForm({ received_by: '', amount: '', currency: 'PEN', reason: '', status: 'ENTREGADO' })
-            setIsModalOpen(true)
-          }} 
-          className="bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#003566] transition-colors flex items-center gap-2"
+          onClick={() => setIsModalOpen(true)}
+          className="bg-[#002855] text-white px-4 py-2.5 rounded-xl font-bold hover:bg-[#003566] transition-colors flex items-center justify-center gap-2"
         >
-          <Plus className="w-4 h-4" /> Entregar Fondo
+          <Plus className="w-5 h-5" /> Registrar Ingreso de Fondo
         </button>
       </div>
 
@@ -174,7 +170,6 @@ export default function FondosPage() {
                             <p className="font-medium text-slate-800">
                               {f.received_by_profile?.first_name} {f.received_by_profile?.last_name}
                             </p>
-                            <p className="text-xs text-slate-500">{f.received_by_profile?.email}</p>
                           </div>
                         </div>
                       </td>
@@ -203,12 +198,12 @@ export default function FondosPage() {
         )}
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Entregar Fondo" maxWidth="max-w-xl">
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Registrar Ingreso de Caja Chica" maxWidth="max-w-xl">
         <form onSubmit={handleSave} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Entregar a (Responsable) *</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Responsable del Fondo *</label>
             <select required value={form.received_by} onChange={e => setForm({...form, received_by: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg bg-white">
-              <option value="">Seleccionar responsable...</option>
+              <option value="">Seleccionar responsable de nuestra área...</option>
               {users.map(u => (
                 <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
               ))}
@@ -237,9 +232,9 @@ export default function FondosPage() {
           <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3 mt-4">
             <Activity className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <div>
-              <p className="font-bold text-amber-900 text-sm">Auditoría Financiera</p>
+              <p className="font-bold text-amber-900 text-sm">Control de Caja Chica</p>
               <p className="text-xs text-amber-800 mt-1">
-                Al guardar, este fondo quedará registrado bajo tu usuario como responsable de la entrega. El receptor verá este saldo en su app móvil para iniciar la rendición.
+                Este registro indica el monto recibido por el área de Finanzas. Todos los gastos que se registren en el módulo de Gastos se descontarán de este saldo para la futura liquidación.
               </p>
             </div>
           </div>
@@ -247,7 +242,7 @@ export default function FondosPage() {
           <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 mt-6">
             <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg font-medium">Cancelar</button>
             <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-[#002855] text-white rounded-lg font-medium hover:bg-[#003566]">
-              {isSubmitting ? 'Procesando...' : 'Confirmar Entrega'}
+              {isSubmitting ? 'Procesando...' : 'Registrar Fondo'}
             </button>
           </div>
         </form>
