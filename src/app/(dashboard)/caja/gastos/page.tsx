@@ -238,18 +238,18 @@ export default function GastosMobilePage() {
   }
 
   return (
-    <div className="w-full max-w-lg mx-auto bg-slate-50 min-h-[calc(100vh-64px)] pb-20">
-      {/* Mobile Header */}
-      <div className="bg-[#002855] text-white p-4 shadow-md rounded-b-xl sticky top-0 z-10">
-        <h1 className="text-xl font-black tracking-tight">Rendición de Gastos</h1>
-        <p className="text-xs text-blue-200 font-medium opacity-80">Con IA / OCR Integrado</p>
+    <div className="w-full max-w-5xl mx-auto bg-slate-50 min-h-[calc(100vh-64px)] pb-10 px-4 sm:px-6">
+      {/* Header */}
+      <div className="bg-blue-600 text-white p-6 sticky top-0 z-10 shadow-md rounded-b-xl mb-6">
+        <h1 className="text-xl font-bold">Registro de Gastos</h1>
+        <p className="text-blue-100 text-sm mt-1">Sube tus comprobantes desde tu cámara o archivos</p>
       </div>
 
       {/* Tabs */}
-      <div className="flex bg-white shadow-sm mb-4 sticky top-[72px] z-10">
+      <div className="flex bg-white shadow-sm mb-6 rounded-xl overflow-hidden border border-slate-200">
         <button 
           onClick={() => setActiveTab('nuevo')}
-          className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'nuevo' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}
+          className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'nuevo' ? 'border-blue-600 text-blue-600 bg-blue-50/50' : 'border-transparent text-slate-500 hover:bg-slate-50'}`}
         >
           Nuevo Gasto
         </button>
