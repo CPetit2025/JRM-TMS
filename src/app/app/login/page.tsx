@@ -165,6 +165,18 @@ export default function OperativeLogin() {
           </button>
         </form>
 
+        <div className="mt-6 text-center">
+          <p className="text-sm text-slate-600">
+            ¿Eres conductor y no tienes cuenta?{' '}
+            <button 
+              onClick={() => router.push('/app/register')}
+              className="text-[#002855] font-bold hover:underline"
+            >
+              Regístrate aquí
+            </button>
+          </p>
+        </div>
+
         <div className="mt-8 pt-6 border-t border-slate-100 text-center">
           <p className="text-xs text-slate-400 font-medium">
             JRM SCM v2.0 &bull; Área de Operaciones
