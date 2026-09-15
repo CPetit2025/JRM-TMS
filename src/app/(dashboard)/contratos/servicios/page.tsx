@@ -1,9 +1,11 @@
 "use client"
-import { useState, useEffect } from 'react'
-import { Plus, Receipt, Calendar, FileText, Check, Ban, Loader2, DollarSign } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Plus, Receipt, Calendar, FileText, Check, Ban, Loader2, DollarSign, Upload, Download, AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { useDropzone } from 'react-dropzone'
+import * as XLSX from 'xlsx'
 
 interface Contract {
   id: string
@@ -25,6 +27,11 @@ interface ContractService {
   amount_pen: number
   service_date: string
   status: string
+  plate?: string
+  driver_name?: string
+  hours?: number
+  provider_ruc?: string
+  provider_name?: string
   created_at: string
   contracts?: {
     code: string
@@ -41,13 +48,22 @@ export default function ContractServicesPage() {
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // Bulk upload states
+  const [isUploading, setIsUploading] = useState(false)
 
   const [newService, setNewService] = useState({
     contract_id: '',
     service_type: 'FLETE',
     description: '',
     amount_pen: '',
-    service_date: new Date().toISOString().split('T')[0]
+    service_date: new Date().toISOString().split('T')[0],
+    plate: '',
+    driver_name: '',
+    hours: '',
+    isThirdParty: false,
+    provider_ruc: '',
+    provider_name: ''
   })
 
   useEffect(() => {
@@ -57,7 +73,6 @@ export default function ContractServicesPage() {
   const fetchData = async () => {
     setLoading(true)
     try {
-      // 1. Fetch services
       const { data: sData, error: sError } = await supabase
         .from('contract_services')
         .select(`
@@ -72,7 +87,6 @@ export default function ContractServicesPage() {
       if (sError) throw sError
       setServices((sData as any) || [])
 
-      // 2. Fetch contracts
       const { data: cData, error: cError } = await supabase
         .from('contracts')
         .select(`
@@ -99,6 +113,11 @@ export default function ContractServicesPage() {
       return
     }
 
+    if (newService.service_type === 'MONTACARGA' && !newService.hours) {
+      toast.error('La cantidad de horas es obligatoria para Montacargas.')
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const { error } = await supabase.rpc('register_contract_service', {
@@ -106,20 +125,19 @@ export default function ContractServicesPage() {
         p_service_type: newService.service_type,
         p_description: newService.description,
         p_amount_pen: parseFloat(newService.amount_pen),
-        p_service_date: newService.service_date
+        p_service_date: newService.service_date,
+        p_plate: newService.service_type === 'FLETE' ? newService.plate : null,
+        p_driver_name: newService.service_type === 'FLETE' ? newService.driver_name : null,
+        p_hours: newService.service_type === 'MONTACARGA' ? parseFloat(newService.hours) : null,
+        p_provider_ruc: newService.isThirdParty ? newService.provider_ruc : null,
+        p_provider_name: newService.isThirdParty ? newService.provider_name : null
       })
 
       if (error) throw error
 
       toast.success('Servicio registrado exitosamente.')
       setIsModalOpen(false)
-      setNewService({
-        contract_id: '',
-        service_type: 'FLETE',
-        description: '',
-        amount_pen: '',
-        service_date: new Date().toISOString().split('T')[0]
-      })
+      resetForm()
       fetchData()
     } catch (error: any) {
       toast.error('Error: ' + error.message)
@@ -128,20 +146,161 @@ export default function ContractServicesPage() {
     }
   }
 
+  const resetForm = () => {
+    setNewService({
+      contract_id: '',
+      service_type: 'FLETE',
+      description: '',
+      amount_pen: '',
+      service_date: new Date().toISOString().split('T')[0],
+      plate: '',
+      driver_name: '',
+      hours: '',
+      isThirdParty: false,
+      provider_ruc: '',
+      provider_name: ''
+    })
+  }
+
+  const downloadTemplate = () => {
+    const data = [
+      { RUC_Contrato: '20123456789', Tipo_Servicio: 'FLETE', Fecha_Servicio: '2026-10-01', Monto: 1500.50, Descripcion: 'Viaje a Piura', Horas: '', Placa: 'ABC-123', Conductor: 'Juan Perez', Proveedor_RUC: '20987654321', Proveedor_Nombre: 'Transportes XYZ' },
+      { RUC_Contrato: '20123456789', Tipo_Servicio: 'MONTACARGA', Fecha_Servicio: '2026-10-02', Monto: 500, Descripcion: 'Descarga en almacén', Horas: 4, Placa: '', Conductor: '', Proveedor_RUC: '', Proveedor_Nombre: '' }
+    ]
+    const ws = XLSX.utils.json_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Servicios")
+    XLSX.writeFile(wb, "Plantilla_Carga_Servicios.xlsx")
+  }
+
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    const file = acceptedFiles[0]
+    if (!file) return
+
+    setIsUploading(true)
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        const json = XLSX.utils.sheet_to_json(worksheet) as any[]
+
+        let successCount = 0
+        let errorCount = 0
+
+        for (const row of json) {
+          // Find contract by RUC (Client) - simplistic match for bulk upload
+          const contract = contracts.find(c => {
+             // Basic fallback: in real life we might lookup the client RUC if we joined it
+             // Let's assume they provide the exact contract code in RUC_Contrato column for better accuracy 
+             // or the client RUC. We will match by contract code first.
+             return c.code === String(row.RUC_Contrato || row.Codigo_Contrato || '')
+          })
+
+          if (!contract) {
+            errorCount++
+            continue
+          }
+
+          const { error } = await supabase.rpc('register_contract_service', {
+            p_contract_id: contract.id,
+            p_service_type: row.Tipo_Servicio || 'OTROS',
+            p_description: row.Descripcion || '',
+            p_amount_pen: parseFloat(row.Monto) || 0,
+            p_service_date: row.Fecha_Servicio ? new Date(row.Fecha_Servicio).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+            p_plate: row.Placa || null,
+            p_driver_name: row.Conductor || null,
+            p_hours: row.Horas ? parseFloat(row.Horas) : null,
+            p_provider_ruc: row.Proveedor_RUC ? String(row.Proveedor_RUC) : null,
+            p_provider_name: row.Proveedor_Nombre || null
+          })
+
+          if (error) {
+            errorCount++
+          } else {
+            successCount++
+          }
+        }
+
+        toast.success(`Carga completada: ${successCount} exitosos, ${errorCount} errores.`)
+        fetchData()
+      } catch (err: any) {
+        toast.error('Error procesando el archivo: ' + err.message)
+      } finally {
+        setIsUploading(false)
+      }
+    }
+    reader.readAsArrayBuffer(file)
+  }, [contracts])
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+      'application/vnd.ms-excel': ['.xls']
+    },
+    multiple: false
+  })
+
   return (
     <div className="space-y-6 w-full mx-auto">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Servicios de Contratos</h1>
-          <p className="text-sm text-slate-500">Registro de gastos por servicios que descuentan de la partida del contrato.</p>
+          <p className="text-sm text-slate-500">Registro manual y masivo de gastos por servicios que descuentan de la partida del contrato.</p>
         </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#001d3d] transition-colors shadow-sm"
-        >
-          <Plus className="w-4 h-4" />
-          Registrar Servicio
-        </button>
+        <div className="flex gap-3">
+          <button 
+            onClick={downloadTemplate}
+            className="flex items-center gap-2 bg-white text-slate-700 border border-slate-300 px-4 py-2 rounded-lg font-medium hover:bg-slate-50 transition-colors shadow-sm"
+          >
+            <Download className="w-4 h-4" />
+            Plantilla Excel
+          </button>
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#001d3d] transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Registrar Servicio
+          </button>
+        </div>
+      </div>
+
+      {/* Carga Masiva Dropzone */}
+      <div 
+        {...getRootProps()} 
+        className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
+          isDragActive ? 'border-[#002855] bg-blue-50' : 'border-slate-300 bg-white hover:bg-slate-50'
+        }`}
+      >
+        <input {...getInputProps()} />
+        {isUploading ? (
+          <div className="flex flex-col items-center justify-center text-[#002855]">
+            <Loader2 className="w-8 h-8 animate-spin mb-3" />
+            <p className="font-semibold text-lg">Procesando archivo...</p>
+            <p className="text-sm opacity-80 mt-1">Por favor espere mientras se registran los servicios.</p>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center text-slate-500">
+            <Upload className={`w-10 h-10 mb-4 ${isDragActive ? 'text-[#002855]' : 'text-slate-400'}`} />
+            <p className="font-semibold text-lg text-slate-700 mb-1">
+              {isDragActive ? 'Suelta el archivo aquí...' : 'Carga Masiva de Servicios'}
+            </p>
+            <p className="text-sm mb-4">
+              Arrastra y suelta tu plantilla Excel aquí, o haz clic para seleccionar el archivo
+            </p>
+            <span className="text-xs font-semibold bg-slate-100 text-slate-600 px-3 py-1 rounded-full border border-slate-200">
+              Soporta .XLSX, .XLS
+            </span>
+            <div className="mt-4 flex items-center gap-2 text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
+              <AlertCircle className="w-4 h-4" />
+              <span>Asegúrate de usar el "Código de Contrato" en la columna RUC_Contrato para asegurar el emparejamiento.</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Lista de Servicios */}
@@ -152,8 +311,8 @@ export default function ContractServicesPage() {
               <tr>
                 <th className="p-4 font-semibold">Fecha</th>
                 <th className="p-4 font-semibold">Contrato / Cliente</th>
-                <th className="p-4 font-semibold">Tipo</th>
-                <th className="p-4 font-semibold w-1/3">Descripción</th>
+                <th className="p-4 font-semibold">Servicio</th>
+                <th className="p-4 font-semibold">Detalles</th>
                 <th className="p-4 font-semibold text-right">Monto (PEN)</th>
                 <th className="p-4 font-semibold text-center">Estado</th>
               </tr>
@@ -192,8 +351,14 @@ export default function ContractServicesPage() {
                         {srv.service_type}
                       </span>
                     </td>
-                    <td className="p-4 text-sm text-slate-700">
-                      {srv.description || '-'}
+                    <td className="p-4 text-xs text-slate-600">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-slate-800">{srv.description || '-'}</span>
+                        {srv.plate && <span>Placa: <span className="font-medium">{srv.plate}</span></span>}
+                        {srv.driver_name && <span>Cond: <span className="font-medium">{srv.driver_name}</span></span>}
+                        {srv.hours && <span>Horas: <span className="font-medium">{srv.hours}h</span></span>}
+                        {srv.provider_name && <span>Prov: <span className="font-medium text-amber-700">{srv.provider_name}</span></span>}
+                      </div>
                     </td>
                     <td className="p-4 text-sm font-bold text-slate-900 text-right">
                       S/ {Number(srv.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
@@ -213,7 +378,7 @@ export default function ContractServicesPage() {
 
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {setIsModalOpen(false); resetForm();}}
         title="Registrar Nuevo Servicio"
         maxWidth="max-w-2xl"
       >
@@ -264,6 +429,7 @@ export default function ContractServicesPage() {
                   onChange={(e) => setNewService({...newService, service_type: e.target.value})}
                 >
                   <option value="FLETE">Flete</option>
+                  <option value="MONTACARGA">Montacarga</option>
                   <option value="ESTIBA">Estiba</option>
                   <option value="MANIOBRA">Maniobra</option>
                   <option value="PEAJE">Peaje</option>
@@ -285,8 +451,90 @@ export default function ContractServicesPage() {
               </div>
             </div>
 
+            {/* Dynamic Fields */}
+            {newService.service_type === 'FLETE' && (
+              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Placa</label>
+                  <input 
+                    type="text"
+                    placeholder="Ej. ABC-123"
+                    className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={newService.plate}
+                    onChange={(e) => setNewService({...newService, plate: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Conductor</label>
+                  <input 
+                    type="text"
+                    placeholder="Nombre completo"
+                    className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={newService.driver_name}
+                    onChange={(e) => setNewService({...newService, driver_name: e.target.value})}
+                  />
+                </div>
+              </div>
+            )}
+
+            {newService.service_type === 'MONTACARGA' && (
+              <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Cantidad de Horas (Obligatorio)</label>
+                <input 
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  placeholder="Ej. 4"
+                  required={newService.service_type === 'MONTACARGA'}
+                  className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
+                  value={newService.hours}
+                  onChange={(e) => setNewService({...newService, hours: e.target.value})}
+                />
+              </div>
+            )}
+
+            {/* Third Party Checkbox */}
+            <div className="flex items-center gap-2 mt-2">
+              <input 
+                type="checkbox" 
+                id="isThirdParty"
+                className="w-4 h-4 text-[#002855] border-slate-300 rounded focus:ring-[#002855]"
+                checked={newService.isThirdParty}
+                onChange={(e) => setNewService({...newService, isThirdParty: e.target.checked})}
+              />
+              <label htmlFor="isThirdParty" className="text-sm font-medium text-slate-700 cursor-pointer">
+                El servicio fue realizado por un tercero (Proveedor)
+              </label>
+            </div>
+
+            {newService.isThirdParty && (
+              <div className="grid grid-cols-3 gap-4 bg-amber-50/50 p-3 rounded-lg border border-amber-100">
+                <div className="col-span-1">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">RUC Proveedor</label>
+                  <input 
+                    type="text"
+                    placeholder="20..."
+                    maxLength={11}
+                    className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={newService.provider_ruc}
+                    onChange={(e) => setNewService({...newService, provider_ruc: e.target.value})}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Razón Social</label>
+                  <input 
+                    type="text"
+                    placeholder="Nombre del proveedor"
+                    className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={newService.provider_name}
+                    onChange={(e) => setNewService({...newService, provider_name: e.target.value})}
+                  />
+                </div>
+              </div>
+            )}
+
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Monto (PEN) (Obligatorio)</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Monto Total (PEN) (Obligatorio)</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <span className="text-slate-500 font-medium">S/</span>
@@ -307,7 +555,7 @@ export default function ContractServicesPage() {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Descripción / Glosa</label>
               <textarea 
-                rows={3}
+                rows={2}
                 placeholder="Detalles adicionales del servicio..."
                 className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none resize-none"
                 value={newService.description}
@@ -319,7 +567,7 @@ export default function ContractServicesPage() {
           <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
             <button
               type="button"
-              onClick={() => setIsModalOpen(false)}
+              onClick={() => {setIsModalOpen(false); resetForm();}}
               className="px-4 py-2 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium transition-colors"
             >
               Cancelar
