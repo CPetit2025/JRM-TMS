@@ -6,7 +6,7 @@ import {
   Home, Users, FileText, Truck, Map as MapIcon, Settings, 
   LogOut, ShieldCheck, BarChart3, Send, DollarSign, 
   ArchiveRestore, Zap, ChevronRight, Wrench, Clock, BarChart2, CheckCircle, Settings2,
-  Building2, FileSignature, ClipboardList, PackageCheck, Activity, HardHat, BadgeDollar,
+  Building2, FileSignature, ClipboardList, PackageCheck, Activity, HardHat, BadgeDollarSign,
   PackageSearch, Wallet
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -121,7 +121,7 @@ export function Sidebar() {
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Catálogos</p>
               </div>
               {hasPermission('usuarios') && <NavItem href="/maestros/trabajadores" icon={HardHat} label="Trabajadores" />}
-              {hasPermission('tarifas') && <NavItem href="/maestros/tarifas" icon={BadgeDollar} label="Tarifas de Flete" />}
+              {hasPermission('tarifas') && <NavItem href="/maestros/tarifas" icon={BadgeDollarSign} label="Tarifas de Flete" />}
             </>
           )}
 
