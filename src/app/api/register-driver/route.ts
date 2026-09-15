@@ -44,14 +44,12 @@ export async function POST(request: Request) {
 
     const userId = authData.user.id
 
-    // 2. Insert into profiles
+    // 2. Insert into profiles (only guaranteed columns)
     const { error: profileError } = await supabaseAdmin.from('profiles').upsert([{
       id: userId,
-      email,
+      email: email,
       first_name: firstName,
-      last_name: lastName,
-      document_id: dni,
-      employee_type: 'CONDUCTOR'
+      last_name: lastName
     }], { onConflict: 'id' })
 
     if (profileError) throw profileError
