@@ -46,7 +46,9 @@ export default function FondosPage() {
         .from('cash_funds')
         .select(`
           *,
-          received_by_profile:profiles!cash_funds_received_by_fkey(full_name, role)
+          received_by_profile:profiles!cash_funds_received_by_fkey(first_name, last_name, email),
+          trip:dispatches(code, origin, destination),
+          vehicle:vehicles(plate, brand, model)
         `)
         .order('created_at', { ascending: false })
       
@@ -56,8 +58,8 @@ export default function FondosPage() {
       // Fetch possible receivers
       const { data: uData, error: uError } = await supabase
         .from('profiles')
-        .select('id, full_name, role')
-        .order('full_name')
+        .select('id, first_name, last_name, email')
+        .order('first_name')
       
       if (uError) throw uError
       setUsers(uData || [])
@@ -102,7 +104,9 @@ export default function FondosPage() {
 
   const filtered = funds.filter(f => 
     f.code?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    f.received_by_profile?.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
+    f.received_by_profile?.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    f.received_by_profile?.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    f.received_by_profile?.email?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   return (
@@ -167,8 +171,10 @@ export default function FondosPage() {
                             <User className="w-4 h-4 text-slate-500" />
                           </div>
                           <div>
-                            <div className="font-bold text-slate-800">{f.received_by_profile?.full_name || 'Desconocido'}</div>
-                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{f.received_by_profile?.role}</div>
+                            <p className="font-medium text-slate-800">
+                              {f.received_by_profile?.first_name} {f.received_by_profile?.last_name}
+                            </p>
+                            <p className="text-xs text-slate-500">{f.received_by_profile?.email}</p>
                           </div>
                         </div>
                       </td>
@@ -204,7 +210,7 @@ export default function FondosPage() {
             <select required value={form.received_by} onChange={e => setForm({...form, received_by: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg bg-white">
               <option value="">Seleccionar responsable...</option>
               {users.map(u => (
-                <option key={u.id} value={u.id}>{u.full_name} ({u.role})</option>
+                <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
               ))}
             </select>
           </div>
