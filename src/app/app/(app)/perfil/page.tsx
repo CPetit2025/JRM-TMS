@@ -85,7 +85,14 @@ export default function PerfilPage() {
       <div className="px-4 mt-6 mb-20 space-y-3">
         <h3 className="text-sm font-bold text-slate-800 px-2 mb-3 uppercase tracking-wider">Ajustes</h3>
         
-        <button className="w-full bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between hover:bg-slate-50 transition-colors">
+        <button 
+          onClick={() => {
+            import('sonner').then(({ toast }) => {
+              toast.info('Para editar tus datos personales, por favor comunícate con el supervisor de base o soporte de JRM.')
+            })
+          }}
+          className="w-full bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between hover:bg-slate-50 transition-colors"
+        >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
               <User className="w-5 h-5" />

@@ -24,6 +24,7 @@ export default function ChecklistPage() {
   const supabase = createClient()
   const [checkingLocation, setCheckingLocation] = useState(true)
   const [locationValid, setLocationValid] = useState(false)
+  const [hasDispatch, setHasDispatch] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [currentDistanceInfo, setCurrentDistanceInfo] = useState<string | null>(null)
   
@@ -51,9 +52,36 @@ export default function ChecklistPage() {
       }
     }
     
-    // Función para verificar ubicación contra BD
-    const verifyLocation = async () => {
+    // Función para verificar ubicación contra BD y estado de despacho
+    const verifyPrerequisites = async () => {
       try {
+        // 1. Check dispatch first
+        const driverData = localStorage.getItem('jrm_driver')
+        if (driverData) {
+          const parsed = JSON.parse(driverData)
+          const driverName = `${parsed.first_name} ${parsed.last_name}`.trim()
+          
+          const { data: activeDispatch, error: dispatchError } = await supabase
+            .from('dispatches')
+            .select('id, vehicle_plate')
+            .eq('driver_name', driverName)
+            .in('status', ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'])
+            .limit(1)
+            .maybeSingle()
+            
+          if (activeDispatch && activeDispatch.vehicle_plate) {
+            setHasDispatch(true)
+          } else {
+            setHasDispatch(false)
+            setCheckingLocation(false)
+            return // Stop here if no dispatch
+          }
+        } else {
+          setCheckingLocation(false)
+          return
+        }
+
+        // 2. Check location
         const { data: locations, error } = await supabase
           .from('authorized_locations')
           .select('*')
@@ -110,7 +138,7 @@ export default function ChecklistPage() {
       }
     }
 
-    verifyLocation()
+    verifyPrerequisites()
   }, [])
 
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -171,8 +199,24 @@ export default function ChecklistPage() {
       {checkingLocation ? (
         <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 flex flex-col items-center justify-center text-center">
           <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-3" />
-          <h3 className="font-bold text-blue-900">Verificando Cerco de Seguridad</h3>
-          <p className="text-xs text-blue-700 mt-1">Obteniendo coordenadas GPS...</p>
+          <h3 className="font-bold text-blue-900">Verificando Datos...</h3>
+          <p className="text-xs text-blue-700 mt-1">Verificando ubicación y rutas...</p>
+        </div>
+      ) : !hasDispatch ? (
+        <div className="bg-orange-50 border border-orange-200 rounded-2xl p-6 flex flex-col items-center text-center mt-10">
+          <div className="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center mb-3">
+            <AlertTriangle className="w-7 h-7 text-orange-500" />
+          </div>
+          <h3 className="font-black text-orange-900 text-base">Requisito Pendiente</h3>
+          <p className="text-sm text-orange-700 mt-2">
+            No puedes iniciar el checklist porque no tienes una ruta activa ni una placa asignada. Contacta al supervisor.
+          </p>
+          <button
+            onClick={() => router.push('/app/ruta')}
+            className="mt-6 px-6 py-3 bg-[#002855] text-white rounded-xl text-sm font-bold shadow-md hover:bg-[#001d3d] transition-colors"
+          >
+            Volver a Mi Ruta
+          </button>
         </div>
       ) : !locationValid ? (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-6 flex flex-col items-center text-center">
@@ -184,12 +228,6 @@ export default function ChecklistPage() {
             El sistema detecta que no estás en una base o cochera autorizada.
             {currentDistanceInfo ? ` ${currentDistanceInfo}` : ' Acércate a la base para desbloquear el checklist.'}
           </p>
-          <button
-            onClick={enableBypass}
-            className="mt-4 px-6 py-2 bg-red-100 text-red-800 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-red-200 transition-colors"
-          >
-            Bypass Demo
-          </button>
         </div>
       ) : (
         <div className="space-y-4">
