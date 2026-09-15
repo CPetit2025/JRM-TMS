@@ -47,7 +47,6 @@ export async function POST(request: Request) {
     // 2. Use RPC function to upsert driver - bypasses PostgREST schema cache issues
     const { error: rpcError } = await supabaseAdmin.rpc('register_driver', {
       p_auth_user_id: userId,
-      p_email: email,
       p_dni: dni,
       p_first_name: firstName,
       p_last_name: lastName,
