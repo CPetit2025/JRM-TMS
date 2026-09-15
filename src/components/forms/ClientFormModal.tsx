@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect } from 'react'
-import { Building2, Loader2, CheckCircle2, User, Phone, Mail, MapPin, Hash } from 'lucide-react'
+import { Building2, Loader2, CheckCircle2, User, Phone, Mail, MapPin, Hash, Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -26,6 +26,7 @@ interface ClientFormModalProps {
 export function ClientFormModal({ isOpen, onClose, onSuccess, editingClient }: ClientFormModalProps) {
   const supabase = createClient()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSearchingRuc, setIsSearchingRuc] = useState(false)
   
   const initialClient = {
     business_name: '',
@@ -103,6 +104,38 @@ export function ClientFormModal({ isOpen, onClose, onSuccess, editingClient }: C
     }
   }
 
+  const handleConsultarRUC = async () => {
+    if (!newClient.tax_id || newClient.tax_id.length !== 11) {
+      toast.error('El RUC debe tener 11 dígitos');
+      return;
+    }
+    
+    setIsSearchingRuc(true);
+    try {
+      const res = await fetch(`https://api.apis.net.pe/v1/ruc?numero=${newClient.tax_id}`);
+      if (!res.ok) {
+        throw new Error('RUC no encontrado o error en el servicio de SUNAT');
+      }
+      
+      const data = await res.json();
+      
+      if (data.nombre) {
+        setNewClient(prev => ({
+          ...prev,
+          business_name: data.nombre,
+          address: `${data.direccion} - ${data.distrito}, ${data.provincia}, ${data.departamento}`.replace(/ - , , $/g, '')
+        }));
+        toast.success('Datos recuperados exitosamente de SUNAT');
+      } else {
+        throw new Error('No se encontraron datos para este RUC');
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Error al consultar SUNAT');
+    } finally {
+      setIsSearchingRuc(false);
+    }
+  }
+
   return (
     <Modal
       isOpen={isOpen}
@@ -135,19 +168,30 @@ export function ClientFormModal({ isOpen, onClose, onSuccess, editingClient }: C
             
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">RUC</label>
-              <div className="relative">
-                <Hash className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                <input 
-                  type="text" 
-                  required
-                  minLength={11}
-                  maxLength={11}
-                  pattern="[0-9]{11}"
-                  title="El RUC debe tener 11 dígitos numéricos"
-                  className="w-full pl-9 pr-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
-                  value={newClient.tax_id}
-                  onChange={(e) => setNewClient({...newClient, tax_id: e.target.value})}
-                />
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Hash className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                  <input 
+                    type="text" 
+                    required
+                    minLength={11}
+                    maxLength={11}
+                    pattern="[0-9]{11}"
+                    title="El RUC debe tener 11 dígitos numéricos"
+                    className="w-full pl-9 pr-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={newClient.tax_id}
+                    onChange={(e) => setNewClient({...newClient, tax_id: e.target.value.replace(/\D/g, '').slice(0, 11)})}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleConsultarRUC}
+                  disabled={isSearchingRuc || newClient.tax_id.length !== 11}
+                  className="px-3 py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50 border border-slate-300 whitespace-nowrap flex items-center gap-2"
+                >
+                  {isSearchingRuc ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  SUNAT
+                </button>
               </div>
             </div>
 
