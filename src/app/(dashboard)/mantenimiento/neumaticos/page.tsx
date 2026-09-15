@@ -1,0 +1,1 @@
+export default function NeumaticosPage() { return <div className='p-6'><h1>Gestión de Neumáticos (En Construcción)</h1></div> }

@@ -1,0 +1,1 @@
+export default function InventarioPage() { return <div className='p-6'><h1>Inventario y Repuestos (En Construcción)</h1></div> }

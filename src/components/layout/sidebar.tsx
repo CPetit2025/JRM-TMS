@@ -86,18 +86,21 @@ export function Sidebar() {
             </>
           )}
 
-          {/* Mantenimiento de Flota */}
+          {/* Mantenimiento de Flota (CMMS) */}
           {(hasPermission('mantenimiento-dashboard') || hasPermission('mantenimiento-flota') || hasPermission('mantenimiento-fallas') || hasPermission('mantenimiento-ot') || hasPermission('mantenimiento-planes')) && (
             <>
-              <div className="mt-8 mb-3 px-4">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Mantenimiento de Flota</p>
+              <div className="mt-8 mb-3 px-4 flex items-center justify-between">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Mantenimiento CMMS</p>
+                <span className="text-[8px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full font-bold uppercase">PRO</span>
               </div>
-              {hasPermission('mantenimiento-dashboard') && <NavItem href="/mantenimiento" icon={BarChart3} label="Dashboard" />}
-              {hasPermission('mantenimiento-flota') && <NavItem href="/mantenimiento/flota" icon={MapIcon} label="Unidades y Documentos" />}
-              {hasPermission('mantenimiento-vencimientos') && <NavItem href="/mantenimiento/vencimientos" icon={Clock} label="Proyección y Vencimientos" />}
-              {hasPermission('mantenimiento-fallas') && <NavItem href="/mantenimiento/fallas" icon={ShieldAlert} label="Solicitudes y Fallas" />}
-              {hasPermission('mantenimiento-ot') && <NavItem href="/mantenimiento/ot" icon={Wrench} label="Órdenes de Trabajo" />}
-              {hasPermission('mantenimiento-planes') && <NavItem href="/mantenimiento/planes" icon={Settings} label="Planes Preventivos" />}
+              {hasPermission('mantenimiento-dashboard') && <NavItem href="/mantenimiento" icon={BarChart3} label="Centro de Control" />}
+              {hasPermission('mantenimiento-flota') && <NavItem href="/mantenimiento/flota" icon={Truck} label="Flota 360°" />}
+              {hasPermission('mantenimiento-ot') && <NavItem href="/mantenimiento/gestor-ot" icon={Wrench} label="Órdenes de Trabajo" />}
+              {hasPermission('mantenimiento-planes') && <NavItem href="/mantenimiento/preventivos" icon={Clock} label="Preventivos y Proyección" />}
+              {hasPermission('mantenimiento-ot') && <NavItem href="/mantenimiento/inventario" icon={ArchiveRestore} label="Inventario y Repuestos" />}
+              {hasPermission('mantenimiento-flota') && <NavItem href="/mantenimiento/neumaticos" icon={Settings2} label="Gestión de Neumáticos" />}
+              {hasPermission('mantenimiento-dashboard') && <NavItem href="/mantenimiento/proveedores" icon={Users} label="Talleres y Proveedores" />}
+              {hasPermission('mantenimiento-dashboard') && <NavItem href="/mantenimiento/analitica" icon={DollarSign} label="Analítica y Costos" />}
             </>
           )}
 

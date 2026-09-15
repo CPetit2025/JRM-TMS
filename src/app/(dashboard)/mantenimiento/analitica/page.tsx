@@ -1,0 +1,1 @@
+export default function AnaliticaPage() { return <div className='p-6'><h1>Analítica y Costos (En Construcción)</h1></div> }

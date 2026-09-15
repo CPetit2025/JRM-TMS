@@ -1,0 +1,1 @@
+export default function ProveedoresPage() { return <div className='p-6'><h1>Talleres y Proveedores (En Construcción)</h1></div> }
