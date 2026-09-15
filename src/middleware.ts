@@ -32,11 +32,12 @@ export async function middleware(request: NextRequest) {
 
   const isLoginPage = request.nextUrl.pathname.startsWith('/login')
   const isDriverLoginPage = request.nextUrl.pathname.startsWith('/app/login')
+  const isDriverRegisterPage = request.nextUrl.pathname.startsWith('/app/register')
   const isDriverRoute = request.nextUrl.pathname.startsWith('/app')
   const isApiRoute = request.nextUrl.pathname.startsWith('/api')
   
   // Si no está autenticado y NO está en una página de login ni API
-  if (!user && !isLoginPage && !isDriverLoginPage && !isApiRoute) {
+  if (!user && !isLoginPage && !isDriverLoginPage && !isDriverRegisterPage && !isApiRoute) {
     // Si intenta ir a la app operativa, mandarlo a su login
     if (isDriverRoute) {
       const url = request.nextUrl.clone()
