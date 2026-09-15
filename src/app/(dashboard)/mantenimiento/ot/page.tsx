@@ -25,7 +25,9 @@ export default function MaintenanceWorkOrdersPage() {
     priority: 'NORMAL',
     description: '',
     workshop_name: '',
-    estimated_end_date: ''
+    estimated_end_date: '',
+    estimated_cost_pen: '',
+    assigned_mechanic: ''
   })
 
   const [closeForm, setCloseForm] = useState({
@@ -87,6 +89,8 @@ export default function MaintenanceWorkOrdersPage() {
         description: form.description,
         workshop_name: form.workshop_name,
         estimated_end_date: form.estimated_end_date || null,
+        estimated_cost_pen: form.estimated_cost_pen ? parseFloat(form.estimated_cost_pen) : 0,
+        assigned_mechanic: form.assigned_mechanic || null,
         start_date: new Date().toISOString().split('T')[0],
         status: 'EN_PROCESO'
       }])
@@ -364,12 +368,18 @@ export default function MaintenanceWorkOrdersPage() {
                       </td>
                       <td className="p-4 font-semibold text-slate-900">{ot.vehicle_plate}</td>
                       <td className="p-4 max-w-xs truncate" title={ot.description}>{ot.description}</td>
-                      <td className="p-4">{ot.workshop_name || 'Interno'}</td>
+                      <td className="p-4">
+                        <div className="text-slate-900">{ot.workshop_name || 'Interno'}</div>
+                        {ot.assigned_mechanic && <div className="text-xs text-slate-500 flex items-center gap-1 mt-1"><Wrench className="w-3 h-3"/> {ot.assigned_mechanic}</div>}
+                      </td>
                       <td className="p-4 text-xs">
                         <div className="text-slate-500">Inicio: {ot.start_date ? new Date(ot.start_date).toLocaleDateString() : 'N/A'}</div>
                         <div className="text-slate-500">Fin: {ot.actual_end_date ? new Date(ot.actual_end_date).toLocaleDateString() : 'Pendiente'}</div>
                       </td>
-                      <td className="p-4 font-medium text-slate-700">{totalCost > 0 ? totalCost.toFixed(2) : '-'}</td>
+                      <td className="p-4 font-medium text-xs">
+                        <div className="text-slate-500">Est: S/ {ot.estimated_cost_pen || '0.00'}</div>
+                        <div className="text-slate-900 mt-1 font-bold">Real: S/ {totalCost > 0 ? totalCost.toFixed(2) : '0.00'}</div>
+                      </td>
                       <td className="p-4">{getStatusBadge(ot.status)}</td>
                       <td className="p-4 text-right">
                         {ot.status !== 'FINALIZADA' && (
@@ -420,8 +430,18 @@ export default function MaintenanceWorkOrdersPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Taller / Proveedor</label>
-              <input type="text" value={form.workshop_name} onChange={e => setForm({...form, workshop_name: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-400" placeholder="Nombre del taller (opcional)" />
+              <label className="block text-sm font-medium text-slate-700 mb-1">Taller / Proveedor (Si es externo)</label>
+              <input type="text" value={form.workshop_name} onChange={e => setForm({...form, workshop_name: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-400" placeholder="Nombre del taller" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Mecánico Asignado (Si es interno)</label>
+              <input type="text" value={form.assigned_mechanic} onChange={e => setForm({...form, assigned_mechanic: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-400" placeholder="Nombre del mecánico" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Costo Estimado (S/)</label>
+              <input type="number" step="0.01" min="0" value={form.estimated_cost_pen} onChange={e => setForm({...form, estimated_cost_pen: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-400" placeholder="0.00" />
             </div>
 
             <div className="col-span-2">

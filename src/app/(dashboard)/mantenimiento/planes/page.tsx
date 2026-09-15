@@ -20,7 +20,8 @@ export default function MaintenancePlansPage() {
     frequency_km: '',
     frequency_days: '',
     criticality: 'MEDIA',
-    responsible_role: 'MECANICO'
+    responsible_role: 'MECANICO',
+    tasks: [] as string[]
   })
 
   useEffect(() => {
@@ -55,7 +56,8 @@ export default function MaintenancePlansPage() {
       frequency_km: parseInt(form.frequency_km) || 0,
       frequency_days: parseInt(form.frequency_days) || 0,
       criticality: form.criticality,
-      responsible_role: form.responsible_role
+      responsible_role: form.responsible_role,
+      tasks: form.tasks
     }
 
     try {
@@ -85,10 +87,22 @@ export default function MaintenancePlansPage() {
       frequency_km: plan.frequency_km.toString(),
       frequency_days: plan.frequency_days?.toString() || '',
       criticality: plan.criticality,
-      responsible_role: plan.responsible_role
+      responsible_role: plan.responsible_role,
+      tasks: plan.tasks || []
     })
     setEditingId(plan.id)
     setIsModalOpen(true)
+  }
+
+  const addTask = () => setForm({ ...form, tasks: [...form.tasks, ''] })
+  const updateTask = (index: number, val: string) => {
+    const newTasks = [...form.tasks]
+    newTasks[index] = val
+    setForm({ ...form, tasks: newTasks })
+  }
+  const removeTask = (index: number) => {
+    const newTasks = form.tasks.filter((_, i) => i !== index)
+    setForm({ ...form, tasks: newTasks })
   }
 
   const handleToggleStatus = async (id: string, currentStatus: boolean) => {
@@ -109,7 +123,7 @@ export default function MaintenancePlansPage() {
           <p className="text-sm text-slate-500">Configura la frecuencia de mantenimiento por tipo de vehículo</p>
         </div>
         <button 
-          onClick={() => { setEditingId(null); setForm({ name: '', vehicle_type: 'CAMION', activity_description: '', frequency_km: '', frequency_days: '', criticality: 'MEDIA', responsible_role: 'MECANICO' }); setIsModalOpen(true) }}
+          onClick={() => { setEditingId(null); setForm({ name: '', vehicle_type: 'CAMION', activity_description: '', frequency_km: '', frequency_days: '', criticality: 'MEDIA', responsible_role: 'MECANICO', tasks: [] }); setIsModalOpen(true) }}
           className="bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#003566] transition-colors flex items-center gap-2"
         >
           <Plus className="w-5 h-5" /> Nuevo Plan
@@ -136,7 +150,7 @@ export default function MaintenancePlansPage() {
                   <tr key={p.id} className="hover:bg-slate-50">
                     <td className="p-4">
                       <div className="font-semibold text-slate-900">{p.name}</div>
-                      <div className="text-xs text-slate-500">{p.vehicle_type} - {p.responsible_role}</div>
+                      <div className="text-xs text-slate-500">{p.vehicle_type} - {p.tasks?.length || 0} Tareas</div>
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-1"><Activity className="w-4 h-4 text-slate-400" /> {p.frequency_km.toLocaleString()} KM</div>
@@ -207,8 +221,39 @@ export default function MaintenancePlansPage() {
             </div>
 
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Actividades (Descripción corta)</label>
-              <textarea value={form.activity_description} onChange={e => setForm({...form, activity_description: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg h-24 text-slate-900 placeholder:text-slate-400" placeholder="Cambio de aceite, filtros, etc." />
+              <label className="block text-sm font-medium text-slate-700 mb-1">Actividades Generales</label>
+              <textarea value={form.activity_description} onChange={e => setForm({...form, activity_description: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg h-20 text-slate-900 placeholder:text-slate-400" placeholder="Descripción resumida..." />
+            </div>
+
+            <div className="col-span-2">
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-sm font-medium text-slate-700">Checklist de Tareas</label>
+                <button type="button" onClick={addTask} className="text-xs font-semibold text-blue-600 flex items-center gap-1 hover:underline">
+                  <Plus className="w-3 h-3" /> Añadir Tarea
+                </button>
+              </div>
+              <div className="space-y-2">
+                {form.tasks.length === 0 && (
+                  <div className="text-sm text-slate-500 text-center py-2 bg-slate-50 rounded border border-dashed border-slate-200">
+                    No hay tareas específicas. Añade tareas para guiar a los mecánicos.
+                  </div>
+                )}
+                {form.tasks.map((t, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-400 w-4">{idx + 1}.</span>
+                    <input 
+                      type="text" 
+                      value={t} 
+                      onChange={(e) => updateTask(idx, e.target.value)} 
+                      placeholder="Ej. Cambio de filtro de aceite" 
+                      className="flex-1 p-2 border border-slate-300 rounded-lg text-sm text-slate-900"
+                    />
+                    <button type="button" onClick={() => removeTask(idx)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
           

@@ -3,6 +3,7 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { Bell, User, Check, Clock } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNotifications } from '@/components/NotificationProvider'
+import { NotificationBanner } from './NotificationBanner'
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState('operador')
@@ -101,6 +102,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </header>
+        <NotificationBanner />
         <main className="flex-1 overflow-y-auto p-8 relative z-0">
           {children}
         </main>

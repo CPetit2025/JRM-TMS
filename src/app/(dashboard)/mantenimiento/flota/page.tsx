@@ -46,6 +46,7 @@ export default function FlotaPage() {
     phone: '',
     license_number: '',
     license_category: 'A-I',
+    license_expiration: '',
     is_active: true
   })
 
@@ -189,6 +190,7 @@ export default function FlotaPage() {
       phone: d.phone || '',
       license_number: d.license_number,
       license_category: d.license_category,
+      license_expiration: d.license_expiration || '',
       is_active: d.is_active
     })
     setIsDriverModalOpen(true)
@@ -248,6 +250,7 @@ export default function FlotaPage() {
                   phone: '',
                   license_number: '',
                   license_category: 'A-I',
+                  license_expiration: '',
                   is_active: true
                 })
                 setIsDriverModalOpen(true)
@@ -370,6 +373,7 @@ export default function FlotaPage() {
                       <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Nombre Completo</th>
                       <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Documento (DNI)</th>
                       <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Licencia</th>
+                      <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Vencimiento</th>
                       <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Transportista</th>
                       <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">PIN (Clave)</th>
                       <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Estado</th>
@@ -393,6 +397,21 @@ export default function FlotaPage() {
                             <div className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded inline-block mt-1">
                               Cat. {d.license_category}
                             </div>
+                          </td>
+                          <td className="p-4">
+                            {d.license_expiration ? (
+                              (() => {
+                                const expDate = new Date(d.license_expiration);
+                                const today = new Date();
+                                const diffDays = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
+                                
+                                if (diffDays < 0) return <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-lg flex items-center gap-1 w-max"><AlertCircle className="w-3 h-3"/> Vencido</span>;
+                                if (diffDays <= 30) return <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-bold rounded-lg flex items-center gap-1 w-max"><AlertCircle className="w-3 h-3"/> {diffDays} días</span>;
+                                return <span className="text-sm text-slate-600">{new Date(d.license_expiration).toLocaleDateString()}</span>;
+                              })()
+                            ) : (
+                              <span className="text-xs text-slate-400">No reg.</span>
+                            )}
                           </td>
                           <td className="p-4 text-sm text-slate-600">{d.carriers?.business_name || 'N/A'}</td>
                           <td className="p-4 font-bold text-slate-700">{d.pin || '----'}</td>
@@ -627,6 +646,15 @@ export default function FlotaPage() {
                 <option value="A-IIIb">A-IIIb</option>
                 <option value="A-IIIc">A-IIIc</option>
               </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Vencimiento Licencia</label>
+              <input 
+                type="date" 
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-[#002855] outline-none"
+                value={newDriver.license_expiration}
+                onChange={(e) => setNewDriver({...newDriver, license_expiration: e.target.value})}
+              />
             </div>
           </div>
             <div className="pt-4 flex justify-end gap-2 border-t mt-4">
