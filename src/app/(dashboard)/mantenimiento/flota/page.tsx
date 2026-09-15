@@ -1,12 +1,14 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2 } from 'lucide-react'
+import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2, ArrowRight } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
+import { useRouter } from 'next/navigation'
 
 export default function FlotaPage() {
   const supabase = createClient()
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState<'vehicles' | 'drivers'>('vehicles')
   
   // Data states
@@ -325,8 +327,18 @@ export default function FlotaPage() {
                       </tr>
                     ) : (
                       vehicles.map(v => (
-                        <tr key={v.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="p-4 font-bold text-[#002855]">{v.plate}</td>
+                        <tr 
+                          key={v.id} 
+                          className="hover:bg-slate-50 transition-colors cursor-pointer group"
+                          onClick={(e) => {
+                            // Prevenir navegación si hace clic en el botón de editar
+                            if ((e.target as HTMLElement).closest('button')) return;
+                            router.push(`/mantenimiento/flota/${v.plate}`);
+                          }}
+                        >
+                          <td className="p-4 font-bold text-[#002855] group-hover:text-blue-600 transition-colors">
+                            {v.plate}
+                          </td>
                           <td className="p-4">
                             <div className="text-sm font-medium text-slate-800">{v.type}</div>
                             <div className="text-xs text-slate-500">{v.brand} {v.model} ({v.year})</div>
@@ -347,13 +359,28 @@ export default function FlotaPage() {
                             </span>
                           </td>
                           <td className="p-4 text-right">
-                            <button 
-                              onClick={() => handleEditVehicle(v)}
-                              title="Editar Vehículo"
-                              className="p-2 text-slate-400 hover:text-[#002855] transition-colors rounded-lg hover:bg-slate-100"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleEditVehicle(v)
+                                }}
+                                title="Editar Vehículo"
+                                className="p-2 text-slate-400 hover:text-amber-600 transition-colors rounded-lg hover:bg-amber-50"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  router.push(`/mantenimiento/flota/${v.plate}`)
+                                }}
+                                title="Ver Ficha 360"
+                                className="p-2 text-blue-500 hover:text-white transition-colors rounded-lg hover:bg-blue-600"
+                              >
+                                <ArrowRight className="w-4 h-4" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
