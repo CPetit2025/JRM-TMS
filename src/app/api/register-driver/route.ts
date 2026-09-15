@@ -44,17 +44,10 @@ export async function POST(request: Request) {
 
     const userId = authData.user.id
 
-    // 2. Insert into profiles (only guaranteed columns)
-    const { error: profileError } = await supabaseAdmin.from('profiles').upsert([{
-      id: userId,
-      email: email,
-      first_name: firstName,
-      last_name: lastName
-    }], { onConflict: 'id' })
+    // NOTE: Profile row is created automatically via trigger or on first login.
+    // All driver info is stored in auth user_metadata + drivers table.
 
-    if (profileError) throw profileError
-
-    // 3. Check if driver already exists
+    // 2. Check if driver already exists
     const { data: existingDriver } = await supabaseAdmin
       .from('drivers')
       .select('id')

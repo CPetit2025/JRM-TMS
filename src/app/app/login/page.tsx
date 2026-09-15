@@ -65,14 +65,14 @@ export default function OperativeLogin() {
         localStorage.removeItem('jrm_saved_operative_id')
       }
       
-      // Consultamos el perfil para saber a dónde redirigir
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('employee_type')
-        .eq('id', data.user.id)
+      // Check if user is a driver (exists in drivers table)
+      const { data: driver } = await supabase
+        .from('drivers')
+        .select('id')
+        .eq('profile_id', data.user.id)
         .single()
         
-      if (profile?.employee_type === 'CONDUCTOR') {
+      if (driver) {
         router.push('/app/ruta')
       } else {
         router.push('/app/actividades')
