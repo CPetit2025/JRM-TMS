@@ -27,7 +27,6 @@ interface VehicleLocation {
   lng: number
   lastUpdate: string
 }
-import { toast } from 'sonner'
 
 export default function TrackingPage() {
   const { token } = useParams()
