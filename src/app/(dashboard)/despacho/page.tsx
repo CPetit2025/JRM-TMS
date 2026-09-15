@@ -19,6 +19,7 @@ interface TransportRequest {
   required_date?: string
   contract_id?: string
   contracts?: {
+    id: string
     code: string
     contract_budgets?: Array<{
       balance_pen: number
