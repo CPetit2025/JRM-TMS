@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect } from 'react'
-import { Truck, Loader2, MapPin, Calendar, ChevronRight, Search } from 'lucide-react'
+import { Truck, Search, Filter, Calendar, MapPin, ChevronRight, Package, Loader2, Share2, ShieldCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -61,6 +61,47 @@ export default function TorreControlPage() {
       supabase.removeChannel(channel)
     }
   }, [statusFilter, dateFilter])
+
+  const [isSharing, setIsSharing] = useState(false)
+
+  const handleShareTracking = async () => {
+    if (!selectedDispatch) return
+    setIsSharing(true)
+    
+    try {
+      // Llamar al RPC que genera o renueva el token
+      const { data, error } = await supabase.rpc('generate_tracking_link', {
+        p_dispatch_id: selectedDispatch.id
+      })
+      
+      if (error) throw error
+
+      if (data && data.length > 0) {
+        const { token, pin } = data[0]
+        const trackingUrl = `https://jrm-tms.vercel.app/tracking/${token}`
+        
+        const mailBody = `Estimado cliente/equipo,
+        
+Se ha programado su despacho (${selectedDispatch.dispatch_number}). Puede realizar el seguimiento y monitoreo en tiempo real accediendo al siguiente portal de visibilidad.
+
+🔗 Enlace de Seguimiento: ${trackingUrl}
+🔑 Contraseña de Acceso: ${pin}
+⏱️ Este enlace caducará en 24 horas por motivos de seguridad.
+
+⚠️ Recomendación: Tenga en cuenta que el monitoreo GPS satelital puede presentar breves latencias o discrepancias de señal dependiendo de la cobertura geográfica en ruta.
+
+Saludos cordiales,
+Equipo JRM TMS`
+
+        window.open(`mailto:?subject=Seguimiento de Ruta JRM - ${selectedDispatch.dispatch_number}&body=${encodeURIComponent(mailBody)}`, '_blank')
+        toast.success('Enlace de seguimiento generado y copiado al correo.')
+      }
+    } catch (error: any) {
+      toast.error('Error al generar enlace de seguimiento: ' + error.message)
+    } finally {
+      setIsSharing(false)
+    }
+  }
 
   const fetchDispatches = async () => {
     try {
@@ -251,6 +292,17 @@ export default function TorreControlPage() {
       >
         {selectedDispatch && (
           <div className="space-y-6">
+            <div className="flex justify-end">
+              <button 
+                onClick={handleShareTracking}
+                disabled={isSharing}
+                className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-900 transition-colors disabled:opacity-50"
+              >
+                {isSharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+                Compartir Visibilidad
+              </button>
+            </div>
+            
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-5 bg-slate-50 rounded-xl border border-slate-200 shadow-inner">
               <div>
                 <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Vehículo</p>
