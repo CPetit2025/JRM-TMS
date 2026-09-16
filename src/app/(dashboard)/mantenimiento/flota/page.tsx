@@ -203,6 +203,30 @@ export default function FlotaPage() {
     setIsDriverModalOpen(true)
   }
 
+  const handleDeleteVehicle = async (id: string) => {
+    if (!confirm('¿Está seguro de eliminar este vehículo?')) return
+    try {
+      const { error } = await supabase.from('vehicles').delete().eq('id', id)
+      if (error) throw error
+      toast.success('Vehículo eliminado')
+      fetchData()
+    } catch (err: any) {
+      toast.error('Error al eliminar vehículo. Puede que tenga registros asociados.')
+    }
+  }
+
+  const handleDeleteDriver = async (id: string) => {
+    if (!confirm('¿Está seguro de eliminar este conductor?')) return
+    try {
+      const { error } = await supabase.from('drivers').delete().eq('id', id)
+      if (error) throw error
+      toast.success('Conductor eliminado')
+      fetchData()
+    } catch (err: any) {
+      toast.error('Error al eliminar conductor. Puede que tenga registros asociados.')
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -378,6 +402,16 @@ export default function FlotaPage() {
                               <button 
                                 onClick={(e) => {
                                   e.stopPropagation()
+                                  handleDeleteVehicle(v.id)
+                                }}
+                                title="Eliminar Vehículo"
+                                className="p-2 text-slate-400 hover:text-red-600 transition-colors rounded-lg hover:bg-red-50"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation()
                                   router.push(`/mantenimiento/flota/${v.plate}`)
                                 }}
                                 title="Ver Ficha 360"
@@ -455,12 +489,22 @@ export default function FlotaPage() {
                             </span>
                           </td>
                           <td className="p-4 text-right">
-                            <button 
-                              onClick={() => handleEditDriver(d)}
-                              className="p-2 text-slate-400 hover:text-[#002855] transition-colors rounded-lg hover:bg-slate-100"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center justify-end gap-2">
+                              <button 
+                                onClick={() => handleEditDriver(d)}
+                                className="p-2 text-slate-400 hover:text-[#002855] transition-colors rounded-lg hover:bg-slate-100"
+                                title="Editar Conductor"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={() => handleDeleteDriver(d.id)}
+                                className="p-2 text-slate-400 hover:text-red-600 transition-colors rounded-lg hover:bg-red-50"
+                                title="Eliminar Conductor"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
