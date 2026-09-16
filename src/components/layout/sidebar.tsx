@@ -69,9 +69,9 @@ export function Sidebar() {
               <div className="mt-6 mb-2 px-4">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Demanda & Comercial</p>
               </div>
-              {hasPermission('clientes') && <NavItem href="/clientes" icon={Building2} label="Directorio Clientes" />}
+          {hasPermission('clientes') && <NavItem href="/clientes" icon={Building2} label="Directorio Clientes" />}
               {hasPermission('ot') && <NavItem href="/contratos" icon={FileSignature} label="Contratos y OTs" />}
-              {hasPermission('ot') && <NavItem href="/contratos/servicios" icon={Receipt} label="Servicios de Contrato" />}
+              {hasPermission('contratos-servicios') && <NavItem href="/contratos/servicios" icon={Receipt} label="Servicios de Contrato" />}
               {hasPermission('solicitudes') && <NavItem href="/solicitudes" icon={ClipboardList} label="Solicitudes de Carga" />}
             </>
           )}
@@ -106,22 +106,26 @@ export function Sidebar() {
           )}
 
           {/* Finanzas y Caja */}
-          <div className="mt-6 mb-2 px-4 flex items-center justify-between">
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Finanzas y Caja</p>
-            <span className="text-[8px] bg-green-500/10 text-green-400 px-2 py-0.5 rounded-full font-bold uppercase border border-green-500/20">TEST</span>
-          </div>
-          <NavItem href="/caja" icon={Wallet} label="Dashboard Financiero" />
-          <NavItem href="/caja/fondos" icon={ArchiveRestore} label="Entrega de Fondos" />
-          <NavItem href="/caja/gastos" icon={FileText} label="Gastos (Mobile)" />
-          <NavItem href="/caja/liquidaciones" icon={CheckCircle} label="Liquidaciones" />
+          {(hasPermission('caja') || hasPermission('caja-fondos') || hasPermission('caja-gastos') || hasPermission('caja-liquidaciones')) && (
+            <>
+              <div className="mt-6 mb-2 px-4 flex items-center justify-between">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Finanzas y Caja</p>
+                <span className="text-[8px] bg-green-500/10 text-green-400 px-2 py-0.5 rounded-full font-bold uppercase border border-green-500/20">TEST</span>
+              </div>
+              {hasPermission('caja') && <NavItem href="/caja" icon={Wallet} label="Dashboard Financiero" />}
+              {hasPermission('caja-fondos') && <NavItem href="/caja/fondos" icon={ArchiveRestore} label="Entrega de Fondos" />}
+              {hasPermission('caja-gastos') && <NavItem href="/caja/gastos" icon={FileText} label="Gastos (Mobile)" />}
+              {hasPermission('caja-liquidaciones') && <NavItem href="/caja/liquidaciones" icon={CheckCircle} label="Liquidaciones" />}
+            </>
+          )}
 
           {/* Maestros y Costos */}
-          {(hasPermission('tarifas') || hasPermission('usuarios')) && (
+          {(hasPermission('tarifas') || hasPermission('maestros-trabajadores')) && (
             <>
               <div className="mt-6 mb-2 px-4">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Catálogos</p>
               </div>
-              {hasPermission('usuarios') && <NavItem href="/maestros/trabajadores" icon={HardHat} label="Trabajadores" />}
+              {hasPermission('maestros-trabajadores') && <NavItem href="/maestros/trabajadores" icon={HardHat} label="Trabajadores" />}
               {hasPermission('tarifas') && <NavItem href="/maestros/tarifas" icon={BadgeDollarSign} label="Tarifas de Flete" />}
             </>
           )}

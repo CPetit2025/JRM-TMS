@@ -22,12 +22,14 @@ const MODULE_GROUPS = [
     modules: [
       { id: 'clientes', label: 'Clientes' },
       { id: 'ot', label: 'Órdenes de Trabajo' },
+      { id: 'contratos-servicios', label: 'Servicios de Contrato' },
       { id: 'solicitudes', label: 'Solicitudes de Transporte' }
     ]
   },
   {
     title: 'Operación Logística',
     modules: [
+      { id: 'torre-control', label: 'Torre de Control' },
       { id: 'despacho', label: 'Despacho (Programación)' },
       { id: 'monitoreo', label: 'Monitoreo GPS' },
       { id: 'operaciones-live', label: 'Tareo en Vivo' },
@@ -54,8 +56,18 @@ const MODULE_GROUPS = [
     ]
   },
   {
+    title: 'Finanzas y Caja',
+    modules: [
+      { id: 'caja', label: 'Dashboard Financiero' },
+      { id: 'caja-fondos', label: 'Entrega de Fondos' },
+      { id: 'caja-gastos', label: 'Gastos (Mobile)' },
+      { id: 'caja-liquidaciones', label: 'Liquidaciones' }
+    ]
+  },
+  {
     title: 'Maestros y Costos',
     modules: [
+      { id: 'maestros-trabajadores', label: 'Trabajadores' },
       { id: 'flota', label: 'Unidades y Conductores' },
       { id: 'tarifas', label: 'Tarifas por KM' },
       { id: 'productos', label: 'Productos' }
