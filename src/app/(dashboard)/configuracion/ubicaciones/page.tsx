@@ -15,6 +15,15 @@ const GeofenceMap = dynamic(() => import('@/components/map/GeofenceMap'), {
   )
 })
 
+const PolygonDrawerMap = dynamic(() => import('@/components/map/PolygonDrawerMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[300px] bg-slate-100 flex items-center justify-center rounded-xl">
+      <div className="w-8 h-8 border-4 border-[#002855] border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+})
+
 type Geofence = {
   id: string
   name: string
@@ -43,6 +52,7 @@ export default function GeocercasPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingGeo, setEditingGeo] = useState<Geofence | null>(null)
   const [saving, setSaving] = useState(false)
+  const [isTextMode, setIsTextMode] = useState(false)
 
   const [form, setForm] = useState({
     name: '',
@@ -358,21 +368,43 @@ export default function GeocercasPage() {
 
               {/* Coordenadas */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Coordenadas del polígono * <span className="text-slate-400 font-normal">(una por línea: latitud,longitud)</span>
-                </label>
-                <textarea
-                  required
-                  rows={5}
-                  placeholder={`-12.052,-77.130\n-12.052,-77.100\n-12.075,-77.100\n-12.075,-77.130`}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 font-mono focus:ring-2 focus:ring-[#002855] outline-none resize-none"
-                  value={form.rawCoords}
-                  onChange={e => setForm({ ...form, rawCoords: e.target.value })}
-                />
-                <p className="text-[10px] text-slate-400 mt-1">
-                  💡 Puedes obtener coordenadas haciendo clic derecho en Google Maps → "¿Qué hay aquí?" y copiar latitud,longitud.
-                  Mínimo 3 puntos para formar un polígono.
-                </p>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Coordenadas del polígono *
+                  </label>
+                  <button 
+                    type="button" 
+                    onClick={() => setIsTextMode(!isTextMode)}
+                    className="text-[10px] text-blue-600 font-bold hover:underline"
+                  >
+                    {isTextMode ? 'Cambiar a Mapa Interactivo' : 'Ingresar Texto Manual'}
+                  </button>
+                </div>
+
+                {!isTextMode ? (
+                  <PolygonDrawerMap 
+                    coordinates={parseCoords(form.rawCoords)}
+                    color={form.color}
+                    onChange={(coords) => {
+                      setForm({ ...form, rawCoords: coords.map(c => `${c[0]},${c[1]}`).join('\n') })
+                    }}
+                  />
+                ) : (
+                  <>
+                    <textarea
+                      required
+                      rows={5}
+                      placeholder={`-12.052,-77.130\n-12.052,-77.100\n-12.075,-77.100\n-12.075,-77.130`}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 font-mono focus:ring-2 focus:ring-[#002855] outline-none resize-none"
+                      value={form.rawCoords}
+                      onChange={e => setForm({ ...form, rawCoords: e.target.value })}
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      💡 Puedes obtener coordenadas haciendo clic derecho en Google Maps → "¿Qué hay aquí?" y copiar latitud,longitud.
+                      Mínimo 3 puntos para formar un polígono.
+                    </p>
+                  </>
+                )}
               </div>
 
               {/* Activa */}
