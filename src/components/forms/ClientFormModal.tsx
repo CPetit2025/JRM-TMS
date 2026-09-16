@@ -112,7 +112,7 @@ export function ClientFormModal({ isOpen, onClose, onSuccess, editingClient }: C
     
     setIsSearchingRuc(true);
     try {
-      const res = await fetch(`https://api.apis.net.pe/v1/ruc?numero=${newClient.tax_id}`);
+      const res = await fetch(`/api/sunat?ruc=${newClient.tax_id}`);
       if (!res.ok) {
         throw new Error('RUC no encontrado o error en el servicio de SUNAT');
       }
