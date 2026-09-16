@@ -153,9 +153,12 @@ export default function FlotaPage() {
       let error;
       
       const driverPayload = { 
-        ...newDriver,
-        license_expiration: newDriver.license_expiration || null
+        ...newDriver
       }
+      
+      // Remove license_expiration because it doesn't exist on the drivers table
+      // It exists on profiles, but this form updates drivers.
+      delete (driverPayload as any).license_expiration;
 
       if (editingDriverId) {
         // Al actualizar, evitamos sobrescribir el PIN si ya existe, a menos que se quiera manejar distinto.
