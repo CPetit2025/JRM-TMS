@@ -151,9 +151,14 @@ export default function FlotaPage() {
     setIsSubmitting(true)
     try {
       let error;
+      
+      const driverPayload = { 
+        ...newDriver,
+        license_expiration: newDriver.license_expiration || null
+      }
+
       if (editingDriverId) {
         // Al actualizar, evitamos sobrescribir el PIN si ya existe, a menos que se quiera manejar distinto.
-        const driverPayload = { ...newDriver }
         const { error: updateError } = await supabase
           .from('drivers')
           .update(driverPayload)
@@ -161,10 +166,7 @@ export default function FlotaPage() {
         error = updateError
       } else {
         // Por defecto el PIN son los primeros 4 dígitos del DNI al crear
-        const driverPayload = {
-          ...newDriver,
-          pin: newDriver.document_number.substring(0, 4)
-        }
+        (driverPayload as any).pin = newDriver.document_number.substring(0, 4)
         const { error: insertError } = await supabase
           .from('drivers')
           .insert([driverPayload])
