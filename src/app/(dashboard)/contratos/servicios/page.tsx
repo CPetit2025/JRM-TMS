@@ -190,10 +190,9 @@ export default function ContractServicesPage() {
         let errorCount = 0
 
         for (const row of json) {
-          // Find contract by RUC (Client) - simplistic match for bulk upload
+          const contractCodeUpload = String(row.Contrato || row.RUC_Contrato || row.Codigo_Contrato || '').replace(/^0+/, '');
           const contract = contracts.find(c => {
-             // Let's assume they provide the exact contract code in Contrato column for better accuracy 
-             return c.code === String(row.Contrato || row.RUC_Contrato || row.Codigo_Contrato || '')
+             return c.code.replace(/^0+/, '') === contractCodeUpload;
           })
 
           if (!contract) {
@@ -201,12 +200,21 @@ export default function ContractServicesPage() {
             continue
           }
 
+          let parsedDate = new Date().toISOString().split('T')[0];
+          const rawDate = row.Fecha || row.Fecha_Servicio;
+          if (typeof rawDate === 'number') {
+            // Convert Excel serial date to JS Date
+            parsedDate = new Date(Math.round((rawDate - 25569) * 86400 * 1000)).toISOString().split('T')[0];
+          } else if (rawDate) {
+            parsedDate = new Date(rawDate).toISOString().split('T')[0];
+          }
+
           const { error } = await supabase.rpc('register_contract_service', {
             p_contract_id: contract.id,
             p_service_type: row.Servicio || row.Tipo_Servicio || 'OTROS',
             p_description: row.KG || row.Descripcion || '',
             p_amount_pen: parseFloat(row['Monto (PEN)'] || row.Monto) || 0,
-            p_service_date: (row.Fecha || row.Fecha_Servicio) ? new Date(row.Fecha || row.Fecha_Servicio).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+            p_service_date: parsedDate,
             p_plate: row.Placa || null,
             p_driver_name: row.Conductor || null,
             p_hours: row.Horas ? parseFloat(row.Horas) : null,
