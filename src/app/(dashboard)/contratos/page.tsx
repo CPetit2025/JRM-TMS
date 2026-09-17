@@ -269,9 +269,20 @@ export default function ContratosPage() {
 
         for (const row of data) {
           try {
-            const tipo = row.Tipo?.toUpperCase()
-            let codigo = String(row.Codigo || '').trim()
-            const codigoMadre = String(row.CodigoMadre || '').trim()
+            const tipo = (row.Tipo || '').toString().trim().toUpperCase()
+            if (!tipo) continue
+
+            // En el Excel: para CONTRATO el código está en CodigoMadre,
+            // para SUBCONTRATO/ERROR el código propio está en Codigo y el padre en CodigoMadre
+            const codigoMadreRaw = String(row.CodigoMadre || '').trim()
+            const codigoPropio = String(row.Codigo || '').trim()
+
+            // El código del contrato que vamos a registrar:
+            // - CONTRATO: usa CodigoMadre como su propio código
+            // - SUBCONTRATO/ERROR: usa Codigo como sufijo y CodigoMadre como padre
+            let codigo = tipo === 'CONTRATO' ? codigoMadreRaw : codigoPropio
+            const codigoMadre = tipo === 'CONTRATO' ? '' : codigoMadreRaw
+
             const presupuesto = Number(row.Presupuesto_Soles || row.Presupuesto || 0)
             const peso = Number(row.Peso_Total_KG || 0)
             const volumen = Number(row.Volumen_Total_M3 || 0)
@@ -299,12 +310,10 @@ export default function ContratosPage() {
                   finalCode = `${codigoMadre}-${codigo}`
 
                   // Heredar destino si los campos están vacíos
-                  if (tipo === 'SUBCONTRATO' || tipo === 'ERROR') {
-                    if (!dep) dep = parent.destination_department || ''
-                    if (!prov) prov = parent.destination_province || ''
-                    if (!dist) dist = parent.destination_district || ''
-                    if (!dir) dir = parent.destination_address || ''
-                  }
+                  if (!dep) dep = parent.destination_department || ''
+                  if (!prov) prov = parent.destination_province || ''
+                  if (!dist) dist = parent.destination_district || ''
+                  if (!dir) dir = parent.destination_address || ''
                 } else {
                   throw new Error(`Contrato Madre "${codigoMadre}" no existe en base de datos.`)
                 }
@@ -313,9 +322,10 @@ export default function ContratosPage() {
               }
             } else if (tipo === 'CONTRATO') {
               if (!dep || !prov || !dist || !dir) {
-                throw new Error(`Los campos de destino (Departamento, Provincia, Distrito, Dirección) son obligatorios para un CONTRATO principal.`)
+                throw new Error(`Los campos de destino son obligatorios para el CONTRATO "${codigo}". Verifique Departamento, Provincia, Distrito y Dirección.`)
               }
             }
+
 
             // Insert contract
             const { data: insertedContract, error: insertError } = await supabase
