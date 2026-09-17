@@ -263,9 +263,12 @@ export default function ContratosPage() {
         const { data: dbContracts } = await supabase.from('contracts').select('id, code, destination_department, destination_province, destination_district, destination_address')
         const contractMap = new Map(dbContracts?.map(c => [c.code, c]))
 
-        // Traemos clientes para mapear RUC -> UUID
-        const { data: dbClients } = await supabase.from('clients').select('id, tax_id')
-        const clientMap = new Map(dbClients?.map(c => [c.tax_id, c.id]))
+        // Traemos clientes para mapear por RUC o por nombre
+        const { data: dbClients } = await supabase.from('clients').select('id, tax_id, business_name')
+        // Mapa por RUC (exacto)
+        const clientMapByRuc = new Map(dbClients?.map(c => [c.tax_id?.trim(), c.id]))
+        // Mapa por nombre (normalizado a mayúsculas para comparación flexible)
+        const clientMapByName = new Map(dbClients?.map(c => [c.business_name?.trim().toUpperCase(), c.id]))
 
         for (const row of data) {
           try {
@@ -291,10 +294,28 @@ export default function ContratosPage() {
             let dist = String(row.Destino_Distrito || '').trim().toUpperCase()
             let dir = String(row.Destino_Direccion || '').trim()
             
-            const rucCliente = String(row.Cliente_RUC || row.RUC || '').trim()
+            const clienteRaw = String(row.Cliente_RUC || row.RUC || row.Cliente || '').trim()
             let clientId = null
-            if (rucCliente && clientMap.has(rucCliente)) {
-              clientId = clientMap.get(rucCliente)
+            if (clienteRaw) {
+              // Intentar primero por RUC (solo dígitos)
+              const esRuc = /^\d{8,11}$/.test(clienteRaw)
+              if (esRuc && clientMapByRuc.has(clienteRaw)) {
+                clientId = clientMapByRuc.get(clienteRaw)
+              } else {
+                // Buscar por nombre (case-insensitive)
+                const nombreNorm = clienteRaw.toUpperCase()
+                if (clientMapByName.has(nombreNorm)) {
+                  clientId = clientMapByName.get(nombreNorm)
+                } else {
+                  // Búsqueda parcial: ver si algún nombre del DB está contenido en el valor del Excel o viceversa
+                  for (const [nombre, id] of clientMapByName.entries()) {
+                    if (nombreNorm.includes(nombre) || nombre.includes(nombreNorm)) {
+                      clientId = id
+                      break
+                    }
+                  }
+                }
+              }
             }
 
             if (!codigo) continue
