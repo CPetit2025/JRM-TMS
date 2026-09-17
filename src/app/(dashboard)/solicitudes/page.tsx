@@ -51,6 +51,9 @@ interface Contract {
   destination_department?: string
   destination_province?: string
   destination_district?: string
+  clients?: {
+    business_name: string
+  }
 }
 
 export default function SolicitudesPage() {
@@ -171,6 +174,7 @@ export default function SolicitudesPage() {
         .select(`
           id, code, type, status,
           destination_address, destination_department, destination_province, destination_district,
+          clients ( business_name ),
           contract_budgets (
             balance_pen
           )
@@ -188,6 +192,7 @@ export default function SolicitudesPage() {
         destination_department: c.destination_department,
         destination_province: c.destination_province,
         destination_district: c.destination_district,
+        clients: c.clients,
         balance_pen: Number(c.contract_budgets?.[0]?.balance_pen) || 0
       }))
       setContracts(formatted)
@@ -738,18 +743,40 @@ export default function SolicitudesPage() {
             
             {newRequest.department === 'OT (Administración de Contratos)' && (
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Contrato / OT Asociada (Obligatorio)</label>
-                <select
-                  required
-                  className="w-full px-3 py-2 bg-yellow-50 text-slate-900 border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-500 outline-none"
-                  value={newRequest.contract_id}
-                  onChange={(e) => handleContractChange(e.target.value)}
-                >
-                  <option value="" disabled>Seleccione un Contrato o Subcontrato...</option>
-                  {contracts.map(c => (
-                    <option key={c.id} value={c.id}>{c.code} - {c.type}</option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Contrato / OT Asociada (Buscar y Seleccionar) *</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    list="contracts-list"
+                    required
+                    placeholder="Escriba el código o seleccione de la lista..."
+                    className="w-full px-3 py-2 bg-yellow-50 text-slate-900 border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-500 outline-none"
+                    value={(newRequest as any).contract_code_input !== undefined ? (newRequest as any).contract_code_input : (contracts.find(c => c.id === newRequest.contract_id)?.code || '')}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      const matched = contracts.find(c => c.code === val)
+                      if (matched) {
+                        setNewRequest(prev => {
+                          let updated = { ...prev, contract_id: matched.id, contract_code_input: val }
+                          if (prev.request_type === 'DESPACHO') {
+                            updated.delivery_address = matched.destination_address || ''
+                            updated.delivery_department = matched.destination_department || ''
+                            updated.delivery_province = matched.destination_province || ''
+                            updated.delivery_district = matched.destination_district || ''
+                          }
+                          return updated
+                        })
+                      } else {
+                        setNewRequest(prev => ({ ...prev, contract_id: '', contract_code_input: val }))
+                      }
+                    }}
+                  />
+                  <datalist id="contracts-list">
+                    {contracts.map(c => (
+                      <option key={c.id} value={c.code}>{c.type} - {c.clients?.business_name}</option>
+                    ))}
+                  </datalist>
+                </div>
                 {newRequest.contract_id && (
                   <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-semibold ${(contracts.find(c => c.id === newRequest.contract_id)?.balance_pen || 0) <= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                     {(contracts.find(c => c.id === newRequest.contract_id)?.balance_pen || 0) <= 0 ? (
@@ -769,17 +796,39 @@ export default function SolicitudesPage() {
             )}
             {newRequest.department !== 'OT (Administración de Contratos)' && (
               <div className="col-span-2 mt-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">¿Asociar a Contrato/OT? (Opcional)</label>
-                <select
-                  className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
-                  value={newRequest.contract_id}
-                  onChange={(e) => handleContractChange(e.target.value)}
-                >
-                  <option value="">Sin asociar a Contrato/OT</option>
-                  {contracts.map(c => (
-                    <option key={c.id} value={c.id}>{c.code} - {c.type}</option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium text-slate-700 mb-1">¿Asociar a Contrato/OT? (Opcional, Buscar y Seleccionar)</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    list="contracts-list-optional"
+                    placeholder="Escriba el código o seleccione de la lista..."
+                    className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={(newRequest as any).contract_code_input !== undefined ? (newRequest as any).contract_code_input : (contracts.find(c => c.id === newRequest.contract_id)?.code || '')}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      const matched = contracts.find(c => c.code === val)
+                      if (matched) {
+                        setNewRequest(prev => {
+                          let updated = { ...prev, contract_id: matched.id, contract_code_input: val }
+                          if (prev.request_type === 'DESPACHO') {
+                            updated.delivery_address = matched.destination_address || ''
+                            updated.delivery_department = matched.destination_department || ''
+                            updated.delivery_province = matched.destination_province || ''
+                            updated.delivery_district = matched.destination_district || ''
+                          }
+                          return updated
+                        })
+                      } else {
+                        setNewRequest(prev => ({ ...prev, contract_id: '', contract_code_input: val }))
+                      }
+                    }}
+                  />
+                  <datalist id="contracts-list-optional">
+                    {contracts.map(c => (
+                      <option key={c.id} value={c.code}>{c.type} - {c.clients?.business_name}</option>
+                    ))}
+                  </datalist>
+                </div>
                 {newRequest.contract_id && (
                   <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-semibold ${(contracts.find(c => c.id === newRequest.contract_id)?.balance_pen || 0) <= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                     {(contracts.find(c => c.id === newRequest.contract_id)?.balance_pen || 0) <= 0 ? (
@@ -904,11 +953,17 @@ export default function SolicitudesPage() {
                   <label className="block text-xs font-medium text-slate-700 mb-1">Dirección Exacta</label>
                   <input 
                     type="text" 
+                    list="historical-delivery-addresses"
                     required
                     className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
                     value={newRequest.delivery_address}
                     onChange={(e) => setNewRequest({...newRequest, delivery_address: e.target.value})}
                   />
+                  <datalist id="historical-delivery-addresses">
+                    {Array.from(new Set(contracts.map(c => c.destination_address).filter(Boolean))).map((addr, idx) => (
+                      <option key={idx} value={addr} />
+                    ))}
+                  </datalist>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1">Departamento</label>
