@@ -192,10 +192,8 @@ export default function ContractServicesPage() {
         for (const row of json) {
           // Find contract by RUC (Client) - simplistic match for bulk upload
           const contract = contracts.find(c => {
-             // Basic fallback: in real life we might lookup the client RUC if we joined it
-             // Let's assume they provide the exact contract code in RUC_Contrato column for better accuracy 
-             // or the client RUC. We will match by contract code first.
-             return c.code === String(row.RUC_Contrato || row.Codigo_Contrato || '')
+             // Let's assume they provide the exact contract code in Contrato column for better accuracy 
+             return c.code === String(row.Contrato || row.RUC_Contrato || row.Codigo_Contrato || '')
           })
 
           if (!contract) {
@@ -205,10 +203,10 @@ export default function ContractServicesPage() {
 
           const { error } = await supabase.rpc('register_contract_service', {
             p_contract_id: contract.id,
-            p_service_type: row.Tipo_Servicio || 'OTROS',
+            p_service_type: row.Servicio || row.Tipo_Servicio || 'OTROS',
             p_description: row.KG || row.Descripcion || '',
-            p_amount_pen: parseFloat(row.Monto) || 0,
-            p_service_date: row.Fecha_Servicio ? new Date(row.Fecha_Servicio).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+            p_amount_pen: parseFloat(row['Monto (PEN)'] || row.Monto) || 0,
+            p_service_date: (row.Fecha || row.Fecha_Servicio) ? new Date(row.Fecha || row.Fecha_Servicio).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
             p_plate: row.Placa || null,
             p_driver_name: row.Conductor || null,
             p_hours: row.Horas ? parseFloat(row.Horas) : null,

@@ -8,17 +8,14 @@ export async function GET() {
 
     // Define columns
     worksheet.columns = [
-      { header: 'Codigo_Contrato', key: 'codigo_contrato', width: 20 },
-      { header: 'Categoria', key: 'categoria', width: 20 },
-      { header: 'Tipo_Servicio', key: 'tipo_servicio', width: 20 },
-      { header: 'Fecha_Servicio', key: 'fecha_servicio', width: 15 },
-      { header: 'Monto', key: 'monto', width: 15 },
-      { header: 'KG', key: 'kg', width: 30 },
-      { header: 'Horas', key: 'horas', width: 10 },
-      { header: 'Placa', key: 'placa', width: 15 },
-      { header: 'Conductor', key: 'conductor', width: 25 },
-      { header: 'Proveedor_RUC', key: 'proveedor_ruc', width: 15 },
-      { header: 'Proveedor_Nombre', key: 'proveedor_nombre', width: 30 }
+      { header: 'Fecha', key: 'fecha', width: 15 },
+      { header: 'Contrato', key: 'contrato', width: 20 },
+      { header: 'Cliente', key: 'cliente', width: 30 },
+      { header: 'Servicio', key: 'servicio', width: 20 },
+      { header: 'KG', key: 'kg', width: 15 },
+      { header: 'Monto (PEN)', key: 'monto_pen', width: 15 },
+      { header: 'Saldo (PEN)', key: 'saldo_pen', width: 15 },
+      { header: 'Estado', key: 'estado', width: 15 }
     ]
 
     // Style headers
@@ -32,51 +29,30 @@ export async function GET() {
 
     // Add some sample data rows
     worksheet.addRow({
-      codigo_contrato: 'CON-001',
-      categoria: 'Contrato',
-      tipo_servicio: 'FLETE',
-      fecha_servicio: '2026-10-01',
-      monto: 1500.50,
+      fecha: '2026-10-01',
+      contrato: 'CON-001',
+      cliente: 'Empresa Ejemplo S.A.C.',
+      servicio: 'FLETE',
       kg: '15000',
-      placa: 'ABC-123',
-      conductor: 'Juan Perez',
-      proveedor_ruc: '20987654321',
-      proveedor_nombre: 'Transportes XYZ'
+      monto_pen: 1500.50,
+      saldo_pen: '', // Automático del sistema
+      estado: '' // Automático del sistema
     })
 
-    worksheet.addRow({
-      codigo_contrato: 'CON-001',
-      categoria: 'Subcontrato',
-      tipo_servicio: 'MONTACARGA',
-      fecha_servicio: '2026-10-02',
-      monto: 500,
-      kg: '',
-      horas: 4
-    })
-
-    // Add Data Validations for Categoria (Column B)
+    // Add Data Validations for Servicio (Column D)
     for (let i = 2; i <= 1000; i++) {
-      worksheet.getCell(`B${i}`).dataValidation = {
-        type: 'list',
-        allowBlank: false,
-        formulae: ['"Contrato,Subcontrato,Error"']
-      }
-    }
-
-    // Add Data Validations for Tipo_Servicio (Column C)
-    for (let i = 2; i <= 1000; i++) {
-      worksheet.getCell(`C${i}`).dataValidation = {
+      worksheet.getCell(`D${i}`).dataValidation = {
         type: 'list',
         allowBlank: false,
         formulae: ['"FLETE,MONTACARGA,ESTIBA,MANIOBRA,PEAJE,PENALIDAD,ERROR,OTROS"']
       }
     }
 
-    // Add Data Validations for Fecha (Column D) - Optional, just a note or formatting
-    worksheet.getColumn('D').numFmt = 'yyyy-mm-dd'
+    // Add Data Validations for Fecha (Column A)
+    worksheet.getColumn('A').numFmt = 'yyyy-mm-dd'
 
-    // Add Data Validations for Monto (Column E)
-    worksheet.getColumn('E').numFmt = '"S/"#,##0.00'
+    // Add Data Validations for Monto (Column F)
+    worksheet.getColumn('F').numFmt = '"S/"#,##0.00'
 
     const buffer = await workbook.xlsx.writeBuffer()
 
