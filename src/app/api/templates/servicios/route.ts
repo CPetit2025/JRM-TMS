@@ -13,7 +13,7 @@ export async function GET() {
       { header: 'Tipo_Servicio', key: 'tipo_servicio', width: 20 },
       { header: 'Fecha_Servicio', key: 'fecha_servicio', width: 15 },
       { header: 'Monto', key: 'monto', width: 15 },
-      { header: 'Descripcion', key: 'descripcion', width: 30 },
+      { header: 'KG', key: 'kg', width: 30 },
       { header: 'Horas', key: 'horas', width: 10 },
       { header: 'Placa', key: 'placa', width: 15 },
       { header: 'Conductor', key: 'conductor', width: 25 },
@@ -37,7 +37,7 @@ export async function GET() {
       tipo_servicio: 'FLETE',
       fecha_servicio: '2026-10-01',
       monto: 1500.50,
-      descripcion: 'Viaje a Piura',
+      kg: '15000',
       placa: 'ABC-123',
       conductor: 'Juan Perez',
       proveedor_ruc: '20987654321',
@@ -50,7 +50,7 @@ export async function GET() {
       tipo_servicio: 'MONTACARGA',
       fecha_servicio: '2026-10-02',
       monto: 500,
-      descripcion: 'Descarga en almacén',
+      kg: '',
       horas: 4
     })
 

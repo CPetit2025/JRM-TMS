@@ -206,7 +206,7 @@ export default function ContractServicesPage() {
           const { error } = await supabase.rpc('register_contract_service', {
             p_contract_id: contract.id,
             p_service_type: row.Tipo_Servicio || 'OTROS',
-            p_description: row.Descripcion || '',
+            p_description: row.KG || row.Descripcion || '',
             p_amount_pen: parseFloat(row.Monto) || 0,
             p_service_date: row.Fecha_Servicio ? new Date(row.Fecha_Servicio).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
             p_plate: row.Placa || null,
