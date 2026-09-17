@@ -36,6 +36,7 @@ interface ContractService {
   created_at: string
   contracts?: {
     code: string
+    contract_budgets?: Array<{ balance_pen: number }>
     clients?: {
       business_name: string
     }
@@ -81,7 +82,8 @@ export default function ContractServicesPage() {
           *,
           contracts (
             code,
-            clients (business_name)
+            clients (business_name),
+            contract_budgets (balance_pen)
           )
         `)
         .order('created_at', { ascending: false })
@@ -308,10 +310,12 @@ export default function ContractServicesPage() {
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b">
               <tr>
                 <th className="p-4 font-semibold">Fecha</th>
-                <th className="p-4 font-semibold">Contrato / Cliente</th>
+                <th className="p-4 font-semibold">Contrato</th>
+                <th className="p-4 font-semibold">Cliente</th>
                 <th className="p-4 font-semibold">Servicio</th>
-                <th className="p-4 font-semibold">Detalles</th>
+                <th className="p-4 font-semibold">KG</th>
                 <th className="p-4 font-semibold text-right">Monto (PEN)</th>
+                <th className="p-4 font-semibold text-right">Saldo (PEN)</th>
                 <th className="p-4 font-semibold text-center">Estado</th>
               </tr>
             </thead>
@@ -330,8 +334,11 @@ export default function ContractServicesPage() {
                   </td>
                 </tr>
               ) : (
-                services.map(srv => (
-                  <tr key={srv.id} className="hover:bg-slate-50 transition-colors">
+                services.map(srv => {
+                  const balance = srv.contracts?.contract_budgets?.[0]?.balance_pen || 0;
+                  const isNegative = balance < 0;
+                  return (
+                  <tr key={srv.id} className={`transition-colors ${isNegative ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-slate-50'}`}>
                     <td className="p-4 text-sm text-slate-600">
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5 text-slate-400" />
@@ -339,10 +346,10 @@ export default function ContractServicesPage() {
                       </div>
                     </td>
                     <td className="p-4">
-                      <div className="flex flex-col">
-                        <span className="font-bold text-[#002855] text-sm">{srv.contracts?.code}</span>
-                        <span className="text-xs text-slate-500">{srv.contracts?.clients?.business_name || 'Sin Cliente'}</span>
-                      </div>
+                      <span className="font-bold text-[#002855] text-sm">{srv.contracts?.code}</span>
+                    </td>
+                    <td className="p-4">
+                      <span className="text-sm text-slate-700">{srv.contracts?.clients?.business_name || 'Sin Cliente'}</span>
                     </td>
                     <td className="p-4">
                       <div className="flex flex-col gap-1">
@@ -372,13 +379,16 @@ export default function ContractServicesPage() {
                     <td className="p-4 text-sm font-bold text-slate-900 text-right">
                       S/ {Number(srv.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                     </td>
+                    <td className={`p-4 text-sm font-bold text-right ${isNegative ? 'text-red-600' : 'text-emerald-600'}`}>
+                      S/ {balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                    </td>
                     <td className="p-4 text-center">
                       <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">
                         {srv.status}
                       </span>
                     </td>
                   </tr>
-                ))
+                )})
               )}
             </tbody>
           </table>
