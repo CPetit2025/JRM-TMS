@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Plus, Building2, Search, Loader2, Edit2, CheckCircle2, XCircle, Upload, Download, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
+import { Plus, Building2, Search, Loader2, Edit2, CheckCircle2, XCircle, Upload, Download, ChevronUp, ChevronDown, ChevronsUpDown, Trash2 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import ExcelJS from 'exceljs'
 import { createClient } from '@/lib/supabase/client'
@@ -80,6 +80,24 @@ export default function ClientesPage() {
       toast.success(`Cliente ${!client.is_active ? 'activado' : 'desactivado'}`)
       fetchClients()
     } catch (error: any) { toast.error('Error al actualizar estado: ' + error.message) }
+  }
+
+  const handleDelete = async (client: Client) => {
+    if (!window.confirm(`¿Estás seguro de que deseas eliminar permanentemente a "${client.business_name}"? Esta acción no se puede deshacer.`)) return;
+    
+    try {
+      const { error } = await supabase.from('clients').delete().eq('id', client.id);
+      if (error) {
+        if (error.code === '23503') {
+          throw new Error('No se puede eliminar este cliente porque tiene contratos o información asociada.');
+        }
+        throw error;
+      }
+      toast.success('Cliente eliminado correctamente');
+      fetchClients();
+    } catch (error: any) {
+      toast.error('Error al eliminar: ' + error.message);
+    }
   }
 
   const closeModal = () => { setIsModalOpen(false); setEditingClient(null) }
@@ -254,4 +272,5 @@ export default function ClientesPage() {
     </div>
   )
 }
+
 
