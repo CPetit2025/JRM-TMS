@@ -586,10 +586,10 @@ export default function ContractServicesPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Descripción / Glosa</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">KG</label>
               <textarea 
                 rows={2}
-                placeholder="Detalles adicionales del servicio..."
+                placeholder="Cantidad en KG o detalles adicionales..."
                 className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none resize-none"
                 value={newService.description}
                 onChange={(e) => setNewService({...newService, description: e.target.value})}
