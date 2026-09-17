@@ -75,7 +75,7 @@ export default function ContratosPage() {
 
   const fetchClients = async () => {
     try {
-      const { data, error } = await supabase.from('clients').select('id, business_name, document_id').eq('is_active', true)
+      const { data, error } = await supabase.from('clients').select('id, business_name, tax_id').eq('is_active', true)
       if (!error && data) setClients(data)
     } catch (e) {
       console.error('Error fetching clients', e)
@@ -264,8 +264,8 @@ export default function ContratosPage() {
         const contractMap = new Map(dbContracts?.map(c => [c.code, c]))
 
         // Traemos clientes para mapear RUC -> UUID
-        const { data: dbClients } = await supabase.from('clients').select('id, document_id')
-        const clientMap = new Map(dbClients?.map(c => [c.document_id, c.id]))
+        const { data: dbClients } = await supabase.from('clients').select('id, tax_id')
+        const clientMap = new Map(dbClients?.map(c => [c.tax_id, c.id]))
 
         for (const row of data) {
           try {
@@ -540,7 +540,7 @@ export default function ContratosPage() {
                 >
                   <option value="">-- Seleccionar Cliente (Opcional) --</option>
                   {clients.map(c => (
-                    <option key={c.id} value={c.id}>{c.business_name} ({c.document_id})</option>
+                    <option key={c.id} value={c.id}>{c.business_name} ({c.tax_id})</option>
                   ))}
                 </select>
               </div>
