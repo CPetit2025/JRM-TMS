@@ -368,32 +368,28 @@ export default function ContractServicesPage() {
       {/* Carga Masiva Dropzone */}
       <div 
         {...getRootProps()} 
-        className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
+        className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors ${
           isDragActive ? 'border-[#002855] bg-blue-50' : 'border-slate-300 bg-white hover:bg-slate-50'
         }`}
       >
         <input {...getInputProps()} />
         {isUploading ? (
           <div className="flex flex-col items-center justify-center text-[#002855]">
-            <Loader2 className="w-8 h-8 animate-spin mb-3" />
-            <p className="font-semibold text-lg">Procesando archivo...</p>
-            <p className="text-sm opacity-80 mt-1">Por favor espere mientras se registran los servicios.</p>
+            <Loader2 className="w-6 h-6 animate-spin mb-2" />
+            <p className="font-semibold text-sm">Procesando archivo...</p>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center text-slate-500">
-            <Upload className={`w-10 h-10 mb-4 ${isDragActive ? 'text-[#002855]' : 'text-slate-400'}`} />
-            <p className="font-semibold text-lg text-slate-700 mb-1">
+            <Upload className={`w-8 h-8 mb-2 ${isDragActive ? 'text-[#002855]' : 'text-slate-400'}`} />
+            <p className="font-semibold text-base text-slate-700 mb-1">
               {isDragActive ? 'Suelta el archivo aquí...' : 'Carga Masiva de Servicios'}
             </p>
-            <p className="text-sm mb-4">
-              Arrastra y suelta tu plantilla Excel aquí, o haz clic para seleccionar el archivo
+            <p className="text-xs mb-2">
+              Arrastra y suelta tu plantilla Excel aquí (.XLSX)
             </p>
-            <span className="text-xs font-semibold bg-slate-100 text-slate-600 px-3 py-1 rounded-full border border-slate-200">
-              Soporta .XLSX, .XLS
-            </span>
-            <div className="mt-4 flex items-center gap-2 text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
-              <AlertCircle className="w-4 h-4" />
-              <span>Asegúrate de usar el "Código de Contrato" en la columna RUC_Contrato para asegurar el emparejamiento.</span>
+            <div className="flex items-center gap-2 text-[10px] text-amber-600 bg-amber-50 px-2 py-1.5 rounded-lg border border-amber-200">
+              <AlertCircle className="w-3.5 h-3.5" />
+              <span>Código de Contrato exacto obligatorio.</span>
             </div>
           </div>
         )}
@@ -409,6 +405,7 @@ export default function ContractServicesPage() {
                 <th className="p-4 font-semibold">Contrato</th>
                 <th className="p-4 font-semibold">Cliente</th>
                 <th className="p-4 font-semibold">Servicio</th>
+                <th className="p-4 font-semibold">Placa</th>
                 <th className="p-4 font-semibold">KG</th>
                 <th className="p-4 font-semibold text-right">Monto (PEN)</th>
                 <th className="p-4 font-semibold text-right">Saldo (PEN)</th>
@@ -418,14 +415,14 @@ export default function ContractServicesPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-500">
+                  <td colSpan={9} className="p-8 text-center text-slate-500">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                     Cargando servicios...
                   </td>
                 </tr>
               ) : filteredServices.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-500">
+                  <td colSpan={9} className="p-8 text-center text-slate-500">
                     No hay servicios registrados o que coincidan con los filtros.
                   </td>
                 </tr>
@@ -463,10 +460,12 @@ export default function ContractServicesPage() {
                         )}
                       </div>
                     </td>
+                    <td className="p-4 text-sm font-medium text-slate-800">
+                      {srv.plate || '-'}
+                    </td>
                     <td className="p-4 text-xs text-slate-600">
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-slate-800">{srv.description || '-'}</span>
-                        {srv.plate && <span>Placa: <span className="font-medium">{srv.plate}</span></span>}
+                        <span className="text-slate-800 font-medium">{srv.description || '-'}</span>
                         {srv.driver_name && <span>Cond: <span className="font-medium">{srv.driver_name}</span></span>}
                         {srv.hours && <span>Horas: <span className="font-medium">{srv.hours}h</span></span>}
                         {srv.provider_name && <span>Prov: <span className="font-medium text-amber-700">{srv.provider_name}</span></span>}

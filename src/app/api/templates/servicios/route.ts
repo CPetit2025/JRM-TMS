@@ -12,6 +12,7 @@ export async function GET() {
       { header: 'Contrato', key: 'contrato', width: 20 },
       { header: 'Cliente', key: 'cliente', width: 30 },
       { header: 'Servicio', key: 'servicio', width: 20 },
+      { header: 'Placa', key: 'placa', width: 15 },
       { header: 'KG', key: 'kg', width: 15 },
       { header: 'Monto (PEN)', key: 'monto_pen', width: 15 },
       { header: 'Saldo (PEN)', key: 'saldo_pen', width: 15 },
