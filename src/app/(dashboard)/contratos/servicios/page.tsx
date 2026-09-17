@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Receipt, Calendar, FileText, Check, Ban, Loader2, DollarSign, Upload, Download, AlertCircle } from 'lucide-react'
+import { Plus, Receipt, Calendar, FileText, Check, Ban, Loader2, DollarSign, Upload, Download, AlertCircle, Search, Filter, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -53,6 +53,13 @@ export default function ContractServicesPage() {
   
   // Bulk upload states
   const [isUploading, setIsUploading] = useState(false)
+
+  // Filters
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
+  const [filterStatus, setFilterStatus] = useState('TODOS')
+  const [showFilters, setShowFilters] = useState(false)
 
   const [newService, setNewService] = useState({
     contract_id: '',
@@ -250,6 +257,27 @@ export default function ContractServicesPage() {
     multiple: false
   })
 
+  const filteredServices = services.filter(srv => {
+    const searchString = `${srv.contracts?.code} ${srv.contracts?.clients?.business_name} ${srv.service_type} ${srv.category} ${srv.description} ${srv.plate} ${srv.driver_name} ${srv.provider_name} ${srv.provider_ruc}`.toLowerCase()
+    const matchesSearch = searchTerm ? searchString.includes(searchTerm.toLowerCase()) : true
+    
+    const srvDate = new Date(srv.service_date)
+    const dateFrom = filterDateFrom ? new Date(filterDateFrom) : null
+    const dateTo = filterDateTo ? new Date(filterDateTo) : null
+    
+    // Set time to 0 to compare dates accurately
+    srvDate.setUTCHours(0,0,0,0)
+    if (dateFrom) dateFrom.setUTCHours(0,0,0,0)
+    if (dateTo) dateTo.setUTCHours(0,0,0,0)
+
+    const matchesDateFrom = dateFrom ? srvDate >= dateFrom : true
+    const matchesDateTo = dateTo ? srvDate <= dateTo : true
+    
+    const matchesStatus = filterStatus === 'TODOS' ? true : srv.status === filterStatus
+    
+    return matchesSearch && matchesDateFrom && matchesDateTo && matchesStatus
+  })
+
   return (
     <div className="space-y-6 w-full mx-auto">
       <div className="flex justify-between items-center">
@@ -273,6 +301,68 @@ export default function ContractServicesPage() {
             Registrar Servicio
           </button>
         </div>
+      </div>
+
+      {/* Filtros y Búsqueda */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+        <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+          <div className="relative w-full md:w-96">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-4 w-4 text-slate-400" />
+            </div>
+            <input
+              type="text"
+              placeholder="Buscar por contrato, cliente, placa, etc..."
+              className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#002855] focus:border-transparent transition-colors sm:text-sm"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors border ${showFilters ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+          >
+            <Filter className="w-4 h-4" />
+            Filtros Avanzados
+          </button>
+        </div>
+
+        {showFilters && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Fecha Desde</label>
+              <input
+                type="date"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Fecha Hasta</label>
+              <input
+                type="date"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Estado</label>
+              <select
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+              >
+                <option value="TODOS">Todos los Estados</option>
+                <option value="REGISTRADO">Registrado</option>
+                <option value="FACTURADO">Facturado</option>
+                <option value="PAGADO">Pagado</option>
+                <option value="ANULADO">Anulado</option>
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Carga Masiva Dropzone */}
@@ -328,19 +418,19 @@ export default function ContractServicesPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-500">
+                  <td colSpan={8} className="p-8 text-center text-slate-500">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                     Cargando servicios...
                   </td>
                 </tr>
-              ) : services.length === 0 ? (
+              ) : filteredServices.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-500">
-                    No hay servicios registrados.
+                  <td colSpan={8} className="p-8 text-center text-slate-500">
+                    No hay servicios registrados o que coincidan con los filtros.
                   </td>
                 </tr>
               ) : (
-                services.map(srv => {
+                filteredServices.map(srv => {
                   const balance = srv.contracts?.contract_budgets?.[0]?.balance_pen || 0;
                   const isNegative = balance < 0;
                   return (
