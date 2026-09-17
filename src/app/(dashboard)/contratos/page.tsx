@@ -443,8 +443,9 @@ export default function ContratosPage() {
             <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="px-6 py-4 font-semibold">Código / Jerarquía</th>
+                <th className="px-6 py-4 font-semibold">Cliente</th>
                 <th className="px-6 py-4 font-semibold">Tipo</th>
-                <th className="px-6 py-4 font-semibold">Carga</th>
+                <th className="px-6 py-4 font-semibold">Carga (KG)</th>
                 <th className="px-6 py-4 font-semibold">Partida de Transporte (S/)</th>
                 <th className="px-6 py-4 font-semibold">Saldo Disponible (S/)</th>
                 <th className="px-6 py-4 font-semibold">Estado</th>
@@ -454,13 +455,13 @@ export default function ContratosPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                  <td colSpan={8} className="px-6 py-8 text-center text-slate-500">
                     Cargando contratos...
                   </td>
                 </tr>
               ) : contracts.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                  <td colSpan={8} className="px-6 py-8 text-center text-slate-500">
                     No hay contratos registrados.
                   </td>
                 </tr>
@@ -470,13 +471,17 @@ export default function ContratosPage() {
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <span className="font-semibold text-slate-900 text-base">{contract.code}</span>
-                        {contract.clients && (
-                          <span className="text-sm text-[#002855] font-medium mt-0.5">{contract.clients.business_name}</span>
-                        )}
                         {contract.parent_contract_id && (
                           <span className="text-xs text-slate-400 mt-0.5">↳ Derivado de otro contrato</span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {contract.clients ? (
+                        <span className="text-sm text-[#002855] font-medium">{contract.clients.business_name}</span>
+                      ) : (
+                        <span className="text-xs text-slate-400">Sin cliente</span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-1">
@@ -488,9 +493,8 @@ export default function ContratosPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-xs text-slate-500">
-                      {contract.total_weight_kg ? `${contract.total_weight_kg} KG` : '0 KG'}<br/>
-                      {contract.total_volume_m3 ? `${contract.total_volume_m3} M3` : '0 M3'}
+                    <td className="px-6 py-4 text-sm font-medium text-slate-700">
+                      {contract.total_weight_kg ? Number(contract.total_weight_kg).toLocaleString('en-US') : '0'} KG
                     </td>
                     <td className="px-6 py-4 font-medium text-slate-700">
                       S/ {contract.budget?.allocated_pen?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}
