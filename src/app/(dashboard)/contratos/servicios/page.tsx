@@ -33,6 +33,7 @@ interface ContractService {
   provider_ruc?: string
   provider_name?: string
   category?: string
+  referral_guide?: string
   created_at: string
   contracts?: {
     code: string
@@ -768,7 +769,7 @@ export default function ContractServicesPage() {
               <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Guías de Remisión</span>
               {viewingService.referral_guide ? (
                 <div className="flex flex-wrap gap-2 mt-1">
-                  {viewingService.referral_guide.split(',').map((gr, idx) => (
+                  {viewingService.referral_guide.split(',').map((gr: string, idx: number) => (
                     <span key={idx} className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded text-sm font-semibold">
                       {gr.trim()}
                     </span>
