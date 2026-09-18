@@ -238,10 +238,10 @@ export default function PermisosPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b">
+        <div className="overflow-auto max-h-[calc(100vh-220px)]">
+          <table className="w-full text-left border-collapse relative">
+            <thead className="sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
+              <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider ">
                 <th className="p-4 font-semibold">Rol</th>
                 <th className="p-4 font-semibold">Descripción</th>
                 <th className="p-4 font-semibold hidden md:table-cell">Permisos (Módulos)</th>

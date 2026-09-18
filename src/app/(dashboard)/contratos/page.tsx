@@ -459,9 +459,9 @@ export default function ContratosPage() {
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
+        <div className="overflow-auto max-h-[calc(100vh-220px)]">
+          <table className="w-full text-sm text-left relative">
+            <thead className="text-xs text-slate-500 uppercase bg-slate-50 sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0] border-slate-200">
               <tr>
                 <th className="px-6 py-4 font-semibold">Código / Jerarquía</th>
                 <th className="px-6 py-4 font-semibold">Cliente</th>

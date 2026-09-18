@@ -685,9 +685,9 @@ export default function DespachoPage() {
           </h2>
 
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-slate-50 text-slate-500 text-xs text-left border-b border-slate-100 uppercase tracking-wider">
+            <div className="overflow-auto max-h-[calc(100vh-220px)]">
+          <table className="w-full text-left border-collapse relative">
+            <thead className="bg-slate-50 text-slate-500 text-xs text-left sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0] border-slate-100 uppercase tracking-wider">
                   <tr>
                     <th className="p-4 font-semibold whitespace-nowrap">Despacho</th>
                     <th className="p-4 font-semibold whitespace-nowrap">Unidad / Chofer</th>

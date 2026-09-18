@@ -138,9 +138,9 @@ export default function FondosPage() {
         {loading ? (
           <div className="p-12 flex justify-center"><Activity className="w-8 h-8 animate-spin text-blue-500" /></div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
-              <thead className="bg-slate-50 border-b border-slate-200">
+          <div className="overflow-auto max-h-[calc(100vh-220px)]">
+          <table className="w-full text-left text-sm text-slate-600 relative">
+            <thead className="bg-slate-50 sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0] border-slate-200">
                 <tr>
                   <th className="p-4 font-semibold text-slate-900">Código / Fecha</th>
                   <th className="p-4 font-semibold text-slate-900">Responsable (Recibe)</th>

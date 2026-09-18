@@ -141,9 +141,9 @@ export default function VehicleFailuresPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+        <div className="overflow-auto max-h-[calc(100vh-220px)]">
+          <table className="w-full text-sm text-left relative">
+            <thead className="bg-slate-50 text-slate-600 font-semibold sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0] border-slate-200">
               <tr>
                 <th className="px-6 py-3">Placa / Unidad</th>
                 <th className="px-6 py-3">Tipo de Registro</th>
