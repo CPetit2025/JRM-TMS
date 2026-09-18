@@ -13,6 +13,7 @@ export async function GET() {
       { header: 'Cliente', key: 'cliente', width: 30 },
       { header: 'Servicio', key: 'servicio', width: 20 },
       { header: 'Placa', key: 'placa', width: 15 },
+      { header: 'Guía de Remisión', key: 'guia_remision', width: 20 },
       { header: 'KG', key: 'kg', width: 15 },
       { header: 'Monto (PEN)', key: 'monto_pen', width: 15 },
       { header: 'Saldo (PEN)', key: 'saldo_pen', width: 15 },
@@ -35,6 +36,7 @@ export async function GET() {
       cliente: 'Empresa Ejemplo S.A.C.',
       servicio: 'FLETE',
       kg: '15000',
+      guia_remision: 'GR-001',
       monto_pen: 1500.50,
       saldo_pen: '', // Automático del sistema
       estado: '' // Automático del sistema

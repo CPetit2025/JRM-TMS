@@ -73,8 +73,11 @@ export default function ContractServicesPage() {
     isThirdParty: false,
     provider_ruc: '',
     provider_name: '',
-    category: 'Contrato'
+    category: 'Contrato',
+    referral_guide: ''
   })
+  
+  const [viewingService, setViewingService] = useState<ContractService | null>(null)
 
   useEffect(() => {
     fetchData()
@@ -142,7 +145,8 @@ export default function ContractServicesPage() {
         p_hours: newService.service_type === 'MONTACARGA' ? parseFloat(newService.hours) : null,
         p_provider_ruc: newService.isThirdParty ? newService.provider_ruc : null,
         p_provider_name: newService.isThirdParty ? newService.provider_name : null,
-        p_category: newService.category
+        p_category: newService.category,
+        p_referral_guide: newService.referral_guide || null
       })
 
       if (error) throw error
@@ -171,7 +175,8 @@ export default function ContractServicesPage() {
       isThirdParty: false,
       provider_ruc: '',
       provider_name: '',
-      category: 'Contrato'
+      category: 'Contrato',
+      referral_guide: ''
     })
   }
 
@@ -227,7 +232,8 @@ export default function ContractServicesPage() {
             p_hours: row.Horas ? parseFloat(row.Horas) : null,
             p_provider_ruc: row.Proveedor_RUC ? String(row.Proveedor_RUC) : null,
             p_provider_name: row.Proveedor_Nombre || null,
-            p_category: row.Categoria || 'Contrato'
+            p_category: row.Categoria || 'Contrato',
+            p_referral_guide: row['Guía de Remisión'] || row.Guia_Remision || row.guia_remision || null
           })
 
           if (error) {
@@ -410,19 +416,20 @@ export default function ContractServicesPage() {
                 <th className="p-4 font-semibold text-right">Monto (PEN)</th>
                 <th className="p-4 font-semibold text-right">Saldo (PEN)</th>
                 <th className="p-4 font-semibold text-center">Estado</th>
+                <th className="p-4 font-semibold text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center text-slate-500">
+                  <td colSpan={10} className="p-8 text-center text-slate-500">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                     Cargando servicios...
                   </td>
                 </tr>
               ) : filteredServices.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center text-slate-500">
+                  <td colSpan={10} className="p-8 text-center text-slate-500">
                     No hay servicios registrados o que coincidan con los filtros.
                   </td>
                 </tr>
@@ -469,6 +476,7 @@ export default function ContractServicesPage() {
                         {srv.driver_name && <span>Cond: <span className="font-medium">{srv.driver_name}</span></span>}
                         {srv.hours && <span>Horas: <span className="font-medium">{srv.hours}h</span></span>}
                         {srv.provider_name && <span>Prov: <span className="font-medium text-amber-700">{srv.provider_name}</span></span>}
+                        {srv.referral_guide && <span className="mt-1 flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100 w-fit">GR: <span className="font-bold truncate max-w-[100px]">{srv.referral_guide}</span></span>}
                       </div>
                     </td>
                     <td className="p-4 text-sm font-bold text-slate-900 text-right">
@@ -481,6 +489,15 @@ export default function ContractServicesPage() {
                       <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">
                         {srv.status}
                       </span>
+                    </td>
+                    <td className="p-4 text-center">
+                      <button
+                        onClick={() => setViewingService(srv)}
+                        className="p-1.5 text-slate-400 hover:text-[#002855] hover:bg-slate-200 rounded-lg transition-colors"
+                        title="Ver Detalle"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </button>
                     </td>
                   </tr>
                 )})
@@ -602,6 +619,16 @@ export default function ContractServicesPage() {
                     onChange={(e) => setNewService({...newService, driver_name: e.target.value})}
                   />
                 </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Guías de Remisión (Opcional)</label>
+                  <input 
+                    type="text"
+                    placeholder="Ej. T001-123, T001-124"
+                    className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
+                    value={newService.referral_guide}
+                    onChange={(e) => setNewService({...newService, referral_guide: e.target.value})}
+                  />
+                </div>
               </div>
             )}
 
@@ -716,6 +743,83 @@ export default function ContractServicesPage() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={!!viewingService}
+        onClose={() => setViewingService(null)}
+        title="Detalles del Servicio Registrado"
+        maxWidth="max-w-lg"
+      >
+        {viewingService && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-slate-50 p-3 rounded border border-slate-200">
+                <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Contrato</span>
+                <span className="font-bold text-slate-800">{viewingService.contracts?.code}</span>
+              </div>
+              <div className="bg-slate-50 p-3 rounded border border-slate-200">
+                <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Tipo de Servicio</span>
+                <span className="font-bold text-[#002855]">{viewingService.service_type}</span>
+              </div>
+            </div>
+
+            <div className="bg-white p-3 rounded border border-slate-200">
+              <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Guías de Remisión</span>
+              {viewingService.referral_guide ? (
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {viewingService.referral_guide.split(',').map((gr, idx) => (
+                    <span key={idx} className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded text-sm font-semibold">
+                      {gr.trim()}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-slate-400 text-sm italic">Sin guías registradas</span>
+              )}
+            </div>
+
+            <div className="bg-white p-3 rounded border border-slate-200">
+              <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Detalle / KG</span>
+              <p className="text-slate-800 text-sm whitespace-pre-wrap">{viewingService.description || '-'}</p>
+            </div>
+
+            {(viewingService.plate || viewingService.driver_name) && (
+              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded border border-slate-200">
+                <div>
+                  <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Placa</span>
+                  <span className="text-slate-800 text-sm">{viewingService.plate || '-'}</span>
+                </div>
+                <div>
+                  <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Conductor</span>
+                  <span className="text-slate-800 text-sm">{viewingService.driver_name || '-'}</span>
+                </div>
+              </div>
+            )}
+
+            {(viewingService.provider_name || viewingService.provider_ruc) && (
+              <div className="bg-amber-50 p-3 rounded border border-amber-200">
+                <span className="block text-xs font-semibold text-amber-700 uppercase tracking-wider mb-1">Tercerizado a Proveedor</span>
+                <p className="text-amber-900 font-medium text-sm">{viewingService.provider_name}</p>
+                <p className="text-amber-800 text-xs">RUC: {viewingService.provider_ruc}</p>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center bg-emerald-50 p-3 rounded border border-emerald-200">
+              <span className="block text-sm font-semibold text-emerald-800">Monto del Servicio</span>
+              <span className="font-bold text-emerald-700 text-lg">S/ {Number(viewingService.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
+            </div>
+
+            <div className="flex justify-end pt-4 border-t border-slate-100">
+              <button
+                onClick={() => setViewingService(null)}
+                className="px-4 py-2 bg-[#002855] text-white rounded-lg font-medium hover:bg-[#001d3d] transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )
