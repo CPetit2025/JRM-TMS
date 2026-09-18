@@ -84,6 +84,7 @@ export default function SolicitudesPage() {
   const [userRole, setUserRole] = useState<string>('')
   
   const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false)
+  const [selectedRequestDetails, setSelectedRequestDetails] = useState<TransportRequest | null>(null)
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
   const [newRescheduleDate, setNewRescheduleDate] = useState('')
   
@@ -584,23 +585,46 @@ export default function SolicitudesPage() {
                   <tr key={req.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4">
                       <div className="flex flex-col">
-                        <span className="font-bold text-[#002855] text-sm">{req.request_number}</span>
+                        <button 
+                          onClick={() => setSelectedRequestDetails(req)}
+                          className="font-bold text-[#002855] text-sm text-left hover:underline hover:text-blue-600 transition-all"
+                        >
+                          {req.request_number}
+                        </button>
                         <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap mt-0.5">
                           {new Date(req.created_at).toLocaleString()}
                         </span>
                       </div>
                     </td>
-                    <td className="p-4">
+                    <td className="p-4 text-sm text-slate-600">
                       <div className="flex flex-col">
-                        <span className="font-medium text-slate-800 text-sm">{req.requester_name}</span>
-                        {req.department.startsWith('OT -') ? (
-                          <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full w-fit mt-1 border border-blue-100">
-                            {req.department}
+                        <span className="flex items-center gap-1 font-semibold text-[#002855]">
+                          <Calendar className="w-3 h-3 text-slate-400" />
+                          {new Date(req.required_date).toLocaleDateString()}
+                        </span>
+                        {req.time_window && (
+                          <span className="flex items-center gap-1 text-[11px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded w-fit mt-1">
+                            <Clock className="w-3 h-3" />
+                            {req.time_window}
                           </span>
-                        ) : (
-                          <span className="text-xs text-slate-500 mt-0.5">{req.department}</span>
                         )}
                       </div>
+                    </td>
+                    <td className="p-4">
+                      <div className="flex flex-col">
+                        {req.purchase_order ? (
+                          <span className="font-bold text-slate-700 text-sm">{req.purchase_order}</span>
+                        ) : (
+                          <span className="text-slate-400 text-sm">-</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {req.contracts?.clients?.business_name ? (
+                        <span className="text-sm font-medium text-[#002855]">{req.contracts.clients.business_name}</span>
+                      ) : (
+                        <span className="text-sm text-slate-400">-</span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-2">
@@ -624,38 +648,17 @@ export default function SolicitudesPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      {req.contracts?.clients?.business_name ? (
-                        <span className="text-sm font-medium text-[#002855]">{req.contracts.clients.business_name}</span>
-                      ) : (
-                        <span className="text-sm text-slate-400">-</span>
-                      )}
-                    </td>
                     <td className="px-6 py-4 text-sm max-w-[250px]">
                       <div className="flex flex-col gap-1">
                         {req.cargo_description && (
                           <div className="text-xs text-slate-700 font-medium truncate" title={req.cargo_description}>
-                            Glosa: {req.cargo_description} {req.purchase_order ? `| OC/OS: ${req.purchase_order}` : ''}
+                            Glosa: {req.cargo_description}
                           </div>
                         )}
                         {req.estimated_weight > 0 && (
                           <div className="text-[10px] text-slate-400 font-medium">
                             {req.estimated_weight} KG | {req.estimated_volume} M3 Estimados
                           </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-4 text-sm text-slate-600">
-                      <div className="flex flex-col">
-                        <span className="flex items-center gap-1 font-medium">
-                          <Calendar className="w-3 h-3 text-slate-400" />
-                          {new Date(req.required_date).toLocaleDateString()}
-                        </span>
-                        {req.time_window && (
-                          <span className="flex items-center gap-1 text-xs text-slate-500 mt-0.5">
-                            <Clock className="w-3 h-3" />
-                            {req.time_window}
-                          </span>
                         )}
                       </div>
                     </td>
