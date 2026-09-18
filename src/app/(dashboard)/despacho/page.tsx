@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect, useRef } from 'react'
-import { Truck, MapPin, Loader2, PlayCircle, Calendar, Plus, FileText, ArrowRight, CheckCircle2, DollarSign, Tag, Search, Filter } from 'lucide-react'
+import { Truck, MapPin, Loader2, PlayCircle, Calendar, Plus, FileText, ArrowRight, CheckCircle2, DollarSign, Tag, Search, Filter, Save } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -87,6 +87,11 @@ export default function DespachoPage() {
   
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedDispatchDetail, setSelectedDispatchDetail] = useState<Dispatch | null>(null)
+  
+  // Modal de Documentos
+  const [isDocModalOpen, setIsDocModalOpen] = useState(false)
+  const [docModalData, setDocModalData] = useState<Dispatch | null>(null)
+  const [isSavingDocs, setIsSavingDocs] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [calculatingDistance, setCalculatingDistance] = useState(false)
   const reqDistances = useRef<Record<string, number>>({})
@@ -283,6 +288,39 @@ export default function DespachoPage() {
       toast.error('Error al cargar datos de despacho: ' + error.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleSaveDocuments = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!docModalData || !docModalData.dispatch_requests) return
+    setIsSavingDocs(true)
+    
+    try {
+      for (const req of docModalData.dispatch_requests) {
+        if (!req.document_number?.trim()) {
+          toast.error('Todos los documentos deben estar completos.')
+          setIsSavingDocs(false)
+          return
+        }
+      }
+
+      for (const req of docModalData.dispatch_requests) {
+        const { error } = await supabase
+          .from('dispatch_requests')
+          .update({ document_number: req.document_number })
+          .eq('dispatch_id', docModalData.id)
+          .eq('transport_request_id', req.transport_request_id)
+        if (error) throw error
+      }
+
+      toast.success('Documentos vinculados correctamente')
+      setIsDocModalOpen(false)
+      fetchData()
+    } catch (error: any) {
+      toast.error('Error al guardar documentos: ' + error.message)
+    } finally {
+      setIsSavingDocs(false)
     }
   }
 
