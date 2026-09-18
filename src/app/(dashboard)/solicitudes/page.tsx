@@ -64,6 +64,20 @@ export default function SolicitudesPage() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
   const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [filterStatus, setFilterStatus] = useState('TODOS')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
+
+  const filteredRequests = requests.filter(r => {
+    const matchesSearch = searchTerm === '' || r.request_number.toLowerCase().includes(searchTerm.toLowerCase()) || r.requester_name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = filterStatus === 'TODOS' || r.status === filterStatus;
+    const matchesDateFrom = filterDateFrom === '' || r.required_date >= filterDateFrom;
+    const matchesDateTo = filterDateTo === '' || r.required_date <= filterDateTo;
+    return matchesSearch && matchesStatus && matchesDateFrom && matchesDateTo;
+  });
+
   
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)

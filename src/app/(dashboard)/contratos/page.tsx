@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Search, Layers, FileWarning, Briefcase, FilePlus2, CheckCircle2, Upload, Download, Edit2 } from 'lucide-react'
+import { Plus, Search, Layers, FileWarning, Briefcase, FilePlus2, CheckCircle2, Upload, Download, Edit2, Filter } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -67,6 +67,23 @@ export default function ContratosPage() {
     destination_district: '',
     destination_address: ''
   })
+
+
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [filterStatus, setFilterStatus] = useState('TODOS')
+  const [filterType, setFilterType] = useState('TODOS')
+
+  const filteredContracts = contracts.filter(c => {
+    const matchesSearch = searchTerm === '' || 
+      c.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.clients?.business_name || '').toLowerCase().includes(searchTerm.toLowerCase());
+      
+    const matchesStatus = filterStatus === 'TODOS' || c.status === filterStatus;
+    const matchesType = filterType === 'TODOS' || c.type === filterType;
+
+    return matchesSearch && matchesStatus && matchesType;
+  });
 
   useEffect(() => {
     fetchContracts()
@@ -487,7 +504,7 @@ export default function ContratosPage() {
                   </td>
                 </tr>
               ) : (
-                contracts.map((contract) => (
+                filteredContracts.map((contract) => (
                   <tr key={contract.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex flex-col">

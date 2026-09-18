@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Plus, Building2, Search, Loader2, Edit2, CheckCircle2, XCircle, Upload, Download, ChevronUp, ChevronDown, ChevronsUpDown, Trash2 } from 'lucide-react'
+import { Plus, Building2, Search, Loader2, Edit2, CheckCircle2, XCircle, Upload, Download, ChevronUp, ChevronDown, ChevronsUpDown, Trash2, Filter } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import ExcelJS from 'exceljs'
 import { createClient } from '@/lib/supabase/client'
@@ -22,6 +22,7 @@ export default function ClientesPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [search, setSearch] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all')
   const [sortField, setSortField] = useState<SortField>('business_name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -189,22 +190,52 @@ export default function ClientesPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-4 border-b border-slate-200 flex flex-wrap gap-3 items-center bg-slate-50">
-          <div className="relative flex-1 min-w-[220px] max-w-sm">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-            <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por Razon Social, RUC o Contacto..."
-              className="w-full pl-9 pr-4 py-2 bg-white text-slate-900 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002855]" />
+      {/* Filtros y Búsqueda */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+        <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+          <div className="relative w-full md:w-96">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-4 w-4 text-slate-400" />
+            </div>
+            <input
+              type="text"
+              placeholder="Buscar por Razon Social, RUC o Contacto..."
+              className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#002855] focus:border-transparent transition-colors sm:text-sm"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as any)}
-            className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-[#002855]">
-            <option value="all">Todos los estados</option>
-            <option value="active">Solo Activos</option>
-            <option value="inactive">Solo Inactivos</option>
-          </select>
-          <span className="text-xs text-slate-400 ml-auto">{filtered.length} de {clients.length} clientes</span>
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <span className="text-xs text-slate-400 hidden md:inline-block">{filtered.length} de {clients.length} clientes</span>
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center justify-center gap-2 px-4 py-2 w-full md:w-auto rounded-lg font-medium transition-colors border ${showFilters ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+            >
+              <Filter className="w-4 h-4" />
+              Filtros Avanzados
+            </button>
+          </div>
         </div>
 
+        {showFilters && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Estado</label>
+              <select
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value as any)}
+              >
+                <option value="all">Todos los estados</option>
+                <option value="active">Solo Activos</option>
+                <option value="inactive">Solo Inactivos</option>
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-auto max-h-[calc(100vh-220px)]">
           <table className="w-full text-left border-collapse relative">
             <thead className="sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
