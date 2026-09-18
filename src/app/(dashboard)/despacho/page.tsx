@@ -331,12 +331,7 @@ export default function DespachoPage() {
       return
     }
 
-    // Validar que todas las OTs tengan documento
-    const missingDocs = newDispatch.selected_requests.some(req => !req.document_number.trim())
-    if (missingDocs) {
-      toast.error('Debes ingresar el número de documento para todas las solicitudes seleccionadas.')
-      return
-    }
+    // (Validación de documentos removida)
 
     // Validar saldo del contrato de las solicitudes seleccionadas
     const selectedReqsFull = pendingRequests.filter(pr => newDispatch.selected_requests.some(sr => sr.id === pr.id))
@@ -499,6 +494,12 @@ export default function DespachoPage() {
 
   const startRoute = async (dispatchId: string, dispatchRequests: DispatchRequest[]) => {
     try {
+      // Validar que todas las solicitudes tengan documento vinculado antes de iniciar
+      const missingDocs = dispatchRequests.some(r => !r.document_number || !r.document_number.trim());
+      if (missingDocs) {
+        toast.error('Falta vincular documentos (GR/NS) en algunas solicitudes antes de poder iniciar la ruta.');
+        return;
+      }
       // Pasar despacho a EN_CURSO
       await supabase.from('dispatches').update({ status: 'EN_CURSO' }).eq('id', dispatchId)
       
@@ -1148,28 +1149,7 @@ export default function DespachoPage() {
                           </div>
                           </div>
                         </label>
-                        {newDispatch.selected_requests.some(r => r.id === req.id) && (
-                          <div className="ml-9 mb-2 animate-in fade-in slide-in-from-top-2">
-                            <label className="block text-xs font-semibold text-slate-700 mb-1">
-                              {newDispatch.document_type === 'GR' ? 'Guía de Remisión' : 'Nota de Salida'} para esta solicitud
-                            </label>
-                            <input 
-                              type="text" 
-                              required
-                              placeholder={newDispatch.document_type === 'GR' ? "Ej. T001-00045" : "Ej. NS-001"}
-                              className="w-full px-3 py-1.5 bg-white text-slate-900 border border-blue-200 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none text-sm shadow-sm"
-                              value={newDispatch.selected_requests.find(r => r.id === req.id)?.document_number || ''}
-                              onChange={(e) => {
-                                setNewDispatch(prev => ({
-                                  ...prev,
-                                  selected_requests: prev.selected_requests.map(r => 
-                                    r.id === req.id ? { ...r, document_number: e.target.value } : r
-                                  )
-                                }))
-                              }}
-                            />
-                          </div>
-                        )}
+                        
                       </div>
                     )
                   })
