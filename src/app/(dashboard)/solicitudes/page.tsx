@@ -613,8 +613,10 @@ export default function SolicitudesPage() {
                     </td>
                     <td className="p-4">
                       <div className="flex flex-col">
-                        {req.purchase_order ? (
-                          <span className="font-bold text-slate-700 text-sm">{req.purchase_order}</span>
+                        {req.contracts?.code ? (
+                          <span className="font-bold text-[#002855] text-sm">{req.contracts.code}</span>
+                        ) : req.purchase_order ? (
+                          <span className="font-medium text-slate-700 text-sm">{req.purchase_order}</span>
                         ) : (
                           <span className="text-slate-400 text-sm">-</span>
                         )}
