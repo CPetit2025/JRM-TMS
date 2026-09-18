@@ -94,7 +94,7 @@ export default function DespachoPage() {
   // Freight rate lookup state
   const [detectedFreightRate, setDetectedFreightRate] = useState<{ rate: number; district: string; zone: string } | null>(null)
   const [loadingRate, setLoadingRate] = useState(false)
-  
+  const [manualFreightCost, setManualFreightCost] = useState<string>('')
   const [newDispatch, setNewDispatch] = useState<{
     selected_requests: { id: string, document_number: string }[],
     driver_name: string,
@@ -434,6 +434,7 @@ export default function DespachoPage() {
       toast.success('Despacho programado correctamente')
       setIsModalOpen(false)
       setNewDispatch({ selected_requests: [], driver_name: '', vehicle_plate: '', scheduled_departure: '', estimated_distance_km: '', document_type: 'GR' })
+      setManualFreightCost('')
       setManualFreightCost('')
       fetchData()
     } catch (error: any) {
