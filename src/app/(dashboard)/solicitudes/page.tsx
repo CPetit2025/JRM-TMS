@@ -555,7 +555,7 @@ export default function SolicitudesPage() {
           <table className="w-full text-left border-collapse relative">
             <thead className="sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider ">
-                <th className="p-4 font-semibold">Código</th>
+                <th className="p-4 font-semibold">Código / Emisión</th>
                 <th className="p-4 font-semibold">Solicitante</th>
                 <th className="px-6 py-4 font-semibold w-1/4">Origen y Destino</th>
                 <th className="px-6 py-4 font-semibold">Cliente</th>
@@ -583,7 +583,12 @@ export default function SolicitudesPage() {
                 requests.map(req => (
                   <tr key={req.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4">
-                      <span className="font-bold text-[#002855] text-sm">{req.request_number}</span>
+                      <div className="flex flex-col">
+                        <span className="font-bold text-[#002855] text-sm">{req.request_number}</span>
+                        <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap mt-0.5">
+                          {new Date(req.created_at).toLocaleString()}
+                        </span>
+                      </div>
                     </td>
                     <td className="p-4">
                       <div className="flex flex-col">
