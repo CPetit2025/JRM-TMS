@@ -414,7 +414,7 @@ export default function ContractServicesPage() {
                 <th className="p-4 font-semibold">Cliente</th>
                 <th className="p-4 font-semibold">Servicio</th>
                 <th className="p-4 font-semibold">Placa</th>
-                <th className="p-4 font-semibold">KG / Detalle</th>
+                <th className="p-4 font-semibold">TON</th>
                 <th className="p-4 font-semibold text-right">Monto (PEN)</th>
                 <th className="p-4 font-semibold text-right">Saldo (PEN)</th>
                 <th className="p-4 font-semibold text-center">Estado</th>
@@ -461,32 +461,17 @@ export default function ContractServicesPage() {
                       <span className="text-sm text-slate-700">{srv.contracts?.clients?.business_name || 'Sin Cliente'}</span>
                     </td>
                     <td className="p-4">
-                      <div className="flex flex-col gap-1">
-                        <span className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-semibold w-fit">
-                          {srv.service_type}
-                        </span>
-                        {srv.category && (
-                          <span className={`px-2 py-1 rounded text-[10px] font-bold w-fit ${
-                            srv.category === 'Error' ? 'bg-red-100 text-red-700' :
-                            srv.category === 'Subcontrato' ? 'bg-amber-100 text-amber-700' :
-                            'bg-blue-100 text-blue-700'
-                          }`}>
-                            {srv.category}
-                          </span>
-                        )}
-                      </div>
+                      <span className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-semibold w-fit block">
+                        {srv.service_type}
+                      </span>
                     </td>
                     <td className="p-4 text-sm font-medium text-slate-800">
                       {srv.plate || '-'}
                     </td>
-                    <td className="p-4 text-xs text-slate-600">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-slate-800 font-medium">{srv.description || '-'}</span>
-                        {srv.driver_name && <span>Cond: <span className="font-medium">{srv.driver_name}</span></span>}
-                        {srv.hours && <span>Horas: <span className="font-medium">{srv.hours}h</span></span>}
-                        {srv.provider_name && <span>Prov: <span className="font-medium text-amber-700">{srv.provider_name}</span></span>}
-                        {srv.referral_guide && <span className="mt-1 flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100 w-fit">GR: <span className="font-bold truncate max-w-[100px]">{srv.referral_guide}</span></span>}
-                      </div>
+                    <td className="p-4 text-sm font-medium text-slate-800">
+                      {!isNaN(Number(srv.description)) && srv.description ? 
+                        (Number(srv.description) / 1000).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) 
+                        : (srv.description || '-')}
                     </td>
                     <td className="p-4 text-sm font-bold text-slate-900 text-right">
                       S/ {Number(srv.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
