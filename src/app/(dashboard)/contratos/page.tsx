@@ -475,6 +475,64 @@ export default function ContratosPage() {
         </div>
       </div>
 
+      {/* Buscador y Filtros */}
+      <div className="flex flex-col md:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Buscar por código de contrato, empresa..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+          />
+        </div>
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium transition-colors ${
+            showFilters 
+              ? 'bg-blue-50 border-blue-200 text-blue-700' 
+              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+          }`}
+        >
+          <Filter className="w-4 h-4" />
+          Filtros Avanzados
+        </button>
+      </div>
+
+      {/* Panel de Filtros Avanzados */}
+      {showFilters && (
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Estado</label>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="TODOS">Todos</option>
+              <option value="ACTIVO">Activo</option>
+              <option value="CERRADO">Cerrado</option>
+              <option value="SUSPENDIDO">Suspendido</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Tipo</label>
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="TODOS">Todos</option>
+              <option value="CONTRATO">Contrato Madre</option>
+              <option value="SUBCONTRATO">Subcontrato</option>
+              <option value="ERROR">Error</option>
+              <option value="OT_INDEPENDIENTE">OT Independiente</option>
+            </select>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
         <div className="overflow-auto max-h-[calc(100vh-220px)]">
           <table className="w-full text-sm text-left relative">
