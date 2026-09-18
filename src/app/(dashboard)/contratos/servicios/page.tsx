@@ -408,16 +408,16 @@ export default function ContractServicesPage() {
           <table className="w-full text-left border-collapse">
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b">
               <tr>
+                <th className="p-4 font-semibold w-16 text-center">N°</th>
                 <th className="p-4 font-semibold">Fecha</th>
                 <th className="p-4 font-semibold">Contrato</th>
                 <th className="p-4 font-semibold">Cliente</th>
                 <th className="p-4 font-semibold">Servicio</th>
                 <th className="p-4 font-semibold">Placa</th>
-                <th className="p-4 font-semibold">KG</th>
+                <th className="p-4 font-semibold">KG / Detalle</th>
                 <th className="p-4 font-semibold text-right">Monto (PEN)</th>
                 <th className="p-4 font-semibold text-right">Saldo (PEN)</th>
                 <th className="p-4 font-semibold text-center">Estado</th>
-                <th className="p-4 font-semibold text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -435,11 +435,19 @@ export default function ContractServicesPage() {
                   </td>
                 </tr>
               ) : (
-                filteredServices.map(srv => {
+                filteredServices.map((srv, idx) => {
                   const balance = srv.contracts?.contract_budgets?.[0]?.balance_pen || 0;
                   const isNegative = balance < 0;
+                  const correlative = filteredServices.length - idx;
                   return (
-                  <tr key={srv.id} className={`transition-colors ${isNegative ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-slate-50'}`}>
+                  <tr 
+                    key={srv.id} 
+                    onClick={() => setViewingService(srv)}
+                    className={`cursor-pointer transition-colors ${isNegative ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-slate-50'}`}
+                  >
+                    <td className="p-4 text-sm font-bold text-slate-400 text-center">
+                      {correlative}
+                    </td>
                     <td className="p-4 text-sm text-slate-600">
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5 text-slate-400" />
@@ -490,15 +498,6 @@ export default function ContractServicesPage() {
                       <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">
                         {srv.status}
                       </span>
-                    </td>
-                    <td className="p-4 text-center">
-                      <button
-                        onClick={() => setViewingService(srv)}
-                        className="p-1.5 text-slate-400 hover:text-[#002855] hover:bg-slate-200 rounded-lg transition-colors"
-                        title="Ver Detalle"
-                      >
-                        <FileText className="w-4 h-4" />
-                      </button>
                     </td>
                   </tr>
                 )})
