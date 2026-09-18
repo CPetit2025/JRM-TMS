@@ -145,7 +145,7 @@ export default function FondosPage() {
                   <th className="p-4 font-semibold text-slate-900">Código / Fecha</th>
                   <th className="p-4 font-semibold text-slate-900">Responsable (Recibe)</th>
                   <th className="p-4 font-semibold text-slate-900">Motivo</th>
-                  <th className="p-4 font-semibold text-slate-900 text-right">Monto Entregado</th>
+                  <th className="p-4 font-semibold text-slate-900 text-right text-right">Monto Entregado</th>
                   <th className="p-4 font-semibold text-slate-900 text-center">Estado</th>
                 </tr>
               </thead>

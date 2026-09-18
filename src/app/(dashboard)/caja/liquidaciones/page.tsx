@@ -153,7 +153,7 @@ export default function LiquidacionesPage() {
                 <tr>
                   <th className="p-4 font-semibold text-slate-900">Código Fondo</th>
                   <th className="p-4 font-semibold text-slate-900">Responsable</th>
-                  <th className="p-4 font-semibold text-slate-900 text-right">Monto Asignado</th>
+                  <th className="p-4 font-semibold text-slate-900 text-right text-right">Monto Asignado</th>
                   <th className="p-4 font-semibold text-slate-900 text-center">Estado</th>
                   <th className="p-4 font-semibold text-slate-900 text-right">Acción</th>
                 </tr>
@@ -168,7 +168,7 @@ export default function LiquidacionesPage() {
                       <td className="p-4">
                         <span className="font-semibold text-slate-800 block">{f.received_by_profile?.first_name} {f.received_by_profile?.last_name}</span>
                       </td>
-                      <td className="p-4 text-right font-black text-slate-800">{formatMoney(f.amount, f.currency)}</td>
+                      <td className="p-4 text-right font-black text-slate-800 text-right">{formatMoney(f.amount, f.currency)}</td>
                       <td className="p-4 text-center">
                         <span className={`inline-block px-3 py-1 text-xs font-bold rounded-full ${
                           f.status === 'LIQUIDADO' ? 'bg-emerald-100 text-emerald-700' :
@@ -222,7 +222,7 @@ export default function LiquidacionesPage() {
                     <tr>
                       <th className="p-3 font-semibold text-slate-900">Documento / Contexto</th>
                       <th className="p-3 font-semibold text-slate-900">Categoría</th>
-                      <th className="p-3 font-semibold text-slate-900">Monto</th>
+                      <th className="p-3 font-semibold text-slate-900 text-right">Monto</th>
                       <th className="p-3 font-semibold text-slate-900">Anomalías / Alertas</th>
                       <th className="p-3 font-semibold text-slate-900">Estado</th>
                       <th className="p-3 font-semibold text-slate-900 text-right">Auditoría</th>
@@ -240,7 +240,7 @@ export default function LiquidacionesPage() {
                             {e.vehicle_plate && <div className="text-[10px] font-bold text-blue-600 mt-1">Viaje placa: {e.vehicle_plate}</div>}
                           </td>
                           <td className="p-3 font-medium text-slate-700">{e.category}</td>
-                          <td className="p-3 font-black text-slate-800">{formatMoney(e.total_amount, e.currency)}</td>
+                          <td className="p-3 font-black text-slate-800 text-right">{formatMoney(e.total_amount, e.currency)}</td>
                           <td className="p-3">
                             {e.anomalies ? (
                               <div className="flex items-start gap-1 text-red-600 bg-red-50 p-1 rounded">

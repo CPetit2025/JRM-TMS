@@ -754,7 +754,7 @@ export default function DespachoPage() {
                   <tr>
                     <th className="p-4 font-semibold whitespace-nowrap">Despacho</th>
                     <th className="p-4 font-semibold whitespace-nowrap">Unidad / Chofer</th>
-                    <th className="p-4 font-semibold whitespace-nowrap">Dist. (KM)</th>
+                    <th className="p-4 font-semibold whitespace-nowrap text-right">Dist. (KM)</th>
                     <th className="p-4 font-semibold">Solicitudes (Ruta)</th>
                     <th className="p-4 font-semibold whitespace-nowrap">Salida Programada</th>
                     <th className="p-4 font-semibold whitespace-nowrap">Estado</th>
@@ -792,7 +792,7 @@ export default function DespachoPage() {
                             <span className="text-xs text-slate-500">{dispatch.driver_name}</span>
                           </div>
                         </td>
-                        <td className="p-4 text-sm font-semibold text-slate-700">
+                        <td className="p-4 text-sm font-semibold text-slate-700 text-right">
                           {dispatch.estimated_distance_km ? `${dispatch.estimated_distance_km} KM` : '-'}
                         </td>
                         <td className="p-4 text-xs text-slate-600">
