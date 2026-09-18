@@ -371,6 +371,14 @@ export default function DespachoPage() {
         const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
         const activeContractId = firstReq?.contracts?.id || null
 
+        // Calcular costo efectivo
+        let effectiveFreightCost = 0
+        if (detectedFreightRate && detectedFreightRate.rate > 0) {
+          effectiveFreightCost = detectedFreightRate.rate
+        } else if (manualFreightCost && !isNaN(Number(manualFreightCost))) {
+          effectiveFreightCost = Number(manualFreightCost)
+        }
+
         const { data: insertData, error: insertError } = await supabase
           .from('dispatches')
           .insert([{
@@ -380,7 +388,7 @@ export default function DespachoPage() {
             scheduled_departure: newDispatch.scheduled_departure,
             status: 'PROGRAMADO',
             estimated_distance_km: newDispatch.estimated_distance_km || 0,
-            freight_cost: detectedFreightRate ? detectedFreightRate.rate : 0,
+            freight_cost: effectiveFreightCost,
             contract_id: activeContractId
           }])
           .select()
@@ -390,12 +398,12 @@ export default function DespachoPage() {
         dispatchId = insertData.id
 
         // Llamar a RPC para crear el Servicio de Contrato formalmente (Paso 5)
-        if (activeContractId && detectedFreightRate && detectedFreightRate.rate > 0) {
-          const { error: serviceError } = await supabase.rpc('register_contract_service', {
+        if (activeContractId && effectiveFreightCost > 0 && newDispatch.document_type !== 'NOTA_SALIDA') {
+          const { data: serviceData, error: serviceError } = await supabase.rpc('register_contract_service', {
             p_contract_id: activeContractId,
             p_service_type: 'FLETE',
-            p_description: `Flete (Automático) - Despacho ${dispatchNumber}`,
-            p_amount_pen: detectedFreightRate.rate,
+            p_description: `Flete ${detectedFreightRate ? '(Automático)' : '(Manual)'} - Despacho ${dispatchNumber}`,
+            p_amount_pen: effectiveFreightCost,
             p_service_date: newDispatch.scheduled_departure.split('T')[0],
             p_plate: newDispatch.vehicle_plate,
             p_driver_name: newDispatch.driver_name,
@@ -404,6 +412,13 @@ export default function DespachoPage() {
           if (serviceError) {
             console.error('Error al generar servicio de contrato:', serviceError)
             toast.error('⚠️ Despacho creado, pero hubo un error al registrar el servicio en el contrato.')
+          } else if (serviceData) {
+            // Enlazar el servicio generado con el despacho para evitar duplicidad y permitir trazabilidad
+            const { error: updateServiceError } = await supabase
+              .from('contract_services')
+              .update({ dispatch_id: dispatchId })
+              .eq('id', serviceData)
+            if (updateServiceError) console.error('Error linking service to dispatch:', updateServiceError)
           }
         }
       }
