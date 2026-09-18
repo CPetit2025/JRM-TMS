@@ -332,6 +332,18 @@ export default function ContractServicesPage() {
             <Download className="w-4 h-4" />
             Plantilla Excel
           </button>
+          
+          <div {...getRootProps()} className="flex cursor-pointer">
+            <input {...getInputProps()} />
+            <button 
+              className="flex items-center gap-2 bg-amber-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-amber-700 transition-colors shadow-sm disabled:opacity-50 pointer-events-none"
+              disabled={isUploading}
+            >
+              {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              {isUploading ? 'Procesando...' : 'Carga Masiva'}
+            </button>
+          </div>
+
           <button 
             onClick={() => setIsModalOpen(true)}
             className="flex items-center gap-2 bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#001d3d] transition-colors shadow-sm"
@@ -404,35 +416,6 @@ export default function ContractServicesPage() {
         )}
       </div>
 
-      {/* Carga Masiva Dropzone */}
-      <div 
-        {...getRootProps()} 
-        className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors ${
-          isDragActive ? 'border-[#002855] bg-blue-50' : 'border-slate-300 bg-white hover:bg-slate-50'
-        }`}
-      >
-        <input {...getInputProps()} />
-        {isUploading ? (
-          <div className="flex flex-col items-center justify-center text-[#002855]">
-            <Loader2 className="w-6 h-6 animate-spin mb-2" />
-            <p className="font-semibold text-sm">Procesando archivo...</p>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center text-slate-500">
-            <Upload className={`w-8 h-8 mb-2 ${isDragActive ? 'text-[#002855]' : 'text-slate-400'}`} />
-            <p className="font-semibold text-base text-slate-700 mb-1">
-              {isDragActive ? 'Suelta el archivo aquí...' : 'Carga Masiva de Servicios'}
-            </p>
-            <p className="text-xs mb-2">
-              Arrastra y suelta tu plantilla Excel aquí (.XLSX)
-            </p>
-            <div className="flex items-center gap-2 text-[10px] text-amber-600 bg-amber-50 px-2 py-1.5 rounded-lg border border-amber-200">
-              <AlertCircle className="w-3.5 h-3.5" />
-              <span>Código de Contrato exacto obligatorio.</span>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* Lista de Servicios */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
