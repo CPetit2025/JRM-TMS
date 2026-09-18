@@ -174,11 +174,11 @@ Equipo JRM TMS`
   )
 
   return (
-    <div className="space-y-6 w-full mx-auto max-w-7xl p-6">
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+    <div className="space-y-6 w-full mx-auto">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Torre de Control</h1>
-          <p className="text-sm text-slate-500 mt-1">Visualización lineal y dinámica de los servicios programados</p>
+          <h1 className="text-2xl font-bold text-slate-800">Torre de Control</h1>
+          <p className="text-sm text-slate-500">Visualización lineal y dinámica de los servicios programados</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <input

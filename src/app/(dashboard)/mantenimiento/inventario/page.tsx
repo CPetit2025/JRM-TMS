@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Plus, Search, BookOpen, Truck } from 'lucide-react'
+import { Plus, Search, BookOpen, Truck, Filter } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 
 interface SparePart {
@@ -111,18 +111,24 @@ export default function CatalogoMaestroPage() {
     setIsFormModalOpen(true)
   }
 
-  const filtered = parts.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.internal_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (p.category && p.category.toLowerCase().includes(searchTerm.toLowerCase()))
-  )
+  const [showFilters, setShowFilters] = useState(false)
+  const [filterCategory, setFilterCategory] = useState('TODOS')
+
+  const filtered = parts.filter(p => {
+    const matchSearch = searchTerm === '' || 
+      p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      p.internal_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.category && p.category.toLowerCase().includes(searchTerm.toLowerCase()));
+    const matchCategory = filterCategory === 'TODOS' || p.category === filterCategory;
+    return matchSearch && matchCategory;
+  })
 
   return (
-    <div className="space-y-6 w-full mx-auto max-w-7xl p-6">
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+    <div className="space-y-6 w-full mx-auto">
+      <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-[#002855] tracking-tight">Catálogo Maestro</h1>
-          <p className="text-sm text-slate-500 mt-1">Diccionario estandarizado de Repuestos y Servicios para imputar en las OTs.</p>
+          <p className="text-sm text-slate-500">Diccionario estandarizado de Repuestos y Servicios para imputar en las OTs.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative min-w-[250px]">

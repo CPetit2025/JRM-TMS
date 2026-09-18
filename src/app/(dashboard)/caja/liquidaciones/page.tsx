@@ -122,7 +122,7 @@ export default function LiquidacionesPage() {
   const saldo = Number(selectedFund?.amount) - totalGastos
 
   return (
-    <div className="p-6 w-full max-w-7xl mx-auto space-y-6">
+    <div className="space-y-6 w-full mx-auto">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-black text-[#002855] tracking-tight">Liquidaciones y Aprobaciones</h1>

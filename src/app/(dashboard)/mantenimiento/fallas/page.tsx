@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { AlertTriangle, Search, Eye, Wrench, CheckCircle, Clock, Plus } from 'lucide-react'
+import { AlertTriangle, Search, Eye, Wrench, CheckCircle, Clock, Plus, Filter } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 
@@ -13,6 +13,18 @@ export default function VehicleFailuresPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [statusUpdating, setStatusUpdating] = useState(false)
+
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [filterStatus, setFilterStatus] = useState('TODOS')
+
+  const filteredFailures = failures.filter((record: any) => {
+    const matchSearch = searchTerm === '' || 
+      record.vehicle_plate?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      record.description?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchStatus = filterStatus === 'TODOS' || record.status === filterStatus;
+    return matchSearch && matchStatus;
+  })
   const [newFailure, setNewFailure] = useState({
     vehicle_plate: '',
     description: '',
@@ -115,10 +127,10 @@ export default function VehicleFailuresPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full mx-auto">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Taller y Mantenimiento</h1>
+          <h1 className="text-2xl font-bold text-slate-800">Taller y Mantenimiento</h1>
           <p className="text-slate-500">Gestión de fallas reportadas y vehículos en taller</p>
         </div>
         <button 
@@ -160,14 +172,14 @@ export default function VehicleFailuresPage() {
                     Cargando reportes...
                   </td>
                 </tr>
-              ) : failures.length === 0 ? (
+              ) : filteredFailures.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
                     No hay fallas reportadas.
                   </td>
                 </tr>
               ) : (
-                failures.map((record) => (
+                filteredFailures.map((record) => (
                   <tr key={record.id} className="hover:bg-slate-50">
                     <td className="px-6 py-3 font-bold text-[#002855]">{record.vehicle_plate}</td>
                     <td className="px-6 py-3">

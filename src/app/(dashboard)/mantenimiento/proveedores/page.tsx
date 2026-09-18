@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Search, Plus, Edit2, Trash2, Users, Star, StarHalf, Phone, MapPin } from 'lucide-react'
+import { Search, Plus, Edit2, Trash2, Users, Star, StarHalf, Phone, MapPin , Filter} from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 
@@ -116,7 +116,7 @@ export default function ProveedoresPage() {
   )
 
   return (
-    <div className="p-6 w-full max-w-7xl mx-auto space-y-6">
+    <div className="space-y-6 w-full mx-auto">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-black text-[#002855] tracking-tight">Talleres y Proveedores</h1>

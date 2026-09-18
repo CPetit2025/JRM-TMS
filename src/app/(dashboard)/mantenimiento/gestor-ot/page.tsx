@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Wrench, Plus, Search, Calendar, CheckCircle2, FileText, AlertCircle, DollarSign, Upload, Wand2, FileImage } from 'lucide-react'
+import { Wrench, Plus, Search, Calendar, CheckCircle2, FileText, AlertCircle, DollarSign, Upload, Wand2, FileImage, Filter } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 
@@ -19,6 +19,19 @@ export default function MaintenanceWorkOrdersPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [costFile, setCostFile] = useState<File | null>(null)
   const [isExtracting, setIsExtracting] = useState(false)
+
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [filterStatus, setFilterStatus] = useState('TODOS')
+
+  const filteredOts = ots.filter((ot: any) => {
+    const matchSearch = searchTerm === '' || 
+      ot.ot_number?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      ot.vehicle_plate?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      ot.description?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchStatus = filterStatus === 'TODOS' || ot.status === filterStatus;
+    return matchSearch && matchStatus;
+  })
 
   const [form, setForm] = useState({
     vehicle_plate: '',
@@ -336,7 +349,7 @@ export default function MaintenanceWorkOrdersPage() {
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Órdenes de Trabajo (OT)</h1>
+          <h1 className="text-2xl font-bold text-slate-800">Órdenes de Trabajo (OT)</h1>
           <p className="text-sm text-slate-500">Gestión de mantenimientos en taller y reparaciones</p>
         </div>
         <button 
@@ -366,7 +379,14 @@ export default function MaintenanceWorkOrdersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {ots.map((ot) => {
+                {filteredOts.length === 0 && !loading ? (
+                  <tr>
+                    <td colSpan={8} className="p-8 text-center text-slate-500">
+                      No hay OTs registradas.
+                    </td>
+                  </tr>
+                ) : (
+                filteredOts.map((ot) => {
                   const totalCost = ot.work_order_costs?.reduce((sum: number, c: any) => sum + Number(c.amount), 0) || 0
                   return (
                     <tr key={ot.id} className="hover:bg-slate-50">
@@ -402,7 +422,7 @@ export default function MaintenanceWorkOrdersPage() {
                       </td>
                     </tr>
                   )
-                })}
+                }))}
               </tbody>
             </table>
           </div>

@@ -60,7 +60,7 @@ export default function Flota360Page() {
   }
 
   return (
-    <div className="space-y-6 w-full mx-auto max-w-7xl p-6">
+    <div className="space-y-6 w-full mx-auto">
       
       {/* HEADER */}
       <div className="flex items-center gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">

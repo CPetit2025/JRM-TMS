@@ -1,6 +1,6 @@
 "use client"
 import React, { useState, useEffect } from "react"
-import { Zap, Truck, DollarSign, Check, X, Loader2, AlertTriangle, LinkIcon, Link2Off, MapPin, Plus, Trash2, Import } from "lucide-react"
+import { Zap, Truck, DollarSign, Check, X, Loader2, AlertTriangle, LinkIcon, Link2Off, MapPin, Plus, Trash2, Import, Search, Filter } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 
@@ -103,6 +103,19 @@ export default function TarifasPage() {
 
   const rateByPlate = (plate: string) => rates.find(r => r.vehicle_plate === plate)
   const isLinked = (plate: string) => !!rateByPlate(plate)
+
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  
+  const filteredVehiclesWithRates = vehiclesWithRates.filter(vr => {
+    const matchSearch = searchTerm === '' || vr.vehicle.plate.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchSearch;
+  })
+  
+  const filteredFreightRates = freightRates.filter(fr => {
+    const matchSearch = searchTerm === '' || fr.district.toLowerCase().includes(searchTerm.toLowerCase()) || fr.origin.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchSearch;
+  })
 
   const startEditKm = (v: Vehicle) => {
     const existing = rateByPlate(v.plate)
@@ -244,6 +257,23 @@ export default function TarifasPage() {
       {/* TAB CONTENT: KM */}
       {activeTab === 'km' && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          {/* Filtros y Búsqueda */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-4">
+            <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+              <div className="relative w-full md:w-96">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search className="h-4 w-4 text-slate-400" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Buscar por placa..."
+                  className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#002855] focus:border-transparent transition-colors sm:text-sm"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
           {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
@@ -313,12 +343,12 @@ export default function TarifasPage() {
                     <tr><td colSpan={10} className="p-8 text-center text-slate-500">
                       <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-[#002855]" />Cargando flota...
                     </td></tr>
-                  ) : vehiclesWithRates.length === 0 ? (
+                  ) : filteredVehiclesWithRates.length === 0 ? (
                     <tr><td colSpan={10} className="p-8 text-center text-slate-500">
                       No hay vehículos registrados en Flota. <a href="/flota" className="text-[#002855] underline font-semibold">Ir a Flota →</a>
                     </td></tr>
                   ) : (
-                    vehiclesWithRates.map(({ vehicle: v, rate: r }) => (
+                    filteredVehiclesWithRates.map(({ vehicle: v, rate: r }) => (
                       <React.Fragment key={v.plate}>
                         <tr className={`hover:bg-slate-50 transition-colors ${editingPlate === v.plate ? "bg-blue-50" : ""}`}>
                           <td className="p-4">
@@ -460,6 +490,24 @@ export default function TarifasPage() {
               </button>
             </div>
           </div>
+          
+          {/* Filtros y Búsqueda */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-4 mt-4">
+            <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+              <div className="relative w-full md:w-96">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search className="h-4 w-4 text-slate-400" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Buscar por distrito u origen..."
+                  className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#002855] focus:border-transparent transition-colors sm:text-sm"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
 
           {isAddingDest && (
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 mb-4 shadow-sm animate-in fade-in slide-in-from-top-2">
@@ -535,13 +583,13 @@ export default function TarifasPage() {
                     <tr><td colSpan={8} className="p-8 text-center text-slate-500">
                       <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-[#002855]" />Cargando matriz...
                     </td></tr>
-                  ) : freightRates.length === 0 ? (
+                  ) : filteredFreightRates.length === 0 ? (
                     <tr><td colSpan={8} className="p-8 text-center text-slate-500">
                       No hay tarifas fijas registradas. <br/>
                       <button onClick={() => setIsAddingDest(true)} className="text-[#002855] font-semibold underline mt-2">Agregar la primera</button>
                     </td></tr>
                   ) : (
-                    freightRates.map(rate => (
+                    filteredFreightRates.map(rate => (
                       <tr key={rate.id} className="hover:bg-slate-50 transition-colors">
                         <td className="p-4 text-sm font-semibold text-slate-700">{rate.origin}</td>
                         <td className="p-4 text-sm font-bold text-[#002855]">{rate.district}</td>

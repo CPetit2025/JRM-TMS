@@ -455,7 +455,7 @@ export default function SolicitudesPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full mx-auto">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Solicitudes de Transporte</h1>

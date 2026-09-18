@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { Plus, Users, Edit2, ShieldAlert, Loader2 } from 'lucide-react'
+import { Plus, Users, Edit2, ShieldAlert, Loader2 , Filter, Search} from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -32,6 +32,19 @@ export default function TrabajadoresPage() {
     license_type: '',
     license_expiration: ''
   })
+
+    const [searchTerm, setSearchTerm] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [filterStatus, setFilterStatus] = useState('TODOS')
+  const filteredList = trabajadores.filter(item => {
+    const matchesSearch = searchTerm === '' || (item.first_name + ' ' + item.last_name).toLowerCase().includes(searchTerm.toLowerCase()) || (item.document_number || '').includes(searchTerm);
+    let matchesStatus = true;
+    if (filterStatus !== 'TODOS') {
+      if (item.status !== undefined) matchesStatus = item.status === filterStatus;
+      else if (item.is_active !== undefined) matchesStatus = filterStatus === 'ACTIVO' ? item.is_active === true : item.is_active === false;
+    }
+    return matchesSearch && matchesStatus;
+  });
 
   useEffect(() => {
     fetchTrabajadores()
@@ -144,7 +157,48 @@ export default function TrabajadoresPage() {
         </button>
       </div>
 
+            {/* Filtros y Búsqueda */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+        <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+          <div className="relative w-full md:w-96">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-4 w-4 text-slate-400" />
+            </div>
+            <input
+              type="text"
+              placeholder="Buscar por nombre o DNI..."
+              className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#002855] focus:border-transparent transition-colors sm:text-sm"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors border ${showFilters ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+          >
+            <Filter className="w-4 h-4" />
+            Filtros Avanzados
+          </button>
+        </div>
+        {showFilters && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Estado</label>
+              <select
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+              >
+                <option value="TODOS">Todos</option>
+                <option value="ACTIVO">Activo</option>
+                <option value="INACTIVO">Inactivo</option>
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+
         {loading ? (
           <div className="p-12 flex justify-center">
             <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
@@ -166,7 +220,7 @@ export default function TrabajadoresPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {trabajadores.map((t) => (
+              {filteredList.map((t) => (
                 <tr key={t.id} className="hover:bg-slate-50">
                   <td className="px-6 py-4 font-medium text-slate-800">
                     {t.last_name}, {t.first_name}

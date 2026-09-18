@@ -86,7 +86,7 @@ export default function CajaDashboardPage() {
   }
 
   return (
-    <div className="p-6 w-full max-w-7xl mx-auto space-y-6">
+    <div className="space-y-6 w-full mx-auto">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-black text-[#002855] tracking-tight">Dashboard Financiero</h1>

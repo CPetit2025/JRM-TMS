@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Search, Plus, Edit2, Activity, Settings2, ShieldCheck, MapPin } from 'lucide-react'
+import { Search, Plus, Edit2, Activity, Settings2, ShieldCheck, MapPin, Filter } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 
@@ -11,6 +11,17 @@ export default function NeumaticosPage() {
   const [vehicles, setVehicles] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [filterStatus, setFilterStatus] = useState('TODOS')
+
+  const filteredTires = tires.filter((t: any) => {
+    const matchSearch = searchTerm === '' || 
+      t.internal_code?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      t.brand?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      t.current_vehicle_plate?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchStatus = filterStatus === 'TODOS' || t.status === filterStatus;
+    return matchSearch && matchStatus;
+  })
   
   // Modal
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -113,7 +124,7 @@ export default function NeumaticosPage() {
   )
 
   return (
-    <div className="p-6 w-full max-w-7xl mx-auto space-y-6">
+    <div className="space-y-6 w-full mx-auto">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-black text-[#002855] tracking-tight">Gestión de Neumáticos</h1>
@@ -124,19 +135,50 @@ export default function NeumaticosPage() {
         </button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200">
-        <div className="p-4 border-b border-slate-200 flex gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Buscar por código, marca o placa..." 
+      {/* Filtros y Búsqueda */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+        <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+          <div className="relative w-full md:w-96">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-4 w-4 text-slate-400" />
+            </div>
+            <input
+              type="text"
+              placeholder="Buscar por código, marca o placa..."
+              className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#002855] focus:border-transparent transition-colors sm:text-sm text-slate-900"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500"
             />
           </div>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors border ${showFilters ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+          >
+            <Filter className="w-4 h-4" />
+            Filtros Avanzados
+          </button>
         </div>
+        {showFilters && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Estado</label>
+              <select
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none text-slate-900"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+              >
+                <option value="TODOS">Todos</option>
+                <option value="ALMACEN">Almacén</option>
+                <option value="INSTALADO">Instalado</option>
+                <option value="REPARACION">Reparación</option>
+                <option value="DESECHADO">Desechado</option>
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200">
 
         {loading ? (
           <div className="p-12 flex justify-center"><Activity className="w-8 h-8 animate-spin text-blue-500" /></div>

@@ -107,11 +107,11 @@ export default function FondosPage() {
   )
 
   return (
-    <div className="p-6 w-full max-w-7xl mx-auto space-y-6">
+    <div className="space-y-6 w-full mx-auto">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Fondos de Caja Chica</h2>
-          <p className="text-sm text-slate-500 mt-1">Dinero asignado por Finanzas para la gestión del área</p>
+          <p className="text-sm text-slate-500">Dinero asignado por Finanzas para la gestión del área</p>
         </div>
         <button 
           onClick={() => setIsModalOpen(true)}

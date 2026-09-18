@@ -180,10 +180,10 @@ export default function VencimientosPage() {
   const countAlerta = records.filter(r => r.status === 'ALERTA').length
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full mx-auto">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Proyección de Vencimientos</h1>
+          <h1 className="text-2xl font-bold text-slate-800">Proyección de Vencimientos</h1>
           <p className="text-slate-500">Cruza el KM actual de la flota con los planes de mantenimiento y alerta sobre documentos por vencer.</p>
         </div>
       </div>

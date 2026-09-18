@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2, ArrowRight } from 'lucide-react'
+import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2, ArrowRight, Filter } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
@@ -24,6 +24,21 @@ export default function FlotaPage() {
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null)
   const [editingDriverId, setEditingDriverId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [filterStatus, setFilterStatus] = useState('TODOS')
+  
+  const filteredVehicles = vehicles.filter((v: any) => {
+    const matchSearch = searchTerm === '' || v.plate.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchStatus = filterStatus === 'TODOS' || v.status === filterStatus;
+    return matchSearch && matchStatus;
+  })
+  
+  const filteredDrivers = drivers.filter((d: any) => {
+    const matchSearch = searchTerm === '' || (d.first_name + ' ' + d.last_name).toLowerCase().includes(searchTerm.toLowerCase()) || (d.document_number||'').includes(searchTerm);
+    const matchStatus = filterStatus === 'TODOS' || d.status === filterStatus;
+    return matchSearch && matchStatus;
+  })
 
   // Forms
   const [newVehicle, setNewVehicle] = useState({
@@ -240,7 +255,7 @@ export default function FlotaPage() {
       <div className="p-6 border-b border-slate-200 bg-white shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#002855]">Maestro de Unidades y Conductores</h1>
-          <p className="text-sm text-slate-500 mt-1">Gestión de unidades de transporte y conductores registrados.</p>
+          <p className="text-sm text-slate-500">Gestión de unidades de transporte y conductores registrados.</p>
         </div>
         <div className="flex items-center gap-2">
           {activeTab === 'vehicles' ? (
@@ -324,6 +339,50 @@ export default function FlotaPage() {
           </div>
         </div>
 
+        {/* Filtros y Búsqueda */}
+        <div className="px-6 mt-4">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+          <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+            <div className="relative w-full md:w-96">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-4 w-4 text-slate-400" />
+              </div>
+              <input
+                type="text"
+                placeholder={activeTab === 'vehicles' ? 'Buscar por placa...' : 'Buscar por nombre o DNI...'}
+                className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#002855] focus:border-transparent transition-colors sm:text-sm"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors border ${showFilters ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+            >
+              <Filter className="w-4 h-4" />
+              Filtros Avanzados
+            </button>
+          </div>
+          {showFilters && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Estado</label>
+                <select
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                >
+                  <option value="TODOS">Todos</option>
+                  <option value="ACTIVO">Activo</option>
+                  <option value="INACTIVO">Inactivo</option>
+                  <option value="MANTENIMIENTO">Mantenimiento</option>
+                </select>
+              </div>
+            </div>
+          )}
+        </div>
+        </div>
+
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
           {error && (
@@ -348,14 +407,14 @@ export default function FlotaPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {vehicles.length === 0 ? (
+                    {filteredVehicles.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="p-8 text-center text-slate-500">
                           No hay vehículos registrados
                         </td>
                       </tr>
                     ) : (
-                      vehicles.map(v => (
+                      filteredVehicles.map(v => (
                         <tr 
                           key={v.id} 
                           className="hover:bg-slate-50 transition-colors cursor-pointer group"
@@ -447,14 +506,14 @@ export default function FlotaPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {drivers.length === 0 ? (
+                    {filteredDrivers.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="p-8 text-center text-slate-500">
+                        <td colSpan={5} className="p-8 text-center text-slate-500">
                           No hay conductores registrados
                         </td>
                       </tr>
                     ) : (
-                      drivers.map(d => (
+                      filteredDrivers.map(d => (
                         <tr key={d.id} className="hover:bg-slate-50 transition-colors">
                           <td className="p-4 font-bold text-[#002855]">{d.first_name} {d.last_name}</td>
                           <td className="p-4 text-sm text-slate-600">{d.document_number}</td>
