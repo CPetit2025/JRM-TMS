@@ -592,16 +592,16 @@ export default function SolicitudesPage() {
                         >
                           {req.request_number}
                         </button>
-                        <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap mt-0.5">
-                          {new Date(req.created_at).toLocaleString()}
+                        <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap mt-0.5">
+                          Emitido: {new Date(req.created_at).toLocaleDateString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}
                         </span>
                       </div>
                     </td>
-                    <td className="p-4 text-sm text-slate-600">
+                    <td className="p-4 text-sm">
                       <div className="flex flex-col">
                         <span className="flex items-center gap-1 font-semibold text-[#002855]">
                           <Calendar className="w-3 h-3 text-slate-400" />
-                          {new Date(req.required_date).toLocaleDateString()}
+                          {(() => { const [y,m,d] = req.required_date.split('T')[0].split('-'); return `${d}/${m}/${y}`; })()}
                         </span>
                         {req.time_window && (
                           <span className="flex items-center gap-1 text-[11px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded w-fit mt-1">
