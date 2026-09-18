@@ -172,12 +172,14 @@ export default function ContratosPage() {
       }
 
       if (newContract.budget_pen && Number(newContract.budget_pen) > 0) {
-        await supabase
+        const { error: budgetError } = await supabase
           .from('contract_budgets')
-          .update({
+          .insert([{
+            contract_id: contractData.id,
             allocated_pen: Number(newContract.budget_pen)
-          })
-          .eq('contract_id', contractData.id)
+          }])
+          
+        if (budgetError) throw budgetError
       }
 
       toast.success('Contrato creado exitosamente')
