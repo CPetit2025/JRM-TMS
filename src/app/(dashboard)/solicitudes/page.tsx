@@ -555,13 +555,14 @@ export default function SolicitudesPage() {
         <div className="overflow-auto max-h-[calc(100vh-220px)]">
           <table className="w-full text-left border-collapse relative">
             <thead className="sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
-              <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider ">
-                <th className="p-4 font-semibold">Código / Emisión</th>
-                <th className="p-4 font-semibold">Solicitante</th>
-                <th className="px-6 py-4 font-semibold w-1/4">Origen y Destino</th>
-                <th className="px-6 py-4 font-semibold">Cliente</th>
-                <th className="px-6 py-4 font-semibold">Carga</th>
-                <th className="p-4 font-semibold">Fecha Req.</th>
+              <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                <th className="p-4 font-semibold whitespace-nowrap">Código / Emisión</th>
+                <th className="p-4 font-semibold whitespace-nowrap">Fecha Req. / Ventana</th>
+                <th className="p-4 font-semibold whitespace-nowrap">OT / Contrato</th>
+                <th className="p-4 font-semibold">Cliente</th>
+                <th className="p-4 font-semibold">Origen</th>
+                <th className="p-4 font-semibold">Destino</th>
+                <th className="p-4 font-semibold">Carga</th>
                 <th className="p-4 font-semibold">Estado</th>
                 <th className="p-4 font-semibold text-right">Acciones</th>
               </tr>
@@ -569,14 +570,14 @@ export default function SolicitudesPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-500">
+                  <td colSpan={9} className="p-8 text-center text-slate-500">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                     Cargando solicitudes...
                   </td>
                 </tr>
               ) : requests.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-500">
+                  <td colSpan={9} className="p-8 text-center text-slate-500">
                     No hay solicitudes registradas.
                   </td>
                 </tr>
@@ -626,27 +627,15 @@ export default function SolicitudesPage() {
                         <span className="text-sm text-slate-400">-</span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-start gap-2">
-                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2"></div>
-                          <div className="flex flex-col flex-1">
-                            <span className="text-xs font-semibold text-slate-500 uppercase">Origen</span>
-                            <span className="text-sm font-medium text-slate-900 truncate max-w-[200px]" title={req.pickup_address}>
-                              {req.pickup_address || '-'}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-2"></div>
-                          <div className="flex flex-col flex-1">
-                            <span className="text-xs font-semibold text-slate-500 uppercase">Destino</span>
-                            <span className="text-sm font-medium text-slate-900 truncate max-w-[200px]" title={req.delivery_address}>
-                              {req.delivery_address || '-'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
+                    <td className="p-4 max-w-[180px]">
+                      <span className="text-sm text-slate-800 block truncate" title={req.pickup_address}>
+                        {req.pickup_address || '-'}
+                      </span>
+                    </td>
+                    <td className="p-4 max-w-[180px]">
+                      <span className="text-sm text-slate-800 block truncate" title={req.delivery_address}>
+                        {req.delivery_address || '-'}
+                      </span>
                     </td>
                     <td className="px-6 py-4 text-sm max-w-[250px]">
                       <div className="flex flex-col gap-1">
