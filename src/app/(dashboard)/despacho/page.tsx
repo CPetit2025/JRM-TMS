@@ -389,15 +389,21 @@ export default function DespachoPage() {
         if (insertError) throw insertError
         dispatchId = insertData.id
 
-        // Llamar a RPC para reservar el presupuesto si hay contrato y tarifa
+        // Llamar a RPC para crear el Servicio de Contrato formalmente (Paso 5)
         if (activeContractId && detectedFreightRate && detectedFreightRate.rate > 0) {
-          const { error: reserveError } = await supabase.rpc('reserve_transport_budget', {
+          const { error: serviceError } = await supabase.rpc('register_contract_service', {
             p_contract_id: activeContractId,
-            p_estimated_cost_pen: detectedFreightRate.rate
+            p_service_type: 'FLETE',
+            p_description: `Flete (Automático) - Despacho ${dispatchNumber}`,
+            p_amount_pen: detectedFreightRate.rate,
+            p_service_date: newDispatch.scheduled_departure.split('T')[0],
+            p_plate: newDispatch.vehicle_plate,
+            p_driver_name: newDispatch.driver_name,
+            p_category: 'Contrato'
           })
-          if (reserveError) {
-            console.error('Error al reservar presupuesto:', reserveError)
-            toast.error('⚠️ Despacho creado, pero hubo un error al reservar el presupuesto del contrato.')
+          if (serviceError) {
+            console.error('Error al generar servicio de contrato:', serviceError)
+            toast.error('⚠️ Despacho creado, pero hubo un error al registrar el servicio en el contrato.')
           }
         }
       }
