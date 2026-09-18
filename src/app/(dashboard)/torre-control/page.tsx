@@ -25,6 +25,7 @@ interface Dispatch {
   estimated_distance_km: number
   scheduled_departure: string
   dispatch_requests?: DispatchRequest[]
+  dispatch_events?: { event_type: string, description: string, created_at: string, created_by: string }[]
 }
 
 const STATUS_BADGE = {
@@ -120,6 +121,12 @@ Equipo JRM TMS`
               delivery_address,
               requester_name
             )
+          ),
+          dispatch_events (
+            event_type,
+            description,
+            created_at,
+            created_by
           )
         `)
         .order('scheduled_departure', { ascending: false })
@@ -156,6 +163,11 @@ Equipo JRM TMS`
         {status.replace('_', ' ')}
       </span>
     )
+  }
+
+  const getLatestEvent = (events: any[]) => {
+    if (!events || events.length === 0) return null;
+    return [...events].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
   }
 
   const formatDate = (isoStr: string) => {
@@ -229,6 +241,7 @@ Equipo JRM TMS`
               <tr>
                 <th className="px-6 py-4 font-semibold">Despacho</th>
                 <th className="px-6 py-4 font-semibold">Salida Programada</th>
+                <th className="px-6 py-4 font-semibold">Último Evento GPS</th>
                 <th className="px-6 py-4 font-semibold">Vehículo y Conductor</th>
                 <th className="px-6 py-4 font-semibold">Estado</th>
                 <th className="px-6 py-4 font-semibold text-center">Acciones</th>
@@ -237,14 +250,14 @@ Equipo JRM TMS`
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                  <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-[#002855]" />
                     Cargando servicios...
                   </td>
                 </tr>
               ) : filteredDispatches.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-500 italic">
+                  <td colSpan={6} className="px-6 py-8 text-center text-slate-500 italic">
                     No hay despachos encontrados.
                   </td>
                 </tr>
@@ -268,6 +281,28 @@ Equipo JRM TMS`
                         <Calendar className="w-4 h-4 text-slate-400" />
                         {formatDate(dispatch.scheduled_departure)}
                       </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {(() => {
+                        const latestEvent = getLatestEvent(dispatch.dispatch_events || []);
+                        if (!latestEvent) return <span className="text-xs text-slate-400 italic">Sin reporte</span>;
+                        
+                        const isAlert = latestEvent.event_type === 'INCIDENCIA' || latestEvent.event_type === 'RETRASO';
+                        
+                        return (
+                          <div className="flex flex-col">
+                            <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded w-max ${isAlert ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
+                              {latestEvent.event_type.replace('_', ' ')}
+                            </span>
+                            <span className="text-xs text-slate-500 mt-1 line-clamp-1" title={latestEvent.description}>
+                              {latestEvent.description || 'Sin detalle'}
+                            </span>
+                            <span className="text-[9px] text-slate-400 mt-0.5">
+                              {new Date(latestEvent.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        )
+                      })()}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-1">
@@ -327,6 +362,7 @@ Equipo JRM TMS`
               </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <h3 className="font-bold text-slate-800 mb-4 text-sm border-b border-slate-100 pb-2 flex items-center justify-between">
                 <span>Rutas y Entregas Asociadas</span>
@@ -388,6 +424,43 @@ Equipo JRM TMS`
                 </div>
               )}
             </div>
+
+            <div>
+              <h3 className="font-bold text-slate-800 mb-4 text-sm border-b border-slate-100 pb-2 flex items-center justify-between">
+                <span>Historial GPS (Checkpoints)</span>
+                <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs">
+                  {selectedDispatch.dispatch_events?.length || 0} Eventos
+                </span>
+              </h3>
+              
+              {(!selectedDispatch.dispatch_events || selectedDispatch.dispatch_events.length === 0) ? (
+                <div className="text-center py-6 text-slate-400 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                  Aún no hay eventos registrados para este viaje.
+                </div>
+              ) : (
+                <div className="relative pl-3 space-y-4 before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
+                  {[...selectedDispatch.dispatch_events].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((evt, idx) => (
+                    <div key={idx} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                      <div className={`flex items-center justify-center w-5 h-5 rounded-full border-2 border-white shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 ${
+                        evt.event_type === 'INCIDENCIA' || evt.event_type === 'RETRASO' ? 'bg-red-500' : 'bg-[#002855]'
+                      }`}></div>
+                      
+                      <div className="w-[calc(100%-2.5rem)] md:w-[calc(50%-1.5rem)] bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`font-bold text-xs uppercase ${evt.event_type === 'INCIDENCIA' || evt.event_type === 'RETRASO' ? 'text-red-600' : 'text-[#002855]'}`}>
+                            {evt.event_type.replace('_', ' ')}
+                          </span>
+                          <span className="text-[10px] text-slate-400">{new Date(evt.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <p className="text-xs text-slate-600 mt-1">{evt.description || 'Sin comentarios'}</p>
+                        <p className="text-[9px] text-slate-400 mt-2 text-right">👤 {evt.created_by}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
           </div>
         )}
       </Modal>
