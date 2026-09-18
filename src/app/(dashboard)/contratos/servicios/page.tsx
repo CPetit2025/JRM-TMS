@@ -79,6 +79,9 @@ export default function ContractServicesPage() {
   })
   
   const [viewingService, setViewingService] = useState<ContractService | null>(null)
+  const [isEditingAmount, setIsEditingAmount] = useState(false)
+  const [editAmountValue, setEditAmountValue] = useState('')
+  const [isSavingAmount, setIsSavingAmount] = useState(false)
 
   useEffect(() => {
     fetchData()
@@ -118,6 +121,35 @@ export default function ContractServicesPage() {
       toast.error('Error al cargar datos: ' + error.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleSaveAmount = async () => {
+    if (!viewingService) return
+    setIsSavingAmount(true)
+    try {
+      const newAmount = parseFloat(editAmountValue)
+      if (isNaN(newAmount) || newAmount < 0) {
+        toast.error('Ingrese un monto válido')
+        return
+      }
+
+      const { error } = await supabase.rpc('update_contract_service_amount', {
+        p_service_id: viewingService.id,
+        p_new_amount: newAmount
+      })
+
+      if (error) throw error
+
+      toast.success('Monto actualizado correctamente')
+      setIsEditingAmount(false)
+      setViewingService({...viewingService, amount_pen: newAmount})
+      fetchData()
+    } catch (error: any) {
+      console.error('Error updating amount:', error)
+      toast.error('Error al actualizar: ' + error.message)
+    } finally {
+      setIsSavingAmount(false)
     }
   }
 
@@ -792,12 +824,52 @@ export default function ContractServicesPage() {
 
             <div className="flex justify-between items-center bg-emerald-50 p-3 rounded border border-emerald-200">
               <span className="block text-sm font-semibold text-emerald-800">Monto del Servicio</span>
-              <span className="font-bold text-emerald-700 text-lg">S/ {Number(viewingService.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
+              {isEditingAmount ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-700 font-bold">S/</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-24 px-2 py-1 border border-emerald-300 rounded text-right font-bold text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                    value={editAmountValue}
+                    onChange={(e) => setEditAmountValue(e.target.value)}
+                    autoFocus
+                  />
+                  <button 
+                    onClick={handleSaveAmount}
+                    disabled={isSavingAmount}
+                    className="p-1.5 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                    title="Guardar"
+                  >
+                    {isSavingAmount ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  </button>
+                  <button 
+                    onClick={() => setIsEditingAmount(false)}
+                    className="p-1.5 bg-white text-slate-500 rounded border border-slate-300 hover:bg-slate-50 transition-colors"
+                    title="Cancelar"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <span className="font-bold text-emerald-700 text-lg">S/ {Number(viewingService.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
+                  <button 
+                    onClick={() => {
+                      setEditAmountValue(viewingService.amount_pen.toString());
+                      setIsEditingAmount(true);
+                    }}
+                    className="px-2 py-1 text-xs font-medium bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 transition-colors"
+                  >
+                    Editar
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end pt-4 border-t border-slate-100">
               <button
-                onClick={() => setViewingService(null)}
+                onClick={() => { setViewingService(null); setIsEditingAmount(false); }}
                 className="px-4 py-2 bg-[#002855] text-white rounded-lg font-medium hover:bg-[#001d3d] transition-colors"
               >
                 Cerrar
