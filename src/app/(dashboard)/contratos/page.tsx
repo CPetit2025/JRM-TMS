@@ -154,7 +154,7 @@ export default function ContratosPage() {
           parent_contract_id: newContract.parent_contract_id || null,
           client_id: newContract.client_id || null,
           status: 'ACTIVO',
-          total_weight_kg: newContract.total_weight_kg ? Number(newContract.total_weight_kg) : 0,
+          total_weight_kg: newContract.total_weight_kg ? Number(newContract.total_weight_kg) * 1000 : 0,
           total_volume_m3: newContract.total_volume_m3 ? Number(newContract.total_volume_m3) : 0,
           destination_department: newContract.destination_department,
           destination_province: newContract.destination_province,
@@ -197,7 +197,7 @@ export default function ContratosPage() {
     setEditingContract(contract)
     setEditFormData({
       budget_pen: contract.budget?.allocated_pen?.toString() || '',
-      total_weight_kg: contract.total_weight_kg?.toString() || '',
+      total_weight_kg: contract.total_weight_kg ? (Number(contract.total_weight_kg) / 1000).toString() : '',
       total_volume_m3: contract.total_volume_m3?.toString() || '',
       destination_department: contract.destination_department || '',
       destination_province: contract.destination_province || '',
@@ -217,7 +217,7 @@ export default function ContratosPage() {
       const { error: contractError } = await supabase
         .from('contracts')
         .update({
-          total_weight_kg: editFormData.total_weight_kg ? Number(editFormData.total_weight_kg) : 0,
+          total_weight_kg: editFormData.total_weight_kg ? Number(editFormData.total_weight_kg) * 1000 : 0,
           total_volume_m3: editFormData.total_volume_m3 ? Number(editFormData.total_volume_m3) : 0,
           destination_department: editFormData.destination_department,
           destination_province: editFormData.destination_province,
@@ -542,10 +542,11 @@ export default function ContratosPage() {
               <tr>
                 <th className="px-6 py-4 font-semibold">Código / Jerarquía</th>
                 <th className="px-6 py-4 font-semibold">Cliente</th>
-                <th className="px-6 py-4 font-semibold">Tipo</th>
-                <th className="px-6 py-4 font-semibold">Carga (KG)</th>
-                <th className="px-6 py-4 font-semibold">Partida de Transporte (S/)</th>
-                <th className="px-6 py-4 font-semibold">Saldo Disponible (S/)</th>
+                <th className="px-6 py-4 font-semibold text-center">Tipo</th>
+                <th className="px-6 py-4 font-semibold text-left">Dirección</th>
+                <th className="px-6 py-4 font-semibold text-right">Carga (TON)</th>
+                <th className="px-6 py-4 font-semibold text-right">Partida de Transporte (S/)</th>
+                <th className="px-6 py-4 font-semibold text-right">Saldo Disponible (S/)</th>
                 <th className="px-6 py-4 font-semibold">Estado</th>
                 <th className="px-6 py-4 font-semibold text-center">Acciones</th>
               </tr>
