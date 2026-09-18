@@ -434,6 +434,7 @@ export default function DespachoPage() {
       toast.success('Despacho programado correctamente')
       setIsModalOpen(false)
       setNewDispatch({ selected_requests: [], driver_name: '', vehicle_plate: '', scheduled_departure: '', estimated_distance_km: '', document_type: 'GR' })
+      setManualFreightCost('')
       fetchData()
     } catch (error: any) {
       toast.error('Error al programar el despacho: ' + error.message)

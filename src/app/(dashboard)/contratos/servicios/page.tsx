@@ -19,6 +19,21 @@ interface Contract {
   }>
 }
 
+interface Dispatch {
+  id: string
+  dispatch_number: string
+  driver_name: string
+  vehicle_plate: string
+  scheduled_departure: string
+  status: string
+  freight_cost: number
+  contract_id: string
+  contracts?: {
+    code: string
+    clients?: { business_name: string }
+  }
+}
+
 interface ContractService {
   id: string
   contract_id: string
@@ -48,7 +63,9 @@ export default function ContractServicesPage() {
   const supabase = createClient()
   const [services, setServices] = useState<ContractService[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
+  const [orphanDispatches, setOrphanDispatches] = useState<Dispatch[]>([])
   const [loading, setLoading] = useState(true)
+  const [isOrphanModalOpen, setIsOrphanModalOpen] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   
@@ -87,7 +104,7 @@ export default function ContractServicesPage() {
     fetchData()
   }, [])
 
-  const fetchData = async () => {
+    const fetchData = async () => {
     setLoading(true)
     try {
       const { data: sData, error: sError } = await supabase
@@ -116,6 +133,23 @@ export default function ContractServicesPage() {
 
       if (cError) throw cError
       setContracts((cData as any) || [])
+
+      // Fetch orphan dispatches (Dispatches without a contract_service)
+      const { data: dData, error: dError } = await supabase
+        .from('dispatches')
+        .select(`
+          id, dispatch_number, driver_name, vehicle_plate, scheduled_departure, status, freight_cost, contract_id,
+          contracts (code, clients (business_name))
+        `)
+        .not('contract_id', 'is', null)
+        .neq('vehicle_plate', 'EXTERNO') // Exclude NOTA_SALIDA
+      
+      if (dError) throw dError
+      
+      // Filter out dispatches that already have a contract service
+      const dispatchesWithServices = new Set(sData?.map(s => s.dispatch_id).filter(Boolean))
+      const orphans = (dData || []).filter(d => !dispatchesWithServices.has(d.id))
+      setOrphanDispatches(orphans as any)
 
     } catch (error: any) {
       toast.error('Error al cargar datos: ' + error.message)
@@ -192,6 +226,42 @@ export default function ContractServicesPage() {
       toast.error('Error: ' + error.message)
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+
+  const handleRegisterOrphan = async (dispatch: Dispatch) => {
+    try {
+      const effectiveFreightCost = dispatch.freight_cost > 0 ? dispatch.freight_cost : 0
+      if (effectiveFreightCost <= 0) {
+        toast.error('Este despacho no tiene costo de flete registrado (S/ 0).')
+        return
+      }
+      
+      const { data: serviceData, error: serviceError } = await supabase.rpc('register_contract_service', {
+        p_contract_id: dispatch.contract_id,
+        p_service_type: 'FLETE',
+        p_description: `Flete (Recuperado) - Despacho ${dispatch.dispatch_number}`,
+        p_amount_pen: effectiveFreightCost,
+        p_service_date: dispatch.scheduled_departure.split('T')[0],
+        p_plate: dispatch.vehicle_plate,
+        p_driver_name: dispatch.driver_name,
+        p_category: 'Contrato'
+      })
+
+      if (serviceError) throw serviceError
+
+      if (serviceData) {
+        await supabase
+          .from('contract_services')
+          .update({ dispatch_id: dispatch.id })
+          .eq('id', serviceData)
+      }
+
+      toast.success(`Servicio para ${dispatch.dispatch_number} registrado correctamente`)
+      fetchData()
+    } catch (error: any) {
+      toast.error('Error al registrar servicio: ' + error.message)
     }
   }
 
@@ -325,6 +395,14 @@ export default function ContractServicesPage() {
           <p className="text-sm text-slate-500">Registro manual y masivo de gastos por servicios que descuentan de la partida del contrato.</p>
         </div>
         <div className="flex gap-3">
+          <button 
+            onClick={() => setIsOrphanModalOpen(true)}
+            className="flex items-center gap-2 bg-rose-50 text-rose-700 border border-rose-200 px-4 py-2 rounded-lg font-medium hover:bg-rose-100 transition-colors shadow-sm"
+          >
+            <AlertCircle className="w-4 h-4" />
+            Despachos sin Flete ({orphanDispatches.length})
+          </button>
+          
           <button 
             onClick={downloadTemplate}
             className="flex items-center gap-2 bg-white text-slate-700 border border-slate-300 px-4 py-2 rounded-lg font-medium hover:bg-slate-50 transition-colors shadow-sm"
@@ -506,6 +584,70 @@ export default function ContractServicesPage() {
           </table>
         </div>
       </div>
+
+      <Modal
+        isOpen={isOrphanModalOpen}
+        onClose={() => setIsOrphanModalOpen(false)}
+        title="Despachos sin Servicio de Contrato Registrado"
+        maxWidth="max-w-4xl"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Los siguientes despachos se crearon sin registrar su costo de flete en los servicios de contrato. 
+            Haga clic en "Registrar" para generar el gasto correspondiente.
+          </p>
+          <div className="overflow-auto max-h-[500px]">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-slate-50 text-slate-500 text-xs sticky top-0 uppercase">
+                <tr>
+                  <th className="p-3 font-semibold">Despacho</th>
+                  <th className="p-3 font-semibold">Contrato</th>
+                  <th className="p-3 font-semibold">Unidad / Chofer</th>
+                  <th className="p-3 font-semibold text-right">Flete Detectado</th>
+                  <th className="p-3 font-semibold text-right">Acción</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {orphanDispatches.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-6 text-center text-slate-500">
+                      No hay despachos huérfanos. Todos tienen servicio registrado.
+                    </td>
+                  </tr>
+                ) : (
+                  orphanDispatches.map(d => (
+                    <tr key={d.id} className="hover:bg-slate-50">
+                      <td className="p-3">
+                        <span className="font-bold text-[#002855] text-sm">{d.dispatch_number}</span>
+                      </td>
+                      <td className="p-3 text-sm">
+                        <div className="font-semibold text-slate-800">{d.contracts?.code}</div>
+                        <div className="text-xs text-slate-500">{d.contracts?.clients?.business_name}</div>
+                      </td>
+                      <td className="p-3 text-sm">
+                        <div className="font-semibold text-slate-800">{d.vehicle_plate}</div>
+                        <div className="text-xs text-slate-500">{d.driver_name}</div>
+                      </td>
+                      <td className="p-3 text-sm font-bold text-right text-emerald-700">
+                        S/ {Number(d.freight_cost || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="p-3 text-right">
+                        <button
+                          onClick={() => handleRegisterOrphan(d)}
+                          disabled={!d.freight_cost || d.freight_cost <= 0}
+                          className="px-3 py-1.5 bg-[#002855] text-white rounded text-xs font-medium hover:bg-[#001d3d] disabled:opacity-50"
+                        >
+                          Registrar
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={isModalOpen}
