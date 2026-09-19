@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { 
   Camera, Upload, FileText, CheckCircle2, AlertTriangle, 
-  X, Save, Activity, CreditCard
+  X, Save, Activity, CreditCard, Truck, FileBox
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -34,15 +34,20 @@ export default function GastosMobilePage() {
     document_serial: '',
     document_number: '',
     total_amount: '',
-    description: ''
+    description: '',
+    transport_request_id: '', // Nuevo campo
+    is_billable: false // Nuevo campo
   })
 
   // History State
   const [history, setHistory] = useState<any[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
 
-  // Contexto de Viaje Automático
-  const [activeTrip, setActiveTrip] = useState<any>(null)
+  // Contexto de Viaje
+  const [activeTrips, setActiveTrips] = useState<any[]>([])
+  const [selectedTrip, setSelectedTrip] = useState<any>(null)
+  const [tripOTs, setTripOTs] = useState<any[]>([])
+  
   const [duplicateWarning, setDuplicateWarning] = useState<boolean>(false)
   const [createIncidence, setCreateIncidence] = useState(false)
 
@@ -51,14 +56,41 @@ export default function GastosMobilePage() {
   useEffect(() => {
     if (user?.id) {
       fetchMyFunds()
-      fetchActiveTrip()
+      fetchActiveTrips()
       if (activeTab === 'historial') fetchHistory()
     }
   }, [user, activeTab])
 
-  const fetchActiveTrip = async () => {
-    // Ya no se requiere vincular automáticamente a un viaje de conductor
-    // dado que el registro es administrativo.
+  const fetchActiveTrips = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('dispatches')
+        .select(`
+          id, dispatch_number, vehicle_plate, status,
+          dispatch_requests (
+            transport_requests ( id, requester_name )
+          )
+        `)
+        .in('status', ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'RETORNO', 'ASIGNADO'])
+        .order('created_at', { ascending: false })
+        .limit(20)
+      
+      if (!error && data) setActiveTrips(data)
+    } catch (err) {}
+  }
+
+  const handleTripChange = (tripId: string) => {
+    const trip = activeTrips.find(t => t.id === tripId)
+    setSelectedTrip(trip || null)
+    
+    setForm(prev => ({ ...prev, transport_request_id: '' }))
+    
+    if (trip && trip.dispatch_requests) {
+      const ots = trip.dispatch_requests.map((dr: any) => dr.transport_requests).filter(Boolean)
+      setTripOTs(ots)
+    } else {
+      setTripOTs([])
+    }
   }
 
   const fetchMyFunds = async () => {
@@ -95,7 +127,6 @@ export default function GastosMobilePage() {
     setFile(selectedFile)
     setPreview(URL.createObjectURL(selectedFile))
     
-    // Auto process OCR
     await processOCR(selectedFile)
   }
 
@@ -118,7 +149,6 @@ export default function GastosMobilePage() {
       const parsed = data.parsed_data || {}
       setOcrData(parsed)
       
-      // Auto-fill form
       setForm(prev => ({
         ...prev,
         provider_ruc: parsed.RUC || '',
@@ -137,7 +167,6 @@ export default function GastosMobilePage() {
     }
   }
 
-  // Duplicate check
   useEffect(() => {
     const checkDuplicate = async () => {
       if (form.provider_ruc && form.document_type && form.document_serial && form.document_number) {
@@ -166,7 +195,6 @@ export default function GastosMobilePage() {
     try {
       let evidenceUrl = null
       
-      // 1. Upload file if exists
       if (file) {
         const fileExt = file.name.split('.').pop()
         const fileName = `${user?.id}_${Date.now()}.${fileExt}`
@@ -180,24 +208,32 @@ export default function GastosMobilePage() {
         }
       }
 
-      // 2. Insert expense
       const payload = {
-        ...form,
+        cash_fund_id: form.cash_fund_id || null,
+        category: form.category,
+        provider_ruc: form.provider_ruc,
+        provider_name: form.provider_name,
+        document_type: form.document_type,
+        document_serial: form.document_serial,
+        document_number: form.document_number,
+        description: form.description,
         total_amount: parseFloat(form.total_amount),
         evidence_original_url: evidenceUrl,
         reported_by: user?.id,
-        ocr_confidence_score: ocrData ? 85.0 : null, // Mock confidence
+        ocr_confidence_score: ocrData ? 85.0 : null,
         status: 'BORRADOR',
-        trip_id: activeTrip?.id || null,
-        vehicle_plate: activeTrip?.vehicle_plate || null
+        trip_id: selectedTrip?.id || null,
+        vehicle_plate: selectedTrip?.vehicle_plate || null,
+        transport_request_id: form.transport_request_id || null,
+        is_billable: form.is_billable
       }
 
       const { data: newExpense, error } = await supabase.from('expense_records').insert([payload]).select().single()
       if (error) throw error
 
-      if (createIncidence && activeTrip?.vehicle_plate) {
+      if (createIncidence && selectedTrip?.vehicle_plate) {
         await supabase.from('vehicle_maintenance_records').insert([{
-          vehicle_plate: activeTrip.vehicle_plate,
+          vehicle_plate: selectedTrip.vehicle_plate,
           record_type: 'MANTENIMIENTO_CORRECTIVO',
           description: `Generado automáticamente desde gasto de caja: ${form.description}`,
           reported_by: user?.id,
@@ -220,9 +256,12 @@ export default function GastosMobilePage() {
     setFile(null)
     setPreview(null)
     setOcrData(null)
+    setSelectedTrip(null)
+    setTripOTs([])
     setForm({
       cash_fund_id: '', category: '', provider_ruc: '', provider_name: '', 
-      document_type: 'FACTURA', document_serial: '', document_number: '', total_amount: '', description: ''
+      document_type: 'FACTURA', document_serial: '', document_number: '', total_amount: '', description: '',
+      transport_request_id: '', is_billable: false
     })
   }
 
@@ -232,13 +271,11 @@ export default function GastosMobilePage() {
 
   return (
     <div className="w-full max-w-5xl mx-auto bg-slate-50 min-h-[calc(100vh-64px)] pb-10 px-4 sm:px-6">
-      {/* Header */}
       <div className="bg-blue-600 text-white p-6 sticky top-0 z-10 shadow-md rounded-b-xl mb-6">
         <h1 className="text-xl font-bold">Registro de Gastos</h1>
         <p className="text-blue-100 text-sm mt-1">Sube tus comprobantes desde tu cámara o archivos</p>
       </div>
 
-      {/* Tabs */}
       <div className="flex bg-white shadow-sm mb-6 rounded-xl overflow-hidden border border-slate-200">
         <button 
           onClick={() => setActiveTab('nuevo')}
@@ -258,7 +295,39 @@ export default function GastosMobilePage() {
         {activeTab === 'nuevo' ? (
           <form onSubmit={handleSaveExpense} className="space-y-4">
             
-            {/* Foto / OCR Section */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-4">
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Truck className="w-4 h-4 text-blue-500" /> Asignación del Costo
+              </h3>
+              
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Vincular a un Despacho Activo (Opcional)</label>
+                <select value={selectedTrip?.id || ''} onChange={e => handleTripChange(e.target.value)} className="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50 text-sm">
+                  <option value="">Costo Administrativo (Sin viaje)</option>
+                  {activeTrips.map(t => (
+                    <option key={t.id} value={t.id}>{t.dispatch_number} (Placa: {t.vehicle_plate || 'Sin Placa'})</option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedTrip && tripOTs.length > 0 && (
+                <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                  <label className="block text-xs font-bold text-blue-900 mb-1 flex items-center gap-1">
+                    <FileBox className="w-3 h-3" /> Asignar a OT Específica (Opcional)
+                  </label>
+                  <p className="text-[10px] text-blue-700 mb-2">Si este gasto fue EXCLUSIVO para una entrega (Ej. alquiler de montacargas), selecciónala aquí para calcular la rentabilidad real.</p>
+                  <select value={form.transport_request_id} onChange={e => setForm({...form, transport_request_id: e.target.value})} className="w-full p-2 border border-blue-300 rounded-md bg-white text-sm font-medium text-slate-700">
+                    <option value="">Ninguna (Costo general del viaje)</option>
+                    {tripOTs.map(ot => (
+                      <option key={ot.id} value={ot.id}>
+                        {ot.id.split('-')[0]} - {ot.requester_name || 'Sin Cliente'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
               <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
                 <Camera className="w-4 h-4 text-blue-500" /> Capturar Comprobante
@@ -289,17 +358,8 @@ export default function GastosMobilePage() {
               <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf" capture="environment" onChange={handleFileSelect} />
             </div>
 
-            {/* Formulario Validado */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-4">
-              {activeTrip && (
-                <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg flex items-center gap-2 mb-2">
-                  <Activity className="w-5 h-5 text-blue-600 shrink-0" />
-                  <div>
-                    <p className="text-xs font-bold text-blue-900">Contexto de Viaje Detectado</p>
-                    <p className="text-[10px] text-blue-700">Viaje: {activeTrip.code} | Placa: {activeTrip.vehicle_plate}</p>
-                  </div>
-                </div>
-              )}
+              
               {duplicateWarning && (
                 <div className="bg-red-50 border border-red-200 p-3 rounded-lg flex items-center gap-2 mb-2">
                   <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
@@ -320,23 +380,33 @@ export default function GastosMobilePage() {
               )}
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Cargar a Fondo (Opcional)</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Cargar a Fondo de Caja (Opcional)</label>
                 <select value={form.cash_fund_id} onChange={e => setForm({...form, cash_fund_id: e.target.value})} className="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50 text-sm">
-                  <option value="">Sin Fondo (Gasto directo)</option>
+                  <option value="">Ninguno (Reembolso / Caja General)</option>
                   {funds.map(f => <option key={f.id} value={f.id}>{f.code} - {formatMoney(f.amount, f.currency)}</option>)}
                 </select>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Categoría de Gasto *</label>
-                <select required value={form.category} onChange={e => setForm({...form, category: e.target.value})} className="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50 text-sm">
+                <select required value={form.category} onChange={e => setForm({...form, category: e.target.value})} className="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50 text-sm font-semibold text-slate-700">
                   <option value="">Seleccione...</option>
-                  <option value="COMBUSTIBLE">Combustible</option>
-                  <option value="PEAJE">Peaje</option>
-                  <option value="ALIMENTACION">Alimentación</option>
-                  <option value="HOSPEDAJE">Hospedaje</option>
-                  <option value="REPUESTOS">Repuestos / Reparación</option>
-                  <option value="OTROS">Otros</option>
+                  <optgroup label="Gastos de Ruta Comunes">
+                    <option value="COMBUSTIBLE">Combustible</option>
+                    <option value="PEAJE">Peaje</option>
+                    <option value="ALIMENTACION">Alimentación</option>
+                    <option value="HOSPEDAJE">Hospedaje</option>
+                  </optgroup>
+                  <optgroup label="Maniobras y Operaciones">
+                    <option value="ALQUILER_EQUIPO">Alquiler de Equipo (Montacargas, grúa)</option>
+                    <option value="CUADRILLA_ESTIBA">Cuadrilla / Estiba</option>
+                    <option value="MANIOBRAS">Otras Maniobras Extra</option>
+                  </optgroup>
+                  <optgroup label="Mantenimiento">
+                    <option value="REPUESTOS">Repuestos / Reparación Rápida</option>
+                    <option value="LLANTAS_PARCHADO">Parchado / Llantas</option>
+                  </optgroup>
+                  <option value="OTROS">Otros Gastos</option>
                 </select>
               </div>
 
@@ -366,14 +436,23 @@ export default function GastosMobilePage() {
 
                 <div className="col-span-2">
                   <label className="block text-xs font-bold text-slate-700 mb-1">Descripción / Sustento *</label>
-                  <textarea required value={form.description} onChange={e => setForm({...form, description: e.target.value})} rows={2} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm" placeholder="Ej. Almuerzo en ruta Chincha..." />
+                  <textarea required value={form.description} onChange={e => setForm({...form, description: e.target.value})} rows={2} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm" placeholder="Ej. Alquiler de montacarga en planta Arequipa..." />
                 </div>
-                {form.category === 'REPUESTOS' && activeTrip?.vehicle_plate && (
+
+                <div className="col-span-2 mt-2 bg-amber-50 p-3 rounded-lg border border-amber-200 flex items-start gap-2">
+                  <input type="checkbox" id="isBillable" checked={form.is_billable} onChange={e => setForm({...form, is_billable: e.target.checked})} className="mt-0.5 w-4 h-4 accent-amber-600 cursor-pointer" />
+                  <label htmlFor="isBillable" className="text-xs text-amber-900 cursor-pointer">
+                    <strong>Refacturar al Cliente</strong><br/>
+                    <span className="text-amber-700">Marca esta opción si este gasto fue causado por el cliente y debe incluirse como costo extra en su factura.</span>
+                  </label>
+                </div>
+
+                {(form.category === 'REPUESTOS' || form.category === 'LLANTAS_PARCHADO') && selectedTrip?.vehicle_plate && (
                   <div className="col-span-2 mt-2 bg-slate-50 p-3 rounded-lg border border-slate-200 flex items-start gap-2">
                     <input type="checkbox" id="createIncidence" checked={createIncidence} onChange={e => setCreateIncidence(e.target.checked)} className="mt-0.5 w-4 h-4" />
                     <label htmlFor="createIncidence" className="text-xs text-slate-700">
                       <strong>¿Crear incidencia de mantenimiento?</strong><br/>
-                      Se vinculará a la placa {activeTrip.vehicle_plate} en el CMMS.
+                      Se vinculará a la placa {selectedTrip.vehicle_plate} en el CMMS.
                     </label>
                   </div>
                 )}
@@ -391,7 +470,6 @@ export default function GastosMobilePage() {
             
           </form>
         ) : (
-          /* Pestaña Historial */
           <div className="space-y-3">
             {loadingHistory ? (
               <div className="py-12 flex justify-center"><Activity className="w-8 h-8 animate-spin text-blue-500" /></div>
@@ -408,7 +486,10 @@ export default function GastosMobilePage() {
                       <CreditCard className="w-5 h-5 text-blue-500" />
                     </div>
                     <div>
-                      <p className="font-bold text-slate-800 text-sm">{gasto.category}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-slate-800 text-sm">{gasto.category}</p>
+                        {gasto.is_billable && <span className="bg-amber-100 text-amber-700 text-[9px] px-1.5 py-0.5 rounded font-bold">REFACTURAR</span>}
+                      </div>
                       <p className="text-[10px] text-slate-400 mt-0.5">{new Date(gasto.created_at).toLocaleDateString()}</p>
                       <span className={`inline-block mt-1 px-2 py-0.5 text-[9px] font-bold rounded uppercase ${
                         gasto.status === 'BORRADOR' ? 'bg-slate-100 text-slate-600' :
