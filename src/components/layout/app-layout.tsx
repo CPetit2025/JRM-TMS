@@ -4,12 +4,35 @@ import { Bell, User, Check, Clock } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNotifications } from '@/components/NotificationProvider'
 import { NotificationBanner } from './NotificationBanner'
+import { usePathname } from 'next/navigation'
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState('operador')
   const [email, setEmail] = useState('')
   const [showNotifications, setShowNotifications] = useState(false)
   const { notifications, unreadCount, markAllAsRead } = useNotifications()
+  const pathname = usePathname()
+
+  const getPageTitle = (path: string) => {
+    if (!path || path === '/') return { title: 'Dashboard Ejecutivo', subtitle: 'Resumen gerencial de operaciones' }
+    if (path.includes('/contratos/servicios')) return { title: 'Servicios de Contrato', subtitle: 'Gestión de servicios asignados' }
+    if (path.includes('/contratos')) return { title: 'Contratos y OTs', subtitle: 'Gestión de acuerdos comerciales' }
+    if (path.includes('/solicitudes')) return { title: 'Solicitudes de Carga', subtitle: 'Requerimientos de transporte' }
+    if (path.includes('/despacho')) return { title: 'Gestión de Despachos', subtitle: 'Asignación de unidades y planificación' }
+    if (path.includes('/monitoreo')) return { title: 'Monitoreo GPS', subtitle: 'Seguimiento en campo' }
+    if (path.includes('/torre-control')) return { title: 'Torre de Control JRM', subtitle: 'Vista general operativa' }
+    if (path.includes('/clientes')) return { title: 'Directorio Clientes', subtitle: 'Gestión de cartera comercial' }
+    
+    const parts = path.split('/').filter(Boolean)
+    if (parts.length > 0) {
+      const mainTitle = parts[parts.length - 1].split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+      return { title: mainTitle, subtitle: 'Módulo del Sistema' }
+    }
+    
+    return { title: 'JRM TMS', subtitle: 'Sistema de Gestión de Transporte' }
+  }
+
+  const { title, subtitle } = getPageTitle(pathname)
 
   useEffect(() => {
     const storedRole = localStorage.getItem('userRole')
@@ -38,8 +61,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-8 z-20 relative">
           <div>
-            <h2 className="text-xl font-semibold text-slate-800">Torre de Control JRM</h2>
-            <p className="text-sm text-slate-500">Vista general operativa</p>
+            <h2 className="text-xl font-semibold text-slate-800">{title}</h2>
+            <p className="text-sm text-slate-500">{subtitle}</p>
           </div>
           <div className="flex items-center gap-4">
             <div className="relative">
