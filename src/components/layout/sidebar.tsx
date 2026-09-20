@@ -7,7 +7,7 @@ import {
   LogOut, ShieldCheck, BarChart3, Send, DollarSign, 
   ArchiveRestore, Zap, ChevronRight, Wrench, Clock, BarChart2, CheckCircle, Settings2,
   Building2, FileSignature, ClipboardList, PackageCheck, Activity, HardHat, BadgeDollarSign,
-  PackageSearch, Wallet, Receipt
+  PackageSearch, Wallet, Receipt, Calculator
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -103,6 +103,8 @@ export function Sidebar() {
               {hasPermission('mantenimiento-ot') && <NavItem href="/mantenimiento/inventario" icon={PackageSearch} label="Repuestos" />}
               {hasPermission('mantenimiento-flota') && <NavItem href="/mantenimiento/proveedores" icon={Building2} label="Proveedores" />}
               {hasPermission('mantenimiento-flota') && <NavItem href="/mantenimiento/neumaticos" icon={Settings2} label="Neumáticos" />}
+              {hasPermission('mantenimiento-flota') && <NavItem href="/flota/contratos-alquiler" icon={FileSignature} label="Contratos Alquiler" />}
+              {hasPermission('mantenimiento-flota') && <NavItem href="/flota/liquidaciones-alquiler" icon={Calculator} label="Liq. Alquiler Seco" />}
             </>
           )}
 
