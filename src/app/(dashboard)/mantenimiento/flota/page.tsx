@@ -5,6 +5,7 @@ import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2, ArrowR
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import * as XLSX from 'xlsx'
 
 export default function FlotaPage() {
@@ -574,12 +575,13 @@ export default function FlotaPage() {
                             
                             {activeDropdown === v.id && (
                               <div className="absolute right-8 top-10 w-48 bg-white rounded-lg shadow-lg border border-slate-200 z-50 py-1" onClick={e => e.stopPropagation()}>
-                                <button 
-                                  onClick={() => { setActiveDropdown(null); router.push(`/mantenimiento/flota/${v.plate}`) }}
+                                <Link 
+                                  href={`/mantenimiento/flota/${v.plate}`}
+                                  onClick={() => setActiveDropdown(null)}
                                   className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                                 >
                                   <ArrowRight className="w-4 h-4" /> Ver Ficha 360
-                                </button>
+                                </Link>
                                 <button 
                                   onClick={() => { setActiveDropdown(null); handleEditVehicle(v) }}
                                   className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
