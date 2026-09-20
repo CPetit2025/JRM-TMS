@@ -187,9 +187,7 @@ export default function LiquidacionAlquilerPage() {
               style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
             >
               <div className="flex items-center gap-6">
-                <div className="bg-white p-2 rounded-lg shadow-sm">
-                  <img src="/logo-jrm.png" alt="JRM S.A.C." className="h-12 w-auto object-contain" />
-                </div>
+                <img src="/logo-jrm.png" alt="JRM S.A.C." className="h-16 w-auto object-contain" />
                 <div>
                   <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">JRM S.A.C.</h1>
                   <p className="text-sm text-blue-200 mt-1">Servicios de Transporte y Logística</p>
