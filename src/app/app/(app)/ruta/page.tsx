@@ -1,9 +1,10 @@
 "use client"
 import { useState, useEffect } from 'react'
-import { Camera, MapPin, Clock, CheckCircle2, Navigation2, FileText, Loader2, AlertCircle, Navigation, UserCircle, KeyRound, LogOut } from 'lucide-react'
-import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
+import { Truck, MapPin, Camera, CheckCircle2, Clock, Navigation2, FileText, Upload, KeyRound, Loader2, AlertCircle, Navigation, UserCircle, LogOut } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { toast } from 'sonner'
+import { getDrivingDistanceKM } from '@/lib/routing'
+import { useRouter } from 'next/navigation'
 
 export default function RutaActivaPage() {
   const router = useRouter()
@@ -120,18 +121,36 @@ export default function RutaActivaPage() {
 
   const handleIniciarRuta = async () => {
     setProcessing(true)
+    const loadingToast = toast.loading('Obteniendo ubicación e iniciando ruta...')
+    
     try {
+      let startLat = null
+      let startLon = null
+      
+      try {
+        if (navigator.geolocation) {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 })
+          })
+          startLat = pos.coords.latitude
+          startLon = pos.coords.longitude
+        }
+      } catch (geoError) {
+        console.warn("No se pudo obtener la ubicación inicial:", geoError)
+        toast.error("No pudimos obtener tu ubicación inicial. Activa el GPS.")
+      }
+
       const { error } = await supabase
         .from('dispatches')
-        .update({ status: 'EN RUTA' })
+        .update({ status: 'EN RUTA', start_lat: startLat, start_lon: startLon })
         .eq('id', dispatch.id)
       
       if (error) throw error
       
-      toast.success('Ruta iniciada con éxito. Conduzca con cuidado.')
-      setDispatch({ ...dispatch, status: 'EN RUTA' })
+      toast.success('Ruta iniciada con éxito. Conduzca con cuidado.', { id: loadingToast })
+      setDispatch({ ...dispatch, status: 'EN RUTA', start_lat: startLat, start_lon: startLon })
     } catch (err: any) {
-      toast.error('Error al iniciar: ' + err.message)
+      toast.error('Error al iniciar: ' + err.message, { id: loadingToast })
     } finally {
       setProcessing(false)
     }
@@ -144,13 +163,58 @@ export default function RutaActivaPage() {
     }
     
     setProcessing(true)
+    const loadingToast = toast.loading('Calculando distancia recorrida (GPS)...')
     try {
+      let currentLat = null
+      let currentLon = null
+      let actualKm = 0
+      
+      // Obtener ubicación GPS actual
+      try {
+        if (navigator.geolocation) {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 })
+          })
+          currentLat = pos.coords.latitude
+          currentLon = pos.coords.longitude
+        }
+      } catch (geoError) {
+        console.warn("No se pudo obtener la ubicación de llegada:", geoError)
+        toast.error("No se pudo obtener el GPS para el cálculo de distancia.")
+      }
+
+      // Calcular distancia recorrida desde el punto anterior
+      if (currentLat && currentLon) {
+        // Buscar el punto de partida (puede ser start_lat de dispatches o arrival_lat del anterior dispatch_requests)
+        let prevLat = dispatch.start_lat;
+        let prevLon = dispatch.start_lon;
+        
+        if (activeStep > 0) {
+          // Si no es el primer punto, usar el punto anterior
+          const prevReq = dispatch.dispatch_requests[activeStep - 1];
+          if (prevReq.arrival_lat && prevReq.arrival_lon) {
+            prevLat = prevReq.arrival_lat;
+            prevLon = prevReq.arrival_lon;
+          }
+        }
+        
+        if (prevLat && prevLon) {
+          const km = await getDrivingDistanceKM({ lat: prevLat, lon: prevLon }, { lat: currentLat, lon: currentLon });
+          if (km !== null) {
+            actualKm = Math.round(km * 10) / 10;
+          }
+        }
+      }
+
       // 1. Actualizar estado en dispatch_requests
       const { error: reqError } = await supabase
         .from('dispatch_requests')
         .update({ 
           status: 'ENTREGADO',
-          arrival_odometer: 0 // Placeholder until GPS integration
+          arrival_lat: currentLat,
+          arrival_lon: currentLon,
+          leg_actual_km: actualKm,
+          arrival_odometer: 0 // Legacy compatibility
         })
         .eq('dispatch_id', dispatch.id)
         .eq('transport_request_id', req.transport_request_id)
@@ -165,18 +229,24 @@ export default function RutaActivaPage() {
 
       if (otError) throw otError
 
-      toast.success(`Punto entregado correctamente`)
+      toast.success(`Punto entregado correctamente (+${actualKm} km)`, { id: loadingToast })
       
       // Actualizar estado local
       const updatedRequests = [...dispatch.dispatch_requests]
-      updatedRequests[activeStep].status = 'ENTREGADO'
+      updatedRequests[activeStep] = {
+        ...updatedRequests[activeStep],
+        status: 'ENTREGADO',
+        arrival_lat: currentLat,
+        arrival_lon: currentLon,
+        leg_actual_km: actualKm
+      }
       setDispatch({ ...dispatch, dispatch_requests: updatedRequests })
       
       setActiveStep(activeStep + 1)
       setKmInput('')
       setStopPhoto(null)
     } catch (err: any) {
-      toast.error('Error al registrar: ' + err.message)
+      toast.error('Error al registrar: ' + err.message, { id: loadingToast })
     } finally {
       setProcessing(false)
     }
