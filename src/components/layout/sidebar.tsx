@@ -101,6 +101,7 @@ export function Sidebar() {
               {hasPermission('mantenimiento-ot') && <NavItem href="/mantenimiento/gestor-ot" icon={Wrench} label="Órdenes de Trabajo" />}
               {hasPermission('mantenimiento-planes') && <NavItem href="/mantenimiento/preventivos" icon={Clock} label="Preventivos" />}
               {hasPermission('mantenimiento-ot') && <NavItem href="/mantenimiento/inventario" icon={PackageSearch} label="Repuestos" />}
+              {hasPermission('mantenimiento-flota') && <NavItem href="/mantenimiento/proveedores" icon={Building2} label="Proveedores" />}
               {hasPermission('mantenimiento-flota') && <NavItem href="/mantenimiento/neumaticos" icon={Settings2} label="Neumáticos" />}
             </>
           )}

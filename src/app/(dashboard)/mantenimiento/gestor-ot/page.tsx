@@ -10,6 +10,7 @@ export default function MaintenanceWorkOrdersPage() {
   const [ots, setOts] = useState<any[]>([])
   const [vehicles, setVehicles] = useState<any[]>([])
   const [spareParts, setSpareParts] = useState<any[]>([])
+  const [providers, setProviders] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false)
@@ -39,6 +40,7 @@ export default function MaintenanceWorkOrdersPage() {
     priority: 'NORMAL',
     description: '',
     workshop_name: '',
+    provider_id: '',
     estimated_end_date: '',
     estimated_cost_pen: '',
     assigned_mechanic: ''
@@ -67,6 +69,7 @@ export default function MaintenanceWorkOrdersPage() {
     fetchOts()
     fetchVehicles()
     fetchSpareParts()
+    fetchProviders()
   }, [])
 
   const fetchVehicles = async () => {
@@ -77,6 +80,11 @@ export default function MaintenanceWorkOrdersPage() {
   const fetchSpareParts = async () => {
     const { data } = await supabase.from('spare_parts').select('*').order('name')
     setSpareParts(data || [])
+  }
+
+  const fetchProviders = async () => {
+    const { data } = await supabase.from('maintenance_providers').select('*').eq('status', 'APROBADO').order('business_name')
+    setProviders(data || [])
   }
 
   const fetchOts = async () => {
@@ -109,6 +117,7 @@ export default function MaintenanceWorkOrdersPage() {
         priority: form.priority,
         description: form.description,
         workshop_name: form.workshop_name,
+        provider_id: form.provider_id || null,
         estimated_end_date: form.estimated_end_date || null,
         estimated_cost_pen: form.estimated_cost_pen ? parseFloat(form.estimated_cost_pen) : 0,
         assigned_mechanic: form.assigned_mechanic || null,
