@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Calculator, Search, Calendar, FileText, CheckCircle2, AlertCircle, Download, ExternalLink } from 'lucide-react'
+import { Calculator, Search, Calendar, FileText, CheckCircle2, AlertCircle, Download, ExternalLink, Printer } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
 
@@ -16,12 +16,31 @@ export default function LiquidacionAlquilerPage() {
   })
   const [isLoading, setIsLoading] = useState(false)
   const [report, setReport] = useState<any>(null)
+  const [signatureUrl, setSignatureUrl] = useState<string>('')
 
   const supabase = createClient()
 
   useEffect(() => {
     fetchContracts()
+    fetchSignature()
   }, [])
+
+  const fetchSignature = async () => {
+    try {
+      // 1. Intentar desde BD
+      const { data } = await supabase.from('system_settings').select('value').eq('key', 'admin_signature_url').single()
+      if (data?.value) {
+        setSignatureUrl(data.value)
+        return
+      }
+    } catch(e) {}
+    // 2. Fallback a LocalStorage
+    const saved = localStorage.getItem('jrm_sys_config')
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      if (parsed.adminSignatureUrl) setSignatureUrl(parsed.adminSignatureUrl)
+    }
+  }
 
   const fetchContracts = async () => {
     try {
@@ -150,108 +169,188 @@ export default function LiquidacionAlquilerPage() {
 
       {report && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          {/* Tarjetas de Resumen */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <p className="text-sm text-slate-500 font-medium">Kilometraje Total</p>
-              <p className="text-3xl font-bold text-slate-800 mt-1">{report.summary.totalKm.toFixed(2)} <span className="text-lg text-slate-400">km</span></p>
-              <div className="mt-2 text-xs text-slate-500 flex justify-between">
-                <span>Incluido: {report.summary.includedKm}</span>
-                <span className={report.summary.totalKm < report.summary.guaranteedKm ? 'text-amber-500 font-bold' : ''}>Garantía: {report.summary.guaranteedKm}</span>
-              </div>
-            </div>
-            
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <p className="text-sm text-slate-500 font-medium">Exceso de KMs</p>
-              <p className="text-3xl font-bold text-red-600 mt-1">{report.summary.excessKm.toFixed(2)} <span className="text-lg text-red-400 opacity-50">km</span></p>
-              <div className="mt-2 text-xs text-slate-500">
-                Tarifa x Exceso: S/ {report.summary.contract.excess_km_rate} / km
-              </div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <p className="text-sm text-slate-500 font-medium">Subtotal a Pagar</p>
-              <p className="text-3xl font-bold text-blue-600 mt-1">S/ {report.summary.subtotal.toFixed(2)}</p>
-              <div className="mt-2 text-xs text-slate-500 flex justify-between">
-                <span>Base: S/ {report.summary.baseFee.toFixed(2)}</span>
-                <span>Exceso: S/ {report.summary.excessCost.toFixed(2)}</span>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-blue-600 to-[#002855] p-4 rounded-xl shadow-lg shadow-blue-500/20 text-white">
-              <p className="text-sm text-blue-200 font-medium">Total con IGV (18%)</p>
-              <p className="text-3xl font-bold mt-1">S/ {report.summary.total.toFixed(2)}</p>
-              <button className="mt-3 w-full py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">
-                <Download className="w-4 h-4" /> Exportar PDF
-              </button>
-            </div>
+          <div className="flex justify-end print:hidden">
+            <button 
+              onClick={() => window.print()}
+              className="px-4 py-2 bg-slate-800 text-white rounded-lg flex items-center gap-2 hover:bg-slate-700"
+            >
+              <Printer className="w-4 h-4" /> Imprimir Liquidación
+            </button>
           </div>
 
-          {/* Advertencias */}
-          {report.summary.totalKm < report.summary.guaranteedKm && (
-            <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+          {/* Plantilla A4 Printable */}
+          <div className="bg-white border border-slate-200 shadow-sm mx-auto p-8 md:p-12 print:shadow-none print:border-none print:p-0 print:m-0" style={{ maxWidth: '210mm', minHeight: '297mm' }}>
+            
+            {/* Header / Membrete */}
+            <div className="flex justify-between items-start border-b-2 border-slate-800 pb-6 mb-8">
               <div>
-                <h4 className="text-amber-800 font-medium">Alerta de Garantía</h4>
-                <p className="text-sm text-amber-700 mt-1">
-                  El kilometraje total del mes ({report.summary.totalKm.toFixed(2)} km) no supera la garantía mínima de {report.summary.guaranteedKm} km acordada en el contrato. 
-                  El proveedor facturará la tarifa base completa independientemente.
-                </p>
+                <h1 className="text-3xl font-black text-slate-900 tracking-tight">JRM S.A.C.</h1>
+                <p className="text-sm text-slate-500 mt-1">Servicios de Transporte y Logística</p>
+                <p className="text-xs text-slate-400">RUC: 20123456789</p>
+              </div>
+              <div className="text-right">
+                <h2 className="text-xl font-bold text-slate-800">LIQUIDACIÓN DE ALQUILER</h2>
+                <p className="text-sm font-medium text-slate-500">N° LIQ-{report.month.replace('-','')}-{report.contract.id.substring(0,4).toUpperCase()}</p>
+                <p className="text-sm text-slate-500 mt-1">Mes Liquidado: <span className="font-bold">{report.month}</span></p>
               </div>
             </div>
-          )}
 
-          {/* Detalle de Rutas */}
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-slate-400" />
-                Detalle de Rutas del Mes ({report.month})
-              </h3>
-              <span className="text-xs font-medium bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                {report.dispatches.length} Despachos
-              </span>
+            {/* Datos del Contrato */}
+            <div className="grid grid-cols-2 gap-8 mb-8 text-sm">
+              <div>
+                <h3 className="font-bold text-slate-800 border-b border-slate-200 pb-2 mb-3">Datos del Proveedor</h3>
+                <p><span className="text-slate-500 inline-block w-24">Razón Social:</span> <span className="font-medium">{report.contract.carriers?.business_name}</span></p>
+                <p><span className="text-slate-500 inline-block w-24">Vehículo:</span> <span className="font-medium">{report.contract.vehicles?.plate}</span></p>
+                <p><span className="text-slate-500 inline-block w-24">Tipo Contrato:</span> <span className="font-medium">{report.contract.contract_type}</span></p>
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800 border-b border-slate-200 pb-2 mb-3">Condiciones Acordadas</h3>
+                <p><span className="text-slate-500 inline-block w-32">Tarifa Base:</span> <span className="font-medium">S/ {report.summary.baseFee.toFixed(2)}</span></p>
+                <p><span className="text-slate-500 inline-block w-32">KM Incluidos:</span> <span className="font-medium">{report.summary.includedKm} km</span></p>
+                <p><span className="text-slate-500 inline-block w-32">Tarifa Exceso/KM:</span> <span className="font-medium">S/ {report.summary.contract.excess_km_rate}</span></p>
+                <p><span className="text-slate-500 inline-block w-32">Garantía Mínima:</span> <span className="font-medium">{report.summary.guaranteedKm} km</span></p>
+              </div>
             </div>
-            <div className="overflow-x-auto max-h-[500px]">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-slate-50 text-slate-500 font-medium sticky top-0 shadow-sm">
+
+            {/* Detalle de Operaciones */}
+            <div className="mb-8">
+              <h3 className="font-bold text-slate-800 border-b border-slate-200 pb-2 mb-4">Detalle de Operaciones en el Mes</h3>
+              
+              {report.summary.totalKm < report.summary.guaranteedKm && (
+                <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-start gap-2 mb-4 text-sm print:border-gray-300 print:bg-white">
+                  <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5 print:text-black" />
+                  <p className="text-amber-800 print:text-black">
+                    El kilometraje total del mes ({report.summary.totalKm.toFixed(2)} km) no superó la garantía mínima ({report.summary.guaranteedKm} km). Se facturará la tarifa base completa sin deducciones.
+                  </p>
+                </div>
+              )}
+
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-100 font-medium text-slate-700 print:bg-slate-200 border-b-2 border-slate-300">
                   <tr>
-                    <th className="px-6 py-4">Fecha</th>
-                    <th className="px-6 py-4">Despacho</th>
-                    <th className="px-6 py-4">Conductor</th>
-                    <th className="px-6 py-4">Origen / Destino</th>
-                    <th className="px-6 py-4 text-right">KMs Recorridos</th>
+                    <th className="py-2 px-3">Fecha</th>
+                    <th className="py-2 px-3">OT / Despacho</th>
+                    <th className="py-2 px-3">Conductor</th>
+                    <th className="py-2 px-3 text-right">KM Recorridos</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-200">
                   {report.dispatches.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-slate-500">No se encontraron despachos registrados en este mes.</td>
+                      <td colSpan={4} className="py-4 text-center text-slate-500">No se registraron rutas en este periodo.</td>
                     </tr>
                   ) : (
                     report.dispatches.map((d: any) => (
-                      <tr key={d.id} className="hover:bg-slate-50/50">
-                        <td className="px-6 py-3">{new Date(d.created_at).toLocaleDateString()}</td>
-                        <td className="px-6 py-3">
-                          <Link href={`/despacho/${d.id}`} className="text-blue-600 font-medium hover:underline flex items-center gap-1">
-                            {d.dispatch_number}
-                            <ExternalLink className="w-3 h-3" />
-                          </Link>
-                        </td>
-                        <td className="px-6 py-3">{d.driver_name || '-'}</td>
-                        <td className="px-6 py-3 text-slate-500">Según Plan de Ruta</td>
-                        <td className="px-6 py-3 font-mono text-right font-medium text-slate-700">
-                          {Number(d.estimated_distance_km || 0).toFixed(2)} km
-                        </td>
+                      <tr key={d.id}>
+                        <td className="py-2 px-3">{new Date(d.created_at).toLocaleDateString()}</td>
+                        <td className="py-2 px-3 font-medium">{d.dispatch_number}</td>
+                        <td className="py-2 px-3">{d.driver_name || '-'}</td>
+                        <td className="py-2 px-3 text-right">{Number(d.estimated_distance_km || 0).toFixed(2)}</td>
                       </tr>
                     ))
                   )}
                 </tbody>
+                <tfoot className="bg-slate-50 font-bold border-t-2 border-slate-300 print:bg-transparent">
+                  <tr>
+                    <td colSpan={3} className="py-3 px-3 text-right">TOTAL KILOMETRAJE MENSUAL:</td>
+                    <td className="py-3 px-3 text-right text-blue-700 print:text-black">{report.summary.totalKm.toFixed(2)} km</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
+
+            {/* Resumen Financiero */}
+            <div className="flex justify-end mb-16">
+              <div className="w-72 bg-slate-50 p-4 rounded-lg border border-slate-200 print:bg-transparent print:border-none print:p-0">
+                <h3 className="font-bold text-slate-800 border-b border-slate-200 pb-2 mb-3 print:hidden">Liquidación Financiera</h3>
+                
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Tarifa Base:</span>
+                    <span className="font-medium">S/ {report.summary.baseFee.toFixed(2)}</span>
+                  </div>
+                  
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Exceso KM ({report.summary.excessKm.toFixed(2)} km):</span>
+                    <span className="font-medium">S/ {report.summary.excessCost.toFixed(2)}</span>
+                  </div>
+
+                  <div className="border-t border-slate-200 pt-2 flex justify-between font-bold">
+                    <span>Subtotal:</span>
+                    <span>S/ {report.summary.subtotal.toFixed(2)}</span>
+                  </div>
+                  
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">IGV (18%):</span>
+                    <span className="font-medium">S/ {report.summary.tax.toFixed(2)}</span>
+                  </div>
+                  
+                  <div className="border-t-2 border-slate-800 pt-2 flex justify-between text-lg font-black text-[#002855] print:text-black mt-2">
+                    <span>TOTAL A PAGAR:</span>
+                    <span>S/ {report.summary.total.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Firmas */}
+            <div className="grid grid-cols-2 gap-16 mt-20 pt-8">
+              <div className="text-center flex flex-col items-center">
+                <div className="h-24 w-full flex items-end justify-center mb-2">
+                  {signatureUrl ? (
+                    <img src={signatureUrl} alt="Firma Admin" className="max-h-full object-contain" />
+                  ) : (
+                    <div className="text-slate-300 text-xs italic">Firma Digital no configurada</div>
+                  )}
+                </div>
+                <div className="w-48 border-t border-slate-400 pt-2">
+                  <p className="font-bold text-sm text-slate-800">Aprobado por</p>
+                  <p className="text-xs text-slate-500">JRM S.A.C.</p>
+                </div>
+              </div>
+              <div className="text-center flex flex-col items-center">
+                <div className="h-24 w-full flex items-end justify-center mb-2">
+                  <div className="text-slate-200 text-xs italic">Sello / Firma Proveedor</div>
+                </div>
+                <div className="w-48 border-t border-slate-400 pt-2">
+                  <p className="font-bold text-sm text-slate-800">Conformidad del Proveedor</p>
+                  <p className="text-xs text-slate-500">{report.contract.carriers?.business_name}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="mt-16 text-center text-[10px] text-slate-400 border-t border-slate-100 pt-4">
+              Documento generado electrónicamente el {new Date().toLocaleString()} a través del sistema TMS.
+            </div>
+            
           </div>
         </div>
       )}
+      
+      {/* Ocultar la configuración global en modo impresión */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          .animate-in {
+            animation: none !important;
+          }
+          .print\\:hidden {
+            display: none !important;
+          }
+          #print-area, #print-area * {
+            visibility: visible;
+          }
+          #print-area {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+          }
+        }
+      `}} />
     </div>
   )
 }
