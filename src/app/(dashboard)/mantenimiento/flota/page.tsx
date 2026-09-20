@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2, ArrowRight, Filter, Upload, MoreVertical, Ban } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
