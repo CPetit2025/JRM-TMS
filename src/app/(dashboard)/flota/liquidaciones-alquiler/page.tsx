@@ -181,17 +181,27 @@ export default function LiquidacionAlquilerPage() {
           {/* Plantilla A4 Printable */}
           <div className="bg-white border border-slate-200 shadow-sm mx-auto p-8 md:p-12 print:shadow-none print:border-none print:p-0 print:m-0" style={{ maxWidth: '210mm', minHeight: '297mm' }}>
             
-            {/* Header / Membrete */}
-            <div className="flex justify-between items-start border-b-2 border-slate-800 pb-6 mb-8">
-              <div>
-                <h1 className="text-3xl font-black text-slate-900 tracking-tight">JRM S.A.C.</h1>
-                <p className="text-sm text-slate-500 mt-1">Servicios de Transporte y Logística</p>
-                <p className="text-xs text-slate-400">RUC: 20123456789</p>
+            {/* Header / Membrete Corporativo */}
+            <div 
+              className="flex justify-between items-center bg-[#002855] text-white p-6 md:p-8 rounded-t-lg mb-8 print:rounded-none" 
+              style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+            >
+              <div className="flex items-center gap-6">
+                <div className="bg-white p-2 rounded-lg shadow-sm">
+                  <img src="/logo-jrm.png" alt="JRM S.A.C." className="h-12 w-auto object-contain" />
+                </div>
+                <div>
+                  <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">JRM S.A.C.</h1>
+                  <p className="text-sm text-blue-200 mt-1">Servicios de Transporte y Logística</p>
+                  <p className="text-xs text-blue-300">RUC: 20601234567</p>
+                </div>
               </div>
               <div className="text-right">
-                <h2 className="text-xl font-bold text-slate-800">LIQUIDACIÓN DE ALQUILER</h2>
-                <p className="text-sm font-medium text-slate-500">N° LIQ-{report.month.replace('-','')}-{report.contract.id.substring(0,4).toUpperCase()}</p>
-                <p className="text-sm text-slate-500 mt-1">Mes Liquidado: <span className="font-bold">{report.month}</span></p>
+                <h2 className="text-xl font-bold text-white mb-1">LIQUIDACIÓN DE ALQUILER</h2>
+                <p className="text-sm font-medium text-blue-200">N° LIQ-{report.month.replace('-','')}-{report.contract.id.substring(0,4).toUpperCase()}</p>
+                <div className="inline-block bg-white/20 px-3 py-1 rounded mt-2">
+                  <p className="text-sm text-blue-100">Mes Liquidado: <span className="font-bold text-white">{report.month}</span></p>
+                </div>
               </div>
             </div>
 
