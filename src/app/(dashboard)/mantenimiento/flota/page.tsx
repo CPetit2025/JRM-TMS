@@ -330,46 +330,48 @@ export default function FlotaPage() {
         </div>
         <div className="flex items-center gap-2">
           {activeTab === 'vehicles' ? (
-            <button 
-              onClick={() => {
-                setEditingVehicleId(null)
-                const defaultCarrier = carriers?.find(c => c.type === 'PROPIO') || carriers?.[0]
-                setNewVehicle({
-                  plate: '',
-                  carrier_id: defaultCarrier?.id || '',
-                  type: 'CAMION',
-                  brand: '',
-                  model: '',
-                  year: new Date().getFullYear(),
-                  weight_capacity: 0,
-                  volume_capacity: 0,
-                  status: 'DISPONIBLE',
-                  soat_expiration: '',
-                  technical_review_expiration: ''
-                })
-                setIsVehicleModalOpen(true)
-              }}
-              className="px-4 py-2 bg-[#002855] text-white rounded-lg font-medium hover:bg-[#003875] transition-colors flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Alta de Vehículo
-            </button>
-            <input 
-              type="file" 
-              accept=".csv" 
-              className="hidden" 
-              ref={fileInputRef} 
-              onChange={handleMassUpload} 
-            />
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isImporting || !newVehicle.carrier_id}
-              title={!newVehicle.carrier_id ? "Espere a que cargue el transportista por defecto" : "Formato CSV: Placa, Tipo, Marca, Modelo, Año, Peso, Volumen"}
-              className="px-4 py-2 bg-slate-100 text-[#002855] border border-[#002855]/20 rounded-lg font-medium hover:bg-slate-200 transition-colors flex items-center gap-2 disabled:opacity-50"
-            >
-              {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              Carga Masiva
-            </button>
+            <>
+              <button 
+                onClick={() => {
+                  setEditingVehicleId(null)
+                  const defaultCarrier = carriers?.find(c => c.type === 'PROPIO') || carriers?.[0]
+                  setNewVehicle({
+                    plate: '',
+                    carrier_id: defaultCarrier?.id || '',
+                    type: 'CAMION',
+                    brand: '',
+                    model: '',
+                    year: new Date().getFullYear(),
+                    weight_capacity: 0,
+                    volume_capacity: 0,
+                    status: 'DISPONIBLE',
+                    soat_expiration: '',
+                    technical_review_expiration: ''
+                  })
+                  setIsVehicleModalOpen(true)
+                }}
+                className="px-4 py-2 bg-[#002855] text-white rounded-lg font-medium hover:bg-[#003875] transition-colors flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Alta de Vehículo
+              </button>
+              <input 
+                type="file" 
+                accept=".csv" 
+                className="hidden" 
+                ref={fileInputRef} 
+                onChange={handleMassUpload} 
+              />
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isImporting || !newVehicle.carrier_id}
+                title={!newVehicle.carrier_id ? "Espere a que cargue el transportista por defecto" : "Formato CSV: Placa, Tipo, Marca, Modelo, Año, Peso, Volumen"}
+                className="px-4 py-2 bg-slate-100 text-[#002855] border border-[#002855]/20 rounded-lg font-medium hover:bg-slate-200 transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                Carga Masiva
+              </button>
+            </>
           ) : (
             <button 
               onClick={() => {
