@@ -5,6 +5,7 @@ import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2, ArrowR
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
+import * as XLSX from 'xlsx'
 
 export default function FlotaPage() {
   const supabase = createClient()
@@ -262,24 +263,26 @@ export default function FlotaPage() {
     const reader = new FileReader()
     reader.onload = async (event) => {
       try {
-        const text = event.target?.result as string
-        const lines = text.split('\\n').filter(l => l.trim().length > 0)
+        const data = new Uint8Array(event.target?.result as ArrayBuffer)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const firstSheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[firstSheetName]
+        const json = XLSX.utils.sheet_to_json(worksheet)
         
         const payload = []
-        for(let i = 1; i < lines.length; i++) {
-          const values = lines[i].split(',')
-          const plate = values[0]?.trim()
+        for (const row of json as any[]) {
+          const plate = row['Placa'] || row['placa'] || row['PLACA']
           if (!plate) continue
 
           payload.push({
-            plate: plate.toUpperCase(),
+            plate: String(plate).trim().toUpperCase(),
             carrier_id: newVehicle.carrier_id, 
-            type: values[1]?.trim()?.toUpperCase() || 'CAMION',
-            brand: values[2]?.trim()?.toUpperCase() || '',
-            model: values[3]?.trim()?.toUpperCase() || '',
-            year: parseInt(values[4]) || new Date().getFullYear(),
-            weight_capacity: parseFloat(values[5]) || 0,
-            volume_capacity: parseFloat(values[6]) || 0,
+            type: String(row['Tipo'] || row['tipo'] || row['TIPO'] || 'CAMION').trim().toUpperCase(),
+            brand: String(row['Marca'] || row['marca'] || row['MARCA'] || '').trim().toUpperCase(),
+            model: String(row['Modelo'] || row['modelo'] || row['MODELO'] || '').trim().toUpperCase(),
+            year: parseInt(row['Año'] || row['año'] || row['AÑO']) || new Date().getFullYear(),
+            weight_capacity: parseFloat(row['Peso_kg'] || row['Peso'] || row['peso'] || 0),
+            volume_capacity: parseFloat(row['Volumen_m3'] || row['Volumen'] || row['volumen'] || 0),
             status: 'DISPONIBLE'
           })
         }
@@ -298,7 +301,22 @@ export default function FlotaPage() {
         if (fileInputRef.current) fileInputRef.current.value = ''
       }
     }
-    reader.readAsText(file)
+    reader.readAsArrayBuffer(file)
+  }
+
+  const handleDownloadTemplate = () => {
+    const ws = XLSX.utils.json_to_sheet([{
+      Placa: 'ABC-123',
+      Tipo: 'CAMION',
+      Marca: 'VOLVO',
+      Modelo: 'FH16',
+      Año: 2023,
+      Peso_kg: 25000,
+      Volumen_m3: 40
+    }])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Plantilla')
+    XLSX.writeFile(wb, 'plantilla_vehiculos.xlsx')
   }
 
   const handleDeleteDriver = async (id: string) => {
@@ -357,7 +375,7 @@ export default function FlotaPage() {
               </button>
               <input 
                 type="file" 
-                accept=".csv" 
+                accept=".xlsx, .xls" 
                 className="hidden" 
                 ref={fileInputRef} 
                 onChange={handleMassUpload} 
@@ -365,21 +383,20 @@ export default function FlotaPage() {
               <button 
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isImporting || !newVehicle.carrier_id}
-                title={!newVehicle.carrier_id ? "Espere a que cargue el transportista por defecto" : "Formato CSV: Placa, Tipo, Marca, Modelo, Año, Peso, Volumen"}
+                title={!newVehicle.carrier_id ? "Espere a que cargue el transportista por defecto" : "Subir plantilla Excel"}
                 className="px-4 py-2 bg-slate-100 text-[#002855] border border-[#002855]/20 rounded-lg font-medium hover:bg-slate-200 transition-colors flex items-center gap-2 disabled:opacity-50"
               >
                 {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                 Carga Masiva
               </button>
-              <a 
-                href={`data:text/csv;charset=utf-8,${encodeURIComponent('Placa,Tipo,Marca,Modelo,Año,Peso_kg,Volumen_m3\nABC-123,CAMION,VOLVO,FH16,2023,25000,40')}`}
-                download="plantilla_vehiculos.csv"
+              <button 
+                onClick={handleDownloadTemplate}
                 className="px-4 py-2 bg-slate-100 text-[#002855] border border-[#002855]/20 rounded-lg font-medium hover:bg-slate-200 transition-colors flex items-center gap-2"
-                title="Descargar plantilla CSV"
+                title="Descargar plantilla Excel"
               >
                 <Download className="w-4 h-4" />
                 Plantilla
-              </a>
+              </button>
             </>
           ) : (
             <button 
