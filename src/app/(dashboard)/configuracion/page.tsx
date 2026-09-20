@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect } from 'react'
-import { Save, Building2, Truck, CreditCard, Loader2, Bot, Lock, FileSignature, Upload, FileImage, Trash2 } from 'lucide-react'
+import { Save, Building2, Truck, CreditCard, Loader2, Bot, Lock, FileSignature, Upload, FileImage, Trash2, CheckCircle2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 
