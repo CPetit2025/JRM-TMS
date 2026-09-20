@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2, ArrowRight, Filter } from 'lucide-react'
+import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2, ArrowRight, Filter, Upload, MoreVertical, Ban } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
@@ -27,6 +27,10 @@ export default function FlotaPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [filterStatus, setFilterStatus] = useState('TODOS')
+  
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isImporting, setIsImporting] = useState(false)
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null)
   
   const filteredVehicles = vehicles.filter((v: any) => {
     const matchSearch = searchTerm === '' || v.plate.toLowerCase().includes(searchTerm.toLowerCase());
@@ -119,16 +123,23 @@ export default function FlotaPage() {
     setIsSubmitting(true)
     try {
       let error;
+      
+      const payload = {
+        ...newVehicle,
+        soat_expiration: newVehicle.soat_expiration || null,
+        technical_review_expiration: newVehicle.technical_review_expiration || null
+      }
+
       if (editingVehicleId) {
         const { error: updateError } = await supabase
           .from('vehicles')
-          .update(newVehicle)
+          .update(payload)
           .eq('id', editingVehicleId)
         error = updateError
       } else {
         const { error: insertError } = await supabase
           .from('vehicles')
-          .insert([newVehicle])
+          .insert([payload])
         error = insertError
       }
 
@@ -230,6 +241,66 @@ export default function FlotaPage() {
     }
   }
 
+  const handleSuspendVehicle = async (id: string, currentStatus: string) => {
+    if (!confirm(`¿Está seguro de ${currentStatus === 'INACTIVO' ? 'activar' : 'suspender'} este vehículo?`)) return
+    try {
+      const newStatus = currentStatus === 'INACTIVO' ? 'DISPONIBLE' : 'INACTIVO'
+      const { error } = await supabase.from('vehicles').update({ status: newStatus }).eq('id', id)
+      if (error) throw error
+      toast.success(`Vehículo ${newStatus === 'DISPONIBLE' ? 'activado' : 'suspendido'}`)
+      fetchData()
+    } catch (err: any) {
+      toast.error('Error al cambiar el estado del vehículo')
+    }
+  }
+
+  const handleMassUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setIsImporting(true)
+    
+    const reader = new FileReader()
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result as string
+        const lines = text.split('\\n').filter(l => l.trim().length > 0)
+        
+        const payload = []
+        for(let i = 1; i < lines.length; i++) {
+          const values = lines[i].split(',')
+          const plate = values[0]?.trim()
+          if (!plate) continue
+
+          payload.push({
+            plate: plate.toUpperCase(),
+            carrier_id: newVehicle.carrier_id, 
+            type: values[1]?.trim()?.toUpperCase() || 'CAMION',
+            brand: values[2]?.trim()?.toUpperCase() || '',
+            model: values[3]?.trim()?.toUpperCase() || '',
+            year: parseInt(values[4]) || new Date().getFullYear(),
+            weight_capacity: parseFloat(values[5]) || 0,
+            volume_capacity: parseFloat(values[6]) || 0,
+            status: 'DISPONIBLE'
+          })
+        }
+        
+        if (payload.length === 0) throw new Error('No se encontraron datos válidos')
+
+        const { error } = await supabase.from('vehicles').insert(payload)
+        if (error) throw error
+        
+        toast.success(`${payload.length} vehículos importados exitosamente`)
+        fetchData()
+      } catch (err: any) {
+        toast.error('Error al importar CSV: ' + err.message)
+      } finally {
+        setIsImporting(false)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+      }
+    }
+    reader.readAsText(file)
+  }
+
   const handleDeleteDriver = async (id: string) => {
     if (!confirm('¿Está seguro de eliminar este conductor?')) return
     try {
@@ -282,6 +353,22 @@ export default function FlotaPage() {
             >
               <Plus className="w-4 h-4" />
               Alta de Vehículo
+            </button>
+            <input 
+              type="file" 
+              accept=".csv" 
+              className="hidden" 
+              ref={fileInputRef} 
+              onChange={handleMassUpload} 
+            />
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isImporting || !newVehicle.carrier_id}
+              title={!newVehicle.carrier_id ? "Espere a que cargue el transportista por defecto" : "Formato CSV: Placa, Tipo, Marca, Modelo, Año, Peso, Volumen"}
+              className="px-4 py-2 bg-slate-100 text-[#002855] border border-[#002855]/20 rounded-lg font-medium hover:bg-slate-200 transition-colors flex items-center gap-2 disabled:opacity-50"
+            >
+              {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              Carga Masiva
             </button>
           ) : (
             <button 
@@ -446,39 +533,45 @@ export default function FlotaPage() {
                               {v.status}
                             </span>
                           </td>
-                          <td className="p-4 text-right">
-                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleEditVehicle(v)
-                                }}
-                                title="Editar Vehículo"
-                                className="p-2 text-slate-400 hover:text-amber-600 transition-colors rounded-lg hover:bg-amber-50"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleDeleteVehicle(v.id)
-                                }}
-                                title="Eliminar Vehículo"
-                                className="p-2 text-slate-400 hover:text-red-600 transition-colors rounded-lg hover:bg-red-50"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  router.push(`/mantenimiento/flota/${v.plate}`)
-                                }}
-                                title="Ver Ficha 360"
-                                className="p-2 text-blue-500 hover:text-white transition-colors rounded-lg hover:bg-blue-600"
-                              >
-                                <ArrowRight className="w-4 h-4" />
-                              </button>
-                            </div>
+                          <td className="p-4 text-right relative">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setActiveDropdown(activeDropdown === v.id ? null : v.id)
+                              }}
+                              className="p-2 text-slate-400 hover:text-[#002855] transition-colors rounded-lg hover:bg-slate-100"
+                            >
+                              <MoreVertical className="w-5 h-5" />
+                            </button>
+                            
+                            {activeDropdown === v.id && (
+                              <div className="absolute right-8 top-10 w-48 bg-white rounded-lg shadow-lg border border-slate-200 z-50 py-1" onClick={e => e.stopPropagation()}>
+                                <button 
+                                  onClick={() => { setActiveDropdown(null); router.push(`/mantenimiento/flota/${v.plate}`) }}
+                                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                >
+                                  <ArrowRight className="w-4 h-4" /> Ver Ficha 360
+                                </button>
+                                <button 
+                                  onClick={() => { setActiveDropdown(null); handleEditVehicle(v) }}
+                                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                >
+                                  <Edit2 className="w-4 h-4" /> Editar
+                                </button>
+                                <button 
+                                  onClick={() => { setActiveDropdown(null); handleSuspendVehicle(v.id, v.status) }}
+                                  className="w-full text-left px-4 py-2 text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2"
+                                >
+                                  <Ban className="w-4 h-4" /> {v.status === 'INACTIVO' ? 'Activar' : 'Suspender'}
+                                </button>
+                                <button 
+                                  onClick={() => { setActiveDropdown(null); handleDeleteVehicle(v.id) }}
+                                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                >
+                                  <Trash2 className="w-4 h-4" /> Eliminar
+                                </button>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       ))
