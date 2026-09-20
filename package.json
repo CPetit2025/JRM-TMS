@@ -9,11 +9,16 @@
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "typecheck": "tsc --noEmit",
+    "build:apk": "node scripts/build-apk.cjs",
     "check:supabase": "node scripts/check-supabase-connection.cjs",
     "check:vercel": "node scripts/check-vercel-config.cjs",
     "check:infra": "npm run check:supabase && npm run check:vercel"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/geolocation": "^8.2.2",
     "@google/generative-ai": "^0.24.1",
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.112.4",
