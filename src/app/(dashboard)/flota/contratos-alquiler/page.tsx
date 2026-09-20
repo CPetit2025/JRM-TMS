@@ -40,7 +40,7 @@ export default function ContratosAlquilerPage() {
       const [contRes, vehRes, provRes] = await Promise.all([
         supabase.from('vehicle_lease_contracts').select('*, vehicles(plate), carriers(business_name)').order('created_at', { ascending: false }),
         supabase.from('vehicles').select('id, plate').order('plate'),
-        supabase.from('carriers').select('id, business_name').eq('type', 'PROVEEDOR').order('business_name')
+        supabase.from('carriers').select('id, business_name').neq('type', 'PROPIO').eq('is_active', true).order('business_name')
       ])
       
       setContracts(contRes.data || [])
