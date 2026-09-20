@@ -162,13 +162,13 @@ export default function TransportistasPage() {
                     <td className="px-6 py-4 font-mono font-medium text-slate-700">{c.tax_id}</td>
                     <td className="px-6 py-4 font-bold text-slate-900">{c.business_name}</td>
                     <td className="px-6 py-4">
-                      <span className={\`inline-flex items-center px-2 py-1 rounded text-xs font-semibold \${c.type === 'PROPIO' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}\`}>
+                      <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-semibold ${c.type === 'PROPIO' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}>
                         {c.type}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-slate-600">{c.contact_phone || '-'}</td>
                     <td className="px-6 py-4">
-                      <span className={\`inline-flex items-center px-2 py-1 rounded text-xs font-semibold \${c.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}\`}>
+                      <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-semibold ${c.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                         {c.is_active ? 'ACTIVO' : 'INACTIVO'}
                       </span>
                     </td>
