@@ -38,9 +38,9 @@ export default function ContratosAlquilerPage() {
       setIsLoading(true)
       
       const [contRes, vehRes, provRes] = await Promise.all([
-        supabase.from('vehicle_lease_contracts').select('*, vehicles(plate), maintenance_providers(business_name)').order('created_at', { ascending: false }),
+        supabase.from('vehicle_lease_contracts').select('*, vehicles(plate), carriers(business_name)').order('created_at', { ascending: false }),
         supabase.from('vehicles').select('id, plate').order('plate'),
-        supabase.from('maintenance_providers').select('id, business_name').order('business_name')
+        supabase.from('carriers').select('id, business_name').eq('type', 'PROVEEDOR').order('business_name')
       ])
       
       setContracts(contRes.data || [])
@@ -83,7 +83,7 @@ export default function ContratosAlquilerPage() {
 
   const filtered = contracts.filter(c => 
     c.vehicles?.plate?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.maintenance_providers?.business_name?.toLowerCase().includes(searchTerm.toLowerCase())
+    c.carriers?.business_name?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   return (
@@ -148,7 +148,7 @@ export default function ContratosAlquilerPage() {
                 filtered.map(c => (
                   <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-6 py-4 font-bold text-slate-900">{c.vehicles?.plate}</td>
-                    <td className="px-6 py-4 text-slate-700">{c.maintenance_providers?.business_name}</td>
+                    <td className="px-6 py-4 text-slate-700">{c.carriers?.business_name}</td>
                     <td className="px-6 py-4 font-mono text-blue-600 font-medium">S/ {c.monthly_base_fee.toFixed(2)}</td>
                     <td className="px-6 py-4 font-mono">{c.included_km}</td>
                     <td className="px-6 py-4 font-mono text-slate-500">{c.guaranteed_km}</td>

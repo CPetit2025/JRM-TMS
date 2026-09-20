@@ -129,7 +129,8 @@ export function Sidebar() {
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Catálogos</p>
               </div>
               {hasPermission('maestros-trabajadores') && <NavItem href="/maestros/trabajadores" icon={HardHat} label="Trabajadores" />}
-              {hasPermission('tarifas') && <NavItem href="/maestros/tarifas" icon={BadgeDollarSign} label="Tarifas de Flete" />}
+                            {hasPermission('tarifas') && <NavItem href="/maestros/tarifas" icon={BadgeDollarSign} label="Tarifas de Flete" />}
+              {hasPermission('tarifas') && <NavItem href="/maestros/transportistas" icon={Building2} label="Transportistas" />}
             </>
           )}
 

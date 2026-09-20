@@ -26,7 +26,7 @@ export default function LiquidacionAlquilerPage() {
   const fetchContracts = async () => {
     try {
       const { data } = await supabase.from('vehicle_lease_contracts')
-        .select('*, vehicles(plate), maintenance_providers(business_name)')
+        .select('*, vehicles(plate), carriers(business_name)')
         .eq('status', 'ACTIVO')
       setContracts(data || [])
     } catch (e) {
@@ -123,7 +123,7 @@ export default function LiquidacionAlquilerPage() {
             <option value="">Seleccione...</option>
             {contracts.map(c => (
               <option key={c.id} value={c.id}>
-                {c.vehicles?.plate} - {c.maintenance_providers?.business_name}
+                {c.vehicles?.plate} - {c.carriers?.business_name}
               </option>
             ))}
           </select>
