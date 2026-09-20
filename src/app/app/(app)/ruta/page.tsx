@@ -153,7 +153,10 @@ export default function RutaActivaPage() {
       // 1. Actualizar estado en dispatch_requests
       const { error: reqError } = await supabase
         .from('dispatch_requests')
-        .update({ status: 'ENTREGADO' })
+        .update({ 
+          status: 'ENTREGADO',
+          arrival_odometer: Number(kmInput)
+        })
         .eq('dispatch_id', dispatch.id)
         .eq('transport_request_id', req.transport_request_id)
         
