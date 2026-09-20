@@ -207,7 +207,7 @@ export default function LiquidacionAlquilerPage() {
                 <h3 className="font-bold text-slate-800 border-b border-slate-200 pb-2 mb-3">Condiciones Acordadas</h3>
                 <p><span className="text-slate-500 inline-block w-32">Tarifa Base:</span> <span className="font-medium">S/ {report.summary.baseFee.toFixed(2)}</span></p>
                 <p><span className="text-slate-500 inline-block w-32">KM Incluidos:</span> <span className="font-medium">{report.summary.includedKm} km</span></p>
-                <p><span className="text-slate-500 inline-block w-32">Tarifa Exceso/KM:</span> <span className="font-medium">S/ {report.summary.contract.excess_km_rate}</span></p>
+                <p><span className="text-slate-500 inline-block w-32">Tarifa Exceso/KM:</span> <span className="font-medium">S/ {report.contract.excess_km_rate}</span></p>
                 <p><span className="text-slate-500 inline-block w-32">Garantía Mínima:</span> <span className="font-medium">{report.summary.guaranteedKm} km</span></p>
               </div>
             </div>
