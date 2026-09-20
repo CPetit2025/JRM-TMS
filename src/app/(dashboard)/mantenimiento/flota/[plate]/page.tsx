@@ -37,7 +37,7 @@ export default function Flota360Page() {
       const { data: otData, error: otError } = await supabase
         .from('maintenance_work_orders')
         .select('*')
-        .eq('vehicle_plate', plate)
+        .eq('vehicle_id', vData.id)
         .order('created_at', { ascending: false })
       
       if (otError) throw otError
