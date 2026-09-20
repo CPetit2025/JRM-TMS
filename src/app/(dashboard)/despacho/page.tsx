@@ -94,102 +94,6 @@ export default function DespachoPage() {
   const [isSavingDocs, setIsSavingDocs] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [calculatingDistance, setCalculatingDistance] = useState(false)
-"use client"
-import { useState, useEffect, useRef } from 'react'
-import { Truck, MapPin, Loader2, PlayCircle, Calendar, Plus, FileText, ArrowRight, CheckCircle2, DollarSign, Tag, Search, Filter, Save } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
-import { toast } from 'sonner'
-import { Modal } from '@/components/ui/modal'
-import { calculateRouteDistance } from '@/lib/routing'
-import { usePermissions } from '@/hooks/usePermissions'
-
-interface TransportRequest {
-  id: string
-  request_number: string
-  requester_name: string
-  pickup_address: string
-  delivery_address: string
-  request_type?: string
-  status: string
-  created_at: string
-  required_date?: string
-  contract_id?: string
-  contracts?: {
-    id: string
-    code: string
-    clients?: {
-      business_name: string
-    }
-    contract_budgets?: Array<{
-      balance_pen: number
-      allocated_pen: number
-    }>
-  }
-}
-
-interface DispatchRequest {
-  transport_request_id: string
-  status: string
-  document_type?: string
-  document_number?: string
-  transport_requests: {
-    id?: string
-    request_number: string
-    pickup_address: string
-    delivery_address: string
-    request_type?: string
-    transport_request_items?: Array<{
-      weight?: number
-      quantity?: number
-      volume_m3?: number
-    }>
-  }
-}
-
-interface Dispatch {
-  id: string
-  dispatch_number: string
-  driver_name: string
-  vehicle_plate: string
-  scheduled_departure: string
-  status: string
-  estimated_distance_km?: number
-  dispatch_requests?: DispatchRequest[]
-}
-
-export default function DespachoPage() {
-  const { canWrite } = usePermissions()
-  const supabase = createClient()
-  const [pendingRequests, setPendingRequests] = useState<TransportRequest[]>([])
-  const [dispatches, setDispatches] = useState<Dispatch[]>([])
-  const [vehicles, setVehicles] = useState<any[]>([])
-  const [drivers, setDrivers] = useState<any[]>([])
-  
-  const alertedDispatches = useRef<Set<string>>(new Set())
-  const [loading, setLoading] = useState(true)
-
-  const [searchTerm, setSearchTerm] = useState('')
-  const [showFilters, setShowFilters] = useState(false)
-  const [filterStatus, setFilterStatus] = useState('TODOS')
-
-  const filteredDispatches = dispatches.filter((d: any) => {
-    const matchSearch = searchTerm === '' || 
-      d.dispatch_number.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      d.vehicle_plate.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      d.driver_name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchStatus = filterStatus === 'TODOS' || d.status === filterStatus;
-    return matchSearch && matchStatus;
-  })
-  
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [selectedDispatchDetail, setSelectedDispatchDetail] = useState<Dispatch | null>(null)
-  
-  // Modal de Documentos
-  const [isDocModalOpen, setIsDocModalOpen] = useState(false)
-  const [docModalData, setDocModalData] = useState<Dispatch | null>(null)
-  const [isSavingDocs, setIsSavingDocs] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [calculatingDistance, setCalculatingDistance] = useState(false)
   const reqDistances = useRef<Record<string, number>>({})
 
   // Freight rate lookup state
@@ -197,7 +101,7 @@ export default function DespachoPage() {
   const [loadingRate, setLoadingRate] = useState(false)
   const [manualFreightCost, setManualFreightCost] = useState<string>('')
   const [newDispatch, setNewDispatch] = useState<{
-    selected_requests: { id: string, document_number: string, leg_planned_km?: number }[],
+    selected_requests: { id: string, document_number: string }[],
     driver_name: string,
     vehicle_plate: string,
     scheduled_departure: string,
@@ -553,13 +457,17 @@ export default function DespachoPage() {
       }
 
       // 2. Insertar los dispatch_requests con su GR
+      const totalKm = newDispatch.estimated_distance_km || 0;
+      const numReqs = newDispatch.selected_requests.length || 1;
+      const proratedKm = Math.round((Number(totalKm) / numReqs) * 10) / 10; // 1 decimal place
+
       const reqToInsert = newDispatch.selected_requests.map((req, idx) => ({
         dispatch_id: dispatchId,
         transport_request_id: req.id,
         status: 'PROGRAMADO',
         document_type: newDispatch.document_type,
         document_number: req.document_number,
-        leg_planned_km: req.leg_planned_km || 0,
+        leg_planned_km: proratedKm,
         sequence_order: idx + 1
       }))
 
@@ -597,6 +505,659 @@ export default function DespachoPage() {
       if (missingDocs) {
         toast.error('Falta vincular documentos (GR/NS) en algunas solicitudes antes de poder iniciar la ruta.');
         return;
+      }
+      // Pasar despacho a EN_CURSO
+      await supabase.from('dispatches').update({ status: 'EN_CURSO' }).eq('id', dispatchId)
+      
+      if (dispatchRequests && dispatchRequests.length > 0) {
+        const reqIds = dispatchRequests.map(r => r.transport_request_id)
+        
+        // Pasar las solicitudes a EN TRANSITO
+        await supabase.from('transport_requests').update({ status: 'EN TRANSITO' }).in('id', reqIds)
+        await supabase.from('dispatch_requests').update({ status: 'EN_CURSO' }).eq('dispatch_id', dispatchId)
+      }
+      
+      toast.success('El transporte ha iniciado su ruta')
+      fetchData()
+    } catch (error: any) {
+      toast.error('Error al iniciar ruta: ' + error.message)
+    }
+  }
+
+  const handleAuthorizeReturn = async (dispatchId: string) => {
+    try {
+      await supabase.from('dispatches').update({ status: 'RETORNO' }).eq('id', dispatchId)
+      toast.success('Retorno autorizado. El conductor ha sido notificado.')
+      fetchData()
+    } catch (err: any) {
+      toast.error('Error al autorizar: ' + err.message)
+    }
+  }
+
+  const handleCloseRoute = async (dispatchId: string) => {
+    try {
+      // 1. Obtener todas las solicitudes atadas a este despacho
+      const { data: drData, error: drError } = await supabase
+        .from('dispatch_requests')
+        .select('transport_request_id')
+        .eq('dispatch_id', dispatchId)
+
+      if (drError) throw drError
+
+      // 1.5 Obtener datos del despacho para el kilometraje y presupuesto
+      const { data: dispatchData } = await supabase
+        .from('dispatches')
+        .select('vehicle_plate, estimated_distance_km, freight_cost, contract_id')
+        .eq('id', dispatchId)
+        .single()
+
+      // 2. Cerrar ruta a nivel de cabecera
+      await supabase.from('dispatches').update({ status: 'LIQUIDADO' }).eq('id', dispatchId)
+
+      // 2.5 Actualizar kilometraje del vehículo si aplica
+      if (dispatchData && dispatchData.vehicle_plate && dispatchData.vehicle_plate !== 'EXTERNO') {
+        // Ejecutamos RPC o leemos y sumamos. Para simplificar, leemos y sumamos:
+        const { data: vData } = await supabase.from('vehicles').select('id, current_mileage').eq('plate', dispatchData.vehicle_plate).single()
+        if (vData) {
+          const newMileage = (vData.current_mileage || 0) + (dispatchData.estimated_distance_km || 0)
+          await supabase.from('vehicles').update({ current_mileage: Math.round(newMileage) }).eq('id', vData.id)
+          // Registramos en el historial
+          await supabase.from('vehicle_maintenance_history').insert([{
+            vehicle_id: vData.id,
+            action_type: 'KM_ACTUALIZADO',
+            description: `Ruta ${dispatchId.substring(0,8)} completada (+${dispatchData.estimated_distance_km} KM)`,
+            mileage_at_time: Math.round(newMileage)
+          }])
+        }
+      }
+      if (drData && drData.length > 0) {
+        const reqIds = drData.map(dr => dr.transport_request_id)
+        
+        // 3. Marcar solicitudes como ENTREGADA
+        await supabase.from('transport_requests').update({ status: 'ENTREGADA' }).in('id', reqIds)
+        // 4. Marcar detalle como ENTREGADO
+        await supabase.from('dispatch_requests').update({ status: 'ENTREGADO' }).eq('dispatch_id', dispatchId)
+      }
+
+      // 5. Liquidar el presupuesto del contrato si estaba reservado
+      if (dispatchData && dispatchData.contract_id && dispatchData.freight_cost > 0) {
+        const { error: liquidateError } = await supabase.rpc('liquidate_transport_budget', {
+          p_contract_id: dispatchData.contract_id,
+          p_reserved_pen: dispatchData.freight_cost,
+          p_actual_cost_pen: dispatchData.freight_cost
+        })
+        if (liquidateError) {
+          console.error('Error al liquidar presupuesto:', liquidateError)
+          toast.error('⚠️ Ruta cerrada, pero hubo un error al liquidar el presupuesto del contrato.')
+        }
+      }
+
+      toast.success('Ruta cerrada exitosamente y solicitudes entregadas.')
+      fetchData()
+    } catch (err: any) {
+      toast.error('Error al cerrar ruta: ' + err.message)
+    }
+  }
+
+  const toggleRequestSelection = async (reqId: string, pickup: string, delivery: string) => {
+    const isSelected = newDispatch.selected_requests.some(r => r.id === reqId)
+    let nextRequests: { id: string, document_number: string }[]
+    
+    if (isSelected) {
+      nextRequests = newDispatch.selected_requests.filter(r => r.id !== reqId)
+      setNewDispatch(prev => ({ ...prev, selected_requests: nextRequests }))
+
+      // Restar distancia (si ya estaba calculada)
+      const distanceToSubtract = reqDistances.current[reqId]
+      if (distanceToSubtract) {
+        setNewDispatch(prev => {
+          const currentKm = Number(prev.estimated_distance_km) || 0
+          const newDistance = Math.max(0, currentKm - distanceToSubtract)
+          return { ...prev, estimated_distance_km: newDistance === 0 ? '' : parseFloat(newDistance.toFixed(1)) }
+        })
+      }
+    } else {
+      nextRequests = [...newDispatch.selected_requests, { id: reqId, document_number: '' }]
+      setNewDispatch(prev => ({ ...prev, selected_requests: nextRequests }))
+      
+      // Si ya tenemos la distancia en caché, la sumamos al instante
+      if (reqDistances.current[reqId]) {
+        setNewDispatch(prev => {
+          const currentKm = Number(prev.estimated_distance_km) || 0
+          return { ...prev, estimated_distance_km: parseFloat((currentKm + reqDistances.current[reqId]).toFixed(1)) }
+        })
+      } else {
+        // Si no la tenemos, bloqueamos UI y consultamos la API
+        setCalculatingDistance(true)
+        const loadingToast = toast.loading('Calculando ruta sugerida...')
+        try {
+          const km = await calculateRouteDistance(pickup, delivery)
+          if (km) {
+            reqDistances.current[reqId] = km // Guardar en caché para la próxima
+            
+            setNewDispatch(prev => {
+              // Control anti-cruce: Solo sumar si el usuario NO LO DESMARCÓ mientras esperábamos la API
+              if (!prev.selected_requests.some(r => r.id === reqId)) return prev;
+
+              const currentKm = Number(prev.estimated_distance_km) || 0
+              return { ...prev, estimated_distance_km: parseFloat((currentKm + km).toFixed(1)) }
+            })
+            toast.success(`+${km.toFixed(1)} KM agregados`, { id: loadingToast })
+          } else {
+            toast.error('No se pudo geocodificar la ruta.', { id: loadingToast })
+          }
+        } catch (e) {
+          toast.error('Error al calcular distancia', { id: loadingToast })
+        } finally {
+          setCalculatingDistance(false)
+        }
+      }
+    }
+
+    // Always re-lookup freight rate after selection changes
+    const updatedIds = isSelected
+      ? newDispatch.selected_requests.filter(r => r.id !== reqId).map(r => r.id)
+      : [...newDispatch.selected_requests.map(r => r.id), reqId]
+    lookupFreightRate(newDispatch.vehicle_plate, updatedIds)
+  }
+
+  return (
+    <div className="space-y-6 w-full mx-auto">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Programación de Despachos y Ruteo</h1>
+          <p className="text-sm text-slate-500">Asignación de unidades de transporte a Solicitudes</p>
+        </div>
+        {canWrite('despacho') && (
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#001d3d] transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Armar Ruta
+          </button>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-6">
+        
+        {/* Sección Superior: OTs Pendientes */}
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+            <FileText className="w-5 h-5 text-blue-600" />
+            Solicitudes por Asignar ({pendingRequests.length})
+          </h2>
+          
+          <div className="flex overflow-x-auto gap-4 pb-4 snap-x">
+            {loading ? (
+              <div className="p-8 w-full text-center text-slate-500 bg-white rounded-xl border border-slate-200">
+                <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                Cargando...
+              </div>
+            ) : pendingRequests.length === 0 ? (
+              <div className="p-6 w-full text-center text-slate-500 bg-white rounded-xl border border-slate-200 shadow-sm text-sm">
+                No hay solicitudes pendientes de asignación.
+              </div>
+            ) : (
+              pendingRequests.map(req => {
+                const isRecojo = req.request_type === 'RECOJO'
+                const isTraslado = req.request_type === 'TRASLADO'
+                const typeLabel = req.request_type || (isRecojo ? 'RECOJO' : 'DESPACHO')
+                
+                let typeColor = 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                if (isRecojo) typeColor = 'bg-orange-100 text-orange-700 border-orange-200'
+                if (isTraslado) typeColor = 'bg-purple-100 text-purple-700 border-purple-200'
+                
+                return (
+                  <div key={req.id} className="min-w-[300px] w-[300px] bg-white p-4 rounded-xl shadow-sm border border-l-4 border-l-blue-500 border-slate-200 hover:shadow-md transition-shadow snap-start">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex flex-col gap-1">
+                        <span className="font-bold text-[#002855] text-sm">{req.request_number}</span>
+                        {req.status === 'REPROGRAMADA' && (
+                          <span className="text-[10px] bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold flex items-center gap-1 border border-orange-200">
+                            ⚠️ Nueva Fecha: {req.required_date ? new Date(req.required_date).toLocaleDateString() : 'N/A'}
+                          </span>
+                        )}
+                      </div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${typeColor} whitespace-nowrap h-fit`}>
+                        {typeLabel}
+                      </span>
+                    </div>
+                    <p className="text-sm font-semibold text-slate-800 mb-1 truncate" title={req.requester_name}>{req.requester_name}</p>
+                    {req.contracts?.clients?.business_name && (
+                      <p className="text-xs font-medium text-[#002855] mb-1 truncate" title={req.contracts.clients.business_name}>
+                        {req.contracts.clients.business_name}
+                      </p>
+                    )}
+                    <div className="text-xs text-slate-500 flex flex-col gap-1 mt-2">
+                      <div className="flex items-start gap-1">
+                        <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-blue-500" />
+                        <span className="truncate" title={req.pickup_address}>{req.pickup_address}</span>
+                      </div>
+                      <div className="flex items-start gap-1">
+                        <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-red-400" />
+                        <span className="truncate" title={req.delivery_address}>{req.delivery_address}</span>
+                      </div>
+                      
+                      {/* Presupuesto Alert */}
+                      {req.contracts && req.contracts.contract_budgets && req.contracts.contract_budgets.length > 0 && (
+                        <div className={`mt-2 p-1.5 rounded border text-[10px] font-bold flex justify-between items-center ${
+                          (req.contracts.contract_budgets[0].balance_pen || 0) < 500 
+                            ? 'bg-red-50 text-red-700 border-red-200' 
+                            : 'bg-slate-50 text-slate-700 border-slate-200'
+                        }`}>
+                          <span>{req.contracts.code}</span>
+                          <span>Saldo: S/ {(req.contracts.contract_budgets[0].balance_pen || 0).toLocaleString('es-PE')}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Sección Inferior: Despachos Programados */}
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+            <Truck className="w-5 h-5 text-green-600" />
+            Despachos / Rutas Programadas
+          </h2>
+
+          {/* Filtros y Búsqueda */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+        <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+          <div className="relative w-full md:w-96">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-4 w-4 text-slate-400" />
+            </div>
+            <input
+              type="text"
+              placeholder="Buscar por nro, placa o conductor..."
+              className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#002855] focus:border-transparent transition-colors sm:text-sm"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors border ${showFilters ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+          >
+            <Filter className="w-4 h-4" />
+            Filtros Avanzados
+          </button>
+        </div>
+        {showFilters && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Estado</label>
+              <select
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+              >
+                <option value="TODOS">Todos</option>
+                <option value="PROGRAMADO">Programado</option>
+                <option value="EN RUTA">En Ruta</option>
+                <option value="RETORNO">Retorno</option>
+                <option value="CERRADO">Cerrado</option>
+                <option value="LIQUIDADO">Liquidado</option>
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="overflow-auto max-h-[calc(100vh-220px)]">
+          <table className="w-full text-left border-collapse relative">
+            <thead className="bg-slate-50 text-slate-500 text-xs text-left sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0] border-slate-100 uppercase tracking-wider">
+                  <tr>
+                    <th className="p-4 font-semibold whitespace-nowrap">Despacho</th>
+                    <th className="p-4 font-semibold whitespace-nowrap">Unidad / Chofer</th>
+                    <th className="p-4 font-semibold whitespace-nowrap text-right">Dist. (KM)</th>
+                    <th className="p-4 font-semibold">Solicitudes (Ruta)</th>
+                    <th className="p-4 font-semibold whitespace-nowrap">Salida Programada</th>
+                    <th className="p-4 font-semibold whitespace-nowrap">Estado</th>
+                    <th className="p-4 font-semibold text-right whitespace-nowrap">Acción</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-slate-500">
+                        <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                        Cargando despachos...
+                      </td>
+                    </tr>
+                  ) : filteredDispatches.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-slate-500">
+                        No hay despachos registrados.
+                      </td>
+                    </tr>
+                  ) : (
+                    dispatches.map(dispatch => (
+                      <tr key={dispatch.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-4">
+                          <button 
+                            onClick={() => setSelectedDispatchDetail(dispatch)}
+                            className="font-bold text-[#002855] text-sm hover:underline hover:text-blue-600 transition-all text-left"
+                          >
+                            {dispatch.dispatch_number}
+                          </button>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex flex-col">
+                            <span className="font-bold text-[#002855] text-sm uppercase">{dispatch.vehicle_plate}</span>
+                            <span className="text-xs text-slate-500">{dispatch.driver_name}</span>
+                          </div>
+                        </td>
+                        <td className="p-4 text-sm font-semibold text-slate-700 text-right">
+                          {dispatch.estimated_distance_km ? `${dispatch.estimated_distance_km} KM` : '-'}
+                        </td>
+                        <td className="p-4 text-xs text-slate-600">
+                          {dispatch.dispatch_requests && dispatch.dispatch_requests.length > 0 ? (
+                            (() => {
+                              const reqs = dispatch.dispatch_requests;
+                              const recojos = reqs.filter(r => r.transport_requests.request_type === 'RECOJO').length;
+                              const traslados = reqs.filter(r => r.transport_requests.request_type === 'TRASLADO').length;
+                              const despachos = reqs.filter(r => !r.transport_requests.request_type || r.transport_requests.request_type === 'DESPACHO').length;
+                              
+                              const tooltipText = reqs.map(r => r.transport_requests.request_number).join(', ');
+
+                              return (
+                                <div className="flex flex-col gap-1.5" title={`OTs: ${tooltipText}`}>
+                                  <div className="font-bold text-slate-700">{reqs.length} Punto{reqs.length !== 1 ? 's' : ''} de Ruta</div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {recojos > 0 && <span className="bg-orange-50 text-orange-700 text-[10px] px-1.5 py-0.5 rounded font-semibold border border-orange-200">Recojos: {recojos}</span>}
+                                    {despachos > 0 && <span className="bg-emerald-50 text-emerald-700 text-[10px] px-1.5 py-0.5 rounded font-semibold border border-emerald-200">Despachos: {despachos}</span>}
+                                    {traslados > 0 && <span className="bg-purple-50 text-purple-700 text-[10px] px-1.5 py-0.5 rounded font-semibold border border-purple-200">Traslados: {traslados}</span>}
+                                  </div>
+                                </div>
+                              );
+                            })()
+                          ) : (
+                            <span className="text-slate-400">Sin detalles</span>
+                          )}
+                        </td>
+                        <td className="p-4 text-sm text-slate-600">
+                          <div className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(dispatch.scheduled_departure).toLocaleString()}
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <span className={`px-2 py-1 text-xs font-semibold rounded-md whitespace-nowrap ${
+                            dispatch.status === 'PROGRAMADO' ? 'bg-yellow-100 text-yellow-700' :
+                            (dispatch.status === 'EN_CURSO' || dispatch.status === 'EN RUTA') ? 'bg-blue-100 text-blue-700' :
+                            dispatch.status === 'ESPERANDO_AUTORIZACION' ? 'bg-orange-100 text-orange-700' :
+                            dispatch.status === 'RETORNO' ? 'bg-indigo-100 text-indigo-700' :
+                            dispatch.status === 'ENTREGADO' ? 'bg-green-100 text-green-700' :
+                            'bg-red-100 text-red-700'
+                          }`}>
+                            {dispatch.status}
+                          </span>
+                        </td>
+                        <td className="p-4 text-right">
+                          {dispatch.status === 'PROGRAMADO' && (
+                            <button 
+                              onClick={() => startRoute(dispatch.id, dispatch.dispatch_requests || [])}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 transition-colors rounded-lg text-xs font-medium border border-blue-200 whitespace-nowrap"
+                            >
+                              <PlayCircle className="w-3 h-3" />
+                              Iniciar
+                            </button>
+                          )}
+                          {dispatch.status === 'ESPERANDO_AUTORIZACION' && (
+                            <button 
+                              onClick={() => handleAuthorizeReturn(dispatch.id)}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 transition-colors rounded-lg text-xs font-medium border border-indigo-200 whitespace-nowrap"
+                            >
+                              <CheckCircle2 className="w-3 h-3" />
+                              Autorizar Retorno
+                            </button>
+                          )}
+                          {dispatch.status === 'RETORNO' && (
+                            <button 
+                              onClick={() => handleCloseRoute(dispatch.id)}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800 transition-colors rounded-lg text-xs font-medium border border-green-200 whitespace-nowrap"
+                            >
+                              <CheckCircle2 className="w-3 h-3" />
+                              Cerrar Ruta
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title="Armar Ruta y Programar Unidad"
+        maxWidth="max-w-5xl"
+      >
+        <form onSubmit={handleProgramar} className="flex flex-col lg:flex-row gap-6">
+          {/* Columna Izquierda: Datos del Viaje */}
+          <div className="lg:w-1/3 flex flex-col gap-4">
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm">
+              <h4 className="font-semibold text-[#002855] flex items-center gap-2 mb-4">
+                <FileText className="w-4 h-4" />
+                Documento de Salida
+              </h4>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Tipo de Despacho (Global)</label>
+                  <select 
+                    className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none text-sm font-medium"
+                    value={newDispatch.document_type}
+                    onChange={(e) => setNewDispatch({...newDispatch, document_type: e.target.value as 'GR' | 'NOTA_SALIDA'})}
+                  >
+                    <option value="GR">Transporte JRM (Se emitirán Guías de Remisión)</option>
+                    <option value="NOTA_SALIDA">Recojo por Cliente (Se emitirán Notas de Salida)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm">
+              <h4 className="font-semibold text-[#002855] flex items-center gap-2 mb-4">
+                <Truck className="w-4 h-4" />
+                Datos del Vehículo
+              </h4>
+              
+              <div className="space-y-3">
+                {newDispatch.document_type === 'GR' ? (
+                  <>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Placa del Vehículo</label>
+                      <select 
+                        required
+                        className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none text-sm font-medium"
+                        value={newDispatch.vehicle_plate}
+                        onChange={(e) => {
+                          const plate = e.target.value
+                          setNewDispatch({...newDispatch, vehicle_plate: plate})
+                          lookupFreightRate(plate, newDispatch.selected_requests.map(r => r.id))
+                        }}
+                      >
+                        <option value="">Seleccione vehículo...</option>
+                        {vehicles.map((v, i) => (
+                          <option key={i} value={v.plate}>
+                            {v.plate} - {v.brand} {v.model} ({v.carriers?.business_name})
+                          </option>
+                        ))}
+                      </select>
+                      {/* Tarifa detectada */}
+                      {loadingRate && (
+                        <p className="text-xs text-slate-400 flex items-center gap-1 mt-1"><Loader2 className="w-3 h-3 animate-spin" /> Buscando tarifa...</p>
+                      )}
+                      {!loadingRate && detectedFreightRate && (
+                        <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2">
+                          <Tag className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <div>
+                            <p className="text-xs font-bold text-emerald-800">Tarifa Fija: <span className="text-base">S/ {detectedFreightRate.rate.toLocaleString('es-PE')}</span></p>
+                            <p className="text-[10px] text-emerald-600">{detectedFreightRate.district} • {detectedFreightRate.zone}</p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Alerta de Presupuesto Insuficiente en Modal */}
+                      {!loadingRate && detectedFreightRate && newDispatch.selected_requests.length > 0 && (() => {
+                        // Tomamos el primer request seleccionado para ver su contrato
+                        const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
+                        const budget = firstReq?.contracts?.contract_budgets?.[0]?.balance_pen || 0
+                        
+                        if (firstReq?.contracts && budget < detectedFreightRate.rate) {
+                          return (
+                            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg flex flex-col gap-1 animate-pulse">
+                              <p className="text-xs font-bold text-red-800 flex items-center gap-1">
+                                ⚠️ ALERTA DE PRESUPUESTO
+                              </p>
+                              <p className="text-[10px] text-red-700">
+                                El contrato <strong>{firstReq.contracts.code}</strong> tiene un saldo de <strong>S/ {budget.toLocaleString('es-PE')}</strong>, 
+                                lo cual es insuficiente para cubrir la tarifa de <strong>S/ {detectedFreightRate.rate.toLocaleString('es-PE')}</strong>.
+                              </p>
+                            </div>
+                          )
+                        }
+                        return null
+                      })()}
+                      
+                      {!loadingRate && !detectedFreightRate && newDispatch.vehicle_plate && newDispatch.selected_requests.length > 0 && (
+                        <p className="text-xs text-slate-400 mt-1">Sin tarifa fija registrada para esta ruta.</p>
+                      )}
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Conductor</label>
+                      <select 
+                        required
+                        className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none text-sm"
+                        value={newDispatch.driver_name}
+                        onChange={(e) => setNewDispatch({...newDispatch, driver_name: e.target.value})}
+                      >
+                        <option value="">Seleccione conductor...</option>
+                        {drivers.map((d, i) => (
+                          <option key={i} value={`${d.first_name} ${d.last_name}`}>
+                            {d.first_name} {d.last_name} - {d.document_number} ({d.carriers?.business_name})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 mb-3">
+                    Nota de salida seleccionada. El cliente recoge, no requiere asignar conductor ni vehículo.
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Fecha Programada Salida</label>
+                  <input 
+                    type="datetime-local" 
+                    required
+                    className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none text-sm"
+                    value={newDispatch.scheduled_departure}
+                    onChange={(e) => setNewDispatch({...newDispatch, scheduled_departure: e.target.value})}
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1 flex justify-between items-center">
+                    Distancia KM (Sugerido Automático)
+                    {calculatingDistance && <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />}
+                  </label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    step="0.1"
+                    placeholder="Ej. 120.5"
+                    disabled={calculatingDistance}
+                    className={`w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none text-sm ${calculatingDistance ? 'opacity-50' : ''}`}
+                    value={newDispatch.estimated_distance_km}
+                    onChange={(e) => setNewDispatch({...newDispatch, estimated_distance_km: e.target.value === '' ? '' : Number(e.target.value)})}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Columna Derecha: Selección de Solicitudes */}
+          <div className="lg:w-2/3 flex flex-col">
+            <h4 className="font-semibold text-slate-700 flex items-center justify-between mb-2">
+              Seleccionar Solicitudes
+              <span className="text-xs font-medium bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
+                {newDispatch.selected_requests.length} seleccionadas
+              </span>
+            </h4>
+            
+            <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden flex-1 flex flex-col">
+              <div className="overflow-y-auto p-2 space-y-2" style={{ maxHeight: 'calc(60vh - 120px)' }}>
+                {pendingRequests.length === 0 ? (
+                  <div className="p-8 text-center text-slate-500">
+                    <p className="font-medium">No hay solicitudes disponibles</p>
+                    <p className="text-xs mt-1">Crea nuevas solicitudes desde el módulo principal</p>
+                  </div>
+                ) : (
+                  pendingRequests.map(req => {
+                    const isRecojo = req.request_type === 'RECOJO'
+                    const isTraslado = req.request_type === 'TRASLADO'
+                    const typeLabel = req.request_type || (isRecojo ? 'RECOJO' : 'DESPACHO')
+                    
+                    let typeColor = 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                    if (isRecojo) typeColor = 'bg-orange-100 text-orange-700 border-orange-200'
+                    if (isTraslado) typeColor = 'bg-purple-100 text-purple-700 border-purple-200'
+
+                    return (
+                      <div key={req.id} className="flex flex-col gap-2">
+                        <label 
+                          className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                            newDispatch.selected_requests.some(r => r.id === req.id)
+                              ? 'bg-white border-blue-400 shadow-md ring-1 ring-blue-400' 
+                              : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-sm'
+                          }`}
+                        >
+                          <div className="pt-0.5">
+                            <input 
+                              type="checkbox" 
+                              className="w-4 h-4 text-[#002855] rounded border-slate-300 focus:ring-[#002855]"
+                              checked={newDispatch.selected_requests.some(r => r.id === req.id)}
+                              onChange={() => toggleRequestSelection(req.id, req.pickup_address, req.delivery_address)}
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-bold text-[#002855] text-sm">{req.request_number}</span>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${typeColor}`}>
+                                {typeLabel}
+                              </span>
+                            </div>
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                            <div className="text-xs text-slate-600">
+                              <span className="font-semibold text-slate-800 block mb-0.5">Origen:</span>
+                              <span className="truncate block" title={req.pickup_address}>{req.pickup_address}</span>
+                            </div>
+                            <div className="text-xs text-slate-600">
+                              <span className="font-semibold text-slate-800 block mb-0.5">Destino:</span>
+                              <span className="truncate block" title={req.delivery_address}>{req.delivery_address}</span>
+                            </div>
+                          </div>
+                          </div>
+                        </label>
+                        
+                      </div>
+                    )
                   })
                 )}
               </div>
