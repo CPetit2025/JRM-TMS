@@ -185,7 +185,9 @@ export default function LoginPage() {
           <div className="mt-6 pt-6 border-t border-slate-200">
             <a 
               href="/app-release.apk" 
-              download 
+              download="JRM-Conductor.apk"
+              target="_blank"
+              rel="noopener noreferrer"
               className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2"
             >
               <Download className="w-5 h-5" />
