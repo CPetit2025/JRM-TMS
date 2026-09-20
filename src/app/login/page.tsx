@@ -6,6 +6,7 @@ import { Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { PublicRegistrationModal } from '@/components/forms/PublicRegistrationModal'
+import { Download } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -179,6 +180,20 @@ export default function LoginPage() {
             >
               Regístrate aquí
             </button>
+          </div>
+
+          <div className="mt-6 pt-6 border-t border-slate-200">
+            <a 
+              href="/app-release.apk" 
+              download 
+              className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2"
+            >
+              <Download className="w-5 h-5" />
+              Descargar App para Conductores (APK)
+            </a>
+            <p className="text-xs text-center text-slate-500 mt-3">
+              Versión nativa Android con rastreo GPS en segundo plano.
+            </p>
           </div>
         </div>
       </div>
