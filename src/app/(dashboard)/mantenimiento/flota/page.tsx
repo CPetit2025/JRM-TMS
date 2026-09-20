@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2, ArrowRight, Filter, Upload, MoreVertical, Ban } from 'lucide-react'
+import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2, ArrowRight, Filter, Upload, MoreVertical, Ban, Download } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
@@ -371,6 +371,15 @@ export default function FlotaPage() {
                 {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                 Carga Masiva
               </button>
+              <a 
+                href={`data:text/csv;charset=utf-8,${encodeURIComponent('Placa,Tipo,Marca,Modelo,Año,Peso_kg,Volumen_m3\nABC-123,CAMION,VOLVO,FH16,2023,25000,40')}`}
+                download="plantilla_vehiculos.csv"
+                className="px-4 py-2 bg-slate-100 text-[#002855] border border-[#002855]/20 rounded-lg font-medium hover:bg-slate-200 transition-colors flex items-center gap-2"
+                title="Descargar plantilla CSV"
+              >
+                <Download className="w-4 h-4" />
+                Plantilla
+              </a>
             </>
           ) : (
             <button 
