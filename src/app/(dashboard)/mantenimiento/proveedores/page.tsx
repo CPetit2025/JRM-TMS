@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Building2, Plus, Search, CheckCircle, XCircle, Clock, Save, X, Phone, MapPin } from 'lucide-react'
-import { toast } from 'react-hot-toast'
+import { toast } from 'sonner'
 
 export default function ProveedoresPage() {
   const [providers, setProviders] = useState<any[]>([])
