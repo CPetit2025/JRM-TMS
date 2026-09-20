@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Truck, Plus, Search, Building2, Save, X } from 'lucide-react'
+import { Truck, Plus, Search, Building2, Save, X, Edit, Ban, CheckCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 
@@ -92,6 +92,29 @@ export default function TransportistasPage() {
     setIsModalOpen(true)
   }
 
+  const openEdit = (carrier: any) => {
+    setForm({
+      id: carrier.id,
+      business_name: carrier.business_name,
+      tax_id: carrier.tax_id,
+      type: carrier.type,
+      contact_phone: carrier.contact_phone || '',
+      is_active: carrier.is_active
+    })
+    setIsModalOpen(true)
+  }
+
+  const toggleStatus = async (id: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase.from('carriers').update({ is_active: !currentStatus }).eq('id', id)
+      if (error) throw error
+      toast.success(currentStatus ? 'Proveedor suspendido' : 'Proveedor activado')
+      fetchCarriers()
+    } catch (e: any) {
+      toast.error('Error al cambiar estado: ' + e.message)
+    }
+  }
+
   const filtered = carriers.filter(c => 
     c.business_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
     c.tax_id?.includes(searchTerm)
@@ -145,16 +168,17 @@ export default function TransportistasPage() {
                 <th className="px-6 py-4">Tipo</th>
                 <th className="px-6 py-4">Teléfono</th>
                 <th className="px-6 py-4">Estado</th>
+                <th className="px-6 py-4 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-500">Cargando...</td>
+                  <td colSpan={6} className="px-6 py-8 text-center text-slate-500">Cargando...</td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-500">No se encontraron resultados.</td>
+                  <td colSpan={6} className="px-6 py-8 text-center text-slate-500">No se encontraron resultados.</td>
                 </tr>
               ) : (
                 filtered.map(c => (
@@ -171,6 +195,28 @@ export default function TransportistasPage() {
                       <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-semibold ${c.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                         {c.is_active ? 'ACTIVO' : 'INACTIVO'}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button 
+                          onClick={() => openEdit(c)}
+                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Editar"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => toggleStatus(c.id, c.is_active)}
+                          className={`p-2 rounded-lg transition-colors ${
+                            c.is_active 
+                              ? 'text-slate-400 hover:text-red-600 hover:bg-red-50' 
+                              : 'text-slate-400 hover:text-green-600 hover:bg-green-50'
+                          }`}
+                          title={c.is_active ? "Suspender" : "Activar"}
+                        >
+                          {c.is_active ? <Ban className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
