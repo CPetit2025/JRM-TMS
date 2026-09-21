@@ -10,6 +10,8 @@ Las políticas RLS de las tablas operacionales principales comprueban sede y per
 
 Configurar `OPENAI_API_KEY` y `SUPABASE_SERVICE_ROLE_KEY` solo en el servidor de Next.js. `OPENAI_AI_MODEL` es opcional; por defecto se usa `gpt-4.1-mini`. El OCR usa `AI_PROVIDER=openai` y `OPENAI_OCR_MODEL=gpt-4o` por defecto. Si se utiliza Gemini para OCR, configurar `AI_PROVIDER=gemini`, `GEMINI_API_KEY` y opcionalmente `GEMINI_OCR_MODEL`. Ninguna clave de proveedor se guarda en el navegador. Al cargar la aplicación se eliminan las claves antiguas de la configuración local.
 
+La plantilla versionada `.env.example` y el comando `npm run check:ai-config` permiten preparar y comprobar los nombres de variables sin revelar sus valores. Para Vercel, seguir [configurar OpenAI en Vercel](configurar-openai-vercel.md).
+
 Las consultas IA requieren `ia:read:<ámbito>` y permiso de lectura del módulo. Los ámbitos son `distribucion`, `inventarios`, `mantenimiento`, `contratos` y `gerencia`. Preparar mantenimiento requiere `ia:action:mantenimiento` y permiso de escritura en `mantenimiento-ot`. El administrador conserva acceso completo. Antes de conceder permisos, comprobar que cada usuario tenga sus sedes correctas.
 
 La función `reserve_ai_request` limita cada usuario a 5 consultas de copiloto por minuto y 50 por día, y 3 OCR por minuto y 30 por día. Cada consulta se audita con usuario, herramientas, contexto de pantalla, modelo, tokens y resultado; no se almacena el texto de la pregunta ni el contenido del comprobante. Las propuestas de mantenimiento caducan a los 30 minutos y una confirmación válida crea una sola OT.
