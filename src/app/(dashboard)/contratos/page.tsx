@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import * as XLSX from 'xlsx'
+import { useRouter } from 'next/navigation'
 
 interface Contract {
   id: string
@@ -24,6 +25,9 @@ interface Contract {
     id: string
     business_name: string
   }
+  subcontracts_count?: number
+  errors_count?: number
+  requests_count?: number
   budget?: {
     allocated_usd: number
     allocated_pen: number
@@ -32,6 +36,7 @@ interface Contract {
 }
 
 export default function ContratosPage() {
+  const router = useRouter()
   const supabase = createClient()
   const [contracts, setContracts] = useState<Contract[]>([])
   const [clients, setClients] = useState<any[]>([])
@@ -103,21 +108,20 @@ export default function ContratosPage() {
     setLoading(true)
     try {
       const { data, error } = await supabase
-        .from('contracts')
-        .select(`
-          *,
-          clients(id, business_name),
-          contract_budgets (
-            allocated_usd, allocated_pen, balance_pen
-          )
-        `)
+        .from('vw_contracts_dashboard')
+        .select('*')
         .order('created_at', { ascending: false })
 
       if (error) throw error
 
       const formatted = (data || []).map((c: any) => ({
         ...c,
-        budget: c.contract_budgets && c.contract_budgets.length > 0 ? c.contract_budgets[0] : null
+        clients: c.client_id ? { id: c.client_id, business_name: c.client_name } : undefined,
+        budget: {
+          allocated_usd: c.allocated_usd,
+          allocated_pen: c.allocated_pen,
+          balance_pen: c.balance_pen
+        }
       }))
 
       setContracts(formatted)
@@ -545,6 +549,7 @@ export default function ContratosPage() {
                 <th className="px-6 py-4 font-semibold">Cliente</th>
                 <th className="px-6 py-4 font-semibold text-center">Tipo</th>
                 <th className="px-6 py-4 font-semibold text-left">Dirección</th>
+                <th className="px-6 py-4 font-semibold text-center">Detalles</th>
                 <th className="px-6 py-4 font-semibold text-right">Carga (TON)</th>
                 <th className="px-6 py-4 font-semibold text-right">Partida de Transporte (S/)</th>
                 <th className="px-6 py-4 font-semibold text-right">Saldo Disponible (S/)</th>
@@ -567,7 +572,7 @@ export default function ContratosPage() {
                 </tr>
               ) : (
                 filteredContracts.map((contract) => (
-                  <tr key={contract.id} onClick={() => window.dispatchEvent(new CustomEvent('jrm:context', { detail: { contractId: contract.id } }))} className="hover:bg-slate-50/50 transition-colors">
+                  <tr key={contract.id} onClick={() => router.push(`/contratos/${contract.id}`)} className="cursor-pointer hover:bg-slate-50/50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <span className="font-semibold text-slate-900 text-base">{contract.code}</span>
@@ -593,6 +598,28 @@ export default function ContratosPage() {
                         )}
                       </div>
                     </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex flex-col gap-1 items-center">
+                        {contract.subcontracts_count !== undefined && contract.subcontracts_count > 0 && (
+                          <span className="text-[10px] text-purple-600 font-medium bg-purple-50 px-2 py-0.5 rounded-full">
+                            {contract.subcontracts_count} Subs
+                          </span>
+                        )}
+                        {contract.errors_count !== undefined && contract.errors_count > 0 && (
+                          <span className="text-[10px] text-red-600 font-medium bg-red-50 px-2 py-0.5 rounded-full">
+                            {contract.errors_count} Errores
+                          </span>
+                        )}
+                        {contract.requests_count !== undefined && contract.requests_count > 0 && (
+                          <span className="text-[10px] text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-full">
+                            {contract.requests_count} Solicitudes
+                          </span>
+                        )}
+                        {(!contract.subcontracts_count && !contract.errors_count && !contract.requests_count) && (
+                          <span className="text-[10px] text-slate-400">-</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-6 py-4 text-sm font-medium text-slate-700">
                       {contract.total_weight_kg ? Number(contract.total_weight_kg).toLocaleString('en-US') : '0'} KG
                     </td>
@@ -612,7 +639,7 @@ export default function ContratosPage() {
                     </td>
                     <td className="px-6 py-4 text-center">
                       <button 
-                        onClick={() => handleEditClick(contract)}
+                        onClick={(e) => { e.stopPropagation(); handleEditClick(contract); }}
                         className="p-1.5 text-slate-400 hover:text-[#002855] hover:bg-slate-100 rounded-lg transition-colors"
                         title="Editar Contrato/Partidas"
                       >

@@ -46,6 +46,7 @@ export function AppUpdateNotice() {
   const [forced, setForced] = useState(false)
   const [open, setOpen] = useState(false)
   const [downloadState, setDownloadState] = useState<'idle' | 'downloading' | 'ready'>('idle')
+  const [legacyInstall, setLegacyInstall] = useState(false)
   const [updateError, setUpdateError] = useState('')
 
   const check = useCallback(async () => {
@@ -57,6 +58,7 @@ export function AppUpdateNotice() {
         // El APK legado (build 3) se publicó antes de incluir @capacitor/app.
         const info = Capacitor.isPluginAvailable('App')
           ? await App.getInfo() : { build: '3', version: '1.0.2' }
+        setLegacyInstall(!Capacitor.isPluginAvailable('AppUpdater'))
         const nativeRelease = data.android as Release | null
         if (!nativeRelease || nativeRelease.build_number === null ||
           Number(info.build) >= nativeRelease.build_number) { setRelease(null); return }
@@ -104,6 +106,8 @@ export function AppUpdateNotice() {
   const update = async () => {
     if (platform === 'web') {
       window.location.reload()
+    } else if (legacyInstall && installer) {
+      window.open(installer, '_system')
     } else if (installer && nativeAppUpdater && release.artifact_sha256) {
       try {
         setUpdateError('')
@@ -147,6 +151,10 @@ export function AppUpdateNotice() {
             {!forced && <button type="button" aria-label="Cerrar" onClick={() => setOpen(false)}><X className="h-5 w-5" /></button>}
           </div>
           <p className="mt-4 whitespace-pre-wrap text-sm text-slate-700">{release.release_notes || 'Mejoras de estabilidad y seguridad.'}</p>
+          {platform === 'android' && legacyInstall && <p className="mt-3 text-sm text-amber-800">
+            Esta instalación usa una firma de prueba. Sincroniza tus tareas pendientes, abre JRM-TMS en Chrome,
+            descarga el APK, desinstala la app anterior e instala la nueva. Este cambio de firma se hace una sola vez.
+          </p>}
           {platform === 'android' && !installer && <p className="mt-3 text-sm text-red-700">El instalador aún no está publicado. Contacta a soporte.</p>}
           {platform === 'android' && downloadState === 'ready' && <p className="mt-3 text-sm font-semibold text-emerald-700">Descarga verificada y lista para instalar.</p>}
           {updateError && <p className="mt-3 text-sm text-red-700">{updateError}</p>}
@@ -154,7 +162,7 @@ export function AppUpdateNotice() {
             <button type="button" onClick={() => void update()} disabled={platform === 'android' && (!installer || downloadState === 'downloading')}
               className="inline-flex items-center gap-2 rounded-lg bg-[#002855] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
               <RefreshCw className="h-4 w-4" /> {platform === 'web' ? 'Recargar ahora' :
-                downloadState === 'downloading' ? 'Descargando...' : downloadState === 'ready' ? 'Instalar ahora' : 'Descargar actualización'}
+                legacyInstall ? 'Abrir descarga' : downloadState === 'downloading' ? 'Descargando...' : downloadState === 'ready' ? 'Instalar ahora' : 'Descargar actualización'}
             </button>
             {!forced && <button type="button" onClick={() => setOpen(false)}
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm">Más tarde</button>}

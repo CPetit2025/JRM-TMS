@@ -1,5 +1,5 @@
 const { spawnSync } = require('node:child_process');
-const { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs');
+const { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } = require('node:fs');
 const { createHash } = require('node:crypto');
 const path = require('node:path');
 
@@ -34,6 +34,27 @@ run(gradle, ['assembleRelease'], { cwd: android, shell: process.platform === 'wi
 const version = process.env.JRM_ANDROID_VERSION_NAME || '1.0.3';
 const build = process.env.JRM_ANDROID_VERSION_CODE || '4';
 const source = path.join(android, 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
+const metadata = JSON.parse(readFileSync(path.join(android, 'app', 'build', 'outputs', 'apk', 'release', 'output-metadata.json'), 'utf8'));
+if (metadata.applicationId !== 'com.jrm.tms' || metadata.variantName !== 'release' ||
+    metadata.elements?.[0]?.versionCode !== Number(build) || metadata.elements?.[0]?.versionName !== version) {
+  throw new Error('La identidad o versión del APK release no coincide con la configuración.');
+}
+const localProperties = path.join(android, 'local.properties');
+const sdkProperty = existsSync(localProperties)
+  ? readFileSync(localProperties, 'utf8').match(/^sdk\.dir=(.+)$/m)?.[1]
+  : null;
+const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT ||
+  sdkProperty?.trim().replace(/\\:/g, ':').replace(/\\\\/g, '\\');
+if (!sdk) throw new Error('No se encontró el Android SDK para verificar la firma.');
+const buildTools = path.join(sdk, 'build-tools');
+const toolsVersion = readdirSync(buildTools).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
+  .find(name => existsSync(path.join(buildTools, name, 'lib', 'apksigner.jar')));
+if (!toolsVersion) throw new Error('No se encontró apksigner en Android SDK.');
+const java = process.env.JAVA_HOME
+  ? path.join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'java.exe' : 'java')
+  : 'java';
+run(java, ['-jar', path.join(buildTools, toolsVersion, 'lib', 'apksigner.jar'),
+  'verify', '--print-certs', source]);
 const outputDir = path.join(root, 'artifacts', 'android');
 mkdirSync(outputDir, { recursive: true });
 const target = path.join(outputDir, `jrm-tms-${version}-${build}.apk`);

@@ -2,7 +2,7 @@
 import Image from 'next/image'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Eye, EyeOff, UserCircle } from 'lucide-react'
+import { Loader2, Eye, EyeOff, UserCircle, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 
@@ -13,6 +13,7 @@ export default function OperativeLogin() {
   const [loading, setLoading] = useState(false)
   const [showPin, setShowPin] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
+  const [androidInstallerUrl, setAndroidInstallerUrl] = useState<string | null>(null)
 
   useEffect(() => {
     const savedId = localStorage.getItem('jrm_saved_operative_id')
@@ -20,6 +21,13 @@ export default function OperativeLogin() {
       setIdentifier(savedId)
       setRememberMe(true)
     }
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/app-version', { cache: 'no-store' }).then(response => response.json()).then(data => {
+      const value = data.android?.installer_url
+      if (typeof value === 'string' && new URL(value).protocol === 'https:') setAndroidInstallerUrl(value)
+    }).catch(() => {})
   }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -192,6 +200,16 @@ export default function OperativeLogin() {
             </button>
           </p>
         </div>
+
+        {androidInstallerUrl && <div className="mt-6 border-t border-slate-100 pt-5 text-center">
+          <a href={androidInstallerUrl} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-3 text-sm font-semibold text-white">
+            <Download className="h-4 w-4" /> Descargar app Android firmada
+          </a>
+          <p className="mt-2 text-xs text-slate-600">
+            Si tienes la versión de prueba anterior, sincroniza tus tareas y desinstálala antes de instalar esta versión.
+          </p>
+        </div>}
 
         <div className="mt-8 pt-6 border-t border-slate-100 text-center">
           <p className="text-xs text-slate-400 font-medium">

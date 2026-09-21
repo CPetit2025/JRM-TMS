@@ -1,0 +1,57 @@
+name: Build signed Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: Android version name
+        required: true
+        default: '1.0.3'
+      version_code:
+        description: Android version code (must increase)
+        required: true
+        default: '4'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v4
+      - run: npm ci
+      - name: Restore signing key
+        env:
+          JRM_RELEASE_KEYSTORE_BASE64: ${{ secrets.JRM_RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$JRM_RELEASE_KEYSTORE_BASE64"
+          mkdir -p artifacts/android/signing
+          printf '%s' "$JRM_RELEASE_KEYSTORE_BASE64" | base64 --decode > artifacts/android/signing/jrm-tms-release.p12
+      - name: Build and verify APK
+        env:
+          JRM_KEYSTORE_PATH: ${{ github.workspace }}/artifacts/android/signing/jrm-tms-release.p12
+          JRM_KEYSTORE_PASSWORD: ${{ secrets.JRM_KEYSTORE_PASSWORD }}
+          JRM_KEY_ALIAS: jrm-tms-release
+          JRM_KEY_PASSWORD: ${{ secrets.JRM_KEY_PASSWORD }}
+          JRM_ANDROID_VERSION_NAME: ${{ inputs.version_name }}
+          JRM_ANDROID_VERSION_CODE: ${{ inputs.version_code }}
+        run: npm run build:apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jrm-tms-android-${{ inputs.version_name }}-${{ inputs.version_code }}
+          path: |
+            artifacts/android/*.apk
+            artifacts/android/*.sha256
+          if-no-files-found: error
+          retention-days: 90

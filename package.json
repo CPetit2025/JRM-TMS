@@ -10,6 +10,7 @@
     "lint:fix": "eslint --fix",
     "typecheck": "tsc --noEmit",
     "build:apk": "node scripts/build-apk.cjs",
+    "publish:apk": "node scripts/publish-apk.cjs",
     "brand:assets": "node scripts/generate-brand-assets.cjs",
     "check:supabase": "node scripts/check-supabase-connection.cjs",
     "check:vercel": "node scripts/check-vercel-config.cjs",
