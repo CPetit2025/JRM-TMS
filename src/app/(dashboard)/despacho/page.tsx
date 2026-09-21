@@ -4,6 +4,7 @@ import { Truck, MapPin, Loader2, PlayCircle, Calendar, Plus, FileText, ArrowRigh
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { calculateRouteDistance } from '@/lib/routing'
 import { usePermissions } from '@/hooks/usePermissions'
 
@@ -805,23 +806,16 @@ export default function DespachoPage() {
                   <>
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">Placa del Vehículo</label>
-                      <select 
-                        required
-                        className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none text-sm font-medium"
+                      <SearchableSelect
                         value={newDispatch.vehicle_plate}
-                        onChange={(e) => {
-                          const plate = e.target.value
+                        onChange={(val) => {
+                          const plate = val
                           setNewDispatch({...newDispatch, vehicle_plate: plate})
                           lookupFreightRate(plate, newDispatch.selected_requests.map(r => r.id))
                         }}
-                      >
-                        <option value="">Seleccione vehículo...</option>
-                        {vehicles.map((v, i) => (
-                          <option key={i} value={v.plate}>
-                            {v.plate} - {v.brand} {v.model} ({v.carriers?.business_name})
-                          </option>
-                        ))}
-                      </select>
+                        options={vehicles.map(v => ({ value: v.plate, label: `${v.plate} - ${v.brand} ${v.model} (${v.carriers?.business_name})` }))}
+                        placeholder="Seleccione vehículo..."
+                      />
                       {/* Tarifa detectada */}
                       {loadingRate && (
                         <p className="text-xs text-slate-400 flex items-center gap-1 mt-1"><Loader2 className="w-3 h-3 animate-spin" /> Buscando tarifa...</p>
@@ -865,19 +859,12 @@ export default function DespachoPage() {
                     
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">Conductor</label>
-                      <select 
-                        required
-                        className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none text-sm"
+                      <SearchableSelect
                         value={newDispatch.driver_name}
-                        onChange={(e) => setNewDispatch({...newDispatch, driver_name: e.target.value})}
-                      >
-                        <option value="">Seleccione conductor...</option>
-                        {drivers.map((d, i) => (
-                          <option key={i} value={`${d.first_name} ${d.last_name}`}>
-                            {d.first_name} {d.last_name} - {d.document_number} ({d.carriers?.business_name})
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(val) => setNewDispatch({...newDispatch, driver_name: val})}
+                        options={drivers.map(d => ({ value: `${d.first_name} ${d.last_name}`, label: `${d.first_name} ${d.last_name} - ${d.document_number} (${d.carriers?.business_name})` }))}
+                        placeholder="Seleccione conductor..."
+                      />
                     </div>
                   </>
                 ) : (

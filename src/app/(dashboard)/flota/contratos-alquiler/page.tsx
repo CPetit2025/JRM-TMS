@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { FileSignature, Plus, Search, Calendar, DollarSign, Activity, AlertCircle, Edit, Save, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 
 export default function ContratosAlquilerPage() {
   const [contracts, setContracts] = useState<any[]>([])
@@ -171,17 +172,21 @@ export default function ContratosAlquilerPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700">Vehículo *</label>
-              <select required value={form.vehicle_id} onChange={e => setForm({...form, vehicle_id: e.target.value})} className="w-full px-3 py-2 border rounded-lg">
-                <option value="">Seleccionar...</option>
-                {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate}</option>)}
-              </select>
+              <SearchableSelect
+                value={form.vehicle_id}
+                onChange={val => setForm({...form, vehicle_id: val})}
+                options={vehicles.map(v => ({ value: v.id, label: v.plate }))}
+                placeholder="Seleccionar..."
+              />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700">Proveedor *</label>
-              <select required value={form.provider_id} onChange={e => setForm({...form, provider_id: e.target.value})} className="w-full px-3 py-2 border rounded-lg">
-                <option value="">Seleccionar...</option>
-                {providers.map(p => <option key={p.id} value={p.id}>{p.business_name}</option>)}
-              </select>
+              <SearchableSelect
+                value={form.provider_id}
+                onChange={val => setForm({...form, provider_id: val})}
+                options={providers.map(p => ({ value: p.id, label: p.business_name }))}
+                placeholder="Seleccionar..."
+              />
             </div>
           </div>
 

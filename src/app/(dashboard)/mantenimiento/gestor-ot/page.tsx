@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Wrench, Plus, Search, Calendar, CheckCircle2, FileText, AlertCircle, DollarSign, Upload, Wand2, FileImage, Filter } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { toast } from 'sonner'
 
 export default function MaintenanceWorkOrdersPage() {
@@ -438,10 +439,12 @@ export default function MaintenanceWorkOrdersPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Unidad</label>
-              <select required value={form.vehicle_plate} onChange={e => setForm({...form, vehicle_plate: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900">
-                <option value="">Seleccione...</option>
-                {vehicles.map(v => <option key={v.id} value={v.plate}>{v.plate}</option>)}
-              </select>
+              <SearchableSelect
+                value={form.vehicle_plate}
+                onChange={val => setForm({...form, vehicle_plate: val})}
+                options={vehicles.map(v => ({ value: v.plate, label: v.plate }))}
+                placeholder="Seleccione..."
+              />
             </div>
             
             <div>

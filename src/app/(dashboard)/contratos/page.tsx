@@ -4,6 +4,7 @@ import { Plus, Search, Layers, FileWarning, Briefcase, FilePlus2, CheckCircle2, 
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import * as XLSX from 'xlsx'
 import { useRouter } from 'next/navigation'
 
@@ -674,26 +675,21 @@ export default function ContratosPage() {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Cliente</label>
-                <select
+                <SearchableSelect
                   value={newContract.client_id}
-                  onChange={(e) => setNewContract({...newContract, client_id: e.target.value})}
-                  className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-white"
-                >
-                  <option value="">-- Seleccionar Cliente (Opcional) --</option>
-                  {clients.map(c => (
-                    <option key={c.id} value={c.id}>{c.business_name} ({c.tax_id})</option>
-                  ))}
-                </select>
+                  onChange={(val) => setNewContract({...newContract, client_id: val})}
+                  options={clients.map(c => ({ value: c.id, label: `${c.business_name} (${c.tax_id})` }))}
+                  placeholder="-- Seleccionar Cliente (Opcional) --"
+                />
               </div>
 
               {(newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR') && (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Contrato Madre <span className="text-red-500">*</span></label>
-                  <select
-                    required
+                  <SearchableSelect
                     value={newContract.parent_contract_id}
-                    onChange={(e) => {
-                      const parentId = e.target.value
+                    onChange={(val) => {
+                      const parentId = val
                       const parent = contracts.find(c => c.id === parentId)
                       setNewContract({
                         ...newContract,
@@ -706,13 +702,9 @@ export default function ContratosPage() {
                         } : {})
                       })
                     }}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-white"
-                  >
-                    <option value="">-- Seleccionar Contrato Padre --</option>
-                    {contracts.filter(c => c.type === 'CONTRATO').map(c => (
-                      <option key={c.id} value={c.id}>{c.code}</option>
-                    ))}
-                  </select>
+                    options={contracts.filter(c => c.type === 'CONTRATO').map(c => ({ value: c.id, label: c.code }))}
+                    placeholder="-- Seleccionar Contrato Padre --"
+                  />
                 </div>
               )}
 
