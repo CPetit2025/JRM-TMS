@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Briefcase, Layers, FileWarning, DollarSign, MapPin } from 'lucide-react'
+import { ArrowLeft, Briefcase, Layers, FileWarning, DollarSign, MapPin, Send, Receipt } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 
@@ -12,6 +12,8 @@ export default function ContratoDetallePage({ params }: { params: { id: string }
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('info')
   const [childrenContracts, setChildrenContracts] = useState<any[]>([])
+  const [requests, setRequests] = useState<any[]>([])
+  const [expenses, setExpenses] = useState<any[]>([])
   
   // Modals state
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -49,6 +51,21 @@ export default function ContratoDetallePage({ params }: { params: { id: string }
       if (!childrenError && childrenData) {
         setChildrenContracts(childrenData)
       }
+
+      const { data: reqData } = await supabase
+        .from('transport_requests')
+        .select('*')
+        .eq('contract_id', params.id)
+        .order('created_at', { ascending: false })
+      if (reqData) setRequests(reqData)
+
+      const { data: expData } = await supabase
+        .from('expense_records')
+        .select('*')
+        .eq('contract_id', params.id)
+        .order('created_at', { ascending: false })
+      if (expData) setExpenses(expData)
+
     } catch (error: any) {
       toast.error('Error al cargar detalle del contrato')
       router.push('/contratos')
@@ -196,6 +213,38 @@ export default function ContratoDetallePage({ params }: { params: { id: string }
         >
           <DollarSign className="w-4 h-4" />
           Presupuesto
+        </button>
+        <button
+          onClick={() => setActiveTab('solicitudes')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'solicitudes' 
+              ? 'border-blue-600 text-blue-600' 
+              : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+          }`}
+        >
+          <Send className="w-4 h-4" />
+          Solicitudes
+          {requests.length > 0 && (
+            <span className="bg-blue-50 text-blue-600 ml-1 px-2 py-0.5 rounded-full text-xs">
+              {requests.length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('gastos')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'gastos' 
+              ? 'border-blue-600 text-blue-600' 
+              : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+          }`}
+        >
+          <Receipt className="w-4 h-4" />
+          Gastos
+          {expenses.length > 0 && (
+            <span className="bg-slate-100 text-slate-600 ml-1 px-2 py-0.5 rounded-full text-xs">
+              {expenses.length}
+            </span>
+          )}
         </button>
       </div>
 
@@ -361,6 +410,103 @@ export default function ContratoDetallePage({ params }: { params: { id: string }
                 </span>
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'solicitudes' && (
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-sm font-semibold text-slate-800">Solicitudes de Carga</h3>
+              <button 
+                onClick={() => router.push('/solicitudes')}
+                className="text-sm bg-[#002855] text-white px-3 py-1.5 rounded-lg font-medium hover:bg-[#001d3d]"
+              >
+                Ir a Módulo de Solicitudes
+              </button>
+            </div>
+            
+            {requests.length === 0 ? (
+              <p className="text-sm text-slate-500 py-8 text-center bg-slate-50 rounded-lg border border-slate-100">
+                No hay solicitudes vinculadas a esta OT Madre.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">N° Solicitud</th>
+                      <th className="px-4 py-3 font-semibold">Solicitante</th>
+                      <th className="px-4 py-3 font-semibold">Fecha Req.</th>
+                      <th className="px-4 py-3 font-semibold">Origen</th>
+                      <th className="px-4 py-3 font-semibold">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {requests.map((req) => (
+                      <tr key={req.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 font-semibold text-blue-600">{req.request_number}</td>
+                        <td className="px-4 py-3 text-slate-700">{req.requester_name}</td>
+                        <td className="px-4 py-3 text-slate-700">{req.required_date ? req.required_date.split('T')[0] : '-'}</td>
+                        <td className="px-4 py-3 text-slate-700 truncate max-w-[150px]">{req.pickup_address}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded-full text-[10px] font-semibold ${req.status === 'APROBADA' ? 'bg-emerald-50 text-emerald-700' : 'bg-yellow-50 text-yellow-700'}`}>
+                            {req.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'gastos' && (
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-sm font-semibold text-slate-800">Gastos y Liquidaciones</h3>
+              <button className="text-sm bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg font-medium hover:bg-slate-200 border border-slate-200">
+                Registrar Gasto a OT
+              </button>
+            </div>
+            
+            {expenses.length === 0 ? (
+              <p className="text-sm text-slate-500 py-8 text-center bg-slate-50 rounded-lg border border-slate-100">
+                No hay gastos registrados directamente contra esta OT.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Categoría</th>
+                      <th className="px-4 py-3 font-semibold">Documento</th>
+                      <th className="px-4 py-3 font-semibold">Proveedor</th>
+                      <th className="px-4 py-3 font-semibold text-right">Monto</th>
+                      <th className="px-4 py-3 font-semibold">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {expenses.map((exp) => (
+                      <tr key={exp.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 font-medium text-slate-800">{exp.category}</td>
+                        <td className="px-4 py-3 text-slate-600">{exp.document_type} {exp.document_serial}-{exp.document_number}</td>
+                        <td className="px-4 py-3 text-slate-600">{exp.provider_name}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-slate-800">
+                          {exp.currency === 'USD' ? '$' : 'S/'} {Number(exp.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded-full text-[10px] font-semibold ${exp.status === 'APROBADO' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>
+                            {exp.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </div>
