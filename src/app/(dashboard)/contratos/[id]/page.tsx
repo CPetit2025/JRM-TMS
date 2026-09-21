@@ -1,12 +1,13 @@
 "use client"
-import { useState, useEffect } from 'react'
+import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Briefcase, Layers, FileWarning, DollarSign, MapPin, Send, Receipt } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { createClient } from '@/lib/supabase/client'
 
-export default function ContratoDetallePage({ params }: { params: { id: string } }) {
+export default function ContratoDetallePage({ params }: { params: Promise<{ id: string }> }) {
+  const unwrappedParams = use(params)
   const router = useRouter()
   const supabase = createClient()
   const [contract, setContract] = useState<any>(null)
@@ -29,7 +30,7 @@ export default function ContratoDetallePage({ params }: { params: { id: string }
 
   useEffect(() => {
     fetchContractDetails()
-  }, [params.id])
+  }, [unwrappedParams.id])
 
   const fetchContractDetails = async () => {
     try {
@@ -37,7 +38,7 @@ export default function ContratoDetallePage({ params }: { params: { id: string }
       const { data, error } = await supabase
         .from('vw_contracts_dashboard')
         .select('*')
-        .eq('id', params.id)
+        .eq('id', unwrappedParams.id)
         .single()
 
       if (error) throw error
@@ -46,7 +47,7 @@ export default function ContratoDetallePage({ params }: { params: { id: string }
       const { data: childrenData, error: childrenError } = await supabase
         .from('vw_contracts_dashboard')
         .select('*')
-        .eq('parent_contract_id', params.id)
+        .eq('parent_contract_id', unwrappedParams.id)
         .order('created_at', { ascending: false })
         
       if (!childrenError && childrenData) {
@@ -56,14 +57,14 @@ export default function ContratoDetallePage({ params }: { params: { id: string }
       const { data: reqData } = await supabase
         .from('transport_requests')
         .select('*')
-        .eq('contract_id', params.id)
+        .eq('contract_id', unwrappedParams.id)
         .order('created_at', { ascending: false })
       if (reqData) setRequests(reqData)
 
       const { data: expData } = await supabase
         .from('expense_records')
         .select('*')
-        .eq('contract_id', params.id)
+        .eq('contract_id', unwrappedParams.id)
         .order('created_at', { ascending: false })
       if (expData) setExpenses(expData)
 
