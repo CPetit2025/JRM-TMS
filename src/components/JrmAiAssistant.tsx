@@ -12,6 +12,7 @@ type Proposal = { id: string; payload: { vehicle_plate: string; type: string; re
 export function JrmAiAssistant() {
   const path = usePathname()
   const [enabled, setEnabled] = useState(false)
+  const [available, setAvailable] = useState(false)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [question, setQuestion] = useState('')
@@ -25,8 +26,9 @@ export function JrmAiAssistant() {
     fetch('/api/jrm-ai', { cache: 'no-store' }).then(response => response.json())
       .then(data => {
         setEnabled(Boolean(data.enabled))
+        setAvailable(Array.isArray(data.scopes) && data.scopes.length > 0)
         setSites(data.sites || [])
-      }).catch(() => setEnabled(false))
+      }).catch(() => setAvailable(false))
   }, [])
 
   useEffect(() => {
@@ -49,7 +51,7 @@ export function JrmAiAssistant() {
 
   const ask = async (value: string) => {
     const text = value.trim()
-    if (!text || busy) return
+    if (!text || busy || !enabled) return
     setMessages(prev => [...prev, { from: 'user', text }])
     setQuestion('')
     setBusy(true)
@@ -84,7 +86,7 @@ export function JrmAiAssistant() {
     } finally { setBusy(false) }
   }
 
-  if (!enabled) return null
+  if (!available) return null
   return (
     <div className="fixed bottom-5 right-5 z-[80]">
       {!open && <button type="button" onClick={() => setOpen(true)} aria-label="Abrir JRM IA"
@@ -109,7 +111,10 @@ export function JrmAiAssistant() {
           </select>}
         </div>
         <div className="flex-1 space-y-3 overflow-y-auto p-4" aria-live="polite">
-          {messages.length === 0 && <>
+          {!enabled && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+            JRM IA está pendiente de configurar en el servidor. Solicita al administrador que active la clave de OpenAI.
+          </p>}
+          {enabled && messages.length === 0 && <>
             <p className="text-sm text-slate-600">Pregunta por datos reales de la operación.</p>
             <div className="flex flex-wrap gap-2">
               {suggestions.map(text => <button type="button" key={text} onClick={() => void ask(text)}
@@ -137,10 +142,10 @@ export function JrmAiAssistant() {
           {busy && <p className="text-sm text-slate-500">Consultando datos autorizados...</p>}
         </div>
         <form onSubmit={event => { event.preventDefault(); void ask(question) }} className="flex gap-2 border-t border-slate-100 p-3">
-          <input aria-label="Pregunta para JRM IA" value={question} onChange={event => setQuestion(event.target.value)}
+          <input aria-label="Pregunta para JRM IA" value={question} disabled={!enabled} onChange={event => setQuestion(event.target.value)}
             maxLength={1200} placeholder="Escribe tu pregunta..."
             className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-          <button type="submit" disabled={busy || !question.trim()} aria-label="Enviar pregunta"
+          <button type="submit" disabled={!enabled || busy || !question.trim()} aria-label="Enviar pregunta"
             className="rounded-lg bg-[#002855] p-2 text-white disabled:opacity-50"><Send className="h-5 w-5" /></button>
         </form>
       </section>}
