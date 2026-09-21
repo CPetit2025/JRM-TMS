@@ -30,9 +30,10 @@ ALTER TABLE public.work_orders ENABLE ROW LEVEL SECURITY;
 INSERT INTO public.roles (name, description, permissions)
 VALUES ('Administrador', 'Administración del sistema', '["usuarios","despacho","monitoreo","flota"]'::jsonb)
 ON CONFLICT (name) DO UPDATE SET permissions = EXCLUDED.permissions;
-UPDATE public.profiles
+UPDATE public.profiles p
 SET role_id = (SELECT id FROM public.roles WHERE name = 'Administrador')
-WHERE lower(username) = 'cpetit@jrmsac.com.pe';
+FROM auth.users u
+WHERE p.id = u.id AND lower(u.email) = 'cpetit@jrmsac.com.pe';
 
 CREATE OR REPLACE FUNCTION public.is_tms_admin()
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
