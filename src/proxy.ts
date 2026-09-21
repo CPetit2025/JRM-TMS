@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   })
@@ -35,9 +35,10 @@ export async function middleware(request: NextRequest) {
   const isDriverRegisterPage = request.nextUrl.pathname.startsWith('/app/register')
   const isDriverRoute = request.nextUrl.pathname.startsWith('/app')
   const isApiRoute = request.nextUrl.pathname.startsWith('/api')
+  const isPublicTracking = request.nextUrl.pathname.startsWith('/tracking/')
   
   // Si no está autenticado y NO está en una página de login ni API
-  if (!user && !isLoginPage && !isDriverLoginPage && !isDriverRegisterPage && !isApiRoute) {
+  if (!user && !isLoginPage && !isDriverLoginPage && !isDriverRegisterPage && !isApiRoute && !isPublicTracking) {
     // Si intenta ir a la app operativa, mandarlo a su login
     if (isDriverRoute) {
       const url = request.nextUrl.clone()
@@ -48,6 +49,31 @@ export async function middleware(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
+  }
+
+  if (user && !isApiRoute && !isPublicTracking) {
+    const { data: profile } = await supabase.from('profiles')
+      .select('is_active, employee_type, roles(name, permissions)')
+      .eq('id', user.id).maybeSingle()
+    if (!profile?.is_active) {
+      const url = request.nextUrl.clone()
+      url.pathname = isDriverRoute ? '/app/login' : '/login'
+      if (request.nextUrl.pathname !== url.pathname) return NextResponse.redirect(url)
+      return supabaseResponse
+    }
+    if (!isDriverRoute && !isLoginPage && !isDriverLoginPage && !isDriverRegisterPage) {
+      const role = Array.isArray(profile.roles) ? profile.roles[0] : profile.roles
+      const permissions = Array.isArray(role?.permissions) ? role.permissions : []
+      if (profile.employee_type === 'CONDUCTOR' ||
+        (!/admin/i.test(role?.name || '') && !permissions.includes('dashboard'))) {
+        return NextResponse.redirect(new URL('/app/ruta', request.url))
+      }
+    }
+    if (isDriverRoute && !isDriverLoginPage && !isDriverRegisterPage && profile.employee_type === 'CONDUCTOR') {
+      const { data: driver } = await supabase.from('drivers').select('is_active')
+        .eq('profile_id', user.id).maybeSingle()
+      if (!driver?.is_active) return NextResponse.redirect(new URL('/app/login', request.url))
+    }
   }
 
   // Si YA está autenticado e intenta ir a la página de login (para evitar que vea el login si ya tiene sesión)

@@ -249,7 +249,7 @@ export default function DespachoPage() {
             )
           )
         `)
-        .in('status', ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'RETORNO', 'ESPERANDO_AUTORIZACION'])
+        .in('status', ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'RETORNO', 'RETORNO_COMPLETADO', 'ESPERANDO_AUTORIZACION'])
         .order('created_at', { ascending: false })
 
       if (!dispatchData) {
@@ -279,7 +279,9 @@ export default function DespachoPage() {
 
       // 3. Obtener vehículos y conductores para el select
       const { data: vData } = await supabase.from('vehicles').select('plate, brand, model, carriers(business_name)').eq('status', 'DISPONIBLE')
-      const { data: dData } = await supabase.from('drivers').select('first_name, last_name, document_number, carriers(business_name)')
+      const { data: dData } = await supabase.from('drivers')
+        .select('id, first_name, last_name, document_number, profile_id, carriers(business_name)')
+        .eq('is_active', true).not('profile_id', 'is', null)
       
       setVehicles(vData || [])
       setDrivers(dData || [])
@@ -346,149 +348,31 @@ export default function DespachoPage() {
     }
 
     setIsSubmitting(true)
-
     try {
-      let dispatchId: string;
-
-      if (newDispatch.document_type !== 'NOTA_SALIDA') {
-        // ✅ REGLA DE NEGOCIO: Un conductor solo puede tener UNA ruta activa a la vez.
-        // Verificar si el conductor ya tiene un despacho activo
-        const { data: driverActiveDispatch, error: driverCheckError } = await supabase
-          .from('dispatches')
-          .select('id, dispatch_number, status')
-          .eq('driver_name', newDispatch.driver_name)
-          .in('status', ['PROGRAMADO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'])
-          .limit(1)
-          .maybeSingle()
-
-        if (driverCheckError) {
-          console.error("Error checking driver active dispatch:", driverCheckError)
-          throw driverCheckError
-        }
-
-        if (driverActiveDispatch) {
-          toast.error(
-            `⚠️ El conductor "${newDispatch.driver_name}" ya tiene el despacho ${driverActiveDispatch.dispatch_number} activo (estado: ${driverActiveDispatch.status}). Debe completar o liquidar esa ruta antes de asignar una nueva.`,
-            { duration: 8000 }
-          )
-          setIsSubmitting(false)
-          return
-        }
-
-        // Verificar si el vehículo ya tiene un despacho activo
-        const { data: vehicleActiveDispatch, error: vehicleCheckError } = await supabase
-          .from('dispatches')
-          .select('id, dispatch_number, driver_name, status')
-          .eq('vehicle_plate', newDispatch.vehicle_plate)
-          .in('status', ['PROGRAMADO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'])
-          .limit(1)
-          .maybeSingle()
-
-        if (vehicleCheckError) throw vehicleCheckError
-
-        if (vehicleActiveDispatch) {
-          toast.error(
-            `⚠️ El vehículo ${newDispatch.vehicle_plate} ya está asignado al despacho ${vehicleActiveDispatch.dispatch_number} con el conductor "${vehicleActiveDispatch.driver_name}". Use otro vehículo.`,
-            { duration: 8000 }
-          )
-          setIsSubmitting(false)
-          return
-        }
+      const matches = drivers.filter(d => `${d.first_name} ${d.last_name}`.trim() === newDispatch.driver_name.trim())
+      if (newDispatch.document_type !== 'NOTA_SALIDA' && matches.length !== 1) {
+        throw new Error('Selecciona un conductor activo y vinculado a una sola cuenta.')
       }
-
-      // If no active dispatch was found (or if it's NOTA_SALIDA), create a new one
-      if (!dispatchId!) {
-        const dispatchNumber = `DESP-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`
-
-        // Determinamos el contrato asociado (usando el de la primera OT seleccionada)
-        const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
-        const activeContractId = firstReq?.contracts?.id || null
-
-        // Calcular costo efectivo
-        let effectiveFreightCost = 0
-        if (detectedFreightRate && detectedFreightRate.rate > 0) {
-          effectiveFreightCost = detectedFreightRate.rate
-        } else if (manualFreightCost && !isNaN(Number(manualFreightCost))) {
-          effectiveFreightCost = Number(manualFreightCost)
-        }
-
-        const { data: insertData, error: insertError } = await supabase
-          .from('dispatches')
-          .insert([{
-            dispatch_number: dispatchNumber,
-            driver_name: newDispatch.document_type === 'NOTA_SALIDA' ? 'CLIENTE' : newDispatch.driver_name,
-            vehicle_plate: newDispatch.document_type === 'NOTA_SALIDA' ? 'EXTERNO' : newDispatch.vehicle_plate,
-            scheduled_departure: newDispatch.scheduled_departure,
-            status: 'PROGRAMADO',
-            estimated_distance_km: newDispatch.estimated_distance_km || 0,
-            freight_cost: effectiveFreightCost,
-            contract_id: activeContractId
-          }])
-          .select()
-          .single()
-
-        if (insertError) throw insertError
-        dispatchId = insertData.id
-
-        // Llamar a RPC para crear el Servicio de Contrato formalmente (Paso 5)
-        if (activeContractId && effectiveFreightCost > 0 && newDispatch.document_type !== 'NOTA_SALIDA') {
-          const { data: serviceData, error: serviceError } = await supabase.rpc('register_contract_service', {
-            p_contract_id: activeContractId,
-            p_service_type: 'FLETE',
-            p_description: `Flete ${detectedFreightRate ? '(Automático)' : '(Manual)'} - Despacho ${dispatchNumber}`,
-            p_amount_pen: effectiveFreightCost,
-            p_service_date: newDispatch.scheduled_departure.split('T')[0],
-            p_plate: newDispatch.vehicle_plate,
-            p_driver_name: newDispatch.driver_name,
-            p_category: 'Contrato'
-          })
-          if (serviceError) {
-            console.error('Error al generar servicio de contrato:', serviceError)
-            toast.error('⚠️ Despacho creado, pero hubo un error al registrar el servicio en el contrato.')
-          } else if (serviceData) {
-            // Enlazar el servicio generado con el despacho para evitar duplicidad y permitir trazabilidad
-            const { error: updateServiceError } = await supabase
-              .from('contract_services')
-              .update({ dispatch_id: dispatchId })
-              .eq('id', serviceData)
-            if (updateServiceError) console.error('Error linking service to dispatch:', updateServiceError)
-          }
-        }
-      }
-
-      // 2. Insertar los dispatch_requests con su GR
-      const totalKm = newDispatch.estimated_distance_km || 0;
-      const numReqs = newDispatch.selected_requests.length || 1;
-      const proratedKm = Math.round((Number(totalKm) / numReqs) * 10) / 10; // 1 decimal place
-
-      const reqToInsert = newDispatch.selected_requests.map((req, idx) => ({
-        dispatch_id: dispatchId,
-        transport_request_id: req.id,
-        status: 'PROGRAMADO',
-        document_type: newDispatch.document_type,
-        document_number: req.document_number,
-        leg_planned_km: proratedKm,
-        sequence_order: idx + 1
-      }))
-
-      const { error: joinError } = await supabase
-        .from('dispatch_requests')
-        .insert(reqToInsert)
-
-      if (joinError) throw joinError
-
-      // 3. Actualizar el estado de las solicitudes a 'ASIGNADA'
-      const { error: updateError } = await supabase
-        .from('transport_requests')
-        .update({ status: 'ASIGNADA' })
-        .in('id', newDispatch.selected_requests.map(r => r.id))
-
-      if (updateError) throw updateError
-
-      toast.success('Despacho programado correctamente')
+      const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
+      const freightCost = detectedFreightRate?.rate && detectedFreightRate.rate > 0
+        ? detectedFreightRate.rate : (Number(manualFreightCost) || 0)
+      const { error } = await supabase.rpc('schedule_dispatch', {
+        p_driver_id: matches[0]?.id || null,
+        p_vehicle_plate: newDispatch.vehicle_plate,
+        p_departure: newDispatch.scheduled_departure,
+        p_estimated_km: Number(newDispatch.estimated_distance_km) || 0,
+        p_freight_cost: freightCost,
+        p_contract_id: firstReq?.contracts?.id || null,
+        p_document_type: newDispatch.document_type,
+        p_requests: newDispatch.selected_requests.map(req => ({
+          ...req,
+          leg_planned_km: reqDistances.current[req.id] ?? null
+        }))
+      })
+      if (error) throw error
+      toast.success('Despacho programado y presupuesto reservado.')
       setIsModalOpen(false)
       setNewDispatch({ selected_requests: [], driver_name: '', vehicle_plate: '', scheduled_departure: '', estimated_distance_km: '', document_type: 'GR' })
-      setManualFreightCost('')
       setManualFreightCost('')
       fetchData()
     } catch (error: any) {
@@ -506,18 +390,10 @@ export default function DespachoPage() {
         toast.error('Falta vincular documentos (GR/NS) en algunas solicitudes antes de poder iniciar la ruta.');
         return;
       }
-      // Pasar despacho a EN_CURSO
-      await supabase.from('dispatches').update({ status: 'EN_CURSO' }).eq('id', dispatchId)
-      
-      if (dispatchRequests && dispatchRequests.length > 0) {
-        const reqIds = dispatchRequests.map(r => r.transport_request_id)
-        
-        // Pasar las solicitudes a EN TRANSITO
-        await supabase.from('transport_requests').update({ status: 'EN TRANSITO' }).in('id', reqIds)
-        await supabase.from('dispatch_requests').update({ status: 'EN_CURSO' }).eq('dispatch_id', dispatchId)
-      }
-      
-      toast.success('El transporte ha iniciado su ruta')
+      const { error } = await supabase.from('dispatches').update({ status: 'EN_CURSO' })
+        .eq('id', dispatchId).eq('status', 'PROGRAMADO').select('id').single()
+      if (error) throw error
+      toast.success('Despacho preparado. El conductor iniciará el GPS desde la app.')
       fetchData()
     } catch (error: any) {
       toast.error('Error al iniciar ruta: ' + error.message)
@@ -526,7 +402,9 @@ export default function DespachoPage() {
 
   const handleAuthorizeReturn = async (dispatchId: string) => {
     try {
-      await supabase.from('dispatches').update({ status: 'RETORNO' }).eq('id', dispatchId)
+      const { error } = await supabase.from('dispatches').update({ status: 'RETORNO' })
+        .eq('id', dispatchId).eq('status', 'ESPERANDO_AUTORIZACION').select('id').single()
+      if (error) throw error
       toast.success('Retorno autorizado. El conductor ha sido notificado.')
       fetchData()
     } catch (err: any) {
@@ -536,69 +414,15 @@ export default function DespachoPage() {
 
   const handleCloseRoute = async (dispatchId: string) => {
     try {
-      // 1. Obtener todas las solicitudes atadas a este despacho
-      const { data: drData, error: drError } = await supabase
-        .from('dispatch_requests')
-        .select('transport_request_id')
-        .eq('dispatch_id', dispatchId)
-
-      if (drError) throw drError
-
-      // 1.5 Obtener datos del despacho para el kilometraje y presupuesto
-      const { data: dispatchData } = await supabase
-        .from('dispatches')
-        .select('vehicle_plate, estimated_distance_km, freight_cost, contract_id')
-        .eq('id', dispatchId)
-        .single()
-
-      // 2. Cerrar ruta a nivel de cabecera
-      await supabase.from('dispatches').update({ status: 'LIQUIDADO' }).eq('id', dispatchId)
-
-      // 2.5 Actualizar kilometraje del vehículo si aplica
-      if (dispatchData && dispatchData.vehicle_plate && dispatchData.vehicle_plate !== 'EXTERNO') {
-        // Ejecutamos RPC o leemos y sumamos. Para simplificar, leemos y sumamos:
-        const { data: vData } = await supabase.from('vehicles').select('id, current_mileage').eq('plate', dispatchData.vehicle_plate).single()
-        if (vData) {
-          const newMileage = (vData.current_mileage || 0) + (dispatchData.estimated_distance_km || 0)
-          await supabase.from('vehicles').update({ current_mileage: Math.round(newMileage) }).eq('id', vData.id)
-          // Registramos en el historial
-          await supabase.from('vehicle_maintenance_history').insert([{
-            vehicle_id: vData.id,
-            action_type: 'KM_ACTUALIZADO',
-            description: `Ruta ${dispatchId.substring(0,8)} completada (+${dispatchData.estimated_distance_km} KM)`,
-            mileage_at_time: Math.round(newMileage)
-          }])
-        }
-      }
-      if (drData && drData.length > 0) {
-        const reqIds = drData.map(dr => dr.transport_request_id)
-        
-        // 3. Marcar solicitudes como ENTREGADA
-        await supabase.from('transport_requests').update({ status: 'ENTREGADA' }).in('id', reqIds)
-        // 4. Marcar detalle como ENTREGADO
-        await supabase.from('dispatch_requests').update({ status: 'ENTREGADO' }).eq('dispatch_id', dispatchId)
-      }
-
-      // 5. Liquidar el presupuesto del contrato si estaba reservado
-      if (dispatchData && dispatchData.contract_id && dispatchData.freight_cost > 0) {
-        const { error: liquidateError } = await supabase.rpc('liquidate_transport_budget', {
-          p_contract_id: dispatchData.contract_id,
-          p_reserved_pen: dispatchData.freight_cost,
-          p_actual_cost_pen: dispatchData.freight_cost
-        })
-        if (liquidateError) {
-          console.error('Error al liquidar presupuesto:', liquidateError)
-          toast.error('⚠️ Ruta cerrada, pero hubo un error al liquidar el presupuesto del contrato.')
-        }
-      }
-
-      toast.success('Ruta cerrada exitosamente y solicitudes entregadas.')
+      const { data, error } = await supabase.rpc('close_dispatch_route', { p_dispatch_id: dispatchId })
+      if (error) throw error
+      const km = Number(data.actual_distance_km || 0).toFixed(3)
+      toast.success(`Ruta cerrada: ${km} km GPS${data.gps_complete ? '' : ' · cobertura parcial, kilometraje vehicular pendiente de conciliación'}`)
       fetchData()
     } catch (err: any) {
       toast.error('Error al cerrar ruta: ' + err.message)
     }
   }
-
   const toggleRequestSelection = async (reqId: string, pickup: string, delivery: string) => {
     const isSelected = newDispatch.selected_requests.some(r => r.id === reqId)
     let nextRequests: { id: string, document_number: string }[]
@@ -801,6 +625,7 @@ export default function DespachoPage() {
                 <option value="PROGRAMADO">Programado</option>
                 <option value="EN RUTA">En Ruta</option>
                 <option value="RETORNO">Retorno</option>
+                <option value="RETORNO_COMPLETADO">Retorno completado</option>
                 <option value="CERRADO">Cerrado</option>
                 <option value="LIQUIDADO">Liquidado</option>
               </select>
@@ -894,7 +719,7 @@ export default function DespachoPage() {
                             (dispatch.status === 'EN_CURSO' || dispatch.status === 'EN RUTA') ? 'bg-blue-100 text-blue-700' :
                             dispatch.status === 'ESPERANDO_AUTORIZACION' ? 'bg-orange-100 text-orange-700' :
                             dispatch.status === 'RETORNO' ? 'bg-indigo-100 text-indigo-700' :
-                            dispatch.status === 'ENTREGADO' ? 'bg-green-100 text-green-700' :
+                            (dispatch.status === 'ENTREGADO' || dispatch.status === 'RETORNO_COMPLETADO') ? 'bg-green-100 text-green-700' :
                             'bg-red-100 text-red-700'
                           }`}>
                             {dispatch.status}
@@ -907,7 +732,7 @@ export default function DespachoPage() {
                               className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 transition-colors rounded-lg text-xs font-medium border border-blue-200 whitespace-nowrap"
                             >
                               <PlayCircle className="w-3 h-3" />
-                              Iniciar
+                              Preparar
                             </button>
                           )}
                           {dispatch.status === 'ESPERANDO_AUTORIZACION' && (
@@ -919,7 +744,7 @@ export default function DespachoPage() {
                               Autorizar Retorno
                             </button>
                           )}
-                          {dispatch.status === 'RETORNO' && (
+                          {dispatch.status === 'RETORNO_COMPLETADO' && (
                             <button 
                               onClick={() => handleCloseRoute(dispatch.id)}
                               className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800 transition-colors rounded-lg text-xs font-medium border border-green-200 whitespace-nowrap"

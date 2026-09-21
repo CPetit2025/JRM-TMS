@@ -107,8 +107,7 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
             username: newUser.username,
             document_number: newUser.document_number,
             phone: newUser.phone,
-            role_id: newUser.role_id,
-            ...(newUser.password ? { mock_password: newUser.password } : {})
+            role_id: newUser.role_id
           })
           .eq('id', editingUser.id)
           .select()

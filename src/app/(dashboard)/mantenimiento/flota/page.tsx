@@ -189,15 +189,12 @@ export default function FlotaPage() {
       delete (driverPayload as any).license_expiration;
 
       if (editingDriverId) {
-        // Al actualizar, evitamos sobrescribir el PIN si ya existe, a menos que se quiera manejar distinto.
         const { error: updateError } = await supabase
           .from('drivers')
           .update(driverPayload)
           .eq('id', editingDriverId)
         error = updateError
       } else {
-        // Por defecto el PIN son los primeros 4 dígitos del DNI al crear
-        (driverPayload as any).pin = newDriver.document_number.substring(0, 4)
         const { error: insertError } = await supabase
           .from('drivers')
           .insert([driverPayload])
@@ -623,7 +620,7 @@ export default function FlotaPage() {
                       <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Licencia</th>
                       <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Vencimiento</th>
                       <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Transportista</th>
-                      <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">PIN (Clave)</th>
+                      <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Acceso App</th>
                       <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Estado</th>
                       <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
                     </tr>
@@ -662,7 +659,7 @@ export default function FlotaPage() {
                             )}
                           </td>
                           <td className="p-4 text-sm text-slate-600">{d.carriers?.business_name || 'N/A'}</td>
-                          <td className="p-4 font-bold text-slate-700">{d.pin || '----'}</td>
+                          <td className="p-4 text-xs text-slate-600">{d.profile_id ? 'Vinculado' : 'Sin cuenta'}</td>
                           <td className="p-4">
                             <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
                               d.is_active !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
@@ -915,6 +912,11 @@ export default function FlotaPage() {
               />
             </div>
           </div>
+          <label className="flex items-center gap-3 text-sm font-medium text-slate-700 mt-4">
+            <input type="checkbox" checked={newDriver.is_active}
+              onChange={e => setNewDriver({ ...newDriver, is_active: e.target.checked })} />
+            Conductor aprobado para operar en la app
+          </label>
             <div className="pt-4 flex justify-end gap-2 border-t mt-4">
               <button type="button" onClick={() => setIsDriverModalOpen(false)} className="px-4 py-2 text-slate-700 hover:bg-slate-100 border border-slate-300 rounded-lg transition-colors font-medium">Cancelar</button>
               <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-[#002855] text-white rounded-lg font-medium transition-colors hover:bg-[#001d3d]">

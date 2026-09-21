@@ -41,34 +41,28 @@ export default function TrackingPage() {
 
   useEffect(() => {
     if (!isAuthenticated || activeTab !== 'map') return
-
-    const channel = supabase.channel('gps_tracking')
-      .on('broadcast', { event: 'location_update' }, (payload: any) => {
-        const data = payload.payload
-        setVehicles(prev => {
-          const exists = prev.find(v => v.id === data.driver_id)
-          const newStatus: 'en_ruta' | 'detenido' | 'incidencia' = 'en_ruta'
-          if (exists) {
-            return prev.map(v => v.id === exists.id ? {
-              ...v, lat: data.lat, lng: data.lng, speed: data.speed || 0, status: newStatus, lastUpdate: 'En vivo'
-            } : v)
-          } else {
-            return [{
-              id: data.driver_id, plate: 'EN-RUTA', driver: data.driver_name, status: newStatus,
-              speed: data.speed || 0, lat: data.lat, lng: data.lng, lastUpdate: 'En vivo'
-            }, ...prev]
-          }
-        })
+    let cancelled = false
+    const refresh = async () => {
+      const { data, error } = await supabase.rpc('get_public_daily_tracking_locations', {
+        p_token: token, p_pin: pin
       })
-      .subscribe()
-
-    return () => { supabase.removeChannel(channel) }
-  }, [isAuthenticated, activeTab])
+      if (cancelled || error) return
+      setVehicles((data || []).map((point: any) => ({
+        id: point.dispatch_id, plate: point.vehicle_plate || 'Sin placa',
+        driver: point.driver_name || 'Conductor', status: 'en_ruta', speed: 0,
+        lat: Number(point.lat), lng: Number(point.lng),
+        lastUpdate: new Date(point.last_gps_at).toLocaleTimeString('es-PE')
+      })))
+    }
+    void refresh()
+    const timer = window.setInterval(refresh, 15000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [isAuthenticated, activeTab, token, pin])
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (pin.length !== 4) {
-      toast.error('El PIN debe ser de 4 dígitos')
+    if (pin.length !== 4 && pin.length !== 8) {
+      toast.error('El PIN debe ser de 8 dígitos (o 4 para enlaces anteriores)')
       return
     }
 
@@ -104,7 +98,7 @@ export default function TrackingPage() {
           </div>
           <h1 className="text-2xl font-bold text-center text-slate-800 mb-2">Seguimiento de Planificación</h1>
           <p className="text-center text-slate-500 mb-8">
-            Ingrese el PIN de 4 dígitos que le fue enviado por correo para visualizar el estado de todas las rutas del día.
+            Ingrese el PIN recibido para visualizar el estado de todas las rutas del día.
           </p>
           
           <form onSubmit={handleAuth} className="space-y-6">
@@ -114,7 +108,7 @@ export default function TrackingPage() {
               </label>
               <input
                 type="text"
-                maxLength={4}
+                maxLength={8}
                 value={pin}
                 onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
                 className="w-full text-center text-3xl tracking-widest p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
@@ -125,7 +119,7 @@ export default function TrackingPage() {
             
             <button
               type="submit"
-              disabled={isLoading || pin.length !== 4}
+              disabled={isLoading || (pin.length !== 4 && pin.length !== 8)}
               className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white p-4 rounded-xl font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Ver Planificación'}

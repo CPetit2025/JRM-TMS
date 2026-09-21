@@ -47,16 +47,11 @@ export async function geocodeAddress(address: string): Promise<Coordinates | nul
       }
     }
     
-    // 3. Fallback: Si no lo encuentra, retornar unas coordenadas aleatorias en Lima para que la demo no se rompa
-    console.warn(`No se pudo geocodificar "${address}", usando fallback aleatorio en Lima`);
-    return {
-      lat: -12.0464 + (Math.random() * 0.1 - 0.05), // Centro de lima +/- ruido
-      lon: -77.0428 + (Math.random() * 0.1 - 0.05)
-    };
+    console.warn(`No se pudo geocodificar "${address}"`);
+    return null;
   } catch (error) {
     console.error('Error geocoding address:', address, error);
-    // Fallback de emergencia
-    return { lat: -12.0464, lon: -77.0428 };
+    return null;
   }
 }
 

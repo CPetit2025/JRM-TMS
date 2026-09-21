@@ -59,52 +59,38 @@ export default function MonitoreoPage() {
         fetchActiveDispatches()
       })
       .subscribe()
+    const timer = window.setInterval(fetchActiveDispatches, 15000)
 
     return () => {
       supabase.removeChannel(channel)
+      window.clearInterval(timer)
     }
   }, [])
-
-  // Geocercas simuladas para coordenadas estáticas según despacho
-  const mockCoordinates = [
-    { lat: -12.0464, lng: -77.0428 }, // Lima Centro
-    { lat: -12.0234, lng: -77.0123 }, // Rimac
-    { lat: -12.0621, lng: -77.0368 }, // Lince
-    { lat: -12.0834, lng: -77.0350 }, // San Isidro
-    { lat: -12.1223, lng: -77.0310 }, // Miraflores
-    { lat: -12.1465, lng: -77.0220 }, // Barranco
-    { lat: -12.0931, lng: -77.0802 }, // San Miguel
-    { lat: -12.0553, lng: -77.0850 }, // Callao
-    { lat: -12.0205, lng: -76.9360 }, // Ate
-    { lat: -11.9803, lng: -77.0019 }, // SJL
-  ]
 
   const fetchActiveDispatches = async () => {
     try {
       const { data, error } = await supabase
         .from('dispatches')
-        .select('id, dispatch_number, vehicle_plate, driver_name, status')
-        .eq('status', 'EN_CURSO')
+        .select('id, dispatch_number, vehicle_plate, driver_name, status, last_lat, last_lon, last_gps_at')
+        .in('status', ['EN RUTA', 'EN_CURSO', 'RETORNO'])
 
       if (error) throw error
 
       setLastRefresh(new Date())
       
       if (data) {
-        // Mapear despachos reales a ubicaciones ficticias para visualización
-        const mappedVehicles: VehicleLocation[] = data.map((d, index) => {
-          const coord = mockCoordinates[index % mockCoordinates.length]
-          return {
+        const mappedVehicles: VehicleLocation[] = data
+          .filter(d => d.last_lat != null && d.last_lon != null && d.last_gps_at && Date.now() - Date.parse(d.last_gps_at) < 15 * 60 * 1000)
+          .map(d => ({
             id: d.id, // Usamos el ID del despacho como ID del vehículo en el mapa
             plate: d.vehicle_plate,
             driver: d.driver_name,
             status: 'en_ruta',
-            speed: Math.floor(Math.random() * (60 - 20 + 1) + 20), // 20-60 km/h
-            lat: coord.lat,
-            lng: coord.lng,
-            lastUpdate: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
-          }
-        })
+            speed: 0,
+            lat: Number(d.last_lat),
+            lng: Number(d.last_lon),
+            lastUpdate: new Date(d.last_gps_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
+          })) as VehicleLocation[]
         setVehicles(mappedVehicles)
       }
     } catch (err) {
@@ -186,7 +172,7 @@ export default function MonitoreoPage() {
             <h1 className="text-lg font-black text-slate-800 leading-tight">Monitoreo GPS</h1>
             <div className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-              <p className="text-xs text-slate-500">Seguimiento en tiempo real de despachos EN CURSO</p>
+              <p className="text-xs text-slate-500">Última posición GPS de despachos activos</p>
             </div>
           </div>
         </div>

@@ -40,8 +40,8 @@ export default function RegisterDriver() {
       return
     }
 
-    if (form.pin.length < 4) {
-      toast.error('El PIN debe tener al menos 4 dígitos')
+    if (form.pin.length < 8) {
+      toast.error('La contraseña debe tener al menos 8 caracteres')
       return
     }
 
@@ -61,7 +61,7 @@ export default function RegisterDriver() {
         return
       }
 
-      toast.success('¡Cuenta creada exitosamente! Ya puedes iniciar sesión.')
+      toast.success('Cuenta creada. Espera la aprobación de un administrador para iniciar sesión.')
       router.push('/app/login')
       
     } catch (err: any) {
@@ -147,13 +147,13 @@ export default function RegisterDriver() {
             </div>
 
             <div className="col-span-2 sm:col-span-1">
-              <label className="block text-xs font-semibold text-slate-700 mb-1">PIN (Contraseña) *</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Contraseña (mínimo 8 caracteres) *</label>
               <div className="relative">
                 <input 
                   type={showPin ? "text" : "password"} required
                   value={form.pin} onChange={e => setForm({...form, pin: e.target.value})}
-                  maxLength={6}
-                  placeholder="4 a 6 dígitos"
+                  minLength={8}
+                  placeholder="8 caracteres o más"
                   className="w-full pl-3 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#002855] transition-all font-mono text-sm tracking-widest"
                 />
                 <button 

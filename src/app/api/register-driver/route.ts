@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   try {
     const { dni, firstName, lastName, phone, licenseNumber, pin, carrierId } = await request.json()
 
-    if (!dni || !firstName || !lastName || !pin || !carrierId || !licenseNumber) {
+    if (!dni || !firstName || !lastName || !pin || pin.length < 8 || !carrierId || !licenseNumber) {
       return NextResponse.json({ error: 'Faltan campos obligatorios' }, { status: 400 })
     }
 
@@ -44,6 +44,22 @@ export async function POST(request: Request) {
 
     const userId = authData.user.id
 
+    const { error: profileError } = await supabaseAdmin.from('profiles').upsert({
+      id: userId,
+      username: email,
+      first_name: firstName,
+      last_name: lastName,
+      document_number: dni,
+      phone: phone || null,
+      employee_type: 'CONDUCTOR',
+      is_active: true,
+      role_id: null
+    }, { onConflict: 'id' })
+    if (profileError) {
+      await supabaseAdmin.auth.admin.deleteUser(userId)
+      throw profileError
+    }
+
     // 2. Use RPC function to upsert driver - bypasses PostgREST schema cache issues
     const { error: rpcError } = await supabaseAdmin.rpc('register_driver', {
       p_auth_user_id: userId,
@@ -56,7 +72,10 @@ export async function POST(request: Request) {
       p_carrier_id: carrierId
     })
 
-    if (rpcError) throw rpcError
+    if (rpcError) {
+      await supabaseAdmin.auth.admin.deleteUser(userId)
+      throw rpcError
+    }
 
     return NextResponse.json({ success: true, userId })
 

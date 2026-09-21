@@ -6,9 +6,9 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { first_name, last_name, username, document_number, phone, role_id, password } = body
 
-    if (!username || !password || !document_number) {
+    if (!username || !password || password.length < 8 || !document_number) {
       return NextResponse.json(
-        { error: 'Usuario, contraseña y documento son obligatorios' },
+        { error: 'Usuario, documento y contraseña de al menos 8 caracteres son obligatorios' },
         { status: 400 }
       )
     }
@@ -61,7 +61,25 @@ export async function POST(request: Request) {
     const { data: { user: currentUser } } = await supabaseSession.auth.getUser()
     
     // Si hay un admin logueado, se crea activo. Si es registro público, inactivo.
-    const is_active = currentUser ? true : false;
+    let isAdmin = false
+    if (currentUser) {
+      const { data: currentProfile, error: profileLookupError } = await supabaseSession
+        .from('profiles')
+        .select('is_active, roles(name, permissions)')
+        .eq('id', currentUser.id)
+        .single()
+      if (profileLookupError || !currentProfile?.is_active) {
+        return NextResponse.json({ error: 'Cuenta sin autorización' }, { status: 403 })
+      }
+      const role = Array.isArray(currentProfile.roles) ? currentProfile.roles[0] : currentProfile.roles
+      const permissions = role?.permissions
+      isAdmin = /admin/i.test(role?.name || '') ||
+        (Array.isArray(permissions) && permissions.includes('usuarios'))
+      if (!isAdmin) {
+        return NextResponse.json({ error: 'Solo un administrador puede crear usuarios' }, { status: 403 })
+      }
+    }
+    const is_active = isAdmin
 
     // 1. Crear el usuario en auth.users
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -72,7 +90,7 @@ export async function POST(request: Request) {
         first_name,
         last_name,
         document_number,
-        role_id
+        role_id: isAdmin ? role_id : null
       }
     })
 
@@ -86,7 +104,7 @@ export async function POST(request: Request) {
     // 2. Insertar en profiles
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
-      .insert([
+      .upsert([
         {
           id: userId,
           first_name,
@@ -94,15 +112,14 @@ export async function POST(request: Request) {
           username,
           document_number,
           phone,
-          role_id,
-          mock_password: password, // Solo para MVP, normalmente no se guarda
+          role_id: isAdmin ? role_id : null,
           is_active: is_active
         }
-      ])
+      ], { onConflict: 'id' })
 
     if (profileError) {
       console.error('Error creating profile:', profileError)
-      // Idealmente, deberíamos revertir el auth.user aquí, pero para MVP está bien
+      await supabaseAdmin.auth.admin.deleteUser(userId)
       return NextResponse.json({ error: profileError.message }, { status: 400 })
     }
 
