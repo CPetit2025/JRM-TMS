@@ -60,11 +60,24 @@ async function main() {
     if (createError) throw createError
   }
   const objectPath = `${version}/${build}/${sha256.slice(0, 16)}/${name}`
-  const { error: uploadError } = await client.storage.from(bucket).upload(objectPath, apk, {
-    contentType: 'application/vnd.android.package-archive',
-    cacheControl: '31536000',
-    upsert: false,
-  })
+  let uploadError
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { error } = await client.storage.from(bucket).upload(objectPath, apk, {
+      contentType: 'application/vnd.android.package-archive',
+      cacheControl: '31536000',
+      upsert: false,
+    })
+    // A previous attempt may have uploaded the file before failing to register the release.
+    // The public download is hashed below before this existing object is accepted.
+    if (!error || String(error.statusCode) === '409') {
+      uploadError = null
+      break
+    }
+    uploadError = error
+    const status = Number(error.statusCode || error.status)
+    if (status >= 400 && status < 500) break
+    if (attempt < 2) await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 1000))
+  }
   if (uploadError) throw uploadError
 
   const publicUrl = client.storage.from(bucket).getPublicUrl(objectPath, { download: name }).data.publicUrl
