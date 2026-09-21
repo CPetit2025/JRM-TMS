@@ -76,7 +76,7 @@ export default function LoginPage() {
         }
         
         // Guardar en localStorage para UI (Sidebar)
-        localStorage.setItem('userRole', roleName ? roleName.toLowerCase() : 'operador')
+        localStorage.setItem('userRole', roleName === 'Administrador' ? 'admin' : roleName.toLowerCase())
         localStorage.setItem('userPermissions', JSON.stringify(permissions))
         
         toast.success('Sesión iniciada correctamente')
