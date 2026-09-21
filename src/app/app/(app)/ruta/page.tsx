@@ -3,8 +3,9 @@ import { useState, useEffect } from 'react'
 import { Truck, MapPin, Camera, CheckCircle2, Clock, Navigation2, FileText, Upload, KeyRound, Loader2, AlertCircle, Navigation, UserCircle, LogOut } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { getDrivingDistanceKM } from '@/lib/routing'
 import { useRouter } from 'next/navigation'
+import { nativeRouteTracker } from '@/lib/native-route-tracker'
+import { readRouteQueue, routeQueueKey, syncRoutePoints } from '@/lib/route-point-sync'
 
 export default function RutaActivaPage() {
   const router = useRouter()
@@ -14,6 +15,7 @@ export default function RutaActivaPage() {
   const [activeStep, setActiveStep] = useState(0)
   const [kmInput, setKmInput] = useState('')
   const [stopPhoto, setStopPhoto] = useState<string | null>(null)
+  const [stopPhotoFile, setStopPhotoFile] = useState<File | null>(null)
   const [processing, setProcessing] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [showPasswordModal, setShowPasswordModal] = useState(false)
@@ -36,12 +38,12 @@ export default function RutaActivaPage() {
       try {
         const { data: dbDriver, error } = await supabase
           .from('drivers')
-          .select('id, first_name, last_name, document_number')
+          .select('id, first_name, last_name, document_number, is_active')
           .eq('id', parsedDriver.id)
           .eq('document_number', parsedDriver.document_number)
           .single()
         
-        if (error || !dbDriver) {
+        if (error || !dbDriver?.is_active) {
           // La sesión no es válida — forzar logout
           console.warn('Sesión inválida detectada, redirigiendo al login.')
           localStorage.removeItem('jrm_driver')
@@ -68,8 +70,6 @@ export default function RutaActivaPage() {
 
   const fetchActiveDispatch = async (driverData: any) => {
     try {
-      const driverName = `${driverData.first_name} ${driverData.last_name}`.trim()
-      
       const { data, error } = await supabase
         .from('dispatches')
         .select(`
@@ -80,6 +80,8 @@ export default function RutaActivaPage() {
             document_number,
             document_type,
             sequence_order,
+            leg_actual_km,
+            leg_gps_complete,
             transport_requests(
               request_number,
               request_type,
@@ -88,8 +90,8 @@ export default function RutaActivaPage() {
             )
           )
         `)
-        .eq('driver_name', driverName)
-        .in('status', ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'])
+        .eq('driver_id', driverData.id)
+        .in('status', ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO', 'RETORNO_COMPLETADO'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
@@ -126,6 +128,7 @@ export default function RutaActivaPage() {
     try {
       let startLat = null
       let startLon = null
+      let startPosition: GeolocationPosition | null = null
       
       try {
         if (navigator.geolocation) {
@@ -134,20 +137,39 @@ export default function RutaActivaPage() {
           })
           startLat = pos.coords.latitude
           startLon = pos.coords.longitude
+          startPosition = pos
         }
       } catch (geoError) {
-        console.warn("No se pudo obtener la ubicación inicial:", geoError)
-        toast.error("No pudimos obtener tu ubicación inicial. Activa el GPS.")
+        throw new Error('No se pudo obtener GPS preciso para iniciar la ruta.')
       }
+      if (startLat === null || startLon === null) throw new Error('GPS no disponible')
 
-      const { error } = await supabase
-        .from('dispatches')
-        .update({ status: 'EN RUTA', start_lat: startLat, start_lon: startLon })
-        .eq('id', dispatch.id)
+      const { data: checklist } = await supabase.from('driver_checklists')
+        .select('id').eq('dispatch_id', dispatch.id).eq('driver_id', driver.id).eq('is_approved', true)
+        .limit(1).maybeSingle()
+      if (!checklist) throw new Error('Completa y guarda el checklist antes de iniciar.')
+
+      const { error } = await supabase.rpc('start_dispatch_route', {
+        p_dispatch_id: dispatch.id, p_lat: startLat, p_lon: startLon
+      })
       
       if (error) throw error
+      if (startPosition && startPosition.coords.accuracy <= 30) {
+        const { error: firstPointError } = await supabase.from('route_track_points').insert({
+          id: crypto.randomUUID(), dispatch_id: dispatch.id, driver_id: driver.id,
+          recorded_at: new Date(startPosition.timestamp).toISOString(),
+          latitude: startPosition.coords.latitude, longitude: startPosition.coords.longitude,
+          accuracy_m: startPosition.coords.accuracy,
+          speed_mps: startPosition.coords.speed
+        })
+        if (firstPointError) toast.warning('Punto GPS inicial pendiente. Revisa la conexión.')
+      }
       
       toast.success('Ruta iniciada con éxito. Conduzca con cuidado.', { id: loadingToast })
+      if (nativeRouteTracker) {
+        try { await nativeRouteTracker.start({ dispatchId: dispatch.id, driverId: driver.id }) }
+        catch { toast.warning('Seguimiento nativo no disponible; mantén abierta la app para registrar GPS.') }
+      }
       setDispatch({ ...dispatch, status: 'EN RUTA', start_lat: startLat, start_lon: startLon })
     } catch (err: any) {
       toast.error('Error al iniciar: ' + err.message, { id: loadingToast })
@@ -157,94 +179,61 @@ export default function RutaActivaPage() {
   }
 
   const handleRegisterKM = async (req: any) => {
-    if (!stopPhoto) {
+    if (!stopPhotoFile) {
       toast.error('Debes tomar una foto de evidencia en el punto')
       return
     }
     
     setProcessing(true)
-    const loadingToast = toast.loading('Calculando distancia recorrida (GPS)...')
+    const loadingToast = toast.loading('Validando GPS y guardando la parada...')
     try {
-      let currentLat = null
-      let currentLon = null
-      let actualKm = 0
-      
-      // Obtener ubicación GPS actual
-      try {
-        if (navigator.geolocation) {
-          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 })
-          })
-          currentLat = pos.coords.latitude
-          currentLon = pos.coords.longitude
-        }
-      } catch (geoError) {
-        console.warn("No se pudo obtener la ubicación de llegada:", geoError)
-        toast.error("No se pudo obtener el GPS para el cálculo de distancia.")
+      const stopPosition = await new Promise<GeolocationPosition>((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject,
+          { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }))
+      if (stopPosition.coords.accuracy > 30) throw new Error('Espera una señal GPS de 30 m o mejor')
+      const pendingPoints = readRouteQueue()
+      pendingPoints.push({
+        id: crypto.randomUUID(), dispatch_id: dispatch.id, driver_id: driver.id,
+        recorded_at: new Date(stopPosition.timestamp).toISOString(),
+        latitude: stopPosition.coords.latitude, longitude: stopPosition.coords.longitude,
+        accuracy_m: stopPosition.coords.accuracy, speed_mps: stopPosition.coords.speed
+      })
+      localStorage.setItem(routeQueueKey, JSON.stringify(pendingPoints))
+      if (await syncRoutePoints() > 0) throw new Error('Hay puntos GPS pendientes de sincronizar')
+      const { data: userData } = await supabase.auth.getUser()
+      if (!userData.user) throw new Error('La sesión expiró')
+      const filePath = `${userData.user.id}/${dispatch.id}/${req.transport_request_id}/${crypto.randomUUID()}-${stopPhotoFile.name}`
+      const { error: uploadError } = await supabase.storage.from('driver_evidence')
+        .upload(filePath, stopPhotoFile, { upsert: false, contentType: stopPhotoFile.type })
+      if (uploadError) throw uploadError
+      const { data: result, error: stopError } = await supabase.rpc('complete_dispatch_stop', {
+        p_dispatch_id: dispatch.id,
+        p_request_id: req.transport_request_id,
+        p_photo_url: filePath
+      })
+      if (stopError) {
+        await supabase.storage.from('driver_evidence').remove([filePath])
+        throw stopError
       }
-
-      // Calcular distancia recorrida desde el punto anterior
-      if (currentLat && currentLon) {
-        // Buscar el punto de partida (puede ser start_lat de dispatches o arrival_lat del anterior dispatch_requests)
-        let prevLat = dispatch.start_lat;
-        let prevLon = dispatch.start_lon;
-        
-        if (activeStep > 0) {
-          // Si no es el primer punto, usar el punto anterior
-          const prevReq = dispatch.dispatch_requests[activeStep - 1];
-          if (prevReq.arrival_lat && prevReq.arrival_lon) {
-            prevLat = prevReq.arrival_lat;
-            prevLon = prevReq.arrival_lon;
-          }
-        }
-        
-        if (prevLat && prevLon) {
-          const km = await getDrivingDistanceKM({ lat: prevLat, lon: prevLon }, { lat: currentLat, lon: currentLon });
-          if (km !== null) {
-            actualKm = Math.round(km * 10) / 10;
-          }
-        }
-      }
-
-      // 1. Actualizar estado en dispatch_requests
-      const { error: reqError } = await supabase
-        .from('dispatch_requests')
-        .update({ 
-          status: 'ENTREGADO',
-          arrival_lat: currentLat,
-          arrival_lon: currentLon,
-          leg_actual_km: actualKm,
-          arrival_odometer: 0 // Legacy compatibility
-        })
-        .eq('dispatch_id', dispatch.id)
-        .eq('transport_request_id', req.transport_request_id)
-        
-      if (reqError) throw reqError
-
-      // 2. Actualizar estado en transport_requests
-      const { error: otError } = await supabase
-        .from('transport_requests')
-        .update({ status: 'COMPLETADO' }) // Estado final en la tabla madre
-        .eq('id', req.transport_request_id)
-
-      if (otError) throw otError
-
-      toast.success(`Punto entregado correctamente (+${actualKm} km)`, { id: loadingToast })
+      const actualKm = Number(result.leg_actual_km)
+      toast.success(`Punto entregado: ${actualKm.toFixed(3)} km GPS${result.leg_gps_complete ? '' : ' (cobertura parcial)'}`, { id: loadingToast })
       
       // Actualizar estado local
       const updatedRequests = [...dispatch.dispatch_requests]
       updatedRequests[activeStep] = {
         ...updatedRequests[activeStep],
         status: 'ENTREGADO',
-        arrival_lat: currentLat,
-        arrival_lon: currentLon,
-        leg_actual_km: actualKm
+        arrival_lat: result.arrival_lat,
+        arrival_lon: result.arrival_lon,
+        leg_actual_km: actualKm,
+        leg_gps_complete: result.leg_gps_complete
       }
       setDispatch({ ...dispatch, dispatch_requests: updatedRequests })
       
       setActiveStep(activeStep + 1)
       setKmInput('')
       setStopPhoto(null)
+      setStopPhotoFile(null)
     } catch (err: any) {
       toast.error('Error al registrar: ' + err.message, { id: loadingToast })
     } finally {
@@ -255,17 +244,47 @@ export default function RutaActivaPage() {
   const handleRequestReturn = async () => {
     setProcessing(true)
     try {
-      const { error } = await supabase
-        .from('dispatches')
-        .update({ status: 'ESPERANDO_AUTORIZACION' })
-        .eq('id', dispatch.id)
+      if (nativeRouteTracker) await nativeRouteTracker.stop()
+      if (await syncRoutePoints() > 0) throw new Error('Hay puntos GPS pendientes de sincronizar')
+      const { error } = await supabase.rpc('request_dispatch_return', { p_dispatch_id: dispatch.id })
       
       if (error) throw error
       
       toast.success('Solicitud enviada al Supervisor.')
       setDispatch({ ...dispatch, status: 'ESPERANDO_AUTORIZACION' })
     } catch (err: any) {
+      if (nativeRouteTracker) void nativeRouteTracker.start({ dispatchId: dispatch.id, driverId: driver.id })
       toast.error('Error al solicitar retorno: ' + err.message)
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const handleCompleteReturn = async () => {
+    setProcessing(true)
+    try {
+      if (nativeRouteTracker) await nativeRouteTracker.stop()
+      const position = await new Promise<GeolocationPosition>((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject,
+          { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }))
+      if (position.coords.accuracy > 30) throw new Error('Espera una señal GPS de 30 m o mejor')
+      const pendingPoints = readRouteQueue()
+      pendingPoints.push({
+        id: crypto.randomUUID(), dispatch_id: dispatch.id, driver_id: driver.id,
+        recorded_at: new Date(position.timestamp).toISOString(),
+        latitude: position.coords.latitude, longitude: position.coords.longitude,
+        accuracy_m: position.coords.accuracy, speed_mps: position.coords.speed
+      })
+      localStorage.setItem(routeQueueKey, JSON.stringify(pendingPoints))
+      if (await syncRoutePoints() > 0) throw new Error('Hay puntos GPS pendientes de sincronizar')
+      const { data, error } = await supabase.rpc('complete_dispatch_return', { p_dispatch_id: dispatch.id })
+      if (error) throw error
+      toast.success(`Retorno registrado: ${Number(data.return_actual_km).toFixed(3)} km GPS`)
+      setDispatch({ ...dispatch, status: 'RETORNO_COMPLETADO',
+        return_actual_km: data.return_actual_km, actual_distance_km: data.actual_distance_km })
+    } catch (err: any) {
+      if (nativeRouteTracker) void nativeRouteTracker.start({ dispatchId: dispatch.id, driverId: driver.id })
+      toast.error('Error al confirmar llegada: ' + err.message)
     } finally {
       setProcessing(false)
     }
@@ -275,11 +294,14 @@ export default function RutaActivaPage() {
     const file = e.target.files?.[0]
     if (file) {
       setStopPhoto(URL.createObjectURL(file))
+      setStopPhotoFile(file)
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (nativeRouteTracker) await nativeRouteTracker.stop()
     localStorage.removeItem('jrm_driver')
+    await supabase.auth.signOut()
     window.location.href = '/app/login'
   }
 
@@ -292,26 +314,14 @@ export default function RutaActivaPage() {
     
     setProcessing(true)
     try {
-      // Verificar contraseña actual
-      const { data: currentDriver, error: currentError } = await supabase
-        .from('drivers')
-        .select('pin')
-        .eq('id', driver.id)
-        .single()
-        
-      if (currentError) throw currentError
-      
-      if (currentDriver.pin !== passwords.current) {
-        toast.error('La contraseña actual es incorrecta')
-        setProcessing(false)
-        return
-      }
-      
-      // Actualizar contraseña
-      const { error: updateError } = await supabase
-        .from('drivers')
-        .update({ pin: passwords.new })
-        .eq('id', driver.id)
+      if (passwords.new.length < 8) throw new Error('Usa al menos 8 caracteres.')
+      const { data: userData } = await supabase.auth.getUser()
+      if (!userData.user?.email) throw new Error('Sesión inválida')
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email: userData.user.email, password: passwords.current
+      })
+      if (verifyError) throw new Error('La contraseña actual es incorrecta')
+      const { error: updateError } = await supabase.auth.updateUser({ password: passwords.new })
         
       if (updateError) throw updateError
       
@@ -467,7 +477,7 @@ export default function RutaActivaPage() {
         </div>
       </div>
 
-      {dispatch.status === 'PROGRAMADO' ? (
+      {['PROGRAMADO', 'EN_CURSO'].includes(dispatch.status) ? (
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm text-center">
           <div className="w-16 h-16 bg-blue-100 text-[#002855] rounded-full flex items-center justify-center mx-auto mb-4">
             <Navigation className="w-8 h-8" />
@@ -521,7 +531,7 @@ export default function RutaActivaPage() {
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${typeLabel === 'RECOJO' ? 'bg-orange-100 text-orange-700' : 'bg-purple-100 text-purple-700'}`}>
                       {typeLabel}
                     </span>
-                    {isPast && <span className="text-xs font-bold text-green-600">Completado</span>}
+                    {isPast && <span className="text-xs font-bold text-green-600">{Number(req.leg_actual_km || 0).toFixed(3)} km GPS{req.leg_gps_complete === false ? ' · parcial' : ''}</span>}
                   </div>
                   
                   {req.document_number && (
@@ -542,7 +552,7 @@ export default function RutaActivaPage() {
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={stopPhoto} alt="Evidencia" className="w-full h-32 object-cover" />
                           <button 
-                            onClick={() => setStopPhoto(null)}
+                            onClick={() => { setStopPhoto(null); setStopPhotoFile(null) }}
                             className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded"
                           >
                             Cambiar
@@ -622,10 +632,22 @@ export default function RutaActivaPage() {
           </div>
           <h2 className="text-xl font-bold text-blue-900 mb-2">Retorno Autorizado</h2>
           <p className="text-sm text-blue-700 mb-6">Puede retornar a Base. Conduzca con cuidado.</p>
+          <button onClick={handleCompleteReturn} disabled={processing}
+            className="w-full mb-3 bg-[#002855] text-white px-6 py-3 rounded-xl font-bold disabled:opacity-50">
+            {processing ? 'Sincronizando GPS...' : 'Confirmar llegada a base'}
+          </button>
           <a href="/app/liquidacion" className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-xl font-bold shadow hover:bg-blue-700">
             <FileText className="w-5 h-5" />
             Ir a Liquidar Gastos
           </a>
+        </div>
+      )}
+
+      {dispatch.status === 'RETORNO_COMPLETADO' && (
+        <div className="mt-8 bg-green-50 border border-green-200 p-6 rounded-xl text-center">
+          <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-green-600" />
+          <h2 className="text-xl font-bold text-green-900">Llegada a base registrada</h2>
+          <p className="text-sm text-green-700 mt-2">Retorno: {Number(dispatch.return_actual_km || 0).toFixed(3)} km · Total: {Number(dispatch.actual_distance_km || 0).toFixed(3)} km GPS. El supervisor puede cerrar la ruta.</p>
         </div>
       )}
 
@@ -642,7 +664,7 @@ export default function RutaActivaPage() {
             </div>
             <form onSubmit={handleChangePassword} className="p-5 space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Contraseña Actual (DNI)</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Contraseña actual</label>
                 <input 
                   type="password" 
                   required
@@ -652,7 +674,7 @@ export default function RutaActivaPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Nueva Contraseña (PIN)</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Nueva contraseña (mínimo 8 caracteres)</label>
                 <input 
                   type="password" 
                   required

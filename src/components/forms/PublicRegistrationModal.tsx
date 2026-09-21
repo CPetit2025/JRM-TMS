@@ -1,14 +1,8 @@
 "use client"
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
-
-interface Role {
-  id: string
-  name: string
-}
 
 interface PublicRegistrationModalProps {
   isOpen: boolean
@@ -16,9 +10,7 @@ interface PublicRegistrationModalProps {
 }
 
 export function PublicRegistrationModal({ isOpen, onClose }: PublicRegistrationModalProps) {
-  const supabase = createClient()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [roles, setRoles] = useState<Role[]>([])
   
   const [newUser, setNewUser] = useState({
     first_name: '',
@@ -29,22 +21,6 @@ export function PublicRegistrationModal({ isOpen, onClose }: PublicRegistrationM
     role_id: '',
     password: ''
   })
-
-  useEffect(() => {
-    if (isOpen) {
-      fetchRoles()
-    }
-  }, [isOpen])
-
-  const fetchRoles = async () => {
-    try {
-      const { data, error } = await supabase.from('roles').select('id, name')
-      if (error) throw error
-      setRoles(data || [])
-    } catch (error) {
-      console.error('Error fetching roles:', error)
-    }
-  }
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -108,15 +84,7 @@ export function PublicRegistrationModal({ isOpen, onClose }: PublicRegistrationM
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Rol Solicitado</label>
-            <select required value={newUser.role_id} onChange={e => setNewUser({...newUser, role_id: e.target.value})} className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none">
-              <option value="" className="text-slate-500">Seleccione un rol...</option>
-              {roles.map(role => (
-                <option key={role.id} value={role.id}>{role.name}</option>
-              ))}
-            </select>
-          </div>
+          <p className="text-xs text-slate-500">Un administrador asignará tu rol al aprobar la cuenta.</p>
 
           <div className="grid grid-cols-2 gap-4 pt-4 border-t">
             <div>
@@ -126,7 +94,7 @@ export function PublicRegistrationModal({ isOpen, onClose }: PublicRegistrationM
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña</label>
-              <input required type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" minLength={6} />
+              <input required type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" minLength={8} />
             </div>
           </div>
 

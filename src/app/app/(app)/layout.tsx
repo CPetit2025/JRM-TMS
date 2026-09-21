@@ -8,6 +8,7 @@ import GPSGuard from '@/components/driver/GPSGuard'
 import NotificationProvider from '@/components/NotificationProvider'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { nativeRouteTracker } from '@/lib/native-route-tracker'
 
 export default function OperativeLayout({ children }: { children: ReactNode }) {
   const [userName, setUserName] = useState('Usuario')
@@ -52,6 +53,7 @@ export default function OperativeLayout({ children }: { children: ReactNode }) {
   }, [])
 
   const handleLogout = async () => {
+    if (nativeRouteTracker) await nativeRouteTracker.stop()
     localStorage.removeItem('jrm_driver')
     await supabase.auth.signOut()
     router.push('/app/login')

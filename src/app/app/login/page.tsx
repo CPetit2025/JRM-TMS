@@ -57,6 +57,15 @@ export default function OperativeLogin() {
         return
       }
 
+      const { data: profile } = await supabase.from('profiles')
+        .select('is_active').eq('id', data.user.id).maybeSingle()
+      if (!profile?.is_active) {
+        await supabase.auth.signOut()
+        toast.error('Cuenta pendiente de aprobación.')
+        setLoading(false)
+        return
+      }
+
       toast.success('Bienvenido al Portal Operativo')
       
       if (rememberMe) {
@@ -73,6 +82,12 @@ export default function OperativeLogin() {
         .single()
         
       if (driver) {
+        if (!driver.is_active) {
+          await supabase.auth.signOut()
+          toast.error('Conductor pendiente de aprobación.')
+          setLoading(false)
+          return
+        }
         localStorage.setItem('jrm_driver', JSON.stringify(driver))
         router.push('/app/ruta')
       } else {

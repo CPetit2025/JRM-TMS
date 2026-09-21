@@ -25,6 +25,10 @@ export default function ChecklistPage() {
   const [checkingLocation, setCheckingLocation] = useState(true)
   const [locationValid, setLocationValid] = useState(false)
   const [hasDispatch, setHasDispatch] = useState(false)
+  const [dispatchId, setDispatchId] = useState<string | null>(null)
+  const [driverId, setDriverId] = useState<string | null>(null)
+  const [vehiclePlate, setVehiclePlate] = useState<string | null>(null)
+  const [gps, setGps] = useState<{lat: number; lon: number} | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [currentDistanceInfo, setCurrentDistanceInfo] = useState<string | null>(null)
   
@@ -38,6 +42,7 @@ export default function ChecklistPage() {
   })
   
   const [photo, setPhoto] = useState<string | null>(null)
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
 
   useEffect(() => {
     // Restaurar estado guardado
@@ -46,7 +51,6 @@ export default function ChecklistPage() {
       try {
         const parsed = JSON.parse(saved)
         if (parsed.checklist) setChecklist(parsed.checklist)
-        if (parsed.photo) setPhoto(parsed.photo)
       } catch (e) {
         console.error(e)
       }
@@ -59,18 +63,24 @@ export default function ChecklistPage() {
         const driverData = localStorage.getItem('jrm_driver')
         if (driverData) {
           const parsed = JSON.parse(driverData)
-          const driverName = `${parsed.first_name} ${parsed.last_name}`.trim()
-          
+          const { data: userData } = await supabase.auth.getUser()
+          if (!userData.user) throw new Error('Sesión expirada')
+          const { data: currentDriver } = await supabase.from('drivers')
+            .select('id').eq('profile_id', userData.user.id).eq('is_active', true).maybeSingle()
+          if (!currentDriver || currentDriver.id !== parsed.id) throw new Error('Conductor no autorizado')
+          setDriverId(currentDriver.id)
           const { data: activeDispatch, error: dispatchError } = await supabase
             .from('dispatches')
             .select('id, vehicle_plate')
-            .eq('driver_name', driverName)
-            .in('status', ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'])
+            .eq('driver_id', currentDriver.id)
+            .in('status', ['PROGRAMADO', 'EN_CURSO'])
             .limit(1)
             .maybeSingle()
             
           if (activeDispatch && activeDispatch.vehicle_plate) {
             setHasDispatch(true)
+            setDispatchId(activeDispatch.id)
+            setVehiclePlate(activeDispatch.vehicle_plate)
           } else {
             setHasDispatch(false)
             setCheckingLocation(false)
@@ -88,9 +98,8 @@ export default function ChecklistPage() {
           .eq('is_active', true)
           
         if (error || !locations || locations.length === 0) {
-          // Fallback if no locations defined, allow bypass or deny
-          toast.warning("No hay geocercas configuradas en el sistema.")
-          setLocationValid(true) // For demo purposes when DB is empty
+          toast.error("No hay geocercas configuradas. Contacta al supervisor.")
+          setLocationValid(false)
           setCheckingLocation(false)
           return
         }
@@ -99,6 +108,7 @@ export default function ChecklistPage() {
           navigator.geolocation.getCurrentPosition(
             (position) => {
               const { latitude, longitude } = position.coords
+              setGps({ lat: latitude, lon: longitude })
               
               let isValid = false
               let closestDistance = Infinity
@@ -146,14 +156,14 @@ export default function ChecklistPage() {
     if (file) {
       const imageUrl = URL.createObjectURL(file)
       setPhoto(imageUrl)
-      localStorage.setItem('jrm_checklist_state', JSON.stringify({ checklist, photo: imageUrl }))
+      setPhotoFile(file)
     }
   }
 
   const updateChecklist = (key: string, value: any) => {
     const newChecklist = { ...checklist, [key]: value }
     setChecklist(newChecklist)
-    localStorage.setItem('jrm_checklist_state', JSON.stringify({ checklist: newChecklist, photo }))
+    localStorage.setItem('jrm_checklist_state', JSON.stringify({ checklist: newChecklist }))
   }
 
   const handleSubmit = async () => {
@@ -162,22 +172,39 @@ export default function ChecklistPage() {
       toast.error('Debes validar todos los puntos de seguridad')
       return
     }
-    if (!photo) {
+    if (!photoFile) {
       toast.error('Es obligatorio subir una foto de evidencia del vehículo')
       return
     }
 
+    if (!dispatchId || !driverId || !gps || !locationValid) {
+      toast.error('Falta una ruta asignada o una ubicación validada.')
+      return
+    }
     setSubmitting(true)
-    // Simular guardado en BD
-    await new Promise(r => setTimeout(r, 1500))
-    toast.success('Checklist guardado con éxito')
-    router.push('/app/ruta')
-  }
-
-  // Bypass para demos
-  const enableBypass = () => {
-    setLocationValid(true)
-    toast.success("Bypass de GPS activado para la demostración")
+    try {
+      const { data: userData } = await supabase.auth.getUser()
+      if (!userData.user) throw new Error('Sesión expirada')
+      const filePath = `${userData.user.id}/${dispatchId}/checklist/${crypto.randomUUID()}-${photoFile.name}`
+      const { error: uploadError } = await supabase.storage.from('driver_evidence')
+        .upload(filePath, photoFile, { upsert: false, contentType: photoFile.type })
+      if (uploadError) throw uploadError
+      const { error: saveError } = await supabase.from('driver_checklists').insert({
+        dispatch_id: dispatchId, driver_id: driverId, vehicle_plate: vehiclePlate,
+        checklist_data: checklist, photo_url: filePath,
+        location_lat: gps.lat, location_lon: gps.lon,
+        is_approved: Object.entries(checklist).filter(([key]) => key !== 'observaciones').every(([, value]) => value === 'OK')
+      })
+      if (saveError) {
+        await supabase.storage.from('driver_evidence').remove([filePath])
+        throw saveError
+      }
+      localStorage.removeItem('jrm_checklist_state')
+      toast.success('Checklist y fotografía guardados.')
+      router.push('/app/ruta')
+    } catch (err: any) {
+      toast.error('No se pudo guardar el checklist: ' + err.message)
+    } finally { setSubmitting(false) }
   }
 
   return (
@@ -235,7 +262,7 @@ export default function ChecklistPage() {
             <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
               <MapPin className="w-4 h-4 text-green-600" />
             </div>
-            <span className="text-sm font-bold text-green-800">Ubicación Validada — Planta Chilca</span>
+            <span className="text-sm font-bold text-green-800">Ubicación dentro de geocerca autorizada</span>
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -295,7 +322,7 @@ export default function ChecklistPage() {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={photo} alt="Evidencia" className="w-full h-48 object-cover" />
                   <button
-                    onClick={() => setPhoto(null)}
+                    onClick={() => { setPhoto(null); setPhotoFile(null) }}
                     className="absolute top-2 right-2 bg-black/60 text-white text-xs px-3 py-1 rounded-full font-bold"
                   >
                     Cambiar

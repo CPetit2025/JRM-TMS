@@ -13,8 +13,8 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
 
-  const [username, setUsername] = useState('admin')
-  const [password, setPassword] = useState('admin')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
 
   const supabase = createClient()
 
@@ -56,7 +56,7 @@ export default function LoginPage() {
           .eq('id', data.user.id)
           .single()
 
-        if (profileData && profileData.is_active === false) {
+        if (!profileData || profileData.is_active !== true) {
           await supabase.auth.signOut()
           throw new Error('Tu cuenta está pendiente de aprobación por un Administrador.')
         }
@@ -68,12 +68,6 @@ export default function LoginPage() {
            const roleObj = Array.isArray(profileData.roles) ? profileData.roles[0] : (profileData.roles as any)
            roleName = roleObj?.name || 'operador'
            permissions = roleObj?.permissions || []
-        }
-        
-        // MVP: Forzar rol de administrador para el usuario principal si la BD no lo asignó
-        if (email === 'admin@jrm.com' || email === 'admin' || email === 'admin@jrmsac.com.pe' || email === 'cpetit@jrmsac.com.pe') {
-          roleName = 'admin'
-          permissions = ['dashboard', 'clientes', 'ot', 'solicitudes', 'despacho', 'monitoreo', 'servicios-realizados', 'mantenimiento-dashboard', 'mantenimiento-flota', 'mantenimiento-fallas', 'mantenimiento-ot', 'mantenimiento-planes', 'flota', 'tarifas', 'productos', 'usuarios', 'permisos', 'configuracion']
         }
         
         // Guardar en localStorage para UI (Sidebar)

@@ -1,200 +1,132 @@
 "use client"
 
-import { useState, useEffect, ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { MapPinOff, Loader2, Navigation } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { nativeRouteTracker } from '@/lib/native-route-tracker'
+import { activeRouteKey, readRouteQueue, routeQueueKey, syncRoutePoints } from '@/lib/route-point-sync'
 
-interface GPSGuardProps {
-  children: ReactNode
-}
-
-export default function GPSGuard({ children }: GPSGuardProps) {
+export default function GPSGuard({ children }: { children: ReactNode }) {
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null)
-  const [location, setLocation] = useState<{ lat: number, lng: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isChecking, setIsChecking] = useState(true)
+  const [unsent, setUnsent] = useState(0)
 
   useEffect(() => {
-    if (!('geolocation' in navigator)) {
-      setError('Geolocalización no soportada por este navegador.')
+    if (!navigator.geolocation) {
+      setError('Geolocalización no soportada por este dispositivo.')
       setIsChecking(false)
       return
     }
+    const supabase = createClient()
+    let stopped = false
+    let driverId: string | null = null
+    let dispatchId: string | null = localStorage.getItem(activeRouteKey)
+    let lastTimestamp = 0
+    let nativeStarted = false
 
-    let channel: any = null;
-    let isSubscribed = false;
-    let latestCoords: any = null;
-
-    // Inicializar Supabase y canal una sola vez
-    const initSupabase = async () => {
-      try {
-        const supabase = (window as any).supabaseClient || await import('@/lib/supabase/client').then(m => m.createClient())
-        ;(window as any).supabaseClient = supabase
-
-        channel = supabase.channel('gps_tracking')
-        channel.subscribe((status: string) => {
-          if (status === 'SUBSCRIBED') {
-            isSubscribed = true
-            
-            // Si ya teníamos coordenadas, las enviamos inmediatamente al conectarse
-            if (latestCoords) {
-              const driverData = localStorage.getItem('jrm_driver')
-              if (driverData) {
-                try {
-                  const driver = JSON.parse(driverData)
-                  channel.send({
-                    type: 'broadcast',
-                    event: 'location_update',
-                    payload: {
-                      driver_id: driver.id || driver.document_number,
-                      driver_name: `${driver.first_name} ${driver.last_name}`,
-                      lat: latestCoords.lat,
-                      lng: latestCoords.lng,
-                      speed: latestCoords.speed,
-                      timestamp: new Date().toISOString()
-                    }
-                  })
-                } catch(e) { console.error(e) }
-              }
-            }
-          }
-        })
-      } catch (e) {
-        console.error("Error init Supabase in GPSGuard", e)
+    const refreshAssignment = async () => {
+      const { data: userData } = await supabase.auth.getUser()
+      if (!userData.user) {
+        if (nativeRouteTracker) await nativeRouteTracker.stop()
+        nativeStarted = false
+        dispatchId = null
+        localStorage.removeItem(activeRouteKey)
+        return
+      }
+      if (stopped) return
+      const { data: driver } = await supabase.from('drivers')
+        .select('id, is_active').eq('profile_id', userData.user.id).maybeSingle()
+      if (!driver?.is_active || stopped) {
+        if (nativeRouteTracker) await nativeRouteTracker.stop()
+        nativeStarted = false
+        driverId = null
+        dispatchId = null
+        localStorage.removeItem(activeRouteKey)
+        return
+      }
+      driverId = driver.id
+      const { data: active } = await supabase.from('dispatches')
+        .select('id').eq('driver_id', driver.id)
+        .in('status', ['EN RUTA', 'EN_CURSO', 'RETORNO'])
+        .order('created_at', { ascending: false }).limit(1).maybeSingle()
+      if (active?.id) {
+        dispatchId = active.id
+        localStorage.setItem(activeRouteKey, active.id)
+        if (nativeRouteTracker) {
+          try {
+            await nativeRouteTracker.start({ dispatchId: active.id, driverId: driver.id })
+            nativeStarted = true
+          } catch (nativeError) { console.error('No se pudo iniciar GPS nativo:', nativeError) }
+        }
+      } else if (navigator.onLine) {
+        dispatchId = null
+        localStorage.removeItem(activeRouteKey)
+        if (nativeRouteTracker) {
+          await nativeRouteTracker.stop()
+          nativeStarted = false
+        }
       }
     }
-    
-    initSupabase()
 
-    // Solicitar y observar la ubicación
-    const watchId = navigator.geolocation.watchPosition(
-      async (position) => {
-        setPermissionGranted(true)
-        setIsChecking(false)
-        setError(null)
-        
-        const speedKmh = position.coords.speed !== null ? Math.round(position.coords.speed * 3.6) : 0;
-        
-        const coords = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          speed: speedKmh
-        }
-        latestCoords = coords
-        setLocation(coords)
-        
-        // MVP: Guardamos en localStorage local
-        localStorage.setItem('driver_current_location', JSON.stringify(coords))
-
-        // REALTIME: Emitir a Supabase para que la Torre de Control lo vea en vivo
-        const driverData = localStorage.getItem('jrm_driver')
-        if (driverData && channel && isSubscribed) {
-          try {
-            const driver = JSON.parse(driverData)
-            console.log('Enviando broadcast GPS a Torre de Control:', coords)
-            channel.send({
-              type: 'broadcast',
-              event: 'location_update',
-              payload: {
-                driver_id: driver.id || driver.document_number,
-                driver_name: `${driver.first_name} ${driver.last_name}`,
-                lat: coords.lat,
-                lng: coords.lng,
-                speed: coords.speed,
-                timestamp: new Date().toISOString()
-              }
-            })
-          } catch(e) { console.error('Error broadcasting GPS:', e) }
-        }
-      },
-      (err) => {
-        setIsChecking(false)
-        setPermissionGranted(false)
-        if (err.code === 1) {
-          setError('Permiso de ubicación denegado.')
-        } else if (err.code === 2) {
-          setError('Señal GPS no disponible. Active su GPS.')
-        } else {
-          setError('Error obteniendo la ubicación.')
-        }
-      },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 10000,
-        timeout: 5000
+    const flush = async () => {
+      if (stopped || !navigator.onLine) return
+      try {
+        setUnsent(await syncRoutePoints())
+      } catch (syncError) {
+        console.warn('GPS pendiente de sincronizar:', syncError)
       }
-    )
+    }
 
+    void refreshAssignment().then(flush)
+    const assignmentTimer = window.setInterval(() => void refreshAssignment().then(flush), 15000)
+    const flushTimer = window.setInterval(() => void flush(), 5000)
+    window.addEventListener('online', flush)
+    const watchId = navigator.geolocation.watchPosition(position => {
+      setPermissionGranted(true); setIsChecking(false); setError(null)
+      const { latitude, longitude, accuracy, speed } = position.coords
+      if (!driverId || !dispatchId || nativeStarted || accuracy > 30 || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return
+      if (position.timestamp <= lastTimestamp) return
+      lastTimestamp = position.timestamp
+      const queue = readRouteQueue()
+      if (queue.length >= 5000) {
+        setError('Memoria GPS llena. Conecta el dispositivo a Internet para sincronizar la ruta.')
+        return
+      }
+      queue.push({ id: crypto.randomUUID(), dispatch_id: dispatchId, driver_id: driverId,
+        recorded_at: new Date(position.timestamp).toISOString(), latitude, longitude,
+        accuracy_m: Math.round(accuracy * 100) / 100,
+        speed_mps: speed === null ? null : Math.round(speed * 100) / 100 })
+      localStorage.setItem(routeQueueKey, JSON.stringify(queue))
+      setUnsent(queue.length)
+      void flush()
+    }, geoError => {
+      setIsChecking(false); setPermissionGranted(false)
+      setError(geoError.code === 1 ? 'Permiso de ubicación denegado.' : 'Señal GPS no disponible.')
+    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 })
     return () => {
+      stopped = true
       navigator.geolocation.clearWatch(watchId)
-      if (channel) channel.unsubscribe()
+      window.clearInterval(assignmentTimer); window.clearInterval(flushTimer)
+      window.removeEventListener('online', flush)
     }
   }, [])
 
   const requestPermission = () => {
     setIsChecking(true)
-    setError(null)
     navigator.geolocation.getCurrentPosition(
-      () => {
-        setPermissionGranted(true)
-        setIsChecking(false)
-      },
-      (err) => {
-        setIsChecking(false)
-        setPermissionGranted(false)
-        setError('Debes permitir el acceso al GPS en la configuración de tu navegador.')
-      }
+      () => { setPermissionGranted(true); setIsChecking(false); setError(null) },
+      () => { setPermissionGranted(false); setIsChecking(false); setError('Debes permitir el GPS en la configuración del dispositivo.') },
+      { enableHighAccuracy: true, timeout: 15000 }
     )
   }
-
-  if (isChecking) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-center">
-        <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-4" />
-        <h2 className="text-xl font-bold text-white mb-2">Verificando GPS...</h2>
-        <p className="text-slate-400">Obteniendo coordenadas de seguridad.</p>
-      </div>
-    )
-  }
-
-  if (permissionGranted === false || error) {
-    return (
-      <div className="min-h-screen bg-red-950 flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-20 h-20 bg-red-900/50 rounded-full flex items-center justify-center mb-6 border border-red-500/30">
-          <MapPinOff className="w-10 h-10 text-red-500" />
-        </div>
-        
-        <h1 className="text-2xl font-bold text-white mb-3">Acceso Bloqueado</h1>
-        <p className="text-red-200 mb-8 max-w-sm">
-          Por políticas de seguridad y operación, es <strong>obligatorio</strong> mantener el GPS encendido y otorgar permisos de ubicación para utilizar el portal de conductor.
-        </p>
-        
-        <div className="bg-red-900/40 p-4 rounded-xl border border-red-800 mb-8 max-w-sm w-full text-left">
-          <p className="text-sm text-red-300 font-semibold mb-2">Estado: {error}</p>
-          <ul className="text-xs text-red-400 space-y-1 list-disc pl-4">
-            <li>Asegúrate de que el GPS (Ubicación) de tu celular esté encendido.</li>
-            <li>Si denegaste el permiso, entra a la configuración del navegador (candado en la barra de URL) y permite el acceso a la ubicación.</li>
-          </ul>
-        </div>
-
-        <button 
-          onClick={requestPermission}
-          className="bg-white text-red-900 px-6 py-3 rounded-xl font-bold shadow-lg hover:bg-red-50 transition-colors flex items-center gap-2"
-        >
-          <Navigation className="w-5 h-5" />
-          Reintentar Conexión GPS
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <>
-      {children}
-      {/* Indicador persistente pequeño de GPS Activo */}
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-green-500/90 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-md z-50 flex items-center gap-1.5 backdrop-blur-sm pointer-events-none">
-        <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
-        GPS EN LÍNEA
-      </div>
-    </>
-  )
+  if (isChecking) return <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white gap-3"><Loader2 className="animate-spin" />Verificando GPS...</div>
+  if (permissionGranted === false || error) return <div className="min-h-screen bg-red-950 flex flex-col items-center justify-center p-6 text-center text-white gap-4">
+    <MapPinOff className="w-12 h-12 text-red-400" /><h1 className="text-2xl font-bold">GPS no disponible</h1>
+    <p className="max-w-sm">{error || 'Activa la ubicación para usar el portal operativo.'}</p>
+    <button onClick={requestPermission} className="bg-white text-red-900 px-6 py-3 rounded-xl font-bold flex gap-2"><Navigation />Reintentar GPS</button>
+  </div>
+  return <>{children}<div className="fixed top-4 left-1/2 -translate-x-1/2 bg-green-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow z-50 pointer-events-none">
+    GPS activo{unsent > 0 ? ` · ${unsent} puntos pendientes` : ''}
+  </div></>
 }
