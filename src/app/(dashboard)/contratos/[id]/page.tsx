@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Briefcase, Layers, FileWarning, DollarSign, MapPin, Send, Receipt } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { createClient } from '@/lib/supabase/client'
 
 export default function ContratoDetallePage({ params }: { params: { id: string } }) {
   const router = useRouter()
