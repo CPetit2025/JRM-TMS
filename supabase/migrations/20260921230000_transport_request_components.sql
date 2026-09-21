@@ -370,8 +370,4 @@ END $$;
 REVOKE ALL ON FUNCTION public.set_transport_request_status(uuid,text,date) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.set_transport_request_status(uuid,text,date) TO authenticated;
 
--- All writes to the request header now go through validated RPCs. Existing
--- dispatch lifecycle functions are SECURITY DEFINER and keep their own checks.
-REVOKE INSERT, UPDATE, DELETE ON public.transport_requests FROM PUBLIC, anon, authenticated;
-
 NOTIFY pgrst, 'reload schema';
