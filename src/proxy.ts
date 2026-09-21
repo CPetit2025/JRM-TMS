@@ -36,6 +36,7 @@ export async function proxy(request: NextRequest) {
   const isDriverRoute = request.nextUrl.pathname.startsWith('/app')
   const isApiRoute = request.nextUrl.pathname.startsWith('/api')
   const isPublicTracking = request.nextUrl.pathname.startsWith('/tracking/')
+  let hasDashboardAccess = false
   
   // Si no está autenticado y NO está en una página de login ni API
   if (!user && !isLoginPage && !isDriverLoginPage && !isDriverRegisterPage && !isApiRoute && !isPublicTracking) {
@@ -61,13 +62,12 @@ export async function proxy(request: NextRequest) {
       if (request.nextUrl.pathname !== url.pathname) return NextResponse.redirect(url)
       return supabaseResponse
     }
-    if (!isDriverRoute && !isLoginPage && !isDriverLoginPage && !isDriverRegisterPage) {
-      const role = Array.isArray(profile.roles) ? profile.roles[0] : profile.roles
-      const permissions = Array.isArray(role?.permissions) ? role.permissions : []
-      if (profile.employee_type === 'CONDUCTOR' ||
-        (!/admin/i.test(role?.name || '') && !permissions.includes('dashboard'))) {
-        return NextResponse.redirect(new URL('/app/ruta', request.url))
-      }
+    const role = Array.isArray(profile.roles) ? profile.roles[0] : profile.roles
+    const permissions = Array.isArray(role?.permissions) ? role.permissions : []
+    hasDashboardAccess = profile.employee_type !== 'CONDUCTOR' &&
+      (/admin/i.test(role?.name || '') || permissions.includes('dashboard'))
+    if (!isDriverRoute && !isLoginPage && !hasDashboardAccess) {
+      return NextResponse.redirect(new URL('/login', request.url))
     }
     if (isDriverRoute && !isDriverLoginPage && !isDriverRegisterPage && profile.employee_type === 'CONDUCTOR') {
       const { data: driver } = await supabase.from('drivers').select('is_active')
@@ -77,7 +77,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // Si YA está autenticado e intenta ir a la página de login (para evitar que vea el login si ya tiene sesión)
-  if (user && isLoginPage) {
+  if (user && isLoginPage && hasDashboardAccess) {
     const url = request.nextUrl.clone()
     url.pathname = '/'
     return NextResponse.redirect(url)
