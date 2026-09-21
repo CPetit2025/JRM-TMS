@@ -69,6 +69,11 @@ export default function LoginPage() {
            roleName = roleObj?.name || 'operador'
            permissions = roleObj?.permissions || []
         }
+
+        if (!/admin/i.test(roleName) && !permissions.includes('dashboard')) {
+          await supabase.auth.signOut()
+          throw new Error('Esta cuenta pertenece al Portal Operativo. Ingresa desde /app/login.')
+        }
         
         // Guardar en localStorage para UI (Sidebar)
         localStorage.setItem('userRole', roleName ? roleName.toLowerCase() : 'operador')
