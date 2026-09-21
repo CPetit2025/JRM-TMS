@@ -13,6 +13,7 @@
     "brand:assets": "node scripts/generate-brand-assets.cjs",
     "check:supabase": "node scripts/check-supabase-connection.cjs",
     "check:vercel": "node scripts/check-vercel-config.cjs",
+    "check:ai-config": "node scripts/check-ai-config.cjs",
     "check:infra": "npm run check:supabase && npm run check:vercel"
   },
   "dependencies": {

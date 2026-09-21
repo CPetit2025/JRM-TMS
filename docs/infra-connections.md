@@ -25,6 +25,9 @@ Required Vercel environment variables:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `OPENAI_API_KEY` (JRM IA y OCR con OpenAI; solo servidor)
+
+Los pasos para cargar y comprobar las claves están en [configurar OpenAI en Vercel](configurar-openai-vercel.md).
 
 ## Verification
 
