@@ -11,7 +11,6 @@ if (!existsSync(process.env.JRM_KEYSTORE_PATH)) throw new Error('No se encontró
 const root = path.resolve(__dirname, '..');
 const android = path.join(root, 'android');
 const capacitor = path.join(root, 'node_modules', '@capacitor', 'cli', 'bin', 'capacitor');
-const gradle = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -23,13 +22,19 @@ function run(command, args, options = {}) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
+// Capacitor writes generated configuration here; Git omits this directory in fresh checkouts.
+mkdirSync(path.join(android, 'app', 'src', 'main', 'assets'), { recursive: true });
 run(process.execPath, [capacitor, 'sync', 'android']);
 const syncedConfig = JSON.parse(readFileSync(
   path.join(android, 'app', 'src', 'main', 'assets', 'capacitor.config.json'), 'utf8'));
 if (!syncedConfig.server?.url?.startsWith('https://') || !syncedConfig.server?.appStartPath) {
   throw new Error('La configuración Android debe incluir server.url HTTPS y server.appStartPath.');
 }
-run(gradle, ['assembleRelease'], { cwd: android, shell: process.platform === 'win32' });
+if (process.platform === 'win32') {
+  run('gradlew.bat', ['assembleRelease'], { cwd: android, shell: true });
+} else {
+  run('bash', ['./gradlew', 'assembleRelease'], { cwd: android });
+}
 
 const version = process.env.JRM_ANDROID_VERSION_NAME || '1.0.3';
 const build = process.env.JRM_ANDROID_VERSION_CODE || '4';
