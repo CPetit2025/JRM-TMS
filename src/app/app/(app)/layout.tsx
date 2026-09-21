@@ -9,6 +9,7 @@ import NotificationProvider from '@/components/NotificationProvider'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { nativeRouteTracker } from '@/lib/native-route-tracker'
+import { AppUpdateNotice } from '@/components/AppUpdateNotice'
 
 export default function OperativeLayout({ children }: { children: ReactNode }) {
   const [userName, setUserName] = useState('Usuario')
@@ -66,6 +67,7 @@ export default function OperativeLayout({ children }: { children: ReactNode }) {
 
   return (
     <GPSGuard>
+      <AppUpdateNotice />
       <NotificationProvider role={isDriver ? "driver" : "operario"} />
       <div className="flex flex-col min-h-screen bg-slate-50 text-slate-900 pb-16">
       {/* Top Header */}

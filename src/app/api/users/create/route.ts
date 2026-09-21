@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { isSystemAdminRole } from '@/lib/roles'
 
 export async function POST(request: Request) {
   try {
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
       }
       const role = Array.isArray(currentProfile.roles) ? currentProfile.roles[0] : currentProfile.roles
       const permissions = role?.permissions
-      isAdmin = /admin/i.test(role?.name || '') ||
+      isAdmin = isSystemAdminRole(role?.name) ||
         (Array.isArray(permissions) && permissions.includes('usuarios'))
       if (!isAdmin) {
         return NextResponse.json({ error: 'Solo un administrador puede crear usuarios' }, { status: 403 })

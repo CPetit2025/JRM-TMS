@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AppLayout } from "@/components/layout/app-layout";
+import { webBuildId, webVersion } from "@/lib/app-version";
+import { LegacyAiKeyCleanup } from "@/components/LegacyAiKeyCleanup";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -21,9 +23,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es">
+    <html lang="es" data-build-id={webBuildId} data-app-version={webVersion}>
       <body className={`${inter.variable} font-sans antialiased min-h-screen bg-slate-50`}>
         {children}
+        <LegacyAiKeyCleanup />
         <Toaster richColors position="top-right" />
       </body>
     </html>

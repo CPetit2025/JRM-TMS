@@ -14,6 +14,17 @@ interface Role {
 
 const MODULE_GROUPS = [
   {
+    title: 'JRM IA',
+    modules: [
+      { id: 'ia:read:distribucion', label: 'IA: Distribución' },
+      { id: 'ia:read:inventarios', label: 'IA: Inventarios' },
+      { id: 'ia:read:mantenimiento', label: 'IA: Mantenimiento' },
+      { id: 'ia:read:contratos', label: 'IA: Contratos' },
+      { id: 'ia:read:gerencia', label: 'IA: Gerencia' },
+      { id: 'ia:action:mantenimiento', label: 'IA: Proponer mantenimiento' },
+    ]
+  },
+  {
     title: 'Analítica y General',
     modules: [{ id: 'dashboard', label: 'Dashboard Principal' }]
   },

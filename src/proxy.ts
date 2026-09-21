@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { isSystemAdminRole } from '@/lib/roles'
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -65,7 +66,7 @@ export async function proxy(request: NextRequest) {
     const role = Array.isArray(profile.roles) ? profile.roles[0] : profile.roles
     const permissions = Array.isArray(role?.permissions) ? role.permissions : []
     hasDashboardAccess = profile.employee_type !== 'CONDUCTOR' &&
-      (/admin/i.test(role?.name || '') || permissions.includes('dashboard'))
+      (isSystemAdminRole(role?.name) || permissions.includes('dashboard'))
     if (!isDriverRoute && !isLoginPage && !hasDashboardAccess) {
       return NextResponse.redirect(new URL('/login', request.url))
     }

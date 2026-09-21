@@ -43,6 +43,10 @@ export default function TorreControlPage() {
   const [dispatches, setDispatches] = useState<Dispatch[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedDispatch, setSelectedDispatch] = useState<Dispatch | null>(null)
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('jrm:context', { detail: selectedDispatch ? { dispatchId: selectedDispatch.id } : {} }))
+  }, [selectedDispatch])
   
   // Filters
   const [searchTerm, setSearchTerm] = useState('')

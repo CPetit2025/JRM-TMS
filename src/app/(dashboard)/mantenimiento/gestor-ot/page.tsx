@@ -41,9 +41,7 @@ export default function MaintenanceWorkOrdersPage() {
     description: '',
     workshop_name: '',
     provider_id: '',
-    estimated_end_date: '',
-    estimated_cost_pen: '',
-    assigned_mechanic: ''
+    estimated_end_date: ''
   })
 
   const [closeForm, setCloseForm] = useState({
@@ -96,7 +94,9 @@ export default function MaintenanceWorkOrdersPage() {
         .order('created_at', { ascending: false })
       
       if (error) throw error
-      setOts(data || [])
+      setOts((data || []).map(ot => ({
+        ...ot, ot_number: ot.ot_code, vehicle_plate: ot.vehicles?.plate || '',
+      })))
     } catch (err: any) {
       toast.error('Error al cargar OTs: ' + err.message)
     } finally {
@@ -108,19 +108,19 @@ export default function MaintenanceWorkOrdersPage() {
     e.preventDefault()
     setIsSubmitting(true)
     try {
-      const otCode = `MOT-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`
+      const vehicle = vehicles.find(item => item.plate === form.vehicle_plate)
+      if (!vehicle) throw new Error('Selecciona una unidad válida.')
+      const otCode = `MOT-${crypto.randomUUID().slice(0, 8).toUpperCase()}`
       
       const { error } = await supabase.from('maintenance_work_orders').insert([{
-        ot_number: otCode,
-        vehicle_plate: form.vehicle_plate,
-        type: form.source_type,
+        ot_code: otCode,
+        vehicle_id: vehicle.id,
+        source_type: form.source_type,
         priority: form.priority,
         description: form.description,
         workshop_name: form.workshop_name,
         provider_id: form.provider_id || null,
         estimated_end_date: form.estimated_end_date || null,
-        estimated_cost_pen: form.estimated_cost_pen ? parseFloat(form.estimated_cost_pen) : 0,
-        assigned_mechanic: form.assigned_mechanic || null,
         start_date: new Date().toISOString().split('T')[0],
         status: 'EN_PROCESO'
       }])
@@ -160,7 +160,8 @@ export default function MaintenanceWorkOrdersPage() {
         .select(`*, vehicles(plate), work_order_costs(*)`)
         .eq('id', id)
         .single()
-      if (data) setOtDetails(data)
+      if (data) setOtDetails({ ...data, ot_number: data.ot_code,
+        vehicle_plate: data.vehicles?.plate || '' })
     } catch (e) {
       console.error(e)
     }
@@ -197,20 +198,10 @@ export default function MaintenanceWorkOrdersPage() {
     const formData = new FormData()
     formData.append('file', costFile)
     
-    // Leer config para las llaves de IA
-    const savedConfig = localStorage.getItem('jrm_sys_config')
-    let headers: any = {}
-    if (savedConfig) {
-      const configObj = JSON.parse(savedConfig)
-      headers['x-ai-provider'] = configObj.aiProvider || 'openai'
-      headers['x-ai-key'] = configObj.aiProvider === 'gemini' ? configObj.geminiKey : configObj.openAiKey
-    }
-    
     try {
       const res = await fetch('/api/extract-invoice', {
         method: 'POST',
-        body: formData,
-        headers
+        body: formData
       })
       if (!res.ok) {
         const err = await res.json()
@@ -273,12 +264,13 @@ export default function MaintenanceWorkOrdersPage() {
     setIsSubmitting(true)
     try {
       // 1. Cerrar OT
-      await supabase.from('maintenance_work_orders').update({
+      const { error: closeError } = await supabase.from('maintenance_work_orders').update({
         status: 'FINALIZADA',
         actual_end_date: new Date().toISOString().split('T')[0],
         diagnostic: closeForm.diagnostic,
         activities_performed: closeForm.activities_performed
       }).eq('id', selectedOt.id)
+      if (closeError) throw closeError
 
       const costNum = parseFloat(closeForm.cost_amount)
 
@@ -313,25 +305,29 @@ export default function MaintenanceWorkOrdersPage() {
       }
 
       // 3. Actualizar Historial del Vehículo y liberarlo
-      const { data: vData } = await supabase.from('vehicles').select('id, plate, current_mileage, accumulated_cost').eq('plate', selectedOt.vehicle_plate).single()
+      const { data: vData, error: vehicleError } = await supabase.from('vehicles')
+        .select('id, plate, current_mileage, accumulated_cost').eq('id', selectedOt.vehicle_id).single()
+      if (vehicleError) throw vehicleError
       
       if (vData) {
         const newCost = (vData.accumulated_cost || 0) + (finalCost || 0)
-        await supabase.from('vehicles').update({
+        const { error: updateError } = await supabase.from('vehicles').update({
           status: 'DISPONIBLE', // Liberar unidad
           maintenance_status: 'AL_DIA', // Resetear alertas
           last_maintenance_date: new Date().toISOString().split('T')[0],
           last_maintenance_mileage: vData.current_mileage,
           accumulated_cost: newCost
         }).eq('id', vData.id)
+        if (updateError) throw updateError
 
         // Registrar trazabilidad
-        await supabase.from('vehicle_maintenance_history').insert([{
-          vehicle_plate: vData.plate,
+        const { error: historyError } = await supabase.from('vehicle_maintenance_history').insert([{
+          vehicle_id: vData.id,
           action_type: 'OT_FINALIZADA',
           description: `OT ${selectedOt.ot_number} finalizada. Costo: S/ ${finalCost || 0}`,
           mileage_at_time: vData.current_mileage
         }])
+        if (historyError) throw historyError
       }
 
       toast.success('Orden de Trabajo finalizada y Unidad liberada.')
@@ -408,14 +404,12 @@ export default function MaintenanceWorkOrdersPage() {
                       <td className="p-4 max-w-xs truncate" title={ot.description}>{ot.description}</td>
                       <td className="p-4">
                         <div className="text-slate-900">{ot.workshop_name || 'Interno'}</div>
-                        {ot.assigned_mechanic && <div className="text-xs text-slate-500 flex items-center gap-1 mt-1"><Wrench className="w-3 h-3"/> {ot.assigned_mechanic}</div>}
                       </td>
                       <td className="p-4 text-xs">
                         <div className="text-slate-500">Inicio: {ot.start_date ? new Date(ot.start_date).toLocaleDateString() : 'N/A'}</div>
                         <div className="text-slate-500">Fin: {ot.actual_end_date ? new Date(ot.actual_end_date).toLocaleDateString() : 'Pendiente'}</div>
                       </td>
                       <td className="p-4 font-medium text-xs">
-                        <div className="text-slate-500">Est: S/ {ot.estimated_cost_pen || '0.00'}</div>
                         <div className="text-slate-900 mt-1 font-bold">Real: S/ {totalCost > 0 ? totalCost.toFixed(2) : '0.00'}</div>
                       </td>
                       <td className="p-4">{getStatusBadge(ot.status)}</td>
@@ -472,15 +466,6 @@ export default function MaintenanceWorkOrdersPage() {
               <input type="text" value={form.workshop_name} onChange={e => setForm({...form, workshop_name: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-400" placeholder="Nombre del taller" />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Mecánico Asignado (Si es interno)</label>
-              <input type="text" value={form.assigned_mechanic} onChange={e => setForm({...form, assigned_mechanic: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-400" placeholder="Nombre del mecánico" />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Costo Estimado (S/)</label>
-              <input type="number" step="0.01" min="0" value={form.estimated_cost_pen} onChange={e => setForm({...form, estimated_cost_pen: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-400" placeholder="0.00" />
-            </div>
 
             <div className="col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Descripción del Trabajo a Realizar</label>

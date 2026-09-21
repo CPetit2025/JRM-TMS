@@ -194,6 +194,7 @@ export default function ContratosPage() {
   }
 
   const handleEditClick = (contract: Contract) => {
+    window.dispatchEvent(new CustomEvent('jrm:context', { detail: { contractId: contract.id } }))
     setEditingContract(contract)
     setEditFormData({
       budget_pen: contract.budget?.allocated_pen?.toString() || '',
@@ -566,7 +567,7 @@ export default function ContratosPage() {
                 </tr>
               ) : (
                 filteredContracts.map((contract) => (
-                  <tr key={contract.id} className="hover:bg-slate-50/50 transition-colors">
+                  <tr key={contract.id} onClick={() => window.dispatchEvent(new CustomEvent('jrm:context', { detail: { contractId: contract.id } }))} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <span className="font-semibold text-slate-900 text-base">{contract.code}</span>
