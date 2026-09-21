@@ -1,81 +1,80 @@
 import { NextResponse } from 'next/server'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import OpenAI from 'openai'
+import { getAiIdentity, reserveAiRequest } from '@/lib/ai/auth'
+import { writeAiAudit } from '@/lib/ai/audit'
+
+export const runtime = 'nodejs'
 
 export async function POST(request: Request) {
+  const identity = await getAiIdentity()
+  if (!identity) return NextResponse.json({ error: 'Sesión no autorizada.' }, { status: 401 })
+
+  const staffAllowed = ['caja-gastos', 'mantenimiento-ot', 'caja-liquidaciones']
+    .some(module => identity.canRead(module))
+  let driverAllowed = false
+  if (identity.employeeType === 'CONDUCTOR') {
+    const { data: driver } = await identity.supabase.from('drivers')
+      .select('id').eq('profile_id', identity.userId).eq('is_active', true).maybeSingle()
+    driverAllowed = Boolean(driver)
+  }
+  if (!staffAllowed && !driverAllowed) {
+    return NextResponse.json({ error: 'Sin permiso para analizar comprobantes.' }, { status: 403 })
+  }
+
+  const provider = process.env.AI_PROVIDER === 'gemini' ? 'gemini' : 'openai'
+  const apiKey = provider === 'gemini' ? process.env.GEMINI_API_KEY : process.env.OPENAI_API_KEY
+  if (!apiKey || !process.env.SUPABASE_SERVICE_ROLE_KEY) return NextResponse.json({ error: 'El servicio IA no está configurado.' }, { status: 503 })
+
+  const modelName = provider === 'gemini' ? (process.env.GEMINI_OCR_MODEL || 'gemini-1.5-flash')
+    : (process.env.OPENAI_OCR_MODEL || 'gpt-4o')
+  let reserved = false
+  let recorded = false
+  let inputTokens = 0
+  let outputTokens = 0
+
   try {
     const formData = await request.formData()
-    const file = formData.get('file') as File
-    const provider = request.headers.get('x-ai-provider')
-    const apiKey = request.headers.get('x-ai-key')
-
-    if (!file) {
-      return NextResponse.json({ error: 'No se envió ninguna imagen.' }, { status: 400 })
+    const file = formData.get('file')
+    if (!(file instanceof File) || !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5_000_000) {
+      return NextResponse.json({ error: 'Envía una imagen JPG, PNG o WebP de hasta 5 MB.' }, { status: 400 })
     }
-
-    if (!apiKey) {
-      return NextResponse.json({ error: 'No se configuró una API Key en la plataforma.' }, { status: 401 })
+    if (!await reserveAiRequest(identity.supabase, 'ocr')) {
+      return NextResponse.json({ error: 'Límite de consultas IA alcanzado. Intenta más tarde.' }, { status: 429 })
     }
+    reserved = true
 
-    const imageBuffer = Buffer.from(await file.arrayBuffer())
-    const base64Image = imageBuffer.toString('base64')
-    const mimeType = file.type || 'image/jpeg'
-
-    const prompt = `Extrae la siguiente información de esta factura o boleta de gastos:
-1. Razón Social del Proveedor (supplier_name)
-2. RUC del Proveedor (supplier_ruc)
-3. Tipo de Documento (document_type: FACTURA, BOLETA, TICKET o NOTA)
-4. Número de Documento (document_number)
-5. Monto Total (amount)
-6. Descripción breve del gasto (description)
-
-Devuelve ÚNICAMENTE un objeto JSON válido con las claves: "supplier_name", "supplier_ruc", "document_type", "document_number", "amount" (como número), y "description". No incluyas markdown ni explicaciones adicionales.`
-
-    let extractedData = null
-
+    const image = Buffer.from(await file.arrayBuffer()).toString('base64')
+    const prompt = 'Extrae de este comprobante un JSON con supplier_name, supplier_ruc, document_type, document_number, amount (número) y description. No incluyas texto adicional.'
+    let content: string
     if (provider === 'gemini') {
-      const genAI = new GoogleGenerativeAI(apiKey)
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
-      const result = await model.generateContent([
-        prompt,
-        {
-          inlineData: {
-            data: base64Image,
-            mimeType
-          }
-        }
-      ])
-      let text = result.response.text()
-      text = text.replace(/```json/g, '').replace(/```/g, '').trim()
-      extractedData = JSON.parse(text)
+      const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: modelName })
+      const result = await model.generateContent([prompt, { inlineData: { data: image, mimeType: file.type } }])
+      content = result.response.text()
     } else {
-      const openai = new OpenAI({ apiKey })
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: prompt },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${mimeType};base64,${base64Image}`
-                }
-              }
-            ]
-          }
-        ]
+      const result = await new OpenAI({ apiKey }).chat.completions.create({
+        model: modelName,
+        response_format: { type: 'json_object' },
+        max_tokens: 300,
+        messages: [{ role: 'user', content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: `data:${file.type};base64,${image}` } },
+        ] }],
       })
-      let text = response.choices[0].message.content || '{}'
-      text = text.replace(/```json/g, '').replace(/```/g, '').trim()
-      extractedData = JSON.parse(text)
+      content = result.choices[0]?.message.content || '{}'
+      inputTokens = result.usage?.prompt_tokens || 0
+      outputTokens = result.usage?.completion_tokens || 0
     }
-
-    return NextResponse.json(extractedData)
-
-  } catch (error: any) {
+    const parsed = JSON.parse(content.replace(/^```(?:json)?|```$/g, '').trim())
+    await writeAiAudit({ user_id: identity.userId, scope: 'ocr', model: modelName,
+      input_tokens: inputTokens, output_tokens: outputTokens, status: 'completed' })
+    recorded = true
+    return NextResponse.json(parsed, { headers: { 'Cache-Control': 'no-store' } })
+  } catch (error) {
     console.error('Error en extracción IA:', error)
-    return NextResponse.json({ error: error.message || 'Error procesando el comprobante.' }, { status: 500 })
+    if (reserved && !recorded) await writeAiAudit({ user_id: identity.userId, scope: 'ocr',
+      model: modelName, input_tokens: inputTokens, output_tokens: outputTokens, status: 'failed' })
+      .catch(auditError => console.error('No se pudo auditar OCR:', auditError))
+    return NextResponse.json({ error: 'No se pudo procesar el comprobante.' }, { status: 500 })
   }
 }

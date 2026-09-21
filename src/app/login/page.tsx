@@ -1,17 +1,26 @@
 "use client"
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { PublicRegistrationModal } from '@/components/forms/PublicRegistrationModal'
 import { Download } from 'lucide-react'
+import { isSystemAdminRole, normalizeRoleName } from '@/lib/roles'
 
 export default function LoginPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
+  const [androidInstallerUrl, setAndroidInstallerUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/app-version', { cache: 'no-store' }).then(response => response.json()).then(data => {
+      const value = data.android?.installer_url
+      if (typeof value === 'string' && new URL(value).protocol === 'https:') setAndroidInstallerUrl(value)
+    }).catch(() => {})
+  }, [])
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -70,13 +79,13 @@ export default function LoginPage() {
            permissions = roleObj?.permissions || []
         }
 
-        if (!/admin/i.test(roleName) && !permissions.includes('dashboard')) {
+        if (!isSystemAdminRole(roleName) && !permissions.includes('dashboard')) {
           await supabase.auth.signOut()
           throw new Error('Esta cuenta pertenece al Portal Operativo. Ingresa desde /app/login.')
         }
         
         // Guardar en localStorage para UI (Sidebar)
-        localStorage.setItem('userRole', roleName === 'Administrador' ? 'admin' : roleName.toLowerCase())
+        localStorage.setItem('userRole', normalizeRoleName(roleName))
         localStorage.setItem('userPermissions', JSON.stringify(permissions))
         
         toast.success('Sesión iniciada correctamente')
@@ -182,16 +191,14 @@ export default function LoginPage() {
           </div>
 
           <div className="mt-6 pt-6 border-t border-slate-200">
-            <a 
-              href="/app-release.apk" 
-              download="JRM-Conductor.apk"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2"
-            >
-              <Download className="w-5 h-5" />
-              Descargar App para Conductores (APK)
-            </a>
+            {androidInstallerUrl ? (
+              <a href={androidInstallerUrl} target="_blank" rel="noopener noreferrer"
+                className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2">
+                <Download className="w-5 h-5" /> Descargar App para Conductores (APK)
+              </a>
+            ) : (
+              <p className="text-center text-sm text-slate-600">La descarga Android estará disponible cuando se publique la versión firmada.</p>
+            )}
             <p className="text-xs text-center text-slate-500 mt-3">
               Versión nativa Android con rastreo GPS en segundo plano.
             </p>

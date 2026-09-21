@@ -58,15 +58,8 @@ export default function GastosPage() {
     setIsExtracting(true)
     const formData = new FormData()
     formData.append('file', gastoFile)
-    const savedConfig = localStorage.getItem('jrm_sys_config')
-    let headers: any = {}
-    if (savedConfig) {
-      const c = JSON.parse(savedConfig)
-      headers['x-ai-provider'] = c.aiProvider || 'openai'
-      headers['x-ai-key'] = c.aiProvider === 'gemini' ? c.geminiKey : c.openAiKey
-    }
     try {
-      const res = await fetch('/api/extract-invoice', { method: 'POST', body: formData, headers })
+      const res = await fetch('/api/extract-invoice', { method: 'POST', body: formData })
       if (!res.ok) throw new Error((await res.json()).error)
       const data = await res.json()
       if (data.amount) setGastoForm(prev => ({ ...prev, monto: String(data.amount) }))

@@ -3,11 +3,13 @@ import { useState, useEffect } from 'react'
 import { Save, Building2, Truck, CreditCard, Loader2, Bot, Lock, FileSignature, Upload, FileImage, Trash2, CheckCircle2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { usePermissions } from '@/hooks/usePermissions'
 
 export default function ConfiguracionPage() {
   const [activeTab, setActiveTab] = useState('empresa')
   const [isSaving, setIsSaving] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
+  const { role, isLoaded: permissionsLoaded } = usePermissions()
 
   // Estado del formulario
   const [config, setConfig] = useState({
@@ -18,24 +20,23 @@ export default function ConfiguracionPage() {
     horarioCorte: '18:00',
     moneda: 'PEN',
     igv: '18',
-    openAiKey: '',
-    geminiKey: '',
-    aiProvider: 'openai',
     adminSignatureUrl: ''
   })
   
   const [isUploadingSignature, setIsUploadingSignature] = useState(false)
   
-  const [userRole, setUserRole] = useState<string | null>(null)
-
   useEffect(() => {
     const init = async () => {
-      // Leer el rol desde localStorage (como lo hace el Sidebar)
-      const storedRole = localStorage.getItem('userRole')
-      setUserRole(storedRole?.toLowerCase() || null)
-      
       const saved = localStorage.getItem('jrm_sys_config')
       let localConfig = saved ? JSON.parse(saved) : {}
+      // Las versiones anteriores guardaban credenciales de IA en el navegador.
+      // Eliminarlas al cargar sin volver a exponerlas en la configuración.
+      if (localConfig.openAiKey || localConfig.geminiKey) {
+        delete localConfig.openAiKey
+        delete localConfig.geminiKey
+        delete localConfig.aiProvider
+        localStorage.setItem('jrm_sys_config', JSON.stringify(localConfig))
+      }
 
       // Intentar recuperar de BD
       try {
@@ -116,9 +117,9 @@ export default function ConfiguracionPage() {
     toast.success('Firma eliminada de la configuración. No olvides guardar.')
   }
 
-  if (!isLoaded) return null
+  if (!isLoaded || !permissionsLoaded) return null
   
-  if (userRole !== 'admin') {
+  if (role !== 'admin') {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh]">
         <Lock className="w-16 h-16 text-slate-300 mb-4" />
@@ -290,41 +291,7 @@ export default function ConfiguracionPage() {
                 <h3 className="font-bold text-purple-900 flex items-center gap-2">
                   <Bot className="w-5 h-5" /> Configuración de Inteligencia Artificial
                 </h3>
-                <p className="text-sm text-purple-700 mt-1">Estas credenciales se utilizarán para la extracción automática de datos en boletas y facturas de OT y liquidaciones de ruta.</p>
-              </div>
-
-              <div className="grid grid-cols-1 gap-6 max-w-2xl">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Proveedor de IA Principal</label>
-                  <select 
-                    value={config.aiProvider}
-                    onChange={(e) => setConfig({...config, aiProvider: e.target.value})}
-                    className="w-full px-4 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-600 outline-none"
-                  >
-                    <option value="openai">OpenAI (GPT-4o)</option>
-                    <option value="gemini">Google (Gemini 1.5 Pro)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">API Key - OpenAI</label>
-                  <input 
-                    type="password" 
-                    placeholder="sk-proj-..."
-                    value={config.openAiKey}
-                    onChange={(e) => setConfig({...config, openAiKey: e.target.value})}
-                    className="w-full px-4 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-600 outline-none" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">API Key - Google Gemini</label>
-                  <input 
-                    type="password"
-                    placeholder="AIzaSy..." 
-                    value={config.geminiKey}
-                    onChange={(e) => setConfig({...config, geminiKey: e.target.value})}
-                    className="w-full px-4 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-600 outline-none" 
-                  />
-                </div>
+                <p className="text-sm text-purple-700 mt-1">JRM IA y la extracción de comprobantes usan las credenciales configuradas de forma segura en el servidor.</p>
               </div>
             </div>
           )}

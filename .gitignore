@@ -46,3 +46,4 @@ next-env.d.ts
 /android/app/build/
 /android/local.properties
 /android/.idea/
+/artifacts/

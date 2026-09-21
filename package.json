@@ -1,6 +1,6 @@
 {
   "name": "promp-maestro",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -10,11 +10,13 @@
     "lint:fix": "eslint --fix",
     "typecheck": "tsc --noEmit",
     "build:apk": "node scripts/build-apk.cjs",
+    "brand:assets": "node scripts/generate-brand-assets.cjs",
     "check:supabase": "node scripts/check-supabase-connection.cjs",
     "check:vercel": "node scripts/check-vercel-config.cjs",
     "check:infra": "npm run check:supabase && npm run check:vercel"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.1",
     "@capacitor/android": "^8.5.2",
     "@capacitor/cli": "^8.5.2",
     "@capacitor/core": "^8.5.2",
@@ -48,6 +50,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
+    "sharp": "^0.34.5",
     "supabase": "^2.116.0",
     "tailwindcss": "^4",
     "typescript": "^5"

@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react'
 import { useNotifications } from '@/components/NotificationProvider'
 import { NotificationBanner } from './NotificationBanner'
 import { usePathname } from 'next/navigation'
+import { AppUpdateNotice } from '@/components/AppUpdateNotice'
+import { JrmAiAssistant } from '@/components/JrmAiAssistant'
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState('operador')
@@ -57,6 +59,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen bg-slate-50">
+      <AppUpdateNotice />
+      <JrmAiAssistant />
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-8 z-20 relative">

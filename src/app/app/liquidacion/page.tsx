@@ -140,20 +140,10 @@ export default function LiquidacionPage() {
     const formData = new FormData()
     formData.append('file', gastoFile)
     
-    // Leer config para las llaves de IA
-    const savedConfig = localStorage.getItem('jrm_sys_config')
-    let headers: any = {}
-    if (savedConfig) {
-      const configObj = JSON.parse(savedConfig)
-      headers['x-ai-provider'] = configObj.aiProvider || 'openai'
-      headers['x-ai-key'] = configObj.aiProvider === 'gemini' ? configObj.geminiKey : configObj.openAiKey
-    }
-    
     try {
       const res = await fetch('/api/extract-invoice', {
         method: 'POST',
-        body: formData,
-        headers
+        body: formData
       })
       if (!res.ok) {
         const err = await res.json()

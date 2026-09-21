@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { usePermissions } from '@/hooks/usePermissions'
+import { normalizeRoleName } from '@/lib/roles'
 
 interface TransportRequest {
   id: string
@@ -130,7 +131,7 @@ export default function SolicitudesPage() {
         setNewRequest(prev => ({...prev, requester_name: `${profile.first_name} ${profile.last_name}`}))
         const roleName = Array.isArray(profile.roles) ? profile.roles[0]?.name : (profile.roles as any)?.name
         if (roleName) {
-          setUserRole(roleName.toLowerCase())
+          setUserRole(normalizeRoleName(roleName))
         }
       }
     }
