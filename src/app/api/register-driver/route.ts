@@ -44,6 +44,16 @@ export async function POST(request: Request) {
 
     const userId = authData.user.id
 
+    const { data: conductorRole, error: roleError } = await supabaseAdmin
+      .from('roles')
+      .select('id')
+      .eq('name', 'Conductor')
+      .maybeSingle()
+    if (roleError || !conductorRole) {
+      await supabaseAdmin.auth.admin.deleteUser(userId)
+      return NextResponse.json({ error: 'El rol Conductor no está configurado' }, { status: 500 })
+    }
+
     const { error: profileError } = await supabaseAdmin.from('profiles').upsert({
       id: userId,
       username: email,
@@ -52,8 +62,8 @@ export async function POST(request: Request) {
       document_number: dni,
       phone: phone || null,
       employee_type: 'CONDUCTOR',
-      is_active: true,
-      role_id: null
+      is_active: false,
+      role_id: conductorRole.id
     }, { onConflict: 'id' })
     if (profileError) {
       await supabaseAdmin.auth.admin.deleteUser(userId)
@@ -79,8 +89,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, userId })
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Register error:', err)
-    return NextResponse.json({ error: err.message || 'Error al registrar' }, { status: 500 })
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Error al registrar' }, { status: 500 })
   }
 }

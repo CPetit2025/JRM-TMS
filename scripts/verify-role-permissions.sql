@@ -6,8 +6,9 @@ DO $$
 DECLARE
   v_role_id uuid;
   v_user_id uuid;
+  v_admin_id uuid;
   v_original_role_id uuid;
-  v_denied boolean;
+  v_changed integer;
   v_expected constant jsonb :=
     '["dashboard", "clientes:read", "ot:write", "contratos-servicios:write", "solicitudes:write", "torre-control:read"]'::jsonb;
 BEGIN
@@ -39,37 +40,23 @@ BEGIN
     RAISE EXCEPTION 'Torre de Control debe ser solo lectura';
   END IF;
 
+  UPDATE public.roles SET description = description WHERE id = v_role_id;
+  GET DIAGNOSTICS v_changed = ROW_COUNT;
+  IF v_changed <> 0 THEN RAISE EXCEPTION 'Un rol no administrador pudo modificar roles'; END IF;
+
   EXECUTE 'RESET ROLE';
-
-  v_denied := false;
-  BEGIN
-    UPDATE public.roles SET name = 'Rol inseguro' WHERE id = v_role_id;
-  EXCEPTION WHEN OTHERS THEN
-    IF SQLERRM LIKE 'No se puede renombrar el rol protegido%' THEN v_denied := true;
-    ELSE RAISE; END IF;
-  END;
-  IF NOT v_denied THEN RAISE EXCEPTION 'El rol protegido pudo renombrarse'; END IF;
-
-  v_denied := false;
-  BEGIN
-    UPDATE public.roles SET permissions = permissions || '["clientes:write"]'::jsonb
-      WHERE id = v_role_id;
-  EXCEPTION WHEN OTHERS THEN
-    IF SQLERRM LIKE 'Los permisos del Administrador de Contratos%' THEN v_denied := true;
-    ELSE RAISE; END IF;
-  END;
-  IF NOT v_denied THEN RAISE EXCEPTION 'El rol protegido aceptó permisos inseguros'; END IF;
-
-  v_denied := false;
-  BEGIN
-    DELETE FROM public.roles WHERE id = v_role_id;
-  EXCEPTION WHEN OTHERS THEN
-    IF SQLERRM LIKE 'El rol Administrador de Contratos es un rol protegido%' THEN v_denied := true;
-    ELSE RAISE; END IF;
-  END;
-  IF NOT v_denied THEN RAISE EXCEPTION 'El rol protegido pudo eliminarse'; END IF;
-
   UPDATE public.profiles SET role_id = v_original_role_id WHERE id = v_user_id;
+
+  SELECT p.id INTO v_admin_id FROM public.profiles p
+    JOIN public.roles r ON r.id = p.role_id
+    WHERE p.is_active AND r.name = 'Administrador' LIMIT 1;
+  IF v_admin_id IS NULL THEN RAISE EXCEPTION 'Se requiere un Administrador activo'; END IF;
+  PERFORM set_config('request.jwt.claim.sub', v_admin_id::text, true);
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  UPDATE public.roles SET description = description WHERE id = v_role_id;
+  GET DIAGNOSTICS v_changed = ROW_COUNT;
+  IF v_changed <> 1 THEN RAISE EXCEPTION 'El Administrador del Sistema no puede gestionar roles'; END IF;
+  EXECUTE 'RESET ROLE';
 END $$;
 
 ROLLBACK;
