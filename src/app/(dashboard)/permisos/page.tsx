@@ -1,10 +1,9 @@
 "use client"
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Shield, Trash2, Edit2, Search, Loader2, LockKeyhole } from 'lucide-react'
+import { Plus, Shield, Trash2, Edit2, Search, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
-import { isProtectedRole } from '@/lib/roles'
 
 interface Role {
   id: string
@@ -199,7 +198,6 @@ export default function PermisosPage() {
   }
 
   const handleEdit = (role: Role) => {
-    if (isProtectedRole(role.name)) return
     setEditingId(role.id)
     setNewRole({
       name: role.name,
@@ -216,7 +214,6 @@ export default function PermisosPage() {
   }
 
   const handleDelete = async (id: string, name: string) => {
-    if (isProtectedRole(name)) return
     if (!confirm(`¿Estás seguro de eliminar el rol "${name}"?`)) return
 
     try {
@@ -262,11 +259,11 @@ export default function PermisosPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Roles y Permisos</h1>
-          <p className="text-sm text-slate-500">Administra permisos por módulo; los roles de seguridad se actualizan mediante migraciones.</p>
+          <p className="text-sm text-slate-500">El Administrador del Sistema puede crear, editar y eliminar roles y permisos.</p>
         </div>
         <button 
           onClick={openCreateModal}
@@ -327,14 +324,7 @@ export default function PermisosPage() {
                         <div className="w-8 h-8 rounded bg-blue-100 text-[#002855] flex items-center justify-center">
                           <Shield className="w-4 h-4" />
                         </div>
-                        <div>
-                          <span className="font-semibold text-slate-800">{role.name}</span>
-                          {isProtectedRole(role.name) && (
-                            <span className="ml-2 inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-500">
-                              <LockKeyhole className="h-3 w-3" /> Protegido
-                            </span>
-                          )}
-                        </div>
+                        <span className="font-semibold text-slate-800">{role.name}</span>
                       </div>
                     </td>
                     <td className="p-4 text-sm text-slate-600 max-w-xs truncate" title={role.description || undefined}>{role.description}</td>
@@ -359,24 +349,22 @@ export default function PermisosPage() {
                           })}
                         </div>
                       ) : (
-                        <span className="text-slate-400 italic">Todos / Ninguno (Legado)</span>
+                        <span className="text-slate-400 italic">Sin permisos de módulos</span>
                       )}
                     </td>
                     <td className="p-4 text-right">
                       <div className="flex justify-end gap-2">
                         <button 
                           onClick={() => handleEdit(role)}
-                          disabled={isProtectedRole(role.name)}
-                          title={isProtectedRole(role.name) ? 'Rol protegido por las reglas de seguridad' : 'Editar rol'}
-                          className="p-2 text-slate-400 hover:text-[#002855] transition-colors rounded hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                          title="Editar rol"
+                          className="p-2 text-slate-400 hover:text-[#002855] transition-colors rounded hover:bg-blue-50"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button 
                           onClick={() => handleDelete(role.id, role.name)}
-                          disabled={isProtectedRole(role.name)}
-                          title={isProtectedRole(role.name) ? 'Rol protegido por las reglas de seguridad' : 'Eliminar rol'}
-                          className="p-2 text-slate-400 hover:text-red-600 transition-colors rounded hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                          title="Eliminar rol"
+                          className="p-2 text-slate-400 hover:text-red-600 transition-colors rounded hover:bg-red-50"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -394,7 +382,7 @@ export default function PermisosPage() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingId ? "Editar Rol" : "Crear Nuevo Rol"}
-        maxWidth="max-w-4xl"
+        maxWidth="max-w-5xl"
       >
         <form onSubmit={handleSaveRole} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -483,7 +471,7 @@ export default function PermisosPage() {
             </button>
             <button 
               type="submit" 
-              disabled={isSubmitting || newRole.permissions.length === 0}
+              disabled={isSubmitting}
               className="px-4 py-2 bg-[#002855] text-white font-medium rounded-lg hover:bg-[#001d3d] transition-colors disabled:opacity-50 flex items-center gap-2"
             >
               {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}

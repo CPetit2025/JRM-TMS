@@ -719,19 +719,20 @@ export default function ContratosPage() {
                     {role === 'admin' && <td className="px-6 py-4 text-xs text-slate-700">
                       {profileNames[assignments.find(item => item.contract_id === contract.id && item.role === 'ADMIN_CONTRATO' && item.active)?.user_id || ''] || 'Sin asignar'}
                     </td>}
-                    <td className="px-6 py-4 text-center relative z-50">
+                    <td className="px-6 py-4 text-center relative z-20">
                       <button 
                         type="button"
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleEditClick(contract); }}
-                        className="p-1.5 text-slate-400 hover:text-[#002855] hover:bg-slate-100 rounded-lg transition-colors relative z-50"
+                        className="relative z-20 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-[#002855] shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-100"
                         title="Editar Contrato/Partidas"
                       >
                         <Edit2 className="w-4 h-4" />
+                        Editar
                       </button>
                       {role === 'admin' && <button
                         type="button"
                         onClick={e => { e.preventDefault(); e.stopPropagation(); openAssignment(contract) }}
-                        className="ml-2 px-2 py-1 text-xs text-[#002855] hover:bg-slate-100 rounded-lg relative z-50"
+                        className="relative z-20 ml-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-[#002855] shadow-sm hover:bg-slate-100"
                         title="Asignar o reasignar Administrador de Contrato"
                       >Responsable</button>}
                     </td>

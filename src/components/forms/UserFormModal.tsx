@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect } from 'react'
-import { Loader2, User, Share2, Mail, Copy, CheckCircle2 } from 'lucide-react'
+import { Loader2, User, Share2, Mail, CheckCircle2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -30,26 +30,29 @@ interface UserFormModalProps {
   roles: Role[]
 }
 
+const EMPTY_USER = {
+  first_name: '',
+  last_name: '',
+  username: '',
+  document_number: '',
+  phone: '',
+  role_id: '',
+  password: '',
+}
+
 export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }: UserFormModalProps) {
   const supabase = createClient()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [successView, setSuccessView] = useState(false)
   const [createdUser, setCreatedUser] = useState<UserData | null>(null)
   
-  const initialUser = {
-    first_name: '',
-    last_name: '',
-    username: '',
-    document_number: '',
-    phone: '',
-    role_id: '',
-    password: ''
-  }
-  
-  const [newUser, setNewUser] = useState(initialUser)
+  const [newUser, setNewUser] = useState(EMPTY_USER)
+  const selectedRole = roles.find(role => role.id === newUser.role_id)
 
   useEffect(() => {
     if (editingUser) {
+      // Synchronize the reusable modal form when a different table row opens.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setNewUser({
         first_name: editingUser.first_name || '',
         last_name: editingUser.last_name || '',
@@ -60,7 +63,7 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
         password: ''
       })
     } else {
-      setNewUser(initialUser)
+      setNewUser(EMPTY_USER)
       setSuccessView(false)
       setCreatedUser(null)
     }
@@ -99,23 +102,15 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
       }
 
       if (editingUser?.id) {
-        const { data, error } = await supabase
-          .from('profiles')
-          .update({
-            first_name: newUser.first_name,
-            last_name: newUser.last_name,
-            username: newUser.username,
-            document_number: newUser.document_number,
-            phone: newUser.phone,
-            role_id: newUser.role_id
-          })
-          .eq('id', editingUser.id)
-          .select()
-          .single()
-
-        if (error) throw error
+        const response = await fetch('/api/users/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...newUser, id: editingUser.id }),
+        })
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error || 'No se pudo actualizar el usuario')
         toast.success('Usuario actualizado correctamente')
-        onSuccess(data)
+        onSuccess(result.profile)
         onClose()
       } else {
         // Crear usuario mediante la API para que se cree en auth.users
@@ -137,8 +132,9 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
         setCreatedUser({...newUser, id: resData.userId, password: newUser.password})
         setSuccessView(true)
       }
-    } catch (error: any) {
-      toast.error('Error al guardar usuario. Verifica las reglas de clave foránea con auth.users: ' + error.message)
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error inesperado'
+      toast.error('Error al guardar usuario: ' + message)
     } finally {
       setIsSubmitting(false)
     }
@@ -163,7 +159,7 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
 
   if (successView && createdUser) {
     return (
-      <Modal isOpen={isOpen} onClose={handleFinish} title="Usuario Creado Exitosamente">
+      <Modal isOpen={isOpen} onClose={handleFinish} title="Usuario Creado Exitosamente" maxWidth="max-w-2xl">
         <div className="flex flex-col items-center justify-center space-y-4 py-4">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-2">
             <CheckCircle2 className="w-8 h-8" />
@@ -207,6 +203,7 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
       isOpen={isOpen}
       onClose={onClose}
       title={editingUser ? "Editar Usuario" : "Crear Nuevo Usuario"}
+      maxWidth="max-w-5xl"
     >
       <form onSubmit={handleSaveUser} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
@@ -257,17 +254,21 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
 
         <div className="grid grid-cols-2 gap-4">
               <div className="relative">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Correo Corporativo</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  {selectedRole?.name === 'Conductor' ? 'Usuario de acceso a la app' : 'Correo Corporativo'}
+                </label>
                 <input
                   type="email"
                   required
                   value={newUser.username}
                   onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
-                  placeholder="ejemplo@jrmsac.com.pe"
+                  placeholder={selectedRole?.name === 'Conductor' ? 'DNI@jrm.com' : 'ejemplo@jrmsac.com.pe'}
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none transition-all text-slate-700"
                 />
                 <p className="text-xs text-slate-500 mt-1">
-                  Debe terminar en @jrmsac.com.pe
+                  {selectedRole?.name === 'Conductor'
+                    ? 'La cuenta del conductor se administra desde Mantenimiento → Flota.'
+                    : 'Debe terminar en @jrmsac.com.pe'}
                 </p>
               </div>
           <div>
@@ -282,6 +283,7 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
               value={newUser.password}
               onChange={(e) => setNewUser({...newUser, password: e.target.value})}
             />
+            {editingUser && <p className="text-xs text-slate-500 mt-1">Si ingresas una clave, se actualizará también en Supabase Auth.</p>}
           </div>
         </div>
 
@@ -295,7 +297,7 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
               onChange={(e) => setNewUser({...newUser, role_id: e.target.value})}
             >
               <option value="">Selecciona un rol...</option>
-              {roles.map(r => (
+              {roles.filter(role => editingUser || role.name !== 'Conductor').map(r => (
                 <option key={r.id} value={r.id}>{r.name}</option>
               ))}
             </select>

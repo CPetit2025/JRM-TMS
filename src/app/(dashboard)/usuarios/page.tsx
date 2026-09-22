@@ -1,6 +1,6 @@
 "use client"
-import { useState, useEffect } from 'react'
-import { Plus, User, Edit2, Trash2, Search, Filter, Loader2, UserCheck, UserX } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Plus, User, Edit2, Search, Filter, Loader2, UserCheck, UserX } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { UserFormModal, UserData } from '@/components/forms/UserFormModal'
@@ -20,7 +20,7 @@ interface Role {
 }
 
 export default function UsuariosPage() {
-  const supabase = createClient()
+  const [supabase] = useState(() => createClient())
   const [users, setUsers] = useState<Profile[]>([])
   const [roles, setRoles] = useState<Role[]>([])
   const [loading, setLoading] = useState(true)
@@ -28,24 +28,19 @@ export default function UsuariosPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<UserData | null>(null)
 
-    const [searchTerm, setSearchTerm] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [filterStatus, setFilterStatus] = useState('TODOS')
   const filteredList = users.filter(item => {
-    const matchesSearch = searchTerm === '' || (item.first_name + ' ' + item.last_name).toLowerCase().includes(searchTerm.toLowerCase()) || ((item as any).email || '').toLowerCase().includes(searchTerm.toLowerCase()) || (item.document_number || '').includes(searchTerm);
-    let matchesStatus = true;
-    if (filterStatus !== 'TODOS') {
-      if ((item as any).status !== undefined) matchesStatus = (item as any).status === filterStatus;
-      else if ((item as any).is_active !== undefined) matchesStatus = filterStatus === 'ACTIVO' ? (item as any).is_active === true : (item as any).is_active === false;
-    }
+    const query = searchTerm.trim().toLowerCase()
+    const matchesSearch = !query || `${item.first_name} ${item.last_name}`.toLowerCase().includes(query) ||
+      (item.username || '').toLowerCase().includes(query) || (item.document_number || '').includes(query)
+    const matchesStatus = filterStatus === 'TODOS' ||
+      (filterStatus === 'ACTIVO' ? item.is_active === true : item.is_active === false)
     return matchesSearch && matchesStatus;
   });
 
-  useEffect(() => {
-    fetchData()
-  }, [])
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true)
     try {
       // Fetch users
@@ -65,12 +60,18 @@ export default function UsuariosPage() {
 
       setUsers(usersData || [])
       setRoles(rolesData || [])
-    } catch (error: any) {
-      toast.error('Error al cargar datos: ' + error.message)
+    } catch (error: unknown) {
+      toast.error('Error al cargar datos: ' + (error instanceof Error ? error.message : 'Error inesperado'))
     } finally {
       setLoading(false)
     }
-  }
+  }, [supabase])
+
+  useEffect(() => {
+    // Load the external user directory after the client mounts.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchData()
+  }, [fetchData])
 
   const handleEdit = (user: Profile) => {
     setEditingUser({
@@ -100,14 +101,14 @@ export default function UsuariosPage() {
       if (error) throw error
       
       toast.success(`Usuario ${!user.is_active ? 'activado' : 'desactivado'}`)
-      fetchData()
-    } catch (error: any) {
+      await fetchData()
+    } catch {
       toast.error('Error al actualizar estado.')
     }
   }
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Usuarios</h1>
@@ -163,22 +164,6 @@ export default function UsuariosPage() {
         )}
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-
-        <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-          <div className="relative w-72">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Buscar por nombre o DNI..." 
-              className="w-full pl-9 pr-4 py-2 bg-white text-slate-900 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002855]"
-            />
-          </div>
-          <button className="flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100">
-            <Filter className="w-4 h-4" />
-            Filtrar
-          </button>
-        </div>
-
         <div className="overflow-auto max-h-[calc(100vh-220px)]">
           <table className="w-full text-left border-collapse relative">
             <thead className="sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
@@ -199,14 +184,14 @@ export default function UsuariosPage() {
                     Cargando usuarios...
                   </td>
                 </tr>
-              ) : users.length === 0 ? (
+              ) : filteredList.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-slate-500">
-                    No hay usuarios registrados.
+                    {users.length === 0 ? 'No hay usuarios registrados.' : 'No hay usuarios que coincidan con los filtros.'}
                   </td>
                 </tr>
               ) : (
-                users.map(user => (
+                filteredList.map(user => (
                   <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4">
                       <div className="flex items-center gap-3">

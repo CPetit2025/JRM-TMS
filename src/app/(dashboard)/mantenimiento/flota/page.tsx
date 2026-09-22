@@ -1,16 +1,18 @@
 "use client"
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2, ArrowRight, Filter, Upload, MoreVertical, Ban, Download } from 'lucide-react'
+import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2, ArrowRight, Filter, Upload, MoreVertical, Ban, Download, KeyRound, Eye, EyeOff } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import * as XLSX from 'xlsx'
+import { usePermissions } from '@/hooks/usePermissions'
 
 export default function FlotaPage() {
   const supabase = createClient()
   const router = useRouter()
+  const { role } = usePermissions()
   const [activeTab, setActiveTab] = useState<'vehicles' | 'drivers'>('vehicles')
   
   // Data states
@@ -33,6 +35,10 @@ export default function FlotaPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isImporting, setIsImporting] = useState(false)
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null)
+  const [accessDriver, setAccessDriver] = useState<any | null>(null)
+  const [accessPassword, setAccessPassword] = useState('')
+  const [showAccessPassword, setShowAccessPassword] = useState(false)
+  const [isSavingAccess, setIsSavingAccess] = useState(false)
   
   const filteredVehicles = vehicles.filter((v: any) => {
     const matchSearch = searchTerm === '' || v.plate.toLowerCase().includes(searchTerm.toLowerCase());
@@ -180,13 +186,9 @@ export default function FlotaPage() {
     try {
       let error;
       
-      const driverPayload = { 
+      const driverPayload = {
         ...newDriver
       }
-      
-      // Remove license_expiration because it doesn't exist on the drivers table
-      // It exists on profiles, but this form updates drivers.
-      delete (driverPayload as any).license_expiration;
 
       if (editingDriverId) {
         const { error: updateError } = await supabase
@@ -326,6 +328,38 @@ export default function FlotaPage() {
       fetchData()
     } catch (err: any) {
       toast.error('Error al eliminar conductor. Puede que tenga registros asociados.')
+    }
+  }
+
+  const openDriverAccess = (driver: any) => {
+    setAccessDriver(driver)
+    setAccessPassword('')
+    setShowAccessPassword(false)
+  }
+
+  const handleSaveDriverAccess = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!accessDriver || accessPassword.length < 8) {
+      toast.error('La contraseña debe tener al menos 8 caracteres')
+      return
+    }
+    setIsSavingAccess(true)
+    try {
+      const response = await fetch('/api/drivers/access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ driverId: accessDriver.id, password: accessPassword }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'No se pudo configurar el acceso')
+      toast.success(`Acceso habilitado. Usuario: ${result.username}`)
+      setAccessDriver(null)
+      setAccessPassword('')
+      await fetchData()
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo configurar el acceso')
+    } finally {
+      setIsSavingAccess(false)
     }
   }
 
@@ -628,7 +662,7 @@ export default function FlotaPage() {
                   <tbody className="divide-y divide-slate-100">
                     {filteredDrivers.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="p-8 text-center text-slate-500">
+                        <td colSpan={8} className="p-8 text-center text-slate-500">
                           No hay conductores registrados
                         </td>
                       </tr>
@@ -676,6 +710,14 @@ export default function FlotaPage() {
                               >
                                 <Edit2 className="w-4 h-4" />
                               </button>
+                              {role === 'admin' && <button
+                                type="button"
+                                onClick={() => openDriverAccess(d)}
+                                className="p-2 text-slate-400 hover:text-emerald-700 transition-colors rounded-lg hover:bg-emerald-50"
+                                title={d.profile_id ? 'Restablecer contraseña de la app' : 'Crear acceso a la app'}
+                              >
+                                <KeyRound className="w-4 h-4" />
+                              </button>}
                               <button 
                                 onClick={() => handleDeleteDriver(d.id)}
                                 className="p-2 text-slate-400 hover:text-red-600 transition-colors rounded-lg hover:bg-red-50"
@@ -915,7 +957,7 @@ export default function FlotaPage() {
           <label className="flex items-center gap-3 text-sm font-medium text-slate-700 mt-4">
             <input type="checkbox" checked={newDriver.is_active}
               onChange={e => setNewDriver({ ...newDriver, is_active: e.target.checked })} />
-            Conductor aprobado para operar en la app
+            Conductor activo; si tiene cuenta vinculada, habilita también su acceso a la app
           </label>
             <div className="pt-4 flex justify-end gap-2 border-t mt-4">
               <button type="button" onClick={() => setIsDriverModalOpen(false)} className="px-4 py-2 text-slate-700 hover:bg-slate-100 border border-slate-300 rounded-lg transition-colors font-medium">Cancelar</button>
@@ -923,6 +965,49 @@ export default function FlotaPage() {
                 {isSubmitting ? 'Guardando...' : 'Guardar Conductor'}
               </button>
             </div>
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={!!accessDriver}
+        onClose={() => setAccessDriver(null)}
+        title={accessDriver?.profile_id ? 'Restablecer acceso del conductor' : 'Crear acceso del conductor'}
+        maxWidth="max-w-lg"
+      >
+        <form onSubmit={handleSaveDriverAccess} className="space-y-5">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="font-semibold text-slate-800">{accessDriver?.first_name} {accessDriver?.last_name}</p>
+            <p className="text-sm text-slate-500">Usuario: {accessDriver?.document_number}@jrm.com</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Nueva contraseña de acceso</label>
+            <div className="relative">
+              <input
+                type={showAccessPassword ? 'text' : 'password'}
+                minLength={8}
+                required
+                autoComplete="new-password"
+                value={accessPassword}
+                onChange={event => setAccessPassword(event.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-11 text-slate-900 focus:ring-2 focus:ring-[#002855] outline-none"
+              />
+              <button type="button" onClick={() => setShowAccessPassword(value => !value)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-slate-700"
+                aria-label={showAccessPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}>
+                {showAccessPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">Mínimo 8 caracteres. Se guardará únicamente en Supabase Auth.</p>
+          </div>
+          <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
+            <button type="button" onClick={() => setAccessDriver(null)}
+              className="rounded-lg px-4 py-2 font-medium text-slate-600 hover:bg-slate-100">Cancelar</button>
+            <button type="submit" disabled={isSavingAccess}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#002855] px-4 py-2 font-medium text-white disabled:opacity-50">
+              {isSavingAccess ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+              Guardar acceso
+            </button>
+          </div>
         </form>
       </Modal>
 
