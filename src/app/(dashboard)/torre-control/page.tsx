@@ -4,6 +4,7 @@ import { Truck, Search, Calendar, MapPin, ChevronRight, Loader2, Share2, AlertTr
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { usePermissions } from '@/hooks/usePermissions'
 
 interface DispatchRequest {
   transport_request_id: string
@@ -26,6 +27,8 @@ interface Dispatch {
   scheduled_departure: string
   dispatch_requests?: DispatchRequest[]
   dispatch_events?: { event_type: string, description: string, created_at: string, created_by: string }[]
+  contract_codes?: string[]
+  responsible_names?: string[]
 }
 
 const STATUS_BADGE = {
@@ -40,6 +43,7 @@ const STATUS_BADGE = {
 
 export default function TorreControlPage() {
   const supabase = createClient()
+  const { isLoaded, canWrite } = usePermissions()
   const [dispatches, setDispatches] = useState<Dispatch[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedDispatch, setSelectedDispatch] = useState<Dispatch | null>(null)
@@ -53,12 +57,21 @@ export default function TorreControlPage() {
   const [statusFilter, setStatusFilter] = useState('ACTIVOS')
   const [dateFilter, setDateFilter] = useState('')
   const [onlyAlerts, setOnlyAlerts] = useState(false)
+  const [responsibleFilter, setResponsibleFilter] = useState('')
+  const [responsibles, setResponsibles] = useState<Array<{ user_id: string, full_name: string }>>([])
 
   const [isSharing, setIsSharing] = useState(false)
 
   useEffect(() => {
-    fetchDispatches()
-  }, [statusFilter, dateFilter])
+    if (isLoaded) void fetchDispatches()
+  }, [statusFilter, dateFilter, responsibleFilter, isLoaded])
+
+  useEffect(() => {
+    if (!isLoaded) return
+    void supabase.rpc('get_tower_responsibles').then(({ data, error }) => {
+      if (!error) setResponsibles((data || []) as Array<{ user_id: string, full_name: string }>)
+    })
+  }, [isLoaded])
 
   useEffect(() => {
     const channel = supabase.channel('torre_control_changes')
@@ -76,6 +89,7 @@ export default function TorreControlPage() {
   }, [statusFilter, dateFilter])
 
   const handleShareTracking = async () => {
+    if (!canWrite('despacho')) return
     const targetDate = dateFilter || new Date().toISOString().split('T')[0]
     setIsSharing(true)
     
@@ -113,43 +127,11 @@ Equipo JRM TMS`
   const fetchDispatches = async () => {
     try {
       setLoading(true)
-      let query = supabase
-        .from('dispatches')
-        .select(`
-          id, dispatch_number, driver_name, vehicle_plate, status, estimated_distance_km, scheduled_departure,
-          dispatch_requests (
-            status,
-            transport_request_id,
-            transport_requests (
-              request_number,
-              pickup_address,
-              delivery_address,
-              requester_name
-            )
-          ),
-          dispatch_events (
-            event_type,
-            description,
-            created_at,
-            created_by
-          )
-        `)
-        .order('scheduled_departure', { ascending: false })
-        .limit(200)
-
-      if (statusFilter === 'ACTIVOS') {
-        query = query.not('status', 'in', '("LIQUIDADO","ENTREGADO")')
-      } else if (statusFilter === 'HISTORIAL') {
-        query = query.in('status', ['LIQUIDADO', 'ENTREGADO'])
-      } else if (statusFilter !== 'TODOS') {
-        query = query.eq('status', statusFilter)
-      }
-
-      if (dateFilter) {
-        query = query.gte('scheduled_departure', `${dateFilter}T00:00:00`).lte('scheduled_departure', `${dateFilter}T23:59:59`)
-      }
-
-      const { data, error } = await query
+      const { data, error } = await supabase.rpc('get_tower_dispatches', {
+        p_date: dateFilter || null,
+        p_responsible: responsibleFilter || null,
+        p_status: statusFilter,
+      })
       if (error) throw error
       setDispatches((data || []) as any)
     } catch (err: any) {
@@ -234,14 +216,14 @@ Equipo JRM TMS`
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Torre de Control</h1>
           <p className="text-sm text-slate-500 mt-1">Supervisión operativa y telemetría de flota en tiempo real.</p>
         </div>
-        <button 
+        {canWrite('despacho') && <button
           onClick={handleShareTracking}
           disabled={isSharing}
           className="flex items-center gap-2 bg-white text-[#002855] border border-[#002855] px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50 shadow-sm"
         >
           {isSharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
           Compartir Visibilidad
-        </button>
+        </button>}
       </div>
 
       {/* KPI Cards */}
@@ -301,6 +283,12 @@ Equipo JRM TMS`
         </div>
         
         <div className="flex items-center gap-3 border-l border-slate-200 pl-4">
+          <select value={responsibleFilter} onChange={e => setResponsibleFilter(e.target.value)}
+            aria-label="Administrador de Contrato"
+            className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50">
+            <option value="">Todos los responsables</option>
+            {responsibles.map(person => <option key={person.user_id} value={person.user_id}>{person.full_name}</option>)}
+          </select>
           <input
             type="date"
             value={dateFilter}
@@ -374,6 +362,8 @@ Equipo JRM TMS`
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
                           <span className="font-bold text-slate-900">{dispatch.dispatch_number}</span>
+                          {!!dispatch.contract_codes?.length && <span className="text-[11px] text-slate-500">OT: {dispatch.contract_codes.join(', ')}</span>}
+                          {!!dispatch.responsible_names?.length && <span className="text-[11px] text-slate-500">Responsable: {dispatch.responsible_names.join(', ')}</span>}
                           <span className="text-[11px] font-medium text-slate-500 mt-0.5">
                             {dispatch.dispatch_requests?.length || 0} OTs asignadas
                           </span>

@@ -7,6 +7,7 @@ import { Modal } from '@/components/ui/modal'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import * as XLSX from 'xlsx'
 import { useRouter } from 'next/navigation'
+import { usePermissions } from '@/hooks/usePermissions'
 
 interface Contract {
   id: string
@@ -39,7 +40,15 @@ interface Contract {
 export default function ContratosPage() {
   const router = useRouter()
   const supabase = createClient()
+  const { role } = usePermissions()
   const [contracts, setContracts] = useState<Contract[]>([])
+  const [contractAdmins, setContractAdmins] = useState<Array<{ id: string, name: string }>>([])
+  const [profileNames, setProfileNames] = useState<Record<string, string>>({})
+  const [assignments, setAssignments] = useState<Array<{ id: string, contract_id: string, user_id: string, role: string, active: boolean, assigned_at: string, ended_at: string | null, assigned_by: string | null }>>([])
+  const [assignmentTarget, setAssignmentTarget] = useState<Contract | null>(null)
+  const [selectedAdminId, setSelectedAdminId] = useState('')
+  const [assignmentReason, setAssignmentReason] = useState('')
+  const [isAssigning, setIsAssigning] = useState(false)
   const [clients, setClients] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -96,6 +105,56 @@ export default function ContratosPage() {
     fetchClients()
   }, [])
 
+  useEffect(() => {
+    if (role === 'admin') void fetchAssignmentData()
+  }, [role])
+
+  const fetchAssignmentData = async () => {
+    const [profilesResult, assignmentsResult] = await Promise.all([
+      supabase.from('profiles').select('id, first_name, last_name, is_active, roles(name)'),
+      supabase.from('contract_user_assignments').select('id, contract_id, user_id, role, active, assigned_at, ended_at, assigned_by').order('assigned_at', { ascending: false }),
+    ])
+    if (profilesResult.error || assignmentsResult.error) {
+      toast.error('No se pudieron cargar los responsables de OT')
+      return
+    }
+    setProfileNames(Object.fromEntries((profilesResult.data || []).map(profile => [
+      profile.id, `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.id,
+    ])))
+    setContractAdmins((profilesResult.data || []).filter(profile => {
+      const linkedRole = Array.isArray(profile.roles) ? profile.roles[0] : profile.roles
+      return profile.is_active && linkedRole?.name === 'Administrador de Contratos'
+    }).map(profile => ({ id: profile.id, name: `${profile.first_name || ''} ${profile.last_name || ''}`.trim() })))
+    setAssignments(assignmentsResult.data || [])
+  }
+
+  const openAssignment = (contract: Contract) => {
+    const current = assignments.find(item => item.contract_id === contract.id && item.role === 'ADMIN_CONTRATO' && item.active)
+    setAssignmentTarget(contract)
+    setSelectedAdminId(current?.user_id || '')
+    setAssignmentReason('')
+  }
+
+  const saveAssignment = async () => {
+    if (!assignmentTarget || role !== 'admin') return
+    setIsAssigning(true)
+    try {
+      const { error } = await supabase.rpc('reassign_contract_administrator', {
+        p_contract_id: assignmentTarget.id,
+        p_user_id: selectedAdminId || null,
+        p_reason: assignmentReason.trim() || null,
+      })
+      if (error) throw error
+      await fetchAssignmentData()
+      setAssignmentTarget(null)
+      toast.success('Responsable actualizado; el historial se conservó')
+    } catch (error: any) {
+      toast.error('No se pudo reasignar la OT: ' + error.message)
+    } finally {
+      setIsAssigning(false)
+    }
+  }
+
   const fetchClients = async () => {
     try {
       const { data, error } = await supabase.from('clients').select('id, business_name, tax_id').eq('is_active', true)
@@ -111,6 +170,7 @@ export default function ContratosPage() {
       const { data, error } = await supabase
         .from('vw_contracts_dashboard')
         .select('*')
+        .is('parent_contract_id', null)
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -151,9 +211,7 @@ export default function ContratosPage() {
         }
       }
 
-      const { data: contractData, error: contractError } = await supabase
-        .from('contracts')
-        .insert([{
+      const payload = {
           code: finalCode,
           type: newContract.type,
           parent_contract_id: newContract.parent_contract_id || null,
@@ -165,22 +223,30 @@ export default function ContratosPage() {
           destination_province: newContract.destination_province,
           destination_district: newContract.destination_district,
           destination_address: newContract.destination_address
-        }])
-        .select()
-        .single()
-
-      if (contractError) {
-        if (contractError.code === '23505') {
-          throw new Error(`El código "${finalCode}" ya está en uso. No se permiten duplicados.`)
+      }
+      const rootByContractAdmin = role === 'administrador de contratos' && !payload.parent_contract_id
+      let contractId: string
+      if (rootByContractAdmin) {
+        const { data, error } = await supabase.rpc('create_portfolio_contract', {
+          p_payload: payload,
+          p_budget_pen: Number(newContract.budget_pen) || 0,
+        })
+        if (error) throw error
+        contractId = data as string
+      } else {
+        const { data, error } = await supabase.from('contracts').insert([payload]).select('id').single()
+        if (error) {
+          if (error.code === '23505') throw new Error(`El código "${finalCode}" ya está en uso. No se permiten duplicados.`)
+          throw error
         }
-        throw contractError
+        contractId = data.id
       }
 
-      if (newContract.budget_pen && Number(newContract.budget_pen) > 0) {
+      if (!rootByContractAdmin && newContract.budget_pen && Number(newContract.budget_pen) > 0) {
         const { error: budgetError } = await supabase
           .from('contract_budgets')
           .insert([{
-            contract_id: contractData.id,
+            contract_id: contractId,
             allocated_pen: Number(newContract.budget_pen)
           }])
           
@@ -373,10 +439,7 @@ export default function ContratosPage() {
             }
 
 
-            // Insert contract
-            const { data: insertedContract, error: insertError } = await supabase
-              .from('contracts')
-              .insert([{
+            const payload = {
                 code: finalCode,
                 type: tipo,
                 parent_contract_id: parentId,
@@ -388,24 +451,38 @@ export default function ContratosPage() {
                 destination_province: prov || null,
                 destination_district: dist || null,
                 destination_address: dir || null
-              }])
-              .select()
-              .single()
-
-            if (insertError) {
-              if (insertError.code === '23505') throw new Error(`El código "${finalCode}" ya existe.`)
-              throw insertError
+            }
+            const rootByContractAdmin = role === 'administrador de contratos' && !parentId
+            let insertedContract: { id: string, code: string, destination_department: string | null,
+              destination_province: string | null, destination_district: string | null, destination_address: string | null }
+            if (rootByContractAdmin) {
+              const { data: id, error } = await supabase.rpc('create_portfolio_contract', {
+                p_payload: payload,
+                p_budget_pen: presupuesto,
+              })
+              if (error) throw error
+              insertedContract = { id: id as string, code: finalCode, destination_department: dep || null,
+                destination_province: prov || null, destination_district: dist || null, destination_address: dir || null }
+            } else {
+              const { data, error } = await supabase.from('contracts').insert([payload])
+                .select('id, code, destination_department, destination_province, destination_district, destination_address').single()
+              if (error) {
+                if (error.code === '23505') throw new Error(`El código "${finalCode}" ya existe.`)
+                throw error
+              }
+              insertedContract = data
             }
             
             // Register memory map just in case a sub-contract references it in the same file
             contractMap.set(finalCode, insertedContract)
 
             // Update Budget
-            if (presupuesto > 0) {
-              await supabase
+            if (!rootByContractAdmin && presupuesto > 0) {
+              const { error: budgetError } = await supabase
                 .from('contract_budgets')
-                .update({ allocated_pen: presupuesto })
-                .eq('contract_id', insertedContract.id)
+                .upsert({ contract_id: insertedContract.id, concept: 'PARTIDA_TRANSPORTE', allocated_pen: presupuesto },
+                  { onConflict: 'contract_id,concept' })
+              if (budgetError) throw budgetError
             }
             successCount++
           } catch (err: any) {
@@ -555,20 +632,21 @@ export default function ContratosPage() {
                 <th className="px-6 py-4 font-semibold text-right">Partida de Transporte (S/)</th>
                 <th className="px-6 py-4 font-semibold text-right">Saldo Disponible (S/)</th>
                 <th className="px-6 py-4 font-semibold">Estado</th>
+                {role === 'admin' && <th className="px-6 py-4 font-semibold">Responsable</th>}
                 <th className="px-6 py-4 font-semibold text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-slate-500">
+                  <td colSpan={role === 'admin' ? 11 : 10} className="px-6 py-8 text-center text-slate-500">
                     Cargando contratos...
                   </td>
                 </tr>
               ) : contracts.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-slate-500">
-                    No hay contratos registrados.
+                  <td colSpan={role === 'admin' ? 11 : 10} className="px-6 py-8 text-center text-slate-500">
+                    No hay contratos en tu cartera.
                   </td>
                 </tr>
               ) : (
@@ -638,6 +716,9 @@ export default function ContratosPage() {
                         {contract.status}
                       </span>
                     </td>
+                    {role === 'admin' && <td className="px-6 py-4 text-xs text-slate-700">
+                      {profileNames[assignments.find(item => item.contract_id === contract.id && item.role === 'ADMIN_CONTRATO' && item.active)?.user_id || ''] || 'Sin asignar'}
+                    </td>}
                     <td className="px-6 py-4 text-center">
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleEditClick(contract); }}
@@ -646,6 +727,11 @@ export default function ContratosPage() {
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
+                      {role === 'admin' && <button
+                        onClick={e => { e.stopPropagation(); openAssignment(contract) }}
+                        className="ml-2 px-2 py-1 text-xs text-[#002855] hover:bg-slate-100 rounded-lg"
+                        title="Asignar o reasignar Administrador de Contrato"
+                      >Responsable</button>}
                     </td>
                   </tr>
                 ))
@@ -654,6 +740,38 @@ export default function ContratosPage() {
           </table>
         </div>
       </div>
+
+      <Modal isOpen={!!assignmentTarget} onClose={() => setAssignmentTarget(null)}
+        title={`Responsable de OT ${assignmentTarget?.code || ''}`} maxWidth="max-w-xl">
+        <div className="space-y-4">
+          <label className="block text-sm font-medium text-slate-700">Administrador de Contrato
+            <select value={selectedAdminId} onChange={e => setSelectedAdminId(e.target.value)}
+              className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2">
+              <option value="">Sin responsable</option>
+              {contractAdmins.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}
+            </select>
+          </label>
+          <label className="block text-sm font-medium text-slate-700">Motivo de la reasignación
+            <input value={assignmentReason} onChange={e => setAssignmentReason(e.target.value)}
+              className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"
+              placeholder="Opcional" maxLength={250} />
+          </label>
+          <button type="button" onClick={saveAssignment} disabled={isAssigning}
+            className="bg-[#002855] text-white rounded-lg px-4 py-2 disabled:opacity-50">
+            {isAssigning ? 'Guardando...' : 'Guardar responsable'}
+          </button>
+          <div className="border-t pt-3">
+            <p className="text-sm font-semibold text-slate-700 mb-2">Historial de responsabilidad</p>
+            {assignments.filter(item => item.contract_id === assignmentTarget?.id && item.role === 'ADMIN_CONTRATO').map(item =>
+              <p key={item.id} className="text-xs text-slate-600 py-1">
+                {profileNames[item.user_id] || item.user_id} ·
+                {' '}{new Date(item.assigned_at).toLocaleDateString('es-PE')} —
+                {' '}{item.ended_at ? new Date(item.ended_at).toLocaleDateString('es-PE') : 'Actual'}
+                {' · Asignado por: '}{profileNames[item.assigned_by || ''] || 'Sistema'}
+              </p>)}
+          </div>
+        </div>
+      </Modal>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Alta de Contrato / OT" maxWidth="max-w-4xl">
         <form onSubmit={handleCreateContract} className="space-y-6">

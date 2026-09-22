@@ -45,13 +45,16 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
       setContract(data)
 
       const { data: childrenData, error: childrenError } = await supabase
-        .from('vw_contracts_dashboard')
-        .select('*')
+        .from('contracts')
+        .select('*, contract_budgets(allocated_pen, concept)')
         .eq('parent_contract_id', unwrappedParams.id)
         .order('created_at', { ascending: false })
         
       if (!childrenError && childrenData) {
-        setChildrenContracts(childrenData)
+        setChildrenContracts(childrenData.map(child => ({
+          ...child,
+          allocated_pen: child.contract_budgets?.find((budget: { allocated_pen: number, concept: string }) => budget.concept === 'PARTIDA_TRANSPORTE')?.allocated_pen || 0,
+        })))
       }
 
       const { data: reqData } = await supabase
