@@ -1,27 +1,32 @@
 "use client"
-import { useState, useEffect } from 'react'
-import { Plus, Shield, Trash2, Edit2, Search, Loader2 , Filter} from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Plus, Shield, Trash2, Edit2, Search, Loader2, LockKeyhole } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { isProtectedRole } from '@/lib/roles'
 
 interface Role {
   id: string
   name: string
-  description: string
+  description: string | null
   permissions?: string[]
 }
 
-const MODULE_GROUPS = [
+type PermissionMode = 'level' | 'toggle'
+type PermissionModule = { id: string; label: string; mode?: PermissionMode }
+type PermissionGroup = { title: string; modules: PermissionModule[] }
+
+const MODULE_GROUPS: PermissionGroup[] = [
   {
     title: 'JRM IA',
     modules: [
-      { id: 'ia:read:distribucion', label: 'IA: Distribución' },
-      { id: 'ia:read:inventarios', label: 'IA: Inventarios' },
-      { id: 'ia:read:mantenimiento', label: 'IA: Mantenimiento' },
-      { id: 'ia:read:contratos', label: 'IA: Contratos' },
-      { id: 'ia:read:gerencia', label: 'IA: Gerencia' },
-      { id: 'ia:action:mantenimiento', label: 'IA: Proponer mantenimiento' },
+      { id: 'ia:read:distribucion', label: 'IA: Distribución', mode: 'toggle' },
+      { id: 'ia:read:inventarios', label: 'IA: Inventarios', mode: 'toggle' },
+      { id: 'ia:read:mantenimiento', label: 'IA: Mantenimiento', mode: 'toggle' },
+      { id: 'ia:read:contratos', label: 'IA: Contratos', mode: 'toggle' },
+      { id: 'ia:read:gerencia', label: 'IA: Gerencia', mode: 'toggle' },
+      { id: 'ia:action:mantenimiento', label: 'IA: Proponer mantenimiento', mode: 'toggle' },
     ]
   },
   {
@@ -94,8 +99,24 @@ const MODULE_GROUPS = [
   }
 ]
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Error inesperado'
+}
+
+function getPermissionLabel(permission: string) {
+  for (const group of MODULE_GROUPS) {
+    const exact = group.modules.find(module => module.id === permission)
+    if (exact) return { label: exact.label, readOnly: permission.includes(':read:') }
+
+    const match = permission.match(/^(.*):(read|write)$/)
+    const matchedModule = match ? group.modules.find(item => item.id === match[1] && item.mode !== 'toggle') : undefined
+    if (matchedModule) return { label: matchedModule.label, readOnly: match?.[2] === 'read' }
+  }
+  return { label: permission, readOnly: permission.endsWith(':read') }
+}
+
 export default function PermisosPage() {
-  const supabase = createClient()
+  const [supabase] = useState(() => createClient())
   const [roles, setRoles] = useState<Role[]>([])
   const [loading, setLoading] = useState(true)
   
@@ -108,24 +129,13 @@ export default function PermisosPage() {
   })
   const [editingId, setEditingId] = useState<string | null>(null)
 
-    const [searchTerm, setSearchTerm] = useState('')
-  const [showFilters, setShowFilters] = useState(false)
-  const [filterStatus, setFilterStatus] = useState('TODOS')
+  const [searchTerm, setSearchTerm] = useState('')
   const filteredList = roles.filter(item => {
-    const matchesSearch = searchTerm === '' || (item.name || '').toLowerCase().includes(searchTerm.toLowerCase());
-    let matchesStatus = true;
-    if (filterStatus !== 'TODOS') {
-      if ((item as any).status !== undefined) matchesStatus = (item as any).status === filterStatus;
-      else if ((item as any).is_active !== undefined) matchesStatus = filterStatus === 'ACTIVO' ? (item as any).is_active === true : (item as any).is_active === false;
-    }
-    return matchesSearch && matchesStatus;
-  });
+    const query = searchTerm.trim().toLowerCase()
+    return !query || item.name.toLowerCase().includes(query) || item.description?.toLowerCase().includes(query)
+  })
 
-  useEffect(() => {
-    fetchRoles()
-  }, [])
-
-  const fetchRoles = async () => {
+  const fetchRoles = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('roles')
@@ -134,12 +144,18 @@ export default function PermisosPage() {
 
       if (error) throw error
       setRoles(data || [])
-    } catch (error: any) {
-      toast.error('Error al cargar roles: ' + error.message)
+    } catch (error: unknown) {
+      toast.error('Error al cargar roles: ' + getErrorMessage(error))
     } finally {
       setLoading(false)
     }
-  }
+  }, [supabase])
+
+  useEffect(() => {
+    // This client-only screen loads the external role store after mounting.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchRoles()
+  }, [fetchRoles])
 
   const handleSaveRole = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -174,19 +190,20 @@ export default function PermisosPage() {
       setIsModalOpen(false)
       setNewRole({ name: '', description: '', permissions: [] })
       setEditingId(null)
-      fetchRoles()
-    } catch (error: any) {
-      toast.error('Error al guardar rol: ' + error.message)
+      await fetchRoles()
+    } catch (error: unknown) {
+      toast.error('Error al guardar rol: ' + getErrorMessage(error))
     } finally {
       setIsSubmitting(false)
     }
   }
 
   const handleEdit = (role: Role) => {
+    if (isProtectedRole(role.name)) return
     setEditingId(role.id)
     setNewRole({
       name: role.name,
-      description: role.description,
+      description: role.description || '',
       permissions: role.permissions || []
     })
     setIsModalOpen(true)
@@ -199,6 +216,7 @@ export default function PermisosPage() {
   }
 
   const handleDelete = async (id: string, name: string) => {
+    if (isProtectedRole(name)) return
     if (!confirm(`¿Estás seguro de eliminar el rol "${name}"?`)) return
 
     try {
@@ -210,8 +228,8 @@ export default function PermisosPage() {
       if (error) throw error
       
       toast.success('Rol eliminado')
-      fetchRoles()
-    } catch (error: any) {
+      await fetchRoles()
+    } catch {
       toast.error('No se puede eliminar este rol porque tiene usuarios asignados o ha ocurrido un error.')
     }
   }
@@ -234,12 +252,21 @@ export default function PermisosPage() {
     return 'none'
   }
 
+  const setExactPermission = (permission: string, enabled: boolean) => {
+    setNewRole(prev => ({
+      ...prev,
+      permissions: enabled
+        ? [...prev.permissions.filter(value => value !== permission), permission]
+        : prev.permissions.filter(value => value !== permission),
+    }))
+  }
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Roles y Permisos</h1>
-          <p className="text-sm text-slate-500">Administra los niveles de acceso a la Torre de Control</p>
+          <p className="text-sm text-slate-500">Administra permisos por módulo; los roles de seguridad se actualizan mediante migraciones.</p>
         </div>
         <button 
           onClick={openCreateModal}
@@ -259,50 +286,15 @@ export default function PermisosPage() {
             </div>
             <input
               type="text"
-              placeholder="Buscar por nombre de rol..."
+              placeholder="Buscar por nombre o descripción..."
               className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#002855] focus:border-transparent transition-colors sm:text-sm"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors border ${showFilters ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-          >
-            <Filter className="w-4 h-4" />
-            Filtros Avanzados
-          </button>
         </div>
-        {showFilters && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Estado</label>
-              <select
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none"
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-              >
-                <option value="TODOS">Todos</option>
-                <option value="ACTIVO">Activo</option>
-                <option value="INACTIVO">Inactivo</option>
-              </select>
-            </div>
-          </div>
-        )}
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-
-        <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-          <div className="relative w-64">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Buscar rol..." 
-              className="w-full pl-9 pr-4 py-2 bg-white text-slate-900 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002855]"
-            />
-          </div>
-        </div>
-
         <div className="overflow-auto max-h-[calc(100vh-220px)]">
           <table className="w-full text-left border-collapse relative">
             <thead className="sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
@@ -321,47 +313,47 @@ export default function PermisosPage() {
                     Cargando roles...
                   </td>
                 </tr>
-              ) : roles.length === 0 ? (
+              ) : filteredList.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="p-8 text-center text-slate-500">
-                    No hay roles registrados.
+                    {roles.length === 0 ? 'No hay roles registrados.' : 'No hay roles que coincidan con la búsqueda.'}
                   </td>
                 </tr>
               ) : (
-                roles.map(role => (
+                filteredList.map(role => (
                   <tr key={role.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded bg-blue-100 text-[#002855] flex items-center justify-center">
                           <Shield className="w-4 h-4" />
                         </div>
-                        <span className="font-semibold text-slate-800">{role.name}</span>
+                        <div>
+                          <span className="font-semibold text-slate-800">{role.name}</span>
+                          {isProtectedRole(role.name) && (
+                            <span className="ml-2 inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-500">
+                              <LockKeyhole className="h-3 w-3" /> Protegido
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
-                    <td className="p-4 text-sm text-slate-600 max-w-xs truncate" title={role.description}>{role.description}</td>
+                    <td className="p-4 text-sm text-slate-600 max-w-xs truncate" title={role.description || undefined}>{role.description}</td>
                     <td className="p-4 text-sm text-slate-600 hidden md:table-cell">
                       {role.permissions && role.permissions.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {role.permissions.map(p => {
-                            const isRead = p.endsWith(':read')
-                            const label = p.replace(':read', '').replace(':write', '')
-                            // Buscar el label amigable en MODULE_GROUPS
-                            let friendlyLabel = label
-                            MODULE_GROUPS.forEach(g => {
-                              const found = g.modules.find(m => m.id === label)
-                              if (found) friendlyLabel = found.label
-                            })
+                            const permission = getPermissionLabel(p)
 
                             return (
                               <span 
                                 key={p} 
                                 className={`px-2 py-0.5 rounded text-xs border ${
-                                  isRead 
+                                  permission.readOnly
                                     ? 'bg-amber-50 text-amber-700 border-amber-200' 
                                     : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                 }`}
                               >
-                                {friendlyLabel} {isRead ? '(Solo Lectura)' : ''}
+                                {permission.label} {permission.readOnly ? '(Solo Lectura)' : ''}
                               </span>
                             )
                           })}
@@ -374,13 +366,17 @@ export default function PermisosPage() {
                       <div className="flex justify-end gap-2">
                         <button 
                           onClick={() => handleEdit(role)}
-                          className="p-2 text-slate-400 hover:text-[#002855] transition-colors rounded hover:bg-blue-50"
+                          disabled={isProtectedRole(role.name)}
+                          title={isProtectedRole(role.name) ? 'Rol protegido por las reglas de seguridad' : 'Editar rol'}
+                          className="p-2 text-slate-400 hover:text-[#002855] transition-colors rounded hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button 
                           onClick={() => handleDelete(role.id, role.name)}
-                          className="p-2 text-slate-400 hover:text-red-600 transition-colors rounded hover:bg-red-50"
+                          disabled={isProtectedRole(role.name)}
+                          title={isProtectedRole(role.name) ? 'Rol protegido por las reglas de seguridad' : 'Eliminar rol'}
+                          className="p-2 text-slate-400 hover:text-red-600 transition-colors rounded hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -438,6 +434,23 @@ export default function PermisosPage() {
                   </h4>
                   <div className="space-y-3">
                     {group.modules.map(module => {
+                      if (module.mode === 'toggle') {
+                        const enabled = newRole.permissions.includes(module.id)
+                        return (
+                          <div key={module.id} className="flex flex-col gap-1 p-2 rounded-lg hover:bg-white hover:shadow-sm transition-all border border-transparent hover:border-slate-200">
+                            <span className="text-sm font-semibold text-slate-700 leading-tight">{module.label}</span>
+                            <select
+                              className="w-full text-xs p-1.5 mt-1 border border-slate-300 rounded focus:ring-[#002855] focus:outline-none bg-slate-50"
+                              value={enabled ? 'enabled' : 'none'}
+                              onChange={(event) => setExactPermission(module.id, event.target.value === 'enabled')}
+                            >
+                              <option value="none">⛔ Sin Acceso</option>
+                              <option value="enabled">✅ Habilitado</option>
+                            </select>
+                          </div>
+                        )
+                      }
+
                       const level = getModuleLevel(module.id, newRole.permissions)
                       return (
                         <div key={module.id} className="flex flex-col gap-1 p-2 rounded-lg hover:bg-white hover:shadow-sm transition-all border border-transparent hover:border-slate-200">
