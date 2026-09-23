@@ -130,7 +130,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <NotificationBanner />
-        <main className="flex-1 overflow-y-auto p-8 relative z-0">
+        <main className="relative z-0 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-8">
           {children}
         </main>
       </div>

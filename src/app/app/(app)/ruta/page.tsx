@@ -24,7 +24,7 @@ export default function RutaActivaPage() {
 
   useEffect(() => {
     if (contextLoading) return
-    if (!contextDriver) { router.replace('/app/login'); return }
+    if (!contextDriver) { router.replace('/app'); return }
     setDriver(contextDriver)
     const requests = (trip?.stops || []).map(stop => ({ ...stop,
       transport_requests: { request_number: stop.request_number, request_type: stop.request_type,

@@ -2,20 +2,27 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Bell, ClipboardCheck, History, Home, Map, User } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Bell, ClipboardCheck, History, Home, Map, Truck, User } from 'lucide-react'
 import { useActiveTrip } from '@/contexts/ActiveTripContext'
 
 export function OperativeBottomNav() {
   const path = usePathname()
-  const { trip, pending, driver } = useActiveTrip()
-  const centerHref = driver ? (pending.checklist && trip ? '/app/checklist' : trip ? '/app/ruta' : '/app/actividades') : '/app/tareo'
-  const CenterIcon = driver ? (pending.checklist && trip ? ClipboardCheck : trip ? Map : History) : ClipboardCheck
-  const centerLabel = driver ? (pending.checklist && trip ? 'Checklist' : trip ? 'Viaje' : 'Actividades') : 'Tareo'
+  const { trip, pending, driver, user } = useActiveTrip()
+  const [storedDriver, setStoredDriver] = useState(false)
+  useEffect(() => {
+    const initial = window.setTimeout(() => setStoredDriver(Boolean(localStorage.getItem('jrm_driver'))), 0)
+    return () => window.clearTimeout(initial)
+  }, [])
+  const isDriver = Boolean(driver || user?.employee_type === 'CONDUCTOR' || storedDriver)
+  const centerHref = isDriver ? (pending.checklist && trip ? '/app/checklist' : trip ? '/app/ruta' : '/app/viajes') : '/app/tareo'
+  const CenterIcon = isDriver ? (pending.checklist && trip ? ClipboardCheck : trip ? Map : Truck) : ClipboardCheck
+  const centerLabel = isDriver ? (pending.checklist && trip ? 'Checklist' : trip ? 'Ruta' : 'Viajes') : 'Tareo'
   const items = [
     { href: '/app', label: 'Inicio', icon: Home },
-    { href: driver ? '/app/viajes' : '/app/actividades', label: driver ? 'Viajes' : 'Actividades', icon: History },
+    { href: '/app/actividades', label: 'Actividades', icon: History },
     { href: centerHref, label: centerLabel, icon: CenterIcon, center: true },
-    { href: driver ? '/app/alertas' : '/app/actividades', label: 'Alertas', icon: Bell },
+    { href: '/app/alertas', label: 'Alertas', icon: Bell },
     { href: '/app/perfil', label: 'Perfil', icon: User },
   ]
 

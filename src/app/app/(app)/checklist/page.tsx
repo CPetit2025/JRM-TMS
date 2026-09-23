@@ -7,19 +7,6 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useActiveTrip } from '@/contexts/ActiveTripContext'
 
-// Fórmula de Haversine para distancia en KM
-function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371 // Radio de la tierra
-  const dLat = (lat2 - lat1) * (Math.PI / 180)
-  const dLon = (lon2 - lon1) * (Math.PI / 180)
-  const a = 
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * 
-    Math.sin(dLon / 2) * Math.sin(dLon / 2)
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) 
-  return R * c
-}
-
 export default function ChecklistPage() {
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -41,7 +28,8 @@ export default function ChecklistPage() {
     luces: null,
     frenos: null,
     combustible: null,
-    observaciones: ''
+    observaciones: '',
+    odometro: ''
   })
   
   const [photo, setPhoto] = useState<string | null>(null)
@@ -50,16 +38,17 @@ export default function ChecklistPage() {
   useEffect(() => {
     // Restaurar estado guardado
     const saved = localStorage.getItem('jrm_checklist_state')
+    let restoreTimer: number | undefined
     if (saved) {
       try {
-        const parsed = JSON.parse(saved)
-        if (parsed.checklist) setChecklist(parsed.checklist)
+        const parsed = JSON.parse(saved) as { checklist?: Record<string, 'OK' | 'MAL' | null | string> }
+        if (parsed.checklist) restoreTimer = window.setTimeout(() => setChecklist(parsed.checklist!), 0)
       } catch (e) {
         console.error(e)
       }
     }
     
-    // Función para verificar ubicación contra BD y estado de despacho
+    // FunciÃ³n para verificar ubicaciÃ³n contra BD y estado de despacho
     const verifyPrerequisites = async () => {
       try {
         if (contextLoading) return
@@ -83,49 +72,28 @@ export default function ChecklistPage() {
         }
         setHasDispatch(true); setDispatchId(trip.id); setVehiclePlate(trip.vehicle_plate)
 
-        // 2. Check location
-        const { data: locations, error } = await supabase
-          .from('authorized_locations')
-          .select('*')
-          .eq('is_active', true)
-          
-        if (error || !locations || locations.length === 0) {
-          toast.error("No hay geocercas configuradas. Contacta al supervisor.")
-          setLocationValid(false)
-          setCheckingLocation(false)
-          return
-        }
-
         if ("geolocation" in navigator) {
           navigator.geolocation.getCurrentPosition(
-            (position) => {
+            async (position) => {
               const { latitude, longitude } = position.coords
               setGps({ lat: latitude, lon: longitude })
-              
-              let isValid = false
-              let closestDistance = Infinity
-              
-              for (const loc of locations) {
-                const distance = getDistanceFromLatLonInKm(latitude, longitude, loc.latitude, loc.longitude)
-                if (distance < closestDistance) closestDistance = distance
-                if (distance <= loc.radius_km) {
-                  isValid = true
-                  break
-                }
-              }
-              
-              if (isValid) {
+              const { data: validation, error: validationError } = await supabase.rpc(
+                'validate_operational_geofence', { p_lat: latitude, p_lon: longitude })
+              const result = validation as { valid?: boolean; zone_name?: string; reason?: string } | null
+              if (!validationError && result?.valid) {
                 setLocationValid(true)
+                setCurrentDistanceInfo(`Zona autorizada: ${result.zone_name || 'Base operativa'}`)
               } else {
-                setLocationValid(false) 
-                setCurrentDistanceInfo(`Estás a ${closestDistance.toFixed(1)} KM de la base más cercana.`)
-                toast.error(`Estás a ${closestDistance.toFixed(1)} KM de la base más cercana. No puedes iniciar.`, { duration: 5000 })
+                setLocationValid(false)
+                const reason = result?.reason || validationError?.message || 'Fuera de geocerca autorizada.'
+                setCurrentDistanceInfo(reason)
+                toast.error(`${reason} No puedes completar el checklist.`, { duration: 5000 })
               }
               setCheckingLocation(false)
             },
             (error) => {
               console.error("Error GPS:", error.message || "Error desconocido")
-              toast.error("No se pudo obtener la ubicación para validar geocerca.")
+              toast.error("No se pudo obtener la ubicaciÃ³n para validar geocerca.")
               setCheckingLocation(false)
             },
             { enableHighAccuracy: true, timeout: 30000, maximumAge: 60000 }
@@ -140,7 +108,8 @@ export default function ChecklistPage() {
       }
     }
 
-    verifyPrerequisites()
+    void verifyPrerequisites()
+    return () => { if (restoreTimer) window.clearTimeout(restoreTimer) }
   }, [contextLoading, driver, trip, supabase])
 
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -152,31 +121,35 @@ export default function ChecklistPage() {
     }
   }
 
-  const updateChecklist = (key: string, value: any) => {
+  const updateChecklist = (key: string, value: 'OK' | 'MAL' | null | string) => {
     const newChecklist = { ...checklist, [key]: value }
     setChecklist(newChecklist)
     localStorage.setItem('jrm_checklist_state', JSON.stringify({ checklist: newChecklist }))
   }
 
   const handleSubmit = async () => {
-    const allChecked = Object.entries(checklist).filter(([k]) => k !== 'observaciones').every(([_, v]) => v !== null)
+    const allChecked = Object.entries(checklist).filter(([k]) => k !== 'observaciones' && k !== 'odometro').every(([, value]) => value !== null)
     if (!allChecked) {
       toast.error('Debes validar todos los puntos de seguridad')
       return
     }
+    if (!checklist.odometro || isNaN(Number(checklist.odometro))) {
+      toast.error('Debes ingresar un kilometraje válido (odómetro)')
+      return
+    }
     if (!photoFile) {
-      toast.error('Es obligatorio subir una foto de evidencia del vehículo')
+      toast.error('Es obligatorio subir una foto de evidencia del vehÃ­culo')
       return
     }
 
     if (!dispatchId || !driverId || !gps || !locationValid) {
-      toast.error('Falta una ruta asignada o una ubicación validada.')
+      toast.error('Falta una ruta asignada o una ubicaciÃ³n validada.')
       return
     }
     setSubmitting(true)
     try {
       const { data: userData } = await supabase.auth.getUser()
-      if (!userData.user) throw new Error('Sesión expirada')
+      if (!userData.user) throw new Error('SesióÃ³n expirada')
       const filePath = `${userData.user.id}/${dispatchId}/checklist/${crypto.randomUUID()}-${photoFile.name}`
       const { error: uploadError } = await supabase.storage.from('driver_evidence')
         .upload(filePath, photoFile, { upsert: false, contentType: photoFile.type })
@@ -185,18 +158,27 @@ export default function ChecklistPage() {
         dispatch_id: dispatchId, driver_id: driverId, vehicle_plate: vehiclePlate,
         checklist_data: checklist, photo_url: filePath,
         location_lat: gps.lat, location_lon: gps.lon,
-        is_approved: Object.entries(checklist).filter(([key]) => key !== 'observaciones').every(([, value]) => value === 'OK')
+        is_approved: Object.entries(checklist).filter(([key]) => key !== 'observaciones' && key !== 'odometro').every(([, value]) => value === 'OK')
       })
       if (saveError) {
         await supabase.storage.from('driver_evidence').remove([filePath])
         throw saveError
       }
+
+      const { error: odoError } = await supabase.rpc('record_odometer_reading', {
+        p_vehicle_plate: vehiclePlate,
+        p_odometer_value: Number(checklist.odometro),
+        p_photo_url: filePath,
+        p_source_event: 'INICIO_RUTA',
+        p_dispatch_id: dispatchId
+      })
+      if (odoError) console.warn('Error odometro:', odoError)
       localStorage.removeItem('jrm_checklist_state')
-      toast.success('Checklist y fotografía guardados.')
+      toast.success('Checklist y fotografÃ­a guardados.')
       await refresh()
       router.push('/app/ruta')
-    } catch (err: any) {
-      toast.error('No se pudo guardar el checklist: ' + err.message)
+    } catch (error) {
+      toast.error('No se pudo guardar el checklist: ' + (error instanceof Error ? error.message : 'Error desconocido'))
     } finally { setSubmitting(false) }
   }
 
@@ -210,7 +192,7 @@ export default function ChecklistPage() {
           </div>
           <div>
             <h1 className="text-lg font-black text-[#002855]">Checklist Pre-Ruta</h1>
-            <p className="text-xs text-slate-500">Inspección obligatoria de la unidad</p>
+            <p className="text-xs text-slate-500">InspecciÃ³n obligatoria de la unidad</p>
           </div>
         </div>
       </div>
@@ -220,7 +202,7 @@ export default function ChecklistPage() {
         <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 flex flex-col items-center justify-center text-center">
           <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-3" />
           <h3 className="font-bold text-blue-900">Verificando Datos...</h3>
-          <p className="text-xs text-blue-700 mt-1">Verificando ubicación y rutas...</p>
+          <p className="text-xs text-blue-700 mt-1">Verificando ubicaciÃ³n y rutas...</p>
         </div>
       ) : !hasDispatch ? (
         <div className="bg-orange-50 border border-orange-200 rounded-2xl p-6 flex flex-col items-center text-center mt-10">
@@ -245,8 +227,8 @@ export default function ChecklistPage() {
           </div>
           <h3 className="font-black text-red-900 text-base">Fuera de Base Autorizada</h3>
           <p className="text-sm text-red-700 mt-2">
-            El sistema detecta que no estás en una base o cochera autorizada.
-            {currentDistanceInfo ? ` ${currentDistanceInfo}` : ' Acércate a la base para desbloquear el checklist.'}
+            El sistema detecta que no estÃ¡s en una base o cochera autorizada.
+            {currentDistanceInfo ? ` ${currentDistanceInfo}` : ' AcÃ©rcate a la base para desbloquear el checklist.'}
           </p>
         </div>
       ) : (
@@ -255,19 +237,19 @@ export default function ChecklistPage() {
             <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
               <MapPin className="w-4 h-4 text-green-600" />
             </div>
-            <span className="text-sm font-bold text-green-800">Ubicación dentro de geocerca autorizada</span>
+            <span className="text-sm font-bold text-green-800">UbicaciÃ³n dentro de geocerca autorizada</span>
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="bg-slate-50 px-4 py-3 border-b border-slate-100">
-              <h3 className="font-bold text-slate-800 text-sm">Puntos de Revisión Obligatorios</h3>
+              <h3 className="font-bold text-slate-800 text-sm">Puntos de RevisiÃ³n Obligatorios</h3>
             </div>
             <div className="divide-y divide-slate-100">
               {[
-                { id: 'llantas', label: 'Estado de Llantas y Presión' },
+                { id: 'llantas', label: 'Estado de Llantas y PresiÃ³n' },
                 { id: 'aceite', label: 'Niveles de Aceite y Agua' },
                 { id: 'luces', label: 'Luces, Direccionales y Focos' },
-                { id: 'frenos', label: 'Sistema de Frenos (Aire/Líquido)' },
+                { id: 'frenos', label: 'Sistema de Frenos (Aire/LÃ­quido)' },
                 { id: 'combustible', label: 'Tanque de Combustible lleno' },
               ].map((item) => {
                 const val = checklist[item.id]
@@ -279,13 +261,13 @@ export default function ChecklistPage() {
                         onClick={() => updateChecklist(item.id, 'OK')}
                         className={`flex-1 py-2.5 rounded-xl font-bold text-xs border-2 transition-all ${val === 'OK' ? 'bg-green-500 border-green-500 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
                       >
-                        ✔ OK
+                        âœ” OK
                       </button>
                       <button
                         onClick={() => updateChecklist(item.id, 'MAL')}
                         className={`flex-1 py-2.5 rounded-xl font-bold text-xs border-2 transition-all ${val === 'MAL' ? 'bg-red-500 border-red-500 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
                       >
-                        ✖ MALO
+                        âœ– MALO
                       </button>
                     </div>
                   </div>
@@ -294,11 +276,22 @@ export default function ChecklistPage() {
             </div>
 
             <div className="p-4 bg-slate-50 border-t border-slate-100">
+              <label className="block text-xs font-bold text-slate-600 mb-2 uppercase tracking-wide">Odómetro Actual (km)</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-[#002855] outline-none text-sm text-slate-900 bg-white transition-colors mb-4"
+                placeholder="Ej. 125500"
+                value={checklist.odometro as string}
+                onChange={(e) => updateChecklist('odometro', e.target.value)}
+              />
+
               <label className="block text-xs font-bold text-slate-600 mb-2 uppercase tracking-wide">Observaciones Generales</label>
               <textarea
                 className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-[#002855] outline-none text-sm text-slate-900 bg-white resize-none transition-colors"
                 rows={2}
-                placeholder="Ej. Parachoque con ligero quiñe..."
+                placeholder="Ej. Parachoque con ligero quiÃ±e..."
                 value={checklist.observaciones as string}
                 onChange={(e) => updateChecklist('observaciones', e.target.value)}
               />
@@ -307,7 +300,7 @@ export default function ChecklistPage() {
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
-              <h3 className="font-bold text-slate-800 text-sm">Evidencia Fotográfica Frontal</h3>
+              <h3 className="font-bold text-slate-800 text-sm">Evidencia FotogrÃ¡fica Frontal</h3>
             </div>
             <div className="p-4">
               {photo ? (
@@ -324,7 +317,7 @@ export default function ChecklistPage() {
               ) : (
                 <label className="border-2 border-dashed border-slate-300 rounded-xl h-32 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 hover:border-[#002855] transition-all group">
                   <Camera className="w-8 h-8 text-slate-400 group-hover:text-[#002855] mb-2 transition-colors" />
-                  <span className="text-sm font-bold text-slate-500 group-hover:text-[#002855] transition-colors">Tomar Foto del Vehículo</span>
+                  <span className="text-sm font-bold text-slate-500 group-hover:text-[#002855] transition-colors">Tomar Foto del VehÃ­culo</span>
                   <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoCapture} />
                 </label>
               )}

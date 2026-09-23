@@ -22,7 +22,7 @@ export default function LiquidacionPage() {
   useEffect(() => {
     const driverData = localStorage.getItem('jrm_driver')
     if (!driverData) {
-      router.push('/app/login')
+      router.push('/app')
       return
     }
     const parsedDriver = JSON.parse(driverData)

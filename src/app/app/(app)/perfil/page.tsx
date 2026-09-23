@@ -7,7 +7,7 @@ export default function PerfilPage() {
   const { user, driver, trip } = useActiveTrip()
   const driverInfo = {
     first_name: driver?.first_name || user?.first_name || '', last_name: driver?.last_name || user?.last_name || '',
-    document_number: driver?.document_number || '', phone: driver?.phone || user?.phone || null,
+    document_number: driver?.document_number || user?.document_id || '', phone: driver?.phone || user?.phone || null,
     license: driver?.license_number || null,
   }
 

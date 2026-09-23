@@ -5,7 +5,10 @@ import { usePathname } from 'next/navigation'
 import { Bot, Send, X, Mic, MicOff } from 'lucide-react'
 import { toast } from 'sonner'
 
-type Context = { contractId?: string; vehiclePlate?: string; dispatchId?: string; status?: string; activeStep?: number }
+type Context = {
+  contractId?: string; vehiclePlate?: string; dispatchId?: string; status?: string; activeStep?: number
+  userName?: string; driverName?: string; pending?: { checklist?: boolean; stops?: number; expenses?: number; failures?: number }
+}
 type Message = { from: 'user' | 'ai'; text: string }
 type Site = { id: string; name: string }
 type Proposal = { id: string; action_type?: string; payload: Record<string, unknown>; status?: string }
@@ -149,12 +152,14 @@ export function JrmAiAssistant() {
 
   const suggestions = useMemo(() => {
     if (path.includes('/ruta') || selected.dispatchId) {
+      if (selected.pending?.checklist) return ['Ayúdame con el checklist', '¿Qué ruta tengo asignada?', '¿Qué me falta antes de iniciar?']
       if (selected.status === 'EN RUTA') return ['¿Voy a tiempo para la siguiente parada?', 'Informar un retraso por tráfico', 'Notificar avería mecánica']
       return ['¿Qué ruta tengo asignada hoy?', '¿Cuántas paradas me faltan?']
     }
     if (path.includes('/contratos')) return ['Analiza este contrato', '¿Qué contratos tienen mayor riesgo?']
     if (path.includes('/mantenimiento')) return ['¿Qué unidades requieren atención?', 'Muéstrame las fallas pendientes']
     if (path.includes('/despacho') || path.includes('/torre-control')) return ['¿Qué operaciones están retrasadas?', '¿Cuánto costaron los despachos de esta semana?']
+    if (path.startsWith('/app')) return ['¿Tengo rutas asignadas?', '¿Qué tengo pendiente?', 'Quiero reportar una falla']
     return ['¿Qué debería preocuparme hoy?', 'Resume la operación de esta semana']
   }, [path, selected])
 
@@ -210,7 +215,7 @@ export function JrmAiAssistant() {
     <div className={`fixed z-[80] ${isMobile ? 'bottom-20 right-4' : 'bottom-5 right-5'}`}>
       {!open && <button type="button" onClick={() => setOpen(true)} aria-label="Abrir Copiloto IA"
         className="flex items-center gap-2 rounded-full bg-gradient-to-r from-[#002855] to-[#004b99] px-4 py-3 font-bold text-white shadow-[0_8px_20px_rgba(0,40,85,0.4)] hover:shadow-xl transition-all hover:-translate-y-1 active:translate-y-0">
-        <Bot className="h-5 w-5 animate-pulse" /> {isMobile ? 'Copiloto IA' : 'JRM IA'}
+        <Bot className="h-5 w-5 animate-pulse" /> {isMobile ? 'Hablar con JRM IA' : 'JRM IA'}
       </button>}
       {open && (
         <>
@@ -232,7 +237,7 @@ export function JrmAiAssistant() {
 
             <header className={`flex items-center justify-between bg-[#002855] px-5 py-4 text-white shadow-sm ${!isMobile && 'rounded-t-2xl'}`}>
               <div className="flex items-center gap-3 font-black tracking-wide text-lg">
-                <Bot className="h-6 w-6 text-blue-300" /> {isMobile ? 'Copiloto de Ruta' : 'JRM IA'}
+                <Bot className="h-6 w-6 text-blue-300" /> {isMobile ? 'JRM IA · Tu copiloto' : 'JRM IA'}
               </div>
               <button type="button" aria-label="Cerrar JRM IA" onClick={() => setOpen(false)} className="bg-white/10 hover:bg-white/20 p-1.5 rounded-full transition-colors">
                 <X className="h-5 w-5" />
@@ -255,7 +260,10 @@ export function JrmAiAssistant() {
             JRM IA está pendiente de configurar en el servidor. Solicita al administrador que active la clave de OpenAI.
           </p>}
           {enabled && messages.length === 0 && <>
-            <p className="text-sm text-slate-600">Pregunta por datos reales de la operación.</p>
+            <div className="rounded-xl bg-blue-50 p-3 text-sm text-slate-700 shadow-sm border border-blue-100">
+              <p className="font-bold text-[#002855]">Hola{selected.userName || selected.driverName ? `, soy JRM y estoy aquí para ayudarte, ${selected.userName || selected.driverName}` : ' conductor'}. 👋</p>
+              <p className="mt-1">Soy tu copiloto virtual. Puedo consultar información sobre tu ruta, recordarte pendientes y preparar reportes automáticamente. ¿En qué te puedo ayudar hoy?</p>
+            </div>
             <div className="flex flex-wrap gap-2">
               {suggestions.map(text => <button type="button" key={text} onClick={() => void ask(text)}
                 className="rounded-lg border border-slate-200 px-3 py-2 text-left text-xs hover:bg-slate-50">{text}</button>)}
@@ -304,7 +312,7 @@ export function JrmAiAssistant() {
             {listening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           </button>
           <input type="text" value={question} onChange={event => setQuestion(event.target.value)}
-            disabled={!enabled || busy} placeholder={listening ? "Escuchando..." : "Escribe o usa el micrófono..."}
+            disabled={!enabled || busy} placeholder={listening ? "Te escucho..." : "Escríbeme o háblame..."}
             className="flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:border-[#002855] focus:outline-none focus:ring-1 focus:ring-[#002855]" />
           <button type="submit" disabled={!enabled || busy || (!question.trim() && !listening)} aria-label="Enviar pregunta"
             className="rounded-full bg-[#002855] p-2.5 text-white shadow-md disabled:opacity-50 hover:bg-[#003b78] transition-colors">
