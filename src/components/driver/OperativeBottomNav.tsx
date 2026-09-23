@@ -2,20 +2,20 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Bell, ClipboardCheck, History, Home, Map, Play, User } from 'lucide-react'
+import { Bell, ClipboardCheck, History, Home, Map, User } from 'lucide-react'
 import { useActiveTrip } from '@/contexts/ActiveTripContext'
 
 export function OperativeBottomNav() {
   const path = usePathname()
   const { trip, pending, driver } = useActiveTrip()
-  const centerHref = driver ? (pending.checklist ? '/app/checklist' : '/app/ruta') : '/app/tareo'
-  const CenterIcon = driver ? (pending.checklist ? ClipboardCheck : Map) : Play
-  const centerLabel = driver ? (pending.checklist ? 'Checklist' : trip ? 'Viaje' : 'Viajes') : 'Tareo'
+  const centerHref = driver ? (pending.checklist && trip ? '/app/checklist' : trip ? '/app/ruta' : '/app/actividades') : '/app/tareo'
+  const CenterIcon = driver ? (pending.checklist && trip ? ClipboardCheck : trip ? Map : History) : ClipboardCheck
+  const centerLabel = driver ? (pending.checklist && trip ? 'Checklist' : trip ? 'Viaje' : 'Actividades') : 'Tareo'
   const items = [
     { href: '/app', label: 'Inicio', icon: Home },
-    { href: '/app/actividades', label: 'Actividades', icon: History },
+    { href: driver ? '/app/viajes' : '/app/actividades', label: driver ? 'Viajes' : 'Actividades', icon: History },
     { href: centerHref, label: centerLabel, icon: CenterIcon, center: true },
-    { href: driver ? '/app/fallas' : '/app/actividades', label: 'Alertas', icon: Bell },
+    { href: driver ? '/app/alertas' : '/app/actividades', label: 'Alertas', icon: Bell },
     { href: '/app/perfil', label: 'Perfil', icon: User },
   ]
 

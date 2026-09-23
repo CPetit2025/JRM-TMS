@@ -9,13 +9,14 @@ export const runtime = 'nodejs'
 async function access() {
   const identity = await getAiIdentity()
   if (!identity) return null
-  const scopes = Object.values(toolAccess)
+  const scopes: string[] = Object.values(toolAccess)
     .filter(item => identity.canUseAi(item.scope, [...item.modules]))
     .map(item => item.scope)
   const { data: sites, error } = await identity.supabase.from('sites').select('id, name').eq('is_active', true)
-  if (error || !sites?.length) return null
+  if ((error || !sites?.length) && identity.employeeType !== 'CONDUCTOR') return null
+  if (identity.employeeType === 'CONDUCTOR') scopes.push('viaje')
   if (identity.canPrepareMaintenance()) scopes.push('mantenimiento')
-  return { identity, scopes: [...new Set(scopes)], sites }
+  return { identity, scopes: [...new Set(scopes)], sites: sites || [] }
 }
 
 export async function GET() {

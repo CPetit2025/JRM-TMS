@@ -16,11 +16,11 @@ export default function OperativeLogin() {
   const [rememberMe, setRememberMe] = useState(false)
 
   useEffect(() => {
-    const savedId = localStorage.getItem('jrm_saved_operative_id')
-    if (savedId) {
-      setIdentifier(savedId)
-      setRememberMe(true)
-    }
+    const initial = window.setTimeout(() => {
+      const savedId = localStorage.getItem('jrm_saved_operative_id')
+      if (savedId) { setIdentifier(savedId); setRememberMe(true) }
+    }, 0)
+    return () => window.clearTimeout(initial)
   }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -59,7 +59,7 @@ export default function OperativeLogin() {
       }
 
       const { data: profile } = await supabase.from('profiles')
-        .select('is_active').eq('id', data.user.id).maybeSingle()
+        .select('is_active, employee_type').eq('id', data.user.id).maybeSingle()
       if (!profile?.is_active) {
         await supabase.auth.signOut()
         toast.error('Cuenta pendiente de aprobación.')
@@ -80,9 +80,15 @@ export default function OperativeLogin() {
         .from('drivers')
         .select('*')
         .eq('profile_id', data.user.id)
-        .single()
+        .maybeSingle()
         
-      if (driver) {
+      if (profile.employee_type === 'CONDUCTOR' || driver) {
+        if (!driver) {
+          await supabase.auth.signOut()
+          toast.error('Tu perfil de conductor no está vinculado. Contacta al administrador.')
+          setLoading(false)
+          return
+        }
         if (!driver.is_active) {
           await supabase.auth.signOut()
           toast.error('Conductor pendiente de aprobación.')
@@ -90,12 +96,12 @@ export default function OperativeLogin() {
           return
         }
         localStorage.setItem('jrm_driver', JSON.stringify(driver))
-        router.push('/app')
+        router.replace('/app')
       } else {
-        router.push('/app/actividades')
+        router.replace('/app/actividades')
       }
       
-    } catch (err) {
+    } catch {
       toast.error('Ocurrió un error al intentar acceder')
       setLoading(false)
     }
