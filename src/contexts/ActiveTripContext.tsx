@@ -53,7 +53,7 @@ export type DriverPortalSummary = {
 }
 
 export type ActiveTripContextValue = {
-  user: null | { id: string; first_name: string; last_name: string; phone?: string | null; employee_type: string }
+  user: null | { id: string; first_name: string; last_name: string; phone?: string | null; employee_type: string; document_id?: string | null }
   driver: null | {
     id: string; document_number: string; first_name: string; last_name: string
     phone: string | null; license_number: string | null; license_category: string | null
@@ -87,22 +87,36 @@ export function ActiveTripProvider({ children }: { children: React.ReactNode }) 
     ])
     const { data, error } = contextResult
     if (error) {
-      setState(current => ({ ...current, loading: false, error: error.message }))
+      const { data: auth } = await supabase.auth.getUser()
+      const [profileResult, driverResult] = auth.user ? await Promise.all([
+        supabase.from('profiles').select('id, first_name, last_name, phone, employee_type, document_id').eq('id', auth.user.id).maybeSingle(),
+        supabase.from('drivers').select('id, document_number, first_name, last_name, phone, license_number, license_category, license_expiration').eq('profile_id', auth.user.id).eq('is_active', true).maybeSingle(),
+      ]) : [{ data: null }, { data: null }]
+      const profile = profileResult.data
+      const fallbackDriver = driverResult.data
+      const summary = summaryResult.error ? empty.summary : summaryResult.data as DriverPortalSummary
+      setState({ user: profile ? { ...profile, employee_type: profile.employee_type || 'CONDUCTOR' } : null,
+        driver: fallbackDriver, trip: null, pending: {}, summary, loading: false,
+        error: `No se pudo cargar el viaje: ${error.message}` })
       return
     }
     const next = data as Omit<ActiveTripContextValue, 'summary' | 'loading' | 'error' | 'refresh'>
     const summary = summaryResult.error ? empty.summary : summaryResult.data as DriverPortalSummary
     setState({ ...next, summary, loading: false, error: summaryResult.error?.message || null })
     localStorage.setItem(cacheKey, JSON.stringify(next))
-    window.dispatchEvent(new CustomEvent('jrm:context', { detail: next.trip ? {
-      dispatchId: next.trip.id,
-      vehiclePlate: next.trip.vehicle_plate || undefined,
-      contractId: next.trip.contract?.id,
-      status: next.trip.status,
-      scheduledDeparture: next.trip.scheduled_departure,
-      stops: next.trip.stops,
+    window.dispatchEvent(new CustomEvent('jrm:context', { detail: {
+      userName: next.user?.first_name,
+      driverName: next.driver?.first_name,
       pending: next.pending,
-    } : {} }))
+      ...(next.trip ? {
+        dispatchId: next.trip.id,
+        vehiclePlate: next.trip.vehicle_plate || undefined,
+        contractId: next.trip.contract?.id,
+        status: next.trip.status,
+        scheduledDeparture: next.trip.scheduled_departure,
+        stops: next.trip.stops,
+      } : {}),
+    } }))
   }, [supabase])
 
   useEffect(() => {

@@ -22,7 +22,7 @@ export default function GastosPage() {
 
   useEffect(() => {
     if (contextLoading) return
-    if (!user) { router.push('/app/login'); return }
+    if (!user) { router.push('/app'); return }
     if (!trip) { setDispatch(null); setLoading(false); return }
     const current = { id: trip.id, dispatch_number: trip.dispatch_number, vehicle_plate: trip.vehicle_plate, status: trip.status }
     setDispatch(current)

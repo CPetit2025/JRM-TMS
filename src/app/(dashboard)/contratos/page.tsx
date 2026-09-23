@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Search, Layers, FileWarning, Briefcase, FilePlus2, CheckCircle2, Upload, Download, Edit2, Filter } from 'lucide-react'
+import { Plus, Search, Layers, FileWarning, Briefcase, FilePlus2, CheckCircle2, Upload, Download, Edit2, Filter, Eye } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -520,7 +520,7 @@ export default function ContratosPage() {
   }
 
   return (
-    <div className="space-y-6 w-full mx-auto">
+    <div className="flex h-full min-h-0 w-full flex-col gap-4 mx-auto">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Alta de Contratos</h1>
@@ -618,22 +618,35 @@ export default function ContratosPage() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-        <div className="overflow-auto max-h-[calc(100vh-220px)]">
-          <table className="w-full text-sm text-left relative">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="h-full overflow-y-auto overflow-x-hidden">
+          <table className="relative w-full table-fixed text-left text-sm">
+            <colgroup>
+              <col className="w-[14%]" />
+              <col className="w-[15%]" />
+              <col className="w-[9%]" />
+              <col className="hidden 2xl:table-column w-[13%]" />
+              <col className="hidden xl:table-column w-[9%]" />
+              <col className="w-[9%]" />
+              <col className="w-[12%]" />
+              <col className="w-[11%]" />
+              <col className="w-[10%]" />
+              {role === 'admin' && <col className="hidden 2xl:table-column w-[11%]" />}
+              <col className="w-[13%]" />
+            </colgroup>
             <thead className="text-xs text-slate-500 uppercase bg-slate-50 sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0] border-slate-200">
               <tr>
-                <th className="px-6 py-4 font-semibold">Código / Jerarquía</th>
-                <th className="px-6 py-4 font-semibold">Cliente</th>
-                <th className="px-6 py-4 font-semibold text-center">Tipo</th>
-                <th className="px-6 py-4 font-semibold text-left">Dirección</th>
-                <th className="px-6 py-4 font-semibold text-center">Detalles</th>
-                <th className="px-6 py-4 font-semibold text-right">Carga (TON)</th>
-                <th className="px-6 py-4 font-semibold text-right">Partida de Transporte (S/)</th>
-                <th className="px-6 py-4 font-semibold text-right">Saldo Disponible (S/)</th>
-                <th className="px-6 py-4 font-semibold">Estado</th>
-                {role === 'admin' && <th className="px-6 py-4 font-semibold">Responsable</th>}
-                <th className="px-6 py-4 font-semibold text-center">Acciones</th>
+                <th className="px-3 py-3 font-semibold">Código / Jerarquía</th>
+                <th className="px-3 py-3 font-semibold">Cliente</th>
+                <th className="px-3 py-3 font-semibold text-center">Tipo</th>
+                <th className="hidden px-3 py-3 font-semibold text-left 2xl:table-cell">Dirección</th>
+                <th className="hidden px-3 py-3 font-semibold text-center xl:table-cell">Detalles</th>
+                <th className="px-3 py-3 font-semibold text-right">Carga</th>
+                <th className="px-3 py-3 font-semibold text-right">Partida (S/)</th>
+                <th className="px-3 py-3 font-semibold text-right">Saldo (S/)</th>
+                <th className="px-3 py-3 font-semibold">Estado</th>
+                {role === 'admin' && <th className="hidden px-3 py-3 font-semibold 2xl:table-cell">Responsable</th>}
+                <th className="sticky right-0 z-20 bg-slate-50 px-3 py-3 font-semibold text-center shadow-[-6px_0_8px_-8px_rgba(15,23,42,0.45)]">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -651,8 +664,8 @@ export default function ContratosPage() {
                 </tr>
               ) : (
                 filteredContracts.map((contract) => (
-                  <tr key={contract.id} onClick={() => router.push(`/contratos/${contract.id}`)} className="cursor-pointer hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4">
+                  <tr key={contract.id} onClick={() => router.push(`/contratos/${contract.id}`)} className="group cursor-pointer transition-colors hover:bg-slate-50/50">
+                    <td className="px-3 py-3">
                       <div className="flex flex-col">
                         <span className="font-semibold text-slate-900 text-base">{contract.code}</span>
                         {contract.parent_contract_id && (
@@ -660,14 +673,14 @@ export default function ContratosPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-3">
                       {contract.clients ? (
                         <span className="text-sm text-[#002855] font-medium">{contract.clients.business_name}</span>
                       ) : (
                         <span className="text-xs text-slate-400">Sin cliente</span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-3">
                       <div className="flex flex-col gap-1">
                         {getTypeBadge(contract.type)}
                         {contract.destination_district && (
@@ -677,7 +690,12 @@ export default function ContratosPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-center">
+                    <td className="hidden px-3 py-3 2xl:table-cell">
+                      <span className="block truncate text-xs text-slate-600" title={contract.destination_address || ''}>
+                        {[contract.destination_district, contract.destination_address].filter(Boolean).join(' · ') || '-'}
+                      </span>
+                    </td>
+                    <td className="hidden px-3 py-3 text-center xl:table-cell">
                       <div className="flex flex-col gap-1 items-center">
                         {contract.subcontracts_count !== undefined && contract.subcontracts_count > 0 && (
                           <span className="text-[10px] text-purple-600 font-medium bg-purple-50 px-2 py-0.5 rounded-full">
@@ -699,40 +717,49 @@ export default function ContratosPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm font-medium text-slate-700">
+                    <td className="px-3 py-3 text-right text-sm font-medium text-slate-700">
                       {contract.total_weight_kg ? Number(contract.total_weight_kg).toLocaleString('en-US') : '0'} KG
                     </td>
-                    <td className="px-6 py-4 font-medium text-slate-700">
+                    <td className="px-3 py-3 text-right font-medium text-slate-700">
                       S/ {contract.budget?.allocated_pen?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-3 text-right">
                       <span className={`font-semibold ${(contract.budget?.balance_pen || 0) <= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                         S/ {contract.budget?.balance_pen?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-3">
                       <span className="flex items-center gap-1.5 text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full text-xs font-semibold w-fit">
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         {contract.status}
                       </span>
                     </td>
-                    {role === 'admin' && <td className="px-6 py-4 text-xs text-slate-700">
+                    {role === 'admin' && <td className="hidden px-3 py-3 text-xs text-slate-700 2xl:table-cell">
                       {profileNames[assignments.find(item => item.contract_id === contract.id && item.role === 'ADMIN_CONTRATO' && item.active)?.user_id || ''] || 'Sin asignar'}
                     </td>}
-                    <td className="px-6 py-4 text-center relative z-20">
+                    <td className="sticky right-0 z-20 bg-white px-2 py-3 text-center shadow-[-6px_0_8px_-8px_rgba(15,23,42,0.45)] group-hover:bg-slate-50">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); router.push(`/contratos/${contract.id}`); }}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-100"
+                        title="Ver contrato"
+                      >
+                        <Eye className="h-4 w-4" />
+                        Ver
+                      </button>
                       <button 
                         type="button"
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleEditClick(contract); }}
-                        className="relative z-20 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-[#002855] shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-100"
+                        className="ml-1 inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1.5 text-xs font-semibold text-[#002855] shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-100"
                         title="Editar Contrato/Partidas"
                       >
                         <Edit2 className="w-4 h-4" />
-                        Editar
+                        <span className="hidden 2xl:inline">Editar</span>
                       </button>
                       {role === 'admin' && <button
                         type="button"
                         onClick={e => { e.preventDefault(); e.stopPropagation(); openAssignment(contract) }}
-                        className="relative z-20 ml-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-[#002855] shadow-sm hover:bg-slate-100"
+                        className="ml-1 hidden rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-[#002855] shadow-sm hover:bg-slate-100 2xl:inline-flex"
                         title="Asignar o reasignar Administrador de Contrato"
                       >Responsable</button>}
                     </td>

@@ -511,7 +511,7 @@ export default function SolicitudesPage() {
   }
 
   return (
-    <div className="space-y-6 w-full mx-auto">
+    <div className="flex h-full min-h-0 w-full flex-col gap-4 mx-auto">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Solicitudes de Transporte</h1>
@@ -597,7 +597,7 @@ export default function SolicitudesPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
           <div className="relative w-72">
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
@@ -622,19 +622,30 @@ export default function SolicitudesPage() {
           <label>Hasta <input type="date" value={filterDateTo} onChange={event => setFilterDateTo(event.target.value)} className="ml-2 border rounded p-1 bg-white" /></label>
         </div>}
 
-        <div className="overflow-auto max-h-[calc(100vh-220px)]">
-          <table className="w-full text-left border-collapse relative">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <table className="relative w-full table-fixed border-collapse text-left">
+            <colgroup>
+              <col className="w-[15%]" />
+              <col className="w-[13%]" />
+              <col className="w-[13%]" />
+              <col className="hidden xl:table-column w-[13%]" />
+              <col className="hidden 2xl:table-column w-[12%]" />
+              <col className="w-[16%]" />
+              <col className="hidden xl:table-column w-[14%]" />
+              <col className="w-[14%]" />
+              <col className="w-[15%]" />
+            </colgroup>
             <thead className="sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
-                <th className="p-4 font-semibold whitespace-nowrap">Código / Emisión</th>
-                <th className="p-4 font-semibold whitespace-nowrap">Fecha Req. / Ventana</th>
-                <th className="p-4 font-semibold whitespace-nowrap">OT / Contrato</th>
-                <th className="p-4 font-semibold">Cliente</th>
-                <th className="p-4 font-semibold">Origen</th>
-                <th className="p-4 font-semibold">Destino</th>
-                <th className="p-4 font-semibold">Carga</th>
-                <th className="p-4 font-semibold">Estado</th>
-                <th className="p-4 font-semibold text-right">Acciones</th>
+                <th className="p-3 font-semibold">Código / Emisión</th>
+                <th className="p-3 font-semibold">Fecha / Ventana</th>
+                <th className="p-3 font-semibold">OT / Contrato</th>
+                <th className="hidden p-3 font-semibold xl:table-cell">Cliente</th>
+                <th className="hidden p-3 font-semibold 2xl:table-cell">Origen</th>
+                <th className="p-3 font-semibold">Destino</th>
+                <th className="hidden p-3 font-semibold xl:table-cell">Carga</th>
+                <th className="p-3 font-semibold">Estado</th>
+                <th className="sticky right-0 z-20 bg-slate-50 p-3 text-right font-semibold shadow-[-6px_0_8px_-8px_rgba(15,23,42,0.45)]">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -654,7 +665,7 @@ export default function SolicitudesPage() {
               ) : (
                 filteredRequests.map(req => (
                   <tr key={req.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-4">
+                    <td className="p-3">
                       <div className="flex flex-col">
                         <button 
                           onClick={() => void openRequestDetails(req)}
@@ -667,7 +678,7 @@ export default function SolicitudesPage() {
                         </span>
                       </div>
                     </td>
-                    <td className="p-4 text-sm">
+                    <td className="p-3 text-sm">
                       <div className="flex flex-col">
                         <span className="flex items-center gap-1 font-semibold text-[#002855]">
                           <Calendar className="w-3 h-3 text-slate-400" />
@@ -681,7 +692,7 @@ export default function SolicitudesPage() {
                         )}
                       </div>
                     </td>
-                    <td className="p-4">
+                    <td className="p-3">
                       <div className="flex flex-col">
                         {req.contracts?.code ? (
                           <span className="font-bold text-[#002855] text-sm">{req.contracts.code}</span>
@@ -692,24 +703,24 @@ export default function SolicitudesPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="hidden p-3 xl:table-cell">
                       {req.contracts?.clients?.business_name ? (
                         <span className="text-sm font-medium text-[#002855]">{req.contracts.clients.business_name}</span>
                       ) : (
                         <span className="text-sm text-slate-400">-</span>
                       )}
                     </td>
-                    <td className="p-4 max-w-[180px]">
+                    <td className="hidden p-3 2xl:table-cell">
                       <span className="text-sm text-slate-800 block truncate" title={req.pickup_address}>
                         {req.pickup_address || '-'}
                       </span>
                     </td>
-                    <td className="p-4 max-w-[180px]">
+                    <td className="p-3">
                       <span className="text-sm text-slate-800 block truncate" title={req.delivery_address}>
                         {req.delivery_address || '-'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm max-w-[250px]">
+                    <td className="hidden p-3 text-sm xl:table-cell">
                       <div className="flex flex-col gap-1">
                         {req.cargo_description && (
                           <div className="text-xs text-slate-700 font-medium truncate" title={req.cargo_description}>
@@ -726,10 +737,10 @@ export default function SolicitudesPage() {
                         <span className="text-[10px] text-slate-500">Viajes: {requestSummaries[req.id]?.dispatch_count ?? '—'}</span>
                       </div>
                     </td>
-                    <td className="p-4">
+                    <td className="p-3">
                       {getStatusBadge(req.status)}
                     </td>
-                    <td className="p-4 text-right">
+                    <td className="sticky right-0 z-10 bg-white p-2 text-right shadow-[-6px_0_8px_-8px_rgba(15,23,42,0.45)]">
                       {(req.status === 'PENDIENTE DE APROBACIÓN' || req.status === 'PENDIENTE' || req.status === 'REPROGRAMADA') && canWrite('despacho') && (
                         <div className="flex justify-end gap-2 mb-2">
                           <button 
