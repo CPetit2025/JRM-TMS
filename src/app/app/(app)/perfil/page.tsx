@@ -1,38 +1,14 @@
 "use client"
 
-import { useState, useEffect } from 'react'
-import { User, LogOut, ChevronRight, ShieldCheck, MapPin, Truck } from 'lucide-react'
+import { User, ChevronRight, ShieldCheck, Phone, Truck, CalendarClock } from 'lucide-react'
+import { useActiveTrip } from '@/contexts/ActiveTripContext'
 
 export default function PerfilPage() {
-  const [driverInfo, setDriverInfo] = useState({
-    first_name: '',
-    last_name: '',
-    document_number: '',
-    phone: '',
-    license: '',
-  })
-
-  useEffect(() => {
-    const driverData = localStorage.getItem('jrm_driver')
-    if (driverData) {
-      try {
-        const parsed = JSON.parse(driverData)
-        setDriverInfo({
-          first_name: parsed.first_name || '',
-          last_name: parsed.last_name || '',
-          document_number: parsed.document_number || '',
-          phone: parsed.phone || 'No registrado',
-          license: parsed.license || 'No registrada',
-        })
-      } catch (e) {
-        console.error("Error parsing driver data", e)
-      }
-    }
-  }, [])
-
-  const handleLogout = () => {
-    localStorage.removeItem('jrm_driver')
-    window.location.href = '/app/login'
+  const { user, driver, trip } = useActiveTrip()
+  const driverInfo = {
+    first_name: driver?.first_name || user?.first_name || '', last_name: driver?.last_name || user?.last_name || '',
+    document_number: driver?.document_number || '', phone: driver?.phone || user?.phone || null,
+    license: driver?.license_number || null,
   }
 
   const getInitials = () => {
@@ -64,9 +40,25 @@ export default function PerfilPage() {
               </div>
               <div className="flex-1">
                 <p className="text-xs text-slate-500 font-medium">Licencia</p>
-                <p className="text-sm font-semibold text-slate-800">{driverInfo.license}</p>
+                <p className="text-sm font-semibold text-slate-800">{driverInfo.license || 'Pendiente de completar'}</p>
+                {driver?.license_category && <p className="text-xs text-slate-500">Categoría {driver.license_category}</p>}
               </div>
             </div>
+
+            <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <div className="p-2 bg-emerald-100 text-emerald-700 rounded-lg"><Phone className="w-5 h-5" /></div>
+              <div className="flex-1"><p className="text-xs text-slate-500 font-medium">Celular</p><p className="text-sm font-semibold text-slate-800">{driverInfo.phone || 'Pendiente de completar'}</p></div>
+            </div>
+
+            <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <div className="p-2 bg-amber-100 text-amber-700 rounded-lg"><CalendarClock className="w-5 h-5" /></div>
+              <div className="flex-1"><p className="text-xs text-slate-500 font-medium">Vencimiento de licencia</p><p className="text-sm font-semibold text-slate-800">{driver?.license_expiration ? new Date(driver.license_expiration).toLocaleDateString('es-PE') : 'Pendiente de completar'}</p></div>
+            </div>
+
+            {trip && <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
+              <div className="p-2 bg-blue-100 text-[#002855] rounded-lg"><Truck className="w-5 h-5" /></div>
+              <div className="flex-1"><p className="text-xs text-slate-500 font-medium">Unidad asignada</p><p className="text-sm font-semibold text-slate-800">{trip.vehicle_plate || 'Pendiente'}</p></div>
+            </div>}
 
             <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
               <div className="p-2 bg-green-100 text-green-700 rounded-lg">
@@ -105,20 +97,6 @@ export default function PerfilPage() {
           <ChevronRight className="w-5 h-5 text-slate-400" />
         </button>
         
-        <button 
-          onClick={handleLogout}
-          className="w-full bg-red-50 p-4 rounded-xl border border-red-100 flex items-center justify-between hover:bg-red-100 transition-colors mt-6"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600">
-              <LogOut className="w-5 h-5" />
-            </div>
-            <div className="text-left">
-              <p className="font-bold text-red-600 text-sm">Cerrar Sesión</p>
-              <p className="text-xs text-red-400">Salir de tu cuenta en este dispositivo</p>
-            </div>
-          </div>
-        </button>
       </div>
     </div>
   )

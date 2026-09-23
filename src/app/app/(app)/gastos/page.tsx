@@ -1,13 +1,14 @@
 "use client"
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { DollarSign, FileText, Camera, UploadCloud, CheckCircle2, Wand2, Loader2, Fuel, Receipt, Utensils, Package } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { useActiveTrip } from '@/contexts/ActiveTripContext'
 
 export default function GastosPage() {
   const [activeTab, setActiveTab] = useState<'gastos' | 'documentos'>('gastos')
-  const [gastos, setGastos] = useState<{ tipo: string; monto: string; photo: string | null; id?: string }[]>([])
+  const [gastos, setGastos] = useState<{ tipo: string; monto: string; photo: string | null; status: string; id?: string }[]>([])
   const [gastoForm, setGastoForm] = useState({ tipo: 'PEAJE', monto: '' })
   const [gastoPhoto, setGastoPhoto] = useState<string | null>(null)
   const [gastoFile, setGastoFile] = useState<File | null>(null)
@@ -16,31 +17,27 @@ export default function GastosPage() {
   const [dispatch, setDispatch] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
+  const { user, driver, trip, loading: contextLoading, refresh } = useActiveTrip()
 
   useEffect(() => {
-    const driverData = localStorage.getItem('jrm_driver')
-    if (!driverData) { router.push('/app/login'); return }
-    fetchActiveDispatch(JSON.parse(driverData))
-  }, [router])
+    if (contextLoading) return
+    if (!user) { router.push('/app/login'); return }
+    if (!trip) { setDispatch(null); setLoading(false); return }
+    const current = { id: trip.id, dispatch_number: trip.dispatch_number, vehicle_plate: trip.vehicle_plate, status: trip.status }
+    setDispatch(current)
+    void fetchExpenses(current.id)
+  }, [contextLoading, router, trip, user])
 
-  const fetchActiveDispatch = async (driverData: any) => {
+  const fetchExpenses = async (dispatchId: string) => {
     setLoading(true)
     try {
-      const { data } = await supabase
-        .from('dispatches')
-        .select('id, dispatch_number, vehicle_plate, status')
-        .eq('driver_name', `${driverData.first_name} ${driverData.last_name}`)
-        .in('status', ['PROGRAMADO', 'EN_CURSO', 'ESPERANDO_AUTORIZACION', 'RETORNO', 'LIQUIDADO'])
+      const { data: expData, error } = await supabase.from('dispatch_expenses')
+        .select('id, expense_type, amount, receipt_url, status').eq('dispatch_id', dispatchId)
         .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (data) {
-        setDispatch(data)
-        const { data: expData } = await supabase.from('dispatch_expenses').select('*').eq('dispatch_id', data.id)
-        if (expData) setGastos(expData.map((e: any) => ({ tipo: e.expense_type, monto: e.amount, photo: e.receipt_url || null, id: e.id })))
-      }
+      if (error) throw error
+      setGastos((expData || []).map(e => ({ tipo: e.expense_type, monto: String(e.amount),
+        photo: e.receipt_url || null, status: e.status || 'PENDIENTE', id: e.id })))
     } catch (err: any) {
       toast.error('Error: ' + err.message)
     } finally {
@@ -78,23 +75,29 @@ export default function GastosPage() {
 
     setIsSubmitting(true)
     try {
-      let receipt_url = gastoPhoto
+      if (!user || !driver) throw new Error('Perfil de conductor no disponible')
+      let receipt_url: string | null = null
       if (gastoFile) {
-        const fileExt = gastoFile.name.split('.').pop()
-        const filePath = `gastos/${dispatch.id}-${Math.random()}.${fileExt}`
-        const { error: upErr } = await supabase.storage.from('evidence').upload(filePath, gastoFile)
+        const filePath = `${user.id}/${dispatch.id}/gastos/${crypto.randomUUID()}-${gastoFile.name}`
+        const { error: upErr } = await supabase.storage.from('driver_evidence').upload(filePath, gastoFile, { contentType: gastoFile.type })
         if (upErr) throw upErr
-        const { data: urlData } = supabase.storage.from('evidence').getPublicUrl(filePath)
-        receipt_url = urlData.publicUrl
+        receipt_url = filePath
       }
+      const position = await new Promise<GeolocationPosition | null>(resolve => navigator.geolocation
+        ? navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), { enableHighAccuracy: true, timeout: 8000 }) : resolve(null))
+      const operationId = crypto.randomUUID()
       const { data: inserted, error } = await supabase.from('dispatch_expenses')
-        .insert([{ dispatch_id: dispatch.id, expense_type: gastoForm.tipo, amount: Number(gastoForm.monto), description: `Gasto - ${gastoForm.tipo}`, receipt_url }])
+        .insert([{ dispatch_id: dispatch.id, driver_id: driver.id, expense_type: gastoForm.tipo,
+          amount: Number(gastoForm.monto), description: `Gasto - ${gastoForm.tipo}`, receipt_url,
+          status: 'PENDIENTE', created_by: user.id, latitude: position?.coords.latitude || null,
+          longitude: position?.coords.longitude || null, client_operation_id: operationId }])
         .select().single()
       if (error) throw error
-      setGastos([...gastos, { ...gastoForm, photo: receipt_url, id: inserted.id }])
+      setGastos([{ ...gastoForm, photo: receipt_url, status: 'PENDIENTE', id: inserted.id }, ...gastos])
       setGastoForm({ tipo: 'PEAJE', monto: '' })
       setGastoPhoto(null); setGastoFile(null)
       toast.success('Gasto registrado correctamente')
+      await refresh()
     } catch (err: any) {
       toast.error('Error: ' + err.message)
     } finally {
@@ -263,7 +266,7 @@ export default function GastosPage() {
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-bold text-slate-700 capitalize">{g.tipo.replace('_', ' ')}</p>
                         </div>
-                        <span className="font-black text-[#002855] text-sm">S/ {Number(g.monto).toFixed(2)}</span>
+                        <div className="text-right"><span className="block font-black text-[#002855] text-sm">S/ {Number(g.monto).toFixed(2)}</span><span className="text-[10px] font-bold text-amber-700">{g.status}</span></div>
                       </div>
                     )
                   })}

@@ -1,10 +1,11 @@
 "use client"
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Camera, CheckCircle, MapPin, AlertTriangle, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 
 import { createClient } from '@/lib/supabase/client'
+import { useActiveTrip } from '@/contexts/ActiveTripContext'
 
 // Fórmula de Haversine para distancia en KM
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -21,7 +22,8 @@ function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon
 
 export default function ChecklistPage() {
   const router = useRouter()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
+  const { driver, trip, loading: contextLoading, refresh } = useActiveTrip()
   const [checkingLocation, setCheckingLocation] = useState(true)
   const [locationValid, setLocationValid] = useState(false)
   const [hasDispatch, setHasDispatch] = useState(false)
@@ -31,6 +33,7 @@ export default function ChecklistPage() {
   const [gps, setGps] = useState<{lat: number; lon: number} | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [currentDistanceInfo, setCurrentDistanceInfo] = useState<string | null>(null)
+  const [missingReason, setMissingReason] = useState('No existe una ruta asignada.')
   
   const [checklist, setChecklist] = useState<Record<string, 'OK' | 'MAL' | null | string>>({
     llantas: null,
@@ -59,37 +62,26 @@ export default function ChecklistPage() {
     // Función para verificar ubicación contra BD y estado de despacho
     const verifyPrerequisites = async () => {
       try {
-        // 1. Check dispatch first
-        const driverData = localStorage.getItem('jrm_driver')
-        if (driverData) {
-          const parsed = JSON.parse(driverData)
-          const { data: userData } = await supabase.auth.getUser()
-          if (!userData.user) throw new Error('Sesión expirada')
-          const { data: currentDriver } = await supabase.from('drivers')
-            .select('id').eq('profile_id', userData.user.id).eq('is_active', true).maybeSingle()
-          if (!currentDriver || currentDriver.id !== parsed.id) throw new Error('Conductor no autorizado')
-          setDriverId(currentDriver.id)
-          const { data: activeDispatch, error: dispatchError } = await supabase
-            .from('dispatches')
-            .select('id, vehicle_plate')
-            .eq('driver_id', currentDriver.id)
-            .in('status', ['PROGRAMADO', 'EN_CURSO'])
-            .limit(1)
-            .maybeSingle()
-            
-          if (activeDispatch && activeDispatch.vehicle_plate) {
-            setHasDispatch(true)
-            setDispatchId(activeDispatch.id)
-            setVehiclePlate(activeDispatch.vehicle_plate)
-          } else {
-            setHasDispatch(false)
-            setCheckingLocation(false)
-            return // Stop here if no dispatch
-          }
-        } else {
+        if (contextLoading) return
+        if (!driver) {
+          setMissingReason('No existe un conductor activo asociado a tu usuario.')
           setCheckingLocation(false)
           return
         }
+        setDriverId(driver.id)
+        if (!trip) {
+          setMissingReason('No existe una ruta asignada.')
+          setHasDispatch(false); setCheckingLocation(false); return
+        }
+        if (!trip.vehicle_plate) {
+          setMissingReason('La ruta no tiene una unidad o placa asignada.')
+          setHasDispatch(false); setCheckingLocation(false); return
+        }
+        if (!['PROGRAMADO', 'EN_CURSO'].includes(trip.status)) {
+          setMissingReason(`El checklist no corresponde al estado actual: ${trip.status}.`)
+          setHasDispatch(false); setCheckingLocation(false); return
+        }
+        setHasDispatch(true); setDispatchId(trip.id); setVehiclePlate(trip.vehicle_plate)
 
         // 2. Check location
         const { data: locations, error } = await supabase
@@ -149,7 +141,7 @@ export default function ChecklistPage() {
     }
 
     verifyPrerequisites()
-  }, [])
+  }, [contextLoading, driver, trip, supabase])
 
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -201,6 +193,7 @@ export default function ChecklistPage() {
       }
       localStorage.removeItem('jrm_checklist_state')
       toast.success('Checklist y fotografía guardados.')
+      await refresh()
       router.push('/app/ruta')
     } catch (err: any) {
       toast.error('No se pudo guardar el checklist: ' + err.message)
@@ -236,7 +229,7 @@ export default function ChecklistPage() {
           </div>
           <h3 className="font-black text-orange-900 text-base">Requisito Pendiente</h3>
           <p className="text-sm text-orange-700 mt-2">
-            No puedes iniciar el checklist porque no tienes una ruta activa ni una placa asignada. Contacta al supervisor.
+            {missingReason}
           </p>
           <button
             onClick={() => router.push('/app/ruta')}
