@@ -634,7 +634,7 @@ export default function ContratosPage() {
               {role === 'admin' && <col className="hidden 2xl:table-column w-[11%]" />}
               <col className="w-[13%]" />
             </colgroup>
-            <thead className="text-xs text-slate-500 uppercase bg-slate-50 sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0] border-slate-200">
+            <thead className="sticky top-0 z-30 border-slate-200 bg-slate-50 text-xs uppercase text-slate-500 shadow-[0_1px_0_0_#e2e8f0]">
               <tr>
                 <th className="px-3 py-3 font-semibold">Código / Jerarquía</th>
                 <th className="px-3 py-3 font-semibold">Cliente</th>
@@ -646,7 +646,7 @@ export default function ContratosPage() {
                 <th className="px-3 py-3 font-semibold text-right">Saldo (S/)</th>
                 <th className="px-3 py-3 font-semibold">Estado</th>
                 {role === 'admin' && <th className="hidden px-3 py-3 font-semibold 2xl:table-cell">Responsable</th>}
-                <th className="sticky right-0 z-20 bg-slate-50 px-3 py-3 font-semibold text-center shadow-[-6px_0_8px_-8px_rgba(15,23,42,0.45)]">Acciones</th>
+                <th className="sticky right-0 top-0 z-40 bg-slate-50 px-3 py-3 font-semibold text-center shadow-[-6px_0_8px_-8px_rgba(15,23,42,0.45)]">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -737,7 +737,7 @@ export default function ContratosPage() {
                     {role === 'admin' && <td className="hidden px-3 py-3 text-xs text-slate-700 2xl:table-cell">
                       {profileNames[assignments.find(item => item.contract_id === contract.id && item.role === 'ADMIN_CONTRATO' && item.active)?.user_id || ''] || 'Sin asignar'}
                     </td>}
-                    <td className="sticky right-0 z-20 bg-white px-2 py-3 text-center shadow-[-6px_0_8px_-8px_rgba(15,23,42,0.45)] group-hover:bg-slate-50">
+                    <td className="sticky right-0 z-[1] bg-white px-2 py-3 text-center shadow-[-6px_0_8px_-8px_rgba(15,23,42,0.45)] group-hover:bg-slate-50">
                       <button
                         type="button"
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); router.push(`/contratos/${contract.id}`); }}
