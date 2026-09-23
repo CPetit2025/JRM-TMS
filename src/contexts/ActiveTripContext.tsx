@@ -38,6 +38,20 @@ export type ActiveTrip = {
   stops: TripStop[]
 }
 
+export type TripSummary = {
+  id: string; dispatch_number: string; vehicle_plate: string | null; status: string
+  scheduled_departure: string | null; contract_code?: string | null
+  destination_address?: string | null; origin?: string | null; destination?: string | null
+  created_at?: string; actual_distance_km?: number | null
+}
+
+export type DriverAlert = { level: 'success' | 'info' | 'warning' | 'error'; code: string; message: string }
+export type DriverPortalSummary = {
+  upcoming: TripSummary[]; recent: TripSummary[]; alerts: DriverAlert[]
+  stats: { completed_30d: number; open_failures: number; pending_expenses: number }
+  as_of?: string
+}
+
 export type ActiveTripContextValue = {
   user: null | { id: string; first_name: string; last_name: string; phone?: string | null; employee_type: string }
   driver: null | {
@@ -47,13 +61,16 @@ export type ActiveTripContextValue = {
   }
   trip: ActiveTrip | null
   pending: { checklist?: boolean; stops?: number; expenses?: number; failures?: number }
+  summary: DriverPortalSummary
   loading: boolean
   error: string | null
   refresh: () => Promise<void>
 }
 
 const empty: ActiveTripContextValue = {
-  user: null, driver: null, trip: null, pending: {}, loading: true, error: null,
+  user: null, driver: null, trip: null, pending: {},
+  summary: { upcoming: [], recent: [], alerts: [], stats: { completed_30d: 0, open_failures: 0, pending_expenses: 0 } },
+  loading: true, error: null,
   refresh: async () => {},
 }
 
@@ -65,13 +82,17 @@ export function ActiveTripProvider({ children }: { children: React.ReactNode }) 
   const [state, setState] = useState<Omit<ActiveTripContextValue, 'refresh'>>({ ...empty })
 
   const refresh = useCallback(async () => {
-    const { data, error } = await supabase.rpc('get_active_trip_context')
+    const [contextResult, summaryResult] = await Promise.all([
+      supabase.rpc('get_active_trip_context'), supabase.rpc('get_driver_portal_summary'),
+    ])
+    const { data, error } = contextResult
     if (error) {
       setState(current => ({ ...current, loading: false, error: error.message }))
       return
     }
-    const next = data as Omit<ActiveTripContextValue, 'loading' | 'error' | 'refresh'>
-    setState({ ...next, loading: false, error: null })
+    const next = data as Omit<ActiveTripContextValue, 'summary' | 'loading' | 'error' | 'refresh'>
+    const summary = summaryResult.error ? empty.summary : summaryResult.data as DriverPortalSummary
+    setState({ ...next, summary, loading: false, error: summaryResult.error?.message || null })
     localStorage.setItem(cacheKey, JSON.stringify(next))
     window.dispatchEvent(new CustomEvent('jrm:context', { detail: next.trip ? {
       dispatchId: next.trip.id,

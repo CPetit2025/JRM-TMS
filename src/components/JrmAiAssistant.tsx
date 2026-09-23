@@ -122,6 +122,12 @@ export function JrmAiAssistant() {
   }, [open, messages.length])
 
   useEffect(() => {
+    const openAssistant = () => setOpen(true)
+    window.addEventListener('jrm:open-ai', openAssistant)
+    return () => window.removeEventListener('jrm:open-ai', openAssistant)
+  }, [])
+
+  useEffect(() => {
     fetch('/api/jrm-ai', { cache: 'no-store' }).then(response => response.json())
       .then(data => {
         setEnabled(Boolean(data.enabled))
