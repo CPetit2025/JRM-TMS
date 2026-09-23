@@ -5,6 +5,7 @@ import { Capacitor } from '@capacitor/core'
 import { App } from '@capacitor/app'
 import { Download, RefreshCw, X } from 'lucide-react'
 import { nativeAppUpdater } from '@/lib/native-app-updater'
+import { createClient } from '@/lib/supabase/client'
 
 type Release = {
   id: string
@@ -49,6 +50,28 @@ export function AppUpdateNotice() {
   const [legacyInstall, setLegacyInstall] = useState(false)
   const [updateError, setUpdateError] = useState('')
 
+  const record = useCallback(async (event: 'offered' | 'downloaded' | 'deferred' | 'install_started' | 'installed' | 'failed',
+    item: Release | null, installedVersion: string, buildNumber?: number | null) => {
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      let deviceId = localStorage.getItem('jrm_device_id')
+      if (!deviceId) { deviceId = crypto.randomUUID(); localStorage.setItem('jrm_device_id', deviceId) }
+      const native = Capacitor.isNativePlatform()
+      const device = { userAgent: navigator.userAgent.slice(0, 300), language: navigator.language }
+      await Promise.all([
+        supabase.from('app_update_events').insert({ user_id: user.id, release_id: item?.id || null,
+          installed_version: installedVersion || 'unknown', event, device_id: deviceId,
+          platform: native ? 'android' : 'web', build_number: buildNumber ?? null, device }),
+        supabase.from('app_installations').upsert({ user_id: user.id, device_id: deviceId,
+          platform: native ? 'android' : 'web', installed_version: installedVersion || 'unknown',
+          build_number: buildNumber ?? null, device, last_seen_at: new Date().toISOString() },
+          { onConflict: 'user_id,device_id' }),
+      ])
+    } catch { /* La telemetría no debe bloquear una actualización. */ }
+  }, [])
+
   const check = useCallback(async () => {
     try {
       const response = await fetch('/api/app-version', { cache: 'no-store' })
@@ -70,6 +93,11 @@ export function AppUpdateNotice() {
         setPlatform('android')
         setRelease(nativeRelease)
         setForced(required)
+        const offeredKey = `jrm_update_offered_${nativeRelease.id}_${info.build}`
+        if (!localStorage.getItem(offeredKey)) {
+          localStorage.setItem(offeredKey, '1')
+          void record('offered', nativeRelease, info.version, Number(info.build))
+        }
         if (required) setOpen(true)
       } else {
         const installedBuild = document.documentElement.dataset.buildId
@@ -88,10 +116,15 @@ export function AppUpdateNotice() {
         const installedVersion = document.documentElement.dataset.appVersion || ''
         const required = Boolean(overdue || belowMinimumVersion(installedVersion, webRelease?.minimum_supported_version || null))
         setForced(required)
+        const offeredKey = `jrm_update_offered_${webRelease?.id || data.webBuildId}_${installedBuild}`
+        if (!localStorage.getItem(offeredKey)) {
+          localStorage.setItem(offeredKey, '1')
+          void record('offered', webRelease, installedVersion)
+        }
         if (required) setOpen(true)
       }
     } catch { /* Una falla de red no interrumpe la operación. */ }
-  }, [])
+  }, [record])
 
   useEffect(() => {
     const initial = window.setTimeout(() => void check(), 0)
@@ -105,22 +138,28 @@ export function AppUpdateNotice() {
   const installer = validInstallerUrl(release.installer_url)
   const update = async () => {
     if (platform === 'web') {
-      window.location.reload()
+      void record('install_started', release, current)
+      const url = new URL(window.location.href)
+      url.searchParams.set('_build', release.id)
+      window.location.replace(url.toString())
     } else if (legacyInstall && installer) {
       window.open(installer, '_system')
     } else if (installer && nativeAppUpdater && release.artifact_sha256) {
       try {
         setUpdateError('')
         if (downloadState === 'ready') {
+          await record('install_started', release, current)
           await nativeAppUpdater.install()
         } else {
           setDownloadState('downloading')
           await nativeAppUpdater.download({ url: installer, sha256: release.artifact_sha256 })
           setDownloadState('ready')
+          await record('downloaded', release, current)
         }
       } catch (error) {
         setUpdateError(error instanceof Error ? error.message : 'No se pudo preparar la actualización.')
         if (downloadState !== 'ready') setDownloadState('idle')
+        await record('failed', release, current)
       }
     } else if (installer) {
       window.open(installer, '_system')
@@ -164,7 +203,7 @@ export function AppUpdateNotice() {
               <RefreshCw className="h-4 w-4" /> {platform === 'web' ? 'Recargar ahora' :
                 legacyInstall ? 'Abrir descarga' : downloadState === 'downloading' ? 'Descargando...' : downloadState === 'ready' ? 'Instalar ahora' : 'Descargar actualización'}
             </button>
-            {!forced && <button type="button" onClick={() => setOpen(false)}
+            {!forced && <button type="button" onClick={() => { void record('deferred', release, current); setOpen(false) }}
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm">Más tarde</button>}
           </div>
           {forced && <p className="mt-3 text-xs text-slate-500">Guarda tu trabajo antes de actualizar. Si estás en ruta, finaliza la tarea activa.</p>}

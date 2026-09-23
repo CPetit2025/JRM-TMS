@@ -1,21 +1,14 @@
 "use client"
 
-import { useEffect, useState, type ReactNode } from 'react'
-import { MapPinOff, Loader2, Navigation } from 'lucide-react'
+import { useEffect, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { nativeRouteTracker } from '@/lib/native-route-tracker'
 import { activeRouteKey, readRouteQueue, routeQueueKey, syncRoutePoints } from '@/lib/route-point-sync'
 
 export default function GPSGuard({ children }: { children: ReactNode }) {
-  const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [isChecking, setIsChecking] = useState(true)
-  const [unsent, setUnsent] = useState(0)
-
   useEffect(() => {
     if (!navigator.geolocation) {
-      setError('Geolocalización no soportada por este dispositivo.')
-      setIsChecking(false)
+      window.dispatchEvent(new CustomEvent('jrm:gps-status', { detail: { state: 'unavailable' } }))
       return
     }
     const supabase = createClient()
@@ -72,7 +65,7 @@ export default function GPSGuard({ children }: { children: ReactNode }) {
     const flush = async () => {
       if (stopped || !navigator.onLine) return
       try {
-        setUnsent(await syncRoutePoints())
+        await syncRoutePoints()
       } catch (syncError) {
         console.warn('GPS pendiente de sincronizar:', syncError)
       }
@@ -83,14 +76,15 @@ export default function GPSGuard({ children }: { children: ReactNode }) {
     const flushTimer = window.setInterval(() => void flush(), 5000)
     window.addEventListener('online', flush)
     const watchId = navigator.geolocation.watchPosition(position => {
-      setPermissionGranted(true); setIsChecking(false); setError(null)
       const { latitude, longitude, accuracy, speed } = position.coords
+      window.dispatchEvent(new CustomEvent('jrm:gps-status', {
+        detail: { state: 'active', at: new Date(position.timestamp).toISOString(), accuracy },
+      }))
       if (!driverId || !dispatchId || nativeStarted || accuracy > 30 || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return
       if (position.timestamp <= lastTimestamp) return
       lastTimestamp = position.timestamp
       const queue = readRouteQueue()
       if (queue.length >= 5000) {
-        setError('Memoria GPS llena. Conecta el dispositivo a Internet para sincronizar la ruta.')
         return
       }
       queue.push({ id: crypto.randomUUID(), dispatch_id: dispatchId, driver_id: driverId,
@@ -98,11 +92,11 @@ export default function GPSGuard({ children }: { children: ReactNode }) {
         accuracy_m: Math.round(accuracy * 100) / 100,
         speed_mps: speed === null ? null : Math.round(speed * 100) / 100 })
       localStorage.setItem(routeQueueKey, JSON.stringify(queue))
-      setUnsent(queue.length)
       void flush()
     }, geoError => {
-      setIsChecking(false); setPermissionGranted(false)
-      setError(geoError.code === 1 ? 'Permiso de ubicación denegado.' : 'Señal GPS no disponible.')
+      window.dispatchEvent(new CustomEvent('jrm:gps-status', {
+        detail: { state: geoError.code === 1 ? 'denied' : 'unavailable' },
+      }))
     }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 })
     return () => {
       stopped = true
@@ -111,22 +105,5 @@ export default function GPSGuard({ children }: { children: ReactNode }) {
       window.removeEventListener('online', flush)
     }
   }, [])
-
-  const requestPermission = () => {
-    setIsChecking(true)
-    navigator.geolocation.getCurrentPosition(
-      () => { setPermissionGranted(true); setIsChecking(false); setError(null) },
-      () => { setPermissionGranted(false); setIsChecking(false); setError('Debes permitir el GPS en la configuración del dispositivo.') },
-      { enableHighAccuracy: true, timeout: 15000 }
-    )
-  }
-  if (isChecking) return <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white gap-3"><Loader2 className="animate-spin" />Verificando GPS...</div>
-  if (permissionGranted === false || error) return <div className="min-h-screen bg-red-950 flex flex-col items-center justify-center p-6 text-center text-white gap-4">
-    <MapPinOff className="w-12 h-12 text-red-400" /><h1 className="text-2xl font-bold">GPS no disponible</h1>
-    <p className="max-w-sm">{error || 'Activa la ubicación para usar el portal operativo.'}</p>
-    <button onClick={requestPermission} className="bg-white text-red-900 px-6 py-3 rounded-xl font-bold flex gap-2"><Navigation />Reintentar GPS</button>
-  </div>
-  return <>{children}<div className="fixed top-4 left-1/2 -translate-x-1/2 bg-green-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow z-50 pointer-events-none">
-    GPS activo{unsent > 0 ? ` · ${unsent} puntos pendientes` : ''}
-  </div></>
+  return <>{children}</>
 }

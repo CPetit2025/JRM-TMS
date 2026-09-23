@@ -3,14 +3,20 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, CalendarClock, History, Clock } from 'lucide-react'
+import Link from 'next/link'
+import { Camera, ClipboardCheck, DollarSign, Wrench } from 'lucide-react'
+import { useActiveTrip } from '@/contexts/ActiveTripContext'
 
 export default function ActividadesPage() {
   const [turnos, setTurnos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
+  const { driver, trip, loading: contextLoading } = useActiveTrip()
 
   useEffect(() => {
     const fetchHistorial = async () => {
+      if (contextLoading) return
+      if (driver) { setLoading(false); return }
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) return
@@ -37,7 +43,7 @@ export default function ActividadesPage() {
     }
 
     fetchHistorial()
-  }, [])
+  }, [contextLoading, driver])
 
   const formatHora = (dateString: string) => {
     if (!dateString) return '--:--'
@@ -62,7 +68,20 @@ export default function ActividadesPage() {
     return `${h}h ${m}m`
   }
 
-  if (loading) {
+  if (driver) return <div className="mx-auto max-w-lg space-y-4 p-4">
+    <div><h1 className="text-xl font-black text-[#002855]">Actividades</h1><p className="text-sm text-slate-500">Acciones vinculadas al viaje y a tu unidad.</p></div>
+    <div className="grid grid-cols-2 gap-3">
+      {[
+        { href: '/app/checklist', label: 'Checklist', icon: ClipboardCheck },
+        { href: '/app/ruta', label: 'Evidencias de viaje', icon: Camera },
+        { href: '/app/gastos', label: 'Gastos', icon: DollarSign },
+        { href: '/app/fallas', label: 'Fallas e incidencias', icon: Wrench },
+      ].map(item => <Link key={item.href} href={item.href} className="flex min-h-28 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 font-bold text-[#002855] shadow-sm"><item.icon className="h-7 w-7" />{item.label}</Link>)}
+    </div>
+    <section className="rounded-2xl border border-slate-200 bg-white p-4"><h2 className="font-bold text-slate-800">Estado del viaje</h2>{trip ? <div className="mt-3 space-y-2">{trip.stops.map(stop => <div key={stop.transport_request_id} className="flex items-center justify-between gap-3 border-t border-slate-100 py-2 text-sm"><span>{stop.delivery_address || stop.request_number}</span><b className={stop.status === 'ENTREGADO' ? 'text-emerald-700' : 'text-amber-700'}>{stop.status}</b></div>)}</div> : <p className="mt-2 text-sm text-slate-500">No existe un viaje activo.</p>}</section>
+  </div>
+
+  if (loading || contextLoading) {
     return (
       <div className="flex justify-center items-center h-full pt-20">
         <Loader2 className="w-8 h-8 animate-spin text-[#002855]" />

@@ -2,9 +2,10 @@
 import Image from 'next/image'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Eye, EyeOff, UserCircle, Download } from 'lucide-react'
+import { Loader2, Eye, EyeOff, UserCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
+import { AppUpdateNotice } from '@/components/AppUpdateNotice'
 
 export default function OperativeLogin() {
   const router = useRouter()
@@ -13,7 +14,6 @@ export default function OperativeLogin() {
   const [loading, setLoading] = useState(false)
   const [showPin, setShowPin] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
-  const [androidInstallerUrl, setAndroidInstallerUrl] = useState<string | null>(null)
 
   useEffect(() => {
     const savedId = localStorage.getItem('jrm_saved_operative_id')
@@ -21,13 +21,6 @@ export default function OperativeLogin() {
       setIdentifier(savedId)
       setRememberMe(true)
     }
-  }, [])
-
-  useEffect(() => {
-    fetch('/api/app-version', { cache: 'no-store' }).then(response => response.json()).then(data => {
-      const value = data.android?.installer_url
-      if (typeof value === 'string' && new URL(value).protocol === 'https:') setAndroidInstallerUrl(value)
-    }).catch(() => {})
   }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -97,7 +90,7 @@ export default function OperativeLogin() {
           return
         }
         localStorage.setItem('jrm_driver', JSON.stringify(driver))
-        router.push('/app/ruta')
+        router.push('/app')
       } else {
         router.push('/app/actividades')
       }
@@ -109,54 +102,55 @@ export default function OperativeLogin() {
   }
 
   return (
-    <div className="min-h-screen bg-[#002855] flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6">
-        <div className="flex flex-col items-center mb-6 text-center">
+    <div className="min-h-dvh bg-[#002855] flex flex-col items-center justify-center p-3">
+      <AppUpdateNotice />
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl px-6 py-5">
+        <div className="flex flex-col items-center mb-4 text-center">
           <Image 
             src="/jrm-logo-v2.png" 
             alt="JRM Logo" 
-            width={200} 
-            height={80} 
-            className="object-contain mb-4"
+            width={118}
+            height={46}
+            className="object-contain mb-2 drop-shadow-sm"
           />
-          <h1 className="text-xl font-black text-[#002855] uppercase tracking-wide">Portal Operativo</h1>
-          <p className="text-sm text-slate-500 mt-2">Conductores y Operarios</p>
+          <h1 className="text-xl font-black text-[#002855] tracking-wide">JRM Portal Operativo</h1>
+          <p className="text-sm text-slate-500 mt-1 font-medium">Acceso al personal operativo</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-5">
+        <form onSubmit={handleLogin} className="space-y-3.5">
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 ml-1">
               Usuario o DNI
             </label>
-            <div className="relative">
-              <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+            <div className="relative group">
+              <UserCircle className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 group-focus-within:text-[#002855] transition-colors" />
               <input 
                 type="text"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 placeholder="Ej. 74859632"
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#002855] focus:border-transparent transition-all font-medium"
+                className="w-full pl-11 pr-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#002855]/20 focus:border-[#002855] transition-all font-semibold text-slate-700"
                 autoComplete="username"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
-              Contraseña / PIN
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 ml-1">
+              Contraseña
             </label>
-            <div className="relative">
+            <div className="relative group">
               <input 
                 type={showPin ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••"
-                className="w-full pl-4 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#002855] focus:border-transparent transition-all tracking-widest font-mono text-lg"
+                placeholder="••••••••"
+                className="w-full pl-4 pr-12 py-3 bg-slate-50/50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#002855]/20 focus:border-[#002855] transition-all tracking-widest font-mono text-base font-bold text-slate-800"
               />
               <button 
                 type="button"
                 onClick={() => setShowPin(!showPin)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none p-1"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#002855] focus:outline-none p-2 transition-colors"
               >
                 {showPin ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
@@ -179,41 +173,31 @@ export default function OperativeLogin() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-[#002855] hover:bg-[#001f40] text-white font-bold py-3.5 px-4 rounded-xl transition-colors duration-200 flex items-center justify-center shadow-lg active:scale-[0.98]"
+            className="w-full bg-[#002855] hover:bg-[#001f40] text-white font-bold py-3 px-4 rounded-xl transition-colors duration-200 flex items-center justify-center shadow-lg active:scale-[0.98]"
           >
             {loading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
-              'Ingresar al Portal'
+              'Iniciar sesión'
             )}
           </button>
         </form>
 
-        <div className="mt-6 text-center">
+        <div className="mt-4 text-center">
           <p className="text-sm text-slate-600">
-            ¿Eres conductor y no tienes cuenta?{' '}
+            ¿No tienes acceso?{' '}
             <button 
               onClick={() => router.push('/app/register')}
               className="text-[#002855] font-bold hover:underline"
             >
-              Regístrate aquí
+              Solicítalo aquí
             </button>
           </p>
         </div>
 
-        {androidInstallerUrl && <div className="mt-6 border-t border-slate-100 pt-5 text-center">
-          <a href={androidInstallerUrl} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-3 text-sm font-semibold text-white">
-            <Download className="h-4 w-4" /> Descargar app Android firmada
-          </a>
-          <p className="mt-2 text-xs text-slate-600">
-            Si tienes la versión de prueba anterior, sincroniza tus tareas y desinstálala antes de instalar esta versión.
-          </p>
-        </div>}
-
-        <div className="mt-8 pt-6 border-t border-slate-100 text-center">
-          <p className="text-xs text-slate-400 font-medium">
-            JRM SCM v2.0 &bull; Área de Operaciones
+        <div className="mt-4 pt-3 border-t border-slate-100 text-center">
+          <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">
+            Portal Operativo v2.0
           </p>
         </div>
       </div>

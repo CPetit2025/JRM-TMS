@@ -1,223 +1,98 @@
-"use client"
-import { useState, useEffect } from 'react'
-import { AlertTriangle, Camera, Loader2, CheckCircle2, Clock, ChevronDown } from 'lucide-react'
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, Camera, Loader2, Mic, Clock } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
+import { useActiveTrip } from '@/contexts/ActiveTripContext'
 
-export default function ConductorFallasPage() {
-  const [driver, setDriver] = useState<any>(null)
-  const [vehiclePlate, setVehiclePlate] = useState('')
+const categories = ['MOTOR', 'FRENOS', 'NEUMATICOS', 'ELECTRICO', 'TRANSMISION', 'SUSPENSION', 'OTRO']
+const severities = ['BAJA', 'MEDIA', 'ALTA', 'CRITICA']
+
+export default function DriverFailuresPage() {
+  const supabase = useMemo(() => createClient(), [])
+  const { user, driver, trip, refresh } = useActiveTrip()
+  const [plate, setPlate] = useState('')
+  const [category, setCategory] = useState('MOTOR')
+  const [severity, setSeverity] = useState('MEDIA')
+  const [canContinue, setCanContinue] = useState<boolean | null>(null)
   const [description, setDescription] = useState('')
-  const [photo, setPhoto] = useState<string | null>(null)
-  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [photos, setPhotos] = useState<File[]>([])
+  const [audio, setAudio] = useState<File | null>(null)
   const [processing, setProcessing] = useState(false)
-  const [recentRecords, setRecentRecords] = useState<any[]>([])
-  const supabase = createClient()
+  const [recent, setRecent] = useState<Array<{ id: string; vehicle_plate: string; description: string; status: string; created_at: string }>>([])
 
+  useEffect(() => { if (trip?.vehicle_plate) setPlate(trip.vehicle_plate) }, [trip?.vehicle_plate])
   useEffect(() => {
-    const driverData = localStorage.getItem('jrm_driver')
-    if (driverData) {
-      const parsed = JSON.parse(driverData)
-      setDriver(parsed)
-      fetchActiveVehicle(parsed)
-      fetchRecentRecords(parsed.id)
-    }
-  }, [])
+    if (!driver) return
+    void supabase.from('vehicle_maintenance_records').select('id, vehicle_plate, description, status, created_at')
+      .eq('driver_id', driver.id).order('created_at', { ascending: false }).limit(5)
+      .then(({ data }) => setRecent(data || []))
+  }, [driver, supabase])
 
-  const fetchActiveVehicle = async (driverData: any) => {
-    const { data } = await supabase
-      .from('dispatches')
-      .select('vehicle_plate')
-      .eq('driver_name', `${driverData.first_name} ${driverData.last_name}`)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (data?.vehicle_plate) setVehiclePlate(data.vehicle_plate)
-  }
-
-  const fetchRecentRecords = async (driverId: string) => {
-    const { data } = await supabase
-      .from('vehicle_maintenance_records')
-      .select('*')
-      .eq('reported_by', driverId)
-      .order('created_at', { ascending: false })
-      .limit(5)
-    if (data) setRecentRecords(data)
-  }
-
-  const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) { setPhotoFile(file); setPhoto(URL.createObjectURL(file)) }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!vehiclePlate) return toast.error('Indique la placa de la unidad afectada')
-    if (!description.trim()) return toast.error('Describa el problema o falla')
-
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!user || !driver) return toast.error('No se encontró el perfil del conductor.')
+    if (!plate.trim()) return toast.error('No existe una unidad asociada.')
+    if (!description.trim()) return toast.error('Describe la falla.')
+    if (canContinue === null) return toast.error('Indica si la unidad puede continuar operando.')
     setProcessing(true)
+    const operationId = crypto.randomUUID()
     try {
-      let evidence_url = null
-      if (photoFile) {
-        const fileExt = photoFile.name.split('.').pop() || 'jpg'
-        const filePath = `fallas/falla-${vehiclePlate}-${Date.now()}.${fileExt}`
-        const { error: upErr } = await supabase.storage.from('evidence').upload(filePath, photoFile)
-        if (!upErr) {
-          const { data: urlData } = supabase.storage.from('evidence').getPublicUrl(filePath)
-          evidence_url = urlData.publicUrl
-        }
-      }
-
-      const { error } = await supabase.from('vehicle_maintenance_records').insert({
-        vehicle_plate: vehiclePlate,
-        record_type: 'FALLA_REPORTADA',
-        status: 'PENDIENTE',
-        description: evidence_url ? `${description}\n\n[Foto adjunta: ${evidence_url}]` : description,
-        reported_by: driver.id
+      const position = await new Promise<GeolocationPosition | null>(resolve => {
+        if (!navigator.geolocation) return resolve(null)
+        navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), { enableHighAccuracy: true, timeout: 10_000 })
       })
-
+      const paths: string[] = []
+      for (const file of photos.slice(0, 5)) {
+        const path = `${user.id}/${trip?.id || 'sin-viaje'}/fallas/${operationId}-${paths.length}-${file.name}`
+        const { error } = await supabase.storage.from('driver_evidence').upload(path, file, { contentType: file.type, upsert: false })
+        if (error) throw error
+        paths.push(path)
+      }
+      let audioPath: string | null = null
+      if (audio) {
+        audioPath = `${user.id}/${trip?.id || 'sin-viaje'}/fallas/${operationId}-${audio.name}`
+        const { error } = await supabase.storage.from('driver_evidence').upload(audioPath, audio, { contentType: audio.type, upsert: false })
+        if (error) throw error
+      }
+      const { error } = await supabase.from('vehicle_maintenance_records').insert({
+        vehicle_plate: plate.trim().toUpperCase(), record_type: 'FALLA_REPORTADA', status: 'PENDIENTE',
+        description: description.trim(), reported_by: user.id, driver_id: driver.id,
+        dispatch_id: trip?.id || null, failure_category: category, severity,
+        can_continue: canContinue, latitude: position?.coords.latitude || null,
+        longitude: position?.coords.longitude || null, evidence_paths: paths,
+        audio_path: audioPath, client_operation_id: operationId,
+      })
       if (error) throw error
-      toast.success('Falla reportada. El taller ha sido notificado.')
-      setDescription('')
-      setPhoto(null)
-      setPhotoFile(null)
-      fetchRecentRecords(driver.id)
-    } catch (err: any) {
-      toast.error('Error: ' + err.message)
-    } finally {
-      setProcessing(false)
-    }
+      toast.success('Falla registrada y enviada para evaluación.')
+      setDescription(''); setPhotos([]); setAudio(null); setCanContinue(null)
+      await refresh()
+      const { data } = await supabase.from('vehicle_maintenance_records')
+        .select('id, vehicle_plate, description, status, created_at').eq('driver_id', driver.id)
+        .order('created_at', { ascending: false }).limit(5)
+      setRecent(data || [])
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo registrar la falla.')
+    } finally { setProcessing(false) }
   }
 
-  const statusConfig: Record<string, { label: string; cls: string }> = {
-    PENDIENTE: { label: 'Pendiente', cls: 'bg-amber-100 text-amber-800' },
-    EN_REVISION: { label: 'En Revisión', cls: 'bg-orange-100 text-orange-800' },
-    EN_MANTENIMIENTO: { label: 'En Taller', cls: 'bg-red-100 text-red-800' },
-    COMPLETADO: { label: 'Resuelto', cls: 'bg-green-100 text-green-800' },
-    DESCARTADO: { label: 'Descartado', cls: 'bg-slate-100 text-slate-600' },
-  }
-
-  return (
-    <div className="min-h-full bg-slate-100 pb-6">
-      {/* Page Header */}
-      <div className="bg-white border-b border-slate-200 px-4 py-4 mb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center">
-            <AlertTriangle className="w-5 h-5 text-orange-500" />
-          </div>
-          <div>
-            <h1 className="text-lg font-black text-[#002855]">Reportar Falla</h1>
-            <p className="text-xs text-slate-500">Notifica al taller en tiempo real</p>
-          </div>
-        </div>
+  return <div className="mx-auto max-w-lg space-y-4 p-4 pb-8">
+    <div><h1 className="text-xl font-black text-[#002855]">Reportar falla</h1><p className="text-sm text-slate-500">La seguridad para continuar la determina el supervisor o taller.</p></div>
+    <form onSubmit={submit} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div><label className="text-xs font-bold text-slate-600">Unidad</label><input value={plate} onChange={event => setPlate(event.target.value.toUpperCase())} readOnly={Boolean(trip?.vehicle_plate)} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 font-bold read-only:text-slate-500" /></div>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="text-xs font-bold text-slate-600">Sistema<select value={category} onChange={event => setCategory(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm">{categories.map(value => <option key={value}>{value}</option>)}</select></label>
+        <label className="text-xs font-bold text-slate-600">Severidad<select value={severity} onChange={event => setSeverity(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm">{severities.map(value => <option key={value}>{value}</option>)}</select></label>
       </div>
-
-      <div className="px-4 space-y-4 max-w-md mx-auto">
-        {/* Form Card */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="bg-gradient-to-r from-red-500 to-red-600 px-4 py-3 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-white" />
-            <h2 className="font-bold text-white text-sm">Nueva Falla Detectada</h2>
-          </div>
-
-          <form onSubmit={handleSubmit} className="p-4 space-y-4">
-            {/* Plate */}
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
-                Placa de la Unidad
-              </label>
-              <input
-                type="text"
-                placeholder="ABC-123"
-                className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-[#002855] outline-none font-bold text-slate-900 uppercase text-sm bg-slate-50 transition-colors"
-                value={vehiclePlate}
-                onChange={(e) => setVehiclePlate(e.target.value.toUpperCase())}
-              />
-            </div>
-
-            {/* Description */}
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
-                Descripción del Problema
-              </label>
-              <textarea
-                rows={4}
-                placeholder="Ej. Freno largo, ruido en caja de cambios, llanta pinchada..."
-                className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-[#002855] outline-none text-slate-900 text-sm bg-slate-50 resize-none transition-colors"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
-
-            {/* Photo */}
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
-                Evidencia Fotográfica <span className="text-slate-400 normal-case font-normal">(Opcional)</span>
-              </label>
-              {photo ? (
-                <div className="relative rounded-xl overflow-hidden border-2 border-slate-200 h-36">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photo} alt="Falla" className="w-full h-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => { setPhoto(null); setPhotoFile(null) }}
-                    className="absolute top-2 right-2 bg-black/60 text-white rounded-full text-xs px-3 py-1 font-bold"
-                  >
-                    Quitar
-                  </button>
-                </div>
-              ) : (
-                <label className="border-2 border-dashed border-slate-300 bg-slate-50 rounded-xl h-28 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 hover:border-[#002855] transition-all group">
-                  <Camera className="w-7 h-7 text-slate-400 group-hover:text-[#002855] mb-1 transition-colors" />
-                  <span className="text-xs font-bold text-slate-500 group-hover:text-[#002855] transition-colors">Tomar foto de la falla</span>
-                  <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoCapture} />
-                </label>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              disabled={processing}
-              className="w-full bg-red-600 text-white py-4 rounded-xl font-black text-base shadow-md hover:bg-red-700 active:scale-95 flex justify-center items-center gap-2 transition-all"
-            >
-              {processing ? <Loader2 className="w-5 h-5 animate-spin" /> : <AlertTriangle className="w-5 h-5" />}
-              {processing ? 'Enviando...' : 'Enviar Reporte al Taller'}
-            </button>
-          </form>
-        </div>
-
-        {/* Recent Reports */}
-        {recentRecords.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-slate-400" />
-              <h3 className="font-bold text-slate-800 text-sm">Mis Reportes Recientes</h3>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {recentRecords.map((record) => {
-                const sc = statusConfig[record.status] || { label: record.status, cls: 'bg-slate-100 text-slate-600' }
-                return (
-                  <div key={record.id} className="px-4 py-3 flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0 mt-0.5">
-                      <AlertTriangle className="w-4 h-4 text-red-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-0.5">
-                        <span className="font-bold text-[#002855] text-sm">{record.vehicle_plate}</span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${sc.cls}`}>{sc.label}</span>
-                      </div>
-                      <p className="text-xs text-slate-600 line-clamp-1">{record.description}</p>
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        {new Date(record.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
+      <label className="block text-xs font-bold text-slate-600">Descripción<textarea rows={4} value={description} onChange={event => setDescription(event.target.value)} placeholder="Describe los síntomas observados" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" /></label>
+      <fieldset><legend className="text-xs font-bold text-slate-600">¿Puede continuar operando?</legend><div className="mt-2 grid grid-cols-2 gap-2">{[true, false].map(value => <button key={String(value)} type="button" onClick={() => setCanContinue(value)} className={`rounded-xl border px-3 py-3 font-bold ${canContinue === value ? 'border-[#002855] bg-blue-50 text-[#002855]' : 'border-slate-200'}`}>{value ? 'Sí' : 'No'}</button>)}</div></fieldset>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 p-3 text-sm font-bold text-slate-600"><Camera className="h-5 w-5" />Fotos ({photos.length})<input type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={event => setPhotos(Array.from(event.target.files || []).slice(0, 5))} /></label>
+        <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 p-3 text-sm font-bold text-slate-600"><Mic className="h-5 w-5" />{audio ? 'Audio listo' : 'Audio'}<input type="file" accept="audio/*" capture className="hidden" onChange={event => setAudio(event.target.files?.[0] || null)} /></label>
       </div>
-    </div>
-  )
+      <button disabled={processing} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#002855] py-3.5 font-black text-white disabled:opacity-50">{processing ? <Loader2 className="h-5 w-5 animate-spin" /> : <AlertTriangle className="h-5 w-5" />}Confirmar reporte</button>
+    </form>
+    {recent.length > 0 && <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><h2 className="flex items-center gap-2 border-b p-4 font-bold"><Clock className="h-4 w-4" />Reportes recientes</h2>{recent.map(item => <div key={item.id} className="border-b border-slate-100 p-4 last:border-0"><div className="flex justify-between gap-2"><b className="text-sm text-[#002855]">{item.vehicle_plate}</b><span className="text-xs font-semibold text-amber-700">{item.status}</span></div><p className="mt-1 text-sm text-slate-600">{item.description}</p></div>)}</section>}
+  </div>
 }

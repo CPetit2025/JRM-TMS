@@ -8,7 +8,7 @@ export const runtime = 'nodejs'
 
 async function access() {
   const identity = await getAiIdentity()
-  if (!identity || identity.employeeType === 'CONDUCTOR') return null
+  if (!identity) return null
   const scopes = Object.values(toolAccess)
     .filter(item => identity.canUseAi(item.scope, [...item.modules]))
     .map(item => item.scope)
@@ -20,7 +20,7 @@ async function access() {
 
 export async function GET() {
   const result = await access()
-  return NextResponse.json({ enabled: Boolean(result && result.scopes.length && process.env.OPENAI_API_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY),
+  return NextResponse.json({ enabled: Boolean(result && (result.scopes.length || result.identity.employeeType === 'CONDUCTOR') && process.env.OPENAI_API_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY),
     scopes: result?.scopes || [], sites: result?.sites || [] }, { headers: { 'Cache-Control': 'no-store' } })
 }
 
@@ -44,14 +44,17 @@ export async function POST(request: Request) {
     contractId: typeof submitted.contractId === 'string' ? submitted.contractId.slice(0, 100) : undefined,
     dispatchId: typeof submitted.dispatchId === 'string' ? submitted.dispatchId.slice(0, 60) : undefined,
     vehiclePlate: typeof submitted.vehiclePlate === 'string' ? submitted.vehiclePlate.slice(0, 20) : undefined,
+    status: typeof submitted.status === 'string' ? submitted.status.slice(0, 40) : undefined,
+    origin: submitted.origin === 'ai_voice' ? 'ai_voice' : 'ai_chat',
     siteId,
   }
   const allowed = toolDefinitions.filter(def => {
     if (def.name === 'prepare_maintenance_action') return identity.canPrepareMaintenance()
-    const rule = toolAccess[def.name]
-    return identity.canUseAi(rule.scope, [...rule.modules])
+    if (def.name === 'prepare_trip_action' || def.name === 'query_active_trip') return identity.employeeType === 'CONDUCTOR'
+    const rule = toolAccess[def.name as AiToolName]
+    return rule ? identity.canUseAi(rule.scope, [...rule.modules]) : false
   })
-  if (!allowed.length) return NextResponse.json({ error: 'Sin permisos IA para los módulos disponibles.' }, { status: 403 })
+  if (!allowed.length && identity.employeeType !== 'CONDUCTOR') return NextResponse.json({ error: 'Sin permisos IA para los módulos disponibles.' }, { status: 403 })
   if (!await reserveAiRequest(identity.supabase, 'copilot')) {
     return NextResponse.json({ error: 'Límite de consultas IA alcanzado. Intenta más tarde.' }, { status: 429 })
   }
@@ -59,7 +62,7 @@ export async function POST(request: Request) {
   const model = process.env.OPENAI_AI_MODEL || 'gpt-4.1-mini'
   const client = new OpenAI({ apiKey, timeout: 25_000, maxRetries: 1 })
   const toolNames: string[] = []
-  const proposals: Array<{ id: string; payload: Record<string, string>; expires_at: string }> = []
+  const proposals: Array<{ id: string; payload: Record<string, unknown>; expires_at: string }> = []
   const input: OpenAI.Responses.ResponseInput = [{
     role: 'user', content: `Pregunta: ${message}\nContexto de pantalla: ${JSON.stringify(context)}`,
   }]
@@ -85,8 +88,8 @@ Responde en español con brevedad y cifras verificables.`,
       const calls = response.output.filter(item => item.type === 'function_call')
       if (!calls.length) { answer = response.output_text; break }
       for (const call of calls) {
-        const name = call.name as AiToolName
-        if (!(name in toolAccess) || !allowed.some(tool => tool.name === name)) {
+        const name = call.name
+        if (!allowed.some(tool => tool.name === name)) {
           input.push({ type: 'function_call_output', call_id: call.call_id, output: '{"error":"Herramienta no permitida"}' })
           continue
         }
@@ -104,8 +107,29 @@ Responde en español con brevedad y cifras verificables.`,
             if (error) throw error
             proposals.push(data)
             output = { ...data, note: 'La propuesta espera confirmación explícita del usuario.' }
+          } else if (name === 'query_active_trip') {
+            const { data, error } = await identity.supabase.rpc('get_active_trip_context')
+            if (error) throw error
+            output = data
+          } else if (name === 'prepare_trip_action') {
+            if (!context.dispatchId) throw new Error('No existe un viaje activo en el contexto.')
+            const { data, error } = await identity.supabase.rpc('ai_prepare_trip_action', {
+              p_dispatch_id: context.dispatchId,
+              p_action: args.action,
+              p_payload: {
+                description: args.description, category: args.category, amount: args.amount,
+                severity: args.severity, can_continue: args.can_continue,
+              },
+              p_original_input: message,
+              p_origin: context.origin,
+              p_device: { userAgent: request.headers.get('user-agent')?.slice(0, 300) || null },
+              p_idempotency_key: crypto.randomUUID(),
+            })
+            if (error) throw error
+            proposals.push(data)
+            output = { ...data, note: 'La propuesta espera confirmación explícita del usuario.' }
           } else {
-            output = await executeAiTool(name, args, identity.supabase, siteIds, context)
+            output = await executeAiTool(name as AiToolName, args, identity.supabase, siteIds, context)
           }
           input.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(output) })
         } catch {
@@ -113,7 +137,7 @@ Responde en español con brevedad y cifras verificables.`,
         }
       }
     }
-    if (!answer && proposals.length) answer = 'Preparé una propuesta de mantenimiento. Revísala y confirma o cancela.'
+    if (!answer && proposals.length) answer = 'He preparado una propuesta para confirmar la acción. Revísala y presiona Confirmar.'
     if (!answer) throw new Error('Sin respuesta final dentro del límite de herramientas.')
     status = 'completed'
     return NextResponse.json({ answer, toolsUsed: [...new Set(toolNames)], proposals }, { headers: { 'Cache-Control': 'no-store' } })

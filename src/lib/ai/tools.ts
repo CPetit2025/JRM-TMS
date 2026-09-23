@@ -36,6 +36,17 @@ export const toolDefinitions = [
       vehicle_plate: { type: 'string' }, type: { type: 'string', enum: ['CORRECTIVO', 'PREVENTIVO'] },
       reason: { type: 'string' }, scheduled_date: { type: 'string' },
     }, required: ['vehicle_plate', 'type', 'reason', 'scheduled_date'], additionalProperties: false } },
+  { type: 'function', name: 'query_active_trip', description: 'Consulta el viaje activo, paradas, horario, unidad, contrato y tareas pendientes del conductor autenticado.', strict: true,
+    parameters: emptySchema },
+  { type: 'function', name: 'prepare_trip_action', description: 'Prepara una acción del viaje. Nunca la ejecuta automáticamente. Usa valores nulos cuando un dato no fue indicado y no lo inventes.', strict: true,
+    parameters: { type: 'object', properties: {
+      action: { type: 'string', enum: ['CONFIRM_START', 'CONFIRM_ARRIVAL', 'CONFIRM_LOADING', 'CONFIRM_UNLOADING', 'REPORT_DELAY', 'REPORT_INCIDENT', 'REPORT_FAILURE', 'REGISTER_EXPENSE', 'REQUEST_EVIDENCE', 'CONFIRM_DELIVERY', 'REQUEST_RETURN', 'FINISH_TRIP'] },
+      description: { type: ['string', 'null'] },
+      category: { type: ['string', 'null'] },
+      amount: { type: ['number', 'null'] },
+      severity: { type: ['string', 'null'], enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA', null] },
+      can_continue: { type: ['boolean', 'null'] },
+    }, required: ['action', 'description', 'category', 'amount', 'severity', 'can_continue'], additionalProperties: false } },
 ] as const
 
 function sinceDays(value: unknown) {
