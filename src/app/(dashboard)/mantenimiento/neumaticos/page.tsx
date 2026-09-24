@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Search, Plus, Edit2, Activity, Settings2, ShieldCheck, MapPin, Filter } from 'lucide-react'
+import { Search, Plus, Edit2, Activity, Settings2, ShieldCheck, MapPin, Filter, Truck } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 
@@ -16,10 +16,9 @@ export default function NeumaticosPage() {
 
   const filteredTires = tires.filter((t: any) => {
     const matchSearch = searchTerm === '' || 
-      t.internal_code?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      t.brand?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      t.current_vehicle_plate?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchStatus = filterStatus === 'TODOS' || t.status === filterStatus;
+      t.codigo_interno?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      t.marca?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchStatus = filterStatus === 'TODOS' || t.estado === filterStatus;
     return matchSearch && matchStatus;
   })
   
@@ -29,16 +28,22 @@ export default function NeumaticosPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   
   const [form, setForm] = useState({
-    internal_code: '',
-    brand: '',
-    model: '',
-    size: '',
-    status: 'ALMACEN',
-    current_vehicle_plate: '',
-    current_position: '',
-    initial_tread_depth_mm: '',
-    current_tread_depth_mm: ''
+    codigo_interno: '',
+    marca: '',
+    modelo: '',
+    medida: '',
+    dot: '',
+    costo: '',
+    estado: 'ALMACÉN',
+    vehiculo_actual_id: '',
+    posicion_actual: '',
+    cocada_original: '',
+    cocada_actual: ''
   })
+
+  // Axle Map Modal
+  const [isAxleMapOpen, setIsAxleMapOpen] = useState(false)
+  const [selectedVehicle, setSelectedVehicle] = useState<any>(null)
 
   useEffect(() => {
     fetchData()
@@ -47,11 +52,14 @@ export default function NeumaticosPage() {
   const fetchData = async () => {
     setLoading(true)
     try {
-      const { data: tData, error: tError } = await supabase.from('tires').select('*').order('created_at', { ascending: false })
+      const { data: tData, error: tError } = await supabase.from('tires').select(`
+        *,
+        vehicles(id, plate)
+      `).order('created_at', { ascending: false })
       if (tError) throw tError
       setTires(tData || [])
 
-      const { data: vData } = await supabase.from('vehicles').select('plate').order('plate')
+      const { data: vData } = await supabase.from('vehicles').select('id, plate').order('plate')
       setVehicles(vData || [])
     } catch (err: any) {
       toast.error('Error al cargar neumáticos: ' + err.message)
@@ -66,10 +74,11 @@ export default function NeumaticosPage() {
     
     const payload = {
       ...form,
-      current_vehicle_plate: form.status === 'INSTALADA' ? form.current_vehicle_plate : null,
-      current_position: form.status === 'INSTALADA' ? form.current_position : null,
-      initial_tread_depth_mm: form.initial_tread_depth_mm ? parseFloat(form.initial_tread_depth_mm) : null,
-      current_tread_depth_mm: form.current_tread_depth_mm ? parseFloat(form.current_tread_depth_mm) : null
+      vehiculo_actual_id: form.estado === 'INSTALADO' && form.vehiculo_actual_id ? form.vehiculo_actual_id : null,
+      posicion_actual: form.estado === 'INSTALADO' ? form.posicion_actual : null,
+      cocada_original: form.cocada_original ? parseFloat(form.cocada_original) : null,
+      cocada_actual: form.cocada_actual ? parseFloat(form.cocada_actual) : null,
+      costo: form.costo ? parseFloat(form.costo) : null
     }
 
     try {
@@ -94,9 +103,9 @@ export default function NeumaticosPage() {
   const openNew = () => {
     setEditingId(null)
     setForm({
-      internal_code: '', brand: '', model: '', size: '', status: 'ALMACEN',
-      current_vehicle_plate: '', current_position: '',
-      initial_tread_depth_mm: '', current_tread_depth_mm: ''
+      codigo_interno: '', marca: '', modelo: '', medida: '', dot: '', costo: '', estado: 'ALMACÉN',
+      vehiculo_actual_id: '', posicion_actual: '',
+      cocada_original: '', cocada_actual: ''
     })
     setIsModalOpen(true)
   }
@@ -104,24 +113,52 @@ export default function NeumaticosPage() {
   const openEdit = (t: any) => {
     setEditingId(t.id)
     setForm({
-      internal_code: t.internal_code,
-      brand: t.brand || '',
-      model: t.model || '',
-      size: t.size || '',
-      status: t.status,
-      current_vehicle_plate: t.current_vehicle_plate || '',
-      current_position: t.current_position || '',
-      initial_tread_depth_mm: t.initial_tread_depth_mm?.toString() || '',
-      current_tread_depth_mm: t.current_tread_depth_mm?.toString() || ''
+      codigo_interno: t.codigo_interno,
+      marca: t.marca || '',
+      modelo: t.modelo || '',
+      medida: t.medida || '',
+      dot: t.dot || '',
+      costo: t.costo?.toString() || '',
+      estado: t.estado,
+      vehiculo_actual_id: t.vehiculo_actual_id || '',
+      posicion_actual: t.posicion_actual || '',
+      cocada_original: t.cocada_original?.toString() || '',
+      cocada_actual: t.cocada_actual?.toString() || ''
     })
     setIsModalOpen(true)
   }
 
-  const filtered = tires.filter(t => 
-    t.internal_code.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (t.brand || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (t.current_vehicle_plate || '').toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const openAxleMap = () => {
+    setSelectedVehicle(null)
+    setIsAxleMapOpen(true)
+  }
+
+  // Desmontar neumático
+  const handleDismount = async (tireId: string) => {
+    try {
+      const { error } = await supabase.from('tires').update({
+        estado: 'ALMACÉN',
+        vehiculo_actual_id: null,
+        posicion_actual: null
+      }).eq('id', tireId)
+
+      if (error) throw error
+      
+      // Registrar movimiento
+      await supabase.from('tire_movements').insert([{
+        tire_id: tireId,
+        tipo_movimiento: 'RETIRO',
+        vehicle_id: selectedVehicle,
+        cocada: 0, // Ideally ask user
+        current_odometer: 0 // Ideally get from vehicle
+      }])
+
+      toast.success('Neumático desmontado')
+      fetchData()
+    } catch (err: any) {
+      toast.error('Error al desmontar: ' + err.message)
+    }
+  }
 
   return (
     <div className="space-y-6 w-full mx-auto">
@@ -130,9 +167,14 @@ export default function NeumaticosPage() {
           <h1 className="text-2xl font-black text-[#002855] tracking-tight">Gestión de Neumáticos</h1>
           <p className="text-sm text-slate-500 font-medium mt-1">Control de llantas, cocada y posiciones</p>
         </div>
-        <button onClick={openNew} className="bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#003566] transition-colors flex items-center gap-2">
-          <Plus className="w-4 h-4" /> Registrar Neumático
-        </button>
+        <div className="flex gap-2">
+          <button onClick={openAxleMap} className="bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg font-medium hover:bg-slate-50 transition-colors flex items-center gap-2">
+            <Truck className="w-4 h-4" /> Axle Map
+          </button>
+          <button onClick={openNew} className="bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#003566] transition-colors flex items-center gap-2">
+            <Plus className="w-4 h-4" /> Registrar Neumático
+          </button>
+        </div>
       </div>
 
       {/* Filtros y Búsqueda */}
@@ -144,7 +186,7 @@ export default function NeumaticosPage() {
             </div>
             <input
               type="text"
-              placeholder="Buscar por código, marca o placa..."
+              placeholder="Buscar por código, marca..."
               className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#002855] focus:border-transparent transition-colors sm:text-sm text-slate-900"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -168,10 +210,10 @@ export default function NeumaticosPage() {
                 onChange={(e) => setFilterStatus(e.target.value)}
               >
                 <option value="TODOS">Todos</option>
-                <option value="ALMACEN">Almacén</option>
+                <option value="ALMACÉN">Almacén</option>
                 <option value="INSTALADO">Instalado</option>
-                <option value="REPARACION">Reparación</option>
-                <option value="DESECHADO">Desechado</option>
+                <option value="REENCAUCHE">Reencauche</option>
+                <option value="BAJA">Baja</option>
               </select>
             </div>
           </div>
@@ -195,40 +237,40 @@ export default function NeumaticosPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.length === 0 ? (
+                {filteredTires.length === 0 ? (
                   <tr><td colSpan={5} className="p-8 text-center text-slate-500">No se encontraron neumáticos</td></tr>
                 ) : (
-                  filtered.map(t => (
+                  filteredTires.map(t => (
                     <tr key={t.id} className="hover:bg-slate-50 transition-colors">
                       <td className="p-4">
-                        <div className="font-bold text-[#002855] text-base">{t.internal_code}</div>
-                        <div className="text-xs text-slate-400 mt-1 font-medium">{t.size || 'Medida N/A'}</div>
+                        <div className="font-bold text-[#002855] text-base">{t.codigo_interno}</div>
+                        <div className="text-xs text-slate-400 mt-1 font-medium">{t.medida || 'Medida N/A'}</div>
                       </td>
                       <td className="p-4">
-                        <div className="font-semibold text-slate-700">{t.brand || 'S/M'}</div>
-                        <div className="text-xs text-slate-500">{t.model || 'S/M'}</div>
+                        <div className="font-semibold text-slate-700">{t.marca || 'S/M'}</div>
+                        <div className="text-xs text-slate-500">{t.modelo || 'S/M'}</div>
                       </td>
                       <td className="p-4">
                         <span className={`inline-block px-2 py-1 text-xs font-bold rounded-full mb-1 ${
-                          t.status === 'INSTALADA' ? 'bg-blue-100 text-blue-700' :
-                          t.status === 'ALMACEN' ? 'bg-emerald-100 text-emerald-700' :
-                          t.status === 'REENCAUCHE' ? 'bg-amber-100 text-amber-700' :
+                          t.estado === 'INSTALADO' ? 'bg-blue-100 text-blue-700' :
+                          t.estado === 'ALMACÉN' ? 'bg-emerald-100 text-emerald-700' :
+                          t.estado === 'REENCAUCHE' ? 'bg-amber-100 text-amber-700' :
                           'bg-red-100 text-red-700'
                         }`}>
-                          {t.status}
+                          {t.estado}
                         </span>
-                        {t.status === 'INSTALADA' && (
+                        {t.estado === 'INSTALADO' && t.vehicles && (
                           <div className="flex items-center gap-1 text-xs text-slate-600 font-medium mt-1">
-                            <MapPin className="w-3 h-3 text-blue-500" /> {t.current_vehicle_plate} ({t.current_position})
+                            <MapPin className="w-3 h-3 text-blue-500" /> {t.vehicles.plate} ({t.posicion_actual})
                           </div>
                         )}
                       </td>
                       <td className="p-4">
                         <div className="flex items-center gap-2">
                           <Settings2 className="w-4 h-4 text-slate-400" />
-                          <span className="font-semibold text-slate-700">{t.current_tread_depth_mm || '-'} mm</span>
-                          {t.initial_tread_depth_mm && (
-                            <span className="text-xs text-slate-400">/ {t.initial_tread_depth_mm} mm orig.</span>
+                          <span className="font-semibold text-slate-700">{t.cocada_actual || '-'} mm</span>
+                          {t.cocada_original && (
+                            <span className="text-xs text-slate-400">/ {t.cocada_original} mm orig.</span>
                           )}
                         </div>
                       </td>
@@ -251,43 +293,51 @@ export default function NeumaticosPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Código Interno *</label>
-              <input type="text" required value={form.internal_code} onChange={e => setForm({...form, internal_code: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg" placeholder="Ej. LLA-1001" />
+              <input type="text" required value={form.codigo_interno} onChange={e => setForm({...form, codigo_interno: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg" placeholder="Ej. LLA-1001" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Marca</label>
-              <input type="text" value={form.brand} onChange={e => setForm({...form, brand: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg" placeholder="Ej. Michelin" />
+              <input type="text" value={form.marca} onChange={e => setForm({...form, marca: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg" placeholder="Ej. Michelin" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Modelo</label>
-              <input type="text" value={form.model} onChange={e => setForm({...form, model: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg" placeholder="Ej. X Multi Z" />
+              <input type="text" value={form.modelo} onChange={e => setForm({...form, modelo: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg" placeholder="Ej. X Multi Z" />
             </div>
-            <div className="col-span-2 md:col-span-1">
+            <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Medida</label>
-              <input type="text" value={form.size} onChange={e => setForm({...form, size: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg" placeholder="Ej. 295/80R22.5" />
+              <input type="text" value={form.medida} onChange={e => setForm({...form, medida: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg" placeholder="Ej. 295/80R22.5" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">DOT</label>
+              <input type="text" value={form.dot} onChange={e => setForm({...form, dot: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg" placeholder="Ej. 1021" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Costo (S/)</label>
+              <input type="number" step="0.01" value={form.costo} onChange={e => setForm({...form, costo: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg" placeholder="Ej. 1200.00" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Estado *</label>
-              <select required value={form.status} onChange={e => setForm({...form, status: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg">
-                <option value="ALMACEN">En Almacén</option>
-                <option value="INSTALADA">Instalada en Vehículo</option>
+              <select required value={form.estado} onChange={e => setForm({...form, estado: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg">
+                <option value="ALMACÉN">En Almacén</option>
+                <option value="INSTALADO">Instalado en Vehículo</option>
                 <option value="REENCAUCHE">En Reencauche</option>
                 <option value="BAJA">De Baja</option>
               </select>
             </div>
 
-            {form.status === 'INSTALADA' && (
+            {form.estado === 'INSTALADO' && (
               <>
                 <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg col-span-2 grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-blue-900 mb-1">Placa del Vehículo</label>
-                    <select value={form.current_vehicle_plate} onChange={e => setForm({...form, current_vehicle_plate: e.target.value})} className="w-full p-2 border border-blue-200 rounded-lg">
-                      <option value="">Seleccionar Placa</option>
-                      {vehicles.map(v => <option key={v.plate} value={v.plate}>{v.plate}</option>)}
+                    <label className="block text-sm font-medium text-blue-900 mb-1">Vehículo</label>
+                    <select value={form.vehiculo_actual_id} onChange={e => setForm({...form, vehiculo_actual_id: e.target.value})} className="w-full p-2 border border-blue-200 rounded-lg">
+                      <option value="">Seleccionar Vehículo</option>
+                      {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-blue-900 mb-1">Posición</label>
-                    <input type="text" value={form.current_position} onChange={e => setForm({...form, current_position: e.target.value})} className="w-full p-2 border border-blue-200 rounded-lg" placeholder="Ej. EJE1-IZQ" />
+                    <input type="text" value={form.posicion_actual} onChange={e => setForm({...form, posicion_actual: e.target.value})} className="w-full p-2 border border-blue-200 rounded-lg" placeholder="Ej. DD, DI, TD1, TI1" />
                   </div>
                 </div>
               </>
@@ -299,12 +349,12 @@ export default function NeumaticosPage() {
               </h4>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Cocada Inicial (mm)</label>
-                  <input type="number" step="0.1" value={form.initial_tread_depth_mm} onChange={e => setForm({...form, initial_tread_depth_mm: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg" />
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Cocada Original (mm)</label>
+                  <input type="number" step="0.1" value={form.cocada_original} onChange={e => setForm({...form, cocada_original: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Cocada Actual (mm)</label>
-                  <input type="number" step="0.1" value={form.current_tread_depth_mm} onChange={e => setForm({...form, current_tread_depth_mm: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg" />
+                  <input type="number" step="0.1" value={form.cocada_actual} onChange={e => setForm({...form, cocada_actual: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg" />
                 </div>
               </div>
             </div>
@@ -317,6 +367,131 @@ export default function NeumaticosPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Modal de Axle Map */}
+      <Modal isOpen={isAxleMapOpen} onClose={() => setIsAxleMapOpen(false)} title="Axle Map - Montaje/Desmontaje" maxWidth="max-w-4xl">
+        <div className="space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Seleccionar Vehículo</label>
+            <select 
+              value={selectedVehicle || ''} 
+              onChange={e => setSelectedVehicle(e.target.value)} 
+              className="w-full md:w-1/2 p-2 border border-slate-300 rounded-lg"
+            >
+              <option value="">-- Seleccionar --</option>
+              {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate}</option>)}
+            </select>
+          </div>
+
+          {selectedVehicle && (
+            <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
+              <h3 className="text-lg font-bold text-slate-800 mb-4 text-center">Esquema de Ejes</h3>
+              <div className="max-w-md mx-auto space-y-8">
+                {/* Eje Delantero (Direccional) */}
+                <div className="flex justify-between items-center px-8 relative">
+                  <div className="absolute top-1/2 left-0 right-0 h-2 bg-slate-300 -z-10 translate-y-[-50%]"></div>
+                  
+                  {/* Llanta Delantera Izquierda */}
+                  <div className="bg-white border-2 border-slate-300 rounded-lg p-2 w-24 text-center shadow-sm">
+                    <div className="text-xs font-bold mb-1">DI</div>
+                    {tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'DI') ? (
+                      <div>
+                        <div className="text-xs text-blue-600 font-bold truncate">{tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'DI').codigo_interno}</div>
+                        <button onClick={() => handleDismount(tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'DI').id)} className="mt-1 text-[10px] bg-red-100 text-red-600 px-2 py-1 rounded w-full hover:bg-red-200">Desmontar</button>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-slate-400 py-2">Vacío</div>
+                    )}
+                  </div>
+                  
+                  {/* Chasis */}
+                  <div className="w-16 h-20 bg-slate-200 rounded"></div>
+                  
+                  {/* Llanta Delantera Derecha */}
+                  <div className="bg-white border-2 border-slate-300 rounded-lg p-2 w-24 text-center shadow-sm">
+                    <div className="text-xs font-bold mb-1">DD</div>
+                    {tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'DD') ? (
+                      <div>
+                        <div className="text-xs text-blue-600 font-bold truncate">{tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'DD').codigo_interno}</div>
+                        <button onClick={() => handleDismount(tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'DD').id)} className="mt-1 text-[10px] bg-red-100 text-red-600 px-2 py-1 rounded w-full hover:bg-red-200">Desmontar</button>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-slate-400 py-2">Vacío</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Eje Trasero 1 (Tracción) */}
+                <div className="flex justify-between items-center px-4 relative">
+                  <div className="absolute top-1/2 left-0 right-0 h-2 bg-slate-300 -z-10 translate-y-[-50%]"></div>
+                  
+                  {/* Llantas Traseras Izquierdas (Dual) */}
+                  <div className="flex gap-1">
+                    <div className="bg-white border-2 border-slate-300 rounded-lg p-2 w-20 text-center shadow-sm">
+                      <div className="text-xs font-bold mb-1">TI1-EXT</div>
+                      {tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'TI1-EXT') ? (
+                        <div>
+                          <div className="text-xs text-blue-600 font-bold truncate">{tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'TI1-EXT').codigo_interno}</div>
+                          <button onClick={() => handleDismount(tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'TI1-EXT').id)} className="mt-1 text-[10px] bg-red-100 text-red-600 px-2 py-1 rounded w-full hover:bg-red-200">D</button>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-slate-400 py-1">-</div>
+                      )}
+                    </div>
+                    <div className="bg-white border-2 border-slate-300 rounded-lg p-2 w-20 text-center shadow-sm">
+                      <div className="text-xs font-bold mb-1">TI1-INT</div>
+                      {tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'TI1-INT') ? (
+                        <div>
+                          <div className="text-xs text-blue-600 font-bold truncate">{tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'TI1-INT').codigo_interno}</div>
+                          <button onClick={() => handleDismount(tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'TI1-INT').id)} className="mt-1 text-[10px] bg-red-100 text-red-600 px-2 py-1 rounded w-full hover:bg-red-200">D</button>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-slate-400 py-1">-</div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Chasis */}
+                  <div className="w-16 h-20 bg-slate-200 rounded"></div>
+                  
+                  {/* Llantas Traseras Derechas (Dual) */}
+                  <div className="flex gap-1">
+                    <div className="bg-white border-2 border-slate-300 rounded-lg p-2 w-20 text-center shadow-sm">
+                      <div className="text-xs font-bold mb-1">TD1-INT</div>
+                      {tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'TD1-INT') ? (
+                        <div>
+                          <div className="text-xs text-blue-600 font-bold truncate">{tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'TD1-INT').codigo_interno}</div>
+                          <button onClick={() => handleDismount(tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'TD1-INT').id)} className="mt-1 text-[10px] bg-red-100 text-red-600 px-2 py-1 rounded w-full hover:bg-red-200">D</button>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-slate-400 py-1">-</div>
+                      )}
+                    </div>
+                    <div className="bg-white border-2 border-slate-300 rounded-lg p-2 w-20 text-center shadow-sm">
+                      <div className="text-xs font-bold mb-1">TD1-EXT</div>
+                      {tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'TD1-EXT') ? (
+                        <div>
+                          <div className="text-xs text-blue-600 font-bold truncate">{tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'TD1-EXT').codigo_interno}</div>
+                          <button onClick={() => handleDismount(tires.find(t => t.vehiculo_actual_id === selectedVehicle && t.posicion_actual === 'TD1-EXT').id)} className="mt-1 text-[10px] bg-red-100 text-red-600 px-2 py-1 rounded w-full hover:bg-red-200">D</button>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-slate-400 py-1">-</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+              <p className="text-center text-xs text-slate-500 mt-6">Para montar un neumático nuevo, edítelo desde la tabla principal y asigne el estado "INSTALADO", seleccionando el vehículo y la posición.</p>
+            </div>
+          )}
+          
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+            <button type="button" onClick={() => setIsAxleMapOpen(false)} className="px-4 py-2 bg-[#002855] text-white rounded-lg font-medium hover:bg-[#003566]">Cerrar</button>
+          </div>
+        </div>
+      </Modal>
+
     </div>
   )
 }

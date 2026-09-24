@@ -7,6 +7,7 @@ import { Modal } from '@/components/ui/modal'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { calculateRouteDistance } from '@/lib/routing'
 import { usePermissions } from '@/hooks/usePermissions'
+import { checkDispatchEligibility } from '@/lib/eligibility'
 
 interface TransportRequest {
   id: string
@@ -354,6 +355,33 @@ export default function DespachoPage() {
       if (newDispatch.document_type !== 'NOTA_SALIDA' && matches.length !== 1) {
         throw new Error('Selecciona un conductor activo y vinculado a una sola cuenta.')
       }
+
+      // NOTA_SALIDA = recojo por cliente: no requiere vehículo ni conductor propio (bypass legítimo)
+      // GR = despacho con vehículo propio: validación de elegibilidad obligatoria
+      if (newDispatch.document_type !== 'NOTA_SALIDA') {
+        // Fail-safe: si falta placa o conductor para un GR, bloquear — no saltar validación
+        if (!newDispatch.vehicle_plate || !matches[0]?.id) {
+          toast.error('Para despachos GR debes seleccionar vehículo y conductor antes de programar.')
+          setIsSubmitting(false)
+          return
+        }
+        const eligibility = await checkDispatchEligibility(newDispatch.vehicle_plate, matches[0].id)
+        if (eligibility.status === 'BLOQUEADO') {
+          const reasons = [...eligibility.blocking_reasons, ...eligibility.observation_reasons].join('; ')
+          toast.error(`Despacho bloqueado: ${reasons}`)
+          setIsSubmitting(false)
+          return
+        }
+        if (eligibility.status === 'APTO_CON_OBSERVACION') {
+          const reasons = eligibility.observation_reasons.join('; ')
+          const proceed = window.confirm(`El despacho tiene observaciones: ${reasons}. ¿Desea proceder de todos modos?`)
+          if (!proceed) {
+            setIsSubmitting(false)
+            return
+          }
+        }
+      }
+
       const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
       const freightCost = detectedFreightRate?.rate && detectedFreightRate.rate > 0
         ? detectedFreightRate.rate : (Number(manualFreightCost) || 0)
@@ -391,9 +419,12 @@ export default function DespachoPage() {
         toast.error('Falta vincular documentos (GR/NS) en algunas solicitudes antes de poder iniciar la ruta.');
         return;
       }
-      const { error } = await supabase.from('dispatches').update({ status: 'EN_CURSO' })
-        .eq('id', dispatchId).eq('status', 'PROGRAMADO').select('id').single()
-      if (error) throw error
+      const { data, error } = await supabase.rpc('transition_dispatch_status', {
+        p_dispatch_id: dispatchId,
+        p_new_status: 'EN_CURSO',
+        p_reason: 'Ruta iniciada desde torre de control'
+      })
+      if (error || (data && !data.success)) throw new Error(error?.message || data?.error || 'Error al iniciar ruta')
       toast.success('Despacho preparado. El conductor iniciará el GPS desde la app.')
       fetchData()
     } catch (error: any) {
@@ -403,9 +434,12 @@ export default function DespachoPage() {
 
   const handleAuthorizeReturn = async (dispatchId: string) => {
     try {
-      const { error } = await supabase.from('dispatches').update({ status: 'RETORNO' })
-        .eq('id', dispatchId).eq('status', 'ESPERANDO_AUTORIZACION').select('id').single()
-      if (error) throw error
+      const { data, error } = await supabase.rpc('transition_dispatch_status', {
+        p_dispatch_id: dispatchId,
+        p_new_status: 'RETORNO',
+        p_reason: 'Autorizado desde torre de control'
+      })
+      if (error || (data && !data.success)) throw new Error(error?.message || data?.error || 'Error al autorizar retorno')
       toast.success('Retorno autorizado. El conductor ha sido notificado.')
       fetchData()
     } catch (err: any) {

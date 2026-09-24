@@ -14,8 +14,13 @@ export default function LiquidacionPage() {
   const [gastoFile, setGastoFile] = useState<File | null>(null)
   const [isExtracting, setIsExtracting] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSubmittingFinal, setIsSubmittingFinal] = useState(false)
   const [dispatch, setDispatch] = useState<any>(null)
+  const [driver, setDriver] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [odometerValue, setOdometerValue] = useState('')
+  const [guiasFiles, setGuiasFiles] = useState<{ file: File, preview: string }[]>([])
+
   const router = useRouter()
   const supabase = createClient()
 
@@ -26,6 +31,7 @@ export default function LiquidacionPage() {
       return
     }
     const parsedDriver = JSON.parse(driverData)
+    setDriver(parsedDriver)
     fetchActiveDispatch(parsedDriver)
   }, [router])
 
@@ -84,22 +90,23 @@ export default function LiquidacionPage() {
     setIsSubmitting(true)
     try {
       let receipt_url = gastoPhoto
+      let uploadedPath: string | null = null
 
       // Si hay archivo, subirlo a storage
       if (gastoFile) {
         const fileExt = gastoFile.name.split('.').pop()
         const fileName = `${dispatch.id}-${Math.random()}.${fileExt}`
-        const filePath = `gastos/${fileName}`
+        uploadedPath = `gastos/${fileName}`
 
         const { error: uploadError } = await supabase.storage
           .from('evidence')
-          .upload(filePath, gastoFile)
+          .upload(uploadedPath, gastoFile)
 
         if (uploadError) throw uploadError
 
         const { data: urlData } = supabase.storage
           .from('evidence')
-          .getPublicUrl(filePath)
+          .getPublicUrl(uploadedPath)
           
         receipt_url = urlData.publicUrl
       }
@@ -116,7 +123,12 @@ export default function LiquidacionPage() {
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        if (uploadedPath) {
+          await supabase.storage.from('evidence').remove([uploadedPath])
+        }
+        throw error
+      }
 
       setGastos([...gastos, { ...gastoForm, photo: receipt_url, id: insertedData.id }])
       setGastoForm({ tipo: 'PEAJE', monto: '' })
@@ -168,6 +180,98 @@ export default function LiquidacionPage() {
     if (file) {
       setGastoFile(file)
       setGastoPhoto(URL.createObjectURL(file))
+    }
+  }
+
+  const handleGuiasCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length > 0) {
+      const newGuias = files.map(file => ({
+        file,
+        preview: URL.createObjectURL(file)
+      }))
+      setGuiasFiles(prev => [...prev, ...newGuias])
+    }
+  }
+
+  const removeGuia = (index: number) => {
+    setGuiasFiles(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleSubmitFinal = async () => {
+    if (!odometerValue || isNaN(Number(odometerValue))) {
+      toast.error('Debe ingresar un odómetro válido de llegada')
+      return
+    }
+
+    setIsSubmittingFinal(true)
+    const uploadedPaths: string[] = []
+
+    try {
+      // 1. Subir guías al storage
+      const guiasUrls: string[] = []
+      
+      for (const guia of guiasFiles) {
+        const fileExt = guia.file.name.split('.').pop()
+        const fileName = `${dispatch.id}-guia-${Math.random()}.${fileExt}`
+        const filePath = `guias/${fileName}`
+
+        const { error: uploadError } = await supabase.storage
+          .from('evidence')
+          .upload(filePath, guia.file)
+
+        if (uploadError) throw uploadError
+        uploadedPaths.push(filePath)
+
+        const { data: urlData } = supabase.storage
+          .from('evidence')
+          .getPublicUrl(filePath)
+          
+        guiasUrls.push(urlData.publicUrl)
+      }
+
+      // Obtener ubicación actual si es posible
+      let currentLocation = null
+      if (navigator.geolocation) {
+        try {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+          })
+          currentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        } catch (e) {
+          console.warn("No se pudo obtener la ubicación", e)
+        }
+      }
+
+      const liquidationPayload = {
+        guias: guiasUrls,
+        notas: "Cerrado desde app conductor"
+      }
+
+      // 2. Llamar al RPC
+      const { data, error } = await supabase.rpc('submit_post_route_checklist', {
+        p_dispatch_id: dispatch.id,
+        p_vehicle_plate: dispatch.vehicle_plate,
+        p_driver_id: driver?.id || null,
+        p_odometer: Number(odometerValue),
+        p_liquidation_data: liquidationPayload,
+        p_location: currentLocation
+      })
+
+      if (error) throw error
+      if (data && !data.success) throw new Error(data.message || 'Error en liquidación')
+
+      toast.success('¡Liquidación enviada con éxito!')
+      router.push('/app/ruta')
+
+    } catch (err: any) {
+      // Rollback de archivos subidos
+      if (uploadedPaths.length > 0) {
+        await supabase.storage.from('evidence').remove(uploadedPaths)
+      }
+      toast.error('Error al enviar liquidación: ' + err.message)
+    } finally {
+      setIsSubmittingFinal(false)
     }
   }
 
@@ -320,18 +424,55 @@ export default function LiquidacionPage() {
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
             <UploadCloud className="w-12 h-12 text-slate-300 mx-auto mb-3" />
             <h4 className="font-bold text-slate-700 mb-4">Sube las guías selladas (GRT / GRR)</h4>
-            <button className="bg-[#002855] text-white px-6 py-2 rounded-lg font-bold text-sm mx-auto flex items-center gap-2">
+            <label className="bg-[#002855] text-white px-6 py-2 rounded-lg font-bold text-sm mx-auto flex items-center justify-center gap-2 cursor-pointer hover:bg-[#001f44]">
               <Camera className="w-4 h-4" /> Tomar Fotos Múltiples
-            </button>
+              <input type="file" multiple accept="image/*" capture="environment" className="hidden" onChange={handleGuiasCapture} />
+            </label>
           </div>
+
+          {guiasFiles.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="font-bold text-slate-800 text-sm">Guías Adjuntas</h4>
+              <div className="grid grid-cols-2 gap-3">
+                {guiasFiles.map((guia, idx) => (
+                  <div key={idx} className="relative rounded-lg overflow-hidden border border-slate-200 h-24">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={guia.preview} alt={`Guía ${idx + 1}`} className="w-full h-full object-cover" />
+                    <button 
+                      onClick={() => removeGuia(idx)}
+                      className="absolute top-1 right-1 bg-red-500/80 text-white text-xs px-2 py-1 rounded"
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* Enviar Liquidación */}
-      <div className="mt-8">
-        <button className="w-full bg-green-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-green-700 flex justify-center items-center gap-2">
-          <CheckCircle2 className="w-6 h-6" />
-          Enviar Liquidación Final
+      <div className="mt-8 space-y-4">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <label className="block text-sm font-bold text-slate-800 mb-2">Odómetro de Llegada (Obligatorio)</label>
+          <input 
+            type="number" 
+            placeholder="Ej: 154200"
+            required
+            className="w-full rounded-lg border-slate-300 focus:ring-[#002855]"
+            value={odometerValue}
+            onChange={(e) => setOdometerValue(e.target.value)}
+          />
+        </div>
+
+        <button 
+          onClick={handleSubmitFinal}
+          disabled={isSubmittingFinal}
+          className="w-full bg-green-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-green-700 flex justify-center items-center gap-2 disabled:opacity-50"
+        >
+          {isSubmittingFinal ? <Loader2 className="w-6 h-6 animate-spin" /> : <CheckCircle2 className="w-6 h-6" />}
+          {isSubmittingFinal ? 'Enviando...' : 'Enviar Liquidación Final'}
         </button>
       </div>
     </div>

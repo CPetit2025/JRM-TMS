@@ -31,18 +31,19 @@ export default function CajaDashboardPage() {
     setLoading(true)
     try {
       // Demo metrics for MVP (In a real scenario, this would come from an RPC or aggregations)
-      const { data: funds, error: fundsError } = await supabase.from('cash_funds').select('amount, status')
-      const { data: expenses, error: expensesError } = await supabase.from('expense_records').select('total_amount, status, document_type')
+      const { data: dispatches, error: dispatchesError } = await supabase.from('dispatches').select('liquidation_data, status').not('liquidation_data', 'is', null)
+      const { data: expenses, error: expensesError } = await supabase.from('dispatch_expenses').select('amount, status, description')
       
       let totalE = 0
       let totalL = 0
       let activos = 0
-      if (funds) {
-        funds.forEach(f => {
-          totalE += Number(f.amount)
-          if (f.status === 'LIQUIDADO' || f.status === 'CERRADO') {
-            totalL += Number(f.amount) // Simplified
-          } else if (f.status !== 'ANULADO') {
+      if (dispatches) {
+        dispatches.forEach(d => {
+          const totalExpenses = d.liquidation_data?.total_expenses || 0
+          totalE += Number(totalExpenses)
+          if (d.status === 'LIQUIDADO' || d.status === 'CERRADO') {
+            totalL += Number(totalExpenses) // Simplified
+          } else if (d.status !== 'ANULADO') {
             activos++
           }
         })
@@ -52,7 +53,7 @@ export default function CajaDashboardPage() {
       let observados = 0
       if (expenses) {
         expenses.forEach(e => {
-          if (!e.document_type || e.document_type === 'OTROS') sinComprobante++
+          if (!e.description?.includes('Comprobante: FACTURA') && !e.description?.includes('Comprobante: BOLETA')) sinComprobante++
           if (e.status === 'OBSERVADO') observados++
         })
       }

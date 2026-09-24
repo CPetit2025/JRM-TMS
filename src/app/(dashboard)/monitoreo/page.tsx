@@ -119,12 +119,13 @@ export default function MonitoreoPage() {
 
       // 2. Si es FIN_RUTA o ENTREGA_CONFIRMADA, actualizar estado del despacho
       if (eventType === 'FIN_RUTA' || eventType === 'ENTREGA_CONFIRMADA') {
-        const { error: dispatchError } = await supabase
-          .from('dispatches')
-          .update({ status: 'ENTREGADO' })
-          .eq('id', selectedVehicleId)
+        const { data, error: dispatchError } = await supabase.rpc('transition_dispatch_status', {
+          p_dispatch_id: selectedVehicleId,
+          p_new_status: 'ENTREGADO',
+          p_reason: 'Ruta finalizada desde Monitoreo por evento ' + eventType
+        })
 
-        if (dispatchError) throw dispatchError
+        if (dispatchError || (data && !data.success)) throw new Error(dispatchError?.message || data?.error || 'Error al finalizar ruta')
         toast.success('Ruta finalizada correctamente.')
         setSelectedVehicleId(null)
       } else {

@@ -17,50 +17,51 @@ export default function LiquidacionesPage() {
   useEffect(() => {
     supabase.auth.getUser().then(res => setUser(res.data.user))
   }, [])
-  const [funds, setFunds] = useState<any[]>([])
+  const [dispatches, setDispatches] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   
   // Detalle Modal
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [selectedFund, setSelectedFund] = useState<any>(null)
+  const [selectedDispatch, setSelectedDispatch] = useState<any>(null)
   const [expenses, setExpenses] = useState<any[]>([])
   const [loadingDetail, setLoadingDetail] = useState(false)
   
   const [observation, setObservation] = useState('')
 
   useEffect(() => {
-    fetchFunds()
+    fetchDispatches()
   }, [])
 
-  const fetchFunds = async () => {
+  const fetchDispatches = async () => {
     setLoading(true)
     try {
       const { data, error } = await supabase
-        .from('cash_funds')
+        .from('dispatches')
         .select(`
-          *,
-          received_by_profile:profiles!cash_funds_received_by_fkey(first_name, last_name)
+          id, dispatch_number, vehicle_plate, status, liquidation_data, created_at,
+          driver:profiles!dispatches_driver_id_fkey(first_name, last_name)
         `)
+        .not('liquidation_data', 'is', null)
         .order('created_at', { ascending: false })
       
       if (error) throw error
-      setFunds(data || [])
+      setDispatches(data || [])
     } catch (err: any) {
-      toast.error('Error al cargar fondos: ' + err.message)
+      toast.error('Error al cargar liquidaciones: ' + err.message)
     } finally {
       setLoading(false)
     }
   }
 
-  const openFundDetail = async (fund: any) => {
-    setSelectedFund(fund)
+  const openDispatchDetail = async (dispatchData: any) => {
+    setSelectedDispatch(dispatchData)
     setIsModalOpen(true)
     setLoadingDetail(true)
     try {
       const { data, error } = await supabase
-        .from('expense_records')
+        .from('dispatch_expenses')
         .select('*')
-        .eq('cash_fund_id', fund.id)
+        .eq('dispatch_id', dispatchData.id)
         .order('created_at', { ascending: true })
       
       if (!error && data) setExpenses(data)
@@ -73,12 +74,14 @@ export default function LiquidacionesPage() {
 
   const handleUpdateStatus = async (expenseId: string, status: string, comment: string = '') => {
     try {
+      // In dispatch_expenses, status anomalies might not exist directly, 
+      // but we update the status and optionally append to description if there is a comment.
+      const updateData: any = { status }
+      if (comment) updateData.description = comment
+
       const { error } = await supabase
-        .from('expense_records')
-        .update({ 
-          status, 
-          anomalies: comment ? `["${comment}"]` : null 
-        })
+        .from('dispatch_expenses')
+        .update(updateData)
         .eq('id', expenseId)
         
       if (error) throw error
@@ -91,18 +94,18 @@ export default function LiquidacionesPage() {
     }
   }
 
-  const handleCloseFund = async () => {
-    if (!selectedFund) return
+  const handleCloseDispatch = async () => {
+    if (!selectedDispatch) return
     try {
       const { error } = await supabase
-        .from('cash_funds')
+        .from('dispatches')
         .update({ status: 'LIQUIDADO' })
-        .eq('id', selectedFund.id)
+        .eq('id', selectedDispatch.id)
       
       if (error) throw error
-      toast.success('Fondo liquidado correctamente')
+      toast.success('Despacho liquidado correctamente')
       setIsModalOpen(false)
-      fetchFunds()
+      fetchDispatches()
     } catch (err: any) {
       toast.error('Error al liquidar: ' + err.message)
     }
@@ -112,14 +115,15 @@ export default function LiquidacionesPage() {
     return new Intl.NumberFormat('es-PE', { style: 'currency', currency: curr }).format(amount || 0)
   }
 
-  const filtered = funds.filter(f => 
-    f.code?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    f.received_by_profile?.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    f.received_by_profile?.last_name?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filtered = dispatches.filter(d => 
+    d.dispatch_number?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    d.driver?.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    d.driver?.last_name?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const totalGastos = expenses.reduce((sum, e) => e.status !== 'RECHAZADO' && e.status !== 'ANULADO' ? sum + Number(e.total_amount) : sum, 0)
-  const saldo = Number(selectedFund?.amount) - totalGastos
+  const totalGastos = expenses.reduce((sum, e) => e.status !== 'RECHAZADO' && e.status !== 'ANULADO' ? sum + Number(e.amount || 0) : sum, 0)
+  const driverReportedExpenses = selectedDispatch?.liquidation_data?.total_expenses || 0
+  const validationDiff = driverReportedExpenses - totalGastos
 
   return (
     <div className="space-y-6 w-full mx-auto">
@@ -136,7 +140,7 @@ export default function LiquidacionesPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Buscar fondo o responsable..." 
+              placeholder="Buscar despacho o conductor..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500"
@@ -151,36 +155,39 @@ export default function LiquidacionesPage() {
           <table className="w-full text-left text-sm text-slate-600 relative">
             <thead className="bg-slate-50 sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0] border-slate-200">
                 <tr>
-                  <th className="p-4 font-semibold text-slate-900">Código Fondo</th>
-                  <th className="p-4 font-semibold text-slate-900">Responsable</th>
-                  <th className="p-4 font-semibold text-slate-900 text-right text-right">Monto Asignado</th>
+                  <th className="p-4 font-semibold text-slate-900">Nº Despacho / Placa</th>
+                  <th className="p-4 font-semibold text-slate-900">Conductor</th>
+                  <th className="p-4 font-semibold text-slate-900 text-right">Gastos Declarados</th>
                   <th className="p-4 font-semibold text-slate-900 text-center">Estado</th>
                   <th className="p-4 font-semibold text-slate-900 text-right">Acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={5} className="p-8 text-center text-slate-500">No hay fondos registrados</td></tr>
+                  <tr><td colSpan={5} className="p-8 text-center text-slate-500">No hay liquidaciones pendientes</td></tr>
                 ) : (
-                  filtered.map(f => (
-                    <tr key={f.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-4 font-bold text-[#002855]">{f.code}</td>
+                  filtered.map(d => (
+                    <tr key={d.id} className="hover:bg-slate-50 transition-colors">
                       <td className="p-4">
-                        <span className="font-semibold text-slate-800 block">{f.received_by_profile?.first_name} {f.received_by_profile?.last_name}</span>
+                        <div className="font-bold text-[#002855]">{d.dispatch_number}</div>
+                        <div className="text-xs text-slate-500">Placa: {d.vehicle_plate}</div>
                       </td>
-                      <td className="p-4 text-right font-black text-slate-800 text-right">{formatMoney(f.amount, f.currency)}</td>
+                      <td className="p-4">
+                        <span className="font-semibold text-slate-800 block">{d.driver?.first_name} {d.driver?.last_name}</span>
+                      </td>
+                      <td className="p-4 text-right font-black text-slate-800">{formatMoney(d.liquidation_data?.total_expenses || 0)}</td>
                       <td className="p-4 text-center">
                         <span className={`inline-block px-3 py-1 text-xs font-bold rounded-full ${
-                          f.status === 'LIQUIDADO' ? 'bg-emerald-100 text-emerald-700' :
-                          f.status === 'PENDIENTE_LIQUIDACION' ? 'bg-amber-100 text-amber-700' :
+                          d.status === 'LIQUIDADO' ? 'bg-emerald-100 text-emerald-700' :
+                          (d.status === 'RETORNO_COMPLETADO' || d.status === 'COMPLETADO') ? 'bg-amber-100 text-amber-700' :
                           'bg-slate-100 text-slate-700'
                         }`}>
-                          {f.status}
+                          {d.status}
                         </span>
                       </td>
                       <td className="p-4 text-right">
                         <button 
-                          onClick={() => openFundDetail(f)}
+                          onClick={() => openDispatchDetail(d)}
                           className="text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
                         >
                           Ver y Liquidar
@@ -195,21 +202,23 @@ export default function LiquidacionesPage() {
         )}
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={`Liquidación: ${selectedFund?.code}`} maxWidth="max-w-4xl">
-        {selectedFund && (
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={`Liquidación: ${selectedDispatch?.dispatch_number}`} maxWidth="max-w-4xl">
+        {selectedDispatch && (
           <div className="space-y-6">
             <div className="grid grid-cols-3 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
               <div>
-                <p className="text-xs font-medium text-slate-500 mb-1">Fondo Inicial</p>
-                <p className="text-xl font-black text-slate-800">{formatMoney(selectedFund.amount, selectedFund.currency)}</p>
+                <p className="text-xs font-medium text-slate-500 mb-1">Total Declarado por Conductor</p>
+                <p className="text-xl font-black text-slate-800">{formatMoney(driverReportedExpenses)}</p>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-500 mb-1">Gastos Registrados</p>
-                <p className="text-xl font-black text-slate-800">{formatMoney(totalGastos, selectedFund.currency)}</p>
+                <p className="text-xs font-medium text-slate-500 mb-1">Suma de Gastos Comprobados</p>
+                <p className="text-xl font-black text-slate-800">{formatMoney(totalGastos)}</p>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-500 mb-1">Saldo a Favor {saldo >= 0 ? 'Empresa' : 'Colaborador'}</p>
-                <p className={`text-xl font-black ${saldo >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatMoney(Math.abs(saldo), selectedFund.currency)}</p>
+                <p className="text-xs font-medium text-slate-500 mb-1">Diferencia de Validación</p>
+                <p className={`text-xl font-black ${validationDiff === 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {formatMoney(Math.abs(validationDiff))}
+                </p>
               </div>
             </div>
 
@@ -230,22 +239,25 @@ export default function LiquidacionesPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {expenses.length === 0 ? (
-                      <tr><td colSpan={6} className="p-8 text-center text-slate-500">No se han registrado gastos para este fondo</td></tr>
+                      <tr><td colSpan={6} className="p-8 text-center text-slate-500">No se han registrado gastos para este despacho</td></tr>
                     ) : (
                       expenses.map(e => (
                         <tr key={e.id} className="hover:bg-slate-50">
                           <td className="p-3">
-                            <div className="font-bold text-slate-800">{e.provider_ruc || 'Sin RUC'} - {e.provider_name || 'Sin Razón Social'}</div>
-                            <div className="text-xs text-slate-500">{e.document_type} {e.document_serial}-{e.document_number}</div>
-                            {e.vehicle_plate && <div className="text-[10px] font-bold text-blue-600 mt-1">Viaje placa: {e.vehicle_plate}</div>}
+                            <div className="font-bold text-slate-800">{e.description || 'Gasto Operativo'}</div>
+                            <div className="text-xs text-slate-500">
+                              {e.expense_type}
+                              {e.fuel_gallons ? ` - ${e.fuel_gallons} gal (Odómetro: ${e.fuel_odometer})` : ''}
+                            </div>
+                            <div className="text-[10px] font-bold text-blue-600 mt-1">Viaje placa: {selectedDispatch.vehicle_plate}</div>
                           </td>
-                          <td className="p-3 font-medium text-slate-700">{e.category}</td>
-                          <td className="p-3 font-black text-slate-800 text-right">{formatMoney(e.total_amount, e.currency)}</td>
+                          <td className="p-3 font-medium text-slate-700">{e.expense_type}</td>
+                          <td className="p-3 font-black text-slate-800 text-right">{formatMoney(e.amount)}</td>
                           <td className="p-3">
-                            {e.anomalies ? (
+                            {e.description && e.status === 'OBSERVADO' ? (
                               <div className="flex items-start gap-1 text-red-600 bg-red-50 p-1 rounded">
                                 <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
-                                <span className="text-[10px] leading-tight">{typeof e.anomalies === 'string' ? e.anomalies : JSON.stringify(e.anomalies)}</span>
+                                <span className="text-[10px] leading-tight">{e.description}</span>
                               </div>
                             ) : (
                               <span className="text-xs text-slate-400">Sin alertas</span>
@@ -284,13 +296,13 @@ export default function LiquidacionesPage() {
 
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
               <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg font-medium">Cerrar</button>
-              {selectedFund.status !== 'LIQUIDADO' && (
+              {selectedDispatch.status !== 'LIQUIDADO' && (
                 <button 
                   type="button" 
-                  onClick={handleCloseFund}
+                  onClick={handleCloseDispatch}
                   className="px-4 py-2 bg-[#002855] text-white rounded-lg font-medium hover:bg-[#003566] flex items-center gap-2"
                 >
-                  <CheckCircle2 className="w-4 h-4" /> Aprobar y Liquidar Fondo
+                  <CheckCircle2 className="w-4 h-4" /> Aprobar y Liquidar Despacho
                 </button>
               )}
             </div>

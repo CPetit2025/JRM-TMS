@@ -94,7 +94,11 @@ export default function ProveedoresPage() {
   const filtered = providers.filter(p => 
     p.business_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
     p.ruc?.includes(searchTerm)
-  )
+  ).sort((a, b) => {
+    const slaA = a.sla_rating || 0;
+    const slaB = b.sla_rating || 0;
+    return slaB - slaA;
+  })
 
   return (
     <div className="p-4 max-w-7xl mx-auto space-y-6">
@@ -140,6 +144,8 @@ export default function ProveedoresPage() {
                 <th className="px-6 py-4">Razón Social</th>
                 <th className="px-6 py-4">Especialidad</th>
                 <th className="px-6 py-4">Contacto</th>
+                <th className="px-6 py-4">SLA (%)</th>
+                <th className="px-6 py-4">T. Respuesta</th>
                 <th className="px-6 py-4">Estado</th>
                 {isAdmin && <th className="px-6 py-4 text-right">Acciones</th>}
               </tr>
@@ -147,11 +153,11 @@ export default function ProveedoresPage() {
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-500">Cargando...</td>
+                  <td colSpan={8} className="px-6 py-8 text-center text-slate-500">Cargando...</td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-500">No se encontraron proveedores.</td>
+                  <td colSpan={8} className="px-6 py-8 text-center text-slate-500">No se encontraron proveedores.</td>
                 </tr>
               ) : (
                 filtered.map(p => (
@@ -165,6 +171,18 @@ export default function ProveedoresPage() {
                         <Phone className="w-3 h-3" />
                         {p.contact_phone || '-'}
                       </div>
+                    </td>
+                    <td className="px-6 py-4 font-semibold text-slate-700">
+                      <span className={`px-2 py-1 rounded-md text-xs ${
+                        (p.sla_rating >= 90) ? 'bg-green-100 text-green-700' :
+                        (p.sla_rating >= 70) ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {p.sla_rating ? `${Number(p.sla_rating).toFixed(0)}%` : 'N/A'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-slate-600 text-sm">
+                      {p.avg_response_time_hours ? `${Number(p.avg_response_time_hours).toFixed(1)}h` : 'N/A'}
                     </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${

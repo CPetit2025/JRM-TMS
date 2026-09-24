@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 
 import { createClient } from '@/lib/supabase/client'
 import { useActiveTrip } from '@/contexts/ActiveTripContext'
+import { db } from '@/lib/offline/db'
 
 export default function ChecklistPage() {
   const router = useRouter()
@@ -142,39 +143,64 @@ export default function ChecklistPage() {
       return
     }
 
-    if (!dispatchId || !driverId || !gps || !locationValid) {
-      toast.error('Falta una ruta asignada o una ubicaciÃ³n validada.')
+    if (!dispatchId || !driverId || !gps || (!locationValid && navigator.onLine)) {
+      toast.error('Falta una ruta asignada o una ubicación validada.')
       return
     }
     setSubmitting(true)
+
+    if (!navigator.onLine) {
+      try {
+        await db.checklists.add({
+          dispatch_id: dispatchId,
+          vehicle_plate: vehiclePlate || '',
+          driver_id: driverId,
+          odometer: Number(checklist.odometro),
+          checklist_data: checklist,
+          photo_blob: photoFile || undefined,
+          location: gps || {lat: 0, lon: 0},
+          synced: 0,
+          created_at: new Date().toISOString()
+        });
+        toast.success('Checklist guardado sin conexión.');
+        localStorage.removeItem('jrm_checklist_state');
+        router.push('/app/ruta');
+      } catch (err) {
+        toast.error('Error guardando offline.');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     try {
       const { data: userData } = await supabase.auth.getUser()
-      if (!userData.user) throw new Error('SesióÃ³n expirada')
+      if (!userData.user) throw new Error('Sesión expirada')
       const filePath = `${userData.user.id}/${dispatchId}/checklist/${crypto.randomUUID()}-${photoFile.name}`
       const { error: uploadError } = await supabase.storage.from('driver_evidence')
         .upload(filePath, photoFile, { upsert: false, contentType: photoFile.type })
       if (uploadError) throw uploadError
-      const { error: saveError } = await supabase.from('driver_checklists').insert({
-        dispatch_id: dispatchId, driver_id: driverId, vehicle_plate: vehiclePlate,
-        checklist_data: checklist, photo_url: filePath,
-        location_lat: gps.lat, location_lon: gps.lon,
-        is_approved: Object.entries(checklist).filter(([key]) => key !== 'observaciones' && key !== 'odometro').every(([, value]) => value === 'OK')
-      })
-      if (saveError) {
-        await supabase.storage.from('driver_evidence').remove([filePath])
-        throw saveError
+
+      const checklistPayload = {
+        ...checklist,
+        photo_url: filePath
       }
 
-      const { error: odoError } = await supabase.rpc('record_odometer_reading', {
+      const { data, error: saveError } = await supabase.rpc('submit_pre_route_checklist', {
+        p_dispatch_id: dispatchId,
         p_vehicle_plate: vehiclePlate,
-        p_odometer_value: Number(checklist.odometro),
-        p_photo_url: filePath,
-        p_source_event: 'INICIO_RUTA',
-        p_dispatch_id: dispatchId
+        p_driver_id: driverId,
+        p_odometer: Number(checklist.odometro),
+        p_checklist_data: checklistPayload,
+        p_location: gps
       })
-      if (odoError) console.warn('Error odometro:', odoError)
+
+      if (saveError || !data?.success) {
+        await supabase.storage.from('driver_evidence').remove([filePath])
+        throw saveError || new Error(data?.error || data?.message || 'Error guardando checklist')
+      }
+
       localStorage.removeItem('jrm_checklist_state')
-      toast.success('Checklist y fotografÃ­a guardados.')
+      toast.success('Checklist y fotografía guardados.')
       await refresh()
       router.push('/app/ruta')
     } catch (error) {

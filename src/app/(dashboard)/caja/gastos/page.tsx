@@ -93,25 +93,18 @@ export default function GastosMobilePage() {
     }
   }
 
+  // Removing cash funds as it's deprecated in favor of dispatches
   const fetchMyFunds = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('cash_funds')
-        .select('id, code, amount, currency, status')
-        .eq('received_by', user?.id)
-        .in('status', ['ENTREGADO', 'PARCIALMENTE_LIQUIDADO', 'PENDIENTE_LIQUIDACION'])
-      
-      if (!error && data) setFunds(data)
-    } catch (err) {}
+    setFunds([])
   }
 
   const fetchHistory = async () => {
     setLoadingHistory(true)
     try {
       const { data, error } = await supabase
-        .from('expense_records')
-        .select('*')
-        .eq('reported_by', user?.id)
+        .from('dispatch_expenses')
+        .select('*, dispatch:dispatches(dispatch_number)')
+        .eq('created_by', user?.id)
         .order('created_at', { ascending: false })
       
       if (!error && data) setHistory(data)
@@ -169,21 +162,8 @@ export default function GastosMobilePage() {
 
   useEffect(() => {
     const checkDuplicate = async () => {
-      if (form.provider_ruc && form.document_type && form.document_serial && form.document_number) {
-        const { data, error } = await supabase.rpc('check_expense_duplicate', {
-          p_ruc: form.provider_ruc,
-          p_type: form.document_type,
-          p_serial: form.document_serial,
-          p_number: form.document_number
-        })
-        if (!error && data === true) {
-          setDuplicateWarning(true)
-        } else {
-          setDuplicateWarning(false)
-        }
-      } else {
-        setDuplicateWarning(false)
-      }
+      // Duplication check ignored for now as schema changed
+      setDuplicateWarning(false)
     }
     const timeoutId = setTimeout(checkDuplicate, 500)
     return () => clearTimeout(timeoutId)
@@ -208,27 +188,22 @@ export default function GastosMobilePage() {
         }
       }
 
-      const payload = {
-        cash_fund_id: form.cash_fund_id || null,
-        category: form.category,
-        provider_ruc: form.provider_ruc,
-        provider_name: form.provider_name,
-        document_type: form.document_type,
-        document_serial: form.document_serial,
-        document_number: form.document_number,
-        description: form.description,
-        total_amount: parseFloat(form.total_amount),
-        evidence_original_url: evidenceUrl,
-        reported_by: user?.id,
-        ocr_confidence_score: ocrData ? 85.0 : null,
-        status: 'BORRADOR',
-        trip_id: selectedTrip?.id || null,
-        vehicle_plate: selectedTrip?.vehicle_plate || null,
-        transport_request_id: form.transport_request_id || null,
-        is_billable: form.is_billable
+      if (!selectedTrip?.id) {
+        throw new Error('Debe seleccionar un despacho activo.')
       }
 
-      const { data: newExpense, error } = await supabase.from('expense_records').insert([payload]).select().single()
+      const payload = {
+        dispatch_id: selectedTrip.id,
+        driver_id: selectedTrip.driver_id || user?.id,
+        expense_type: form.category,
+        amount: parseFloat(form.total_amount),
+        description: `Comprobante: ${form.document_type} ${form.document_serial}-${form.document_number} | Prov: ${form.provider_ruc} ${form.provider_name} | Refacturar: ${form.is_billable ? 'Sí' : 'No'} | Sustento: ${form.description}`,
+        receipt_url: evidenceUrl,
+        status: 'PENDIENTE',
+        created_by: user?.id
+      }
+
+      const { data: newExpense, error } = await supabase.from('dispatch_expenses').insert([payload]).select().single()
       if (error) throw error
 
       if (createIncidence && selectedTrip?.vehicle_plate) {
@@ -302,8 +277,8 @@ export default function GastosMobilePage() {
               
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Vincular a un Despacho Activo (Opcional)</label>
-                <select value={selectedTrip?.id || ''} onChange={e => handleTripChange(e.target.value)} className="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50 text-sm">
-                  <option value="">Costo Administrativo (Sin viaje)</option>
+                <select required value={selectedTrip?.id || ''} onChange={e => handleTripChange(e.target.value)} className="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50 text-sm">
+                  <option value="">-- Seleccione un Despacho --</option>
                   {activeTrips.map(t => (
                     <option key={t.id} value={t.id}>{t.dispatch_number} (Placa: {t.vehicle_plate || 'Sin Placa'})</option>
                   ))}
@@ -379,13 +354,7 @@ export default function GastosMobilePage() {
                 </div>
               )}
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Cargar a Fondo de Caja (Opcional)</label>
-                <select value={form.cash_fund_id} onChange={e => setForm({...form, cash_fund_id: e.target.value})} className="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50 text-sm">
-                  <option value="">Ninguno (Reembolso / Caja General)</option>
-                  {funds.map(f => <option key={f.id} value={f.id}>{f.code} - {formatMoney(f.amount, f.currency)}</option>)}
-                </select>
-              </div>
+              {/* Fund logic removed as deprecated */}
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Categoría de Gasto *</label>
@@ -487,12 +456,11 @@ export default function GastosMobilePage() {
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="font-bold text-slate-800 text-sm">{gasto.category}</p>
-                        {gasto.is_billable && <span className="bg-amber-100 text-amber-700 text-[9px] px-1.5 py-0.5 rounded font-bold">REFACTURAR</span>}
+                        <p className="font-bold text-slate-800 text-sm">{gasto.expense_type}</p>
                       </div>
-                      <p className="text-[10px] text-slate-400 mt-0.5">{new Date(gasto.created_at).toLocaleDateString()}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{new Date(gasto.created_at).toLocaleDateString()} - {gasto.dispatch?.dispatch_number}</p>
                       <span className={`inline-block mt-1 px-2 py-0.5 text-[9px] font-bold rounded uppercase ${
-                        gasto.status === 'BORRADOR' ? 'bg-slate-100 text-slate-600' :
+                        gasto.status === 'BORRADOR' || gasto.status === 'PENDIENTE' ? 'bg-slate-100 text-slate-600' :
                         gasto.status === 'EN_REVISION' ? 'bg-amber-100 text-amber-700' :
                         gasto.status === 'APROBADO' ? 'bg-emerald-100 text-emerald-700' :
                         'bg-red-100 text-red-700'
@@ -502,7 +470,7 @@ export default function GastosMobilePage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-black text-lg text-[#002855]">{formatMoney(gasto.total_amount)}</p>
+                    <p className="font-black text-lg text-[#002855]">{formatMoney(gasto.amount)}</p>
                   </div>
                 </div>
               ))

@@ -27,6 +27,7 @@ interface Dispatch {
   scheduled_departure: string
   dispatch_requests?: DispatchRequest[]
   dispatch_events?: { event_type: string, description: string, created_at: string, created_by: string }[]
+  maintenance_alerts?: { id: string, severity: string, description: string, status: string }[]
   contract_codes?: string[]
   responsible_names?: string[]
 }
@@ -146,7 +147,8 @@ Equipo JRM TMS`
     return [...events].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
   }
 
-  const hasAlertEvent = (events: any[]) => {
+  const hasAlertEvent = (events: any[], maintenance_alerts?: any[]) => {
+    if (maintenance_alerts && maintenance_alerts.length > 0) return true;
     if (!events || events.length === 0) return false;
     // Buscamos si en las últimas 12 horas hubo una alerta que no haya sido resuelta (para simplificar, si el último evento es alerta)
     const latest = getLatestEvent(events);
@@ -177,7 +179,7 @@ Equipo JRM TMS`
       if (d.status === 'EN_CURSO' || d.status === 'EN RUTA' || d.status === 'RETORNO') kpiEnCurso++
       if ((d.status === 'ENTREGADO' || d.status === 'LIQUIDADO') && d.scheduled_departure.startsWith(todayStr)) kpiCompletadosHoy++
       
-      const isAlert = hasAlertEvent(d.dispatch_events || [])
+      const isAlert = hasAlertEvent(d.dispatch_events || [], d.maintenance_alerts)
       if (isAlert && d.status !== 'LIQUIDADO' && d.status !== 'ENTREGADO') kpiAlertas++
 
       // Apply Filters
@@ -351,7 +353,8 @@ Equipo JRM TMS`
               ) : (
                 filteredDispatches.map((dispatch) => {
                   const latestEvent = getLatestEvent(dispatch.dispatch_events || []);
-                  const isAlert = latestEvent && (latestEvent.event_type === 'INCIDENCIA' || latestEvent.event_type === 'RETRASO' || latestEvent.event_type === 'DESVIO');
+                  const isMaintenanceAlert = dispatch.maintenance_alerts && dispatch.maintenance_alerts.length > 0;
+                  const isAlert = isMaintenanceAlert || (latestEvent && (latestEvent.event_type === 'INCIDENCIA' || latestEvent.event_type === 'RETRASO' || latestEvent.event_type === 'DESVIO'));
 
                   return (
                     <tr 
@@ -402,6 +405,12 @@ Equipo JRM TMS`
                               <Truck className="w-3.5 h-3.5 text-slate-600" />
                             </div>
                             {dispatch.vehicle_plate}
+                            {isMaintenanceAlert && (
+                              <div className="flex items-center gap-1 px-1.5 py-0.5 bg-red-100 border border-red-200 rounded text-red-700" title="Falla Vehicular">
+                                <AlertTriangle className="w-3 h-3" />
+                                <span className="text-[10px] font-bold uppercase">Falla</span>
+                              </div>
+                            )}
                           </div>
                           <span className="text-xs font-medium text-slate-500 ml-8">{dispatch.driver_name}</span>
                         </div>
@@ -549,6 +558,40 @@ Equipo JRM TMS`
                     })}
                   </div>
                 )}
+
+                {/* Maintenance Alerts Section */}
+                <div className="mt-8 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                    <h3 className="font-bold text-slate-800 text-sm">Alertas de Mantenimiento</h3>
+                    <span className="bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-md text-xs font-bold border border-slate-200">
+                      {selectedDispatch.maintenance_alerts?.length || 0} Pendientes
+                    </span>
+                  </div>
+                  
+                  {(!selectedDispatch.maintenance_alerts || selectedDispatch.maintenance_alerts.length === 0) ? (
+                    <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                      El vehículo se encuentra en óptimas condiciones.
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {selectedDispatch.maintenance_alerts.map((alert, idx) => (
+                        <div key={idx} className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm relative overflow-hidden">
+                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div>
+                          <div className="flex justify-between items-start mb-2 pl-2">
+                            <div className="flex items-center gap-2">
+                              <AlertTriangle className="w-4 h-4 text-red-600" />
+                              <span className="font-bold text-red-800 text-sm">{alert.severity}</span>
+                            </div>
+                            <span className="text-[10px] bg-red-100 text-red-700 px-2.5 py-1 rounded-md font-bold uppercase tracking-wide border border-red-200">
+                              {alert.status}
+                            </span>
+                          </div>
+                          <p className="text-sm font-medium text-red-900 pl-2 mt-1">{alert.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

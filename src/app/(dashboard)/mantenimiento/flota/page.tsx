@@ -64,7 +64,14 @@ export default function FlotaPage() {
     volume_capacity: 0,
     status: 'DISPONIBLE',
     soat_expiration: '',
-    technical_review_expiration: ''
+    technical_review_expiration: '',
+    internal_code: '',
+    serial_number: '',
+    criticality: 'MEDIA',
+    ownership_status: 'PROPIO',
+    current_hours: 0,
+    responsible_id: '',
+    current_location: ''
   })
 
   const [newDriver, setNewDriver] = useState({
@@ -135,7 +142,8 @@ export default function FlotaPage() {
       const payload = {
         ...newVehicle,
         soat_expiration: newVehicle.soat_expiration || null,
-        technical_review_expiration: newVehicle.technical_review_expiration || null
+        technical_review_expiration: newVehicle.technical_review_expiration || null,
+        responsible_id: newVehicle.responsible_id || null
       }
 
       if (editingVehicleId) {
@@ -175,7 +183,14 @@ export default function FlotaPage() {
       volume_capacity: v.volume_capacity,
       status: v.status,
       soat_expiration: v.soat_expiration || '',
-      technical_review_expiration: v.technical_review_expiration || ''
+      technical_review_expiration: v.technical_review_expiration || '',
+      internal_code: v.internal_code || '',
+      serial_number: v.serial_number || '',
+      criticality: v.criticality || 'MEDIA',
+      ownership_status: v.ownership_status || 'PROPIO',
+      current_hours: v.current_hours || 0,
+      responsible_id: v.responsible_id || '',
+      current_location: v.current_location || ''
     })
     setIsVehicleModalOpen(true)
   }
@@ -396,7 +411,14 @@ export default function FlotaPage() {
                     volume_capacity: 0,
                     status: 'DISPONIBLE',
                     soat_expiration: '',
-                    technical_review_expiration: ''
+                    technical_review_expiration: '',
+                    internal_code: '',
+                    serial_number: '',
+                    criticality: 'MEDIA',
+                    ownership_status: 'PROPIO',
+                    current_hours: 0,
+                    responsible_id: '',
+                    current_location: ''
                   })
                   setIsVehicleModalOpen(true)
                 }}
@@ -839,12 +861,68 @@ export default function FlotaPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Código Interno</label>
+              <input type="text" className="w-full px-3 py-2 border border-slate-300 rounded-lg uppercase text-slate-900 focus:ring-2 focus:ring-[#002855] outline-none" value={newVehicle.internal_code} onChange={e => setNewVehicle({...newVehicle, internal_code: e.target.value.toUpperCase()})} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Número de Serie (VIN)</label>
+              <input type="text" className="w-full px-3 py-2 border border-slate-300 rounded-lg uppercase text-slate-900 focus:ring-2 focus:ring-[#002855] outline-none" value={newVehicle.serial_number} onChange={e => setNewVehicle({...newVehicle, serial_number: e.target.value.toUpperCase()})} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Criticidad</label>
+              <select className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-[#002855] outline-none" value={newVehicle.criticality} onChange={e => setNewVehicle({...newVehicle, criticality: e.target.value})}>
+                <option value="BAJA">Baja</option>
+                <option value="MEDIA">Media</option>
+                <option value="ALTA">Alta</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Estado de Propiedad</label>
+              <select className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-[#002855] outline-none" value={newVehicle.ownership_status} onChange={e => setNewVehicle({...newVehicle, ownership_status: e.target.value})}>
+                <option value="PROPIO">Propio</option>
+                <option value="ALQUILADO">Alquilado</option>
+                <option value="LEASING">Leasing</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Horómetro/Kilometraje Actual</label>
+              <input type="number" step="1" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-[#002855] outline-none" value={newVehicle.current_hours} onChange={e => setNewVehicle({...newVehicle, current_hours: Number(e.target.value)})} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Ubicación Actual</label>
+              <input type="text" className="w-full px-3 py-2 border border-slate-300 rounded-lg uppercase text-slate-900 focus:ring-2 focus:ring-[#002855] outline-none" value={newVehicle.current_location} onChange={e => setNewVehicle({...newVehicle, current_location: e.target.value.toUpperCase()})} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Vencimiento SOAT</label>
               <input type="date" value={newVehicle.soat_expiration} onChange={e => setNewVehicle({...newVehicle, soat_expiration: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Vencimiento Rev. Técnica</label>
               <input type="date" value={newVehicle.technical_review_expiration} onChange={e => setNewVehicle({...newVehicle, technical_review_expiration: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Conductor/Responsable Asignado</label>
+              <select
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-[#002855] outline-none"
+                value={newVehicle.responsible_id}
+                onChange={(e) => setNewVehicle({...newVehicle, responsible_id: e.target.value})}
+              >
+                <option value="">Sin asignar</option>
+                {drivers.map(d => (
+                  <option key={d.id} value={d.id}>{d.first_name} {d.last_name}</option>
+                ))}
+              </select>
             </div>
           </div>
             <div className="pt-4 flex justify-end gap-2 border-t mt-4">

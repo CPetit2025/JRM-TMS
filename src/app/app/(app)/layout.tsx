@@ -26,8 +26,11 @@ function OperativeShell({ children, onLogout }: { children: React.ReactNode; onL
   </NotificationProvider>
 }
 
+import { useSync } from '@/lib/offline/useSync'
+
 export default function OperativeLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
+  useSync()
   const handleLogout = async () => {
     if (nativeRouteTracker) await nativeRouteTracker.stop()
     localStorage.removeItem('jrm_driver')

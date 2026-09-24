@@ -17,6 +17,7 @@ export default function DriverFailuresPage() {
   const [severity, setSeverity] = useState('MEDIA')
   const [canContinue, setCanContinue] = useState<boolean | null>(null)
   const [description, setDescription] = useState('')
+  const [odometer, setOdometer] = useState('')
   const [photos, setPhotos] = useState<File[]>([])
   const [audio, setAudio] = useState<File | null>(null)
   const [processing, setProcessing] = useState(false)
@@ -25,7 +26,7 @@ export default function DriverFailuresPage() {
   useEffect(() => { if (trip?.vehicle_plate) setPlate(trip.vehicle_plate) }, [trip?.vehicle_plate])
   useEffect(() => {
     if (!driver) return
-    void supabase.from('vehicle_maintenance_records').select('id, vehicle_plate, description, status, created_at')
+    void supabase.from('maintenance_requests').select('id, vehicle_plate, description, status, created_at')
       .eq('driver_id', driver.id).order('created_at', { ascending: false }).limit(5)
       .then(({ data }) => setRecent(data || []))
   }, [driver, supabase])
@@ -36,6 +37,7 @@ export default function DriverFailuresPage() {
     if (!plate.trim()) return toast.error('No existe una unidad asociada.')
     if (!description.trim()) return toast.error('Describe la falla.')
     if (canContinue === null) return toast.error('Indica si la unidad puede continuar operando.')
+    if (!odometer.trim() || isNaN(Number(odometer))) return toast.error('Ingresa el odómetro actual.')
     setProcessing(true)
     const operationId = crypto.randomUUID()
     try {
@@ -56,19 +58,29 @@ export default function DriverFailuresPage() {
         const { error } = await supabase.storage.from('driver_evidence').upload(audioPath, audio, { contentType: audio.type, upsert: false })
         if (error) throw error
       }
-      const { error } = await supabase.from('vehicle_maintenance_records').insert({
-        vehicle_plate: plate.trim().toUpperCase(), record_type: 'FALLA_REPORTADA', status: 'PENDIENTE',
-        description: description.trim(), reported_by: user.id, driver_id: driver.id,
-        dispatch_id: trip?.id || null, failure_category: category, severity,
-        can_continue: canContinue, latitude: position?.coords.latitude || null,
-        longitude: position?.coords.longitude || null, evidence_paths: paths,
-        audio_path: audioPath, client_operation_id: operationId,
+      
+      const currentLocation = position ? { lat: position.coords.latitude, lon: position.coords.longitude } : null;
+      
+      const { error } = await supabase.rpc('submit_maintenance_request', {
+        p_vehicle_plate: plate.trim().toUpperCase(),
+        p_driver_id: driver.id,
+        p_dispatch_id: trip?.id || null,
+        p_description: description.trim(),
+        p_severity: severity || 'MEDIA',
+        p_odometer: Number(odometer),
+        p_photo_url: paths[0] || null,
+        p_location: currentLocation
       })
-      if (error) throw error
+      
+      if (error) {
+        if (paths.length > 0) await supabase.storage.from('driver_evidence').remove(paths)
+        if (audioPath) await supabase.storage.from('driver_evidence').remove([audioPath])
+        throw error
+      }
       toast.success('Falla registrada y enviada para evaluación.')
-      setDescription(''); setPhotos([]); setAudio(null); setCanContinue(null)
+      setDescription(''); setOdometer(''); setPhotos([]); setAudio(null); setCanContinue(null)
       await refresh()
-      const { data } = await supabase.from('vehicle_maintenance_records')
+      const { data } = await supabase.from('maintenance_requests')
         .select('id, vehicle_plate, description, status, created_at').eq('driver_id', driver.id)
         .order('created_at', { ascending: false }).limit(5)
       setRecent(data || [])
@@ -85,6 +97,7 @@ export default function DriverFailuresPage() {
         <label className="text-xs font-bold text-slate-600">Sistema<select value={category} onChange={event => setCategory(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm">{categories.map(value => <option key={value}>{value}</option>)}</select></label>
         <label className="text-xs font-bold text-slate-600">Severidad<select value={severity} onChange={event => setSeverity(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm">{severities.map(value => <option key={value}>{value}</option>)}</select></label>
       </div>
+      <label className="block text-xs font-bold text-slate-600">Odómetro<input type="number" value={odometer} onChange={event => setOdometer(event.target.value)} placeholder="Ej: 125000" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" /></label>
       <label className="block text-xs font-bold text-slate-600">Descripción<textarea rows={4} value={description} onChange={event => setDescription(event.target.value)} placeholder="Describe los síntomas observados" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" /></label>
       <fieldset><legend className="text-xs font-bold text-slate-600">¿Puede continuar operando?</legend><div className="mt-2 grid grid-cols-2 gap-2">{[true, false].map(value => <button key={String(value)} type="button" onClick={() => setCanContinue(value)} className={`rounded-xl border px-3 py-3 font-bold ${canContinue === value ? 'border-[#002855] bg-blue-50 text-[#002855]' : 'border-slate-200'}`}>{value ? 'Sí' : 'No'}</button>)}</div></fieldset>
       <div className="grid grid-cols-2 gap-2">

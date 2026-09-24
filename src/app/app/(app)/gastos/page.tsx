@@ -5,11 +5,11 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useActiveTrip } from '@/contexts/ActiveTripContext'
-
+import { db } from '@/lib/offline/db'
 export default function GastosPage() {
   const [activeTab, setActiveTab] = useState<'gastos' | 'documentos'>('gastos')
   const [gastos, setGastos] = useState<{ tipo: string; monto: string; photo: string | null; status: string; id?: string }[]>([])
-  const [gastoForm, setGastoForm] = useState({ tipo: 'PEAJE', monto: '' })
+  const [gastoForm, setGastoForm] = useState({ tipo: 'PEAJE', monto: '', galones: '', odometro: '' })
   const [gastoPhoto, setGastoPhoto] = useState<string | null>(null)
   const [gastoFile, setGastoFile] = useState<File | null>(null)
   const [isExtracting, setIsExtracting] = useState(false)
@@ -74,9 +74,9 @@ export default function GastosPage() {
     if (!dispatch) return toast.error('No hay despacho activo')
 
     setIsSubmitting(true)
+    let receipt_url: string | null = null
     try {
       if (!user || !driver) throw new Error('Perfil de conductor no disponible')
-      let receipt_url: string | null = null
       if (gastoFile) {
         const filePath = `${user.id}/${dispatch.id}/gastos/${crypto.randomUUID()}-${gastoFile.name}`
         const { error: upErr } = await supabase.storage.from('driver_evidence').upload(filePath, gastoFile, { contentType: gastoFile.type })
@@ -86,19 +86,67 @@ export default function GastosPage() {
       const position = await new Promise<GeolocationPosition | null>(resolve => navigator.geolocation
         ? navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), { enableHighAccuracy: true, timeout: 8000 }) : resolve(null))
       const operationId = crypto.randomUUID()
-      const { data: inserted, error } = await supabase.from('dispatch_expenses')
-        .insert([{ dispatch_id: dispatch.id, driver_id: driver.id, expense_type: gastoForm.tipo,
-          amount: Number(gastoForm.monto), description: `Gasto - ${gastoForm.tipo}`, receipt_url,
-          status: 'PENDIENTE', created_by: user.id, latitude: position?.coords.latitude || null,
-          longitude: position?.coords.longitude || null, client_operation_id: operationId }])
-        .select().single()
-      if (error) throw error
-      setGastos([{ ...gastoForm, photo: receipt_url, status: 'PENDIENTE', id: inserted.id }, ...gastos])
-      setGastoForm({ tipo: 'PEAJE', monto: '' })
+      
+      if (!navigator.onLine) {
+        await db.expenses.add({
+          dispatch_id: dispatch.id,
+          driver_id: driver.id,
+          expense_type: gastoForm.tipo,
+          amount: Number(gastoForm.monto),
+          gallons: gastoForm.galones ? Number(gastoForm.galones) : undefined,
+          odometer: gastoForm.odometro ? Number(gastoForm.odometro) : undefined,
+          receipt_blob: gastoFile || undefined,
+          description: `Gasto - ${gastoForm.tipo}`,
+          client_operation_id: operationId,
+          synced: 0,
+          created_at: new Date().toISOString()
+        });
+        toast.success('Gasto guardado sin conexión. Se sincronizará al recuperar el internet.');
+        let photo_url = null;
+        if (gastoFile) photo_url = URL.createObjectURL(gastoFile);
+        setGastos([{ tipo: gastoForm.tipo, monto: gastoForm.monto, photo: photo_url, status: 'PENDIENTE' }, ...gastos]);
+        
+        setGastoForm({ tipo: 'PEAJE', monto: '', galones: '', odometro: '' });
+        setGastoPhoto(null); setGastoFile(null);
+        setIsSubmitting(false);
+        return;
+      }
+      if (gastoForm.tipo === 'COMBUSTIBLE') {
+        if (!gastoForm.galones || isNaN(Number(gastoForm.galones))) throw new Error('Ingresa los galones válidos')
+        if (!gastoForm.odometro || isNaN(Number(gastoForm.odometro))) throw new Error('Ingresa el odómetro válido')
+        
+        const { error } = await supabase.rpc('register_fuel_expense', {
+          p_dispatch_id: dispatch.id,
+          p_driver_id: driver.id,
+          p_amount: Number(gastoForm.monto),
+          p_gallons: Number(gastoForm.galones),
+          p_odometer: Number(gastoForm.odometro),
+          p_receipt_url: receipt_url,
+          p_description: `Gasto - ${gastoForm.tipo}`,
+          p_client_operation_id: operationId
+        })
+        if (error) throw error
+        
+        await fetchExpenses(dispatch.id)
+      } else {
+        const { data: inserted, error } = await supabase.from('dispatch_expenses')
+          .insert([{ dispatch_id: dispatch.id, driver_id: driver.id, expense_type: gastoForm.tipo,
+            amount: Number(gastoForm.monto), description: `Gasto - ${gastoForm.tipo}`, receipt_url,
+            status: 'PENDIENTE', created_by: user.id, latitude: position?.coords.latitude || null,
+            longitude: position?.coords.longitude || null, client_operation_id: operationId }])
+          .select().single()
+        if (error) throw error
+        setGastos([{ tipo: gastoForm.tipo, monto: gastoForm.monto, photo: receipt_url, status: 'PENDIENTE', id: inserted.id }, ...gastos])
+      }
+      
+      setGastoForm({ tipo: 'PEAJE', monto: '', galones: '', odometro: '' })
       setGastoPhoto(null); setGastoFile(null)
       toast.success('Gasto registrado correctamente')
       await refresh()
     } catch (err: any) {
+      if (receipt_url) {
+        await supabase.storage.from('driver_evidence').remove([receipt_url])
+      }
       toast.error('Error: ' + err.message)
     } finally {
       setIsSubmitting(false)
@@ -206,6 +254,32 @@ export default function GastosPage() {
                     />
                   </div>
                 </div>
+
+                {gastoForm.tipo === 'COMBUSTIBLE' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Galones</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        className="w-full px-3 py-3 rounded-xl border-2 border-slate-200 focus:border-[#002855] outline-none text-slate-900 text-sm bg-slate-50 transition-colors font-bold"
+                        value={gastoForm.galones || ''}
+                        onChange={(e) => setGastoForm({ ...gastoForm, galones: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Odómetro</label>
+                      <input
+                        type="number"
+                        placeholder="0"
+                        className="w-full px-3 py-3 rounded-xl border-2 border-slate-200 focus:border-[#002855] outline-none text-slate-900 text-sm bg-slate-50 transition-colors font-bold"
+                        value={gastoForm.odometro || ''}
+                        onChange={(e) => setGastoForm({ ...gastoForm, odometro: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* Photo area */}
                 {gastoPhoto ? (

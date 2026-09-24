@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Search, Plus, Calendar, Activity, Edit2, Trash2, Truck, Wrench, AlertTriangle, Clock, Filter } from 'lucide-react'
+import { Search, Plus, Calendar, Activity, Edit2, Trash2, AlertTriangle, Clock } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 import Link from 'next/link'
@@ -22,25 +22,24 @@ export default function MaintenancePlansPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState({
     name: '',
-    vehicle_type: 'CAMION',
-    activity_description: '',
+    vehicle_plate: '',
+    description: '',
     frequency_km: '',
     frequency_days: '',
-    criticality: 'MEDIA',
-    responsible_role: 'MECANICO',
-    tasks: [] as string[]
+    frequency_hours: '',
+    standard_tasks: [] as any[],
+    expected_parts: [] as any[]
   })
 
   const [searchTerm, setSearchTerm] = useState('')
-  const [showFilters, setShowFilters] = useState(false)
-  const [filterCriticality, setFilterCriticality] = useState('TODOS')
+  const [filterStatus, setFilterStatus] = useState('TODOS')
 
   const filteredProjections = projections.filter((proj: any) => {
     const matchSearch = searchTerm === '' || 
-      proj.plate?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      proj.vehicle_plate?.toLowerCase().includes(searchTerm.toLowerCase()) || 
       proj.plan_name?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchCriticality = filterCriticality === 'TODOS' || proj.criticality === filterCriticality;
-    return matchSearch && matchCriticality;
+    const matchStatus = filterStatus === 'TODOS' || proj.alert_status === filterStatus;
+    return matchSearch && matchStatus;
   })
 
   useEffect(() => {
@@ -57,67 +56,39 @@ export default function MaintenancePlansPage() {
         .eq('is_active', true)
         .order('created_at', { ascending: false })
       if (pError) throw pError
-      
-      const allPlans = pData || []
-      setPlans(allPlans)
+      setPlans(pData || [])
 
       // 2. Fetch Vehicles
       const { data: vData, error: vError } = await supabase
         .from('vehicles')
-        .select('plate, type, average_daily_km, status')
+        .select('plate, type, status, current_odometer, current_hours')
       if (vError) throw vError
-      
       setVehicles(vData || [])
 
-      // 3. Generar Proyección
-      // Para esta fase, la proyección es una estimación en base al Promedio de KM Diario del vehículo
-      // En una versión más avanzada, se cruza con el ultimo registro de la OT.
-      const now = new Date()
-      const generatedProjections: any[] = []
-
-      ;(vData || []).forEach(v => {
-        // Encontrar planes aplicables al tipo de vehiculo
-        const applicablePlans = allPlans.filter(p => p.vehicle_type === v.type)
-        
-        applicablePlans.forEach(plan => {
-          let estimatedDays = 999
-          
-          if (plan.frequency_days > 0) {
-            estimatedDays = plan.frequency_days
-          }
-          
-          if (plan.frequency_km > 0 && v.average_daily_km > 0) {
-            const daysByKm = Math.ceil(plan.frequency_km / v.average_daily_km)
-            if (daysByKm < estimatedDays) estimatedDays = daysByKm
-          }
-
-          // Para demo, simulamos que el ultimo mantenimiento fue hace unos dias random (entre 10 y 60 dias)
-          // Esto porque no tenemos aun el trigger que actualice 'last_maintenance_date' en la tabla vehicles
-          const seed = v.plate.charCodeAt(0) + v.plate.charCodeAt(v.plate.length - 1) + plan.id.charCodeAt(0)
-          const daysSinceLast = seed % 60
-          
-          const daysRemaining = estimatedDays - daysSinceLast
-
-          generatedProjections.push({
-            id: `${v.plate}-${plan.id}`,
-            plate: v.plate,
-            vehicle_type: v.type,
-            plan_name: plan.name,
-            criticality: plan.criticality,
-            days_remaining: daysRemaining,
-            due_date: new Date(now.getTime() + (daysRemaining * 24 * 60 * 60 * 1000)).toISOString().split('T')[0]
-          })
-        })
-      })
-
-      // Ordenar por los que vencen primero
-      generatedProjections.sort((a, b) => a.days_remaining - b.days_remaining)
-      setProjections(generatedProjections)
+      // 3. Fetch Projections
+      const { data: projData, error: projError } = await supabase
+        .from('vw_maintenance_projections')
+        .select('*')
+        .order('days_remaining', { ascending: true })
+      
+      if (projError) throw projError
+      setProjections(projData || [])
 
     } catch (err: any) {
       toast.error('Error al cargar datos: ' + err.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleGenerateOT = async (planId: string) => {
+    try {
+      const { data, error } = await supabase.rpc('generate_preventive_wo', { p_plan_id: planId })
+      if (error) throw error
+      toast.success('OT Preventiva generada con éxito')
+      fetchData()
+    } catch (err: any) {
+      toast.error('Error al generar OT: ' + err.message)
     }
   }
 
@@ -127,13 +98,13 @@ export default function MaintenancePlansPage() {
     setIsSubmitting(true)
     const payload = {
       name: form.name,
-      vehicle_type: form.vehicle_type,
-      activity_description: form.activity_description,
-      frequency_km: parseInt(form.frequency_km) || 0,
-      frequency_days: parseInt(form.frequency_days) || 0,
-      criticality: form.criticality,
-      responsible_role: form.responsible_role,
-      tasks: form.tasks
+      vehicle_plate: form.vehicle_plate,
+      description: form.description,
+      frequency_km: parseInt(form.frequency_km) || null,
+      frequency_days: parseInt(form.frequency_days) || null,
+      frequency_hours: parseInt(form.frequency_hours) || null,
+      standard_tasks: form.standard_tasks,
+      expected_parts: form.expected_parts
     }
     try {
       if (editingId) {
@@ -155,27 +126,27 @@ export default function MaintenancePlansPage() {
   const handleEdit = (plan: any) => {
     setForm({
       name: plan.name,
-      vehicle_type: plan.vehicle_type,
-      activity_description: plan.activity_description,
-      frequency_km: plan.frequency_km.toString(),
+      vehicle_plate: plan.vehicle_plate,
+      description: plan.description || '',
+      frequency_km: plan.frequency_km?.toString() || '',
       frequency_days: plan.frequency_days?.toString() || '',
-      criticality: plan.criticality,
-      responsible_role: plan.responsible_role,
-      tasks: plan.tasks || []
+      frequency_hours: plan.frequency_hours?.toString() || '',
+      standard_tasks: plan.standard_tasks || [],
+      expected_parts: plan.expected_parts || []
     })
     setEditingId(plan.id)
     setIsModalOpen(true)
   }
 
-  const addTask = () => setForm({ ...form, tasks: [...form.tasks, ''] })
+  const addTask = () => setForm({ ...form, standard_tasks: [...form.standard_tasks, { description: '', estimated_hours: 1 }] })
   const updateTask = (index: number, val: string) => {
-    const newTasks = [...form.tasks]
-    newTasks[index] = val
-    setForm({ ...form, tasks: newTasks })
+    const newTasks = [...form.standard_tasks]
+    newTasks[index].description = val
+    setForm({ ...form, standard_tasks: newTasks })
   }
   const removeTask = (index: number) => {
-    const newTasks = form.tasks.filter((_, i) => i !== index)
-    setForm({ ...form, tasks: newTasks })
+    const newTasks = form.standard_tasks.filter((_, i) => i !== index)
+    setForm({ ...form, standard_tasks: newTasks })
   }
 
   return (
@@ -191,14 +162,14 @@ export default function MaintenancePlansPage() {
       <div className="flex items-center gap-4 border-b border-slate-200">
         <button
           onClick={() => setActiveTab('proyeccion')}
-          className={`pb-3 font-semibold text-sm transition-colors relative ${activeTab === 'proyeccion' ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800'}`}
+          className={pb-3 font-semibold text-sm transition-colors relative  + (activeTab === 'proyeccion' ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800')}
         >
           Proyecciones y Alertas
           {activeTab === 'proyeccion' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-full"></span>}
         </button>
         <button
           onClick={() => setActiveTab('planes')}
-          className={`pb-3 font-semibold text-sm transition-colors relative ${activeTab === 'planes' ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800'}`}
+          className={pb-3 font-semibold text-sm transition-colors relative  + (activeTab === 'planes' ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800')}
         >
           Configurar Planes
           {activeTab === 'planes' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-full"></span>}
@@ -210,111 +181,80 @@ export default function MaintenancePlansPage() {
       ) : activeTab === 'proyeccion' ? (
         
         /* TAB: PROYECCIONES */
-        <div className="space-y-6">
-
-          {/* Filtros y Búsqueda */}
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-            <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
-              <div className="relative w-full md:w-96">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Search className="h-4 w-4 text-slate-400" />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Buscar por placa o plan..."
-                  className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#002855] focus:border-transparent transition-colors sm:text-sm text-slate-900"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors border ${showFilters ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-              >
-                <Filter className="w-4 h-4" />
-                Filtros Avanzados
-              </button>
+        <div className="space-y-4">
+          <div className="flex gap-4 mb-6">
+            <div className="flex-1 relative">
+              <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Buscar por placa o plan..." 
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
-            {showFilters && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Criticidad</label>
-                  <select
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none text-slate-900"
-                    value={filterCriticality}
-                    onChange={(e) => setFilterCriticality(e.target.value)}
-                  >
-                    <option value="TODOS">Todos</option>
-                    <option value="ALTA">Alta</option>
-                    <option value="MEDIA">Media</option>
-                    <option value="BAJA">Baja</option>
-                  </select>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3">
-            <Activity className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-bold text-amber-900 text-sm">Proyección Basada en Promedio Diario</p>
-              <p className="text-sm text-amber-800 mt-1">
-                El sistema calcula la fecha estimada del próximo mantenimiento dividiendo la <strong>Frecuencia en KM</strong> del plan entre el <strong>Promedio de KM Diario</strong> registrado en la ficha de cada unidad, cruzándolo con los días límite.
-              </p>
-            </div>
+            <select 
+              value={filterStatus}
+              onChange={e => setFilterStatus(e.target.value)}
+              className="border border-slate-200 rounded-lg px-4 py-2 bg-white text-sm"
+            >
+              <option value="TODOS">Todos los Estados</option>
+              <option value="VENCIDO">Vencido</option>
+              <option value="URGENTE">Urgente</option>
+              <option value="PRÓXIMO">Próximo</option>
+              <option value="NORMAL">Normal</option>
+            </select>
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <table className="w-full text-left text-sm text-slate-600">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="p-4 font-semibold text-slate-900">Placa (Unidad)</th>
-                  <th className="p-4 font-semibold text-slate-900">Plan Preventivo</th>
-                  <th className="p-4 font-semibold text-slate-900">Vencimiento Proyectado</th>
-                  <th className="p-4 font-semibold text-slate-900">Estado de Alerta</th>
-                  <th className="p-4 font-semibold text-slate-900 text-right">Acción</th>
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Vehículo</th>
+                  <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Plan Aplicable</th>
+                  <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Métricas Restantes</th>
+                  <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Estado</th>
+                  <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredProjections.length === 0 ? (
-                  <tr><td colSpan={5} className="p-8 text-center text-slate-500">No hay proyecciones disponibles</td></tr>
+                  <tr><td colSpan={5} className="p-8 text-center text-slate-500">No hay proyecciones que coincidan con los filtros.</td></tr>
                 ) : (
-                  filteredProjections.map((proj) => (
-                    <tr key={proj.id} className="hover:bg-slate-50">
-                      <td className="p-4">
-                        <Link href={`/mantenimiento/flota/${proj.plate}`} className="font-black text-[#002855] hover:text-blue-600 hover:underline">
-                          {proj.plate}
-                        </Link>
+                  filteredProjections.map((proj: any) => (
+                    <tr key={proj.plan_id + proj.vehicle_plate} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-4 border-b border-slate-100">
+                        <div className="font-bold text-slate-900">{proj.vehicle_plate}</div>
                       </td>
-                      <td className="p-4">
-                        <span className="font-semibold text-slate-800 block">{proj.plan_name}</span>
-                        <span className="text-xs text-slate-400">Criticidad: {proj.criticality}</span>
+                      <td className="p-4 border-b border-slate-100 text-sm font-medium text-slate-700">
+                        {proj.plan_name}
                       </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-slate-400" />
-                          <span className="font-medium text-slate-700">{proj.due_date}</span>
-                        </div>
+                      <td className="p-4 border-b border-slate-100">
+                        {proj.km_remaining !== null && (
+                          <div className="text-sm">KM: <span className="font-bold text-slate-900">{proj.km_remaining}</span></div>
+                        )}
+                        {proj.days_remaining !== null && (
+                          <div className="text-sm">Días: <span className="font-bold text-slate-900">{proj.days_remaining}</span></div>
+                        )}
+                        {proj.hours_remaining !== null && (
+                          <div className="text-sm">Horas: <span className="font-bold text-slate-900">{proj.hours_remaining}</span></div>
+                        )}
                       </td>
-                      <td className="p-4">
-                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${
-                          proj.days_remaining < 0 ? 'bg-red-100 text-red-700' :
-                          proj.days_remaining <= 15 ? 'bg-orange-100 text-orange-700' :
-                          proj.days_remaining <= 30 ? 'bg-amber-100 text-amber-700' :
-                          'bg-emerald-100 text-emerald-700'
-                        }`}>
-                          {proj.days_remaining < 0 ? `Vencido hace ${Math.abs(proj.days_remaining)} días` : 
-                           proj.days_remaining === 0 ? 'Vence HOY' : 
-                           `Faltan ${proj.days_remaining} días`}
-                        </span>
+                      <td className="p-4 border-b border-slate-100">
+                        {proj.alert_status === 'VENCIDO' && <span className="bg-red-100 text-red-700 font-bold px-2 py-1 rounded text-xs flex items-center gap-1 w-max"><AlertTriangle className="w-3 h-3"/> VENCIDO</span>}
+                        {proj.alert_status === 'URGENTE' && <span className="bg-orange-100 text-orange-700 font-bold px-2 py-1 rounded text-xs w-max block">URGENTE</span>}
+                        {proj.alert_status === 'PRÓXIMO' && <span className="bg-amber-100 text-amber-700 font-bold px-2 py-1 rounded text-xs w-max block">PRÓXIMO</span>}
+                        {proj.alert_status === 'NORMAL' && <span className="bg-emerald-100 text-emerald-700 font-bold px-2 py-1 rounded text-xs w-max block">NORMAL</span>}
                       </td>
-                      <td className="p-4 text-right">
-                        <Link 
-                          href="/mantenimiento/gestor-ot" 
-                          className="text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
-                        >
-                          Generar OT
-                        </Link>
+                      <td className="p-4 border-b border-slate-100 text-right">
+                        {(proj.alert_status === 'VENCIDO' || proj.alert_status === 'URGENTE' || proj.alert_status === 'PRÓXIMO') && (
+                          <button 
+                            onClick={() => handleGenerateOT(proj.plan_id)}
+                            className="text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            Generar OT
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -330,7 +270,7 @@ export default function MaintenancePlansPage() {
         <div className="space-y-6">
           <div className="flex justify-end">
             <button 
-              onClick={() => { setEditingId(null); setForm({ name: '', vehicle_type: 'CAMION', activity_description: '', frequency_km: '', frequency_days: '', criticality: 'MEDIA', responsible_role: 'MECANICO', tasks: [] }); setIsModalOpen(true) }}
+              onClick={() => { setEditingId(null); setForm({ name: '', vehicle_plate: '', description: '', frequency_km: '', frequency_days: '', frequency_hours: '', standard_tasks: [], expected_parts: [] }); setIsModalOpen(true) }}
               className="bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#003566] transition-colors flex items-center gap-2 text-sm"
             >
               <Plus className="w-4 h-4" /> Nuevo Plan Preventivo
@@ -347,26 +287,35 @@ export default function MaintenancePlansPage() {
                   </button>
                 </div>
                 <div className="flex gap-2 mb-4">
-                  <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded uppercase">{p.vehicle_type}</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${p.criticality === 'ALTA' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{p.criticality}</span>
+                  <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded uppercase">Placa: {p.vehicle_plate}</span>
                 </div>
                 
                 <div className="space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-slate-600">
-                    <Activity className="w-4 h-4 text-blue-500" />
-                    <span>Cada <strong>{p.frequency_km} km</strong></span>
-                  </div>
-                  <div className="flex items-center gap-2 text-slate-600">
-                    <Clock className="w-4 h-4 text-emerald-500" />
-                    <span>O cada <strong>{p.frequency_days} días</strong></span>
-                  </div>
+                  {p.frequency_km && (
+                    <div className="flex items-center gap-2 text-slate-600">
+                      <Activity className="w-4 h-4 text-blue-500" />
+                      <span>Cada <strong>{p.frequency_km} km</strong></span>
+                    </div>
+                  )}
+                  {p.frequency_days && (
+                    <div className="flex items-center gap-2 text-slate-600">
+                      <Clock className="w-4 h-4 text-emerald-500" />
+                      <span>Cada <strong>{p.frequency_days} días</strong></span>
+                    </div>
+                  )}
+                  {p.frequency_hours && (
+                    <div className="flex items-center gap-2 text-slate-600">
+                      <Clock className="w-4 h-4 text-purple-500" />
+                      <span>Cada <strong>{p.frequency_hours} horas</strong></span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-4 pt-4 border-t border-slate-100">
-                  <p className="text-xs text-slate-500 font-medium mb-2">Tareas Incluidas ({p.tasks?.length || 0})</p>
+                  <p className="text-xs text-slate-500 font-medium mb-2">Tareas Incluidas ({p.standard_tasks?.length || 0})</p>
                   <ul className="text-xs text-slate-600 space-y-1 pl-4 list-disc line-clamp-3">
-                    {p.tasks?.slice(0, 3).map((t: string, i: number) => <li key={i}>{t}</li>)}
-                    {p.tasks?.length > 3 && <li>... y {p.tasks.length - 3} más</li>}
+                    {p.standard_tasks?.slice(0, 3).map((t: any, i: number) => <li key={i}>{t.description}</li>)}
+                    {p.standard_tasks?.length > 3 && <li>... y {p.standard_tasks.length - 3} más</li>}
                   </ul>
                 </div>
               </div>
@@ -384,53 +333,49 @@ export default function MaintenancePlansPage() {
               <input type="text" required value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900" placeholder="Ej. PM1 - Mantenimiento Menor" />
             </div>
             
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Vehículo</label>
-              <select value={form.vehicle_type} onChange={e => setForm({...form, vehicle_type: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900">
-                <option value="CAMION">Camión</option>
-                <option value="TRACTO">Tracto</option>
-                <option value="MONTACARGA">Montacarga</option>
-                <option value="CAMIONETA">Camioneta</option>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Vehículo (Placa) *</label>
+              <select required value={form.vehicle_plate} onChange={e => setForm({...form, vehicle_plate: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900">
+                <option value="">Seleccione vehículo...</option>
+                {vehicles.map(v => (
+                  <option key={v.plate} value={v.plate}>{v.plate} ({v.type})</option>
+                ))}
               </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Criticidad</label>
-              <select value={form.criticality} onChange={e => setForm({...form, criticality: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900">
-                <option value="BAJA">Baja</option>
-                <option value="MEDIA">Media</option>
-                <option value="ALTA">Alta</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Frecuencia (Kilómetros) *</label>
-              <input type="number" required min="0" value={form.frequency_km} onChange={e => setForm({...form, frequency_km: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900" placeholder="Ej. 10000" />
+              <label className="block text-sm font-medium text-slate-700 mb-1">Frecuencia (Kilómetros)</label>
+              <input type="number" min="0" value={form.frequency_km} onChange={e => setForm({...form, frequency_km: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900" placeholder="Ej. 10000" />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Frecuencia Alternativa (Días)</label>
               <input type="number" min="0" value={form.frequency_days} onChange={e => setForm({...form, frequency_days: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900" placeholder="Ej. 90" />
             </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Frecuencia (Horómetro)</label>
+              <input type="number" min="0" value={form.frequency_hours} onChange={e => setForm({...form, frequency_hours: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-slate-900" placeholder="Ej. 250" />
+            </div>
           </div>
 
           <div>
             <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-medium text-slate-700">Checklist de Tareas</label>
+              <label className="block text-sm font-medium text-slate-700">Checklist de Tareas Estandar</label>
               <button type="button" onClick={addTask} className="text-xs font-bold text-blue-600 flex items-center gap-1 hover:underline">
                 <Plus className="w-3 h-3" /> Añadir Tarea
               </button>
             </div>
             <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-              {form.tasks.map((task, index) => (
+              {form.standard_tasks.map((task, index) => (
                 <div key={index} className="flex gap-2">
-                  <input type="text" required value={task} onChange={e => updateTask(index, e.target.value)} className="flex-1 p-2 text-sm border border-slate-300 rounded-lg text-slate-900" placeholder="Ej. Cambio de aceite de motor" />
+                  <input type="text" required value={task.description} onChange={e => updateTask(index, e.target.value)} className="flex-1 p-2 text-sm border border-slate-300 rounded-lg text-slate-900" placeholder="Ej. Cambio de aceite de motor" />
                   <button type="button" onClick={() => removeTask(index)} className="p-2 text-slate-400 hover:text-red-500 transition-colors">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               ))}
-              {form.tasks.length === 0 && (
+              {form.standard_tasks.length === 0 && (
                 <p className="text-sm text-slate-500 italic text-center py-2 border border-dashed border-slate-300 rounded-lg">No hay tareas definidas</p>
               )}
             </div>

@@ -75,7 +75,6 @@ const empty: ActiveTripContextValue = {
 }
 
 const ActiveTripContext = createContext<ActiveTripContextValue>(empty)
-const cacheKey = 'jrm_active_trip_context_v1'
 
 export function ActiveTripProvider({ children }: { children: React.ReactNode }) {
   const supabase = useMemo(() => createClient(), [])
@@ -103,20 +102,6 @@ export function ActiveTripProvider({ children }: { children: React.ReactNode }) 
     const next = data as Omit<ActiveTripContextValue, 'summary' | 'loading' | 'error' | 'refresh'>
     const summary = summaryResult.error ? empty.summary : summaryResult.data as DriverPortalSummary
     setState({ ...next, summary, loading: false, error: summaryResult.error?.message || null })
-    localStorage.setItem(cacheKey, JSON.stringify(next))
-    window.dispatchEvent(new CustomEvent('jrm:context', { detail: {
-      userName: next.user?.first_name,
-      driverName: next.driver?.first_name,
-      pending: next.pending,
-      ...(next.trip ? {
-        dispatchId: next.trip.id,
-        vehiclePlate: next.trip.vehicle_plate || undefined,
-        contractId: next.trip.contract?.id,
-        status: next.trip.status,
-        scheduledDeparture: next.trip.scheduled_departure,
-        stops: next.trip.stops,
-      } : {}),
-    } }))
   }, [supabase])
 
   useEffect(() => {

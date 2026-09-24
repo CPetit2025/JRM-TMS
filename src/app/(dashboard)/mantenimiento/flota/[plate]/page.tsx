@@ -14,6 +14,9 @@ export default function Flota360Page() {
   
   const [vehicle, setVehicle] = useState<any>(null)
   const [workOrders, setWorkOrders] = useState<any[]>([])
+  const [tcoData, setTcoData] = useState<any>(null)
+  const [fuelData, setFuelData] = useState<any>(null)
+  const [routes, setRoutes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -33,15 +36,41 @@ export default function Flota360Page() {
       if (vError) throw vError
       setVehicle(vData)
 
-      // 2. Get Work Orders history
-      const { data: otData, error: otError } = await supabase
-        .from('maintenance_work_orders')
-        .select('*')
-        .eq('vehicle_id', vData.id)
-        .order('created_at', { ascending: false })
-      
-      if (otError) throw otError
-      setWorkOrders(otData || [])
+      // Parallel queries for better performance
+      const [otRes, tcoRes, fuelRes, routesRes] = await Promise.all([
+        supabase
+          .from('maintenance_work_orders')
+          .select('*')
+          .eq('vehicle_id', vData.id)
+          .order('created_at', { ascending: false })
+          .limit(5),
+        
+        supabase
+          .from('vehicle_tco_analytics')
+          .select('*')
+          .eq('vehicle_id', vData.id)
+          .maybeSingle(),
+          
+        supabase
+          .from('vehicle_fuel_efficiency')
+          .select('*')
+          .eq('vehicle_id', vData.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+          
+        supabase
+          .from('routes')
+          .select('*, dispatches(dispatch_number, status, scheduled_date)')
+          .eq('vehicle_id', vData.id)
+          .order('created_at', { ascending: false })
+          .limit(5)
+      ])
+
+      setWorkOrders(otRes.data || [])
+      setTcoData(tcoRes.data || null)
+      setFuelData(fuelRes.data || null)
+      setRoutes(routesRes.data || [])
 
     } catch (err: any) {
       toast.error('Error al cargar datos del vehículo')
@@ -81,10 +110,46 @@ export default function Flota360Page() {
           <p className="text-sm text-slate-500 mt-1 font-medium">
             {vehicle.brand} {vehicle.model} • {vehicle.year} • {vehicle.type}
           </p>
+          <p className="text-sm text-slate-500 mt-1 font-medium">
+            Odómetro: {vehicle.odometer || vehicle.current_odometer || 0} km
+          </p>
         </div>
         <div className="text-right">
           <p className="text-xs text-slate-400 font-semibold uppercase">Transportista</p>
           <p className="font-bold text-slate-800">{vehicle.carriers?.business_name || 'Propio'}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* FINANCIAL METRICS */}
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+          <div className="flex items-center gap-2 mb-2">
+            <BarChart2 className="w-5 h-5 text-blue-500" />
+            <h3 className="text-sm font-bold text-slate-700">CPK (Costo por KM)</h3>
+          </div>
+          <p className="text-3xl font-black text-slate-800">
+            S/ {tcoData?.cpk ? Number(tcoData.cpk).toFixed(2) : '0.00'}
+          </p>
+        </div>
+
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+          <div className="flex items-center gap-2 mb-2">
+            <BarChart2 className="w-5 h-5 text-amber-500" />
+            <h3 className="text-sm font-bold text-slate-700">Total TCO</h3>
+          </div>
+          <p className="text-3xl font-black text-slate-800">
+            S/ {tcoData?.total_tco ? Number(tcoData.total_tco).toFixed(2) : '0.00'}
+          </p>
+        </div>
+
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+          <div className="flex items-center gap-2 mb-2">
+            <BarChart2 className="w-5 h-5 text-emerald-500" />
+            <h3 className="text-sm font-bold text-slate-700">Rendimiento (Km/Gal)</h3>
+          </div>
+          <p className="text-3xl font-black text-slate-800">
+            {fuelData?.efficiency_km_gal ? Number(fuelData.efficiency_km_gal).toFixed(2) : '--'}
+          </p>
         </div>
       </div>
 
@@ -155,10 +220,10 @@ export default function Flota360Page() {
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-full">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <Wrench className="w-5 h-5 text-blue-500" /> Historial de Mantenimientos (OTs)
+                <Wrench className="w-5 h-5 text-blue-500" /> Últimos Mantenimientos (OTs)
               </h2>
               <Link href="/mantenimiento/gestor-ot" className="text-sm font-bold text-blue-600 hover:underline">
-                Ver todas
+                Ver más
               </Link>
             </div>
 
@@ -194,6 +259,49 @@ export default function Flota360Page() {
                     <div className="text-right">
                       <p className="text-xs text-slate-400 font-medium">Costo Total</p>
                       <p className="text-sm font-bold text-slate-800">S/ {ot.total_cost_pen?.toFixed(2) || '0.00'}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-full">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Truck className="w-5 h-5 text-emerald-500" /> Últimos Viajes
+              </h2>
+            </div>
+
+            {routes.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center bg-slate-50 rounded-lg border border-dashed border-slate-300">
+                <Truck className="w-12 h-12 text-slate-300 mb-3" />
+                <p className="text-slate-500 font-medium">No hay viajes registrados</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {routes.map(route => (
+                  <div key={route.id} className="p-4 bg-white border border-slate-200 rounded-lg hover:border-emerald-300 transition-colors flex justify-between items-center group">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-mono text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                          {route.dispatches?.dispatch_number || 'Sin Despacho'}
+                        </span>
+                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                          route.status === 'FINALIZADA' ? 'bg-slate-100 text-slate-700' :
+                          route.status === 'EN_TRANSITO' ? 'bg-emerald-100 text-emerald-700' :
+                          'bg-amber-100 text-amber-700'
+                        }`}>
+                          {route.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Fecha: {route.start_time ? new Date(route.start_time).toLocaleDateString() : 'N/A'}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-slate-400 font-medium">Odómetro (Km)</p>
+                      <p className="text-sm font-bold text-slate-800">{route.end_odometer || route.start_odometer || '--'}</p>
                     </div>
                   </div>
                 ))}
