@@ -162,14 +162,14 @@ export default function MaintenancePlansPage() {
       <div className="flex items-center gap-4 border-b border-slate-200">
         <button
           onClick={() => setActiveTab('proyeccion')}
-          className={pb-3 font-semibold text-sm transition-colors relative  + (activeTab === 'proyeccion' ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800')}
+          className={"pb-3 font-semibold text-sm transition-colors relative " + (activeTab === 'proyeccion' ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800')}
         >
           Proyecciones y Alertas
           {activeTab === 'proyeccion' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-full"></span>}
         </button>
         <button
           onClick={() => setActiveTab('planes')}
-          className={pb-3 font-semibold text-sm transition-colors relative  + (activeTab === 'planes' ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800')}
+          className={"pb-3 font-semibold text-sm transition-colors relative " + (activeTab === 'planes' ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800')}
         >
           Configurar Planes
           {activeTab === 'planes' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-full"></span>}

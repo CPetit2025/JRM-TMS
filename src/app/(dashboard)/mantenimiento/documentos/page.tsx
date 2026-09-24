@@ -131,7 +131,7 @@ export default function DocumentosCumplimientoPage() {
                   {documents.map((doc) => (
                     <tr 
                       key={doc.id} 
-                      className={order-b last:border-0 hover:bg-muted/30 transition-colors }
+                      className="border-b last:border-0 hover:bg-muted/30 transition-colors"
                     >
                       <td className="px-4 py-3 font-medium">{doc.vehicle_plate}</td>
                       <td className="px-4 py-3">{doc.document_type.replace('_', ' ')}</td>
