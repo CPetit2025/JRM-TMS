@@ -1,0 +1,1 @@
+ALTER TABLE public.dispatch_expenses DROP CONSTRAINT IF EXISTS dispatch_expenses_status_check; ALTER TABLE public.dispatch_expenses ADD CONSTRAINT dispatch_expenses_status_check CHECK (status IN ('BORRADOR', 'PENDIENTE', 'EN_REVISION', 'OBSERVADO', 'APROBADO', 'RECHAZADO'));

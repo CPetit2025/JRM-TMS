@@ -1,0 +1,1 @@
+ALTER TABLE public.work_order_costs ADD COLUMN IF NOT EXISTS quantity NUMERIC DEFAULT 1;
