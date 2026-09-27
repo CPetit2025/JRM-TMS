@@ -1,364 +1,182 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Calculator, Search, Calendar, FileText, CheckCircle2, AlertCircle, Download, ExternalLink, Printer } from 'lucide-react'
 import { toast } from 'sonner'
-import Link from 'next/link'
+import { format } from 'date-fns'
+import { Calculator, Loader2, Printer, Check, X, RefreshCw } from 'lucide-react'
 
-export default function LiquidacionAlquilerPage() {
-  const [contracts, setContracts] = useState<any[]>([])
-  const [selectedContractId, setSelectedContractId] = useState('')
-  const [month, setMonth] = useState(() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - 1);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  })
-  const [isLoading, setIsLoading] = useState(false)
-  const [report, setReport] = useState<any>(null)
-  const [signatureUrl, setSignatureUrl] = useState<string>('')
+// Liquidación de alquiler seco (Fase 11): cálculo con km/horas REALES del periodo y descuento por
+// indisponibilidad; se registra en BORRADOR y la aprueba un usuario distinto (migración 20260928130000).
 
-  const supabase = createClient()
+const supabase = createClient()
+type Row = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+const money = (n: unknown) => `S/ ${Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const field = 'w-full border rounded-lg px-3 py-2 text-sm'
 
-  useEffect(() => {
-    fetchContracts()
-    fetchSignature()
+function loadAll() {
+  return Promise.all([
+    supabase.from('vehicle_lease_contracts').select('id, contract_code, rate_type, rate_amount, status, start_date, end_date, vehicles(plate), carriers(business_name)').in('status', ['ACTIVO', 'RENOVADO', 'TERMINADO']).order('start_date', { ascending: false }),
+    supabase.from('lease_settlements').select('*, vehicle_lease_contracts(contract_code, rate_type, carriers(business_name)), vehicles(plate)').order('created_at', { ascending: false }).limit(100),
+    supabase.from('system_settings').select('value').eq('key', 'admin_signature_url').maybeSingle(),
+  ])
+}
+
+export default function LiquidacionesAlquilerPage() {
+  const [contracts, setContracts] = useState<Row[]>([])
+  const [settlements, setSettlements] = useState<Row[]>([])
+  const [signature, setSignature] = useState<string>('')
+  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState({ contract_id: '', period_start: '', period_end: '', other_discounts: '0', penalties: '0', consumptions: '0', additional_costs: '0', notes: '' })
+  const [preview, setPreview] = useState<Row | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [printing, setPrinting] = useState<Row | null>(null)
+
+  const apply = useCallback(([c, s, sig]: Awaited<ReturnType<typeof loadAll>>) => {
+    if (c.error) toast.error('Error al cargar contratos: ' + c.error.message)
+    setContracts(c.data || []); setSettlements(s.data || []); setSignature(sig.data?.value || '')
+    setLoading(false)
   }, [])
+  const refresh = useCallback(() => { setLoading(true); return loadAll().then(apply) }, [apply])
+  useEffect(() => { loadAll().then(apply) }, [apply])
 
-  const fetchSignature = async () => {
-    try {
-      // 1. Intentar desde BD
-      const { data } = await supabase.from('system_settings').select('value').eq('key', 'admin_signature_url').single()
-      if (data?.value) {
-        setSignatureUrl(data.value)
-        return
-      }
-    } catch(e) {}
-    // 2. Fallback a LocalStorage
-    const saved = localStorage.getItem('jrm_sys_config')
-    if (saved) {
-      const parsed = JSON.parse(saved)
-      if (parsed.adminSignatureUrl) setSignatureUrl(parsed.adminSignatureUrl)
-    }
+  const args = useMemo(() => ({
+    p_contract_id: form.contract_id, p_period_start: form.period_start, p_period_end: form.period_end,
+    p_other_discounts: Number(form.other_discounts) || 0, p_penalties: Number(form.penalties) || 0,
+    p_consumptions: Number(form.consumptions) || 0, p_additional_costs: Number(form.additional_costs) || 0,
+  }), [form])
+
+  const calculate = async () => {
+    if (!form.contract_id || !form.period_start || !form.period_end) return toast.error('Seleccione contrato y periodo')
+    setBusy(true)
+    const { data, error } = await supabase.rpc('calculate_lease_settlement', args)
+    setBusy(false)
+    if (error || !data?.success) return toast.error(error?.message || data?.error)
+    setPreview(data)
   }
 
-  const fetchContracts = async () => {
-    try {
-      const { data } = await supabase.from('vehicle_lease_contracts')
-        .select('*, vehicles(plate), carriers(business_name)')
-        .eq('status', 'ACTIVO')
-      setContracts(data || [])
-    } catch (e) {
-      toast.error('Error al cargar contratos')
-    }
+  const register = async () => {
+    setBusy(true)
+    const { data, error } = await supabase.rpc('create_lease_settlement', { ...args, p_notes: form.notes || null })
+    setBusy(false)
+    if (error || !data?.success) return toast.error(error?.message || data?.error)
+    toast.success('Liquidación registrada en BORRADOR; requiere aprobación')
+    setPreview(null); refresh()
   }
 
-  const generateLiquidation = async () => {
-    if (!selectedContractId || !month) return toast.error('Selecciona contrato y mes')
-    
-    setIsLoading(true)
-    try {
-      const contract = contracts.find(c => c.id === selectedContractId)
-      if (!contract) throw new Error('Contrato no encontrado')
-
-      // 1. Get start and end dates of the selected month
-      const [y, m] = month.split('-')
-      const startDate = new Date(Number(y), Number(m) - 1, 1).toISOString()
-      const endDate = new Date(Number(y), Number(m), 0, 23, 59, 59).toISOString()
-
-      // 2. Fetch dispatches for that vehicle in that month
-      const { data: dispatches, error } = await supabase.from('dispatches')
-        .select('*')
-        .eq('vehicle_id', contract.vehicle_id)
-        .gte('created_at', startDate)
-        .lte('created_at', endDate)
-        .order('created_at', { ascending: true })
-
-      if (error) throw error
-
-      // 3. Calculate total KM
-      const totalKm = dispatches?.reduce((sum, d) => sum + Number(d.estimated_distance_km || 0), 0) || 0
-
-      // 4. Calculate financials
-      const baseFee = Number(contract.monthly_base_fee)
-      const includedKm = Number(contract.included_km)
-      const excessRate = Number(contract.excess_km_rate)
-      const guaranteedKm = Number(contract.guaranteed_km)
-
-      const excessKm = Math.max(0, totalKm - includedKm)
-      const excessCost = excessKm * excessRate
-      
-      const subtotal = baseFee + excessCost
-      const tax = subtotal * 0.18 // IGV 18%
-      const total = subtotal + tax
-
-      setReport({
-        contract,
-        month,
-        dispatches: dispatches || [],
-        summary: {
-          totalKm,
-          baseFee,
-          includedKm,
-          excessKm,
-          excessCost,
-          guaranteedKm,
-          subtotal,
-          tax,
-          total
-        }
-      })
-
-      toast.success('Liquidación generada con éxito')
-    } catch (e: any) {
-      toast.error('Error: ' + e.message)
-    } finally {
-      setIsLoading(false)
-    }
+  const decide = async (s: Row, decision: 'APROBADA' | 'ANULADA') => {
+    const notes = decision === 'ANULADA' ? prompt('Motivo de la anulación:') : prompt('Comentario de aprobación (opcional):')
+    if (decision === 'ANULADA' && !notes?.trim()) return
+    const { data, error } = await supabase.rpc('decide_lease_settlement', { p_settlement_id: s.id, p_decision: decision, p_notes: notes || null })
+    if (error || !data?.success) return toast.error(error?.message || data?.error)
+    toast.success(`Liquidación ${decision.toLowerCase()}`); refresh()
   }
+
+  if (printing) return <PrintView s={printing} signature={signature} onBack={() => setPrinting(null)} />
 
   return (
-    <div className="p-4 max-w-7xl mx-auto space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="p-6 space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <Calculator className="w-8 h-8 text-blue-600" />
-            Liquidación de Alquiler en Seco
-          </h1>
-          <p className="text-slate-500">
-            Genera el reporte mensual de KMs y pagos por vehículos subcontratados.
-          </p>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><Calculator className="w-6 h-6" />Liquidación de alquiler seco</h1>
+          <p className="text-sm text-slate-500">Km y horas reales del periodo, excesos, descuento por indisponibilidad, penalidades, consumos y costos adicionales. La aprueba un usuario distinto.</p>
         </div>
+        <button onClick={refresh} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
       </div>
 
-      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-700">Contrato / Vehículo</label>
-          <select 
-            value={selectedContractId} 
-            onChange={(e) => setSelectedContractId(e.target.value)}
-            className="w-full px-3 py-2 border rounded-lg focus:ring-2 outline-none"
-          >
-            <option value="">Seleccione...</option>
-            {contracts.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.vehicles?.plate} - {c.carriers?.business_name}
-              </option>
-            ))}
-          </select>
+      <div className="bg-white border rounded-xl p-4 space-y-3 text-sm">
+        <div className="grid md:grid-cols-4 gap-3">
+          <label className="md:col-span-2">Contrato<select className={field} value={form.contract_id} onChange={e => { setForm({ ...form, contract_id: e.target.value }); setPreview(null) }}>
+            <option value="">Seleccionar…</option>{contracts.map(c => <option key={c.id} value={c.id}>{c.contract_code} · {c.vehicles?.plate} · {c.carriers?.business_name} · {c.rate_type} {money(c.rate_amount)}</option>)}</select></label>
+          <label>Desde<input type="date" className={field} value={form.period_start} onChange={e => { setForm({ ...form, period_start: e.target.value }); setPreview(null) }} /></label>
+          <label>Hasta<input type="date" className={field} value={form.period_end} onChange={e => { setForm({ ...form, period_end: e.target.value }); setPreview(null) }} /></label>
+          <label>Otros descuentos<input type="number" min={0} step="0.01" className={field} value={form.other_discounts} onChange={e => setForm({ ...form, other_discounts: e.target.value })} /></label>
+          <label>Penalidades<input type="number" min={0} step="0.01" className={field} value={form.penalties} onChange={e => setForm({ ...form, penalties: e.target.value })} /></label>
+          <label>Consumos<input type="number" min={0} step="0.01" className={field} value={form.consumptions} onChange={e => setForm({ ...form, consumptions: e.target.value })} /></label>
+          <label>Costos adicionales<input type="number" min={0} step="0.01" className={field} value={form.additional_costs} onChange={e => setForm({ ...form, additional_costs: e.target.value })} /></label>
+          <label className="md:col-span-4">Sustento (obligatorio si hay descuentos, penalidades o adicionales)<input className={field} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></label>
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-700">Mes a Liquidar</label>
-          <input 
-            type="month" 
-            value={month} 
-            onChange={(e) => setMonth(e.target.value)}
-            className="w-full px-3 py-2 border rounded-lg focus:ring-2 outline-none"
-          />
+        <div className="flex gap-2">
+          <button disabled={busy} onClick={calculate} className="px-4 py-2 border rounded-lg flex items-center gap-2">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calculator className="w-4 h-4" />}Calcular</button>
+          {preview && <button disabled={busy} onClick={register} className="px-4 py-2 bg-[#002855] text-white rounded-lg">Registrar liquidación</button>}
         </div>
-        <div className="md:col-span-2 flex justify-end">
-          <button 
-            onClick={generateLiquidation}
-            disabled={isLoading}
-            className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 w-full md:w-auto justify-center"
-          >
-            {isLoading ? 'Calculando...' : 'Generar Liquidación'}
-          </button>
-        </div>
+        {preview && <Breakdown s={preview} />}
       </div>
 
-      {report && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="flex justify-end print:hidden">
-            <button 
-              onClick={() => window.print()}
-              className="px-4 py-2 bg-slate-800 text-white rounded-lg flex items-center gap-2 hover:bg-slate-700"
-            >
-              <Printer className="w-4 h-4" /> Imprimir Liquidación
-            </button>
-          </div>
+      <div className="bg-white border rounded-xl overflow-x-auto">
+        {loading ? <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : settlements.length === 0 ? (
+          <p className="p-8 text-center text-sm text-slate-500">Sin liquidaciones registradas.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
+              <th className="text-left p-3">Periodo</th><th className="text-left p-3">Contrato / unidad</th><th className="text-right p-3">Km</th><th className="text-right p-3">Horas</th>
+              <th className="text-right p-3">Subtotal</th><th className="text-right p-3">Total</th><th className="text-left p-3">Estado</th><th className="p-3"></th>
+            </tr></thead>
+            <tbody className="divide-y">
+              {settlements.map(s => (
+                <tr key={s.id}>
+                  <td className="p-3">{s.period_start} → {s.period_end}<div className="text-xs text-slate-500">{s.days} días</div></td>
+                  <td className="p-3">{s.vehicle_lease_contracts?.contract_code} · {s.vehicles?.plate}<div className="text-xs text-slate-500">{s.vehicle_lease_contracts?.carriers?.business_name}</div></td>
+                  <td className="p-3 text-right">{s.km_used}</td><td className="p-3 text-right">{s.hours_used}</td>
+                  <td className="p-3 text-right">{money(s.subtotal)}</td><td className="p-3 text-right font-semibold">{money(s.total)}</td>
+                  <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs font-semibold ${s.status === 'APROBADA' ? 'bg-emerald-100 text-emerald-700' : s.status === 'ANULADA' ? 'bg-slate-100 text-slate-500' : 'bg-amber-100 text-amber-700'}`}>{s.status}</span></td>
+                  <td className="p-3"><div className="flex gap-1 justify-end">
+                    {s.status === 'BORRADOR' && <>
+                      <button title="Aprobar" onClick={() => decide(s, 'APROBADA')} className="p-1.5 border rounded-lg text-emerald-700"><Check className="w-4 h-4" /></button>
+                      <button title="Anular" onClick={() => decide(s, 'ANULADA')} className="p-1.5 border rounded-lg text-red-600"><X className="w-4 h-4" /></button>
+                    </>}
+                    <button title="Imprimir" onClick={() => setPrinting(s)} className="p-1.5 border rounded-lg"><Printer className="w-4 h-4" /></button>
+                  </div></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
 
-          {/* Plantilla A4 Printable */}
-          <div className="bg-white border border-slate-200 shadow-sm mx-auto p-8 md:p-12 print:shadow-none print:border-none print:p-0 print:m-0" style={{ maxWidth: '210mm', minHeight: '297mm' }}>
-            
-            {/* Header / Membrete Corporativo */}
-            <div 
-              className="flex justify-between items-center bg-[#002855] text-white p-6 md:p-8 rounded-t-lg mb-8 print:rounded-none" 
-              style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
-            >
-              <div className="flex items-center gap-6">
-                <img src="/logo-jrm.png" alt="JRM S.A.C." className="h-16 w-auto object-contain" />
-                <div>
-                  <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">JRM S.A.C.</h1>
-                  <p className="text-sm text-blue-200 mt-1">Servicios de Transporte y Logística</p>
-                  <p className="text-xs text-blue-300">RUC: 20601234567</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <h2 className="text-xl font-bold text-white mb-1">LIQUIDACIÓN DE ALQUILER</h2>
-                <p className="text-sm font-medium text-blue-200">N° LIQ-{report.month.replace('-','')}-{report.contract.id.substring(0,4).toUpperCase()}</p>
-                <div className="inline-block bg-white/20 px-3 py-1 rounded mt-2">
-                  <p className="text-sm text-blue-100">Mes Liquidado: <span className="font-bold text-white">{report.month}</span></p>
-                </div>
-              </div>
-            </div>
+function Breakdown({ s }: { s: Row }) {
+  const rows: [string, React.ReactNode][] = [
+    ['Periodo liquidado', `${s.period_start} → ${s.period_end} (${s.days} días)`],
+    ['Uso real', `${s.km_used} km · ${s.hours_used} h`],
+    [`Tarifa base (${s.rate_type})`, money(s.base_amount)],
+    [`Exceso de km (${s.excess_km} km sobre ${s.included_km ?? '—'})`, money(s.excess_km_amount)],
+    [`Exceso de horas (${s.excess_hours} h)`, money(s.excess_hours_amount)],
+    [`Descuento por indisponibilidad (${s.downtime_days} días)`, `− ${money(s.downtime_discount)}`],
+    ['Otros descuentos', `− ${money(s.other_discounts)}`], ['Penalidades', money(s.penalties)],
+    ['Consumos', money(s.consumptions)], ['Costos adicionales', money(s.additional_costs)],
+    ['Subtotal', money(s.subtotal)], ['IGV 18%', money(s.tax)], ['Total', <b key="t">{money(s.total)}</b>],
+  ]
+  return (
+    <table className="w-full max-w-xl text-sm border rounded-lg">
+      <tbody className="divide-y">{rows.map(([k, v]) => <tr key={k}><td className="p-2 text-slate-600">{k}</td><td className="p-2 text-right">{v}</td></tr>)}</tbody>
+    </table>
+  )
+}
 
-            {/* Datos del Contrato */}
-            <div className="grid grid-cols-2 gap-8 mb-8 text-sm">
-              <div>
-                <h3 className="font-bold text-slate-800 border-b border-slate-200 pb-2 mb-3">Datos del Proveedor</h3>
-                <p><span className="text-slate-500 inline-block w-24">Razón Social:</span> <span className="font-medium">{report.contract.carriers?.business_name}</span></p>
-                <p><span className="text-slate-500 inline-block w-24">Vehículo:</span> <span className="font-medium">{report.contract.vehicles?.plate}</span></p>
-                <p><span className="text-slate-500 inline-block w-24">Tipo Contrato:</span> <span className="font-medium">{report.contract.contract_type}</span></p>
-              </div>
-              <div>
-                <h3 className="font-bold text-slate-800 border-b border-slate-200 pb-2 mb-3">Condiciones Acordadas</h3>
-                <p><span className="text-slate-500 inline-block w-32">Tarifa Base:</span> <span className="font-medium">S/ {report.summary.baseFee.toFixed(2)}</span></p>
-                <p><span className="text-slate-500 inline-block w-32">KM Incluidos:</span> <span className="font-medium">{report.summary.includedKm} km</span></p>
-                <p><span className="text-slate-500 inline-block w-32">Tarifa Exceso/KM:</span> <span className="font-medium">S/ {report.contract.excess_km_rate}</span></p>
-                <p><span className="text-slate-500 inline-block w-32">Garantía Mínima:</span> <span className="font-medium">{report.summary.guaranteedKm} km</span></p>
-              </div>
-            </div>
-
-            {/* Detalle de Operaciones */}
-            <div className="mb-8">
-              <h3 className="font-bold text-slate-800 border-b border-slate-200 pb-2 mb-4">Detalle de Operaciones en el Mes</h3>
-              
-              {report.summary.totalKm < report.summary.guaranteedKm && (
-                <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-start gap-2 mb-4 text-sm print:border-gray-300 print:bg-white">
-                  <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5 print:text-black" />
-                  <p className="text-amber-800 print:text-black">
-                    El kilometraje total del mes ({report.summary.totalKm.toFixed(2)} km) no superó la garantía mínima ({report.summary.guaranteedKm} km). Se facturará la tarifa base completa sin deducciones.
-                  </p>
-                </div>
-              )}
-
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-100 font-medium text-slate-700 print:bg-slate-200 border-b-2 border-slate-300">
-                  <tr>
-                    <th className="py-2 px-3">Fecha</th>
-                    <th className="py-2 px-3">OT / Despacho</th>
-                    <th className="py-2 px-3">Conductor</th>
-                    <th className="py-2 px-3 text-right">KM Recorridos</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {report.dispatches.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="py-4 text-center text-slate-500">No se registraron rutas en este periodo.</td>
-                    </tr>
-                  ) : (
-                    report.dispatches.map((d: any) => (
-                      <tr key={d.id}>
-                        <td className="py-2 px-3">{new Date(d.created_at).toLocaleDateString()}</td>
-                        <td className="py-2 px-3 font-medium">{d.dispatch_number}</td>
-                        <td className="py-2 px-3">{d.driver_name || '-'}</td>
-                        <td className="py-2 px-3 text-right">{Number(d.estimated_distance_km || 0).toFixed(2)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-                <tfoot className="bg-slate-50 font-bold border-t-2 border-slate-300 print:bg-transparent">
-                  <tr>
-                    <td colSpan={3} className="py-3 px-3 text-right">TOTAL KILOMETRAJE MENSUAL:</td>
-                    <td className="py-3 px-3 text-right text-blue-700 print:text-black">{report.summary.totalKm.toFixed(2)} km</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-
-            {/* Resumen Financiero */}
-            <div className="flex justify-end mb-16">
-              <div className="w-72 bg-slate-50 p-4 rounded-lg border border-slate-200 print:bg-transparent print:border-none print:p-0">
-                <h3 className="font-bold text-slate-800 border-b border-slate-200 pb-2 mb-3 print:hidden">Liquidación Financiera</h3>
-                
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Tarifa Base:</span>
-                    <span className="font-medium">S/ {report.summary.baseFee.toFixed(2)}</span>
-                  </div>
-                  
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Exceso KM ({report.summary.excessKm.toFixed(2)} km):</span>
-                    <span className="font-medium">S/ {report.summary.excessCost.toFixed(2)}</span>
-                  </div>
-
-                  <div className="border-t border-slate-200 pt-2 flex justify-between font-bold">
-                    <span>Subtotal:</span>
-                    <span>S/ {report.summary.subtotal.toFixed(2)}</span>
-                  </div>
-                  
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">IGV (18%):</span>
-                    <span className="font-medium">S/ {report.summary.tax.toFixed(2)}</span>
-                  </div>
-                  
-                  <div className="border-t-2 border-slate-800 pt-2 flex justify-between text-lg font-black text-[#002855] print:text-black mt-2">
-                    <span>TOTAL A PAGAR:</span>
-                    <span>S/ {report.summary.total.toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Firmas */}
-            <div className="grid grid-cols-2 gap-16 mt-20 pt-8">
-              <div className="text-center flex flex-col items-center">
-                <div className="h-24 w-full flex items-end justify-center mb-2">
-                  {signatureUrl ? (
-                    <img src={signatureUrl} alt="Firma Admin" className="max-h-full object-contain" />
-                  ) : (
-                    <div className="text-slate-300 text-xs italic">Firma Digital no configurada</div>
-                  )}
-                </div>
-                <div className="w-48 border-t border-slate-400 pt-2">
-                  <p className="font-bold text-sm text-slate-800">Aprobado por</p>
-                  <p className="text-xs text-slate-500">JRM S.A.C.</p>
-                </div>
-              </div>
-              <div className="text-center flex flex-col items-center">
-                <div className="h-24 w-full flex items-end justify-center mb-2">
-                  <div className="text-slate-200 text-xs italic">Sello / Firma Proveedor</div>
-                </div>
-                <div className="w-48 border-t border-slate-400 pt-2">
-                  <p className="font-bold text-sm text-slate-800">Conformidad del Proveedor</p>
-                  <p className="text-xs text-slate-500">{report.contract.carriers?.business_name}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="mt-16 text-center text-[10px] text-slate-400 border-t border-slate-100 pt-4">
-              Documento generado electrónicamente el {new Date().toLocaleString()} a través del sistema TMS.
-            </div>
-            
-          </div>
+function PrintView({ s, signature, onBack }: { s: Row; signature: string; onBack: () => void }) {
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex justify-between print:hidden">
+        <button onClick={onBack} className="px-4 py-2 border rounded-lg text-sm">Volver</button>
+        <button onClick={() => window.print()} className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm flex items-center gap-2"><Printer className="w-4 h-4" />Imprimir</button>
+      </div>
+      <div className="bg-white border mx-auto p-8 print:border-none print:p-0" style={{ maxWidth: '210mm' }}>
+        <div className="bg-[#002855] text-white p-6 rounded-t-lg mb-6 print:rounded-none" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+          <div className="text-xl font-bold">Liquidación de alquiler seco</div>
+          <div className="text-sm opacity-80">{s.vehicle_lease_contracts?.contract_code} · {s.vehicles?.plate} · {s.vehicle_lease_contracts?.carriers?.business_name}</div>
         </div>
-      )}
-      
-      {/* Ocultar la configuración global en modo impresión */}
-      <style dangerouslySetInnerHTML={{__html: `
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          .animate-in {
-            animation: none !important;
-          }
-          .print\\:hidden {
-            display: none !important;
-          }
-          #print-area, #print-area * {
-            visibility: visible;
-          }
-          #print-area {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-          }
-        }
-      `}} />
+        <Breakdown s={{ ...s, ...(s.detail || {}) }} />
+        {s.notes && <p className="text-sm text-slate-600 mt-4 whitespace-pre-wrap">{s.notes}</p>}
+        <div className="mt-10 flex justify-between items-end text-sm">
+          <div>Estado: <b>{s.status}</b>{s.approved_at ? ` · ${format(new Date(s.approved_at), 'dd/MM/yyyy HH:mm')}` : ''}</div>
+          {signature && s.status === 'APROBADA' && (
+            <div className="text-center">{/* eslint-disable-next-line @next/next/no-img-element */}<img src={signature} alt="Firma" className="h-16 mx-auto" /><div className="border-t pt-1">Aprobado</div></div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

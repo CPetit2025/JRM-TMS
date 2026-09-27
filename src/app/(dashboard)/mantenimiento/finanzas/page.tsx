@@ -1,284 +1,123 @@
-"use client";
+'use client'
 
-import React, { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { toast } from 'sonner'
+import { BarChart3, Loader2, RefreshCw } from 'lucide-react'
 
-interface TCOData {
-  placa: string;
-  anio: number;
-  mes: number;
-  ots_count: number;
-  total_labor: number;
-  total_services: number;
-  total_repuestos: number;
-  total_tco: number;
+// Finanzas y TCO (Fase 11): todo sale del libro de costos por activo (vw_vehicle_cost_ledger):
+// mantenimiento, operación, combustible, neumáticos, multas/siniestros y alquiler (migración 20260928130000).
+
+const supabase = createClient()
+type Row = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+const money = (n: unknown) => `S/ ${Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+const CATS = [['maintenance_cost', 'Mantenimiento'], ['operating_cost', 'Operación'], ['fuel_cost', 'Combustible'], ['tires_cost', 'Neumáticos'], ['compliance_cost', 'Multas y siniestros'], ['lease_cost', 'Alquiler']] as const
+
+function loadAll() {
+  return Promise.all([
+    supabase.from('vehicle_tco_analytics').select('*').order('total_tco', { ascending: false }),
+    supabase.from('vw_asset_tco').select('*').order('anio', { ascending: false }).order('mes', { ascending: false }).limit(500),
+  ])
 }
 
-interface GroupedTCO {
-  placa: string;
-  total_labor: number;
-  total_services: number;
-  total_repuestos: number;
-  total_tco: number;
-  ots_count: number;
-}
+export default function FinanzasTcoPage() {
+  const [tco, setTco] = useState<Row[]>([])
+  const [monthly, setMonthly] = useState<Row[]>([])
+  const [loading, setLoading] = useState(true)
+  const [ownership, setOwnership] = useState('TODOS')
 
-export default function FinanzasPage() {
-  const [tcoData, setTcoData] = useState<TCOData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const apply = useCallback(([t, m]: Awaited<ReturnType<typeof loadAll>>) => {
+    if (t.error) toast.error('Error al cargar TCO: ' + t.error.message)
+    setTco(t.data || []); setMonthly(m.data || [])
+    setLoading(false)
+  }, [])
+  const refresh = useCallback(() => { setLoading(true); return loadAll().then(apply) }, [apply])
+  useEffect(() => { loadAll().then(apply) }, [apply])
 
-  const [filterMonth, setFilterMonth] = useState<string>("");
-  const [filterYear, setFilterYear] = useState<string>("");
-
-  useEffect(() => {
-    fetchTCO();
-  }, []);
-
-  const fetchTCO = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("vw_asset_tco")
-        .select("*")
-        .order("anio", { ascending: false })
-        .order("mes", { ascending: false });
-
-      if (error) {
-        console.error("Error fetching TCO:", error);
-      } else {
-        setTcoData(data || []);
-      }
-    } catch (error) {
-      console.error("Error in fetchTCO:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Group data by Plate
-  const groupedData = tcoData.reduce(
-    (acc, curr) => {
-      // Apply filters
-      if (filterYear && curr.anio.toString() !== filterYear) return acc;
-      if (filterMonth && curr.mes.toString() !== filterMonth) return acc;
-
-      if (!acc[curr.placa]) {
-        acc[curr.placa] = {
-          placa: curr.placa,
-          total_labor: 0,
-          total_services: 0,
-          total_repuestos: 0,
-          total_tco: 0,
-          ots_count: 0,
-        };
-      }
-
-      acc[curr.placa].total_labor += Number(curr.total_labor || 0);
-      acc[curr.placa].total_services += Number(curr.total_services || 0);
-      acc[curr.placa].total_repuestos += Number(curr.total_repuestos || 0);
-      acc[curr.placa].total_tco += Number(curr.total_tco || 0);
-      acc[curr.placa].ots_count += Number(curr.ots_count || 0);
-
-      return acc;
-    },
-    {} as Record<string, GroupedTCO>,
-  );
-
-  const groupedArray = Object.values(groupedData).sort(
-    (a, b) => b.total_tco - a.total_tco,
-  );
-
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat("es-PE", {
-      style: "currency",
-      currency: "PEN",
-    }).format(val);
-  };
+  const rows = useMemo(() => tco.filter(r => ownership === 'TODOS' || r.ownership_status === ownership), [tco, ownership])
+  const totals = useMemo(() => {
+    const t: Record<string, number> = { total_tco: 0 }
+    CATS.forEach(([k]) => { t[k] = 0 })
+    rows.forEach(r => { t.total_tco += Number(r.total_tco || 0); CATS.forEach(([k]) => { t[k] += Number(r[k] || 0) }) })
+    return t
+  }, [rows])
+  const byOwnership = useMemo(() => {
+    const g = new Map<string, { units: number; tco: number; km: number }>()
+    tco.forEach(r => {
+      const k = r.ownership_status || 'PROPIO'
+      const cur = g.get(k) || { units: 0, tco: 0, km: 0 }
+      g.set(k, { units: cur.units + 1, tco: cur.tco + Number(r.total_tco || 0), km: cur.km + Number(r.current_odometer || 0) })
+    })
+    return [...g.entries()]
+  }, [tco])
+  const months = useMemo(() => {
+    const g = new Map<string, number>()
+    monthly.filter(m => ownership === 'TODOS' || m.propiedad === ownership).forEach(m => {
+      const k = `${m.anio}-${String(m.mes).padStart(2, '0')}`
+      g.set(k, (g.get(k) || 0) + Number(m.total_tco || 0))
+    })
+    return [...g.entries()].sort(([a], [b]) => b.localeCompare(a)).slice(0, 12)
+  }, [monthly, ownership])
+  const maxMonth = Math.max(1, ...months.map(([, v]) => v))
 
   return (
-    <div className="p-6">
-      <div className="mb-8 flex justify-between items-end">
+    <div className="p-6 space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Panel Financiero - TCO
-          </h1>
-          <p className="text-gray-500 text-sm mt-1">
-            Costo Total de Propiedad por Vehículo
-          </p>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><BarChart3 className="w-6 h-6" />Finanzas y TCO</h1>
+          <p className="text-sm text-slate-500">Costo total de propiedad por activo desde el libro de costos: mantenimiento, operación, combustible, neumáticos, cumplimiento y alquiler.</p>
         </div>
-
-        <div className="flex gap-4">
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Año</label>
-            <select
-              value={filterYear}
-              onChange={(e) => setFilterYear(e.target.value)}
-              className="border border-gray-300 rounded px-3 py-1.5 text-sm"
-            >
-              <option value="">Todos</option>
-              <option value="2026">2026</option>
-              <option value="2025">2025</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Mes</label>
-            <select
-              value={filterMonth}
-              onChange={(e) => setFilterMonth(e.target.value)}
-              className="border border-gray-300 rounded px-3 py-1.5 text-sm"
-            >
-              <option value="">Todos</option>
-              <option value="1">Enero</option>
-              <option value="2">Febrero</option>
-              <option value="3">Marzo</option>
-              <option value="4">Abril</option>
-              <option value="5">Mayo</option>
-              <option value="6">Junio</option>
-              <option value="7">Julio</option>
-              <option value="8">Agosto</option>
-              <option value="9">Septiembre</option>
-              <option value="10">Octubre</option>
-              <option value="11">Noviembre</option>
-              <option value="12">Diciembre</option>
-            </select>
-          </div>
+        <div className="flex gap-2">
+          <select value={ownership} onChange={e => setOwnership(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
+            <option value="TODOS">Propios y alquilados</option><option value="PROPIO">Solo propios</option><option value="ALQUILADO">Solo alquilados</option><option value="LEASING">Leasing</option>
+          </select>
+          <button onClick={refresh} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center p-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-        </div>
-      ) : (
-        <div className="bg-white shadow rounded-lg overflow-hidden border border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Placa / Activo
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  OTs Completadas
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Mano de Obra
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Servicios Terceros
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Repuestos
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-right text-xs font-bold text-gray-900 uppercase tracking-wider"
-                >
-                  TCO Total
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {groupedArray.length > 0 ? (
-                groupedArray.map((row) => (
-                  <tr key={row.placa} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {row.placa}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
-                      {row.ots_count}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
-                      {formatCurrency(row.total_labor)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
-                      {formatCurrency(row.total_services)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
-                      {formatCurrency(row.total_repuestos)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-indigo-600">
-                      {formatCurrency(row.total_tco)}
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td
-                    colSpan={6}
-                    className="px-6 py-8 text-center text-sm text-gray-500"
-                  >
-                    No se encontraron registros de TCO para los filtros
-                    seleccionados.
-                  </td>
-                </tr>
+      {loading ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
+            <div className="bg-[#002855] text-white rounded-xl p-3"><div className="text-xs opacity-80">TCO total</div><div className="text-xl font-bold">{money(totals.total_tco)}</div></div>
+            {CATS.map(([k, l]) => <div key={k} className="bg-white border rounded-xl p-3"><div className="text-xs text-slate-500">{l}</div><div className="text-lg font-bold">{money(totals[k])}</div></div>)}
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="bg-white border rounded-xl p-4">
+              <h3 className="font-semibold mb-3">Propios vs alquilados</h3>
+              <table className="w-full text-sm"><thead className="text-xs text-slate-500"><tr><th className="text-left">Propiedad</th><th className="text-right">Unidades</th><th className="text-right">TCO</th><th className="text-right">Costo/km</th></tr></thead>
+                <tbody>{byOwnership.map(([k, v]) => <tr key={k}><td className="py-1">{k}</td><td className="text-right">{v.units}</td><td className="text-right">{money(v.tco)}</td><td className="text-right">{v.km > 0 ? `S/ ${(v.tco / v.km).toFixed(3)}` : '—'}</td></tr>)}</tbody></table>
+            </div>
+            <div className="bg-white border rounded-xl p-4">
+              <h3 className="font-semibold mb-3">TCO por mes (últimos 12)</h3>
+              {months.length === 0 ? <p className="text-sm text-slate-500">Sin costos registrados.</p> : (
+                <ul className="space-y-1.5 text-xs">{months.map(([m, v]) => (
+                  <li key={m} className="flex items-center gap-2"><span className="w-16 text-slate-500">{m}</span>
+                    <span className="h-3 rounded bg-[#002855]" style={{ width: `${Math.max(2, (v / maxMonth) * 100)}%` }} /><span className="whitespace-nowrap">{money(v)}</span></li>))}</ul>
               )}
-            </tbody>
-            {groupedArray.length > 0 && (
-              <tfoot className="bg-gray-50 font-bold">
-                <tr>
-                  <td className="px-6 py-4 text-sm text-gray-900">
-                    Total General
-                  </td>
-                  <td className="px-6 py-4 text-sm text-right text-gray-900">
-                    {groupedArray.reduce(
-                      (acc, curr) => acc + curr.ots_count,
-                      0,
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-right text-gray-900">
-                    {formatCurrency(
-                      groupedArray.reduce(
-                        (acc, curr) => acc + curr.total_labor,
-                        0,
-                      ),
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-right text-gray-900">
-                    {formatCurrency(
-                      groupedArray.reduce(
-                        (acc, curr) => acc + curr.total_services,
-                        0,
-                      ),
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-right text-gray-900">
-                    {formatCurrency(
-                      groupedArray.reduce(
-                        (acc, curr) => acc + curr.total_repuestos,
-                        0,
-                      ),
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-right text-indigo-700">
-                    {formatCurrency(
-                      groupedArray.reduce(
-                        (acc, curr) => acc + curr.total_tco,
-                        0,
-                      ),
-                    )}
-                  </td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
+            </div>
+          </div>
+
+          <div className="bg-white border rounded-xl overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
+                <th className="text-left p-3">Unidad</th>{CATS.map(([, l]) => <th key={l} className="text-right p-3">{l}</th>)}<th className="text-right p-3">TCO</th><th className="text-right p-3">Costo/km</th><th className="text-right p-3">Costo/h</th>
+              </tr></thead>
+              <tbody className="divide-y">
+                {rows.map(r => (
+                  <tr key={r.vehicle_id}>
+                    <td className="p-3"><div className="font-semibold">{r.plate}</div><div className="text-xs text-slate-500">{r.type} · {r.ownership_status}</div></td>
+                    {CATS.map(([k]) => <td key={k} className="p-3 text-right">{money(r[k])}</td>)}
+                    <td className="p-3 text-right font-semibold">{money(r.total_tco)}</td>
+                    <td className="p-3 text-right">{r.cpk != null ? `S/ ${Number(r.cpk).toFixed(3)}` : '—'}</td>
+                    <td className="p-3 text-right">{r.cost_per_hour != null ? `S/ ${Number(r.cost_per_hour).toFixed(2)}` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
-  );
+  )
 }
