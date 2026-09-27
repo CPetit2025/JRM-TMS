@@ -26,11 +26,14 @@ interface Fleet360 {
   dispatches: Row[]
   history: Row[]
   photos: string[]
+  fines?: Row[]
+  incidents?: Row[]
+  compliance_costs?: Row | null
 }
 
 const TABS = [
   ['resumen', 'Resumen', Truck], ['fallas', 'Fallas', AlertTriangle], ['ot', 'OT', Wrench], ['preventivos', 'Preventivos', CalendarClock],
-  ['inspecciones', 'Inspecciones', ClipboardCheck], ['neumaticos', 'Neumáticos', CircleDot], ['documentos', 'Documentos', FileText],
+  ['inspecciones', 'Inspecciones', ClipboardCheck], ['neumaticos', 'Neumáticos', CircleDot], ['documentos', 'Documentos', FileText], ['cumplimiento', 'Multas y siniestros', ShieldAlert],
   ['costos', 'Costos', BarChart2], ['operacion', 'Operación', Route], ['evidencias', 'Evidencias', ImageIcon], ['historial', 'Historial', History],
 ] as const
 
@@ -148,6 +151,16 @@ export default function Flota360Page() {
         <Table empty="Sin documentos en el repositorio (se usan las fechas del maestro)" rows={data.documents}
           cols={[['Documento', r => txt(r.document_type)], ['Número', r => txt(r.document_number)], ['Vence', r => date(r.expiration_date)], ['Estado', r => txt(r.status)]]} />
       )}
+      {tab === 'cumplimiento' && (
+        <div className="space-y-4">
+          <Table empty="Sin multas ni papeletas" rows={data.fines || []}
+            cols={[['Fecha', r => date(r.infraction_date)], ['Entidad / N°', r => `${txt(r.entity)} · ${txt(r.ticket_number)}`], ['Conductor', r => txt(r.driver_name)],
+              ['Importe', r => money(r.amount)], ['Responsable', r => txt(r.responsibility)], ['Estado', r => txt(r.status)]]} />
+          <Table empty="Sin siniestros ni incidentes" rows={data.incidents || []}
+            cols={[['Fecha', r => date(r.occurred_at)], ['Tipo', r => txt(r.incident_type)], ['Criticidad', r => txt(r.severity)], ['Descripción', r => txt(r.description)],
+              ['Costo', r => money(r.final_cost ?? r.estimated_cost)], ['Seguro', r => money(r.insurance_coverage)], ['Estado', r => txt(r.status)]]} />
+        </div>
+      )}
       {tab === 'costos' && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Kpi label="Mantenimiento" value={money(data.costs?.maintenance_cost)} />
@@ -157,6 +170,9 @@ export default function Flota360Page() {
           <Kpi label="TCO" value={money(data.costs?.total_tco)} />
           <Kpi label="Costo por km" value={data.costs?.cpk != null ? `S/ ${Number(data.costs.cpk).toFixed(3)}` : '—'} />
           <Kpi label="Mantenimiento por km" value={data.costs?.maintenance_cpk != null ? `S/ ${Number(data.costs.maintenance_cpk).toFixed(3)}` : '—'} />
+          <Kpi label="Multas (empresa)" value={money(data.compliance_costs?.fines_company_cost)} />
+          <Kpi label="Multas pendientes" value={money(data.compliance_costs?.fines_outstanding)} />
+          <Kpi label="Siniestros (neto)" value={money(data.compliance_costs?.incidents_net_cost)} />
         </div>
       )}
       {tab === 'operacion' && (
