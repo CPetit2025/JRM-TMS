@@ -1,13 +1,35 @@
 "use client"
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2, ArrowRight, Filter, Upload, MoreVertical, Ban, Download, KeyRound, Eye, EyeOff } from 'lucide-react'
+import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2, ArrowRight, Filter, Upload, MoreVertical, Ban, Download, KeyRound, Eye, EyeOff, ShieldCheck, Wrench, Lock } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import * as XLSX from 'xlsx'
 import { usePermissions } from '@/hooks/usePermissions'
+
+// Estados y tipos canónicos de activos (migraciones 20260924133100 y 20260926200000).
+// El estado solo cambia vía transition_vehicle_status: la BD rechaza updates directos.
+const VEHICLE_STATUSES = ['DISPONIBLE', 'ASIGNADA', 'EN_OPERACION', 'OBSERVADA', 'MANTENIMIENTO', 'BLOQUEADA', 'FUERA_DE_SERVICIO']
+const VEHICLE_TYPES: Record<string, string> = {
+  CAMION: 'Camión', CAMIONETA: 'Camioneta', FURGON: 'Furgón', TRAILER: 'Tráiler', TRACTO: 'Tracto',
+  SEMIRREMOLQUE: 'Semirremolque', MONTACARGAS: 'Montacargas', APILADOR: 'Apilador', TRANSPALETA: 'Transpaleta', OTRO: 'Otro equipo',
+}
+const STATUS_BADGE: Record<string, string> = {
+  DISPONIBLE: 'bg-emerald-100 text-emerald-700',
+  ASIGNADA: 'bg-sky-100 text-sky-700',
+  EN_OPERACION: 'bg-blue-100 text-blue-700',
+  OBSERVADA: 'bg-yellow-100 text-yellow-800',
+  MANTENIMIENTO: 'bg-amber-100 text-amber-700',
+  BLOQUEADA: 'bg-red-100 text-red-700',
+  FUERA_DE_SERVICIO: 'bg-slate-200 text-slate-600',
+}
+
+function normalizeVehicleType(raw: unknown): string {
+  const value = String(raw ?? '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return value in VEHICLE_TYPES ? value : 'OTRO'
+}
 
 export default function FlotaPage() {
   const supabase = createClient()
@@ -139,8 +161,11 @@ export default function FlotaPage() {
     try {
       let error;
       
+      // El estado no se edita desde el formulario: lo gobierna el motor de elegibilidad
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { status: _status, ...vehicleFields } = newVehicle
       const payload = {
-        ...newVehicle,
+        ...vehicleFields,
         soat_expiration: newVehicle.soat_expiration || null,
         technical_review_expiration: newVehicle.technical_review_expiration || null,
         responsible_id: newVehicle.responsible_id || null
@@ -161,6 +186,9 @@ export default function FlotaPage() {
 
       if (error) throw error
 
+      if (!editingVehicleId) {
+        toast.success('Vehículo registrado como OBSERVADA. Libérelo cuando cumpla los requisitos de elegibilidad.')
+      }
       setIsVehicleModalOpen(false)
       fetchData()
     } catch (err: any) {
@@ -257,17 +285,41 @@ export default function FlotaPage() {
     }
   }
 
-  const handleSuspendVehicle = async (id: string, currentStatus: string) => {
-    if (!confirm(`¿Está seguro de ${currentStatus === 'INACTIVO' ? 'activar' : 'suspender'} este vehículo?`)) return
-    try {
-      const newStatus = currentStatus === 'INACTIVO' ? 'DISPONIBLE' : 'INACTIVO'
-      const { error } = await supabase.from('vehicles').update({ status: newStatus }).eq('id', id)
-      if (error) throw error
-      toast.success(`Vehículo ${newStatus === 'DISPONIBLE' ? 'activado' : 'suspendido'}`)
-      fetchData()
-    } catch (err: any) {
-      toast.error('Error al cambiar el estado del vehículo')
+  const handleTransitionVehicle = async (plate: string, newStatus: string, confirmText: string) => {
+    if (!confirm(confirmText)) return
+    const reason = prompt('Motivo del cambio de estado:') || null
+    const { data, error } = await supabase.rpc('transition_vehicle_status', {
+      p_vehicle_plate: plate,
+      p_new_status: newStatus,
+      p_reason: reason,
+    })
+    if (error || !data?.success) {
+      toast.error(error?.message || data?.error || 'No se pudo cambiar el estado del vehículo')
+      return
     }
+    toast.success(`Vehículo ${plate}: ${data.previous_status ?? ''} → ${newStatus}`)
+    fetchData()
+  }
+
+  const handleAdministrativeBlock = async (plate: string, blocked: boolean) => {
+    let reason: string | null = null
+    if (blocked) {
+      reason = prompt('Motivo del bloqueo administrativo (obligatorio):')
+      if (!reason?.trim()) return
+    } else if (!confirm(`¿Quitar el bloqueo administrativo de ${plate}? La unidad seguirá BLOQUEADA hasta que se libere.`)) {
+      return
+    }
+    const { data, error } = await supabase.rpc('set_vehicle_administrative_block', {
+      p_vehicle_plate: plate,
+      p_blocked: blocked,
+      p_reason: reason,
+    })
+    if (error || !data?.success) {
+      toast.error(error?.message || data?.error || 'No se pudo actualizar el bloqueo administrativo')
+      return
+    }
+    toast.success(blocked ? `Bloqueo administrativo aplicado a ${plate}` : `Bloqueo administrativo retirado de ${plate}`)
+    fetchData()
   }
 
   const handleMassUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -292,13 +344,12 @@ export default function FlotaPage() {
           payload.push({
             plate: String(plate).trim().toUpperCase(),
             carrier_id: newVehicle.carrier_id, 
-            type: String(row['Tipo'] || row['tipo'] || row['TIPO'] || 'CAMION').trim().toUpperCase(),
+            type: normalizeVehicleType(row['Tipo'] || row['tipo'] || row['TIPO'] || 'CAMION'),
             brand: String(row['Marca'] || row['marca'] || row['MARCA'] || '').trim().toUpperCase(),
             model: String(row['Modelo'] || row['modelo'] || row['MODELO'] || '').trim().toUpperCase(),
             year: parseInt(row['Año'] || row['año'] || row['AÑO']) || new Date().getFullYear(),
             weight_capacity: parseFloat(row['Peso_kg'] || row['Peso'] || row['peso'] || 0),
             volume_capacity: parseFloat(row['Volumen_m3'] || row['Volumen'] || row['volumen'] || 0),
-            status: 'DISPONIBLE'
           })
         }
         
@@ -542,9 +593,14 @@ export default function FlotaPage() {
                   onChange={(e) => setFilterStatus(e.target.value)}
                 >
                   <option value="TODOS">Todos</option>
-                  <option value="ACTIVO">Activo</option>
-                  <option value="INACTIVO">Inactivo</option>
-                  <option value="MANTENIMIENTO">Mantenimiento</option>
+                  {activeTab === 'vehicles' ? (
+                    VEHICLE_STATUSES.map(st => <option key={st} value={st}>{st.replace(/_/g, ' ')}</option>)
+                  ) : (
+                    <>
+                      <option value="ACTIVO">Activo</option>
+                      <option value="INACTIVO">Inactivo</option>
+                    </>
+                  )}
                 </select>
               </div>
             </div>
@@ -606,14 +662,12 @@ export default function FlotaPage() {
                           </td>
                           <td className="p-4 text-sm text-slate-600">{v.carriers?.business_name || 'N/A'}</td>
                           <td className="p-4">
-                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                              v.status === 'DISPONIBLE' ? 'bg-emerald-100 text-emerald-700' :
-                              v.status === 'EN_RUTA' ? 'bg-blue-100 text-blue-700' :
-                              v.status === 'EN_MANTENIMIENTO' ? 'bg-amber-100 text-amber-700' :
-                              'bg-slate-100 text-slate-700'
-                            }`}>
-                              {v.status}
+                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${STATUS_BADGE[v.status] || 'bg-slate-100 text-slate-700'}`}>
+                              {v.status?.replace(/_/g, ' ')}
                             </span>
+                            {v.is_blocked && (
+                              <div className="mt-1 text-[11px] text-red-600" title={v.block_reason || ''}>Bloqueo administrativo</div>
+                            )}
                           </td>
                           <td className="p-4 text-right relative">
                             <button 
@@ -641,12 +695,36 @@ export default function FlotaPage() {
                                 >
                                   <Edit2 className="w-4 h-4" /> Editar
                                 </button>
-                                <button 
-                                  onClick={() => { setActiveDropdown(null); handleSuspendVehicle(v.id, v.status) }}
-                                  className="w-full text-left px-4 py-2 text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2"
+                                {v.status !== 'DISPONIBLE' && (
+                                  <button
+                                    onClick={() => { setActiveDropdown(null); handleTransitionVehicle(v.plate, 'DISPONIBLE', `¿Liberar ${v.plate}? Se validará su elegibilidad.`) }}
+                                    className="w-full text-left px-4 py-2 text-sm text-emerald-700 hover:bg-emerald-50 flex items-center gap-2"
+                                  >
+                                    <ShieldCheck className="w-4 h-4" /> Liberar (DISPONIBLE)
+                                  </button>
+                                )}
+                                {!['MANTENIMIENTO', 'FUERA_DE_SERVICIO'].includes(v.status) && (
+                                  <button
+                                    onClick={() => { setActiveDropdown(null); handleTransitionVehicle(v.plate, 'MANTENIMIENTO', `¿Enviar ${v.plate} a MANTENIMIENTO?`) }}
+                                    className="w-full text-left px-4 py-2 text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2"
+                                  >
+                                    <Wrench className="w-4 h-4" /> Enviar a mantenimiento
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => { setActiveDropdown(null); handleAdministrativeBlock(v.plate, !v.is_blocked) }}
+                                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
                                 >
-                                  <Ban className="w-4 h-4" /> {v.status === 'INACTIVO' ? 'Activar' : 'Suspender'}
+                                  <Lock className="w-4 h-4" /> {v.is_blocked ? 'Quitar bloqueo admin.' : 'Bloqueo administrativo'}
                                 </button>
+                                {v.status !== 'FUERA_DE_SERVICIO' && (
+                                  <button
+                                    onClick={() => { setActiveDropdown(null); handleTransitionVehicle(v.plate, 'FUERA_DE_SERVICIO', `¿Dar de baja ${v.plate} (FUERA DE SERVICIO)?`) }}
+                                    className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"
+                                  >
+                                    <Ban className="w-4 h-4" /> Fuera de servicio
+                                  </button>
+                                )}
                                 <button 
                                   onClick={() => { setActiveDropdown(null); handleDeleteVehicle(v.id) }}
                                   className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
@@ -801,10 +879,9 @@ export default function FlotaPage() {
                 value={newVehicle.type}
                 onChange={(e) => setNewVehicle({...newVehicle, type: e.target.value})}
               >
-                <option value="CAMION">Camión</option>
-                <option value="CAMIONETA">Camioneta</option>
-                <option value="TRAILER">Tráiler</option>
-                <option value="FURGON">Furgón</option>
+                {Object.entries(VEHICLE_TYPES).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </select>
             </div>
             <div>

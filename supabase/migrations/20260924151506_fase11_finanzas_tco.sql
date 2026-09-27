@@ -97,7 +97,7 @@ EXECUTE FUNCTION public.update_work_order_total_cost();
 CREATE OR REPLACE VIEW public.vw_asset_tco AS
 WITH wo_costs AS (
     SELECT 
-        wo.vehicle_plate,
+        v.plate AS vehicle_plate,
         wo.created_at,
         wo.id,
         COALESCE(wo.labor_cost, 0) AS labor_cost,
@@ -109,6 +109,7 @@ WITH wo_costs AS (
               AND it.type IN ('SALIDA', 'OUT')
         ), 0) AS repuestos_cost
     FROM public.maintenance_work_orders wo
+    JOIN public.vehicles v ON v.id = wo.vehicle_id
     WHERE wo.status IN ('CERRADA', 'TERMINADA')
 )
 SELECT 
