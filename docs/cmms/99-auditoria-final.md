@@ -28,7 +28,7 @@ Fecha: 2026-09-28 · Base de datos: Supabase (producción) · Frontend: Vercel (
 | F12 Analítica/IA | `f12_kpis_copiloto` 11/11 (reconciliación manual de KPI) | ✅ |
 | Regresión integral | `cmms_regresion` PASS | ✅ |
 
-**Total: 172 pruebas automáticas + regresión**, ejecutadas contra la base de producción en transacciones revertidas después de cada despliegue. Además: `tsc` sin errores, `next build` OK y lint sin errores nuevos en los archivos de cada fase.
+**Total: 152 pruebas automáticas + regresión**, ejecutadas contra la base de producción en transacciones revertidas después de cada despliegue. Además: `tsc` sin errores, `next build` OK y lint sin errores nuevos en los archivos de cada fase.
 
 Ejecución de todas las pruebas:
 
