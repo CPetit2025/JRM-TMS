@@ -161,52 +161,35 @@ export async function executeAiTool(
       units: fleet.slice(0, 50).map(item => ({ ...item, url: `/mantenimiento/flota/${encodeURIComponent(item.plate)}` })) }
   }
   if (name === 'get_maintenance_alerts') {
-    const [plansResult, vehiclesResult, failuresResult, ordersResult, recentResult] = await Promise.all([
-      supabase.from('maintenance_plans').select('id, name, vehicle_type, frequency_days, frequency_km')
-        .in('site_id', siteIds).eq('is_active', true).limit(100),
-      supabase.from('vehicles').select('id, plate, type, current_mileage, last_maintenance_date, last_maintenance_mileage')
-        .in('site_id', siteIds).limit(150),
+    // Fuente real: proyecciones preventivas calculadas en BD (F5), backlog unificado (F3) y OT (F4)
+    const [projectionsResult, failuresResult, ordersResult, recentResult] = await Promise.all([
+      supabase.from('vw_maintenance_projections')
+        .select('plan_id, vehicle_plate, plan_name, alert_status, due_driver, km_remaining, hours_remaining, days_remaining, projected_due_date, open_work_order_code')
+        .in('site_id', siteIds).neq('alert_status', 'NORMAL').order('projected_days', { ascending: true }).limit(100),
       supabase.from('vw_maintenance_backlog').select('id, vehicle_plate, description, severity, status, reported_at, age_days')
         .in('site_id', siteIds).order('priority_score', { ascending: false }).limit(80),
-      supabase.from('maintenance_work_orders').select('id, ot_code, vehicle_id, status, estimated_end_date')
+      supabase.from('vw_work_orders').select('id, ot_code, vehicle_plate, status, order_type, estimated_end_date, downtime_hours')
         .in('site_id', siteIds).not('status', 'in', '(CERRADA,CANCELADA)').limit(80),
       supabase.from('maintenance_requests').select('vehicle_plate', { count: 'exact' })
         .in('site_id', siteIds).gte('reported_at', sinceDays(90)).limit(500),
     ])
-    const plans = rows(plansResult.data, plansResult.error)
-    const vehicles = rows(vehiclesResult.data, vehiclesResult.error)
+    const projections = rows(projectionsResult.data, projectionsResult.error)
     const recent = rows(recentResult.data, recentResult.error)
-    const vehicleById = new Map(vehicles.map(vehicle => [vehicle.id, vehicle]))
     const counts = recent.reduce<Record<string, number>>((map, item) => {
       if (item.vehicle_plate) map[item.vehicle_plate] = (map[item.vehicle_plate] || 0) + 1
       return map
     }, {})
-    const thirtyDaysOut = Date.now() + 30 * 86_400_000
-    const dueEstimates = plans.flatMap(plan => vehicles.filter(vehicle => vehicle.type === plan.vehicle_type)
-      .map(vehicle => {
-        const lastDate = vehicle.last_maintenance_date ? new Date(vehicle.last_maintenance_date).getTime() : null
-        const dueDate = lastDate !== null && Number.isFinite(lastDate) && Number(plan.frequency_days) > 0
-          ? new Date(lastDate + Number(plan.frequency_days) * 86_400_000).toISOString().slice(0, 10) : null
-        const dueKm = vehicle.last_maintenance_mileage !== null && Number(plan.frequency_km) > 0
-          ? Number(vehicle.last_maintenance_mileage) + Number(plan.frequency_km) : null
-        return { plan: plan.name, plate: vehicle.plate, dueDate, dueKm,
-          overdue: Boolean((dueDate && new Date(dueDate).getTime() < Date.now()) ||
-            (dueKm !== null && Number(vehicle.current_mileage) >= dueKm)) }
-      }))
-    return { asOf, samplesMayBeTruncated: plans.length === 100 ||
-      vehicles.length === 150 ||
+    return { asOf, samplesMayBeTruncated: projections.length === 100 ||
       (failuresResult.data?.length || 0) === 80 || (ordersResult.data?.length || 0) === 80 ||
       (recentResult.count || 0) > recent.length,
-      overduePlansEstimate: dueEstimates.filter(item => item.overdue).slice(0, 40),
-      plansDueWithin30DaysEstimate: dueEstimates.filter(item => item.dueDate && !item.overdue &&
-        new Date(item.dueDate).getTime() <= thirtyDaysOut).slice(0, 40),
+      overduePlans: projections.filter(item => item.alert_status === 'VENCIDO').slice(0, 40),
+      plansDueSoon: projections.filter(item => item.alert_status !== 'VENCIDO').slice(0, 40),
       unitsWithThreeOrMoreReportsIn90DaysInSample: Object.entries(counts)
         .filter(([, count]) => count >= 3).map(([vehiclePlate, count]) => ({ vehiclePlate, count })),
       openFailures: rows(failuresResult.data, failuresResult.error).slice(0, 40),
-      openOrders: rows(ordersResult.data, ordersResult.error).slice(0, 40)
-        .map(item => ({ ...item, vehicle_plate: vehicleById.get(item.vehicle_id)?.plate || null })),
-      note: 'Las fechas preventivas son estimaciones por tipo de unidad y última fecha general de mantenimiento.',
-      url: '/mantenimiento' }
+      openOrders: rows(ordersResult.data, ordersResult.error).slice(0, 40),
+      note: 'Vencimientos calculados en la base de datos por km, horómetro o fecha (lo primero que ocurra) con la lectura real de cada unidad.',
+      url: '/mantenimiento/preventivos' }
   }
   if (name === 'get_delivery_incidents') {
     const { data, error, count } = await supabase.from('dispatches')
