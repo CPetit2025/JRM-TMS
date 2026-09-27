@@ -1,279 +1,151 @@
-"use client"
-import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { Activity, Wrench, ShieldAlert, DollarSign, Truck, AlertTriangle, FileText, CalendarClock, TrendingDown } from 'lucide-react'
-import Link from 'next/link'
+'use client'
 
-export default function MantenimientoDashboardPage() {
-  const supabase = createClient()
-  const [stats, setStats] = useState({
-    totalVehicles: 0,
-    disponibles: 0,
-    disponibilidadPct: 0,
-    costoMtd: 0,
-    fallasAbiertas: 0,
-    otsEnProceso: 0,
-    documentosAlerta: 0,
-    mttrDias: 0
-  })
-  
-  const [alertVehicles, setAlertVehicles] = useState<any[]>([])
-  const [recentFailures, setRecentFailures] = useState<any[]>([])
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
+import { toast } from 'sonner'
+import { Activity, AlertTriangle, BarChart3, Gauge, Loader2, RefreshCw, ShieldAlert, Timer, Wrench, CircleDot, Sparkles } from 'lucide-react'
+
+// Centro de Control CMMS (Fase 12): todos los indicadores se calculan en la BD desde las fuentes
+// reales (get_cmms_kpis / get_cmms_copilot_brief); no hay tablas de dashboard (migración 20260928150000).
+
+const supabase = createClient()
+type Row = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+const money = (n: unknown) => `S/ ${Number(n || 0).toLocaleString('es-PE', { maximumFractionDigits: 0 })}`
+const num = (n: unknown, d = 1) => (n == null ? '—' : Number(n).toLocaleString('es-PE', { maximumFractionDigits: d }))
+const STATUS_ORDER = ['DISPONIBLE', 'ASIGNADA', 'EN_OPERACION', 'OBSERVADA', 'MANTENIMIENTO', 'BLOQUEADA']
+const STATUS_COLOR: Record<string, string> = { DISPONIBLE: 'bg-emerald-500', ASIGNADA: 'bg-sky-500', EN_OPERACION: 'bg-blue-600', OBSERVADA: 'bg-yellow-400', MANTENIMIENTO: 'bg-amber-500', BLOQUEADA: 'bg-red-600' }
+const CATEGORY_LABEL: Record<string, string> = { MANTENIMIENTO: 'Mantenimiento', OPERACION: 'Operación', COMBUSTIBLE: 'Combustible', NEUMATICOS: 'Neumáticos', MULTAS: 'Multas', SINIESTROS: 'Siniestros', ALQUILER: 'Alquiler' }
+const ymd = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/Lima' })
+
+function load(days: number) {
+  const end = new Date()
+  const start = new Date(end.getTime() - (days - 1) * 86_400_000)
+  return Promise.all([
+    supabase.rpc('get_cmms_kpis', { p_start: ymd(start), p_end: ymd(end), p_plates: null }),
+    supabase.rpc('get_cmms_copilot_brief', { p_plates: null }),
+  ])
+}
+
+export default function CentroControlPage() {
+  const [days, setDays] = useState(30)
+  const [kpi, setKpi] = useState<Row | null>(null)
+  const [brief, setBrief] = useState<Row | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchDashboardData()
+  const apply = useCallback(([k, b]: Awaited<ReturnType<typeof load>>) => {
+    if (k.error) toast.error('No se pudieron calcular los KPI: ' + k.error.message)
+    setKpi(k.data || null); setBrief(b.data || null)
+    setLoading(false)
   }, [])
+  const refresh = useCallback((d: number) => { setLoading(true); return load(d).then(apply) }, [apply])
+  useEffect(() => { load(30).then(apply) }, [apply])
 
-  const fetchDashboardData = async () => {
-    setLoading(true)
-    try {
-      // 1. Stats de Vehículos
-      const { data: vData } = await supabase.from('vehicles').select('plate, status, soat_expiration, technical_review_expiration')
-      
-      let disp = 0
-      let alertasDocs: any[] = []
-      
-      const today = new Date()
-      
-      if (vData) {
-        vData.forEach(v => {
-          if (v.status === 'DISPONIBLE') disp++
-          
-          // Alertas Documentarias (SOAT o Rev Técnica a menos de 15 días o vencido)
-          let flagDoc = false
-          let type = ''
-          let days = 999
-          
-          if (v.soat_expiration) {
-            const soatDiff = Math.ceil((new Date(v.soat_expiration).getTime() - today.getTime()) / (1000 * 3600 * 24))
-            if (soatDiff <= 15) { flagDoc = true; type = 'SOAT'; days = soatDiff }
-          }
-          if (v.technical_review_expiration) {
-            const revDiff = Math.ceil((new Date(v.technical_review_expiration).getTime() - today.getTime()) / (1000 * 3600 * 24))
-            if (revDiff <= 15 && revDiff < days) { flagDoc = true; type = 'Revisión Técnica'; days = revDiff }
-          }
-          
-          if (flagDoc) {
-            alertasDocs.push({ plate: v.plate, type, days })
-          }
-        })
-      }
+  const snapshot = useMemo(() => {
+    const s = (kpi?.snapshot || {}) as Record<string, number>
+    const total = Object.values(s).reduce((a, b) => a + Number(b), 0)
+    return { s, total }
+  }, [kpi])
+  const categories = useMemo(() => Object.entries((kpi?.costs?.by_category || {}) as Record<string, number>).sort(([, a], [, b]) => Number(b) - Number(a)), [kpi])
+  const maxCat = Math.max(1, ...categories.map(([, v]) => Number(v)))
 
-      // 2. Costos de OT de este mes (MTD)
-      const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString()
-      const { data: costData } = await supabase
-        .from('work_order_costs')
-        .select('amount, created_at')
-        .gte('created_at', firstDayOfMonth)
-        
-      const costoMes = costData?.reduce((sum, row) => sum + Number(row.amount), 0) || 0
-
-      // 3. MTTR (Tiempo Medio para Reparar) en OTs finalizadas
-      const { data: otData } = await supabase
-        .from('maintenance_work_orders')
-        .select('id, start_date, actual_end_date, status')
-        
-      let totalDaysRepair = 0
-      let totalFinished = 0
-      let otProc = 0
-      
-      if (otData) {
-        otData.forEach(ot => {
-          if (ot.status === 'EN_PROCESO' || ot.status === 'PENDIENTE') {
-            otProc++
-          }
-          if (ot.status === 'FINALIZADA' && ot.start_date && ot.actual_end_date) {
-            const sDate = new Date(ot.start_date)
-            const eDate = new Date(ot.actual_end_date)
-            const diff = Math.ceil((eDate.getTime() - sDate.getTime()) / (1000 * 3600 * 24))
-            totalDaysRepair += (diff === 0 ? 1 : diff) // Minimo 1 dia
-            totalFinished++
-          }
-        })
-      }
-      
-      const mttr = totalFinished > 0 ? (totalDaysRepair / totalFinished).toFixed(1) : 0
-
-      // 4. Fallas (fuente única: backlog sobre maintenance_requests)
-      const { data: fData } = await supabase.from('vw_maintenance_backlog').select('id').neq('status', 'CONVERTIDA_OT')
-      const { data: fRecent } = await supabase
-        .from('vw_maintenance_backlog')
-        .select('id, vehicle_plate, description, severity, reported_at')
-        .order('priority_score', { ascending: false })
-        .limit(5)
-
-      setStats({
-        totalVehicles: (vData || []).length,
-        disponibles: disp,
-        disponibilidadPct: (vData && vData.length > 0) ? Math.round((disp / vData.length) * 100) : 0,
-        costoMtd: costoMes,
-        fallasAbiertas: (fData || []).length,
-        otsEnProceso: otProc,
-        documentosAlerta: alertasDocs.length,
-        mttrDias: Number(mttr)
-      })
-      
-      setAlertVehicles(alertasDocs.sort((a,b) => a.days - b.days))
-      setRecentFailures(fRecent || [])
-
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const cards: [string, string, React.ReactNode, React.ReactNode][] = kpi ? [
+    ['Disponibilidad', kpi.availability_pct != null ? `${num(kpi.availability_pct, 2)}%` : '—', <Gauge key="g" className="w-4 h-4" />, `${num(kpi.downtime_hours)} h fuera de servicio`],
+    ['MTBF', kpi.mtbf_hours != null ? `${num(kpi.mtbf_hours)} h` : 'sin fallas', <Activity key="a" className="w-4 h-4" />, `${kpi.failures} fallas en el periodo`],
+    ['MTTR', kpi.mttr_hours != null ? `${num(kpi.mttr_hours)} h` : '—', <Timer key="t" className="w-4 h-4" />, 'OT correctivas cerradas'],
+    ['Backlog', `${kpi.backlog?.open_requests ?? 0}`, <AlertTriangle key="b" className="w-4 h-4" />, `${kpi.backlog?.critical ?? 0} críticas · prom. ${num(kpi.backlog?.avg_age_days)} días`],
+    ['Preventivo', kpi.preventive_pct != null ? `${num(kpi.preventive_pct)}%` : '—', <Wrench key="p" className="w-4 h-4" />, `${kpi.preventive_work_orders} prev. / ${kpi.corrective_work_orders} corr.`],
+    ['Costo por km', kpi.costs?.cost_per_km != null ? `S/ ${num(kpi.costs.cost_per_km, 3)}` : '—', <BarChart3 key="c" className="w-4 h-4" />, `${num(kpi.costs?.km, 0)} km reales`],
+    ['Costo por hora', kpi.costs?.cost_per_hour != null ? `S/ ${num(kpi.costs.cost_per_hour, 2)}` : '—', <Timer key="h" className="w-4 h-4" />, 'equipos con horómetro'],
+    ['Mantenimiento por unidad', money(kpi.costs?.maintenance_per_unit), <Wrench key="m" className="w-4 h-4" />, `${kpi.units} unidades activas`],
+    ['TCO del periodo', money(kpi.costs?.total), <BarChart3 key="tc" className="w-4 h-4" />, 'libro de costos'],
+    ['Neumáticos por cambiar', `${kpi.tires?.to_change ?? 0}`, <CircleDot key="n" className="w-4 h-4" />, kpi.tires?.avg_cost_per_km != null ? `S/ ${num(kpi.tires.avg_cost_per_km, 4)}/km prom.` : `${kpi.tires?.installed ?? 0} instalados`],
+  ] : []
 
   return (
-    <div className="space-y-6 w-full mx-auto">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-6 space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-black text-[#002855] tracking-tight">Dashboard Ejecutivo CMMS</h1>
-          <p className="text-sm text-slate-500 font-medium mt-1">Visión integral de confiabilidad, costos y operación</p>
+          <h1 className="text-2xl font-bold text-slate-900">Centro de Control de Mantenimiento</h1>
+          <p className="text-sm text-slate-500">Indicadores calculados con datos reales: OT, fallas, lecturas de odómetro y el libro de costos por activo.</p>
+        </div>
+        <div className="flex gap-2">
+          <select value={days} onChange={e => { const d = Number(e.target.value); setDays(d); refresh(d) }} className="border rounded-lg px-3 py-2 text-sm">
+            <option value={7}>Últimos 7 días</option><option value={30}>Últimos 30 días</option><option value={90}>Últimos 90 días</option><option value={365}>Últimos 365 días</option>
+          </select>
+          <button onClick={() => refresh(days)} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center h-64 text-slate-500">
-          <Activity className="w-8 h-8 animate-spin text-blue-500" />
-        </div>
-      ) : (
-        <div className="space-y-6">
-          
-          {/* TOP KPI ROW */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
-              <div className="relative z-10">
-                <p className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">Disponibilidad</p>
-                <div className="flex items-end gap-2">
-                  <h3 className={`text-4xl font-black ${stats.disponibilidadPct >= 85 ? 'text-emerald-600' : stats.disponibilidadPct >= 70 ? 'text-amber-500' : 'text-red-600'}`}>
-                    {stats.disponibilidadPct}%
-                  </h3>
-                </div>
-                <p className="text-xs text-slate-500 mt-2 font-medium">{stats.disponibles} de {stats.totalVehicles} unidades operativas</p>
+      {loading || !kpi ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {cards.map(([label, value, icon, hint]) => (
+              <div key={label} className="bg-white border rounded-xl p-3">
+                <div className="text-xs text-slate-500 flex items-center gap-1">{icon}{label}</div>
+                <div className="text-2xl font-bold text-slate-900">{value}</div>
+                <div className="text-[11px] text-slate-400">{hint}</div>
               </div>
-            </div>
+            ))}
+          </div>
 
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
-              <div className="relative z-10">
-                <p className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">Costo (Mes Actual)</p>
-                <div className="flex items-end gap-2">
-                  <h3 className="text-4xl font-black text-slate-800">
-                    S/ {stats.costoMtd.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                  </h3>
-                </div>
-                <p className="text-xs text-slate-500 mt-2 font-medium">Gasto acumulado MTD en OTs</p>
+          <div className="grid md:grid-cols-3 gap-4">
+            <div className="bg-white border rounded-xl p-4">
+              <h3 className="font-semibold mb-3">Estado de la flota ({snapshot.total} unidades)</h3>
+              <div className="flex h-4 rounded overflow-hidden mb-3">
+                {STATUS_ORDER.filter(s => snapshot.s[s]).map(s => <div key={s} className={STATUS_COLOR[s]} style={{ width: `${(snapshot.s[s] / Math.max(1, snapshot.total)) * 100}%` }} title={`${s}: ${snapshot.s[s]}`} />)}
               </div>
+              <ul className="text-sm space-y-1">{STATUS_ORDER.map(s => <li key={s} className="flex justify-between"><span className="flex items-center gap-2"><span className={`w-2.5 h-2.5 rounded-full ${STATUS_COLOR[s]}`} />{s.replace('_', ' ')}</span><b>{snapshot.s[s] || 0}</b></li>)}</ul>
+              <p className="text-xs text-slate-500 mt-2">{kpi.open_work_orders} OT abiertas</p>
             </div>
-
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-purple-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
-              <div className="relative z-10">
-                <p className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">MTTR (Promedio)</p>
-                <div className="flex items-end gap-2">
-                  <h3 className="text-4xl font-black text-slate-800">
-                    {stats.mttrDias} <span className="text-lg font-bold text-slate-400">días</span>
-                  </h3>
-                </div>
-                <p className="text-xs text-slate-500 mt-2 font-medium">Tiempo Medio para Reparar</p>
-              </div>
+            <div className="bg-white border rounded-xl p-4">
+              <h3 className="font-semibold mb-3">Costos del periodo por categoría</h3>
+              {categories.length === 0 ? <p className="text-sm text-slate-500">Sin costos en el periodo.</p> : (
+                <ul className="space-y-2 text-sm">{categories.map(([c, v]) => (
+                  <li key={c}><div className="flex justify-between"><span>{CATEGORY_LABEL[c] || c}</span><b>{money(v)}</b></div>
+                    <div className="h-2 rounded bg-slate-100"><div className="h-2 rounded bg-[#002855]" style={{ width: `${(Number(v) / maxCat) * 100}%` }} /></div></li>))}</ul>
+              )}
             </div>
-
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-red-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
-              <div className="relative z-10">
-                <p className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">Fallas Abiertas</p>
-                <div className="flex items-end gap-2">
-                  <h3 className="text-4xl font-black text-red-600">
-                    {stats.fallasAbiertas}
-                  </h3>
-                </div>
-                <p className="text-xs text-slate-500 mt-2 font-medium">Reportes pendientes de atención</p>
-              </div>
+            <div className="bg-white border rounded-xl p-4">
+              <h3 className="font-semibold mb-3 flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-500" />Alertas y anomalías</h3>
+              {(brief?.anomalies || []).length === 0 && (brief?.blocked_or_unavailable || []).length === 0 ? <p className="text-sm text-slate-500">Sin alertas.</p> : (
+                <ul className="text-sm space-y-1.5 max-h-56 overflow-y-auto">
+                  {(brief?.blocked_or_unavailable || []).slice(0, 6).map((b: Row) => <li key={`b-${b.plate}`}><ShieldAlert className="w-3.5 h-3.5 inline text-red-600 mr-1" /><b>{b.plate}</b> {b.status} · {(b.motives || [])[0] || b.eligibility}</li>)}
+                  {(brief?.anomalies || []).slice(0, 8).map((a: Row, i: number) => <li key={`a-${i}`}><AlertTriangle className="w-3.5 h-3.5 inline text-amber-500 mr-1" /><b>{a.plate}</b> {a.type.replace('_', ' ').toLowerCase()}: {a.detail}</li>)}
+                </ul>
+              )}
+              <Link href="/mantenimiento/copiloto" className="text-xs text-blue-600 mt-2 inline-block">Ver Copiloto →</Link>
             </div>
           </div>
 
-          {/* TWO COLUMNS */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* ALERTAS DOCUMENTARIAS */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col">
-              <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-amber-50/50 rounded-t-xl">
-                <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-amber-500" />
-                  Alertas Documentarias ({stats.documentosAlerta})
-                </h3>
-                <Link href="/mantenimiento/flota" className="text-xs font-bold text-blue-600 hover:underline">Ir a Flota</Link>
-              </div>
-              <div className="p-0 flex-1 overflow-y-auto max-h-[300px]">
-                {alertVehicles.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center p-8 text-slate-400">
-                    <ShieldAlert className="w-10 h-10 mb-2 opacity-20" />
-                    <p className="text-sm font-medium">Todos los documentos están vigentes.</p>
-                  </div>
-                ) : (
-                  <ul className="divide-y divide-slate-100">
-                    {alertVehicles.map((v, i) => (
-                      <li key={i} className="p-4 hover:bg-slate-50 flex items-center justify-between">
-                        <div>
-                          <p className="font-black text-[#002855] text-lg leading-tight">{v.plate}</p>
-                          <p className="text-xs font-bold text-slate-500 uppercase mt-1">{v.type}</p>
-                        </div>
-                        <div className="text-right">
-                          <span className={`px-3 py-1 rounded-full text-xs font-bold ${v.days < 0 ? 'bg-red-100 text-red-700' : v.days === 0 ? 'bg-orange-100 text-orange-700' : 'bg-amber-100 text-amber-700'}`}>
-                            {v.days < 0 ? `Vencido hace ${Math.abs(v.days)} días` : v.days === 0 ? 'Vence HOY' : `Vence en ${v.days} días`}
-                          </span>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+          {kpi.recurrent_failures?.length > 0 && (
+            <div className="bg-white border rounded-xl p-4">
+              <h3 className="font-semibold mb-2">Fallas recurrentes (≥3 reportes en 90 días)</h3>
+              <ul className="text-sm space-y-1">{kpi.recurrent_failures.map((r: Row) => <li key={r.vehicle_plate}><Link href={`/mantenimiento/flota/${r.vehicle_plate}`} className="font-semibold text-[#002855]">{r.vehicle_plate}</Link> · {r.reports_90d} reportes · <span className="text-slate-500">{r.descriptions}</span></li>)}</ul>
             </div>
+          )}
 
-            {/* FALLAS RECIENTES */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col">
-              <div className="p-4 border-b border-slate-200 flex justify-between items-center rounded-t-xl">
-                <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-red-500" />
-                  Últimos Reportes de Falla
-                </h3>
-                <Link href="/mantenimiento/fallas" className="text-xs font-bold text-blue-600 hover:underline">Ver Gestor</Link>
-              </div>
-              <div className="p-0 flex-1 overflow-y-auto max-h-[300px]">
-                {recentFailures.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center p-8 text-slate-400">
-                    <Activity className="w-10 h-10 mb-2 opacity-20" />
-                    <p className="text-sm font-medium">No hay reportes de falla activos.</p>
-                  </div>
-                ) : (
-                  <ul className="divide-y divide-slate-100">
-                    {recentFailures.map(f => (
-                      <li key={f.id} className="p-4 hover:bg-slate-50">
-                        <div className="flex justify-between mb-1">
-                          <Link href={`/mantenimiento/flota/${f.vehicle_plate}`} className="font-black text-[#002855] hover:text-blue-600 transition-colors">
-                            {f.vehicle_plate}
-                          </Link>
-                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${f.severity === 'CRITICA' ? 'bg-red-600 text-white animate-pulse' : 'bg-orange-100 text-orange-700'}`}>
-                            {f.severity}
-                          </span>
-                        </div>
-                        <p className="text-sm font-medium text-slate-700 mt-1 line-clamp-2">{f.description}</p>
-                        <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
-                          <CalendarClock className="w-3 h-3" />
-                          {new Date(f.reported_at).toLocaleString()}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-            
+          <div className="bg-white border rounded-xl overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
+                <th className="text-left p-3">Unidad</th><th className="text-right p-3">Disponibilidad</th><th className="text-right p-3">Fuera de servicio</th><th className="text-right p-3">Fallas</th>
+                <th className="text-right p-3">MTBF</th><th className="text-right p-3">Km</th><th className="text-right p-3">Costo</th><th className="text-right p-3">Costo/km</th>
+              </tr></thead>
+              <tbody className="divide-y">
+                {(kpi.per_vehicle || []).map((v: Row) => (
+                  <tr key={v.plate}>
+                    <td className="p-3"><Link href={`/mantenimiento/flota/${v.plate}`} className="font-semibold text-[#002855]">{v.plate}</Link><div className="text-xs text-slate-500">{v.type} · {v.status}</div></td>
+                    <td className={`p-3 text-right font-semibold ${Number(v.availability_pct) < 90 ? 'text-red-600' : Number(v.availability_pct) < 97 ? 'text-amber-600' : 'text-emerald-700'}`}>{num(v.availability_pct, 2)}%</td>
+                    <td className="p-3 text-right">{num(v.downtime_hours)} h</td><td className="p-3 text-right">{v.failures}</td>
+                    <td className="p-3 text-right">{v.mtbf_hours != null ? `${num(v.mtbf_hours)} h` : '—'}</td><td className="p-3 text-right">{num(v.km, 0)}</td>
+                    <td className="p-3 text-right">{money(v.cost)}</td><td className="p-3 text-right">{v.cost_per_km != null ? `S/ ${num(v.cost_per_km, 3)}` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
+          <p className="text-xs text-slate-400">Disponibilidad = 1 − horas fuera de servicio por OT (intervalos fusionados) / (unidades × horas). MTBF = horas disponibles / fallas. MTTR = promedio de horas fuera de servicio de OT correctivas cerradas. Costo/km = libro de costos / km reales.</p>
+        </>
       )}
     </div>
   )

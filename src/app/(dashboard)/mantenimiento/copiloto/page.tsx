@@ -1,133 +1,77 @@
-'use client';
+'use client'
 
-import { useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
+import { toast } from 'sonner'
+import { Bot, Loader2, RefreshCw, MessageSquare } from 'lucide-react'
 
-// Setup Supabase client (fallback if env vars missing for mock purposes)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mock.supabase.co';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'mock-key';
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Copiloto CMMS (Fase 12): respuestas con datos reales (get_cmms_copilot_brief, SECURITY INVOKER) y
+// acceso a JRM IA con herramientas del CMMS. La IA es asistiva: no modifica datos; las acciones pasan
+// por las reglas del backend (migración 20260928150000). Reemplaza el copiloto simulado anterior.
+
+const supabase = createClient()
+type Row = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+const money = (n: unknown) => `S/ ${Number(n || 0).toLocaleString('es-PE', { maximumFractionDigits: 0 })}`
+
+function askAi(question: string) {
+  window.dispatchEvent(new CustomEvent('jrm:open-ai', { detail: { question } }))
+}
 
 export default function CopilotoPage() {
-  const [vehiclePlate, setVehiclePlate] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
-  const [logs, setLogs] = useState<any[]>([]);
+  const [brief, setBrief] = useState<Row | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  const handleAnalyze = async () => {
-    if (!vehiclePlate) return;
-    setLoading(true);
-    setResult(null);
+  const apply = useCallback(({ data, error }: { data: unknown; error: { message: string } | null }) => {
+    if (error) toast.error('No se pudo generar el resumen: ' + error.message)
+    setBrief((data as Row) || null)
+    setLoading(false)
+  }, [])
+  const refresh = useCallback(() => { setLoading(true); return supabase.rpc('get_cmms_copilot_brief', { p_plates: null }).then(apply) }, [apply])
+  useEffect(() => { supabase.rpc('get_cmms_copilot_brief', { p_plates: null }).then(apply) }, [apply])
 
-    try {
-      // 1. Fetch Context (Mocking the gathering from vw_asset_tco, vw_maintenance_projections, etc.)
-      const mockContext = {
-        tco_data: { total_cost: 15000, cpk: 1.2 },
-        maintenance_projections: { pending_preventive: 2, next_service_km: 150000 },
-        vehicle_status: 'Active',
-        recent_checklists: { critical_issues: 1 }
-      };
-
-      // 2. Mock AI Recommendation
-      let recommendation = '';
-      if (mockContext.tco_data.total_cost > 10000) {
-         recommendation = "Renovar unidad por TCO elevado y revisar estado de mantenimientos preventivos.";
-      } else {
-         recommendation = "La unidad opera en parámetros aceptables. Mantener plan de mantenimiento regular.";
-      }
-
-      // 3. Insert into ai_analysis_logs
-      const { data, error } = await supabase
-        .from('ai_analysis_logs')
-        .insert([
-          {
-            vehicle_plate: vehiclePlate.toUpperCase(),
-            context: mockContext,
-            recommendation,
-            status: 'completed'
-          }
-        ])
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Error inserting log:', error);
-        // Fallback for UI if DB is not fully accessible in mock
-        setResult({ recommendation, context: mockContext });
-      } else {
-        setResult(data);
-      }
-      
-      // Refresh logs
-      fetchLogs();
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchLogs = async () => {
-    const { data } = await supabase
-      .from('ai_analysis_logs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(5);
-    if (data) setLogs(data);
-  };
+  const sections: { q: string; key: string; render: (items: Row[]) => React.ReactNode }[] = [
+    { q: '¿Qué unidades están bloqueadas y por qué no están disponibles?', key: 'blocked_or_unavailable', render: items => items.map(b => (
+      <li key={b.plate}><Link href={`/mantenimiento/flota/${b.plate}`} className="font-semibold text-[#002855]">{b.plate}</Link> · {b.status} · {b.eligibility}
+        {(b.motives || []).length > 0 && <ul className="ml-4 list-disc text-slate-600">{b.motives.map((m: string) => <li key={m}>{m}</li>)}</ul>}</li>)) },
+    { q: '¿Qué mantenimiento vence?', key: 'maintenance_due', render: items => items.map((m, i) => (
+      <li key={i}><b>{m.plate}</b> · {m.plan} · <span className={m.alert === 'VENCIDO' ? 'text-red-600 font-semibold' : 'text-amber-600'}>{m.alert}</span> por {String(m.driver).toLowerCase()}{m.projected_date ? ` · ${m.projected_date}` : ''}{m.open_work_order ? ` · OT ${m.open_work_order}` : ''}</li>)) },
+    { q: '¿Qué unidad cuesta más mantener? (365 días)', key: 'top_cost_units', render: items => items.map(u => <li key={u.plate}><b>{u.plate}</b> · TCO {money(u.cost_365d)} · mantenimiento {money(u.maintenance_365d)}</li>) },
+    { q: '¿Qué fallas son recurrentes?', key: 'recurrent_failures', render: items => items.map(r => <li key={r.plate}><b>{r.plate}</b> · {r.reports_90d} reportes en 90 días · última: {r.last}</li>) },
+    { q: '¿Qué repuestos están por debajo del mínimo?', key: 'parts_below_minimum', render: items => items.map(p => <li key={p.code}><b>{p.code}</b> {p.name} · disponible {p.available} / mínimo {p.minimum}{p.replenishment ? ` · reposición ${p.replenishment}` : ''}</li>) },
+    { q: '¿Qué taller presenta más retrabajos?', key: 'provider_reworks', render: items => items.map(p => <li key={p.provider}><b>{p.provider}</b> · {p.reworks} retrabajos · {p.warranty_claims} reclamos · índice de calidad {p.quality_index ?? '—'}</li>) },
+    { q: 'Anomalías detectadas (IA predictiva)', key: 'anomalies', render: items => items.map((a, i) => <li key={i}><b>{a.plate}</b> · {String(a.type).replace('_', ' ').toLowerCase()}: {a.detail}</li>) },
+  ]
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Copiloto AI de Mantenimiento</h1>
-      
-      <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-        <h2 className="text-xl font-semibold mb-4">Solicitar Análisis</h2>
-        <div className="flex gap-4">
-          <input
-            type="text"
-            placeholder="Placa del Vehículo (ej. ABC-123)"
-            value={vehiclePlate}
-            onChange={(e) => setVehiclePlate(e.target.value)}
-            className="flex-1 border p-2 rounded"
-          />
-          <button
-            onClick={handleAnalyze}
-            disabled={loading || !vehiclePlate}
-            className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
-          >
-            {loading ? 'Analizando...' : 'Analizar Vehículo'}
-          </button>
+    <div className="p-6 space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><Bot className="w-6 h-6" />Copiloto de mantenimiento</h1>
+          <p className="text-sm text-slate-500">{brief?.disclaimer || 'Respuestas calculadas con datos reales del CMMS.'}</p>
         </div>
-
-        {result && (
-          <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded">
-            <h3 className="font-bold text-green-800">Recomendación AI:</h3>
-            <p className="mt-2 text-green-900">{result.recommendation}</p>
-            <details className="mt-4">
-              <summary className="text-sm text-green-700 cursor-pointer">Ver Contexto Analizado</summary>
-              <pre className="mt-2 text-xs bg-green-100 p-2 rounded overflow-auto">
-                {JSON.stringify(result.context, null, 2)}
-              </pre>
-            </details>
-          </div>
-        )}
+        <button onClick={refresh} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
       </div>
 
-      <div className="bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-xl font-semibold mb-4">Últimos Análisis</h2>
-        <div className="space-y-4">
-          {logs.length === 0 && <p className="text-gray-500">No hay análisis recientes.</p>}
-          {logs.map((log) => (
-            <div key={log.id} className="border-b pb-4">
-              <div className="flex justify-between items-center mb-2">
-                <span className="font-bold">{log.vehicle_plate}</span>
-                <span className="text-sm text-gray-500">{new Date(log.created_at).toLocaleString()}</span>
+      {loading ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : !brief ? (
+        <p className="text-sm text-slate-500">No hay datos disponibles con sus permisos.</p>
+      ) : (
+        <div className="grid md:grid-cols-2 gap-4">
+          {sections.map(s => {
+            const items = (brief[s.key] || []) as Row[]
+            return (
+              <div key={s.key} className="bg-white border rounded-xl p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="font-semibold text-slate-800">{s.q}</h3>
+                  <button onClick={() => askAi(s.q)} title="Preguntar a JRM IA" className="p-1.5 border rounded-lg text-slate-500 hover:text-[#002855]"><MessageSquare className="w-4 h-4" /></button>
+                </div>
+                {items.length === 0 ? <p className="text-sm text-emerald-700">Sin casos.</p> : <ul className="text-sm space-y-1.5 max-h-64 overflow-y-auto">{s.render(items)}</ul>}
               </div>
-              <p className="text-gray-700">{log.recommendation}</p>
-            </div>
-          ))}
+            )
+          })}
         </div>
-      </div>
+      )}
+      {brief?.generated_at && <p className="text-xs text-slate-400">Generado: {new Date(brief.generated_at).toLocaleString('es-PE')}</p>}
     </div>
-  );
+  )
 }
