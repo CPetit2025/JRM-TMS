@@ -166,19 +166,19 @@ export async function executeAiTool(
         .in('site_id', siteIds).eq('is_active', true).limit(100),
       supabase.from('vehicles').select('id, plate, type, current_mileage, last_maintenance_date, last_maintenance_mileage')
         .in('site_id', siteIds).limit(150),
-      supabase.from('vehicle_failures').select('id, vehicle_id, description, criticality, status, report_date')
-        .in('site_id', siteIds).in('status', ['ABIERTO', 'EN_REVISION', 'CON_OT']).limit(80),
+      supabase.from('vw_maintenance_backlog').select('id, vehicle_plate, description, severity, status, reported_at, age_days')
+        .in('site_id', siteIds).order('priority_score', { ascending: false }).limit(80),
       supabase.from('maintenance_work_orders').select('id, ot_code, vehicle_id, status, estimated_end_date')
-        .in('site_id', siteIds).in('status', ['PENDIENTE', 'EN_PROCESO']).limit(80),
-      supabase.from('vehicle_failures').select('vehicle_id', { count: 'exact' })
-        .in('site_id', siteIds).gte('report_date', sinceDays(90)).limit(500),
+        .in('site_id', siteIds).not('status', 'in', '(CERRADA,CANCELADA)').limit(80),
+      supabase.from('maintenance_requests').select('vehicle_plate', { count: 'exact' })
+        .in('site_id', siteIds).gte('reported_at', sinceDays(90)).limit(500),
     ])
     const plans = rows(plansResult.data, plansResult.error)
     const vehicles = rows(vehiclesResult.data, vehiclesResult.error)
     const recent = rows(recentResult.data, recentResult.error)
     const vehicleById = new Map(vehicles.map(vehicle => [vehicle.id, vehicle]))
     const counts = recent.reduce<Record<string, number>>((map, item) => {
-      if (item.vehicle_id) map[item.vehicle_id] = (map[item.vehicle_id] || 0) + 1
+      if (item.vehicle_plate) map[item.vehicle_plate] = (map[item.vehicle_plate] || 0) + 1
       return map
     }, {})
     const thirtyDaysOut = Date.now() + 30 * 86_400_000
@@ -201,10 +201,8 @@ export async function executeAiTool(
       plansDueWithin30DaysEstimate: dueEstimates.filter(item => item.dueDate && !item.overdue &&
         new Date(item.dueDate).getTime() <= thirtyDaysOut).slice(0, 40),
       unitsWithThreeOrMoreReportsIn90DaysInSample: Object.entries(counts)
-        .filter(([, count]) => count >= 3).map(([vehicleId, count]) =>
-          ({ vehiclePlate: vehicleById.get(vehicleId)?.plate || null, count })),
-      openFailures: rows(failuresResult.data, failuresResult.error).slice(0, 40)
-        .map(item => ({ ...item, vehicle_plate: vehicleById.get(item.vehicle_id)?.plate || null })),
+        .filter(([, count]) => count >= 3).map(([vehiclePlate, count]) => ({ vehiclePlate, count })),
+      openFailures: rows(failuresResult.data, failuresResult.error).slice(0, 40),
       openOrders: rows(ordersResult.data, ordersResult.error).slice(0, 40)
         .map(item => ({ ...item, vehicle_plate: vehicleById.get(item.vehicle_id)?.plate || null })),
       note: 'Las fechas preventivas son estimaciones por tipo de unidad y última fecha general de mantenimiento.',

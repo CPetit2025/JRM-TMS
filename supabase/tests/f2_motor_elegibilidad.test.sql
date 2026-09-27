@@ -115,7 +115,7 @@ BEGIN
 
   -- T13: el cambio queda auditado
   IF EXISTS (SELECT 1 FROM public.vehicle_history_logs WHERE vehicle_plate = 'ZZF2A1' AND field_changed = 'status' AND new_value = 'BLOQUEADA') THEN
-    v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T13 sin registro de auditoría'; END IF;
+    v_pass := v_pass + 1; ELSE v_fail := v_fail || text 'T13 sin registro de auditoría'; END IF;
 
   -- Sesión sin permisos TMS -----------------------------------------------
   PERFORM set_config('request.jwt.claims', json_build_object('sub', v_nobody, 'role', 'authenticated')::text, true);
@@ -161,7 +161,7 @@ BEGIN
 
   SELECT status INTO v_status FROM public.vehicles WHERE plate = 'ZZF2A1';
   IF (SELECT is_blocked FROM public.vehicles WHERE plate = 'ZZF2A1') AND v_status = 'BLOQUEADA' THEN v_pass := v_pass + 1;
-  ELSE v_fail := v_fail || 'T17 update directo is_blocked prosperó'; END IF;
+  ELSE v_fail := v_fail || text 'T17 update directo is_blocked prosperó'; END IF;
 
   SELECT status INTO v_status FROM public.vehicles WHERE plate = 'ZZF2E1';
   IF v_status IS NULL OR v_status = 'OBSERVADA' THEN v_pass := v_pass + 1;
@@ -171,7 +171,7 @@ BEGIN
   IF NOT has_function_privilege('anon', 'public.transition_vehicle_status(text,text,text)', 'EXECUTE')
      AND NOT has_function_privilege('anon', 'public.transition_vehicle_status(text,text,text,uuid,jsonb)', 'EXECUTE')
      AND NOT has_function_privilege('anon', 'public.set_vehicle_administrative_block(text,boolean,text)', 'EXECUTE') THEN
-    v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T19 anon puede ejecutar RPC de estado'; END IF;
+    v_pass := v_pass + 1; ELSE v_fail := v_fail || text 'T19 anon puede ejecutar RPC de estado'; END IF;
 
   IF array_length(v_fail, 1) > 0 THEN
     RAISE EXCEPTION 'F2 FAIL (% ok, % fallas): %', v_pass, array_length(v_fail, 1), array_to_string(v_fail, ' || ');

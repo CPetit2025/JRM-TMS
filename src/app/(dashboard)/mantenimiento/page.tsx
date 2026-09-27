@@ -95,13 +95,12 @@ export default function MantenimientoDashboardPage() {
       
       const mttr = totalFinished > 0 ? (totalDaysRepair / totalFinished).toFixed(1) : 0
 
-      // 4. Fallas
-      const { data: fData } = await supabase.from('vehicle_failures').select('id').in('status', ['ABIERTO', 'EN_REVISION'])
+      // 4. Fallas (fuente única: backlog sobre maintenance_requests)
+      const { data: fData } = await supabase.from('vw_maintenance_backlog').select('id').neq('status', 'CONVERTIDA_OT')
       const { data: fRecent } = await supabase
-        .from('vehicle_failures')
-        .select('*')
-        .in('status', ['ABIERTO', 'EN_REVISION'])
-        .order('created_at', { ascending: false })
+        .from('vw_maintenance_backlog')
+        .select('id, vehicle_plate, description, severity, reported_at')
+        .order('priority_score', { ascending: false })
         .limit(5)
 
       setStats({
@@ -257,14 +256,14 @@ export default function MantenimientoDashboardPage() {
                           <Link href={`/mantenimiento/flota/${f.vehicle_plate}`} className="font-black text-[#002855] hover:text-blue-600 transition-colors">
                             {f.vehicle_plate}
                           </Link>
-                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${f.criticality === 'CRITICA' ? 'bg-red-600 text-white animate-pulse' : 'bg-orange-100 text-orange-700'}`}>
-                            {f.criticality}
+                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${f.severity === 'CRITICA' ? 'bg-red-600 text-white animate-pulse' : 'bg-orange-100 text-orange-700'}`}>
+                            {f.severity}
                           </span>
                         </div>
                         <p className="text-sm font-medium text-slate-700 mt-1 line-clamp-2">{f.description}</p>
                         <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
                           <CalendarClock className="w-3 h-3" />
-                          {new Date(f.report_date).toLocaleString()}
+                          {new Date(f.reported_at).toLocaleString()}
                         </p>
                       </li>
                     ))}
