@@ -49,7 +49,7 @@ export default function ChecklistPage() {
       }
     }
     
-    // FunciÃ³n para verificar ubicaciÃ³n contra BD y estado de despacho
+    // Función para verificar ubicación contra BD y estado de despacho
     const verifyPrerequisites = async () => {
       try {
         if (contextLoading) return
@@ -94,7 +94,7 @@ export default function ChecklistPage() {
             },
             (error) => {
               console.error("Error GPS:", error.message || "Error desconocido")
-              toast.error("No se pudo obtener la ubicaciÃ³n para validar geocerca.")
+              toast.error("No se pudo obtener la ubicación para validar geocerca.")
               setCheckingLocation(false)
             },
             { enableHighAccuracy: true, timeout: 30000, maximumAge: 60000 }
@@ -139,7 +139,7 @@ export default function ChecklistPage() {
       return
     }
     if (!photoFile) {
-      toast.error('Es obligatorio subir una foto de evidencia del vehÃ­culo')
+      toast.error('Es obligatorio subir una foto de evidencia del vehículo')
       return
     }
 
@@ -200,8 +200,15 @@ export default function ChecklistPage() {
       }
 
       localStorage.removeItem('jrm_checklist_state')
-      toast.success('Checklist y fotografía guardados.')
       await refresh()
+      // Falla crítica: la unidad quedó bloqueada por el motor de elegibilidad y la ruta no se inicia
+      if (data.can_start === false) {
+        toast.error(data.message || 'Falla crítica registrada: no inicie la ruta. Mantenimiento fue notificado.', { duration: 10000 })
+        return
+      }
+      toast.success(data.global_result === 'WARNING'
+        ? 'Checklist guardado con observaciones no críticas.'
+        : 'Checklist y fotografía guardados.')
       router.push('/app/ruta')
     } catch (error) {
       toast.error('No se pudo guardar el checklist: ' + (error instanceof Error ? error.message : 'Error desconocido'))
@@ -218,7 +225,7 @@ export default function ChecklistPage() {
           </div>
           <div>
             <h1 className="text-lg font-black text-[#002855]">Checklist Pre-Ruta</h1>
-            <p className="text-xs text-slate-500">InspecciÃ³n obligatoria de la unidad</p>
+            <p className="text-xs text-slate-500">Inspección obligatoria de la unidad</p>
           </div>
         </div>
       </div>
@@ -228,7 +235,7 @@ export default function ChecklistPage() {
         <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 flex flex-col items-center justify-center text-center">
           <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-3" />
           <h3 className="font-bold text-blue-900">Verificando Datos...</h3>
-          <p className="text-xs text-blue-700 mt-1">Verificando ubicaciÃ³n y rutas...</p>
+          <p className="text-xs text-blue-700 mt-1">Verificando ubicación y rutas...</p>
         </div>
       ) : !hasDispatch ? (
         <div className="bg-orange-50 border border-orange-200 rounded-2xl p-6 flex flex-col items-center text-center mt-10">
@@ -253,8 +260,8 @@ export default function ChecklistPage() {
           </div>
           <h3 className="font-black text-red-900 text-base">Fuera de Base Autorizada</h3>
           <p className="text-sm text-red-700 mt-2">
-            El sistema detecta que no estÃ¡s en una base o cochera autorizada.
-            {currentDistanceInfo ? ` ${currentDistanceInfo}` : ' AcÃ©rcate a la base para desbloquear el checklist.'}
+            El sistema detecta que no estás en una base o cochera autorizada.
+            {currentDistanceInfo ? ` ${currentDistanceInfo}` : ' Acércate a la base para desbloquear el checklist.'}
           </p>
         </div>
       ) : (
@@ -263,19 +270,19 @@ export default function ChecklistPage() {
             <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
               <MapPin className="w-4 h-4 text-green-600" />
             </div>
-            <span className="text-sm font-bold text-green-800">UbicaciÃ³n dentro de geocerca autorizada</span>
+            <span className="text-sm font-bold text-green-800">Ubicación dentro de geocerca autorizada</span>
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="bg-slate-50 px-4 py-3 border-b border-slate-100">
-              <h3 className="font-bold text-slate-800 text-sm">Puntos de RevisiÃ³n Obligatorios</h3>
+              <h3 className="font-bold text-slate-800 text-sm">Puntos de Revisión Obligatorios</h3>
             </div>
             <div className="divide-y divide-slate-100">
               {[
-                { id: 'llantas', label: 'Estado de Llantas y PresiÃ³n' },
+                { id: 'llantas', label: 'Estado de Llantas y Presión' },
                 { id: 'aceite', label: 'Niveles de Aceite y Agua' },
                 { id: 'luces', label: 'Luces, Direccionales y Focos' },
-                { id: 'frenos', label: 'Sistema de Frenos (Aire/LÃ­quido)' },
+                { id: 'frenos', label: 'Sistema de Frenos (Aire/Líquido)' },
                 { id: 'combustible', label: 'Tanque de Combustible lleno' },
               ].map((item) => {
                 const val = checklist[item.id]
@@ -287,13 +294,13 @@ export default function ChecklistPage() {
                         onClick={() => updateChecklist(item.id, 'OK')}
                         className={`flex-1 py-2.5 rounded-xl font-bold text-xs border-2 transition-all ${val === 'OK' ? 'bg-green-500 border-green-500 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
                       >
-                        âœ” OK
+                        ✔ OK
                       </button>
                       <button
                         onClick={() => updateChecklist(item.id, 'MAL')}
                         className={`flex-1 py-2.5 rounded-xl font-bold text-xs border-2 transition-all ${val === 'MAL' ? 'bg-red-500 border-red-500 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
                       >
-                        âœ– MALO
+                        ✖ MALO
                       </button>
                     </div>
                   </div>
@@ -317,7 +324,7 @@ export default function ChecklistPage() {
               <textarea
                 className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-[#002855] outline-none text-sm text-slate-900 bg-white resize-none transition-colors"
                 rows={2}
-                placeholder="Ej. Parachoque con ligero quiÃ±e..."
+                placeholder="Ej. Parachoque con ligero quiñe..."
                 value={checklist.observaciones as string}
                 onChange={(e) => updateChecklist('observaciones', e.target.value)}
               />
@@ -326,7 +333,7 @@ export default function ChecklistPage() {
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
-              <h3 className="font-bold text-slate-800 text-sm">Evidencia FotogrÃ¡fica Frontal</h3>
+              <h3 className="font-bold text-slate-800 text-sm">Evidencia Fotográfica Frontal</h3>
             </div>
             <div className="p-4">
               {photo ? (
@@ -343,7 +350,7 @@ export default function ChecklistPage() {
               ) : (
                 <label className="border-2 border-dashed border-slate-300 rounded-xl h-32 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 hover:border-[#002855] transition-all group">
                   <Camera className="w-8 h-8 text-slate-400 group-hover:text-[#002855] mb-2 transition-colors" />
-                  <span className="text-sm font-bold text-slate-500 group-hover:text-[#002855] transition-colors">Tomar Foto del VehÃ­culo</span>
+                  <span className="text-sm font-bold text-slate-500 group-hover:text-[#002855] transition-colors">Tomar Foto del Vehículo</span>
                   <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoCapture} />
                 </label>
               )}
