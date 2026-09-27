@@ -7,7 +7,7 @@ import {
   LogOut, ShieldCheck, BarChart3, Send, DollarSign, 
   ArchiveRestore, Zap, ChevronRight, Wrench, Clock, BarChart2, CheckCircle, Settings2,
   Building2, FileSignature, ClipboardList, PackageCheck, Activity, HardHat, BadgeDollarSign,
-  PackageSearch, Wallet, Receipt, Calculator
+  PackageSearch, Wallet, Receipt, Calculator, AlertTriangle, ClipboardCheck, ShieldAlert
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -90,7 +90,7 @@ export function Sidebar() {
           )}
 
           {/* Mantenimiento de Flota (CMMS) */}
-          {(hasPermission('mantenimiento-dashboard') || hasPermission('mantenimiento-flota') || hasPermission('mantenimiento-fallas') || hasPermission('mantenimiento-ot') || hasPermission('mantenimiento-planes')) && (
+          {(hasPermission('mantenimiento-dashboard') || hasPermission('mantenimiento-flota') || hasPermission('mantenimiento-fallas') || hasPermission('mantenimiento-ot') || hasPermission('mantenimiento-planes') || hasPermission('mantenimiento-vencimientos')) && (
             <>
               <div className="mt-6 mb-2 px-4 flex items-center justify-between">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Mantenimiento CMMS</p>
@@ -98,11 +98,14 @@ export function Sidebar() {
               </div>
               {hasPermission('mantenimiento-dashboard') && <NavItem href="/mantenimiento" icon={BarChart3} label="Centro de Control" />}
               {hasPermission('mantenimiento-flota') && <NavItem href="/mantenimiento/flota" icon={Truck} label="Flota 360°" />}
+              {hasPermission('mantenimiento-fallas') && <NavItem href="/mantenimiento/fallas" icon={AlertTriangle} label="Fallas y Backlog" />}
               {hasPermission('mantenimiento-ot') && <NavItem href="/mantenimiento/gestor-ot" icon={Wrench} label="Órdenes de Trabajo" />}
               {hasPermission('mantenimiento-planes') && <NavItem href="/mantenimiento/preventivos" icon={Clock} label="Preventivos" />}
               {hasPermission('mantenimiento-ot') && <NavItem href="/mantenimiento/inventario" icon={PackageSearch} label="Repuestos" />}
               {hasPermission('mantenimiento-flota') && <NavItem href="/mantenimiento/proveedores" icon={Building2} label="Proveedores" />}
               {hasPermission('mantenimiento-flota') && <NavItem href="/mantenimiento/neumaticos" icon={Settings2} label="Neumáticos" />}
+              {hasPermission('mantenimiento-flota') && <NavItem href="/mantenimiento/checklists" icon={ClipboardCheck} label="Inspecciones" />}
+              {hasPermission('mantenimiento-vencimientos') && <NavItem href="/mantenimiento/documentos" icon={ShieldAlert} label="Cumplimiento" />}
               {hasPermission('mantenimiento-flota') && <NavItem href="/flota/contratos-alquiler" icon={FileSignature} label="Contratos Alquiler" />}
               {hasPermission('mantenimiento-flota') && <NavItem href="/flota/liquidaciones-alquiler" icon={Calculator} label="Liq. Alquiler Seco" />}
             </>

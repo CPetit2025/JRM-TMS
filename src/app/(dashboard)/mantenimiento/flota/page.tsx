@@ -983,11 +983,11 @@ export default function FlotaPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Vencimiento SOAT</label>
-              <input type="date" value={newVehicle.soat_expiration} onChange={e => setNewVehicle({...newVehicle, soat_expiration: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" />
+              <input type="date" disabled={!!editingVehicleId} title={editingVehicleId ? 'Se gestiona en Cumplimiento → Documentos' : undefined} value={newVehicle.soat_expiration} onChange={e => setNewVehicle({...newVehicle, soat_expiration: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Vencimiento Rev. Técnica</label>
-              <input type="date" value={newVehicle.technical_review_expiration} onChange={e => setNewVehicle({...newVehicle, technical_review_expiration: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" />
+              <input type="date" disabled={!!editingVehicleId} title={editingVehicleId ? 'Se gestiona en Cumplimiento → Documentos' : undefined} value={newVehicle.technical_review_expiration} onChange={e => setNewVehicle({...newVehicle, technical_review_expiration: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" />
             </div>
           </div>
           <div className="grid grid-cols-1 gap-4">
