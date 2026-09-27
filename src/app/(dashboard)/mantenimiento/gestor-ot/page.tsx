@@ -53,7 +53,13 @@ interface WorkOrder {
   linked_requests: number
   release_result: { eligibility?: { status: string; motives?: string[] } } | null
   created_at: string
+  rework_count: number
+  warranty_decision: string | null
+  warranty_notes: string | null
+  provider_evaluation_score: number | null
+  evaluated_at: string | null
 }
+interface ActiveWarranty { id: string; warranty_kind: 'REPUESTO' | 'SERVICIO'; scope: string; provider_name: string | null; expires_at: string | null; km_remaining: number | null }
 
 interface CostLine { id: string; cost_type: string; amount: number; quantity: number | null; description: string | null; document_number: string | null; created_at: string }
 interface SparePart { id: string; internal_code: string; name: string; current_stock: number | null; available: number | null }
@@ -323,11 +329,19 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
     supabase.from('vw_spare_parts_stock').select('id, internal_code, name, current_stock, available').eq('is_active', true).order('name').then(({ data }) => setParts((data || []) as SparePart[]))
   }, [loadCosts])
 
+  const [warrantyReview, setWarrantyReview] = useState<ActiveWarranty[] | null>(null)
+
   const rpc = async (fn: string, args: Record<string, unknown>, okMsg?: string) => {
     setBusy(true)
     const { data, error } = await supabase.rpc(fn, args)
     setBusy(false)
     if (error || (data && data.success === false)) {
+      // Regla F10: antes de autorizar el gasto se revisan las garantías vigentes de la unidad
+      if (error?.message?.startsWith('GARANTIA_ACTIVA')) {
+        const { data: ws } = await supabase.from('vw_active_warranties').select('id, warranty_kind, scope, provider_name, expires_at, km_remaining').eq('vehicle_id', order.vehicle_id)
+        setWarrantyReview((ws || []) as ActiveWarranty[])
+        return false
+      }
       toast.error(error?.message || data?.error || 'Operación rechazada')
       return false
     }
@@ -448,6 +462,23 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
           </div>
         )}
         {order.cancel_reason && <div className="rounded-lg p-3 bg-red-50 text-red-700">Cancelada: {order.cancel_reason}</div>}
+        {(order.rework_count > 0 || order.warranty_decision) && (
+          <div className="text-xs text-slate-600 flex flex-wrap gap-3">
+            {order.rework_count > 0 && <span className="text-amber-700 font-semibold">Retrabajos: {order.rework_count}</span>}
+            {order.warranty_decision && <span>Garantías: {order.warranty_decision.replace(/_/g, ' ')}{order.warranty_notes ? ` — ${order.warranty_notes}` : ''}</span>}
+          </div>
+        )}
+        {warrantyReview && (
+          <WarrantyReview warranties={warrantyReview} onCancel={() => setWarrantyReview(null)}
+            onDecide={async (decision, notes, w) => {
+              const ok = await rpc('review_work_order_warranty', { p_work_order_id: order.id, p_decision: decision, p_notes: notes, p_warranty_kind: w?.warranty_kind ?? null, p_warranty_id: w?.id ?? null }, 'Garantías revisadas')
+              if (ok) { setWarrantyReview(null); rpc('transition_work_order', { p_work_order_id: order.id, p_new_status: 'APROBADA', p_notes: null }, `OT ${order.ot_code} aprobada`) }
+            }} />
+        )}
+        {order.status === 'CERRADA' && order.provider_id && !order.evaluated_at && (
+          <ProviderEvaluation onEvaluate={(score, notes) => rpc('evaluate_provider_work', { p_work_order_id: order.id, p_score: score, p_notes: notes }, 'Evaluación del proveedor registrada')} />
+        )}
+        {order.evaluated_at && <div className="text-xs text-slate-600">Evaluación del proveedor: {order.provider_evaluation_score}/5</div>}
 
         <div className="grid md:grid-cols-4 gap-3">
           <Info label="Inicio indisponibilidad" value={order.downtime_start ? format(new Date(order.downtime_start), 'dd/MM/yyyy HH:mm') : '—'} />
@@ -558,6 +589,49 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
         )}
       </div>
     </Modal>
+  )
+}
+
+function WarrantyReview({ warranties, onCancel, onDecide }: {
+  warranties: ActiveWarranty[]; onCancel: () => void
+  onDecide: (decision: 'RECLAMO_GARANTIA' | 'NO_CUBIERTO', notes: string, warranty?: ActiveWarranty) => void
+}) {
+  const [selected, setSelected] = useState<string>('')
+  const [notes, setNotes] = useState('')
+  const chosen = warranties.find(w => w.id === selected)
+  return (
+    <div className="border border-amber-300 bg-amber-50 rounded-xl p-4 space-y-3">
+      <div className="font-semibold text-amber-800">La unidad tiene garantías vigentes: revíselas antes de autorizar el gasto</div>
+      <ul className="space-y-1">
+        {warranties.map(w => (
+          <li key={w.id} className="flex items-center gap-2 text-sm">
+            <input type="radio" name="warranty" checked={selected === w.id} onChange={() => setSelected(w.id)} />
+            <span><b>{w.warranty_kind}</b> · {w.scope}{w.provider_name ? ` · ${w.provider_name}` : ''}{w.expires_at ? ` · vence ${w.expires_at}` : ''}{w.km_remaining != null ? ` · ${w.km_remaining} km restantes` : ''}</span>
+          </li>
+        ))}
+      </ul>
+      <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Sustento (obligatorio)" value={notes} onChange={e => setNotes(e.target.value)} />
+      <div className="flex flex-wrap gap-2">
+        <button disabled={!chosen || !notes.trim()} onClick={() => onDecide('RECLAMO_GARANTIA', notes, chosen)} className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-sm disabled:opacity-50">Reclamar garantía seleccionada</button>
+        <button disabled={!notes.trim()} onClick={() => onDecide('NO_CUBIERTO', notes)} className="px-3 py-1.5 rounded-lg border text-sm disabled:opacity-50">No está cubierto: aprobar</button>
+        <button onClick={onCancel} className="px-3 py-1.5 rounded-lg border text-sm">Cancelar</button>
+      </div>
+    </div>
+  )
+}
+
+function ProviderEvaluation({ onEvaluate }: { onEvaluate: (score: number, notes: string | null) => void }) {
+  const [score, setScore] = useState(0)
+  const [notes, setNotes] = useState('')
+  return (
+    <div className="border rounded-xl p-3 flex flex-wrap items-center gap-2 text-sm">
+      <span className="font-medium">Evaluar al proveedor:</span>
+      {[1, 2, 3, 4, 5].map(n => (
+        <button key={n} type="button" onClick={() => setScore(n)} className={`w-8 h-8 rounded-full border ${score >= n ? 'bg-amber-400 border-amber-400 text-white' : ''}`}>{n}</button>
+      ))}
+      <input className="flex-1 min-w-40 border rounded-lg px-2 py-1" placeholder="Comentario" value={notes} onChange={e => setNotes(e.target.value)} />
+      <button disabled={!score} onClick={() => onEvaluate(score, notes || null)} className="px-3 py-1.5 rounded-lg bg-[#002855] text-white disabled:opacity-50">Guardar</button>
+    </div>
   )
 }
 
