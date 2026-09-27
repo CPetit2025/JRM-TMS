@@ -28,7 +28,10 @@ BEGIN
     RAISE EXCEPTION 'REG FAIL: OT abierta no bloquea';
   END IF;
 
-  -- Cierre de OT
+  -- Flujo de OT (F4): aprobar → iniciar → terminar → cerrar
+  PERFORM public.transition_work_order(v_wo, 'APROBADA');
+  PERFORM public.transition_work_order(v_wo, 'EN_PROCESO');
+  PERFORM public.transition_work_order(v_wo, 'TERMINADA', 'regresion');
   r := public.complete_maintenance_order(v_wo, '[]'::jsonb, 'regresion');
   IF NOT COALESCE((r->>'success')::boolean, false) THEN RAISE EXCEPTION 'REG FAIL: cierre OT %', r; END IF;
   IF (SELECT last_performed_date FROM public.maintenance_plans WHERE id = v_plan) IS NULL THEN
