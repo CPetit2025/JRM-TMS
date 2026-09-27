@@ -108,6 +108,7 @@ export function Sidebar() {
               {hasPermission('mantenimiento-vencimientos') && <NavItem href="/mantenimiento/documentos" icon={ShieldAlert} label="Cumplimiento" />}
               {hasPermission('mantenimiento-flota') && <NavItem href="/flota/contratos-alquiler" icon={FileSignature} label="Contratos Alquiler" />}
               {hasPermission('mantenimiento-flota') && <NavItem href="/flota/liquidaciones-alquiler" icon={Calculator} label="Liq. Alquiler Seco" />}
+              {hasPermission('mantenimiento-dashboard') && <NavItem href="/mantenimiento/finanzas" icon={BarChart2} label="Finanzas y TCO" />}
             </>
           )}
 
