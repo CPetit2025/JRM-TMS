@@ -1,337 +1,239 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Building2, Plus, Search, CheckCircle, XCircle, Clock, Save, X, Phone, MapPin } from 'lucide-react'
+import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
+import { format } from 'date-fns'
+import { Building2, Plus, RefreshCw, Loader2, Edit2, Check, X } from 'lucide-react'
+
+// Proveedores, talleres y garantías (Fase 10). Los KPI se calculan desde las OT reales
+// (vw_provider_performance); no hay puntajes almacenados (migración 20260928110000).
+
+const supabase = createClient()
+type Row = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+const TYPES = ['TALLER', 'REPUESTOS', 'SERVICIO_EXTERNO', 'LLANTERIA', 'GRUA', 'OTRO']
+const money = (n: unknown) => `S/ ${Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const pct = (n: unknown) => (n == null ? '—' : `${Number(n).toFixed(1)}%`)
+const field = 'w-full border rounded-lg px-3 py-2 text-sm'
+
+function loadAll() {
+  return Promise.all([
+    supabase.from('vw_provider_performance').select('*').order('business_name'),
+    supabase.from('maintenance_providers').select('*').order('business_name'),
+    supabase.from('provider_rates').select('*, maintenance_providers(business_name)').order('service_name'),
+    supabase.from('service_quotes').select('*, maintenance_providers(business_name), maintenance_work_orders(ot_code, description, status)').order('created_at', { ascending: false }).limit(200),
+    supabase.from('vw_active_warranties').select('*').order('expires_at'),
+    supabase.from('vw_work_orders').select('id, ot_code, vehicle_plate, description, status').not('status', 'in', '(CERRADA,CANCELADA)').order('created_at', { ascending: false }).limit(200),
+  ])
+}
 
 export default function ProveedoresPage() {
-  const [providers, setProviders] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)
-  
-  const supabase = createClient()
+  const [tab, setTab] = useState<'desempeno' | 'tarifario' | 'cotizaciones' | 'garantias'>('desempeno')
+  const [perf, setPerf] = useState<Row[]>([])
+  const [providers, setProviders] = useState<Row[]>([])
+  const [rates, setRates] = useState<Row[]>([])
+  const [quotes, setQuotes] = useState<Row[]>([])
+  const [warranties, setWarranties] = useState<Row[]>([])
+  const [openWos, setOpenWos] = useState<Row[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [editing, setEditing] = useState<Row | 'new' | null>(null)
+  const [modal, setModal] = useState<'rate' | 'quote' | null>(null)
 
-  const [form, setForm] = useState({
-    ruc: '',
-    business_name: '',
-    address: '',
-    contact_name: '',
-    contact_phone: '',
-    specialty: ''
-  })
-
-  useEffect(() => {
-    checkAdmin()
-    fetchProviders()
+  const apply = useCallback(([p, pr, r, q, w, wo]: Awaited<ReturnType<typeof loadAll>>) => {
+    if (p.error) toast.error('Error al cargar proveedores: ' + p.error.message)
+    setPerf(p.data || []); setProviders(pr.data || []); setRates(r.data || []); setQuotes(q.data || []); setWarranties(w.data || []); setOpenWos(wo.data || [])
+    setLoading(false)
   }, [])
+  const refresh = useCallback(() => { setLoading(true); return loadAll().then(apply) }, [apply])
+  useEffect(() => { loadAll().then(apply) }, [apply])
 
-  const checkAdmin = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user?.email === 'cpetit@jrmsac.com.pe') {
-      setIsAdmin(true)
-    }
+  const filtered = useMemo(() => perf.filter(p => !search || `${p.business_name} ${p.ruc} ${p.specialty || ''}`.toLowerCase().includes(search.toLowerCase())), [perf, search])
+
+  const decide = async (q: Row, decision: 'APROBADA' | 'RECHAZADA') => {
+    const notes = decision === 'RECHAZADA' ? prompt('Motivo del rechazo:') : prompt('Comentario de la aprobación (opcional):')
+    if (decision === 'RECHAZADA' && !notes?.trim()) return
+    const { data, error } = await supabase.rpc('decide_service_quote', { p_quote_id: q.id, p_decision: decision, p_notes: notes || null })
+    if (error || !data?.success) return toast.error(error?.message || data?.error)
+    toast.success(decision === 'APROBADA' ? 'Cotización aprobada: el proveedor quedó asignado a la OT' : 'Cotización rechazada'); refresh()
   }
-
-  const fetchProviders = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('maintenance_providers')
-        .select('*')
-        .order('created_at', { ascending: false })
-      
-      if (error) throw error
-      setProviders(data || [])
-    } catch (e: any) {
-      toast.error('Error al cargar proveedores')
-      console.error(e)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSubmitting(true)
-    try {
-      const { error } = await supabase.from('maintenance_providers').insert([{
-        ...form,
-        status: isAdmin ? 'APROBADO' : 'PENDIENTE'
-      }])
-      
-      if (error) throw error
-      
-      toast.success(isAdmin ? 'Proveedor registrado y aprobado' : 'Proveedor solicitado correctamente. Esperando aprobación.')
-      setIsModalOpen(false)
-      setForm({ ruc: '', business_name: '', address: '', contact_name: '', contact_phone: '', specialty: '' })
-      fetchProviders()
-    } catch (e: any) {
-      toast.error('Error al registrar: ' + e.message)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const handleStatusUpdate = async (id: string, newStatus: string) => {
-    if (!isAdmin) return
-    try {
-      const { error } = await supabase
-        .from('maintenance_providers')
-        .update({ status: newStatus })
-        .eq('id', id)
-      
-      if (error) throw error
-      toast.success(`Proveedor marcado como ${newStatus}`)
-      fetchProviders()
-    } catch (e: any) {
-      toast.error('Error al actualizar estado')
-    }
-  }
-
-  const filtered = providers.filter(p => 
-    p.business_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.ruc?.includes(searchTerm)
-  ).sort((a, b) => {
-    const slaA = a.sla_rating || 0;
-    const slaB = b.sla_rating || 0;
-    return slaB - slaA;
-  })
 
   return (
-    <div className="p-4 max-w-7xl mx-auto space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="p-6 space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <Building2 className="w-8 h-8 text-blue-600" />
-            Gestor de Proveedores de Mantenimiento
-          </h1>
-          <p className="text-slate-500">
-            Administra los talleres y proveedores externos.
-          </p>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><Building2 className="w-6 h-6" />Proveedores, talleres y garantías</h1>
+          <p className="text-sm text-slate-500">Desempeño calculado desde las OT: tiempo de atención, cumplimiento de SLA, costo, retrabajos, reclamos de garantía y calificación.</p>
         </div>
-        
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-lg shadow-blue-500/20"
-        >
-          <Plus className="w-5 h-5" />
-          Proponer Proveedor
-        </button>
-      </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-        <div className="p-4 border-b border-slate-100 flex gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input 
-              type="text"
-              placeholder="Buscar por RUC o Razón Social..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-            />
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-slate-50 text-slate-500 font-medium">
-              <tr>
-                <th className="px-6 py-4">RUC</th>
-                <th className="px-6 py-4">Razón Social</th>
-                <th className="px-6 py-4">Especialidad</th>
-                <th className="px-6 py-4">Contacto</th>
-                <th className="px-6 py-4">SLA (%)</th>
-                <th className="px-6 py-4">T. Respuesta</th>
-                <th className="px-6 py-4">Estado</th>
-                {isAdmin && <th className="px-6 py-4 text-right">Acciones</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-slate-500">Cargando...</td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-slate-500">No se encontraron proveedores.</td>
-                </tr>
-              ) : (
-                filtered.map(p => (
-                  <tr key={p.id} className="hover:bg-slate-50/50 transition-colors group">
-                    <td className="px-6 py-4 font-mono text-slate-600">{p.ruc}</td>
-                    <td className="px-6 py-4 font-medium text-slate-900">{p.business_name}</td>
-                    <td className="px-6 py-4 text-slate-600">{p.specialty || '-'}</td>
-                    <td className="px-6 py-4">
-                      <div className="text-slate-900">{p.contact_name || '-'}</div>
-                      <div className="text-slate-500 text-xs flex items-center gap-1 mt-0.5">
-                        <Phone className="w-3 h-3" />
-                        {p.contact_phone || '-'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 font-semibold text-slate-700">
-                      <span className={`px-2 py-1 rounded-md text-xs ${
-                        (p.sla_rating >= 90) ? 'bg-green-100 text-green-700' :
-                        (p.sla_rating >= 70) ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-red-100 text-red-700'
-                      }`}>
-                        {p.sla_rating ? `${Number(p.sla_rating).toFixed(0)}%` : 'N/A'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-slate-600 text-sm">
-                      {p.avg_response_time_hours ? `${Number(p.avg_response_time_hours).toFixed(1)}h` : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                        p.status === 'APROBADO' ? 'bg-green-100 text-green-700' :
-                        p.status === 'RECHAZADO' ? 'bg-red-100 text-red-700' :
-                        'bg-amber-100 text-amber-700'
-                      }`}>
-                        {p.status === 'APROBADO' && <CheckCircle className="w-3.5 h-3.5" />}
-                        {p.status === 'RECHAZADO' && <XCircle className="w-3.5 h-3.5" />}
-                        {(!p.status || p.status === 'PENDIENTE') && <Clock className="w-3.5 h-3.5" />}
-                        {p.status || 'PENDIENTE'}
-                      </span>
-                    </td>
-                    {isAdmin && (
-                      <td className="px-6 py-4 text-right">
-                        {p.status !== 'APROBADO' && (
-                          <button 
-                            onClick={() => handleStatusUpdate(p.id, 'APROBADO')}
-                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors mr-2"
-                            title="Aprobar"
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                          </button>
-                        )}
-                        {p.status !== 'RECHAZADO' && (
-                          <button 
-                            onClick={() => handleStatusUpdate(p.id, 'RECHAZADO')}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Rechazar"
-                          >
-                            <XCircle className="w-4 h-4" />
-                          </button>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+        <div className="flex gap-2">
+          <button onClick={() => setEditing('new')} className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm flex items-center gap-2"><Plus className="w-4 h-4" />Nuevo proveedor</button>
+          <button onClick={refresh} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
         </div>
       </div>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900">Proponer Proveedor</h3>
-                <p className="text-sm text-slate-500 mt-1">
-                  {isAdmin ? 'Registra un nuevo proveedor.' : 'La administración revisará y aprobará tu solicitud.'}
-                </p>
-              </div>
-              <button 
-                onClick={() => setIsModalOpen(false)}
-                className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+      <div className="flex gap-1 border-b">
+        {([['desempeno', 'Proveedores y desempeño'], ['tarifario', 'Tarifario'], ['cotizaciones', 'Cotizaciones'], ['garantias', 'Garantías vigentes']] as const).map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k)} className={`px-3 py-2 text-sm border-b-2 -mb-px ${tab === k ? 'border-[#002855] text-[#002855] font-semibold' : 'border-transparent text-slate-500'}`}>{l}</button>
+        ))}
+      </div>
+
+      {loading ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : (
+        <>
+          {tab === 'desempeno' && (
+            <div className="space-y-3">
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar razón social, RUC o especialidad…" className="border rounded-lg px-3 py-2 text-sm w-80" />
+              <Table rows={filtered} empty="Aún no hay proveedores registrados" cols={[
+                ['Proveedor', r => <div><div className="font-semibold">{r.business_name}</div><div className="text-xs text-slate-500">RUC {r.ruc} · {r.provider_type}{r.specialty ? ` · ${r.specialty}` : ''}</div></div>],
+                ['Estado', r => <span className={`px-2 py-0.5 rounded text-xs font-semibold ${r.status === 'ACTIVO' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{r.status}</span>],
+                ['OT (cerradas)', r => `${r.work_orders} (${r.closed_work_orders})`], ['Atención prom.', r => r.avg_attention_hours != null ? `${r.avg_attention_hours} h` : '—'],
+                ['SLA', r => r.sla_hours ? `${pct(r.sla_compliance_pct)} ≤${r.sla_hours} h` : 'sin SLA'], ['Gasto', r => money(r.total_spend)],
+                ['Retrabajos / reclamos', r => `${r.reworks} / ${r.warranty_claims}`], ['Calificación', r => r.avg_score ?? '—'],
+                ['Índice de calidad', r => r.quality_index != null ? <b className={Number(r.quality_index) >= 80 ? 'text-emerald-700' : Number(r.quality_index) >= 60 ? 'text-amber-600' : 'text-red-600'}>{r.quality_index}</b> : '—'],
+                ['', r => <button onClick={() => setEditing(providers.find(p => p.id === r.provider_id) || null)} className="p-1.5 border rounded-lg"><Edit2 className="w-4 h-4" /></button>],
+              ]} />
             </div>
-            
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">RUC *</label>
-                  <input 
-                    required
-                    type="text"
-                    maxLength={11}
-                    value={form.ruc}
-                    onChange={e => setForm({...form, ruc: e.target.value})}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Razón Social *</label>
-                  <input 
-                    required
-                    type="text"
-                    value={form.business_name}
-                    onChange={e => setForm({...form, business_name: e.target.value})}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-              </div>
+          )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Especialidad</label>
-                  <input 
-                    type="text"
-                    placeholder="Ej. Tornería, Llantas, Planchado..."
-                    value={form.specialty}
-                    onChange={e => setForm({...form, specialty: e.target.value})}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Dirección</label>
-                  <input 
-                    type="text"
-                    value={form.address}
-                    onChange={e => setForm({...form, address: e.target.value})}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-              </div>
+          {tab === 'tarifario' && (
+            <div className="space-y-3">
+              <button onClick={() => setModal('rate')} className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm flex items-center gap-2"><Plus className="w-4 h-4" />Nueva tarifa</button>
+              <Table rows={rates} empty="Sin tarifas registradas" cols={[
+                ['Proveedor', r => r.maintenance_providers?.business_name], ['Servicio', r => r.service_name], ['Unidad', r => r.unit], ['Precio', r => money(r.price)],
+                ['Vigencia', r => `${r.valid_from}${r.valid_to ? ` → ${r.valid_to}` : ''}`]]} />
+            </div>
+          )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Contacto (Nombre)</label>
-                  <input 
-                    type="text"
-                    value={form.contact_name}
-                    onChange={e => setForm({...form, contact_name: e.target.value})}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Teléfono</label>
-                  <input 
-                    type="text"
-                    value={form.contact_phone}
-                    onChange={e => setForm({...form, contact_phone: e.target.value})}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-              </div>
+          {tab === 'cotizaciones' && (
+            <div className="space-y-3">
+              <button onClick={() => setModal('quote')} className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm flex items-center gap-2"><Plus className="w-4 h-4" />Registrar cotización</button>
+              <Table rows={quotes} empty="Sin cotizaciones" cols={[
+                ['Fecha', r => format(new Date(r.created_at), 'dd/MM/yyyy')], ['OT', r => `${r.maintenance_work_orders?.ot_code} · ${r.maintenance_work_orders?.description ?? ''}`],
+                ['Proveedor', r => r.maintenance_providers?.business_name], ['Monto', r => money(r.amount)], ['Válida hasta', r => r.valid_until || '—'],
+                ['Estado', r => r.status], ['', r => r.status === 'PENDIENTE' ? (
+                  <div className="flex gap-1 justify-end">
+                    <button title="Aprobar" onClick={() => decide(r, 'APROBADA')} className="p-1.5 border rounded-lg text-emerald-700"><Check className="w-4 h-4" /></button>
+                    <button title="Rechazar" onClick={() => decide(r, 'RECHAZADA')} className="p-1.5 border rounded-lg text-red-600"><X className="w-4 h-4" /></button>
+                  </div>) : <span className="text-xs text-slate-400">{r.decision_notes}</span>]]} />
+            </div>
+          )}
 
-              <div className="pt-4 flex justify-end gap-3">
-                <button 
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 font-medium rounded-lg transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50"
-                >
-                  {isSubmitting ? 'Guardando...' : (isAdmin ? 'Guardar y Aprobar' : 'Enviar Solicitud')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+          {tab === 'garantias' && (
+            <Table rows={warranties} empty="No hay garantías vigentes" cols={[
+              ['Tipo', r => r.warranty_kind], ['Unidad', r => r.vehicle_plate], ['Alcance', r => r.scope], ['Proveedor', r => r.provider_name || '—'],
+              ['Vence', r => r.expires_at || '—'], ['Km restantes', r => r.km_remaining ?? '—']]} />
+          )}
+        </>
       )}
+
+      {editing && <ProviderModal provider={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh() }} />}
+      {modal === 'rate' && <RateModal providers={providers.filter(p => p.status === 'ACTIVO')} onClose={() => setModal(null)} onSaved={() => { setModal(null); refresh() }} />}
+      {modal === 'quote' && <QuoteModal providers={providers.filter(p => p.status === 'ACTIVO')} workOrders={openWos} onClose={() => setModal(null)} onSaved={() => { setModal(null); refresh() }} />}
     </div>
+  )
+}
+
+function Table({ rows, cols, empty }: { rows: Row[]; cols: [string, (r: Row) => React.ReactNode][]; empty: string }) {
+  if (!rows.length) return <p className="text-sm text-slate-500 p-4">{empty}</p>
+  return (
+    <div className="bg-white border rounded-xl overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{cols.map(([h], i) => <th key={i} className="text-left p-3">{h}</th>)}</tr></thead>
+        <tbody className="divide-y">{rows.map((r, i) => <tr key={r.id ?? r.provider_id ?? i}>{cols.map(([, fn], j) => <td key={j} className="p-3">{fn(r)}</td>)}</tr>)}</tbody>
+      </table>
+    </div>
+  )
+}
+
+function ProviderModal({ provider, onClose, onSaved }: { provider: Row | null; onClose: () => void; onSaved: () => void }) {
+  const [f, setF] = useState({
+    ruc: provider?.ruc || '', business_name: provider?.business_name || '', provider_type: provider?.provider_type || 'TALLER', specialty: provider?.specialty || '',
+    address: provider?.address || '', contact_name: provider?.contact_name || '', contact_phone: provider?.contact_phone || '', email: provider?.email || '',
+    sla_hours: provider?.sla_hours ?? '', default_warranty_days: provider?.default_warranty_days ?? '', default_warranty_km: provider?.default_warranty_km ?? '',
+    payment_terms: provider?.payment_terms || '', status: provider?.status || 'ACTIVO', notes: provider?.notes || '',
+  })
+  const [saving, setSaving] = useState(false)
+  const num = (v: unknown) => (v === '' || v == null ? null : Number(v))
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault(); setSaving(true)
+    const payload = { ...f, sla_hours: num(f.sla_hours), default_warranty_days: num(f.default_warranty_days), default_warranty_km: num(f.default_warranty_km) }
+    const { error } = provider ? await supabase.from('maintenance_providers').update(payload).eq('id', provider.id) : await supabase.from('maintenance_providers').insert(payload)
+    setSaving(false)
+    if (error) return toast.error(error.code === '23505' ? 'Ya existe un proveedor con ese RUC' : error.message)
+    toast.success('Proveedor guardado'); onSaved()
+  }
+  return (
+    <Modal isOpen onClose={onClose} title={provider ? `Editar ${provider.business_name}` : 'Nuevo proveedor'} maxWidth="max-w-2xl">
+      <form onSubmit={save} className="grid md:grid-cols-2 gap-3 text-sm max-h-[75vh] overflow-y-auto pr-1">
+        <label>RUC<input required className={field} value={f.ruc} onChange={e => setF({ ...f, ruc: e.target.value })} /></label>
+        <label>Razón social<input required className={field} value={f.business_name} onChange={e => setF({ ...f, business_name: e.target.value })} /></label>
+        <label>Tipo<select className={field} value={f.provider_type} onChange={e => setF({ ...f, provider_type: e.target.value })}>{TYPES.map(t => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}</select></label>
+        <label>Especialidad<input className={field} value={f.specialty} onChange={e => setF({ ...f, specialty: e.target.value })} /></label>
+        <label className="md:col-span-2">Dirección<input className={field} value={f.address} onChange={e => setF({ ...f, address: e.target.value })} /></label>
+        <label>Contacto<input className={field} value={f.contact_name} onChange={e => setF({ ...f, contact_name: e.target.value })} /></label>
+        <label>Teléfono<input className={field} value={f.contact_phone} onChange={e => setF({ ...f, contact_phone: e.target.value })} /></label>
+        <label>Correo<input type="email" className={field} value={f.email} onChange={e => setF({ ...f, email: e.target.value })} /></label>
+        <label>Condiciones de pago<input className={field} value={f.payment_terms} onChange={e => setF({ ...f, payment_terms: e.target.value })} /></label>
+        <label>SLA pactado (horas de atención)<input type="number" min={1} className={field} value={f.sla_hours} onChange={e => setF({ ...f, sla_hours: e.target.value })} /></label>
+        <label>Estado<select className={field} value={f.status} onChange={e => setF({ ...f, status: e.target.value })}>{['ACTIVO', 'SUSPENDIDO', 'INACTIVO'].map(s => <option key={s}>{s}</option>)}</select></label>
+        <label>Garantía del servicio (días)<input type="number" min={1} className={field} value={f.default_warranty_days} onChange={e => setF({ ...f, default_warranty_days: e.target.value })} /></label>
+        <label>Garantía del servicio (km)<input type="number" min={1} className={field} value={f.default_warranty_km} onChange={e => setF({ ...f, default_warranty_km: e.target.value })} /></label>
+        <label className="md:col-span-2">Notas<input className={field} value={f.notes} onChange={e => setF({ ...f, notes: e.target.value })} /></label>
+        <div className="md:col-span-2 flex justify-end gap-2"><button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg">Cancelar</button><button disabled={saving} className="px-4 py-2 bg-[#002855] text-white rounded-lg">Guardar</button></div>
+      </form>
+    </Modal>
+  )
+}
+
+function RateModal({ providers, onClose, onSaved }: { providers: Row[]; onClose: () => void; onSaved: () => void }) {
+  const [f, setF] = useState({ provider_id: '', service_name: '', unit: 'SERVICIO', price: '', valid_from: '', valid_to: '' })
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const { error } = await supabase.from('provider_rates').insert({ ...f, price: Number(f.price), valid_from: f.valid_from || undefined, valid_to: f.valid_to || null })
+    if (error) return toast.error(error.message)
+    toast.success('Tarifa registrada'); onSaved()
+  }
+  return (
+    <Modal isOpen onClose={onClose} title="Nueva tarifa">
+      <form onSubmit={save} className="space-y-3 text-sm">
+        <label className="block">Proveedor<select required className={field} value={f.provider_id} onChange={e => setF({ ...f, provider_id: e.target.value })}><option value="">Seleccionar…</option>{providers.map(p => <option key={p.id} value={p.id}>{p.business_name}</option>)}</select></label>
+        <label className="block">Servicio<input required className={field} value={f.service_name} onChange={e => setF({ ...f, service_name: e.target.value })} /></label>
+        <div className="grid grid-cols-2 gap-3">
+          <label>Unidad<input className={field} value={f.unit} onChange={e => setF({ ...f, unit: e.target.value.toUpperCase() })} /></label>
+          <label>Precio (S/)<input required type="number" min={0} step="0.01" className={field} value={f.price} onChange={e => setF({ ...f, price: e.target.value })} /></label>
+          <label>Desde<input type="date" className={field} value={f.valid_from} onChange={e => setF({ ...f, valid_from: e.target.value })} /></label>
+          <label>Hasta<input type="date" className={field} value={f.valid_to} onChange={e => setF({ ...f, valid_to: e.target.value })} /></label>
+        </div>
+        <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg">Cancelar</button><button className="px-4 py-2 bg-[#002855] text-white rounded-lg">Guardar</button></div>
+      </form>
+    </Modal>
+  )
+}
+
+function QuoteModal({ providers, workOrders, onClose, onSaved }: { providers: Row[]; workOrders: Row[]; onClose: () => void; onSaved: () => void }) {
+  const [f, setF] = useState({ work_order_id: '', provider_id: '', amount: '', estimated_hours: '', valid_until: '', description: '' })
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const { error } = await supabase.from('service_quotes').insert({
+      work_order_id: f.work_order_id, provider_id: f.provider_id, amount: Number(f.amount), estimated_hours: f.estimated_hours ? Number(f.estimated_hours) : null,
+      valid_until: f.valid_until || null, description: f.description || null,
+    })
+    if (error) return toast.error(error.message)
+    toast.success('Cotización registrada'); onSaved()
+  }
+  return (
+    <Modal isOpen onClose={onClose} title="Registrar cotización">
+      <form onSubmit={save} className="space-y-3 text-sm">
+        <label className="block">OT<select required className={field} value={f.work_order_id} onChange={e => setF({ ...f, work_order_id: e.target.value })}><option value="">Seleccionar…</option>{workOrders.map(w => <option key={w.id} value={w.id}>{w.ot_code} · {w.vehicle_plate} · {w.description}</option>)}</select></label>
+        <label className="block">Proveedor<select required className={field} value={f.provider_id} onChange={e => setF({ ...f, provider_id: e.target.value })}><option value="">Seleccionar…</option>{providers.map(p => <option key={p.id} value={p.id}>{p.business_name}</option>)}</select></label>
+        <div className="grid grid-cols-3 gap-3">
+          <label>Monto (S/)<input required type="number" min={0} step="0.01" className={field} value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })} /></label>
+          <label>Horas estimadas<input type="number" min={0} step="0.5" className={field} value={f.estimated_hours} onChange={e => setF({ ...f, estimated_hours: e.target.value })} /></label>
+          <label>Válida hasta<input type="date" className={field} value={f.valid_until} onChange={e => setF({ ...f, valid_until: e.target.value })} /></label>
+        </div>
+        <label className="block">Detalle<input className={field} value={f.description} onChange={e => setF({ ...f, description: e.target.value })} /></label>
+        <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg">Cancelar</button><button className="px-4 py-2 bg-[#002855] text-white rounded-lg">Guardar</button></div>
+      </form>
+    </Modal>
   )
 }
