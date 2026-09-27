@@ -186,7 +186,7 @@ BEGIN
     SELECT (SELECT count(*) FROM public.work_order_costs) + (SELECT count(*) FROM public.inventory_transactions) INTO v_n;
     v_err := NULL;
     BEGIN
-      INSERT INTO public.inventory_transactions (spare_part_id, type, quantity) VALUES (v_part, 'INGRESO', 1000);
+      INSERT INTO public.inventory_transactions (spare_part_id, type, quantity, unit_cost) VALUES (v_part, 'INGRESO', 1000, 1);
     EXCEPTION WHEN insufficient_privilege THEN v_err := SQLERRM;
     END;
     EXECUTE 'RESET ROLE';

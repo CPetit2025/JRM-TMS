@@ -56,7 +56,7 @@ interface WorkOrder {
 }
 
 interface CostLine { id: string; cost_type: string; amount: number; quantity: number | null; description: string | null; document_number: string | null; created_at: string }
-interface SparePart { id: string; internal_code: string; name: string; current_stock: number | null }
+interface SparePart { id: string; internal_code: string; name: string; current_stock: number | null; available: number | null }
 interface Option { id: string; label: string }
 
 const STATUS_STYLE: Record<WoStatus, string> = {
@@ -320,7 +320,7 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
 
   useEffect(() => {
     loadCosts()
-    supabase.from('spare_parts').select('id, internal_code, name, current_stock').order('name').then(({ data }) => setParts((data || []) as SparePart[]))
+    supabase.from('vw_spare_parts_stock').select('id, internal_code, name, current_stock, available').eq('is_active', true).order('name').then(({ data }) => setParts((data || []) as SparePart[]))
   }, [loadCosts])
 
   const rpc = async (fn: string, args: Record<string, unknown>, okMsg?: string) => {
@@ -524,10 +524,14 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
                 <Package className="w-4 h-4 text-slate-400" />
                 <select required className={`${field} flex-1 min-w-48`} value={partForm.part_id} onChange={e => setPartForm({ ...partForm, part_id: e.target.value })}>
                   <option value="">Repuesto del almacén…</option>
-                  {parts.map(p => <option key={p.id} value={p.id}>{p.internal_code} · {p.name} (stock {p.current_stock ?? 0})</option>)}
+                  {parts.map(p => <option key={p.id} value={p.id}>{p.internal_code} · {p.name} (disp. {p.available ?? 0} / stock {p.current_stock ?? 0})</option>)}
                 </select>
                 <input required type="number" min={0.01} step="0.01" className={`${field} w-24`} value={partForm.quantity} onChange={e => setPartForm({ ...partForm, quantity: e.target.value })} />
                 <button disabled={busy} className="px-3 border rounded-lg">Consumir</button>
+                <button type="button" disabled={busy || !partForm.part_id} className="px-3 border rounded-lg"
+                  onClick={() => rpc('reserve_work_order_part', { p_work_order_id: order.id, p_spare_part_id: partForm.part_id, p_quantity: Number(partForm.quantity) }, 'Repuesto reservado para esta OT')}>
+                  Reservar
+                </button>
               </form>
             </>
           )}
