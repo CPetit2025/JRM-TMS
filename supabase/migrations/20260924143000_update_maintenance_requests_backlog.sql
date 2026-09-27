@@ -39,7 +39,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_maintenance_requests_daily_falla
 ON public.maintenance_requests (
     vehicle_plate, 
     md5(description), 
-    DATE(reported_at)
+    ((reported_at AT TIME ZONE 'America/Lima')::date)
 );
 
 -- 5. RPC para convertir a OT devolviendo un Draft

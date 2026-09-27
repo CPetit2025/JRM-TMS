@@ -5,7 +5,15 @@ ALTER TABLE public.maintenance_plans
 ADD COLUMN IF NOT EXISTS frequency_hours INTEGER,
 ADD COLUMN IF NOT EXISTS last_performed_hours INTEGER,
 ADD COLUMN IF NOT EXISTS standard_tasks JSONB DEFAULT '[]'::jsonb,
-ADD COLUMN IF NOT EXISTS expected_parts JSONB DEFAULT '[]'::jsonb;
+ADD COLUMN IF NOT EXISTS expected_parts JSONB DEFAULT '[]'::jsonb,
+ADD COLUMN IF NOT EXISTS last_performed_km NUMERIC(10,2),
+ADD COLUMN IF NOT EXISTS last_performed_date DATE,
+ADD COLUMN IF NOT EXISTS next_due_km NUMERIC(10,2),
+ADD COLUMN IF NOT EXISTS next_due_date DATE;
+
+-- Horómetro del vehículo (requerido para planes por horas)
+ALTER TABLE public.vehicles
+ADD COLUMN IF NOT EXISTS current_hours NUMERIC(10,2);
 
 -- NOTA: next_due_km y next_due_date están generados. Haremos lo mismo para hours.
 -- Pero PostgreSQL no permite ADD COLUMN con GENERATED sin drop.
@@ -53,7 +61,14 @@ SELECT
         THEN 'PRÓXIMO'
         ELSE 'NORMAL'
     END AS alert_status
-FROM public.maintenance_plans p
+FROM (
+    SELECT mp.id, mp.vehicle_plate, mp.name, mp.frequency_km, mp.frequency_days, mp.frequency_hours,
+           mp.last_performed_km, mp.last_performed_date, mp.last_performed_hours, mp.is_active,
+           COALESCE(mp.next_due_km, mp.last_performed_km + mp.frequency_km) AS next_due_km,
+           COALESCE(mp.next_due_date, mp.last_performed_date + mp.frequency_days) AS next_due_date,
+           mp.next_due_hours
+    FROM public.maintenance_plans mp
+) p
 JOIN public.vehicles v ON p.vehicle_plate = v.plate
 WHERE p.is_active = true;
 

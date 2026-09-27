@@ -76,7 +76,7 @@ BEGIN
 
     -- inspections
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Conductores ven sus inspecciones' AND tablename = 'inspections') THEN
-        CREATE POLICY "Conductores ven sus inspecciones" ON public.inspections FOR SELECT TO authenticated USING (driver_id IN (SELECT id FROM public.drivers WHERE user_id = auth.uid()));
+        CREATE POLICY "Conductores ven sus inspecciones" ON public.inspections FOR SELECT TO authenticated USING (driver_id IN (SELECT id FROM public.drivers WHERE profile_id = auth.uid()));
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Admin ve todas inspecciones' AND tablename = 'inspections') THEN
         CREATE POLICY "Admin ve todas inspecciones" ON public.inspections FOR SELECT TO authenticated USING (has_tms_permission('mantenimiento') OR has_tms_permission('despacho') OR has_tms_permission('admin'));
@@ -87,7 +87,7 @@ BEGIN
 
     -- results
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Conductores ven sus resultados' AND tablename = 'inspection_results') THEN
-        CREATE POLICY "Conductores ven sus resultados" ON public.inspection_results FOR SELECT TO authenticated USING (inspection_id IN (SELECT id FROM public.inspections WHERE driver_id IN (SELECT id FROM public.drivers WHERE user_id = auth.uid())));
+        CREATE POLICY "Conductores ven sus resultados" ON public.inspection_results FOR SELECT TO authenticated USING (inspection_id IN (SELECT id FROM public.inspections WHERE driver_id IN (SELECT id FROM public.drivers WHERE profile_id = auth.uid())));
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Admin ve todos resultados' AND tablename = 'inspection_results') THEN
         CREATE POLICY "Admin ve todos resultados" ON public.inspection_results FOR SELECT TO authenticated USING (has_tms_permission('mantenimiento') OR has_tms_permission('despacho') OR has_tms_permission('admin'));

@@ -19,7 +19,7 @@ ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS block_reason TEXT;
 
 -- 2. Motor Central de Elegibilidad
 CREATE OR REPLACE FUNCTION public.check_asset_eligibility(p_plate text)
-RETURNS jsonb AS $$$
+RETURNS jsonb AS $$
 DECLARE
   v_vehicle RECORD;
   v_soat_expiry DATE;
@@ -160,7 +160,7 @@ BEGIN
       'observations', v_observations
   );
 END;
-$$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.check_asset_eligibility(text) TO authenticated, service_role;
 
@@ -169,7 +169,7 @@ CREATE OR REPLACE FUNCTION public.transition_vehicle_status(
     p_vehicle_plate text, 
     p_new_status text, 
     p_reason text DEFAULT NULL
-) RETURNS jsonb AS $$$
+) RETURNS jsonb AS $$
 DECLARE
     v_current_status text;
     v_valid_transition boolean := false;
@@ -219,7 +219,7 @@ BEGIN
 
     RETURN jsonb_build_object('success', true, 'new_status', p_new_status);
 END;
-$$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.transition_vehicle_status(text, text, text) TO authenticated, service_role;
 
@@ -229,7 +229,7 @@ CREATE OR REPLACE FUNCTION public.complete_maintenance_order(
     p_used_parts JSONB,
     p_closing_notes TEXT
 )
-RETURNS jsonb AS $$$
+RETURNS jsonb AS $$
 DECLARE
     v_order RECORD;
     v_part JSONB;
@@ -319,7 +319,7 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
     RETURN jsonb_build_object('success', false, 'error', SQLERRM);
 END;
-$$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.complete_maintenance_order(UUID, JSONB, TEXT) TO authenticated, service_role;
 

@@ -8,7 +8,7 @@ SELECT
     d.profile_id,
     d.first_name,
     d.last_name,
-    d.document_id,
+    d.document_number AS document_id,
     d.license_number,
     COALESCE(trip_stats.total_completed_trips, 0) AS total_completed_trips,
     COALESCE(fuel_stats.avg_fuel_efficiency_km_gal, 0.00) AS avg_fuel_efficiency_km_gal,

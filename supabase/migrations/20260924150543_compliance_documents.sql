@@ -1,19 +1,32 @@
 BEGIN;
 
 -- 1. Modify vehicle_documents columns
+-- Normaliza a document_type / document_number / expiration_date. Si ya existen ambas
+-- columnas (esquema legado + columnas agregadas después), fusiona los datos y elimina la antigua.
 DO $DO$
+DECLARE
+    m text[];
+    pairs text[][] := ARRAY[
+        ARRAY['doc_type','document_type'],
+        ARRAY['doc_number','document_number'],
+        ARRAY['expiry_date','expiration_date']
+    ];
 BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='vehicle_documents' AND column_name='doc_type') THEN
-        ALTER TABLE public.vehicle_documents RENAME COLUMN doc_type TO document_type;
-    END IF;
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='vehicle_documents' AND column_name='doc_number') THEN
-        ALTER TABLE public.vehicle_documents RENAME COLUMN doc_number TO document_number;
-    END IF;
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='vehicle_documents' AND column_name='expiry_date') THEN
-        ALTER TABLE public.vehicle_documents RENAME COLUMN expiry_date TO expiration_date;
-    END IF;
+    FOREACH m SLICE 1 IN ARRAY pairs LOOP
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='vehicle_documents' AND column_name=m[1]) THEN
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='vehicle_documents' AND column_name=m[2]) THEN
+                EXECUTE format('UPDATE public.vehicle_documents SET %I = COALESCE(%I, %I) WHERE %I IS NOT NULL', m[2], m[2], m[1], m[1]);
+                EXECUTE format('ALTER TABLE public.vehicle_documents DROP COLUMN %I CASCADE', m[1]);
+            ELSE
+                EXECUTE format('ALTER TABLE public.vehicle_documents RENAME COLUMN %I TO %I', m[1], m[2]);
+            END IF;
+        END IF;
+    END LOOP;
 END;
 $DO$;
+
+ALTER TABLE public.vehicle_documents ADD COLUMN IF NOT EXISTS document_number TEXT;
+ALTER TABLE public.vehicle_documents ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
 
 -- 2. Drop old constraint and add new
 DO $DO$
@@ -59,7 +72,7 @@ FROM public.vehicle_documents;
 
 -- 4. Update check_asset_eligibility function
 CREATE OR REPLACE FUNCTION public.check_asset_eligibility(p_plate text)
-RETURNS jsonb AS $$$
+RETURNS jsonb AS $$
 DECLARE
   v_vehicle RECORD;
   v_soat_expiry DATE;
@@ -166,7 +179,7 @@ BEGIN
     'observations', v_observations
   );
 END;
-$$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.check_asset_eligibility(TEXT) TO authenticated, service_role;
 GRANT SELECT ON public.vw_document_alerts TO authenticated, service_role;

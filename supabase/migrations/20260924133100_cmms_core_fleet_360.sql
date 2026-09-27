@@ -51,7 +51,7 @@ CREATE POLICY history_logs_write ON public.vehicle_history_logs FOR INSERT TO au
 
 -- Create RPC or DB View for 360 data
 CREATE OR REPLACE FUNCTION public.get_fleet_360_view(p_plate VARCHAR)
-RETURNS JSONB AS $func
+RETURNS JSONB AS $func$
 DECLARE
     v_vehicle JSONB;
 BEGIN
@@ -67,7 +67,7 @@ BEGIN
     
     RETURN v_vehicle;
 END;
-$func LANGUAGE plpgsql SECURITY DEFINER;
+$func$ LANGUAGE plpgsql SECURITY DEFINER;
 
 REVOKE ALL ON FUNCTION public.get_fleet_360_view(varchar) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_fleet_360_view(varchar) TO authenticated;

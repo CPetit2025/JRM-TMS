@@ -34,7 +34,7 @@ DECLARE
 BEGIN
   -- Resolve permissions
   v_is_admin  := has_tms_permission('admin') OR has_tms_permission('mantenimiento') OR has_tms_permission('despacho');
-  v_is_driver := EXISTS (SELECT 1 FROM public.drivers WHERE user_id = auth.uid());
+  v_is_driver := EXISTS (SELECT 1 FROM public.drivers WHERE profile_id = auth.uid());
 
   -- Permission guards
   IF p_new_status = 'DISPONIBLE' AND NOT v_is_admin THEN

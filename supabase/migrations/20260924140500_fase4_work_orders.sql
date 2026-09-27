@@ -1,6 +1,6 @@
 -- Migration for Fase 4 - Work Orders Manager
 
-ALTER TABLE IF NOT EXISTS public.maintenance_work_orders 
+ALTER TABLE IF EXISTS public.maintenance_work_orders 
 ADD COLUMN IF NOT EXISTS order_type VARCHAR(50),
 ADD COLUMN IF NOT EXISTS priority VARCHAR(50),
 ADD COLUMN IF NOT EXISTS responsible_id UUID REFERENCES auth.users(id),
@@ -30,7 +30,7 @@ UPDATE public.maintenance_work_orders SET status = 'BORRADOR' WHERE status NOT I
 ALTER TABLE public.maintenance_work_orders ADD CONSTRAINT maintenance_work_orders_status_check CHECK (status IN ('BORRADOR', 'APROBADA', 'PROGRAMADA', 'EN_PROCESO', 'EN_ESPERA', 'TERMINADA', 'VALIDACION', 'CERRADA', 'CANCELADA'));
 
 CREATE OR REPLACE FUNCTION public.update_ot_downtime()
-RETURNS TRIGGER AS $$$
+RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.status = 'EN_PROCESO' AND OLD.status != 'EN_PROCESO' THEN
         IF NEW.downtime_start IS NULL THEN
@@ -44,7 +44,7 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_update_ot_downtime ON public.maintenance_work_orders;
 CREATE TRIGGER trg_update_ot_downtime
@@ -57,7 +57,7 @@ CREATE OR REPLACE FUNCTION public.complete_maintenance_order(
     p_used_parts JSONB,
     p_closing_notes TEXT
 )
-RETURNS jsonb AS $$$
+RETURNS jsonb AS $$
 DECLARE
     v_order RECORD;
     v_part JSONB;
@@ -160,12 +160,12 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
     RETURN jsonb_build_object('success', false, 'error', SQLERRM);
 END;
-$$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.complete_maintenance_order(UUID, JSONB, TEXT) TO authenticated, service_role;
 
 CREATE OR REPLACE FUNCTION public.check_asset_eligibility(p_plate text)
-RETURNS jsonb AS $$$
+RETURNS jsonb AS $$
 DECLARE
   v_vehicle RECORD;
   v_soat_expiry DATE;
@@ -272,6 +272,6 @@ BEGIN
     'observations', v_observations
   );
 END;
-$$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 NOTIFY pgrst, 'reload schema';
