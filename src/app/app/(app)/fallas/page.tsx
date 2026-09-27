@@ -61,7 +61,7 @@ export default function DriverFailuresPage() {
       
       const currentLocation = position ? { lat: position.coords.latitude, lon: position.coords.longitude } : null;
       
-      const { error } = await supabase.rpc('submit_maintenance_request', {
+      const { data: result, error } = await supabase.rpc('submit_maintenance_request_v2', {
         p_vehicle_plate: plate.trim().toUpperCase(),
         p_driver_id: driver.id,
         p_dispatch_id: trip?.id || null,
@@ -69,15 +69,25 @@ export default function DriverFailuresPage() {
         p_severity: severity || 'MEDIA',
         p_odometer: Number(odometer),
         p_photo_url: paths[0] || null,
-        p_location: currentLocation
+        p_location: currentLocation,
+        p_audio_url: audioPath,
+        p_can_continue: canContinue,
+        p_horometer: null,
+        p_extra_photos: paths.length > 1 ? paths.slice(1) : null,
       })
-      
-      if (error) {
+
+      if (error || !result?.success || result?.duplicate) {
         if (paths.length > 0) await supabase.storage.from('driver_evidence').remove(paths)
         if (audioPath) await supabase.storage.from('driver_evidence').remove([audioPath])
-        throw error
+        if (result?.duplicate) {
+          toast.info(result.message)
+          return
+        }
+        throw error ?? new Error(result?.message || 'No se pudo registrar la falla.')
       }
-      toast.success('Falla registrada y enviada para evaluación.')
+      toast.success(severity === 'CRITICA'
+        ? 'Falla crítica registrada: la unidad quedó bloqueada hasta su revisión.'
+        : 'Falla registrada y enviada para evaluación.')
       setDescription(''); setOdometer(''); setPhotos([]); setAudio(null); setCanContinue(null)
       await refresh()
       const { data } = await supabase.from('maintenance_requests')

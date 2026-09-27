@@ -26,9 +26,9 @@ export function NotificationBanner() {
 
       // 1. Fetch Failures
       const { data: failures } = await supabase
-        .from('vehicle_failures')
+        .from('vw_maintenance_backlog')
         .select('id, vehicle_plate, description')
-        .eq('status', 'ABIERTO')
+        .in('severity', ['CRITICA', 'ALTA'])
       
       failures?.forEach(f => {
         newAlerts.push({
