@@ -10,6 +10,9 @@ export const toolAccess = {
   get_delivery_incidents: { scope: 'distribucion', modules: ['despacho', 'torre-control'] },
   get_operational_kpis: { scope: 'gerencia', modules: ['dashboard', 'operaciones-kpis'] },
   prepare_maintenance_action: { scope: 'mantenimiento', modules: ['mantenimiento-ot'] },
+  get_cmms_kpis: { scope: 'mantenimiento', modules: ['mantenimiento-dashboard', 'mantenimiento-flota', 'mantenimiento-ot'] },
+  get_cmms_brief: { scope: 'mantenimiento', modules: ['mantenimiento-dashboard', 'mantenimiento-flota', 'mantenimiento-ot', 'mantenimiento-fallas'] },
+  explain_unit_availability: { scope: 'mantenimiento', modules: ['mantenimiento-flota', 'mantenimiento-ot', 'despacho'] },
 } as const
 
 export type AiToolName = keyof typeof toolAccess
@@ -36,6 +39,10 @@ export const toolDefinitions = [
       vehicle_plate: { type: 'string' }, type: { type: 'string', enum: ['CORRECTIVO', 'PREVENTIVO'] },
       reason: { type: 'string' }, scheduled_date: { type: 'string' },
     }, required: ['vehicle_plate', 'type', 'reason', 'scheduled_date'], additionalProperties: false } },
+  { type: 'function', name: 'get_cmms_kpis', description: 'KPI de mantenimiento calculados con datos reales en los últimos N días: disponibilidad, MTBF, MTTR, backlog, preventivo vs correctivo, costo/km, costo/hora, costo de mantenimiento por unidad, neumáticos, TCO y fallas recurrentes, con detalle por unidad.', strict: true, parameters: daySchema },
+  { type: 'function', name: 'get_cmms_brief', description: 'Situación actual del CMMS: unidades bloqueadas o no disponibles y sus motivos, mantenimientos que vencen, unidades más costosas (365 días), fallas recurrentes, repuestos bajo el mínimo, talleres con más retrabajos y anomalías detectadas (picos de costo, tendencia de fallas, neumáticos, documentos).', strict: true, parameters: emptySchema },
+  { type: 'function', name: 'explain_unit_availability', description: 'Explica por qué una unidad está o no disponible según el motor de elegibilidad: motivos bloqueantes, observaciones y verificaciones (OT, fallas críticas, preventivos, documentos, viaje activo).', strict: true,
+    parameters: { type: 'object', properties: { vehicle_plate: { type: 'string' } }, required: ['vehicle_plate'], additionalProperties: false } },
   { type: 'function', name: 'query_active_trip', description: 'Consulta el viaje activo, paradas, horario, unidad, contrato y tareas pendientes del conductor autenticado.', strict: true,
     parameters: emptySchema },
   { type: 'function', name: 'prepare_trip_action', description: 'Prepara una acción del viaje. Nunca la ejecuta automáticamente. Usa valores nulos cuando un dato no fue indicado y no lo inventes.', strict: true,
@@ -190,6 +197,33 @@ export async function executeAiTool(
       openOrders: rows(ordersResult.data, ordersResult.error).slice(0, 40),
       note: 'Vencimientos calculados en la base de datos por km, horómetro o fecha (lo primero que ocurra) con la lectura real de cada unidad.',
       url: '/mantenimiento/preventivos' }
+  }
+  if (name === 'get_cmms_kpis') {
+    const days = Math.max(1, Math.min(365, Number(args.days) || 30))
+    const end = new Date()
+    const start = new Date(end.getTime() - (days - 1) * 86_400_000)
+    const ymd = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/Lima' })
+    const { data, error } = await supabase.rpc('get_cmms_kpis', { p_start: ymd(start), p_end: ymd(end), p_plates: null })
+    if (error) throw new Error('KPI de mantenimiento no disponibles.')
+    return { asOf, ...data, definitions: {
+      availability_pct: '100 × (1 − horas fuera de servicio por OT (intervalos fusionados) / (unidades × horas del periodo))',
+      mtbf_hours: '(horas disponibles del periodo) / fallas reportadas no descartadas',
+      mttr_hours: 'promedio de horas fuera de servicio de las OT correctivas/emergencia cerradas en el periodo',
+      cost_per_km: 'costos del libro por activo / km reales (lecturas de odómetro)' }, url: '/mantenimiento' }
+  }
+  if (name === 'get_cmms_brief') {
+    const { data, error } = await supabase.rpc('get_cmms_copilot_brief', { p_plates: null })
+    if (error) throw new Error('Resumen de mantenimiento no disponible.')
+    return { asOf, ...data, url: '/mantenimiento/copiloto' }
+  }
+  if (name === 'explain_unit_availability') {
+    const plate = String(args.vehicle_plate || context.vehiclePlate || '').trim().toUpperCase()
+    if (!plate) return { error: 'Indique la placa de la unidad.' }
+    const { data: vehicle } = await supabase.from('vehicles').select('plate, status, is_blocked, block_reason').eq('plate', plate).maybeSingle()
+    if (!vehicle) return { error: `No encontré la unidad ${plate} en su alcance.` }
+    const { data, error } = await supabase.rpc('check_asset_eligibility', { p_plate: plate, p_context: 'RELEASE' })
+    if (error) throw new Error('Motor de elegibilidad no disponible.')
+    return { asOf, vehicle, eligibility: data, url: `/mantenimiento/flota/${encodeURIComponent(plate)}` }
   }
   if (name === 'get_delivery_incidents') {
     const { data, error, count } = await supabase.from('dispatches')

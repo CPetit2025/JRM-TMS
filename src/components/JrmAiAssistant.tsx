@@ -125,7 +125,12 @@ export function JrmAiAssistant() {
   }, [open, messages.length])
 
   useEffect(() => {
-    const openAssistant = () => setOpen(true)
+    // Otros módulos (p. ej. el Copiloto CMMS) pueden abrir el asistente con una pregunta precargada
+    const openAssistant = (event: Event) => {
+      setOpen(true)
+      const q = (event as CustomEvent<{ question?: string }>).detail?.question
+      if (q) setQuestion(q)
+    }
     window.addEventListener('jrm:open-ai', openAssistant)
     return () => window.removeEventListener('jrm:open-ai', openAssistant)
   }, [])
@@ -157,7 +162,7 @@ export function JrmAiAssistant() {
       return ['¿Qué ruta tengo asignada hoy?', '¿Cuántas paradas me faltan?']
     }
     if (path.includes('/contratos')) return ['Analiza este contrato', '¿Qué contratos tienen mayor riesgo?']
-    if (path.includes('/mantenimiento')) return ['¿Qué unidades requieren atención?', 'Muéstrame las fallas pendientes']
+    if (path.includes('/mantenimiento')) return ['¿Qué unidades están bloqueadas y por qué?', '¿Qué mantenimiento vence esta semana?', '¿Qué unidad cuesta más mantener?', '¿Cuál es la disponibilidad y el MTTR de los últimos 30 días?']
     if (path.includes('/despacho') || path.includes('/torre-control')) return ['¿Qué operaciones están retrasadas?', '¿Cuánto costaron los despachos de esta semana?']
     if (path.startsWith('/app')) return ['¿Tengo rutas asignadas?', '¿Qué tengo pendiente?', 'Quiero reportar una falla']
     return ['¿Qué debería preocuparme hoy?', 'Resume la operación de esta semana']
