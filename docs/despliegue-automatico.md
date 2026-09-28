@@ -40,3 +40,15 @@ npx supabase migration repair --status applied <versión>  # marca como aplicada
 ```
 
 Luego vuelva a ejecutar el workflow.
+
+## Verificación previa en cada PR
+
+Workflow `.github/workflows/pr-checks.yml` (`Verificación previa (PR)`), obligatorio en verde antes de mergear:
+
+- `npm run check:guards` (`scripts/check-release-guards.cjs`):
+  - `capacitor.config.ts` mantiene `server.url = https://jrm-tms.vercel.app` y `appStartPath = /app/login`
+    (sin esto el APK no compila o queda sin pantallas).
+  - cada pantalla de `src/app/app/(app)` tiene al menos un enlace desde otra parte del app del conductor.
+- `npm run typecheck`.
+
+Las reglas completas para evitar diferencias con producción están en `CLAUDE.md` → *Reglas para no repetir incidentes*.
