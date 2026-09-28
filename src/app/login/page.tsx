@@ -1,5 +1,6 @@
 "use client"
 
+import { AppVersionInfo } from '@/components/AppVersionInfo'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
@@ -14,11 +15,13 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
   const [androidInstallerUrl, setAndroidInstallerUrl] = useState<string | null>(null)
+  const [androidRelease, setAndroidRelease] = useState<{ version: string; build_number: number | null; release_date: string | null } | null>(null)
 
   useEffect(() => {
     fetch('/api/app-version', { cache: 'no-store' }).then(response => response.json()).then(data => {
       const value = data.android?.installer_url
       if (typeof value === 'string' && new URL(value).protocol === 'https:') setAndroidInstallerUrl(value)
+      if (data.android) setAndroidRelease(data.android)
     }).catch(() => {})
   }, [])
 
@@ -201,7 +204,11 @@ export default function LoginPage() {
             )}
             <p className="text-xs text-center text-slate-500 mt-3">
               Versión nativa Android con rastreo GPS en segundo plano.
+              {androidRelease && <> APK {androidRelease.version}{androidRelease.build_number ? ` (build ${androidRelease.build_number})` : ''}
+                {androidRelease.release_date && ` · publicado ${new Date(androidRelease.release_date).toLocaleDateString('es-PE', { timeZone: 'America/Lima' })}`}.
+                {' '}Las pantallas se actualizan solas: no hace falta reinstalar.</>}
             </p>
+            <AppVersionInfo className="mt-3 text-center" />
           </div>
         </div>
       </div>
