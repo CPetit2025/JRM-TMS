@@ -129,6 +129,39 @@ export default function NotificationProvider({ role, children }: NotificationPro
       )
     }
 
+    // Caja: solicitudes de anticipo desde la app (RLS: solo quien tiene acceso a Caja las recibe)
+    if (role === 'admin') {
+      channel.on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'trip_advances', filter: 'source=eq.APP' },
+        (payload) => {
+          const amount = `S/ ${Number(payload.new.amount || 0).toFixed(2)}`
+          playNotification('admin')
+          addNotification(`Solicitud de anticipo ${payload.new.code}`, `${amount}: ${payload.new.reason || ''}`)
+          toast.info(`Solicitud de anticipo: ${amount}`, { description: `${payload.new.reason || ''} · Ver en Anticipos de viaje`, duration: 10000 })
+        }
+      )
+    }
+
+    // Conductor: respuesta de Caja a su anticipo (RLS: solo los suyos)
+    if (role === 'driver') {
+      channel.on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'trip_advances' },
+        (payload) => {
+          const amount = `S/ ${Number(payload.new.amount || 0).toFixed(2)}`
+          if (payload.new.status === 'ENTREGADO') {
+            playNotification('driver')
+            addNotification('ANTICIPO ENTREGADO', `${amount} (${payload.new.payment_method || ''})`)
+            toast.success('ANTICIPO ENTREGADO', { description: `${amount} por ${payload.new.payment_method || 'caja'}`, duration: 10000 })
+          } else if (payload.new.status === 'ANULADO' && payload.new.cancel_reason !== 'Retirada por el conductor') {
+            addNotification('ANTICIPO NO ATENDIDO', payload.new.cancel_reason || '')
+            toast.error('Solicitud de anticipo anulada', { description: payload.new.cancel_reason || '', duration: 10000 })
+          }
+        }
+      )
+    }
+
     if (role === 'driver' && driverData) {
       const driverFullName = `${driverData.first_name} ${driverData.last_name}`
       channel.on(

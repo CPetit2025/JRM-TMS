@@ -212,8 +212,42 @@ BEGIN
      AND public.cash_box_balance(v_box) = v_num - 160
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T12 combustible web: ' || v_num || ' → ' || public.cash_box_balance(v_box)); END IF;
 
+  -- T13 (C4): el conductor solicita desde la app; una pendiente por viaje; motivo obligatorio;
+  --           terceros no; con rendición vencida no; Caja la entrega
+  UPDATE public.dispatches SET status = 'EN_CURSO' WHERE id = t3;
+  PERFORM pg_temp.as_user(v_drv_prof);
+  v_err := public.request_trip_advance_from_app(t3, 50, '')->>'error';
+  r := public.request_trip_advance_from_app(t3, 50, 'Peajes de retorno', '{"PEAJE": 50}');  -- ZZ-C2-002 ya se liquidó en T8
+  PERFORM pg_temp.as_user(v_nobody);
+  v_n := CASE WHEN (public.request_trip_advance_from_app(t3, 10, 'x')->>'error') LIKE 'Solo puede%' THEN 1 ELSE 0 END;
+  PERFORM pg_temp.as_user(v_jefe);
+  a2 := (SELECT id FROM public.trip_advances WHERE dispatch_id = t3 AND source = 'APP' AND status = 'SOLICITADO');
+  PERFORM public.deliver_trip_advance(a2, v_box, 'YAPE_PLIN');
+  PERFORM pg_temp.as_user(NULL);
+  IF v_err LIKE '%para qué%' AND v_n = 1 AND (r->>'success')::boolean AND r->>'code' LIKE 'ANT-%'
+     AND (SELECT status = 'ENTREGADO' AND reason = 'Peajes de retorno' AND breakdown->>'PEAJE' = '50' FROM public.trip_advances WHERE id = a2)
+  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T13 app: ' || COALESCE(v_err, '∅') || ' | ' || COALESCE(r::text, '∅')); END IF;
+
+  -- T14 (C4): una pendiente por viaje; el conductor la retira; con rendición vencida no puede pedir
+  PERFORM pg_temp.as_user(v_drv_prof);
+  PERFORM public.request_trip_advance_from_app(t3, 30, 'Hospedaje imprevisto');
+  v_err := public.request_trip_advance_from_app(t3, 30, 'Otra')->>'error';
+  a3 := (SELECT id FROM public.trip_advances WHERE dispatch_id = t3 AND status = 'SOLICITADO');
+  r := public.withdraw_trip_advance_request(a3);
+  PERFORM pg_temp.as_user(NULL);
+  INSERT INTO public.dispatches (dispatch_number, vehicle_plate, driver_id, status, site_id, returned_at)
+  VALUES ('ZZ-C2-004', 'ZZC2A', v_driver, 'RETORNO_COMPLETADO', v_site, now() - interval '5 days') RETURNING id INTO t2;
+  INSERT INTO public.trip_advances (dispatch_id, driver_id, amount, status, delivered_at) VALUES (t2, v_driver, 20, 'ENTREGADO', now() - interval '6 days');
+  UPDATE public.dispatches SET updated_at = now() - interval '5 days' WHERE id = t2;
+  PERFORM pg_temp.as_user(v_drv_prof);
+  v_txt := public.request_trip_advance_from_app(t3, 30, 'Combustible')->>'error';
+  PERFORM pg_temp.as_user(NULL);
+  IF v_err LIKE 'Ya tiene una solicitud pendiente%' AND (r->>'success')::boolean
+     AND (SELECT status FROM public.trip_advances WHERE id = a3) = 'ANULADO' AND v_txt LIKE 'Tiene rendiciones vencidas (ZZ-C2-004)%'
+  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T14 app: ' || COALESCE(v_err, '∅') || ' | ' || COALESCE(v_txt, '∅')); END IF;
+
   IF array_length(v_fail, 1) IS NULL THEN
-    RAISE EXCEPTION 'CAJA C2 PASS (%/12)', v_pass;
+    RAISE EXCEPTION 'CAJA C2 PASS (%/14)', v_pass;
   ELSE
     RAISE EXCEPTION 'CAJA C2 FAIL: %', array_to_string(v_fail, ' || ');
   END IF;

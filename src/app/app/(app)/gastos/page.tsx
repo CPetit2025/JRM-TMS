@@ -7,10 +7,10 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useActiveTrip } from '@/contexts/ActiveTripContext'
 import { db } from '@/lib/offline/db'
+import { AdvanceRequestCard } from '@/components/driver/AdvanceRequestCard'
 export default function GastosPage() {
   const [activeTab, setActiveTab] = useState<'gastos' | 'documentos'>('gastos')
   const [gastos, setGastos] = useState<{ tipo: string; monto: string; photo: string | null; status: string; id?: string; comment?: string | null; approved?: number | null }[]>([])
-  const [advance, setAdvance] = useState(0)
   const [fixing, setFixing] = useState<{ id: string; monto: string; file: File | null } | null>(null)
   const [gastoForm, setGastoForm] = useState({ tipo: 'PEAJE', monto: '', galones: '', odometro: '' })
   const [gastoPhoto, setGastoPhoto] = useState<string | null>(null)
@@ -35,13 +35,10 @@ export default function GastosPage() {
   const fetchExpenses = async (dispatchId: string) => {
     setLoading(true)
     try {
-      const [{ data: expData, error }, { data: adv }] = await Promise.all([
-        supabase.from('dispatch_expenses').select('id, expense_type, amount, approved_amount, receipt_url, status, review_comment, paid_by')
-          .eq('dispatch_id', dispatchId).order('created_at', { ascending: false }),
-        supabase.from('trip_advances').select('amount, status').eq('dispatch_id', dispatchId),
-      ])
+      const { data: expData, error } = await supabase.from('dispatch_expenses')
+        .select('id, expense_type, amount, approved_amount, receipt_url, status, review_comment, paid_by')
+        .eq('dispatch_id', dispatchId).order('created_at', { ascending: false })
       if (error) throw error
-      setAdvance((adv || []).filter(a => ['ENTREGADO', 'RENDIDO'].includes(a.status)).reduce((acc, a) => acc + Number(a.amount), 0))
       setGastos((expData || []).filter(e => e.paid_by !== 'EMPRESA' && e.paid_by !== 'CAJA').map(e => ({ tipo: e.expense_type, monto: String(e.amount),
         photo: e.receipt_url || null, status: e.status || 'PENDIENTE', id: e.id, comment: e.review_comment, approved: e.approved_amount })))
     } catch (err: any) {
@@ -242,13 +239,8 @@ export default function GastosPage() {
       </div>
 
       <div className="px-4 max-w-md mx-auto space-y-4">
-        {advance > 0 && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-3 grid grid-cols-3 text-center shadow-sm">
-            <div><p className="text-[9px] font-bold uppercase text-slate-500">Anticipo</p><p className="font-black text-[#002855] text-sm">S/ {advance.toFixed(2)}</p></div>
-            <div><p className="text-[9px] font-bold uppercase text-slate-500">Gastado</p><p className="font-black text-[#002855] text-sm">S/ {totalGastos.toFixed(2)}</p></div>
-            <div><p className="text-[9px] font-bold uppercase text-slate-500">{advance - totalGastos >= 0 ? 'Te queda' : 'A tu favor'}</p><p className={`font-black text-sm ${advance - totalGastos >= 0 ? 'text-emerald-700' : 'text-blue-700'}`}>S/ {Math.abs(advance - totalGastos).toFixed(2)}</p></div>
-          </div>
-        )}
+        <AdvanceRequestCard dispatchId={dispatch.id} spent={totalGastos}
+          canRequest={['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'].includes(dispatch.status)} />
 
         {/* Tabs */}
         <div className="flex bg-white border border-slate-200 p-1 rounded-2xl shadow-sm gap-1">

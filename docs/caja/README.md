@@ -7,8 +7,9 @@ La caja deja de ser un registro de gastos y controla el dinero de cada viaje de 
 | Fase | Migración | Pruebas | Documento |
 |---|---|---|---|
 | C1 · Registro y aprobación de gastos | `20260929090000_caja_c1_aprobacion_gastos.sql` | `caja_c1_aprobacion.test.sql` — 13/13 | [01-c1-aprobacion-gastos.md](01-c1-aprobacion-gastos.md) |
-| C2 · Cajas, anticipos, cuenta corriente y liquidación | `20260929100000_caja_c2_cajas_anticipos.sql` | `caja_c2_cajas_anticipos.test.sql` — 12/12 | [02-c2-cajas-anticipos.md](02-c2-cajas-anticipos.md) |
+| C2 · Cajas, anticipos, cuenta corriente y liquidación | `20260929100000_caja_c2_cajas_anticipos.sql` | `caja_c2_cajas_anticipos.test.sql` — 14/14 | [02-c2-cajas-anticipos.md](02-c2-cajas-anticipos.md) |
 | C3 · Tarifario, reglas, combustible y reportes | `20260929110000_caja_c3_tarifario_combustible_reportes.sql` | `caja_c3_tarifario_combustible.test.sql` — 7/7 | [03-c3-tarifario-combustible-reportes.md](03-c3-tarifario-combustible-reportes.md) |
+| C4 · Anticipos solicitados desde la app | `20260929130000_caja_c4_anticipos_desde_app.sql` | En `caja_c2_...` (T13–T14) | [04-c4-anticipos-desde-app.md](04-c4-anticipos-desde-app.md) |
 
 ## Pantallas
 
@@ -24,7 +25,7 @@ La caja deja de ser un registro de gastos y controla el dinero de cada viaje de 
 | `/caja/combustible` | `caja-combustible` | Cargas, rendimiento km/gal, grifos, facturas y conciliación |
 | `/caja/tarifario` | `caja-tarifario` (lectura con cualquier permiso de caja) | Tarifas por ruta, categorías (tope, comprobante, cuenta contable), parámetros (Administrador) |
 | `/caja/reportes` | `caja` | Rentabilidad por viaje, presupuesto vs real, exportación contable |
-| App `/app/gastos` | conductor | Anticipo y saldo, estado y observación de cada gasto, corrección de observados |
+| App `/app/gastos` | conductor | **Solicitar anticipo**, anticipo y saldo, estado y observación de cada gasto, corrección de observados |
 | App `/app/liquidacion` | conductor | Cierre de ruta (odómetro, guías, total declarado) y conformidad de sus liquidaciones |
 
 ## Rol Jefe de Distribución
