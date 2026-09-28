@@ -15,6 +15,7 @@
     "check:supabase": "node scripts/check-supabase-connection.cjs",
     "check:vercel": "node scripts/check-vercel-config.cjs",
     "check:ai-config": "node scripts/check-ai-config.cjs",
+    "check:guards": "node scripts/check-release-guards.cjs",
     "check:infra": "npm run check:supabase && npm run check:vercel",
     "build:capacitor": "cross-env CAPACITOR_BUILD=true next build"
   },

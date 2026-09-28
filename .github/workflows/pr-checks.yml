@@ -1,0 +1,28 @@
+name: Verificación previa (PR)
+
+# Corre en cada PR hacia master y debe estar en verde antes de mergear (CLAUDE.md → Despliegue):
+# config del APK (server.url), accesos del app del conductor (scripts/check-release-guards.cjs) y tipos (tsc).
+
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  guardas:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run check:guards
+      - run: npm run typecheck
