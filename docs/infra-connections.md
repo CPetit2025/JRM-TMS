@@ -29,6 +29,10 @@ Required Vercel environment variables:
 
 Los pasos para cargar y comprobar las claves están en [configurar OpenAI en Vercel](configurar-openai-vercel.md).
 
+## Despliegue a producción
+
+Al mergear a `master`, GitHub Actions aplica las migraciones de Supabase y luego despliega Vercel (ver [despliegue automático](despliegue-automatico.md)). Vercel ya no despliega `master` por su cuenta.
+
 ## Verification
 
 Run these checks before deployment:

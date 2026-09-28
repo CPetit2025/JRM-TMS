@@ -71,12 +71,16 @@ const MODULE_GROUPS: PermissionGroup[] = [
     ]
   },
   {
-    title: 'Finanzas y Caja',
+    title: 'Caja de Transporte',
     modules: [
-      { id: 'caja', label: 'Dashboard Financiero' },
-      { id: 'caja-fondos', label: 'Entrega de Fondos' },
-      { id: 'caja-gastos', label: 'Gastos (Mobile)' },
-      { id: 'caja-liquidaciones', label: 'Liquidaciones' }
+      { id: 'caja', label: 'Panel y Reportes de Caja' },
+      { id: 'caja-gastos', label: 'Registro de Gastos' },
+      { id: 'caja-aprobacion', label: 'Aprobación de Gastos (Admin / Jefe de Distribución)', mode: 'toggle' },
+      { id: 'caja-anticipos', label: 'Anticipos de Viaje' },
+      { id: 'caja-liquidaciones', label: 'Liquidación de Viajes' },
+      { id: 'caja-fondos', label: 'Cajas, Fondos y Arqueo' },
+      { id: 'caja-combustible', label: 'Control de Combustible' },
+      { id: 'caja-tarifario', label: 'Tarifario y Reglas de Caja' }
     ]
   },
   {

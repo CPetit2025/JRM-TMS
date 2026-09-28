@@ -7,34 +7,34 @@ import {
   LogOut, ShieldCheck, BarChart3, Send, DollarSign, 
   ArchiveRestore, Zap, ChevronRight, Wrench, Clock, BarChart2, CheckCircle, Settings2,
   Building2, FileSignature, ClipboardList, PackageCheck, Activity, HardHat, BadgeDollarSign,
-  PackageSearch, Wallet, Receipt, Calculator, AlertTriangle, ClipboardCheck, ShieldAlert
+  PackageSearch, Wallet, Receipt, Calculator, AlertTriangle, ClipboardCheck, ShieldAlert, Banknote, UserRound, Fuel
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { usePermissions } from '@/hooks/usePermissions'
 
+function NavItem({ href, icon: Icon, label, isActive }: { href: string, icon: React.ComponentType<{ className?: string }>, label: string, isActive?: boolean }) {
+  const pathname = usePathname()
+  const active = isActive ?? pathname === href;
+  return (
+    <Link 
+      href={href} 
+      className={`group flex items-center justify-between px-4 py-2.5 my-0.5 rounded-lg transition-all duration-300 relative overflow-hidden ${
+        active 
+          ? 'bg-gradient-to-r from-[#002855] to-transparent text-white border-l-4 border-[#cf152d] shadow-md' 
+          : 'text-slate-400 hover:text-white hover:bg-white/5'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <Icon className={`w-4 h-4 transition-transform duration-300 ${active ? 'text-[#cf152d]' : 'group-hover:scale-110 group-hover:text-blue-300'}`} />
+        <span className={`text-sm tracking-wide ${active ? 'font-semibold' : 'font-medium'}`}>{label}</span>
+      </div>
+      {active && <ChevronRight className="w-4 h-4 text-[#cf152d] opacity-80" />}
+    </Link>
+  )
+}
+
 export function Sidebar() {
   const { role, hasAccess: hasPermission } = usePermissions()
-  const pathname = usePathname()
-
-  const NavItem = ({ href, icon: Icon, label, isActive }: { href: string, icon: any, label: string, isActive?: boolean }) => {
-    const active = isActive ?? pathname === href;
-    return (
-      <Link 
-        href={href} 
-        className={`group flex items-center justify-between px-4 py-2.5 my-0.5 rounded-lg transition-all duration-300 relative overflow-hidden ${
-          active 
-            ? 'bg-gradient-to-r from-[#002855] to-transparent text-white border-l-4 border-[#cf152d] shadow-md' 
-            : 'text-slate-400 hover:text-white hover:bg-white/5'
-        }`}
-      >
-        <div className="flex items-center gap-3">
-          <Icon className={`w-4 h-4 transition-transform duration-300 ${active ? 'text-[#cf152d]' : 'group-hover:scale-110 group-hover:text-blue-300'}`} />
-          <span className={`text-sm tracking-wide ${active ? 'font-semibold' : 'font-medium'}`}>{label}</span>
-        </div>
-        {active && <ChevronRight className="w-4 h-4 text-[#cf152d] opacity-80" />}
-      </Link>
-    )
-  }
 
   return (
     <div className="flex flex-col w-[280px] h-screen bg-[#0a0f1c] border-r border-slate-800 shadow-2xl relative z-50">
@@ -113,17 +113,22 @@ export function Sidebar() {
             </>
           )}
 
-          {/* Finanzas y Caja */}
-          {(hasPermission('caja') || hasPermission('caja-fondos') || hasPermission('caja-gastos') || hasPermission('caja-liquidaciones')) && (
+          {/* Caja de transporte */}
+          {['caja', 'caja-fondos', 'caja-gastos', 'caja-aprobacion', 'caja-anticipos', 'caja-liquidaciones', 'caja-combustible', 'caja-tarifario'].some(p => hasPermission(p)) && (
             <>
-              <div className="mt-6 mb-2 px-4 flex items-center justify-between">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Finanzas y Caja</p>
-                <span className="text-[8px] bg-green-500/10 text-green-400 px-2 py-0.5 rounded-full font-bold uppercase border border-green-500/20">TEST</span>
+              <div className="mt-6 mb-2 px-4">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Caja de Transporte</p>
               </div>
-              {hasPermission('caja') && <NavItem href="/caja" icon={Wallet} label="Dashboard Financiero" />}
-              {hasPermission('caja-fondos') && <NavItem href="/caja/fondos" icon={ArchiveRestore} label="Entrega de Fondos" />}
-              {hasPermission('caja-gastos') && <NavItem href="/caja/gastos" icon={FileText} label="Gastos (Mobile)" />}
-              {hasPermission('caja-liquidaciones') && <NavItem href="/caja/liquidaciones" icon={CheckCircle} label="Liquidaciones" />}
+              {hasPermission('caja') && <NavItem href="/caja" icon={Wallet} label="Panel de Caja" />}
+              {hasPermission('caja-gastos') && <NavItem href="/caja/gastos" icon={FileText} label="Registro de Gastos" />}
+              {hasPermission('caja-aprobacion') && <NavItem href="/caja/aprobaciones" icon={ClipboardCheck} label="Aprobación de Gastos" />}
+              {hasPermission('caja-anticipos') && <NavItem href="/caja/anticipos" icon={Banknote} label="Anticipos de Viaje" />}
+              {hasPermission('caja-liquidaciones') && <NavItem href="/caja/liquidaciones" icon={CheckCircle} label="Liquidación de Viajes" />}
+              {(hasPermission('caja-anticipos') || hasPermission('caja-liquidaciones')) && <NavItem href="/caja/conductores" icon={UserRound} label="Cuenta de Conductores" />}
+              {hasPermission('caja-fondos') && <NavItem href="/caja/cajas" icon={ArchiveRestore} label="Cajas y Fondos" />}
+              {hasPermission('caja-combustible') && <NavItem href="/caja/combustible" icon={Fuel} label="Control de Combustible" />}
+              {hasPermission('caja-tarifario') && <NavItem href="/caja/tarifario" icon={Calculator} label="Tarifario y Reglas" />}
+              {hasPermission('caja') && <NavItem href="/caja/reportes" icon={BarChart2} label="Reportes de Caja" />}
             </>
           )}
 

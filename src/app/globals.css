@@ -20,3 +20,25 @@ body {
   color: var(--foreground);
   font-family: inherit;
 }
+
+/* Campos de formulario de Caja (las utilidades de Tailwind siguen teniendo prioridad) */
+@layer components {
+  .caja-input {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    font-size: 0.875rem;
+    background: #fff;
+  }
+  .caja-input:disabled {
+    background: #f1f5f9;
+  }
+}
+
+/* Impresión de documentos de Caja (hoja de liquidación, solicitud de reposición) */
+@media print {
+  body.caja-print * { visibility: hidden; }
+  body.caja-print .caja-printable, body.caja-print .caja-printable * { visibility: visible; }
+  body.caja-print .caja-printable { position: fixed; inset: 0; padding: 1.5rem; overflow: visible; background: #fff; }
+}
