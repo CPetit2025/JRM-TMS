@@ -244,7 +244,6 @@ BEGIN
   INSERT INTO public.dispatches (dispatch_number, vehicle_plate, driver_id, status, site_id, returned_at)
   VALUES ('ZZ-C2-004', 'ZZC2A', v_driver, 'RETORNO_COMPLETADO', v_site, now() - interval '5 days') RETURNING id INTO t2;
   INSERT INTO public.trip_advances (dispatch_id, driver_id, amount, status, delivered_at) VALUES (t2, v_driver, 20, 'ENTREGADO', now() - interval '6 days');
-  UPDATE public.dispatches SET updated_at = now() - interval '5 days' WHERE id = t2;
   PERFORM pg_temp.as_user(v_drv_prof);
   v_txt := public.request_trip_advance_from_app(t3, 30, 'Combustible')->>'error';
   PERFORM pg_temp.as_user(NULL);
