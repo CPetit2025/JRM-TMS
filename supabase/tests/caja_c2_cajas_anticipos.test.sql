@@ -29,10 +29,14 @@ BEGIN
     v_admin := NULL;
   END LOOP;
   IF v_admin IS NULL THEN RAISE EXCEPTION 'CAJA C2 FAIL: no hay administrador'; END IF;
-  SELECT id INTO v_jefe     FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u) AND id <> v_admin ORDER BY id LIMIT 1;
-  SELECT id INTO v_fondos   FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u) AND id NOT IN (v_admin, v_jefe) ORDER BY id LIMIT 1;
-  SELECT id INTO v_nobody   FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u) AND id NOT IN (v_admin, v_jefe, v_fondos) ORDER BY id LIMIT 1;
-  SELECT id INTO v_drv_prof FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u) AND id NOT IN (v_admin, v_jefe, v_fondos, v_nobody) ORDER BY id LIMIT 1;
+  SELECT id INTO v_jefe     FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u)
+    AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) AND id <> v_admin ORDER BY id LIMIT 1;
+  SELECT id INTO v_fondos   FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u)
+    AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) AND id NOT IN (v_admin, v_jefe) ORDER BY id LIMIT 1;
+  SELECT id INTO v_nobody   FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u)
+    AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) AND id NOT IN (v_admin, v_jefe, v_fondos) ORDER BY id LIMIT 1;
+  SELECT id INTO v_drv_prof FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u)
+    AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) AND id NOT IN (v_admin, v_jefe, v_fondos, v_nobody) ORDER BY id LIMIT 1;
   IF v_drv_prof IS NULL THEN RAISE EXCEPTION 'CAJA C2 FAIL: se requieren 5 perfiles'; END IF;
   INSERT INTO public.roles (name, permissions) VALUES ('ZZ Tesorería', '["caja-fondos","caja-gastos"]') RETURNING id INTO v_role_f;
   UPDATE public.profiles SET role_id = (SELECT id FROM public.roles WHERE name = 'Jefe de Distribución'), is_active = true WHERE id = v_jefe;
@@ -43,8 +47,9 @@ BEGIN
   VALUES (v_carrier, v_drv_prof, 'Conductor', 'C2', 'ZZC2-DOC', 'ZZC2-LIC', true) RETURNING id INTO v_driver;
   INSERT INTO public.vehicles (plate, carrier_id, site_id, type, status, current_odometer) VALUES ('ZZC2A', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 5000);
   INSERT INTO public.dispatches (dispatch_number, vehicle_plate, driver_id, status, site_id) VALUES ('ZZ-C2-001', 'ZZC2A', v_driver, 'EN_CURSO', v_site) RETURNING id INTO t1;
-  INSERT INTO public.dispatches (dispatch_number, vehicle_plate, driver_id, status, site_id) VALUES ('ZZ-C2-002', 'ZZC2A', v_driver, 'EN_CURSO', v_site) RETURNING id INTO t2;
-  INSERT INTO public.dispatches (dispatch_number, vehicle_plate, driver_id, status, site_id) VALUES ('ZZ-C2-003', 'ZZC2A', v_driver, 'PROGRAMADO', v_site) RETURNING id INTO t3;
+  -- Producción admite un solo viaje activo por conductor y por unidad (dispatch_one_active_*):
+  -- ZZ-C2-002 ya entregado; ZZ-C2-003 se programa en T7, cuando ZZ-C2-001 ya retornó
+  INSERT INTO public.dispatches (dispatch_number, vehicle_plate, driver_id, status, site_id) VALUES ('ZZ-C2-002', 'ZZC2A', v_driver, 'ENTREGADO', v_site) RETURNING id INTO t2;
 
   -- T1: caja chica: apertura, retiro con motivo y sin sobregiro
   PERFORM pg_temp.as_user(v_fondos);
@@ -140,6 +145,7 @@ BEGIN
   IF v_err LIKE '%corresponde reembolso%' AND v_n = 1 THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T6 reembolso: ' || COALESCE(v_err, '∅') || ' n=' || v_n); END IF;
 
   -- T7: rendición vencida bloquea un anticipo nuevo; solo el Administrador autoriza con motivo
+  INSERT INTO public.dispatches (dispatch_number, vehicle_plate, driver_id, status, site_id) VALUES ('ZZ-C2-003', 'ZZC2A', v_driver, 'PROGRAMADO', v_site) RETURNING id INTO t3;
   PERFORM pg_temp.as_user(v_jefe);
   a3 := (public.request_trip_advance(t3, 200)->>'advance_id')::uuid;
   v_err := public.deliver_trip_advance(a3, v_box, 'EFECTIVO')->>'error';

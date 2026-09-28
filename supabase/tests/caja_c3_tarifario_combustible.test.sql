@@ -28,9 +28,12 @@ BEGIN
     v_admin := NULL;
   END LOOP;
   IF v_admin IS NULL THEN RAISE EXCEPTION 'CAJA C3 FAIL: no hay administrador'; END IF;
-  SELECT id INTO v_jefe     FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u) AND id <> v_admin ORDER BY id LIMIT 1;
-  SELECT id INTO v_caja     FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u) AND id NOT IN (v_admin, v_jefe) ORDER BY id LIMIT 1;
-  SELECT id INTO v_drv_prof FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u) AND id NOT IN (v_admin, v_jefe, v_caja) ORDER BY id LIMIT 1;
+  SELECT id INTO v_jefe     FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u)
+    AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) AND id <> v_admin ORDER BY id LIMIT 1;
+  SELECT id INTO v_caja     FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u)
+    AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) AND id NOT IN (v_admin, v_jefe) ORDER BY id LIMIT 1;
+  SELECT id INTO v_drv_prof FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u)
+    AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) AND id NOT IN (v_admin, v_jefe, v_caja) ORDER BY id LIMIT 1;
   IF v_drv_prof IS NULL THEN RAISE EXCEPTION 'CAJA C3 FAIL: se requieren 4 perfiles'; END IF;
   INSERT INTO public.roles (name, permissions) VALUES ('ZZ Caja C3', '["caja-gastos"]') RETURNING id INTO v_role_c;
   UPDATE public.profiles SET role_id = (SELECT id FROM public.roles WHERE name = 'Jefe de Distribución'), is_active = true WHERE id = v_jefe;
@@ -44,7 +47,7 @@ BEGIN
   INSERT INTO public.dispatches (dispatch_number, vehicle_plate, driver_id, status, site_id, freight_cost, estimated_km)
   VALUES ('ZZ-C3-001', 'ZZC3A', v_driver, 'EN_CURSO', v_site, 2000, 600) RETURNING id INTO t1;
   INSERT INTO public.dispatches (dispatch_number, vehicle_plate, driver_id, status, site_id)
-  VALUES ('ZZ-C3-002', 'ZZC3A', v_driver, 'EN_CURSO', v_site) RETURNING id INTO t2;
+  VALUES ('ZZ-C3-002', 'ZZC3A', v_driver, 'ENTREGADO', v_site) RETURNING id INTO t2;  -- un solo viaje activo por conductor
   UPDATE public.caja_settings SET fuel_price_per_gallon = 16, budget_tolerance_pct = 10, default_km_per_gallon = 10 WHERE id;
 
   -- T1: tarifario ⇒ presupuesto (peaje según el tipo de unidad; combustible por km/rendimiento/precio)
