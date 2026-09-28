@@ -6,6 +6,7 @@ import { Loader2, Eye, EyeOff, UserCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { AppUpdateNotice } from '@/components/AppUpdateNotice'
+import { AppVersionInfo } from '@/components/AppVersionInfo'
 
 export default function OperativeLogin() {
   const router = useRouter()
@@ -203,8 +204,9 @@ export default function OperativeLogin() {
 
         <div className="mt-4 pt-3 border-t border-slate-100 text-center">
           <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">
-            Portal Operativo v2.0
+            Portal Operativo
           </p>
+          <AppVersionInfo className="mt-1" />
         </div>
       </div>
     </div>
