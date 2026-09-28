@@ -146,8 +146,8 @@ ALTER TABLE public.dispatch_expenses ADD CONSTRAINT dispatch_expenses_status_che
   CHECK (status IN ('PENDIENTE', 'OBSERVADO', 'APROBADO', 'RECHAZADO'));
 ALTER TABLE public.dispatch_expenses DROP CONSTRAINT IF EXISTS dispatch_expenses_source_check;
 ALTER TABLE public.dispatch_expenses ADD CONSTRAINT dispatch_expenses_source_check CHECK (source IN ('APP', 'WEB', 'SISTEMA'));
+-- Importe > 0: lo exige el trigger en toda captura (un CHECK bloquearía actualizar registros antiguos en 0)
 ALTER TABLE public.dispatch_expenses DROP CONSTRAINT IF EXISTS dispatch_expenses_amount_check;
-ALTER TABLE public.dispatch_expenses ADD CONSTRAINT dispatch_expenses_amount_check CHECK (amount > 0) NOT VALID;
 ALTER TABLE public.dispatch_expenses DROP CONSTRAINT IF EXISTS dispatch_expenses_approved_amount_check;
 ALTER TABLE public.dispatch_expenses ADD CONSTRAINT dispatch_expenses_approved_amount_check
   CHECK (approved_amount IS NULL OR approved_amount >= 0);
@@ -326,14 +326,17 @@ BEGIN
     SELECT ruc, COALESCE(NEW.provider_name, name) INTO NEW.provider_ruc, NEW.provider_name FROM public.fuel_stations WHERE id = NEW.fuel_station_id;
   END IF;
 
-  IF NEW.amount IS NULL OR NEW.amount <= 0 THEN
-    RAISE EXCEPTION 'El importe del gasto debe ser mayor a 0';
-  END IF;
-  IF NEW.expense_type = 'COMBUSTIBLE' AND (NEW.fuel_gallons IS NOT NULL AND NEW.fuel_gallons <= 0) THEN
-    RAISE EXCEPTION 'La cantidad de galones debe ser mayor a 0';
-  END IF;
-  IF NEW.expense_date > (now() AT TIME ZONE 'America/Lima')::date + 1 THEN
-    RAISE EXCEPTION 'La fecha del gasto no puede ser futura';
+  -- Validaciones de captura (las RPC de revisión y los procesos de datos no las repiten sobre registros antiguos)
+  IF NOT public.caja_in_review() THEN
+    IF NEW.amount IS NULL OR NEW.amount <= 0 THEN
+      RAISE EXCEPTION 'El importe del gasto debe ser mayor a 0';
+    END IF;
+    IF NEW.expense_type = 'COMBUSTIBLE' AND (NEW.fuel_gallons IS NOT NULL AND NEW.fuel_gallons <= 0) THEN
+      RAISE EXCEPTION 'La cantidad de galones debe ser mayor a 0';
+    END IF;
+    IF NEW.expense_date > (now() AT TIME ZONE 'America/Lima')::date + 1 THEN
+      RAISE EXCEPTION 'La fecha del gasto no puede ser futura';
+    END IF;
   END IF;
 
   IF NEW.dispatch_id IS NOT NULL THEN
@@ -352,7 +355,8 @@ BEGIN
     RAISE EXCEPTION 'Indique el despacho o la placa de la unidad';
   END IF;
 
-  IF NEW.provider_ruc IS NOT NULL AND NEW.document_type IS NOT NULL AND NEW.document_series IS NOT NULL AND NEW.document_number IS NOT NULL THEN
+  IF NOT public.caja_in_review() AND NEW.provider_ruc IS NOT NULL AND NEW.document_type IS NOT NULL
+     AND NEW.document_series IS NOT NULL AND NEW.document_number IS NOT NULL THEN
     SELECT o.expense_date, o.status INTO dup FROM public.dispatch_expenses o
     WHERE o.id <> NEW.id AND o.status <> 'RECHAZADO' AND o.provider_ruc = NEW.provider_ruc AND o.document_type = NEW.document_type
       AND upper(o.document_series) = NEW.document_series AND ltrim(o.document_number, '0') = ltrim(NEW.document_number, '0')
@@ -619,7 +623,6 @@ DECLARE
   v_plate   text;
   v_driver  uuid := p_driver_id;
   v_id      uuid;
-  v_current numeric;
   v_is_drv  boolean;
 BEGIN
   IF p_gallons IS NULL OR p_gallons <= 0 THEN RAISE EXCEPTION 'La cantidad de galones debe ser mayor a 0'; END IF;
@@ -658,17 +661,29 @@ BEGIN
     p_document->>'provider_ruc', p_document->>'provider_name', COALESCE((p_document->>'is_billable')::boolean, false),
     NULLIF(p_document->>'fuel_station_id', '')::uuid
   ) RETURNING id INTO v_id;
-
-  SELECT COALESCE(current_odometer, 0) INTO v_current FROM public.vehicles WHERE plate = v_plate FOR UPDATE;
-  INSERT INTO public.vehicle_odometer_logs (vehicle_plate, driver_id, dispatch_id, odometer_value, photo_url, source_event, status, notes, created_by)
-  VALUES (v_plate, v_driver, p_dispatch_id, p_odometer, p_receipt_url, 'COMBUSTIBLE',
-          CASE WHEN p_odometer < v_current THEN 'REQUIERE_AUDITORIA' ELSE 'VALIDADO' END,
-          CASE WHEN p_odometer < v_current THEN 'Carga de combustible con odómetro menor al actual (' || v_current || ')' END, auth.uid());
-  IF p_odometer >= v_current THEN
-    UPDATE public.vehicles SET current_odometer = p_odometer, updated_at = now() WHERE plate = v_plate;
-  END IF;
   RETURN v_id;
 END $$;
+
+-- Toda carga con odómetro (app o web) queda en las lecturas de la unidad
+CREATE OR REPLACE FUNCTION public.caja_fuel_odometer_log()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE v_current numeric;
+BEGIN
+  IF NEW.expense_type <> 'COMBUSTIBLE' OR NEW.fuel_odometer IS NULL OR NEW.vehicle_plate IS NULL THEN RETURN NULL; END IF;
+  SELECT COALESCE(current_odometer, 0) INTO v_current FROM public.vehicles WHERE plate = NEW.vehicle_plate FOR UPDATE;
+  INSERT INTO public.vehicle_odometer_logs (vehicle_plate, driver_id, dispatch_id, odometer_value, photo_url, source_event, status, notes, created_by)
+  VALUES (NEW.vehicle_plate, NEW.driver_id, NEW.dispatch_id, NEW.fuel_odometer, NEW.receipt_url, 'COMBUSTIBLE',
+          CASE WHEN NEW.fuel_odometer < v_current THEN 'REQUIERE_AUDITORIA' ELSE 'VALIDADO' END,
+          CASE WHEN NEW.fuel_odometer < v_current THEN 'Carga de combustible con odómetro menor al actual (' || v_current || ')' END,
+          COALESCE(auth.uid(), NEW.created_by));
+  IF NEW.fuel_odometer >= v_current THEN
+    UPDATE public.vehicles SET current_odometer = NEW.fuel_odometer, updated_at = now() WHERE plate = NEW.vehicle_plate;
+  END IF;
+  RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS trg_caja_fuel_odometer_log ON public.dispatch_expenses;
+CREATE TRIGGER trg_caja_fuel_odometer_log AFTER INSERT ON public.dispatch_expenses
+FOR EACH ROW EXECUTE FUNCTION public.caja_fuel_odometer_log();
 
 -- Firma usada por la app del conductor y la sincronización offline (APK instalados)
 CREATE OR REPLACE FUNCTION public.register_fuel_expense(

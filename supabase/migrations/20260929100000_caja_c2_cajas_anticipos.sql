@@ -237,7 +237,12 @@ ALTER TABLE public.cash_movements ADD CONSTRAINT cash_movements_advance_fk FOREI
 ALTER TABLE public.dispatch_expenses
   ADD COLUMN IF NOT EXISTS paid_by     text NOT NULL DEFAULT 'CONDUCTOR',
   ADD COLUMN IF NOT EXISTS cash_box_id uuid REFERENCES public.cash_boxes(id);
-UPDATE public.dispatch_expenses SET paid_by = 'EMPRESA' WHERE driver_id IS NULL AND paid_by = 'CONDUCTOR';
+-- Datos existentes: sin conductor ⇒ lo pagó la empresa (proceso de datos: no pasa por las reglas de edición)
+DO $$ BEGIN
+  PERFORM set_config('caja.review', 'on', true);
+  UPDATE public.dispatch_expenses SET paid_by = 'EMPRESA' WHERE driver_id IS NULL AND paid_by = 'CONDUCTOR';
+  PERFORM set_config('caja.review', '', true);
+END $$;
 ALTER TABLE public.dispatch_expenses DROP CONSTRAINT IF EXISTS dispatch_expenses_paid_by_check;
 ALTER TABLE public.dispatch_expenses ADD CONSTRAINT dispatch_expenses_paid_by_check CHECK (
   paid_by IN ('CONDUCTOR', 'CAJA', 'EMPRESA')

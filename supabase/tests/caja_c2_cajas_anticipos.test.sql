@@ -198,8 +198,22 @@ BEGIN
   IF v_n = 0 AND v_err LIKE 'Sin permiso%' AND v_txt LIKE 'Sin permiso%' AND v_num = 2
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T11 acceso: n=' || v_n || ' ' || COALESCE(v_err, '∅') || ' ' || COALESCE(v_txt, '∅') || ' jefe=' || v_num); END IF;
 
+  -- T12: combustible desde Caja web pagado con caja: vale, odómetro de la unidad y egreso al aprobar
+  PERFORM pg_temp.as_user(v_fondos);
+  INSERT INTO public.dispatch_expenses (vehicle_plate, expense_type, amount, receipt_url, fuel_gallons, fuel_odometer, paid_by, cash_box_id, source)
+  VALUES ('zzc2a', 'COMBUSTIBLE', 160, 'caja_receipts/f.jpg', 10, 5400, 'CAJA', v_box, 'WEB') RETURNING id INTO e1;
+  v_num := public.cash_box_balance(v_box);
+  PERFORM pg_temp.as_user(v_jefe);
+  PERFORM public.review_dispatch_expense(e1, 'APROBAR', NULL, NULL, true);
+  PERFORM pg_temp.as_user(NULL);
+  IF (SELECT current_odometer FROM public.vehicles WHERE plate = 'ZZC2A') = 5400
+     AND EXISTS (SELECT 1 FROM public.vehicle_odometer_logs WHERE vehicle_plate = 'ZZC2A' AND odometer_value = 5400 AND source_event = 'COMBUSTIBLE')
+     AND (SELECT paid_by = 'CAJA' AND dispatch_id IS NULL AND status = 'APROBADO' FROM public.dispatch_expenses WHERE id = e1)
+     AND public.cash_box_balance(v_box) = v_num - 160
+  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T12 combustible web: ' || v_num || ' → ' || public.cash_box_balance(v_box)); END IF;
+
   IF array_length(v_fail, 1) IS NULL THEN
-    RAISE EXCEPTION 'CAJA C2 PASS (%/11)', v_pass;
+    RAISE EXCEPTION 'CAJA C2 PASS (%/12)', v_pass;
   ELSE
     RAISE EXCEPTION 'CAJA C2 FAIL: %', array_to_string(v_fail, ' || ');
   END IF;
