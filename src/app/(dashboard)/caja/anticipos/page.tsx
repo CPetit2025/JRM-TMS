@@ -51,10 +51,12 @@ export default function AnticiposPage() {
 
   const visible = useMemo(() => rows.filter(r => {
     if (status === 'ABIERTOS' && !['SOLICITADO', 'ENTREGADO'].includes(r.status)) return false
-    if (status !== 'ABIERTOS' && status !== 'TODOS' && r.status !== status) return false
+    if (status === 'APP' && !(r.source === 'APP' && r.status === 'SOLICITADO')) return false
+    if (!['ABIERTOS', 'APP', 'TODOS'].includes(status) && r.status !== status) return false
     const s = q.trim().toLowerCase()
     return !s || [r.code, r.dispatch?.dispatch_number, r.dispatch?.vehicle_plate, people[r.driver_id]].some(v => String(v || '').toLowerCase().includes(s))
   }), [rows, status, q, people])
+  const appPending = rows.filter(r => r.source === 'APP' && r.status === 'SOLICITADO').length
   const totals = useMemo(() => ({
     requested: rows.filter(r => r.status === 'SOLICITADO').reduce((s, r) => s + Number(r.amount), 0),
     delivered: rows.filter(r => r.status === 'ENTREGADO').reduce((s, r) => s + Number(r.amount), 0),
@@ -84,12 +86,14 @@ export default function AnticiposPage() {
         <Stat label="Solicitados por entregar" value={money(totals.requested)} />
         <Stat label="Entregados por rendir" value={money(totals.delivered)} />
         <Stat label="Conductores con rendición vencida" value={String(Object.values(accounts).filter(a => a.overdue_trips > 0).length)} tone="red" />
-        <Stat label="Anticipos abiertos" value={String(rows.filter(r => ['SOLICITADO', 'ENTREGADO'].includes(r.status)).length)} />
+        <Stat label="Pedidos del app por atender" value={String(appPending)} tone="red" />
       </div>
 
       <div className="flex flex-wrap gap-2 items-center">
-        {['ABIERTOS', 'SOLICITADO', 'ENTREGADO', 'RENDIDO', 'ANULADO', 'TODOS'].map(s => (
-          <button key={s} onClick={() => setStatus(s)} className={`px-3 py-1.5 rounded-full text-sm border ${status === s ? 'bg-[#002855] text-white' : 'bg-white'}`}>{s.charAt(0) + s.slice(1).toLowerCase()}</button>
+        {['ABIERTOS', 'APP', 'SOLICITADO', 'ENTREGADO', 'RENDIDO', 'ANULADO', 'TODOS'].map(s => (
+          <button key={s} onClick={() => setStatus(s)} className={`px-3 py-1.5 rounded-full text-sm border ${status === s ? 'bg-[#002855] text-white' : 'bg-white'}`}>
+            {s === 'APP' ? `Pedidos del app (${appPending})` : s.charAt(0) + s.slice(1).toLowerCase()}
+          </button>
         ))}
         <div className="relative ml-auto">
           <Search className="w-4 h-4 absolute left-2 top-2.5 text-slate-400" />
@@ -110,14 +114,20 @@ export default function AnticiposPage() {
                 const acc = accounts[r.driver_id]
                 return (
                   <tr key={r.id}>
-                    <td className="p-3 font-semibold">{r.code}<div className="text-xs text-slate-500 font-normal">{fmtDate(r.requested_at)}</div></td>
+                    <td className="p-3 font-semibold">
+                      {r.code}
+                      {r.source === 'APP' && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-violet-100 text-violet-800 text-[10px] font-bold align-middle">App conductor</span>}
+                      <div className="text-xs text-slate-500 font-normal">{fmtDate(r.requested_at, true)}</div>
+                      {r.reason && <div className="text-xs text-slate-700 font-normal max-w-56">“{r.reason}”</div>}
+                    </td>
                     <td className="p-3">{r.dispatch?.dispatch_number}<div className="text-xs text-slate-500">{r.dispatch?.vehicle_plate} · {r.dispatch?.status}</div></td>
                     <td className="p-3">{people[r.driver_id] || '—'}{acc?.overdue_trips > 0 && <div className="text-xs text-red-700 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{acc.overdue_trips} rendición(es) vencida(s)</div>}</td>
                     <td className="p-3 text-xs text-slate-600">{Object.entries(r.breakdown || {}).filter(([, v]) => Number(v) > 0).map(([k, v]) => `${k.charAt(0) + k.slice(1).toLowerCase()} ${money(v, 0)}`).join(' · ') || '—'}</td>
                     <td className="p-3 text-right font-bold">{money(r.amount)}</td>
                     <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs font-semibold ${STATUS[r.status]}`}>{r.status}</span></td>
                     <td className="p-3 text-xs">{r.delivered_at ? <>{fmtDate(r.delivered_at, true)}<div className="text-slate-500">{r.payment_method}{r.reference ? ` · ${r.reference}` : ''}</div></> : '—'}
-                      {r.override_reason && <div className="text-red-700">Autorizado: {r.override_reason}</div>}</td>
+                      {r.override_reason && <div className="text-red-700">Autorizado: {r.override_reason}</div>}
+                      {r.status === 'ANULADO' && r.cancel_reason && <div className="text-slate-500">Anulado: {r.cancel_reason}</div>}</td>
                     <td className="p-3 whitespace-nowrap text-right">
                       {canManage && r.status === 'SOLICITADO' && <button onClick={() => setDelivering(r)} className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg mr-1 inline-flex items-center gap-1"><Send className="w-3 h-3" />Entregar</button>}
                       {canManage && (r.status === 'SOLICITADO' || (r.status === 'ENTREGADO' && role === 'admin')) && <button onClick={() => cancel(r)} title="Anular" className="p-1.5 hover:bg-slate-100 rounded"><XCircle className="w-4 h-4 text-red-600" /></button>}
@@ -226,9 +236,17 @@ function Deliver({ advance, driverName, overdue, isAdmin, onClose, onDone }: {
   const [boxes, setBoxes] = useState<Row[]>([])
   const [form, setForm] = useState({ box_id: '', method: 'EFECTIVO', reference: '', override: '' })
   const [busy, setBusy] = useState(false)
+  const [trip, setTrip] = useState<Row | null>(null)
   useEffect(() => {
     supabase.from('vw_cash_box_balances').select('box_id, name, box_type, balance, allow_negative').eq('is_active', true).order('name').then(r => setBoxes(r.data || []))
-  }, [])
+    Promise.all([
+      supabase.from('trip_budgets').select('total').eq('dispatch_id', advance.dispatch_id).maybeSingle(),
+      supabase.from('trip_advances').select('amount, status').eq('dispatch_id', advance.dispatch_id),
+    ]).then(([b, a]) => setTrip({
+      budget: b.data?.total ?? null,
+      delivered: (a.data || []).filter(x => ['ENTREGADO', 'RENDIDO'].includes(x.status)).reduce((s, x) => s + Number(x.amount), 0),
+    }))
+  }, [advance.dispatch_id])
   const box = boxes.find(b => b.box_id === form.box_id)
   const short = box && !box.allow_negative && Number(box.balance) < Number(advance.amount)
 
@@ -246,6 +264,22 @@ function Deliver({ advance, driverName, overdue, isAdmin, onClose, onDone }: {
     <Modal isOpen onClose={onClose} title={`Entregar ${advance.code} · ${money(advance.amount)}`}>
       <div className="space-y-3 text-sm">
         <p>Conductor: <b>{driverName || '—'}</b> · Despacho {advance.dispatch?.dispatch_number}</p>
+        {advance.source === 'APP' && (
+          <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 text-xs space-y-1">
+            <div className="font-semibold text-violet-900">Solicitado por el conductor desde la app</div>
+            {advance.reason && <div>“{advance.reason}”</div>}
+            {Object.keys(advance.breakdown || {}).length > 0 && (
+              <div className="text-slate-600">{Object.entries(advance.breakdown).map(([k, v]) => `${k.charAt(0) + k.slice(1).toLowerCase()} ${money(v)}`).join(' · ')}</div>
+            )}
+          </div>
+        )}
+        {trip && (
+          <p className="text-xs text-slate-600">
+            Ya entregado en este viaje: <b>{money(trip.delivered)}</b>
+            {trip.budget != null && <> · Presupuesto del viaje: <b>{money(trip.budget)}</b>
+              {trip.delivered + Number(advance.amount) > Number(trip.budget) && <span className="text-red-700"> (con este anticipo lo supera)</span>}</>}
+          </p>
+        )}
         {overdue && (
           <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-3 text-xs flex gap-2"><AlertTriangle className="w-4 h-4 shrink-0" />
             El conductor tiene rendiciones vencidas. {isAdmin ? 'Como Administrador puede autorizar la entrega indicando el motivo.' : 'Solo el Administrador puede autorizar la entrega.'}</div>

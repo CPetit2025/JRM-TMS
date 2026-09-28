@@ -24,21 +24,24 @@ export default function CajaDashboardPage() {
   const [accounts, setAccounts] = useState<Row[]>([])
   const [month, setMonth] = useState<Row[]>([])
   const [cats, setCats] = useState<Record<string, string>>({})
+  const [appRequests, setAppRequests] = useState(0)
 
   const load = useCallback(async () => {
     setLoading(true)
     const since = daysAgo(30)
-    const [b, p, t, a, m, c] = await Promise.all([
+    const [b, p, t, a, m, c, ar] = await Promise.all([
       supabase.from('vw_cash_box_balances').select('*').eq('is_active', true),
       supabase.from('dispatch_expenses').select('id, amount, alerts, status').in('status', ['PENDIENTE', 'OBSERVADO']),
       supabase.from('vw_caja_trip_status').select('dispatch_id, trip_finished, settlement_status, overdue, advances_delivered, expenses_count').gte('created_at', new Date(Date.now() - 120 * 864e5).toISOString()),
       supabase.from('vw_driver_cash_account').select('driver_id, balance, overdue_trips'),
       supabase.from('dispatch_expenses').select('expense_type, vehicle_plate, amount, approved_amount').eq('status', 'APROBADO').gte('expense_date', since),
       supabase.from('expense_categories').select('code, label'),
+      supabase.from('trip_advances').select('id', { count: 'exact', head: true }).eq('source', 'APP').eq('status', 'SOLICITADO'),
     ])
     if (b.error && p.error) toast.error('Error al cargar el panel de caja')
     setBoxes(b.data || []); setPending(p.data || []); setTrips(t.data || []); setAccounts(a.data || []); setMonth(m.data || [])
     setCats(Object.fromEntries((c.data || []).map(x => [x.code, x.label])))
+    setAppRequests(ar.count || 0)
     setLoading(false)
   }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -96,6 +99,12 @@ export default function CajaDashboardPage() {
           <Tile href="/caja/aprobaciones" icon={<ClipboardCheck className="w-4 h-4" />} label="Gastos por aprobar" value={`${k.pendingCount}`} sub={`${money(k.pendingAmount)}${k.withAlerts ? ` · ${k.withAlerts} con alertas` : ''}`} alert={k.withAlerts > 0} />
           <Tile href="/caja/liquidaciones" icon={<FileCheck2 className="w-4 h-4" />} label="Viajes por liquidar" value={`${k.toSettle}`} sub={k.overdue ? `${k.overdue} vencidos` : 'Al día'} alert={k.overdue > 0} />
         </div>
+
+        {appRequests > 0 && (
+          <Link href="/caja/anticipos" className="block bg-violet-50 border border-violet-200 rounded-xl p-3 text-sm text-violet-900 hover:border-violet-400">
+            <Banknote className="inline w-4 h-4 mr-1" /><b>{appRequests}</b> solicitud(es) de anticipo de conductores esperan atención.
+          </Link>
+        )}
 
         {(k.overdueDrivers > 0 || k.observed > 0) && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-900 flex flex-wrap gap-x-6 gap-y-1">
