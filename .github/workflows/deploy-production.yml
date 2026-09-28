@@ -1,0 +1,110 @@
+name: Deploy production (Supabase + Vercel)
+
+# Al llegar código a master: 1) aplica las migraciones nuevas a Supabase, 2) corre las pruebas SQL de caja
+# (informativas, siempre con ROLLBACK), 3) dispara el despliegue de producción en Vercel.
+# Vercel no despliega master por Git (vercel.json → git.deploymentEnabled.master = false): así el frontend
+# nunca llega a producción antes que el esquema que necesita. Las vistas previas de ramas siguen igual.
+# Secretos: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_ID, SUPABASE_DB_PASSWORD, VERCEL_DEPLOY_HOOK_URL
+# (docs/despliegue-automatico.md).
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      apply_all_pending:
+        description: Aplicar todas las migraciones pendientes aunque no vengan en este push
+        type: boolean
+        default: false
+      skip_migrations:
+        description: Solo desplegar en Vercel (sin migraciones)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: ${{ !inputs.skip_migrations }}
+    runs-on: ubuntu-24.04
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check secrets
+        run: |
+          for v in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_ID SUPABASE_DB_PASSWORD; do
+            if [ -z "${!v}" ]; then echo "::error::Falta el secreto $v (ver docs/despliegue-automatico.md)"; exit 1; fi
+          done
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
+
+      # Solo se aplican las migraciones que trae este push. Si la base tiene otras pendientes, el historial
+      # remoto está desalineado (migraciones aplicadas a mano) y aplicarlas podría romper producción.
+      - name: Plan migrations
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          APPLY_ALL: ${{ inputs.apply_all_pending }}
+        run: |
+          supabase db push --dry-run --password "$SUPABASE_DB_PASSWORD" 2>&1 | tee plan.txt
+          grep -oE '[0-9]{6,}_[A-Za-z0-9_]+\.sql' plan.txt | sort -u > pending.txt || true
+          echo "Pendientes en la base:"; cat pending.txt
+          if [ "$APPLY_ALL" = "true" ] || [ ! -s pending.txt ]; then exit 0; fi
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "::error::No se puede determinar el push anterior; ejecute manualmente con apply_all_pending"; exit 1
+          fi
+          git diff --name-only --diff-filter=A "$BEFORE" "$AFTER" -- supabase/migrations | xargs -r -n1 basename | sort -u > incoming.txt
+          echo "Nuevas en este push:"; cat incoming.txt
+          unexpected=$(comm -23 pending.txt incoming.txt)
+          if [ -n "$unexpected" ]; then
+            echo "::error::La base tiene migraciones pendientes que no vienen en este push (historial desalineado): $unexpected"
+            echo "Revise con 'supabase migration list' y alinee con 'supabase migration repair' antes de desplegar."
+            exit 1
+          fi
+
+      - name: Apply migrations
+        run: supabase db push --password "$SUPABASE_DB_PASSWORD"
+
+      # Pruebas de caja contra la base real; cada archivo termina en error a propósito para forzar ROLLBACK.
+      - name: Caja SQL tests (informativo)
+        continue-on-error: true
+        run: |
+          status=0
+          for f in supabase/tests/caja_*.test.sql; do
+            out=$(supabase db query --linked -f "$f" 2>&1 || true)
+            line=$(echo "$out" | grep -oE 'CAJA C[0-9] (PASS|FAIL)[^"]*' | head -1)
+            echo "$f → ${line:-sin resultado}"
+            echo "- \`$(basename "$f")\`: ${line:-sin resultado}" >> "$GITHUB_STEP_SUMMARY"
+            case "$line" in *PASS*) ;; *) status=1; echo "$out" | tail -20 ;; esac
+          done
+          exit $status
+
+  deploy:
+    needs: migrate
+    if: ${{ always() && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Trigger Vercel production deployment
+        env:
+          HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "::error::Falta el secreto VERCEL_DEPLOY_HOOK_URL"; exit 1; fi
+          curl -fsS -X POST "$HOOK" | tee response.json
+          echo
+          echo "Despliegue de Vercel solicitado: $(cat response.json)" >> "$GITHUB_STEP_SUMMARY"
