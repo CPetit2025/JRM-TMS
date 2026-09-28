@@ -1,247 +1,154 @@
-"use client"
-import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { 
-  DollarSign, ArrowUpRight, ArrowDownRight, Activity, 
-  Wallet, FileText, CheckCircle2, AlertTriangle, Clock, RefreshCw
-} from 'lucide-react'
+'use client'
+
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import {
+  AlertTriangle, Banknote, BarChart3, ClipboardCheck, FileCheck2, FileText, Fuel, Loader2, RefreshCw, UserRound, Wallet,
+} from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { usePermissions } from '@/hooks/usePermissions'
+import { daysAgo, money, type Row } from '@/lib/caja'
+
+// Panel de la caja de transporte: saldos de cajas, dinero por rendir, bandeja de aprobación,
+// viajes por liquidar y gasto aprobado del mes por categoría y unidad.
+
+const supabase = createClient()
 
 export default function CajaDashboardPage() {
-  const supabase = createClient()
+  const { hasAccess } = usePermissions()
   const [loading, setLoading] = useState(true)
-  const [metrics, setMetrics] = useState({
-    totalEntregado: 0,
-    totalLiquidado: 0,
-    pendienteLiquidacion: 0,
-    fondosActivos: 0,
-    gastosSinComprobante: 0,
-    gastosObservados: 0
-  })
-  
-  const [analyticsCat, setAnalyticsCat] = useState<any[]>([])
-  const [analyticsVeh, setAnalyticsVeh] = useState<any[]>([])
+  const [boxes, setBoxes] = useState<Row[]>([])
+  const [pending, setPending] = useState<Row[]>([])
+  const [trips, setTrips] = useState<Row[]>([])
+  const [accounts, setAccounts] = useState<Row[]>([])
+  const [month, setMonth] = useState<Row[]>([])
+  const [cats, setCats] = useState<Record<string, string>>({})
 
-  useEffect(() => {
-    fetchMetrics()
-  }, [])
-
-  const fetchMetrics = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
-    try {
-      // Demo metrics for MVP (In a real scenario, this would come from an RPC or aggregations)
-      const { data: dispatches, error: dispatchesError } = await supabase.from('dispatches').select('liquidation_data, status').not('liquidation_data', 'is', null)
-      const { data: expenses, error: expensesError } = await supabase.from('dispatch_expenses').select('amount, status, description')
-      
-      let totalE = 0
-      let totalL = 0
-      let activos = 0
-      if (dispatches) {
-        dispatches.forEach(d => {
-          const totalExpenses = d.liquidation_data?.total_expenses || 0
-          totalE += Number(totalExpenses)
-          if (d.status === 'LIQUIDADO' || d.status === 'CERRADO') {
-            totalL += Number(totalExpenses) // Simplified
-          } else if (d.status !== 'ANULADO') {
-            activos++
-          }
-        })
-      }
+    const since = daysAgo(30)
+    const [b, p, t, a, m, c] = await Promise.all([
+      supabase.from('vw_cash_box_balances').select('*').eq('is_active', true),
+      supabase.from('dispatch_expenses').select('id, amount, alerts, status').in('status', ['PENDIENTE', 'OBSERVADO']),
+      supabase.from('vw_caja_trip_status').select('dispatch_id, trip_finished, settlement_status, overdue, advances_delivered, expenses_count').gte('created_at', new Date(Date.now() - 120 * 864e5).toISOString()),
+      supabase.from('vw_driver_cash_account').select('driver_id, balance, overdue_trips'),
+      supabase.from('dispatch_expenses').select('expense_type, vehicle_plate, amount, approved_amount').eq('status', 'APROBADO').gte('expense_date', since),
+      supabase.from('expense_categories').select('code, label'),
+    ])
+    if (b.error && p.error) toast.error('Error al cargar el panel de caja')
+    setBoxes(b.data || []); setPending(p.data || []); setTrips(t.data || []); setAccounts(a.data || []); setMonth(m.data || [])
+    setCats(Object.fromEntries((c.data || []).map(x => [x.code, x.label])))
+    setLoading(false)
+  }, [])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { void load() }, [load])
 
-      let sinComprobante = 0
-      let observados = 0
-      if (expenses) {
-        expenses.forEach(e => {
-          if (!e.description?.includes('Comprobante: FACTURA') && !e.description?.includes('Comprobante: BOLETA')) sinComprobante++
-          if (e.status === 'OBSERVADO') observados++
-        })
-      }
-
-      setMetrics({
-        totalEntregado: totalE,
-        totalLiquidado: totalL,
-        pendienteLiquidacion: totalE - totalL,
-        fondosActivos: activos,
-        gastosSinComprobante: sinComprobante,
-        gastosObservados: observados
-      })
-
-      // Fetch analytics
-      const { data: catData } = await supabase.from('view_expense_analytics_category').select('*').order('total_sum', { ascending: false })
-      const { data: vehData } = await supabase.from('view_expense_analytics_vehicle').select('*').order('total_sum', { ascending: false })
-      
-      setAnalyticsCat(catData || [])
-      setAnalyticsVeh(vehData || [])
-
-    } catch (error) {
-      console.error('Error fetching metrics', error)
-      toast.error('Error al cargar métricas financieras')
-    } finally {
-      setLoading(false)
+  const k = useMemo(() => {
+    const pend = pending.filter(e => e.status === 'PENDIENTE')
+    return {
+      cash: boxes.reduce((s, b) => s + Number(b.balance), 0),
+      lowBoxes: boxes.filter(b => Number(b.balance) < Number(b.min_balance)).length,
+      toRender: accounts.filter(a => Number(a.balance) > 0).reduce((s, a) => s + Number(a.balance), 0),
+      owed: accounts.filter(a => Number(a.balance) < 0).reduce((s, a) => s - Number(a.balance), 0),
+      pendingCount: pend.length,
+      pendingAmount: pend.reduce((s, e) => s + Number(e.amount), 0),
+      withAlerts: pend.filter(e => (e.alerts || []).length > 0).length,
+      observed: pending.filter(e => e.status === 'OBSERVADO').length,
+      toSettle: trips.filter(t => t.trip_finished && t.settlement_status !== 'CERRADA' && (Number(t.advances_delivered) > 0 || t.expenses_count > 0)).length,
+      overdue: trips.filter(t => t.overdue).length,
+      overdueDrivers: accounts.filter(a => a.overdue_trips > 0).length,
     }
-  }
+  }, [boxes, pending, trips, accounts])
 
-  const formatMoney = (amount: number) => {
-    return new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(amount)
-  }
+  const byCat = useMemo(() => {
+    const g: Record<string, number> = {}
+    month.forEach(e => { g[e.expense_type] = (g[e.expense_type] || 0) + Number(e.approved_amount ?? e.amount) })
+    return Object.entries(g).sort(([, a], [, b]) => b - a)
+  }, [month])
+  const byPlate = useMemo(() => {
+    const g: Record<string, number> = {}
+    month.forEach(e => { if (e.vehicle_plate) g[e.vehicle_plate] = (g[e.vehicle_plate] || 0) + Number(e.approved_amount ?? e.amount) })
+    return Object.entries(g).sort(([, a], [, b]) => b - a).slice(0, 8)
+  }, [month])
+  const monthTotal = byCat.reduce((s, [, v]) => s + v, 0)
+  const maxCat = Math.max(1, ...byCat.map(([, v]) => v))
+  const maxPlate = Math.max(1, ...byPlate.map(([, v]) => v))
 
   return (
-    <div className="space-y-6 w-full mx-auto">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-6 space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-black text-[#002855] tracking-tight">Dashboard Financiero</h1>
-          <p className="text-sm text-slate-500 font-medium mt-1">Control de caja chica, anticipos y liquidaciones operativas</p>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><Wallet className="w-6 h-6" />Caja de transporte</h1>
+          <p className="text-sm text-slate-500">Dinero de cada viaje de principio a fin: presupuesto, anticipo, gastos, aprobación, liquidación y costo real.</p>
         </div>
-        <div className="flex gap-3">
-          <Link href="/caja/gastos" className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg font-medium hover:bg-slate-50 transition-colors flex items-center gap-2">
-            <FileText className="w-4 h-4" /> Registrar Gasto
-          </Link>
-          <Link href="/caja/fondos" className="bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#003566] transition-colors flex items-center gap-2">
-            <Wallet className="w-4 h-4" /> Entregar Fondos
-          </Link>
+        <div className="flex gap-2">
+          <button onClick={load} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button>
+          {hasAccess('caja-gastos') && <Link href="/caja/gastos" className="px-4 py-2 border rounded-lg text-sm font-semibold flex items-center gap-2 bg-white"><FileText className="w-4 h-4" />Registrar gasto</Link>}
+          {hasAccess('caja-anticipos') && <Link href="/caja/anticipos" className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm font-semibold flex items-center gap-2"><Banknote className="w-4 h-4" />Anticipos</Link>}
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Activity className="w-8 h-8 animate-spin text-blue-500" />
+      {loading ? <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div> : <>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <Tile href="/caja/cajas" icon={<Wallet className="w-4 h-4" />} label="Saldo en cajas" value={money(k.cash)} sub={k.lowBoxes ? `${k.lowBoxes} caja(s) bajo el mínimo` : `${boxes.length} cajas activas`} alert={k.lowBoxes > 0} />
+          <Tile href="/caja/conductores" icon={<UserRound className="w-4 h-4" />} label="Por rendir (conductores)" value={money(k.toRender)} sub={k.owed ? `La empresa debe ${money(k.owed)}` : 'Anticipos sin rendir'} />
+          <Tile href="/caja/aprobaciones" icon={<ClipboardCheck className="w-4 h-4" />} label="Gastos por aprobar" value={`${k.pendingCount}`} sub={`${money(k.pendingAmount)}${k.withAlerts ? ` · ${k.withAlerts} con alertas` : ''}`} alert={k.withAlerts > 0} />
+          <Tile href="/caja/liquidaciones" icon={<FileCheck2 className="w-4 h-4" />} label="Viajes por liquidar" value={`${k.toSettle}`} sub={k.overdue ? `${k.overdue} vencidos` : 'Al día'} alert={k.overdue > 0} />
         </div>
-      ) : (
-        <>
-          {/* Top Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                <ArrowUpRight className="w-16 h-16 text-blue-600" />
-              </div>
-              <div className="flex justify-between items-start mb-4 relative z-10">
-                <div className="p-2 bg-blue-50 rounded-lg"><DollarSign className="w-5 h-5 text-blue-600" /></div>
-                <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-full">YTD</span>
-              </div>
-              <div className="relative z-10">
-                <h3 className="text-2xl font-black text-slate-800">{formatMoney(metrics.totalEntregado)}</h3>
-                <p className="text-sm font-medium text-slate-500 mt-1">Total Fondos Entregados</p>
-              </div>
-            </div>
 
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                <CheckCircle2 className="w-16 h-16 text-emerald-600" />
-              </div>
-              <div className="flex justify-between items-start mb-4 relative z-10">
-                <div className="p-2 bg-emerald-50 rounded-lg"><CheckCircle2 className="w-5 h-5 text-emerald-600" /></div>
-                <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">OK</span>
-              </div>
-              <div className="relative z-10">
-                <h3 className="text-2xl font-black text-slate-800">{formatMoney(metrics.totalLiquidado)}</h3>
-                <p className="text-sm font-medium text-slate-500 mt-1">Total Rendido / Liquidado</p>
-              </div>
-            </div>
-
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                <Clock className="w-16 h-16 text-amber-600" />
-              </div>
-              <div className="flex justify-between items-start mb-4 relative z-10">
-                <div className="p-2 bg-amber-50 rounded-lg"><RefreshCw className="w-5 h-5 text-amber-600" /></div>
-                <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full">{metrics.fondosActivos} Activos</span>
-              </div>
-              <div className="relative z-10">
-                <h3 className="text-2xl font-black text-slate-800">{formatMoney(metrics.pendienteLiquidacion)}</h3>
-                <p className="text-sm font-medium text-slate-500 mt-1">Pendiente de Liquidación</p>
-              </div>
-            </div>
-
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                <AlertTriangle className="w-16 h-16 text-red-600" />
-              </div>
-              <div className="flex justify-between items-start mb-4 relative z-10">
-                <div className="p-2 bg-red-50 rounded-lg"><AlertTriangle className="w-5 h-5 text-red-600" /></div>
-                <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full">Atención</span>
-              </div>
-              <div className="relative z-10">
-                <div className="flex gap-4">
-                  <div>
-                    <h3 className="text-xl font-black text-slate-800">{metrics.gastosObservados}</h3>
-                    <p className="text-xs font-medium text-slate-500 mt-1">Observados</p>
-                  </div>
-                  <div className="w-px h-10 bg-slate-200"></div>
-                  <div>
-                    <h3 className="text-xl font-black text-slate-800">{metrics.gastosSinComprobante}</h3>
-                    <p className="text-xs font-medium text-slate-500 mt-1">Sin Comprobante</p>
-                  </div>
-                </div>
-              </div>
-            </div>
+        {(k.overdueDrivers > 0 || k.observed > 0) && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-900 flex flex-wrap gap-x-6 gap-y-1">
+            <AlertTriangle className="w-4 h-4" />
+            {k.overdueDrivers > 0 && <span><b>{k.overdueDrivers}</b> conductor(es) con rendición vencida: no reciben anticipos nuevos.</span>}
+            {k.observed > 0 && <span><b>{k.observed}</b> gasto(s) observados esperan corrección.</span>}
           </div>
+        )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-            {/* Gastos por Categoría */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-              <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-blue-500" />
-                Gastos por Categoría
-              </h3>
-              
-              {analyticsCat.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 text-sm">No hay datos suficientes</div>
-              ) : (
-                <div className="space-y-4">
-                  {analyticsCat.map((cat, idx) => {
-                    const max = Math.max(...analyticsCat.map(c => Number(c.total_sum)))
-                    const percentage = Math.round((Number(cat.total_sum) / max) * 100)
-                    return (
-                      <div key={idx}>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="font-bold text-slate-700">{cat.category}</span>
-                          <span className="font-bold text-slate-900">{formatMoney(cat.total_sum)}</span>
-                        </div>
-                        <div className="w-full bg-slate-100 rounded-full h-2.5">
-                          <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${percentage}%` }}></div>
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-0.5 text-right">{cat.expense_count} comprobante(s)</p>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Gastos por Unidad */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-              <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <Activity className="w-5 h-5 text-emerald-500" />
-                Top Costos por Vehículo
-              </h3>
-              
-              {analyticsVeh.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 text-sm">No hay datos suficientes o gastos vinculados a placas</div>
-              ) : (
-                <div className="space-y-4">
-                  {analyticsVeh.slice(0, 5).map((veh, idx) => {
-                    const max = Math.max(...analyticsVeh.map(v => Number(v.total_sum)))
-                    const percentage = Math.round((Number(veh.total_sum) / max) * 100)
-                    return (
-                      <div key={idx}>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="font-bold text-slate-700">Placa: {veh.vehicle_plate}</span>
-                          <span className="font-bold text-slate-900">{formatMoney(veh.total_sum)}</span>
-                        </div>
-                        <div className="w-full bg-slate-100 rounded-full h-2.5">
-                          <div className="bg-emerald-500 h-2.5 rounded-full" style={{ width: `${percentage}%` }}></div>
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-0.5 text-right">{veh.expense_count} comprobante(s)</p>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
+        <div className="grid lg:grid-cols-2 gap-4">
+          <div className="bg-white border rounded-xl p-4">
+            <div className="text-sm font-semibold text-slate-800 mb-3 flex justify-between"><span>Gasto aprobado por categoría · 30 días</span><span>{money(monthTotal, 0)}</span></div>
+            {byCat.length === 0 ? <p className="text-sm text-slate-400">Sin gastos aprobados</p> : byCat.map(([c, v]) => (
+              <div key={c} className="grid grid-cols-[9rem_1fr_6rem] gap-2 items-center text-xs mb-1.5">
+                <span className="truncate">{cats[c] || c}</span>
+                <div className="h-3 bg-slate-100 rounded"><div className="h-3 rounded bg-[#002855]" style={{ width: `${(v / maxCat) * 100}%` }} /></div>
+                <span className="text-right font-semibold">{money(v, 0)}</span>
+              </div>
+            ))}
           </div>
-        </>
-      )}
+          <div className="bg-white border rounded-xl p-4">
+            <div className="text-sm font-semibold text-slate-800 mb-3">Unidades con mayor gasto · 30 días</div>
+            {byPlate.length === 0 ? <p className="text-sm text-slate-400">Sin gastos aprobados</p> : byPlate.map(([p, v]) => (
+              <div key={p} className="grid grid-cols-[6rem_1fr_6rem] gap-2 items-center text-xs mb-1.5">
+                <span className="font-semibold">{p}</span>
+                <div className="h-3 bg-slate-100 rounded"><div className="h-3 rounded bg-emerald-600" style={{ width: `${(v / maxPlate) * 100}%` }} /></div>
+                <span className="text-right font-semibold">{money(v, 0)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+          {hasAccess('caja-combustible') && <QuickLink href="/caja/combustible" icon={<Fuel className="w-4 h-4" />} label="Control de combustible" />}
+          {hasAccess('caja-tarifario') && <QuickLink href="/caja/tarifario" icon={<BarChart3 className="w-4 h-4" />} label="Tarifario y reglas" />}
+          <QuickLink href="/caja/reportes" icon={<BarChart3 className="w-4 h-4" />} label="Rentabilidad y exportación contable" />
+          <QuickLink href="/mantenimiento/finanzas" icon={<BarChart3 className="w-4 h-4" />} label="TCO por unidad (Mantenimiento)" />
+        </div>
+      </>}
     </div>
   )
+}
+
+function Tile({ href, icon, label, value, sub, alert }: { href: string; icon: React.ReactNode; label: string; value: string; sub?: string; alert?: boolean }) {
+  return (
+    <Link href={href} className={`bg-white border rounded-xl p-4 hover:border-blue-300 transition ${alert ? 'border-red-200' : ''}`}>
+      <div className="flex items-center gap-2 text-xs text-slate-500">{icon}{label}</div>
+      <div className="text-2xl font-bold text-slate-900 mt-1">{value}</div>
+      {sub && <div className={`text-xs ${alert ? 'text-red-600' : 'text-slate-400'}`}>{sub}</div>}
+    </Link>
+  )
+}
+
+function QuickLink({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
+  return <Link href={href} className="bg-white border rounded-xl p-3 flex items-center gap-2 hover:border-blue-300">{icon}{label}</Link>
 }

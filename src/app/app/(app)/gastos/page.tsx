@@ -1,6 +1,7 @@
 "use client"
 import { useState, useEffect, useMemo } from 'react'
-import { DollarSign, FileText, Camera, UploadCloud, CheckCircle2, Wand2, Loader2, Fuel, Receipt, Utensils, Package } from 'lucide-react'
+import { DollarSign, FileText, Camera, CheckCircle2, Wand2, Loader2, Fuel, Receipt, Utensils, Package, BedDouble, Wrench, ParkingCircle, Pencil } from 'lucide-react'
+import Link from 'next/link'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -8,7 +9,9 @@ import { useActiveTrip } from '@/contexts/ActiveTripContext'
 import { db } from '@/lib/offline/db'
 export default function GastosPage() {
   const [activeTab, setActiveTab] = useState<'gastos' | 'documentos'>('gastos')
-  const [gastos, setGastos] = useState<{ tipo: string; monto: string; photo: string | null; status: string; id?: string }[]>([])
+  const [gastos, setGastos] = useState<{ tipo: string; monto: string; photo: string | null; status: string; id?: string; comment?: string | null; approved?: number | null }[]>([])
+  const [advance, setAdvance] = useState(0)
+  const [fixing, setFixing] = useState<{ id: string; monto: string; file: File | null } | null>(null)
   const [gastoForm, setGastoForm] = useState({ tipo: 'PEAJE', monto: '', galones: '', odometro: '' })
   const [gastoPhoto, setGastoPhoto] = useState<string | null>(null)
   const [gastoFile, setGastoFile] = useState<File | null>(null)
@@ -32,12 +35,15 @@ export default function GastosPage() {
   const fetchExpenses = async (dispatchId: string) => {
     setLoading(true)
     try {
-      const { data: expData, error } = await supabase.from('dispatch_expenses')
-        .select('id, expense_type, amount, receipt_url, status').eq('dispatch_id', dispatchId)
-        .order('created_at', { ascending: false })
+      const [{ data: expData, error }, { data: adv }] = await Promise.all([
+        supabase.from('dispatch_expenses').select('id, expense_type, amount, approved_amount, receipt_url, status, review_comment, paid_by')
+          .eq('dispatch_id', dispatchId).order('created_at', { ascending: false }),
+        supabase.from('trip_advances').select('amount, status').eq('dispatch_id', dispatchId),
+      ])
       if (error) throw error
-      setGastos((expData || []).map(e => ({ tipo: e.expense_type, monto: String(e.amount),
-        photo: e.receipt_url || null, status: e.status || 'PENDIENTE', id: e.id })))
+      setAdvance((adv || []).filter(a => ['ENTREGADO', 'RENDIDO'].includes(a.status)).reduce((acc, a) => acc + Number(a.amount), 0))
+      setGastos((expData || []).filter(e => e.paid_by !== 'EMPRESA' && e.paid_by !== 'CAJA').map(e => ({ tipo: e.expense_type, monto: String(e.amount),
+        photo: e.receipt_url || null, status: e.status || 'PENDIENTE', id: e.id, comment: e.review_comment, approved: e.approved_amount })))
     } catch (err: any) {
       toast.error('Error: ' + err.message)
     } finally {
@@ -153,12 +159,43 @@ export default function GastosPage() {
     }
   }
 
-  const totalGastos = gastos.reduce((acc, g) => acc + Number(g.monto), 0)
+  const totalGastos = gastos.filter(g => g.status !== 'RECHAZADO').reduce((acc, g) => acc + Number(g.monto), 0)
+
+  // Corrección de un gasto observado: nuevo importe y/o nueva foto; vuelve a la bandeja de aprobación
+  const saveFix = async () => {
+    if (!fixing || !user || !dispatch) return
+    if (!fixing.monto || isNaN(Number(fixing.monto)) || Number(fixing.monto) <= 0) return toast.error('Ingresa un monto válido')
+    setIsSubmitting(true)
+    let path: string | null = null
+    try {
+      if (fixing.file) {
+        path = `${user.id}/${dispatch.id}/gastos/${crypto.randomUUID()}-${fixing.file.name}`
+        const { error: upErr } = await supabase.storage.from('driver_evidence').upload(path, fixing.file, { contentType: fixing.file.type })
+        if (upErr) throw upErr
+      }
+      const { error } = await supabase.from('dispatch_expenses').update({ amount: Number(fixing.monto), ...(path ? { receipt_url: path } : {}) }).eq('id', fixing.id)
+      if (error) throw error
+      toast.success('Corrección enviada para aprobación')
+      setFixing(null)
+      await fetchExpenses(dispatch.id)
+    } catch (err) {
+      if (path) await supabase.storage.from('driver_evidence').remove([path])
+      toast.error('Error: ' + (err instanceof Error ? err.message : String((err as { message?: string })?.message || err)))
+    } finally { setIsSubmitting(false) }
+  }
+
+  const statusCls: Record<string, string> = {
+    PENDIENTE: 'text-slate-600', OBSERVADO: 'text-amber-700', APROBADO: 'text-emerald-700', RECHAZADO: 'text-red-700',
+  }
 
   const tipoConfig: Record<string, { icon: any; color: string }> = {
     PEAJE: { icon: Receipt, color: 'text-blue-600 bg-blue-50' },
     COMBUSTIBLE: { icon: Fuel, color: 'text-orange-600 bg-orange-50' },
     VIATICOS: { icon: Utensils, color: 'text-green-600 bg-green-50' },
+    HOSPEDAJE: { icon: BedDouble, color: 'text-indigo-600 bg-indigo-50' },
+    ESTACIONAMIENTO: { icon: ParkingCircle, color: 'text-sky-600 bg-sky-50' },
+    LLANTAS_PARCHADO: { icon: Wrench, color: 'text-slate-700 bg-slate-100' },
+    REPUESTOS: { icon: Wrench, color: 'text-slate-700 bg-slate-100' },
     OTROS: { icon: Package, color: 'text-purple-600 bg-purple-50' },
   }
 
@@ -205,6 +242,14 @@ export default function GastosPage() {
       </div>
 
       <div className="px-4 max-w-md mx-auto space-y-4">
+        {advance > 0 && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-3 grid grid-cols-3 text-center shadow-sm">
+            <div><p className="text-[9px] font-bold uppercase text-slate-500">Anticipo</p><p className="font-black text-[#002855] text-sm">S/ {advance.toFixed(2)}</p></div>
+            <div><p className="text-[9px] font-bold uppercase text-slate-500">Gastado</p><p className="font-black text-[#002855] text-sm">S/ {totalGastos.toFixed(2)}</p></div>
+            <div><p className="text-[9px] font-bold uppercase text-slate-500">{advance - totalGastos >= 0 ? 'Te queda' : 'A tu favor'}</p><p className={`font-black text-sm ${advance - totalGastos >= 0 ? 'text-emerald-700' : 'text-blue-700'}`}>S/ {Math.abs(advance - totalGastos).toFixed(2)}</p></div>
+          </div>
+        )}
+
         {/* Tabs */}
         <div className="flex bg-white border border-slate-200 p-1 rounded-2xl shadow-sm gap-1">
           <button
@@ -239,7 +284,11 @@ export default function GastosPage() {
                     >
                       <option value="PEAJE">Peaje</option>
                       <option value="COMBUSTIBLE">Combustible</option>
-                      <option value="VIATICOS">Viáticos</option>
+                      <option value="VIATICOS">Viáticos / alimentación</option>
+                      <option value="HOSPEDAJE">Hospedaje</option>
+                      <option value="ESTACIONAMIENTO">Estacionamiento / balanza</option>
+                      <option value="LLANTAS_PARCHADO">Parchado / llantas</option>
+                      <option value="REPUESTOS">Repuestos / reparación rápida</option>
                       <option value="OTROS">Otros</option>
                     </select>
                   </div>
@@ -333,14 +382,39 @@ export default function GastosPage() {
                     const Icon = tipoConfig[g.tipo]?.icon || Package
                     const colorCls = tipoConfig[g.tipo]?.color || 'text-slate-500 bg-slate-100'
                     return (
-                      <div key={i} className="flex items-center gap-3 px-4 py-3">
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${colorCls}`}>
-                          <Icon className="w-4 h-4" />
+                      <div key={g.id || i} className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${colorCls}`}>
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-slate-700 capitalize">{g.tipo.replace('_', ' ').toLowerCase()}</p>
+                            {g.comment && ['OBSERVADO', 'RECHAZADO'].includes(g.status) && <p className="text-[11px] text-slate-500 mt-0.5">“{g.comment}”</p>}
+                          </div>
+                          <div className="text-right">
+                            <span className="block font-black text-[#002855] text-sm">S/ {Number(g.monto).toFixed(2)}</span>
+                            <span className={`text-[10px] font-bold ${statusCls[g.status] || 'text-slate-600'}`}>{g.status}</span>
+                            {g.status === 'APROBADO' && g.approved != null && Number(g.approved) !== Number(g.monto) && <span className="block text-[10px] text-emerald-700">aprob. S/ {Number(g.approved).toFixed(2)}</span>}
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold text-slate-700 capitalize">{g.tipo.replace('_', ' ')}</p>
-                        </div>
-                        <div className="text-right"><span className="block font-black text-[#002855] text-sm">S/ {Number(g.monto).toFixed(2)}</span><span className="text-[10px] font-bold text-amber-700">{g.status}</span></div>
+                        {g.status === 'OBSERVADO' && g.id && (fixing?.id === g.id ? (
+                          <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+                            <input type="number" step="0.01" value={fixing.monto} onChange={e => setFixing({ ...fixing, monto: e.target.value })}
+                              className="w-full px-3 py-2 rounded-lg border-2 border-amber-200 font-bold text-sm" />
+                            <label className="flex items-center gap-2 text-xs font-bold text-amber-800 cursor-pointer">
+                              <Camera className="w-4 h-4" />{fixing.file ? fixing.file.name : 'Nueva foto del comprobante (opcional)'}
+                              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={e => setFixing({ ...fixing, file: e.target.files?.[0] || null })} />
+                            </label>
+                            <div className="flex gap-2">
+                              <button onClick={() => setFixing(null)} className="flex-1 py-2 rounded-lg text-xs font-bold text-slate-600 bg-white border">Cancelar</button>
+                              <button disabled={isSubmitting} onClick={saveFix} className="flex-1 py-2 rounded-lg text-xs font-bold text-white bg-[#002855] disabled:opacity-50">Enviar corrección</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button onClick={() => setFixing({ id: g.id!, monto: g.monto, file: null })} className="mt-2 w-full py-2 rounded-lg text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 flex items-center justify-center gap-1">
+                            <Pencil className="w-3 h-3" />Corregir gasto observado
+                          </button>
+                        ))}
                       </div>
                     )
                   })}
@@ -348,11 +422,10 @@ export default function GastosPage() {
               </div>
             )}
 
-            {/* Submit liquidation */}
-            <button className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white py-4 rounded-2xl font-black text-base shadow-lg hover:from-green-600 hover:to-green-700 active:scale-95 flex justify-center items-center gap-2 transition-all">
+            <Link href="/app/liquidacion" className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white py-4 rounded-2xl font-black text-base shadow-lg hover:from-green-600 hover:to-green-700 active:scale-95 flex justify-center items-center gap-2 transition-all">
               <CheckCircle2 className="w-5 h-5" />
-              Enviar Liquidación Final
-            </button>
+              Cerrar ruta y liquidar
+            </Link>
           </div>
         ) : (
           <div className="space-y-4">
@@ -360,16 +433,12 @@ export default function GastosPage() {
               <FileText className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div>
                 <h4 className="font-bold text-amber-800 text-sm">Guías de Remisión</h4>
-                <p className="text-xs text-amber-700 mt-0.5">Toma una foto clara a cada guía sellada por el cliente para cerrar el servicio.</p>
+                <p className="text-xs text-amber-700 mt-0.5">Las guías selladas se suben al cerrar la ruta, junto con el odómetro de llegada.</p>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center">
-              <UploadCloud className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <h4 className="font-bold text-slate-700 mb-4">Sube las guías selladas (GRT / GRR)</h4>
-              <button className="bg-[#002855] text-white px-6 py-3 rounded-xl font-bold text-sm mx-auto flex items-center gap-2 mx-auto">
-                <Camera className="w-4 h-4" /> Tomar Fotos
-              </button>
-            </div>
+            <Link href="/app/liquidacion" className="bg-[#002855] text-white px-6 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2">
+              <Camera className="w-4 h-4" /> Ir al cierre de ruta
+            </Link>
           </div>
         )}
       </div>
