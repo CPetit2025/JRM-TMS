@@ -31,6 +31,10 @@ interface TransportRequest {
   contract_id?: string
   service_cost?: number
   purchase_order?: string
+  budget_shortfall?: number | null
+  budget_observation?: string | null
+  reserved_pen?: number | null
+  approved_at?: string | null
   transport_request_components?: Array<{
     id: string
     component_contract_id: string
@@ -90,7 +94,10 @@ interface RequestSummary {
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
 
 export default function SolicitudesPage() {
-  const { canWrite } = usePermissions()
+  const { canWrite, role } = usePermissions()
+  // F2: aprueba/rechaza el Supervisor de Despacho; reprograman él y el Administrador de Contratos
+  const canApprove = canWrite('despacho-aprobacion')
+  const canReschedule = canApprove || role === 'administrador de contratos'
   const supabase = useMemo(() => createClient(), [])
   
   const [requests, setRequests] = useState<TransportRequest[]>([])
@@ -445,7 +452,16 @@ export default function SolicitudesPage() {
       })
 
       if (error) throw error
-      
+
+      if (newStatus === 'APROBADA') {
+        // Sin saldo en la partida la aprobación deja la solicitud OBSERVADA (no se reserva)
+        const { data: after } = await supabase.from('transport_requests').select('status, budget_observation').eq('id', id).maybeSingle()
+        if (after?.status === 'OBSERVADA') {
+          toast.warning(`No se aprobó: ${after.budget_observation || 'partida insuficiente'}. Contratos debe ampliar la partida.`)
+          fetchRequests()
+          return
+        }
+      }
       toast.success(`Solicitud ${newStatus.toLowerCase()}`)
       fetchRequests()
     } catch (error: unknown) {
@@ -454,7 +470,7 @@ export default function SolicitudesPage() {
   }
 
   const handleCancelRequest = async (id: string) => {
-    if (!confirm('¿Estás seguro de cancelar esta solicitud? Las solicitudes programadas deben retirarse desde Despacho.')) return;
+    if (!confirm('¿Cancelar esta solicitud? Si está en un despacho que aún no sale, se retira del despacho (sin paradas el despacho se cancela y libera la partida).')) return;
     try {
       const { error } = await supabase.rpc('set_transport_request_status', {
         p_request_id: id, p_new_status: 'CANCELADA', p_required_date: null
@@ -505,6 +521,8 @@ export default function SolicitudesPage() {
         return <span className="bg-slate-200 text-slate-600 px-2 py-1 rounded text-xs font-semibold line-through">Cancelada</span>
       case 'REPROGRAMADA':
         return <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded text-xs font-semibold">Reprogramada</span>
+      case 'OBSERVADA':
+        return <span className="bg-rose-100 text-rose-800 px-2 py-1 rounded text-xs font-semibold">Observada · partida</span>
       default:
         return <span className="bg-slate-100 text-slate-800 px-2 py-1 rounded text-xs font-semibold">{status}</span>
     }
@@ -616,7 +634,7 @@ export default function SolicitudesPage() {
         </div>
         {showFilters && <div className="flex flex-wrap gap-3 p-4 border-b border-slate-200 bg-slate-50 text-sm">
           <label>Estado <select value={filterStatus} onChange={event => setFilterStatus(event.target.value)} className="ml-2 border rounded p-1 bg-white">
-            {['TODOS', 'PENDIENTE', 'PENDIENTE DE APROBACIÓN', 'APROBADA', 'REPROGRAMADA', 'RECHAZADA', 'CANCELADA', 'ASIGNADA'].map(status => <option key={status} value={status}>{status}</option>)}
+            {['TODOS', 'PENDIENTE', 'PENDIENTE DE APROBACIÓN', 'OBSERVADA', 'APROBADA', 'REPROGRAMADA', 'RECHAZADA', 'CANCELADA', 'ASIGNADA'].map(status => <option key={status} value={status}>{status}</option>)}
           </select></label>
           <label>Desde <input type="date" value={filterDateFrom} onChange={event => setFilterDateFrom(event.target.value)} className="ml-2 border rounded p-1 bg-white" /></label>
           <label>Hasta <input type="date" value={filterDateTo} onChange={event => setFilterDateTo(event.target.value)} className="ml-2 border rounded p-1 bg-white" /></label>
@@ -739,9 +757,12 @@ export default function SolicitudesPage() {
                     </td>
                     <td className="p-3">
                       {getStatusBadge(req.status)}
+                      {req.status === 'OBSERVADA' && req.budget_observation && (
+                        <div className="mt-1 max-w-40 text-[10px] font-medium text-rose-700">{req.budget_observation}. Amplíe la partida de la OT.</div>
+                      )}
                     </td>
                     <td className="sticky right-0 z-10 bg-white p-2 text-right shadow-[-6px_0_8px_-8px_rgba(15,23,42,0.45)]">
-                      {(req.status === 'PENDIENTE DE APROBACIÓN' || req.status === 'PENDIENTE' || req.status === 'REPROGRAMADA') && canWrite('despacho') && (
+                      {(req.status === 'PENDIENTE DE APROBACIÓN' || req.status === 'PENDIENTE' || req.status === 'REPROGRAMADA') && canApprove && (
                         <div className="flex justify-end gap-2 mb-2">
                           <button 
                             onClick={() => updateStatus(req.id, 'APROBADA')}
@@ -759,16 +780,16 @@ export default function SolicitudesPage() {
                           </button>
                         </div>
                       )}
-                      {canWrite('solicitudes') && (req.status === 'PENDIENTE DE APROBACIÓN' || req.status === 'PENDIENTE' || req.status === 'REPROGRAMADA' || req.status === 'APROBADA') && (
+                      {(canWrite('solicitudes') || canApprove || canReschedule) && ['PENDIENTE DE APROBACIÓN', 'PENDIENTE', 'REPROGRAMADA', 'APROBADA', 'OBSERVADA', 'ASIGNADA'].includes(req.status) && (
                         <div className="flex justify-end gap-2 mt-1">
-                          <button 
+                          {canWrite('solicitudes') && req.status !== 'ASIGNADA' && <button 
                             onClick={() => openEditModal(req)}
                             title="Editar Solicitud"
                             className="p-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors rounded border border-blue-200"
                           >
                             <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button 
+                          </button>}
+                          {canReschedule && <button 
                             onClick={() => {
                               setSelectedRequestId(req.id)
                               setNewRescheduleDate(req.required_date.split('T')[0] || '')
@@ -778,7 +799,7 @@ export default function SolicitudesPage() {
                             className="p-1.5 text-orange-600 bg-orange-50 hover:bg-orange-100 transition-colors rounded border border-orange-200"
                           >
                             <CalendarClock className="w-4 h-4" />
-                          </button>
+                          </button>}
                           <button 
                             onClick={() => handleCancelRequest(req.id)}
                             title="Cancelar Solicitud"
