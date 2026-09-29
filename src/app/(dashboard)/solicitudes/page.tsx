@@ -159,6 +159,9 @@ export default function SolicitudesPage() {
     purchase_order: ''
   })
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
+  // Costos de descarga estimados (montacargas, grúa, estiba, otros): suman al costo que se valida con la partida
+  const [unloading, setUnloading] = useState<{ concept: string; estimated_pen: string; description: string }[]>([])
+  const [unloadingLoaded, setUnloadingLoaded] = useState(0)  // líneas que ya tenía la solicitud editada
   const selectedOptions = componentOptions.filter(option => selectedComponents[option.contract_id])
   const requestedWeight = selectedOptions.reduce((sum, option) =>
     sum + Number(selectedComponents[option.contract_id].weight_kg || 0), 0)
@@ -167,7 +170,8 @@ export default function SolicitudesPage() {
   const mixedDestinations = new Set(selectedOptions.map(option =>
     option.destination_address?.trim().toLowerCase()).filter(Boolean)).size > 1
   const rootBudget = componentOptions.find(option => option.contract_id === newRequest.contract_id)
-  const estimatedCost = Number(newRequest.service_cost || 0)
+  const unloadingTotal = unloading.reduce((sum, u) => sum + (Number(u.estimated_pen) || 0), 0)
+  const estimatedCost = Number(newRequest.service_cost || 0) + unloadingTotal
 
   const checkUser = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -337,6 +341,10 @@ export default function SolicitudesPage() {
     })
 
     setEditingRequestId(request.id)
+    const { data: unloadingRows } = await supabase.from('transport_unloading_costs')
+      .select('concept, estimated_pen, description').eq('transport_request_id', request.id).eq('status', 'ESTIMADO')
+    setUnloading((unloadingRows || []).map(u => ({ concept: u.concept, estimated_pen: String(u.estimated_pen), description: u.description || '' })))
+    setUnloadingLoaded(unloadingRows?.length || 0)
     setIsModalOpen(true)
   }
 
@@ -376,9 +384,13 @@ export default function SolicitudesPage() {
       return
     }
     const rootBalance = rootBudget?.balance_pen
-    if (!Number.isFinite(estimatedCost) || estimatedCost < 0 ||
-        (estimatedCost > 0 && estimatedCost > Number(rootBalance || 0))) {
-      toast.error('El costo estimado supera el saldo de la OT raíz.')
+    if (!Number.isFinite(estimatedCost) || estimatedCost < 0 || unloading.some(u => !(Number(u.estimated_pen) >= 0))) {
+      toast.error('Revise los costos estimados.')
+      return
+    }
+    if (estimatedCost > 0 && estimatedCost > Number(rootBalance || 0) && !window.confirm(
+      `El costo estimado (flete + descarga S/ ${estimatedCost.toLocaleString('es-PE')}) supera el saldo de la partida ` +
+      `(S/ ${Number(rootBalance || 0).toLocaleString('es-PE')}). La solicitud quedará OBSERVADA y no se atenderá hasta ampliar la partida. ¿Registrar de todos modos?`)) {
       return
     }
     for (const component of selected) {
@@ -400,7 +412,7 @@ export default function SolicitudesPage() {
     setIsSubmitting(true)
 
     try {
-      const { error } = await supabase.rpc('save_transport_request', {
+      const { data: savedId, error } = await supabase.rpc('save_transport_request', {
         p_request_id: editingRequestId,
         p_payload: { ...newRequest, destination_acknowledged: destinationAcknowledged },
         p_components: selected.map(c => ({
@@ -410,8 +422,19 @@ export default function SolicitudesPage() {
         }))
       })
       if (error) throw error
+      const requestId = (savedId as string | null) || editingRequestId
+      if (requestId && (unloading.length > 0 || unloadingLoaded > 0)) {
+        const { data: u, error: uErr } = await supabase.rpc('save_request_unloading_costs', {
+          p_request_id: requestId,
+          p_items: unloading.filter(x => Number(x.estimated_pen) > 0)
+            .map(x => ({ concept: x.concept, estimated_pen: Number(x.estimated_pen), description: x.description || null })),
+        })
+        if (uErr || !u?.success) toast.warning('La solicitud se guardó, pero no los costos de descarga: ' + (uErr ? errorMessage(uErr) : u?.error))
+        else if (u.status === 'OBSERVADA') toast.warning('Solicitud observada: la partida no cubre flete + descarga. Se atenderá al ampliarse la partida.')
+      }
 
       toast.success('Solicitud enviada correctamente')
+      setUnloading([]); setUnloadingLoaded(0)
       setIsModalOpen(false)
       setNewRequest(prev => ({
         ...prev, 
@@ -540,6 +563,7 @@ export default function SolicitudesPage() {
             onClick={() => {
               if (contracts.length === 0) fetchContracts()
               setEditingRequestId(null)
+              setUnloading([]); setUnloadingLoaded(0)
               setContractSearch('')
               setComponentOptions([])
               setSelectedComponents({})
@@ -1155,7 +1179,31 @@ export default function SolicitudesPage() {
                   className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg"
                   value={newRequest.service_cost}
                   onChange={e => setNewRequest({ ...newRequest, service_cost: e.target.value })} />
-                <p className="text-xs text-slate-500 mt-1">Es una estimación; la reserva de presupuesto ocurre al programar el despacho.</p>
+                <p className="text-xs text-slate-500 mt-1">Es una estimación; se reserva en la partida al aprobarse la solicitud.</p>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Costos de descarga estimados (S/) · opcional</label>
+                <p className="text-xs text-slate-500 mb-2">Montacargas, grúa, estiba u otros en el punto de entrega. Se cargan a la partida de transporte de este contrato.</p>
+                {unloading.map((u, i) => (
+                  <div key={i} className="flex flex-wrap gap-2 mb-2">
+                    <select value={u.concept} onChange={e => setUnloading(list => list.map((x, j) => j === i ? { ...x, concept: e.target.value } : x))}
+                      className="px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-sm">
+                      <option value="MONTACARGAS">Montacargas</option><option value="GRUA">Grúa</option>
+                      <option value="ESTIBA">Estiba</option><option value="OTROS">Otros</option>
+                    </select>
+                    <input type="number" min="0" step="0.01" placeholder="0.00" value={u.estimated_pen}
+                      onChange={e => setUnloading(list => list.map((x, j) => j === i ? { ...x, estimated_pen: e.target.value } : x))}
+                      className="w-28 px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-sm" />
+                    <input type="text" placeholder="Detalle (opcional)" value={u.description}
+                      onChange={e => setUnloading(list => list.map((x, j) => j === i ? { ...x, description: e.target.value } : x))}
+                      className="flex-1 min-w-[140px] px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-sm" />
+                    <button type="button" onClick={() => setUnloading(list => list.filter((_, j) => j !== i))}
+                      className="px-2 text-slate-400 hover:text-red-600 text-sm">Quitar</button>
+                  </div>
+                ))}
+                <button type="button" onClick={() => setUnloading(list => [...list, { concept: 'MONTACARGAS', estimated_pen: '', description: '' }])}
+                  className="text-sm text-[#002855] font-medium hover:underline">+ Agregar costo de descarga</button>
+                {unloadingTotal > 0 && <span className="ml-3 text-xs text-slate-600">Total descarga: S/ {unloadingTotal.toLocaleString('es-PE')}</span>}
               </div>
             </div>
           </div>

@@ -717,6 +717,7 @@ export default function ContractServicesPage() {
                 >
                   <option value="FLETE">Flete</option>
                   <option value="MONTACARGA">Montacarga</option>
+                  <option value="GRUA">Grúa</option>
                   <option value="ESTIBA">Estiba</option>
                   <option value="MANIOBRA">Maniobra</option>
                   <option value="PEAJE">Peaje</option>
