@@ -109,18 +109,21 @@ BEGIN
      AND (q2->>'total')::numeric = 0 AND q2->'missing'->>0 LIKE 'Sin tarifa de flete a ZZ Distrito Tres%'
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T4 placa/faltante: ' || COALESCE(q::text, '∅') || ' || ' || COALESCE(q2::text, '∅')); END IF;
 
-  -- T5: la solicitud guarda el desglose; costo distinto al tarifario exige motivo
+  -- T5: costo referencial: el usuario no lo edita ni lo ajusta; el servidor lo calcula con el tarifario (flete + descarga)
   INSERT INTO public.transport_requests (request_number, status, site_id, contract_id, service_cost, requester_name, department, request_type, cargo_description, pickup_address, pickup_district, delivery_address, delivery_district, required_date)
   VALUES ('ZZ-C13-R1', 'PENDIENTE DE APROBACIÓN', v_site, k2, 520, 'ZZ', 'Logística', 'DESPACHO', 'Carga', 'Planta', 'Chilca', 'Obra', 'ZZ Distrito Uno', current_date) RETURNING id INTO rq;
   PERFORM pg_temp.as_user(v_sol);
-  q := public.quote_transport(k2, '[{"district":"ZZ Distrito Uno"}]', 3000);
-  v_err := public.set_request_cost_quote(rq, q, 'MANUAL', NULL)->>'error';
-  r := public.set_request_cost_quote(rq, q, 'MANUAL', 'Acceso restringido, requiere unidad adicional');
+  UPDATE public.transport_requests SET service_cost = 999 WHERE id = rq;
+  v_err := public.set_request_cost_quote(rq, '{}'::jsonb, 'MANUAL', 'Acceso restringido')->>'error';
+  PERFORM public.save_request_unloading_costs(rq, '[{"concept":"MONTACARGAS","estimated_pen":999}]');
+  r := public.apply_request_tariff(rq);
   PERFORM pg_temp.as_user(NULL);
-  IF v_err LIKE 'Indique el motivo%' AND (r->>'success')::boolean
-     AND (SELECT cost_source = 'MANUAL' AND cost_override_reason LIKE 'Acceso%' AND (cost_breakdown->>'freight_total')::numeric = 450
-          FROM public.transport_requests WHERE id = rq)
-  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T5 desglose: ' || COALESCE(v_err, '∅') || ' | ' || COALESCE(r::text, '∅')); END IF;
+  IF v_err LIKE '%referencial%' AND (r->>'success')::boolean
+     AND (SELECT service_cost = 450 AND unloading_estimate_pen = 250 AND cost_source = 'TARIFARIO'
+                 AND (cost_breakdown->>'freight_total')::numeric = 450 FROM public.transport_requests WHERE id = rq)
+     AND (SELECT estimated_pen = 250 FROM public.transport_unloading_costs WHERE transport_request_id = rq AND concept = 'MONTACARGAS')
+  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T5 costo referencial: ' || COALESCE(v_err, '∅') || ' | ' || COALESCE(r::text, '∅') || ' costo='
+       || (SELECT service_cost FROM public.transport_requests WHERE id = rq)); END IF;
 
   IF array_length(v_fail, 1) IS NULL THEN
     RAISE EXCEPTION 'CAJA C13 PASS (%/5)', v_pass;

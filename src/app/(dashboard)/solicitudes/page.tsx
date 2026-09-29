@@ -178,11 +178,9 @@ export default function SolicitudesPage() {
   // Respuesta obligatoria: ¿la entrega requiere descarga especial? ('' = sin responder)
   const [unloadingAnswer, setUnloadingAnswer] = useState<'' | 'SI' | 'NO'>('')
   const [unloadingHistory, setUnloadingHistory] = useState<UnloadingHistory[]>([])
-  // Costo calculado con el tarifario (quote_transport); MANUAL = el usuario lo cambió (exige motivo)
+  // Costo referencial calculado con el tarifario (quote_transport); el usuario no lo edita
   const [quote, setQuote] = useState<Record<string, unknown> | null>(null)
   const [quoting, setQuoting] = useState(false)
-  const [costMode, setCostMode] = useState<'TARIFARIO' | 'MANUAL'>('TARIFARIO')
-  const [costReason, setCostReason] = useState('')
   const selectedOptions = componentOptions.filter(option => selectedComponents[option.contract_id])
   const requestedWeight = selectedOptions.reduce((sum, option) =>
     sum + Number(selectedComponents[option.contract_id].weight_kg || 0), 0)
@@ -328,32 +326,27 @@ export default function SolicitudesPage() {
       if (error) { setQuote(null); return }
       const q = data as Record<string, unknown>
       setQuote(q)
-      // En modo tarifario el costo sigue al cálculo (flete + paradas; la descarga va en sus propias líneas)
-      if (costMode === 'TARIFARIO' && Number(q.freight_total) > 0) {
-        setNewRequest(prev => ({ ...prev, service_cost: String(q.freight_total) }))
-      }
+      // El costo referencial sigue siempre al tarifario (flete + paradas; la descarga va en sus propias líneas)
+      setNewRequest(prev => ({ ...prev, service_cost: String(Number(q.freight_total) || 0) }))
+      const lines = (q.lines || []) as { concept: string; unit_rate: number }[]
+      setUnloading(list => list.map(u => {
+        const hit = lines.find(l => l.concept === u.concept)
+        return { ...u, estimated_pen: hit ? String(hit.unit_rate) : '' }
+      }))
     }, 500)
     return () => { cancel = true; window.clearTimeout(t) }
-  }, [supabase, isModalOpen, newRequest.contract_id, newRequest.delivery_district, newRequest.delivery_province, newRequest.delivery_department, requestedWeight, unloadingKey, costMode, setNewRequest])
+  }, [supabase, isModalOpen, newRequest.contract_id, newRequest.delivery_district, newRequest.delivery_province, newRequest.delivery_department, requestedWeight, unloadingKey, setNewRequest])
 
   const quoteFreight = Number(quote?.freight_total || 0)
-  const costDiffers = quoteFreight > 0 && Math.round(Number(newRequest.service_cost || 0) * 100) !== Math.round(quoteFreight * 100)
-  const fillUnloadingFromQuote = () => {
-    const lines = ((quote?.lines || []) as { concept: string; amount: number }[])
-    setUnloading(list => list.map(u => {
-      const hit = lines.find(l => l.concept === u.concept)
-      return hit && !u.estimated_pen ? { ...u, estimated_pen: String(hit.amount) } : u
-    }))
-  }
 
   const applyUnloadingReference = (h: UnloadingHistory) => {
     const lines = (h.lines || []).map(l => ({
       concept: l.concept, description: l.description || '',
-      estimated_pen: String(l.actual_pen ?? l.planned_pen ?? l.estimated_pen ?? ''),
+      estimated_pen: '',  // el monto lo pone el tarifario
     }))
     setUnloadingAnswer(lines.length ? 'SI' : 'NO')
     setUnloading(lines)
-    toast.success(`Se copió la descarga de ${h.request_number}; revisa los montos.`)
+    toast.success(`Se copiaron los recursos de descarga de ${h.request_number}; el costo lo calcula el tarifario.`)
   }
 
   const loadComponentOptions = async (contractId: string, requestId: string | null = null) => {
@@ -439,8 +432,6 @@ export default function SolicitudesPage() {
       .select('concept, estimated_pen, description').eq('transport_request_id', request.id).eq('status', 'ESTIMADO')
     setUnloading((unloadingRows || []).map(u => ({ concept: u.concept, estimated_pen: String(u.estimated_pen), description: u.description || '' })))
     setUnloadingAnswer(request.unloading_required === true || (unloadingRows?.length || 0) > 0 ? 'SI' : request.unloading_required === false ? 'NO' : '')
-    setCostMode(request.cost_source === 'MANUAL' || (!request.cost_source && Number(request.service_cost || 0) > 0) ? 'MANUAL' : 'TARIFARIO')
-    setCostReason(request.cost_override_reason || '')
     setIsModalOpen(true)
   }
 
@@ -478,9 +469,6 @@ export default function SolicitudesPage() {
     if (destinations.size > 1 && !destinationAcknowledged) {
       toast.error('Confirma el destino principal o separa la solicitud.')
       return
-    }
-    if (costMode === 'MANUAL' && costDiffers && !costReason.trim()) {
-      toast.error('El costo difiere del tarifario: indica el motivo o usa el costo del tarifario.'); return
     }
     if (!unloadingAnswer) { toast.error('Indica si la entrega requiere descarga especial (montacargas, grúa, estiba u otros).'); return }
     if (unloadingAnswer === 'SI' && unloading.length === 0) { toast.error('Agrega al menos un recurso de descarga o marca "No".'); return }
@@ -530,12 +518,6 @@ export default function SolicitudesPage() {
       })
       if (error) throw error
       const requestId = (savedId as string | null) || editingRequestId
-      if (requestId && (quote || costMode === 'MANUAL')) {
-        const { data: c, error: cErr } = await supabase.rpc('set_request_cost_quote', {
-          p_request_id: requestId, p_breakdown: quote, p_source: costMode, p_reason: costMode === 'MANUAL' ? costReason : null,
-        })
-        if (cErr || !c?.success) toast.warning('No se guardó el desglose del costo: ' + (cErr ? errorMessage(cErr) : c?.error))
-      }
       if (requestId) {
         // Siempre se registra la respuesta: "No" = sin líneas; "Sí" = recursos (el monto puede quedar por cotizar)
         const { data: u, error: uErr } = await supabase.rpc('save_request_unloading_costs', {
@@ -544,13 +526,16 @@ export default function SolicitudesPage() {
             ? unloading.map(x => ({ concept: x.concept, estimated_pen: Number(x.estimated_pen) || 0, description: x.description || null }))
             : [],
         })
-        if (uErr || !u?.success) toast.warning('La solicitud se guardó, pero no los costos de descarga: ' + (uErr ? errorMessage(uErr) : u?.error))
-        else if (u.status === 'OBSERVADA') toast.warning('Solicitud observada: la partida no cubre flete + descarga. Se atenderá al ampliarse la partida.')
+        if (uErr || !u?.success) toast.warning('La solicitud se guardó, pero no los recursos de descarga: ' + (uErr ? errorMessage(uErr) : u?.error))
+        // Costo referencial: lo calcula el servidor con el tarifario (flete + descarga) y valida la partida
+        const { data: c, error: cErr } = await supabase.rpc('apply_request_tariff', { p_request_id: requestId })
+        if (cErr || !c?.success) toast.warning('No se pudo calcular el costo referencial: ' + (cErr ? errorMessage(cErr) : c?.error))
+        else if (c.status === 'OBSERVADA') toast.warning('Solicitud observada: la partida no cubre el costo referencial (flete + descarga). Se atenderá al ampliarse la partida.')
       }
 
       toast.success('Solicitud enviada correctamente')
       setUnloading([]); setUnloadingAnswer(''); setUnloadingHistory([])
-      setQuote(null); setCostMode('TARIFARIO'); setCostReason('')
+      setQuote(null)
       setIsModalOpen(false)
       setNewRequest(prev => ({
         ...prev, 
@@ -680,7 +665,7 @@ export default function SolicitudesPage() {
               if (contracts.length === 0) fetchContracts()
               setEditingRequestId(null)
               setUnloading([]); setUnloadingAnswer(''); setUnloadingHistory([])
-              setQuote(null); setCostMode('TARIFARIO'); setCostReason('')
+              setQuote(null)
               setContractSearch('')
               setComponentOptions([])
               setSelectedComponents({})
@@ -1287,29 +1272,17 @@ export default function SolicitudesPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Costo estimado del flete (S/) {costMode === 'TARIFARIO' && quoteFreight > 0 ? <span className="text-emerald-700">· según tarifario</span> : costMode === 'MANUAL' ? <span className="text-amber-700">· ajustado manualmente</span> : null}
-                  {quoting && <Loader2 className="ml-1 inline h-3 w-3 animate-spin" />}
+                  Costo referencial del flete {quoting && <Loader2 className="ml-1 inline h-3 w-3 animate-spin" />}
                 </label>
-                <input type="number" min="0" step="0.01" placeholder="0.00"
-                  className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg"
-                  value={newRequest.service_cost}
-                  onChange={e => {
-                    setNewRequest({ ...newRequest, service_cost: e.target.value })
-                    setCostMode(quoteFreight > 0 && Math.round(Number(e.target.value || 0) * 100) === Math.round(quoteFreight * 100) ? 'TARIFARIO' : 'MANUAL')
-                  }} />
-                {costMode === 'MANUAL' && costDiffers && (
-                  <div className="mt-1.5 space-y-1">
-                    <input type="text" value={costReason} onChange={e => setCostReason(e.target.value)} placeholder="Motivo del ajuste (obligatorio)"
-                      className="w-full px-3 py-1.5 bg-amber-50 text-slate-900 border border-amber-300 rounded-lg text-sm" />
-                    <button type="button" onClick={() => { setCostMode('TARIFARIO'); setCostReason(''); setNewRequest(prev => ({ ...prev, service_cost: String(quoteFreight) })) }}
-                      className="text-xs font-semibold text-[#002855] underline">Usar el tarifario (S/ {quoteFreight.toLocaleString('es-PE')})</button>
-                  </div>
-                )}
+                <div className="w-full px-3 py-2 bg-slate-50 text-slate-900 border border-slate-200 rounded-lg font-semibold tabular-nums">
+                  S/ {quoteFreight.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Referencial: lo calcula el tarifario según OT, destino, peso y descarga; no se edita. Se reserva en la partida al
+                  aprobarse y el costo real del flete se define al programar en Despacho.
+                </p>
                 {quote ? <QuoteBreakdown quote={quote} compact />
-                  : <p className="text-xs text-slate-500 mt-1">Elige la OT y el distrito de destino para calcularlo con el tarifario. Se reserva en la partida al aprobarse.</p>}
-                {quote && unloadingAnswer === 'SI' && unloading.some(u => !u.estimated_pen) && Number(quote.unloading_total) > 0 && (
-                  <button type="button" onClick={fillUnloadingFromQuote} className="mt-1 text-xs font-semibold text-[#002855] underline">Completar montos de descarga con el tarifario</button>
-                )}
+                  : <p className="text-xs text-slate-400 mt-1">Elige la OT y el distrito de destino para calcularlo.</p>}
               </div>
               <div className="md:col-span-2 rounded-lg border border-slate-200 p-3">
                 <label className="block text-sm font-semibold text-slate-800">¿La entrega requiere descarga especial? *</label>
@@ -1359,9 +1332,10 @@ export default function SolicitudesPage() {
                         <option value="MONTACARGAS">Montacargas</option><option value="GRUA">Grúa</option>
                         <option value="ESTIBA">Estiba</option><option value="OTROS">Otros</option>
                       </select>
-                      <input type="number" min="0" step="0.01" placeholder="Monto S/ (vacío = por cotizar)" value={u.estimated_pen}
-                        onChange={e => setUnloading(list => list.map((x, j) => j === i ? { ...x, estimated_pen: e.target.value } : x))}
-                        className="w-44 px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-sm" />
+                      <span className={`w-36 px-2 py-1.5 rounded-lg text-sm tabular-nums border ${u.estimated_pen ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-amber-50 border-amber-200 text-amber-700'}`}
+                        title="Monto referencial del tarifario">
+                        {u.estimated_pen ? `S/ ${Number(u.estimated_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}` : 'Sin tarifa'}
+                      </span>
                       <input type="text" placeholder="Detalle (capacidad, horas, cuadrilla…)" value={u.description}
                         onChange={e => setUnloading(list => list.map((x, j) => j === i ? { ...x, description: e.target.value } : x))}
                         className="flex-1 min-w-[140px] px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-sm" />
