@@ -52,3 +52,19 @@ Workflow `.github/workflows/pr-checks.yml` (`Verificación previa (PR)`), obliga
 - `npm run typecheck`.
 
 Las reglas completas para evitar diferencias con producción están en `CLAUDE.md` → *Reglas para no repetir incidentes*.
+
+## APK del conductor (Android)
+
+El APK carga la web en vivo, así que las pantallas se actualizan con cada despliegue de Vercel. Solo hace falta
+un APK nuevo cuando cambia la parte nativa (permisos, plugins), como el permiso de micrófono de la versión 1.0.4.
+
+GitHub → Actions → *Build signed Android APK* → *Run workflow* (rama `master`): versión y build (el build siempre
+debe subir), `publish` activado y las novedades. El workflow compila, firma y **publica**: sube el APK al bucket de
+instaladores y registra la versión en `app_versions`. El login muestra la nueva descarga y el app avisa al conductor.
+La clave de servicio se obtiene con `SUPABASE_ACCESS_TOKEN` (ya cargado); no requiere secretos nuevos.
+
+## Evidencias del app en la web
+
+Las fotos, PDF y audios del conductor (bucket privado `driver_evidence`) se ven en: detalle del despacho,
+liquidación del viaje (Caja), fallas (Mantenimiento) y ficha de la unidad (pestaña Evidencias). Las exportaciones
+Excel incluyen un enlace permanente `/evidencia?ref=…` que pide sesión y firma el archivo al abrirse.

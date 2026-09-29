@@ -4,6 +4,7 @@ import { Truck, MapPin, Loader2, PlayCircle, Calendar, Plus, FileText, ArrowRigh
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { EvidenceGallery } from '@/components/evidence/EvidenceGallery'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { calculateRouteDistance } from '@/lib/routing'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -1137,8 +1138,12 @@ export default function DespachoPage() {
               </div>
             </div>
 
+            <div className="border-t pt-4">
+              <EvidenceGallery dispatchId={selectedDispatchDetail.id} title="Evidencias del conductor (entregas, checklist, guías, odómetro)" />
+            </div>
+
             <div className="flex justify-end">
-              <button 
+              <button
                 onClick={() => setSelectedDispatchDetail(null)}
                 className="px-5 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200 transition-colors"
               >
