@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect, useRef } from 'react'
-import { Truck, MapPin, Loader2, PlayCircle, Calendar, Plus, FileText, ArrowRight, CheckCircle2, DollarSign, Tag, Search, Filter, Save } from 'lucide-react'
+import { Truck, MapPin, Loader2, PlayCircle, Calendar, Plus, FileText, ArrowRight, CheckCircle2, DollarSign, Tag, Search, Filter, Save, XCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -252,7 +252,7 @@ export default function DespachoPage() {
             )
           )
         `)
-        .in('status', ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'RETORNO', 'RETORNO_COMPLETADO', 'ESPERANDO_AUTORIZACION'])
+        .in('status', ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'RETORNO', 'RETORNO_COMPLETADO', 'ESPERANDO_AUTORIZACION', 'ENTREGADO'])
         .order('created_at', { ascending: false })
 
       if (!dispatchData) {
@@ -445,6 +445,20 @@ export default function DespachoPage() {
       fetchData()
     } catch (err: any) {
       toast.error('Error al autorizar: ' + err.message)
+    }
+  }
+
+  // Solo un despacho PROGRAMADO se cancela: libera la partida, anula el flete y devuelve las solicitudes a aprobadas
+  const handleCancelDispatch = async (dispatchId: string, dispatchNumber: string) => {
+    const reason = prompt(`Motivo de la cancelación del despacho ${dispatchNumber}:`)
+    if (!reason?.trim()) return
+    try {
+      const { data, error } = await supabase.rpc('cancel_dispatch', { p_dispatch_id: dispatchId, p_reason: reason.trim() })
+      if (error || (data && !data.success)) throw new Error(error?.message || data?.error || 'No se pudo cancelar')
+      toast.success('Despacho cancelado: se liberó la partida y las solicitudes volvieron a aprobadas.')
+      fetchData()
+    } catch (err) {
+      toast.error('Error al cancelar: ' + (err instanceof Error ? err.message : String(err)))
     }
   }
 
@@ -771,6 +785,15 @@ export default function DespachoPage() {
                               Preparar
                             </button>
                           )}
+                          {dispatch.status === 'PROGRAMADO' && (
+                            <button
+                              onClick={() => handleCancelDispatch(dispatch.id, dispatch.dispatch_number)}
+                              className="ml-1 inline-flex items-center gap-1 px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 transition-colors rounded-lg text-xs font-medium border border-red-200 whitespace-nowrap"
+                            >
+                              <XCircle className="w-3 h-3" />
+                              Cancelar
+                            </button>
+                          )}
                           {dispatch.status === 'ESPERANDO_AUTORIZACION' && (
                             <button 
                               onClick={() => handleAuthorizeReturn(dispatch.id)}
@@ -780,7 +803,7 @@ export default function DespachoPage() {
                               Autorizar Retorno
                             </button>
                           )}
-                          {dispatch.status === 'RETORNO_COMPLETADO' && (
+                          {(dispatch.status === 'RETORNO_COMPLETADO' || dispatch.status === 'ENTREGADO') && (
                             <button 
                               onClick={() => handleCloseRoute(dispatch.id)}
                               className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800 transition-colors rounded-lg text-xs font-medium border border-green-200 whitespace-nowrap"
