@@ -28,8 +28,11 @@ y la placa como excepción.
    y los destinos sin tarifa.
 
 ## Dónde se usa
-- **Solicitud:** el costo estimado del flete se calcula solo (OT + destino + peso + descarga) y muestra el desglose.
-  Se puede ajustar, pero exige **motivo**; se guarda el desglose y el origen (tarifario o manual) en la solicitud.
+- **Solicitud:** el costo es **referencial** y no lo edita el Administrador de Contratos. Al guardar, el servidor
+  (`apply_request_tariff`) lo calcula con el tarifario (OT + destino + peso + recursos de descarga) y guarda el
+  desglose. Los montos de descarga también salen del tarifario ("Sin tarifa" si no hay tarifa). Un cambio directo de
+  `service_cost` se ignora (trigger `transport_request_cost_guard`); el ajuste manual con motivo queda solo para el
+  Administrador del sistema. El costo real del flete se fija al programar en Despacho.
   "Completar montos de descarga con el tarifario" llena los montos vacíos.
 - **Aprobación:** reserva ese monto (F2).
 - **Despacho:** recalcula con la **placa real y todas las paradas**, muestra la diferencia con lo estimado en las
