@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { nativeRouteTracker } from '@/lib/native-route-tracker'
 import { readRouteQueue, routeQueueKey, syncRoutePoints, saveOfflineAction, syncOfflineActions } from '@/lib/route-point-sync'
 import { useActiveTrip } from '@/contexts/ActiveTripContext'
+import { TripDocuments } from '@/components/evidence/TripDocuments'
 
 export default function RutaActivaPage() {
   const router = useRouter()
@@ -353,6 +354,9 @@ export default function RutaActivaPage() {
           {dispatch.status.replace('_', ' ')}
         </div>
       </div>
+
+      <TripDocuments dispatchId={dispatch.id} requestNumbers={Object.fromEntries((dispatch.dispatch_requests || [])
+        .map((r: { transport_request_id: string; transport_requests?: { request_number?: string | null } }) => [r.transport_request_id, r.transport_requests?.request_number || '']))} />
 
       {['PROGRAMADO', 'EN_CURSO'].includes(dispatch.status) ? (
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm text-center">

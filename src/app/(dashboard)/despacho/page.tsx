@@ -61,6 +61,10 @@ interface Dispatch {
   scheduled_departure: string
   status: string
   estimated_distance_km?: number
+  docs_required?: boolean
+  docs_ready_at?: string | null
+  docs_reissue?: boolean
+  docs_reissue_reason?: string | null
   dispatch_requests?: DispatchRequest[]
 }
 
@@ -233,6 +237,7 @@ export default function DespachoPage() {
         .from('dispatches')
         .select(`
           id, dispatch_number, driver_name, vehicle_plate, scheduled_departure, status, estimated_distance_km,
+          docs_required, docs_ready_at, docs_reissue, docs_reissue_reason,
           dispatch_requests (
             transport_request_id,
             status,
@@ -774,6 +779,12 @@ export default function DespachoPage() {
                           }`}>
                             {dispatch.status}
                           </span>
+                          {dispatch.status === 'PROGRAMADO' && dispatch.docs_required && (
+                            <div className={`mt-1 text-[10px] font-semibold ${dispatch.docs_reissue ? 'text-red-600' : dispatch.docs_ready_at ? 'text-emerald-600' : 'text-amber-600'}`}
+                              title={dispatch.docs_reissue_reason || undefined}>
+                              {dispatch.docs_reissue ? 'Guías por reemitir' : dispatch.docs_ready_at ? 'Documentos listos' : 'Documentos pendientes'}
+                            </div>
+                          )}
                         </td>
                         <td className="p-4 text-right">
                           {dispatch.status === 'PROGRAMADO' && (

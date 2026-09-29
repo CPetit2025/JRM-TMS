@@ -46,6 +46,8 @@ export default function TorreControlPage() {
   const supabase = createClient()
   const { isLoaded, canWrite } = usePermissions()
   const [dispatches, setDispatches] = useState<Dispatch[]>([])
+  // Estado documentario de los despachos programados (bandeja del Asistente Documentario)
+  const [docStatus, setDocStatus] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [selectedDispatch, setSelectedDispatch] = useState<Dispatch | null>(null)
 
@@ -135,6 +137,9 @@ Equipo JRM TMS`
       })
       if (error) throw error
       setDispatches((data || []) as any)
+      const { data: queue } = await supabase.rpc('get_documentary_queue', { p_include_departed: false })
+      setDocStatus(Object.fromEntries(((queue || []) as { id: string; doc_status: string; docs_required: boolean }[])
+        .filter(q => q.docs_required).map(q => [q.id, q.doc_status])))
     } catch (err: any) {
       toast.error('Error al cargar torre de control: ' + err.message)
     } finally {
@@ -417,6 +422,11 @@ Equipo JRM TMS`
                       </td>
                       <td className="px-6 py-4">
                         {getStatusBadge(dispatch.status)}
+                        {dispatch.status === 'PROGRAMADO' && docStatus[dispatch.id] && (
+                          <div className={`mt-1 text-[10px] font-semibold ${docStatus[dispatch.id] === 'LISTO' ? 'text-emerald-600' : docStatus[dispatch.id] === 'REEMISION' ? 'text-red-600' : 'text-amber-600'}`}>
+                            {docStatus[dispatch.id] === 'LISTO' ? 'Guías listas' : docStatus[dispatch.id] === 'REEMISION' ? 'Guías por reemitir' : 'Guías pendientes'}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-center">
                         <button className="p-2 text-slate-400 group-hover:text-[#002855] hover:bg-slate-200 rounded-full transition-colors">

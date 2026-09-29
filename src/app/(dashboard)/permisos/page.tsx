@@ -47,6 +47,7 @@ const MODULE_GROUPS: PermissionGroup[] = [
       { id: 'torre-control', label: 'Torre de Control' },
       { id: 'despacho', label: 'Despacho (Programación)' },
       { id: 'despacho-aprobacion', label: 'Aprobación de Solicitudes (Supervisor de Despacho)' },
+      { id: 'documentario', label: 'Documentos de Despacho (Asistente Documentario)' },
       { id: 'monitoreo', label: 'Monitoreo GPS' },
       { id: 'operaciones-live', label: 'Tareo en Vivo' },
       { id: 'operaciones-revision', label: 'Revisión de Tareos' },

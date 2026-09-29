@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Camera, ExternalLink, FileText, Loader2, Mic, X } from 'lucide-react'
+import { Camera, ExternalLink, FileSpreadsheet, FileText, Loader2, Mic, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { fmtDate, receiptUrl } from '@/lib/caja'
 
@@ -12,11 +12,12 @@ import { fmtDate, receiptUrl } from '@/lib/caja'
 export type EvidenceItem = { kind: string; label: string; path: string; taken_at?: string | null }
 
 const KIND_LABEL: Record<string, string> = {
-  ENTREGA: 'Entregas', CHECKLIST: 'Checklist', GUIA: 'Guías y documentos de cierre', ODOMETRO: 'Odómetro',
+  DOCUMENTO: 'Guías de remisión y documentos de despacho', ENTREGA: 'Entregas', CHECKLIST: 'Checklist', GUIA: 'Guías y documentos de cierre', ODOMETRO: 'Odómetro',
   FALLA: 'Fallas', GASTO: 'Comprobantes de gasto', ANTICIPO: 'Anticipos', EVIDENCIA: 'Evidencias',
 }
 const isAudio = (p: string) => /\.(webm|ogg|m4a|mp3|aac|wav)($|\?)/i.test(p)
 const isPdf = (p: string) => /\.pdf($|\?)/i.test(p)
+const isSheet = (p: string) => /\.(xlsx|xls|csv)($|\?)/i.test(p)
 
 // Enlace permanente que exige sesión y firma la URL al abrirse
 export const evidenceLink = (ref: string | null | undefined) =>
@@ -65,6 +66,7 @@ export function EvidenceGallery({ dispatchId, plate, items, title = 'Evidencias 
                   {!r.url ? <div className="h-20 rounded-lg border border-dashed flex items-center justify-center text-center p-1">No disponible</div>
                     : isAudio(r.path) ? <div className="h-20 rounded-lg border flex flex-col items-center justify-center gap-1 p-1"><Mic className="w-4 h-4" /><audio controls src={r.url} className="w-full h-7" /></div>
                     : isPdf(r.path) ? <a href={r.url} target="_blank" rel="noreferrer" className="h-20 rounded-lg border flex flex-col items-center justify-center gap-1 text-blue-700"><FileText className="w-6 h-6" />PDF</a>
+                    : isSheet(r.path) ? <a href={r.url} target="_blank" rel="noreferrer" className="h-20 rounded-lg border flex flex-col items-center justify-center gap-1 text-emerald-700"><FileSpreadsheet className="w-6 h-6" />Excel</a>
                     : <button type="button" onClick={() => setZoom(r.url)} className="block w-28 h-20 rounded-lg overflow-hidden border bg-slate-100">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={r.url} alt={r.label} className="w-full h-full object-cover" loading="lazy" />

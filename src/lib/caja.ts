@@ -57,6 +57,8 @@ export const groupCategories = (cats: ExpenseCategory[]) => {
 // receipt_url guarda: una URL (registros antiguos), "caja_receipts/<uid>/..." (Caja web)
 // o la ruta del bucket privado del conductor "<uid>/<despacho>/gastos/..." (app).
 const CAJA_BUCKET = 'caja_receipts'
+// Guías, packing list y Notas de Despacho del Asistente Documentario (ref = "dispatch_documents/<despacho>/<archivo>")
+export const DOCS_BUCKET = 'dispatch_documents'
 
 export async function uploadReceipt(supabase: SupabaseClient, userId: string, file: File) {
   const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -75,6 +77,7 @@ export async function removeReceipt(supabase: SupabaseClient, ref: string | null
 function receiptLocation(ref: string): { bucket: string | null; path: string } {
   if (/^https?:\/\//.test(ref) || ref.startsWith('blob:')) return { bucket: null, path: ref }
   if (ref.startsWith(`${CAJA_BUCKET}/`)) return { bucket: CAJA_BUCKET, path: ref.slice(CAJA_BUCKET.length + 1) }
+  if (ref.startsWith(`${DOCS_BUCKET}/`)) return { bucket: DOCS_BUCKET, path: ref.slice(DOCS_BUCKET.length + 1) }
   return { bucket: 'driver_evidence', path: ref }
 }
 
