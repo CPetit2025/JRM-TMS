@@ -76,13 +76,14 @@ export function Sidebar() {
           )}
 
           {/* Operación Logística */}
-          {(hasPermission('despacho') || hasPermission('monitoreo') || hasPermission('torre-control') || hasPermission('operaciones-live') || hasPermission('contratos-servicios')) && (
+          {(hasPermission('despacho') || hasPermission('documentario') || hasPermission('monitoreo') || hasPermission('torre-control') || hasPermission('operaciones-live') || hasPermission('contratos-servicios')) && (
             <>
               <div className="mt-6 mb-2 px-4 flex items-center justify-between">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Operación Logística</p>
                 <span className="text-[8px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full font-bold uppercase border border-blue-500/20">LIVE</span>
               </div>
               {hasPermission('despacho') && <NavItem href="/despacho" icon={PackageCheck} label="Gestión de Despachos" />}
+              {hasPermission('documentario') && <NavItem href="/despacho/documentos" icon={FileText} label="Documentos de Despacho" />}
               {hasPermission('contratos-servicios') && <NavItem href="/contratos/servicios" icon={Receipt} label="Servicios de Contrato" />}
               {hasPermission('monitoreo') && <NavItem href="/monitoreo" icon={MapIcon} label="Monitoreo GPS" />}
               {(hasPermission('monitoreo') || hasPermission('despacho') || hasPermission('torre-control')) && <NavItem href="/torre-control" icon={Activity} label="Torre de Control" />}
