@@ -1,7 +1,8 @@
 "use client"
 import React, { useState, useEffect } from "react"
-import { Zap, Truck, DollarSign, Check, X, Loader2, AlertTriangle, LinkIcon, Link2Off, MapPin, Plus, Trash2, Import, Search, Filter } from "lucide-react"
+import { Zap, DollarSign, Check, X, Loader2, AlertTriangle, LinkIcon, Link2Off, MapPin, Search } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
+import { TransportTariffManager } from "@/components/tarifas/TransportTariffManager"
 import { toast } from "sonner"
 
 interface Vehicle {
@@ -25,17 +26,6 @@ interface VehicleCost {
   tolls_estimated_cost: number
   vehicle_plate: string | null
   is_default: boolean
-}
-
-interface FreightRate {
-  id: string
-  origin: string
-  district: string
-  zone: string
-  vehicle_type: string
-  plate_number: string | null
-  capacity_ton: number
-  rate: number
 }
 
 interface VehicleWithRate {
@@ -62,24 +52,8 @@ export default function TarifasPage() {
     description: ""
   })
 
-  // States for Destination Rates (Flete Fijo)
-  const [freightRates, setFreightRates] = useState<FreightRate[]>([])
-  const [loadingDest, setLoadingDest] = useState(true)
-  const [isAddingDest, setIsAddingDest] = useState(false)
-  const [savingDest, setSavingDest] = useState(false)
-  const [destForm, setDestForm] = useState({
-    origin: 'Planta Chilca',
-    district: '',
-    zone: '',
-    vehicle_type: 'Trailer',
-    plate_number: '',
-    capacity_ton: 0,
-    rate: 0
-  })
-
   useEffect(() => {
     if (activeTab === 'km') fetchDataKm()
-    else fetchDataDest()
   }, [activeTab])
 
   // --- KM LOGIC ---
@@ -105,18 +79,12 @@ export default function TarifasPage() {
   const isLinked = (plate: string) => !!rateByPlate(plate)
 
   const [searchTerm, setSearchTerm] = useState('')
-  const [showFilters, setShowFilters] = useState(false)
   
   const filteredVehiclesWithRates = vehiclesWithRates.filter(vr => {
     const matchSearch = searchTerm === '' || vr.vehicle.plate.toLowerCase().includes(searchTerm.toLowerCase());
     return matchSearch;
   })
   
-  const filteredFreightRates = freightRates.filter(fr => {
-    const matchSearch = searchTerm === '' || fr.district.toLowerCase().includes(searchTerm.toLowerCase()) || fr.origin.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchSearch;
-  })
-
   const startEditKm = (v: Vehicle) => {
     const existing = rateByPlate(v.plate)
     setEditingPlate(v.plate)
@@ -170,53 +138,6 @@ export default function TarifasPage() {
   const withoutRate = vehiclesWithRates.filter(vr => !isLinked(vr.vehicle.plate)).length
   const avgRate = rates.filter(r => r.vehicle_plate).reduce((s, r) => s + r.fixed_cost_per_km + r.driver_cost_per_km, 0) / (rates.filter(r => r.vehicle_plate).length || 1)
 
-  // --- DESTINATION LOGIC ---
-  const fetchDataDest = async () => {
-    setLoadingDest(true)
-    const { data } = await supabase.from('freight_rates').select('*').order('district')
-    setFreightRates(data || [])
-    setLoadingDest(false)
-  }
-
-  const handleSaveDest = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSavingDest(true)
-    
-    const payload = {
-      ...destForm,
-      plate_number: destForm.plate_number.trim() === '' ? null : destForm.plate_number,
-      capacity_ton: Number(destForm.capacity_ton),
-      rate: Number(destForm.rate)
-    }
-
-    const { error } = await supabase.from('freight_rates').insert([payload])
-    
-    if (error) {
-      toast.error("Error al guardar: " + error.message)
-    } else {
-      toast.success("Tarifa fija agregada exitosamente")
-      setIsAddingDest(false)
-      fetchDataDest()
-      setDestForm({
-        origin: 'Planta Chilca',
-        district: '',
-        zone: '',
-        vehicle_type: 'Trailer',
-        plate_number: '',
-        capacity_ton: 0,
-        rate: 0
-      })
-    }
-    setSavingDest(false)
-  }
-
-  const handleDeleteDest = async (id: string) => {
-    if (!confirm("¿Eliminar esta tarifa?")) return
-    const { error } = await supabase.from('freight_rates').delete().eq('id', id)
-    if (error) toast.error("Error: " + error.message)
-    else { toast.success("Tarifa eliminada"); fetchDataDest() }
-  }
-
   return (
     <div className="p-6 w-full space-y-6">
       <div>
@@ -250,7 +171,7 @@ export default function TarifasPage() {
           }`}
         >
           <MapPin className="w-4 h-4" />
-          Tarifas Fijas por Destino
+          Tarifario de Transporte
         </button>
       </div>
 
@@ -471,154 +392,7 @@ export default function TarifasPage() {
       )}
 
       {/* TAB CONTENT: DESTINO */}
-      {activeTab === 'destino' && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-          
-          <div className="flex justify-between items-center">
-            <h2 className="text-lg font-bold text-[#002855]">Matriz de Tarifas Fijas</h2>
-            <div className="flex gap-2">
-              <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-700 font-semibold rounded-lg hover:bg-slate-200 transition-colors border border-slate-200">
-                <Import className="w-4 h-4" />
-                Carga Masiva
-              </button>
-              <button 
-                onClick={() => setIsAddingDest(!isAddingDest)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-[#002855] text-white font-semibold rounded-lg hover:bg-[#001f44] transition-colors shadow-sm"
-              >
-                {isAddingDest ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                {isAddingDest ? 'Cancelar' : 'Nueva Tarifa'}
-              </button>
-            </div>
-          </div>
-          
-          {/* Filtros y Búsqueda */}
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-4 mt-4">
-            <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
-              <div className="relative w-full md:w-96">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Search className="h-4 w-4 text-slate-400" />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Buscar por distrito u origen..."
-                  className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#002855] focus:border-transparent transition-colors sm:text-sm"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-
-          {isAddingDest && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 mb-4 shadow-sm animate-in fade-in slide-in-from-top-2">
-              <h3 className="font-bold text-[#002855] mb-4">Agregar Nueva Tarifa por Destino</h3>
-              <form onSubmit={handleSaveDest} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Origen</label>
-                  <input type="text" required className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none bg-white"
-                    value={destForm.origin} onChange={e => setDestForm({...destForm, origin: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Destino (Distrito)</label>
-                  <input type="text" required placeholder="Ej. Ate" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none bg-white"
-                    value={destForm.district} onChange={e => setDestForm({...destForm, district: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Zona</label>
-                  <input type="text" placeholder="Ej. ZONA ESTE" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none bg-white"
-                    value={destForm.zone} onChange={e => setDestForm({...destForm, zone: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Tipo de Unidad</label>
-                  <select required className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none bg-white"
-                    value={destForm.vehicle_type} onChange={e => setDestForm({...destForm, vehicle_type: e.target.value})}>
-                    <option value="Trailer">Trailer</option>
-                    <option value="Hino">Hino</option>
-                    <option value="Volkswagen">Volkswagen</option>
-                    <option value="H100">H100</option>
-                    <option value="Furgón">Furgón</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Capacidad (Tn)</label>
-                  <input type="number" step="0.1" required className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none bg-white"
-                    value={destForm.capacity_ton} onChange={e => setDestForm({...destForm, capacity_ton: Number(e.target.value)})} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Placa (Opcional)</label>
-                  <input type="text" placeholder="Ej. BCW838" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none bg-white uppercase"
-                    value={destForm.plate_number} onChange={e => setDestForm({...destForm, plate_number: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Tarifa Total (S/)</label>
-                  <input type="number" step="0.01" required className="w-full px-3 py-2 border-2 border-yellow-400 font-bold rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none bg-white text-[#002855]"
-                    value={destForm.rate} onChange={e => setDestForm({...destForm, rate: Number(e.target.value)})} />
-                </div>
-                <div>
-                  <button type="submit" disabled={savingDest} className="w-full bg-green-500 text-white font-bold py-2 rounded-lg hover:bg-green-600 transition-colors flex justify-center items-center h-[38px]">
-                    {savingDest ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Guardar Tarifa'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="overflow-auto max-h-[calc(100vh-220px)]">
-          <table className="w-full text-left border-collapse relative">
-            <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0] border-slate-100">
-                  <tr>
-                    <th className="p-4 font-semibold">Origen</th>
-                    <th className="p-4 font-semibold">Destino / Distrito</th>
-                    <th className="p-4 font-semibold">Zona</th>
-                    <th className="p-4 font-semibold">Tipo Unidad</th>
-                    <th className="p-4 font-semibold text-center">Placa</th>
-                    <th className="p-4 font-semibold text-right">Cap. (Tn)</th>
-                    <th className="p-4 font-semibold text-right">Tarifa Fija</th>
-                    <th className="p-4 font-semibold text-center">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {loadingDest ? (
-                    <tr><td colSpan={8} className="p-8 text-center text-slate-500">
-                      <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-[#002855]" />Cargando matriz...
-                    </td></tr>
-                  ) : filteredFreightRates.length === 0 ? (
-                    <tr><td colSpan={8} className="p-8 text-center text-slate-500">
-                      No hay tarifas fijas registradas. <br/>
-                      <button onClick={() => setIsAddingDest(true)} className="text-[#002855] font-semibold underline mt-2">Agregar la primera</button>
-                    </td></tr>
-                  ) : (
-                    filteredFreightRates.map(rate => (
-                      <tr key={rate.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-4 text-sm font-semibold text-slate-700">{rate.origin}</td>
-                        <td className="p-4 text-sm font-bold text-[#002855]">{rate.district}</td>
-                        <td className="p-4 text-xs text-slate-500">{rate.zone || "—"}</td>
-                        <td className="p-4 text-sm font-medium text-slate-700">{rate.vehicle_type}</td>
-                        <td className="p-4 text-center">
-                          {rate.plate_number ? (
-                            <span className="bg-slate-100 border border-slate-300 text-slate-700 px-2 py-0.5 rounded text-xs font-bold uppercase">{rate.plate_number}</span>
-                          ) : (
-                            <span className="text-slate-300 text-xs italic">Cualquiera</span>
-                          )}
-                        </td>
-                        <td className="p-4 text-right text-sm text-slate-600">{rate.capacity_ton.toFixed(1)} Tn</td>
-                        <td className="p-4 text-right font-black text-[#002855]">S/ {rate.rate.toFixed(2)}</td>
-                        <td className="p-4 text-center">
-                          <button onClick={() => handleDeleteDest(rate.id)} className="p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 rounded transition-colors" title="Eliminar Tarifa">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-        </div>
-      )}
+      {activeTab === 'destino' && <TransportTariffManager />}
 
     </div>
   )

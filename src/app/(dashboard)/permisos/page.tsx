@@ -90,7 +90,7 @@ const MODULE_GROUPS: PermissionGroup[] = [
     modules: [
       { id: 'maestros-trabajadores', label: 'Trabajadores' },
       { id: 'flota', label: 'Unidades y Conductores' },
-      { id: 'tarifas', label: 'Tarifas por KM' },
+      { id: 'tarifas', label: 'Tarifario de Transporte y costos por KM' },
       { id: 'productos', label: 'Productos' }
     ]
   },

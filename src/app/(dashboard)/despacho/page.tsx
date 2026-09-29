@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { EvidenceGallery } from '@/components/evidence/EvidenceGallery'
 import { DispatchCrewUnloading } from '@/components/despacho/DispatchCrewUnloading'
+import { QuoteBreakdown } from '@/components/tarifas/TransportTariffManager'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { calculateRouteDistance } from '@/lib/routing'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -23,6 +24,9 @@ interface TransportRequest {
   created_at: string
   required_date?: string
   contract_id?: string
+  delivery_district?: string | null
+  estimated_weight?: number | null
+  service_cost?: number | null
   contracts?: {
     id: string
     code: string
@@ -109,6 +113,8 @@ export default function DespachoPage() {
   const [detectedFreightRate, setDetectedFreightRate] = useState<{ rate: number; district: string; zone: string } | null>(null)
   const [loadingRate, setLoadingRate] = useState(false)
   const [manualFreightCost, setManualFreightCost] = useState<string>('')
+  // Cotización del tarifario con la placa real y todas las paradas (quote_transport)
+  const [freightQuote, setFreightQuote] = useState<Record<string, unknown> | null>(null)
   const [newDispatch, setNewDispatch] = useState<{
     selected_requests: { id: string, document_number: string }[],
     driver_name: string,
@@ -146,26 +152,28 @@ export default function DespachoPage() {
   }
 
   const lookupFreightRate = async (plate: string, selectedReqIds: string[]) => {
-    if (!plate || selectedReqIds.length === 0) { setDetectedFreightRate(null); return }
+    if (!plate || selectedReqIds.length === 0) { setDetectedFreightRate(null); setFreightQuote(null); return }
     setLoadingRate(true)
     try {
       const selectedReqs = pendingRequests.filter(r => selectedReqIds.includes(r.id))
-      const deliveries = selectedReqs.map(r => r.delivery_address).filter(Boolean)
-      let found = null
-      for (const addr of deliveries) {
-        const district = extractDistrict(addr)
-        const { data } = await supabase
-          .from('freight_rates')
-          .select('rate, district, zone')
-          .eq('plate_number', plate)
-          .ilike('district', district)
-          .limit(1)
-          .maybeSingle()
-        if (data) { found = { rate: data.rate, district: data.district, zone: data.zone }; break }
-      }
-      setDetectedFreightRate(found)
-    } catch (e) {
-      setDetectedFreightRate(null)
+      const contractId = selectedReqs.find(r => r.contract_id)?.contract_id
+      if (!contractId) { setDetectedFreightRate(null); setFreightQuote(null); return }
+      const stops = selectedReqs
+        .map(r => ({ district: r.delivery_district || extractDistrict(r.delivery_address || '') }))
+        .filter(st => st.district)
+      const weight = selectedReqs.reduce((sum, r) => sum + Number(r.estimated_weight || 0), 0)
+      const { data, error } = await supabase.rpc('quote_transport', {
+        p_contract_id: contractId, p_stops: stops, p_weight_kg: weight > 0 ? weight : null,
+        p_vehicle_class: null, p_plate: plate === 'EXTERNO' ? null : plate, p_unloading: [],
+      })
+      if (error) throw error
+      const q = data as Record<string, unknown>
+      const main = ((q.lines || []) as { concept: string; district?: string }[]).find(l => l.concept === 'FLETE')
+      setFreightQuote(q)
+      setDetectedFreightRate(Number(q.freight_total) > 0
+        ? { rate: Number(q.freight_total), district: main?.district || '', zone: String(q.vehicle_class || '') } : null)
+    } catch {
+      setDetectedFreightRate(null); setFreightQuote(null)
     } finally {
       setLoadingRate(false)
     }
@@ -393,7 +401,7 @@ export default function DespachoPage() {
       const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
       const freightCost = detectedFreightRate?.rate && detectedFreightRate.rate > 0
         ? detectedFreightRate.rate : (Number(manualFreightCost) || 0)
-      const { error } = await supabase.rpc('schedule_dispatch', {
+      const { data: newDispatchId, error } = await supabase.rpc('schedule_dispatch', {
         p_driver_id: matches[0]?.id || null,
         p_vehicle_plate: newDispatch.vehicle_plate,
         p_departure: newDispatch.scheduled_departure,
@@ -407,6 +415,10 @@ export default function DespachoPage() {
         }))
       })
       if (error) throw error
+      // Se guarda con qué tarifa se calculó el flete (si vino del tarifario)
+      if (newDispatchId && freightQuote && detectedFreightRate?.rate && freightCost === detectedFreightRate.rate) {
+        await supabase.rpc('set_dispatch_freight_quote', { p_dispatch_id: newDispatchId, p_breakdown: freightQuote })
+      }
       toast.success('Despacho programado y presupuesto reservado.')
       setIsModalOpen(false)
       setNewDispatch({ selected_requests: [], driver_name: '', vehicle_plate: '', scheduled_departure: '', estimated_distance_km: '', document_type: 'GR' })
@@ -895,8 +907,18 @@ export default function DespachoPage() {
                         <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2">
                           <Tag className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                           <div>
-                            <p className="text-xs font-bold text-emerald-800">Tarifa Fija: <span className="text-base">S/ {detectedFreightRate.rate.toLocaleString('es-PE')}</span></p>
-                            <p className="text-[10px] text-emerald-600">{detectedFreightRate.district} • {detectedFreightRate.zone}</p>
+                            <p className="text-xs font-bold text-emerald-800">Flete según tarifario: <span className="text-base">S/ {detectedFreightRate.rate.toLocaleString('es-PE')}</span></p>
+                            <p className="text-[10px] text-emerald-600">{detectedFreightRate.zone}{newDispatch.selected_requests.length > 1 ? ` · ${newDispatch.selected_requests.length} paradas` : ''}</p>
+                            {(() => {
+                              const estimated = pendingRequests.filter(r => newDispatch.selected_requests.some(sr => sr.id === r.id))
+                                .reduce((sum, r) => sum + Number(r.service_cost || 0), 0)
+                              const diff = detectedFreightRate.rate - estimated
+                              return estimated > 0 && Math.abs(diff) >= 0.01 ? (
+                                <p className={`text-[10px] font-semibold ${diff > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                  Estimado en las solicitudes: S/ {estimated.toLocaleString('es-PE')} ({diff > 0 ? '+' : ''}{diff.toLocaleString('es-PE')})
+                                </p>
+                              ) : null
+                            })()}
                           </div>
                         </div>
                       )}
@@ -923,8 +945,9 @@ export default function DespachoPage() {
                         return null
                       })()}
                       
-                      {!loadingRate && !detectedFreightRate && newDispatch.vehicle_plate && newDispatch.selected_requests.length > 0 && (
-                        <p className="text-xs text-slate-400 mt-1">Sin tarifa fija registrada para esta ruta.</p>
+                      {!loadingRate && freightQuote && <QuoteBreakdown quote={freightQuote} compact />}
+                      {!loadingRate && !detectedFreightRate && newDispatch.vehicle_plate && newDispatch.selected_requests.length > 0 && !freightQuote && (
+                        <p className="text-xs text-slate-400 mt-1">Sin tarifa registrada para esta ruta.</p>
                       )}
                     </div>
                     
