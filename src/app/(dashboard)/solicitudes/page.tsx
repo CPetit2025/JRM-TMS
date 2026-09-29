@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { usePermissions } from '@/hooks/usePermissions'
 import { normalizeRoleName } from '@/lib/roles'
+import { OtPicker, type OtNode } from '@/components/solicitudes/OtPicker'
 
 interface TransportRequest {
   id: string
@@ -33,6 +34,7 @@ interface TransportRequest {
   purchase_order?: string
   budget_shortfall?: number | null
   budget_observation?: string | null
+  unloading_required?: boolean | null
   reserved_pen?: number | null
   approved_at?: string | null
   transport_request_components?: Array<{
@@ -62,6 +64,14 @@ interface Contract {
     business_name: string
   } | { business_name: string }[]
 }
+
+type UnloadingHistory = {
+  id: string; request_number: string; status: string; created_at: string; required_date: string | null
+  unloading_required: boolean | null; delivery: string; score: number
+  lines: { concept: string; description: string | null; estimated_pen: number; planned_pen: number | null; actual_pen: number | null; status: string }[] | null
+}
+const UNLOADING_LABEL: Record<string, string> = { MONTACARGAS: 'Montacargas', GRUA: 'Grúa', ESTIBA: 'Estiba', OTROS: 'Otros' }
+const MATCH_LABEL: Record<number, string> = { 3: 'mismo destino', 2: 'mismo cliente y distrito', 1: 'misma OT' }
 
 interface ComponentOption {
   contract_id: string
@@ -103,7 +113,8 @@ export default function SolicitudesPage() {
   const [requests, setRequests] = useState<TransportRequest[]>([])
   const [requestSummaries, setRequestSummaries] = useState<Record<string, RequestSummary>>({})
   const [contracts, setContracts] = useState<Contract[]>([])
-  const [contractSearch, setContractSearch] = useState('')
+  const [, setContractSearch] = useState('')
+  const [otNodes, setOtNodes] = useState<OtNode[]>([])  // OT madre/independientes con sus subcontratos y errores
   const [componentOptions, setComponentOptions] = useState<ComponentOption[]>([])
   const [selectedComponents, setSelectedComponents] = useState<Record<string, SelectedComponent>>({})
   const [componentsLoading, setComponentsLoading] = useState(false)
@@ -161,7 +172,9 @@ export default function SolicitudesPage() {
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
   // Costos de descarga estimados (montacargas, grúa, estiba, otros): suman al costo que se valida con la partida
   const [unloading, setUnloading] = useState<{ concept: string; estimated_pen: string; description: string }[]>([])
-  const [unloadingLoaded, setUnloadingLoaded] = useState(0)  // líneas que ya tenía la solicitud editada
+  // Respuesta obligatoria: ¿la entrega requiere descarga especial? ('' = sin responder)
+  const [unloadingAnswer, setUnloadingAnswer] = useState<'' | 'SI' | 'NO'>('')
+  const [unloadingHistory, setUnloadingHistory] = useState<UnloadingHistory[]>([])
   const selectedOptions = componentOptions.filter(option => selectedComponents[option.contract_id])
   const requestedWeight = selectedOptions.reduce((sum, option) =>
     sum + Number(selectedComponents[option.contract_id].weight_kg || 0), 0)
@@ -233,21 +246,28 @@ export default function SolicitudesPage() {
 
   const fetchContracts = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('contracts')
-        .select(`
-          id, code, type, status,
+      const base = `id, code, type, status, parent_contract_id,
           destination_address, destination_department, destination_province, destination_district,
-          clients ( business_name )
-        `)
-        .eq('status', 'ACTIVO')
-        .in('type', ['CONTRATO', 'OT_INDEPENDIENTE'])
-        .is('parent_contract_id', null)
-        .order('code')
-
+          clients ( business_name )`
+      let result: { data: unknown[] | null; error: { message: string } | null } = await supabase.from('contracts')
+        .select(`${base}, contract_budgets ( concept, allocated_pen, balance_pen )`).eq('status', 'ACTIVO').order('code')
+      // Sin acceso a partidas: se busca igual, sin mostrar saldo
+      if (result.error) result = await supabase.from('contracts').select(base).eq('status', 'ACTIVO').order('code')
+      const { data, error } = result
       if (error) throw error
-      
-      setContracts(data || [])
+
+      type Row = Contract & { parent_contract_id: string | null; contract_budgets?: { concept: string; allocated_pen: number | null; balance_pen: number | null }[] }
+      const rows = (data || []) as unknown as Row[]
+      setContracts(rows.filter(c => !c.parent_contract_id && ['CONTRATO', 'OT_INDEPENDIENTE'].includes(c.type)))
+      setOtNodes(rows.filter(c => !c.parent_contract_id ? ['CONTRATO', 'OT_INDEPENDIENTE'].includes(c.type) : true).map(c => {
+        const budget = (c.contract_budgets || []).find(b => b.concept === 'PARTIDA_TRANSPORTE')
+        return {
+          id: c.id, code: c.code, type: c.type, parent_contract_id: c.parent_contract_id,
+          client_name: (Array.isArray(c.clients) ? c.clients[0]?.business_name : c.clients?.business_name) || null,
+          destination_district: c.destination_district || null, destination_address: c.destination_address || null,
+          allocated_pen: budget?.allocated_pen ?? null, balance_pen: budget?.balance_pen ?? null,
+        }
+      }))
     } catch (error: unknown) {
       toast.error('Error al cargar OTs: ' + errorMessage(error))
     }
@@ -261,6 +281,33 @@ export default function SolicitudesPage() {
     }, 0)
     return () => window.clearTimeout(task)
   }, [fetchRequests, fetchContracts, checkUser])
+
+  // Memoria: solicitudes anteriores al mismo destino / cliente / OT y la descarga que necesitaron
+  useEffect(() => {
+    if (!isModalOpen || !newRequest.contract_id || !(newRequest.delivery_address || newRequest.delivery_district)) {
+      const t = window.setTimeout(() => setUnloadingHistory([]), 0)
+      return () => window.clearTimeout(t)
+    }
+    let cancel = false
+    const t = window.setTimeout(async () => {
+      const { data } = await supabase.rpc('get_unloading_history', {
+        p_contract_id: newRequest.contract_id, p_delivery_district: newRequest.delivery_district || null,
+        p_delivery_address: newRequest.delivery_address || null, p_exclude_request: editingRequestId,
+      })
+      if (!cancel) setUnloadingHistory((data || []) as UnloadingHistory[])
+    }, 500)
+    return () => { cancel = true; window.clearTimeout(t) }
+  }, [supabase, isModalOpen, newRequest.contract_id, newRequest.delivery_address, newRequest.delivery_district, editingRequestId])
+
+  const applyUnloadingReference = (h: UnloadingHistory) => {
+    const lines = (h.lines || []).map(l => ({
+      concept: l.concept, description: l.description || '',
+      estimated_pen: String(l.actual_pen ?? l.planned_pen ?? l.estimated_pen ?? ''),
+    }))
+    setUnloadingAnswer(lines.length ? 'SI' : 'NO')
+    setUnloading(lines)
+    toast.success(`Se copió la descarga de ${h.request_number}; revisa los montos.`)
+  }
 
   const loadComponentOptions = async (contractId: string, requestId: string | null = null) => {
     const loadId = ++componentLoadId.current
@@ -344,7 +391,7 @@ export default function SolicitudesPage() {
     const { data: unloadingRows } = await supabase.from('transport_unloading_costs')
       .select('concept, estimated_pen, description').eq('transport_request_id', request.id).eq('status', 'ESTIMADO')
     setUnloading((unloadingRows || []).map(u => ({ concept: u.concept, estimated_pen: String(u.estimated_pen), description: u.description || '' })))
-    setUnloadingLoaded(unloadingRows?.length || 0)
+    setUnloadingAnswer(request.unloading_required === true || (unloadingRows?.length || 0) > 0 ? 'SI' : request.unloading_required === false ? 'NO' : '')
     setIsModalOpen(true)
   }
 
@@ -381,6 +428,14 @@ export default function SolicitudesPage() {
     const destinations = new Set(selected.map(c => c.destination_address?.trim().toLowerCase()).filter(Boolean))
     if (destinations.size > 1 && !destinationAcknowledged) {
       toast.error('Confirma el destino principal o separa la solicitud.')
+      return
+    }
+    if (!unloadingAnswer) { toast.error('Indica si la entrega requiere descarga especial (montacargas, grúa, estiba u otros).'); return }
+    if (unloadingAnswer === 'SI' && unloading.length === 0) { toast.error('Agrega al menos un recurso de descarga o marca "No".'); return }
+    const priorNeed = unloadingHistory.find(h => h.score >= 2 && (h.unloading_required || (h.lines || []).length > 0))
+    if (unloadingAnswer === 'NO' && priorNeed && !window.confirm(
+      `La solicitud ${priorNeed.request_number} (${MATCH_LABEL[priorNeed.score]}) necesitó ` +
+      `${(priorNeed.lines || []).map(l => UNLOADING_LABEL[l.concept] || l.concept).join(', ') || 'descarga especial'}. ¿Confirmas que esta entrega NO requiere descarga?`)) {
       return
     }
     const rootBalance = rootBudget?.balance_pen
@@ -423,18 +478,20 @@ export default function SolicitudesPage() {
       })
       if (error) throw error
       const requestId = (savedId as string | null) || editingRequestId
-      if (requestId && (unloading.length > 0 || unloadingLoaded > 0)) {
+      if (requestId) {
+        // Siempre se registra la respuesta: "No" = sin líneas; "Sí" = recursos (el monto puede quedar por cotizar)
         const { data: u, error: uErr } = await supabase.rpc('save_request_unloading_costs', {
           p_request_id: requestId,
-          p_items: unloading.filter(x => Number(x.estimated_pen) > 0)
-            .map(x => ({ concept: x.concept, estimated_pen: Number(x.estimated_pen), description: x.description || null })),
+          p_items: unloadingAnswer === 'SI'
+            ? unloading.map(x => ({ concept: x.concept, estimated_pen: Number(x.estimated_pen) || 0, description: x.description || null }))
+            : [],
         })
         if (uErr || !u?.success) toast.warning('La solicitud se guardó, pero no los costos de descarga: ' + (uErr ? errorMessage(uErr) : u?.error))
         else if (u.status === 'OBSERVADA') toast.warning('Solicitud observada: la partida no cubre flete + descarga. Se atenderá al ampliarse la partida.')
       }
 
       toast.success('Solicitud enviada correctamente')
-      setUnloading([]); setUnloadingLoaded(0)
+      setUnloading([]); setUnloadingAnswer(''); setUnloadingHistory([])
       setIsModalOpen(false)
       setNewRequest(prev => ({
         ...prev, 
@@ -563,7 +620,7 @@ export default function SolicitudesPage() {
             onClick={() => {
               if (contracts.length === 0) fetchContracts()
               setEditingRequestId(null)
-              setUnloading([]); setUnloadingLoaded(0)
+              setUnloading([]); setUnloadingAnswer(''); setUnloadingHistory([])
               setContractSearch('')
               setComponentOptions([])
               setSelectedComponents({})
@@ -885,31 +942,26 @@ export default function SolicitudesPage() {
             
             <div className="col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">OT / Proyecto asociado *</label>
-              <input
-                type="text"
-                list="mother-ots"
-                required
-                placeholder="Buscar OT madre por código..."
-                className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
-                value={contractSearch}
-                onChange={(e) => {
-                  const value = e.target.value
-                  setContractSearch(value)
-                  const selected = contracts.find(c => c.code === value)
-                  if (selected && selected.id !== newRequest.contract_id) handleContractChange(selected.id)
-                  else if (newRequest.contract_id) {
-                    if (Object.keys(selectedComponents).length) toast.info('Se limpiaron los componentes al cambiar de OT.')
-                    setNewRequest(prev => ({ ...prev, contract_id: '' }))
-                    setSelectedComponents({})
-                    setComponentOptions([])
-                    setDestinationAcknowledged(false)
-                    componentLoadId.current++
+              <OtPicker
+                nodes={otNodes}
+                value={newRequest.contract_id}
+                onSelect={(rootId, childId) => {
+                  if (rootId !== newRequest.contract_id) handleContractChange(rootId)
+                  if (childId) {
+                    setSelectedComponents(prev => ({ ...prev, [childId]: prev[childId] || { weight_kg: '', volume_m3: '' } }))
+                    toast.info('Se marcó el componente seleccionado; indica su peso.')
                   }
                 }}
+                onClear={() => {
+                  if (Object.keys(selectedComponents).length) toast.info('Se limpiaron los componentes al quitar la OT.')
+                  setContractSearch('')
+                  setNewRequest(prev => ({ ...prev, contract_id: '' }))
+                  setSelectedComponents({})
+                  setComponentOptions([])
+                  setDestinationAcknowledged(false)
+                  componentLoadId.current++
+                }}
               />
-              <datalist id="mother-ots">
-                {contracts.map(c => <option key={c.id} value={c.code}>{(Array.isArray(c.clients) ? c.clients[0]?.business_name : c.clients?.business_name) || c.type}</option>)}
-              </datalist>
               {newRequest.contract_id && componentOptions.length > 0 && (() => {
                 const root = componentOptions.find(c => c.contract_id === newRequest.contract_id)
                 return root && <p className="mt-1 text-xs text-slate-600">
@@ -1181,29 +1233,68 @@ export default function SolicitudesPage() {
                   onChange={e => setNewRequest({ ...newRequest, service_cost: e.target.value })} />
                 <p className="text-xs text-slate-500 mt-1">Es una estimación; se reserva en la partida al aprobarse la solicitud.</p>
               </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Costos de descarga estimados (S/) · opcional</label>
+              <div className="md:col-span-2 rounded-lg border border-slate-200 p-3">
+                <label className="block text-sm font-semibold text-slate-800">¿La entrega requiere descarga especial? *</label>
                 <p className="text-xs text-slate-500 mb-2">Montacargas, grúa, estiba u otros en el punto de entrega. Se cargan a la partida de transporte de este contrato.</p>
-                {unloading.map((u, i) => (
-                  <div key={i} className="flex flex-wrap gap-2 mb-2">
-                    <select value={u.concept} onChange={e => setUnloading(list => list.map((x, j) => j === i ? { ...x, concept: e.target.value } : x))}
-                      className="px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-sm">
-                      <option value="MONTACARGAS">Montacargas</option><option value="GRUA">Grúa</option>
-                      <option value="ESTIBA">Estiba</option><option value="OTROS">Otros</option>
-                    </select>
-                    <input type="number" min="0" step="0.01" placeholder="0.00" value={u.estimated_pen}
-                      onChange={e => setUnloading(list => list.map((x, j) => j === i ? { ...x, estimated_pen: e.target.value } : x))}
-                      className="w-28 px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-sm" />
-                    <input type="text" placeholder="Detalle (opcional)" value={u.description}
-                      onChange={e => setUnloading(list => list.map((x, j) => j === i ? { ...x, description: e.target.value } : x))}
-                      className="flex-1 min-w-[140px] px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-sm" />
-                    <button type="button" onClick={() => setUnloading(list => list.filter((_, j) => j !== i))}
-                      className="px-2 text-slate-400 hover:text-red-600 text-sm">Quitar</button>
+                <div className="flex gap-4 mb-2">
+                  {(['NO', 'SI'] as const).map(v => (
+                    <label key={v} className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm cursor-pointer ${unloadingAnswer === v ? 'border-[#002855] bg-blue-50 font-semibold text-[#002855]' : 'border-slate-300 text-slate-700'}`}>
+                      <input type="radio" name="unloading_required" checked={unloadingAnswer === v} onChange={() => {
+                        setUnloadingAnswer(v)
+                        if (v === 'SI' && unloading.length === 0) setUnloading([{ concept: 'MONTACARGAS', estimated_pen: '', description: '' }])
+                      }} />
+                      {v === 'SI' ? 'Sí, requiere' : 'No requiere'}
+                    </label>
+                  ))}
+                </div>
+
+                {unloadingHistory.length > 0 && (
+                  <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-sm text-amber-900">
+                    <p className="font-semibold mb-1">Referencia de solicitudes anteriores</p>
+                    <ul className="space-y-1.5">
+                      {unloadingHistory.slice(0, 3).map(h => {
+                        const needs = (h.lines || []).length > 0
+                        return (
+                          <li key={h.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span><strong>{h.request_number}</strong> <span className="text-xs text-amber-800">({MATCH_LABEL[h.score] || 'referencia'}{h.required_date ? ` · ${new Date(h.required_date).toLocaleDateString('es-PE')}` : ''})</span>:</span>
+                            <span>{needs ? (h.lines || []).map(l => {
+                              const amount = l.actual_pen ?? l.planned_pen ?? l.estimated_pen
+                              const kind = l.actual_pen != null ? 'real' : l.planned_pen != null ? 'planificado' : 'estimado'
+                              return `${UNLOADING_LABEL[l.concept] || l.concept}${Number(amount) > 0 ? ` S/ ${Number(amount).toLocaleString('es-PE')} ${kind}` : ' (sin monto)'}`
+                            }).join(' · ') : 'no requirió descarga'}</span>
+                            <button type="button" onClick={() => applyUnloadingReference(h)} className="text-xs font-semibold text-[#002855] underline">Usar como referencia</button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                    {unloadingAnswer === 'NO' && unloadingHistory.some(h => h.score >= 2 && (h.lines || []).length > 0) && (
+                      <p className="mt-1.5 text-xs font-semibold text-red-700">Atención: una entrega anterior a este destino sí necesitó descarga especial.</p>
+                    )}
                   </div>
-                ))}
-                <button type="button" onClick={() => setUnloading(list => [...list, { concept: 'MONTACARGAS', estimated_pen: '', description: '' }])}
-                  className="text-sm text-[#002855] font-medium hover:underline">+ Agregar costo de descarga</button>
-                {unloadingTotal > 0 && <span className="ml-3 text-xs text-slate-600">Total descarga: S/ {unloadingTotal.toLocaleString('es-PE')}</span>}
+                )}
+
+                {unloadingAnswer === 'SI' && <>
+                  {unloading.map((u, i) => (
+                    <div key={i} className="flex flex-wrap gap-2 mb-2">
+                      <select value={u.concept} onChange={e => setUnloading(list => list.map((x, j) => j === i ? { ...x, concept: e.target.value } : x))}
+                        className="px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-sm">
+                        <option value="MONTACARGAS">Montacargas</option><option value="GRUA">Grúa</option>
+                        <option value="ESTIBA">Estiba</option><option value="OTROS">Otros</option>
+                      </select>
+                      <input type="number" min="0" step="0.01" placeholder="Monto S/ (vacío = por cotizar)" value={u.estimated_pen}
+                        onChange={e => setUnloading(list => list.map((x, j) => j === i ? { ...x, estimated_pen: e.target.value } : x))}
+                        className="w-44 px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-sm" />
+                      <input type="text" placeholder="Detalle (capacidad, horas, cuadrilla…)" value={u.description}
+                        onChange={e => setUnloading(list => list.map((x, j) => j === i ? { ...x, description: e.target.value } : x))}
+                        className="flex-1 min-w-[140px] px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-sm" />
+                      <button type="button" onClick={() => setUnloading(list => list.filter((_, j) => j !== i))}
+                        className="px-2 text-slate-400 hover:text-red-600 text-sm">Quitar</button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => setUnloading(list => [...list, { concept: 'MONTACARGAS', estimated_pen: '', description: '' }])}
+                    className="text-sm text-[#002855] font-medium hover:underline">+ Agregar recurso de descarga</button>
+                  {unloadingTotal > 0 && <span className="ml-3 text-xs text-slate-600">Total descarga: S/ {unloadingTotal.toLocaleString('es-PE')}</span>}
+                </>}
               </div>
             </div>
           </div>

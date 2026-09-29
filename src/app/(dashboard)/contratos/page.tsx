@@ -8,6 +8,7 @@ import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import * as XLSX from 'xlsx'
 import { useRouter } from 'next/navigation'
 import { usePermissions } from '@/hooks/usePermissions'
+import { ContractQuickView } from '@/components/contratos/ContractQuickView'
 
 interface Contract {
   id: string
@@ -39,6 +40,7 @@ interface Contract {
 
 export default function ContratosPage() {
   const router = useRouter()
+  const [quickView, setQuickView] = useState<Contract | null>(null)
   const supabase = createClient()
   const { role } = usePermissions()
   const [contracts, setContracts] = useState<Contract[]>([])
@@ -630,7 +632,8 @@ export default function ContratosPage() {
               <col className="w-[19%]" />
               <col />
               <col className="hidden lg:table-column w-[10%]" />
-              <col className="w-[21%]" />
+              <col className="hidden md:table-column w-[9%]" />
+              <col className="w-[20%]" />
               <col className="w-[10%]" />
               {role === 'admin' && <col className="hidden xl:table-column w-[12%]" />}
               <col className={role === 'admin' ? 'w-[92px]' : 'w-[56px]'} />
@@ -640,6 +643,7 @@ export default function ContratosPage() {
                 <th className="px-4 py-3 font-semibold">Contrato</th>
                 <th className="px-4 py-3 font-semibold">Cliente y destino</th>
                 <th className="hidden px-4 py-3 text-right font-semibold lg:table-cell">Carga</th>
+                <th className="hidden px-4 py-3 font-semibold md:table-cell">Alta</th>
                 <th className="px-4 py-3 font-semibold">Partida de transporte</th>
                 <th className="px-4 py-3 font-semibold">Estado</th>
                 {role === 'admin' && <th className="hidden px-4 py-3 font-semibold xl:table-cell">Responsable</th>}
@@ -649,11 +653,11 @@ export default function ContratosPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={role === 'admin' ? 7 : 6} className="px-6 py-10 text-center text-slate-500">Cargando contratos...</td>
+                  <td colSpan={role === 'admin' ? 8 : 7} className="px-6 py-10 text-center text-slate-500">Cargando contratos...</td>
                 </tr>
               ) : filteredContracts.length === 0 ? (
                 <tr>
-                  <td colSpan={role === 'admin' ? 7 : 6} className="px-6 py-10 text-center text-slate-500">
+                  <td colSpan={role === 'admin' ? 8 : 7} className="px-6 py-10 text-center text-slate-500">
                     {contracts.length === 0 ? 'No hay contratos en tu cartera.' : 'Ningún contrato coincide con la búsqueda o los filtros.'}
                   </td>
                 </tr>
@@ -669,7 +673,7 @@ export default function ContratosPage() {
                   const responsible = profileNames[assignments.find(item => item.contract_id === contract.id && item.role === 'ADMIN_CONTRATO' && item.active)?.user_id || '']
                   const destination = [contract.destination_district, contract.destination_address].filter(Boolean).join(' · ')
                   return (
-                  <tr key={contract.id} onClick={() => router.push(`/contratos/${contract.id}`)} className="group cursor-pointer align-top transition-colors hover:bg-slate-50">
+                  <tr key={contract.id} onClick={() => setQuickView(contract)} className="group cursor-pointer align-top transition-colors hover:bg-slate-50">
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[15px] font-bold text-slate-900">{contract.code}</span>
@@ -697,6 +701,9 @@ export default function ContratosPage() {
                     </td>
                     <td className="hidden px-4 py-3 text-right tabular-nums text-slate-700 lg:table-cell">
                       {Number(contract.total_weight_kg || 0).toLocaleString('es-PE')} <span className="text-xs text-slate-400">kg</span>
+                    </td>
+                    <td className="hidden px-4 py-3 text-xs text-slate-600 md:table-cell">
+                      {contract.created_at ? new Date(contract.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-baseline justify-between gap-2">
@@ -748,6 +755,16 @@ export default function ContratosPage() {
           </table>
         </div>
       </div>
+
+      <ContractQuickView
+        contract={quickView}
+        isAdmin={role === 'admin'}
+        responsible={quickView ? profileNames[assignments.find(item => item.contract_id === quickView.id && item.role === 'ADMIN_CONTRATO' && item.active)?.user_id || ''] : undefined}
+        onClose={() => setQuickView(null)}
+        onEdit={() => { const c = quickView; setQuickView(null); if (c) handleEditClick(c) }}
+        onAssign={() => { const c = quickView; setQuickView(null); if (c) openAssignment(c) }}
+        onOpen={() => { const c = quickView; setQuickView(null); if (c) router.push(`/contratos/${c.id}`) }}
+      />
 
       <Modal isOpen={!!assignmentTarget} onClose={() => setAssignmentTarget(null)}
         title={`Responsable de OT ${assignmentTarget?.code || ''}`} maxWidth="max-w-xl">
