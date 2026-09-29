@@ -122,7 +122,7 @@ export function Sidebar() {
               {hasPermission('caja') && <NavItem href="/caja" icon={Wallet} label="Panel de Caja" />}
               {hasPermission('caja-gastos') && <NavItem href="/caja/gastos" icon={FileText} label="Registro de Gastos" />}
               {hasPermission('caja-aprobacion') && <NavItem href="/caja/aprobaciones" icon={ClipboardCheck} label="Aprobación de Gastos" />}
-              {hasPermission('caja-anticipos') && <NavItem href="/caja/anticipos" icon={Banknote} label="Anticipos de Viaje" />}
+              {hasPermission('caja-anticipos') && <NavItem href="/caja/anticipos" icon={Banknote} label="Anticipos" />}
               {hasPermission('caja-liquidaciones') && <NavItem href="/caja/liquidaciones" icon={CheckCircle} label="Liquidación de Viajes" />}
               {(hasPermission('caja-anticipos') || hasPermission('caja-liquidaciones')) && <NavItem href="/caja/conductores" icon={UserRound} label="Cuenta de Conductores" />}
               {hasPermission('caja-fondos') && <NavItem href="/caja/cajas" icon={ArchiveRestore} label="Cajas y Fondos" />}

@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Modal } from '@/components/ui/modal'
 import { EXPENSE_STATUS, daysAgo, errorMessage, exportXlsx, fmtDate, money, rpcOk, todayLima, type Row } from '@/lib/caja'
+import { evidenceLink } from '@/components/evidence/EvidenceGallery'
 
 // Control de combustible (Caja C3): cargas de la app y de Caja web (con o sin viaje), rendimiento por carga
 // y por unidad, grifos con crédito y conciliación de sus facturas contra las cargas registradas.
@@ -76,6 +77,7 @@ function Loads() {
           Galones: Number(r.fuel_gallons || 0), Importe: Number(r.amount), 'S/ por galón': r.fuel_gallons ? Number(r.amount) / Number(r.fuel_gallons) : '',
           Odómetro: Number(r.fuel_odometer || 0), 'Km recorridos': eff[r.id]?.km_since_prev ?? '', 'Km/gal': eff[r.id]?.km_per_gallon ?? '',
           'Pagado por': r.paid_by, Estado: r.status, Alertas: (r.alerts || []).map((a: Row) => a.message).join('; '),
+          Comprobante: evidenceLink(r.receipt_url),
         })) })} className="px-3 py-2 border rounded-lg flex items-center gap-1.5"><Download className="w-4 h-4" />Excel</button>
       </div>
       <div className="bg-white border rounded-xl overflow-auto max-h-[calc(100vh-340px)]">

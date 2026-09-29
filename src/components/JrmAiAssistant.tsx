@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { usePathname } from 'next/navigation'
-import { Bot, Send, X, Mic, MicOff } from 'lucide-react'
+import { Bot, Send, X, Mic, Square, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { Capacitor } from '@capacitor/core'
+import { toWav16k } from '@/lib/audio-wav'
 
 type Context = {
   contractId?: string; vehiclePlate?: string; dispatchId?: string; status?: string; activeStep?: number
@@ -78,22 +80,74 @@ export function JrmAiAssistant() {
     }
   }, [])
 
-  const toggleListen = () => {
-    if (!recognitionRef.current) {
-      toast.error('Tu navegador no soporta dictado por voz.')
+  // Dictado: el reconocimiento del navegador solo existe en Chrome de escritorio/Android; el WebView del APK no
+  // lo trae. Ahí se graba con MediaRecorder y se transcribe en el servidor (/api/jrm-ai/transcribe).
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const recordTimer = useRef<number | null>(null)
+  const [transcribing, setTranscribing] = useState(false)
+
+  const stopRecording = () => {
+    if (recordTimer.current) { window.clearTimeout(recordTimer.current); recordTimer.current = null }
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop()
+  }
+
+  const startRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      toast.error(Capacitor.isNativePlatform() ? 'Actualiza la app de JRM para usar el micrófono.' : 'Este navegador no permite grabar audio.')
       return
     }
-
-    if (listening) {
-      recognitionRef.current.stop()
-    } else {
-      try {
-        recognitionRef.current.start()
-        setListening(true)
-      } catch (err) {
-        console.error(err)
-      }
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+    } catch (err) {
+      const name = err instanceof DOMException ? err.name : ''
+      toast.error(name === 'NotAllowedError' || name === 'SecurityError'
+        ? (Capacitor.isNativePlatform() ? 'Permite el micrófono a JRM (Ajustes → Apps → JRM-TMS → Permisos) o actualiza la app.' : 'Permite el acceso al micrófono para dictar.')
+        : 'No se pudo acceder al micrófono.')
+      return
     }
+    const chunks: Blob[] = []
+    const recorder = new MediaRecorder(stream)
+    recorderRef.current = recorder
+    recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data) }
+    recorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop())
+      setListening(false)
+      const raw = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
+      if (raw.size < 1500) return
+      setTranscribing(true)
+      try {
+        let audio: Blob = raw
+        try { audio = await toWav16k(raw) } catch { /* se envía el original si el navegador no lo decodifica */ }
+        const body = new FormData()
+        body.append('audio', audio, audio.type === 'audio/wav' ? 'voz.wav' : 'voz.webm')
+        const response = await fetch('/api/jrm-ai/transcribe', { method: 'POST', body })
+        const data = await response.json()
+        if (!response.ok) throw new Error(data.error || 'No pude entender el audio.')
+        const text = String(data.text || '').trim()
+        if (!text) { toast.error('No se escuchó nada. Intenta de nuevo, más cerca del micrófono.'); return }
+        void ask(text, 'ai_voice')
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'No pude entender el audio.')
+      } finally { setTranscribing(false) }
+    }
+    recorder.start()
+    setListening(true)
+    recordTimer.current = window.setTimeout(stopRecording, 60_000)  // máximo 1 minuto
+  }
+
+  const toggleListen = () => {
+    if (transcribing) return
+    const useBrowserSpeech = recognitionRef.current && !Capacitor.isNativePlatform()
+    if (listening) {
+      if (useBrowserSpeech) recognitionRef.current?.stop(); else stopRecording()
+      return
+    }
+    if (useBrowserSpeech) {
+      try { recognitionRef.current?.start(); setListening(true) } catch { void startRecording() }
+      return
+    }
+    void startRecording()
   }
 
   const [question, setQuestion] = useState('')
@@ -168,7 +222,7 @@ export function JrmAiAssistant() {
     return ['¿Qué debería preocuparme hoy?', 'Resume la operación de esta semana']
   }, [path, selected])
 
-  const ask = async (value: string) => {
+  const ask = async (value: string, origin: 'ai_chat' | 'ai_voice' = inputOrigin) => {
     const text = value.trim()
     if (!text || busy || !enabled) return
     setMessages(prev => [...prev, { from: 'user', text }])
@@ -177,7 +231,7 @@ export function JrmAiAssistant() {
     try {
       const response = await fetch('/api/jrm-ai', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, context: { path, ...selected, siteId: siteId || undefined, origin: inputOrigin } }),
+        body: JSON.stringify({ message: text, context: { path, ...selected, siteId: siteId || undefined, origin } }),
       })
       const data = await response.json()
       setMessages(prev => [...prev, { from: 'ai', text: response.ok ? data.answer : data.error || 'No pude completar la consulta.' }])
@@ -216,11 +270,13 @@ export function JrmAiAssistant() {
   if (!available) return null
   const isMobile = path === '/app' || path.startsWith('/app/')
 
+  // Botón flotante compacto (solo ícono). En el inicio del app no se muestra: ya hay una tarjeta "Copiloto IA".
+  if (!open && path === '/app') return null
   return (
-    <div className={`fixed z-[80] ${isMobile ? 'bottom-20 right-4' : 'bottom-5 right-5'}`}>
-      {!open && <button type="button" onClick={() => setOpen(true)} aria-label="Abrir Copiloto IA"
-        className="flex items-center gap-2 rounded-full bg-gradient-to-r from-[#002855] to-[#004b99] px-4 py-3 font-bold text-white shadow-[0_8px_20px_rgba(0,40,85,0.4)] hover:shadow-xl transition-all hover:-translate-y-1 active:translate-y-0">
-        <Bot className="h-5 w-5 animate-pulse" /> {isMobile ? 'Hablar con JRM IA' : 'JRM IA'}
+    <div className={`fixed z-[80] ${isMobile ? 'bottom-[88px] right-3' : 'bottom-5 right-5'}`}>
+      {!open && <button type="button" onClick={() => setOpen(true)} aria-label="Abrir JRM IA" title="JRM IA"
+        className={`flex items-center justify-center rounded-full bg-gradient-to-br from-[#002855] to-[#004b99] text-white shadow-lg ring-2 ring-white/70 transition-transform hover:scale-105 active:scale-95 ${isMobile ? 'h-11 w-11 opacity-90' : 'h-12 w-12'}`}>
+        <Bot className={isMobile ? 'h-5 w-5' : 'h-6 w-6'} />
       </button>}
       {open && (
         <>
@@ -311,15 +367,16 @@ export function JrmAiAssistant() {
           <button
             type="button"
             onClick={toggleListen}
-            className={`rounded-full p-2.5 transition-colors ${listening ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-            aria-label={listening ? "Detener dictado" : "Iniciar dictado por voz"}
+            disabled={!enabled || busy || transcribing}
+            className={`rounded-full p-2.5 transition-colors disabled:opacity-50 ${listening ? 'bg-red-600 text-white animate-pulse' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            aria-label={listening ? 'Terminar y enviar el mensaje de voz' : 'Grabar mensaje de voz'}
           >
-            {listening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            {transcribing ? <Loader2 className="h-5 w-5 animate-spin" /> : listening ? <Square className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           </button>
           <input type="text" value={question} onChange={event => setQuestion(event.target.value)}
-            disabled={!enabled || busy} placeholder={listening ? "Te escucho..." : "Escríbeme o háblame..."}
+            disabled={!enabled || busy} placeholder={transcribing ? "Transcribiendo tu mensaje..." : listening ? "Grabando… toca ■ para enviar" : "Escríbeme o toca el micrófono"}
             className="flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:border-[#002855] focus:outline-none focus:ring-1 focus:ring-[#002855]" />
-          <button type="submit" disabled={!enabled || busy || (!question.trim() && !listening)} aria-label="Enviar pregunta"
+          <button type="submit" disabled={!enabled || busy || !question.trim()} aria-label="Enviar pregunta"
             className="rounded-full bg-[#002855] p-2.5 text-white shadow-md disabled:opacity-50 hover:bg-[#003b78] transition-colors">
             <Send className="h-5 w-5" />
           </button>

@@ -13,8 +13,8 @@ if (fs.existsSync(localEnv)) {
   }
 }
 
-const version = process.env.JRM_ANDROID_VERSION_NAME || '1.0.3'
-const build = Number(process.env.JRM_ANDROID_VERSION_CODE || '4')
+const version = process.env.JRM_ANDROID_VERSION_NAME || '1.0.4'
+const build = Number(process.env.JRM_ANDROID_VERSION_CODE || '5')
 const bucket = 'jrm-android-installers'
 const name = `jrm-tms-${version}-${build}.apk`
 const file = path.join(root, 'artifacts', 'android', name)

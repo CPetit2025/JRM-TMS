@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { format } from 'date-fns'
+import { EvidenceGallery } from '@/components/evidence/EvidenceGallery'
 import { toast } from 'sonner'
 import { ArrowLeft, Truck, ShieldCheck, ShieldAlert, AlertTriangle, Wrench, CalendarClock, ClipboardCheck, CircleDot, FileText, BarChart2, History, Gauge, Route, Image as ImageIcon, Loader2 } from 'lucide-react'
 
@@ -184,13 +185,20 @@ export default function Flota360Page() {
         </div>
       )}
       {tab === 'evidencias' && (
-        data.photos.length === 0 ? <p className="text-sm text-slate-500">Sin evidencias.</p> : (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {data.photos.filter(u => /^https?:\/\//.test(u)).map(u => (
-              <a key={u} href={u} target="_blank" rel="noreferrer" className="block border rounded-lg overflow-hidden text-xs text-blue-600 p-2 break-all">{u.split('/').pop()}</a>
-            ))}
-          </div>
-        )
+        <div className="space-y-5">
+          {/* Fotos del app del conductor (bucket privado): fallas, checklist, odómetro, gastos y anticipos de la unidad */}
+          <EvidenceGallery plate={plate} title="Evidencias del app del conductor" />
+          {data.photos.some(u => /^https?:\/\//.test(u)) && (
+            <div>
+              <h3 className="font-bold text-slate-800 mb-2">Otras evidencias (enlaces)</h3>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                {data.photos.filter(u => /^https?:\/\//.test(u)).map(u => (
+                  <a key={u} href={u} target="_blank" rel="noreferrer" className="block border rounded-lg overflow-hidden text-xs text-blue-600 p-2 break-all">{u.split('/').pop()}</a>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       )}
       {tab === 'historial' && (
         <Table empty="Sin historial" rows={data.history}

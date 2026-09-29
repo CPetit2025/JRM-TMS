@@ -9,6 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { Loader2, Wrench, Clock, AlertTriangle, ArrowRight, CheckCircle2, Stethoscope, CalendarClock, XCircle, Plus } from "lucide-react";
+import { EvidenceGallery, type EvidenceItem } from "@/components/evidence/EvidenceGallery";
 
 const supabase = createClient();
 
@@ -54,6 +55,30 @@ const SOURCE_LABEL: Record<string, string> = {
   COPILOTO_AI: "Copiloto AI",
   TORRE_CONTROL: "Torre de Control",
 };
+
+// Fotos, fotos extra y audio que el conductor adjuntó desde el app (se cargan al abrir)
+function FailureEvidence({ requestId }: { requestId: string }) {
+  const [items, setItems] = useState<EvidenceItem[] | null>(null);
+  const [open, setOpen] = useState(false);
+  const toggle = async () => {
+    const next = !open;
+    setOpen(next);
+    if (!next || items) return;
+    const { data } = await supabase.from("maintenance_requests").select("*").eq("id", requestId).maybeSingle();
+    const r = (data || {}) as Record<string, unknown>;
+    const extra = Array.isArray(r.evidence) ? (r.evidence as unknown[]).filter((p): p is string => typeof p === "string") : [];
+    const paths = [r.photo_url, r.audio_url, ...extra].filter((p): p is string => typeof p === "string" && p.length > 0);
+    setItems(paths.map(p => ({ kind: "FALLA", label: "Evidencia de la falla", path: p })));
+  };
+  return (
+    <div>
+      <button type="button" onClick={() => void toggle()} className="text-xs font-medium text-blue-700 hover:underline">
+        {open ? "Ocultar evidencias" : "Ver evidencias del conductor"}
+      </button>
+      {open && <div className="mt-2">{items ? <EvidenceGallery items={items} title="Evidencias" /> : <Loader2 className="w-4 h-4 animate-spin" />}</div>}
+    </div>
+  );
+}
 
 function queryBacklog() {
   return supabase
@@ -319,6 +344,7 @@ export default function FallasBacklogPage() {
                   {item.scheduled_for && <div>Programada: {item.scheduled_for}</div>}
                 </div>
                 <div className="text-sm font-medium">Estado: <Badge variant="secondary">{item.status.replace("_", " ")}</Badge></div>
+                <FailureEvidence requestId={item.id} />
                 <div className="mt-auto">{actionsFor(item)}</div>
               </CardContent>
             </Card>

@@ -7,6 +7,7 @@ import { AlertTriangle, CheckCircle2, FileCheck2, Loader2, Printer, RefreshCw, R
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Modal } from '@/components/ui/modal'
+import { EvidenceGallery } from '@/components/evidence/EvidenceGallery'
 import { EXPENSE_STATUS, PAYMENT_METHODS, errorMessage, fmtDate, money, printCaja, rpcOk, type Row } from '@/lib/caja'
 
 // Liquidación financiera del viaje (Caja C2): anticipos − gastos aprobados pagados por el conductor = saldo.
@@ -298,6 +299,9 @@ function SettlementModal({ trip, driverName, canClose, isAdmin, onClose, onDone 
               </div>
             </div>
           ) : <p className="text-slate-500">Sin permiso para cerrar liquidaciones.</p>}
+          <div className="border-t pt-4 print:hidden">
+            <EvidenceGallery dispatchId={trip.dispatch_id} title="Evidencias del viaje (entregas, guías, comprobantes)" />
+          </div>
         </div>
       )}
     </Modal>

@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { BarChart3, Download, FileSpreadsheet, Loader2, RefreshCw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { daysAgo, exportXlsx, fmtDate, money, todayLima, type Row } from '@/lib/caja'
+import { evidenceLink } from '@/components/evidence/EvidenceGallery'
 
 // Reportes de la caja de transporte (Caja C3): rentabilidad por viaje (flete + refacturable − gastos aprobados),
 // presupuesto vs real por categoría y exportación contable de gastos aprobados y del libro de caja.
@@ -77,6 +78,7 @@ export default function ReportesCajaPage() {
             'Cuenta contable': cat[e.expense_type]?.account_code || '', 'Centro de costo (placa)': e.vehicle_plate || '', Despacho: e.dispatch?.dispatch_number || '',
             'Base imponible': base, IGV: Math.round((total - base) * 100) / 100, Total: total,
             'Pagado por': e.paid_by, Refacturable: e.is_billable ? 'Sí' : 'No', 'Aprobado el': fmtDate(e.reviewed_at, true),
+            Comprobante: evidenceLink(e.receipt_url),
           }
         }),
         'Libro de caja': (mov.data || []).map(m => ({

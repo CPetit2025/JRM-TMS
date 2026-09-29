@@ -36,8 +36,8 @@ if (process.platform === 'win32') {
   run('bash', ['./gradlew', 'assembleRelease'], { cwd: android });
 }
 
-const version = process.env.JRM_ANDROID_VERSION_NAME || '1.0.3';
-const build = process.env.JRM_ANDROID_VERSION_CODE || '4';
+const version = process.env.JRM_ANDROID_VERSION_NAME || '1.0.4';
+const build = process.env.JRM_ANDROID_VERSION_CODE || '5';
 const source = path.join(android, 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
 const metadata = JSON.parse(readFileSync(path.join(android, 'app', 'build', 'outputs', 'apk', 'release', 'output-metadata.json'), 'utf8'));
 if (metadata.applicationId !== 'com.jrm.tms' || metadata.variantName !== 'release' ||

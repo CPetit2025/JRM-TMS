@@ -6,11 +6,19 @@ on:
       version_name:
         description: Android version name
         required: true
-        default: '1.0.3'
+        default: '1.0.4'
       version_code:
         description: Android version code (must increase)
         required: true
-        default: '4'
+        default: '5'
+      publish:
+        description: Publicar el APK (descarga del login y aviso de actualización en el app)
+        type: boolean
+        default: true
+      release_notes:
+        description: Novedades que verá el conductor
+        required: false
+        default: 'Micrófono habilitado para mensajes de voz del Copiloto IA y audio de fallas.'
 
 permissions:
   contents: read
@@ -47,6 +55,26 @@ jobs:
           JRM_ANDROID_VERSION_NAME: ${{ inputs.version_name }}
           JRM_ANDROID_VERSION_CODE: ${{ inputs.version_code }}
         run: npm run build:apk
+      - uses: supabase/setup-cli@v1
+        if: ${{ inputs.publish }}
+        with:
+          version: latest
+      # Sube el APK al bucket público de instaladores y registra la versión en app_versions (scripts/publish-apk.cjs).
+      # La clave de servicio se obtiene con el token de Supabase ya cargado; no se imprime (add-mask).
+      - name: Publish APK
+        if: ${{ inputs.publish }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          JRM_ANDROID_VERSION_NAME: ${{ inputs.version_name }}
+          JRM_ANDROID_VERSION_CODE: ${{ inputs.version_code }}
+          JRM_ANDROID_RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          test -n "$SUPABASE_ACCESS_TOKEN" && test -n "$SUPABASE_PROJECT_ID"
+          KEY=$(supabase projects api-keys --project-ref "$SUPABASE_PROJECT_ID" -o json | jq -r '[.[] | select(.name == "service_role")][0].api_key // empty')
+          test -n "$KEY" || { echo "::error::No se obtuvo la clave de servicio de Supabase"; exit 1; }
+          echo "::add-mask::$KEY"
+          NEXT_PUBLIC_SUPABASE_URL="https://$SUPABASE_PROJECT_ID.supabase.co" SUPABASE_SERVICE_ROLE_KEY="$KEY" node scripts/publish-apk.cjs
       - uses: actions/upload-artifact@v4
         with:
           name: jrm-tms-android-${{ inputs.version_name }}-${{ inputs.version_code }}
