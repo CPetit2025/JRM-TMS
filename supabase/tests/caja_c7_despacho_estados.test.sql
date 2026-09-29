@@ -14,7 +14,7 @@ DO $test$
 DECLARE
   v_admin uuid; v_desp uuid; v_nobody uuid; v_drv_prof uuid; v_contr uuid;
   v_role_d uuid; v_role_c uuid; v_site uuid; v_carrier uuid; v_driver uuid;
-  v_ct uuid; r1 uuid; r2 uuid; r3 uuid; d1 uuid; d2 uuid;
+  v_ct uuid; r1 uuid; r2 uuid; r3 uuid; d1 uuid; d2 uuid; s1 uuid; s2 uuid;
   v_fail text[] := '{}';
   v_pass int := 0;
   r jsonb; v_err text; v_err2 text; v_err3 text; v_num numeric; v_n int;
@@ -109,19 +109,23 @@ BEGIN
        (SELECT reserved_pen || '/' || consumed_pen FROM public.contract_budgets WHERE contract_id = v_ct)); END IF;
 
   -- T5: servicios de contrato: sin saldo no se consume; editar un FLETE ya cerrado ajusta el consumido
+  -- (los id se leen antes de cambiar de usuario: en producción el RLS oculta la tabla a este rol)
+  SELECT id INTO s1 FROM public.contract_services WHERE dispatch_id = d1;
+  SELECT id INTO s2 FROM public.contract_services WHERE dispatch_id = d2;
   PERFORM pg_temp.as_user(v_contr);
   v_err := NULL;
   BEGIN PERFORM public.register_contract_service(v_ct, 'MONTACARGA', 'Descarga', 900, current_date);
   EXCEPTION WHEN raise_exception THEN v_err := SQLERRM; END;
   PERFORM public.register_contract_service(v_ct, 'ESTIBA', 'Estiba', 100, current_date);
-  PERFORM public.update_contract_service_amount((SELECT id FROM public.contract_services WHERE dispatch_id = d2), 250);
+  PERFORM public.update_contract_service_amount(s2, 250);
   v_err2 := NULL;
-  BEGIN PERFORM public.update_contract_service_amount((SELECT id FROM public.contract_services WHERE dispatch_id = d1), 10);
+  BEGIN PERFORM public.update_contract_service_amount(s1, 10);
   EXCEPTION WHEN raise_exception THEN v_err2 := SQLERRM; END;
+  SELECT count(*) INTO v_n FROM public.contract_services WHERE contract_id = v_ct;  -- Contratos ve sus servicios
   PERFORM pg_temp.as_user(NULL);
-  IF v_err LIKE 'Saldo insuficiente%' AND v_err2 LIKE '%anulado%'
+  IF v_err LIKE 'Saldo insuficiente%' AND v_err2 LIKE '%anulado%' AND v_n = 3
      AND (SELECT consumed_pen = 350 AND balance_pen = 650 FROM public.contract_budgets WHERE contract_id = v_ct)
-  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T5 servicios: ' || COALESCE(v_err, '∅') || ' | ' || COALESCE(v_err2, '∅') || ' ' ||
+  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T5 servicios: ' || COALESCE(v_err, '∅') || ' | ' || COALESCE(v_err2, '∅') || ' visibles=' || v_n || ' ' ||
        (SELECT reserved_pen || '/' || consumed_pen FROM public.contract_budgets WHERE contract_id = v_ct)); END IF;
 
   IF array_length(v_fail, 1) IS NULL THEN
