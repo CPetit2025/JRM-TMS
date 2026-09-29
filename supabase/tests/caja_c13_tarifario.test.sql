@@ -113,7 +113,10 @@ BEGIN
   INSERT INTO public.transport_requests (request_number, status, site_id, contract_id, service_cost, requester_name, department, request_type, cargo_description, pickup_address, pickup_district, delivery_address, delivery_district, required_date)
   VALUES ('ZZ-C13-R1', 'PENDIENTE DE APROBACIÓN', v_site, k2, 520, 'ZZ', 'Logística', 'DESPACHO', 'Carga', 'Planta', 'Chilca', 'Obra', 'ZZ Distrito Uno', current_date) RETURNING id INTO rq;
   PERFORM pg_temp.as_user(v_sol);
-  UPDATE public.transport_requests SET service_cost = 999 WHERE id = rq;
+  BEGIN  -- en producción authenticated no tiene UPDATE directo; si lo tuviera, el trigger lo ignora
+    UPDATE public.transport_requests SET service_cost = 999 WHERE id = rq;
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
   v_err := public.set_request_cost_quote(rq, '{}'::jsonb, 'MANUAL', 'Acceso restringido')->>'error';
   PERFORM public.save_request_unloading_costs(rq, '[{"concept":"MONTACARGAS","estimated_pen":999}]');
   r := public.apply_request_tariff(rq);
