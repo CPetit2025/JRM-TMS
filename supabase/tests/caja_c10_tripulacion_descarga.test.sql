@@ -45,9 +45,10 @@ BEGIN
   INSERT INTO public.user_site_access (user_id, site_id) VALUES (v_desp, v_site), (v_contr, v_site) ON CONFLICT DO NOTHING;
   -- Trabajadores (perfiles sin cuenta, como los crea el maestro de Trabajadores)
   w1 := gen_random_uuid(); w2 := gen_random_uuid();
-  INSERT INTO public.profiles (id, email, first_name, last_name, employee_type, is_active) VALUES
-    (w1, 'zz-c10-w1@x', 'Ayudante', 'Uno', 'Auxiliar de Transporte', true),
-    (w2, 'zz-c10-w2@x', 'Estibador', 'Dos', 'Auxiliar de Despacho', true);
+  -- (mismas columnas que inserta el maestro; en producción profiles no tiene email)
+  INSERT INTO public.profiles (id, first_name, last_name, employee_type, is_active) VALUES
+    (w1, 'Ayudante', 'Uno', 'Auxiliar de Transporte', true),
+    (w2, 'Estibador', 'Dos', 'Auxiliar de Despacho', true);
   INSERT INTO public.drivers (carrier_id, profile_id, first_name, last_name, document_number, license_number, is_active)
   VALUES (v_carrier, v_drv_prof, 'Conductor', 'C10', 'ZZC10-DOC', 'ZZC10-LIC', true) RETURNING id INTO v_driver;
   INSERT INTO public.vehicles (plate, carrier_id, site_id, type, status, current_odometer) VALUES
