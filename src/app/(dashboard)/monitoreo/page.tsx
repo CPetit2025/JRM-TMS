@@ -111,8 +111,8 @@ export default function MonitoreoPage() {
         .insert([{
           dispatch_id: selectedVehicleId,
           event_type: eventType,
-          description: eventDescription,
-          created_by: 'Operador GPS'
+          description: eventDescription
+          // el autor lo pone la base de datos con el usuario de la sesión
         }])
 
       if (eventError) throw eventError

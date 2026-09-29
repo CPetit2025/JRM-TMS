@@ -1,4 +1,5 @@
 "use client"
+import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useState, useEffect, useMemo } from 'react'
 import { Truck, Search, Calendar, MapPin, ChevronRight, Loader2, Share2, AlertTriangle, CheckCircle2, Clock, Route, Activity } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -211,7 +212,7 @@ Equipo JRM TMS`
     const style = STATUS_BADGE[status] || defaultStyle
     return (
       <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold tracking-wide uppercase border ${style}`}>
-        {status.replace('_', ' ')}
+        {dispatchStatusLabel(status)}
       </span>
     )
   }
