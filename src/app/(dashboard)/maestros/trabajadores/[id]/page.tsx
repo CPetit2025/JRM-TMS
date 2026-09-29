@@ -1,5 +1,6 @@
 "use client"
 
+import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -254,7 +255,7 @@ export default function DriverProfile360() {
                             dispatch.status === 'EN_CURSO' || dispatch.status === 'EN RUTA' ? 'bg-blue-100 text-blue-800' :
                             'bg-slate-100 text-slate-800'
                           }`}>
-                            {dispatch.status || 'Desconocido'}
+                            {dispatchStatusLabel(dispatch.status)}
                           </span>
                         </td>
                       </tr>

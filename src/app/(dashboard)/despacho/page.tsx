@@ -1,4 +1,5 @@
 "use client"
+import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useState, useEffect, useRef } from 'react'
 import { Truck, MapPin, Loader2, PlayCircle, Calendar, Plus, FileText, ArrowRight, CheckCircle2, DollarSign, Tag, Search, Filter, Save, XCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -683,7 +684,7 @@ export default function DespachoPage() {
                 <option value="RETORNO">Retorno</option>
                 <option value="RETORNO_COMPLETADO">Retorno completado</option>
                 <option value="CERRADO">Cerrado</option>
-                <option value="LIQUIDADO">Liquidado</option>
+                <option value="LIQUIDADO">Cerrado (ruta cerrada)</option>
               </select>
             </div>
           </div>
@@ -778,7 +779,7 @@ export default function DespachoPage() {
                             (dispatch.status === 'ENTREGADO' || dispatch.status === 'RETORNO_COMPLETADO') ? 'bg-green-100 text-green-700' :
                             'bg-red-100 text-red-700'
                           }`}>
-                            {dispatch.status}
+                            {dispatchStatusLabel(dispatch.status)}
                           </span>
                           {dispatch.status === 'PROGRAMADO' && dispatch.docs_required && (
                             <div className={`mt-1 text-[10px] font-semibold ${dispatch.docs_reissue ? 'text-red-600' : dispatch.docs_ready_at ? 'text-emerald-600' : 'text-amber-600'}`}
@@ -1101,7 +1102,7 @@ export default function DespachoPage() {
                   selectedDispatchDetail.status === 'ENTREGADO' || selectedDispatchDetail.status === 'LIQUIDADO' ? 'bg-green-100 text-green-700' :
                   'bg-red-100 text-red-700'
                 }`}>
-                  {selectedDispatchDetail.status}
+                  {dispatchStatusLabel(selectedDispatchDetail.status)}
                 </span>
               </div>
             </div>

@@ -1,5 +1,6 @@
 'use client'
 
+import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -98,7 +99,7 @@ export default function LiquidacionesPage() {
                 <tr key={r.dispatch_id} className="hover:bg-slate-50">
                   <td className="p-3"><div className="font-semibold text-[#002855]">{r.dispatch_number}</div><div className="text-xs text-slate-500">{r.vehicle_plate}</div></td>
                   <td className="p-3">{people[r.driver_id] || '—'}</td>
-                  <td className="p-3 text-xs">{r.dispatch_status}<div className="text-slate-500">{r.returned_at ? `Retorno ${fmtDate(r.returned_at)}` : fmtDate(r.departure_at)}</div></td>
+                  <td className="p-3 text-xs">{dispatchStatusLabel(r.dispatch_status)}<div className="text-slate-500">{r.returned_at ? `Retorno ${fmtDate(r.returned_at)}` : fmtDate(r.departure_at)}</div></td>
                   <td className="p-3 text-right">{money(r.advances_delivered)}{r.advances_requested_count > 0 && <div className="text-[10px] text-amber-700">+{money(r.advances_requested)} por entregar</div>}</td>
                   <td className="p-3 text-right">{money(r.driver_approved)}{r.driver_pending > 0 && <div className="text-[10px] text-slate-500">+{money(r.driver_pending)} por aprobar</div>}</td>
                   <td className="p-3 text-right">{money(r.company_approved)}</td>

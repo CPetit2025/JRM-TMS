@@ -38,6 +38,9 @@ export function ClientFormModal({ isOpen, onClose, onSuccess, editingClient }: C
   }
   
   const [newClient, setNewClient] = useState(initialClient)
+  // RUC verificado en SUNAT en esta edición (obligatorio para clientes nuevos o cuando cambia el RUC)
+  const [sunat, setSunat] = useState<{ ruc: string; status: string } | null>(null)
+  const [sunatDown, setSunatDown] = useState(false)
 
   useEffect(() => {
     if (editingClient) {
@@ -52,10 +55,19 @@ export function ClientFormModal({ isOpen, onClose, onSuccess, editingClient }: C
     } else {
       setNewClient(initialClient)
     }
+    setSunat(null)
+    setSunatDown(false)
   }, [editingClient, isOpen])
 
   const handleSaveClient = async (e: React.FormEvent) => {
     e.preventDefault()
+    const rucChanged = !editingClient?.id || newClient.tax_id !== (editingClient.tax_id || '')
+    const verified = sunat?.ruc === newClient.tax_id
+    if (rucChanged && !verified) {
+      if (!sunatDown) { toast.error('Consulte el RUC en SUNAT antes de guardar (botón SUNAT).'); return }
+      if (!window.confirm('SUNAT no responde en este momento. ¿Guardar el cliente sin verificar el RUC?')) return
+    }
+    const sunatFields = rucChanged && verified ? { sunat_verified_at: new Date().toISOString(), sunat_status: sunat?.status || null } : {}
     setIsSubmitting(true)
 
     try {
@@ -68,7 +80,8 @@ export function ClientFormModal({ isOpen, onClose, onSuccess, editingClient }: C
             address: newClient.address,
             contact_name: newClient.contact_name,
             phone: newClient.phone,
-            email: newClient.email
+            email: newClient.email,
+            ...sunatFields
           })
           .eq('id', editingClient.id)
           .select()
@@ -87,7 +100,8 @@ export function ClientFormModal({ isOpen, onClose, onSuccess, editingClient }: C
             contact_name: newClient.contact_name,
             phone: newClient.phone,
             email: newClient.email,
-            is_active: true
+            is_active: true,
+            ...sunatFields
           }])
           .select()
           .single()
@@ -114,7 +128,9 @@ export function ClientFormModal({ isOpen, onClose, onSuccess, editingClient }: C
     try {
       const res = await fetch(`/api/sunat?ruc=${newClient.tax_id}`);
       if (!res.ok) {
-        throw new Error('RUC no encontrado o error en el servicio de SUNAT');
+        // 4xx: el RUC no existe en SUNAT; 5xx: el servicio no responde (se permite guardar con confirmación)
+        if (res.status >= 500) setSunatDown(true)
+        throw new Error(res.status >= 500 ? 'El servicio de SUNAT no responde' : 'RUC no encontrado en SUNAT');
       }
       
       const data = await res.json();
@@ -125,7 +141,14 @@ export function ClientFormModal({ isOpen, onClose, onSuccess, editingClient }: C
           business_name: data.nombre,
           address: `${data.direccion} - ${data.distrito}, ${data.provincia}, ${data.departamento}`.replace(/ - , , $/g, '')
         }));
-        toast.success('Datos recuperados exitosamente de SUNAT');
+        const status = [data.estado, data.condicion].filter(Boolean).join(' / ')
+        setSunat({ ruc: newClient.tax_id, status })
+        setSunatDown(false)
+        if ((data.estado && data.estado !== 'ACTIVO') || (data.condicion && data.condicion !== 'HABIDO')) {
+          toast.warning(`RUC verificado, pero en SUNAT figura: ${status}`)
+        } else {
+          toast.success('RUC verificado en SUNAT');
+        }
       } else {
         throw new Error('No se encontraron datos para este RUC');
       }
@@ -193,6 +216,9 @@ export function ClientFormModal({ isOpen, onClose, onSuccess, editingClient }: C
                   SUNAT
                 </button>
               </div>
+              {sunat?.ruc === newClient.tax_id
+                ? <p className="text-xs text-emerald-700 mt-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Verificado en SUNAT{sunat.status ? ` · ${sunat.status}` : ''}</p>
+                : (!editingClient?.id || newClient.tax_id !== (editingClient.tax_id || '')) && <p className="text-xs text-amber-700 mt-1">Consulte SUNAT para verificar el RUC antes de guardar.</p>}
             </div>
 
             <div className="md:col-span-2">

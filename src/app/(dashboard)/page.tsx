@@ -1,5 +1,6 @@
 "use client"
 
+import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { 
@@ -19,6 +20,7 @@ const STATUS_COLORS: Record<string, string> = {
   'ESPERANDO_AUTORIZACION': '#f59e0b',
   'RETORNO': '#6366f1',
   'LIQUIDADO': '#10b981',
+  'CERRADO': '#10b981',
   'ENTREGADO': '#10b981'
 }
 
@@ -97,7 +99,7 @@ export default function DashboardEjecutivo() {
       }
 
       // Status Chart
-      const statusLabel = d.status.replace('_', ' ')
+      const statusLabel = dispatchStatusLabel(d.status)
       statusCounts[statusLabel] = (statusCounts[statusLabel] || 0) + 1
 
       // Timeline Chart (Group by day)
@@ -117,7 +119,7 @@ export default function DashboardEjecutivo() {
     const statusChartData = Object.keys(statusCounts).map(key => ({
       name: key,
       value: statusCounts[key],
-      color: STATUS_COLORS[key.replace(' ', '_')] || '#94a3b8'
+      color: STATUS_COLORS[key] || STATUS_COLORS[key.replace(/ /g, '_')] || '#94a3b8'
     }))
 
     const timelineChartData = Object.keys(timelineCounts).reverse().map(key => ({

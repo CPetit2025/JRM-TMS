@@ -1,4 +1,5 @@
 "use client"
+import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useState, useEffect, useMemo } from 'react'
 import { Truck, MapPin, Camera, CheckCircle2, Clock, Navigation2, FileText, Upload, Loader2, AlertCircle, Navigation } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -351,7 +352,7 @@ export default function RutaActivaPage() {
             'bg-blue-500/20 text-blue-300 border-blue-400'
           }`}
         >
-          {dispatch.status.replace('_', ' ')}
+          {dispatchStatusLabel(dispatch.status)}
         </div>
       </div>
 
