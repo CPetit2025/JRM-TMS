@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { AlertTriangle, Banknote, Bot, CalendarClock, Camera, CheckCircle2, ChevronRight, ClipboardCheck, DollarSign, History, Loader2, MapPin, RefreshCw, ShieldCheck, Truck, Wrench } from 'lucide-react'
+import { AlertTriangle, Banknote, Bot, CalendarClock, Camera, CheckCircle2, ChevronRight, ClipboardCheck, DollarSign, Loader2, MapPin, RefreshCw, ShieldCheck, Truck, Wrench } from 'lucide-react'
 import { useActiveTrip } from '@/contexts/ActiveTripContext'
 
 function greeting() {
@@ -23,7 +23,7 @@ export default function OperationalHome() {
     ['/app/checklist', 'Checklist', ClipboardCheck], ['/app/ruta', 'Evidencia', Camera],
     ['/app/gastos', 'Gasto', DollarSign], ['/app/fallas', 'Incidencia', Wrench],
   ] as const : [
-    ['/app/viajes', 'Mis viajes', Truck], ['/app/actividades', 'Actividad', History],
+    ['/app/viajes', 'Mis viajes', Truck], ['/app/anticipos', 'Anticipo', Banknote],
     ['/app/fallas', 'Reportar falla', Wrench], ['/app/perfil', 'Mi expediente', ShieldCheck],
   ] as const
 

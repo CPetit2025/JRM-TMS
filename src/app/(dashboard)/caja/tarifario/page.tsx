@@ -6,10 +6,10 @@ import { Calculator, Loader2, Pencil, Plus, Save, Settings2, Tags } from 'lucide
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Modal } from '@/components/ui/modal'
-import { errorMessage, money, rpcOk, type Row } from '@/lib/caja'
+import { CHARGE_TO, errorMessage, loadAdvanceReasons, money, rpcOk, type AdvanceReason, type Row } from '@/lib/caja'
 
-// Tarifario y reglas (Caja C3): viáticos por ruta (presupuesto del viaje), categorías de gasto
-// (tope, comprobante obligatorio, cuenta contable) y parámetros de caja (solo Administrador).
+// Tarifario y reglas (Caja C3/C5): viáticos por ruta (presupuesto del viaje), motivos de anticipo (quién aprueba,
+// tope, evidencia y plazo de rendición), categorías de gasto (tope, comprobante, cuenta contable) y parámetros de caja.
 
 const supabase = createClient()
 const LEDGER: Record<string, string> = { OPERACION: 'Operación', COMBUSTIBLE: 'Combustible', MANTENIMIENTO: 'Mantenimiento', NEUMATICOS: 'Neumáticos' }
@@ -19,7 +19,7 @@ export default function TarifarioPage() {
   const { canWrite, role } = usePermissions()
   const canEdit = canWrite('caja-tarifario')
   const isAdmin = role === 'admin'
-  const [tab, setTab] = useState<'tarifas' | 'categorias' | 'parametros'>('tarifas')
+  const [tab, setTab] = useState<'tarifas' | 'motivos' | 'categorias' | 'parametros'>('tarifas')
   return (
     <div className="p-6 space-y-5">
       <div>
@@ -27,11 +27,12 @@ export default function TarifarioPage() {
         <p className="text-sm text-slate-500">Viáticos por ruta para presupuestar anticipos, topes por categoría y parámetros de control. {!canEdit && 'Solo lectura: requiere el permiso Tarifario de caja.'}</p>
       </div>
       <div className="flex bg-white border rounded-xl overflow-hidden text-sm font-semibold w-fit">
-        {([['tarifas', 'Tarifas por ruta'], ['categorias', 'Categorías de gasto'], ['parametros', 'Parámetros']] as const).map(([k, l]) => (
+        {([['tarifas', 'Tarifas por ruta'], ['motivos', 'Motivos de anticipo'], ['categorias', 'Categorías de gasto'], ['parametros', 'Parámetros']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className={`px-4 py-2.5 ${tab === k ? 'bg-[#002855] text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>
         ))}
       </div>
       {tab === 'tarifas' && <Rates canEdit={canEdit} />}
+      {tab === 'motivos' && <Reasons canEdit={canEdit} />}
       {tab === 'categorias' && <Categories canEdit={canEdit} />}
       {tab === 'parametros' && <Params isAdmin={isAdmin} />}
     </div>
@@ -231,5 +232,96 @@ function Params({ isAdmin }: { isAdmin: boolean }) {
       </div>
       {isAdmin && <button disabled={busy} onClick={save} className="px-4 py-2 bg-[#002855] text-white rounded-lg font-semibold flex items-center gap-2 disabled:opacity-50"><Save className="w-4 h-4" />Guardar parámetros</button>}
     </div>
+  )
+}
+
+// Motivos de anticipo: reglas por evento (viáticos, neumático, mecánica, trámites, otros)
+function Reasons({ canEdit }: { canEdit: boolean }) {
+  const [rows, setRows] = useState<AdvanceReason[]>([])
+  const [loading, setLoading] = useState(true)
+  const [edit, setEdit] = useState<AdvanceReason | null>(null)
+  const load = useCallback(async () => { setLoading(true); setRows(await loadAdvanceReasons(supabase, false)); setLoading(false) }, [])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { void load() }, [load])
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-slate-500">Cada motivo define si exige ruta, a qué se carga el costo, quién aprueba y en cuánto tiempo se rinde. Los montos mayores al tope pasan a aprobación del Jefe de Distribución.</p>
+      <div className="bg-white border rounded-xl overflow-auto">
+        {loading ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin" /></div> : (
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-xs text-slate-500"><tr>
+              <th className="p-3 text-left">Motivo</th><th className="p-3 text-left">Requiere ruta</th><th className="p-3 text-left">Cargo</th><th className="p-3 text-left">Aprueba</th>
+              <th className="p-3 text-right">Tope</th><th className="p-3 text-left">Rendir en</th><th className="p-3 text-left">Evidencia</th><th className="p-3 text-left">Emergencia</th><th className="p-3 text-left">Estado</th><th className="p-3" />
+            </tr></thead>
+            <tbody className="divide-y">
+              {rows.map(r => (
+                <tr key={r.code} className={r.is_active ? '' : 'opacity-50'}>
+                  <td className="p-3"><div className="font-semibold">{r.label}</div><div className="text-xs text-slate-500">{r.description}</div></td>
+                  <td className="p-3">{r.requires_trip ? 'Sí' : 'No'}</td>
+                  <td className="p-3">{CHARGE_TO[r.charge_to]}</td>
+                  <td className="p-3">{r.approval_by === 'JEFE' ? 'Jefe de Distribución' : 'Caja'}</td>
+                  <td className="p-3 text-right">{r.max_amount ? money(r.max_amount, 0) : '—'}</td>
+                  <td className="p-3">{r.settlement_due_hours ? `${r.settlement_due_hours} h` : 'Con el viaje'}</td>
+                  <td className="p-3">{r.evidence_required ? 'Obligatoria' : 'Opcional'}</td>
+                  <td className="p-3">{r.is_emergency ? 'Sí' : 'No'}</td>
+                  <td className="p-3">{r.is_active ? 'Activo' : 'Inactivo'}</td>
+                  <td className="p-3 text-right">{canEdit && <button onClick={() => setEdit({ ...r })} className="p-1.5 hover:bg-slate-100 rounded"><Pencil className="w-4 h-4" /></button>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {edit && <ReasonForm reason={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); void load() }} />}
+    </div>
+  )
+}
+
+function ReasonForm({ reason, onClose, onDone }: { reason: AdvanceReason; onClose: () => void; onDone: () => void }) {
+  const [f, setF] = useState({ label: reason.label, description: reason.description || '', approval_by: reason.approval_by,
+    max_amount: reason.max_amount == null ? '' : String(reason.max_amount), settlement_due_hours: reason.settlement_due_hours == null ? '' : String(reason.settlement_due_hours),
+    evidence_required: reason.evidence_required, is_emergency: reason.is_emergency, is_active: reason.is_active })
+  const [busy, setBusy] = useState(false)
+  const save = async () => {
+    setBusy(true)
+    try {
+      const { error } = await supabase.from('advance_reasons').update({
+        label: f.label.trim(), description: f.description.trim() || null, approval_by: f.approval_by,
+        max_amount: f.max_amount === '' ? null : Number(f.max_amount),
+        settlement_due_hours: reason.requires_trip || f.settlement_due_hours === '' ? null : Number(f.settlement_due_hours),
+        evidence_required: f.evidence_required, is_emergency: f.is_emergency, is_active: f.is_active,
+      }).eq('code', reason.code)
+      if (error) throw error
+      toast.success('Motivo actualizado'); onDone()
+    } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
+  }
+  return (
+    <Modal isOpen onClose={onClose} title={`Motivo: ${reason.label}`}>
+      <div className="space-y-3 text-sm">
+        <label className="block"><span className="text-xs font-bold text-slate-600">Nombre</span><input value={f.label} onChange={e => setF({ ...f, label: e.target.value })} className="caja-input" /></label>
+        <label className="block"><span className="text-xs font-bold text-slate-600">Descripción</span><input value={f.description} onChange={e => setF({ ...f, description: e.target.value })} className="caja-input" /></label>
+        <div className="grid grid-cols-3 gap-3">
+          <label className="block"><span className="text-xs font-bold text-slate-600">Aprueba</span>
+            <select value={f.approval_by} onChange={e => setF({ ...f, approval_by: e.target.value as 'CAJA' | 'JEFE' })} className="caja-input">
+              <option value="CAJA">Caja</option><option value="JEFE">Jefe de Distribución</option></select></label>
+          <label className="block"><span className="text-xs font-bold text-slate-600">Tope sin aprobación (S/)</span>
+            <input type="number" min="0" value={f.max_amount} onChange={e => setF({ ...f, max_amount: e.target.value })} placeholder="Sin tope" className="caja-input" /></label>
+          <label className="block"><span className="text-xs font-bold text-slate-600">Rendir en (horas)</span>
+            <input type="number" min="1" disabled={reason.requires_trip} value={f.settlement_due_hours} onChange={e => setF({ ...f, settlement_due_hours: e.target.value })}
+              placeholder={reason.requires_trip ? 'Con el viaje' : 'Por defecto'} className="caja-input" /></label>
+        </div>
+        <div className="flex flex-wrap gap-4">
+          {([['evidence_required', 'Evidencia obligatoria'], ['is_emergency', 'Emergencia (pasa con rendiciones vencidas)'], ['is_active', 'Activo']] as const).map(([k, l]) => (
+            <label key={k} className="flex items-center gap-2"><input type="checkbox" checked={f[k]} onChange={e => setF({ ...f, [k]: e.target.checked })} />{l}</label>
+          ))}
+        </div>
+        <p className="text-xs text-slate-500">Cargo del costo: {CHARGE_TO[reason.charge_to]}{reason.creates_failure ? ' · reporta la falla a Mantenimiento' : ''} (fijos por motivo).</p>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-2 rounded-lg hover:bg-slate-100">Cancelar</button>
+          <button disabled={busy || !f.label.trim()} onClick={save} className="px-4 py-2 bg-[#002855] text-white rounded-lg font-semibold disabled:opacity-50 flex items-center gap-2">
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}Guardar</button>
+        </div>
+      </div>
+    </Modal>
   )
 }

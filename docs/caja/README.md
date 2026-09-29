@@ -10,6 +10,7 @@ La caja deja de ser un registro de gastos y controla el dinero de cada viaje de 
 | C2 · Cajas, anticipos, cuenta corriente y liquidación | `20260929100000_caja_c2_cajas_anticipos.sql` | `caja_c2_cajas_anticipos.test.sql` — 14/14 | [02-c2-cajas-anticipos.md](02-c2-cajas-anticipos.md) |
 | C3 · Tarifario, reglas, combustible y reportes | `20260929110000_caja_c3_tarifario_combustible_reportes.sql` | `caja_c3_tarifario_combustible.test.sql` — 7/7 | [03-c3-tarifario-combustible-reportes.md](03-c3-tarifario-combustible-reportes.md) |
 | C4 · Anticipos solicitados desde la app | `20260929130000_caja_c4_anticipos_desde_app.sql` | En `caja_c2_...` (T13–T14) | [04-c4-anticipos-desde-app.md](04-c4-anticipos-desde-app.md) |
+| C5 · Anticipos por motivo (con o sin viaje) | `20260929160000_caja_c5_anticipos_por_motivo.sql` | `caja_c5_anticipos_motivo.test.sql` (9) | [05-c5-anticipos-por-motivo.md](05-c5-anticipos-por-motivo.md) |
 
 ## Pantallas
 

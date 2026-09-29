@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, Banknote, Calculator, Loader2, Plus, RefreshCw, Search, Send, XCircle } from 'lucide-react'
+import { AlertTriangle, Banknote, Calculator, CheckCircle2, FileCheck2, ImageIcon, Loader2, Plus, RefreshCw, Search, Send, Wrench, XCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Modal } from '@/components/ui/modal'
-import { PAYMENT_METHODS, errorMessage, fmtDate, money, rpcOk, type Row } from '@/lib/caja'
+import { CHARGE_TO, PAYMENT_METHODS, errorMessage, fmtDate, loadAdvanceReasons, money, receiptUrl, rpcOk, type AdvanceReason, type Row } from '@/lib/caja'
 
-// Anticipos por viaje (Caja C2/C3): presupuesto según el tarifario → solicitud → entrega desde una caja.
-// Un conductor con rendiciones vencidas no recibe anticipos nuevos salvo autorización del Administrador.
+// Anticipos (Caja C2–C5): viáticos del viaje (presupuesto según el tarifario) o anticipos por motivo sin viaje
+// (neumático, mecánica, trámites…): solicitud → aprobación del Jefe cuando el motivo lo exige → entrega desde
+// una caja → rendición → liquidación (la del viaje, o la propia del anticipo sin viaje).
+// Un conductor con rendiciones vencidas no recibe anticipos nuevos salvo emergencias aprobadas o autorización del Administrador.
 
 const supabase = createClient()
 const BUDGET_KEYS = [['COMBUSTIBLE', 'Combustible'], ['PEAJE', 'Peajes'], ['ALIMENTACION', 'Alimentación'], ['HOSPEDAJE', 'Hospedaje'], ['OTROS', 'Otros']] as const
@@ -20,61 +22,79 @@ const STATUS: Record<string, string> = {
 export default function AnticiposPage() {
   const { canWrite, role } = usePermissions()
   const canManage = canWrite('caja-anticipos')
+  const canApprove = canWrite('caja-aprobacion')
+  const canSettle = canWrite('caja-liquidaciones')
   const [rows, setRows] = useState<Row[]>([])
-  const [people, setPeople] = useState<Record<string, string>>({})
+  const [reasons, setReasons] = useState<AdvanceReason[]>([])
   const [accounts, setAccounts] = useState<Record<string, Row>>({})
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState('ABIERTOS')
+  const [reason, setReason] = useState('')
   const [q, setQ] = useState('')
   const [creating, setCreating] = useState(false)
   const [delivering, setDelivering] = useState<Row | null>(null)
+  const [settling, setSettling] = useState<Row | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase.from('trip_advances').select('*, dispatch:dispatches(dispatch_number, vehicle_plate, status)')
-      .order('requested_at', { ascending: false }).limit(500)
+    const { data, error } = await supabase.from('vw_caja_advances').select('*').order('requested_at', { ascending: false }).limit(500)
     if (error) toast.error(error.message)
     setRows(data || [])
     const ids = [...new Set((data || []).map(r => r.driver_id))]
     if (ids.length) {
-      const [{ data: ppl }, { data: acc }] = await Promise.all([
-        supabase.from('vw_caja_people').select('id, full_name').in('id', ids),
-        supabase.from('vw_driver_cash_account').select('driver_id, balance, overdue_trips').in('driver_id', ids),
-      ])
-      setPeople(Object.fromEntries((ppl || []).map(p => [p.id, p.full_name])))
+      const { data: acc } = await supabase.from('vw_driver_cash_account').select('driver_id, balance, overdue_trips, overdue_advances').in('driver_id', ids)
       setAccounts(Object.fromEntries((acc || []).map(a => [a.driver_id, a])))
     }
     setLoading(false)
   }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { void load() }, [load])
+  useEffect(() => { void load(); void loadAdvanceReasons(supabase, false).then(setReasons) }, [load])
 
+  const overdueOf = (driverId: string) => {
+    const a = accounts[driverId]
+    return a ? Number(a.overdue_trips || 0) + Number(a.overdue_advances || 0) : 0
+  }
   const visible = useMemo(() => rows.filter(r => {
     if (status === 'ABIERTOS' && !['SOLICITADO', 'ENTREGADO'].includes(r.status)) return false
     if (status === 'APP' && !(r.source === 'APP' && r.status === 'SOLICITADO')) return false
-    if (!['ABIERTOS', 'APP', 'TODOS'].includes(status) && r.status !== status) return false
+    if (status === 'POR_APROBAR' && !r.awaiting_approval) return false
+    if (status === 'POR_LIQUIDAR' && !(r.dispatch_id === null && r.status === 'ENTREGADO')) return false
+    if (!['ABIERTOS', 'APP', 'POR_APROBAR', 'POR_LIQUIDAR', 'TODOS'].includes(status) && r.status !== status) return false
+    if (reason && r.reason_code !== reason) return false
     const s = q.trim().toLowerCase()
-    return !s || [r.code, r.dispatch?.dispatch_number, r.dispatch?.vehicle_plate, people[r.driver_id]].some(v => String(v || '').toLowerCase().includes(s))
-  }), [rows, status, q, people])
+    return !s || [r.code, r.dispatch_number, r.vehicle_plate, r.driver_name, r.reason_label].some(v => String(v || '').toLowerCase().includes(s))
+  }), [rows, status, reason, q])
   const appPending = rows.filter(r => r.source === 'APP' && r.status === 'SOLICITADO').length
+  const toApprove = rows.filter(r => r.awaiting_approval).length
+  const toSettle = rows.filter(r => r.dispatch_id === null && r.status === 'ENTREGADO').length
   const totals = useMemo(() => ({
     requested: rows.filter(r => r.status === 'SOLICITADO').reduce((s, r) => s + Number(r.amount), 0),
     delivered: rows.filter(r => r.status === 'ENTREGADO').reduce((s, r) => s + Number(r.amount), 0),
   }), [rows])
 
   const cancel = async (r: Row) => {
-    const reason = prompt(`Motivo de anulación del anticipo ${r.code}:`)
-    if (!reason?.trim()) return
-    try { await rpcOk(supabase, 'cancel_trip_advance', { p_advance_id: r.id, p_reason: reason }); toast.success('Anticipo anulado'); void load() }
+    const why = prompt(`Motivo de anulación del anticipo ${r.code}:`)
+    if (!why?.trim()) return
+    try { await rpcOk(supabase, 'cancel_trip_advance', { p_advance_id: r.id, p_reason: why }); toast.success('Anticipo anulado'); void load() }
     catch (e) { toast.error(errorMessage(e)) }
+  }
+  const review = async (r: Row, decision: 'APROBAR' | 'RECHAZAR') => {
+    const comment = decision === 'RECHAZAR' ? prompt(`Motivo del rechazo de ${r.code}:`) : null
+    if (decision === 'RECHAZAR' && !comment?.trim()) return
+    try { await rpcOk(supabase, 'review_advance_request', { p_advance_id: r.id, p_decision: decision, p_comment: comment }); toast.success(decision === 'APROBAR' ? 'Anticipo aprobado: Caja puede entregarlo' : 'Solicitud rechazada'); void load() }
+    catch (e) { toast.error(errorMessage(e)) }
+  }
+  const openEvidence = async (r: Row) => {
+    const url = await receiptUrl(supabase, r.evidence_url)
+    if (url) window.open(url, '_blank', 'noopener'); else toast.error('No se pudo abrir la evidencia')
   }
 
   return (
     <div className="p-6 space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><Banknote className="w-6 h-6" />Anticipos de viaje</h1>
-          <p className="text-sm text-slate-500">Dinero entregado al conductor a rendir. Se presupuesta con el tarifario de viáticos y se rinde en la liquidación del viaje.</p>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><Banknote className="w-6 h-6" />Anticipos</h1>
+          <p className="text-sm text-slate-500">Dinero entregado al conductor a rendir: viáticos del viaje o anticipos por la unidad u otro motivo (neumático, mecánica, trámites), con sus propias reglas de aprobación y rendición.</p>
         </div>
         <div className="flex gap-2">
           <button onClick={load} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button>
@@ -82,22 +102,27 @@ export default function AnticiposPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Stat label="Solicitados por entregar" value={money(totals.requested)} />
         <Stat label="Entregados por rendir" value={money(totals.delivered)} />
-        <Stat label="Conductores con rendición vencida" value={String(Object.values(accounts).filter(a => a.overdue_trips > 0).length)} tone="red" />
+        <Stat label="Por aprobar (Jefe)" value={String(toApprove)} tone="red" />
         <Stat label="Pedidos del app por atender" value={String(appPending)} tone="red" />
+        <Stat label="Conductores con rendición vencida" value={String(Object.keys(accounts).filter(id => overdueOf(id) > 0).length)} tone="red" />
       </div>
 
       <div className="flex flex-wrap gap-2 items-center">
-        {['ABIERTOS', 'APP', 'SOLICITADO', 'ENTREGADO', 'RENDIDO', 'ANULADO', 'TODOS'].map(s => (
+        {['ABIERTOS', 'POR_APROBAR', 'APP', 'POR_LIQUIDAR', 'SOLICITADO', 'ENTREGADO', 'RENDIDO', 'ANULADO', 'TODOS'].map(s => (
           <button key={s} onClick={() => setStatus(s)} className={`px-3 py-1.5 rounded-full text-sm border ${status === s ? 'bg-[#002855] text-white' : 'bg-white'}`}>
-            {s === 'APP' ? `Pedidos del app (${appPending})` : s.charAt(0) + s.slice(1).toLowerCase()}
+            {s === 'APP' ? `Pedidos del app (${appPending})` : s === 'POR_APROBAR' ? `Por aprobar (${toApprove})` : s === 'POR_LIQUIDAR' ? `Sin viaje por liquidar (${toSettle})` : s.charAt(0) + s.slice(1).toLowerCase()}
           </button>
         ))}
+        <select value={reason} onChange={e => setReason(e.target.value)} className="border rounded-lg px-2 py-2 text-sm">
+          <option value="">Todos los motivos</option>
+          {reasons.map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
+        </select>
         <div className="relative ml-auto">
           <Search className="w-4 h-4 absolute left-2 top-2.5 text-slate-400" />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Código, despacho, placa o conductor" className="border rounded-lg pl-7 pr-2 py-2 text-sm w-72" />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Código, despacho, placa, conductor o motivo" className="border rounded-lg pl-7 pr-2 py-2 text-sm w-72" />
         </div>
       </div>
 
@@ -105,31 +130,52 @@ export default function AnticiposPage() {
         {loading ? <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div> : (
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500"><tr>
-              <th className="p-3 text-left">Código</th><th className="p-3 text-left">Despacho</th><th className="p-3 text-left">Conductor</th>
-              <th className="p-3 text-left">Presupuesto</th><th className="p-3 text-right">Monto</th><th className="p-3 text-left">Estado</th><th className="p-3 text-left">Entrega</th><th className="p-3" />
+              <th className="p-3 text-left">Código</th><th className="p-3 text-left">Motivo</th><th className="p-3 text-left">Viaje / unidad</th><th className="p-3 text-left">Conductor</th>
+              <th className="p-3 text-right">Monto</th><th className="p-3 text-left">Estado</th><th className="p-3 text-left">Entrega / rendición</th><th className="p-3" />
             </tr></thead>
             <tbody className="divide-y">
               {visible.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-slate-400">Sin anticipos</td></tr>}
               {visible.map(r => {
-                const acc = accounts[r.driver_id]
+                const overdue = overdueOf(r.driver_id)
                 return (
-                  <tr key={r.id}>
+                  <tr key={r.id} className={r.is_emergency && r.status === 'SOLICITADO' ? 'bg-red-50/40' : ''}>
                     <td className="p-3 font-semibold">
                       {r.code}
                       {r.source === 'APP' && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-violet-100 text-violet-800 text-[10px] font-bold align-middle">App conductor</span>}
                       <div className="text-xs text-slate-500 font-normal">{fmtDate(r.requested_at, true)}</div>
                       {r.reason && <div className="text-xs text-slate-700 font-normal max-w-56">“{r.reason}”</div>}
                     </td>
-                    <td className="p-3">{r.dispatch?.dispatch_number}<div className="text-xs text-slate-500">{r.dispatch?.vehicle_plate} · {r.dispatch?.status}</div></td>
-                    <td className="p-3">{people[r.driver_id] || '—'}{acc?.overdue_trips > 0 && <div className="text-xs text-red-700 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{acc.overdue_trips} rendición(es) vencida(s)</div>}</td>
-                    <td className="p-3 text-xs text-slate-600">{Object.entries(r.breakdown || {}).filter(([, v]) => Number(v) > 0).map(([k, v]) => `${k.charAt(0) + k.slice(1).toLowerCase()} ${money(v, 0)}`).join(' · ') || '—'}</td>
+                    <td className="p-3 text-xs">
+                      <div className="font-semibold text-slate-800">{r.reason_label}</div>
+                      <div className="text-slate-500">Cargo: {CHARGE_TO[r.charge_to] || r.charge_to}</div>
+                      {r.is_emergency && <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-bold">Emergencia</span>}
+                      {r.charge_to === 'VIAJE' && Object.entries(r.breakdown || {}).filter(([, v]) => Number(v) > 0).length > 0 && (
+                        <div className="text-slate-600">{Object.entries(r.breakdown || {}).filter(([, v]) => Number(v) > 0).map(([k, v]) => `${k.charAt(0) + k.slice(1).toLowerCase()} ${money(v, 0)}`).join(' · ')}</div>
+                      )}
+                      {r.evidence_url && <button onClick={() => openEvidence(r)} className="mt-0.5 text-blue-700 flex items-center gap-1"><ImageIcon className="w-3 h-3" />Ver evidencia</button>}
+                      {r.maintenance_request_id && <div className="text-slate-500 flex items-center gap-1"><Wrench className="w-3 h-3" />Falla reportada a Mantenimiento</div>}
+                    </td>
+                    <td className="p-3">{r.dispatch_id ? <>{r.dispatch_number}<div className="text-xs text-slate-500">{r.vehicle_plate} · {r.dispatch_status}</div></>
+                      : <>{r.vehicle_plate || '—'}<div className="text-xs text-slate-500">Sin viaje{r.dispatch_number ? ` (en ruta ${r.dispatch_number})` : ''}</div></>}</td>
+                    <td className="p-3">{r.driver_name || '—'}{overdue > 0 && <div className="text-xs text-red-700 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{overdue} rendición(es) vencida(s)</div>}</td>
                     <td className="p-3 text-right font-bold">{money(r.amount)}</td>
-                    <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs font-semibold ${STATUS[r.status]}`}>{r.status}</span></td>
+                    <td className="p-3">
+                      <span className={`px-2 py-0.5 rounded text-xs font-semibold ${r.awaiting_approval ? 'bg-orange-100 text-orange-800' : STATUS[r.status]}`}>{r.awaiting_approval ? 'POR APROBAR' : r.status}</span>
+                      {r.approved_at && <div className="text-[11px] text-emerald-700 mt-0.5">Aprobado {fmtDate(r.approved_at, true)}</div>}
+                      {r.overdue_flag && r.status === 'SOLICITADO' && <div className="text-[11px] text-red-700 mt-0.5">Con vencidos: {r.overdue_flag}</div>}
+                    </td>
                     <td className="p-3 text-xs">{r.delivered_at ? <>{fmtDate(r.delivered_at, true)}<div className="text-slate-500">{r.payment_method}{r.reference ? ` · ${r.reference}` : ''}</div></> : '—'}
+                      {!r.dispatch_id && r.status === 'ENTREGADO' && <div className={r.overdue ? 'text-red-700 font-semibold' : 'text-slate-500'}>Rendido {money(r.rendered)} · vence {fmtDate(r.due_at, true)}</div>}
+                      {r.settlement_code && <div className="text-slate-500">Liquidación {r.settlement_code}</div>}
                       {r.override_reason && <div className="text-red-700">Autorizado: {r.override_reason}</div>}
                       {r.status === 'ANULADO' && r.cancel_reason && <div className="text-slate-500">Anulado: {r.cancel_reason}</div>}</td>
                     <td className="p-3 whitespace-nowrap text-right">
-                      {canManage && r.status === 'SOLICITADO' && <button onClick={() => setDelivering(r)} className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg mr-1 inline-flex items-center gap-1"><Send className="w-3 h-3" />Entregar</button>}
+                      {canApprove && r.awaiting_approval && <>
+                        <button onClick={() => review(r, 'APROBAR')} className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg mr-1 inline-flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Aprobar</button>
+                        <button onClick={() => review(r, 'RECHAZAR')} className="text-xs font-semibold text-red-700 bg-red-50 px-3 py-1.5 rounded-lg mr-1">Rechazar</button>
+                      </>}
+                      {canManage && r.status === 'SOLICITADO' && !r.awaiting_approval && <button onClick={() => setDelivering(r)} className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg mr-1 inline-flex items-center gap-1"><Send className="w-3 h-3" />Entregar</button>}
+                      {canSettle && !r.dispatch_id && r.status === 'ENTREGADO' && <button onClick={() => setSettling(r)} className="text-xs font-semibold text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg mr-1 inline-flex items-center gap-1"><FileCheck2 className="w-3 h-3" />Liquidar</button>}
                       {canManage && (r.status === 'SOLICITADO' || (r.status === 'ENTREGADO' && role === 'admin')) && <button onClick={() => cancel(r)} title="Anular" className="p-1.5 hover:bg-slate-100 rounded"><XCircle className="w-4 h-4 text-red-600" /></button>}
                     </td>
                   </tr>
@@ -140,14 +186,17 @@ export default function AnticiposPage() {
         )}
       </div>
 
-      {creating && <NewAdvance onClose={() => setCreating(false)} onDone={() => { setCreating(false); void load() }} />}
-      {delivering && <Deliver advance={delivering} driverName={people[delivering.driver_id]} overdue={accounts[delivering.driver_id]?.overdue_trips > 0} isAdmin={role === 'admin'}
+      {creating && <NewAdvance reasons={reasons} onClose={() => setCreating(false)} onDone={() => { setCreating(false); void load() }} />}
+      {delivering && <Deliver advance={delivering} driverName={delivering.driver_name}
+        overdue={overdueOf(delivering.driver_id) > 0 && !(delivering.is_emergency && delivering.approved_at)} isAdmin={role === 'admin'}
         onClose={() => setDelivering(null)} onDone={() => { setDelivering(null); void load() }} />}
+      {settling && <SettleAdvance advance={settling} onClose={() => setSettling(null)} onDone={() => { setSettling(null); void load() }} />}
     </div>
   )
 }
 
-function NewAdvance({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function NewAdvance({ reasons, onClose, onDone }: { reasons: AdvanceReason[]; onClose: () => void; onDone: () => void }) {
+  const [mode, setMode] = useState<'VIAJE' | 'MOTIVO'>('VIAJE')
   const [trips, setTrips] = useState<Row[]>([])
   const [rates, setRates] = useState<Row[]>([])
   const [tripId, setTripId] = useState('')
@@ -190,7 +239,13 @@ function NewAdvance({ onClose, onDone }: { onClose: () => void; onDone: () => vo
   }
 
   return (
-    <Modal isOpen onClose={onClose} title="Nuevo anticipo de viaje" maxWidth="max-w-2xl">
+    <Modal isOpen onClose={onClose} title="Nuevo anticipo" maxWidth="max-w-2xl">
+      <div className="flex gap-2 mb-4 text-sm">
+        {([['VIAJE', 'Viáticos de un viaje'], ['MOTIVO', 'Por la unidad u otro motivo (sin viaje)']] as const).map(([k, l]) => (
+          <button key={k} onClick={() => setMode(k)} className={`px-3 py-1.5 rounded-full border ${mode === k ? 'bg-[#002855] text-white' : 'bg-white'}`}>{l}</button>
+        ))}
+      </div>
+      {mode === 'MOTIVO' ? <UnitAdvanceBody reasons={reasons.filter(r => r.is_active && !r.requires_trip)} onClose={onClose} onDone={onDone} /> :
       <div className="space-y-4 text-sm">
         <label className="block"><span className="text-xs font-bold text-slate-600">Despacho (con conductor asignado)</span>
           <select value={tripId} onChange={e => { setTripId(e.target.value); setCalc(null); setRateId('') }} className="caja-input">
@@ -225,7 +280,123 @@ function NewAdvance({ onClose, onDone }: { onClose: () => void; onDone: () => vo
             {busy && <Loader2 className="w-4 h-4 animate-spin" />}Solicitar anticipo
           </button>
         </div>
+      </div>}
+    </Modal>
+  )
+}
+
+function UnitAdvanceBody({ reasons, onClose, onDone }: { reasons: AdvanceReason[]; onClose: () => void; onDone: () => void }) {
+  const [drivers, setDrivers] = useState<Row[]>([])
+  const [units, setUnits] = useState<Row[]>([])
+  const [form, setForm] = useState({ driver_id: '', reason_code: '', plate: '', amount: '', reason: '' })
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    supabase.from('vw_caja_people').select('id, full_name').eq('kind', 'CONDUCTOR').order('full_name').then(r => setDrivers(r.data || []))
+    supabase.from('vw_caja_units').select('plate').order('plate').then(r => setUnits(r.data || []))
+  }, [])
+  const r = reasons.find(x => x.code === form.reason_code)
+  const submit = async () => {
+    setBusy(true)
+    try {
+      const res = await rpcOk<Row>(supabase, 'request_unit_advance', { p_driver_id: form.driver_id, p_reason_code: form.reason_code,
+        p_amount: Number(form.amount), p_reason: form.reason, p_vehicle_plate: r?.charge_to === 'UNIDAD' ? form.plate : null })
+      toast.success(`Anticipo ${res.code} registrado${r?.approval_by === 'JEFE' ? ': falta la aprobación del Jefe' : ''}`)
+      onDone()
+    } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
+  }
+  return (
+    <div className="space-y-4 text-sm">
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block"><span className="text-xs font-bold text-slate-600">Conductor</span>
+          <select value={form.driver_id} onChange={e => setForm({ ...form, driver_id: e.target.value })} className="caja-input">
+            <option value="">Seleccione…</option>{drivers.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
+          </select></label>
+        <label className="block"><span className="text-xs font-bold text-slate-600">Motivo</span>
+          <select value={form.reason_code} onChange={e => setForm({ ...form, reason_code: e.target.value })} className="caja-input">
+            <option value="">Seleccione…</option>{reasons.map(x => <option key={x.code} value={x.code}>{x.label}</option>)}
+          </select></label>
       </div>
+      {r && <p className="text-xs text-slate-500">Cargo: {CHARGE_TO[r.charge_to]} · {r.approval_by === 'JEFE' ? 'aprueba el Jefe de Distribución' : 'lo atiende Caja'}
+        {r.max_amount ? ` · hasta ${money(r.max_amount)} sin aprobación extra` : ''}{r.settlement_due_hours ? ` · rendir en ${r.settlement_due_hours} h` : ''}</p>}
+      <div className="grid grid-cols-2 gap-3">
+        {r?.charge_to === 'UNIDAD' && <label className="block"><span className="text-xs font-bold text-slate-600">Unidad</span>
+          <select value={form.plate} onChange={e => setForm({ ...form, plate: e.target.value })} className="caja-input">
+            <option value="">Seleccione…</option>{units.map(u => <option key={u.plate} value={u.plate}>{u.plate}</option>)}
+          </select></label>}
+        <label className="block"><span className="text-xs font-bold text-slate-600">Monto (S/)</span>
+          <input type="number" min="0" step="0.01" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="caja-input font-bold" /></label>
+      </div>
+      <label className="block"><span className="text-xs font-bold text-slate-600">Para qué es</span>
+        <input value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} className="caja-input" /></label>
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="px-3 py-2 rounded-lg hover:bg-slate-100">Cancelar</button>
+        <button disabled={busy || !form.driver_id || !r || !(Number(form.amount) > 0) || !form.reason.trim() || (r.charge_to === 'UNIDAD' && !form.plate)} onClick={submit}
+          className="px-4 py-2 bg-[#002855] text-white rounded-lg font-semibold disabled:opacity-50 flex items-center gap-2">{busy && <Loader2 className="w-4 h-4 animate-spin" />}Registrar anticipo</button>
+      </div>
+    </div>
+  )
+}
+
+function SettleAdvance({ advance, onClose, onDone }: { advance: Row; onClose: () => void; onDone: () => void }) {
+  const [preview, setPreview] = useState<Row | null>(null)
+  const [boxes, setBoxes] = useState<Row[]>([])
+  const [form, setForm] = useState({ resolution: '', box_id: '', method: 'EFECTIVO', reference: '', notes: '' })
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    supabase.rpc('preview_advance_settlement', { p_advance_id: advance.id }).then(({ data }) => {
+      setPreview(data || null)
+      if (data?.suggested_resolution) setForm(f => ({ ...f, resolution: data.suggested_resolution }))
+    })
+    supabase.from('vw_cash_box_balances').select('box_id, name, box_type, balance').eq('is_active', true).order('name').then(r => setBoxes(r.data || []))
+  }, [advance.id])
+  const bal = Number(preview?.balance || 0)
+  const needsBox = ['DEVOLUCION', 'REEMBOLSO'].includes(form.resolution)
+  const blocking: string[] = preview?.blocking || []
+  const submit = async () => {
+    setBusy(true)
+    try {
+      await rpcOk(supabase, 'close_advance_settlement', { p_advance_id: advance.id, p_resolution: form.resolution, p_box_id: needsBox ? form.box_id : null,
+        p_payment_method: needsBox ? form.method : null, p_reference: form.reference || null, p_notes: form.notes || null })
+      toast.success('Anticipo liquidado')
+      onDone()
+    } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
+  }
+  return (
+    <Modal isOpen onClose={onClose} title={`Liquidar ${advance.code} · ${advance.reason_label}`}>
+      {!preview ? <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin" /></div> : (
+        <div className="space-y-3 text-sm">
+          <p>{advance.driver_name || '—'}{advance.vehicle_plate ? ` · ${advance.vehicle_plate}` : ''}</p>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="bg-slate-50 rounded-lg p-2"><div className="text-xs text-slate-500">Entregado</div><div className="font-bold">{money(preview.advances_total)}</div></div>
+            <div className="bg-slate-50 rounded-lg p-2"><div className="text-xs text-slate-500">Gastos aprobados</div><div className="font-bold">{money(preview.driver_expenses)}</div></div>
+            <div className="bg-slate-50 rounded-lg p-2"><div className="text-xs text-slate-500">{bal > 0 ? 'Debe devolver' : bal < 0 ? 'Se le reembolsa' : 'Saldo'}</div><div className={`font-bold ${bal > 0 ? 'text-red-700' : bal < 0 ? 'text-blue-700' : ''}`}>{money(Math.abs(bal))}</div></div>
+          </div>
+          {blocking.length > 0 && <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 text-xs">{blocking.map(b => <div key={b}>• {b}</div>)}</div>}
+          {bal !== 0 && (
+            <label className="block"><span className="text-xs font-bold text-slate-600">Resolución</span>
+              <select value={form.resolution} onChange={e => setForm({ ...form, resolution: e.target.value })} className="caja-input">
+                {bal > 0 ? <><option value="DEVOLUCION">Devolución a caja</option><option value="DESCUENTO_PLANILLA">Descuento por planilla</option></> : <option value="REEMBOLSO">Reembolso al conductor</option>}
+              </select></label>
+          )}
+          {needsBox && <div className="grid grid-cols-2 gap-3">
+            <label className="block"><span className="text-xs font-bold text-slate-600">Caja</span>
+              <select value={form.box_id} onChange={e => setForm({ ...form, box_id: e.target.value })} className="caja-input">
+                <option value="">Seleccione…</option>{boxes.map(b => <option key={b.box_id} value={b.box_id}>{b.name} · saldo {money(b.balance)}</option>)}
+              </select></label>
+            <label className="block"><span className="text-xs font-bold text-slate-600">Forma de pago</span>
+              <select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="caja-input">
+                {PAYMENT_METHODS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select></label>
+          </div>}
+          <label className="block"><span className="text-xs font-bold text-slate-600">{form.resolution === 'DESCUENTO_PLANILLA' ? 'Autorización del descuento' : 'Notas'}</span>
+            <input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="caja-input" /></label>
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="px-3 py-2 rounded-lg hover:bg-slate-100">Cancelar</button>
+            <button disabled={busy || blocking.length > 0 || (needsBox && !form.box_id) || (form.resolution === 'DESCUENTO_PLANILLA' && !form.notes.trim())} onClick={submit}
+              className="px-4 py-2 bg-[#002855] text-white rounded-lg font-semibold disabled:opacity-50 flex items-center gap-2">{busy && <Loader2 className="w-4 h-4 animate-spin" />}Cerrar liquidación</button>
+          </div>
+        </div>
+      )}
     </Modal>
   )
 }
@@ -239,6 +410,7 @@ function Deliver({ advance, driverName, overdue, isAdmin, onClose, onDone }: {
   const [trip, setTrip] = useState<Row | null>(null)
   useEffect(() => {
     supabase.from('vw_cash_box_balances').select('box_id, name, box_type, balance, allow_negative').eq('is_active', true).order('name').then(r => setBoxes(r.data || []))
+    if (!advance.dispatch_id) return
     Promise.all([
       supabase.from('trip_budgets').select('total').eq('dispatch_id', advance.dispatch_id).maybeSingle(),
       supabase.from('trip_advances').select('amount, status').eq('dispatch_id', advance.dispatch_id),
@@ -263,7 +435,8 @@ function Deliver({ advance, driverName, overdue, isAdmin, onClose, onDone }: {
   return (
     <Modal isOpen onClose={onClose} title={`Entregar ${advance.code} · ${money(advance.amount)}`}>
       <div className="space-y-3 text-sm">
-        <p>Conductor: <b>{driverName || '—'}</b> · Despacho {advance.dispatch?.dispatch_number}</p>
+        <p>Conductor: <b>{driverName || '—'}</b> · {advance.dispatch_id ? `Despacho ${advance.dispatch_number}` : `${advance.reason_label}${advance.vehicle_plate ? ` · ${advance.vehicle_plate}` : ''}`}</p>
+        {advance.approved_at && <p className="text-xs text-emerald-700">Aprobado por el Jefe el {fmtDate(advance.approved_at, true)}{advance.approval_comment ? ` · “${advance.approval_comment}”` : ''}</p>}
         {advance.source === 'APP' && (
           <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 text-xs space-y-1">
             <div className="font-semibold text-violet-900">Solicitado por el conductor desde la app</div>
