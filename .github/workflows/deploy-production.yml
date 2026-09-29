@@ -88,7 +88,7 @@ jobs:
           status=0
           for f in supabase/tests/caja_*.test.sql; do
             out=$(supabase db query --linked -f "$f" 2>&1 || true)
-            line=$(echo "$out" | grep -oE 'CAJA C[0-9] (PASS|FAIL)[^"]*' | head -1)
+            line=$(echo "$out" | grep -oE 'CAJA C[0-9]+ (PASS|FAIL)[^"]*' | head -1)
             echo "$f → ${line:-sin resultado}"
             echo "- \`$(basename "$f")\`: ${line:-sin resultado}" >> "$GITHUB_STEP_SUMMARY"
             case "$line" in *PASS*) ;; *) status=1; echo "$out" | tail -20 ;; esac

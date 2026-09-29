@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { EvidenceGallery } from '@/components/evidence/EvidenceGallery'
+import { DispatchCrewUnloading } from '@/components/despacho/DispatchCrewUnloading'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { calculateRouteDistance } from '@/lib/routing'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -1170,6 +1171,13 @@ export default function DespachoPage() {
                   )
                 })}
               </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <DispatchCrewUnloading dispatchId={selectedDispatchDetail.id} status={selectedDispatchDetail.status}
+                canEdit={canWrite('despacho')}
+                stops={(selectedDispatchDetail.dispatch_requests || []).filter(dr => dr.transport_request_id)
+                  .map(dr => ({ request_id: dr.transport_request_id as string, request_number: dr.transport_requests?.request_number || '—' }))} />
             </div>
 
             <div className="border-t pt-4">
