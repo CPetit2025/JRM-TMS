@@ -140,3 +140,26 @@ export function exportXlsx(fileName: string, sheets: Record<string, Row[]>) {
   Object.entries(sheets).forEach(([name, rows]) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ '': 'Sin datos' }]), name.slice(0, 31)))
   XLSX.writeFile(wb, fileName)
 }
+
+// Archivo del conductor (evidencia o comprobante) en su carpeta del bucket privado driver_evidence
+export async function uploadDriverFile(supabase: SupabaseClient, userId: string, folder: string, file: File) {
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '')
+  const path = `${userId}/${folder}/${crypto.randomUUID()}.${ext}`
+  const { error } = await supabase.storage.from('driver_evidence').upload(path, file, { contentType: file.type })
+  if (error) throw new Error('No se pudo subir el archivo: ' + error.message)
+  return path
+}
+
+export type AdvanceReason = {
+  code: string; label: string; description: string | null; requires_trip: boolean; charge_to: 'VIAJE' | 'UNIDAD' | 'AREA'
+  evidence_required: boolean; approval_by: 'CAJA' | 'JEFE'; max_amount: number | null; settlement_due_hours: number | null
+  is_emergency: boolean; creates_failure: boolean; default_expense_type: string | null; sort_order: number; is_active: boolean
+}
+export const CHARGE_TO: Record<string, string> = { VIAJE: 'Viaje', UNIDAD: 'Unidad', AREA: 'Área' }
+
+export async function loadAdvanceReasons(supabase: SupabaseClient, onlyActive = true): Promise<AdvanceReason[]> {
+  let q = supabase.from('advance_reasons').select('*').order('sort_order')
+  if (onlyActive) q = q.eq('is_active', true)
+  const { data } = await q
+  return (data || []) as AdvanceReason[]
+}

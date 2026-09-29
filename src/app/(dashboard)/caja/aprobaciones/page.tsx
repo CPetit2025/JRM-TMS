@@ -18,7 +18,7 @@ import {
 // Las acciones pasan por review_dispatch_expense / approve_dispatch_expenses (migración 20260929090000).
 
 const supabase = createClient()
-const SELECT = `*, dispatch:dispatches(id, dispatch_number, vehicle_plate, status)`
+const SELECT = `*, dispatch:dispatches(id, dispatch_number, vehicle_plate, status), advance:trip_advances!dispatch_expenses_advance_id_fkey(code, reason_code)`
 
 type Filters = { status: string; source: string; category: string; q: string; from: string; to: string; onlyAlerts: boolean; onlyBillable: boolean }
 const EMPTY: Filters = { status: 'PENDIENTE', source: '', category: '', q: '', from: '', to: '', onlyAlerts: false, onlyBillable: false }
@@ -212,7 +212,8 @@ export default function AprobacionesPage() {
                       <input type="checkbox" disabled={!canBulk(r)} checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
                     </td>
                     <td className="p-3 whitespace-nowrap">{fmtDate(r.expense_date)}</td>
-                    <td className="p-3"><div className="font-semibold text-[#002855]">{r.dispatch?.dispatch_number || 'Sin viaje'}</div><div className="text-xs text-slate-500">{r.vehicle_plate}</div></td>
+                    <td className="p-3"><div className="font-semibold text-[#002855]">{r.dispatch?.dispatch_number || 'Sin viaje'}</div><div className="text-xs text-slate-500">{r.vehicle_plate}</div>
+                      {r.advance?.code && <div className="text-xs text-violet-700">Rinde {r.advance.code}</div>}</td>
                     <td className="p-3">{people[r.driver_id] || '—'}</td>
                     <td className="p-3">
                       {catLabel[r.expense_type] || r.expense_type}
