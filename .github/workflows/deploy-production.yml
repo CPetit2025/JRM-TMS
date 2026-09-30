@@ -23,6 +23,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: deploy-production
@@ -55,14 +56,21 @@ jobs:
       - name: Link project
         run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
 
-      # Solo se aplican las migraciones que trae este push. Si la base tiene otras pendientes, el historial
-      # remoto está desalineado (migraciones aplicadas a mano) y aplicarlas podría romper producción.
+      # Solo se aplican las migraciones agregadas desde el último despliegue exitoso (así un despliegue fallido
+      # no deja migraciones varadas). Si la base tiene otras pendientes, el historial remoto está desalineado
+      # (migraciones aplicadas a mano) y aplicarlas podría romper producción.
       - name: Plan migrations
         env:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
           APPLY_ALL: ${{ inputs.apply_all_pending }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          LAST_OK=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy-production.yml --branch master \
+            --status success --limit 1 --json headSha -q '.[0].headSha' 2>/dev/null || true)
+          if [ -n "$LAST_OK" ] && git cat-file -e "$LAST_OK^{commit}" 2>/dev/null && git merge-base --is-ancestor "$LAST_OK" "$AFTER"; then
+            echo "Último despliegue exitoso: $LAST_OK"; BEFORE="$LAST_OK"
+          fi
           supabase db push --dry-run --password "$SUPABASE_DB_PASSWORD" 2>&1 | tee plan.txt
           grep -oE '[0-9]{6,}_[A-Za-z0-9_]+\.sql' plan.txt | sort -u > pending.txt || true
           echo "Pendientes en la base:"; cat pending.txt
@@ -71,7 +79,7 @@ jobs:
             echo "::error::No se puede determinar el push anterior; ejecute manualmente con apply_all_pending"; exit 1
           fi
           git diff --name-only --diff-filter=A "$BEFORE" "$AFTER" -- supabase/migrations | xargs -r -n1 basename | sort -u > incoming.txt
-          echo "Nuevas en este push:"; cat incoming.txt
+          echo "Nuevas desde $BEFORE:"; cat incoming.txt
           unexpected=$(comm -23 pending.txt incoming.txt)
           if [ -n "$unexpected" ]; then
             echo "::error::La base tiene migraciones pendientes que no vienen en este push (historial desalineado): $unexpected"
