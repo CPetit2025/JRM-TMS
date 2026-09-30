@@ -164,7 +164,7 @@ export default function ContractServicesPage() {
         .from('contract_services')
         .select(`
           *,
-          contracts (
+          contracts!contract_id (
             code,
             clients (business_name),
             contract_budgets (balance_pen)

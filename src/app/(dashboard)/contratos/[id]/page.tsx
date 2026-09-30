@@ -70,7 +70,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
       const ids = [unwrappedParams.id, ...((childrenData || []) as Array<{ id: string }>).map(child => child.id)]
       const { data: expData } = await supabase
         .from('contract_services')
-        .select('id, contract_id, service_type, description, amount_pen, service_date, status, provider_name, hours, dispatch_id, void_reason, contracts(code, type)')
+        .select('id, contract_id, service_type, description, amount_pen, service_date, status, provider_name, hours, dispatch_id, void_reason, contracts!contract_id(code, type)')
         .in('contract_id', ids)
         .order('service_date', { ascending: false })
       setExpenses(expData || [])
