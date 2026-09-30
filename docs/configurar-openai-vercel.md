@@ -1,6 +1,18 @@
 # Activar JRM IA en Vercel
 
-El código ya llama a OpenAI desde las rutas de servidor `/api/jrm-ai` y `/api/extract-invoice`. No hay que pegar la clave en la pantalla de Configuración de JRM-TMS ni agregarla al repositorio.
+El Copiloto (`/api/jrm-ai`) funciona con **Gemini** o con **OpenAI**: usa Gemini si existe `GEMINI_API_KEY` (modelo `GEMINI_AI_MODEL`, por defecto `gemini-2.5-flash`) y, si no, OpenAI con `OPENAI_API_KEY` (modelo `OPENAI_AI_MODEL`, por defecto `gpt-4.1-mini`). `AI_PROVIDER=openai` fuerza OpenAI aunque exista la clave de Gemini. El dictado por voz (`/api/jrm-ai/transcribe`) usa la misma prioridad. No hay que pegar claves en la pantalla de Configuración de JRM-TMS ni agregarlas al repositorio.
+
+## Cobertura del Copiloto
+
+Cada herramienta exige el permiso IA del ámbito (Roles y Permisos → JRM IA) y al menos un permiso del módulo; el Administrador las tiene todas. Los datos se leen con la sesión del usuario (RLS) y el Copiloto recuerda los últimos mensajes de la conversación.
+
+| Ámbito IA | Herramientas |
+| --- | --- |
+| Contratos, solicitudes y tarifas | Estado y partida de OT, solicitudes (observadas, por aprobar, por vencer), cotización referencial con el tarifario |
+| Distribución, despachos y documentos | Despachos pendientes/retrasados, búsqueda por número o placa (paradas, eventos, documentos, caja), incidencias, costos de flete, cumplimiento documentario (guías faltantes, SOAT/revisión, licencias) |
+| Caja | Saldos de cajas, gastos por aprobar, anticipos por aprobar o vencidos, liquidaciones atrasadas |
+| Mantenimiento / Inventarios / Gerencia | CMMS (KPI, alertas, disponibilidad de unidad), stock crítico, KPI operativos |
+| Conductor (app) | Viaje activo y propuestas de reporte (retraso, incidencia, falla, gasto) que el conductor confirma |
 
 ## 1. Crear la clave
 

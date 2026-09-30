@@ -8,7 +8,7 @@ export async function getAiIdentity() {
 
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('id, is_active, employee_type, roles(name, permissions)')
+    .select('id, is_active, employee_type, first_name, roles(name, permissions)')
     .eq('id', user.id)
     .maybeSingle()
   if (profileError || !profile?.is_active) return null
@@ -21,6 +21,8 @@ export async function getAiIdentity() {
     supabase,
     userId: user.id,
     employeeType: profile.employee_type as string | null,
+    firstName: (profile.first_name as string | null) || null,
+    roleName: (role?.name as string | undefined) || null,
     permissions,
     isAdmin,
     canRead(module: string) {

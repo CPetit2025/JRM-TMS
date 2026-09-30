@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { usePathname } from 'next/navigation'
-import { Bot, Send, X, Mic, Square, Loader2 } from 'lucide-react'
+import { Bot, Send, X, Mic, Square, Loader2, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Capacitor } from '@capacitor/core'
 import { toWav16k } from '@/lib/audio-wav'
@@ -30,6 +30,7 @@ type SpeechRecognitionConstructor = new () => SpeechRecognitionLike
 export function JrmAiAssistant() {
   const path = usePathname()
   const [enabled, setEnabled] = useState(false)
+  const [profile, setProfile] = useState<{ name: string | null; isDriver: boolean }>({ name: null, isDriver: false })
   const [available, setAvailable] = useState(false)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -195,6 +196,7 @@ export function JrmAiAssistant() {
         setEnabled(Boolean(data.enabled))
         setAvailable(Array.isArray(data.scopes) && data.scopes.length > 0)
         setSites(data.sites || [])
+        setProfile({ name: typeof data.name === 'string' ? data.name : null, isDriver: Boolean(data.isDriver) })
       }).catch(() => setAvailable(false))
   }, [])
 
@@ -215,23 +217,28 @@ export function JrmAiAssistant() {
       if (selected.status === 'EN RUTA') return ['¿Voy a tiempo para la siguiente parada?', 'Informar un retraso por tráfico', 'Notificar avería mecánica']
       return ['¿Qué ruta tengo asignada hoy?', '¿Cuántas paradas me faltan?']
     }
-    if (path.includes('/contratos')) return ['Analiza este contrato', '¿Qué contratos tienen mayor riesgo?']
+    if (path.includes('/contratos')) return ['Analiza este contrato', '¿Qué contratos tienen mayor riesgo?', '¿Cuánto costaría un flete de esta OT a Ate?']
+    if (path.includes('/solicitudes')) return ['¿Qué solicitudes están observadas y por qué?', '¿Cuáles vencen en los próximos 3 días?', '¿Qué solicitudes esperan aprobación?']
+    if (path.includes('/caja')) return ['¿Qué gastos esperan aprobación?', '¿Qué anticipos están vencidos sin rendir?', '¿Alguna caja está bajo el mínimo?']
+    if (path.includes('/maestros/tarifas')) return ['Cotiza un flete para una OT a un distrito', '¿Qué tarifas faltan para esta OT?']
+    if (path.includes('/despacho/documentos')) return ['¿Qué despachos salen sin guía de remisión?', '¿Qué documentos de unidades o conductores vencen?']
     if (path.includes('/mantenimiento')) return ['¿Qué unidades están bloqueadas y por qué?', '¿Qué mantenimiento vence esta semana?', '¿Qué unidad cuesta más mantener?', '¿Cuál es la disponibilidad y el MTTR de los últimos 30 días?']
-    if (path.includes('/despacho') || path.includes('/torre-control')) return ['¿Qué operaciones están retrasadas?', '¿Cuánto costaron los despachos de esta semana?']
+    if (path.includes('/despacho') || path.includes('/torre-control')) return ['¿Qué operaciones están retrasadas?', '¿Cuánto costaron los despachos de esta semana?', '¿Qué despachos no tienen guía cargada?']
     if (path.startsWith('/app')) return ['¿Tengo rutas asignadas?', '¿Qué tengo pendiente?', 'Quiero reportar una falla']
-    return ['¿Qué debería preocuparme hoy?', 'Resume la operación de esta semana']
+    return ['¿Qué debería preocuparme hoy?', 'Resume la operación de esta semana', '¿Qué solicitudes están observadas?', '¿Qué documentos vencen este mes?']
   }, [path, selected])
 
   const ask = async (value: string, origin: 'ai_chat' | 'ai_voice' = inputOrigin) => {
     const text = value.trim()
     if (!text || busy || !enabled) return
+    const history = messages.slice(-12)
     setMessages(prev => [...prev, { from: 'user', text }])
     setQuestion('')
     setBusy(true)
     try {
       const response = await fetch('/api/jrm-ai', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, context: { path, ...selected, siteId: siteId || undefined, origin } }),
+        body: JSON.stringify({ message: text, history, context: { path, ...selected, siteId: siteId || undefined, origin } }),
       })
       const data = await response.json()
       setMessages(prev => [...prev, { from: 'ai', text: response.ok ? data.answer : data.error || 'No pude completar la consulta.' }])
@@ -300,9 +307,16 @@ export function JrmAiAssistant() {
               <div className="flex items-center gap-3 font-black tracking-wide text-lg">
                 <Bot className="h-6 w-6 text-blue-300" /> {isMobile ? 'JRM IA · Tu copiloto' : 'JRM IA'}
               </div>
-              <button type="button" aria-label="Cerrar JRM IA" onClick={() => setOpen(false)} className="bg-white/10 hover:bg-white/20 p-1.5 rounded-full transition-colors">
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                {messages.length > 0 && <button type="button" aria-label="Nueva conversación" title="Nueva conversación" disabled={busy}
+                  onClick={() => { setMessages([]); setProposals(current => current.filter(item => !item.status)) }}
+                  className="bg-white/10 hover:bg-white/20 p-1.5 rounded-full transition-colors disabled:opacity-50">
+                  <RotateCcw className="h-4 w-4" />
+                </button>}
+                <button type="button" aria-label="Cerrar JRM IA" onClick={() => setOpen(false)} className="bg-white/10 hover:bg-white/20 p-1.5 rounded-full transition-colors">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </header>
         <div className="bg-slate-50 border-b border-slate-200 px-5 py-2.5 text-xs text-slate-600 shadow-inner">
           <div className="flex flex-wrap gap-2 items-center">
@@ -318,12 +332,14 @@ export function JrmAiAssistant() {
         </div>
         <div className="flex-1 space-y-3 overflow-y-auto p-4" aria-live="polite">
           {!enabled && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-            JRM IA está pendiente de configurar en el servidor. Solicita al administrador que active la clave de OpenAI.
+            JRM IA está pendiente de configurar en el servidor. Solicita al administrador que configure GEMINI_API_KEY u OPENAI_API_KEY en el servidor.
           </p>}
           {enabled && messages.length === 0 && <>
             <div className="rounded-xl bg-blue-50 p-3 text-sm text-slate-700 shadow-sm border border-blue-100">
-              <p className="font-bold text-[#002855]">Hola{selected.userName || selected.driverName ? `, soy JRM y estoy aquí para ayudarte, ${selected.userName || selected.driverName}` : ' conductor'}. 👋</p>
-              <p className="mt-1">Soy tu copiloto virtual. Puedo consultar información sobre tu ruta, recordarte pendientes y preparar reportes automáticamente. ¿En qué te puedo ayudar hoy?</p>
+              <p className="font-bold text-[#002855]">Hola{(selected.userName || selected.driverName || profile.name) ? `, ${selected.userName || selected.driverName || profile.name}` : ''}. 👋</p>
+              <p className="mt-1">{profile.isDriver
+                ? 'Soy tu copiloto de viaje. Puedo consultar tu ruta y tus pendientes, y preparar reportes de retraso, incidencias, fallas o gastos para que solo los confirmes.'
+                : 'Soy JRM IA. Consulto en tiempo real solicitudes, tarifas, despachos, documentos, caja, flota y mantenimiento según tus permisos. Pregúntame con tus palabras; recuerdo lo que conversamos.'}</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {suggestions.map(text => <button type="button" key={text} onClick={() => void ask(text)}
