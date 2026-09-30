@@ -44,3 +44,32 @@ Si ya existe `.env.local`, agrega allí solo las variables que falten. Para crea
 ## Si los cambios de código no aparecen
 
 Comprueba en **Deployments** que el último despliegue de Production corresponda a la rama `master` de `CPetit2025/JRM-TMS` y esté **Ready**. Si el dominio aún apunta a una versión anterior, revisa el dominio asignado al despliegue y vuelve a desplegar el commit de producción. Después, recarga el navegador sin caché.
+
+## Registrar y editar desde el Copiloto
+
+El Copiloto prepara acciones que el usuario confirma con **Confirmar y guardar**; nada se guarda antes. Se ejecutan con
+la sesión del usuario y las mismas funciones de base que las pantallas (mismos permisos, partida y OT asignada):
+
+| Acción | Función | Permiso IA |
+| --- | --- | --- |
+| Registrar gasto de OT, subcontrato o error (montacargas, grúa, estiba…) | `register_contract_service` | Contratos, solicitudes y tarifas |
+| Corregir el monto de un gasto (`get_contract_expenses` para ubicarlo) | `update_contract_service_amount` | Contratos, solicitudes y tarifas |
+| Registrar contrato / OT / subcontrato / error | `create_contract` | Contratos, solicitudes y tarifas |
+| Aprobar, rechazar, reprogramar o cancelar una solicitud | `set_transport_request_status` | Contratos, solicitudes y tarifas |
+| Programar mantenimiento | `ai_prepare_maintenance` | Proponer mantenimiento |
+| Reportes del viaje (conductor) | `ai_prepare_trip_action` | Conductor |
+
+Anular gastos no se hace desde el chat (requiere la autorización del Administrador o del Jefe de Distribución en la pantalla).
+
+## Avisos proactivos del conductor
+
+En el app, el copiloto revisa el viaje activo cada minuto y, con el GPS del teléfono durante la ruta, avisa (burbuja,
+vibración y voz, que se puede silenciar):
+
+- Checklist pendiente antes de salir.
+- Hora de salida (30 min antes) con el checklist listo.
+- Posible llegada: la unidad lleva 4 min detenida durante la ruta con paradas pendientes (las paradas no tienen
+  coordenadas, por eso se usa la detención) → "¿Confirmamos tu llegada y la entrega?".
+- Entregas completas → registrar el retorno; dentro de la geocerca de planta (Ubicaciones autorizadas) → confirmar retorno.
+
+El conductor confirma siempre en su pantalla de ruta; el copiloto no registra nada por su cuenta.

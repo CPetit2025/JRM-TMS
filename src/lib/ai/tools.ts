@@ -20,6 +20,8 @@ export const toolAccess = {
   find_dispatch: { scope: 'distribucion', modules: ['despacho', 'torre-control', 'documentario', 'monitoreo'] },
   get_compliance_alerts: { scope: 'distribucion', modules: ['despacho', 'documentario', 'torre-control', 'flota', 'mantenimiento-flota'] },
   get_cash_status: { scope: 'caja', modules: ['caja', 'caja-aprobacion', 'caja-anticipos', 'caja-liquidaciones', 'caja-fondos'] },
+  get_contract_expenses: { scope: 'contratos', modules: ['contratos-servicios', 'ot', 'clientes'] },
+  prepare_office_action: { scope: 'contratos', modules: ['contratos-servicios', 'ot', 'clientes', 'solicitudes', 'despacho-aprobacion'] },
 } as const
 
 export type AiToolName = keyof typeof toolAccess
@@ -66,6 +68,21 @@ export const toolDefinitions = [
     parameters: { type: 'object', properties: { reference: { type: ['string', 'null'] } }, required: ['reference'], additionalProperties: false } },
   { type: 'function', name: 'get_compliance_alerts', description: 'Cumplimiento documentario: documentos de unidades vencidos o por vencer (SOAT, revisión técnica, etc.), licencias y documentos de conductores que vencen en 30 días y despachos abiertos sin guía de remisión cargada.', strict: true, parameters: emptySchema },
   { type: 'function', name: 'get_cash_status', description: 'Situación de Caja: saldos de cajas y fondos (bajo mínimo), gastos pendientes u observados por aprobar, anticipos esperando aprobación o vencidos sin rendir y viajes con liquidación atrasada.', strict: true, parameters: emptySchema },
+  { type: 'function', name: 'get_contract_expenses', description: 'Lista los gastos registrados de una OT y de sus subcontratos y errores (montacargas, grúa, estiba, otros) con su id, tipo, monto, fecha, guía y estado. Úsalo antes de corregir el monto de un gasto.', strict: true,
+    parameters: { type: 'object', properties: { contract_code: { type: 'string' } }, required: ['contract_code'], additionalProperties: false } },
+  { type: 'function', name: 'prepare_office_action', description: 'Prepara (NO ejecuta) una acción de registro o edición para que el usuario la confirme: REGISTER_CONTRACT_EXPENSE (gasto de OT/subcontrato/error: contract_code, service_type MONTACARGA|GRUA|ESTIBA|MANIOBRA|PEAJE|PENALIDAD|ERROR|OTROS, amount, hours si es montacargas, service_date, provider_name, provider_ruc, referral_guide, description), UPDATE_EXPENSE_AMOUNT (expense_id de get_contract_expenses, amount), CREATE_CONTRACT (code, contract_type CONTRATO|OT_INDEPENDIENTE|SUBCONTRATO|ERROR, parent_code para subcontrato/error, client por razón social o RUC, budget, weight_tons, destination_district, destination_address), CHANGE_REQUEST_STATUS (request_number, new_status APROBADA|RECHAZADA|REPROGRAMADA|CANCELADA, required_date si reprograma). Usa null en lo que no se indicó; no inventes datos. Anular gastos no se hace desde aquí.', strict: true,
+    parameters: { type: 'object', properties: {
+      action: { type: 'string', enum: ['REGISTER_CONTRACT_EXPENSE', 'UPDATE_EXPENSE_AMOUNT', 'CREATE_CONTRACT', 'CHANGE_REQUEST_STATUS'] },
+      contract_code: { type: ['string', 'null'] }, service_type: { type: ['string', 'null'] }, amount: { type: ['number', 'null'] },
+      hours: { type: ['number', 'null'] }, service_date: { type: ['string', 'null'] }, provider_name: { type: ['string', 'null'] },
+      provider_ruc: { type: ['string', 'null'] }, referral_guide: { type: ['string', 'null'] }, description: { type: ['string', 'null'] },
+      expense_id: { type: ['string', 'null'] }, code: { type: ['string', 'null'] }, contract_type: { type: ['string', 'null'] },
+      parent_code: { type: ['string', 'null'] }, client: { type: ['string', 'null'] }, budget: { type: ['number', 'null'] },
+      weight_tons: { type: ['number', 'null'] }, destination_district: { type: ['string', 'null'] }, destination_address: { type: ['string', 'null'] },
+      request_number: { type: ['string', 'null'] }, new_status: { type: ['string', 'null'] }, required_date: { type: ['string', 'null'] },
+    }, required: ['action', 'contract_code', 'service_type', 'amount', 'hours', 'service_date', 'provider_name', 'provider_ruc', 'referral_guide',
+      'description', 'expense_id', 'code', 'contract_type', 'parent_code', 'client', 'budget', 'weight_tons', 'destination_district',
+      'destination_address', 'request_number', 'new_status', 'required_date'], additionalProperties: false } },
   { type: 'function', name: 'query_active_trip', description: 'Consulta el viaje activo, paradas, horario, unidad, contrato y tareas pendientes del conductor autenticado.', strict: true,
     parameters: emptySchema },
   { type: 'function', name: 'prepare_trip_action', description: 'Prepara una acción del viaje. Nunca la ejecuta automáticamente. Usa valores nulos cuando un dato no fue indicado y no lo inventes.', strict: true,
@@ -385,6 +402,20 @@ export async function executeAiTool(
       advancesNeedingAttention: advances.error ? 'no disponible' : advances.data,
       tripsWithOverdueSettlement: trips.error ? 'no disponible' : trips.data,
       url: '/caja' }
+  }
+  if (name === 'get_contract_expenses') {
+    const code = typeof args.contract_code === 'string' ? args.contract_code.trim().slice(0, 60) : ''
+    const root = code ? (await supabase.from('contracts').select('id, code').ilike('code', literal(code)).limit(1).maybeSingle()).data : null
+    if (!root) return { asOf, error: `No encontré la OT ${code} en su alcance.` }
+    const children = await supabase.from('contracts').select('id').eq('parent_contract_id', root.id)
+    const ids = [root.id, ...((children.data || []) as Array<{ id: string }>).map(c => c.id)]
+    const { data, error } = await supabase.from('contract_services')
+      .select('id, service_type, amount_pen, service_date, status, provider_name, referral_guide, hours, dispatch_id, contracts!contract_id(code)')
+      .in('contract_id', ids).order('service_date', { ascending: false }).limit(60)
+    const list = rows(data as Row[] | null, error)
+    return { asOf, contract: root.code, expenses: list.map(e => ({ id: e.id, contract: e.contracts?.code, type: e.service_type,
+      amount_pen: Number(e.amount_pen || 0), date: e.service_date, status: e.status, provider: e.provider_name, guide: e.referral_guide,
+      hours: e.hours, from_dispatch: Boolean(e.dispatch_id) })), url: '/contratos/servicios' }
   }
   if (name === 'get_delivery_incidents') {
     const { data, error, count } = await supabase.from('dispatches')

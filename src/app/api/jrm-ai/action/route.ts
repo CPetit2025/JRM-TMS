@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server'
 import { getAiIdentity } from '@/lib/ai/auth'
+import { executeOfficeAction } from '@/lib/ai/actions'
+import { writeAiAudit } from '@/lib/ai/audit'
 
 export async function POST(request: Request) {
   const identity = await getAiIdentity()
   if (!identity) return NextResponse.json({ error: 'Sesión no autorizada.' }, { status: 401 })
   let body: {
-    id?: string; decision?: string; payload?: Record<string, unknown>
+    id?: string; decision?: string; payload?: Record<string, unknown>; action_type?: string
     latitude?: number; longitude?: number; device?: Record<string, unknown>
   }
   try { body = await request.json() } catch { return NextResponse.json({ error: 'Solicitud inválida.' }, { status: 400 }) }
@@ -15,6 +17,23 @@ export async function POST(request: Request) {
   if ((body.latitude != null && (!Number.isFinite(body.latitude) || Math.abs(body.latitude) > 90)) ||
       (body.longitude != null && (!Number.isFinite(body.longitude) || Math.abs(body.longitude) > 180))) {
     return NextResponse.json({ error: 'Ubicación inválida.' }, { status: 400 })
+  }
+  // Acciones de oficina: se ejecutan con la sesión del usuario (sus permisos de base) al confirmar
+  if (body.action_type === 'office_action') {
+    if (body.decision === 'cancel') return NextResponse.json({ result: { status: 'cancelado' } })
+    const kind = String((body.payload as { kind?: unknown } | undefined)?.kind || '')
+    let status: 'completed' | 'failed' = 'failed'
+    try {
+      const done = await executeOfficeAction(body.payload, identity.supabase)
+      status = 'completed'
+      return NextResponse.json({ result: done }, { headers: { 'Cache-Control': 'no-store' } })
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudo ejecutar la acción.' }, { status: 400 })
+    } finally {
+      try {
+        await writeAiAudit({ user_id: identity.userId, scope: 'copilot', model: 'accion-confirmada', tool_names: [`office:${kind}`], status })
+      } catch (auditError) { console.error('JRM IA auditoría acción:', auditError) }
+    }
   }
   let result: { data: unknown; error: { message: string } | null }
   if (body.decision === 'confirm') {

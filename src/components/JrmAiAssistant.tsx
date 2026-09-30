@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { usePathname } from 'next/navigation'
-import { Bot, Send, X, Mic, Square, Loader2, RotateCcw } from 'lucide-react'
+import { Bot, Send, X, Mic, Square, Loader2, RotateCcw, Volume2, VolumeX } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useDriverNudges, type NudgeAction } from '@/components/ai/useDriverNudges'
 import { toast } from 'sonner'
 import { Capacitor } from '@capacitor/core'
 import { toWav16k } from '@/lib/audio-wav'
@@ -14,6 +16,7 @@ type Context = {
 type Message = { from: 'user' | 'ai'; text: string }
 type Site = { id: string; name: string }
 type Proposal = { id: string; action_type?: string; payload: Record<string, unknown>; status?: string }
+type OfficeLine = { label: string; value: string }
 type SpeechResultEvent = {
   resultIndex: number
   results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>
@@ -31,6 +34,11 @@ export function JrmAiAssistant() {
   const path = usePathname()
   const [enabled, setEnabled] = useState(false)
   const [profile, setProfile] = useState<{ name: string | null; isDriver: boolean }>({ name: null, isDriver: false })
+  const router = useRouter()
+  const { nudge, dismiss } = useDriverNudges(profile.isDriver && enabled)
+  const [tip, setTip] = useState<string | null>(null)
+  const [voiceOn, setVoiceOn] = useState(() => { try { return localStorage.getItem('jrm-ai-voice') !== 'off' } catch { return true } })
+  const toggleVoice = () => setVoiceOn(on => { try { localStorage.setItem('jrm-ai-voice', on ? 'off' : 'on') } catch { /* sin almacenamiento */ } return !on })
   const [available, setAvailable] = useState(false)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -218,7 +226,8 @@ export function JrmAiAssistant() {
       return ['¿Qué ruta tengo asignada hoy?', '¿Cuántas paradas me faltan?']
     }
     if (path.includes('/contratos')) return ['Analiza este contrato', '¿Qué contratos tienen mayor riesgo?', '¿Cuánto costaría un flete de esta OT a Ate?']
-    if (path.includes('/solicitudes')) return ['¿Qué solicitudes están observadas y por qué?', '¿Cuáles vencen en los próximos 3 días?', '¿Qué solicitudes esperan aprobación?']
+    if (path.includes('/contratos/servicios')) return ['Registra un gasto de montacargas para una OT', '¿Qué gastos tiene la OT…?', 'Corrige el monto de un gasto']
+    if (path.includes('/solicitudes')) return ['¿Qué solicitudes están observadas y por qué?', '¿Cuáles vencen en los próximos 3 días?', 'Reprograma una solicitud']
     if (path.includes('/caja')) return ['¿Qué gastos esperan aprobación?', '¿Qué anticipos están vencidos sin rendir?', '¿Alguna caja está bajo el mínimo?']
     if (path.includes('/maestros/tarifas')) return ['Cotiza un flete para una OT a un distrito', '¿Qué tarifas faltan para esta OT?']
     if (path.includes('/despacho/documentos')) return ['¿Qué despachos salen sin guía de remisión?', '¿Qué documentos de unidades o conductores vencen?']
@@ -227,6 +236,34 @@ export function JrmAiAssistant() {
     if (path.startsWith('/app')) return ['¿Tengo rutas asignadas?', '¿Qué tengo pendiente?', 'Quiero reportar una falla']
     return ['¿Qué debería preocuparme hoy?', 'Resume la operación de esta semana', '¿Qué solicitudes están observadas?', '¿Qué documentos vencen este mes?']
   }, [path, selected])
+
+  // Burbuja de ayuda contextual (oficina): aparece unos segundos después de entrar a una pantalla, una vez por sesión
+  useEffect(() => {
+    if (!enabled || profile.isDriver || open) return
+    let seenKey = ''
+    try { seenKey = `jrm-ai-tip:${path}`; if (sessionStorage.getItem(seenKey)) return } catch { /* sin almacenamiento */ }
+    const suggestion = suggestions[0]
+    const show = window.setTimeout(() => {
+      setTip(suggestion)
+      try { sessionStorage.setItem(seenKey, '1') } catch { /* sin almacenamiento */ }
+    }, 7000)
+    const hide = window.setTimeout(() => setTip(null), 22000)
+    return () => { window.clearTimeout(show); window.clearTimeout(hide) }
+  }, [enabled, profile.isDriver, open, path, suggestions])
+
+  // Aviso del conductor: vibra y lo dice en voz alta (manos libres) cuando aparece uno nuevo
+  const announced = useRef('')
+  useEffect(() => {
+    if (!nudge || announced.current === nudge.key) return
+    announced.current = nudge.key
+    try { navigator.vibrate?.([200, 100, 200]) } catch { /* sin vibración */ }
+    if (voiceOn && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(nudge.text)
+      utterance.lang = 'es-PE'
+      window.speechSynthesis.cancel()
+      window.speechSynthesis.speak(utterance)
+    }
+  }, [nudge, voiceOn])
 
   const ask = async (value: string, origin: 'ai_chat' | 'ai_voice' = inputOrigin) => {
     const text = value.trim()
@@ -257,7 +294,7 @@ export function JrmAiAssistant() {
       const response = await fetch('/api/jrm-ai/action', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: item.id, decision, payload: item.payload,
+          id: item.id, decision, payload: item.payload, action_type: item.action_type,
           latitude: position?.latitude, longitude: position?.longitude,
           device: { userAgent: navigator.userAgent.slice(0, 300) },
         }),
@@ -266,9 +303,12 @@ export function JrmAiAssistant() {
       if (!response.ok) throw new Error(data.error || 'No se pudo procesar la propuesta.')
       setProposals(prev => prev.map(proposal => proposal.id === item.id ? { ...proposal, status: decision } : proposal))
       setMessages(prev => [...prev, { from: 'ai', text: decision === 'confirm'
-        ? `Acción confirmada y registrada${data.result?.status ? `: ${data.result.status}` : '.'}`
-        : 'Propuesta cancelada.' }])
-      if (decision === 'confirm') window.dispatchEvent(new Event('jrm:trip-changed'))
+        ? `Listo${data.result?.status ? `: ${data.result.status}` : ', acción registrada.'}`
+        : 'Propuesta cancelada; no se guardó nada.' }])
+      if (decision === 'confirm') {
+        window.dispatchEvent(new Event('jrm:trip-changed'))
+        window.dispatchEvent(new CustomEvent('jrm:data-changed', { detail: { action: item.payload.kind || item.action_type } }))
+      }
     } catch (error) {
       setMessages(prev => [...prev, { from: 'ai', text: error instanceof Error ? error.message : 'Error al procesar la propuesta.' }])
     } finally { setBusy(false) }
@@ -276,14 +316,44 @@ export function JrmAiAssistant() {
 
   if (!available) return null
   const isMobile = path === '/app' || path.startsWith('/app/')
+  const bubble = !open ? (nudge ? { text: nudge.text, actions: nudge.actions, key: nudge.key } : tip ? { text: tip, actions: [{ label: 'Preguntar', ask: tip }] as NudgeAction[], key: 'tip' } : null) : null
+  const runAction = (action: NudgeAction, key: string) => {
+    if (key === 'tip') setTip(null); else dismiss(key)
+    if (action.href) { router.push(action.href); return }
+    if (action.ask) { setOpen(true); void ask(action.ask) }
+  }
 
-  // Botón flotante compacto (solo ícono). En el inicio del app no se muestra: ya hay una tarjeta "Copiloto IA".
-  if (!open && path === '/app') return null
+  // En el inicio del app el botón no se muestra (ya hay una tarjeta "Copiloto IA"), salvo que haya un aviso
+  if (!open && path === '/app' && !bubble) return null
   return (
     <div className={`fixed z-[80] ${isMobile ? 'bottom-[88px] right-3' : 'bottom-5 right-5'}`}>
-      {!open && <button type="button" onClick={() => setOpen(true)} aria-label="Abrir JRM IA" title="JRM IA"
-        className={`flex items-center justify-center rounded-full bg-gradient-to-br from-[#002855] to-[#004b99] text-white shadow-lg ring-2 ring-white/70 transition-transform hover:scale-105 active:scale-95 ${isMobile ? 'h-11 w-11 opacity-90' : 'h-12 w-12'}`}>
-        <Bot className={isMobile ? 'h-5 w-5' : 'h-6 w-6'} />
+      <style>{`
+        @keyframes jrmFloat { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-5px) } }
+        @keyframes jrmWiggle { 0%,100% { transform: rotate(0) } 25% { transform: rotate(-12deg) } 75% { transform: rotate(12deg) } }
+        @keyframes jrmPop { 0% { opacity: 0; transform: translateY(6px) scale(.96) } 100% { opacity: 1; transform: none } }
+        .jrm-ai-fab { animation: jrmFloat 3.2s ease-in-out infinite }
+        .jrm-ai-fab:hover svg, .jrm-ai-fab[data-alert="1"] svg { animation: jrmWiggle .6s ease-in-out 2 }
+        .jrm-ai-bubble { animation: jrmPop .25s ease-out }
+        @media (prefers-reduced-motion: reduce) { .jrm-ai-fab, .jrm-ai-fab svg, .jrm-ai-bubble { animation: none !important } }
+      `}</style>
+      {bubble && (
+        <div role="status" className={`jrm-ai-bubble absolute bottom-full right-0 mb-3 w-[min(300px,calc(100vw-2rem))] rounded-2xl border p-3 text-sm shadow-xl ${nudge ? 'border-amber-300 bg-amber-50 text-amber-950' : 'border-slate-200 bg-white text-slate-800'}`}>
+          <button type="button" aria-label="Descartar" onClick={() => (bubble.key === 'tip' ? setTip(null) : dismiss(bubble.key))}
+            className="absolute right-1.5 top-1.5 rounded-full p-1 text-slate-400 hover:bg-black/5"><X className="h-3.5 w-3.5" /></button>
+          <p className="pr-5 font-medium">{nudge ? '🚚 ' : '💡 '}{bubble.text}</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {bubble.actions.map(action => <button key={action.label} type="button" onClick={() => runAction(action, bubble.key)}
+              className="rounded-full bg-[#002855] px-3 py-1 text-xs font-semibold text-white hover:bg-[#003b78]">{action.label}</button>)}
+          </div>
+          <span className="absolute -bottom-1.5 right-5 h-3 w-3 rotate-45 border-b border-r bg-inherit" style={{ borderColor: 'inherit' }} />
+        </div>
+      )}
+      {!open && <button type="button" onClick={() => { setOpen(true); setTip(null) }} aria-label="Abrir JRM IA" title="JRM IA · ¿En qué te ayudo?"
+        data-alert={nudge ? '1' : '0'}
+        className={`jrm-ai-fab relative flex items-center justify-center rounded-full bg-gradient-to-br from-[#002855] via-[#003b78] to-[#0a6cd6] text-white shadow-lg shadow-blue-900/30 ring-2 ring-white/80 transition-transform hover:scale-110 active:scale-95 ${isMobile ? 'h-12 w-12' : 'h-14 w-14'}`}>
+        <span className="absolute inset-0 rounded-full bg-blue-400/40 animate-ping [animation-duration:2.6s]" aria-hidden />
+        <Bot className={`relative ${isMobile ? 'h-6 w-6' : 'h-7 w-7'}`} />
+        {nudge && <span className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-red-500" aria-label="Aviso pendiente" />}
       </button>}
       {open && (
         <>
@@ -308,6 +378,10 @@ export function JrmAiAssistant() {
                 <Bot className="h-6 w-6 text-blue-300" /> {isMobile ? 'JRM IA · Tu copiloto' : 'JRM IA'}
               </div>
               <div className="flex items-center gap-1.5">
+                {profile.isDriver && <button type="button" onClick={toggleVoice} aria-label={voiceOn ? 'Silenciar avisos de voz' : 'Activar avisos de voz'} title={voiceOn ? 'Avisos por voz activados' : 'Avisos por voz desactivados'}
+                  className="bg-white/10 hover:bg-white/20 p-1.5 rounded-full transition-colors">
+                  {voiceOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                </button>}
                 {messages.length > 0 && <button type="button" aria-label="Nueva conversación" title="Nueva conversación" disabled={busy}
                   onClick={() => { setMessages([]); setProposals(current => current.filter(item => !item.status)) }}
                   className="bg-white/10 hover:bg-white/20 p-1.5 rounded-full transition-colors disabled:opacity-50">
@@ -353,6 +427,22 @@ export function JrmAiAssistant() {
           {proposals.map(item => {
             const data = item.payload.data && typeof item.payload.data === 'object' ? item.payload.data as Record<string, unknown> : item.payload
             const action = String(item.payload.action || item.action_type || 'ACCIÓN').replaceAll('_', ' ')
+            if (item.action_type === 'office_action') {
+              const lines = (Array.isArray(item.payload.lines) ? item.payload.lines : []) as OfficeLine[]
+              return <div key={item.id} className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm">
+                <p className="font-bold">{String(item.payload.title || 'Acción por confirmar')}</p>
+                <dl className="mt-1.5 space-y-0.5">
+                  {lines.map(line => <div key={line.label} className="flex gap-2"><dt className="w-28 shrink-0 text-slate-500">{line.label}</dt><dd className="font-medium text-slate-800">{line.value}</dd></div>)}
+                </dl>
+                {item.status ? <p className="mt-2 font-semibold">{item.status === 'confirm' ? 'Confirmado' : 'Cancelado'}</p> :
+                  <div className="mt-3 flex gap-2">
+                    <button type="button" disabled={busy} onClick={() => void decide(item, 'confirm')}
+                      className="rounded bg-[#002855] px-3 py-2 text-white disabled:opacity-50">Confirmar y guardar</button>
+                    <button type="button" disabled={busy} onClick={() => void decide(item, 'cancel')}
+                      className="rounded border border-slate-300 px-3 py-2 disabled:opacity-50">Cancelar</button>
+                  </div>}
+              </div>
+            }
             return <div key={item.id} className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm">
             <p className="font-bold">Acción por confirmar</p>
             <p className="mt-1">Tipo: {action}</p>
