@@ -108,6 +108,10 @@ export default function ContractServicesPage() {
   const [isSavingAmount, setIsSavingAmount] = useState(false)
   const [voidReason, setVoidReason] = useState('')
   const [isVoiding, setIsVoiding] = useState(false)
+  // Solo el Administrador o el Jefe de Distribución anulan; los demás necesitan su credencial
+  const [canVoidDirect, setCanVoidDirect] = useState(false)
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
 
   // Partida que descuenta el gasto: la del contrato o la del contrato madre más cercano que la tenga
   const partidaOf = (contractId: string) => {
@@ -143,19 +147,27 @@ export default function ContractServicesPage() {
   const handleVoid = async () => {
     if (!viewingService) return
     if (!voidReason.trim()) { toast.error('Indique el motivo de la anulación'); return }
+    if (!canVoidDirect && (!authEmail.trim() || !authPassword)) {
+      toast.error('Ingrese el correo y la contraseña del Administrador o del Jefe de Distribución que autoriza')
+      return
+    }
     setIsVoiding(true)
     try {
-      const { data, error } = await supabase.rpc('void_contract_service', { p_service_id: viewingService.id, p_reason: voidReason.trim() })
-      if (error) throw error
-      const result = data as { success?: boolean; error?: string } | null
-      if (!result?.success) throw new Error(result?.error || 'No se pudo anular')
+      const response = await fetch('/api/contratos/anular-servicio', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serviceId: viewingService.id, reason: voidReason.trim(),
+          ...(canVoidDirect ? {} : { email: authEmail.trim(), password: authPassword }) }),
+      })
+      const result = await response.json().catch(() => ({})) as { success?: boolean; error?: string }
+      if (!response.ok || !result.success) throw new Error(result.error || 'No se pudo anular')
       toast.success('Gasto anulado: el monto volvió a la partida')
       setViewingService({ ...viewingService, status: 'ANULADO', void_reason: voidReason.trim() })
       setVoidReason('')
       fetchData()
     } catch (error) {
-      toast.error('No se pudo anular: ' + (error instanceof Error ? error.message : String((error as { message?: string })?.message || error)))
+      toast.error('No se pudo anular: ' + (error instanceof Error ? error.message : String(error)))
     } finally {
+      setAuthPassword('')
       setIsVoiding(false)
     }
   }
@@ -191,6 +203,8 @@ export default function ContractServicesPage() {
       if (cError) throw cError
       setContracts((cData as any) || [])
       applyPreselect(((cData as unknown) as Contract[]) || [])
+      const { data: canVoid } = await supabase.rpc('can_void_contract_service')
+      setCanVoidDirect(canVoid === true)
 
       // Fetch orphan dispatches (Dispatches without a contract_service)
       const { data: dData, error: dError } = await supabase
@@ -625,7 +639,8 @@ export default function ContractServicesPage() {
                   <tr 
                     key={srv.id} 
                     onClick={() => setViewingService(srv)}
-                    className={`cursor-pointer transition-colors ${isNegative ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-slate-50'}`}
+                    className={`cursor-pointer transition-colors ${srv.status === 'ANULADO' ? 'bg-slate-200/70 text-slate-400 hover:bg-slate-200 [&_td]:opacity-70' : isNegative ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-slate-50'}`}
+                    title={srv.status === 'ANULADO' ? `Anulado${srv.void_reason ? `: ${srv.void_reason}` : ''}` : undefined}
                   >
                     <td className="p-4 text-sm font-bold text-slate-400 text-center">
                       {correlative}
@@ -664,14 +679,14 @@ export default function ContractServicesPage() {
                         (Number(srv.description) / 1000).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) 
                         : (srv.description || '-')}
                     </td>
-                    <td className="p-4 text-sm font-bold text-slate-900 text-right">
+                    <td className={`p-4 text-sm font-bold text-right ${srv.status === 'ANULADO' ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
                       S/ {Number(srv.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                     </td>
                     <td className={`p-4 text-sm font-bold text-right ${isNegative ? 'text-red-600' : 'text-emerald-600'}`}>
                       S/ {balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="p-4 text-center">
-                      <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${srv.status === 'ANULADO' ? 'bg-slate-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
                         {srv.status}
                       </span>
                     </td>
@@ -1102,6 +1117,17 @@ export default function ContractServicesPage() {
             ) : !viewingService.dispatch_id && (
               <div className="rounded border border-slate-200 p-3">
                 <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Anular gasto (devuelve el monto a la partida)</span>
+                {!canVoidDirect && (
+                  <div className="mb-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                    <p className="mb-1.5 font-semibold">Requiere autorización del Administrador o del Jefe de Distribución</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} placeholder="Correo de quien autoriza"
+                        autoComplete="off" className="rounded border border-amber-300 bg-white px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-amber-400" />
+                      <input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} placeholder="Contraseña"
+                        autoComplete="new-password" className="rounded border border-amber-300 bg-white px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-amber-400" />
+                    </div>
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <input value={voidReason} onChange={e => setVoidReason(e.target.value)} placeholder="Motivo: duplicado, monto errado, no corresponde…"
                     className="flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-red-400" />
@@ -1115,7 +1141,7 @@ export default function ContractServicesPage() {
 
             <div className="flex justify-end pt-4 border-t border-slate-100">
               <button
-                onClick={() => { setViewingService(null); setIsEditingAmount(false); setVoidReason(''); }}
+                onClick={() => { setViewingService(null); setIsEditingAmount(false); setVoidReason(''); setAuthPassword(''); }}
                 className="px-4 py-2 bg-[#002855] text-white rounded-lg font-medium hover:bg-[#001d3d] transition-colors"
               >
                 Cerrar
