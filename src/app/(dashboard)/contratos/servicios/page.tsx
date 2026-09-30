@@ -63,7 +63,7 @@ interface ContractService {
   }
 }
 
-type SortKey = 'fecha' | 'contrato' | 'cliente' | 'servicio' | 'placa' | 'monto' | 'saldo' | 'estado'
+type SortKey = 'fecha' | 'contrato' | 'cliente' | 'servicio' | 'placa' | 'guia' | 'monto' | 'saldo' | 'estado'
 
 export default function ContractServicesPage() {
   const supabase = createClient()
@@ -425,7 +425,7 @@ export default function ContractServicesPage() {
   })
 
   const filteredServices = services.filter(srv => {
-    const searchString = `${srv.contracts?.code} ${srv.contracts?.clients?.business_name} ${srv.service_type} ${srv.category} ${srv.description} ${srv.plate} ${srv.driver_name} ${srv.provider_name} ${srv.provider_ruc}`.toLowerCase()
+    const searchString = `${srv.contracts?.code} ${srv.contracts?.clients?.business_name} ${srv.service_type} ${srv.category} ${srv.description} ${srv.plate} ${srv.driver_name} ${srv.provider_name} ${srv.provider_ruc} ${srv.referral_guide || ''}`.toLowerCase()
     const matchesSearch = searchTerm ? searchString.includes(searchTerm.toLowerCase()) : true
     
     const srvDate = new Date(srv.service_date)
@@ -453,6 +453,7 @@ export default function ContractServicesPage() {
       case 'cliente': return srv.contracts?.clients?.business_name || ''
       case 'servicio': return srv.service_type || ''
       case 'placa': return srv.plate || ''
+      case 'guia': return srv.referral_guide || ''
       case 'monto': return Number(srv.amount_pen || 0)
       case 'saldo': return Number(srv.contracts?.contract_budgets?.[0]?.balance_pen || 0)
       case 'estado': return srv.status || ''
@@ -594,6 +595,7 @@ export default function ContractServicesPage() {
                 {sortHeader('Cliente', 'cliente')}
                 {sortHeader('Servicio', 'servicio')}
                 {sortHeader('Placa', 'placa')}
+                {sortHeader('Guía', 'guia')}
                 <th className="p-4 font-semibold">TON</th>
                 {sortHeader('Monto (PEN)', 'monto', 'text-right')}
                 {sortHeader('Saldo (PEN)', 'saldo', 'text-right')}
@@ -603,14 +605,14 @@ export default function ContractServicesPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="p-8 text-center text-slate-500">
+                  <td colSpan={11} className="p-8 text-center text-slate-500">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                     Cargando servicios...
                   </td>
                 </tr>
               ) : filteredServices.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="p-8 text-center text-slate-500">
+                  <td colSpan={11} className="p-8 text-center text-slate-500">
                     No hay servicios registrados o que coincidan con los filtros.
                   </td>
                 </tr>
@@ -647,6 +649,15 @@ export default function ContractServicesPage() {
                     </td>
                     <td className="p-4 text-sm font-medium text-slate-800">
                       {srv.plate || '-'}
+                    </td>
+                    <td className="p-4 text-sm text-slate-700">
+                      {srv.referral_guide ? (
+                        <div className="flex max-w-[180px] flex-wrap gap-1">
+                          {srv.referral_guide.split(',').map(g => g.trim()).filter(Boolean).map(g => (
+                            <span key={g} className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-xs font-semibold text-blue-700">{g}</span>
+                          ))}
+                        </div>
+                      ) : <span className="text-slate-400">-</span>}
                     </td>
                     <td className="p-4 text-sm font-medium text-slate-800">
                       {!isNaN(Number(srv.description)) && srv.description ? 
