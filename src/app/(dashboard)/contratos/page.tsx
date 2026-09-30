@@ -226,41 +226,21 @@ export default function ContratosPage() {
           destination_district: newContract.destination_district,
           destination_address: newContract.destination_address
       }
-      const rootByContractAdmin = role === 'administrador de contratos' && !payload.parent_contract_id
-      let contractId: string
-      if (rootByContractAdmin) {
-        const { data, error } = await supabase.rpc('create_portfolio_contract', {
-          p_payload: payload,
-          p_budget_pen: Number(newContract.budget_pen) || 0,
-        })
-        if (error) throw error
-        contractId = data as string
-      } else {
-        const { data, error } = await supabase.from('contracts').insert([payload]).select('id').single()
-        if (error) {
-          if (error.code === '23505') throw new Error(`El código "${finalCode}" ya está en uso. No se permiten duplicados.`)
-          throw error
-        }
-        contractId = data.id
-      }
-
-      if (!rootByContractAdmin && newContract.budget_pen && Number(newContract.budget_pen) > 0) {
-        const { error: budgetError } = await supabase
-          .from('contract_budgets')
-          .insert([{
-            contract_id: contractId,
-            allocated_pen: Number(newContract.budget_pen)
-          }])
-          
-        if (budgetError) throw budgetError
-      }
+      // Alta en el servidor: permisos, sede, jerarquía, duplicados y partida en una sola operación
+      const { data, error } = await supabase.rpc('create_contract', {
+        p_payload: payload,
+        p_budget_pen: Number(newContract.budget_pen) || 0,
+      })
+      if (error) throw new Error(error.message)
+      const result = data as { success?: boolean; error?: string } | null
+      if (!result?.success) throw new Error(result?.error || 'No se pudo registrar el contrato')
 
       toast.success('Contrato creado exitosamente')
       setIsModalOpen(false)
       setNewContract({ correlative: '', type: 'CONTRATO', client_id: '', parent_contract_id: '', budget_pen: '', total_weight_kg: '', total_volume_m3: '', destination_department: '', destination_province: '', destination_district: '', destination_address: '' })
       fetchContracts()
     } catch (error: any) {
-      toast.error(error.message)
+      toast.error('No se pudo registrar el contrato: ' + (error?.message || 'error desconocido'))
     } finally {
       setIsSubmitting(false)
     }
@@ -351,6 +331,7 @@ export default function ContratosPage() {
 
         let successCount = 0
         let errorCount = 0
+        const errorDetails: string[] = []
 
         // Traemos contratos de la BD para mapear CodigoMadre -> UUID en memoria
         const { data: dbContracts } = await supabase.from('contracts').select('id, code, destination_department, destination_province, destination_district, destination_address')
@@ -454,46 +435,28 @@ export default function ContratosPage() {
                 destination_district: dist || null,
                 destination_address: dir || null
             }
-            const rootByContractAdmin = role === 'administrador de contratos' && !parentId
-            let insertedContract: { id: string, code: string, destination_department: string | null,
-              destination_province: string | null, destination_district: string | null, destination_address: string | null }
-            if (rootByContractAdmin) {
-              const { data: id, error } = await supabase.rpc('create_portfolio_contract', {
-                p_payload: payload,
-                p_budget_pen: presupuesto,
-              })
-              if (error) throw error
-              insertedContract = { id: id as string, code: finalCode, destination_department: dep || null,
-                destination_province: prov || null, destination_district: dist || null, destination_address: dir || null }
-            } else {
-              const { data, error } = await supabase.from('contracts').insert([payload])
-                .select('id, code, destination_department, destination_province, destination_district, destination_address').single()
-              if (error) {
-                if (error.code === '23505') throw new Error(`El código "${finalCode}" ya existe.`)
-                throw error
-              }
-              insertedContract = data
-            }
-            
+            const { data: created, error } = await supabase.rpc('create_contract', {
+              p_payload: payload,
+              p_budget_pen: presupuesto,
+            })
+            if (error) throw new Error(error.message)
+            const result = created as { success?: boolean; error?: string; id?: string } | null
+            if (!result?.success || !result.id) throw new Error(result?.error || `No se pudo registrar ${finalCode}`)
+            const insertedContract = { id: result.id, code: finalCode, destination_department: dep || null,
+              destination_province: prov || null, destination_district: dist || null, destination_address: dir || null }
+
             // Register memory map just in case a sub-contract references it in the same file
             contractMap.set(finalCode, insertedContract)
-
-            // Update Budget
-            if (!rootByContractAdmin && presupuesto > 0) {
-              const { error: budgetError } = await supabase
-                .from('contract_budgets')
-                .upsert({ contract_id: insertedContract.id, concept: 'PARTIDA_TRANSPORTE', allocated_pen: presupuesto },
-                  { onConflict: 'contract_id,concept' })
-              if (budgetError) throw budgetError
-            }
             successCount++
           } catch (err: any) {
             console.error(err)
             errorCount++
+            if (errorDetails.length < 3) errorDetails.push(err?.message || 'error desconocido')
           }
         }
 
-        toast.success(`Carga Masiva completada. Éxitos: ${successCount}, Errores: ${errorCount}`)
+        if (errorCount) toast.warning(`Carga masiva: ${successCount} registrados, ${errorCount} con error. ${errorDetails.join(' · ')}`)
+        else toast.success(`Carga masiva completada: ${successCount} registrados`)
         fetchContracts()
       } catch (error: any) {
         toast.error('Error al procesar el archivo: ' + error.message)
