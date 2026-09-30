@@ -8,6 +8,7 @@ import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import * as XLSX from 'xlsx'
 import { useRouter } from 'next/navigation'
 import { usePermissions } from '@/hooks/usePermissions'
+import { MAX_TONS, checkVolume, kgHint, tonsToKg } from '@/lib/contract-weight'
 import { ContractQuickView } from '@/components/contratos/ContractQuickView'
 
 interface Contract {
@@ -219,8 +220,8 @@ export default function ContratosPage() {
           parent_contract_id: newContract.parent_contract_id || null,
           client_id: newContract.client_id || null,
           status: 'ACTIVO',
-          total_weight_kg: newContract.total_weight_kg ? Number(newContract.total_weight_kg) * 1000 : 0,
-          total_volume_m3: newContract.total_volume_m3 ? Number(newContract.total_volume_m3) : 0,
+          total_weight_kg: tonsToKg(newContract.total_weight_kg),
+          total_volume_m3: checkVolume(newContract.total_volume_m3),
           destination_department: newContract.destination_department,
           destination_province: newContract.destination_province,
           destination_district: newContract.destination_district,
@@ -271,8 +272,8 @@ export default function ContratosPage() {
       const { error: contractError } = await supabase
         .from('contracts')
         .update({
-          total_weight_kg: editFormData.total_weight_kg ? Number(editFormData.total_weight_kg) * 1000 : 0,
-          total_volume_m3: editFormData.total_volume_m3 ? Number(editFormData.total_volume_m3) : 0,
+          total_weight_kg: tonsToKg(editFormData.total_weight_kg),
+          total_volume_m3: checkVolume(editFormData.total_volume_m3),
           destination_department: editFormData.destination_department,
           destination_province: editFormData.destination_province,
           destination_district: editFormData.destination_district,
@@ -854,16 +855,18 @@ export default function ContratosPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Peso (KG)</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Peso (toneladas)</label>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
+                      max={MAX_TONS}
                       value={newContract.total_weight_kg}
                       onChange={(e) => setNewContract({...newContract, total_weight_kg: e.target.value})}
                       className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm"
-                      placeholder="Ej. 15000"
+                      placeholder="Ej. 15"
                     />
+                    <p className="mt-1 text-xs text-slate-500">{kgHint(newContract.total_weight_kg)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Volumen (M3)</label>
@@ -978,15 +981,18 @@ export default function ContratosPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Peso (KG)</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Peso (toneladas)</label>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
+                      max={MAX_TONS}
+                      placeholder="Ej. 15"
                       value={editFormData.total_weight_kg}
                       onChange={(e) => setEditFormData({...editFormData, total_weight_kg: e.target.value})}
                       className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm"
                     />
+                    <p className="mt-1 text-xs text-slate-500">{kgHint(editFormData.total_weight_kg)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Volumen (M3)</label>
