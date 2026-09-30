@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, Receipt, Calendar, FileText, Check, Ban, Loader2, DollarSign, Upload, Download, AlertCircle, Search, Filter, X } from 'lucide-react'
+import { Plus, Receipt, Calendar, FileText, Check, Ban, Loader2, DollarSign, Upload, Download, AlertCircle, Search, Filter, X, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -63,6 +63,8 @@ interface ContractService {
   }
 }
 
+type SortKey = 'fecha' | 'contrato' | 'cliente' | 'servicio' | 'placa' | 'guia' | 'monto' | 'saldo' | 'estado'
+
 export default function ContractServicesPage() {
   const supabase = createClient()
   const [services, setServices] = useState<ContractService[]>([])
@@ -78,6 +80,7 @@ export default function ContractServicesPage() {
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('')
+  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'fecha', dir: 'desc' })
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
   const [filterStatus, setFilterStatus] = useState('TODOS')
@@ -422,7 +425,7 @@ export default function ContractServicesPage() {
   })
 
   const filteredServices = services.filter(srv => {
-    const searchString = `${srv.contracts?.code} ${srv.contracts?.clients?.business_name} ${srv.service_type} ${srv.category} ${srv.description} ${srv.plate} ${srv.driver_name} ${srv.provider_name} ${srv.provider_ruc}`.toLowerCase()
+    const searchString = `${srv.contracts?.code} ${srv.contracts?.clients?.business_name} ${srv.service_type} ${srv.category} ${srv.description} ${srv.plate} ${srv.driver_name} ${srv.provider_name} ${srv.provider_ruc} ${srv.referral_guide || ''}`.toLowerCase()
     const matchesSearch = searchTerm ? searchString.includes(searchTerm.toLowerCase()) : true
     
     const srvDate = new Date(srv.service_date)
@@ -441,6 +444,36 @@ export default function ContractServicesPage() {
     
     return matchesSearch && matchesDateFrom && matchesDateTo && matchesStatus
   })
+
+  // Orden de la tabla: por defecto fecha del servicio, más reciente primero (desempate por fecha de registro)
+  const sortValue = (srv: ContractService, key: SortKey): string | number => {
+    switch (key) {
+      case 'fecha': return `${srv.service_date || ''} ${srv.created_at || ''}`
+      case 'contrato': return srv.contracts?.code || ''
+      case 'cliente': return srv.contracts?.clients?.business_name || ''
+      case 'servicio': return srv.service_type || ''
+      case 'placa': return srv.plate || ''
+      case 'guia': return srv.referral_guide || ''
+      case 'monto': return Number(srv.amount_pen || 0)
+      case 'saldo': return Number(srv.contracts?.contract_budgets?.[0]?.balance_pen || 0)
+      case 'estado': return srv.status || ''
+    }
+  }
+  const sortedServices = [...filteredServices].sort((a, b) => {
+    const x = sortValue(a, sort.key), y = sortValue(b, sort.key)
+    const cmp = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'es', { numeric: true })
+    return sort.dir === 'asc' ? cmp : -cmp
+  })
+  const toggleSort = (key: SortKey) =>
+    setSort(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'fecha' || key === 'monto' ? 'desc' : 'asc' })
+  const sortHeader = (label: string, k: SortKey, className = '') => (
+    <th className={`p-4 font-semibold ${className}`} aria-sort={sort.key === k ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button type="button" onClick={() => toggleSort(k)} className={`inline-flex items-center gap-1 uppercase tracking-wider hover:text-slate-800 ${sort.key === k ? 'text-slate-800' : ''}`}>
+        {label}
+        {sort.key === k ? (sort.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-40" />}
+      </button>
+    </th>
+  )
 
   return (
     <div className="space-y-6 w-full mx-auto">
@@ -557,33 +590,34 @@ export default function ContractServicesPage() {
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
               <tr>
                 <th className="p-4 font-semibold w-16 text-center">N°</th>
-                <th className="p-4 font-semibold">Fecha</th>
-                <th className="p-4 font-semibold">Contrato</th>
-                <th className="p-4 font-semibold">Cliente</th>
-                <th className="p-4 font-semibold">Servicio</th>
-                <th className="p-4 font-semibold">Placa</th>
+                {sortHeader('Fecha', 'fecha')}
+                {sortHeader('Contrato', 'contrato')}
+                {sortHeader('Cliente', 'cliente')}
+                {sortHeader('Servicio', 'servicio')}
+                {sortHeader('Placa', 'placa')}
+                {sortHeader('Guía', 'guia')}
                 <th className="p-4 font-semibold">TON</th>
-                <th className="p-4 font-semibold text-right">Monto (PEN)</th>
-                <th className="p-4 font-semibold text-right">Saldo (PEN)</th>
-                <th className="p-4 font-semibold text-center">Estado</th>
+                {sortHeader('Monto (PEN)', 'monto', 'text-right')}
+                {sortHeader('Saldo (PEN)', 'saldo', 'text-right')}
+                {sortHeader('Estado', 'estado', 'text-center')}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="p-8 text-center text-slate-500">
+                  <td colSpan={11} className="p-8 text-center text-slate-500">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                     Cargando servicios...
                   </td>
                 </tr>
               ) : filteredServices.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="p-8 text-center text-slate-500">
+                  <td colSpan={11} className="p-8 text-center text-slate-500">
                     No hay servicios registrados o que coincidan con los filtros.
                   </td>
                 </tr>
               ) : (
-                filteredServices.map((srv, idx) => {
+                sortedServices.map((srv, idx) => {
                   const balance = srv.contracts?.contract_budgets?.[0]?.balance_pen || 0;
                   const isNegative = balance < 0;
                   const correlative = filteredServices.length - idx;
@@ -599,7 +633,7 @@ export default function ContractServicesPage() {
                     <td className="p-4 text-sm text-slate-600">
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                        {new Date(srv.service_date).toLocaleDateString('es-PE')}
+                        {srv.service_date ? new Date(`${srv.service_date.slice(0, 10)}T12:00:00`).toLocaleDateString('es-PE') : '—'}
                       </div>
                     </td>
                     <td className="p-4">
@@ -615,6 +649,15 @@ export default function ContractServicesPage() {
                     </td>
                     <td className="p-4 text-sm font-medium text-slate-800">
                       {srv.plate || '-'}
+                    </td>
+                    <td className="p-4 text-sm text-slate-700">
+                      {srv.referral_guide ? (
+                        <div className="flex max-w-[180px] flex-wrap gap-1">
+                          {srv.referral_guide.split(',').map(g => g.trim()).filter(Boolean).map(g => (
+                            <span key={g} className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-xs font-semibold text-blue-700">{g}</span>
+                          ))}
+                        </div>
+                      ) : <span className="text-slate-400">-</span>}
                     </td>
                     <td className="p-4 text-sm font-medium text-slate-800">
                       {!isNaN(Number(srv.description)) && srv.description ? 
