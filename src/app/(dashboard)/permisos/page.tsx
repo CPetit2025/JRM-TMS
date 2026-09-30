@@ -20,11 +20,12 @@ const MODULE_GROUPS: PermissionGroup[] = [
   {
     title: 'JRM IA',
     modules: [
-      { id: 'ia:read:distribucion', label: 'IA: Distribución', mode: 'toggle' },
+      { id: 'ia:read:distribucion', label: 'IA: Distribución, despachos y documentos', mode: 'toggle' },
       { id: 'ia:read:inventarios', label: 'IA: Inventarios', mode: 'toggle' },
       { id: 'ia:read:mantenimiento', label: 'IA: Mantenimiento', mode: 'toggle' },
-      { id: 'ia:read:contratos', label: 'IA: Contratos', mode: 'toggle' },
+      { id: 'ia:read:contratos', label: 'IA: Contratos, solicitudes y tarifas', mode: 'toggle' },
       { id: 'ia:read:gerencia', label: 'IA: Gerencia', mode: 'toggle' },
+      { id: 'ia:read:caja', label: 'IA: Caja', mode: 'toggle' },
       { id: 'ia:action:mantenimiento', label: 'IA: Proponer mantenimiento', mode: 'toggle' },
     ]
   },
