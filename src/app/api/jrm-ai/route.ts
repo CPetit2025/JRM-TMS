@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { getAiIdentity, reserveAiRequest } from '@/lib/ai/auth'
 import { executeAiTool, toolAccess, toolDefinitions, type AiToolName } from '@/lib/ai/tools'
 import { writeAiAudit } from '@/lib/ai/audit'
+import { prepareOfficeAction } from '@/lib/ai/actions'
 
 export const runtime = 'nodejs'
 
@@ -119,7 +120,7 @@ export async function POST(request: Request) {
 
   const model = provider.name === 'gemini' ? process.env.GEMINI_AI_MODEL || 'gemini-2.5-flash' : process.env.OPENAI_AI_MODEL || 'gpt-4.1-mini'
   const toolNames: string[] = []
-  const proposals: Array<{ id: string; payload: Record<string, unknown>; expires_at: string }> = []
+  const proposals: Array<{ id: string; action_type?: string; payload: Record<string, unknown>; expires_at: string }> = []
   const usage = { input: 0, output: 0 }
   let status: 'completed' | 'failed' = 'failed'
 
@@ -132,7 +133,7 @@ Reglas:
 - Si la pregunta es ambigua (qué OT, qué placa, qué periodo), usa el contexto de pantalla o el historial; si aún falta, pregunta brevemente. Periodo por defecto: 7 días.
 - Montos en soles (S/ 1,234.50). Indica la fecha del dato y, cuando exista, la ruta del módulo (p. ej. /solicitudes) para abrir el registro.
 - El costo de una solicitud es referencial (tarifario); el costo real del flete se fija al programar el despacho. El estado LIQUIDADO de un despacho se muestra como CERRADO.
-- Las acciones (reportes del viaje, mantenimiento) solo se preparan como propuesta y requieren que el usuario presione Confirmar. Si falta un dato (fecha, motivo, monto), pídelo.
+- Puedes REGISTRAR y EDITAR con prepare_office_action (gastos de OT, corregir montos, alta de contratos/OT, estado de solicitudes) y, para conductores, reportes del viaje; para mantenimiento, programar OT. Todo se prepara como propuesta que el usuario confirma con el botón Confirmar; nunca digas que ya se guardó antes de la confirmación. Si falta un dato obligatorio (OT, monto, fecha, horas), pídelo. Anular gastos no se hace desde el chat: requiere autorización en la pantalla.
 - Si no tienes una herramienta para lo que piden (p. ej. falta el permiso IA del módulo), dilo con claridad.
 - Responde en español, cordial y directo: primero la respuesta, luego el detalle en viñetas cortas. Sin tablas largas.`
   const userMessage = `Pregunta: ${message}\nContexto de pantalla: ${JSON.stringify(context)}`
@@ -149,6 +150,13 @@ Reglas:
         if (error) throw error
         proposals.push(data)
         return { ...data, note: 'La propuesta espera confirmación explícita del usuario.' }
+      }
+      if (name === 'prepare_office_action') {
+        const prepared = await prepareOfficeAction(args, identity.supabase)
+        if ('error' in prepared) return { error: prepared.error }
+        const proposal = { id: crypto.randomUUID(), action_type: 'office_action', payload: prepared.proposal as unknown as Record<string, unknown>, expires_at: '' }
+        proposals.push(proposal)
+        return { prepared: prepared.proposal.lines, note: 'Propuesta lista: el usuario debe presionar Confirmar para guardarla.' }
       }
       if (name === 'query_active_trip') {
         const { data, error } = await identity.supabase.rpc('get_active_trip_context')
