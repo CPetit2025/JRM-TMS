@@ -5,6 +5,7 @@ import { ArrowLeft, Briefcase, Layers, FileWarning, DollarSign, MapPin, Send, Re
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { createClient } from '@/lib/supabase/client'
+import { MAX_TONS, checkVolume, kgHint, tonsToKg } from '@/lib/contract-weight'
 
 export default function ContratoDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const unwrappedParams = use(params)
@@ -87,38 +88,25 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
       let finalCode = newChild.correlative.trim()
       finalCode = `${contract.code}-${finalCode}`
 
-      const { data: contractData, error: contractError } = await supabase
-        .from('contracts')
-        .insert([{
+      // Alta en el servidor: hereda la sede del contrato madre, valida duplicados y fija la partida
+      const { data, error } = await supabase.rpc('create_contract', {
+        p_payload: {
           code: finalCode,
           type: modalType,
           parent_contract_id: contract.id,
           client_id: contract.client_id,
-          status: 'ACTIVO',
-          total_weight_kg: newChild.total_weight_kg ? Number(newChild.total_weight_kg) * 1000 : 0,
-          total_volume_m3: newChild.total_volume_m3 ? Number(newChild.total_volume_m3) : 0,
+          total_weight_kg: tonsToKg(newChild.total_weight_kg),
+          total_volume_m3: checkVolume(newChild.total_volume_m3),
           destination_department: contract.destination_department,
           destination_province: contract.destination_province,
           destination_district: contract.destination_district,
-          destination_address: contract.destination_address
-        }])
-        .select()
-        .single()
-
-      if (contractError) {
-        if (contractError.code === '23505') throw new Error(`El código "${finalCode}" ya está en uso.`)
-        throw contractError
-      }
-
-      if (newChild.budget_pen && Number(newChild.budget_pen) > 0) {
-        const { error: budgetError } = await supabase
-          .from('contract_budgets')
-          .insert([{
-            contract_id: contractData.id,
-            allocated_pen: Number(newChild.budget_pen)
-          }])
-        if (budgetError) throw budgetError
-      }
+          destination_address: contract.destination_address,
+        },
+        p_budget_pen: Number(newChild.budget_pen) || 0,
+      })
+      if (error) throw new Error(error.message)
+      const result = data as { success?: boolean; error?: string } | null
+      if (!result?.success) throw new Error(result?.error || 'No se pudo registrar')
 
       toast.success(`${modalType === 'SUBCONTRATO' ? 'Subcontrato' : 'Error'} registrado exitosamente`)
       setIsModalOpen(false)
@@ -559,16 +547,18 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
               {modalType === 'SUBCONTRATO' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Peso (KG)</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Peso (toneladas)</label>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
+                      max={MAX_TONS}
                       value={newChild.total_weight_kg}
                       onChange={(e) => setNewChild({...newChild, total_weight_kg: e.target.value})}
                       className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] transition-all text-sm bg-white"
-                      placeholder="Ej. 15000"
+                      placeholder="Ej. 15"
                     />
+                    <p className="mt-1 text-xs text-slate-500">{kgHint(newChild.total_weight_kg)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Volumen (M3)</label>
