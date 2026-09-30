@@ -42,3 +42,20 @@ y la placa como excepción.
 ## Seguridad
 Se eliminó la política "allow all". Leen: Despacho, Solicitudes, Clientes, Contratos, Caja y Tarifas. Edita: permiso
 `tarifas` (se agregó al rol con aprobación de Caja — Jefe de Distribución).
+
+## Precio al cliente y costo JRM (30/09/2026)
+
+- Cada tarifa tiene dos montos: **Precio al cliente (con IGV)** y **Costo JRM**. Por defecto el costo JRM es el
+  **80 %** del precio al cliente (20 % menos); se puede ajustar a mano en la tarifa.
+- Las tarifas cargadas antes tenían en "costo" el precio al cliente con IGV: la migración
+  `20260930140000_anulacion_autorizada_tarifa_precio_cliente.sql` pasó ese valor a *precio al cliente* y dejó el costo
+  en el 80 % (solo en tarifas sin precio al cliente registrado).
+- Las cotizaciones (costo referencial de la solicitud y flete del despacho) usan el **costo JRM**.
+- Importación Excel: si falta `costo`, se toma el 80 % de `precio_cliente`.
+
+## Diferencia con /caja/tarifario
+
+`/maestros/tarifas` es el **Tarifario de Transporte**: cuánto cuesta y cuánto se cobra el servicio de flete por
+destino, tipo de unidad, cliente u OT, y los recursos de descarga. Alimenta la solicitud y el despacho y descuenta la
+partida del contrato. `/caja/tarifario` son las **reglas de Caja**: viáticos, peajes y combustible por ruta para los
+anticipos del conductor, categorías de gasto, motivos de anticipo y parámetros de rendición. No se cruzan.

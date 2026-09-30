@@ -18,7 +18,7 @@ END $$;
 
 DO $test$
 DECLARE
-  v_user uuid; v_role uuid; v_site uuid;
+  v_user uuid; v_role uuid; v_site uuid; v_admin uuid; v_jefe uuid; v_jefe_role uuid; b_jefe boolean; b_user boolean;
   v_root uuid; v_sub uuid; v_err uuid;
   v_svc uuid; r jsonb; r2 jsonb;
   e1 text; e2 text; e3 text;
@@ -26,9 +26,22 @@ DECLARE
   v_pass int := 0;
 BEGIN
   SELECT site_id INTO v_site FROM public.vehicles WHERE site_id IS NOT NULL LIMIT 1;
+  FOR v_admin IN SELECT id FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u) LOOP
+    PERFORM set_config('request.jwt.claim.sub', v_admin::text, true);
+    EXIT WHEN public.is_tms_admin();
+    v_admin := NULL;
+  END LOOP;
+  IF v_admin IS NULL THEN RAISE EXCEPTION 'CAJA C15 FAIL: no hay administrador'; END IF;
   SELECT id INTO v_user FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u)
-    AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) ORDER BY id LIMIT 1;
-  IF v_user IS NULL THEN RAISE EXCEPTION 'CAJA C15 FAIL: no hay perfiles'; END IF;
+    AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) AND id <> v_admin ORDER BY id LIMIT 1;
+  SELECT id INTO v_jefe FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u)
+    AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) AND id NOT IN (v_admin, v_user) ORDER BY id LIMIT 1;
+  IF v_jefe IS NULL THEN RAISE EXCEPTION 'CAJA C15 FAIL: se requieren 3 perfiles'; END IF;
+  SELECT id INTO v_jefe_role FROM public.roles WHERE name = 'Jefe de Distribución' LIMIT 1;
+  IF v_jefe_role IS NULL THEN
+    INSERT INTO public.roles (name, permissions) VALUES ('Jefe de Distribución', '["caja","caja-aprobacion"]') RETURNING id INTO v_jefe_role;
+  END IF;
+  UPDATE public.profiles SET role_id = v_jefe_role, is_active = true WHERE id = v_jefe;
   INSERT INTO public.roles (name, permissions) VALUES ('ZZ Servicios C15', '["contratos-servicios","ot"]') RETURNING id INTO v_role;
   UPDATE public.profiles SET role_id = v_role, is_active = true WHERE id = v_user;
   INSERT INTO public.user_site_access (user_id, site_id) VALUES (v_user, v_site) ON CONFLICT DO NOTHING;
@@ -70,24 +83,29 @@ BEGIN
      AND (SELECT consumed_pen = 650 FROM public.contract_budgets WHERE contract_id = v_root AND concept = 'PARTIDA_TRANSPORTE')
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T3 saldo: ' || COALESCE(e3, '∅')); END IF;
 
-  -- T4: anular el gasto devuelve el monto a la partida madre y queda en el historial como ANULADO
+  -- T4: un usuario de Servicios no anula; el Administrador anula por su pedido (queda quién pidió y quién autorizó)
   PERFORM pg_temp.as_user(v_user);
-  r := public.void_contract_service(v_svc, '');
-  r2 := public.void_contract_service(v_svc, 'Duplicado con la factura F001-12');
+  r := public.void_contract_service(v_svc, 'Duplicado con la factura F001-12');
+  PERFORM pg_temp.as_user(v_admin);
+  r2 := public.void_contract_service(v_svc, 'Duplicado con la factura F001-12', v_user);
   PERFORM pg_temp.as_user(NULL);
-  IF NOT (r->>'success')::boolean AND (r2->>'success')::boolean
-     AND (SELECT status = 'ANULADO' AND void_reason LIKE 'Duplicado%' AND voided_by = v_user FROM public.contract_services WHERE id = v_svc)
+  IF NOT (r->>'success')::boolean AND r->>'error' LIKE 'Solo el Administrador o el Jefe de Distribución%' AND (r2->>'success')::boolean
+     AND (SELECT status = 'ANULADO' AND void_reason LIKE 'Duplicado%' AND voided_by = v_admin AND void_requested_by = v_user
+          FROM public.contract_services WHERE id = v_svc)
      AND (SELECT consumed_pen = 350 FROM public.contract_budgets WHERE contract_id = v_root AND concept = 'PARTIDA_TRANSPORTE')
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T4 anular: ' || COALESCE(r::text, '∅') || ' | ' || COALESCE(r2::text, '∅')); END IF;
 
-  -- T5: no se anula dos veces y la edición del monto ajusta la partida madre
-  PERFORM pg_temp.as_user(v_user);
+  -- T5: el Jefe de Distribución también autoriza; no se anula dos veces; la edición del monto ajusta la partida madre
+  PERFORM pg_temp.as_user(v_jefe);
+  b_jefe := public.can_void_contract_service();
   r := public.void_contract_service(v_svc, 'otra vez');
+  PERFORM pg_temp.as_user(v_user);
+  b_user := public.can_void_contract_service();
   PERFORM public.update_contract_service_amount((SELECT id FROM public.contract_services WHERE contract_id = v_err AND description = 'ZZ C15 OTROS'), 100);
   PERFORM pg_temp.as_user(NULL);
-  IF NOT (r->>'success')::boolean AND r->>'error' LIKE '%ya está anulado%'
+  IF b_jefe AND NOT b_user AND NOT (r->>'success')::boolean AND r->>'error' LIKE '%ya está anulado%'
      AND (SELECT consumed_pen = 300 FROM public.contract_budgets WHERE contract_id = v_root AND concept = 'PARTIDA_TRANSPORTE')
-  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T5 doble anulación/edición: ' || COALESCE(r::text, '∅')); END IF;
+  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T5 jefe/doble anulación/edición: jefe=' || b_jefe || ' user=' || b_user || ' ' || COALESCE(r::text, '∅')); END IF;
 
   IF array_length(v_fail, 1) IS NULL THEN
     RAISE EXCEPTION 'CAJA C15 PASS (%/5)', v_pass;

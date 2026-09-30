@@ -21,8 +21,10 @@ subcontrato o a un error, y que no vinieron de un despacho ni de Caja.
 
 - Cada gasto queda en el historial de la OT (`contract_services`). La pestaña **Gastos** de la ficha muestra los de
   la OT y los de sus subcontratos y errores, con el total vigente.
-- **Anular** (detalle del gasto): exige motivo, devuelve el monto a la partida y el gasto queda como ANULADO con el
-  motivo. Los costos que vienen de un despacho se corrigen desde Despacho o Caja. Los gastos facturados o pagados
+- **Anular** (detalle del gasto): solo el **Administrador** o el **Jefe de Distribución**. Otro usuario puede anular
+  si uno de ellos autoriza con su correo y contraseña (se verifica en el servidor y no se guarda). Exige motivo,
+  devuelve el monto a la partida y el gasto queda como ANULADO, con quién lo pidió y quién lo autorizó. En la tabla
+  la fila anulada se muestra en gris con el monto tachado. Los costos que vienen de un despacho se corrigen desde Despacho o Caja. Los gastos facturados o pagados
   solo los anula el Administrador.
 
 Funciones: `register_contract_service`, `update_contract_service_amount`, `void_contract_service` y

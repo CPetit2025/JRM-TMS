@@ -30,6 +30,13 @@ const money = (n: number | null | undefined) => (n == null ? '—' : `S/ ${Numbe
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' })
 const isCurrent = (r: Rate) => r.is_active && r.valid_from <= today() && (!r.valid_to || r.valid_to >= today())
 
+// Costo JRM por defecto: 20 % menos que el precio al cliente (con IGV)
+const COST_RATIO = 0.8
+const costFromPrice = (price: string | number) => {
+  const n = Number(price)
+  return price === '' || !Number.isFinite(n) || n < 0 ? '' : (Math.round(n * COST_RATIO * 100) / 100).toString()
+}
+
 const EMPTY = {
   id: '', concept: 'FLETE', origin: 'Planta Chilca', district: '', department: '', province: '', zone: '', vehicle_type: '',
   vehicle_class: '', capacity_ton: '', plate_number: '', scope: 'GENERAL', client_id: '', contract_id: '', rate_basis: 'VIAJE',
@@ -100,7 +107,8 @@ export function TransportTariffManager() {
   const save = async () => {
     if (!form) return
     if (form.concept === 'FLETE' && !form.district.trim()) { toast.error('El flete necesita el distrito de destino'); return }
-    if (!(Number(form.rate) >= 0) || form.rate === '') { toast.error('Indique el costo'); return }
+    if (form.client_price === '' || !(Number(form.client_price) >= 0)) { toast.error('Indique el precio al cliente (con IGV)'); return }
+    if (!(Number(form.rate) >= 0) || form.rate === '') { toast.error('Indique el costo JRM'); return }
     if (form.scope === 'CLIENTE' && !form.client_id) { toast.error('Seleccione el cliente'); return }
     if (form.scope === 'CONTRATO' && !form.contract_id) { toast.error('Seleccione el contrato'); return }
     const payload = {
@@ -160,7 +168,10 @@ export function TransportTariffManager() {
       const conceptV = String(row.concepto || 'FLETE').toUpperCase()
       if (!CONCEPTS[conceptV]) errors.push(`Fila ${i + 2}: concepto inválido`)
       if (conceptV === 'FLETE' && !String(row.distrito || '').trim()) errors.push(`Fila ${i + 2}: falta distrito`)
-      if (!(Number(row.costo) >= 0)) errors.push(`Fila ${i + 2}: costo inválido`)
+      // precio_cliente es el precio con IGV; si falta el costo JRM se toma el 80 %
+      const priceV = row.precio_cliente === '' || row.precio_cliente == null ? null : Number(row.precio_cliente)
+      const costV = row.costo === '' || row.costo == null ? (priceV != null ? Number(costFromPrice(priceV)) : NaN) : Number(row.costo)
+      if (!(costV >= 0)) errors.push(`Fila ${i + 2}: indique precio_cliente o costo`)
       const cls = String(row.tipo_unidad || '').trim()
       return {
         concept: conceptV, origin: 'Planta Chilca', district: String(row.distrito || '').trim() || null,
@@ -169,7 +180,7 @@ export function TransportTariffManager() {
         capacity_ton: row.capacidad_t === '' || row.capacidad_t == null ? null : Number(row.capacidad_t),
         plate_number: String(row.placa || '').trim().toUpperCase() || null, scope: scopeV,
         client_id: client_id || null, contract_id: contract_id || null, rate_basis: String(row.base || (conceptV === 'FLETE' ? 'VIAJE' : 'UNIDAD')).toUpperCase(),
-        rate: Number(row.costo), client_price: row.precio_cliente === '' || row.precio_cliente == null ? null : Number(row.precio_cliente),
+        rate: costV, client_price: priceV,
         valid_from: String(row.vigente_desde || today()).slice(0, 10), valid_to: row.vigente_hasta ? String(row.vigente_hasta).slice(0, 10) : null,
       }
     })
@@ -231,7 +242,7 @@ export function TransportTariffManager() {
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-3 py-2.5">Concepto</th><th className="px-3 py-2.5">Destino</th><th className="px-3 py-2.5">Unidad</th>
-              <th className="px-3 py-2.5">Alcance</th><th className="px-3 py-2.5 text-right">Costo</th><th className="px-3 py-2.5 text-right">Precio cliente</th>
+              <th className="px-3 py-2.5">Alcance</th><th className="px-3 py-2.5 text-right">Costo JRM</th><th className="px-3 py-2.5 text-right">Precio cliente (con IGV)</th>
               <th className="px-3 py-2.5">Vigencia</th><th className="px-3 py-2.5" />
             </tr>
           </thead>
@@ -294,8 +305,15 @@ export function TransportTariffManager() {
               <label className="block">Alcance<select value={form.scope} onChange={e => set({ scope: e.target.value })} className="mt-1 w-full rounded-lg border px-2 py-1.5"><option value="GENERAL">General</option><option value="CLIENTE">Cliente</option><option value="CONTRATO">Contrato</option></select></label>
               {form.scope === 'CLIENTE' && <label className="col-span-2 block">Cliente<select value={form.client_id} onChange={e => set({ client_id: e.target.value })} className="mt-1 w-full rounded-lg border px-2 py-1.5"><option value="">Seleccione…</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>}
               {form.scope === 'CONTRATO' && <label className="col-span-2 block">Contrato / OT<select value={form.contract_id} onChange={e => set({ contract_id: e.target.value })} className="mt-1 w-full rounded-lg border px-2 py-1.5"><option value="">Seleccione…</option>{contracts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>}
-              <label className="block">Costo S/ *<input value={form.rate} onChange={e => set({ rate: e.target.value })} inputMode="decimal" className="mt-1 w-full rounded-lg border px-2 py-1.5" /></label>
-              <label className="block">Precio al cliente S/<input value={form.client_price} onChange={e => set({ client_price: e.target.value })} inputMode="decimal" className="mt-1 w-full rounded-lg border px-2 py-1.5" /></label>
+              <label className="block">Precio al cliente S/ (con IGV) *<input value={form.client_price} inputMode="decimal" className="mt-1 w-full rounded-lg border px-2 py-1.5"
+                onChange={e => {
+                  const price = e.target.value
+                  // El costo JRM sigue al precio (80 %) mientras no se haya ajustado a mano
+                  const autoPrev = costFromPrice(form.client_price)
+                  set({ client_price: price, ...(form.rate === '' || form.rate === autoPrev ? { rate: costFromPrice(price) } : {}) })
+                }} /></label>
+              <label className="block">Costo JRM S/ *<input value={form.rate} onChange={e => set({ rate: e.target.value })} inputMode="decimal" className="mt-1 w-full rounded-lg border px-2 py-1.5" />
+                <span className="text-[11px] font-normal text-slate-500">Por defecto el 80 % del precio al cliente{form.client_price !== '' && costFromPrice(form.client_price) ? ` (S/ ${costFromPrice(form.client_price)})` : ''}</span></label>
               <label className="block">Vigente desde<input type="date" value={form.valid_from} onChange={e => set({ valid_from: e.target.value })} className="mt-1 w-full rounded-lg border px-2 py-1.5" /></label>
               <label className="block">Vigente hasta<input type="date" value={form.valid_to} onChange={e => set({ valid_to: e.target.value })} className="mt-1 w-full rounded-lg border px-2 py-1.5" /></label>
               <label className="col-span-2 block">Notas<input value={form.notes} onChange={e => set({ notes: e.target.value })} className="mt-1 w-full rounded-lg border px-2 py-1.5" /></label>
