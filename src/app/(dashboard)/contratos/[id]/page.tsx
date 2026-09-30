@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { createClient } from '@/lib/supabase/client'
 import { MAX_TONS, checkVolume, kgHint, tonsToKg } from '@/lib/contract-weight'
+import Link from 'next/link'
 
 export default function ContratoDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const unwrappedParams = use(params)
@@ -65,12 +66,14 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
         .order('created_at', { ascending: false })
       if (reqData) setRequests(reqData)
 
+      // Historial de gastos de la OT: los suyos y los de sus subcontratos y errores (contract_services)
+      const ids = [unwrappedParams.id, ...((childrenData || []) as Array<{ id: string }>).map(child => child.id)]
       const { data: expData } = await supabase
-        .from('expense_records')
-        .select('*')
-        .eq('contract_id', unwrappedParams.id)
-        .order('created_at', { ascending: false })
-      if (expData) setExpenses(expData)
+        .from('contract_services')
+        .select('id, contract_id, service_type, description, amount_pen, service_date, status, provider_name, hours, dispatch_id, void_reason, contracts(code, type)')
+        .in('contract_id', ids)
+        .order('service_date', { ascending: false })
+      setExpenses(expData || [])
 
     } catch (error: any) {
       toast.error('Error al cargar detalle del contrato')
@@ -457,25 +460,30 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
 
         {activeTab === 'gastos' && (
           <div>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-sm font-semibold text-slate-800">Gastos y Liquidaciones</h3>
-              <button className="text-sm bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg font-medium hover:bg-slate-200 border border-slate-200">
-                Registrar Gasto a OT
-              </button>
+            <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800">Gastos de la OT, subcontratos y errores</h3>
+                <p className="text-xs text-slate-500">Montacargas, grúa, estiba, fletes y otros. Cada gasto descuenta la partida de transporte.</p>
+              </div>
+              <Link href={`/contratos/servicios?contrato=${contract.id}`}
+                className="text-sm bg-[#002855] text-white px-3 py-1.5 rounded-lg font-medium hover:bg-[#001d3d]">
+                Registrar gasto a la OT
+              </Link>
             </div>
-            
+
             {expenses.length === 0 ? (
               <p className="text-sm text-slate-500 py-8 text-center bg-slate-50 rounded-lg border border-slate-100">
-                No hay gastos registrados directamente contra esta OT.
+                No hay gastos registrados en esta OT ni en sus subcontratos o errores.
               </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
                   <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
                     <tr>
-                      <th className="px-4 py-3 font-semibold">Categoría</th>
-                      <th className="px-4 py-3 font-semibold">Documento</th>
-                      <th className="px-4 py-3 font-semibold">Proveedor</th>
+                      <th className="px-4 py-3 font-semibold">Fecha</th>
+                      <th className="px-4 py-3 font-semibold">Contrato</th>
+                      <th className="px-4 py-3 font-semibold">Tipo</th>
+                      <th className="px-4 py-3 font-semibold">Detalle</th>
                       <th className="px-4 py-3 font-semibold text-right">Monto</th>
                       <th className="px-4 py-3 font-semibold">Estado</th>
                     </tr>
@@ -483,20 +491,36 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
                   <tbody className="divide-y divide-slate-100">
                     {expenses.map((exp) => (
                       <tr key={exp.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-slate-800">{exp.category}</td>
-                        <td className="px-4 py-3 text-slate-600">{exp.document_type} {exp.document_serial}-{exp.document_number}</td>
-                        <td className="px-4 py-3 text-slate-600">{exp.provider_name}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-slate-800">
-                          {exp.currency === 'USD' ? '$' : 'S/'} {Number(exp.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{exp.service_date ? new Date(`${exp.service_date}T12:00:00`).toLocaleDateString('es-PE') : '—'}</td>
+                        <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{exp.contracts?.code || '—'}
+                          {exp.contracts?.type === 'SUBCONTRATO' && <span className="ml-1 rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold text-purple-800">Sub</span>}
+                          {exp.contracts?.type === 'ERROR' && <span className="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-800">Error</span>}
+                        </td>
+                        <td className="px-4 py-3 text-slate-700">{exp.service_type}{exp.hours ? ` · ${exp.hours} h` : ''}</td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {exp.description || '—'}{exp.provider_name ? ` · ${exp.provider_name}` : ''}
+                          {exp.status === 'ANULADO' && exp.void_reason && <span className="block text-xs text-red-600">Anulado: {exp.void_reason}</span>}
+                        </td>
+                        <td className={`px-4 py-3 text-right font-semibold whitespace-nowrap ${exp.status === 'ANULADO' ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
+                          S/ {Number(exp.amount_pen || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`px-2 py-1 rounded-full text-[10px] font-semibold ${exp.status === 'APROBADO' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>
-                            {exp.status}
+                          <span className={`px-2 py-1 rounded-full text-[10px] font-semibold ${exp.status === 'ANULADO' ? 'bg-red-50 text-red-700' : exp.status === 'PAGADO' || exp.status === 'FACTURADO' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>
+                            {exp.status || 'REGISTRADO'}
                           </span>
                         </td>
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr className="border-t border-slate-200 bg-slate-50">
+                      <td colSpan={4} className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Total vigente</td>
+                      <td className="px-4 py-2 text-right font-bold text-slate-800 whitespace-nowrap">
+                        S/ {expenses.filter(exp => exp.status !== 'ANULADO').reduce((sum, exp) => sum + Number(exp.amount_pen || 0), 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )}

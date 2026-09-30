@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plus, Receipt, Calendar, FileText, Check, Ban, Loader2, DollarSign, Upload, Download, AlertCircle, Search, Filter, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
@@ -11,11 +11,13 @@ interface Contract {
   id: string
   code: string
   type: string
+  parent_contract_id?: string | null
   clients?: {
     business_name: string
   }
   contract_budgets?: Array<{
     balance_pen: number
+    concept?: string
   }>
 }
 
@@ -49,6 +51,8 @@ interface ContractService {
   provider_name?: string
   category?: string
   referral_guide?: string
+  dispatch_id?: string | null
+  void_reason?: string | null
   created_at: string
   contracts?: {
     code: string
@@ -99,10 +103,59 @@ export default function ContractServicesPage() {
   const [isEditingAmount, setIsEditingAmount] = useState(false)
   const [editAmountValue, setEditAmountValue] = useState('')
   const [isSavingAmount, setIsSavingAmount] = useState(false)
+  const [voidReason, setVoidReason] = useState('')
+  const [isVoiding, setIsVoiding] = useState(false)
+
+  // Partida que descuenta el gasto: la del contrato o la del contrato madre más cercano que la tenga
+  const partidaOf = (contractId: string) => {
+    let current = contracts.find(c => c.id === contractId)
+    for (let depth = 0; current && depth < 16; depth++) {
+      const budget = current.contract_budgets?.find(b => (b.concept || 'PARTIDA_TRANSPORTE') === 'PARTIDA_TRANSPORTE')
+      if (budget) return { balance: Number(budget.balance_pen || 0), owner: current }
+      const parentId = current.parent_contract_id
+      current = parentId ? contracts.find(c => c.id === parentId) : undefined
+    }
+    return null
+  }
+  const categoryOf = (type?: string) => type === 'SUBCONTRATO' ? 'Subcontrato' : type === 'ERROR' ? 'Error' : 'Contrato'
+  const typeTag = (type?: string) => type === 'SUBCONTRATO' ? ' · Subcontrato' : type === 'ERROR' ? ' · Error' : ''
 
   useEffect(() => {
     fetchData()
   }, [])
+
+  // Desde la ficha de la OT: /contratos/servicios?contrato=<id> abre el registro con la OT elegida (una vez)
+  const preselectDone = useRef(false)
+  const applyPreselect = (list: Contract[]) => {
+    if (preselectDone.current) return
+    preselectDone.current = true
+    const id = new URLSearchParams(window.location.search).get('contrato')
+    if (!id) return
+    const target = list.find(c => c.id === id)
+    if (!target) { toast.error('La OT no está activa o no tiene acceso'); return }
+    setNewService(prev => ({ ...prev, contract_id: target.id, category: categoryOf(target.type) }))
+    setIsModalOpen(true)
+  }
+
+  const handleVoid = async () => {
+    if (!viewingService) return
+    if (!voidReason.trim()) { toast.error('Indique el motivo de la anulación'); return }
+    setIsVoiding(true)
+    try {
+      const { data, error } = await supabase.rpc('void_contract_service', { p_service_id: viewingService.id, p_reason: voidReason.trim() })
+      if (error) throw error
+      const result = data as { success?: boolean; error?: string } | null
+      if (!result?.success) throw new Error(result?.error || 'No se pudo anular')
+      toast.success('Gasto anulado: el monto volvió a la partida')
+      setViewingService({ ...viewingService, status: 'ANULADO', void_reason: voidReason.trim() })
+      setVoidReason('')
+      fetchData()
+    } catch (error) {
+      toast.error('No se pudo anular: ' + (error instanceof Error ? error.message : String((error as { message?: string })?.message || error)))
+    } finally {
+      setIsVoiding(false)
+    }
+  }
 
     const fetchData = async () => {
     setLoading(true)
@@ -125,14 +178,16 @@ export default function ContractServicesPage() {
       const { data: cData, error: cError } = await supabase
         .from('contracts')
         .select(`
-          id, code, type,
+          id, code, type, parent_contract_id,
           clients(business_name),
-          contract_budgets(balance_pen)
+          contract_budgets(balance_pen, concept)
         `)
         .eq('status', 'ACTIVO')
+        .order('code')
 
       if (cError) throw cError
       setContracts((cData as any) || [])
+      applyPreselect(((cData as unknown) as Contract[]) || [])
 
       // Fetch orphan dispatches (Dispatches without a contract_service)
       const { data: dData, error: dError } = await supabase
@@ -663,33 +718,37 @@ export default function ContractServicesPage() {
                 required
                 className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
                 value={newService.contract_id}
-                onChange={(e) => setNewService({...newService, contract_id: e.target.value})}
+                onChange={(e) => {
+                  const picked = contracts.find(c => c.id === e.target.value)
+                  setNewService({...newService, contract_id: e.target.value, category: categoryOf(picked?.type)})
+                }}
               >
-                <option value="" disabled>Seleccione un Contrato...</option>
+                <option value="" disabled>Seleccione OT, subcontrato o error...</option>
                 {contracts.map(c => {
-                  const balance = c.contract_budgets?.[0]?.balance_pen || 0
+                  const partida = partidaOf(c.id)
                   return (
                     <option key={c.id} value={c.id}>
-                      {c.code} - {c.clients?.business_name} (Saldo: S/ {balance.toLocaleString('es-PE')})
+                      {c.code}{typeTag(c.type)} - {c.clients?.business_name || 'Sin cliente'} ({partida ? `Saldo: S/ ${partida.balance.toLocaleString('es-PE')}` : 'sin partida'})
                     </option>
                   )
                 })}
               </select>
-              {newService.contract_id && (
-                <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-semibold ${(contracts.find(c => c.id === newService.contract_id)?.contract_budgets?.[0]?.balance_pen || 0) <= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                  {(contracts.find(c => c.id === newService.contract_id)?.contract_budgets?.[0]?.balance_pen || 0) <= 0 ? (
-                    <>
-                      <Ban className="w-3.5 h-3.5" />
-                      Partida Agotada o Negativa (S/ {(contracts.find(c => c.id === newService.contract_id)?.contract_budgets?.[0]?.balance_pen || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })})
-                    </>
-                  ) : (
-                    <>
-                      <Check className="w-3.5 h-3.5" />
-                      Partida Disponible: S/ {(contracts.find(c => c.id === newService.contract_id)?.contract_budgets?.[0]?.balance_pen || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
-                    </>
-                  )}
-                </div>
-              )}
+              {newService.contract_id && (() => {
+                const partida = partidaOf(newService.contract_id)
+                const inherited = partida && partida.owner.id !== newService.contract_id
+                if (!partida) return (
+                  <div className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-red-600">
+                    <Ban className="w-3.5 h-3.5" />Sin partida de transporte: asígnela en el contrato madre
+                  </div>
+                )
+                return (
+                  <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-semibold ${partida.balance <= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {partida.balance <= 0 ? <Ban className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                    {partida.balance <= 0 ? 'Partida agotada o negativa' : 'Partida disponible'}: S/ {partida.balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                    {inherited && <span className="font-normal text-slate-500">· descuenta la partida de {partida.owner.code}</span>}
+                  </div>
+                )
+              })()}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -979,8 +1038,8 @@ export default function ContractServicesPage() {
                 </div>
               ) : (
                 <div className="flex items-center gap-3">
-                  <span className="font-bold text-emerald-700 text-lg">S/ {Number(viewingService.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
-                  <button 
+                  <span className={`font-bold text-lg ${viewingService.status === 'ANULADO' ? 'text-slate-400 line-through' : 'text-emerald-700'}`}>S/ {Number(viewingService.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
+                  {viewingService.status !== 'ANULADO' && <button 
                     onClick={() => {
                       setEditAmountValue(viewingService.amount_pen.toString());
                       setIsEditingAmount(true);
@@ -988,14 +1047,32 @@ export default function ContractServicesPage() {
                     className="px-2 py-1 text-xs font-medium bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 transition-colors"
                   >
                     Editar
-                  </button>
+                  </button>}
                 </div>
               )}
             </div>
 
+            {viewingService.status === 'ANULADO' ? (
+              <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                <span className="font-semibold">Anulado.</span> {viewingService.void_reason || ''} El monto volvió a la partida.
+              </div>
+            ) : !viewingService.dispatch_id && (
+              <div className="rounded border border-slate-200 p-3">
+                <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Anular gasto (devuelve el monto a la partida)</span>
+                <div className="flex gap-2">
+                  <input value={voidReason} onChange={e => setVoidReason(e.target.value)} placeholder="Motivo: duplicado, monto errado, no corresponde…"
+                    className="flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-red-400" />
+                  <button type="button" onClick={handleVoid} disabled={isVoiding}
+                    className="inline-flex items-center gap-1 rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
+                    {isVoiding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}Anular
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="flex justify-end pt-4 border-t border-slate-100">
               <button
-                onClick={() => { setViewingService(null); setIsEditingAmount(false); }}
+                onClick={() => { setViewingService(null); setIsEditingAmount(false); setVoidReason(''); }}
                 className="px-4 py-2 bg-[#002855] text-white rounded-lg font-medium hover:bg-[#001d3d] transition-colors"
               >
                 Cerrar
