@@ -35,6 +35,8 @@ interface Ctx {
 
 const LEVELS: Array<{ id: AptLevel; label: string; clave: string; plural: string }> = [
   { id: 'capa', label: 'Capa / movimiento', clave: 'Capa', plural: 'Capas' },
+  { id: 'cliente', label: 'Cliente', clave: 'Cliente', plural: 'Clientes' },
+  { id: 'contrato', label: 'OT madre', clave: 'OT', plural: 'OT' },
   { id: 'lote', label: 'NumRel padre', clave: 'NumRel padre', plural: 'NumRel padre' },
   { id: 'numrel_op', label: 'NumRel OP', clave: 'NumRel OP', plural: 'NumRel OP' },
   { id: 'producto', label: 'Producto', clave: 'Producto', plural: 'Productos' },
@@ -129,6 +131,8 @@ function groupCols(level: AptLevel): Col<AptGroupRow>[] {
   const linkable = level === 'lote' || level === 'numrel_op'
   const counts: Array<{ k: 'capas' | 'lotes' | 'productos' | 'ops' | 'ipts'; label: string }> = (
     {
+      cliente: [{ k: 'lotes', label: 'Lotes' }, { k: 'productos', label: 'Productos' }, { k: 'capas', label: 'Capas' }],
+      contrato: [{ k: 'lotes', label: 'Lotes' }, { k: 'productos', label: 'Productos' }, { k: 'capas', label: 'Capas' }],
       lote: [{ k: 'productos', label: 'Productos' }, { k: 'ops', label: 'OP' }, { k: 'capas', label: 'Capas' }],
       numrel_op: [{ k: 'productos', label: 'Productos' }, { k: 'capas', label: 'Capas' }],
       producto: [{ k: 'lotes', label: 'Lotes' }, { k: 'capas', label: 'Capas' }],
@@ -164,10 +168,13 @@ function groupCols(level: AptLevel): Col<AptGroupRow>[] {
   ]
   if (hasEtiqueta(level)) cols.push({ key: 'etiqueta', label: level === 'lote' || level === 'numrel_op' ? 'Glosa principal' : 'Glosa', render: () => null, excel: r => r.etiqueta })
   if (linkable) cols.push({ key: 'tipo', label: 'Tipo', render: () => null, excel: r => (r.tipo ? TIPO_LABEL[r.tipo as AptTipoLote] : null) })
+  if (level === 'lote' || level === 'contrato') cols.push({ key: 'cliente', label: 'Cliente', sort: 'cliente', render: r => <span className="block max-w-[220px] truncate" title={r.cliente || ''}>{r.cliente || '—'}</span>, excel: r => r.cliente })
+  if (level === 'cliente') cols.push({ key: 'contratos', label: 'OT', sort: 'contratos', align: 'right', render: r => fmtInt(r.contratos), excel: r => num(r.contratos) })
   counts.forEach(({ k, label }) => cols.push({ key: k, label, sort: k, align: 'right', render: r => fmtInt(r[k]), excel: r => num(r[k]) }))
   cols.push(
     { key: 'primer_ingreso', label: 'Primer ingreso', sort: 'primer_ingreso', render: r => fmtDate(r.primer_ingreso), excel: r => r.primer_ingreso },
     { key: 'ultima_salida', label: 'Última salida', sort: 'ultima_salida', render: r => fmtDate(r.ultima_salida), excel: r => r.ultima_salida },
+    { key: 'ultimo_despacho', label: 'Último despacho (guías)', sort: 'ultimo_despacho', render: r => fmtDate(r.ultimo_despacho), excel: r => r.ultimo_despacho },
     { key: 'tn_in', label: 'TN ingresada', sort: 'kg_in', align: 'right', render: r => fmtTn(r.tn_in), excel: r => tn(r.tn_in) },
     { key: 'tn_out', label: 'TN despachada', sort: 'kg_out', align: 'right', render: r => fmtTn(r.tn_out), excel: r => tn(r.tn_out) },
     { key: 'pct_despachado', label: '% despachado', align: 'right', render: r => fmtPct(r.pct_despachado), excel: r => num(r.pct_despachado) },
@@ -292,6 +299,8 @@ export default function AptDetallePage() {
             : level === 'familia' ? { familias: [r.clave] }
               : level === 'numrel_op' ? { numrel_op: r.clave }
                 : level === 'ipt' ? (r.clave === '(sin IPT)' ? {} : { ipt: r.clave })
+                  : level === 'contrato' ? { contratos: [r.clave] }
+                    : level === 'cliente' ? { clientes: [r.clave] }
                   : {}
       patchFilters(patch)
       setLevel('capa')

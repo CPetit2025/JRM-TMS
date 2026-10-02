@@ -5,7 +5,7 @@ export type AptEstado = 'En APT' | 'Salida parcial' | 'Despachado' | 'Sin salida
 export type AptTipoLote = 'CONTRATO' | 'SUBCONTRATO' | 'ERROR' | 'GARANTIA'
 export type AptAlerta = 'problema_info' | 'posible_cruce'
 export type AptGrain = 'dia' | 'semana' | 'mes'
-export type AptLevel = 'capa' | 'lote' | 'producto' | 'glosa' | 'familia' | 'numrel_op' | 'ipt'
+export type AptLevel = 'capa' | 'lote' | 'producto' | 'glosa' | 'familia' | 'numrel_op' | 'ipt' | 'contrato' | 'cliente'
 export type AptDim = 'lote' | 'producto' | 'glosa' | 'familia'
 
 // Filtros comunes; todas las claves son opcionales y se envían tal cual a las funciones
@@ -19,7 +19,9 @@ export interface AptFilters {
   productos?: string[]   // coincidencia exacta (clic en un producto)
   glosa?: string
   glosas?: string[]      // coincidencia exacta
-  alertas?: AptAlerta[]  // capas con problema de información o posible cruce de NumRel
+  alertas?: AptAlerta[]
+  clientes?: string[]    // cliente del lote (exacto)
+  contratos?: string[]   // OT madre (exacto)  // capas con problema de información o posible cruce de NumRel
   ipt?: string
   familias?: string[]
   estados?: AptEstado[]
@@ -122,6 +124,7 @@ export interface AptGroupRow {
   primer_ingreso: string | null; ultimo_ingreso: string | null; primera_salida: string | null; ultima_salida: string | null
   fecha_entrega: string | null; fecha_saldo: string | null; dias: number | null; dias_max: number | null; aging_pond: number | null
   dias_despacho_pond: number | null; tn_dias: number; capas_problema: number; estado: AptEstado; rango: string | null; rango_orden: number | null
+  cliente: string | null; contratos: number; ultimo_despacho: string | null; kg_salidas_lote: number | null
 }
 
 export interface AptDetail<T> { level: AptLevel; total: number; totals: { tn_in: number; tn_out: number; tn_saldo: number; tn_dias: number }; rows: T[] }
@@ -175,6 +178,7 @@ export interface AptFilterOptions {
   lotes: Array<{ lote: string; tipo: AptTipoLote; tn_saldo: number }>
   contratos: string[]
   familias: Array<{ familia: string; tn_saldo: number }>
+  clientes: Array<{ cliente: string; tn_saldo: number }>
   docrels: string[]
   estados: AptEstado[]
   rangos: string[]

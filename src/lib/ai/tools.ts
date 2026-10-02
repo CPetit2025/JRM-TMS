@@ -69,9 +69,9 @@ export const toolDefinitions = [
     parameters: { type: 'object', properties: { reference: { type: ['string', 'null'] } }, required: ['reference'], additionalProperties: false } },
   { type: 'function', name: 'get_compliance_alerts', description: 'Cumplimiento documentario: documentos de unidades vencidos o por vencer (SOAT, revisión técnica, etc.), licencias y documentos de conductores que vencen en 30 días y despachos abiertos sin guía de remisión cargada.', strict: true, parameters: emptySchema },
   { type: 'function', name: 'get_cash_status', description: 'Situación de Caja: saldos de cajas y fondos (bajo mínimo), gastos pendientes u observados por aprobar, anticipos esperando aprobación o vencidos sin rendir y viajes con liquidación atrasada.', strict: true, parameters: emptySchema },
-  { type: 'function', name: 'get_apt_status', description: 'Almacén de Producto Terminado (APT): permanencia del inventario con FIFO. Sin lote devuelve TN en APT, aging ponderado, TN con más de 7/15/30 días, lotes críticos, distribución por rango, lotes que conviene liberar primero (mayor TN×días), lotes y productos con más TN y la tendencia del saldo. Con lote (NumRel padre, p. ej. 16188 o 16325-S002) devuelve su saldo, días, productos y despachos. min_days filtra material con al menos esos días en APT.', strict: true,
-    parameters: { type: 'object', properties: { lote: { type: ['string', 'null'] }, producto: { type: ['string', 'null'] }, min_days: { type: ['integer', 'null'] } },
-      required: ['lote', 'producto', 'min_days'], additionalProperties: false } },
+  { type: 'function', name: 'get_apt_status', description: 'Almacén de Producto Terminado (APT): permanencia del inventario con FIFO. Sin lote devuelve TN en APT, aging ponderado, TN con más de 7/15/30 días, lotes críticos, distribución por rango, lotes que conviene liberar primero (mayor TN×días), lotes y productos con más TN y la tendencia del saldo. Con lote (NumRel padre, p. ej. 16188 o 16325-S002) devuelve su saldo, días, productos y despachos. min_days filtra material con al menos esos días en APT; cliente filtra por cliente (razón social) y devuelve sus OT con primer ingreso, último despacho y saldo.', strict: true,
+    parameters: { type: 'object', properties: { lote: { type: ['string', 'null'] }, producto: { type: ['string', 'null'] }, min_days: { type: ['integer', 'null'] }, cliente: { type: ['string', 'null'] } },
+      required: ['lote', 'producto', 'min_days', 'cliente'], additionalProperties: false } },
   { type: 'function', name: 'get_contract_expenses', description: 'Lista los gastos registrados de una OT y de sus subcontratos y errores (montacargas, grúa, estiba, otros) con su id, tipo, monto, fecha, guía y estado. Úsalo antes de corregir el monto de un gasto.', strict: true,
     parameters: { type: 'object', properties: { contract_code: { type: 'string' } }, required: ['contract_code'], additionalProperties: false } },
   { type: 'function', name: 'prepare_office_action', description: 'Prepara (NO ejecuta) una acción de registro o edición para que el usuario la confirme: REGISTER_CONTRACT_EXPENSE (gasto de OT/subcontrato/error: contract_code, service_type MONTACARGA|GRUA|ESTIBA|MANIOBRA|PEAJE|PENALIDAD|ERROR|OTROS, amount, hours si es montacargas, service_date, provider_name, provider_ruc, referral_guide, description), UPDATE_EXPENSE_AMOUNT (expense_id de get_contract_expenses, amount), CREATE_CONTRACT (code, contract_type CONTRATO|OT_INDEPENDIENTE|SUBCONTRATO|ERROR, parent_code para subcontrato/error, client por razón social o RUC, budget, weight_tons, destination_district, destination_address), CHANGE_REQUEST_STATUS (request_number, new_status APROBADA|RECHAZADA|REPROGRAMADA|CANCELADA, required_date si reprograma). Usa null en lo que no se indicó; no inventes datos. Anular gastos no se hace desde aquí.', strict: true,
@@ -411,6 +411,7 @@ export async function executeAiTool(
     const lote = typeof args.lote === 'string' ? args.lote.trim().toUpperCase().slice(0, 60) : ''
     const producto = typeof args.producto === 'string' ? args.producto.trim().slice(0, 80) : ''
     const minDays = Number.isInteger(args.min_days) ? Number(args.min_days) : null
+    const cliente = typeof args.cliente === 'string' ? args.cliente.trim().slice(0, 120) : ''
     if (lote) {
       const { data, error } = await supabase.rpc('apt_lote', { p_lote: lote })
       if (error || !data?.success) return { asOf, error: data?.error || error?.message || 'No disponible' }
@@ -422,13 +423,17 @@ export async function executeAiTool(
     const filters: Row = { solo_saldo: true }
     if (producto) filters.producto = producto
     if (minDays !== null) filters.dias_min = minDays
+    if (cliente) filters.cliente = cliente
     const { data, error } = await supabase.rpc('apt_dashboard', { p: filters, p_grain: 'semana' })
     if (error || !data?.success) return { asOf, error: data?.error || error?.message || 'No disponible' }
+    const ots = cliente ? await supabase.rpc('apt_detail', { p: { cliente }, p_level: 'contrato', p_sort: 'kg_saldo', p_desc: true, p_limit: 25, p_offset: 0 }) : null
     const pick = (l: Row) => ({ lote: l.lote, glosa: l.glosa, tn_saldo: l.tn_saldo, dias: l.dias, tn_dias: l.tn_dias, estado: l.estado })
     return { asOf, cutoff: data.cutoff, alertDays: data.alert_days, kpis: data.kpis, aging: data.aging,
       liberarPrimero: (data.top_lotes_txd || []).map(pick), lotesMayorTn: (data.top_lotes_tn || []).map(pick),
       productosMayorTn: data.top_productos, pareto: data.pareto, tendenciaSaldo: (data.trend || []).slice(-6).map((t: Row) => ({ semana: t.periodo, saldo_tn: t.saldo_tn, aging_pond: t.aging_pond })),
-      note: 'TN×días = saldo TN × días en APT (prioridad para liberar). Días del saldo = fecha de corte − ingreso de la capa (FIFO).', url: '/apt' }
+      otsDelCliente: ots?.data?.success ? (ots.data.rows as Row[]).map(o => ({ ot: o.clave, cliente: o.cliente, lotes: o.lotes, primer_ingreso: o.primer_ingreso,
+        ultimo_despacho: o.ultimo_despacho, tn_ingresada: o.tn_in, tn_despachada: o.tn_out, saldo_tn: o.tn_saldo, dias: o.dias, estado: o.estado })) : undefined,
+      note: 'TN×días = saldo TN × días en APT (prioridad para liberar). Días del saldo = fecha de corte − ingreso de la capa (FIFO).', url: cliente ? '/apt/clientes' : '/apt' }
   }
   if (name === 'get_contract_expenses') {
     const code = typeof args.contract_code === 'string' ? args.contract_code.trim().slice(0, 60) : ''

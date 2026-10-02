@@ -14,7 +14,7 @@ const TEXT_FIELDS: Array<{ key: 'producto' | 'glosa' | 'numrel_op' | 'ipt' | 'cl
   { key: 'glosa', label: 'Glosa', placeholder: 'POSTE, VIGA…' },
   { key: 'numrel_op', label: 'NumRel OP', placeholder: '16325-S002-033' },
   { key: 'ipt', label: 'IPT', placeholder: '003-085…' },
-  { key: 'cliente', label: 'Cliente (despachos)', placeholder: 'Razón social' },
+  { key: 'cliente', label: 'Cliente (contiene)', placeholder: 'Razón social' },
 ]
 
 function MultiSelect({ label, options, value, onChange, render, searchable = false, width = 'w-64' }: {
@@ -80,7 +80,7 @@ const CHIP_LABEL: Record<string, string> = {
   lote: 'Lote', lotes: 'Lotes', contrato: 'Contrato', tipos: 'Tipo', numrel_op: 'NumRel OP', producto: 'Producto', glosa: 'Glosa', ipt: 'IPT',
   familias: 'Familia', estados: 'Estado', rangos: 'Aging', docrels: 'DocRel', ingreso_desde: 'Ingreso desde', ingreso_hasta: 'Ingreso hasta',
   entrega_desde: 'FechaEntrega desde', entrega_hasta: 'FechaEntrega hasta', cliente: 'Cliente', solo_saldo: 'Solo con saldo', dias_min: 'Días ≥',
-  productos: 'Producto', glosas: 'Glosa', alertas: 'Alertas',
+  productos: 'Producto', glosas: 'Glosa', alertas: 'Alertas', clientes: 'Cliente', contratos: 'OT',
 }
 
 function chipValue(k: string, v: unknown) {
@@ -137,6 +137,9 @@ export function AptFilterBar() {
         <MultiSelect label="Familia" options={(opts?.familias || []).map(f => f.familia)} value={filters.familias} searchable
           onChange={v => patchFilters({ familias: v })}
           render={o => <span className="flex justify-between gap-2"><span>{o}</span><span className="text-slate-400">{fmtTn(opts?.familias.find(f => f.familia === o)?.tn_saldo)} TN</span></span>} />
+        <MultiSelect label="Cliente" options={(opts?.clientes || []).map(c => c.cliente)} value={filters.clientes} searchable width="w-80"
+          onChange={v => patchFilters({ clientes: v })}
+          render={o => <span className="flex justify-between gap-2"><span className="truncate">{o}</span><span className="shrink-0 text-slate-400">{fmtTn(opts?.clientes?.find(c => c.cliente === o)?.tn_saldo)} TN</span></span>} />
         <label className={`flex h-9 cursor-pointer items-center gap-2 rounded-lg border px-3 text-xs font-semibold ${filters.solo_saldo ? 'border-[#002855] bg-[#002855]/5 text-[#002855]' : 'border-slate-200 text-slate-600'}`}>
           <input type="checkbox" className="accent-[#002855]" checked={!!filters.solo_saldo} onChange={e => patchFilters({ solo_saldo: e.target.checked || undefined })} />
           Solo con saldo en APT
