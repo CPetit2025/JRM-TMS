@@ -10,6 +10,11 @@ glosa, desde cuándo, cuánto salió y qué conviene liberar primero. Todo nace 
 3. La carga **reemplaza**, por hoja, los movimientos del rango de fechas que trae el archivo: sirve tanto el acumulado del
    año como solo el día, sin duplicar.
 4. Revisar *Calidad de datos*: la conciliación fuente vs modelo debe estar en OK.
+5. Las cargas se consolidan: si ya se cargó 02/01–30/09 y luego se sube 01/10–10/10, el análisis contempla 02/01–10/10.
+   *Secuencia de fechas cargadas* (en Cargas) muestra lo cargado por hoja y alerta:
+   - error: fechas que faltan cargar entre cargas, o una carga que empieza después de un hueco (pide confirmación);
+   - aviso: ENTRADA y SALIDA llegan a fechas distintas;
+   - info: 4 o más días seguidos sin movimientos (feriados o reporte incompleto).
 
 Permisos: `apt` (ver el módulo) y `apt-carga` (cargar y cambiar parámetros). El Administrador y el Jefe de Distribución
 tienen ambos.
@@ -44,6 +49,6 @@ anterior a la primera carga aparece como "Excede lo ingresado" o "Lote sin ingre
   - Resultado del modelo en `apt_layers`, `apt_allocations` y `apt_exit_class`.
   - Funciones `apt_*`.
 - El modelo se recalcula (`apt_model_rebuild`) después de cada carga y de cada cambio de parámetros.
-- Pruebas: `supabase/tests/caja_c16_apt_estadia.test.sql` y `caja_c17_apt_cliente_ot.test.sql`.
+- Pruebas: `supabase/tests/caja_c16_apt_estadia.test.sql`, `caja_c17_apt_cliente_ot.test.sql` y `caja_c19_apt_cobertura.test.sql`.
 - Pantallas en `src/app/(dashboard)/apt/*`, con base común en `src/lib/apt/*` y `src/components/apt/*`.
 - JRM IA: herramienta `get_apt_status` (permiso de IA `ia:read:inventarios` más el módulo `apt`).

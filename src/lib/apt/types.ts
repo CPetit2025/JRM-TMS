@@ -223,3 +223,18 @@ export interface AptQuality {
   excluidas_total: number
   excluidas: Array<{ tipo: string; fila: number; archivo: string; motivo: string; raw: Record<string, unknown> }>
 }
+
+export type AptAlertaNivel = 'error' | 'aviso' | 'info'
+export interface AptCoverageSheet {
+  rangos: Array<{ desde: string; hasta: string }>
+  huecos: Array<{ desde: string; hasta: string; dias: number }>
+  desde: string | null
+  hasta: string | null
+  dias_sin_movimiento: Array<{ desde: string; hasta: string; dias: number }>
+  preview: { desde: string; hasta: string; filas_a_reemplazar: number; hueco_antes: { desde: string; hasta: string; dias: number } | null } | null
+}
+export interface AptCoverage {
+  hojas: { ENTRADA: AptCoverageSheet; SALIDA: AptCoverageSheet }
+  alertas: Array<{ nivel: AptAlertaNivel; hoja: 'ENTRADA' | 'SALIDA' | null; mensaje: string }>
+  secuencia_ok: boolean
+}

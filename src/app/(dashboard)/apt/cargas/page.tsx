@@ -7,6 +7,7 @@ import type { AptSettings } from '@/lib/apt/types'
 import { ErrorBlock, LoadingBlock } from '@/components/apt/ui'
 import { UploadPanel } from '@/components/apt/uploadPanel'
 import { UploadHistory } from '@/components/apt/uploadHistory'
+import { CoveragePanel } from '@/components/apt/uploadCoverage'
 import { HowItWorks, SettingsPanel } from '@/components/apt/uploadSettings'
 
 // Cargas y parámetros: carga diaria de ENTRADA/SALIDA, historial y parámetros del modelo FIFO
@@ -37,6 +38,7 @@ export default function AptCargasPage() {
           Solo lectura: para cargar archivos o cambiar parámetros se necesita el permiso “APT — Carga diaria ENTRADA/SALIDA y parámetros”.
         </div>
       )}
+      <CoveragePanel />
       <UploadHistory />
       <div className="grid gap-4 xl:grid-cols-2">
         {/* La clave fuerza a reiniciar el formulario con los valores guardados tras cada recálculo */}

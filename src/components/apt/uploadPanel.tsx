@@ -6,7 +6,8 @@ import { AlertTriangle, CheckCircle2, FileSpreadsheet, Info, Loader2, RefreshCw,
 import { aptApi } from '@/lib/apt/api'
 import { fmtDate, fmtInt, fmtTn } from '@/lib/apt/format'
 import { parseWorkbooks, type AptParseResult, type AptParsedSheet } from '@/lib/apt/parseWorkbook'
-import type { AptState, AptUploadSummaryKind } from '@/lib/apt/types'
+import type { AptCoverage, AptState, AptUploadSummaryKind } from '@/lib/apt/types'
+import { CoverageAlerts } from './uploadCoverage'
 
 // Carga diaria de ENTRADA / SALIDA: lectura en el navegador, vista previa, envío por lotes y recálculo FIFO
 
@@ -116,6 +117,9 @@ export function UploadPanel({ state }: { state: AptState | null }) {
   const [last, setLast] = useState<{ entrada?: AptUploadSummaryKind; salida?: AptUploadSummaryKind } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const cancelRef = useRef(false)
+  // Cobertura de fechas con la carga en vista previa: huecos, días a reemplazar y desfase ENTRADA/SALIDA
+  const [cov, setCov] = useState<{ key: string; data: AptCoverage | null } | null>(null)
+  const [ack, setAck] = useState('')
   const busy = phase.step === 'reading' || phase.step === 'sending' || phase.step === 'applying'
 
   // Evita cerrar la pestaña a mitad del envío
@@ -190,6 +194,19 @@ export function UploadPanel({ state }: { state: AptState | null }) {
   }
 
   const preview = phase.step === 'preview' ? phase.result : null
+  const previewRanges = Object.fromEntries((preview?.sheets || []).filter(s => s.stats.desde && s.stats.hasta)
+    .map(s => [s.kind, { desde: s.stats.desde as string, hasta: s.stats.hasta as string }]))
+  const covKey = preview ? JSON.stringify(previewRanges) : ''
+  useEffect(() => {
+    if (!covKey) return
+    let alive = true
+    aptApi.coverage(JSON.parse(covKey)).then(d => { if (alive) setCov({ key: covKey, data: d }) })
+      .catch(() => { if (alive) setCov({ key: covKey, data: null }) })
+    return () => { alive = false }
+  }, [covKey])
+  const coverage = cov?.key === covKey ? cov.data : null
+  const blocking = !!coverage?.alertas.some(a => a.nivel !== 'info')
+  const confirmed = !blocking || ack === covKey
   const ent = preview?.sheets.find(s => s.kind === 'ENTRADA')
   const sal = preview?.sheets.find(s => s.kind === 'SALIDA')
   const rango = (s?: AptParsedSheet) => (s?.stats.desde ? `del ${fmtDate(s.stats.desde)} al ${fmtDate(s.stats.hasta)}` : null)
@@ -258,6 +275,13 @@ export function UploadPanel({ state }: { state: AptState | null }) {
                 </p>
               </div>
             )}
+            {coverage && <CoverageAlerts coverage={coverage} preview />}
+            {blocking && (
+              <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs text-slate-700">
+                <input type="checkbox" className="mt-0.5 accent-[#cf152d]" checked={ack === covKey} onChange={e => setAck(e.target.checked ? covKey : '')} />
+                Entiendo que la secuencia de fechas queda incompleta y quiero cargar este archivo de todos modos (podré subir las fechas faltantes después).
+              </label>
+            )}
             {preview.ignored.length > 0 && (
               <p className="text-xs text-slate-400">Hojas ignoradas: {preview.ignored.map(i => i.sheetName).join(', ')}.</p>
             )}
@@ -266,8 +290,8 @@ export function UploadPanel({ state }: { state: AptState | null }) {
                 className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                 Cancelar
               </button>
-              <button onClick={confirm}
-                className="flex items-center gap-1.5 rounded-lg bg-[#cf152d] px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#b01226]">
+              <button onClick={confirm} disabled={!confirmed}
+                className="flex items-center gap-1.5 rounded-lg bg-[#cf152d] px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#b01226] disabled:cursor-not-allowed disabled:opacity-50">
                 <CheckCircle2 className="h-4 w-4" /> Confirmar carga ({fmtInt(preview.sheets.reduce((a, s) => a + s.rows.length, 0))} filas)
               </button>
             </div>
@@ -325,7 +349,8 @@ export function UploadPanel({ state }: { state: AptState | null }) {
         {phase.step === 'idle' && !last && !error && (
           <p className="flex items-start gap-2 text-xs text-slate-500">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            Cada carga reemplaza, por tipo, los movimientos del rango de fechas que trae el archivo y recalcula todo el FIFO. Las filas originales se guardan intactas.
+            Las cargas se consolidan: cada una reemplaza, por tipo, solo el rango de fechas que trae el archivo y conserva el resto
+            (por ejemplo, 02/01–30/09 y luego 01/10–10/10 quedan como 02/01–10/10). El sistema alerta si la secuencia de fechas se rompe.
           </p>
         )}
       </div>
