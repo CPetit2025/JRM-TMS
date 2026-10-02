@@ -49,6 +49,9 @@ export default function FlotaPage() {
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false)
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null)
   const [editingDriverId, setEditingDriverId] = useState<string | null>(null)
+  // Vencimientos al abrir la edición: si cambian se registran como documento (renovación o corrección)
+  const [originalDocs, setOriginalDocs] = useState({ soat: '', rt: '' })
+  const [nextCode, setNextCode] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [showFilters, setShowFilters] = useState(false)
@@ -95,6 +98,13 @@ export default function FlotaPage() {
     responsible_id: '',
     current_location: ''
   })
+  // Código que se asignará automáticamente según el tipo de unidad
+  useEffect(() => {
+    if (!isVehicleModalOpen || editingVehicleId) return
+    let alive = true
+    supabase.rpc('next_vehicle_internal_code', { p_type: newVehicle.type }).then(({ data }) => { if (alive) setNextCode(typeof data === 'string' ? data : '') })
+    return () => { alive = false }
+  }, [isVehicleModalOpen, editingVehicleId, newVehicle.type])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const [newDriver, setNewDriver] = useState({
     document_number: '',
@@ -166,17 +176,32 @@ export default function FlotaPage() {
       const { status: _status, ...vehicleFields } = newVehicle
       const payload = {
         ...vehicleFields,
+        internal_code: newVehicle.internal_code.trim() || null,
         soat_expiration: newVehicle.soat_expiration || null,
         technical_review_expiration: newVehicle.technical_review_expiration || null,
         responsible_id: newVehicle.responsible_id || null
       }
 
       if (editingVehicleId) {
+        // SOAT y RT se guardan como documento de la unidad (el vehículo refleja el vigente)
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { soat_expiration: _soat, technical_review_expiration: _rt, ...editable } = payload
         const { error: updateError } = await supabase
           .from('vehicles')
-          .update(payload)
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          .update(editable.internal_code ? editable : (({ internal_code: _code, ...rest }) => rest)(editable))
           .eq('id', editingVehicleId)
         error = updateError
+        const soat = newVehicle.soat_expiration !== originalDocs.soat ? newVehicle.soat_expiration || null : null
+        const rt = newVehicle.technical_review_expiration !== originalDocs.rt ? newVehicle.technical_review_expiration || null : null
+        if (!error && (soat || rt)) {
+          const { data: docs, error: docsError } = await supabase.rpc('update_vehicle_compliance_dates', { p_vehicle_id: editingVehicleId, p_soat: soat, p_rt: rt })
+          if (docsError || !docs?.success) {
+            toast.error(`Datos guardados, pero no se actualizaron SOAT/RT: ${docsError?.message || docs?.error}`)
+          } else {
+            toast.success('Vencimientos actualizados y registrados en Cumplimiento → Documentos')
+          }
+        }
       } else {
         const { error: insertError } = await supabase
           .from('vehicles')
@@ -200,6 +225,7 @@ export default function FlotaPage() {
 
   const handleEditVehicle = (v: any) => {
     setEditingVehicleId(v.id)
+    setOriginalDocs({ soat: v.soat_expiration || '', rt: v.technical_review_expiration || '' })
     setNewVehicle({
       plate: v.plate,
       carrier_id: v.carrier_id,
@@ -942,7 +968,9 @@ export default function FlotaPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Código Interno</label>
-              <input type="text" className="w-full px-3 py-2 border border-slate-300 rounded-lg uppercase text-slate-900 focus:ring-2 focus:ring-[#002855] outline-none" value={newVehicle.internal_code} onChange={e => setNewVehicle({...newVehicle, internal_code: e.target.value.toUpperCase()})} />
+              <input type="text" placeholder={editingVehicleId ? undefined : `Automático${nextCode ? `: ${nextCode}` : ''}`}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg uppercase text-slate-900 placeholder:normal-case placeholder:text-slate-400 focus:ring-2 focus:ring-[#002855] outline-none" value={newVehicle.internal_code} onChange={e => setNewVehicle({...newVehicle, internal_code: e.target.value.toUpperCase()})} />
+              {!editingVehicleId && <p className="mt-1 text-xs text-slate-500">Déjelo vacío y se asigna por tipo de unidad.</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Número de Serie (VIN)</label>
@@ -983,11 +1011,12 @@ export default function FlotaPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Vencimiento SOAT</label>
-              <input type="date" disabled={!!editingVehicleId} title={editingVehicleId ? 'Se gestiona en Cumplimiento → Documentos' : undefined} value={newVehicle.soat_expiration} onChange={e => setNewVehicle({...newVehicle, soat_expiration: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" />
+              {editingVehicleId && <p className="-mt-0.5 mb-1 text-[11px] text-slate-500">Una fecha posterior registra la renovación; una anterior corrige la vigente.</p>}
+              <input type="date" value={newVehicle.soat_expiration} onChange={e => setNewVehicle({...newVehicle, soat_expiration: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Vencimiento Rev. Técnica</label>
-              <input type="date" disabled={!!editingVehicleId} title={editingVehicleId ? 'Se gestiona en Cumplimiento → Documentos' : undefined} value={newVehicle.technical_review_expiration} onChange={e => setNewVehicle({...newVehicle, technical_review_expiration: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" />
+              <input type="date" value={newVehicle.technical_review_expiration} onChange={e => setNewVehicle({...newVehicle, technical_review_expiration: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" />
             </div>
           </div>
           <div className="grid grid-cols-1 gap-4">
