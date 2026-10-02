@@ -31,7 +31,7 @@ const RANK_N = 10
 const TONE_TEXT = { ok: 'text-emerald-700', warn: 'text-amber-700', crit: 'text-red-700', none: 'text-slate-400' } as const
 
 const filtroDe = (vista: Vista, clave: string): Partial<AptFilters> =>
-  vista === 'producto' ? { producto: clave } : vista === 'glosa' ? { glosa: clave } : { familias: [clave] }
+  vista === 'producto' ? { productos: [clave] } : vista === 'glosa' ? { glosas: [clave] } : { familias: [clave] }
 
 export default function AptProductosPage() {
   const { filters, patchFilters, hrefWith, filterKey } = useAptFilters()

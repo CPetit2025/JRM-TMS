@@ -92,8 +92,9 @@ BEGIN
         WHERE m.upload_id = v_up AND m.kind = 'ENTRADA' AND m.row_no = 2)
      AND (SELECT kg_out = 300 AND kg_saldo = 200 AND estado = 'Salida parcial' AND dias_saldo = 21 AND tn_dias = 4.2
             AND rango = (SELECT label FROM public.apt_aging_ranges WHERE desde <= 21 ORDER BY desde DESC LIMIT 1)
+            AND posible_cruce  -- el mismo producto salió después por ZZ16-999 sin ingreso
           FROM public.apt_layers l JOIN public.apt_movements m ON m.id = l.movement_id WHERE m.upload_id = v_up AND m.kind = 'ENTRADA' AND m.row_no = 3)
-     AND (SELECT estado = 'Problema de información' AND kg_out_before_in = 100 FROM public.apt_layers l JOIN public.apt_movements m ON m.id = l.movement_id
+     AND (SELECT estado = 'Salida parcial' AND problema_info AND kg_out_before_in = 100 FROM public.apt_layers l JOIN public.apt_movements m ON m.id = l.movement_id
           WHERE m.upload_id = v_up AND m.kind = 'ENTRADA' AND m.row_no = 4)
      AND (SELECT estado = 'Despachado' FROM public.apt_layers l JOIN public.apt_movements m ON m.id = l.movement_id
           WHERE m.upload_id = v_up AND m.kind = 'ENTRADA' AND m.row_no = 5)

@@ -61,10 +61,15 @@ export const ESTADO_STYLE: Record<AptEstado, { cls: string; color: string; help:
   'Salida parcial': { cls: 'bg-amber-50 text-amber-700 border-amber-200', color: '#f59e0b', help: 'Tiene despachos y aún queda saldo' },
   Despachado: { cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', color: '#10b981', help: 'Despachado dentro de la tolerancia' },
   'Sin salida identificada': { cls: 'bg-red-50 text-red-700 border-red-200', color: '#dc2626', help: 'Sin ninguna salida y supera el plazo de alerta' },
-  'Problema de información': { cls: 'bg-violet-50 text-violet-700 border-violet-200', color: '#7c3aed', help: 'Ingreso sin peso o salida registrada antes del ingreso' },
+  'Problema de información': { cls: 'bg-violet-50 text-violet-700 border-violet-200', color: '#7c3aed', help: 'Ingreso sin peso: no se puede medir' },
 }
 
-export const TIPO_LABEL: Record<AptTipoLote, string> = { CONTRATO: 'Contrato', SUBCONTRATO: 'Subcontrato', ERROR: 'Error de contrato' }
+export const TIPO_LABEL: Record<AptTipoLote, string> = { CONTRATO: 'Contrato', SUBCONTRATO: 'Subcontrato', ERROR: 'Error de contrato', GARANTIA: 'Garantía' }
+
+export const ALERTA_LABEL: Record<string, string> = {
+  problema_info: 'Problema de información (sin peso o salida antes del ingreso)',
+  posible_cruce: 'Posible despacho con otro NumRel',
+}
 
 export const CLASE_SALIDA_LABEL: Record<string, string> = {
   ASIGNADA: 'Despacho de lo ingresado',

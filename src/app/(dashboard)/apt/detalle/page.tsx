@@ -106,17 +106,23 @@ const CAPA_COLS: Col<AptCapa>[] = [
             <AlertTriangle className="h-3.5 w-3.5 text-violet-600" />
           </span>
         )}
+        {r.posible_cruce && (
+          <span title="Este producto salió después por otro NumRel sin ingreso: el saldo podría haberse despachado con otro NumRel" aria-label="Posible despacho con otro NumRel">
+            <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+          </span>
+        )}
       </div>
     ),
     excel: r => r.estado,
   },
   { key: 'salida_antes_ingreso', label: 'Salida antes del ingreso', render: () => null, excel: r => (r.salida_antes_ingreso ? 'Sí' : 'No') },
+  { key: 'posible_cruce', label: 'Posible despacho con otro NumRel', render: () => null, excel: r => (r.posible_cruce ? 'Sí' : 'No') },
   { key: 'documento', label: 'Documento', render: () => null, excel: r => r.documento },
   { key: 'familia', label: 'Familia', render: () => null, excel: r => r.familia },
   { key: 'tipo', label: 'Tipo de lote', render: () => null, excel: r => TIPO_LABEL[r.tipo] || r.tipo },
 ]
 // Columnas que solo van al Excel (la tabla las integra en otras celdas)
-const CAPA_EXCEL_ONLY = new Set(['unidad', 'salida_antes_ingreso', 'documento', 'familia', 'tipo'])
+const CAPA_EXCEL_ONLY = new Set(['unidad', 'salida_antes_ingreso', 'posible_cruce', 'documento', 'familia', 'tipo'])
 
 function groupCols(level: AptLevel): Col<AptGroupRow>[] {
   const claveLabel = LEVELS.find(l => l.id === level)?.clave || 'Clave'
@@ -281,8 +287,8 @@ export default function AptDetallePage() {
     maxSaldo: Math.max(0, ...rows.map(r => Number(r.tn_saldo) || 0)),
     drill: (r: AptGroupRow) => {
       const patch: Partial<AptFilters> =
-        level === 'producto' ? { producto: r.clave }
-          : level === 'glosa' ? { glosa: r.clave }
+        level === 'producto' ? { productos: [r.clave] }
+          : level === 'glosa' ? { glosas: [r.clave] }
             : level === 'familia' ? { familias: [r.clave] }
               : level === 'numrel_op' ? { numrel_op: r.clave }
                 : level === 'ipt' ? (r.clave === '(sin IPT)' ? {} : { ipt: r.clave })

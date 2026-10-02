@@ -60,6 +60,7 @@ export default function AptDashboardPage() {
   const filterRango = (rango: string) => patchFilters({ rangos: [rango], solo_saldo: true })
   const isDmin = (n: number) => filters.dias_min === n && !!filters.solo_saldo
   const sameEstados = (e: AptEstado[]) => (filters.estados || []).length === e.length && e.every(x => filters.estados?.includes(x))
+  const hasAlerta = (a: 'problema_info' | 'posible_cruce') => !!filters.alertas?.includes(a)
   const toggle = (active: boolean, patch: Parameters<typeof patchFilters>[0], clear: Parameters<typeof patchFilters>[0]) =>
     patchFilters(active ? clear : patch)
   const grainButtons = (
@@ -113,10 +114,26 @@ export default function AptDashboardPage() {
         <MiniKpi label="Ingreso más antiguo" value={fmtDate(k.fecha_mas_antigua)} hint="Con saldo en APT" />
       </div>
 
+      {/* Flujo y calidad del inventario */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+        <MiniKpi label="Despacho diario (30 d)" value={`${fmtTn(k.despacho_diario_30d)} TN`} hint="Promedio de lo despachado en los últimos 30 días" />
+        <MiniKpi label="Cobertura del saldo" value={k.cobertura_dias === null ? '—' : `${fmtDec1(k.cobertura_dias)} d`}
+          tone={(k.cobertura_dias ?? 0) > alert ? 'crit' : (k.cobertura_dias ?? 0) > 30 ? 'warn' : 'default'}
+          hint="Días para despachar el saldo al ritmo de los últimos 30 días" />
+        <MiniKpi label="Rotación (30 d)" value={k.rotacion_30d === null ? '—' : `${fmtDec1(k.rotacion_30d)}×`} hint="TN despachadas en 30 días / saldo actual" />
+        <MiniKpi label="FechaEntrega vencida" value={`${fmtTn(k.tn_fe_vencida)} TN`} tone="warn"
+          hint={`Saldo con FechaEntrega anterior al corte · ${fmtDec1(k.dias_fe_vencida_pond)} d prom.`} />
+        <MiniKpi label="Posible despacho con otro NumRel" value={`${fmtTn(k.tn_posible_cruce)} TN`} tone="warn"
+          hint="Saldo cuyo producto salió por otro NumRel sin ingreso: revisar"
+          onClick={() => toggle(hasAlerta('posible_cruce'), { alertas: ['posible_cruce'] }, { alertas: undefined })} active={hasAlerta('posible_cruce')} />
+        <MiniKpi label="Problemas de información" value={fmtDias(k.capas_problema)} hint="Capas sin peso o con salida antes del ingreso"
+          onClick={() => toggle(hasAlerta('problema_info'), { alertas: ['problema_info'] }, { alertas: undefined })} active={hasAlerta('problema_info')} />
+      </div>
+
       {/* Respuestas clave + aging */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <ChartCard className="lg:col-span-5" title="Respuestas clave" subtitle="Lectura automática del inventario con los filtros actuales" bodyClassName="py-1">
-          <RespuestasClave d={d} filters={filters} grain={grain} onProducto={p => patchFilters({ producto: p })} />
+          <RespuestasClave d={d} filters={filters} grain={grain} onProducto={p => patchFilters({ productos: [p] })} />
         </ChartCard>
         <ChartCard className="lg:col-span-7" title="TN por rango de aging" subtitle="Saldo en APT según los días que lleva almacenado · clic en una barra para filtrar"
           info="Antigüedad de cada capa (FIFO) con saldo a la fecha de corte. Los rangos se configuran en Cargas y parámetros.">
@@ -155,7 +172,7 @@ export default function AptDashboardPage() {
           <LoteBars data={d.top_lotes_tn} metric="tn_saldo" aging={d.aging} onSelect={toLote} />
         </ChartCard>
         <ChartCard className="lg:col-span-6" title="TOP productos por TN almacenadas" subtitle="Clic para filtrar el producto en todo el módulo">
-          <ProductoBars data={d.top_productos} onSelect={p => patchFilters({ producto: p })} />
+          <ProductoBars data={d.top_productos} onSelect={p => patchFilters({ productos: [p] })} />
         </ChartCard>
       </div>
 

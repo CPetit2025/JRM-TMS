@@ -2,7 +2,8 @@
 // Reflejan lo que devuelven las funciones public.apt_* de la migración 20261002100000_apt_estadia_inventario.sql.
 
 export type AptEstado = 'En APT' | 'Salida parcial' | 'Despachado' | 'Sin salida identificada' | 'Problema de información'
-export type AptTipoLote = 'CONTRATO' | 'SUBCONTRATO' | 'ERROR'
+export type AptTipoLote = 'CONTRATO' | 'SUBCONTRATO' | 'ERROR' | 'GARANTIA'
+export type AptAlerta = 'problema_info' | 'posible_cruce'
 export type AptGrain = 'dia' | 'semana' | 'mes'
 export type AptLevel = 'capa' | 'lote' | 'producto' | 'glosa' | 'familia' | 'numrel_op' | 'ipt'
 export type AptDim = 'lote' | 'producto' | 'glosa' | 'familia'
@@ -15,7 +16,10 @@ export interface AptFilters {
   tipos?: AptTipoLote[]
   numrel_op?: string
   producto?: string
+  productos?: string[]   // coincidencia exacta (clic en un producto)
   glosa?: string
+  glosas?: string[]      // coincidencia exacta
+  alertas?: AptAlerta[]  // capas con problema de información o posible cruce de NumRel
   ipt?: string
   familias?: string[]
   estados?: AptEstado[]
@@ -59,6 +63,13 @@ export interface AptKpis {
   tn_dias: number
   fecha_mas_antigua: string | null
   dias_despacho_pond: number | null
+  capas_problema: number
+  tn_posible_cruce: number
+  tn_fe_vencida: number
+  dias_fe_vencida_pond: number | null
+  despacho_diario_30d: number | null
+  cobertura_dias: number | null
+  rotacion_30d: number | null
   lote_mayor_tn: { lote: string; tn: number } | null
   lote_mayor_txd: { lote: string; tn_dias: number } | null
   lote_mas_antiguo: { lote: string; dias: number; tn: number } | null
@@ -101,6 +112,7 @@ export interface AptCapa {
   ultima_salida: string | null; cantidad: number | null; unidad: string | null; kg_in: number; kg_out: number; kg_saldo: number
   tn_in: number; tn_out: number; tn_saldo: number; dias: number | null; dias_saldo: number | null; dias_despacho_pond: number | null
   rango: string | null; tn_dias: number; estado: AptEstado; salida_antes_ingreso: boolean
+  problema_info: boolean; posible_cruce: boolean
 }
 
 // Fila agregada (lote, producto, glosa, familia, numrel_op, ipt)
@@ -127,7 +139,8 @@ export interface AptLoteFicha {
     id: number; producto: string; glosa: string | null; numrel_op: string | null; ipt: string | null; documento: string | null
     fecha_ingreso: string; fecha_entrega: string | null; cantidad: number | null; unidad: string | null; kg_in: number; kg_out: number
     kg_saldo: number; dias: number | null; dias_saldo: number | null; tn_dias: number; estado: AptEstado; rango: string | null
-    ultima_salida: string | null; row_no: number; archivo: string; raw: Record<string, unknown>
+    ultima_salida: string | null; problema_info: boolean; posible_cruce: boolean; salida_antes_ingreso: boolean
+    row_no: number; archivo: string; raw: Record<string, unknown>
   }>
   salidas: Array<{
     id: number; fecha: string; guia: string | null; cliente: string | null; docrel: string | null; numrel: string | null; producto: string
@@ -200,6 +213,9 @@ export interface AptQuality {
   capas_por_estado: Array<{ estado: AptEstado; capas: number; tn_in: number }>
   salida_antes_de_ingreso: { capas: number; tn: number }
   lotes_sin_ingreso: number
+  posible_cruce: { capas: number; lotes: number; tn_saldo: number }
+  problema_info: { capas: number; tn_in: number }
   historico_suficiente: boolean
+  excluidas_total: number
   excluidas: Array<{ tipo: string; fila: number; archivo: string; motivo: string; raw: Record<string, unknown> }>
 }

@@ -34,7 +34,7 @@ function cellStyle(color: string, a: number) {
   if (a <= 0) return { background: 'transparent', color: '#cbd5e1' }
   const [r, g, b] = hexRgb(color).map(c => Math.round(255 * (1 - a) + c * a))
   const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
-  return { background: `rgb(${r}, ${g}, ${b})`, color: lum < 0.55 ? '#ffffff' : '#0f172a' }
+  return { background: `rgb(${r}, ${g}, ${b})`, color: lum < 0.45 ? '#ffffff' : '#0f172a' }
 }
 
 export default function AptHeatmapPage() {
@@ -60,7 +60,7 @@ export default function AptHeatmapPage() {
 
   const open = (r: Row) => {
     if (dim === 'lote') { router.push(loteHref(r.clave, filters)); return }
-    patchFilters(dim === 'producto' ? { producto: r.clave } : dim === 'glosa' ? { glosa: r.clave } : { familias: [r.clave] })
+    patchFilters(dim === 'producto' ? { productos: [r.clave] } : dim === 'glosa' ? { glosas: [r.clave] } : { familias: [r.clave] })
     toast.success(`Filtro aplicado: ${r.clave}`)
   }
 
@@ -192,7 +192,7 @@ export default function AptHeatmapPage() {
           </div>
 
           {hv && hover && (
-            <div className="pointer-events-none fixed z-50" style={{ left: hover.x + 14, top: hover.y + 14 }}>
+            <div className="pointer-events-none fixed z-50" style={{ left: Math.min(hover.x + 14, window.innerWidth - 300), top: Math.min(hover.y + 14, window.innerHeight - 130) }}>
               <TooltipBox title={`${hv.r.clave} · ${hv.rango}`} subtitle={showSub ? hv.r.etiqueta : null} rows={[
                 ['Saldo en el rango', `${fmtTn(hv.c?.tn)} TN`],
                 ['% de la fila', fmtPct(hv.r.tn > 0 ? (100 * (hv.c?.tn || 0)) / hv.r.tn : null)],

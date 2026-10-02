@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, Filter, RotateCcw, Search, SlidersHorizontal, X } from 'lucide-react'
 import { aptApi } from '@/lib/apt/api'
-import { fmtDate, fmtTn, TIPO_LABEL } from '@/lib/apt/format'
+import { ALERTA_LABEL, fmtDate, fmtTn, TIPO_LABEL } from '@/lib/apt/format'
 import { useAptFilters } from '@/lib/apt/useAptFilters'
 import type { AptEstado, AptFilterOptions, AptFilters, AptTipoLote } from '@/lib/apt/types'
 
@@ -80,12 +80,14 @@ const CHIP_LABEL: Record<string, string> = {
   lote: 'Lote', lotes: 'Lotes', contrato: 'Contrato', tipos: 'Tipo', numrel_op: 'NumRel OP', producto: 'Producto', glosa: 'Glosa', ipt: 'IPT',
   familias: 'Familia', estados: 'Estado', rangos: 'Aging', docrels: 'DocRel', ingreso_desde: 'Ingreso desde', ingreso_hasta: 'Ingreso hasta',
   entrega_desde: 'FechaEntrega desde', entrega_hasta: 'FechaEntrega hasta', cliente: 'Cliente', solo_saldo: 'Solo con saldo', dias_min: 'Días ≥',
+  productos: 'Producto', glosas: 'Glosa', alertas: 'Alertas',
 }
 
 function chipValue(k: string, v: unknown) {
   if (k === 'solo_saldo') return 'Sí'
   if (k.endsWith('_desde') || k.endsWith('_hasta')) return fmtDate(String(v))
   if (k === 'tipos' && Array.isArray(v)) return v.map(t => TIPO_LABEL[t as AptTipoLote] || t).join(', ')
+  if (k === 'alertas' && Array.isArray(v)) return v.map(a => ALERTA_LABEL[a] || a).join(', ')
   return Array.isArray(v) ? v.join(', ') : String(v)
 }
 
@@ -127,7 +129,7 @@ export function AptFilterBar() {
           <option value="">Contrato (OT madre)</option>
           {(opts?.contratos || []).map(c => <option key={c} value={c}>{c}</option>)}
         </select>
-        <MultiSelect label="Tipo" options={['CONTRATO', 'SUBCONTRATO', 'ERROR']} value={filters.tipos}
+        <MultiSelect label="Tipo" options={['CONTRATO', 'SUBCONTRATO', 'ERROR', 'GARANTIA']} value={filters.tipos}
           onChange={v => patchFilters({ tipos: v as AptTipoLote[] })} render={o => TIPO_LABEL[o as AptTipoLote]} width="w-48" />
         <MultiSelect label="Estado" options={opts?.estados || ['En APT', 'Salida parcial', 'Despachado', 'Sin salida identificada', 'Problema de información']}
           value={filters.estados} onChange={v => patchFilters({ estados: v as AptEstado[] })} />
@@ -173,6 +175,8 @@ export function AptFilterBar() {
           ))}
           <div className="flex items-end gap-2">
             <MultiSelect label="DocRel" options={opts?.docrels || []} value={filters.docrels} onChange={v => patchFilters({ docrels: v })} />
+            <MultiSelect label="Alertas" options={['problema_info', 'posible_cruce']} value={filters.alertas} width="w-72"
+              onChange={v => patchFilters({ alertas: v as AptFilters['alertas'] })} render={o => ALERTA_LABEL[o]} />
           </div>
           <div className="flex items-end">
             <button type="button" onClick={applyDraft} className="h-8 w-full rounded-md bg-[#002855] px-3 text-xs font-bold text-white hover:bg-[#003a7a]">

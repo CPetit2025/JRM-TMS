@@ -64,7 +64,7 @@ export default function AptParetoPage() {
 
   const open = (it: Item) => {
     if (dim === 'lote') { router.push(loteHref(it.clave, filters)); return }
-    patchFilters(dim === 'producto' ? { producto: it.clave } : dim === 'glosa' ? { glosa: it.clave } : { familias: [it.clave] })
+    patchFilters(dim === 'producto' ? { productos: [it.clave] } : dim === 'glosa' ? { glosas: [it.clave] } : { familias: [it.clave] })
     toast.success(`Filtro aplicado: ${it.clave}`)
   }
 
