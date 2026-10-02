@@ -29,6 +29,8 @@ tienen ambos.
 | Estados | En APT (sin salidas, dentro del plazo de alerta) · Salida parcial · Despachado (saldo ≤ tolerancia, 2 %) · Sin salida identificada (sin salidas y más días que la alerta, 60) · Problema de información (ingreso sin peso o salida registrada antes del ingreso). |
 | Salidas | Despacho de lo ingresado · Excede lo ingresado (stock anterior al periodo) · Otro producto del lote (no ingresó por APT: pernería, accesorios) · Lote sin ingreso en el periodo · Sin NumRel. |
 | FechaEntrega | Se analiza por separado; nunca reemplaza la fecha de ingreso APT. |
+| Cliente del lote | El de más TN en las guías de SALIDA del lote; si no tiene guías, el de su OT madre; si tampoco, el cliente de la OT en Contratos del TMS. |
+| OT madre | Primer tramo del NumRel (16325-S002 → 16325). La pestaña *Cliente · OT · Lote* muestra primer ingreso, último despacho (cualquier guía de sus lotes) y saldo final. |
 
 Una salida registrada antes del ingreso que consume se asigna igual (el ingreso se registró tarde), con 0 días, y
 marca la capa como "Problema de información".
@@ -42,6 +44,6 @@ anterior a la primera carga aparece como "Excede lo ingresado" o "Lote sin ingre
   - Resultado del modelo en `apt_layers`, `apt_allocations` y `apt_exit_class`.
   - Funciones `apt_*`.
 - El modelo se recalcula (`apt_model_rebuild`) después de cada carga y de cada cambio de parámetros.
-- Prueba: `supabase/tests/caja_c16_apt_estadia.test.sql`.
+- Pruebas: `supabase/tests/caja_c16_apt_estadia.test.sql` y `caja_c17_apt_cliente_ot.test.sql`.
 - Pantallas en `src/app/(dashboard)/apt/*`, con base común en `src/lib/apt/*` y `src/components/apt/*`.
 - JRM IA: herramienta `get_apt_status` (permiso de IA `ia:read:inventarios` más el módulo `apt`).

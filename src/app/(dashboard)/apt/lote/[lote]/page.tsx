@@ -202,7 +202,10 @@ function LoteView({ data, alert, producto, setProducto, onOrigen }: {
             {r && <EstadoBadge estado={r.estado} />}
           </div>
           {r?.etiqueta && <p className="mt-1 max-w-3xl truncate text-sm text-slate-600" title={r.etiqueta}>{r.etiqueta}</p>}
-          <p className="mt-1 text-xs text-slate-400">Corte {fmtDate(data.cutoff)}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Cliente: <b className="text-slate-700">{r?.cliente || 'Sin cliente identificado'}</b> · OT madre {data.lote.split('-')[0]}
+            {r?.ultimo_despacho ? <> · Último despacho {fmtDate(r.ultimo_despacho)}</> : null} · Corte {fmtDate(data.cutoff)}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {data.contrato ? (

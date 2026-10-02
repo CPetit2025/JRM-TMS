@@ -16,6 +16,7 @@ import { LoadingBlock } from '@/components/apt/ui'
 
 const TABS = [
   { href: '/apt', label: 'Dashboard' },
+  { href: '/apt/clientes', label: 'Cliente · OT · Lote' },
   { href: '/apt/detalle', label: 'Detalle APT' },
   { href: '/apt/productos', label: 'Productos y glosas' },
   { href: '/apt/pareto', label: 'Pareto' },
