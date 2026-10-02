@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/client'
 import type {
   AptDashboard, AptDetail, AptDim, AptFechaEntrega, AptFilterOptions, AptFilters, AptGrain, AptHeatmap, AptLevel, AptLoteFicha,
-  AptPareto, AptQuality, AptSettings, AptTrendPoint, AptUpload,
+  AptCoverage, AptPareto, AptQuality, AptSettings, AptTrendPoint, AptUpload,
 } from './types'
 
 // Acceso a las funciones public.apt_*. Todas devuelven { success, error?, ... }; aquí se convierte un error en excepción.
@@ -41,6 +41,9 @@ export const aptApi = {
   settings: () => call<AptSettings>('apt_get_settings'),
   saveSettings: (p: { cutoff_date: string | null; tolerance: number; alert_days: number; ranges: Array<{ desde: number; label: string }> }) =>
     call<{ model: unknown }>('apt_save_settings', { p }),
+  // Cobertura de fechas cargadas y alertas de secuencia; preview evalúa una carga antes de confirmarla
+  coverage: (preview?: Partial<Record<'ENTRADA' | 'SALIDA', { desde: string; hasta: string }>>) =>
+    call<AptCoverage>('apt_coverage', { p_preview: preview && Object.keys(preview).length ? preview : null }),
   uploadBegin: (fileName: string) => call<{ id: string }>('apt_upload_begin', { p_file_name: fileName }),
   uploadRows: (uploadId: string, kind: 'ENTRADA' | 'SALIDA', rows: Record<string, unknown>[]) =>
     call<{ rows: number }>('apt_upload_rows', { p_upload_id: uploadId, p_kind: kind, p_rows: rows }),

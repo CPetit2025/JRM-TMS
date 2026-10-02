@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { CalendarClock, FileUp, Lock, Warehouse } from 'lucide-react'
+import { AlertTriangle, CalendarClock, FileUp, Lock, Warehouse } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
 import { aptApi } from '@/lib/apt/api'
 import { fmtDate, fmtDateTime } from '@/lib/apt/format'
@@ -53,11 +53,15 @@ export default function AptLayout({ children }: { children: React.ReactNode }) {
   const { hasAccess, isLoaded } = usePermissions()
   const pathname = usePathname()
   const [info, setInfo] = useState<AptSettings | null>(null)
+  const [secuenciaOk, setSecuenciaOk] = useState(true)
   const allowed = hasAccess('apt') || hasAccess('apt-carga')
 
   useEffect(() => {
     if (!allowed) return
-    const load = () => { aptApi.settings().then(setInfo).catch(() => setInfo(null)) }
+    const load = () => {
+      aptApi.settings().then(setInfo).catch(() => setInfo(null))
+      aptApi.coverage().then(c => setSecuenciaOk(c.secuencia_ok)).catch(() => setSecuenciaOk(true))
+    }
     load()
     window.addEventListener('apt:updated', load)
     return () => window.removeEventListener('apt:updated', load)
@@ -101,6 +105,11 @@ export default function AptLayout({ children }: { children: React.ReactNode }) {
               <span className="hidden rounded-lg border border-slate-200 px-3 py-1.5 text-slate-500 lg:inline" title={info.last_upload.file_name}>
                 Última carga: {fmtDateTime(info.last_upload.applied_at)}
               </span>
+            )}
+            {!secuenciaOk && (
+              <Link href="/apt/cargas" className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 font-bold text-red-700 hover:bg-red-100">
+                <AlertTriangle className="h-3.5 w-3.5" /> Secuencia de fechas incompleta
+              </Link>
             )}
             {info?.can_load && (
               <Link href="/apt/cargas" className="flex items-center gap-1.5 rounded-lg bg-[#cf152d] px-3 py-1.5 font-bold text-white shadow-sm hover:bg-[#b01226]">
