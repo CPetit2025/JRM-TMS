@@ -10,7 +10,7 @@ END $$;
 DO $test$
 DECLARE
   v_user uuid; v_none uuid; v_role uuid; v_veh uuid; v_site uuid; v_new uuid; v_code text; v_next text;
-  r jsonb; r_none jsonb; r2 jsonb;
+  r jsonb; r_none jsonb; r2 jsonb; v_docs_antes bigint;
   v_fail text[] := '{}';
   v_pass int := 0;
 BEGIN
@@ -46,14 +46,17 @@ BEGIN
      AND EXISTS (SELECT 1 FROM public.vehicle_documents WHERE vehicle_id = v_veh AND document_type = 'SOAT' AND NOT is_active AND notes = 'ZZ C18')
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T2 renovación: ' || COALESCE(r::text, '∅')); END IF;
 
-  -- T3: fecha anterior = corrección del documento vigente (sin documento nuevo)
+  -- T3: fecha anterior = corrección del documento vigente (sin documento nuevo; la unidad puede tener historial real)
+  SELECT count(*) INTO v_docs_antes FROM public.vehicle_documents WHERE vehicle_id = v_veh AND document_type = 'SOAT';
   PERFORM pg_temp.as_user(v_user);
   r2 := public.update_vehicle_compliance_dates(v_veh, DATE '2031-02-28', NULL);
   PERFORM pg_temp.as_user(NULL);
   IF (r2 ->> 'success')::boolean
      AND (SELECT soat_expiration = DATE '2031-02-28' FROM public.vehicles WHERE id = v_veh)
-     AND (SELECT count(*) FROM public.vehicle_documents WHERE vehicle_id = v_veh AND document_type = 'SOAT') = 2
-  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T3 corrección: ' || COALESCE(r2::text, '∅')); END IF;
+     AND (SELECT count(*) FROM public.vehicle_documents WHERE vehicle_id = v_veh AND document_type = 'SOAT') = v_docs_antes
+     AND (SELECT count(*) FROM public.vehicle_documents WHERE vehicle_id = v_veh AND document_type = 'SOAT' AND is_active) = 1
+  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T3 corrección: ' || COALESCE(r2::text, '∅')
+    || ' docs ' || v_docs_antes || '→' || (SELECT count(*) FROM public.vehicle_documents WHERE vehicle_id = v_veh AND document_type = 'SOAT')); END IF;
 
   -- T4: código interno automático por tipo y normalización del ingresado
   v_next := public.next_vehicle_internal_code('TRACTO');
