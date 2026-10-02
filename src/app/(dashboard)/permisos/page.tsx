@@ -63,6 +63,13 @@ const MODULE_GROUPS: PermissionGroup[] = [
     ]
   },
   {
+    title: 'Almacén APT',
+    modules: [
+      { id: 'apt', label: 'APT — Estadía de inventario (dashboard y análisis)' },
+      { id: 'apt-carga', label: 'APT — Carga diaria ENTRADA/SALIDA y parámetros', mode: 'toggle' }
+    ]
+  },
+  {
     title: 'Mantenimiento de Flota',
     modules: [
       { id: 'mantenimiento-dashboard', label: 'Dashboard Mantenimiento' },
