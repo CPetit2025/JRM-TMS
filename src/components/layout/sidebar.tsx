@@ -7,7 +7,7 @@ import {
   LogOut, ShieldCheck, BarChart3, Send, DollarSign, 
   ArchiveRestore, Zap, ChevronRight, Wrench, Clock, BarChart2, CheckCircle, Settings2,
   Building2, FileSignature, ClipboardList, PackageCheck, Activity, HardHat, BadgeDollarSign,
-  PackageSearch, Wallet, Receipt, Calculator, AlertTriangle, ClipboardCheck, ShieldAlert, Banknote, UserRound, Fuel
+  PackageSearch, Wallet, Receipt, Calculator, AlertTriangle, ClipboardCheck, ShieldAlert, Banknote, UserRound, Fuel, Warehouse, FileUp
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -35,6 +35,7 @@ function NavItem({ href, icon: Icon, label, isActive }: { href: string, icon: Re
 
 export function Sidebar() {
   const { role, hasAccess: hasPermission } = usePermissions()
+  const pathname = usePathname()
 
   return (
     <div className="flex flex-col w-[280px] h-screen bg-[#0a0f1c] border-r border-slate-800 shadow-2xl relative z-50">
@@ -87,6 +88,17 @@ export function Sidebar() {
               {hasPermission('contratos-servicios') && <NavItem href="/contratos/servicios" icon={Receipt} label="Servicios de Contrato" />}
               {hasPermission('monitoreo') && <NavItem href="/monitoreo" icon={MapIcon} label="Monitoreo GPS" />}
               {(hasPermission('monitoreo') || hasPermission('despacho') || hasPermission('torre-control')) && <NavItem href="/torre-control" icon={Activity} label="Torre de Control" />}
+            </>
+          )}
+
+          {/* Almacén de Producto Terminado */}
+          {(hasPermission('apt') || hasPermission('apt-carga')) && (
+            <>
+              <div className="mt-6 mb-2 px-4">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Almacén APT</p>
+              </div>
+              <NavItem href="/apt" icon={Warehouse} label="Estadía de Inventario" isActive={pathname.startsWith('/apt') && !pathname.startsWith('/apt/cargas')} />
+              {hasPermission('apt-carga') && <NavItem href="/apt/cargas" icon={FileUp} label="Carga Diaria APT" />}
             </>
           )}
 

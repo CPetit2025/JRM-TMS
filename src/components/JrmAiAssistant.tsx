@@ -228,6 +228,7 @@ export function JrmAiAssistant() {
     if (path.includes('/contratos')) return ['Analiza este contrato', '¿Qué contratos tienen mayor riesgo?', '¿Cuánto costaría un flete de esta OT a Ate?']
     if (path.includes('/contratos/servicios')) return ['Registra un gasto de montacargas para una OT', '¿Qué gastos tiene la OT…?', 'Corrige el monto de un gasto']
     if (path.includes('/solicitudes')) return ['¿Qué solicitudes están observadas y por qué?', '¿Cuáles vencen en los próximos 3 días?', 'Reprograma una solicitud']
+    if (path.startsWith('/apt')) return ['¿Cuántas TN hay en APT y cuál es el aging ponderado?', '¿Qué lotes debería liberar primero?', '¿Qué material lleva más de 30 días en APT?']
     if (path.includes('/caja')) return ['¿Qué gastos esperan aprobación?', '¿Qué anticipos están vencidos sin rendir?', '¿Alguna caja está bajo el mínimo?']
     if (path.includes('/maestros/tarifas')) return ['Cotiza un flete para una OT a un distrito', '¿Qué tarifas faltan para esta OT?']
     if (path.includes('/despacho/documentos')) return ['¿Qué despachos salen sin guía de remisión?', '¿Qué documentos de unidades o conductores vencen?']
