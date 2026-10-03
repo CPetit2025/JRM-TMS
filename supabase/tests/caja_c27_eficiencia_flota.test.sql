@@ -100,8 +100,8 @@ BEGIN
     || ' combustible=' || pg_temp.cnt($q$SELECT count(*) FROM public.dispatch_expenses WHERE upper(expense_type::text) IN ('COMBUSTIBLE','FUEL','DIESEL','GASOLINA','GLP') AND status <> 'RECHAZADO' AND COALESCE(expense_date, created_at::date) >= '2025-01-01'$q$)
     || ' comb_odometro=' || pg_temp.cnt($q$SELECT count(*) FROM public.dispatch_expenses WHERE fuel_odometer IS NOT NULL AND status <> 'RECHAZADO' AND COALESCE(expense_date, created_at::date) >= '2025-01-01'$q$)
     || ' odometro_logs=' || pg_temp.cnt($q$SELECT count(*) FROM public.vehicle_odometer_logs WHERE created_at >= '2025-01-01'$q$)
-    || ' despachos=' || pg_temp.cnt($q$SELECT count(*) FROM public.dispatches WHERE scheduled_date >= '2025-01-01'$q$)
-    || ' desp_odometro=' || pg_temp.cnt($q$SELECT count(*) FROM public.dispatches WHERE end_odometer IS NOT NULL AND scheduled_date >= '2025-01-01'$q$)
+    || ' despachos=' || pg_temp.cnt($q$SELECT count(*) FROM public.dispatches d WHERE public.fe_jdate(to_jsonb(d), public.fe_desp_keys()) >= '2025-01-01'$q$)
+    || ' desp_odometro=' || pg_temp.cnt($q$SELECT count(*) FROM public.dispatches d WHERE NULLIF(to_jsonb(d) ->> 'end_odometer', '') IS NOT NULL AND public.fe_jdate(to_jsonb(d), public.fe_desp_keys()) >= '2025-01-01'$q$)
     || ' desp_guias=' || pg_temp.cnt($q$SELECT count(DISTINCT dispatch_id) FROM public.dispatch_documents WHERE doc_type = 'GUIA_REMISION' AND voided_at IS NULL$q$)
     || ' ot_total=' || pg_temp.cnt($q$SELECT count(*) FROM public.maintenance_work_orders$q$)
     || ' rls_bypass=' || (SELECT rolbypassrls::text FROM pg_roles WHERE rolname = current_user);
