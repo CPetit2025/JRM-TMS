@@ -9,6 +9,7 @@ import { exportAptXlsx } from '@/lib/apt/export'
 import type { AptQuality, AptQualitySheet } from '@/lib/apt/types'
 import { ChartCard, EmptyState, ErrorBlock, EstadoBadge, InlineBar, KpiCard, LoadingBlock } from '@/components/apt/ui'
 import { AXIS_TICK, ChartTip, ExportButton, Modal, useAptQuery } from '@/components/apt/TfcShared'
+import { CalidadFlujo } from '@/components/apt/flow/CalidadFlujo'
 
 // Calidad de datos y conciliación: qué se leyó de ENTRADA y SALIDA, qué se excluyó y si el modelo FIFO cuadra con la fuente
 
@@ -365,6 +366,8 @@ export default function CalidadPage() {
           </div>
         ) : <p className="p-4 text-sm text-slate-500">No hay filas excluidas.</p>}
       </ChartCard>
+
+      <CalidadFlujo />
 
       {raw && (
         <Modal title={`Fila original · ${raw.tipo} · fila ${raw.fila}`} onClose={closeRaw}>

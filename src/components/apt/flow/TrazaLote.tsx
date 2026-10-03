@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, type ComponentType } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Archive, ArrowDownToLine, ArrowRight, ArrowUpFromLine, Building2, Factory, Truck, Undo2, Wrench,
 } from 'lucide-react'
@@ -19,21 +19,20 @@ type Evento = FlowTraceLote['eventos'][number]
 const LIMIT = 80
 
 const esSalida = (e: Evento) => e.hacia !== undefined
-type Icon = ComponentType<{ className?: string }>
-function eventoIcon(e: Evento): Icon {
+function EventoIcon({ e }: { e: Evento }) {
+  const c = 'h-3.5 w-3.5'
   switch (e.tipo) {
-    case 'PRODUCCION': return Factory
-    case 'DESPACHO': return Truck
-    case 'CONSUMO': return Wrench
-    case 'INICIAL': return Archive
-    case 'DEVOLUCION': return Undo2
-    case 'OTRO_ALMACEN': return Building2
-    default: return esSalida(e) ? ArrowUpFromLine : ArrowDownToLine
+    case 'PRODUCCION': return <Factory className={c} />
+    case 'DESPACHO': return <Truck className={c} />
+    case 'CONSUMO': return <Wrench className={c} />
+    case 'INICIAL': return <Archive className={c} />
+    case 'DEVOLUCION': return <Undo2 className={c} />
+    case 'OTRO_ALMACEN': return <Building2 className={c} />
+    default: return esSalida(e) ? <ArrowUpFromLine className={c} /> : <ArrowDownToLine className={c} />
   }
 }
 
 function TimelineItem({ e }: { e: Evento }) {
-  const Icon = eventoIcon(e)
   const color = ALMACEN_COLOR[e.almacen] || '#64748b'
   const salida = esSalida(e)
   const ini = e.tipo === 'INICIAL'
@@ -42,7 +41,7 @@ function TimelineItem({ e }: { e: Evento }) {
     <li className="relative pl-10">
       <span className="absolute left-0 top-1 flex h-7 w-7 items-center justify-center rounded-full border-2 bg-white shadow-sm"
         style={{ borderColor: color, color, background: ini ? HATCH_BG : '#fff' }}>
-        <Icon className="h-3.5 w-3.5" />
+        <EventoIcon e={e} />
       </span>
       <div className="rounded-lg border px-3 py-2" style={{ borderColor: `${color}33`, background: `${ALMACEN_BG[e.almacen] || '#f8fafc'}66` }}>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">

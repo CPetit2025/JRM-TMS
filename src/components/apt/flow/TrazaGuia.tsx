@@ -50,7 +50,6 @@ const alm = (a: FlowAlmacen) => ({ color: ALMACEN_COLOR[a] || '#64748b', bg: ALM
 
 export function Journey({ l }: { l: Linea }) {
   const ini = isInicial(l.origen)
-  const o = alm(l.almacen_origen)
   const f = alm(l.almacen)
   const viaDistinta = l.via && l.via !== l.almacen_origen && l.via !== l.almacen ? l.via : null
   const mismoAlmacen = l.almacen === l.almacen_origen
