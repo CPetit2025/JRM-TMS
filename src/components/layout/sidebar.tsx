@@ -1,222 +1,265 @@
 "use client"
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { 
-  Home, Users, FileText, Truck, Map as MapIcon, Settings, 
-  LogOut, ShieldCheck, BarChart3, Send, DollarSign, 
-  ArchiveRestore, Zap, ChevronRight, Wrench, Clock, BarChart2, CheckCircle, Settings2,
-  Building2, FileSignature, ClipboardList, PackageCheck, Activity, HardHat, BadgeDollarSign,
-  PackageSearch, Wallet, Receipt, Calculator, AlertTriangle, ClipboardCheck, ShieldAlert, Banknote, UserRound, Fuel, Warehouse, FileUp, Workflow
-} from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { ChevronDown, History, LogOut, Moon, Pin, PinOff, Search, Star, Sun, X } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
+import { HOME_ITEM, activeEntry, flatEntries, normalize, visibleSections, type NavEntry, type NavItem } from '@/lib/nav/navConfig'
+import { setSidebar, useSidebar, type SidebarTheme } from '@/lib/nav/sidebarStore'
 
-function NavItem({ href, icon: Icon, label, isActive }: { href: string, icon: React.ComponentType<{ className?: string }>, label: string, isActive?: boolean }) {
-  const pathname = usePathname()
-  const active = isActive ?? pathname === href;
+// Menú lateral: secciones plegables (varias abiertas), buscador (Ctrl + K), favoritos, recientes y dos paletas.
+// Fijado: siempre visible. Sin fijar: oculto; aparece al acercar el mouse al borde izquierdo, con ☰ o con Ctrl + B.
+// En celular y tablet es un panel deslizable.
+
+const PALETTE: Record<SidebarTheme, Record<string, string>> = {
+  azul: {
+    '--sb-bg': '#002855', '--sb-line': '#123e74', '--sb-field': '#05336a', '--sb-fg': '#d4e0f2', '--sb-strong': '#ffffff',
+    '--sb-muted': '#9fb4d3', '--sb-label': '#a9bddb', '--sb-hover': 'rgba(255,255,255,0.08)', '--sb-active': '#ffffff',
+    '--sb-active-fg': '#002855', '--sb-red': '#cf152d', '--sb-bar': '#e0283f',
+  },
+  claro: {
+    '--sb-bg': '#ffffff', '--sb-line': '#e3e8f0', '--sb-field': '#f4f6fa', '--sb-fg': '#334155', '--sb-strong': '#0f1d36',
+    '--sb-muted': '#64748b', '--sb-label': '#5b6880', '--sb-hover': '#f1f4f9', '--sb-active': '#e8eff9',
+    '--sb-active-fg': '#002855', '--sb-red': '#cf152d', '--sb-bar': '#cf152d',
+  },
+}
+
+function Row({ entry, active, fav, onFav, showSection }: {
+  entry: NavEntry; active: boolean; fav: boolean; onFav: (href: string) => void; showSection?: boolean
+}) {
+  const { item, section, group } = entry
+  const Icon = item.icon
   return (
-    <Link 
-      href={href} 
-      className={`group flex items-center justify-between px-4 py-2.5 my-0.5 rounded-lg transition-all duration-300 relative overflow-hidden ${
-        active 
-          ? 'bg-gradient-to-r from-[#002855] to-transparent text-white border-l-4 border-[#cf152d] shadow-md' 
-          : 'text-slate-400 hover:text-white hover:bg-white/5'
-      }`}
-    >
-      <div className="flex items-center gap-3">
-        <Icon className={`w-4 h-4 transition-transform duration-300 ${active ? 'text-[#cf152d]' : 'group-hover:scale-110 group-hover:text-blue-300'}`} />
-        <span className={`text-sm tracking-wide ${active ? 'font-semibold' : 'font-medium'}`}>{label}</span>
-      </div>
-      {active && <ChevronRight className="w-4 h-4 text-[#cf152d] opacity-80" />}
-    </Link>
+    <div className="group relative">
+      <Link href={item.href} aria-current={active ? 'page' : undefined}
+        className={`relative flex min-h-[34px] items-center gap-3 rounded-lg py-1.5 pl-3 pr-8 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--sb-red)] ${
+          active ? 'bg-[var(--sb-active)] font-semibold text-[var(--sb-active-fg)]' : 'font-medium text-[var(--sb-fg)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-strong)]'}`}>
+        {active && <span className="absolute -left-2 top-1.5 bottom-1.5 w-[3px] rounded-r bg-[var(--sb-bar)]" />}
+        <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-[var(--sb-red)]' : ''}`} />
+        <span className="min-w-0 flex-1 truncate">
+          {item.label}
+          {showSection && <span className="block truncate text-[10px] font-medium text-[var(--sb-muted)]">{section?.title || 'Inicio'}{group ? ` › ${group}` : ''}</span>}
+        </span>
+      </Link>
+      <button type="button" onClick={() => onFav(item.href)} aria-label={fav ? `Quitar ${item.label} de favoritos` : `Agregar ${item.label} a favoritos`}
+        title={fav ? 'Quitar de favoritos' : 'Agregar a favoritos'}
+        className={`absolute right-1.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md transition-opacity hover:bg-[var(--sb-hover)] focus-visible:opacity-100 ${
+          fav ? 'text-amber-400 opacity-100' : 'text-[var(--sb-muted)] opacity-0 group-hover:opacity-100'}`}>
+        <Star className={`h-3.5 w-3.5 ${fav ? 'fill-amber-400' : ''}`} />
+      </button>
+    </div>
   )
 }
 
 export function Sidebar() {
   const { role, hasAccess: hasPermission } = usePermissions()
-  const pathname = usePathname()
+  const pathname = usePathname() || '/'
+  const router = useRouter()
+  const sb = useSidebar()
+  const [q, setQ] = useState('')
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  const home = useMemo(() => HOME_ITEM(role === 'admin'), [role])
+  const sections = useMemo(() => visibleSections(hasPermission), [hasPermission])
+  const entries = useMemo(() => flatEntries(sections, home), [sections, home])
+  const current = activeEntry(entries, pathname)
+  const activeSection = current?.section?.id || null
+  const openSet = new Set(sb.open ?? (activeSection ? [activeSection] : []))
+
+  // Al cambiar de página: cerrar el panel, registrar reciente y abrir la sección de la página
+  const lastPath = useRef<string | null>(null)
+  useEffect(() => {
+    if (lastPath.current === pathname) return
+    const e = activeEntry(flatEntries(visibleSections(hasPermission), HOME_ITEM(role === 'admin')), pathname)
+    if (e) lastPath.current = pathname   // sin permisos cargados aún: se registra cuando lleguen
+    setSidebar(s => ({
+      overlay: false,
+      recents: e ? [e.item.href, ...s.recents.filter(h => h !== e.item.href)].slice(0, 4) : s.recents,
+      open: s.open && e?.section && !s.open.includes(e.section.id) ? [...s.open, e.section.id] : s.open,
+    }))
+  }, [pathname, hasPermission, role])
+
+  // Atajos: Ctrl + K busca, Ctrl + B fija o suelta el menú, Esc cierra
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      const k = ev.key.toLowerCase()
+      if ((ev.ctrlKey || ev.metaKey) && k === 'k') {
+        ev.preventDefault()
+        setSidebar({ overlay: true })
+        setTimeout(() => searchRef.current?.focus(), 30)
+      } else if ((ev.ctrlKey || ev.metaKey) && k === 'b') {
+        ev.preventDefault()
+        if (window.matchMedia('(min-width: 1024px)').matches) setSidebar(s => ({ pinned: !s.pinned, overlay: false }))
+        else setSidebar(s => ({ overlay: !s.overlay }))
+      } else if (k === 'escape') {
+        setSidebar({ overlay: false })
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const toggleSection = (id: string) => {
+    const next = new Set(openSet)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    setSidebar({ open: [...next] })
+  }
+  const toggleFav = (href: string) => setSidebar(s => ({
+    favs: s.favs.includes(href) ? s.favs.filter(h => h !== href) : [...s.favs, href].slice(-5),
+  }))
+
+  const nq = normalize(q.trim())
+  const results = nq
+    ? entries.filter(e => normalize(`${e.item.label} ${e.section?.title || 'inicio'} ${e.group || ''} ${e.item.keywords || ''}`).includes(nq))
+    : []
+  const byHref = (h: string) => entries.find(e => e.item.href === h)
+  const favEntries = sb.favs.map(byHref).filter((e): e is NavEntry => !!e)
+  const recentEntries = sb.recents.filter(h => !sb.favs.includes(h) && h !== current?.item.href).map(byHref)
+    .filter((e): e is NavEntry => !!e).slice(0, 3)
+  const isActive = (it: NavItem) => current?.item.href === it.href
+  const row = (e: NavEntry, showSection = false) => (
+    <Row key={`${e.item.href}-${showSection ? 's' : ''}`} entry={e} active={isActive(e.item)} fav={sb.favs.includes(e.item.href)} onFav={toggleFav} showSection={showSection} />
+  )
+  const label = 'px-3 pb-1 pt-3 text-[10.5px] font-extrabold uppercase tracking-[0.12em] text-[var(--sb-label)]'
 
   return (
-    <div className="flex flex-col w-[280px] h-screen bg-[#0a0f1c] border-r border-slate-800 shadow-2xl relative z-50">
-      
-      {/* Brand Header */}
-      <div className="flex items-center justify-center h-28 p-6 relative bg-[#060913]">
-        <div className="absolute inset-0 bg-gradient-to-b from-[#002855]/20 to-transparent opacity-50"></div>
-        <div className="flex flex-col items-center gap-2 relative z-10 w-full">
-          <img 
-            src="/logo-jrm.png" 
-            alt="JRM Logo" 
-            className="h-10 object-contain drop-shadow-lg"
-          />
-          <div className="w-full flex items-center justify-center gap-2 mt-2">
-            <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-[#cf152d]/50 to-transparent"></div>
-            <h1 className="text-[9px] font-bold tracking-[0.25em] text-slate-300 uppercase">
-              TMS Control Tower
-            </h1>
-            <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-[#cf152d]/50 to-transparent"></div>
-          </div>
+    <>
+      {/* Borde izquierdo: muestra el menú sin fijar al acercar el mouse */}
+      {!sb.pinned && <div aria-hidden className="fixed inset-y-0 left-0 z-[59] hidden w-2 lg:block" onMouseEnter={() => setSidebar({ overlay: true })} />}
+      {sb.overlay && <div aria-hidden className={`fixed inset-0 z-[59] bg-slate-950/40 ${sb.pinned ? 'lg:hidden' : 'lg:bg-transparent'}`} onClick={() => setSidebar({ overlay: false })} />}
+
+      <aside aria-label="Menú principal" style={PALETTE[sb.theme] as CSSProperties}
+        onMouseLeave={() => { if (!sb.pinned && sb.overlay && window.matchMedia('(min-width: 1024px)').matches && document.activeElement !== searchRef.current) setSidebar({ overlay: false }) }}
+        className={`fixed inset-y-0 left-0 z-[60] flex w-[264px] flex-col border-r border-[var(--sb-line)] bg-[var(--sb-bg)] text-[var(--sb-fg)] shadow-2xl transition-transform duration-200 motion-reduce:transition-none ${
+          sb.overlay ? 'translate-x-0' : '-translate-x-full'} ${sb.pinned ? 'lg:static lg:z-auto lg:shrink-0 lg:translate-x-0 lg:shadow-none' : ''}`}>
+
+        {/* Cabecera */}
+        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-[var(--sb-line)] pl-3 pr-2">
+          <Link href="/" className="flex min-w-0 flex-1 items-center gap-2 rounded-md">
+            <span className="rounded-md bg-white px-1 py-0.5"><img src="/logo-jrm.png" alt="JRM" className="h-7 w-auto object-contain" /></span>
+            <span className="min-w-0 leading-tight">
+              <span className="block truncate text-[13px] font-extrabold text-[var(--sb-strong)]">JRM TMS</span>
+              <span className="block truncate text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--sb-muted)]">Control Tower</span>
+            </span>
+          </Link>
+          <button type="button" onClick={() => setSidebar(s => ({ pinned: !s.pinned, overlay: false }))}
+            title={sb.pinned ? 'Soltar: el menú se oculta y aparece al acercar el mouse (Ctrl + B)' : 'Fijar el menú (Ctrl + B)'}
+            aria-label={sb.pinned ? 'Soltar menú' : 'Fijar menú'} aria-pressed={sb.pinned}
+            className="hidden h-8 w-8 place-items-center rounded-lg text-[var(--sb-muted)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-strong)] lg:grid">
+            {sb.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+          </button>
+          <button type="button" onClick={() => setSidebar({ overlay: false })} aria-label="Cerrar menú"
+            className="grid h-8 w-8 place-items-center rounded-lg text-[var(--sb-muted)] hover:bg-[var(--sb-hover)] lg:hidden">
+            <X className="h-4 w-4" />
+          </button>
         </div>
-      </div>
-      
-      {/* Navigation */}
-      <div className="flex flex-col flex-1 overflow-y-auto mt-4 px-3 pb-6 custom-scrollbar">
-        <nav className="flex-1 space-y-1">
-          <NavItem href="/" icon={role === 'admin' ? BarChart3 : Home} label={role === 'admin' ? 'Dashboard Ejecutivo' : 'Inicio'} />
 
-          {/* Generación de Demanda */}
-          {(hasPermission('clientes') || hasPermission('ot') || hasPermission('solicitudes')) && (
+        {/* Buscador */}
+        <div className="px-3 pb-1 pt-3">
+          <label className="flex h-9 items-center gap-2 rounded-lg border border-[var(--sb-line)] bg-[var(--sb-field)] px-2.5 text-[var(--sb-muted)] focus-within:border-[var(--sb-red)]">
+            <Search className="h-4 w-4 shrink-0" />
+            <input ref={searchRef} value={q} onChange={e => setQ(e.target.value)} type="search" placeholder="Buscar pantalla…" autoComplete="off" aria-label="Buscar pantalla"
+              onKeyDown={e => {
+                if (e.key === 'Enter' && results[0]) { router.push(results[0].item.href); setQ('') }
+                if (e.key === 'Escape') { setQ(''); (e.target as HTMLInputElement).blur() }
+              }}
+              className="min-w-0 flex-1 bg-transparent text-[12.5px] font-medium text-[var(--sb-strong)] outline-none placeholder:text-[var(--sb-muted)]" />
+            <kbd className="hidden rounded border border-[var(--sb-line)] px-1 font-mono text-[10px] font-bold lg:inline">Ctrl K</kbd>
+          </label>
+        </div>
+
+        {/* Navegación */}
+        <nav className="sidebar-scroll flex-1 overflow-y-auto px-2 pb-4">
+          {nq ? (
+            results.length ? <div className="space-y-0.5 pt-1">{results.map(e => row(e, true))}</div>
+              : <p className="px-3 py-4 text-xs text-[var(--sb-muted)]">No hay pantallas con «{q.trim()}».</p>
+          ) : (
             <>
-              <div className="mt-6 mb-2 px-4">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Demanda & Comercial</p>
-              </div>
-          {hasPermission('clientes') && <NavItem href="/clientes" icon={Building2} label="Directorio Clientes" />}
-              {hasPermission('ot') && <NavItem href="/contratos" icon={FileSignature} label="Contratos y OTs" />}
-              {hasPermission('solicitudes') && <NavItem href="/solicitudes" icon={ClipboardList} label="Solicitudes de Carga" />}
+              <div className="pt-1">{row(entries[0])}</div>
+              {favEntries.length > 0 && (
+                <div>
+                  <p className={`${label} flex items-center gap-1.5`}><Star className="h-3 w-3 fill-amber-400 text-amber-400" /> Favoritos</p>
+                  <div className="space-y-0.5">{favEntries.map(e => row(e))}</div>
+                </div>
+              )}
+              {recentEntries.length > 0 && (
+                <div>
+                  <p className={`${label} flex items-center gap-1.5`}><History className="h-3 w-3" /> Recientes</p>
+                  <div className="space-y-0.5">{recentEntries.map(e => row(e))}</div>
+                </div>
+              )}
+              {sections.map(s => {
+                const open = openSet.has(s.id)
+                const SIcon = s.icon
+                return (
+                  <div key={s.id} className="mt-1">
+                    <button type="button" onClick={() => toggleSection(s.id)} aria-expanded={open}
+                      className={`flex w-full items-center gap-2 rounded-lg px-3 pb-1.5 pt-2.5 text-left text-[10.5px] font-extrabold uppercase tracking-[0.12em] transition-colors hover:text-[var(--sb-strong)] ${
+                        activeSection === s.id && !open ? 'text-[var(--sb-strong)]' : 'text-[var(--sb-label)]'}`}>
+                      <SIcon className="h-3.5 w-3.5" />
+                      <span className="flex-1 truncate">{s.title}</span>
+                      {activeSection === s.id && !open && <span className="h-1.5 w-1.5 rounded-full bg-[var(--sb-bar)]" aria-label="Contiene la página actual" />}
+                      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? '' : '-rotate-90'}`} />
+                    </button>
+                    {open && (
+                      <div className="space-y-0.5">
+                        {s.groups.map(g => (
+                          <div key={g.title || 'g'}>
+                            {g.title && <p className="px-3 pb-0.5 pt-2 text-[10px] font-bold text-[var(--sb-muted)]">{g.title}</p>}
+                            {g.items.map(item => row({ item, section: s, group: g.title }))}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </>
           )}
-
-          {/* Operación Logística */}
-          {(hasPermission('despacho') || hasPermission('documentario') || hasPermission('monitoreo') || hasPermission('torre-control') || hasPermission('operaciones-live') || hasPermission('contratos-servicios')) && (
-            <>
-              <div className="mt-6 mb-2 px-4 flex items-center justify-between">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Operación Logística</p>
-                <span className="text-[8px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full font-bold uppercase border border-blue-500/20">LIVE</span>
-              </div>
-              {hasPermission('despacho') && <NavItem href="/despacho" icon={PackageCheck} label="Gestión de Despachos" />}
-              {hasPermission('documentario') && <NavItem href="/despacho/documentos" icon={FileText} label="Documentos de Despacho" />}
-              {hasPermission('contratos-servicios') && <NavItem href="/contratos/servicios" icon={Receipt} label="Servicios de Contrato" />}
-              {hasPermission('monitoreo') && <NavItem href="/monitoreo" icon={MapIcon} label="Monitoreo GPS" />}
-              {(hasPermission('monitoreo') || hasPermission('despacho') || hasPermission('torre-control')) && <NavItem href="/torre-control" icon={Activity} label="Torre de Control" />}
-            </>
-          )}
-
-          {/* Almacén de Producto Terminado */}
-          {(hasPermission('apt') || hasPermission('apt-carga')) && (
-            <>
-              <div className="mt-6 mb-2 px-4">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Almacén APT</p>
-              </div>
-              <NavItem href="/apt" icon={Warehouse} label="Estadía de Inventario" isActive={pathname.startsWith('/apt') && !pathname.startsWith('/apt/cargas') && !pathname.startsWith('/apt/flujo')} />
-              {hasPermission('apt') && <NavItem href="/apt/flujo" icon={Workflow} label="Flujo multi‑almacén" isActive={pathname.startsWith('/apt/flujo')} />}
-              {hasPermission('apt-carga') && <NavItem href="/apt/cargas" icon={FileUp} label="Carga Diaria APT" />}
-            </>
-          )}
-
-          {/* Mantenimiento de Flota (CMMS) */}
-          {(hasPermission('mantenimiento-dashboard') || hasPermission('mantenimiento-flota') || hasPermission('mantenimiento-fallas') || hasPermission('mantenimiento-ot') || hasPermission('mantenimiento-planes') || hasPermission('mantenimiento-vencimientos')) && (
-            <>
-              <div className="mt-6 mb-2 px-4 flex items-center justify-between">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Mantenimiento CMMS</p>
-                <span className="text-[8px] bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded-full font-bold uppercase border border-amber-500/20">PRO</span>
-              </div>
-              {hasPermission('mantenimiento-dashboard') && <NavItem href="/mantenimiento" icon={BarChart3} label="Centro de Control" />}
-              {hasPermission('mantenimiento-flota') && <NavItem href="/mantenimiento/flota" icon={Truck} label="Flota 360°" />}
-              {hasPermission('mantenimiento-fallas') && <NavItem href="/mantenimiento/fallas" icon={AlertTriangle} label="Fallas y Backlog" />}
-              {hasPermission('mantenimiento-ot') && <NavItem href="/mantenimiento/gestor-ot" icon={Wrench} label="Órdenes de Trabajo" />}
-              {hasPermission('mantenimiento-planes') && <NavItem href="/mantenimiento/preventivos" icon={Clock} label="Preventivos" />}
-              {hasPermission('mantenimiento-ot') && <NavItem href="/mantenimiento/inventario" icon={PackageSearch} label="Repuestos" />}
-              {hasPermission('mantenimiento-flota') && <NavItem href="/mantenimiento/proveedores" icon={Building2} label="Proveedores" />}
-              {hasPermission('mantenimiento-flota') && <NavItem href="/mantenimiento/neumaticos" icon={Settings2} label="Neumáticos" />}
-              {hasPermission('mantenimiento-flota') && <NavItem href="/mantenimiento/checklists" icon={ClipboardCheck} label="Inspecciones" />}
-              {hasPermission('mantenimiento-vencimientos') && <NavItem href="/mantenimiento/documentos" icon={ShieldAlert} label="Cumplimiento" />}
-              {hasPermission('mantenimiento-flota') && <NavItem href="/flota/contratos-alquiler" icon={FileSignature} label="Contratos Alquiler" />}
-              {hasPermission('mantenimiento-flota') && <NavItem href="/flota/liquidaciones-alquiler" icon={Calculator} label="Liq. Alquiler Seco" />}
-              {hasPermission('mantenimiento-dashboard') && <NavItem href="/mantenimiento/finanzas" icon={BarChart2} label="Finanzas y TCO" />}
-              {hasPermission('mantenimiento-dashboard') && <NavItem href="/mantenimiento/copiloto" icon={Zap} label="Copiloto IA" />}
-            </>
-          )}
-
-          {/* Caja de transporte */}
-          {['caja', 'caja-fondos', 'caja-gastos', 'caja-aprobacion', 'caja-anticipos', 'caja-liquidaciones', 'caja-combustible', 'caja-tarifario'].some(p => hasPermission(p)) && (
-            <>
-              <div className="mt-6 mb-2 px-4">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Caja de Transporte</p>
-              </div>
-              {hasPermission('caja') && <NavItem href="/caja" icon={Wallet} label="Panel de Caja" />}
-              {hasPermission('caja-gastos') && <NavItem href="/caja/gastos" icon={FileText} label="Registro de Gastos" />}
-              {hasPermission('caja-aprobacion') && <NavItem href="/caja/aprobaciones" icon={ClipboardCheck} label="Aprobación de Gastos" />}
-              {hasPermission('caja-anticipos') && <NavItem href="/caja/anticipos" icon={Banknote} label="Anticipos" />}
-              {hasPermission('caja-liquidaciones') && <NavItem href="/caja/liquidaciones" icon={CheckCircle} label="Liquidación de Viajes" />}
-              {(hasPermission('caja-anticipos') || hasPermission('caja-liquidaciones')) && <NavItem href="/caja/conductores" icon={UserRound} label="Cuenta de Conductores" />}
-              {hasPermission('caja-fondos') && <NavItem href="/caja/cajas" icon={ArchiveRestore} label="Cajas y Fondos" />}
-              {hasPermission('caja-combustible') && <NavItem href="/caja/combustible" icon={Fuel} label="Control de Combustible" />}
-              {hasPermission('caja-tarifario') && <NavItem href="/caja/tarifario" icon={Calculator} label="Tarifario y Reglas" />}
-              {hasPermission('caja') && <NavItem href="/caja/reportes" icon={BarChart2} label="Reportes de Caja" />}
-            </>
-          )}
-
-          {/* Maestros y Costos */}
-          {(hasPermission('tarifas') || hasPermission('maestros-trabajadores')) && (
-            <>
-              <div className="mt-6 mb-2 px-4">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Catálogos</p>
-              </div>
-              {hasPermission('maestros-trabajadores') && <NavItem href="/maestros/trabajadores" icon={HardHat} label="Trabajadores" />}
-                            {hasPermission('tarifas') && <NavItem href="/maestros/tarifas" icon={BadgeDollarSign} label="Tarifario de Transporte" />}
-              {hasPermission('tarifas') && <NavItem href="/maestros/transportistas" icon={Building2} label="Transportistas" />}
-            </>
-          )}
-
-          {/* Administración */}
-          {(hasPermission('usuarios') || hasPermission('permisos') || hasPermission('configuracion')) && (
-            <>
-              <div className="mt-6 mb-2 px-4">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Administración</p>
-              </div>
-              {hasPermission('usuarios') && <NavItem href="/usuarios" icon={Users} label="Usuarios del Sistema" />}
-              {hasPermission('permisos') && <NavItem href="/permisos" icon={ShieldCheck} label="Roles y Permisos" />}
-              {hasPermission('configuracion') && <NavItem href="/configuracion/ubicaciones" icon={MapIcon} label="Geocercas (Bases)" />}
-              {hasPermission('configuracion') && <NavItem href="/configuracion" icon={Settings} label="Configuración General" />}
-            </>
-          )}
-          
         </nav>
-      </div>
 
-      {/* Footer Profile */}
-      <div className="p-4 bg-slate-900/50 border-t border-slate-800 backdrop-blur-sm">
-        <Link 
-          href="/perfil" 
-          className="group flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-all duration-300 border border-transparent hover:border-slate-700/50 cursor-pointer"
-        >
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-[#002855] flex items-center justify-center border border-blue-500/30 shadow-inner">
-            <span className="text-sm font-bold text-white uppercase">{role.substring(0, 2)}</span>
-          </div>
-          <div className="flex-1">
-            <p className="text-xs font-medium text-slate-400">Sesión Activa</p>
-            <p className="text-sm font-semibold text-white capitalize group-hover:text-blue-400 transition-colors">{role}</p>
-          </div>
-          <Settings className="w-4 h-4 text-slate-500 group-hover:text-white transition-colors group-hover:rotate-90 duration-500" />
-        </Link>
-        
-        <button 
-          onClick={async () => {
-            try {
-              const { createClient } = await import('@/lib/supabase/client')
-              const supabase = createClient()
-              await supabase.auth.signOut()
-              localStorage.removeItem('userRole')
-              localStorage.removeItem('userPermissions')
-              window.location.href = '/login'
-            } catch (err) {
-              console.error('Error al cerrar sesión', err)
-            }
-          }}
-          className="mt-2 flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-colors group text-sm font-medium"
-        >
-          <LogOut className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-          <span>Cerrar Sesión</span>
-        </button>
-      </div>
-      
-      {/* Global Style for scrollbar in sidebar */}
-      <style dangerouslySetInnerHTML={{__html: `
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
-        .custom-scrollbar:hover::-webkit-scrollbar-thumb { background: #334155; }
-      `}} />
-    </div>
+        {/* Usuario */}
+        <div className="flex items-center gap-2 border-t border-[var(--sb-line)] px-3 py-2.5">
+          <Link href="/perfil" className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-1 hover:bg-[var(--sb-hover)]" title="Mi perfil">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--sb-active)] text-xs font-extrabold uppercase text-[var(--sb-active-fg)]">{role.substring(0, 2)}</span>
+            <span className="min-w-0 leading-tight">
+              <span className="block truncate text-[12.5px] font-semibold capitalize text-[var(--sb-strong)]">{role}</span>
+              <span className="block text-[11px] text-[var(--sb-muted)]">Sesión activa</span>
+            </span>
+          </Link>
+          <button type="button" onClick={() => setSidebar(s => ({ theme: s.theme === 'azul' ? 'claro' : 'azul' }))}
+            title={sb.theme === 'azul' ? 'Cambiar a menú claro' : 'Cambiar a menú azul'} aria-label="Cambiar colores del menú"
+            className="grid h-8 w-8 place-items-center rounded-lg text-[var(--sb-muted)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-strong)]">
+            {sb.theme === 'azul' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
+          <button
+            type="button"
+            title="Cerrar sesión"
+            aria-label="Cerrar sesión"
+            onClick={async () => {
+              try {
+                const { createClient } = await import('@/lib/supabase/client')
+                const supabase = createClient()
+                await supabase.auth.signOut()
+                localStorage.removeItem('userRole')
+                localStorage.removeItem('userPermissions')
+                window.location.href = '/login'
+              } catch (err) {
+                console.error('Error al cerrar sesión', err)
+              }
+            }}
+            className="grid h-8 w-8 place-items-center rounded-lg text-[var(--sb-muted)] hover:bg-red-500/15 hover:text-red-500">
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
+
+        <style dangerouslySetInnerHTML={{ __html: `
+          .sidebar-scroll { scrollbar-width: thin; scrollbar-color: var(--sb-line) transparent; }
+          .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+          .sidebar-scroll::-webkit-scrollbar-thumb { background: var(--sb-line); border-radius: 4px; }
+        ` }} />
+      </aside>
+    </>
   )
 }
