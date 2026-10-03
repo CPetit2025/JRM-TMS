@@ -3,8 +3,8 @@
 --   T3 el resumen calcula km, costo por km, toneladas y costo por t·km de la unidad tal como los datos;
 --   T4 con un corte manual los meses desde el corte no se toman del Excel (no se cuenta dos veces);
 --   T5 el equipo obtiene horas de uso por horómetro y una decisión; T6 sin permiso no hay acceso.
--- El mensaje informa cuántos registros del TMS existen desde 2025 (combustible con odómetro, despachos con guías,
--- lecturas de horómetro y costos de órdenes de trabajo). Solo lectura (se revierte).
+-- El mensaje informa cuántos registros del TMS existen desde 2025 en las fuentes que usa el módulo (costos de OT,
+-- combustible, odómetro, despachos y guías). Solo lectura (se revierte).
 CREATE FUNCTION pg_temp.as_user(p_user uuid) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
   PERFORM set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true);
@@ -12,10 +12,13 @@ BEGIN
   PERFORM set_config('role', CASE WHEN p_user IS NULL THEN 'none' ELSE 'authenticated' END, true);
 END $$;
 
+CREATE FUNCTION pg_temp.cnt(q text) RETURNS text LANGUAGE plpgsql AS $$
+DECLARE n bigint;
+BEGIN EXECUTE q INTO n; RETURN n::text; EXCEPTION WHEN OTHERS THEN RETURN 'ERR:' || SQLSTATE; END $$;
+
 DO $test$
 DECLARE v_user uuid; v_rc uuid; v_rv uuid; v_up uuid; r jsonb; r2 jsonb; r_no jsonb; r_beg jsonb; u jsonb; e jsonb;
   v_fail text[] := '{}'; v_pass int := 0; v_diag text := '';
-  n1 bigint; n2 bigint; n3 bigint; n4 bigint;
 BEGIN
   SELECT id INTO v_user FROM public.profiles WHERE id IN (SELECT u2.id FROM auth.users u2)
     AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) ORDER BY id LIMIT 1;
@@ -91,12 +94,17 @@ BEGIN
   PERFORM pg_temp.as_user(NULL);
   IF NOT (r_no ->> 'success')::boolean THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T6 sin permiso con acceso'::text; END IF;
 
-  -- Diagnóstico de datos del TMS desde 2025
-  BEGIN EXECUTE $q$SELECT count(*) FROM public.dispatch_expenses WHERE upper(expense_type::text) IN ('COMBUSTIBLE','FUEL','DIESEL','GASOLINA','GLP') AND fuel_odometer IS NOT NULL AND COALESCE(expense_date, created_at::date) >= '2025-01-01'$q$ INTO n1; EXCEPTION WHEN OTHERS THEN n1 := -1; END;
-  BEGIN EXECUTE $q$SELECT count(DISTINCT dispatch_id) FROM public.dispatch_documents WHERE doc_type = 'GUIA_REMISION' AND voided_at IS NULL AND uploaded_at >= '2025-01-01'$q$ INTO n2; EXCEPTION WHEN OTHERS THEN n2 := -1; END;
-  BEGIN EXECUTE $q$SELECT count(*) FROM public.vehicle_odometer_logs WHERE hours_value > 0 AND created_at >= '2025-01-01'$q$ INTO n3; EXCEPTION WHEN OTHERS THEN n3 := -1; END;
-  BEGIN EXECUTE $q$SELECT count(*) FROM public.work_order_costs WHERE created_at >= '2025-01-01'$q$ INTO n4; EXCEPTION WHEN OTHERS THEN n4 := -1; END;
-  v_diag := format(' tms2025: comb_odometro=%s despachos_con_guias=%s lecturas_horas=%s costos_ot=%s', n1, n2, n3, n4);
+  -- Diagnóstico: registros del TMS desde 2025 en las mismas fuentes que usa el módulo (ERR:<sqlstate> si la consulta falla)
+  v_diag := ' tms2025:'
+    || ' ledger_mant=' || pg_temp.cnt($q$SELECT count(*) FROM public.vw_vehicle_cost_ledger WHERE category IN ('MANTENIMIENTO','NEUMATICOS') AND cost_date >= '2025-01-01'$q$)
+    || ' combustible=' || pg_temp.cnt($q$SELECT count(*) FROM public.dispatch_expenses WHERE upper(expense_type::text) IN ('COMBUSTIBLE','FUEL','DIESEL','GASOLINA','GLP') AND status <> 'RECHAZADO' AND COALESCE(expense_date, created_at::date) >= '2025-01-01'$q$)
+    || ' comb_odometro=' || pg_temp.cnt($q$SELECT count(*) FROM public.dispatch_expenses WHERE fuel_odometer IS NOT NULL AND status <> 'RECHAZADO' AND COALESCE(expense_date, created_at::date) >= '2025-01-01'$q$)
+    || ' odometro_logs=' || pg_temp.cnt($q$SELECT count(*) FROM public.vehicle_odometer_logs WHERE created_at >= '2025-01-01'$q$)
+    || ' despachos=' || pg_temp.cnt($q$SELECT count(*) FROM public.dispatches WHERE scheduled_date >= '2025-01-01'$q$)
+    || ' desp_odometro=' || pg_temp.cnt($q$SELECT count(*) FROM public.dispatches WHERE end_odometer IS NOT NULL AND scheduled_date >= '2025-01-01'$q$)
+    || ' desp_guias=' || pg_temp.cnt($q$SELECT count(DISTINCT dispatch_id) FROM public.dispatch_documents WHERE doc_type = 'GUIA_REMISION' AND voided_at IS NULL$q$)
+    || ' ot_total=' || pg_temp.cnt($q$SELECT count(*) FROM public.maintenance_work_orders$q$)
+    || ' rls_bypass=' || (SELECT rolbypassrls::text FROM pg_roles WHERE rolname = current_user);
 
   IF array_length(v_fail, 1) IS NULL THEN
     RAISE EXCEPTION 'CAJA C27 PASS (%/6)%', v_pass, v_diag;
