@@ -3,49 +3,102 @@
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { AlertTriangle, CalendarClock, FileUp, Lock, Warehouse } from 'lucide-react'
+import { AlertTriangle, CalendarClock, Database, FileUp, GitBranch, Lock, Warehouse } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
 import { aptApi } from '@/lib/apt/api'
 import { fmtDate, fmtDateTime } from '@/lib/apt/format'
 import type { AptSettings } from '@/lib/apt/types'
 import { AptFilterBar } from '@/components/apt/AptFilterBar'
+import { FlowFilterBar } from '@/components/apt/FlowFilterBar'
 import { LoadingBlock } from '@/components/apt/ui'
 
 // Módulo APT — Control y estadía del inventario en el Almacén de Producto Terminado.
 // Todo nace de ENTRADA y SALIDA (carga diaria); las pestañas comparten los filtros de la URL.
 
-const TABS = [
-  { href: '/apt', label: 'Dashboard' },
-  { href: '/apt/clientes', label: 'Cliente · OT · Lote' },
-  { href: '/apt/detalle', label: 'Detalle APT' },
-  { href: '/apt/productos', label: 'Productos y glosas' },
-  { href: '/apt/pareto', label: 'Pareto' },
-  { href: '/apt/heatmap', label: 'Mapa de calor' },
-  { href: '/apt/fecha-entrega', label: 'FechaEntrega' },
-  { href: '/apt/tendencias', label: 'Tendencias' },
-  { href: '/apt/calidad', label: 'Calidad de datos' },
-  { href: '/apt/cargas', label: 'Cargas y parámetros' },
-]
-const NO_FILTERS = ['/apt/calidad', '/apt/cargas']
+// Tres secciones para no concentrar todo en una sola vista: la estadía consolidada (FIFO de ENTRADA/SALIDA), el flujo
+// entre almacenes (647 → ST VENTAS → cliente, con 540) y los datos (calidad y cargas).
+const SECTIONS = [
+  {
+    key: 'estadia', label: 'Estadía APT', icon: Warehouse, desc: 'Permanencia consolidada del producto terminado (FIFO)',
+    tabs: [
+      { href: '/apt', label: 'Dashboard' },
+      { href: '/apt/clientes', label: 'Cliente · OT · Lote' },
+      { href: '/apt/detalle', label: 'Detalle APT' },
+      { href: '/apt/productos', label: 'Productos y glosas' },
+      { href: '/apt/pareto', label: 'Pareto' },
+      { href: '/apt/heatmap', label: 'Mapa de calor' },
+      { href: '/apt/fecha-entrega', label: 'FechaEntrega' },
+      { href: '/apt/tendencias', label: 'Tendencias' },
+    ],
+  },
+  {
+    key: 'flujo', label: 'Flujo multi‑almacén', icon: GitBranch, desc: '647 · 540 · ST VENTAS → cliente, con trazabilidad por guía y lote',
+    tabs: [
+      { href: '/apt/flujo', label: 'Resumen del flujo' },
+      { href: '/apt/flujo/almacenes', label: 'Stock por almacén' },
+      { href: '/apt/flujo/etapas', label: 'Tiempos por etapa' },
+      { href: '/apt/flujo/st-ventas', label: 'ST VENTAS' },
+      { href: '/apt/flujo/adelantos', label: 'Adelantos y 540' },
+      { href: '/apt/flujo/trazabilidad', label: 'Trazabilidad' },
+    ],
+  },
+  {
+    key: 'datos', label: 'Datos', icon: Database, desc: 'Calidad de la información y cargas diarias',
+    tabs: [
+      { href: '/apt/calidad', label: 'Calidad de datos' },
+      { href: '/apt/cargas', label: 'Cargas y parámetros' },
+    ],
+  },
+] as const
+const NO_FILTERS = ['/apt/calidad', '/apt/cargas', '/apt/flujo/trazabilidad']
+
+function tabActive(href: string, pathname: string) {
+  if (href === '/apt' || href === '/apt/flujo') return pathname === href
+  return pathname.startsWith(href)
+}
+
+function sectionOf(pathname: string) {
+  return SECTIONS.find(s => s.tabs.some(t => tabActive(t.href, pathname))) ?? SECTIONS[0]
+}
 
 function Tabs() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const f = searchParams.get('f')
+  const current = sectionOf(pathname)
+  // Cada sección conserva sus propios filtros: ?f= en la estadía, ?ff= en el flujo
+  const withQs = (href: string, key: string) => {
+    const param = key === 'flujo' ? 'ff' : key === 'estadia' ? 'f' : null
+    const v = param ? searchParams.get(param) : null
+    return v && !NO_FILTERS.includes(href) ? `${href}?${param}=${encodeURIComponent(v)}` : href
+  }
   return (
-    <nav className="-mb-px flex gap-1 overflow-x-auto">
-      {TABS.map(t => {
-        const active = t.href === '/apt' ? pathname === '/apt' : pathname.startsWith(t.href)
-        const href = f && !NO_FILTERS.includes(t.href) ? `${t.href}?f=${encodeURIComponent(f)}` : t.href
-        return (
-          <Link key={t.href} href={href}
-            className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-xs font-bold uppercase tracking-wide transition-colors ${
-              active ? 'border-[#cf152d] text-[#002855]' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800'}`}>
-            {t.label}
-          </Link>
-        )
-      })}
-    </nav>
+    <div>
+      <div className="flex gap-1 overflow-x-auto px-2 pt-2">
+        {SECTIONS.map(s => {
+          const active = s.key === current.key
+          const Icon = s.icon
+          return (
+            <Link key={s.key} href={withQs(s.tabs[0].href, s.key)} title={s.desc}
+              className={`flex items-center gap-2 whitespace-nowrap rounded-t-lg px-4 py-2 text-xs font-black uppercase tracking-wider transition-colors ${
+                active ? 'bg-[#002855] text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}>
+              <Icon className="h-3.5 w-3.5" /> {s.label}
+            </Link>
+          )
+        })}
+      </div>
+      <nav className="-mb-px flex gap-1 overflow-x-auto border-t-2 border-[#002855] bg-slate-50/70 px-2">
+        {current.tabs.map(t => {
+          const active = tabActive(t.href, pathname)
+          return (
+            <Link key={t.href} href={withQs(t.href, current.key)}
+              className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-xs font-bold uppercase tracking-wide transition-colors ${
+                active ? 'border-[#cf152d] text-[#002855]' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800'}`}>
+              {t.label}
+            </Link>
+          )
+        })}
+      </nav>
+    </div>
   )
 }
 
@@ -79,6 +132,7 @@ export default function AptLayout({ children }: { children: React.ReactNode }) {
   }
 
   const showFilters = !NO_FILTERS.some(p => pathname.startsWith(p))
+  const isFlow = pathname.startsWith('/apt/flujo')
   const st = info?.state
   return (
     <div className="space-y-4 pb-10">
@@ -90,7 +144,7 @@ export default function AptLayout({ children }: { children: React.ReactNode }) {
             </div>
             <div>
               <h1 className="text-lg font-black tracking-tight text-slate-900">Control y estadía — Almacén de Producto Terminado</h1>
-              <p className="text-xs text-slate-500">Bodega 647-04 ALM PT · Permanencia del inventario por NumRel, producto y glosa (FIFO)</p>
+              <p className="text-xs text-slate-500">647 ALM PT · 540 APT LB · ST VENTAS → cliente · Permanencia y trazabilidad por NumRel, producto y guía</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -113,16 +167,16 @@ export default function AptLayout({ children }: { children: React.ReactNode }) {
             )}
             {info?.can_load && (
               <Link href="/apt/cargas" className="flex items-center gap-1.5 rounded-lg bg-[#cf152d] px-3 py-1.5 font-bold text-white shadow-sm hover:bg-[#b01226]">
-                <FileUp className="h-3.5 w-3.5" /> Cargar ENTRADA / SALIDA
+                <FileUp className="h-3.5 w-3.5" /> Cargar movimientos
               </Link>
             )}
           </div>
         </div>
-        <div className="mt-3 border-t border-slate-100 px-3">
+        <div className="mt-3 border-t border-slate-100">
           <Suspense fallback={null}><Tabs /></Suspense>
         </div>
       </div>
-      {showFilters && <Suspense fallback={null}><AptFilterBar /></Suspense>}
+      {showFilters && <Suspense fallback={null}>{isFlow ? <FlowFilterBar /> : <AptFilterBar />}</Suspense>}
       <Suspense fallback={<LoadingBlock />}>{children}</Suspense>
     </div>
   )
