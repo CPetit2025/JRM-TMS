@@ -7,10 +7,11 @@ import { ChevronDown, History, LogOut, Moon, Pin, PinOff, Search, Star, Sun, X }
 import { usePermissions } from '@/hooks/usePermissions'
 import { HOME_ITEM, activeEntry, flatEntries, normalize, visibleSections, type NavEntry, type NavItem } from '@/lib/nav/navConfig'
 import { setSidebar, useSidebar, type SidebarTheme } from '@/lib/nav/sidebarStore'
+import { COUNT_STYLE, countLabel, useMenuCounts, type MenuCount } from '@/lib/nav/useMenuCounts'
 
 // Menú lateral: secciones plegables (varias abiertas), buscador (Ctrl + K), favoritos, recientes y dos paletas.
 // Fijado: siempre visible. Sin fijar: oculto; aparece al acercar el mouse al borde izquierdo, con ☰ o con Ctrl + B.
-// En celular y tablet es un panel deslizable.
+// En celular y tablet es un panel deslizable. Contadores de pendientes por pantalla (menu_pending_counts).
 
 const PALETTE: Record<SidebarTheme, Record<string, string>> = {
   azul: {
@@ -25,8 +26,8 @@ const PALETTE: Record<SidebarTheme, Record<string, string>> = {
   },
 }
 
-function Row({ entry, active, fav, onFav, showSection }: {
-  entry: NavEntry; active: boolean; fav: boolean; onFav: (href: string) => void; showSection?: boolean
+function Row({ entry, active, fav, onFav, showSection, count }: {
+  entry: NavEntry; active: boolean; fav: boolean; onFav: (href: string) => void; showSection?: boolean; count?: MenuCount
 }) {
   const { item, section, group } = entry
   const Icon = item.icon
@@ -41,6 +42,10 @@ function Row({ entry, active, fav, onFav, showSection }: {
           {item.label}
           {showSection && <span className="block truncate text-[10px] font-medium text-[var(--sb-muted)]">{section?.title || 'Inicio'}{group ? ` › ${group}` : ''}</span>}
         </span>
+        {count && (
+          <span title={count.texto} aria-label={count.texto}
+            className={`shrink-0 rounded-full px-1.5 py-px font-mono text-[10.5px] font-bold tabular-nums ${COUNT_STYLE[count.tono]}`}>{countLabel(count)}</span>
+        )}
       </Link>
       <button type="button" onClick={() => onFav(item.href)} aria-label={fav ? `Quitar ${item.label} de favoritos` : `Agregar ${item.label} a favoritos`}
         title={fav ? 'Quitar de favoritos' : 'Agregar a favoritos'}
@@ -59,6 +64,7 @@ export function Sidebar() {
   const sb = useSidebar()
   const [q, setQ] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
+  const counts = useMenuCounts(pathname)
 
   const home = useMemo(() => HOME_ITEM(role === 'admin'), [role])
   const sections = useMemo(() => visibleSections(hasPermission), [hasPermission])
@@ -119,7 +125,8 @@ export function Sidebar() {
     .filter((e): e is NavEntry => !!e).slice(0, 3)
   const isActive = (it: NavItem) => current?.item.href === it.href
   const row = (e: NavEntry, showSection = false) => (
-    <Row key={`${e.item.href}-${showSection ? 's' : ''}`} entry={e} active={isActive(e.item)} fav={sb.favs.includes(e.item.href)} onFav={toggleFav} showSection={showSection} />
+    <Row key={`${e.item.href}-${showSection ? 's' : ''}`} entry={e} active={isActive(e.item)} fav={sb.favs.includes(e.item.href)} onFav={toggleFav}
+      showSection={showSection} count={counts[e.item.href]} />
   )
   const label = 'px-3 pb-1 pt-3 text-[10.5px] font-extrabold uppercase tracking-[0.12em] text-[var(--sb-label)]'
 
@@ -192,6 +199,10 @@ export function Sidebar() {
               {sections.map(s => {
                 const open = openSet.has(s.id)
                 const SIcon = s.icon
+                // Sección cerrada: total de pendientes urgentes (rojo) o aviso (ámbar) para no perder alertas
+                const secCounts = s.groups.flatMap(g => g.items).map(i => counts[i.href]).filter((c): c is MenuCount => !!c)
+                const crit = secCounts.filter(c => c.tono === 'crit').reduce((a, c) => a + c.n, 0)
+                const warn = secCounts.some(c => c.tono === 'warn')
                 return (
                   <div key={s.id} className="mt-1">
                     <button type="button" onClick={() => toggleSection(s.id)} aria-expanded={open}
@@ -199,6 +210,8 @@ export function Sidebar() {
                         activeSection === s.id && !open ? 'text-[var(--sb-strong)]' : 'text-[var(--sb-label)]'}`}>
                       <SIcon className="h-3.5 w-3.5" />
                       <span className="flex-1 truncate">{s.title}</span>
+                      {!open && crit > 0 && <span className={`rounded-full px-1.5 py-px font-mono text-[10px] tracking-normal ${COUNT_STYLE.crit}`} title={`${crit} pendientes por atender`}>{crit > 99 ? '99+' : crit}</span>}
+                      {!open && !crit && warn && <span className="h-2 w-2 rounded-full bg-amber-300" title="Hay avisos en esta sección" />}
                       {activeSection === s.id && !open && <span className="h-1.5 w-1.5 rounded-full bg-[var(--sb-bar)]" aria-label="Contiene la página actual" />}
                       <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? '' : '-rotate-90'}`} />
                     </button>
