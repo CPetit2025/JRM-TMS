@@ -147,9 +147,9 @@ function Trace() {
   } else if (current.error || !current.data) {
     body = <ErrorBlock message={current.error || 'No se pudo trazar'} onRetry={() => setNonce(n => n + 1)} />
   } else if (current.data.modo === 'guia') {
-    body = <TrazaGuia key={q} d={current.data} />
+    body = <TrazaGuia key={`guia-${q}`} d={current.data} />
   } else if (current.data.modo === 'lote') {
-    body = <TrazaLote key={q} d={current.data} />
+    body = <TrazaLote key={`lote-${q}`} d={current.data} />
   } else {
     body = <Sugerencias d={current.data} q={q} />
   }
@@ -160,7 +160,7 @@ function Trace() {
         <h2 className="text-base font-black text-slate-900">Trazabilidad guía ↔ lote</h2>
         <p className="text-xs text-slate-500">Siga el material desde la producción hasta la guía al cliente (o al revés), pasando por 647, 540 y ST VENTAS.</p>
       </div>
-      <SearchBar key={q} initial={q} onSearch={onSearch} />
+      <SearchBar key={`buscar-${q}`} initial={q} onSearch={onSearch} />
       {body}
     </div>
   )

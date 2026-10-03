@@ -159,7 +159,7 @@ export function ResumenSankey({ flujos, onNode }: { flujos: FlowLink[]; onNode?:
     <div ref={box} className="relative" onMouseLeave={() => setHover(null)}>
       <ResponsiveContainer width="100%" height={430}>
         <Sankey data={data} nodeWidth={14} nodePadding={26} linkCurvature={0.5} iterations={64} sort={false}
-          margin={{ top: 12, right: 150, bottom: 12, left: 8 }}
+          margin={{ top: 12, right: 200, bottom: 12, left: 8 }}
           node={renderNode as never} link={renderLink as never}
           onMouseEnter={(item, type, e) => {
             const xy = pos(e)
