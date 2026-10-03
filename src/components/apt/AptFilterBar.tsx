@@ -17,7 +17,7 @@ const TEXT_FIELDS: Array<{ key: 'producto' | 'glosa' | 'numrel_op' | 'ipt' | 'cl
   { key: 'cliente', label: 'Cliente (contiene)', placeholder: 'Razón social' },
 ]
 
-function MultiSelect({ label, options, value, onChange, render, searchable = false, width = 'w-64' }: {
+export function MultiSelect({ label, options, value, onChange, render, searchable = false, width = 'w-64' }: {
   label: string; options: string[]; value: string[] | undefined; onChange: (v: string[]) => void
   render?: (o: string) => React.ReactNode; searchable?: boolean; width?: string
 }) {

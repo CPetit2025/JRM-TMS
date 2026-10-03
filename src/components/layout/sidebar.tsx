@@ -7,7 +7,7 @@ import {
   LogOut, ShieldCheck, BarChart3, Send, DollarSign, 
   ArchiveRestore, Zap, ChevronRight, Wrench, Clock, BarChart2, CheckCircle, Settings2,
   Building2, FileSignature, ClipboardList, PackageCheck, Activity, HardHat, BadgeDollarSign,
-  PackageSearch, Wallet, Receipt, Calculator, AlertTriangle, ClipboardCheck, ShieldAlert, Banknote, UserRound, Fuel, Warehouse, FileUp
+  PackageSearch, Wallet, Receipt, Calculator, AlertTriangle, ClipboardCheck, ShieldAlert, Banknote, UserRound, Fuel, Warehouse, FileUp, Workflow
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -97,7 +97,8 @@ export function Sidebar() {
               <div className="mt-6 mb-2 px-4">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Almacén APT</p>
               </div>
-              <NavItem href="/apt" icon={Warehouse} label="Estadía de Inventario" isActive={pathname.startsWith('/apt') && !pathname.startsWith('/apt/cargas')} />
+              <NavItem href="/apt" icon={Warehouse} label="Estadía de Inventario" isActive={pathname.startsWith('/apt') && !pathname.startsWith('/apt/cargas') && !pathname.startsWith('/apt/flujo')} />
+              {hasPermission('apt') && <NavItem href="/apt/flujo" icon={Workflow} label="Flujo multi‑almacén" isActive={pathname.startsWith('/apt/flujo')} />}
               {hasPermission('apt-carga') && <NavItem href="/apt/cargas" icon={FileUp} label="Carga Diaria APT" />}
             </>
           )}

@@ -5,7 +5,9 @@ import { Download } from 'lucide-react'
 import { aptApi } from '@/lib/apt/api'
 import { exportAptXlsx } from '@/lib/apt/export'
 import { fmtDate, fmtDateTime, fmtInt, fmtTn } from '@/lib/apt/format'
-import type { AptUpload, AptUploadSummaryKind } from '@/lib/apt/types'
+import { APT_KINDS, APT_KIND_LABEL } from '@/lib/apt/parseWorkbook'
+import type { AptUpload, AptUploadSummaryKey, AptUploadSummaryKind } from '@/lib/apt/types'
+import { KIND_STYLE } from './uploadCoverage'
 import { ChartCard, EmptyState, ErrorBlock, LoadingBlock } from './ui'
 
 // Historial de cargas aplicadas o descartadas (las que están a medio subir no se muestran)
@@ -16,7 +18,8 @@ const STATUS_CLS: Record<AptUpload['status'], string> = {
   CARGANDO: 'bg-amber-50 text-amber-700 border-amber-200',
 }
 
-const KINDS = [['entrada', 'ENTRADA'], ['salida', 'SALIDA']] as const
+// Tipos de hoja como columnas: ENTRADA y SALIDA siempre; los demás solo si alguna carga los trae
+const ALL_KINDS = APT_KINDS.map(k => ({ kind: k, key: k.toLowerCase() as AptUploadSummaryKey, label: APT_KIND_LABEL[k] }))
 
 function KindCells({ k }: { k?: AptUploadSummaryKind }) {
   if (!k) return <td colSpan={5} className="border-l border-slate-100 px-2 py-2 text-center text-xs text-slate-300">—</td>
@@ -48,6 +51,8 @@ export function UploadHistory() {
     return () => window.removeEventListener('apt:updated', load)
   }, [load])
 
+  const KINDS = ALL_KINDS.filter(k => k.kind === 'ENTRADA' || k.kind === 'SALIDA' || rows?.some(u => u.summary?.[k.key]))
+
   const exportar = () => {
     if (!rows) return
     exportAptXlsx('APT_historial_cargas', {
@@ -55,7 +60,7 @@ export function UploadHistory() {
         const out: Record<string, unknown> = {
           Fecha: fmtDateTime(u.applied_at || u.created_at), Archivo: u.file_name, Estado: u.status,
         }
-        KINDS.forEach(([key, label]) => {
+        KINDS.forEach(({ key, label }) => {
           const k = u.summary?.[key]
           out[`${label} filas`] = k?.filas ?? null
           out[`${label} válidas`] = k?.validas ?? null
@@ -82,20 +87,21 @@ export function UploadHistory() {
       )}>
       {error ? <div className="p-4"><ErrorBlock message={error} onRetry={() => { setError(null); load() }} /></div>
         : !rows ? <LoadingBlock label="Cargando historial…" className="h-32" />
-        : rows.length === 0 ? <div className="p-4"><EmptyState title="Aún no hay cargas">Cargue el archivo con las hojas ENTRADA y SALIDA.</EmptyState></div>
+        : rows.length === 0 ? <div className="p-4"><EmptyState title="Aún no hay cargas">Cargue el archivo con las hojas ENTRADA y SALIDA y los reportes de traspasos.</EmptyState></div>
         : (
           <div className="max-h-[420px] overflow-auto">
-            <table className="w-full min-w-[1100px] text-sm">
+            <table className="w-full text-sm" style={{ minWidth: 360 + KINDS.length * 370 }}>
               <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                 <tr className="border-b border-slate-200">
                   <th rowSpan={2} className="px-3 py-2 text-left font-bold">Fecha</th>
                   <th rowSpan={2} className="px-2 py-2 text-left font-bold">Archivo</th>
                   <th rowSpan={2} className="px-2 py-2 text-left font-bold">Estado</th>
-                  <th colSpan={5} className="border-l border-slate-200 px-2 py-1.5 text-center font-black text-blue-700">ENTRADA</th>
-                  <th colSpan={5} className="border-l border-slate-200 px-2 py-1.5 text-center font-black text-teal-700">SALIDA</th>
+                  {KINDS.map(k => (
+                    <th key={k.key} colSpan={5} className={`border-l border-slate-200 px-2 py-1.5 text-center font-black ${KIND_STYLE[k.kind].text}`}>{k.label}</th>
+                  ))}
                 </tr>
                 <tr className="border-b border-slate-200">
-                  {KINDS.map(([key]) => ['Filas', 'Válidas', 'Rango', 'TN', 'Reempl.'].map((h, i) => (
+                  {KINDS.map(({ key }) => ['Filas', 'Válidas', 'Rango', 'TN', 'Reempl.'].map((h, i) => (
                     <th key={key + h} className={`px-2 py-1.5 font-semibold ${h === 'Rango' ? 'text-left' : 'text-right'} ${i === 0 ? 'border-l border-slate-200' : ''}`}>{h}</th>
                   )))}
                 </tr>
@@ -110,8 +116,7 @@ export function UploadHistory() {
                         {u.status === 'APLICADA' ? 'Aplicada' : u.status === 'DESCARTADA' ? 'Descartada' : 'Cargando'}
                       </span>
                     </td>
-                    <KindCells k={u.summary?.entrada} />
-                    <KindCells k={u.summary?.salida} />
+                    {KINDS.map(k => <KindCells key={k.key} k={u.summary?.[k.key]} />)}
                   </tr>
                 ))}
               </tbody>

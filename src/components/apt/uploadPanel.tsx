@@ -5,14 +5,16 @@ import { toast } from 'sonner'
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Info, Loader2, RefreshCw, Upload, X } from 'lucide-react'
 import { aptApi } from '@/lib/apt/api'
 import { fmtDate, fmtInt, fmtTn } from '@/lib/apt/format'
-import { parseWorkbooks, type AptParseResult, type AptParsedSheet } from '@/lib/apt/parseWorkbook'
-import type { AptCoverage, AptState, AptUploadSummaryKind } from '@/lib/apt/types'
-import { CoverageAlerts } from './uploadCoverage'
+import { APT_KINDS, APT_KIND_LABEL, MOTIVO_FUERA_APT, parseWorkbooks, type AptParseResult, type AptParsedSheet } from '@/lib/apt/parseWorkbook'
+import type { AptCoverage, AptState, AptUploadSummary, AptUploadSummaryKey, AptUploadSummaryKind } from '@/lib/apt/types'
+import { CoverageAlerts, KIND_STYLE } from './uploadCoverage'
 
-// Carga diaria de ENTRADA / SALIDA: lectura en el navegador, vista previa, envío por lotes y recálculo FIFO
+// Carga diaria de ENTRADA / SALIDA / traspasos / consumos / devoluciones: lectura en el navegador (cada fila se enruta
+// por TIPODOCTO), vista previa, envío por lotes y recálculo FIFO y del flujo multi-almacén
 
 const BATCH = 1000
 const MAX_MB = 60
+const MAX_FILES = 6
 const RETRIES = 3
 
 type Phase =
@@ -61,6 +63,8 @@ function readFiles(files: File[], onProgress: (m: string) => void): Promise<AptP
   })
 }
 
+const summaryKey = (k: (typeof APT_KINDS)[number]) => k.toLowerCase() as AptUploadSummaryKey
+
 const isNetworkError = (msg: string) => /fetch|network|\bred\b|timeout|tiempo de espera|conexi|load failed|50[234]|gateway|aborted|statement timeout/i.test(msg)
 
 async function withRetry<T>(fn: () => Promise<T>, onRetry: (n: number) => void): Promise<T> {
@@ -76,36 +80,98 @@ async function withRetry<T>(fn: () => Promise<T>, onRetry: (n: number) => void):
   }
 }
 
-function SheetCard({ s }: { s: AptParsedSheet }) {
-  const st = s.stats
-  const excl = st.filas - st.validas
+const ORIGEN: Record<AptParsedSheet['detectedBy'], string> = {
+  nombre: 'por nombre de hoja', encabezados: 'reconocida por sus columnas', tipodocto: 'filas enrutadas por TIPODOCTO',
+}
+
+// Vista previa: una fila por tipo de movimiento con lo que se enviará
+function PreviewTable({ sheets }: { sheets: AptParsedSheet[] }) {
+  const notes = sheets.flatMap(s => {
+    const st = s.stats
+    const excl = st.filas - st.validas
+    const label = APT_KIND_LABEL[s.kind]
+    const otros = Object.entries(st.descartadas).filter(([m]) => m !== MOTIVO_FUERA_APT)
+    return [
+      st.sinFecha > 0 && `${label}: ${fmtInt(st.sinFecha)} fila(s) sin fecha${st.totalizadoras > 0 ? ` (incluye ${fmtInt(st.totalizadoras)} totalizadora/vacía)` : ''}`,
+      st.sinProducto > st.totalizadoras && `${label}: ${fmtInt(st.sinProducto - st.totalizadoras)} fila(s) con fecha pero sin producto`,
+      excl > 0 && `${label}: ${fmtInt(excl)} fila(s) se guardarán como excluidas (se ven en Calidad de datos)`,
+      st.sinPeso > 0 && `${label}: ${fmtInt(st.sinPeso)} fila(s) válidas sin PesoTotalProduccido (no suman TN)`,
+      ...otros.map(([m, n]) => `${label}: ${fmtInt(n)} fila(s) descartadas (${m})`),
+    ].filter((x): x is string => !!x)
+  })
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className={`text-xs font-black uppercase tracking-wider ${s.kind === 'ENTRADA' ? 'text-blue-700' : 'text-teal-700'}`}>
-            {s.kind === 'ENTRADA' ? 'ENTRADA · P/E Producción' : 'SALIDA · Despacho Ventas'}
-          </p>
-          <p className="mt-0.5 truncate text-xs text-slate-500" title={`${s.fileName} › ${s.sheetName}`}>
-            Hoja “{s.sheetName}” de {s.fileName} · encabezado en fila {s.headerRow}{s.detectedBy === 'encabezados' ? ' · reconocida por sus columnas' : ''}
-          </p>
-        </div>
-        <FileSpreadsheet className="h-5 w-5 shrink-0 text-slate-300" />
+    <div className="rounded-xl border border-slate-200 bg-white">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] text-sm">
+          <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+            <tr className="border-b border-slate-200">
+              <th className="px-3 py-2 text-left font-bold">Tipo de movimiento</th>
+              <th className="px-2 py-2 text-left font-bold">Origen</th>
+              <th className="px-2 py-2 text-right font-bold">Filas válidas</th>
+              <th className="px-2 py-2 text-left font-bold">Fechas</th>
+              <th className="px-2 py-2 text-right font-bold">TN</th>
+              <th className="px-3 py-2 text-right font-bold" title="Filas de bodegas que no son 647, 540 ni ST VENTAS: no se envían">Descartadas por bodega</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {sheets.map(s => {
+              const st = s.stats
+              return (
+                <tr key={s.kind} className="hover:bg-slate-50">
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <span className={`flex items-center gap-2 text-xs font-black uppercase tracking-wider ${KIND_STYLE[s.kind].text}`}>
+                      <span className={`h-2 w-2 rounded-full ${KIND_STYLE[s.kind].dot}`} />{APT_KIND_LABEL[s.kind]}
+                    </span>
+                  </td>
+                  <td className="max-w-[260px] px-2 py-2 text-xs text-slate-500">
+                    <span className="flex items-center gap-1.5 truncate" title={`${s.fileName} › ${s.sheetName} · encabezado en fila ${s.headerRow}`}>
+                      <FileSpreadsheet className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+                      <span className="truncate">“{s.sheetName}” · {ORIGEN[s.detectedBy]}</span>
+                    </span>
+                  </td>
+                  <td className="px-2 py-2 text-right font-bold tabular-nums text-slate-800">
+                    {fmtInt(st.validas)}
+                    {st.filas > st.validas && <span className="ml-1 text-[11px] font-normal text-amber-600" title="Filas que se guardan como excluidas">(+{fmtInt(st.filas - st.validas)})</span>}
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-2 tabular-nums text-slate-700">{st.desde ? `${fmtDate(st.desde)} – ${fmtDate(st.hasta)}` : '—'}</td>
+                  <td className="px-2 py-2 text-right font-semibold tabular-nums text-[#002855]">{fmtTn(st.tn)}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${st.fueraApt ? 'text-slate-600' : 'text-slate-300'}`}>{fmtInt(st.fueraApt)}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
-      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
-        <div><dt className="text-[11px] uppercase text-slate-400">Filas</dt><dd className="font-bold tabular-nums text-slate-800">{fmtInt(st.filas)}</dd></div>
-        <div><dt className="text-[11px] uppercase text-slate-400">Con fecha y producto</dt><dd className="font-bold tabular-nums text-slate-800">{fmtInt(st.validas)}</dd></div>
-        <div><dt className="text-[11px] uppercase text-slate-400">TN</dt><dd className="font-bold tabular-nums text-[#002855]">{fmtTn(st.tn)}</dd></div>
-        <div><dt className="text-[11px] uppercase text-slate-400">Fechas</dt><dd className="font-semibold tabular-nums text-slate-700">{fmtDate(st.desde)} – {fmtDate(st.hasta)}</dd></div>
-      </dl>
-      {(excl > 0 || st.sinPeso > 0) && (
-        <ul className="mt-3 space-y-1 border-t border-slate-100 pt-2 text-xs text-slate-600">
-          {st.sinFecha > 0 && <li>· {fmtInt(st.sinFecha)} fila(s) sin fecha{st.totalizadoras > 0 ? ` (incluye ${fmtInt(st.totalizadoras)} totalizadora/vacía)` : ''}</li>}
-          {st.sinProducto > st.totalizadoras && <li>· {fmtInt(st.sinProducto - st.totalizadoras)} fila(s) con fecha pero sin producto</li>}
-          {excl > 0 && <li className="text-amber-700">· {fmtInt(excl)} fila(s) se guardarán como excluidas (se ven en Calidad de datos)</li>}
-          {st.sinPeso > 0 && <li>· {fmtInt(st.sinPeso)} fila(s) válidas sin PesoTotalProduccido (no suman TN)</li>}
+      {notes.length > 0 && (
+        <ul className="space-y-1 border-t border-slate-100 px-3 py-2 text-xs text-slate-600">
+          {notes.map(n => <li key={n} className={n.includes('excluidas') ? 'text-amber-700' : ''}>· {n}</li>)}
         </ul>
       )}
+    </div>
+  )
+}
+
+// Qué reportes del ERP subir cada día
+function ReportHelp() {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-600">
+      <p className="flex items-center gap-1.5 font-bold text-slate-700"><Info className="h-3.5 w-3.5" /> Reportes del ERP a subir cada día</p>
+      <ul className="mt-1.5 space-y-1">
+        <li><b className={KIND_STYLE.ENTRADA.text}>ENTRADA</b>: P/E Producción (ingresos de producción al 647).</li>
+        <li><b className={KIND_STYLE.SALIDA.text}>SALIDA</b>: Despacho ventas (guías al cliente).</li>
+        <li>
+          <b className={KIND_STYLE.TRASPASO_SAL.text}>Traspasos de almacén</b>: los dos reportes, <b>Salidas</b> y <b>Entradas</b>, del mismo rango de fechas
+          (cada traspaso tiene un lado origen y un lado destino).
+        </li>
+        <li>
+          <b className={KIND_STYLE.CONSUMO.text}>Opcional</b>: el reporte de salidas totales, para los consumos internos (V/C) y las guías de recojo.
+          Si trae despachos o traspasos, se usan sin duplicar.
+        </li>
+      </ul>
+      <p className="mt-1.5 text-slate-500">
+        Puede subir varios archivos a la vez (hasta {MAX_FILES}). Cada fila se clasifica por TIPODOCTO y el signo de Cantidad, y solo se
+        guardan las bodegas de APT (647, 540 y ST VENTAS).
+      </p>
     </div>
   )
 }
@@ -114,7 +180,7 @@ export function UploadPanel({ state }: { state: AptState | null }) {
   const [phase, setPhase] = useState<Phase>({ step: 'idle' })
   const [error, setError] = useState<string | null>(null)
   const [drag, setDrag] = useState(false)
-  const [last, setLast] = useState<{ entrada?: AptUploadSummaryKind; salida?: AptUploadSummaryKind } | null>(null)
+  const [last, setLast] = useState<AptUploadSummary | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const cancelRef = useRef(false)
   // Cobertura de fechas con la carga en vista previa: huecos, días a reemplazar y desfase ENTRADA/SALIDA
@@ -135,7 +201,7 @@ export function UploadPanel({ state }: { state: AptState | null }) {
     if (!files.length || busy) return
     setError(null)
     setLast(null)
-    if (files.length > 2) return setError('Seleccione uno o dos archivos (libro con ENTRADA y SALIDA, o un archivo por hoja).')
+    if (files.length > MAX_FILES) return setError(`Seleccione hasta ${MAX_FILES} archivos (libro con ENTRADA y SALIDA, reportes de traspasos o de salidas totales).`)
     const bad = files.find(f => !/\.xlsx?$/i.test(f.name))
     if (bad) return setError(`${bad.name} no es un archivo de Excel (.xlsx o .xls).`)
     const big = files.find(f => f.size > MAX_MB * 1024 * 1024)
@@ -166,21 +232,22 @@ export function UploadPanel({ state }: { state: AptState | null }) {
         for (let i = 0; i < s.rows.length; i += BATCH) {
           if (cancelRef.current) throw new Error('Carga cancelada por el usuario. No se modificó ningún dato.')
           const batch = s.rows.slice(i, i + BATCH)
-          setPhase({ step: 'sending', sent, total, kind: s.kind, retry: 0 })
+          const kind = APT_KIND_LABEL[s.kind]
+          setPhase({ step: 'sending', sent, total, kind, retry: 0 })
           await withRetry(() => aptApi.uploadRows(id as string, s.kind, batch),
-            n => setPhase({ step: 'sending', sent, total, kind: s.kind, retry: n }))
+            n => setPhase({ step: 'sending', sent, total, kind, retry: n }))
           sent += batch.length
         }
       }
       setPhase({ step: 'applying' })
       const res = await aptApi.uploadApply(id)
-      const sum = (res.summary || {}) as { entrada?: AptUploadSummaryKind; salida?: AptUploadSummaryKind }
+      const sum = (res.summary || {}) as AptUploadSummary
       setLast(sum)
       setPhase({ step: 'idle' })
       const part = (k: string, x?: AptUploadSummaryKind) =>
         x ? `${k}: ${fmtInt(x.validas)} válidas, ${fmtInt(x.excluidas)} excluidas, ${fmtInt(x.reemplazadas)} reemplazadas, ${fmtTn(x.tn)} TN` : null
-      toast.success('Carga aplicada y FIFO recalculado', {
-        description: [part('ENTRADA', sum.entrada), part('SALIDA', sum.salida)].filter(Boolean).join(' · '),
+      toast.success('Carga aplicada; FIFO y flujo multi-almacén recalculados', {
+        description: APT_KINDS.map(k => part(APT_KIND_LABEL[k], sum[summaryKey(k)])).filter(Boolean).join(' · '),
         duration: 8000,
       })
       window.dispatchEvent(new Event('apt:updated'))
@@ -207,18 +274,16 @@ export function UploadPanel({ state }: { state: AptState | null }) {
   const coverage = cov?.key === covKey ? cov.data : null
   const blocking = !!coverage?.alertas.some(a => a.nivel !== 'info')
   const confirmed = !blocking || ack === covKey
-  const ent = preview?.sheets.find(s => s.kind === 'ENTRADA')
-  const sal = preview?.sheets.find(s => s.kind === 'SALIDA')
-  const rango = (s?: AptParsedSheet) => (s?.stats.desde ? `del ${fmtDate(s.stats.desde)} al ${fmtDate(s.stats.hasta)}` : null)
-  const replaceParts = [ent, sal].filter((s): s is AptParsedSheet => !!s?.stats.desde).map(s => ({ kind: s.kind, rango: rango(s) }))
+  const rango = (s: AptParsedSheet) => `del ${fmtDate(s.stats.desde)} al ${fmtDate(s.stats.hasta)}`
+  const replaceParts = (preview?.sheets || []).filter(s => !!s.stats.desde).map(s => ({ kind: s.kind, rango: rango(s) }))
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
         <div>
-          <h3 className="text-sm font-bold text-slate-800">Carga diaria de ENTRADA y SALIDA</h3>
+          <h3 className="text-sm font-bold text-slate-800">Carga diaria de ENTRADA, SALIDA y traspasos</h3>
           <p className="mt-0.5 text-xs text-slate-500">
-            Libro del ERP con las hojas ENTRADA y SALIDA, o dos archivos separados. Puede ser el acumulado o solo los días nuevos.
+            Libro del ERP con las hojas ENTRADA y SALIDA (o archivos separados) y los reportes de traspasos de almacén. Puede ser el acumulado o solo los días nuevos.
           </p>
         </div>
         {state?.data_max && <span className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-500">Datos actuales: {fmtDate(state.data_min)} – {fmtDate(state.data_max)}</span>}
@@ -245,7 +310,7 @@ export function UploadPanel({ state }: { state: AptState | null }) {
               <>
                 <Upload className="h-8 w-8 text-slate-400" />
                 <p className="font-semibold text-slate-700">Arrastre aquí el archivo o haga clic para seleccionarlo</p>
-                <p className="text-xs text-slate-500">.xlsx o .xls · uno o dos archivos · las hojas de análisis del libro se ignoran</p>
+                <p className="text-xs text-slate-500">.xlsx o .xls · hasta {MAX_FILES} archivos · las hojas de análisis del libro se ignoran</p>
               </>
             )}
             <input ref={inputRef} type="file" accept=".xlsx,.xls" multiple className="hidden" onChange={e => pick(e.target.files)} />
@@ -254,9 +319,7 @@ export function UploadPanel({ state }: { state: AptState | null }) {
 
         {preview && (
           <div className="space-y-3">
-            <div className="grid gap-3 md:grid-cols-2">
-              {preview.sheets.map(s => <SheetCard key={s.kind} s={s} />)}
-            </div>
+            <PreviewTable sheets={preview.sheets} />
             {preview.warnings.map(w => (
               <p key={w} className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {w}
@@ -268,7 +331,7 @@ export function UploadPanel({ state }: { state: AptState | null }) {
                 <p>
                   Se reemplazarán los movimientos de{' '}
                   {replaceParts.map((p, i) => (
-                    <Fragment key={p.kind}>{i > 0 && ' y de '}<b>{p.kind}</b> {p.rango}</Fragment>
+                    <Fragment key={p.kind}>{i > 0 && (i === replaceParts.length - 1 ? ' y de ' : ', de ')}<b>{APT_KIND_LABEL[p.kind]}</b> {p.rango}</Fragment>
                   ))}{' '}
                   ya cargados.
                   {' '}Los días fuera de ese rango se conservan.
@@ -283,7 +346,14 @@ export function UploadPanel({ state }: { state: AptState | null }) {
               </label>
             )}
             {preview.ignored.length > 0 && (
-              <p className="text-xs text-slate-400">Hojas ignoradas: {preview.ignored.map(i => i.sheetName).join(', ')}.</p>
+              <details className="text-xs text-slate-400">
+                <summary className="cursor-pointer select-none">Hojas o partes no usadas ({preview.ignored.length})</summary>
+                <ul className="mt-1 space-y-0.5 pl-3">
+                  {preview.ignored.map((i, n) => (
+                    <li key={n}>· {i.reason.startsWith(i.sheetName) ? i.reason : `${i.sheetName}: ${i.reason}`} <span className="text-slate-300">({i.fileName})</span></li>
+                  ))}
+                </ul>
+              </details>
             )}
             <div className="flex flex-wrap justify-end gap-2">
               <button onClick={() => { setPhase({ step: 'idle' }); setError(null) }}
@@ -320,8 +390,8 @@ export function UploadPanel({ state }: { state: AptState | null }) {
           <div className="flex items-center gap-3 rounded-xl border border-[#002855]/20 bg-[#002855]/5 p-4 text-sm text-[#002855]">
             <Loader2 className="h-5 w-5 animate-spin" />
             <div>
-              <p className="font-bold">Recalculando FIFO…</p>
-              <p className="text-xs">Reemplazando el rango de fechas y reasignando salidas a ingresos. Puede tardar unos segundos.</p>
+              <p className="font-bold">Recalculando FIFO y flujo multi-almacén…</p>
+              <p className="text-xs">Reemplazando el rango de fechas de cada tipo y reasignando salidas a ingresos. Puede tardar unos segundos.</p>
             </div>
           </div>
         )}
@@ -337,15 +407,19 @@ export function UploadPanel({ state }: { state: AptState | null }) {
         {last && (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
             <p className="flex items-center gap-2 font-bold"><CheckCircle2 className="h-4 w-4" /> Carga aplicada</p>
-            {(['entrada', 'salida'] as const).map(k => last[k] && (
-              <p key={k} className="mt-1 text-xs tabular-nums">
-                <b className="uppercase">{k}</b>: {fmtInt(last[k]!.validas)} válidas · {fmtInt(last[k]!.excluidas)} excluidas ·{' '}
-                {fmtInt(last[k]!.reemplazadas)} reemplazadas · {fmtTn(last[k]!.tn)} TN · {fmtDate(last[k]!.desde)} – {fmtDate(last[k]!.hasta)}
-              </p>
-            ))}
+            {APT_KINDS.map(kind => {
+              const x = last[summaryKey(kind)]
+              return x && (
+                <p key={kind} className="mt-1 text-xs tabular-nums">
+                  <b>{APT_KIND_LABEL[kind]}</b>: {fmtInt(x.validas)} válidas · {fmtInt(x.excluidas)} excluidas ·{' '}
+                  {fmtInt(x.reemplazadas)} reemplazadas · {fmtTn(x.tn)} TN · {fmtDate(x.desde)} – {fmtDate(x.hasta)}
+                </p>
+              )
+            })}
           </div>
         )}
 
+        {phase.step === 'idle' && !last && !error && <ReportHelp />}
         {phase.step === 'idle' && !last && !error && (
           <p className="flex items-start gap-2 text-xs text-slate-500">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
