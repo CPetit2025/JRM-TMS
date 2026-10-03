@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
-import type { FlowAdelantos, FlowFilters, FlowLeadDim, FlowLeadtime, FlowQuality, FlowSt, FlowStock, FlowSummary, FlowTrace } from './flowTypes'
+import type { FlowAdelantos, FlowFilters, Kardex, KardexFilters, KardexNivel, FlowLeadDim, FlowLeadtime, FlowQuality, FlowSt, FlowStock, FlowSummary, FlowTrace } from './flowTypes'
 import type {
   AptDashboard, AptDetail, AptDim, AptFechaEntrega, AptFilterOptions, AptFilters, AptGrain, AptHeatmap, AptLevel, AptLoteFicha,
   AptCoverage, AptPareto, AptQuality, AptSettings, AptTrendPoint, AptUpload,
@@ -108,5 +108,7 @@ export const flowApi = {
   trace: (q: string) => call<FlowTrace>('apt_flow_trace', { p_q: q }),
   quality: () => call<FlowQuality>('apt_flow_quality'),
   rebuild: () => call<{ cutoff: string | null }>('apt_flow_rebuild'),
+  kardex: (f: KardexFilters, nivel: KardexNivel, porAlmacen: boolean, limit = 500, offset = 0) =>
+    call<Kardex>('apt_kardex', { p: cleanFilters(f), p_nivel: nivel, p_por_almacen: porAlmacen, p_limit: limit, p_offset: offset }),
 }
 

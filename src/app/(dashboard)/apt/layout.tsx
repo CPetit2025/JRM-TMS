@@ -40,6 +40,7 @@ const SECTIONS = [
       { href: '/apt/flujo/st-ventas', label: 'ST VENTAS' },
       { href: '/apt/flujo/adelantos', label: 'Adelantos y 540' },
       { href: '/apt/flujo/trazabilidad', label: 'Trazabilidad' },
+      { href: '/apt/flujo/kardex', label: 'Kardex' },
     ],
   },
   {
@@ -50,7 +51,7 @@ const SECTIONS = [
     ],
   },
 ] as const
-const NO_FILTERS = ['/apt/calidad', '/apt/cargas', '/apt/flujo/trazabilidad']
+const NO_FILTERS = ['/apt/calidad', '/apt/cargas', '/apt/flujo/trazabilidad', '/apt/flujo/kardex']
 
 function tabActive(href: string, pathname: string) {
   if (href === '/apt' || href === '/apt/flujo') return pathname === href
