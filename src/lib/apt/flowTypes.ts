@@ -176,11 +176,13 @@ export type KardexNivel = 'lote_producto' | 'producto' | 'lote' | 'total'
 export interface KardexFilters {
   desde?: string; hasta?: string; lote?: string; lote_exacto?: string; ot?: string; clientes?: string[]
   producto?: string; glosa?: string; documento?: string; almacenes?: FlowAlmacen[]; tipos?: KardexTipo[]
+  variantes?: OtVariante[]          // con ot: solo esas vertientes de la familia
+  incluir_sospechosos?: boolean     // con ot: suma los lotes con posible error de digitación
 }
 export interface KardexRow {
   id: number; clave: string; fecha: string; tipo: KardexTipo; documento: string | null; tipodocto: string | null
   almacen: FlowAlmacen; contraparte: string | null; lote: string; lote_rel: string | null; producto: string; glosa: string | null
-  cliente: string | null; numrel: string | null; docrel: string | null; unidad: string | null
+  variante: OtVariante | null; cliente: string | null; numrel: string | null; docrel: string | null; unidad: string | null
   cant_in: number | null; cant_out: number | null; kg_in: number | null; kg_out: number | null
   saldo_kg: number; saldo_cant: number | null; saldo_kg_antes: number
 }
@@ -197,3 +199,38 @@ export const KARDEX_TIPO_LABEL: Record<KardexTipo, string> = {
   INICIAL: 'Stock previo', PRODUCCION: 'Ingreso producción', TRASPASO_ENT: 'Traspaso recibido', TRASPASO_SAL: 'Traspaso enviado',
   DESPACHO: 'Guía al cliente', CONSUMO: 'Consumo interno', DEVOLUCION: 'Devolución',
 }
+
+// Familia de una OT (apt_ot_familia): madre, subcontratos, errores, garantías, retornos y posibles errores de digitación
+export type OtVariante = 'MADRE' | 'SUBCONTRATO' | 'ERROR' | 'GARANTIA' | 'DEVOLUCION' | 'OTRO' | 'SOSPECHOSO'
+export const OT_VARIANTES: OtVariante[] = ['MADRE', 'SUBCONTRATO', 'ERROR', 'GARANTIA', 'DEVOLUCION', 'OTRO', 'SOSPECHOSO']
+export const OT_VARIANTE_LABEL: Record<OtVariante, string> = {
+  MADRE: 'OT madre', SUBCONTRATO: 'Subcontratos (-S)', ERROR: 'Errores (-E)', GARANTIA: 'Garantías (-G)',
+  DEVOLUCION: 'Retornos (D)', OTRO: 'Otros sufijos', SOSPECHOSO: 'Posible error de digitación',
+}
+export const OT_VARIANTE_SHORT: Record<OtVariante, string> = {
+  MADRE: 'Madre', SUBCONTRATO: 'Subcontrato', ERROR: 'Error', GARANTIA: 'Garantía', DEVOLUCION: 'Retorno D', OTRO: 'Otro', SOSPECHOSO: '¿Digitación?',
+}
+export type OtVinculoRol = 'ADELANTO' | 'REASIGNADO' | 'INSUMO' | 'REFERENCIA'
+export const OT_ROL_LABEL: Record<OtVinculoRol, string> = {
+  ADELANTO: 'Adelanto asignado a la OT', REASIGNADO: 'Material de la OT pasado a otro lote', INSUMO: 'Insumo consumido por la OT',
+  REFERENCIA: 'El ERP lo relaciona con la OT',
+}
+export interface OtMiembro {
+  lote: string; variante: OtVariante; parecido_a: string | null; cliente: string | null
+  produccion_tn: number; otros_ingresos_tn: number; asignado_tn: number; despacho_tn: number; guias: number; consumo_tn: number
+  otro_almacen_tn: number; cedido_tn: number; saldo_tn: number; saldo_almacen: Record<FlowAlmacen, number>
+  primera_produccion: string | null; ultima_guia: string | null; dias_saldo: number | null; movimientos: number; desde: string | null; hasta: string | null
+}
+export interface OtFamilia {
+  ot: string; q: string; cutoff: string | null
+  resumen: { lotes: number; sospechosos: number; produccion_tn: number; asignado_tn: number; despacho_tn: number; consumo_tn: number
+    cedido_tn: number; saldo_tn: number; sospechoso_tn: number; guias: number; primera_produccion: string | null; ultima_guia: string | null
+    cliente: string | null; dias_total: number | null }
+  grupos: Array<{ variante: OtVariante; lotes: number; produccion_tn: number; despacho_tn: number; saldo_tn: number; guias: number }>
+  miembros: OtMiembro[]
+  vinculados: Array<{ lote: string; roles: OtVinculoRol[]; tn: number; adelanto_tn: number; reasignado_tn: number; insumo_tn: number
+    movimientos: number; hacia: string | null; glosa: string | null; desde: string | null; hasta: string | null }>
+  sospechosos: Array<{ lote: string; parecido_a: string }>
+}
+// Una búsqueda "de OT": solo la raíz numérica (16339)
+export const esBusquedaOt = (q: string) => /^\d{3,7}$/.test(q.trim())

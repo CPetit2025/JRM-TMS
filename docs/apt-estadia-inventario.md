@@ -62,6 +62,16 @@ internos) y Trazabilidad (por guía o lote, con el despacho del TMS si la guía 
 - Las guías abren su detalle de SKUs.
 - Exporta a Excel hasta 20 000 filas.
 
+**Familia de una OT** (`apt_ot_familia`): al buscar una OT (p. ej. `16339`) en Trazabilidad o en el filtro OT del Kardex,
+se agrupan todos sus lotes por la raíz numérica:
+- vertientes: madre `16339`, subcontratos `-S001…`, errores `-E001…`, garantías `-G01`, retornos `16339 D` / `-S004D`;
+- **posible error de digitación**: lote con sufijo cuya OT difiere en un dígito (`126339-S007` ↔ `16339-S007`), sin producción
+  ni guías propias. No se suma a la familia; el Kardex permite incluirlo para revisarlo;
+- **vinculados** de otra numeración: adelantos asignados por traspaso, insumos consumidos, material pasado a otro lote y
+  movimientos que el ERP marca con el contrato o NumRel de la OT. Se muestran aparte, no se suman.
+La ficha muestra producción, adelantos, despacho, saldo por almacén y días por lote; el saldo cuadra con el flujo y con el
+Kardex (prueba C25). Al abrir un lote (`16339-S001`) aparece la franja de su familia. JRM IA responde lo mismo para una OT.
+
 ### Qué cargar
 Lo más simple es subir el **reporte total del ERP**: un libro con las hojas ENTRADA y SALIDA de todas las bodegas. Trae:
 - la producción a 647 y a 540;

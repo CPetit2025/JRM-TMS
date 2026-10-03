@@ -7,15 +7,21 @@ import { ArrowDownLeft, ArrowUpRight, BookOpenCheck, ChevronLeft, ChevronRight, 
 import { aptApi, cleanFilters, flowApi } from '@/lib/apt/api'
 import { exportAptXlsx } from '@/lib/apt/export'
 import { fmtDate, fmtInt, fmtTn } from '@/lib/apt/format'
-import { ALMACEN_LABEL, KARDEX_TIPO_LABEL, type FlowAlmacen, type Kardex, type KardexFilters, type KardexNivel, type KardexRow, type KardexTipo } from '@/lib/apt/flowTypes'
+import {
+  ALMACEN_LABEL, KARDEX_TIPO_LABEL, OT_VARIANTE_LABEL, esBusquedaOt, type FlowAlmacen, type Kardex, type KardexFilters, type KardexNivel, type KardexRow,
+  type KardexTipo, type OtFamilia, type OtVariante,
+} from '@/lib/apt/flowTypes'
 import { ALMACEN_COLOR, FLOW_ALMACENES } from '@/lib/apt/flowColors'
 import type { AptFilterOptions } from '@/lib/apt/types'
 import { KpiCard, LoadingBlock, ErrorBlock, EmptyState } from '@/components/apt/ui'
 import { MultiSelect } from '@/components/apt/AptFilterBar'
 import { GuiaDetalleModal } from '@/components/guias/GuiaDetalleModal'
+import { OtFamiliaStrip, VarianteBadge } from '@/components/apt/flow/OtFamilia'
 
 // Kardex de trazabilidad: cada movimiento del ERP en orden cronológico con su saldo acumulado por lote y producto
 // (o por producto, lote o total), por almacén o consolidado. Filtros en la URL (?k=, ?n=, ?a=, ?pg=) para compartir.
+// El filtro OT agrupa toda la familia (madre, -S, -E, -G, retornos D) y permite elegir vertientes o sumar los lotes con
+// posible error de digitación.
 
 const PAGE = 500
 const TIPOS: KardexTipo[] = ['PRODUCCION', 'TRASPASO_ENT', 'TRASPASO_SAL', 'DESPACHO', 'CONSUMO', 'DEVOLUCION', 'INICIAL']
@@ -75,6 +81,21 @@ function KardexPage() {
     return () => { alive = false }
   }, [key, nonce]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Familia de la OT filtrada (franja con vertientes y lotes por revisar)
+  const ot = filters.ot?.trim() || ''
+  const [fam, setFam] = useState<{ ot: string; data: OtFamilia | null } | null>(null)
+  useEffect(() => {
+    if (!ot) return
+    let alive = true
+    flowApi.familia(ot).then(d => { if (alive) setFam({ ot, data: d }) }).catch(() => { if (alive) setFam({ ot, data: null }) })
+    return () => { alive = false }
+  }, [ot])
+  const familia = ot && fam?.ot === ot ? fam.data : null
+  const toggleVariante = (v: OtVariante) => {
+    const cur = filters.variantes || []
+    go({ k: { ...filters, variantes: cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v] } })
+  }
+
   const [opts, setOpts] = useState<AptFilterOptions | null>(null)
   useEffect(() => { aptApi.filterOptions().then(setOpts).catch(() => setOpts(null)) }, [])
   const [guia, setGuia] = useState<string | null>(null)
@@ -87,10 +108,11 @@ function KardexPage() {
     setExporting(true)
     try {
       const all = await flowApi.kardex(filters, nivel, porAlmacen, 20000, 0)
-      exportAptXlsx(`Kardex_${filters.lote_exacto || filters.lote || filters.ot || 'APT'}_${all.desde}_${all.hasta}`, {
+      exportAptXlsx(`Kardex_${filters.lote_exacto || filters.lote || (filters.ot ? `OT_${filters.ot}` : 'APT')}_${all.desde}_${all.hasta}`, {
         Kardex: all.filas.map(r => ({
           Clave: r.clave, Fecha: r.fecha, Movimiento: KARDEX_TIPO_LABEL[r.tipo], Documento: r.documento, 'Tipo doc.': r.tipodocto,
-          Almacén: r.almacen, 'Origen / destino': r.contraparte, Lote: r.lote, 'Lote relacionado': r.lote_rel, Producto: r.producto,
+          Almacén: r.almacen, 'Origen / destino': r.contraparte, Lote: r.lote, Vertiente: r.variante ? OT_VARIANTE_LABEL[r.variante] : null,
+          'Lote relacionado': r.lote_rel, Producto: r.producto,
           Glosa: r.glosa, Cliente: r.cliente, NumRel: r.numrel, Unidad: r.unidad, 'Cant. entrada': r.cant_in, 'Cant. salida': r.cant_out,
           'Saldo cant.': r.saldo_cant, 'Kg entrada': r.kg_in, 'Kg salida': r.kg_out, 'Saldo kg': r.saldo_kg,
         })),
@@ -118,6 +140,18 @@ function KardexPage() {
       </div>
 
       <FiltersPanel key={sp.get('k') || ''} filters={filters} opts={opts} onApply={k => go({ k })} />
+
+      {familia && familia.miembros.length > 0 && (
+        <OtFamiliaStrip d={familia} selected={filters.variantes} onToggle={toggleVariante}
+          incluirSosp={!!filters.incluir_sospechosos} onSosp={v => go({ k: { ...filters, incluir_sospechosos: v || undefined } })}
+          footer={
+            <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-200/70 pt-3 text-[11px] text-slate-500">
+              <span>{filters.variantes?.length ? `Mostrando: ${filters.variantes.map(v => OT_VARIANTE_LABEL[v]).join(', ')}.` : 'Mostrando todas las vertientes de la OT.'}</span>
+              {!!filters.variantes?.length && <button type="button" onClick={() => go({ k: { ...filters, variantes: undefined } })} className="font-bold text-[#002855] hover:underline">Ver todas</button>}
+              <Link href={`/apt/flujo/trazabilidad?q=${encodeURIComponent(familia.ot)}`} className="ml-auto font-bold text-[#002855] hover:underline">Ficha de la familia →</Link>
+            </div>
+          } />
+      )}
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
         <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-slate-400"><Layers className="h-3.5 w-3.5" /> Saldo por</span>
@@ -200,9 +234,9 @@ function FiltersPanel({ filters, opts, onApply }: { filters: KardexFilters; opts
     <form onSubmit={e => { e.preventDefault(); onApply(f) }} className="space-y-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
       <div className="flex flex-wrap items-end gap-3">
         <span className="flex items-center gap-1.5 self-center text-[11px] font-black uppercase tracking-wider text-slate-400"><Filter className="h-3.5 w-3.5" /> Filtros</span>
+        {input('ot', 'OT (con toda su familia)', '16339', 'w-36')}
         {input('lote_exacto', 'Lote exacto', '16339-S001')}
-        {input('lote', 'Lote contiene', '16339')}
-        {input('ot', 'OT / contrato', '16339', 'w-28')}
+        {input('lote', 'Lote contiene', '16339-S0')}
         {input('producto', 'Producto (SKU)', 'RAPO.20…')}
         {input('glosa', 'Descripción', 'POSTE…')}
         {input('documento', 'Documento / guía', 'T001-…')}
@@ -219,6 +253,14 @@ function FiltersPanel({ filters, opts, onApply }: { filters: KardexFilters; opts
           <MultiSelect label="Cliente" options={(opts?.clientes || []).map(c => c.cliente)} value={f.clientes} searchable width="w-80" onChange={v => set({ clientes: v })} />
         </div>
       </div>
+      {!f.ot && f.lote && esBusquedaOt(f.lote) && (
+        <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] text-sky-800">
+          «{f.lote.trim()}» parece una OT.{' '}
+          <button type="button" onClick={() => { const next = { ...f, ot: f.lote!.trim(), lote: undefined }; setF(next); onApply(next) }} className="font-bold underline">
+            Buscar como OT con toda su familia
+          </button>{' '}(madre, subcontratos, errores, garantías, retornos y posibles errores de digitación).
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Almacén</span>
         {FLOW_ALMACENES.map(a => (
@@ -296,7 +338,10 @@ function KardexTable({ rows, nivel, onGuia }: { rows: KardexRow[]; nivel: Kardex
                 {it.contraparte ? <>{it.tipo === 'TRASPASO_SAL' ? '→ ' : '← '}{it.contraparte}</> : '—'}
                 {it.lote_rel && <span className="ml-1 rounded bg-amber-50 px-1 text-[10px] font-semibold text-amber-700">lote {it.lote_rel}</span>}
               </td>
-              <td className="whitespace-nowrap px-3 py-1.5"><Link href={`/apt/flujo/trazabilidad?q=${encodeURIComponent(it.lote)}`} className="font-mono font-semibold text-[#002855] hover:underline">{it.lote}</Link></td>
+              <td className="whitespace-nowrap px-3 py-1.5">
+                <Link href={`/apt/flujo/trazabilidad?q=${encodeURIComponent(it.lote)}`} className="font-mono font-semibold text-[#002855] hover:underline">{it.lote}</Link>
+                {it.variante && it.variante !== 'MADRE' && <span className="ml-1.5"><VarianteBadge v={it.variante} /></span>}
+              </td>
               <td className="whitespace-nowrap px-3 py-1.5 font-mono text-slate-700">{it.producto}</td>
               <td className="max-w-[260px] truncate px-3 py-1.5 text-slate-600" title={it.glosa || ''}>{it.glosa || '—'}</td>
               <td className="max-w-[180px] truncate px-3 py-1.5 text-slate-500" title={it.cliente || ''}>{it.cliente || '—'}</td>

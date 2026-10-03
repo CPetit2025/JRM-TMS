@@ -73,7 +73,7 @@ export const toolDefinitions = [
   { type: 'function', name: 'get_apt_status', description: 'Almacén de Producto Terminado (APT): permanencia del inventario con FIFO. Sin lote devuelve TN en APT, aging ponderado, TN con más de 7/15/30 días, lotes críticos, distribución por rango, lotes que conviene liberar primero (mayor TN×días), lotes y productos con más TN y la tendencia del saldo. Con lote (NumRel padre, p. ej. 16188 o 16325-S002) devuelve su saldo, días, productos y despachos. min_days filtra material con al menos esos días en APT; cliente filtra por cliente (razón social) y devuelve sus OT con primer ingreso, último despacho y saldo.', strict: true,
     parameters: { type: 'object', properties: { lote: { type: ['string', 'null'] }, producto: { type: ['string', 'null'] }, min_days: { type: ['integer', 'null'] }, cliente: { type: ['string', 'null'] } },
       required: ['lote', 'producto', 'min_days', 'cliente'], additionalProperties: false } },
-  { type: 'function', name: 'get_apt_flow', description: 'Flujo multi-almacén del producto terminado: 647 (ingreso de producción) → ST VENTAS (por guiar) → cliente, con 540 (stock antiguo y adelantos IPT). Sin guia_o_lote devuelve saldo por almacén, % de lo despachado trazado a producción, lead time producción→guía (días en 647 y en ST), % guiado el mismo día, material detenido en ST, retornos ST→647, asignaciones de contrato de adelantos y consumos internos. Con un número de guía (T001-00006696) devuelve de qué producción viene cada línea y cuánto estuvo en cada almacén, y su despacho en el TMS; con un lote devuelve su línea de tiempo entre almacenes.', strict: true,
+  { type: 'function', name: 'get_apt_flow', description: 'Flujo multi-almacén del producto terminado: 647 (ingreso de producción) → ST VENTAS (por guiar) → cliente, con 540 (stock antiguo y adelantos IPT). Sin guia_o_lote devuelve saldo por almacén, % de lo despachado trazado a producción, lead time producción→guía (días en 647 y en ST), % guiado el mismo día, material detenido en ST, retornos ST→647, asignaciones de contrato de adelantos y consumos internos. Con un número de guía (T001-00006696) devuelve de qué producción viene cada línea y cuánto estuvo en cada almacén, y su despacho en el TMS; con un lote devuelve su línea de tiempo entre almacenes; con una OT sola (16339) devuelve su familia completa: madre, subcontratos -S, errores -E, garantías -G, retornos D, lotes con posible error de digitación y lotes vinculados (adelantos, insumos), con producción, despacho y saldo por lote.', strict: true,
     parameters: { type: 'object', properties: { guia_o_lote: { type: ['string', 'null'] } }, required: ['guia_o_lote'], additionalProperties: false } },
   { type: 'function', name: 'get_contract_expenses', description: 'Lista los gastos registrados de una OT y de sus subcontratos y errores (montacargas, grúa, estiba, otros) con su id, tipo, monto, fecha, guía y estado. Úsalo antes de corregir el monto de un gasto.', strict: true,
     parameters: { type: 'object', properties: { contract_code: { type: 'string' } }, required: ['contract_code'], additionalProperties: false } },
@@ -440,6 +440,15 @@ export async function executeAiTool(
   }
   if (name === 'get_apt_flow') {
     const q = typeof args.guia_o_lote === 'string' ? args.guia_o_lote.trim().toUpperCase().slice(0, 60) : ''
+    if (/^\d{3,7}$/.test(q)) {
+      const { data, error } = await supabase.rpc('apt_ot_familia', { p_q: q })
+      if (!error && data?.success && Array.isArray(data.miembros) && data.miembros.length) {
+        const { success: _ok, ...rest } = data  // eslint-disable-line @typescript-eslint/no-unused-vars
+        return { asOf, ...rest, vinculados: Array.isArray(rest.vinculados) ? rest.vinculados.slice(0, 20) : undefined,
+          note: 'SOSPECHOSO = lote con posible error de digitación (no se suma a la familia). Vinculados = lotes de otra numeración relacionados (no se suman).',
+          url: `/apt/flujo/trazabilidad?q=${encodeURIComponent(q)}` }
+      }
+    }
     if (q) {
       const { data, error } = await supabase.rpc('apt_flow_trace', { p_q: q })
       if (error || !data?.success) return { asOf, error: data?.error || error?.message || 'No disponible' }
