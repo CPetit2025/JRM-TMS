@@ -1,6 +1,8 @@
 // Tipos del módulo APT (Estadía del inventario en el Almacén de Producto Terminado).
 // Reflejan lo que devuelven las funciones public.apt_* de la migración 20261002100000_apt_estadia_inventario.sql.
 
+import type { AptUploadKind } from './api'
+
 export type AptEstado = 'En APT' | 'Salida parcial' | 'Despachado' | 'Sin salida identificada' | 'Problema de información'
 export type AptTipoLote = 'CONTRATO' | 'SUBCONTRATO' | 'ERROR' | 'GARANTIA'
 export type AptAlerta = 'problema_info' | 'posible_cruce'
@@ -197,9 +199,12 @@ export interface AptSettings {
 }
 
 export interface AptUploadSummaryKind { filas: number; validas: number; excluidas: number; desde: string | null; hasta: string | null; reemplazadas: number; tn: number }
+// Resumen de una carga por tipo; las claves son los tipos en minúsculas (entrada, salida, traspaso_sal, …)
+export type AptUploadSummaryKey = Lowercase<AptUploadKind>
+export type AptUploadSummary = Partial<Record<AptUploadSummaryKey, AptUploadSummaryKind>>
 export interface AptUpload {
   id: string; file_name: string; status: 'CARGANDO' | 'APLICADA' | 'DESCARTADA'; created_by: string | null; created_at: string
-  applied_at: string | null; summary: { entrada?: AptUploadSummaryKind; salida?: AptUploadSummaryKind }
+  applied_at: string | null; summary: AptUploadSummary
 }
 
 export interface AptQualitySheet {
@@ -226,6 +231,7 @@ export interface AptQuality {
 
 export type AptAlertaNivel = 'error' | 'aviso' | 'info'
 export interface AptCoverageSheet {
+  etiqueta: string
   rangos: Array<{ desde: string; hasta: string }>
   huecos: Array<{ desde: string; hasta: string; dias: number }>
   desde: string | null
@@ -234,7 +240,8 @@ export interface AptCoverageSheet {
   preview: { desde: string; hasta: string; filas_a_reemplazar: number; hueco_antes: { desde: string; hasta: string; dias: number } | null } | null
 }
 export interface AptCoverage {
-  hojas: { ENTRADA: AptCoverageSheet; SALIDA: AptCoverageSheet }
-  alertas: Array<{ nivel: AptAlertaNivel; hoja: 'ENTRADA' | 'SALIDA' | null; mensaje: string }>
+  // ENTRADA y SALIDA siempre; los demás tipos si alguna vez se cargaron
+  hojas: Partial<Record<AptUploadKind, AptCoverageSheet>>
+  alertas: Array<{ nivel: AptAlertaNivel; hoja: AptUploadKind | null; mensaje: string }>
   secuencia_ok: boolean
 }
