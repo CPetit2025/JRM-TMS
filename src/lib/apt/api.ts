@@ -18,7 +18,9 @@ async function call<T>(fn: string, args: Record<string, unknown> = {}): Promise<
 
 // Aplicar y recalcular en el servidor (/api/apt/procesar). Devuelve null si la ruta no está configurada (sin llave de
 // servicio) para usar el camino del navegador; cualquier otro error se informa tal cual.
-async function procesar(body: { accion: 'aplicar' | 'recalcular'; upload_id?: string }) {
+const PASO = { aplicar: 'aplicar la carga', estadia: 'recalcular la estadía', flujo: 'recalcular el flujo' } as const
+
+async function procesar(body: { accion: 'aplicar' | 'estadia' | 'flujo'; upload_id?: string }) {
   let res: Response
   try {
     res = await fetch('/api/apt/procesar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -27,6 +29,7 @@ async function procesar(body: { accion: 'aplicar' | 'recalcular'; upload_id?: st
   }
   if (res.status === 404 || res.status === 503) return null
   const out = await res.json().catch(() => null) as { success?: boolean; error?: string; summary?: unknown; model?: unknown; flow?: unknown } | null
+  if (res.status === 504) throw new Error(`El servidor tardó demasiado en el paso «${PASO[body.accion]}». Intente de nuevo; si se repite, avise a soporte.`)
   if (!res.ok || !out?.success) throw new Error(out?.error || `No se pudo procesar la carga (${res.status})`)
   return out
 }
@@ -61,7 +64,7 @@ export const aptApi = {
   // Los parámetros recalculan la estadía; el flujo multi-almacén se recalcula en una segunda petición
   saveSettings: async (p: { cutoff_date: string | null; tolerance: number; alert_days: number; ranges: Array<{ desde: number; label: string }> }) => {
     const out = await call<{ model: unknown }>('apt_save_settings', { p })
-    const srv = await procesar({ accion: 'recalcular' })
+    const srv = await procesar({ accion: 'flujo' })
     if (!srv) await call<{ cutoff: string | null }>('apt_flow_rebuild')
     return out
   },
@@ -76,7 +79,11 @@ export const aptApi = {
   // En el servidor (sin el límite de 8 s por consulta del navegador); si la ruta no está disponible, tres peticiones
   uploadApply: async (uploadId: string) => {
     const srv = await procesar({ accion: 'aplicar', upload_id: uploadId })
-    if (srv) return { summary: srv.summary as AptUpload['summary'], model: srv.model, flow: srv.flow }
+    if (srv) {
+      const model = await procesar({ accion: 'estadia' })
+      const flow = await procesar({ accion: 'flujo' })
+      return { summary: srv.summary as AptUpload['summary'], model: model?.model, flow: flow?.flow }
+    }
     const applied = await call<{ summary: AptUpload['summary'] }>('apt_upload_apply', { p_upload_id: uploadId, p_rebuild: false })
     const model = await call<{ cutoff: string | null; capas: number; asignaciones: number }>('apt_model_rebuild')
     const flow = await call<{ cutoff: string | null; capas?: number }>('apt_flow_rebuild')
