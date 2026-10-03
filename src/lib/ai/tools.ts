@@ -24,6 +24,7 @@ export const toolAccess = {
   prepare_office_action: { scope: 'contratos', modules: ['contratos-servicios', 'ot', 'clientes', 'solicitudes', 'despacho-aprobacion'] },
   get_apt_status: { scope: 'inventarios', modules: ['apt', 'apt-carga'] },
   get_apt_flow: { scope: 'inventarios', modules: ['apt', 'apt-carga'] },
+  get_fleet_efficiency: { scope: 'mantenimiento', modules: ['flota-eficiencia', 'flota-eficiencia-carga'] },
 } as const
 
 export type AiToolName = keyof typeof toolAccess
@@ -75,6 +76,8 @@ export const toolDefinitions = [
       required: ['lote', 'producto', 'min_days', 'cliente'], additionalProperties: false } },
   { type: 'function', name: 'get_apt_flow', description: 'Flujo multi-almacén del producto terminado: 647 (ingreso de producción) → ST VENTAS (por guiar) → cliente, con 540 (stock antiguo y adelantos IPT). Sin guia_o_lote devuelve saldo por almacén, % de lo despachado trazado a producción, lead time producción→guía (días en 647 y en ST), % guiado el mismo día, material detenido en ST, retornos ST→647, asignaciones de contrato de adelantos y consumos internos. Con un número de guía (T001-00006696) devuelve de qué producción viene cada línea y cuánto estuvo en cada almacén, y su despacho en el TMS; con un lote devuelve su línea de tiempo entre almacenes; con una OT sola (16339) devuelve su familia completa: madre, subcontratos -S, errores -E, garantías -G, retornos D, lotes con posible error de digitación y lotes vinculados (adelantos, insumos), con producción, despacho y saldo por lote.', strict: true,
     parameters: { type: 'object', properties: { guia_o_lote: { type: ['string', 'null'] } }, required: ['guia_o_lote'], additionalProperties: false } },
+  { type: 'function', name: 'get_fleet_efficiency', description: 'Eficiencia de Flota: costo, uso y decisión de reemplazo de unidades de transporte, montacargas y equipos de elevación. Sin activo devuelve el resumen del periodo (desde la base del módulo, normalmente ene-2025): mantenimiento, combustible, km, toneladas y la decisión por activo (Reemplazar, Dar de baja o alquilar, Planificar reemplazo, Vigilar, Consolidar carga, Mantener) con sus motivos. Con activo (placa como BCW 838 o nombre del equipo) devuelve su ficha: costo por km, km por galón, costo por t·km, kg por viaje, mantenimiento por km por año, horas de uso y costo por hora.', strict: true,
+    parameters: { type: 'object', properties: { activo: { type: ['string', 'null'] }, desde: { type: ['string', 'null'] } }, required: ['activo', 'desde'], additionalProperties: false } },
   { type: 'function', name: 'get_contract_expenses', description: 'Lista los gastos registrados de una OT y de sus subcontratos y errores (montacargas, grúa, estiba, otros) con su id, tipo, monto, fecha, guía y estado. Úsalo antes de corregir el monto de un gasto.', strict: true,
     parameters: { type: 'object', properties: { contract_code: { type: 'string' } }, required: ['contract_code'], additionalProperties: false } },
   { type: 'function', name: 'prepare_office_action', description: 'Prepara (NO ejecuta) una acción de registro o edición para que el usuario la confirme: REGISTER_CONTRACT_EXPENSE (gasto de OT/subcontrato/error: contract_code, service_type MONTACARGA|GRUA|ESTIBA|MANIOBRA|PEAJE|PENALIDAD|ERROR|OTROS, amount, hours si es montacargas, service_date, provider_name, provider_ruc, referral_guide, description), UPDATE_EXPENSE_AMOUNT (expense_id de get_contract_expenses, amount), CREATE_CONTRACT (code, contract_type CONTRATO|OT_INDEPENDIENTE|SUBCONTRATO|ERROR, parent_code para subcontrato/error, client por razón social o RUC, budget, weight_tons, destination_district, destination_address), CHANGE_REQUEST_STATUS (request_number, new_status APROBADA|RECHAZADA|REPROGRAMADA|CANCELADA, required_date si reprograma). Usa null en lo que no se indicó; no inventes datos. Anular gastos no se hace desde aquí.', strict: true,
@@ -437,6 +440,24 @@ export async function executeAiTool(
       otsDelCliente: ots?.data?.success ? (ots.data.rows as Row[]).map(o => ({ ot: o.clave, cliente: o.cliente, lotes: o.lotes, primer_ingreso: o.primer_ingreso,
         ultimo_despacho: o.ultimo_despacho, tn_ingresada: o.tn_in, tn_despachada: o.tn_out, saldo_tn: o.tn_saldo, dias: o.dias, estado: o.estado })) : undefined,
       note: 'TN×días = saldo TN × días en APT (prioridad para liberar). Días del saldo = fecha de corte − ingreso de la capa (FIFO).', url: cliente ? '/apt/clientes' : '/apt' }
+  }
+  if (name === 'get_fleet_efficiency') {
+    const desde = typeof args.desde === 'string' && /^\d{4}-\d{2}/.test(args.desde) ? `${args.desde.slice(0, 7)}-01` : undefined
+    const { data, error } = await supabase.rpc('fe_resumen', { p: desde ? { desde } : {} })
+    if (error || !data?.success) return { asOf, error: data?.error || error?.message || 'No disponible' }
+    const q = typeof args.activo === 'string' ? args.activo.trim().toUpperCase().replace(/[-\s]+/g, ' ') : ''
+    const all = [...(data.transporte as Row[]), ...(data.equipos as Row[])]
+    if (q) {
+      const a = all.find(x => String(x.code).toUpperCase() === q) || all.find(x => String(x.code).toUpperCase().includes(q))
+      if (!a) return { asOf, error: `No encontré el activo ${q} en Eficiencia de Flota.`, activos: all.map(x => x.code) }
+      return { asOf, periodo: { desde: data.desde, hasta: data.hasta }, activo: a, url: '/eficiencia-flota' }
+    }
+    return { asOf, periodo: { desde: data.desde, hasta: data.hasta, meses: data.meses }, corte_excel_tms: data.corte, kpis: data.kpis,
+      precio_galon_por_anio: data.precio_anio, medianas: data.medianas,
+      decisiones: all.map(x => ({ activo: x.code, tipo: x.tipo ?? x.clase, edad: x.edad, decision: x.rec, motivos: x.motivos,
+        costo_km: x.costo_km, costo_tkm: x.costo_tkm, costo_hora: x.costo_hora, horas_anio: x.horas_anio })),
+      note: 'Costo por km = (combustible + mantenimiento) / km en meses completos. Costo por t·km solo en meses con rutas y peso. Costo por hora = costo anual / horas de uso del horómetro.',
+      url: '/eficiencia-flota' }
   }
   if (name === 'get_apt_flow') {
     const q = typeof args.guia_o_lote === 'string' ? args.guia_o_lote.trim().toUpperCase().slice(0, 60) : ''
