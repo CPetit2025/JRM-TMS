@@ -1,12 +1,14 @@
 "use client"
 import { Sidebar } from '@/components/layout/sidebar'
-import { Bell, User, Check, Clock } from 'lucide-react'
+import { Bell, User, Check, Clock, Menu } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNotifications } from '@/components/NotificationProvider'
 import { NotificationBanner } from './NotificationBanner'
 import { usePathname } from 'next/navigation'
 import { AppUpdateNotice } from '@/components/AppUpdateNotice'
 import { JrmAiAssistant } from '@/components/JrmAiAssistant'
+import { NAV_SECTIONS, activeEntry, flatEntries } from '@/lib/nav/navConfig'
+import { setSidebar, useSidebar } from '@/lib/nav/sidebarStore'
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState('operador')
@@ -15,7 +17,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const { notifications, unreadCount, markAllAsRead } = useNotifications()
   const pathname = usePathname()
 
+  const sidebar = useSidebar()
+
   const getPageTitle = (path: string) => {
+    // Título desde el menú: nombre de la pantalla y su sección (Almacén APT › Kardex)
+    const nav = path && path !== '/' ? activeEntry(flatEntries(NAV_SECTIONS), path) : null
+    if (nav?.section) return { title: nav.item.label, subtitle: `${nav.section.title}${nav.group ? ` › ${nav.group}` : ''}` }
     if (!path || path === '/') return { title: 'Dashboard Ejecutivo', subtitle: 'Resumen gerencial de operaciones' }
     if (path.includes('/contratos/servicios')) return { title: 'Servicios de Contrato', subtitle: 'Gestión de servicios asignados' }
     if (path.includes('/contratos')) return { title: 'Contratos y OTs', subtitle: 'Gestión de acuerdos comerciales' }
@@ -63,10 +70,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <JrmAiAssistant />
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-8 z-20 relative">
-          <div>
+        <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between gap-3 px-4 lg:px-8 z-20 relative">
+          <div className="flex min-w-0 items-center gap-3">
+            <button type="button" onClick={() => setSidebar({ overlay: true })} aria-label="Mostrar menú" title="Mostrar menú (Ctrl + B)"
+              className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-[#002855] ${sidebar.pinned ? 'lg:hidden' : ''}`}>
+              <Menu className="h-5 w-5" />
+            </button>
+          <div className="min-w-0">
             <h2 className="text-xl font-semibold text-slate-800">{title}</h2>
             <p className="text-sm text-slate-500">{subtitle}</p>
+          </div>
           </div>
           <div className="flex items-center gap-4">
             <div className="relative">
