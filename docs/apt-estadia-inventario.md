@@ -56,6 +56,16 @@ internos) y Trazabilidad (por guía o lote, con el despacho del TMS si la guía 
 *Calidad de datos* muestra el cuadre por almacén y el emparejamiento de traspasos.
 
 ### Qué cargar
+Lo más simple es subir el **reporte total del ERP**: un libro con las hojas ENTRADA y SALIDA de todas las bodegas. Trae:
+- la producción a 647 y a 540;
+- los dos lados de los traspasos;
+- los vales de consumo;
+- las guías de recojo.
+
+La carga se queda solo con 647, 540 y ST VENTAS, y quita los ceros a la izquierda de Numero, NumRel, Lote y Contrato
+(`0000016101` → `16101`).
+
+Equivale a subir por separado:
 Además de ENTRADA y SALIDA:
 - Los dos reportes de **traspasos de almacén**: el de salidas (lado origen, cantidad negativa) y el de entradas (lado
   destino). Deben cubrir las mismas fechas; si no, la cobertura avisa.

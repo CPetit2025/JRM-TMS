@@ -221,11 +221,14 @@ function parseSheet(ws: XLSX.WorkSheet, date1904: boolean, fileName: string, she
     const kind = (iTipo >= 0 ? kindByTipodocto(tipo, cant) : null) ?? (String(tipo ?? '').trim() === '' ? sheetKind : null)
     if (!kind) { sinTipo++; return }
     const a = get(kind)
-    // ENTRADA se carga de cualquier bodega; SALIDA descarta bodegas de terceros (p. ej. RINTI); el resto exige bodega APT
-    if (kind !== 'ENTRADA') {
+    // ENTRADA y SALIDA sin bodega se aceptan (reportes clásicos ya filtrados); con bodega, solo 647, 540 y ST VENTAS
+    // (el reporte total de entradas trae producción de otras plantas y almacenes; el de salidas, bodegas de terceros como RINTI).
+    // El resto de hojas exige bodega APT.
+    {
       const bod = iBodega >= 0 ? r[iBodega] : null
       const hasBod = String(bod ?? '').trim() !== ''
-      if ((kind !== 'SALIDA' || hasBod) && !aptAlmacen(bod)) {
+      const clasica = kind === 'ENTRADA' || kind === 'SALIDA'
+      if ((!clasica || hasBod) && !aptAlmacen(bod)) {
         a.stats.fueraApt++
         a.stats.descartadas[MOTIVO_FUERA_APT] = (a.stats.descartadas[MOTIVO_FUERA_APT] ?? 0) + 1
         return
