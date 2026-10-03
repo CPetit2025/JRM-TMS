@@ -55,6 +55,13 @@ ST VENTAS (velocidad de guiado, detenido, retornos), Adelantos y 540 (asignació
 internos) y Trazabilidad (por guía o lote, con el despacho del TMS si la guía está en el Asistente Documentario).
 *Calidad de datos* muestra el cuadre por almacén y el emparejamiento de traspasos.
 
+**Kardex** (`/apt/flujo/kardex`) lista cada movimiento del ERP en orden cronológico con su saldo acumulado:
+- Filtros: lote exacto o que contenga, OT, cliente, producto, descripción, documento o guía, almacén, tipo de movimiento y fechas.
+- El saldo se calcula por lote + SKU, por SKU, por lote o total, separado por almacén o consolidado.
+- El saldo inicial incluye el stock previo inferido. Al final del periodo cuadra con el flujo multi-almacén (prueba C24).
+- Las guías abren su detalle de SKUs.
+- Exporta a Excel hasta 20 000 filas.
+
 ### Qué cargar
 Lo más simple es subir el **reporte total del ERP**: un libro con las hojas ENTRADA y SALIDA de todas las bodegas. Trae:
 - la producción a 647 y a 540;

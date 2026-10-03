@@ -169,3 +169,31 @@ export const ORIGEN_LABEL: Record<FlowOrigen, string> = {
   DEVOLUCION: 'Devoluciones',
   OTRO_ALMACEN: 'Otros almacenes',
 }
+
+// Kardex de trazabilidad (apt_kardex)
+export type KardexTipo = 'INICIAL' | 'PRODUCCION' | 'TRASPASO_ENT' | 'TRASPASO_SAL' | 'DESPACHO' | 'CONSUMO' | 'DEVOLUCION'
+export type KardexNivel = 'lote_producto' | 'producto' | 'lote' | 'total'
+export interface KardexFilters {
+  desde?: string; hasta?: string; lote?: string; lote_exacto?: string; ot?: string; clientes?: string[]
+  producto?: string; glosa?: string; documento?: string; almacenes?: FlowAlmacen[]; tipos?: KardexTipo[]
+}
+export interface KardexRow {
+  id: number; clave: string; fecha: string; tipo: KardexTipo; documento: string | null; tipodocto: string | null
+  almacen: FlowAlmacen; contraparte: string | null; lote: string; lote_rel: string | null; producto: string; glosa: string | null
+  cliente: string | null; numrel: string | null; docrel: string | null; unidad: string | null
+  cant_in: number | null; cant_out: number | null; kg_in: number | null; kg_out: number | null
+  saldo_kg: number; saldo_cant: number | null; saldo_kg_antes: number
+}
+export interface Kardex {
+  desde: string; hasta: string; data_min: string; data_max: string; nivel: KardexNivel; por_almacen: boolean
+  total: number; offset: number; limit: number
+  resumen: { claves: number; movimientos: number; guias: number; lotes: number; saldo_inicial_tn: number; entradas_tn: number
+    salidas_tn: number; saldo_final_tn: number; claves_negativas: number }
+  almacenes: Array<{ almacen: FlowAlmacen; inicial_tn: number; entradas_tn: number; salidas_tn: number; saldo_tn: number }>
+  tipos: Array<{ tipo: KardexTipo; filas: number; tn: number }>
+  filas: KardexRow[]
+}
+export const KARDEX_TIPO_LABEL: Record<KardexTipo, string> = {
+  INICIAL: 'Stock previo', PRODUCCION: 'Ingreso producción', TRASPASO_ENT: 'Traspaso recibido', TRASPASO_SAL: 'Traspaso enviado',
+  DESPACHO: 'Guía al cliente', CONSUMO: 'Consumo interno', DEVOLUCION: 'Devolución',
+}
