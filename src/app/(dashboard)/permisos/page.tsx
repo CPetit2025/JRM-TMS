@@ -70,6 +70,13 @@ const MODULE_GROUPS: PermissionGroup[] = [
     ]
   },
   {
+    title: 'Eficiencia de Flota',
+    modules: [
+      { id: 'flota-eficiencia', label: 'Eficiencia de Flota — costo, uso y decisión de reemplazo' },
+      { id: 'flota-eficiencia-carga', label: 'Eficiencia de Flota — carga de historia, horómetro y parámetros', mode: 'toggle' }
+    ]
+  },
+  {
     title: 'Mantenimiento de Flota',
     modules: [
       { id: 'mantenimiento-dashboard', label: 'Dashboard Mantenimiento' },

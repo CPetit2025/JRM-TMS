@@ -3,7 +3,7 @@ import {
   ChartColumn, ChartNoAxesColumn, CircleCheckBig, CircleDot, ClipboardCheck, ClipboardList, Container, Database, Factory, FileSignature,
   FileText, FileUp, Fuel, Gauge, HardHat, Home, Hourglass, KeyRound, Map as MapIcon, MapPin, PackageCheck,
   PackageSearch, Radar, Receipt, ReceiptText, Route, Scale, Settings, Settings2, ShieldAlert, ShieldCheck, Sparkles, TriangleAlert,
-  Truck, UserRound, Users, Wallet, Warehouse, Workflow, Wrench, type LucideIcon,
+  Truck, UserRound, Users, Wallet, Warehouse, Workflow, Wrench, Forklift, History, LayoutDashboard, type LucideIcon,
 } from 'lucide-react'
 
 // Menú lateral: una sola lista para el sidebar, el buscador y el título de cada página.
@@ -71,6 +71,14 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: '/mantenimiento/copiloto', label: 'Copiloto IA', icon: Sparkles, show: any('mantenimiento-dashboard'), keywords: 'ia copiloto' },
     ] },
   ] },
+  { id: 'eficiencia', title: 'Eficiencia de Flota', icon: Gauge, groups: [{ items: [
+    { href: '/eficiencia-flota', label: 'Resumen y decisiones', icon: LayoutDashboard, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'eficiencia flota reemplazo tco costo por km' },
+    { href: '/eficiencia-flota/transporte', label: 'Unidades de transporte', icon: Truck, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'costo por km tonelada km por galon' },
+    { href: '/eficiencia-flota/equipos', label: 'Montacargas y elevación', icon: Forklift, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'montacargas horometro costo por hora plataforma' },
+    { href: '/eficiencia-flota/rutas', label: 'Rutas y carga', icon: Route, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'toneladas viajes peso' },
+    { href: '/eficiencia-flota/recambios', label: 'Recambios', icon: History, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'altas bajas renovacion' },
+    { href: '/eficiencia-flota/datos', label: 'Datos y parámetros', icon: Database, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'carga excel horometro vida util' },
+  ] }] },
   { id: 'caja', title: 'Caja de Transporte', icon: Wallet, groups: [{ items: [
     { href: '/caja', label: 'Panel de Caja', icon: Wallet, show: any('caja'), keywords: 'caja' },
     { href: '/caja/gastos', label: 'Registro de Gastos', icon: ReceiptText, show: any('caja-gastos'), keywords: 'gasto comprobante' },
