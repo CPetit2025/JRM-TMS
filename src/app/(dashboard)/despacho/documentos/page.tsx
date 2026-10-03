@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Clock, FileSpreadsheet, FileText, Loader2, RefreshCw, Trash2, Truck, Upload } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock, FileSpreadsheet, FileText, ListTree, Loader2, RefreshCw, Trash2, Truck, Upload } from 'lucide-react'
+import { GuiaDetalleModal } from '@/components/guias/GuiaDetalleModal'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -197,8 +198,11 @@ function DispatchCard({ item, canEdit, busy, onConfirm, onVoid, onOpen, onUpload
 }
 
 function DocList({ docs, canEdit, onVoid, onOpen }: { docs: Doc[]; canEdit: boolean; onVoid: (d: Doc) => void; onOpen: (p: string) => void }) {
+  const [guia, setGuia] = useState<string | null>(null)
   if (docs.length === 0) return <p className="text-xs text-slate-400 mt-2">Sin documentos cargados.</p>
   return (
+    <>
+    <GuiaDetalleModal key={guia || 'none'} guias={guia} onClose={() => setGuia(null)} />
     <ul className="mt-2 space-y-1">
       {docs.map(d => (
         <li key={d.id} className="flex flex-wrap items-center gap-2 text-sm">
@@ -206,12 +210,19 @@ function DocList({ docs, canEdit, onVoid, onOpen }: { docs: Doc[]; canEdit: bool
           <button onClick={() => onOpen(d.file_path)} className="text-blue-700 hover:underline font-medium">
             {DOC_LABEL[d.doc_type]}{d.document_number ? ` ${d.document_number}` : ''}
           </button>
+          {d.doc_type === 'GUIA_REMISION' && d.document_number && (
+            <button type="button" onClick={() => setGuia(d.document_number)} title="Ver los SKUs de la guía (SALIDA del ERP)"
+              className="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">
+              <ListTree className="w-3 h-3" /> SKUs
+            </button>
+          )}
           {d.cargo_type && <span className="text-xs text-slate-500">({CARGO_LABEL[d.cargo_type] || d.cargo_type})</span>}
           <span className="text-xs text-slate-400">{d.uploaded_by || '—'} · {fmtDate(d.uploaded_at, true)}</span>
           {canEdit && <button onClick={() => onVoid(d)} className="text-slate-400 hover:text-red-600" title="Anular"><Trash2 className="w-3.5 h-3.5" /></button>}
         </li>
       ))}
     </ul>
+    </>
   )
 }
 

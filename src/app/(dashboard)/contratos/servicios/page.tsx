@@ -4,6 +4,7 @@ import { Plus, Receipt, Calendar, FileText, Check, Ban, Loader2, DollarSign, Upl
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { GuiaDetalleModal } from '@/components/guias/GuiaDetalleModal'
 import { useDropzone } from 'react-dropzone'
 import * as XLSX from 'xlsx'
 
@@ -72,6 +73,8 @@ export default function ContractServicesPage() {
   const [orphanDispatches, setOrphanDispatches] = useState<Dispatch[]>([])
   const [loading, setLoading] = useState(true)
   const [isOrphanModalOpen, setIsOrphanModalOpen] = useState(false)
+  // Guía(s) cuyo detalle de SKUs se muestra (desde la SALIDA cargada en Almacén APT)
+  const [guiaAbierta, setGuiaAbierta] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   
@@ -669,7 +672,9 @@ export default function ContractServicesPage() {
                       {srv.referral_guide ? (
                         <div className="flex max-w-[180px] flex-wrap gap-1">
                           {srv.referral_guide.split(',').map(g => g.trim()).filter(Boolean).map(g => (
-                            <span key={g} className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-xs font-semibold text-blue-700">{g}</span>
+                            <button key={g} type="button" title="Ver los SKUs de la guía"
+                              onClick={e => { e.stopPropagation(); setGuiaAbierta(g) }}
+                              className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-xs font-semibold text-blue-700 underline-offset-2 hover:bg-blue-100 hover:underline">{g}</button>
                           ))}
                         </div>
                       ) : <span className="text-slate-400">-</span>}
@@ -1029,10 +1034,15 @@ export default function ContractServicesPage() {
               {viewingService.referral_guide ? (
                 <div className="flex flex-wrap gap-2 mt-1">
                   {viewingService.referral_guide.split(',').map((gr: string, idx: number) => (
-                    <span key={idx} className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded text-sm font-semibold">
+                    <button key={idx} type="button" onClick={() => setGuiaAbierta(gr.trim())} title="Ver los SKUs de la guía"
+                      className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded text-sm font-semibold hover:bg-blue-100 hover:underline">
                       {gr.trim()}
-                    </span>
+                    </button>
                   ))}
+                  {viewingService.referral_guide.split(',').filter((x: string) => x.trim()).length > 1 && (
+                    <button type="button" onClick={() => setGuiaAbierta(viewingService.referral_guide || null)}
+                      className="px-2 py-1 rounded text-sm font-bold text-[#002855] hover:underline">Ver todas</button>
+                  )}
                 </div>
               ) : (
                 <span className="text-slate-400 text-sm italic">Sin guías registradas</span>
@@ -1150,6 +1160,8 @@ export default function ContractServicesPage() {
           </div>
         )}
       </Modal>
+
+      <GuiaDetalleModal key={guiaAbierta || 'none'} guias={guiaAbierta} onClose={() => setGuiaAbierta(null)} />
     </div>
   )
 }
