@@ -6,8 +6,8 @@ Mantenimiento.
 | Fase | Contenido | Estado |
 |---|---|---|
 | 1 | Historial único por unidad, clasificación por sistema, equipos registrados en Flota, horómetro y checklist del operario | Migración `20261004140000` |
-| 2 | Cargar los planes en `maintenance_plans` desde las plantillas, con la última ejecución tomada del historial | Pendiente |
-| 3 | Gasto de taller de Caja con placa y sistema, plan anual con presupuesto e indicadores | Pendiente |
+| 2 | Planes de cada unidad desde las plantillas, con la última ejecución del historial; validación y activación | Migración `20261004160000` |
+| 3 | Reparación mayor con cotización, gasto de Caja en el historial, plan anual con presupuesto e indicadores | Migración `20261004160000` |
 
 ## Diagnóstico (Excel)
 
@@ -45,7 +45,7 @@ Se aplica lo que ocurra primero: km, horas o días.
 | | | Anual: ejes y suspensión | 1 año | |
 | Camión diésel de más de 15 años | F3R 838 (VW Worker 2006) | A / B / C | 5.000 / 10.000 / 40.000 km | Motor antiguo: se mantiene 5.000 km |
 | Liviano a gasolina o GLP | BHW 001 (JAC GLP), F6E 535, CFO 930, CJS 716 | A / B / C | 5.000 / 10.000 / 20.000 km | [JAC Perú](https://www.jac.pe/noticias/cada-cuantos-kilometros-se-debe-hacer-el-mantenimiento-vehicular/): cada 5.000 km |
-| Montacargas a GLP o gasolina | NN01–NN04, CLARK 4TN y 5TN, Hangzhou | 250 / 500 / 1.000 / 2.000 h | 45 / 90 / 180 / 365 días | [Programa 250-500-1.000-2.000 h](https://ciftransmissions.com/how-often-should-you-schedule-forklift-maintenance/) |
+| Montacargas a GLP o gasolina | NN01–NN04, CLARK 4TN y 5TN, Hangzhou | 250 / 500 / 1.000 / 2.000 h | 90 / 180 / 365 / 730 días | [Programa 250-500-1.000-2.000 h](https://ciftransmissions.com/how-often-should-you-schedule-forklift-maintenance/) |
 | Plataforma de tijera y apilador | Tijeras N1, N2, N5 y N6, apilador BT | Mensual / trimestral / anual | 30 / 90 / 365 días | [ANSI A92](https://atomoving.com/blog/aerial-work-platform/scissor-lift-inspection-frequency-building-a-safe-maintenance-schedule-18022026-new/): pre-uso, cada 3 meses y anual |
 
 **Por qué estas frecuencias son eficientes**
@@ -112,10 +112,43 @@ Las unidades de transporte no se crean ni se modifican. La prueba C30 informa en
 
 Pueden verlo quienes tienen Mantenimiento › Flota, OT o Finanzas, o Eficiencia de Flota.
 
+## Fase 2: planes por unidad
+
+- **Unidades nuevas en Flota:** CFO 930 (camión grúa), CJS 716 (camioneta) y el semirremolque ARB 976, que tiene ficha
+  propia para su mantenimiento. El tracto sigue siendo la unidad "BCW838/ARB976" que usa Despacho.
+- **Odómetro:** el de cada unidad de transporte se sube a la última lectura del historial. Nunca baja y queda
+  registrado como `HISTORIAL_EXCEL`.
+- **Planes:** cada unidad recibe los servicios de su familia (`maintenance_plans.mant_template_id`). La última
+  ejecución se toma del historial con el patrón del servicio (por ejemplo, cambio de aceite de motor). Rellenar o
+  completar aceite no cuenta como cambio.
+- **Los planes nacen inactivos.** El historial termina en junio de 2026. Si se activaran directo, el programador diario
+  (6:00) generaría OT por servicios que quizá ya se hicieron. Mantenimiento confirma la última ejecución en
+  **Mantenimiento › Plan anual › Validar** (`mant_validar_planes`, permiso Preventivos) y desde ahí se activan.
+
+## Fase 3: control y presupuesto
+
+- **Reparación mayor:** una OT correctiva de más de **S/ 5.000** (`mant_settings.umbral_cotizacion`) no pasa a
+  APROBADA, PROGRAMADA ni EN_PROCESO sin cotización aprobada. Lo controla el disparador `mant_ot_umbral`, sin cambiar
+  las funciones de OT. El mensaje pide revisar la decisión de Eficiencia de Flota.
+- **Caja:** los gastos aprobados de categoría MANTENIMIENTO o NEUMATICOS (repuestos, parchado) entran al historial de la
+  unidad. Los que no tienen placa se listan en el Plan anual para asignarlos (`mant_asignar_gasto`). Solo se completa la
+  placa: el gasto no cambia en Caja.
+- **Plan anual** (`mant_plan_anual`):
+  - **calendario por mes:** el intervalo de cada servicio es el que ocurra primero entre su uso real (km o horas de
+    los últimos 12 meses) y los días. Un servicio mayor reemplaza a los que incluye en el mismo mes. Lo vencido se
+    programa en el mes actual;
+  - **costo:** la mediana de lo pagado en ese servicio en los últimos 3 años, como máximo 2 veces el costo de
+    referencia de la plantilla;
+  - **reserva de correctivo:** el promedio anual de los últimos 24 meses;
+  - **real del año:** Excel + OT + Caja;
+  - **indicadores:** % correctivo (meta menos de 25 %), cambios de aceite a tiempo (meta 90 %), días promedio entre
+    correctivos (MTBF), servicios vencidos, Caja sin unidad y reparaciones mayores sin cotización.
+- **Eficiencia de Flota:** cuenta las fallas desde `maintenance_requests`, la fuente única.
+
 ## Reglas acordadas
 
-- Una reparación de más de **S/ 5.000** exige cotización y la decisión de Eficiencia de Flota antes de aprobarse.
-  Se implementa en la Fase 3.
+- Una reparación de más de **S/ 5.000** exige cotización y la decisión de Eficiencia de Flota antes de aprobarse
+  (Fase 3).
 - **Metas a 12 meses:**
   - correctivo por debajo del 25 %;
   - preventivo a tiempo en al menos 90 % de los servicios;
@@ -133,3 +166,14 @@ Pueden verlo quienes tienen Mantenimiento › Flota, OT o Finanzas, o Eficiencia
 - el aviso de fallas.
 
 También informa el vínculo de cada unidad de transporte con Flota.
+
+`supabase/tests/caja_c31_plan_mantenimiento_f2_f3.test.sql` comprueba:
+
+- los planes creados, inactivos y con línea base;
+- la validación con permiso y su rechazo sin permiso;
+- el bloqueo de la reparación mayor sin cotización;
+- el plan anual con presupuesto y su acceso por permiso;
+- las fallas en Eficiencia de Flota;
+- las unidades nuevas.
+
+También informa los planes por validar, los odómetros actualizados y el presupuesto.
