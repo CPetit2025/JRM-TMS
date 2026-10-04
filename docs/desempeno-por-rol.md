@@ -3,7 +3,7 @@
 Implementa el plan de `docs/plan-kpi-supervisores.md` (fases 1 a 3).
 - Migración: `20261005180000_desempeno_por_rol.sql`.
 - Prueba: `supabase/tests/caja_c36_desempeno_por_rol.test.sql`.
-- Pantalla web: **Operación › Desempeño por rol** (`/desempeno`).
+- Pantalla web: **Operación › Indicadores (KPI)** (`/desempeno`). Ver `docs/tablero-kpi.md`.
 - App del conductor: tarjeta **Mi desempeño del mes** en Inicio.
 
 ## Decisiones tomadas (editables)
