@@ -90,6 +90,16 @@ Flota. Si un equipo ya estaba en Flota, no lo duplica.
 
 Las unidades de transporte no se crean ni se modifican. La prueba C30 informa en el despliegue cuáles están en Flota.
 
+**Verificación en producción (C30, 04/10/2026)**
+
+| Unidad | En Flota | Familia del plan |
+|---|---|---|
+| BDJ 943, BDK 791 | Sí (CAMION) | Camión diésel Hino |
+| F3R 838 | Sí (CAMION) | Camión de más de 15 años |
+| BHW 001, F6E 535 | Sí, pero como CAMION | Liviano (corregido en la migración `20261004150000`) |
+| BCW 838 | Sí, como una sola unidad "BCW838/ARB976" de tipo TRAILER | Tracto. El semirremolque no tiene ficha propia. |
+| CFO 930, CJS 716 | **No** | Registrar en Flota |
+
 ## Historial único (Flota 360 › Gasto y plan)
 
 `mant_historial(placa)` muestra:
