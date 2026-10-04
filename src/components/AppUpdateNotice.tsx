@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Capacitor } from '@capacitor/core'
 import { App } from '@capacitor/app'
 import { Download, RefreshCw, X } from 'lucide-react'
@@ -40,7 +41,12 @@ function belowMinimumVersion(installed: string, minimum: string | null) {
   return false
 }
 
-export function AppUpdateNotice() {
+// Aviso de nueva versión.
+//   placement="header" (web de escritorio): píldora roja en la cabecera, junto a la campana; la primera vez además una
+//   franja bajo la cabecera (en #app-update-slot) hasta que el usuario elige "Más tarde".
+//   placement="floating" (app del conductor y su login): tarjeta blanca abajo, a todo el ancho.
+//   Una versión obligatoria siempre abre la ventana que bloquea.
+export function AppUpdateNotice({ placement = 'floating' }: { placement?: 'header' | 'floating' }) {
   const [release, setRelease] = useState<Release | null>(null)
   const [platform, setPlatform] = useState<'web' | 'android'>('web')
   const [current, setCurrent] = useState('')
@@ -49,6 +55,8 @@ export function AppUpdateNotice() {
   const [downloadState, setDownloadState] = useState<'idle' | 'downloading' | 'ready'>('idle')
   const [legacyInstall, setLegacyInstall] = useState(false)
   const [updateError, setUpdateError] = useState('')
+  const [stripHidden, setStripHidden] = useState(true)
+  const [slot, setSlot] = useState<HTMLElement | null>(null)
 
   const record = useCallback(async (event: 'offered' | 'downloaded' | 'deferred' | 'install_started' | 'installed' | 'failed',
     item: Release | null, installedVersion: string, buildNumber?: number | null) => {
@@ -134,8 +142,25 @@ export function AppUpdateNotice() {
     return () => { window.clearTimeout(initial); window.clearInterval(timer); window.removeEventListener('focus', onFocus) }
   }, [check])
 
+  // Franja bajo la cabecera: se muestra una vez por versión hasta que el usuario la descarta
+  const stripKey = release ? `jrm_update_strip_${release.id}` : ''
+  useEffect(() => {
+    if (placement !== 'header' || !stripKey) return
+    const t = window.setTimeout(() => {
+      setSlot(document.getElementById('app-update-slot'))
+      try { setStripHidden(!!localStorage.getItem(stripKey)) } catch { setStripHidden(false) }
+    }, 0)
+    return () => window.clearTimeout(t)
+  }, [placement, stripKey])
+
   if (!release) return null
   const installer = validInstallerUrl(release.installer_url)
+  const later = () => {
+    void record('deferred', release, current)
+    setOpen(false)
+    try { localStorage.setItem(stripKey, '1') } catch { /* sin almacenamiento: solo se oculta en esta vista */ }
+    setStripHidden(true)
+  }
   const update = async () => {
     if (platform === 'web') {
       void record('install_started', release, current)
@@ -165,20 +190,47 @@ export function AppUpdateNotice() {
       window.open(installer, '_system')
     }
   }
+  const inHeader = placement === 'header' && !forced
+  const updateLabel = platform === 'web' ? 'Recargar ahora' : 'Actualizar'
   return (
     <div className={forced
       ? 'fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-5'
-      : 'fixed bottom-5 left-5 z-[90] max-w-[calc(100vw-2.5rem)]'}>
-      {!open && (
-        <button type="button" onClick={() => setOpen(true)}
-          className="rounded-full bg-[#002855] px-4 py-2 text-sm font-semibold text-white shadow-lg">
-          <Download className="mr-2 inline h-4 w-4" /> Nueva versión {release.version}
+      : inHeader ? 'relative'
+      : 'fixed inset-x-3 bottom-3 z-[90] flex justify-center sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2'}>
+      {/* Web: píldora en la cabecera */}
+      {inHeader && (
+        <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
+          className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-[#cf152d] bg-white px-3 py-1.5 text-xs font-bold text-[#cf152d] shadow-sm hover:bg-red-50">
+          <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#cf152d] opacity-60 motion-reduce:animate-none" /><span className="relative inline-flex h-2 w-2 rounded-full bg-[#cf152d]" /></span>
+          <span className="hidden sm:inline">Nueva versión {release.version} ·</span> Actualizar
         </button>
+      )}
+      {/* Web: franja bajo la cabecera, una vez por versión */}
+      {inHeader && !stripHidden && !open && slot && createPortal(
+        <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 lg:px-8">
+          <span><b>Hay una nueva versión de JRM-TMS ({release.version}).</b> Guarda tu trabajo y recarga para tener las mejoras.</span>
+          <span className="flex gap-2">
+            <button type="button" onClick={() => void update()} className="inline-flex items-center gap-1.5 rounded-lg bg-[#002855] px-3 py-1 text-xs font-bold text-white hover:bg-[#0b3d7a]">
+              <RefreshCw className="h-3.5 w-3.5" /> {updateLabel}</button>
+            <button type="button" onClick={() => setOpen(true)} className="rounded-lg px-2 py-1 text-xs font-semibold text-amber-900 underline-offset-2 hover:underline">Qué cambió</button>
+            <button type="button" onClick={later} className="rounded-lg border border-amber-300 px-3 py-1 text-xs hover:bg-amber-100">Más tarde</button>
+          </span>
+        </div>, slot)}
+      {/* App: tarjeta abajo, a todo el ancho */}
+      {!inHeader && !forced && !open && (
+        <div className="flex w-full max-w-md items-center gap-3 rounded-xl border border-slate-200 border-l-4 border-l-[#cf152d] bg-white p-3 text-slate-900 shadow-2xl">
+          <Download className="h-5 w-5 shrink-0 text-[#cf152d]" />
+          <div className="min-w-0 flex-1 leading-tight">
+            <p className="text-sm font-bold">Nueva versión {release.version}</p>
+            <p className="text-xs text-slate-500">Actualiza para tener las últimas mejoras</p>
+          </div>
+          <button type="button" onClick={() => setOpen(true)} className="shrink-0 rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white">Actualizar</button>
+        </div>
       )}
       {open && (
         <section role={forced ? 'alertdialog' : 'dialog'} aria-label="Actualización de JRM-TMS"
           aria-modal={forced ? true : undefined}
-          className="w-96 max-w-full rounded-xl border border-slate-200 bg-white p-5 text-slate-900 shadow-2xl">
+          className={`${inHeader ? 'absolute right-0 top-full z-[90] mt-2' : ''} w-96 max-w-[calc(100vw-1.5rem)] rounded-xl border border-slate-200 border-t-4 border-t-[#cf152d] bg-white p-5 text-slate-900 shadow-2xl`}>
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs font-bold uppercase tracking-wide text-[#cf152d]">
@@ -203,7 +255,7 @@ export function AppUpdateNotice() {
               <RefreshCw className="h-4 w-4" /> {platform === 'web' ? 'Recargar ahora' :
                 legacyInstall ? 'Abrir descarga' : downloadState === 'downloading' ? 'Descargando...' : downloadState === 'ready' ? 'Instalar ahora' : 'Descargar actualización'}
             </button>
-            {!forced && <button type="button" onClick={() => { void record('deferred', release, current); setOpen(false) }}
+            {!forced && <button type="button" onClick={later}
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm">Más tarde</button>}
           </div>
           {forced && <p className="mt-3 text-xs text-slate-500">Guarda tu trabajo antes de actualizar. Si estás en ruta, finaliza la tarea activa.</p>}
