@@ -66,22 +66,24 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen bg-slate-50">
-      <AppUpdateNotice />
       <JrmAiAssistant />
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between gap-3 px-4 lg:px-8 z-20 relative">
+        <header className="h-20 bg-white border-b border-slate-200 border-t-[3px] border-t-[#cf152d] flex items-center justify-between gap-3 px-4 lg:px-8 z-20 relative">
           <div className="flex min-w-0 items-center gap-3">
             <button type="button" onClick={() => setSidebar({ overlay: true })} aria-label="Mostrar menú" title="Mostrar menú (Ctrl + B)"
               className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-[#002855] ${sidebar.pinned ? 'lg:hidden' : ''}`}>
               <Menu className="h-5 w-5" />
             </button>
           <div className="min-w-0">
-            <h2 className="text-xl font-semibold text-slate-800">{title}</h2>
-            <p className="text-sm text-slate-500">{subtitle}</p>
+            {/* Sección del menú arriba, con la línea roja del login; la pantalla en grande */}
+            <p className="flex items-center gap-2 truncate text-[11px] font-bold uppercase tracking-[0.14em] text-[#002855]">
+              <span aria-hidden className="h-[3px] w-6 shrink-0 rounded bg-[#cf152d]" />{subtitle}</p>
+            <h2 className="truncate text-xl font-black text-slate-900">{title}</h2>
           </div>
           </div>
           <div className="flex items-center gap-4">
+            <AppUpdateNotice placement="header" />
             <div className="relative">
               <button 
                 onClick={() => {
@@ -142,6 +144,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </header>
+        <div id="app-update-slot" />
         <NotificationBanner />
         <main className="relative z-0 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-8">
           {children}

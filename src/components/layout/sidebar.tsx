@@ -12,17 +12,21 @@ import { COUNT_STYLE, countLabel, useMenuCounts, type MenuCount } from '@/lib/na
 // Menú lateral: secciones plegables (varias abiertas), buscador (Ctrl + K), favoritos, recientes y dos paletas.
 // Fijado: siempre visible. Sin fijar: oculto; aparece al acercar el mouse al borde izquierdo, con ☰ o con Ctrl + B.
 // En celular y tablet es un panel deslizable. Contadores de pendientes por pantalla (menu_pending_counts).
+// Identidad del login: azul #002855 con franja roja; la sección donde está la página actual va en un bloque resaltado
+// con la línea roja del login delante del nombre, aunque esté plegada.
 
 const PALETTE: Record<SidebarTheme, Record<string, string>> = {
   azul: {
     '--sb-bg': '#002855', '--sb-line': '#123e74', '--sb-field': '#05336a', '--sb-fg': '#d4e0f2', '--sb-strong': '#ffffff',
-    '--sb-muted': '#9fb4d3', '--sb-label': '#a9bddb', '--sb-hover': 'rgba(255,255,255,0.08)', '--sb-active': '#ffffff',
+    '--sb-muted': '#9fb4d3', '--sb-label': '#8fa6c8', '--sb-hover': 'rgba(255,255,255,0.08)', '--sb-active': '#ffffff',
     '--sb-active-fg': '#002855', '--sb-red': '#cf152d', '--sb-bar': '#e0283f',
+    '--sb-sec': 'rgba(255,255,255,0.08)', '--sb-sec-line': 'rgba(255,255,255,0.12)',
   },
   claro: {
     '--sb-bg': '#ffffff', '--sb-line': '#e3e8f0', '--sb-field': '#f4f6fa', '--sb-fg': '#334155', '--sb-strong': '#0f1d36',
     '--sb-muted': '#64748b', '--sb-label': '#5b6880', '--sb-hover': '#f1f4f9', '--sb-active': '#e8eff9',
     '--sb-active-fg': '#002855', '--sb-red': '#cf152d', '--sb-bar': '#cf152d',
+    '--sb-sec': '#f3f6fb', '--sb-sec-line': '#dfe6f1',
   },
 }
 
@@ -141,6 +145,7 @@ export function Sidebar() {
         className={`fixed inset-y-0 left-0 z-[60] flex w-[264px] flex-col border-r border-[var(--sb-line)] bg-[var(--sb-bg)] text-[var(--sb-fg)] shadow-2xl transition-transform duration-200 motion-reduce:transition-none ${
           sb.overlay ? 'translate-x-0' : '-translate-x-full'} ${sb.pinned ? 'lg:static lg:z-auto lg:shrink-0 lg:translate-x-0 lg:shadow-none' : ''}`}>
 
+        <div aria-hidden className="h-1 shrink-0 bg-[var(--sb-red)]" />
         {/* Cabecera */}
         <div className="flex h-14 shrink-0 items-center gap-2 border-b border-[var(--sb-line)] pl-3 pr-2">
           <Link href="/" className="flex min-w-0 flex-1 items-center gap-2 rounded-md">
@@ -203,20 +208,21 @@ export function Sidebar() {
                 const secCounts = s.groups.flatMap(g => g.items).map(i => counts[i.href]).filter((c): c is MenuCount => !!c)
                 const crit = secCounts.filter(c => c.tono === 'crit').reduce((a, c) => a + c.n, 0)
                 const warn = secCounts.some(c => c.tono === 'warn')
+                const here = activeSection === s.id
                 return (
-                  <div key={s.id} className="mt-1">
+                  <div key={s.id} className={`mt-1 ${here ? 'rounded-xl bg-[var(--sb-sec)] pb-1 ring-1 ring-[var(--sb-sec-line)]' : ''}`}>
                     <button type="button" onClick={() => toggleSection(s.id)} aria-expanded={open}
+                      title={here ? 'Estás en esta sección' : undefined}
                       className={`flex w-full items-center gap-2 rounded-lg px-3 pb-1.5 pt-2.5 text-left text-[10.5px] font-extrabold uppercase tracking-[0.12em] transition-colors hover:text-[var(--sb-strong)] ${
-                        activeSection === s.id && !open ? 'text-[var(--sb-strong)]' : 'text-[var(--sb-label)]'}`}>
-                      <SIcon className="h-3.5 w-3.5" />
+                        here ? 'text-[var(--sb-strong)]' : 'text-[var(--sb-label)]'}`}>
+                      {here ? <span aria-hidden className="h-[3px] w-4 shrink-0 rounded bg-[var(--sb-red)]" /> : <SIcon className="h-3.5 w-3.5" />}
                       <span className="flex-1 truncate">{s.title}</span>
                       {!open && crit > 0 && <span className={`rounded-full px-1.5 py-px font-mono text-[10px] tracking-normal ${COUNT_STYLE.crit}`} title={`${crit} pendientes por atender`}>{crit > 99 ? '99+' : crit}</span>}
                       {!open && !crit && warn && <span className="h-2 w-2 rounded-full bg-amber-300" title="Hay avisos en esta sección" />}
-                      {activeSection === s.id && !open && <span className="h-1.5 w-1.5 rounded-full bg-[var(--sb-bar)]" aria-label="Contiene la página actual" />}
                       <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? '' : '-rotate-90'}`} />
                     </button>
                     {open && (
-                      <div className="space-y-0.5">
+                      <div className={`space-y-0.5 ${here ? 'mx-1 border-l border-[var(--sb-sec-line)] pl-1' : ''}`}>
                         {s.groups.map(g => (
                           <div key={g.title || 'g'}>
                             {g.title && <p className="px-3 pb-0.5 pt-2 text-[10px] font-bold text-[var(--sb-muted)]">{g.title}</p>}
