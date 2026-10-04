@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/modal'
+import { PlanesPorActivarAviso } from '@/components/mantenimiento/HistorialResumen'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { AlertTriangle, CalendarClock, Gauge, Loader2, Play, Plus, RefreshCw, Trash2, Edit2, Wrench } from 'lucide-react'
@@ -117,6 +118,7 @@ export default function PreventivosPage() {
 
   return (
     <div className="p-6 space-y-5">
+      <PlanesPorActivarAviso />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Planificación preventiva</h1>
