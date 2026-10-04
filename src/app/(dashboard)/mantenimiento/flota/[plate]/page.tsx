@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { EvidenceGallery } from '@/components/evidence/EvidenceGallery'
+import { FeActivoCard } from '@/components/fleet/FeActivoCard'
 import { toast } from 'sonner'
 import { ArrowLeft, Truck, ShieldCheck, ShieldAlert, AlertTriangle, Wrench, CalendarClock, ClipboardCheck, CircleDot, FileText, BarChart2, History, Gauge, Route, Image as ImageIcon, Loader2 } from 'lucide-react'
 
@@ -122,6 +123,7 @@ export default function Flota360Page() {
               ['Preventivos vencidos', data.preventive.filter(p => p.alert_status === 'VENCIDO').length], ['Documentos', data.documents.length],
               ['Costo mantenimiento', money(data.costs?.maintenance_cost)], ['TCO', money(data.costs?.total_tco)]]} />
           </Card>
+          <div className="md:col-span-3"><FeActivoCard plate={plate} /></div>
         </div>
       )}
 

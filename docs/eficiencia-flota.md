@@ -34,66 +34,126 @@ Si se define `fe_settings.corte`, esa fecha rige para todas las fuentes.
 
 Las placas se normalizan con `fe_code()`: `BCW 838 / ARB 976` → `BCW 838` y `BDK-791` → `BDK 791`.
 
-## Reglas de cálculo
+## Reglas de cálculo (v2, migración `20261004100000`)
 
-- El **costo por km** solo usa meses completos, es decir, meses con km, combustible y mantenimiento.
-- El **costo por t·km** además exige meses con viajes y peso.
-- Las **horas por año** salen de la suma de incrementos del horómetro. Se descartan las bajadas y los saltos de más
-  de 12 h por día, y solo se calculan si las lecturas abarcan más de 180 días.
+**Medición**
+
+- **Precio constante.** El combustible se valora al precio de referencia: el de los parámetros o, si está vacío, la mediana
+  de los últimos 6 meses (precio actual). El GLP tiene su propia referencia y se reconoce por la placa o por un precio
+  menor a S/ 9. Siempre se muestra también lo efectivamente pagado.
+- **Mantenimiento reclasificado.** Un registro "preventivo" cuyo detalle describe una reparación (repara, falla, avería,
+  cambio de caja/motor/bomba…) cuenta como correctivo. Las llantas son una categoría propia.
+- **Mantenimiento repartido.** Las llantas y las intervenciones mayores se reparten en 24 meses (parámetro), para que una
+  factura grande no decida sola.
+- El **costo por km** solo usa meses completos: con km, combustible y mantenimiento.
+- El **costo por t·km** además exige meses con viajes y peso. El **costo total** suma la mano de obra: el conductor por
+  cada mes con actividad y los ayudantes por las horas de viaje.
+- Las **horas por año** de los equipos salen de la suma de incrementos del horómetro: se descartan las bajadas y los saltos
+  de más de 12 h por día, y solo se calculan si las lecturas abarcan más de 180 días.
+- **Comparación por grupo** (tracto, camión, liviano, camión grúa, montacarga, elevación), solo en grupos con 2 o más
+  unidades. Las unidades a GLP y la grúa no se comparan en km por galón.
+- **Capacidad**: la de la ficha, la de Flota o la práctica (percentil 95 del peso por viaje). Con la práctica, el llenado
+  típico ronda el 50 % por construcción. Por eso la **capacidad ociosa** solo se marca con la capacidad real o con el % de
+  volumen de las rutas.
+- **Confianza** según los meses completos: Alta (12 o más), Media (6 a 11), Baja (menos de 6).
+- **Cumplimiento del preventivo** (Excel): un servicio está a tiempo si no supera en más de 10 % el km u hora programado
+  por el servicio anterior.
 - Correcciones al cargar el Excel:
-  - se anula el peso mayor a la capacidad del vehículo (o a 45 t);
+  - se anula el peso mayor a la capacidad (o a 45 t);
   - se anulan los km por viaje que sean ≤ 0 o > 1 200;
+  - se anulan las horas por viaje que sean ≤ 0 o > 20;
   - se excluyen los meses con un rendimiento imposible.
+
+**Decisión económica de reemplazo** (`fe_econ`)
+
+- **Costo de seguir un año más** = mantenimiento sin llantas (más su alza anual) + combustible + pérdida de valor del año
+  + tasa × valor de reventa.
+- **Unidad nueva** = (valor nuevo − reventa al final de su vida útil, descontada) × factor de recuperación del capital
+  + operación de una unidad nueva. La operación nueva tiene un 10 % menos de combustible y el mantenimiento que tuvieron
+  las unidades del grupo hasta los 4 años; sin ese dato, se usa el 3 % del valor.
+- Las llantas no entran en la comparación: se gastan por km igual en una unidad nueva o usada. La mano de obra tampoco:
+  es la misma en ambos casos.
+- **Reventa (mercado de Lima)**: el 1.er año pierde d1, luego d por año, con un piso. Se calibró con avisos de venta:
+
+  | Activo | d1 | d | Piso | Referencia |
+  |---|---|---|---|---|
+  | Pesados | 15 % | 6 % | 25 % | Hino 300 2021 ≈ 70 %; International 7600 2016 ≈ 50 %; 2011 ≈ 32 % |
+  | Livianos | 15 % | 8 % | 15 % | |
+  | Montacargas y elevación | 20 % | 10 % | 10 % | Montacargas 2012 ≈ 18 % |
+
+- **Tasa**: la de la empresa es confidencial. La decisión se calcula con 6 %, 10 % y 15 % (parámetros).
+  - **Reemplazar**: el ahorro es positivo con las tres tasas.
+  - **Planificar reemplazo**: el ahorro es positivo solo con alguna tasa, o la edad supera la vida útil.
+- **Valor nuevo**: el valor de reposición de la ficha. Si falta, se usa un valor referencial por grupo (parámetros), que
+  conviene reemplazar con la cotización real.
+
+**Montacargas y elevación**
+
+- **Costo propio por hora** = (mantenimiento repartido + pérdida de valor + costo de capital) / horas al año.
+- Se compara con el **alquiler** (S/ 60 por hora + IGV, parámetro). El operador no se incluye porque se paga igual en
+  ambos casos.
+- **Dar de baja o alquilar**: alquilar sale más barato incluso con la tasa baja.
+- "Propio conviene desde" = horas al año a partir de las cuales tener el equipo cuesta menos que alquilarlo.
+
+**Rutas**
+
+- El costo estimado por viaje es km × costo por km de la unidad + horas × (conductor + ayudantes).
+- Se agrupa por cliente y por distrito. Los nombres de cliente se normalizan: sin forma societaria ni puntuación, y las
+  variantes de JRM cuentan como traslado interno.
+- La espera en el cliente se valora con el costo por hora del conductor y los ayudantes.
 
 ## Decisión
 
-El puntaje y la recomendación usan los umbrales de **Datos y parámetros**: vida útil por clase, horas mínimas por
-año, factor de costo, tendencia de mantenimiento por km, volumen mínimo y factor de t·km.
-
-### Transporte
-
-Puntaje:
+Puntaje (transporte):
 
 | Condición | Puntos |
 |---|---|
 | Edad ≥ vida útil | +40 |
 | Edad ≥ 80 % de la vida útil | +20 |
-| Costo t·km > factor × mediana (con cargas de al menos 1 t) | +20 |
-| Tendencia del mantenimiento por km > umbral | +20 |
-| Mantenimiento por km > 1,5 × mediana | +20 |
-
-Recomendación, en este orden: Verificar estado (sin uso en 3 meses) → Reemplazar (≥ 60) → Planificar reemplazo
-(edad ≥ vida útil) → Vigilar (≥ 20) → Consolidar carga (volumen bajo) → Alta reciente → Mantener.
-
-### Montacargas y elevación
-
-Puntaje:
-
-| Condición | Puntos |
-|---|---|
-| Edad ≥ vida útil | +40 |
-| Edad ≥ 80 % de la vida útil | +20 |
-| Costo por hora > factor × mediana | +25 |
-| Horas por año < mínimo | +25 |
+| Reemplazo económico con las 3 tasas | +40 |
+| Mantenimiento por km > 1,5 × su grupo | +20 |
+| Rendimiento < 85 % de su grupo | +20 |
+| Alza de mantenimiento por km > umbral | +20 |
 
 Recomendación, en este orden:
 
-1. **Dar de baja o alquilar**: poco uso y, además, costo alto o edad ≥ vida útil.
+1. **Verificar estado**: sin uso en 3 meses.
+2. **Reemplazar**: económico con las 3 tasas, o puntaje ≥ 60 si no hay datos económicos.
+3. **Planificar reemplazo**: económico con alguna tasa, conviene en ≤ 2 años o la edad ≥ vida útil.
+4. **Reasignar carga**: capacidad ociosa con el vehículo en línea con su grupo.
+5. **Vigilar**: puntaje ≥ 20.
+6. **Alta reciente**.
+7. **Mantener**.
+
+Equipos, en este orden:
+
+1. **Dar de baja o alquilar**.
 2. **Verificar estado**: sin registro en 6 meses.
-3. **Reemplazar**: puntaje ≥ 60.
+3. **Reemplazar**: económico con las 3 tasas.
 4. **Planificar reemplazo**.
 5. **Registrar horómetro**.
-6. **Vigilar**: puntaje ≥ 25.
+6. **Vigilar**.
 7. **Mantener**.
+
+## Integración con Mantenimiento
+
+- Cada activo se **vincula a una unidad de Flota**: automáticamente por placa o código interno, o a mano en Datos y
+  parámetros. Del vehículo vinculado llegan:
+  - costos del libro de la unidad (`vw_vehicle_cost_ledger`): OT, neumáticos, multas, siniestros y alquiler;
+  - fallas (`vehicle_failures`) y días fuera de servicio por OT;
+  - odómetro y horómetro (`vehicle_odometer_logs`), incluido el que se registra en las inspecciones;
+  - capacidad (`weight_capacity`) y año.
+- La ficha **Flota 360** (Mantenimiento › Flota › unidad) muestra la tarjeta de Eficiencia de Flota con la decisión, el
+  costo y los motivos (`fe_activo`). Solo la ve quien tiene permiso del módulo.
 
 ## Pantallas
 
 | Pantalla | Contenido |
 |---|---|
 | Resumen y decisiones | Indicadores, conclusiones automáticas y decisión por activo |
-| Unidades de transporte | S/ por t·km, productividad, mantenimiento por km por año, tabla del periodo y exportación a Excel |
-| Montacargas y elevación | Uso frente a costo por hora, registro del horómetro y detalle por equipo |
-| Rutas y carga | Toneladas por mes, por unidad y por tipo de actividad |
+| Unidades de transporte | S/ por t·km con mano de obra, vehículo vs asignación, decisión económica de reemplazo, mantenimiento por km por año y exportación a Excel |
+| Montacargas y elevación | Costo propio por hora frente al alquiler, registro del horómetro y detalle por equipo |
+| Rutas y carga | Productividad (horas, espera, no programados), toneladas por mes y unidad, costo por cliente y por distrito |
 | Recambios | Línea de vida de cada activo |
 | Datos y parámetros | Carga del Excel, calidad de los datos, cobertura por mes, parámetros, activos, lecturas e historial de cargas |
 
@@ -107,6 +167,10 @@ JRM IA cuenta con la herramienta `get_fleet_efficiency`, que devuelve el resumen
 4. Registrar una lectura de horómetro al mes por equipo.
 
 ## Pruebas
+
+`supabase/tests/caja_c28_eficiencia_flota_v2.test.sql` comprueba la reclasificación, el reparto de llantas, el precio
+constante, la decisión económica, el alquiler de montacargas, el vínculo con Flota, la normalización de clientes y los
+permisos de `fe_activo`.
 
 `supabase/tests/caja_c27_eficiencia_flota.test.sql` comprueba:
 

@@ -1,16 +1,18 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState, type ChangeEvent } from 'react'
-import { FileUp, Save } from 'lucide-react'
+import { Suspense, useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react'
+import Link from 'next/link'
+import { ExternalLink, FileUp, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { fecha, fleetApi, fmt, mes } from '@/lib/fleet/api'
 import { FLEET_KIND_LABEL, parseFleetWorkbook, type FleetParseResult } from '@/lib/fleet/parseFleetWorkbook'
-import { CLASE_LABEL, type FeAsset, type FeClase, type FeDatos, type FeParams } from '@/lib/fleet/types'
+import { CLASE_LABEL, GRUPO_LABEL, type FeAsset, type FeClase, type FeCurva, type FeDatos, type FeGrupo, type FeParams } from '@/lib/fleet/types'
 import { LoadingBlock, ErrorBlock } from '@/components/apt/ui'
 import { Note, Panel } from '@/components/fleet/ui'
 
 // Datos y parámetros: carga del Excel histórico, cobertura por fuente y mes, calidad de los registros,
-// parámetros de decisión y ficha de cada activo (capacidad, valor de reposición, vida útil y unidad del TMS)
+// parámetros de decisión (umbrales, economía, mano de obra, reventa) y ficha de cada activo con su vínculo a Flota
+// (Mantenimiento), del que llegan costos de OT, neumáticos, fallas y horómetro.
 
 const CHUNK = 2000
 
@@ -106,15 +108,44 @@ function Cobertura({ d }: { d: FeDatos }) {
   )
 }
 
+type Curva = 'PESADO' | 'LIVIANO' | 'MONTACARGA' | 'ELEVACION'
+const CURVA_LABEL: Record<Curva, string> = { PESADO: 'Camión, tracto y grúa', LIVIANO: 'Livianos', MONTACARGA: 'Montacargas', ELEVACION: 'Elevación' }
+
+function Grupo({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+  return (
+    <fieldset className="rounded-lg border border-slate-200 p-3">
+      <legend className="px-1 text-xs font-black text-slate-700">{title}</legend>
+      {hint && <p className="mb-2 text-xs text-slate-500">{hint}</p>}
+      <div className="flex flex-wrap gap-4">{children}</div>
+    </fieldset>
+  )
+}
+
 function Parametros({ d, onSaved }: { d: FeDatos; onSaved: () => void }) {
   const [desde, setDesde] = useState(d.settings.desde.slice(0, 7))
   const [corte, setCorte] = useState(d.settings.corte?.slice(0, 7) ?? '')
   const [p, setP] = useState<FeParams>(d.settings.params)
   const [saving, setSaving] = useState(false)
+  const field = 'h-9 w-28 rounded-lg border border-slate-200 px-2 text-sm'
   const n = (k: keyof FeParams, label: string, step = '1', hint?: string) => (
     <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">{label}
-      <input type="number" step={step} value={String(p[k] as number)} onChange={e => setP({ ...p, [k]: Number(e.target.value) })} className="h-9 w-32 rounded-lg border border-slate-200 px-2 text-sm" />
-      {hint && <span className="font-normal text-slate-400">{hint}</span>}
+      <input type="number" step={step} value={p[k] == null ? '' : String(p[k] as number)} placeholder={hint === 'auto' ? 'Automático' : undefined}
+        onChange={e => setP({ ...p, [k]: e.target.value === '' ? null : Number(e.target.value) })} className={field} />
+      {hint && hint !== 'auto' && <span className="max-w-[180px] font-normal text-slate-400">{hint}</span>}
+    </label>
+  )
+  // porcentajes: se muestran en % y se guardan como fracción
+  const pc = (k: keyof FeParams, label: string, hint?: string) => (
+    <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">{label}
+      <span className="flex items-center gap-1"><input type="number" step="0.5" value={p[k] == null ? '' : String(Math.round(Number(p[k]) * 1000) / 10)}
+        onChange={e => setP({ ...p, [k]: e.target.value === '' ? null : Number(e.target.value) / 100 })} className={field} /> %</span>
+      {hint && <span className="max-w-[180px] font-normal text-slate-400">{hint}</span>}
+    </label>
+  )
+  const curva = (c: Curva, k: keyof FeCurva, label: string) => (
+    <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-500">{label}
+      <span className="flex items-center gap-1"><input type="number" step="1" value={Math.round(((p.reventa?.[c]?.[k]) ?? 0) * 100)}
+        onChange={e => setP({ ...p, reventa: { ...p.reventa, [c]: { ...p.reventa?.[c], [k]: Number(e.target.value) / 100 } } })} className="h-8 w-16 rounded border border-slate-200 px-1.5 text-xs" /> %</span>
     </label>
   )
   const save = async () => {
@@ -124,21 +155,56 @@ function Parametros({ d, onSaved }: { d: FeDatos; onSaved: () => void }) {
   }
   return (
     <Panel title="Parámetros de análisis y decisión" actions={<button type="button" onClick={save} disabled={saving} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#002855] px-3 text-xs font-bold text-white disabled:opacity-50"><Save className="h-3.5 w-3.5" />{saving ? 'Guardando…' : 'Guardar'}</button>}>
-      <div className="flex flex-wrap gap-4">
-        <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">Base del análisis (desde)
-          <input type="month" value={desde} onChange={e => setDesde(e.target.value)} className="h-9 rounded-lg border border-slate-200 px-2 text-sm" /></label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">Corte Excel → TMS
-          <input type="month" value={corte} onChange={e => setCorte(e.target.value)} className="h-9 rounded-lg border border-slate-200 px-2 text-sm" />
-          <span className="font-normal text-slate-400">Vacío: cada fuente usa el Excel hasta su último mes</span></label>
-        {(['TRANSPORTE', 'MONTACARGA', 'ELEVACION'] as FeClase[]).map(c => (
-          <label key={c} className="flex flex-col gap-1 text-xs font-semibold text-slate-600">Vida útil {CLASE_LABEL[c].toLowerCase()} (años)
-            <input type="number" value={p.vida_util[c]} onChange={e => setP({ ...p, vida_util: { ...p.vida_util, [c]: Number(e.target.value) } })} className="h-9 w-28 rounded-lg border border-slate-200 px-2 text-sm" /></label>
-        ))}
-        {n('horas_min_anio', 'Uso mínimo de equipos (h/año)')}
-        {n('factor_costo', 'Costo por hora alto (× mediana)', '0.1')}
-        {n('factor_tkm', 'Costo por t·km alto (× mediana)', '0.1')}
-        {n('tendencia_mant_km', 'Alza de mant. por km (S/ por año)', '0.01')}
-        {n('volumen_min', 'Llenado mínimo (0–1)', '0.05')}
+      <div className="space-y-3">
+        <Grupo title="Periodo y vida útil">
+          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">Base del análisis (desde)
+            <input type="month" value={desde} onChange={e => setDesde(e.target.value)} className="h-9 rounded-lg border border-slate-200 px-2 text-sm" /></label>
+          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">Corte Excel → TMS
+            <input type="month" value={corte} onChange={e => setCorte(e.target.value)} className="h-9 rounded-lg border border-slate-200 px-2 text-sm" />
+            <span className="font-normal text-slate-400">Vacío: cada fuente usa el Excel hasta su último mes</span></label>
+          {(['TRANSPORTE', 'MONTACARGA', 'ELEVACION'] as FeClase[]).map(c => (
+            <label key={c} className="flex flex-col gap-1 text-xs font-semibold text-slate-600">Vida útil {CLASE_LABEL[c].toLowerCase()} (años)
+              <input type="number" value={p.vida_util[c]} onChange={e => setP({ ...p, vida_util: { ...p.vida_util, [c]: Number(e.target.value) } })} className={field} /></label>
+          ))}
+        </Grupo>
+        <Grupo title="Medición" hint="Precio de referencia vacío: la mediana de los últimos 6 meses con datos (precio actual).">
+          {n('precio_ref', 'Precio de referencia diésel/gasolina (S/ por galón)', '0.01', 'auto')}
+          {n('precio_ref_glp', 'Precio de referencia GLP (S/ por galón)', '0.01', 'auto')}
+          {n('amortizar_meses', 'Repartir llantas e intervenciones mayores en (meses)')}
+        </Grupo>
+        <Grupo title="Mano de obra" hint="Costo mensual por persona. Si son sueldos brutos, el factor suma las cargas sociales (EsSalud, gratificaciones, CTS, vacaciones ≈ 1,45).">
+          {n('conductor_mes', 'Conductor (S/ al mes)')}
+          {n('ayudante_mes', 'Ayudante (S/ al mes)')}
+          {n('factor_cargas', 'Factor de cargas sociales', '0.01')}
+          {n('horas_mes', 'Horas laborables al mes')}
+        </Grupo>
+        <Grupo title="Economía del reemplazo" hint="La decisión se prueba con tres tasas: reemplazar solo se recomienda si conviene con todas.">
+          {pc('tasa_baja', 'Tasa baja')}
+          {pc('tasa_capital', 'Tasa base', 'Costo de capital de la empresa (confidencial: puede dejar el valor por defecto)')}
+          {pc('tasa_alta', 'Tasa alta')}
+          {pc('mejora_nuevo', 'Ahorro de combustible de una unidad nueva')}
+          {pc('mant_nuevo_pct', 'Mantenimiento de una nueva sin historia (% del valor al año)')}
+          {n('alquiler_hora', 'Alquiler de montacargas (S/ por hora, sin IGV)')}
+        </Grupo>
+        <Grupo title="Reventa (mercado de Lima)" hint="Valor que conserva un activo: pierde el 1.er año, luego un % anual, hasta un piso. Calibrado con avisos de camiones y montacargas usados en Lima.">
+          {(Object.keys(CURVA_LABEL) as Curva[]).map(c => (
+            <div key={c} className="rounded-lg bg-slate-50 p-2"><p className="mb-1 text-xs font-bold text-slate-700">{CURVA_LABEL[c]}</p>
+              <div className="flex gap-2">{curva(c, 'd1', '1.er año')}{curva(c, 'd', 'Por año')}{curva(c, 'piso', 'Piso')}</div></div>
+          ))}
+        </Grupo>
+        <Grupo title="Valor de una unidad nueva cuando la ficha no lo tiene (S/ sin IGV)" hint="Referencial: ingrese en la ficha de cada activo la cotización real.">
+          {(Object.keys(GRUPO_LABEL) as FeGrupo[]).map(g => (
+            <label key={g} className="flex flex-col gap-1 text-xs font-semibold text-slate-600">{GRUPO_LABEL[g]}
+              <input type="number" step="1000" value={p.valor_ref?.[g] ?? ''} onChange={e => setP({ ...p, valor_ref: { ...p.valor_ref, [g]: Number(e.target.value) } })} className={field} /></label>
+          ))}
+        </Grupo>
+        <Grupo title="Umbrales de alerta">
+          {pc('rendimiento_min', 'Rendimiento bajo (km/gal frente a su grupo)')}
+          {n('factor_mant', 'Mantenimiento alto (× su grupo)', '0.1')}
+          {pc('volumen_min', 'Llenado mínimo')}
+          {n('tendencia_mant_km', 'Alza de mant. por km (S/ por año)', '0.01')}
+          {n('horas_min_anio', 'Uso mínimo de equipos sin datos de alquiler (h/año)')}
+        </Grupo>
       </div>
     </Panel>
   )
@@ -153,14 +219,16 @@ function Activos({ d, onSaved }: { d: FeDatos; onSaved: () => void }) {
     catch (e) { toast.error(e instanceof Error ? e.message : 'No se pudo guardar') }
   }
   const num = (v: string) => (v === '' ? null : Number(v))
+  const veh = (id: string | null | undefined) => (id ? d.unidades_tms.find(u => u.id === id) : undefined)
+  const label = (u: FeDatos['unidades_tms'][number]) => [u.plate, u.internal_code].filter(Boolean).join(' · ') + (u.type ? ` · ${u.type.toLowerCase()}` : '')
   const inp = 'h-8 rounded border border-slate-200 px-1.5 text-xs'
   return (
-    <Panel title="Ficha de cada activo" hint="La capacidad mejora el control de peso; el valor de reposición y la vida útil afinan la decisión. Vincule cada activo con su unidad del TMS para que los datos nuevos se sumen solos.">
+    <Panel title="Ficha de cada activo" hint="La capacidad mejora el control de peso; el valor de reposición (cotización de una unidad nueva equivalente) y la vida útil afinan la decisión. Vincule cada activo con su unidad de Flota para sumar los costos de OT, neumáticos, multas, fallas y horómetro de Mantenimiento.">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1150px] text-sm">
           <thead className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-500"><tr className="border-b border-slate-200">
             <th className="px-2 py-2">Código</th><th className="px-2 py-2">Clase</th><th className="px-2 py-2">Tipo</th><th className="px-2 py-2">Año fab.</th><th className="px-2 py-2">Capacidad (kg)</th>
-            <th className="px-2 py-2">Valor reposición S/</th><th className="px-2 py-2">Vida útil</th><th className="px-2 py-2">Unidad TMS</th><th className="px-2 py-2">Activo</th><th /></tr></thead>
+            <th className="px-2 py-2">Valor reposición S/</th><th className="px-2 py-2">Vida útil</th><th className="px-2 py-2">Unidad de Flota</th><th className="px-2 py-2">Activo</th><th /></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map(a => (
               <tr key={a.code}>
@@ -169,10 +237,14 @@ function Activos({ d, onSaved }: { d: FeDatos; onSaved: () => void }) {
                 <td className="px-2 py-1.5"><input value={a.tipo ?? ''} onChange={e => upd(a.code, { tipo: e.target.value || null })} className={`${inp} w-40`} /></td>
                 <td className="px-2 py-1.5"><input type="number" value={a.anio_fab ?? ''} onChange={e => upd(a.code, { anio_fab: num(e.target.value) })} className={`${inp} w-20`} /></td>
                 <td className="px-2 py-1.5"><input type="number" value={a.capacidad_kg ?? ''} onChange={e => upd(a.code, { capacidad_kg: num(e.target.value) })} className={`${inp} w-24`} /></td>
-                <td className="px-2 py-1.5"><input type="number" value={a.valor_reposicion ?? ''} onChange={e => upd(a.code, { valor_reposicion: num(e.target.value) })} className={`${inp} w-28`} /></td>
+                <td className="px-2 py-1.5"><input type="number" value={a.valor_reposicion ?? ''} placeholder={a.grupo ? `Ref. ${fmt(d.settings.params.valor_ref?.[a.grupo])}` : ''} onChange={e => upd(a.code, { valor_reposicion: num(e.target.value) })} className={`${inp} w-28`} /></td>
                 <td className="px-2 py-1.5"><input type="number" value={a.vida_util ?? ''} placeholder="Clase" onChange={e => upd(a.code, { vida_util: num(e.target.value) })} className={`${inp} w-16`} /></td>
-                <td className="px-2 py-1.5"><select value={a.vehicle_plate ?? ''} onChange={e => upd(a.code, { vehicle_plate: e.target.value || null })} className={`${inp} w-32`}>
-                  <option value="">Misma placa</option>{d.unidades_tms.map(u => <option key={u.plate} value={u.plate}>{u.plate}{u.type ? ` · ${u.type.toLowerCase()}` : ''}</option>)}</select></td>
+                <td className="px-2 py-1.5"><div className="flex items-center gap-1">
+                  <select value={a.vehicle_id ?? ''} onChange={e => upd(a.code, { vehicle_id: e.target.value || null })} className={`${inp} w-44`}>
+                    <option value="">{veh(a.vinculo) ? `Automático: ${label(veh(a.vinculo)!)}` : 'Sin vincular'}</option>
+                    {d.unidades_tms.map(u => <option key={u.id} value={u.id}>{label(u)}</option>)}</select>
+                  {veh(a.vehicle_id ?? a.vinculo)?.plate && <Link href={`/mantenimiento/flota/${encodeURIComponent(veh(a.vehicle_id ?? a.vinculo)!.plate!)}`} title="Ficha Flota 360" className="text-[#002855] hover:text-[#cf152d]"><ExternalLink className="h-3.5 w-3.5" /></Link>}
+                </div></td>
                 <td className="px-2 py-1.5"><input type="checkbox" checked={a.activo} onChange={e => upd(a.code, { activo: e.target.checked })} className="h-4 w-4 accent-[#002855]" aria-label={`${a.code} activo`} /></td>
                 <td className="px-2 py-1.5">{dirty.has(a.code) && <button type="button" onClick={() => save(a)} className="rounded bg-[#002855] px-2 py-1 text-xs font-bold text-white">Guardar</button>}</td>
               </tr>
