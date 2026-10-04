@@ -105,6 +105,7 @@ function ContractModal({ contract, vehicles, lessors, onClose, onSaved }: { cont
     included_hours: contract?.included_hours ?? '', excess_hour_rate: contract?.excess_hour_rate ?? '', discount_downtime: contract?.discount_downtime ?? true,
     start_date: contract?.start_date || '', end_date: contract?.end_date || '', conditions: contract?.conditions || '', penalty_terms: contract?.penalty_terms || '',
     status: contract?.status || 'ACTIVO', days_base: contract?.days_base ?? '', guarantee_amount: contract?.guarantee_amount ?? '', km_source: contract?.km_source || 'ODOMETRO',
+    send_to_email: contract?.send_to_email || '', cc_emails: contract?.cc_emails || '',
   })
   const [saving, setSaving] = useState(false)
   const num = (v: unknown) => (v === '' || v == null ? null : Number(v))
@@ -113,6 +114,7 @@ function ContractModal({ contract, vehicles, lessors, onClose, onSaved }: { cont
     const payload = { ...f, contract_type: 'ALQUILER_SECO', rate_amount: Number(f.rate_amount), included_km: num(f.included_km),
       excess_km_rate: f.excess_km_rate === '' ? null : Math.round(Number(f.excess_km_rate) * 100) / 100, excess_km_rate_exact: num(f.excess_km_rate),
       days_base: num(f.days_base), guarantee_amount: num(f.guarantee_amount),
+      send_to_email: f.send_to_email.trim() || null, cc_emails: f.cc_emails.trim() || null,
       guaranteed_km: num(f.guaranteed_km), included_hours: num(f.included_hours), excess_hour_rate: num(f.excess_hour_rate), end_date: f.end_date || null }
     const { error } = contract ? await supabase.from('vehicle_lease_contracts').update(payload).eq('id', contract.id) : await supabase.from('vehicle_lease_contracts').insert(payload)
     setSaving(false)
@@ -138,6 +140,8 @@ function ContractModal({ contract, vehicles, lessors, onClose, onSaved }: { cont
           <option value="RUTA">Rutas del sistema (odómetro del checklist o GPS de la app por viaje)</option>
           <option value="ODOMETRO">Lecturas de odómetro del periodo</option>
         </select></label>
+        <label>Correo para enviar la liquidación<input type="email" className={field} placeholder="facturacion@arrendador.com" value={f.send_to_email} onChange={e => setF({ ...f, send_to_email: e.target.value })} /></label>
+        <label>Copia (CC)<input className={field} placeholder="separe con comas" value={f.cc_emails} onChange={e => setF({ ...f, cc_emails: e.target.value })} /></label>
         <label className="md:col-span-2">Condiciones<textarea className={field} rows={2} value={f.conditions} onChange={e => setF({ ...f, conditions: e.target.value })} /></label>
         <label className="md:col-span-2">Penalidades pactadas<input className={field} value={f.penalty_terms} onChange={e => setF({ ...f, penalty_terms: e.target.value })} /></label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={f.discount_downtime} onChange={e => setF({ ...f, discount_downtime: e.target.checked })} />Descontar días fuera de servicio por mantenimiento</label>

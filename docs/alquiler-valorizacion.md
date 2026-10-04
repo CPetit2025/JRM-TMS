@@ -50,3 +50,38 @@ El GPS del arrendador o las lecturas de odómetro quedan como control (km fuera 
 - Completar el RUC de Transportes Valeriani en Maestros › Transportistas. Se creó con `PEND-VALERIANI`.
 - Aprobar las liquidaciones de agosto y setiembre. Debe hacerlo un usuario distinto al que las registró, en
   Flota › Liquidaciones de alquiler.
+
+## Documento, envío por correo y alerta del día 1
+
+Migración `20261005130000_alquiler_envio_mensual.sql` · prueba `supabase/tests/caja_c34_alquiler_envio.test.sql`.
+
+**Documento.** En Flota › Liquidaciones de alquiler, botón **Documento**. Es un A4 para presentar al arrendador:
+- **Página 1:**
+  - partes (arrendador y arrendatario), unidad y periodo;
+  - resumen: km recorridos frente a los incluidos, km adicionales, días con viajes y total a pagar;
+  - condiciones del contrato;
+  - detalle del cálculo con la fórmula aplicada, IGV, total e importe en letras;
+  - sustento del recorrido (fuente de km y control GPS), nota de fletes y firmas.
+- **Anexo:** detalle de viajes, con 32 por página y el total.
+
+Mientras la liquidación no esté aprobada, el documento lleva la marca de agua **BORRADOR**.
+
+**PDF.** Se descarga con **Descargar PDF**. Son las mismas páginas del documento, en A4 (`Liquidacion_alquiler_<placa>_<AAAA-MM>.pdf`).
+
+**Envío por correo** (botón **Enviar por correo**):
+1. Para, CC, asunto y mensaje salen ya llenos con el resumen. Para y CC se toman del correo guardado en el contrato o del
+   arrendador.
+2. **Compartir PDF** (en Windows, Android o iPhone con Chrome o Edge) abre Outlook, Correo o WhatsApp con el PDF adjunto.
+   **Outlook web**, **Gmail** y **Programa de correo** abren el correo listo y descargan el PDF para adjuntarlo.
+3. **Marcar como enviada** registra la fecha, los destinatarios, el medio y el usuario en `lease_settlement_sends`. La
+   liquidación aprobada no se modifica.
+
+**Alerta mensual.** `lease_envio_recordatorio()` corre todos los días a las 08:05 con pg_cron:
+- **Día 1:** la campana avisa a Flota y a Caja-Liquidaciones que hay que enviar la liquidación del mes anterior de cada
+  contrato activo, con un enlace que la abre directamente.
+- **Desde el día 3:** si sigue sin enviarse, avisa a diario como atrasada.
+- En la página, un aviso arriba lista lo pendiente del mes con el botón **Abrir y enviar**, o **Preparar cálculo** si
+  aún no se registró.
+
+El sistema no tiene un servidor de correo propio. El envío sale desde el correo del usuario (Outlook o Gmail) y el
+sistema guarda el registro.
