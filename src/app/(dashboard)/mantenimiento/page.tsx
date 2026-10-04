@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { HistorialResumen } from '@/components/mantenimiento/HistorialResumen'
 import { Activity, AlertTriangle, BarChart3, Gauge, Loader2, RefreshCw, ShieldAlert, Timer, Wrench, CircleDot, Sparkles } from 'lucide-react'
 
 // Centro de Control CMMS (Fase 12): todos los indicadores se calculan en la BD desde las fuentes
@@ -67,7 +68,7 @@ export default function CentroControlPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Centro de Control de Mantenimiento</h1>
-          <p className="text-sm text-slate-500">Indicadores calculados con datos reales: OT, fallas, lecturas de odómetro y el libro de costos por activo.</p>
+          <p className="text-sm text-slate-500">Indicadores del sistema (OT, fallas, lecturas y libro de costos por activo) y, arriba, el historial completo.</p>
         </div>
         <div className="flex gap-2">
           <select value={days} onChange={e => { const d = Number(e.target.value); setDays(d); refresh(d) }} className="border rounded-lg px-3 py-2 text-sm">
@@ -77,6 +78,7 @@ export default function CentroControlPage() {
         </div>
       </div>
 
+      <HistorialResumen />
       {loading || !kpi ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">

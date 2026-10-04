@@ -53,7 +53,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: '/mantenimiento/fallas', label: 'Fallas y Backlog', icon: TriangleAlert, show: any('mantenimiento-fallas'), keywords: 'falla averia backlog' },
       { href: '/mantenimiento/gestor-ot', label: 'Órdenes de Trabajo', icon: Wrench, show: any('mantenimiento-ot'), keywords: 'ot taller orden trabajo' },
       { href: '/mantenimiento/preventivos', label: 'Preventivos', icon: CalendarClock, show: any('mantenimiento-planes'), keywords: 'preventivo plan' },
-      { href: '/mantenimiento/plan-anual', label: 'Plan Anual', icon: CalendarRange, show: any('mantenimiento-planes', 'mantenimiento-dashboard', 'mantenimiento-finanzas'), keywords: 'plan anual presupuesto calendario preventivo correctivo' },
+      { href: '/mantenimiento/plan-anual', label: 'Planificación', icon: CalendarRange, show: any('mantenimiento-planes', 'mantenimiento-dashboard', 'mantenimiento-finanzas'), keywords: 'planificacion plan anual presupuesto calendario preventivo correctivo riesgo' },
       { href: '/mantenimiento/checklists', label: 'Inspecciones', icon: ClipboardCheck, show: any('mantenimiento-flota'), keywords: 'checklist inspeccion' },
     ] },
     { title: 'Activos', items: [

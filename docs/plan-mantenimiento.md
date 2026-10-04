@@ -145,6 +145,36 @@ Pueden verlo quienes tienen Mantenimiento › Flota, OT o Finanzas, o Eficiencia
     correctivos (MTBF), servicios vencidos, Caja sin unidad y reparaciones mayores sin cotización.
 - **Eficiencia de Flota:** cuenta las fallas desde `maintenance_requests`, la fuente única.
 
+## Planificación (Mantenimiento › Planificación)
+
+Una sola pantalla para planificar, con el historial único de cada unidad (Excel + OT + Caja). Migración
+`20261005100000`. La pantalla Plan anual pasó a ser la pestaña Presupuesto anual.
+
+| Pestaña | Qué muestra |
+|---|---|
+| **Resumen** | Gasto de 12 meses (preventivo y correctivo por mes), % correctivo contra la meta, dónde está el correctivo por sistema, gasto y riesgo por unidad |
+| **Preventivo** | Próximos 90 días y lo vencido. Para cada servicio: fecha, "al llegar a" (km u horas objetivo), qué incluye y costo de referencia. Botón **Activar todos con el historial** (`mant_activar_planes`) |
+| **Correctivo** | Por unidad y sistema, las reparaciones de 24 meses. Un **episodio** agrupa los gastos del mismo sistema separados por menos de 30 días. Muestra el tiempo promedio entre fallas, la próxima falla probable (**Esperada**, **Próxima** en 60 días o **Vigilar**) y la acción sugerida. Con 3 o más fallas propone una inspección periódica, de la mitad del tiempo entre fallas (entre 30 y 180 días), que se agrega al plan con un clic (`mant_agregar_inspeccion`) |
+| **Presupuesto anual** | Calendario de 12 meses, presupuesto, reserva de correctivo, validación de planes, Caja sin unidad y reparaciones mayores |
+| **Calidad de datos** | Lo que falta para que el plan sea exacto (ver abajo) |
+
+**Calidad de datos**
+- desde qué fecha falta el historial;
+- planes sin activar;
+- unidades sin lectura de km u horas en 30 días;
+- unidades con uso desconocido;
+- unidades sin familia;
+- fallas de más de 7 días sin OT;
+- OT cerradas sin costo.
+
+**Riesgo de la unidad**
+- **Alto:** 50 % o más de correctivo en 12 meses, 4 o más episodios del mismo sistema, o S/ 25.000 de correctivo en 24 meses.
+- **Medio:** sobre la meta de correctivo, 3 episodios o S/ 10.000.
+
+**Otras pantallas**
+- **Centro de Control:** muestra arriba el bloque "Con el historial completo". Los indicadores de abajo siguen contando solo lo registrado en el sistema.
+- **Preventivos:** avisa cuando hay planes sin activar.
+
 ## Reglas acordadas
 
 - Una reparación de más de **S/ 5.000** exige cotización y la decisión de Eficiencia de Flota antes de aprobarse
@@ -177,3 +207,13 @@ También informa el vínculo de cada unidad de transporte con Flota.
 - las unidades nuevas.
 
 También informa los planes por validar, los odómetros actualizados y el presupuesto.
+
+`supabase/tests/caja_c32_planificacion_mantenimiento.test.sql` comprueba:
+
+- la planificación completa;
+- la detección de fallas repetidas;
+- la coherencia con el plan anual;
+- la activación de planes;
+- las inspecciones;
+- los permisos;
+- el aviso de calidad de datos.

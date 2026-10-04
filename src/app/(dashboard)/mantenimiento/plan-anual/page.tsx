@@ -2,261 +2,295 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { AlertTriangle, CheckCircle2, ClipboardCheck, Loader2, Receipt, Wrench } from 'lucide-react'
+import { AlertTriangle, CalendarClock, CheckCircle2, ClipboardCheck, Database, Gauge, Loader2, ShieldAlert, Wrench } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { Modal } from '@/components/ui/modal'
 import { fmt, soles } from '@/lib/fleet/api'
+import { PresupuestoAnual } from '@/components/mantenimiento/PresupuestoAnual'
 
-// Plan anual de mantenimiento (Fases 2 y 3, migración 20261004160000): servicios proyectados por mes según el uso real,
-// presupuesto preventivo con costo del historial, reserva de correctivo, real del año e indicadores; validación de la
-// línea base de los planes, gastos de Caja sin unidad y reparaciones mayores sin cotización.
+// Planificación de mantenimiento (migración 20261005100000): una sola pantalla con el historial único (Excel + OT + Caja).
+// Resumen de 12 meses, preventivo de los próximos 90 días, plan correctivo por frecuencia real de fallas, presupuesto
+// anual y calidad de datos. Todo sale de mant_planificacion / mant_plan_anual (misma base de cálculo).
 
-type Serv = { servicio: string; fecha: string; costo: number; vencido: boolean }
-type Unidad = {
-  vehicle_id: string; plate: string; familia: string; familia_nombre: string; lectura: 'KM' | 'HORAS' | 'CALENDARIO'
-  uso_anual: number | null; odometro: number | null; horometro: number | null
-  meses: Array<{ mes: number; servicios: Serv[] }>; preventivo: number; vencidos: number; reserva_correctivo: number
-  real: { preventivo: number; correctivo: number }; pct_correctivo_12m: number | null; mtbf_dias: number | null
-  planes: { activos: number; por_validar: number; vencidos: number | null } | null
-}
-type Plan = {
-  success: boolean; error?: string; anio: number; hoy: string; umbral: number; meta_correctivo: number; unidades: Unidad[]
-  totales: { preventivo: number; reserva_correctivo: number; real_preventivo: number; real_correctivo: number; pct_correctivo_12m: number | null
-    vencidos: number; cumplimiento_preventivo: number | null; servicios_evaluados: number; por_mes: Array<{ mes: number; preventivo: number; real: number }> }
-  caja_sin_unidad: Array<{ id: string; fecha: string; tipo: string; descripcion: string | null; monto: number }>
-  ot_mayores: Array<{ id: string; ot: string | null; plate: string | null; estado: string; descripcion: string | null; monto: number; cotizada: boolean }>
-}
-type PlanUnidad = { id: string; nombre: string; km: number | null; horas: number | null; dias: number | null; ultima_fecha: string | null
-  ultima_km: number | null; ultima_horas: number | null; activo: boolean; origen: string | null; plantilla: boolean }
+type Prox = { plate: string; familia: string; lectura: 'KM' | 'HORAS' | 'CALENDARIO'; servicio: string; fecha: string; dias: number; vencido: boolean
+  lectura_obj: number | null; lectura_actual: number | null; costo: number; tareas: string[]; sistema: string | null; plan_id: string | null; plan_activo: boolean | null }
+type Sist = { sistema: string; nombre: string; eventos: number; costo: number; ultima: string; mtbf_dias: number | null; proxima: string | null
+  estado: 'ESPERADA' | 'PROXIMA' | 'VIGILAR' | 'AISLADA'; inspeccion_dias: number | null; tiene_inspeccion: boolean; recomendacion: string }
+type Corr = { plate: string; familia: string; correctivo_24m: number; eventos_24m: number; pct_correctivo_12m: number | null; mtbf_dias: number | null
+  fallas_abiertas: number | null; riesgo: number; nivel: 'ALTO' | 'MEDIO' | 'BAJO'; reserva: number; sistemas: Sist[] }
+type Cal = { codigo: string; nivel: 'crit' | 'warn'; titulo: string; detalle: string; cantidad: number; items?: Array<string | Record<string, unknown>> }
+type Resumen = { desde: string; hasta: string; historial_hasta: string | null; total: number; preventivo: number; correctivo: number; pct_correctivo: number | null
+  eventos_correctivos: number; fuentes: { excel: number; ot: number; caja: number }; meta_correctivo: number; umbral: number; unidades: number
+  por_sistema: Array<{ sistema: string; nombre: string | null; correctivo: number; total: number }>
+  por_unidad: Array<{ plate: string; familia: string; correctivo: number; total: number; pct: number | null }>
+  por_mes: Array<{ mes: string; preventivo: number; correctivo: number }>
+  planes: { activos: number; por_validar: number } | null; vencidos: number; proximos_30: number; presupuesto_90: number }
+type Data = { success: boolean; error?: string; hoy: string; resumen: Resumen; proximos: Prox[]; correctivo: Corr[]; calidad: Cal[] }
 
-const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic']
-const PRESUP = '#1d4ed8'
-const REAL = '#64748b'
-const corto = (s: string) => s.replace('Servicio ', '').replace('Servicio', '').replace('Mensual', 'M').replace('Trimestral', 'T').replace('Anual', 'An')
-  .replace('Caja y diferencial', 'Caja').replace('trimestral', 'Trim.').replace('anual', 'Anual').trim()
+const TABS = [['resumen', 'Resumen', Gauge], ['preventivo', 'Preventivo', CalendarClock], ['correctivo', 'Correctivo', Wrench],
+  ['presupuesto', 'Presupuesto anual', ClipboardCheck], ['calidad', 'Calidad de datos', Database]] as const
+type Tab = (typeof TABS)[number][0]
+const PREV = '#1d4ed8'
+const CORR = '#cf152d'
+const fecha = (v: string | null) => (v ? new Date(`${v}T12:00:00`).toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' }) : '—')
+const mesCorto = (ym: string) => new Date(`${ym}-15T12:00:00`).toLocaleDateString('es-PE', { month: 'short' })
 
-export default function PlanAnualPage() {
+export default function PlanificacionPage() {
   const supabase = useMemo(() => createClient(), [])
-  const hoy = new Date().getFullYear()
-  const [anio, setAnio] = useState(hoy)
-  const [data, setData] = useState<Plan | null>(null)
+  const [tab, setTab] = useState<Tab>('resumen')
+  const [data, setData] = useState<Data | null>(null)
   const [loading, setLoading] = useState(true)
-  const [validar, setValidar] = useState<Unidad | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data: r, error } = await supabase.rpc('mant_plan_anual', { p_anio: anio })
+    const { data: r, error } = await supabase.rpc('mant_planificacion')
     setLoading(false)
-    if (error || !r?.success) { toast.error(error?.message || r?.error || 'No se pudo cargar el plan'); setData(null); return }
+    if (error || !r?.success) { toast.error(error?.message || r?.error || 'No se pudo cargar la planificación'); setData(null); return }
     setData(r)
-  }, [supabase, anio])
-  useEffect(() => { const t = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(t) }, [load])
+  }, [supabase])
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      const q = new URLSearchParams(window.location.search).get('tab') as Tab | null
+      if (q && TABS.some(([k]) => k === q)) setTab(q)
+      void load()
+    }, 0)
+    return () => window.clearTimeout(t)
+  }, [load])
+  const go = (k: Tab) => { setTab(k); window.history.replaceState(null, '', `?tab=${k}`) }
 
-  const grupos = useMemo(() => {
-    const g = new Map<string, Unidad[]>()
-    data?.unidades.forEach(u => g.set(u.familia_nombre, [...(g.get(u.familia_nombre) || []), u]))
-    return [...g.entries()]
-  }, [data])
-  const porValidar = data?.unidades.reduce((a, u) => a + (u.planes?.por_validar || 0), 0) || 0
-  const t = data?.totales
-  const maxMes = Math.max(1, ...(t?.por_mes || []).map(m => Math.max(m.preventivo, m.real)))
+  const r = data?.resumen
+  const crit = data?.calidad.filter(c => c.nivel === 'crit').length || 0
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-black text-slate-900">Plan anual de mantenimiento</h1>
-          <p className="text-sm text-slate-500">Servicios preventivos proyectados con el uso real de cada unidad, presupuesto y control de lo gastado.</p>
-        </div>
-        <div className="flex rounded-lg border bg-white p-1 text-sm">
-          {[hoy, hoy + 1].map(y => <button key={y} type="button" onClick={() => setAnio(y)}
-            className={`rounded-md px-3 py-1.5 font-semibold ${anio === y ? 'bg-[#002855] text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{y}</button>)}
-        </div>
+      <div>
+        <h1 className="text-2xl font-black text-slate-900">Planificación de mantenimiento</h1>
+        <p className="text-sm text-slate-500">Qué toca hacer, qué puede fallar y cuánto cuesta, con el historial completo de cada unidad (Excel, OT y Caja).</p>
       </div>
 
-      {loading && !data ? <div className="flex justify-center p-16"><Loader2 className="h-7 w-7 animate-spin text-[#002855]" /></div> : !data || !t ? null : <>
-        {porValidar > 0 && <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          <ClipboardCheck className="h-4 w-4" /><b>{porValidar} planes por validar.</b> Confirme la última ejecución de cada servicio (el historial termina en junio)
-          para activarlos; desde ese momento el programador diario genera las OT preventivas al vencer.
-        </div>}
+      <div className="flex flex-wrap gap-1 border-b">
+        {TABS.map(([k, label, Icon]) => <button key={k} type="button" onClick={() => go(k)}
+          className={`-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm ${tab === k ? 'border-[#002855] font-semibold text-[#002855]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+          <Icon className="h-4 w-4" />{label}
+          {k === 'calidad' && crit > 0 && <span className="rounded-full bg-[#cf152d] px-1.5 text-[10px] font-bold text-white">{crit}</span>}
+          {k === 'preventivo' && (r?.vencidos || 0) > 0 && <span className="rounded-full bg-[#cf152d] px-1.5 text-[10px] font-bold text-white">{r?.vencidos}</span>}
+        </button>)}
+      </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Kpi label={`Presupuesto preventivo ${anio}`} value={soles(t.preventivo)} sub={anio === hoy ? 'Lo que resta del año y lo vencido' : 'Año completo'} />
-          <Kpi label="Reserva para correctivo" value={soles(t.reserva_correctivo)} sub="Promedio anual de los últimos 24 meses" />
-          <Kpi label="Correctivo (12 meses)" value={t.pct_correctivo_12m != null ? `${t.pct_correctivo_12m} %` : '—'} sub={`Meta: menos de ${data.meta_correctivo} %`}
-            tone={(t.pct_correctivo_12m ?? 0) > data.meta_correctivo ? 'bad' : 'ok'} />
-          <Kpi label="Preventivo a tiempo" value={t.cumplimiento_preventivo != null ? `${t.cumplimiento_preventivo} %` : '—'}
-            sub={`${t.servicios_evaluados} cambios de aceite evaluados · meta 90 %`} tone={(t.cumplimiento_preventivo ?? 100) < 90 ? 'bad' : 'ok'} />
-          <Kpi label={`Gastado en ${anio}`} value={soles(t.real_preventivo + t.real_correctivo)} sub={`Preventivo ${soles(t.real_preventivo)} · correctivo ${soles(t.real_correctivo)}`} />
-          <Kpi label="Servicios vencidos" value={fmt(t.vencidos)} sub="Se programan en el mes actual" tone={t.vencidos > 0 ? 'bad' : 'ok'} />
-          <Kpi label="Gastos de Caja sin unidad" value={fmt(data.caja_sin_unidad.length)} sub="Asignar para que sumen al historial" tone={data.caja_sin_unidad.length ? 'bad' : 'ok'} />
-          <Kpi label={`Reparaciones > ${soles(data.umbral)}`} value={fmt(data.ot_mayores.length)} sub="OT correctivas abiertas" tone={data.ot_mayores.some(o => !o.cotizada) ? 'bad' : 'ok'} />
-        </div>
-
-        <section className="rounded-xl border bg-white p-4">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-semibold text-slate-800">Presupuesto preventivo y gasto real por mes</h2>
-            <span className="flex gap-3 text-xs text-slate-500"><Leg c={PRESUP} t="Presupuesto preventivo" /><Leg c={REAL} t="Gasto real (todo)" /></span>
-          </div>
-          <div className="grid h-40 grid-cols-12 items-end gap-2">
-            {t.por_mes.map(m => <div key={m.mes} className="flex h-full flex-col justify-end" title={`${MESES[m.mes - 1]}: presupuesto ${soles(m.preventivo)} · real ${soles(m.real)}`}>
-              <div className="flex h-full items-end justify-center gap-[2px]">
-                <span className="w-1/2 max-w-5 rounded-t" style={{ height: `${(m.preventivo / maxMes) * 100}%`, background: PRESUP }} />
-                <span className="w-1/2 max-w-5 rounded-t" style={{ height: `${(m.real / maxMes) * 100}%`, background: REAL }} />
-              </div>
-              <span className="mt-1 text-center text-[11px] text-slate-500">{MESES[m.mes - 1]}</span>
-            </div>)}
-          </div>
-        </section>
-
-        <section className="overflow-x-auto rounded-xl border bg-white">
-          <table className="w-full min-w-[1100px] text-sm">
-            <thead className="bg-slate-50 text-xs text-slate-500">
-              <tr><th className="p-2 text-left">Unidad</th>{MESES.map(m => <th key={m} className="w-12 p-1 text-center">{m}</th>)}
-                <th className="p-2 text-right">Preventivo</th><th className="p-2 text-right">Reserva corr.</th><th className="p-2 text-right">% corr. 12m</th><th className="p-2 text-right">MTBF</th><th className="p-2">Planes</th></tr>
-            </thead>
-            <tbody>
-              {grupos.map(([fam, us]) => <FamRows key={fam} fam={fam} us={us} umbral={data.meta_correctivo} onValidar={setValidar} />)}
-            </tbody>
-          </table>
-          <p className="border-t p-2 text-[11px] text-slate-500">Cada celda muestra los servicios del mes (A, B, C; 250 h, 500 h…; M = mensual, T = trimestral, An = anual). En rojo, vencidos. Un servicio mayor reemplaza a los que incluye en el mismo mes. MTBF = días promedio entre correctivos.</p>
-        </section>
-
-        <div className="grid gap-4 lg:grid-cols-2">
-          <CajaSinUnidad items={data.caja_sin_unidad} plates={data.unidades.map(u => u.plate)} onDone={load} />
-          <section className="rounded-xl border bg-white p-4">
-            <h2 className="mb-1 flex items-center gap-2 font-semibold text-slate-800"><Wrench className="h-4 w-4 text-[#002855]" />Reparaciones mayores</h2>
-            <p className="mb-3 text-xs text-slate-500">Una OT correctiva de más de {soles(data.umbral)} no se aprueba ni se inicia sin cotización aprobada. Antes de aprobarla, revise la decisión de Eficiencia de Flota de la unidad.</p>
-            {data.ot_mayores.length === 0 ? <p className="text-sm text-slate-400">No hay OT correctivas abiertas sobre el umbral.</p> :
-              <ul className="divide-y text-sm">{data.ot_mayores.map(o => <li key={o.id} className="flex items-center justify-between gap-2 py-2">
-                <span className="min-w-0"><b className="text-slate-800">{o.ot || 'OT'}</b> · {o.plate || '—'} · {o.estado}<span className="block truncate text-xs text-slate-500">{o.descripcion}</span></span>
-                <span className="shrink-0 text-right"><b>{soles(o.monto)}</b><span className={`block text-[11px] font-semibold ${o.cotizada ? 'text-emerald-700' : 'text-[#cf152d]'}`}>{o.cotizada ? 'Cotización aprobada' : 'Sin cotización'}</span></span>
-              </li>)}</ul>}
-            <Link href="/mantenimiento/gestor-ot" className="mt-2 inline-block text-xs font-semibold text-[#002855] hover:underline">Ir a Órdenes de Trabajo</Link>
-          </section>
-        </div>
-      </>}
-
-      {validar && <ValidarPlanes unidad={validar} onClose={() => setValidar(null)} onSaved={() => { setValidar(null); void load() }} />}
+      {tab === 'presupuesto' ? <PresupuestoAnual /> : loading && !data ? <div className="flex justify-center p-16"><Loader2 className="h-7 w-7 animate-spin text-[#002855]" /></div>
+        : !data || !r ? null
+        : tab === 'resumen' ? <ResumenTab d={data} go={go} />
+        : tab === 'preventivo' ? <PreventivoTab d={data} onDone={load} />
+        : tab === 'correctivo' ? <CorrectivoTab d={data} onDone={load} />
+        : <CalidadTab d={data} />}
     </div>
   )
 }
 
-function FamRows({ fam, us, umbral, onValidar }: { fam: string; us: Unidad[]; umbral: number; onValidar: (u: Unidad) => void }) {
-  return <>
-    <tr className="bg-slate-50/60"><td colSpan={18} className="px-2 py-1.5 text-xs font-bold uppercase tracking-wide text-[#002855]">{fam}</td></tr>
-    {us.map(u => <tr key={u.vehicle_id} className="border-t align-top">
-      <td className="p-2">
-        <Link href={`/mantenimiento/flota/${encodeURIComponent(u.plate)}`} className="font-semibold text-[#002855] hover:underline">{u.plate}</Link>
-        <div className="text-[11px] text-slate-500">{u.uso_anual ? `${fmt(u.uso_anual)} ${u.lectura === 'HORAS' ? 'h' : 'km'}/año` : u.lectura === 'CALENDARIO' ? 'Por calendario' : 'Uso sin dato'}</div>
-      </td>
-      {u.meses.map(m => <td key={m.mes} className="p-1 text-center">
-        <div className="flex flex-col items-center gap-0.5">{m.servicios.map((s, i) => <span key={i} title={`${s.servicio} · ${s.fecha} · ${soles(s.costo)}${s.vencido ? ' · vencido' : ''}`}
-          className={`rounded px-1 text-[10px] font-bold ${s.vencido ? 'bg-red-100 text-[#cf152d]' : 'bg-blue-50 text-blue-800'}`}>{corto(s.servicio)}</span>)}</div>
-      </td>)}
-      <td className="p-2 text-right font-semibold">{soles(u.preventivo)}</td>
-      <td className="p-2 text-right text-slate-600">{soles(u.reserva_correctivo)}</td>
-      <td className={`p-2 text-right font-semibold ${(u.pct_correctivo_12m ?? 0) > umbral ? 'text-[#cf152d]' : 'text-slate-700'}`}>{u.pct_correctivo_12m != null ? `${u.pct_correctivo_12m} %` : '—'}</td>
-      <td className="p-2 text-right text-slate-600">{u.mtbf_dias != null ? `${u.mtbf_dias} d` : '—'}</td>
-      <td className="p-2">
-        {u.planes && u.planes.por_validar > 0 ? <button type="button" onClick={() => onValidar(u)} className="whitespace-nowrap rounded-md bg-amber-100 px-2 py-1 text-xs font-bold text-amber-900 hover:bg-amber-200">Validar ({u.planes.por_validar})</button>
-          : u.planes ? <button type="button" onClick={() => onValidar(u)} className="flex items-center gap-1 whitespace-nowrap text-xs font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />{u.planes.activos} activos</button> : '—'}
-      </td>
-    </tr>)}
-  </>
-}
+// ---------------------------------------------------------------- Resumen
+function ResumenTab({ d, go }: { d: Data; go: (t: Tab) => void }) {
+  const r = d.resumen
+  const alto = d.correctivo.filter(c => c.nivel === 'ALTO')
+  const maxMes = Math.max(1, ...r.por_mes.map(m => m.preventivo + m.correctivo))
+  const maxSis = Math.max(1, ...r.por_sistema.map(s => s.correctivo))
+  return <div className="space-y-4">
+    {r.historial_hasta && <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+      <span>Los indicadores usan el historial del Excel (hasta el {fecha(r.historial_hasta)}) más las OT y gastos de Caja registrados en el sistema
+        ({r.fuentes.ot} OT y {r.fuentes.caja} gastos en 12 meses). Lo que no se registre en el sistema no aparece aquí.</span>
+    </div>}
 
-function ValidarPlanes({ unidad, onClose, onSaved }: { unidad: Unidad; onClose: () => void; onSaved: () => void }) {
-  const supabase = useMemo(() => createClient(), [])
-  const [planes, setPlanes] = useState<PlanUnidad[] | null>(null)
-  const [lect, setLect] = useState<{ odometro: number | null; horometro: number | null }>({ odometro: null, horometro: null })
-  const [saving, setSaving] = useState(false)
-  useEffect(() => {
-    supabase.rpc('mant_planes_unidad', { p_plate: unidad.plate }).then(({ data, error }) => {
-      if (error || !data?.success) { toast.error(error?.message || data?.error); setPlanes([]); return }
-      setPlanes((data.planes as PlanUnidad[]).map(p => ({ ...p, activo: true })))
-      setLect({ odometro: data.odometro, horometro: data.horometro })
-    })
-  }, [supabase, unidad.plate])
-  const set = (id: string, k: keyof PlanUnidad, v: string | boolean) =>
-    setPlanes(ps => ps?.map(p => p.id === id ? { ...p, [k]: typeof v === 'string' && k !== 'ultima_fecha' ? (v === '' ? null : Number(v)) : v } : p) || null)
-  const guardar = async () => {
-    if (!planes) return
-    setSaving(true)
-    const { data, error } = await supabase.rpc('mant_validar_planes', {
-      p_plate: unidad.plate,
-      p_items: planes.map(p => ({ id: p.id, fecha: p.ultima_fecha, km: p.km ? p.ultima_km : null, horas: p.horas ? p.ultima_horas : null, activo: p.activo })),
-    })
-    setSaving(false)
-    if (error || !data?.success) return toast.error(error?.message || data?.error || 'No se pudo validar')
-    toast.success(`${data.validados} planes validados`)
-    onSaved()
-  }
-  const field = 'w-full rounded border px-2 py-1 text-sm text-slate-900'
-  return (
-    <Modal isOpen onClose={onClose} title={`Validar planes · ${unidad.plate}`} maxWidth="max-w-4xl">
-      {!planes ? <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div> : <div className="space-y-3 text-sm">
-        <p className="text-slate-600">Confirme la última vez que se hizo cada servicio. Los valores propuestos salen del historial; corríjalos si hubo servicios después de junio.
-          Lectura actual: {lect.odometro ? `${fmt(lect.odometro)} km` : ''}{lect.horometro ? ` ${fmt(lect.horometro)} h` : ''}.</p>
-        <div className="max-h-[60vh] overflow-y-auto">
-          <table className="w-full">
-            <thead className="text-left text-xs text-slate-500"><tr><th className="p-1">Servicio</th><th className="p-1">Frecuencia</th><th className="p-1">Última fecha</th><th className="p-1">Última lectura</th><th className="p-1">Activar</th></tr></thead>
-            <tbody>{planes.map(p => <tr key={p.id} className="border-t align-top">
-              <td className="p-1"><b className="text-slate-800">{p.nombre}</b><div className="max-w-xs text-[11px] text-slate-500">{p.origen || 'Plan existente'}</div></td>
-              <td className="p-1 text-xs text-slate-600">{[p.km && `${fmt(p.km)} km`, p.horas && `${fmt(p.horas)} h`, p.dias && `${p.dias} d`].filter(Boolean).join(' o ')}</td>
-              <td className="p-1"><input type="date" className={field} value={p.ultima_fecha || ''} onChange={e => set(p.id, 'ultima_fecha', e.target.value)} /></td>
-              <td className="p-1">{p.km ? <input type="number" className={field} value={p.ultima_km ?? ''} onChange={e => set(p.id, 'ultima_km', e.target.value)} placeholder="km" />
-                : p.horas ? <input type="number" className={field} value={p.ultima_horas ?? ''} onChange={e => set(p.id, 'ultima_horas', e.target.value)} placeholder="h" /> : <span className="text-xs text-slate-400">Por calendario</span>}</td>
-              <td className="p-1 text-center"><input type="checkbox" className="h-4 w-4 accent-[#002855]" checked={p.activo} onChange={e => set(p.id, 'activo', e.target.checked)} /></td>
-            </tr>)}</tbody>
-          </table>
-        </div>
-        <div className="flex justify-end gap-2 border-t pt-3">
-          <button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 font-semibold text-slate-600">Cancelar</button>
-          <button type="button" disabled={saving} onClick={() => void guardar()} className="flex items-center gap-2 rounded-lg bg-[#002855] px-4 py-2 font-semibold text-white disabled:opacity-60">
-            {saving && <Loader2 className="h-4 w-4 animate-spin" />}Validar y activar</button>
-        </div>
-      </div>}
-    </Modal>
-  )
-}
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <Kpi label="Gasto de los últimos 12 meses" value={soles(r.total)} sub={`Preventivo ${soles(r.preventivo)} · correctivo ${soles(r.correctivo)}`} />
+      <Kpi label="Correctivo (12 meses)" value={r.pct_correctivo != null ? `${r.pct_correctivo} %` : '—'} sub={`Meta: menos de ${r.meta_correctivo} % · ${r.eventos_correctivos} reparaciones`}
+        tone={(r.pct_correctivo ?? 0) > r.meta_correctivo ? 'bad' : 'ok'} />
+      <Kpi label="Preventivos vencidos" value={fmt(r.vencidos)} sub={`${r.proximos_30} en los próximos 30 días`} tone={r.vencidos > 0 ? 'bad' : 'ok'} onClick={() => go('preventivo')} />
+      <Kpi label="Unidades en riesgo alto" value={fmt(alto.length)} sub={alto.slice(0, 4).map(a => a.plate).join(', ') || 'Ninguna'} tone={alto.length ? 'bad' : 'ok'} onClick={() => go('correctivo')} />
+    </div>
 
-function CajaSinUnidad({ items, plates, onDone }: { items: Plan['caja_sin_unidad']; plates: string[]; onDone: () => void }) {
-  const supabase = useMemo(() => createClient(), [])
-  const [sel, setSel] = useState<Record<string, string>>({})
-  const asignar = async (id: string) => {
-    if (!sel[id]) return toast.error('Elija la unidad')
-    const { data, error } = await supabase.rpc('mant_asignar_gasto', { p_expense_id: id, p_plate: sel[id] })
-    if (error || !data?.success) return toast.error(error?.message || data?.error)
-    toast.success('Gasto asignado a ' + sel[id]); onDone()
-  }
-  return (
-    <section className="rounded-xl border bg-white p-4">
-      <h2 className="mb-1 flex items-center gap-2 font-semibold text-slate-800"><Receipt className="h-4 w-4 text-[#002855]" />Gastos de mantenimiento de Caja sin unidad</h2>
-      <p className="mb-3 text-xs text-slate-500">Repuestos y llantas pagados por Caja que no tienen placa: asígnelos para que sumen al historial y al costo de la unidad.</p>
-      {items.length === 0 ? <p className="flex items-center gap-1 text-sm text-emerald-700"><CheckCircle2 className="h-4 w-4" />Todos los gastos de mantenimiento tienen unidad.</p> :
-        <ul className="divide-y text-sm">{items.map(e => <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-          <span className="min-w-0"><b>{soles(e.monto, 2)}</b> · {e.tipo} · {e.fecha}<span className="block truncate text-xs text-slate-500">{e.descripcion}</span></span>
-          <span className="flex items-center gap-1">
-            <select className="rounded border px-2 py-1 text-sm" value={sel[e.id] || ''} onChange={ev => setSel(s => ({ ...s, [e.id]: ev.target.value }))}>
-              <option value="">Unidad…</option>{plates.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-            <button type="button" onClick={() => void asignar(e.id)} className="rounded bg-[#002855] px-2 py-1 text-xs font-semibold text-white">Asignar</button>
-          </span>
-        </li>)}</ul>}
-      {items.length > 0 && <p className="mt-2 flex items-center gap-1 text-[11px] text-amber-700"><AlertTriangle className="h-3 w-3" />Solo se asigna la placa; el gasto no cambia en Caja.</p>}
+    {r.planes && r.planes.por_validar > 0 && <ActivarBanner porValidar={r.planes.por_validar} />}
+
+    <div className="grid gap-4 lg:grid-cols-2">
+      <section className="rounded-xl border bg-white p-4">
+        <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold text-slate-800">Gasto por mes</h2>
+          <span className="flex gap-3 text-xs text-slate-500"><Leg c={PREV} t="Preventivo" /><Leg c={CORR} t="Correctivo" /></span></div>
+        <div className="grid h-40 grid-cols-12 items-end gap-1.5">
+          {r.por_mes.map(m => <div key={m.mes} className="flex h-full flex-col justify-end" title={`${m.mes}: preventivo ${soles(m.preventivo)} · correctivo ${soles(m.correctivo)}`}>
+            <div className="flex h-full flex-col justify-end gap-[2px]">
+              <span className="rounded-t" style={{ height: `${(m.correctivo / maxMes) * 100}%`, background: CORR }} />
+              <span className="rounded-b" style={{ height: `${(m.preventivo / maxMes) * 100}%`, background: PREV }} />
+            </div>
+            <span className="mt-1 text-center text-[10px] text-slate-500">{mesCorto(m.mes)}</span>
+          </div>)}
+        </div>
+      </section>
+      <section className="rounded-xl border bg-white p-4">
+        <h2 className="mb-3 font-semibold text-slate-800">Dónde está el correctivo (12 meses)</h2>
+        <ul className="space-y-2">{r.por_sistema.filter(s => s.correctivo > 0).slice(0, 7).map(s => <li key={s.sistema} className="grid grid-cols-[10rem_1fr_6rem] items-center gap-2 text-sm">
+          <span className="truncate text-slate-600">{s.nombre || s.sistema}</span>
+          <span className="h-3 rounded" style={{ width: `${(s.correctivo / maxSis) * 100}%`, background: CORR }} />
+          <span className="text-right font-semibold">{soles(s.correctivo)}</span>
+        </li>)}</ul>
+      </section>
+    </div>
+
+    <section className="overflow-x-auto rounded-xl border bg-white">
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-2">Unidad</th><th className="p-2 text-right">Gasto 12 meses</th><th className="p-2 text-right">Correctivo</th><th className="p-2 text-right">% correctivo</th><th className="p-2">Riesgo</th></tr></thead>
+        <tbody>{r.por_unidad.map(u => {
+          const c = d.correctivo.find(x => x.plate === u.plate)
+          return <tr key={u.plate} className="border-t">
+            <td className="p-2"><Link href={`/mantenimiento/flota/${encodeURIComponent(u.plate)}`} className="font-semibold text-[#002855] hover:underline">{u.plate}</Link><div className="text-[11px] text-slate-500">{u.familia}</div></td>
+            <td className="p-2 text-right">{soles(u.total)}</td><td className="p-2 text-right">{soles(u.correctivo)}</td>
+            <td className={`p-2 text-right font-semibold ${(u.pct ?? 0) > r.meta_correctivo ? 'text-[#cf152d]' : 'text-slate-700'}`}>{u.pct != null ? `${u.pct} %` : '—'}</td>
+            <td className="p-2">{c && <Nivel n={c.nivel} />}</td>
+          </tr>
+        })}</tbody>
+      </table>
     </section>
-  )
-}
-
-function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: 'ok' | 'bad' }) {
-  return <div className="rounded-xl border bg-white px-4 py-3">
-    <div className="text-xs text-slate-500">{label}</div>
-    <div className={`text-xl font-bold ${tone === 'bad' ? 'text-[#cf152d]' : 'text-slate-900'}`}>{value}</div>
-    {sub && <div className="text-[11px] text-slate-400">{sub}</div>}
   </div>
 }
 
+// ---------------------------------------------------------------- Preventivo
+function PreventivoTab({ d, onDone }: { d: Data; onDone: () => void }) {
+  const [filtro, setFiltro] = useState<'todos' | 'vencidos' | '30'>('todos')
+  const items = d.proximos.filter(p => filtro === 'todos' || (filtro === 'vencidos' ? p.vencido : p.dias <= 30))
+  const r = d.resumen
+  return <div className="space-y-4">
+    {r.planes && r.planes.por_validar > 0 && <ActivarBanner porValidar={r.planes.por_validar} onDone={onDone} />}
+    <div className="grid gap-3 sm:grid-cols-3">
+      <Kpi label="Vencidos" value={fmt(r.vencidos)} sub="Hacer cuanto antes" tone={r.vencidos > 0 ? 'bad' : 'ok'} />
+      <Kpi label="Próximos 30 días" value={fmt(r.proximos_30)} sub="Incluye vencidos" />
+      <Kpi label="Costo estimado 90 días" value={soles(r.presupuesto_90)} sub="Costo de referencia del historial" />
+    </div>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex rounded-lg border bg-white p-1 text-sm">
+        {([['todos', 'Próximos 90 días'], ['vencidos', 'Vencidos'], ['30', 'Próximos 30 días']] as const).map(([k, l]) =>
+          <button key={k} type="button" onClick={() => setFiltro(k)} className={`rounded-md px-3 py-1 ${filtro === k ? 'bg-[#002855] font-semibold text-white' : 'text-slate-600'}`}>{l}</button>)}
+      </div>
+      <Link href="/mantenimiento/preventivos" className="text-sm font-semibold text-[#002855] hover:underline">Planes, lecturas y OT preventivas →</Link>
+    </div>
+    <section className="overflow-x-auto rounded-xl border bg-white">
+      <table className="w-full min-w-[900px] text-sm">
+        <thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-2">Cuándo</th><th className="p-2">Unidad</th><th className="p-2">Servicio</th><th className="p-2">Al llegar a</th><th className="p-2">Qué incluye</th><th className="p-2 text-right">Costo ref.</th><th className="p-2">Plan</th></tr></thead>
+        <tbody>{items.map((p, i) => <tr key={i} className={`border-t align-top ${p.vencido ? 'bg-red-50/50' : ''}`}>
+          <td className="whitespace-nowrap p-2">{p.vencido ? <span className="font-bold text-[#cf152d]">Vencido</span> : <><b>{fecha(p.fecha)}</b><div className="text-[11px] text-slate-500">en {p.dias} días</div></>}</td>
+          <td className="p-2"><Link href={`/mantenimiento/flota/${encodeURIComponent(p.plate)}`} className="font-semibold text-[#002855] hover:underline">{p.plate}</Link><div className="text-[11px] text-slate-500">{p.familia}</div></td>
+          <td className="p-2 font-semibold text-slate-800">{p.servicio}</td>
+          <td className="whitespace-nowrap p-2 text-slate-700">{p.lectura_obj ? `${fmt(p.lectura_obj)} ${p.lectura === 'HORAS' ? 'h' : 'km'}` : 'Por fecha'}
+            {p.lectura_actual != null && p.lectura_obj != null && <div className="text-[11px] text-slate-500">hoy {fmt(p.lectura_actual)}</div>}</td>
+          <td className="max-w-md p-2 text-xs text-slate-600">{p.tareas.join(' · ')}</td>
+          <td className="p-2 text-right">{soles(p.costo)}</td>
+          <td className="p-2 text-xs">{p.plan_activo ? <span className="font-semibold text-emerald-700">Activo</span> : <span className="font-semibold text-amber-700">Por activar</span>}</td>
+        </tr>)}</tbody>
+      </table>
+      {items.length === 0 && <p className="p-6 text-center text-sm text-slate-400">Nada pendiente en este filtro.</p>}
+    </section>
+    <p className="text-[11px] text-slate-500">La fecha sale de la última ejecución y del uso real de la unidad (km u horas por día): vence lo que ocurra primero. Con el plan activo, el programador diario genera la OT preventiva al vencer.</p>
+  </div>
+}
+
+// ---------------------------------------------------------------- Correctivo
+function CorrectivoTab({ d, onDone }: { d: Data; onDone: () => void }) {
+  const supabase = useMemo(() => createClient(), [])
+  const [busy, setBusy] = useState<string | null>(null)
+  const agregar = async (plate: string, s: Sist) => {
+    if (!s.inspeccion_dias) return
+    setBusy(plate + s.sistema)
+    const { data, error } = await supabase.rpc('mant_agregar_inspeccion', { p_plate: plate, p_sistema: s.sistema, p_dias: s.inspeccion_dias,
+      p_motivo: `Plan correctivo: ${s.eventos} fallas de ${s.nombre.toLowerCase()} en 24 meses` })
+    setBusy(null)
+    if (error || !data?.success) return toast.error(error?.message || data?.error)
+    toast.success(`Inspección agregada al plan preventivo de ${plate}`); onDone()
+  }
+  const reserva = d.correctivo.reduce((a, c) => a + (c.reserva || 0), 0)
+  return <div className="space-y-4">
+    <div className="rounded-xl border bg-white p-4 text-sm text-slate-600">
+      <b className="text-slate-800">Cómo leer el plan correctivo.</b> Para cada unidad se miran las reparaciones de los últimos 24 meses por sistema.
+      Si un sistema falla repetidamente, el tiempo promedio entre fallas indica cuándo es probable la siguiente: <b>Esperada</b> (ya pasó ese tiempo),
+      <b> Próxima</b> (en 60 días) o <b>Vigilar</b>. Con 3 o más fallas se propone una inspección periódica para corregir antes de que falle.
+      Reserva anual sugerida para correctivo: <b>{soles(reserva)}</b>.
+    </div>
+    <div className="grid gap-3 lg:grid-cols-2">
+      {d.correctivo.map(c => <section key={c.plate} className={`rounded-xl border bg-white p-4 ${c.nivel === 'ALTO' ? 'border-red-200' : ''}`}>
+        <div className="flex items-start justify-between gap-2">
+          <div><Link href={`/mantenimiento/flota/${encodeURIComponent(c.plate)}`} className="text-base font-bold text-[#002855] hover:underline">{c.plate}</Link>
+            <div className="text-xs text-slate-500">{c.familia}</div></div>
+          <Nivel n={c.nivel} />
+        </div>
+        <dl className="mt-2 grid grid-cols-4 gap-2 text-xs">
+          <div><dt className="text-slate-500">Correctivo 24m</dt><dd className="font-semibold">{soles(c.correctivo_24m)}</dd></div>
+          <div><dt className="text-slate-500">% corr. 12m</dt><dd className="font-semibold">{c.pct_correctivo_12m != null ? `${c.pct_correctivo_12m} %` : '—'}</dd></div>
+          <div><dt className="text-slate-500">Entre fallas</dt><dd className="font-semibold">{c.mtbf_dias != null ? `${c.mtbf_dias} días` : '—'}</dd></div>
+          <div><dt className="text-slate-500">Fallas abiertas</dt><dd className="font-semibold">{c.fallas_abiertas ?? '—'}</dd></div>
+        </dl>
+        {c.sistemas.length === 0 ? <p className="mt-3 text-sm text-slate-400">Sin reparaciones en 24 meses.</p> :
+          <ul className="mt-3 divide-y text-sm">{c.sistemas.filter(s => s.eventos >= 2).concat(c.sistemas.filter(s => s.eventos < 2).slice(0, 1)).map(s => <li key={s.sistema} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
+            <span className="min-w-0"><b className="text-slate-800">{s.nombre}</b> <span className="text-xs text-slate-500">· {s.eventos} falla{s.eventos > 1 ? 's' : ''} · {soles(s.costo)}{s.mtbf_dias ? ` · cada ${s.mtbf_dias} días` : ''}</span>
+              <span className="block text-xs text-slate-600">{s.recomendacion}{s.proxima ? ` · próxima probable ${fecha(s.proxima)}` : ''}</span></span>
+            <span className="flex items-center gap-2"><Estado e={s.estado} />
+              {s.inspeccion_dias && (s.tiene_inspeccion ? <span className="flex items-center gap-1 text-xs font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />En el plan</span>
+                : <button type="button" disabled={busy === c.plate + s.sistema} onClick={() => void agregar(c.plate, s)}
+                    className="rounded-md bg-[#002855] px-2 py-1 text-xs font-semibold text-white disabled:opacity-60">Agregar inspección</button>)}
+            </span>
+          </li>)}</ul>}
+      </section>)}
+    </div>
+  </div>
+}
+
+// ---------------------------------------------------------------- Calidad de datos
+function CalidadTab({ d }: { d: Data }) {
+  if (d.calidad.length === 0) return <div className="flex items-center gap-2 rounded-xl border bg-white p-6 text-emerald-700"><CheckCircle2 className="h-5 w-5" />Los datos están completos para planificar.</div>
+  return <div className="space-y-3">
+    <p className="text-sm text-slate-600">El plan es tan bueno como los datos. Esto es lo que falta para que sea exacto:</p>
+    {d.calidad.map(c => <section key={c.codigo} className={`rounded-xl border bg-white p-4 ${c.nivel === 'crit' ? 'border-red-200' : 'border-amber-200'}`}>
+      <h3 className="flex items-center gap-2 font-semibold text-slate-800">{c.nivel === 'crit' ? <ShieldAlert className="h-4 w-4 text-[#cf152d]" /> : <AlertTriangle className="h-4 w-4 text-amber-600" />}{c.titulo}
+        <span className="rounded-full bg-slate-100 px-2 text-xs text-slate-600">{c.codigo === 'historial' ? `${c.cantidad} días` : c.cantidad}</span></h3>
+      <p className="mt-1 text-sm text-slate-600">{c.detalle}</p>
+      {c.items && c.items.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{c.items.slice(0, 30).map((it, i) => {
+        const o = typeof it === 'string' ? { plate: it } : it as Record<string, unknown>
+        const label = String(o.plate ?? o.descripcion ?? '') + (o.ultima ? ` · ${fecha(String(o.ultima))}` : o.ultima === null ? ' · nunca' : '') + (o.dias != null ? ` · ${o.dias} días` : '')
+        return <span key={i} className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-700">{label}</span>
+      })}</div>}
+    </section>)}
+  </div>
+}
+
+// ---------------------------------------------------------------- Comunes
+function ActivarBanner({ porValidar, onDone }: { porValidar: number; onDone?: () => void }) {
+  const supabase = useMemo(() => createClient(), [])
+  const [busy, setBusy] = useState(false)
+  const activar = async () => {
+    if (!confirm(`¿Activar los ${porValidar} planes con la última ejecución del historial?\n\nLos servicios vencidos generarán OT preventivas en borrador en la próxima corrida del programador (6:00). Si algún servicio ya se hizo después de junio, corríjalo antes en Presupuesto anual › Validar.`)) return
+    setBusy(true)
+    const { data, error } = await supabase.rpc('mant_activar_planes', { p_plate: null })
+    setBusy(false)
+    if (error || !data?.success) return toast.error(error?.message || data?.error)
+    toast.success(`${data.activados} planes activados`); onDone?.()
+  }
+  return <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+    <span className="flex items-center gap-2"><ClipboardCheck className="h-4 w-4 shrink-0" /><span><b>{porValidar} planes preventivos sin activar.</b> Sin activar, no se generan OT. Puede corregir la última ejecución por unidad en Presupuesto anual › Validar, o activarlos con el historial.</span></span>
+    {onDone && <button type="button" disabled={busy} onClick={() => void activar()} className="flex items-center gap-1 rounded-lg bg-[#002855] px-3 py-1.5 font-semibold text-white disabled:opacity-60">
+      {busy && <Loader2 className="h-4 w-4 animate-spin" />}Activar todos con el historial</button>}
+  </div>
+}
+
+function Kpi({ label, value, sub, tone, onClick }: { label: string; value: string; sub?: string; tone?: 'ok' | 'bad'; onClick?: () => void }) {
+  const C = onClick ? 'button' : 'div'
+  return <C type={onClick ? 'button' : undefined} onClick={onClick} className={`rounded-xl border bg-white px-4 py-3 text-left ${onClick ? 'hover:border-[#002855]' : ''}`}>
+    <div className="text-xs text-slate-500">{label}</div>
+    <div className={`text-xl font-bold ${tone === 'bad' ? 'text-[#cf152d]' : 'text-slate-900'}`}>{value}</div>
+    {sub && <div className="truncate text-[11px] text-slate-400">{sub}</div>}
+  </C>
+}
 function Leg({ c, t }: { c: string; t: string }) {
   return <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: c }} />{t}</span>
+}
+function Nivel({ n }: { n: Corr['nivel'] }) {
+  const cls = n === 'ALTO' ? 'bg-red-100 text-[#cf152d]' : n === 'MEDIO' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-50 text-emerald-700'
+  return <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${cls}`}>Riesgo {n.toLowerCase()}</span>
+}
+function Estado({ e }: { e: Sist['estado'] }) {
+  const m = { ESPERADA: ['Esperada', 'bg-red-100 text-[#cf152d]'], PROXIMA: ['Próxima', 'bg-amber-100 text-amber-800'], VIGILAR: ['Vigilar', 'bg-blue-50 text-blue-800'], AISLADA: ['Aislada', 'bg-slate-100 text-slate-600'] }[e]
+  return <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${m[1]}`}>{m[0]}</span>
 }
