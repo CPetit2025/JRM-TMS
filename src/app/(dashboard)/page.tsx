@@ -11,6 +11,7 @@ import {
   Truck, Calendar, AlertTriangle, CheckCircle2, Route, 
   Activity, TrendingUp, Filter, Loader2, ChevronRight
 } from 'lucide-react'
+import { MiAvanceWidget } from '@/components/kpi/MiAvance'
 
 const COLORS = ['#002855', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#8b5cf6'];
 const STATUS_COLORS: Record<string, string> = {
@@ -181,6 +182,9 @@ export default function DashboardEjecutivo() {
           </button>
         </div>
       </div>
+
+      {/* Mi avance (solo si el usuario está en un rol medido) */}
+      <MiAvanceWidget />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
