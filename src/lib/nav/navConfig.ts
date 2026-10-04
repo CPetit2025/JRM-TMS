@@ -3,7 +3,7 @@ import {
   ChartColumn, ChartNoAxesColumn, CircleCheckBig, CircleDot, ClipboardCheck, ClipboardList, Container, Database, Factory, FileSignature,
   FileText, FileUp, Fuel, Gauge, HardHat, Home, Hourglass, KeyRound, Map as MapIcon, MapPin, PackageCheck,
   PackageSearch, Radar, Receipt, ReceiptText, Route, Scale, Settings, Settings2, ShieldAlert, ShieldCheck, Sparkles, TriangleAlert,
-  Truck, UserRound, Users, Wallet, Warehouse, Workflow, Wrench, Forklift, History, LayoutDashboard, type LucideIcon,
+  Timer, Truck, UserRound, Users, Wallet, Warehouse, Workflow, Wrench, Forklift, History, LayoutDashboard, type LucideIcon,
 } from 'lucide-react'
 
 // Menú lateral: una sola lista para el sidebar, el buscador y el título de cada página.
@@ -51,6 +51,7 @@ export const NAV_SECTIONS: NavSection[] = [
     { title: 'Taller', items: [
       { href: '/mantenimiento', label: 'Centro de Control', icon: Gauge, show: any('mantenimiento-dashboard'), keywords: 'mantenimiento cmms' },
       { href: '/mantenimiento/fallas', label: 'Fallas y Backlog', icon: TriangleAlert, show: any('mantenimiento-fallas'), keywords: 'falla averia backlog' },
+      { href: '/mantenimiento/soporte', label: 'Soporte Mecánico', icon: Timer, show: any('mantenimiento-soporte', 'mantenimiento-dashboard'), keywords: 'soporte mecanico tecnico respuesta productividad informe mensual kpi' },
       { href: '/mantenimiento/gestor-ot', label: 'Órdenes de Trabajo', icon: Wrench, show: any('mantenimiento-ot'), keywords: 'ot taller orden trabajo' },
       { href: '/mantenimiento/preventivos', label: 'Preventivos', icon: CalendarClock, show: any('mantenimiento-planes'), keywords: 'preventivo plan' },
       { href: '/mantenimiento/plan-anual', label: 'Planificación', icon: CalendarRange, show: any('mantenimiento-planes', 'mantenimiento-dashboard', 'mantenimiento-finanzas'), keywords: 'planificacion plan anual presupuesto calendario preventivo correctivo riesgo' },

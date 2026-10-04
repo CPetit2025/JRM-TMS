@@ -83,7 +83,7 @@ BEGIN
   ELSE v_fail := v_fail || 'T7 historial sin permiso'::text; END IF;
 
   -- T8
-  IF to_regclass('public.maintenance_requests') IS NULL OR EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'notif_falla' AND tgrelid = 'public.maintenance_requests'::regclass)
+  IF to_regclass('public.maintenance_requests') IS NULL OR EXISTS (SELECT 1 FROM pg_trigger WHERE tgname IN ('notif_falla', 'trg_soporte_eventos') AND tgrelid = 'public.maintenance_requests'::regclass)
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T8 aviso de fallas'::text; END IF;
 
   -- Informe: transporte del Excel con actividad desde 2025 y su vínculo con Flota

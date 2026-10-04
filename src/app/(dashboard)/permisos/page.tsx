@@ -83,6 +83,7 @@ const MODULE_GROUPS: PermissionGroup[] = [
       { id: 'mantenimiento-flota', label: 'Unidades y Documentos' },
       { id: 'mantenimiento-vencimientos', label: 'Proyección y Vencimientos' },
       { id: 'mantenimiento-fallas', label: 'Solicitudes y Fallas' },
+      { id: 'mantenimiento-soporte', label: 'Soporte Mecánico (desempeño e informe mensual)' },
       { id: 'mantenimiento-ot', label: 'Órdenes de Trabajo' },
       { id: 'mantenimiento-planes', label: 'Planes Preventivos' }
     ]
