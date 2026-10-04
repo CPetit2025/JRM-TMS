@@ -1,6 +1,6 @@
 import {
   ArchiveRestore, BadgeCheck, BadgeDollarSign, Banknote, BarChart3, BookOpenCheck, Briefcase, Building2, Calculator, CalendarClock, CalendarRange,
-  ChartColumn, ChartNoAxesColumn, CircleCheckBig, CircleDot, ClipboardCheck, ClipboardList, Container, Database, Factory, FileSignature,
+  ChartColumn, CircleCheckBig, CircleDot, ClipboardCheck, ClipboardList, Container, Database, Factory, FileSignature,
   FileText, FileUp, Fuel, Gauge, HardHat, Home, Hourglass, KeyRound, Map as MapIcon, MapPin, PackageCheck,
   PackageSearch, Radar, Receipt, ReceiptText, Route, Scale, Settings, Settings2, ShieldAlert, ShieldCheck, Sparkles, TriangleAlert,
   Timer, Truck, UserRound, Users, Wallet, Warehouse, Workflow, Wrench, Forklift, History, LayoutDashboard, type LucideIcon,
@@ -28,6 +28,19 @@ export const HOME_ITEM = (isAdmin: boolean): NavItem => ({
 })
 
 export const NAV_SECTIONS: NavSection[] = [
+  { id: 'analitica', title: 'Reportes y Analítica', icon: BarChart3, groups: [{ items: [
+    { href: '/reportes', label: 'Centro de Analítica SCM', icon: BarChart3, show: any('dashboard', 'desempeno', 'reportes', 'despacho', 'monitoreo', 'caja', 'apt', 'mantenimiento-dashboard', 'flota-eficiencia', 'mantenimiento-soporte'), keywords: 'reportes analitica scm kpi indicador desempeno informes costos transporte flota apt avance' },
+  ] }, { title: 'Reportes especializados', items: [
+    { href: '/caja/reportes', label: 'Contabilidad y presupuestos', icon: ReceiptText, show: any('caja'), keywords: 'contabilidad presupuesto real rentabilidad reportes' },
+    { href: '/mantenimiento/finanzas', label: 'Finanzas y TCO', icon: ChartColumn, show: any('mantenimiento-dashboard'), keywords: 'analitica costos tco' },
+
+    { href: '/eficiencia-flota', label: 'Resumen y decisiones', icon: LayoutDashboard, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'eficiencia flota reemplazo tco costo por km' },
+    { href: '/eficiencia-flota/transporte', label: 'Unidades de transporte', icon: Truck, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'costo por km tonelada km por galon' },
+    { href: '/eficiencia-flota/equipos', label: 'Montacargas y elevación', icon: Forklift, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'montacargas horometro costo por hora plataforma' },
+    { href: '/eficiencia-flota/rutas', label: 'Rutas y carga', icon: Route, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'toneladas viajes peso' },
+    { href: '/eficiencia-flota/recambios', label: 'Recambios', icon: History, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'altas bajas renovacion' },
+    { href: '/eficiencia-flota/datos', label: 'Datos y parámetros', icon: Database, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'carga excel horometro vida util' },
+  ] }] },
   { id: 'comercial', title: 'Comercial', icon: Briefcase, groups: [{ items: [
     { href: '/clientes', label: 'Directorio Clientes', icon: Building2, show: any('clientes'), keywords: 'cliente ruc cartera' },
     { href: '/contratos', label: 'Contratos y OTs', icon: FileSignature, show: any('ot'), keywords: 'ot contrato subcontrato' },
@@ -38,7 +51,6 @@ export const NAV_SECTIONS: NavSection[] = [
     { href: '/despacho', label: 'Gestión de Despachos', icon: PackageCheck, show: any('despacho'), keywords: 'despacho viaje unidad' },
     { href: '/despacho/documentos', label: 'Documentos de Despacho', icon: FileText, show: any('documentario'), keywords: 'guia packing nota documentario' },
     { href: '/monitoreo', label: 'Monitoreo GPS', icon: MapIcon, show: any('monitoreo'), keywords: 'gps mapa seguimiento' },
-    { href: '/desempeno', label: 'Indicadores (KPI)', icon: Gauge, show: any('desempeno', 'despacho-aprobacion', 'documentario', 'caja-aprobacion', 'mantenimiento-soporte'), keywords: 'desempeño kpi indicador tablero conductor supervisor soporte mecanico informe mensual productividad mi avance cumplimiento' },
     { href: '/contratos/servicios', label: 'Servicios de Contrato', icon: Receipt, show: any('contratos-servicios'), keywords: 'servicio gasto montacarga grua estiba' },
   ] }] },
   { id: 'apt', title: 'Almacén APT', icon: Warehouse, groups: [{ items: [
@@ -70,18 +82,9 @@ export const NAV_SECTIONS: NavSection[] = [
     ] },
     { title: 'Gestión', items: [
       { href: '/mantenimiento/proveedores', label: 'Proveedores de Taller', icon: Factory, show: any('mantenimiento-flota'), keywords: 'proveedor taller' },
-      { href: '/mantenimiento/finanzas', label: 'Finanzas y TCO', icon: ChartColumn, show: any('mantenimiento-dashboard'), keywords: 'costo tco finanzas' },
       { href: '/mantenimiento/copiloto', label: 'Copiloto IA', icon: Sparkles, show: any('mantenimiento-dashboard'), keywords: 'ia copiloto' },
     ] },
   ] },
-  { id: 'eficiencia', title: 'Eficiencia de Flota', icon: Gauge, groups: [{ items: [
-    { href: '/eficiencia-flota', label: 'Resumen y decisiones', icon: LayoutDashboard, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'eficiencia flota reemplazo tco costo por km' },
-    { href: '/eficiencia-flota/transporte', label: 'Unidades de transporte', icon: Truck, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'costo por km tonelada km por galon' },
-    { href: '/eficiencia-flota/equipos', label: 'Montacargas y elevación', icon: Forklift, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'montacargas horometro costo por hora plataforma' },
-    { href: '/eficiencia-flota/rutas', label: 'Rutas y carga', icon: Route, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'toneladas viajes peso' },
-    { href: '/eficiencia-flota/recambios', label: 'Recambios', icon: History, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'altas bajas renovacion' },
-    { href: '/eficiencia-flota/datos', label: 'Datos y parámetros', icon: Database, show: any('flota-eficiencia', 'flota-eficiencia-carga'), keywords: 'carga excel horometro vida util' },
-  ] }] },
   { id: 'caja', title: 'Caja de Transporte', icon: Wallet, groups: [{ items: [
     { href: '/caja', label: 'Panel de Caja', icon: Wallet, show: any('caja'), keywords: 'caja' },
     { href: '/caja/gastos', label: 'Registro de Gastos', icon: ReceiptText, show: any('caja-gastos'), keywords: 'gasto comprobante' },
@@ -92,7 +95,6 @@ export const NAV_SECTIONS: NavSection[] = [
     { href: '/caja/cajas', label: 'Cajas y Fondos', icon: ArchiveRestore, show: any('caja-fondos'), keywords: 'caja fondo reposicion' },
     { href: '/caja/combustible', label: 'Control de Combustible', icon: Fuel, show: any('caja-combustible'), keywords: 'combustible petroleo galones' },
     { href: '/caja/tarifario', label: 'Reglas de Caja', icon: Scale, show: any('caja-tarifario'), keywords: 'tarifario reglas viaticos topes' },
-    { href: '/caja/reportes', label: 'Reportes de Caja', icon: ChartNoAxesColumn, show: any('caja'), keywords: 'reporte' },
   ] }] },
   { id: 'maestros', title: 'Catálogos', icon: Database, groups: [{ items: [
     { href: '/maestros/trabajadores', label: 'Trabajadores', icon: HardHat, show: any('maestros-trabajadores'), keywords: 'trabajador conductor ayudante' },
