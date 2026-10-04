@@ -38,7 +38,7 @@ export async function exportarTablero(t: Row) {
     for (const r of t.roles || []) fila[r.nombre] = (r.tendencia || []).find((x: Row) => x.periodo === p)?.indice ?? ''
     evolucion.push(fila)
   }
-  exportAptXlsx(`KPI ${mesTxt(t.periodo)}`, { Resumen: resumen, Personas: personas, Indicadores: detalle, 'Evolución': evolucion })
+  exportAptXlsx(`KPI ${mesTxt(t.periodo)}`, { Contexto: [{ Período: t.periodo, Generado: new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' }), Fuente: 'kpi_tablero · kpi_historial', Filtros: JSON.stringify(t.filtros || {}), Método: 'Índice general = promedio de roles con datos; evolución del equipo seleccionado' }], Resumen: resumen, Personas: personas, Indicadores: detalle, 'Evolución': evolucion })
 }
 
 function Tile({ label, value, sub, icon: Icon, tono = 'text-slate-900' }: { label: string; value: React.ReactNode; sub?: React.ReactNode; icon: typeof Gauge; tono?: string }) {
@@ -77,7 +77,7 @@ export function Tablero({ t, onRol }: { t: Row; onRol: (rol: string) => void }) 
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Tile icon={Gauge} label="Índice general" value={g.indice ?? '—'} sub={<span className="inline-flex items-center gap-1"><Calif c={g.calificacion} /> promedio de los roles</span>} />
-        <Tile icon={Users} label="Personas medidas" value={<>{g.con_indice ?? 0}<span className="text-base font-semibold text-slate-400"> / {g.miembros ?? 0}</span></>} sub="con índice / registradas" />
+        <Tile icon={Users} label="Evaluaciones por rol" value={<>{g.con_indice ?? 0}<span className="text-base font-semibold text-slate-400"> / {g.miembros ?? 0}</span></>} sub="con índice / pertenencias a roles" />
         <Tile icon={AlertTriangle} label="Índice bajo" value={g.bajos ?? 0} tono={g.bajos ? 'text-[#cf152d]' : 'text-slate-900'} sub="menos de 60 puntos" />
         <Tile icon={ClipboardList} label="Informes por revisar" value={g.informes_por_revisar ?? 0} tono={g.informes_por_revisar ? 'text-sky-700' : 'text-slate-900'} sub="enviados, sin su revisión" />
         <Tile icon={FileWarning} label="Informes atrasados" value={g.informes_atrasados ?? 0} tono={g.informes_atrasados ? 'text-amber-700' : 'text-slate-900'} sub={`de ${mesTxt(t.periodo)}`} />
@@ -151,7 +151,7 @@ export function Equipo({ t, rol, setRol, onVer }: { t: Row; rol: string; setRol:
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-1">
-        {ROLES.map(([k, l]) => (
+        {ROLES.filter(([k]) => (t.roles || []).some((x: Row) => x.rol === k)).map(([k, l]) => (
           <button key={k} onClick={() => setRol(k)} className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm ${rol === k ? 'border-[#002855] bg-[#002855] text-white' : 'bg-white text-slate-600'}`}>
             <span className="h-2 w-2 rounded-full" style={{ background: ROL_COLOR[k] }} />{l}
           </button>

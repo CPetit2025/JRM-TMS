@@ -60,7 +60,7 @@ const MODULE_GROUPS: PermissionGroup[] = [
     modules: [
       { id: 'operaciones-kpis', label: 'Dashboard Analítico' },
       { id: 'reportes', label: 'Reporte Desp. y Recojo' },
-      { id: 'desempeno', label: 'Indicadores (KPI): tablero de todos los roles, revisar informes y fijar metas', mode: 'toggle' }
+      { id: 'desempeno', label: 'Reportes y Analítica: desempeño de todos los roles, revisar informes y fijar metas', mode: 'toggle' }
     ]
   },
   {

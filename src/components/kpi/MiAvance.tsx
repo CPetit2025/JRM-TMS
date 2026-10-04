@@ -66,7 +66,7 @@ function RolAvance({ k, data, onInforme }: { k: Row; data: Row; onInforme?: () =
             <div className={`font-semibold ${ecls}`}>{est}</div>
             <div className="text-xs text-slate-500">Vence el {fecha(inf.vence)}{inf.dias_atraso ? ` · ${inf.dias_atraso} día(s) de atraso` : ''}</div>
             {k.rol === 'SOPORTE'
-              ? <Link href="/mantenimiento/soporte?tab=informe" className="inline-flex items-center gap-1 text-xs font-semibold text-[#002855]">Ir al informe de Soporte <ChevronRight className="h-3.5 w-3.5" /></Link>
+              ? <Link href="/reportes?section=desempeno&tab=soporte&supportTab=informe" className="inline-flex items-center gap-1 text-xs font-semibold text-[#002855]">Ir al informe de Soporte <ChevronRight className="h-3.5 w-3.5" /></Link>
               : onInforme && <button onClick={onInforme} className="inline-flex items-center gap-1 text-xs font-semibold text-[#002855]">Presentar o ver el informe <ChevronRight className="h-3.5 w-3.5" /></button>}
             <p className="text-[11px] text-slate-400">Cada día de atraso descuenta 15 puntos de puntualidad.</p>
           </> : <p className="text-slate-500">Este rol no presenta informe: el índice se calcula solo con lo registrado.</p>}
@@ -108,14 +108,14 @@ export function MiAvanceWidget() {
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 font-semibold text-slate-800"><Gauge className="h-5 w-5 text-[#002855]" />Mi avance del mes</h3>
-        <Link href="/desempeno?tab=mio" className="flex items-center gap-1 text-sm font-semibold text-[#002855]">Ver detalle <ChevronRight className="h-4 w-4" /></Link>
+        <Link href="/reportes?section=desempeno&tab=mio" className="flex items-center gap-1 text-sm font-semibold text-[#002855]">Ver detalle <ChevronRight className="h-4 w-4" /></Link>
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {roles.map(k => {
           const top = (k.por_mejorar || [])[0]
           const [inf] = informeVigente(k)
           return (
-            <Link key={k.rol} href="/desempeno?tab=mio" className="flex items-center gap-3 rounded-lg border p-3 hover:bg-slate-50">
+            <Link key={k.rol} href="/reportes?section=desempeno&tab=mio" className="flex items-center gap-3 rounded-lg border p-3 hover:bg-slate-50">
               <Medidor indice={k.indice} calificacion={k.calificacion} size={96} />
               <div className="min-w-0 flex-1 space-y-0.5 text-sm">
                 <div className="truncate font-semibold text-slate-800">{k.rol_nombre}</div>
