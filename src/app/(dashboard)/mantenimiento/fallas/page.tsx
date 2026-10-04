@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { Loader2, Wrench, Clock, AlertTriangle, ArrowRight, CheckCircle2, Stethoscope, CalendarClock, XCircle, Plus } from "lucide-react";
+import { Loader2, Wrench, Clock, AlertTriangle, ArrowRight, CheckCircle2, Stethoscope, CalendarClock, XCircle, Plus, Hand } from "lucide-react";
 import { EvidenceGallery, type EvidenceItem } from "@/components/evidence/EvidenceGallery";
 
 const supabase = createClient();
@@ -168,6 +168,21 @@ export default function FallasBacklogPage() {
     fetchBacklog();
   };
 
+  // Soporte Mecánico: tomar la falla marca la primera atención (mide la capacidad de respuesta)
+  const take = async (item: BacklogItem) => {
+    const nota = prompt("Nota para el registro (opcional), p. ej. «Voy en camino»:");
+    if (nota === null) return;
+    setBusy(item.id);
+    const { data, error } = await supabase.rpc("soporte_tomar_falla", { p_request_id: item.id, p_usuario: null, p_nota: nota || null });
+    setBusy(null);
+    if (error || !data?.success) {
+      toast.error(error?.message || data?.error || "No se pudo tomar la falla");
+      return;
+    }
+    toast.success(`${item.vehicle_plate}: la atiende ${data.asignado ?? "usted"}`);
+    fetchBacklog();
+  };
+
   const convertToOT = async (item: BacklogItem) => {
     setBusy(item.id);
     const { data: userData } = await supabase.auth.getUser();
@@ -220,6 +235,7 @@ export default function FallasBacklogPage() {
     }
     return (
       <div className="flex flex-wrap gap-2">
+        {!item.responsible_name && btn("Tomar", <Hand className="w-4 h-4" />, () => take(item), "default")}
         {item.status === "REPORTADA" && btn("Validar", <CheckCircle2 className="w-4 h-4" />, () => transition(item, "VALIDADA"))}
         {["REPORTADA", "VALIDADA", "PROGRAMADA"].includes(item.status) && btn("Diagnosticar", <Stethoscope className="w-4 h-4" />, () => transition(item, "DIAGNOSTICADA"))}
         {item.status !== "PROGRAMADA" && btn("Programar", <CalendarClock className="w-4 h-4" />, () => transition(item, "PROGRAMADA"))}
