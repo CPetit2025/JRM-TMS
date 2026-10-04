@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { format } from 'date-fns'
-import { Calculator, Loader2, Printer, Check, X, RefreshCw } from 'lucide-react'
+import { Calculator, Loader2, FileText, Check, X, RefreshCw, Mail, BellRing } from 'lucide-react'
+import { LiquidacionAlquilerView, mesDe } from '@/components/flota/LiquidacionAlquilerDoc'
 
 // Liquidación de alquiler seco (Fase 11): cálculo con km/horas REALES del periodo y descuento por
 // indisponibilidad; se registra en BORRADOR y la aprueba un usuario distinto (migración 20260928130000).
@@ -19,27 +19,55 @@ function loadAll() {
   return Promise.all([
     supabase.from('vehicle_lease_contracts').select('id, contract_code, rate_type, rate_amount, status, start_date, end_date, vehicles(plate), carriers(business_name)').in('status', ['ACTIVO', 'RENOVADO', 'TERMINADO']).order('start_date', { ascending: false }),
     supabase.from('lease_settlements').select('*, vehicle_lease_contracts(contract_code, rate_type, carriers(business_name)), vehicles(plate)').order('created_at', { ascending: false }).limit(100),
-    supabase.from('system_settings').select('value').eq('key', 'admin_signature_url').maybeSingle(),
+    supabase.from('lease_settlement_sends').select('settlement_id, sent_at, sent_to').order('sent_at', { ascending: false }).limit(500),
   ])
 }
 
 export default function LiquidacionesAlquilerPage() {
   const [contracts, setContracts] = useState<Row[]>([])
   const [settlements, setSettlements] = useState<Row[]>([])
-  const [signature, setSignature] = useState<string>('')
+  const [sends, setSends] = useState<Record<string, Row>>({})
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({ contract_id: '', period_start: '', period_end: '', other_discounts: '0', penalties: '0', consumptions: '0', additional_costs: '0', notes: '' })
   const [preview, setPreview] = useState<Row | null>(null)
   const [busy, setBusy] = useState(false)
-  const [printing, setPrinting] = useState<Row | null>(null)
+  const [viewing, setViewing] = useState<string | null>(null)
 
-  const apply = useCallback(([c, s, sig]: Awaited<ReturnType<typeof loadAll>>) => {
+  const apply = useCallback(([c, s, e]: Awaited<ReturnType<typeof loadAll>>) => {
     if (c.error) toast.error('Error al cargar contratos: ' + c.error.message)
-    setContracts(c.data || []); setSettlements(s.data || []); setSignature(sig.data?.value || '')
+    setContracts(c.data || []); setSettlements(s.data || [])
+    const m: Record<string, Row> = {}
+    for (const x of e.data || []) if (!m[x.settlement_id]) m[x.settlement_id] = x
+    setSends(m)
     setLoading(false)
+    return s.data || []
   }, [])
   const refresh = useCallback(() => { setLoading(true); return loadAll().then(apply) }, [apply])
-  useEffect(() => { loadAll().then(apply) }, [apply])
+  // Llegada desde la alerta del día 1: ?contrato=<id>&periodo=AAAA-MM abre la liquidación o deja listo el cálculo
+  useEffect(() => {
+    loadAll().then(apply).then(list => {
+      const q = new URLSearchParams(window.location.search)
+      const contrato = q.get('contrato'), periodo = q.get('periodo')
+      if (!contrato || !periodo || !/^\d{4}-\d{2}$/.test(periodo)) return
+      const [y, m] = periodo.split('-').map(Number)
+      const ini = `${periodo}-01`, fin = `${periodo}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
+      const s = list.find((x: Row) => x.contract_id === contrato && x.status !== 'ANULADA' && x.period_start <= fin && x.period_end >= ini)
+      if (s) setViewing(s.id)
+      else setForm(f => ({ ...f, contract_id: contrato, period_start: ini, period_end: fin }))
+    })
+  }, [apply])
+
+  // Envío mensual: el día 1 se envía la liquidación del mes anterior de cada contrato activo
+  const pendientes = useMemo(() => {
+    const hoy = new Date()
+    const ini = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1), fin = new Date(hoy.getFullYear(), hoy.getMonth(), 0)
+    const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const a = iso(ini), b = iso(fin)
+    return contracts.filter(c => c.status === 'ACTIVO' && c.start_date <= b && (!c.end_date || c.end_date >= a)).map(c => {
+      const s = settlements.find(x => x.contract_id === c.id && x.status !== 'ANULADA' && x.period_start <= b && x.period_end >= a)
+      return { c, s, ini: a, fin: b, enviado: s ? sends[s.id] : null }
+    }).filter(p => !p.enviado)
+  }, [contracts, settlements, sends])
 
   const args = useMemo(() => ({
     p_contract_id: form.contract_id, p_period_start: form.period_start, p_period_end: form.period_end,
@@ -73,7 +101,8 @@ export default function LiquidacionesAlquilerPage() {
     toast.success(`Liquidación ${decision.toLowerCase()}`); refresh()
   }
 
-  if (printing) return <PrintView s={printing} signature={signature} onBack={() => setPrinting(null)} />
+  if (viewing) return <LiquidacionAlquilerView settlementId={viewing} onBack={() => { setViewing(null); refresh() }} onChanged={refresh} />
+  const dia = new Date().getDate()
 
   return (
     <div className="p-6 space-y-5">
@@ -84,6 +113,27 @@ export default function LiquidacionesAlquilerPage() {
         </div>
         <button onClick={refresh} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
       </div>
+
+      {!loading && pendientes.length > 0 && (
+        <div className={`rounded-xl border p-4 text-sm ${dia === 1 ? 'border-amber-300 bg-amber-50' : 'border-red-200 bg-red-50'}`}>
+          <div className="flex items-center gap-2 font-semibold text-slate-800"><BellRing className={`h-4 w-4 ${dia === 1 ? 'text-amber-600' : 'text-[#cf152d]'}`} />
+            {dia === 1 ? 'Hoy se envían las liquidaciones de alquiler' : 'Liquidaciones de alquiler sin enviar'} · {mesDe(pendientes[0].ini)}
+            <span className="font-normal text-slate-500">(se envían el día 1 de cada mes)</span>
+          </div>
+          <div className="mt-2 divide-y divide-black/5">
+            {pendientes.map(p => (
+              <div key={p.c.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <span><b>{p.c.vehicles?.plate}</b> · {p.c.carriers?.business_name} · <span className="text-slate-600">{!p.s ? 'falta calcular y registrar' : p.s.status === 'BORRADOR' ? 'registrada, falta aprobar y enviar' : 'aprobada, falta enviar'}</span></span>
+                {p.s ? (
+                  <button onClick={() => setViewing(p.s!.id)} className="flex items-center gap-1 rounded-lg bg-[#002855] px-3 py-1.5 text-xs font-semibold text-white"><Mail className="h-3.5 w-3.5" />Abrir y enviar</button>
+                ) : (
+                  <button onClick={() => { setForm(f => ({ ...f, contract_id: p.c.id, period_start: p.ini, period_end: p.fin })); setPreview(null) }} className="flex items-center gap-1 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold"><Calculator className="h-3.5 w-3.5" />Preparar cálculo</button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white border rounded-xl p-4 space-y-3 text-sm">
         <div className="grid md:grid-cols-4 gap-3">
@@ -111,7 +161,7 @@ export default function LiquidacionesAlquilerPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
               <th className="text-left p-3">Periodo</th><th className="text-left p-3">Contrato / unidad</th><th className="text-right p-3">Km</th><th className="text-right p-3">Horas</th>
-              <th className="text-right p-3">Subtotal</th><th className="text-right p-3">Total</th><th className="text-left p-3">Estado</th><th className="p-3"></th>
+              <th className="text-right p-3">Subtotal</th><th className="text-right p-3">Total</th><th className="text-left p-3">Estado</th><th className="text-left p-3">Envío</th><th className="p-3"></th>
             </tr></thead>
             <tbody className="divide-y">
               {settlements.map(s => (
@@ -121,12 +171,13 @@ export default function LiquidacionesAlquilerPage() {
                   <td className="p-3 text-right">{s.km_used}</td><td className="p-3 text-right">{s.hours_used}</td>
                   <td className="p-3 text-right">{money(s.subtotal)}</td><td className="p-3 text-right font-semibold">{money(s.total)}</td>
                   <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs font-semibold ${s.status === 'APROBADA' ? 'bg-emerald-100 text-emerald-700' : s.status === 'ANULADA' ? 'bg-slate-100 text-slate-500' : 'bg-amber-100 text-amber-700'}`}>{s.status}</span></td>
+                  <td className="p-3 text-xs">{sends[s.id] ? <span className="text-emerald-700">Enviada {new Date(sends[s.id].sent_at).toLocaleDateString('es-PE')}<div className="text-slate-500">{sends[s.id].sent_to}</div></span> : s.status === 'ANULADA' ? '—' : <span className="text-amber-700">Pendiente</span>}</td>
                   <td className="p-3"><div className="flex gap-1 justify-end">
                     {s.status === 'BORRADOR' && <>
                       <button title="Aprobar" onClick={() => decide(s, 'APROBADA')} className="p-1.5 border rounded-lg text-emerald-700"><Check className="w-4 h-4" /></button>
                       <button title="Anular" onClick={() => decide(s, 'ANULADA')} className="p-1.5 border rounded-lg text-red-600"><X className="w-4 h-4" /></button>
                     </>}
-                    <button title="Imprimir" onClick={() => setPrinting(s)} className="p-1.5 border rounded-lg"><Printer className="w-4 h-4" /></button>
+                    <button title="Ver documento, descargar PDF y enviar" onClick={() => setViewing(s.id)} className="flex items-center gap-1 px-2 py-1.5 border rounded-lg text-xs font-semibold text-[#002855]"><FileText className="w-4 h-4" />Documento</button>
                   </div></td>
                 </tr>
               ))}
@@ -213,31 +264,6 @@ function Valorizacion({ s }: { s: Row }) {
           </div>
         </details>
       )}
-    </div>
-  )
-}
-
-function PrintView({ s, signature, onBack }: { s: Row; signature: string; onBack: () => void }) {
-  return (
-    <div className="p-6 space-y-4">
-      <div className="flex justify-between print:hidden">
-        <button onClick={onBack} className="px-4 py-2 border rounded-lg text-sm">Volver</button>
-        <button onClick={() => window.print()} className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm flex items-center gap-2"><Printer className="w-4 h-4" />Imprimir</button>
-      </div>
-      <div className="bg-white border mx-auto p-8 print:border-none print:p-0" style={{ maxWidth: '210mm' }}>
-        <div className="bg-[#002855] text-white p-6 rounded-t-lg mb-6 print:rounded-none" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
-          <div className="text-xl font-bold">Liquidación de alquiler seco</div>
-          <div className="text-sm opacity-80">{s.vehicle_lease_contracts?.contract_code} · {s.vehicles?.plate} · {s.vehicle_lease_contracts?.carriers?.business_name}</div>
-        </div>
-        <Breakdown s={{ ...s, ...(s.detail || {}) }} />
-        {s.notes && <p className="text-sm text-slate-600 mt-4 whitespace-pre-wrap">{s.notes}</p>}
-        <div className="mt-10 flex justify-between items-end text-sm">
-          <div>Estado: <b>{s.status}</b>{s.approved_at ? ` · ${format(new Date(s.approved_at), 'dd/MM/yyyy HH:mm')}` : ''}</div>
-          {signature && s.status === 'APROBADA' && (
-            <div className="text-center">{/* eslint-disable-next-line @next/next/no-img-element */}<img src={signature} alt="Firma" className="h-16 mx-auto" /><div className="border-t pt-1">Aprobado</div></div>
-          )}
-        </div>
-      </div>
     </div>
   )
 }
