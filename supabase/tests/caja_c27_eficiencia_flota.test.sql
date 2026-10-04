@@ -24,7 +24,8 @@ BEGIN
     AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) ORDER BY id LIMIT 1;
   INSERT INTO public.roles (name, permissions) VALUES ('ZZ C27 carga', '["flota-eficiencia-carga"]') RETURNING id INTO v_rc;
   INSERT INTO public.roles (name, permissions) VALUES ('ZZ C27 ver', '["flota-eficiencia:read"]') RETURNING id INTO v_rv;
-  UPDATE public.fe_settings SET desde = DATE '2025-01-01', corte = NULL WHERE id = 1;
+  -- precio de referencia fijo (v2 compara a precio constante): el de los datos de prueba, S/ 14 por galón
+  UPDATE public.fe_settings SET desde = DATE '2025-01-01', corte = NULL, params = params || '{"precio_ref": 14}'::jsonb WHERE id = 1;
 
   -- T1: el permiso de ver no permite cargar
   UPDATE public.profiles SET is_active = true, role_id = v_rv WHERE id = v_user;

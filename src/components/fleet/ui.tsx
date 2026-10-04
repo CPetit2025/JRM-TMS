@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { REC_TONE, type FeFilters, type FeRec, type FeTone } from '@/lib/fleet/types'
+import { REC_TONE, type FeConfianza, type FeFilters, type FeRec, type FeTone } from '@/lib/fleet/types'
 
 // Piezas comunes del módulo Eficiencia de Flota
 
@@ -22,6 +22,13 @@ export function RecPill({ rec }: { rec: FeRec }) {
       <span className="font-mono text-[10px]">{TONE_MARK[t]}</span>{rec}
     </span>
   )
+}
+
+// Confianza del cálculo según los meses completos de datos (12 o más: alta; 6 a 11: media; menos: baja)
+const CONF_TONE: Record<FeConfianza, FeTone> = { Alta: 'good', Media: 'info', Baja: 'warn' }
+export function ConfianzaPill({ c }: { c: FeConfianza }) {
+  return <span title="Meses completos de datos: 12 o más = alta; 6 a 11 = media; menos = baja"
+    className={`inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold ${TONE_CLASS[CONF_TONE[c]]}`}>Confianza {c.toLowerCase()}</span>
 }
 
 export function Panel({ title, hint, actions, children, className = '' }: { title?: ReactNode; hint?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string }) {

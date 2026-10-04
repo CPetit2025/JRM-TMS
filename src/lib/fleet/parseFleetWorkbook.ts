@@ -2,7 +2,8 @@ import * as XLSX from 'xlsx'
 
 // Lectura del Excel de Eficiencia de Flota. Reconoce las tres hojas por sus encabezados (no por el nombre):
 //   MANT  mantenimiento (ACTIVO, FECHA, MONTO…), COMB  combustible y km mensual (Placa, Gls/Abast., Km Real…) y
-//   RUTA  rutas con peso (Placa del vehiculo, PESO (KG)…). Devuelve filas normalizadas listas para fe_upload_rows.
+//   RUTA  rutas con peso (Placa del vehiculo, PESO (KG)…), tiempos, programado, distrito, conductor y ayudantes.
+// Devuelve filas normalizadas listas para fe_upload_rows.
 
 export type FleetSheetKind = 'MANT' | 'COMB' | 'RUTA'
 export const FLEET_KIND_LABEL: Record<FleetSheetKind, string> = {
@@ -67,7 +68,8 @@ const SPEC: Record<FleetSheetKind, { required: Col[]; cols: Record<string, Col> 
       factura: h => h === 'FACTURA', km_hrs: h => h === 'KM_HRS' || h === 'KM HRS', monto: h => h === 'MONTO', tipo: h => h === 'TIPO_MANTTO' || h === 'TIPO MANTTO',
       categoria: h => h === 'CATEGORIA_COSTO' || h === 'CATEGORIA COSTO', mayor: h => h === 'INTERVENCION_MAYOR' || h === 'INTERVENCION MAYOR',
       dias_fuera: h => h.startsWith('DIAS_FUERA') || h.startsWith('DIAS FUERA'), area: h => h === 'AREA', detalle: h => h === 'COMENTARIOS',
-      anio_fab: h => h.startsWith('ANO FABRIC') || h.startsWith('ANIO FABRIC'),
+      anio_fab: h => h.startsWith('ANO FABRIC') || h.startsWith('ANIO FABRIC'), prox_mantto: h => h === 'PROX_MANTTO' || h === 'PROX MANTTO',
+      fecha_ingreso: h => h === 'FECHA_INGRESO' || h === 'FECHA INGRESO', fecha_salida: h => h === 'FECHA_SALIDA' || h === 'FECHA SALIDA',
     },
   },
   COMB: {
@@ -85,6 +87,8 @@ const SPEC: Record<FleetSheetKind, { required: Col[]; cols: Record<string, Col> 
       actividad: h => h.startsWith('TIPO DE ACTIVIDAD'), area: h => h.startsWith('AREA SOLICITANTE'), cliente: h => h.startsWith('RAZON SOCIAL'),
       provincia: h => h === 'PROVINCIA', guia: h => h.startsWith('NRO DE GUIA'), km: h => h.startsWith('KM TOTAL DE ENTREGA'),
       kg: h => h.startsWith('PESO'), m3: h => h.startsWith('METRO CUBICO'), espera: h => h.startsWith('TIEMPO DE ESPERA'), descarga: h => h.startsWith('TIPO DE DESCARGA'),
+      programado: h => h === 'PROGRAMADO', distrito: h => h === 'DISTRITO', conductor: h => h.startsWith('NOMBRE DE CONDUCTOR'),
+      horas: h => h.startsWith('TIEMPO TOTAL'), ayudantes: h => h.startsWith('CANTIDAD DE AYUDANTES'),
     },
   },
 }
@@ -126,7 +130,8 @@ export function parseFleetWorkbook(data: ArrayBuffer | Uint8Array): FleetParseRe
         rows.push({ __row, activo, clase: String(get(row, 'clase') ?? ''), fecha: isoDate(get(row, 'fecha'), date1904), proveedor: String(get(row, 'proveedor') ?? '') || null,
           factura: String(get(row, 'factura') ?? '') || null, km_hrs: num(get(row, 'km_hrs')), monto, tipo: String(get(row, 'tipo') ?? '') || null,
           categoria: String(get(row, 'categoria') ?? '') || null, mayor: num(get(row, 'mayor')), dias_fuera: num(get(row, 'dias_fuera')),
-          area: String(get(row, 'area') ?? '') || null, detalle: String(get(row, 'detalle') ?? '').slice(0, 300) || null, anio_fab: num(get(row, 'anio_fab')) })
+          area: String(get(row, 'area') ?? '') || null, detalle: String(get(row, 'detalle') ?? '').slice(0, 300) || null, anio_fab: num(get(row, 'anio_fab')),
+          prox_mantto: num(get(row, 'prox_mantto')), fecha_ingreso: isoDate(get(row, 'fecha_ingreso'), date1904), fecha_salida: isoDate(get(row, 'fecha_salida'), date1904) })
       } else if (d.kind === 'COMB') {
         const placa = String(get(row, 'placa') ?? '').trim()
         const anio = num(get(row, 'anio'))
@@ -141,7 +146,9 @@ export function parseFleetWorkbook(data: ArrayBuffer | Uint8Array): FleetParseRe
         rows.push({ __row, fecha, placa, marca: String(get(row, 'marca') ?? '') || null, actividad: String(get(row, 'actividad') ?? '') || null,
           area: String(get(row, 'area') ?? '') || null, cliente: String(get(row, 'cliente') ?? '') || null, provincia: String(get(row, 'provincia') ?? '') || null,
           guia: String(get(row, 'guia') ?? '') || null, km: num(get(row, 'km')), kg: num(get(row, 'kg')), m3: num(get(row, 'm3')),
-          espera_h: hours(get(row, 'espera')), descarga: String(get(row, 'descarga') ?? '') || null })
+          espera_h: hours(get(row, 'espera')), descarga: String(get(row, 'descarga') ?? '') || null,
+          programado: String(get(row, 'programado') ?? '') || null, distrito: String(get(row, 'distrito') ?? '') || null,
+          conductor: String(get(row, 'conductor') ?? '') || null, horas: hours(get(row, 'horas')), ayudantes: num(get(row, 'ayudantes')) })
       }
     }
     const fechas = rows.map(x => (d.kind === 'COMB' ? `${x.anio}-${String(x.mes).padStart(2, '0')}-01` : (x.fecha as string | null))).filter(Boolean).sort() as string[]

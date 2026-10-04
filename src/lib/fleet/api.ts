@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
 import type { FleetSheetKind } from './parseFleetWorkbook'
-import type { FeDatos, FeFilters, FeMensualRow, FeParams, FeRecambios, FeResumen, FeRutas, FeUploadSummary, FeAsset } from './types'
+import type { FeDatos, FeEquipo, FeFilters, FeMensualRow, FeParams, FeRecambios, FeResumen, FeRutas, FeTransporte, FeUploadSummary, FeAsset } from './types'
 
 // Acceso a las funciones public.fe_* (Eficiencia de Flota). Todas devuelven { success, error?, ... }.
 const supabase = createClient()
@@ -21,6 +21,7 @@ export const fleetApi = {
   rutas: (f: FeFilters) => call<FeRutas>('fe_rutas', { p: clean(f) }),
   recambios: () => call<FeRecambios>('fe_recambios'),
   datos: () => call<FeDatos>('fe_datos'),
+  activo: (plate: string) => call<{ desde?: string; hasta?: string; activo: (FeTransporte | FeEquipo) | null }>('fe_activo', { p_plate: plate }),
   saveSettings: (p: { desde?: string; corte?: string | null; params?: Partial<FeParams> }) => call<object>('fe_save_settings', { p }),
   saveAsset: (a: Partial<FeAsset>) => call<{ code: string }>('fe_save_asset', { p: a }),
   saveHours: (code: string, fecha: string, horas: number, nota?: string) =>
