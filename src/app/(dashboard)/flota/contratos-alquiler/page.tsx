@@ -9,6 +9,7 @@ import { FileSignature, Plus, RefreshCw, Loader2, RotateCw, Edit2 } from 'lucide
 // Contratos de alquiler (Fase 11): tarifa mensual/diaria/horaria/por km, km/horas incluidos, excesos,
 // descuento por indisponibilidad, condiciones y renovación encadenada. Sin traslapes por unidad
 // (migración 20260928130000). El maestro de la unidad refleja la propiedad ALQUILADO.
+// Días base, garantía, km adicional con 4 decimales y km por rutas del sistema: migración 20261005120000.
 
 const supabase = createClient()
 type Row = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -79,7 +80,7 @@ export default function ContratosAlquilerPage() {
                   <td className="p-3 font-semibold">{c.contract_code}{c.parent_contract_id && <div className="text-[11px] text-slate-400">renovación</div>}</td>
                   <td className="p-3">{c.vehicles?.plate}<div className="text-xs text-slate-500">{c.carriers?.business_name}</div></td>
                   <td className="p-3">{money(c.rate_amount)} <span className="text-xs text-slate-500">{RATE_LABEL[c.rate_type]}</span></td>
-                  <td className="p-3 text-xs">{c.included_km ? `${c.included_km} km (exc. ${money(c.excess_km_rate)}/km)` : ''}{c.included_hours ? ` ${c.included_hours} h (exc. ${money(c.excess_hour_rate)}/h)` : ''}{c.discount_downtime ? <div className="text-slate-400">descuenta indisponibilidad</div> : null}</td>
+                  <td className="p-3 text-xs">{c.included_km ? `${c.included_km} km (adicional S/ ${Number(c.excess_km_rate_exact ?? c.excess_km_rate ?? 0).toFixed(4)}/km)` : ''}{c.included_hours ? ` ${c.included_hours} h (exc. ${money(c.excess_hour_rate)}/h)` : ''}{c.discount_downtime ? <div className="text-slate-400">descuenta indisponibilidad</div> : null}{c.km_source === 'RUTA' ? <div className="text-slate-400">km por rutas del sistema</div> : null}{c.guarantee_amount ? <div className="text-slate-400">garantía {money(c.guarantee_amount)}</div> : null}</td>
                   <td className="p-3 text-xs">{c.start_date} → {c.end_date || 'indefinido'}</td>
                   <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs font-semibold ${c.status === 'ACTIVO' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{c.status}</span></td>
                   <td className="p-3"><div className="flex gap-1 justify-end">
@@ -100,16 +101,18 @@ export default function ContratosAlquilerPage() {
 function ContractModal({ contract, vehicles, lessors, onClose, onSaved }: { contract: Row | null; vehicles: Row[]; lessors: Row[]; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState({
     vehicle_id: contract?.vehicle_id || '', provider_id: contract?.provider_id || '', rate_type: contract?.rate_type || 'MENSUAL', rate_amount: contract?.rate_amount ?? '',
-    included_km: contract?.included_km ?? '', excess_km_rate: contract?.excess_km_rate ?? '', guaranteed_km: contract?.guaranteed_km ?? '',
+    included_km: contract?.included_km ?? '', excess_km_rate: contract?.excess_km_rate_exact ?? contract?.excess_km_rate ?? '', guaranteed_km: contract?.guaranteed_km ?? '',
     included_hours: contract?.included_hours ?? '', excess_hour_rate: contract?.excess_hour_rate ?? '', discount_downtime: contract?.discount_downtime ?? true,
     start_date: contract?.start_date || '', end_date: contract?.end_date || '', conditions: contract?.conditions || '', penalty_terms: contract?.penalty_terms || '',
-    status: contract?.status || 'ACTIVO',
+    status: contract?.status || 'ACTIVO', days_base: contract?.days_base ?? '', guarantee_amount: contract?.guarantee_amount ?? '', km_source: contract?.km_source || 'ODOMETRO',
   })
   const [saving, setSaving] = useState(false)
   const num = (v: unknown) => (v === '' || v == null ? null : Number(v))
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true)
-    const payload = { ...f, contract_type: 'ALQUILER_SECO', rate_amount: Number(f.rate_amount), included_km: num(f.included_km), excess_km_rate: num(f.excess_km_rate),
+    const payload = { ...f, contract_type: 'ALQUILER_SECO', rate_amount: Number(f.rate_amount), included_km: num(f.included_km),
+      excess_km_rate: f.excess_km_rate === '' ? null : Math.round(Number(f.excess_km_rate) * 100) / 100, excess_km_rate_exact: num(f.excess_km_rate),
+      days_base: num(f.days_base), guarantee_amount: num(f.guarantee_amount),
       guaranteed_km: num(f.guaranteed_km), included_hours: num(f.included_hours), excess_hour_rate: num(f.excess_hour_rate), end_date: f.end_date || null }
     const { error } = contract ? await supabase.from('vehicle_lease_contracts').update(payload).eq('id', contract.id) : await supabase.from('vehicle_lease_contracts').insert(payload)
     setSaving(false)
@@ -124,11 +127,17 @@ function ContractModal({ contract, vehicles, lessors, onClose, onSaved }: { cont
         <label>Tipo de tarifa<select className={field} value={f.rate_type} onChange={e => setF({ ...f, rate_type: e.target.value })}>{Object.entries(RATE_LABEL).map(([k, l]) => <option key={k} value={k}>{k} ({l})</option>)}</select></label>
         <label>Tarifa (S/)<input required type="number" min={0} step="0.01" className={field} value={f.rate_amount} onChange={e => setF({ ...f, rate_amount: e.target.value })} /></label>
         <label>Km incluidos<input type="number" min={0} className={field} value={f.included_km} onChange={e => setF({ ...f, included_km: e.target.value })} /></label>
-        <label>Exceso por km (S/)<input type="number" min={0} step="0.01" className={field} value={f.excess_km_rate} onChange={e => setF({ ...f, excess_km_rate: e.target.value })} /></label>
+        <label>Km adicional (S/, hasta 4 decimales)<input type="number" min={0} step="0.0001" className={field} value={f.excess_km_rate} onChange={e => setF({ ...f, excess_km_rate: e.target.value })} /></label>
         <label>Horas incluidas<input type="number" min={0} className={field} value={f.included_hours} onChange={e => setF({ ...f, included_hours: e.target.value })} /></label>
         <label>Exceso por hora (S/)<input type="number" min={0} step="0.01" className={field} value={f.excess_hour_rate} onChange={e => setF({ ...f, excess_hour_rate: e.target.value })} /></label>
         <label>Inicio<input required type="date" className={field} value={f.start_date} onChange={e => setF({ ...f, start_date: e.target.value })} /></label>
         <label>Término<input type="date" className={field} value={f.end_date} onChange={e => setF({ ...f, end_date: e.target.value })} /></label>
+        <label>Días base del mes<input type="number" min={1} max={31} placeholder="días del mes" className={field} value={f.days_base} onChange={e => setF({ ...f, days_base: e.target.value })} /><span className="text-[11px] text-slate-400">Costo diario = tarifa mensual / días base (p. ej. 26)</span></label>
+        <label>Garantía (S/)<input type="number" min={0} step="0.01" className={field} value={f.guarantee_amount} onChange={e => setF({ ...f, guarantee_amount: e.target.value })} /></label>
+        <label className="md:col-span-2">Km a liquidar<select className={field} value={f.km_source} onChange={e => setF({ ...f, km_source: e.target.value })}>
+          <option value="RUTA">Rutas del sistema (odómetro del checklist o GPS de la app por viaje)</option>
+          <option value="ODOMETRO">Lecturas de odómetro del periodo</option>
+        </select></label>
         <label className="md:col-span-2">Condiciones<textarea className={field} rows={2} value={f.conditions} onChange={e => setF({ ...f, conditions: e.target.value })} /></label>
         <label className="md:col-span-2">Penalidades pactadas<input className={field} value={f.penalty_terms} onChange={e => setF({ ...f, penalty_terms: e.target.value })} /></label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={f.discount_downtime} onChange={e => setF({ ...f, discount_downtime: e.target.checked })} />Descontar días fuera de servicio por mantenimiento</label>

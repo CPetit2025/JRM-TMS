@@ -8,6 +8,7 @@ import { Calculator, Loader2, Printer, Check, X, RefreshCw } from 'lucide-react'
 
 // Liquidación de alquiler seco (Fase 11): cálculo con km/horas REALES del periodo y descuento por
 // indisponibilidad; se registra en BORRADOR y la aprueba un usuario distinto (migración 20260928130000).
+// Los km salen de la valorización importada (ago–set 2026), de las rutas del sistema o del odómetro (20261005120000).
 
 const supabase = createClient()
 type Row = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -137,22 +138,82 @@ export default function LiquidacionesAlquilerPage() {
   )
 }
 
+const FUENTE: Record<string, string> = {
+  VALORIZACION: 'Valorización del arrendador (agosto y setiembre 2026, importada del Excel)',
+  RUTA: 'Rutas del sistema: odómetro del checklist o GPS de la app por cada viaje',
+  ODOMETRO: 'Lecturas de odómetro del periodo',
+}
+const km = (n: unknown) => Number(n || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 })
+
 function Breakdown({ s }: { s: Row }) {
   const rows: [string, React.ReactNode][] = [
     ['Periodo liquidado', `${s.period_start} → ${s.period_end} (${s.days} días)`],
-    ['Uso real', `${s.km_used} km · ${s.hours_used} h`],
+    ['Uso real', `${km(s.km_used)} km · ${s.hours_used} h`],
     [`Tarifa base (${s.rate_type})`, money(s.base_amount)],
-    [`Exceso de km (${s.excess_km} km sobre ${s.included_km ?? '—'})`, money(s.excess_km_amount)],
+    [`Exceso de km (${km(s.excess_km)} km sobre ${s.included_km != null ? km(s.included_km) : '—'}${s.excess_km_rate ? ` × S/ ${Number(s.excess_km_rate).toFixed(4)}` : ''})`, money(s.excess_km_amount)],
     [`Exceso de horas (${s.excess_hours} h)`, money(s.excess_hours_amount)],
-    [`Descuento por indisponibilidad (${s.downtime_days} días)`, `− ${money(s.downtime_discount)}`],
+    [`Descuento por indisponibilidad (${s.downtime_days} días${s.costo_diario ? ` × ${money(s.costo_diario)}` : ''})`, `− ${money(s.downtime_discount)}`],
     ['Otros descuentos', `− ${money(s.other_discounts)}`], ['Penalidades', money(s.penalties)],
     ['Consumos', money(s.consumptions)], ['Costos adicionales', money(s.additional_costs)],
     ['Subtotal', money(s.subtotal)], ['IGV 18%', money(s.tax)], ['Total', <b key="t">{money(s.total)}</b>],
   ]
   return (
-    <table className="w-full max-w-xl text-sm border rounded-lg">
-      <tbody className="divide-y">{rows.map(([k, v]) => <tr key={k}><td className="p-2 text-slate-600">{k}</td><td className="p-2 text-right">{v}</td></tr>)}</tbody>
-    </table>
+    <div className="space-y-3">
+      <table className="w-full max-w-xl text-sm border rounded-lg">
+        <tbody className="divide-y">{rows.map(([k, v]) => <tr key={k}><td className="p-2 text-slate-600">{k}</td><td className="p-2 text-right">{v}</td></tr>)}</tbody>
+      </table>
+      {s.km_fuente && <Valorizacion s={s} />}
+    </div>
+  )
+}
+
+// Factores de la valorización: de dónde salen los km, días laborados, costo diario, garantía y el control GPS/odómetro.
+function Valorizacion({ s }: { s: Row }) {
+  const viajes: Row[] = Array.isArray(s.viajes) ? s.viajes : []
+  const control = s.km_gps != null ? Number(s.km_gps) : Number(s.km_odometro || 0) || null
+  const items: [string, string][] = [
+    ['Días laborados', `${s.dias_laborados ?? 0} de ${s.days}`],
+    ['Costo diario', s.costo_diario ? `${money(s.costo_diario)}${s.dias_base ? ` (base ${s.dias_base} días)` : ''}` : '—'],
+    ['Garantía', s.garantia ? money(s.garantia) : '—'],
+    ['Viajes', `${viajes.length}${s.viajes_sin_km ? ` · ${s.viajes_sin_km} sin km` : ''}`],
+  ]
+  return (
+    <div className="max-w-3xl space-y-2 text-sm">
+      <div className="rounded-lg border bg-slate-50 p-3">
+        <div className="text-xs font-semibold uppercase text-slate-500">Fuente de los km</div>
+        <div className="font-medium text-slate-800">{FUENTE[s.km_fuente] || s.km_fuente}</div>
+        <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+          {items.map(([k, v]) => <div key={k}><div className="text-xs text-slate-500">{k}</div><div className="font-semibold text-slate-800">{v}</div></div>)}
+        </div>
+      </div>
+      {s.km_fuente !== 'ODOMETRO' && control != null && (
+        <div className={`rounded-lg border p-3 ${Number(s.km_fuera_de_ruta) > 0 ? 'border-amber-200 bg-amber-50 text-amber-900' : 'bg-white text-slate-700'}`}>
+          Control: {s.km_gps != null ? 'GPS del arrendador' : 'odómetro'} {km(control)} km vs. {km(s.km_used)} km liquidados
+          {Number(s.km_fuera_de_ruta) > 0 && <> · <b>{km(s.km_fuera_de_ruta)} km recorridos sin viaje registrado</b> (no se cobran; revisar con el arrendador)</>}
+        </div>
+      )}
+      {s.viajes_sin_km > 0 && <p className="text-xs text-amber-700">{s.viajes_sin_km} viajes no tienen odómetro de cierre ni km de GPS: complete el checklist de retorno para que sumen.</p>}
+      <p className="text-xs text-slate-500">Los fletes facturados al cliente no forman parte del alquiler.</p>
+      {viajes.length > 0 && (
+        <details className="rounded-lg border">
+          <summary className="cursor-pointer p-2 font-medium text-slate-700">Detalle de viajes ({viajes.length})</summary>
+          <div className="max-h-80 overflow-auto print:max-h-none">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-slate-50 text-slate-500"><tr>
+                <th className="p-2 text-left">Fecha</th><th className="p-2 text-left">Guía / viaje</th><th className="p-2 text-left">Cliente / destino</th><th className="p-2 text-right">Km</th><th className="p-2 text-left">Fuente</th>
+              </tr></thead>
+              <tbody className="divide-y">{viajes.map((v, i) => (
+                <tr key={i}>
+                  <td className="p-2 whitespace-nowrap">{v.fecha}</td><td className="p-2">{v.ref || '—'}</td>
+                  <td className="p-2">{[v.cliente, v.destino].filter(Boolean).join(' · ') || '—'}</td>
+                  <td className="p-2 text-right">{v.km != null ? km(v.km) : '—'}</td><td className="p-2">{v.km_fuente}</td>
+                </tr>))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
+    </div>
   )
 }
 
