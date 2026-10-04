@@ -1,7 +1,23 @@
 "use client"
-import { useEffect, useState, createContext, useContext } from 'react'
+import { useCallback, useEffect, useState, createContext, useContext } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+
+// Notificaciones.
+//   Web (role="admin" en el layout del panel): avisos dirigidos por permiso desde la base (notif_list), en tiempo real
+//   (tabla notifications, filtrada por RLS) y con lectura por usuario. Ver migración 20261004120000.
+//   App (conductor / operario): avisos locales de su ruta y sus anticipos, como antes.
+
+export type NotifCategoria = 'TRANSPORTE' | 'DESPACHO' | 'CAJA' | 'MANTENIMIENTO' | 'CUMPLIMIENTO'
+export type NotifItem = {
+  id: number; created_at: string; evento: string; categoria: NotifCategoria; severidad: 'crit' | 'warn' | 'info'
+  titulo: string; cuerpo: string | null; link: string | null; leida: boolean; para_mi: boolean
+}
+export type NotifFeed = { items: NotifItem[]; no_leidas: number; por_categoria: Partial<Record<NotifCategoria, number>>; silenciadas: NotifCategoria[] }
+export const NOTIF_CATEGORIAS: Array<{ id: NotifCategoria; label: string }> = [
+  { id: 'TRANSPORTE', label: 'Transporte' }, { id: 'DESPACHO', label: 'Despacho' }, { id: 'CAJA', label: 'Caja' },
+  { id: 'MANTENIMIENTO', label: 'Mantenimiento' }, { id: 'CUMPLIMIENTO', label: 'Cumplimiento' },
+]
 
 export type AppNotification = {
   id: string
@@ -15,12 +31,21 @@ type NotificationContextType = {
   notifications: AppNotification[]
   unreadCount: number
   markAllAsRead: () => void
+  // Web: avisos por permiso
+  feed: NotifFeed | null
+  markRead: (ids: number[]) => Promise<void>
+  setMuted: (categoria: NotifCategoria, muted: boolean) => Promise<void>
+  reload: () => void
 }
 
 const NotificationContext = createContext<NotificationContextType>({
   notifications: [],
   unreadCount: 0,
-  markAllAsRead: () => {}
+  markAllAsRead: () => {},
+  feed: null,
+  markRead: async () => {},
+  setMuted: async () => {},
+  reload: () => {},
 })
 
 export const useNotifications = () => useContext(NotificationContext)
@@ -31,8 +56,22 @@ type NotificationProviderProps = {
 }
 
 export default function NotificationProvider({ role, children }: NotificationProviderProps) {
-  const supabase = createClient()
+  const [supabase] = useState(() => createClient())
   const [notifications, setNotifications] = useState<AppNotification[]>([])
+  const [feed, setFeed] = useState<NotifFeed | null>(null)
+
+  const loadFeed = useCallback(async () => {
+    const { data, error } = await supabase.rpc('notif_list', { p_categoria: null, p_limit: 100 })
+    if (!error && data?.success) setFeed({ items: data.items ?? [], no_leidas: data.no_leidas ?? 0, por_categoria: data.por_categoria ?? {}, silenciadas: data.silenciadas ?? [] })
+  }, [supabase])
+  const markRead = useCallback(async (ids: number[]) => {
+    await supabase.rpc('notif_mark_read', { p_ids: ids })
+    await loadFeed()
+  }, [supabase, loadFeed])
+  const setMuted = useCallback(async (categoria: NotifCategoria, muted: boolean) => {
+    await supabase.rpc('notif_set_pref', { p_categoria: categoria, p_silenciada: muted })
+    await loadFeed()
+  }, [supabase, loadFeed])
 
   const addNotification = (title: string, message: string) => {
     setNotifications(prev => [{
@@ -46,6 +85,7 @@ export default function NotificationProvider({ role, children }: NotificationPro
 
   const markAllAsRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+    if (role === 'admin') void supabase.rpc('notif_mark_read', { p_ids: null }).then(() => loadFeed())
   }
 
   useEffect(() => {
@@ -102,43 +142,23 @@ export default function NotificationProvider({ role, children }: NotificationPro
 
     const channel = supabase.channel('system_notifications')
 
+    // Web: avisos dirigidos por permiso (la base solo entrega las filas que el usuario puede ver)
+    let timer: number | undefined
+    let first: number | undefined
     if (role === 'admin') {
+      first = window.setTimeout(() => void loadFeed(), 0)
+      timer = window.setInterval(() => void loadFeed(), 60000)
       channel.on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'transport_requests' },
+        { event: 'INSERT', schema: 'public', table: 'notifications' },
         (payload) => {
-          playNotification('admin')
-          addNotification(`Nueva Solicitud: ${payload.new.department}`, 'Se ha creado una nueva solicitud de transporte.')
-          toast.info(`Nueva Solicitud: ${payload.new.department}`, {
-            description: `Se ha creado una nueva solicitud de transporte.`
-          })
-        }
-      )
-      
-      channel.on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'vehicle_maintenance_records' },
-        (payload) => {
-          playNotification('admin')
-          addNotification(`Falla en Unidad: ${payload.new.vehicle_plate}`, payload.new.description)
-          toast.error(`⚠️ Falla en Unidad: ${payload.new.vehicle_plate}`, {
-            description: payload.new.description,
-            duration: 8000
-          })
-        }
-      )
-    }
-
-    // Caja: solicitudes de anticipo desde la app (RLS: solo quien tiene acceso a Caja las recibe)
-    if (role === 'admin') {
-      channel.on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'trip_advances', filter: 'source=eq.APP' },
-        (payload) => {
-          const amount = `S/ ${Number(payload.new.amount || 0).toFixed(2)}`
-          playNotification('admin')
-          addNotification(`Solicitud de anticipo ${payload.new.code}`, `${amount}: ${payload.new.reason || ''}`)
-          toast.info(`Solicitud de anticipo: ${amount}`, { description: `${payload.new.reason || ''} · Ver en Anticipos de viaje`, duration: 10000 })
+          const n = payload.new as Partial<NotifItem>
+          void loadFeed()
+          if (n.severidad === 'crit' || n.severidad === 'warn') {
+            playNotification('admin')
+            const show = n.severidad === 'crit' ? toast.error : toast.info
+            show(n.titulo || 'Nuevo aviso', { description: n.cuerpo || undefined, duration: n.severidad === 'crit' ? 10000 : 6000 })
+          }
         }
       )
     }
@@ -196,14 +216,16 @@ export default function NotificationProvider({ role, children }: NotificationPro
     channel.subscribe()
 
     return () => {
+      if (timer) window.clearInterval(timer)
+      if (first) window.clearTimeout(first)
       supabase.removeChannel(channel)
     }
-  }, [role, supabase])
+  }, [role, supabase, loadFeed])
 
-  const unreadCount = notifications.filter(n => !n.read).length
+  const unreadCount = role === 'admin' ? (feed?.no_leidas ?? 0) : notifications.filter(n => !n.read).length
 
   return (
-    <NotificationContext.Provider value={{ notifications, unreadCount, markAllAsRead }}>
+    <NotificationContext.Provider value={{ notifications, unreadCount, markAllAsRead, feed, markRead, setMuted, reload: () => void loadFeed() }}>
       {children}
     </NotificationContext.Provider>
   )

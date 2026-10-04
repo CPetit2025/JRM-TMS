@@ -1,107 +1,38 @@
 "use client"
-import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { AlertTriangle, Info, X } from 'lucide-react'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { AlertTriangle, ArrowRight, X } from 'lucide-react'
+import { useNotifications } from '@/components/NotificationProvider'
 
+// Franja bajo el encabezado: solo los avisos críticos sin leer de los módulos del usuario (los mismos de la campana,
+// ya filtrados por permiso). Antes consultaba fallas, SOAT y licencias para todos los usuarios por igual.
 export function NotificationBanner() {
-  const supabase = createClient()
-  const [alerts, setAlerts] = useState<{ id: string, message: string, type: 'warning' | 'error' | 'info' }[]>([])
-  const [isVisible, setIsVisible] = useState(true)
+  const { feed, markRead } = useNotifications()
+  const router = useRouter()
+  const [hidden, setHidden] = useState<number[]>([])
 
-  useEffect(() => {
-    fetchAlerts()
-    
-    // Optional: set up realtime if you want it to refresh automatically, 
-    // but for now a fetch on mount and interval is safer for complex queries.
-    const interval = setInterval(fetchAlerts, 60000) // refresh every 1 min
-    return () => clearInterval(interval)
-  }, [])
-
-  const fetchAlerts = async () => {
-    try {
-      const newAlerts: any[] = []
-      const today = new Date()
-      const thirtyDaysFromNow = new Date()
-      thirtyDaysFromNow.setDate(today.getDate() + 30)
-
-      // 1. Fetch Failures
-      const { data: failures } = await supabase
-        .from('vw_maintenance_backlog')
-        .select('id, vehicle_plate, description')
-        .in('severity', ['CRITICA', 'ALTA'])
-      
-      failures?.forEach(f => {
-        newAlerts.push({
-          id: `f-${f.id}`,
-          message: `Falla Abierta: Unidad ${f.vehicle_plate} - ${f.description.substring(0, 50)}...`,
-          type: 'error'
-        })
-      })
-
-      // 2. Fetch Expiring Vehicles
-      const { data: vehicles } = await supabase
-        .from('vehicles')
-        .select('plate, soat_expiration, technical_review_expiration')
-        .neq('status', 'INACTIVO')
-
-      vehicles?.forEach(v => {
-        if (v.soat_expiration) {
-          const soatDate = new Date(v.soat_expiration)
-          if (soatDate < today) newAlerts.push({ id: `v-soat-${v.plate}`, message: `SOAT Vencido: Unidad ${v.plate}`, type: 'error' })
-          else if (soatDate <= thirtyDaysFromNow) newAlerts.push({ id: `v-soat-${v.plate}`, message: `SOAT por vencer (${soatDate.toLocaleDateString()}): Unidad ${v.plate}`, type: 'warning' })
-        }
-        if (v.technical_review_expiration) {
-          const rtDate = new Date(v.technical_review_expiration)
-          if (rtDate < today) newAlerts.push({ id: `v-rt-${v.plate}`, message: `Rev. Técnica Vencida: Unidad ${v.plate}`, type: 'error' })
-          else if (rtDate <= thirtyDaysFromNow) newAlerts.push({ id: `v-rt-${v.plate}`, message: `Rev. Técnica por vencer (${rtDate.toLocaleDateString()}): Unidad ${v.plate}`, type: 'warning' })
-        }
-      })
-
-      // 3. Fetch Expiring Driver Licenses
-      const { data: drivers } = await supabase
-        .from('drivers')
-        .select('id, first_name, last_name, license_expiration')
-        .eq('is_active', true)
-        
-      drivers?.forEach(d => {
-        if (d.license_expiration) {
-          const licDate = new Date(d.license_expiration)
-          const name = `${d.first_name} ${d.last_name}`
-          if (licDate < today) newAlerts.push({ id: `d-lic-${d.id}`, message: `Licencia Vencida: Conductor ${name}`, type: 'error' })
-          else if (licDate <= thirtyDaysFromNow) newAlerts.push({ id: `d-lic-${d.id}`, message: `Licencia por vencer (${licDate.toLocaleDateString()}): Conductor ${name}`, type: 'warning' })
-        }
-      })
-
-      // Limit to 3 most critical to avoid flooding UI
-      setAlerts(newAlerts.sort((a, b) => a.type === 'error' ? -1 : 1).slice(0, 3))
-    } catch (e) {
-      console.error(e)
-    }
-  }
-
-  if (alerts.length === 0 || !isVisible) return null
+  const alerts = (feed?.items ?? []).filter(n => n.severidad === 'crit' && !n.leida && !hidden.includes(n.id)).slice(0, 3)
+  if (alerts.length === 0) return null
 
   return (
-    <div className="bg-amber-100 border-b border-amber-200 w-full z-10 px-6 py-2 flex flex-col sm:flex-row gap-2 justify-between items-start sm:items-center shadow-sm">
-      <div className="flex flex-col gap-1 w-full max-w-5xl">
+    <div className="z-10 flex w-full items-start justify-between gap-2 border-b border-red-200 bg-red-50 px-6 py-2 shadow-sm">
+      <ul className="flex w-full max-w-5xl flex-col gap-1">
         {alerts.map(a => (
-          <div key={a.id} className="flex items-center gap-2 text-sm font-medium">
-            {a.type === 'error' ? (
-              <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
-            ) : (
-              <Info className="w-4 h-4 text-amber-600 shrink-0" />
+          <li key={a.id} className="flex items-center gap-2 text-sm font-medium text-red-800">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-[#cf152d]" />
+            <span className="min-w-0 truncate">{a.titulo}{a.cuerpo ? ` — ${a.cuerpo}` : ''}</span>
+            {a.link && (
+              <button type="button" onClick={() => { void markRead([a.id]); router.push(a.link!) }}
+                className="flex shrink-0 items-center gap-0.5 text-xs font-bold text-[#002855] hover:text-[#cf152d]">
+                Ver <ArrowRight className="h-3 w-3" />
+              </button>
             )}
-            <span className={a.type === 'error' ? 'text-red-800' : 'text-amber-800'}>
-              {a.message}
-            </span>
-          </div>
+          </li>
         ))}
-      </div>
-      <button 
-        onClick={() => setIsVisible(false)}
-        className="p-1 hover:bg-amber-200 rounded-full transition-colors shrink-0 text-amber-700"
-      >
-        <X className="w-4 h-4" />
+      </ul>
+      <button type="button" onClick={() => setHidden(h => [...h, ...alerts.map(a => a.id)])} aria-label="Ocultar"
+        className="shrink-0 rounded-full p-1 text-red-700 transition-colors hover:bg-red-100">
+        <X className="h-4 w-4" />
       </button>
     </div>
   )
