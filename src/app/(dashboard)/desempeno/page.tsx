@@ -22,23 +22,31 @@ const ROLES_METAS: Array<[string, string]> = [['DESPACHO', 'Supervisor de Despac
 export default function IndicadoresPage() {
   const [tab, setTab] = useState<Tab | null>(null)
   const [mes, setMes] = useState(() => ymd(new Date()))
-  const [mio, setMio] = useState<Row | null>(null)
+  const [avance, setAvance] = useState<{ key: string; data: Row | null; error: string | null } | null>(null)
   const [tab_, setTablero] = useState<{ key: string; data: Row | null } | null>(null)
   const [nonce, setNonce] = useState(0)
   const [detalle, setDetalle] = useState<Row | null>(null)
   const [rolEquipo, setRolEquipo] = useState('DESPACHO')
 
+  const key = `${mes}|${nonce}`
+  const mio = avance?.key === key ? avance.data : null
+  const errorAvance = avance?.key === key ? avance.error : null
+
   useEffect(() => {
     let alive = true
-    supabase.rpc('kpi_mi_avance', { p_mes: mes }).then(({ data, error }) => {
+    Promise.resolve(supabase.rpc('kpi_mi_avance', { p_mes: mes })).then(({ data, error }) => {
       if (!alive) return
-      if (error || !data?.success) { toast.error(error?.message || data?.error); return }
-      setMio(data)
+      if (error || !data?.success) {
+        setAvance({ key, data: null, error: error?.message || data?.error || 'No se pudo cargar su avance.' })
+        return
+      }
+      setAvance({ key, data, error: null })
+    }).catch(() => {
+      if (alive) setAvance({ key, data: null, error: 'No se pudo conectar. Intente nuevamente.' })
     })
     return () => { alive = false }
-  }, [mes, nonce])
-  const revisor = !!mio?.revisor
-  const key = `${mes}|${nonce}`
+  }, [key, mes])
+  const revisor = !!avance?.data?.revisor
   useEffect(() => {
     if (!revisor) return
     let alive = true
@@ -50,8 +58,8 @@ export default function IndicadoresPage() {
     return () => { alive = false }
   }, [key, mes, revisor])
 
-  const conInforme: Row[] = (mio?.roles || []).filter((r: Row) => r.tiene_informe && r.rol !== 'SOPORTE')
-  const medido = (mio?.roles || []).length > 0
+  const conInforme: Row[] = (avance?.data?.roles || []).filter((r: Row) => r.tiene_informe && r.rol !== 'SOPORTE')
+  const medido = (avance?.data?.roles || []).length > 0
   const tabs = useMemo(() => {
     const t: Array<[Tab, string, typeof Gauge]> = []
     if (revisor) t.push(['tablero', 'Tablero', LayoutDashboard], ['equipo', 'Equipo', Users], ['informes', 'Informes', FileText])
@@ -88,7 +96,7 @@ export default function IndicadoresPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {conMes && <label className="text-sm text-slate-600">Mes <input type="month" className="ml-1 rounded-lg border px-2 py-1.5" value={mes.slice(0, 7)} onChange={e => e.target.value && setMes(`${e.target.value}-01`)} /></label>}
+          {conMes && <label className="text-sm text-slate-600">Mes <input type="month" className="ml-1 rounded-lg border px-2 py-1.5" value={mes.slice(0, 7)} onChange={e => { if (e.target.value) { setMes(`${e.target.value}-01`); setDetalle(null) } }} /></label>}
           {revisor && t && (tab === 'tablero' || tab === 'equipo') && (
             <button onClick={() => exportarTablero(t)} className="flex items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-sm font-semibold text-[#002855]"><Download className="h-4 w-4" />Exportar Excel</button>
           )}
@@ -102,7 +110,11 @@ export default function IndicadoresPage() {
           </button>
         ))}
       </div>
-      {!mio || !tab ? <Cargando />
+      {errorAvance ? <div role="alert" className="space-y-2 rounded-xl border bg-white p-6 text-sm text-slate-600">
+        <p>{errorAvance}</p>
+        <button onClick={() => setNonce(n => n + 1)} className="font-semibold text-[#002855]">Reintentar</button>
+      </div>
+        : !mio || !tab ? <Cargando />
         : detalle ? <Ficha k={detalle} onVolver={() => setDetalle(null)} volverTxt="Volver al equipo" />
         : tab === 'mio' ? <MiAvance data={mio} onInforme={conInforme.length ? () => go('informe') : undefined} />
         : tab === 'informe' ? <Informe roles={conInforme} onEnviado={() => setNonce(n => n + 1)} />

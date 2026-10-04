@@ -39,3 +39,10 @@ El día 5 de cada mes llega a la campana el aviso «Indicadores de <mes> listos�
 - **Permisos:**
   - quien tiene `desempeno` ahora también ve los KPI de Soporte Mecánico y revisa sus informes;
   - el supervisor de mantenimiento conserva ese acceso.
+
+## Revisión y selección de período
+
+- «Mi avance» oculta el resultado anterior mientras carga el mes elegido. Si falla, muestra el error y permite reintentar.
+- «Por revisar» incluye informes enviados de cualquier mes. El historial comprende el mes elegido en Tablero o Equipo y los dos anteriores; excluye los posteriores.
+- Cancelar el comentario o la confirmación no modifica el informe. Marcar «Revisado» requiere confirmación explícita; «Observar» exige un motivo.
+- Regresión de revisión y períodos: `node scripts/test-kpi-review.cjs` (también se ejecuta en el workflow de PR).

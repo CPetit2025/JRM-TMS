@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { AlertTriangle, Check, ClipboardList, FileWarning, Gauge, Info, ShieldAlert, Users, X } from 'lucide-react'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { createClient } from '@/lib/supabase/client'
+import { informesDelPeriodo, revisarInforme } from '@/lib/kpi/reportReview'
 import { fmt } from '@/lib/fleet/api'
 import { CALIF, CALIF_BAR, Calif, INFORME, MiniBarras, ROLES, ROL_COLOR, ROL_CORTO, Row, mesCorto, mesTxt, valorTxt } from './kpiUi'
 
@@ -189,24 +190,30 @@ export function Equipo({ t, rol, setRol, onVer }: { t: Row; rol: string; setRol:
 export function Informes({ t, onCambio }: { t: Row; onCambio: () => void }) {
   const [filtro, setFiltro] = useState<'pendientes' | 'todos'>('pendientes')
   const todos: Row[] = t.informes || []
-  const lista = filtro === 'pendientes' ? todos.filter(i => i.estado === 'ENVIADO') : todos
+  const lista = filtro === 'pendientes' ? todos.filter(i => i.estado === 'ENVIADO') : informesDelPeriodo(todos, t.periodo)
   const revisar = async (i: Row, estado: 'REVISADO' | 'OBSERVADO') => {
-    const comentario = estado === 'OBSERVADO' ? prompt('¿Qué debe corregir?') : prompt('Comentario (opcional):')
-    if (estado === 'OBSERVADO' && !comentario?.trim()) return
-    const fn = i.origen === 'SOPORTE' ? 'soporte_revisar_informe' : 'desempeno_revisar_informe'
-    const { data, error } = await supabase.rpc(fn, { p_id: i.id, p_estado: estado, p_comentario: comentario || null })
+    const resultado = await revisarInforme(estado, {
+      prompt: mensaje => window.prompt(mensaje),
+      confirm: mensaje => window.confirm(mensaje),
+      guardar: comentario => {
+        const fn = i.origen === 'SOPORTE' ? 'soporte_revisar_informe' : 'desempeno_revisar_informe'
+        return supabase.rpc(fn, { p_id: i.id, p_estado: estado, p_comentario: comentario })
+      },
+    })
+    if (!resultado) return
+    const { data, error } = resultado
     if (error || !data?.success) return toast.error(error?.message || data?.error)
     toast.success(estado === 'REVISADO' ? 'Informe revisado' : 'Informe observado'); onCambio()
   }
   return (
     <div className="space-y-3">
       <div className="flex gap-1">
-        {([['pendientes', `Por revisar (${todos.filter(i => i.estado === 'ENVIADO').length})`], ['todos', 'Últimos 3 meses']] as const).map(([k, l]) => (
+        {([['pendientes', `Por revisar (${todos.filter(i => i.estado === 'ENVIADO').length})`], ['todos', `3 meses hasta ${mesTxt(t.periodo)}`]] as const).map(([k, l]) => (
           <button key={k} onClick={() => setFiltro(k)} className={`rounded-full border px-3 py-1 text-sm ${filtro === k ? 'border-[#002855] bg-[#002855] text-white' : 'bg-white text-slate-600'}`}>{l}</button>
         ))}
       </div>
       <div className="rounded-xl border bg-white">
-        {lista.length === 0 ? <p className="p-6 text-center text-sm text-slate-500">{filtro === 'pendientes' ? 'No hay informes por revisar.' : 'Sin informes en los últimos 3 meses.'}</p> : lista.map(i => (
+        {lista.length === 0 ? <p className="p-6 text-center text-sm text-slate-500">{filtro === 'pendientes' ? 'No hay informes por revisar.' : 'Sin informes en los 3 meses del período seleccionado.'}</p> : lista.map(i => (
           <div key={`${i.origen}-${i.id}`} className="space-y-1 border-t p-3 text-sm first:border-t-0">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-x-2">

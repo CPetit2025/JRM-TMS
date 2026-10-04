@@ -24,5 +24,6 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - run: node scripts/test-kpi-review.cjs
       - run: npm run check:guards
       - run: npm run typecheck
