@@ -38,6 +38,7 @@ export const NAV_SECTIONS: NavSection[] = [
     { href: '/despacho', label: 'Gestión de Despachos', icon: PackageCheck, show: any('despacho'), keywords: 'despacho viaje unidad' },
     { href: '/despacho/documentos', label: 'Documentos de Despacho', icon: FileText, show: any('documentario'), keywords: 'guia packing nota documentario' },
     { href: '/monitoreo', label: 'Monitoreo GPS', icon: MapIcon, show: any('monitoreo'), keywords: 'gps mapa seguimiento' },
+    { href: '/desempeno', label: 'Desempeño por rol', icon: Gauge, show: any('desempeno', 'despacho-aprobacion', 'documentario', 'caja-aprobacion'), keywords: 'desempeño kpi indicador conductor supervisor informe mensual productividad' },
     { href: '/contratos/servicios', label: 'Servicios de Contrato', icon: Receipt, show: any('contratos-servicios'), keywords: 'servicio gasto montacarga grua estiba' },
   ] }] },
   { id: 'apt', title: 'Almacén APT', icon: Warehouse, groups: [{ items: [

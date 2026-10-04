@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { AlertTriangle, Banknote, Bot, CalendarClock, Camera, CheckCircle2, ChevronRight, ClipboardCheck, DollarSign, Forklift, Loader2, MapPin, RefreshCw, ShieldCheck, Truck, Wrench } from 'lucide-react'
 import { useActiveTrip } from '@/contexts/ActiveTripContext'
+import { DesempenoConductorCard } from '@/components/driver/DesempenoConductorCard'
 
 function greeting() {
   const hour = new Date().getHours()
@@ -49,6 +50,8 @@ export default function OperationalHome() {
     {!driver && user?.employee_type !== 'CONDUCTOR' && <Link href="/app/equipos" className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm">
       <span className="rounded-full bg-blue-50 p-2 text-[#002855]"><Forklift className="h-6 w-6" /></span><span className="flex-1"><b className="block text-[#002855]">Equipos</b><small className="text-slate-500">Horómetro del turno y checklist del montacargas o elevador</small></span><ChevronRight className="h-5 w-5 text-slate-400" />
     </Link>}
+
+    {driver && <DesempenoConductorCard />}
 
     <button type="button" onClick={() => window.dispatchEvent(new Event('jrm:open-ai'))} className="flex w-full items-center gap-3 rounded-2xl bg-gradient-to-r from-[#002855] to-[#00509d] p-4 text-left text-white shadow-md">
       <span className="rounded-full bg-white/15 p-2"><Bot className="h-6 w-6 text-[#f8c400]" /></span><span className="flex-1"><b className="block">Copiloto IA</b><small className="text-blue-100">Habla, consulta tu viaje o prepara una acción</small></span><ChevronRight className="h-5 w-5" />

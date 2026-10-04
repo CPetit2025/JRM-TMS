@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Clock, FileSpreadsheet, FileText, ListTree, Loader2, RefreshCw, Trash2, Truck, Upload } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock, FileCheck2, FileSpreadsheet, FileText, ListTree, Loader2, RefreshCw, Trash2, Truck, Upload } from 'lucide-react'
+import { Modal } from '@/components/ui/modal'
 import { GuiaDetalleModal } from '@/components/guias/GuiaDetalleModal'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
@@ -51,6 +52,8 @@ export default function DocumentosDespachoPage() {
   const [busy, setBusy] = useState<string | null>(null)
 
   const [reload, setReload] = useState(0)
+  const [anulando, setAnulando] = useState<Doc | null>(null)
+  const [cargos, setCargos] = useState<Record<string, string>>({})
   const load = useCallback(async () => { setReload(n => n + 1) }, [])
 
   useEffect(() => {
@@ -59,7 +62,14 @@ export default function DocumentosDespachoPage() {
       const { data, error } = await supabase.rpc('get_documentary_queue', { p_include_departed: showDeparted })
       if (cancel) return
       if (error) toast.error(errorMessage(error))
-      setItems(error ? [] : (data || []) as QueueItem[])
+      const list = error ? [] : (data || []) as QueueItem[]
+      setItems(list)
+      // Cargo (guía firmada) de los despachos que ya salieron
+      const ids = list.filter(i => i.status !== 'PROGRAMADO').map(i => i.id)
+      if (ids.length) {
+        const { data: c } = await supabase.from('dispatch_cargos').select('dispatch_id, recibido_at').in('dispatch_id', ids)
+        if (!cancel) setCargos(Object.fromEntries((c || []).map(x => [x.dispatch_id, x.recibido_at])))
+      }
     }
     void run()
     return () => { cancel = true }
@@ -89,14 +99,8 @@ export default function DocumentosDespachoPage() {
     } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(null) }
   }
 
-  const voidDoc = async (doc: Doc) => {
-    const reason = window.prompt(`Motivo de la anulación de ${DOC_LABEL[doc.doc_type]} ${doc.document_number || ''}`)
-    if (reason === null) return
-    const { data, error } = await supabase.rpc('void_dispatch_document', { p_document_id: doc.id, p_reason: reason })
-    if (error || !data?.success) { toast.error(error ? errorMessage(error) : data?.error); return }
-    toast.success('Documento anulado')
-    await load()
-  }
+  // Anulación con causa de lista cerrada (KPI de documentos anulados por error, migración 20261005180000)
+  const voidDoc = (doc: Doc) => setAnulando(doc)
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-4">
@@ -128,15 +132,17 @@ export default function DocumentosDespachoPage() {
         : visible.length === 0 ? <p className="text-slate-400 text-sm p-6 text-center border rounded-xl bg-white">No hay despachos en esta bandeja.</p>
         : visible.map(item => (
           <DispatchCard key={item.id} item={item} canEdit={canEdit && item.status === 'PROGRAMADO'} busy={busy === item.id}
-            onConfirm={() => confirmDocs(item)} onVoid={voidDoc} onOpen={openDoc} onUploaded={load} />
+            onConfirm={() => confirmDocs(item)} onVoid={voidDoc} onOpen={openDoc} onUploaded={load}
+            cargo={item.status !== 'PROGRAMADO' && item.docs_required ? { recibido: cargos[item.id] || null, canEdit } : null} />
         ))}
+      {anulando && <AnularModal doc={anulando} onClose={() => setAnulando(null)} onDone={() => { setAnulando(null); void load() }} />}
     </div>
   )
 }
 
-function DispatchCard({ item, canEdit, busy, onConfirm, onVoid, onOpen, onUploaded }: {
+function DispatchCard({ item, canEdit, busy, onConfirm, onVoid, onOpen, onUploaded, cargo }: {
   item: QueueItem; canEdit: boolean; busy: boolean; onConfirm: () => void; onVoid: (d: Doc) => void
-  onOpen: (p: string) => void; onUploaded: () => Promise<void>
+  onOpen: (p: string) => void; onUploaded: () => Promise<void>; cargo: { recibido: string | null; canEdit: boolean } | null
 }) {
   const h = hoursLeft(item.scheduled_departure)
   const urgent = item.doc_status !== 'LISTO' && item.doc_status !== 'SALIO' && h !== null && h < 2
@@ -192,7 +198,79 @@ function DispatchCard({ item, canEdit, busy, onConfirm, onVoid, onOpen, onUpload
           <DocList docs={generalDocs} canEdit={canEdit} onVoid={onVoid} onOpen={onOpen} />
           {canEdit && <UploadForm dispatchId={item.id} requestId={null} isPickup={item.is_pickup} onUploaded={onUploaded} />}
         </div>
+        {cargo && <CargoSection dispatchId={item.id} recibido={cargo.recibido} canEdit={cargo.canEdit} onSaved={onUploaded} />}
       </div>
+    </div>
+  )
+}
+
+const CAUSAS_ANULACION: Array<[string, string]> = [
+  ['ERROR_DATOS', 'Error en datos (RUC, dirección, cliente)'], ['ERROR_CANTIDAD', 'Error en cantidades o productos'], ['ERROR_DESTINO', 'Error en destino o punto de llegada'],
+  ['CAMBIO_UNIDAD', 'Cambió la unidad'], ['CAMBIO_CONDUCTOR', 'Cambió el conductor'], ['SOLICITUD_CLIENTE', 'Pedido del cliente'], ['OTRO', 'Otro (detallar)'],
+]
+
+function AnularModal({ doc, onClose, onDone }: { doc: Doc; onClose: () => void; onDone: () => void }) {
+  const supabase = useMemo(() => createClient(), [])
+  const [causa, setCausa] = useState('')
+  const [detalle, setDetalle] = useState('')
+  const [saving, setSaving] = useState(false)
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault(); setSaving(true)
+    const { data, error } = await supabase.rpc('anular_documento', { p_document_id: doc.id, p_causa: causa, p_detalle: detalle || null })
+    setSaving(false)
+    if (error || !data?.success) { toast.error(error ? errorMessage(error) : data?.error); return }
+    toast.success('Documento anulado'); onDone()
+  }
+  return (
+    <Modal isOpen onClose={onClose} title={`Anular ${DOC_LABEL[doc.doc_type]} ${doc.document_number || ''}`} maxWidth="max-w-md">
+      <form onSubmit={submit} className="space-y-3 text-sm">
+        <label className="block">Causa<select required value={causa} onChange={e => setCausa(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2">
+          <option value="">Seleccionar…</option>{CAUSAS_ANULACION.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
+        <label className="block">Detalle {causa === 'OTRO' ? '(obligatorio)' : '(opcional)'}<input required={causa === 'OTRO'} value={detalle} onChange={e => setDetalle(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+        <p className="text-xs text-slate-500">Las causas «Error en…» cuentan en el indicador de documentos anulados por error del Asistente Documentario.</p>
+        <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2">Cancelar</button>
+          <button disabled={saving} className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 font-semibold text-white">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Anular</button></div>
+      </form>
+    </Modal>
+  )
+}
+
+// Cargo: guía de remisión firmada por el cliente, registrada después de la entrega (KPI: cargo en ≤ 48 h)
+function CargoSection({ dispatchId, recibido, canEdit, onSaved }: { dispatchId: string; recibido: string | null; canEdit: boolean; onSaved: () => Promise<void> }) {
+  const supabase = useMemo(() => createClient(), [])
+  const [file, setFile] = useState<File | null>(null)
+  const [nota, setNota] = useState('')
+  const [saving, setSaving] = useState(false)
+  const submit = async () => {
+    if (!file && !nota.trim()) { toast.error('Adjunte la guía firmada o indique una nota'); return }
+    setSaving(true)
+    try {
+      let path: string | null = null
+      if (file) {
+        path = `${dispatchId}/cargo-${crypto.randomUUID()}-${file.name.replace(/[^\w.-]+/g, '_').slice(-80)}`
+        const { error: upErr } = await supabase.storage.from(DOCS_BUCKET).upload(path, file, { contentType: file.type || 'application/pdf' })
+        if (upErr) throw upErr
+      }
+      const { data, error } = await supabase.rpc('registrar_cargo', { p_dispatch_id: dispatchId, p_file_path: path, p_notas: nota.trim() || null })
+      if (error || !data?.success) {
+        if (path) await supabase.storage.from(DOCS_BUCKET).remove([path])
+        throw new Error(error ? errorMessage(error) : data?.error)
+      }
+      toast.success('Cargo registrado'); setFile(null); setNota('')
+      await onSaved()
+    } catch (e) { toast.error(errorMessage(e)) } finally { setSaving(false) }
+  }
+  return (
+    <div className="p-4 border-t bg-emerald-50/40 rounded-b-xl text-sm">
+      <div className="font-semibold text-slate-700 flex items-center gap-1.5"><FileCheck2 className="w-4 h-4 text-emerald-700" />Cargo (guía firmada por el cliente)</div>
+      {recibido ? <p className="text-xs text-emerald-700 mt-1">Recibido el {fmtDate(recibido, true)}</p> : canEdit ? (
+        <div className="mt-2 flex flex-wrap items-end gap-2">
+          <input type="file" accept="application/pdf,image/*" onChange={e => setFile(e.target.files?.[0] || null)} className="text-xs" />
+          <input value={nota} onChange={e => setNota(e.target.value)} placeholder="Nota (opcional)" className="border rounded-lg px-2 py-1.5 bg-white" />
+          <button onClick={submit} disabled={saving} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-semibold flex items-center gap-1.5 disabled:opacity-50">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}Registrar cargo</button>
+        </div>
+      ) : <p className="text-xs text-amber-700 mt-1">Pendiente de recepción</p>}
     </div>
   )
 }
