@@ -44,7 +44,8 @@ BEGIN
   -- T3
   IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_kpi_dispatch_log' AND tgrelid = 'public.dispatches'::regclass) THEN v_pass := v_pass + 1;
   ELSE v_fail := v_fail || 'T3 historial de despachos'::text; END IF;
-  v_rep := 'historial ' || (SELECT count(*) FROM public.kpi_dispatch_log) || ' estados';
+  v_rep := 'historial ' || (SELECT count(*) FROM public.kpi_dispatch_log) || ' estados, despachos 90 d: '
+        || (SELECT count(*) || ' (con salida ' || count(salida_at) || ', con entrega ' || count(entrega_at) || ')' FROM public.kpi_despachos_v WHERE programado > now() - interval '90 days');
 
   -- T4
   v_prev := (date_trunc('month', v_hoy) - interval '1 month')::date;
