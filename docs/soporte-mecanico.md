@@ -19,6 +19,14 @@ revisa los informes y ajusta los plazos.
 
 ## Avisos de fallas (punto 2)
 
+**¿Quién puede reportar?**
+- El conductor, desde el app.
+- El Jefe de Distribución y los supervisores de transporte y despacho, con el botón **Reportar falla** en Torre de
+  Control y en Gestión de Despachos. Usa `reportar_falla`, de la migración `20261005160000`.
+
+Antes de esa migración, la política de `maintenance_requests` solo dejaba registrar fallas a quien tenía
+`mantenimiento-fallas`. Cada usuario ve las fallas que él mismo reportó.
+
 Cuando el conductor (app), el Jefe de Distribución, el supervisor de transporte o cualquier usuario registra una falla,
 la campana avisa a Soporte Mecánico, Fallas y Mantenimiento. El aviso indica la unidad, la criticidad y **quién la
 reportó**. Además:

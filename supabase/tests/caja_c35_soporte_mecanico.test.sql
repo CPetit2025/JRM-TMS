@@ -1,6 +1,6 @@
 -- CAJA C35 — Soporte Mecánico: rol, aviso de fallas, capacidad de respuesta, KPI e informe mensual.
---   T1 rol Soporte Mecánico con su permiso y los de fallas y OT; T2 una falla reportada por el Jefe de Distribución
---   avisa a Soporte Mecánico, indica quién la reportó y queda en el historial; T3 el técnico la toma: primera atención,
+--   T1 rol Soporte Mecánico con su permiso y los de fallas y OT; T2 el Jefe de Distribución (permisos de despacho)
+--   reporta una falla con reportar_falla, que avisa a Soporte Mecánico, indica quién la reportó y queda en el historial; T3 el técnico la toma: primera atención,
 --   responsable e historial; T4 sus KPI del mes cuentan la falla con su tiempo de respuesta, índice y detalle;
 --   T5 una falla crítica sin atención fuera del SLA avisa; T6 el día 1 recuerda el informe y, pasado el plazo, avisa el
 --   atraso; T7 el técnico presenta el informe del mes anterior con los días de atraso y el supervisor lo revisa (no el
@@ -39,9 +39,10 @@ BEGIN
 
   -- T2 (reporte del Jefe de Distribución desde la web)
   PERFORM pg_temp.as_user(v_jefe);
-  INSERT INTO public.maintenance_requests (vehicle_plate, description, severity) VALUES (v_plate, 'ZZ C35 ruido en el embrague ' || gen_random_uuid(), 'ALTA')
-  RETURNING id INTO v_req;
+  a := public.reportar_falla(v_plate, 'ZZ C35 ruido en el embrague ' || gen_random_uuid(), 'ALTA', NULL);
   PERFORM pg_temp.as_user(NULL);
+  v_req := (a ->> 'id')::uuid;
+  IF v_req IS NULL THEN RAISE EXCEPTION 'CAJA C35 FAIL (%/8): T2 el Jefe de Distribución no pudo reportar: %', v_pass, a::text; END IF;
   SELECT titulo || ' | ' || cuerpo INTO v_rep FROM public.notifications WHERE dedupe_key = 'fal-' || v_req AND 'mantenimiento-soporte' = ANY (permisos);
   IF v_rep LIKE '%' || v_plate || '%' AND v_rep LIKE '%ZZ C35 jefe%'
      AND EXISTS (SELECT 1 FROM public.maintenance_request_events WHERE request_id = v_req AND evento = 'REPORTADA' AND by = v_jefe)

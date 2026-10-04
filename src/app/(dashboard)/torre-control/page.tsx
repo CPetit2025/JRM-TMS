@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { usePermissions } from '@/hooks/usePermissions'
+import { ReportarFallaButton } from '@/components/mantenimiento/ReportarFalla'
 
 interface DispatchRequest {
   transport_request_id: string
@@ -224,6 +225,8 @@ Equipo JRM TMS`
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Torre de Control</h1>
           <p className="text-sm text-slate-500 mt-1">Supervisión operativa y telemetría de flota en tiempo real.</p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        <ReportarFallaButton />
         {canWrite('despacho') && <button
           onClick={handleShareTracking}
           disabled={isSharing}
@@ -232,6 +235,7 @@ Equipo JRM TMS`
           {isSharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
           Compartir Visibilidad
         </button>}
+        </div>
       </div>
 
       {/* KPI Cards */}
