@@ -22,6 +22,7 @@ const row = (id, values = {}) => ({ id, code: id, date: '2026-10-01', status: 'E
 test('fechas usan Lima; rangos inválidos y datos guardados corruptos se rechazan', () => {
   assert.equal(model.limaToday(new Date('2026-10-04T02:00:00Z')), '2026-10-03')
   assert.equal(model.validDate('2026-02-30'), false)
+  assert.equal(model.previousMonth(new Date('2026-01-01T02:00:00Z')), '2025-11-01')
   assert.ok(model.validateRange({ from: '2026-10-05', to: '2026-10-04' }))
   assert.equal(model.parseFilters('{bad').compare, 'previous')
   assert.equal(model.parseFilters('{"compare":"unexpected"}').compare, 'previous')
@@ -133,3 +134,53 @@ test('Excel incluye filtros, fórmulas y todos los registros filtrados, no solo 
   assert.ok(global.analyticsExport.sheets.Indicadores[0].Fórmula)
   delete global.analyticsExport
 })
+
+for (const kind of ['Desempeno', 'Soporte']) {
+  test(`formulario ${kind}: oculta textos del período anterior y no permite enviar durante la carga`, async () => {
+    const pending = []
+    const fake = {
+      auth: { getUser: async () => ({ data: { user: { id: 'user' } }, error: null }) },
+      rpc: () => { const d = deferred(); pending.push({ kind: 'kpis', ...d }); return d.promise },
+      from: () => {
+        const query = { select: () => query, eq: () => query, order: () => query,
+          limit: () => { const d = deferred(); pending.push({ kind: 'history', ...d }); return d.promise },
+          maybeSingle: () => { const d = deferred(); pending.push({ kind: 'current', ...d }); return d.promise },
+        }
+        return query
+      },
+    }
+    const icons = new Proxy({}, { get: () => 'i' })
+    const mocks = {
+      'next/navigation': { useSearchParams: () => new URLSearchParams() },
+      'next/link': { __esModule: true, default: 'a' }, 'lucide-react': icons,
+      'sonner': { toast: { error: () => {}, success: () => {} } },
+      '@/lib/supabase/client': { createClient: () => fake },
+      '@/hooks/usePermissions': { usePermissions: () => ({ hasAccess: () => false }) },
+      '@/lib/analytics/model': model, '@/lib/analytics/kpi': kpi,
+      '@/lib/analytics/export': {}, '@/lib/kpi/reportReview': {}, '@/lib/fleet/api': { fmt: String },
+      '@/components/kpi/kpiUi': { INFORME: {}, Indice: () => null, fecha: String, mesTxt: String },
+      '@/components/kpi/MiAvance': {}, '@/components/kpi/TableroKpi': {},
+      './SoportePanel': { __esModule: true, default: () => null },
+    }
+    const Component = load(`src/components/analytics/${kind}Panel.tsx`, mocks)[`Informe${kind}`]
+    let root
+    await renderer.act(async () => { root = renderer.create(React.createElement(Component, { roles: [{ rol: 'DESPACHO' }], onEnviado: () => {} })) })
+    const finish = async text => {
+      await renderer.act(async () => {
+        for (const d of pending.splice(0)) {
+          if (d.kind === 'kpis') d.resolve({ data: { success: true, roles: [{ rol: 'DESPACHO' }] }, error: null })
+          else if (d.kind === 'history') d.resolve({ data: [], error: null })
+          else d.resolve({ data: { id: 'report', rol: 'DESPACHO', periodo: root.root.findAllByType('input').find(n => n.props.type === 'month').props.value + '-01', estado: 'ENVIADO', logros: text }, error: null })
+        }
+      })
+    }
+    await finish('Informe del primer mes')
+    assert.equal(root.root.findAllByType('textarea')[0].props.value, 'Informe del primer mes')
+    await renderer.act(async () => { root.root.findAllByType('input').find(n => n.props.type === 'month').props.onChange({ target: { value: '2026-07' } }) })
+    assert.equal(root.root.findAllByType('textarea').length, 0)
+    assert.equal(root.root.findAllByType('button').filter(n => n.props.children?.includes?.('Enviar informe')).length, 0)
+    await finish('Informe del segundo mes')
+    assert.equal(root.root.findAllByType('textarea')[0].props.value, 'Informe del segundo mes')
+    await renderer.act(async () => root.unmount())
+  })
+}

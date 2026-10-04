@@ -1,17 +1,17 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import SoportePanel from './SoportePanel'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useSearchParams } from 'next/navigation'
-import { allPages, defaults, limaToday, validDate } from '@/lib/analytics/model'
+import { allPages, defaults, limaToday, previousMonth, validDate } from '@/lib/analytics/model'
 import { filterKpi, kpiDataset, type KpiFilters } from '@/lib/analytics/kpi'
 import { exportReport } from '@/lib/analytics/export'
 import { toast } from 'sonner'
 import { ClipboardList, Download, FileText, Gauge, LayoutDashboard, Loader2, Send, Settings2, Users, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { fmt } from '@/lib/fleet/api'
-import { Ficha, INFORME, Indice, ROL_COLOR, Row, fecha, mesTxt, ymd } from '@/components/kpi/kpiUi'
+import { Ficha, INFORME, Indice, ROL_COLOR, Row, fecha, mesTxt } from '@/components/kpi/kpiUi'
 import { MiAvance } from '@/components/kpi/MiAvance'
 import { Equipo, Informes, Tablero, exportarTablero } from '@/components/kpi/TableroKpi'
 
@@ -145,7 +145,7 @@ export default function DesempenoPanel() {
       </div>
       {revisor && original && ['tablero', 'equipo', 'informes'].includes(tab || '') && <div className="grid gap-3 rounded-xl border bg-white p-4 text-xs sm:grid-cols-2 lg:grid-cols-4">
         <label>Rol<select className="mt-1 w-full rounded-lg border p-2" value={filtros.role} onChange={e => { setFiltros({ ...filtros, role: e.target.value, person: '' }); setDetalle(null); if (e.target.value) setRolEquipo(e.target.value) }}><option value="">Todos los roles</option>{(original.roles || []).map((r: Row) => <option key={r.rol} value={r.rol}>{r.nombre}</option>)}</select></label>
-        <label>Persona<select className="mt-1 w-full rounded-lg border p-2" value={filtros.person} onChange={e => { setFiltros({ ...filtros, person: e.target.value }); setDetalle(null) }}><option value="">Todas las personas</option>{[...new Map<string, string>((original.roles || []).filter((r: Row) => !filtros.role || r.rol === filtros.role).flatMap((r: Row) => (r.miembros || []).map((m: Row) => [String(m.user_id || m.sujeto), String(m.nombre)] as [string, string]))).entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
+        <label>Persona<select className="mt-1 w-full rounded-lg border p-2" value={filtros.person} onChange={e => { setFiltros({ ...filtros, person: e.target.value }); setDetalle(null); const r = (original.roles || []).find((r: Row) => (r.miembros || []).some((m: Row) => String(m.user_id || m.sujeto) === e.target.value)); if (r) setRolEquipo(r.rol) }}><option value="">Todas las personas</option>{[...new Map<string, string>((original.roles || []).filter((r: Row) => !filtros.role || r.rol === filtros.role).flatMap((r: Row) => (r.miembros || []).map((m: Row) => [String(m.user_id || m.sujeto), String(m.nombre)] as [string, string]))).entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
         <label>Calificación<select className="mt-1 w-full rounded-lg border p-2" value={filtros.rating} onChange={e => { setFiltros({ ...filtros, rating: e.target.value }); setDetalle(null) }}><option value="">Todas</option>{['EXCELENTE', 'BUENO', 'REGULAR', 'BAJO', 'SIN_DATOS'].map(c => <option key={c} value={c}>{c.replace('_', ' ')}</option>)}</select></label>
         {tab === 'informes' ? <label>Estado del informe<select className="mt-1 w-full rounded-lg border p-2" value={filtros.report} onChange={e => setFiltros({ ...filtros, report: e.target.value })}><option value="">Todos</option>{['ENVIADO', 'REVISADO', 'OBSERVADO'].map(c => <option key={c}>{c}</option>)}</select></label> : <p className="text-slate-500">Índice general: promedio de los roles visibles con datos. La evolución corresponde a las personas seleccionadas.</p>}
       </div>}
@@ -157,7 +157,7 @@ export default function DesempenoPanel() {
         : detalle ? <Ficha k={detalle} onVolver={() => setDetalle(null)} volverTxt="Volver al equipo" />
         : tab === 'mio' ? <MiAvance data={mio} onInforme={conInforme.length ? () => go('informe') : undefined} />
         : tab === 'soporte' && soporte ? <SoportePanel />
-        : tab === 'informe' ? <Informe roles={conInforme} onEnviado={() => setNonce(n => n + 1)} />
+        : tab === 'informe' ? <InformeDesempeno roles={conInforme} onEnviado={() => setNonce(n => n + 1)} />
         : tab === 'metas' && revisor ? <Metas />
         : cargandoTablero ? <Cargando />
         : !t ? <p className="rounded-xl border bg-white p-6 text-sm text-slate-500">No se pudo cargar el tablero.</p>
@@ -173,26 +173,44 @@ function Cargando() {
   return <div className="flex justify-center p-16"><Loader2 className="h-7 w-7 animate-spin text-[#002855]" /></div>
 }
 
-function Informe({ roles, onEnviado }: { roles: Row[]; onEnviado: () => void }) {
-  const prev = useMemo(() => { const d = new Date(); return ymd(new Date(d.getFullYear(), d.getMonth() - 1, 1)) }, [])
+export function InformeDesempeno({ roles, onEnviado }: { roles: Row[]; onEnviado: () => void }) {
+  const prev = useMemo(() => previousMonth(), [])
   const [rol, setRol] = useState(roles[0]?.rol || '')
   const [periodo, setPeriodo] = useState(prev)
   const [k, setK] = useState<Row | null>(null)
   const [mios, setMios] = useState<Row[]>([])
   const [form, setForm] = useState({ logros: '', problemas: '', acciones: '' })
   const [saving, setSaving] = useState(false)
-  const load = useCallback(() => {
-    supabase.rpc('desempeno_mio', { p_mes: periodo }).then(({ data }) => setK((data?.roles || []).find((x: Row) => x.rol === rol) || null))
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) return
-      supabase.from('desempeno_informes').select('*').eq('user_id', data.user.id).order('periodo', { ascending: false }).limit(24).then(({ data: r }) => {
-        setMios(r || [])
-        const i = (r || []).find(x => x.periodo === periodo && x.rol === rol)
-        setForm({ logros: i?.logros || '', problemas: i?.problemas || '', acciones: i?.acciones || '' })
-      })
-    })
-  }, [periodo, rol])
-  useEffect(() => { load() }, [load])
+  const request = useRef(0)
+  const requestKey = `${periodo}|${rol}`
+  const [loadedKey, setLoadedKey] = useState('')
+  const [failure, setFailure] = useState<{ key: string; message: string } | null>(null)
+  const load = useCallback(async () => {
+    const generation = ++request.current
+    try {
+      const { data: auth, error: authError } = await supabase.auth.getUser()
+      if (authError || !auth.user) throw Error('No se pudo validar su sesión.')
+      const [kpis, history, current] = await Promise.all([
+        supabase.rpc('desempeno_mio', { p_mes: periodo }),
+        supabase.from('desempeno_informes').select('*').eq('user_id', auth.user.id).order('periodo', { ascending: false }).limit(24),
+        supabase.from('desempeno_informes').select('*').eq('user_id', auth.user.id).eq('periodo', periodo).eq('rol', rol).maybeSingle(),
+      ])
+      if (kpis.error || !kpis.data?.success || history.error || current.error) throw Error(kpis.error?.message || kpis.data?.error || history.error?.message || current.error?.message || 'No se pudo cargar el informe.')
+      if (generation !== request.current) return
+      setK((kpis.data.roles || []).find((x: Row) => x.rol === rol) || null)
+      const list = history.data || []
+      setMios(current.data && !list.some((i: Row) => i.id === current.data.id) ? [current.data, ...list] : list)
+      setForm({ logros: current.data?.logros || '', problemas: current.data?.problemas || '', acciones: current.data?.acciones || '' })
+      setLoadedKey(requestKey)
+    } catch (error) {
+      if (generation === request.current) setFailure({ key: requestKey, message: error instanceof Error ? error.message : 'No se pudo cargar el informe.' })
+    }
+  }, [periodo, rol, requestKey])
+  useEffect(() => {
+    let alive = true
+    void Promise.resolve().then(() => { if (alive) void load() })
+    return () => { alive = false; request.current += 1 }
+  }, [load])
   const actual = mios.find(x => x.periodo === periodo && x.rol === rol)
   const bloqueado = actual?.estado === 'REVISADO'
   const enviar = async () => {
@@ -205,6 +223,7 @@ function Informe({ roles, onEnviado }: { roles: Row[]; onEnviado: () => void }) 
   }
   const inf = k?.informe || {}
   const field = 'w-full rounded-lg border px-3 py-2 text-sm'
+  if (loadedKey !== requestKey) return <div className="space-y-3 rounded-xl border bg-white p-4 text-sm">{roles.length > 1 && <select value={rol} onChange={e => setRol(e.target.value)} className="rounded-lg border p-2">{roles.map(r => <option key={r.rol} value={r.rol}>{r.rol_nombre}</option>)}</select>}<label>Mes del informe <input type="month" max={prev.slice(0, 7)} value={periodo.slice(0, 7)} onChange={e => e.target.value && setPeriodo(`${e.target.value}-01`)} className="rounded-lg border p-2" /></label>{failure?.key === requestKey ? <div role="alert"><p>{failure.message}</p><button onClick={() => void load()} className="font-semibold text-[#002855]">Reintentar</button></div> : <p role="status">Cargando el informe del período seleccionado…</p>}</div>
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
       <div className="space-y-3 rounded-xl border bg-white p-4 text-sm">

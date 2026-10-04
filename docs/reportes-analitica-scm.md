@@ -34,3 +34,5 @@ Punto único de consulta `/reportes`. El registro operativo permanece en sus mó
 - `node scripts/test-analytics.cjs`: pruebas de rangos, cohortes, filtros, paginación, exportación y carreras de consultas en React.
 - `node scripts/test-kpi-review.cjs`: cancelación, confirmación y ventana de informes. Ambas suites corren en la verificación de PR.
 - No agrega migraciones ni cambia fórmulas SQL ni políticas RLS. La vista previa de Vercel valida el build con la configuración real; este entorno local no tiene variables de Supabase.
+
+Los formularios de informes esperan la ficha y el registro del período antes de habilitar la edición; consultan el informe seleccionado aunque esté fuera de la lista reciente. Respuestas antiguas no sustituyen el texto de otro mes. La confirmación explícita también se aplica a la revisión de Soporte.

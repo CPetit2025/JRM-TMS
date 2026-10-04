@@ -1,7 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { limaToday, previousMonth } from '@/lib/analytics/model'
+import { revisarInforme } from '@/lib/kpi/reportReview'
 import { toast } from 'sonner'
 import { ArrowLeft, Check, ClipboardList, Gauge, Loader2, RefreshCw, Send, Settings2, Timer, Users, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -16,7 +18,6 @@ type Row = Record<string, any> // eslint-disable-line @typescript-eslint/no-expl
 type Tab = 'desempeno' | 'informe' | 'equipo' | 'plazos'
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'setiembre', 'octubre', 'noviembre', 'diciembre']
 const mesTxt = (d?: string) => { if (!d) return ''; const [y, m] = d.slice(0, 7).split('-').map(Number); return `${MESES[m - 1]} ${y}` }
-const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
 const fechaHora = (s?: string | null) => (s ? new Date(s).toLocaleString('es-PE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—')
 const horas = (h: unknown) => (h == null ? '—' : Number(h) < 1 ? `${Math.round(Number(h) * 60)} min` : Number(h) < 48 ? `${fmt(Number(h), 1)} h` : `${fmt(Number(h) / 24, 1)} d`)
 const CALIF: Record<string, [string, string]> = {
@@ -40,7 +41,7 @@ export default function SoportePanel() {
     }, 0)
     return () => window.clearTimeout(t)
   }, [])
-  const [mes, setMes] = useState(() => ymd(new Date()))
+  const [mes, setMes] = useState(() => `${limaToday().slice(0, 7)}-01`)
   const [usuario, setUsuario] = useState<{ id: string; nombre: string } | null>(null)
 
   const go = (k: Tab) => { setTab(k); const q = new URLSearchParams(window.location.search); q.set('section', 'desempeno'); q.set('tab', 'soporte'); q.set('supportTab', k); window.history.replaceState(null, '', `?${q}`) }
@@ -66,7 +67,7 @@ export default function SoportePanel() {
         ))}
       </div>
       {tab === 'desempeno' && <Desempeno mes={mes} usuario={usuario} onVolver={usuario ? () => { setUsuario(null); go('equipo') } : undefined} />}
-      {tab === 'informe' && <Informe />}
+      {tab === 'informe' && <InformeSoporte />}
       {tab === 'equipo' && supervisor && <Equipo mes={mes} setMes={setMes} onVer={u => { setUsuario(u); go('desempeno') }} />}
       {tab === 'plazos' && supervisor && <Plazos />}
     </div>
@@ -113,7 +114,7 @@ function Desempeno({ mes, usuario, onVolver }: { mes: string; usuario: { id: str
     return () => { alive = false }
   }, [key, mes, usuario])
   const loading = res?.key !== key
-  const k = res?.data ?? null
+  const k = res?.key === key ? res.data : null
   const load = () => setNonce(n => n + 1)
   if (loading && !k) return <div className="flex justify-center p-16"><Loader2 className="h-7 w-7 animate-spin text-[#002855]" /></div>
   if (!k) return <p className="p-8 text-center text-sm text-slate-500">Sin datos.</p>
@@ -189,25 +190,43 @@ function Desempeno({ mes, usuario, onVolver }: { mes: string; usuario: { id: str
   )
 }
 
-function Informe() {
-  const prev = useMemo(() => { const d = new Date(); return ymd(new Date(d.getFullYear(), d.getMonth() - 1, 1)) }, [])
+export function InformeSoporte() {
+  const prev = useMemo(() => previousMonth(), [])
   const [periodo, setPeriodo] = useState(prev)
   const [k, setK] = useState<Row | null>(null)
   const [mios, setMios] = useState<Row[]>([])
   const [form, setForm] = useState({ logros: '', problemas: '', acciones: '' })
   const [saving, setSaving] = useState(false)
-  const load = useCallback(() => {
-    supabase.rpc('soporte_kpis', { p_usuario: null, p_mes: periodo }).then(({ data }) => setK(data?.success ? data : null))
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) return
-      supabase.from('soporte_informes').select('*').eq('user_id', data.user.id).order('periodo', { ascending: false }).limit(12).then(({ data: r }) => {
-        setMios(r || [])
-        const i = (r || []).find(x => x.periodo === periodo)
-        setForm({ logros: i?.logros || '', problemas: i?.problemas || '', acciones: i?.acciones || '' })
-      })
-    })
-  }, [periodo])
-  useEffect(() => { load() }, [load])
+  const request = useRef(0)
+  const requestKey = periodo
+  const [loadedKey, setLoadedKey] = useState('')
+  const [failure, setFailure] = useState<{ key: string; message: string } | null>(null)
+  const load = useCallback(async () => {
+    const generation = ++request.current
+    try {
+      const { data: auth, error: authError } = await supabase.auth.getUser()
+      if (authError || !auth.user) throw Error('No se pudo validar su sesión.')
+      const [kpis, history, current] = await Promise.all([
+        supabase.rpc('soporte_kpis', { p_usuario: null, p_mes: periodo }),
+        supabase.from('soporte_informes').select('*').eq('user_id', auth.user.id).order('periodo', { ascending: false }).limit(12),
+        supabase.from('soporte_informes').select('*').eq('user_id', auth.user.id).eq('periodo', periodo).maybeSingle(),
+      ])
+      if (kpis.error || !kpis.data?.success || history.error || current.error) throw Error(kpis.error?.message || kpis.data?.error || history.error?.message || current.error?.message || 'No se pudo cargar el informe.')
+      if (generation !== request.current) return
+      setK(kpis.data)
+      const list = history.data || []
+      setMios(current.data && !list.some((i: Row) => i.id === current.data.id) ? [current.data, ...list] : list)
+      setForm({ logros: current.data?.logros || '', problemas: current.data?.problemas || '', acciones: current.data?.acciones || '' })
+      setLoadedKey(requestKey)
+    } catch (error) {
+      if (generation === request.current) setFailure({ key: requestKey, message: error instanceof Error ? error.message : 'No se pudo cargar el informe.' })
+    }
+  }, [periodo, requestKey])
+  useEffect(() => {
+    let alive = true
+    void Promise.resolve().then(() => { if (alive) void load() })
+    return () => { alive = false; request.current += 1 }
+  }, [load])
   const actual = mios.find(x => x.periodo === periodo)
   const enviar = async () => {
     setSaving(true)
@@ -220,6 +239,7 @@ function Informe() {
   const inf = k?.informe || {}
   const bloqueado = actual?.estado === 'REVISADO'
   const field = 'w-full rounded-lg border px-3 py-2 text-sm'
+  if (loadedKey !== requestKey) return <div className="space-y-3 rounded-xl border bg-white p-4 text-sm"><label>Mes del informe <input type="month" max={prev.slice(0, 7)} value={periodo.slice(0, 7)} onChange={e => e.target.value && setPeriodo(`${e.target.value}-01`)} className="rounded-lg border p-2" /></label>{failure?.key === requestKey ? <div role="alert"><p>{failure.message}</p><button onClick={() => void load()} className="font-semibold text-[#002855]">Reintentar</button></div> : <p role="status">Cargando el informe del período seleccionado…</p>}</div>
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
       <div className="space-y-3 rounded-xl border bg-white p-4 text-sm">
@@ -267,22 +287,30 @@ function Informe() {
 }
 
 function Equipo({ mes, setMes, onVer }: { mes: string; setMes: (m: string) => void; onVer: (u: { id: string; nombre: string }) => void }) {
-  const [d, setD] = useState<Row | null>(null)
-  const load = useCallback(() => {
-    supabase.rpc('soporte_equipo', { p_mes: mes }).then(({ data, error }) => {
-      if (error || !data?.success) { toast.error(error?.message || data?.error); return }
-      setD(data)
-    })
-  }, [mes])
-  useEffect(() => { load() }, [load])
+  const [nonce, setNonce] = useState(0)
+  const key = `${mes}|${nonce}`
+  const [res, setRes] = useState<{ key: string; data: Row | null; error?: string } | null>(null)
+  const load = () => setNonce(n => n + 1)
+  useEffect(() => {
+    let alive = true
+    Promise.resolve(supabase.rpc('soporte_equipo', { p_mes: mes })).then(({ data, error }) => {
+      if (alive) setRes({ key, data: data?.success ? data : null, error: error?.message || data?.error })
+    }).catch(() => { if (alive) setRes({ key, data: null, error: 'No se pudo cargar el equipo.' }) })
+    return () => { alive = false }
+  }, [key, mes])
+  const d = res?.key === key ? res.data : null
   const revisar = async (i: Row, estado: 'REVISADO' | 'OBSERVADO') => {
-    const comentario = estado === 'OBSERVADO' ? prompt('¿Qué debe corregir?') : prompt('Comentario (opcional):')
-    if (estado === 'OBSERVADO' && !comentario?.trim()) return
-    const { data, error } = await supabase.rpc('soporte_revisar_informe', { p_id: i.id, p_estado: estado, p_comentario: comentario || null })
+    const result = await revisarInforme(estado, {
+      prompt: message => window.prompt(message), confirm: message => window.confirm(message),
+      guardar: comentario => supabase.rpc('soporte_revisar_informe', { p_id: i.id, p_estado: estado, p_comentario: comentario }),
+    })
+    if (!result) return
+    const { data, error } = result
     if (error || !data?.success) return toast.error(error?.message || data?.error)
     toast.success(estado === 'REVISADO' ? 'Informe revisado' : 'Informe observado: se avisó al técnico'); load()
   }
-  if (!d) return <div className="flex justify-center p-16"><Loader2 className="h-7 w-7 animate-spin text-[#002855]" /></div>
+  if (res?.key !== key) return <div className="flex justify-center p-16"><Loader2 className="h-7 w-7 animate-spin text-[#002855]" /></div>
+  if (!d) return <div role="alert" className="p-6 text-sm"><p>{res.error || 'No se pudo cargar el equipo.'}</p><button onClick={load}>Reintentar</button></div>
   return (
     <div className="space-y-4">
       <label className="text-sm text-slate-600">Mes <input type="month" className="ml-1 rounded-lg border px-2 py-1.5" value={mes.slice(0, 7)} onChange={e => e.target.value && setMes(`${e.target.value}-01`)} /></label>

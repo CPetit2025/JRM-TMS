@@ -27,6 +27,11 @@ export function defaults(now = new Date()): Filters {
   return { ...emptyDimensions, from: `${to.slice(0, 7)}-01`, to, compare: 'previous' }
 }
 const isoDay = (d: Date) => d.toISOString().slice(0, 10)
+export function previousMonth(now = new Date()): string {
+  const date = new Date(`${limaToday(now).slice(0, 7)}-01T00:00:00Z`)
+  date.setUTCMonth(date.getUTCMonth() - 1)
+  return isoDay(date)
+}
 export function validDate(s: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false
   const d = new Date(`${s}T00:00:00Z`)
