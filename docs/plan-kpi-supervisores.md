@@ -1,5 +1,7 @@
 # Plan: indicadores (KPI) de supervisores de Despacho, Transporte, Asistente Documentario y Conductores
 
+**Estado: implementado** (fases 1 a 3) — ver `docs/desempeno-por-rol.md`. Las decisiones de la sección 6 se tomaron con los valores sugeridos y son editables.
+
 Este plan es para revisarlo antes de implementar. Se toma como modelo lo que ya funciona en **Soporte Mecánico**:
 - tiempos medidos contra un plazo;
 - un índice de eficiencia;

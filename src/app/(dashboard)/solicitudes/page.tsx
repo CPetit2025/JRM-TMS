@@ -150,6 +150,9 @@ export default function SolicitudesPage() {
   const [detailsLoading, setDetailsLoading] = useState(false)
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
   const [newRescheduleDate, setNewRescheduleDate] = useState('')
+  // Causa obligatoria al reprogramar (KPI de Despacho, migración 20261005180000)
+  const [rescheduleCause, setRescheduleCause] = useState('')
+  const [rescheduleDetail, setRescheduleDetail] = useState('')
   
   const [newRequest, setNewRequest] = useState({
     requester_name: '',
@@ -614,14 +617,15 @@ export default function SolicitudesPage() {
     
     try {
       setIsSubmitting(true);
-      const { error } = await supabase.rpc('set_transport_request_status', {
-        p_request_id: selectedRequestId,
-        p_new_status: 'REPROGRAMADA', p_required_date: newRescheduleDate
+      const { data, error } = await supabase.rpc('reprogramar_solicitud', {
+        p_request_id: selectedRequestId, p_fecha: newRescheduleDate, p_causa: rescheduleCause, p_detalle: rescheduleDetail || null
       })
         
       if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'No se pudo reprogramar');
       
       toast.success('Solicitud reprogramada exitosamente.');
+      setRescheduleCause(''); setRescheduleDetail('');
       setIsRescheduleModalOpen(false);
       fetchRequests();
     } catch (err: unknown) {
@@ -1438,6 +1442,26 @@ export default function SolicitudesPage() {
               value={newRescheduleDate}
               onChange={(e) => setNewRescheduleDate(e.target.value)}
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Causa de la reprogramación</label>
+            <select required value={rescheduleCause} onChange={(e) => setRescheduleCause(e.target.value)}
+              className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none">
+              <option value="">Seleccionar…</option>
+              <option value="CLIENTE">Pedido del cliente</option>
+              <option value="ALMACEN_SIN_STOCK">Almacén sin stock / material no listo</option>
+              <option value="PRODUCCION">Producción no terminó</option>
+              <option value="SIN_UNIDAD">Sin unidad disponible</option>
+              <option value="SIN_CONDUCTOR">Sin conductor disponible</option>
+              <option value="VIA_CLIMA">Vía o clima</option>
+              <option value="DOCUMENTOS">Documentos pendientes</option>
+              <option value="OTRO">Otro (detallar)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Detalle {rescheduleCause === 'OTRO' ? '(obligatorio)' : '(opcional)'}</label>
+            <input type="text" required={rescheduleCause === 'OTRO'} value={rescheduleDetail} onChange={(e) => setRescheduleDetail(e.target.value)}
+              className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none" />
           </div>
           <div className="pt-4 flex justify-end gap-3 border-t border-slate-200">
             <button 
