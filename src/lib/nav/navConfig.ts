@@ -1,5 +1,5 @@
 import {
-  ArchiveRestore, BadgeCheck, BadgeDollarSign, Banknote, BarChart3, BookOpenCheck, Briefcase, Building2, Calculator, CalendarClock,
+  ArchiveRestore, BadgeCheck, BadgeDollarSign, Banknote, BarChart3, BookOpenCheck, Briefcase, Building2, Calculator, CalendarClock, CalendarRange,
   ChartColumn, ChartNoAxesColumn, CircleCheckBig, CircleDot, ClipboardCheck, ClipboardList, Container, Database, Factory, FileSignature,
   FileText, FileUp, Fuel, Gauge, HardHat, Home, Hourglass, KeyRound, Map as MapIcon, MapPin, PackageCheck,
   PackageSearch, Radar, Receipt, ReceiptText, Route, Scale, Settings, Settings2, ShieldAlert, ShieldCheck, Sparkles, TriangleAlert,
@@ -53,6 +53,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: '/mantenimiento/fallas', label: 'Fallas y Backlog', icon: TriangleAlert, show: any('mantenimiento-fallas'), keywords: 'falla averia backlog' },
       { href: '/mantenimiento/gestor-ot', label: 'Órdenes de Trabajo', icon: Wrench, show: any('mantenimiento-ot'), keywords: 'ot taller orden trabajo' },
       { href: '/mantenimiento/preventivos', label: 'Preventivos', icon: CalendarClock, show: any('mantenimiento-planes'), keywords: 'preventivo plan' },
+      { href: '/mantenimiento/plan-anual', label: 'Plan Anual', icon: CalendarRange, show: any('mantenimiento-planes', 'mantenimiento-dashboard', 'mantenimiento-finanzas'), keywords: 'plan anual presupuesto calendario preventivo correctivo' },
       { href: '/mantenimiento/checklists', label: 'Inspecciones', icon: ClipboardCheck, show: any('mantenimiento-flota'), keywords: 'checklist inspeccion' },
     ] },
     { title: 'Activos', items: [
