@@ -12,6 +12,7 @@ import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { calculateRouteDistance } from '@/lib/routing'
 import { usePermissions } from '@/hooks/usePermissions'
 import { checkDispatchEligibility } from '@/lib/eligibility'
+import { ReportarFallaButton } from '@/components/mantenimiento/ReportarFalla'
 
 interface TransportRequest {
   id: string
@@ -561,6 +562,8 @@ export default function DespachoPage() {
           <h1 className="text-2xl font-bold text-slate-800">Programación de Despachos y Ruteo</h1>
           <p className="text-sm text-slate-500">Asignación de unidades de transporte a Solicitudes</p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        <ReportarFallaButton />
         {canWrite('despacho') && (
           <button 
             onClick={() => setIsModalOpen(true)}
@@ -570,6 +573,7 @@ export default function DespachoPage() {
             Armar Ruta
           </button>
         )}
+        </div>
       </div>
 
       <div className="flex flex-col gap-6">
