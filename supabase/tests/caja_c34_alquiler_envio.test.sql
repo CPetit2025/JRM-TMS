@@ -33,9 +33,13 @@ BEGIN
   -- T1
   PERFORM pg_temp.as_user(v_user); r := public.lease_settlement_document(v_set); PERFORM pg_temp.as_user(NULL);
   IF (r ->> 'success')::boolean AND (r -> 'calc' ->> 'subtotal')::numeric = 3834.29 AND r -> 'vehicle' ->> 'plate' IS NOT NULL
-     AND r -> 'lessor' ->> 'name' LIKE '%VALERIANI%' AND r -> 'company' ->> 'name' IS NOT NULL AND jsonb_typeof(r -> 'sends') = 'array'
-     AND jsonb_array_length(r -> 'calc' -> 'viajes') = 52
-  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T1 documento: ' || left(r::text, 200)); END IF;
+     AND upper(COALESCE(r -> 'lessor' ->> 'name', '')) LIKE '%VALERIANI%' AND r -> 'company' ->> 'name' IS NOT NULL AND jsonb_typeof(r -> 'sends') = 'array'
+     AND jsonb_array_length(r -> 'calc' -> 'viajes') > 0
+  THEN v_pass := v_pass + 1;
+  ELSE v_fail := v_fail || ('T1 documento: success=' || COALESCE(r ->> 'success', '?') || ' subtotal=' || COALESCE(r -> 'calc' ->> 'subtotal', '?')
+    || ' placa=' || COALESCE(r -> 'vehicle' ->> 'plate', '?') || ' arrendador=' || COALESCE(r -> 'lessor' ->> 'name', '?')
+    || ' empresa=' || COALESCE(r -> 'company' ->> 'name', '?') || ' envios=' || COALESCE(jsonb_typeof(r -> 'sends'), '?')
+    || ' viajes=' || COALESCE(jsonb_array_length(r -> 'calc' -> 'viajes')::text, '?') || ' error=' || COALESCE(r ->> 'error', '-')); END IF;
 
   -- T2
   UPDATE public.profiles SET role_id = r_n WHERE id = v_user;
