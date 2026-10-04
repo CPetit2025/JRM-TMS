@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { format } from 'date-fns'
 import { EvidenceGallery } from '@/components/evidence/EvidenceGallery'
 import { FeActivoCard } from '@/components/fleet/FeActivoCard'
+import { MantHistorialPanel } from '@/components/fleet/MantHistorialPanel'
 import { toast } from 'sonner'
 import { ArrowLeft, Truck, ShieldCheck, ShieldAlert, AlertTriangle, Wrench, CalendarClock, ClipboardCheck, CircleDot, FileText, BarChart2, History, Gauge, Route, Image as ImageIcon, Loader2 } from 'lucide-react'
 
@@ -36,7 +37,7 @@ interface Fleet360 {
 const TABS = [
   ['resumen', 'Resumen', Truck], ['fallas', 'Fallas', AlertTriangle], ['ot', 'OT', Wrench], ['preventivos', 'Preventivos', CalendarClock],
   ['inspecciones', 'Inspecciones', ClipboardCheck], ['neumaticos', 'Neumáticos', CircleDot], ['documentos', 'Documentos', FileText], ['cumplimiento', 'Multas y siniestros', ShieldAlert],
-  ['costos', 'Costos', BarChart2], ['operacion', 'Operación', Route], ['evidencias', 'Evidencias', ImageIcon], ['historial', 'Historial', History],
+  ['costos', 'Costos', BarChart2], ['gasto', 'Gasto y plan', Gauge], ['operacion', 'Operación', Route], ['evidencias', 'Evidencias', ImageIcon], ['historial', 'Historial', History],
 ] as const
 
 const money = (n: unknown) => `S/ ${Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -202,6 +203,7 @@ export default function Flota360Page() {
           )}
         </div>
       )}
+      {tab === 'gasto' && <MantHistorialPanel plate={plate} />}
       {tab === 'historial' && (
         <Table empty="Sin historial" rows={data.history}
           cols={[['Fecha', r => date(r.created_at, true)], ['Campo', r => txt(r.field_changed)], ['Antes', r => txt(r.old_value)], ['Después', r => txt(r.new_value)],

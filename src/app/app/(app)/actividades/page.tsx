@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, CalendarClock, History, Clock } from 'lucide-react'
 import Link from 'next/link'
-import { Banknote, Camera, ClipboardCheck, DollarSign, Wrench } from 'lucide-react'
+import { Banknote, Camera, ClipboardCheck, DollarSign, Forklift, Wrench } from 'lucide-react'
 import { useActiveTrip } from '@/contexts/ActiveTripContext'
 
 export default function ActividadesPage() {
@@ -99,6 +99,10 @@ export default function ActividadesPage() {
         </h1>
         <p className="text-sm text-slate-500">Historial de turnos y actividades</p>
       </div>
+
+      <Link href="/app/equipos" className="mb-4 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 font-bold text-[#002855] shadow-sm">
+        <Forklift className="h-6 w-6" />Equipos: horómetro y checklist
+      </Link>
 
       {turnos.length === 0 ? (
         <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 text-center mt-10">
