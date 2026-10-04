@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { AlertTriangle, Banknote, Bot, CalendarClock, Camera, CheckCircle2, ChevronRight, ClipboardCheck, DollarSign, Loader2, MapPin, RefreshCw, ShieldCheck, Truck, Wrench } from 'lucide-react'
+import { AlertTriangle, Banknote, Bot, CalendarClock, Camera, CheckCircle2, ChevronRight, ClipboardCheck, DollarSign, Forklift, Loader2, MapPin, RefreshCw, ShieldCheck, Truck, Wrench } from 'lucide-react'
 import { useActiveTrip } from '@/contexts/ActiveTripContext'
 
 function greeting() {
@@ -45,6 +45,10 @@ export default function OperationalHome() {
       <div className="bg-[#002855] p-5 text-white"><div className="flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-wide text-blue-200">Estado operativo</p><h2 className="mt-1 text-xl font-black">Disponible</h2></div><span className="h-3 w-3 rounded-full bg-emerald-400 ring-4 ring-emerald-400/20" /></div><p className="mt-2 text-sm text-blue-100">Tu sesión de conductor está activa.</p></div>
       <div className="p-4">{nextTrip ? <><p className="text-xs font-bold uppercase text-slate-400">Próxima programación</p><p className="mt-1 font-black text-[#002855]">{nextTrip.dispatch_number} · {nextTrip.vehicle_plate || 'Unidad por asignar'}</p><p className="mt-1 text-sm text-slate-600">{nextTrip.origin || 'Origen por confirmar'} → {nextTrip.destination || nextTrip.destination_address || 'Destino por confirmar'}</p><p className="mt-2 text-xs font-semibold text-slate-500">{dateTime(nextTrip.scheduled_departure)}</p></> : <div className="flex gap-3"><CalendarClock className="h-9 w-9 shrink-0 text-[#002855]" /><div><h3 className="font-bold text-slate-800">Sin programación asignada</h3><p className="mt-1 text-sm text-slate-500">La próxima ruta aparecerá aquí automáticamente cuando despacho la asigne.</p></div></div>}</div>
     </section>}
+
+    {!driver && user?.employee_type !== 'CONDUCTOR' && <Link href="/app/equipos" className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm">
+      <span className="rounded-full bg-blue-50 p-2 text-[#002855]"><Forklift className="h-6 w-6" /></span><span className="flex-1"><b className="block text-[#002855]">Equipos</b><small className="text-slate-500">Horómetro del turno y checklist del montacargas o elevador</small></span><ChevronRight className="h-5 w-5 text-slate-400" />
+    </Link>}
 
     <button type="button" onClick={() => window.dispatchEvent(new Event('jrm:open-ai'))} className="flex w-full items-center gap-3 rounded-2xl bg-gradient-to-r from-[#002855] to-[#00509d] p-4 text-left text-white shadow-md">
       <span className="rounded-full bg-white/15 p-2"><Bot className="h-6 w-6 text-[#f8c400]" /></span><span className="flex-1"><b className="block">Copiloto IA</b><small className="text-blue-100">Habla, consulta tu viaje o prepara una acción</small></span><ChevronRight className="h-5 w-5" />
