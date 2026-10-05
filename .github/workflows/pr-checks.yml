@@ -44,6 +44,7 @@ jobs:
           java-version: '21'
       - uses: android-actions/setup-android@v4
       - run: npm ci
+      - run: mkdir -p android/app/src/main/assets
       - run: npx cap sync android
       - name: Compile APK and test native session lock
         working-directory: android
