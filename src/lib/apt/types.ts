@@ -2,6 +2,7 @@
 // Reflejan lo que devuelven las funciones public.apt_* de la migración 20261002100000_apt_estadia_inventario.sql.
 
 import type { AptUploadKind } from './api'
+import type { FlowAlmacen } from './flowTypes'
 
 export type AptEstado = 'En APT' | 'Salida parcial' | 'Despachado' | 'Sin salida identificada' | 'Problema de información'
 export type AptTipoLote = 'CONTRATO' | 'SUBCONTRATO' | 'ERROR' | 'GARANTIA'
@@ -12,6 +13,7 @@ export type AptDim = 'lote' | 'producto' | 'glosa' | 'familia'
 
 // Filtros comunes; todas las claves son opcionales y se envían tal cual a las funciones
 export interface AptFilters {
+  almacenes?: FlowAlmacen[] // almacén del ingreso de producción, no ubicación actual tras traspasos
   lote?: string
   lotes?: string[]
   contrato?: string

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, Filter, RotateCcw, Search, SlidersHorizontal, X } from 'lucide-react'
 import { aptApi } from '@/lib/apt/api'
+import { FLOW_ALMACENES, flowNodeLabel } from '@/lib/apt/flowColors'
 import { ALERTA_LABEL, fmtDate, fmtTn, TIPO_LABEL } from '@/lib/apt/format'
 import { useAptFilters } from '@/lib/apt/useAptFilters'
 import type { AptEstado, AptFilterOptions, AptFilters, AptTipoLote } from '@/lib/apt/types'
@@ -80,7 +81,7 @@ const CHIP_LABEL: Record<string, string> = {
   lote: 'Lote', lotes: 'Lotes', contrato: 'Contrato', tipos: 'Tipo', numrel_op: 'NumRel OP', producto: 'Producto', glosa: 'Glosa', ipt: 'IPT',
   familias: 'Familia', estados: 'Estado', rangos: 'Aging', docrels: 'DocRel', ingreso_desde: 'Ingreso desde', ingreso_hasta: 'Ingreso hasta',
   entrega_desde: 'FechaEntrega desde', entrega_hasta: 'FechaEntrega hasta', cliente: 'Cliente', solo_saldo: 'Solo con saldo', dias_min: 'Días ≥',
-  productos: 'Producto', glosas: 'Glosa', alertas: 'Alertas', clientes: 'Cliente', contratos: 'OT',
+  productos: 'Producto', glosas: 'Glosa', alertas: 'Alertas', clientes: 'Cliente', contratos: 'OT', almacenes: 'Almacén de ingreso',
 }
 
 function chipValue(k: string, v: unknown) {
@@ -88,6 +89,7 @@ function chipValue(k: string, v: unknown) {
   if (k.endsWith('_desde') || k.endsWith('_hasta')) return fmtDate(String(v))
   if (k === 'tipos' && Array.isArray(v)) return v.map(t => TIPO_LABEL[t as AptTipoLote] || t).join(', ')
   if (k === 'alertas' && Array.isArray(v)) return v.map(a => ALERTA_LABEL[a] || a).join(', ')
+  if (k === 'almacenes' && Array.isArray(v)) return v.map(flowNodeLabel).join(', ')
   return Array.isArray(v) ? v.join(', ') : String(v)
 }
 
@@ -129,6 +131,8 @@ export function AptFilterBar() {
           <option value="">Contrato (OT madre)</option>
           {(opts?.contratos || []).map(c => <option key={c} value={c}>{c}</option>)}
         </select>
+        <MultiSelect label="Almacén de ingreso" options={FLOW_ALMACENES} value={filters.almacenes}
+          onChange={v => patchFilters({ almacenes: v as AptFilters['almacenes'] })} render={flowNodeLabel} width="w-56" />
         <MultiSelect label="Tipo" options={['CONTRATO', 'SUBCONTRATO', 'ERROR', 'GARANTIA']} value={filters.tipos}
           onChange={v => patchFilters({ tipos: v as AptTipoLote[] })} render={o => TIPO_LABEL[o as AptTipoLote]} width="w-48" />
         <MultiSelect label="Estado" options={opts?.estados || ['En APT', 'Salida parcial', 'Despachado', 'Sin salida identificada', 'Problema de información']}

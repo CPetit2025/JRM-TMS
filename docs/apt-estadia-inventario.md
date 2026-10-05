@@ -20,6 +20,8 @@ Permisos: `apt` (ver el módulo) y `apt-carga` (cargar y cambiar parámetros). E
 tienen ambos.
 
 ## Reglas del modelo
+Los filtros de estadía incluyen **Almacén de ingreso**, con selección múltiple de 647 ALM PT, 540 APT LB y ST VENTAS. Se aplica al almacén del movimiento de producción que originó cada capa, antes de agrupar y paginar; el detalle, los totales y la exportación Excel usan la misma selección. Sin selección se muestran todos. El filtro se conserva en la URL y al cambiar entre pestañas de estadía. La ubicación actual después de traspasos se consulta en *Flujo multi-almacén → Stock por almacén*.
+
 | Concepto | Regla |
 |---|---|
 | NumRel padre (lote) | ENTRADA: columna Lote; si falta, NumRel de la OP sin su último tramo (16325-S002-033 → 16325-S002). SALIDA: NumRel; las salidas "ERROR DE CONTRATO" van a su Lote. Coincide con el código de la OT en Contratos. |

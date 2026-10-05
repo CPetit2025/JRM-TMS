@@ -30,6 +30,7 @@ jobs:
       - run: node scripts/test-apt-upload.cjs
       - run: node scripts/test-apt-begin.cjs
       - run: node scripts/test-apt-fifo.cjs
+      - run: node scripts/test-apt-almacenes.cjs
       - run: npm run check:guards
       - run: npm run typecheck
 
