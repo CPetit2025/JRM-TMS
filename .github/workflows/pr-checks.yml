@@ -59,6 +59,12 @@ jobs:
           message = '\n'.join(Path('gradle-validation.log').read_text().splitlines()[-100:])
           message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
           print('::error title=Android validation::' + message)
+          import xml.etree.ElementTree as ET
+          for file in Path('app/build/test-results/testDebugUnitTest').glob('*.xml'):
+              for case in ET.parse(file).iter('testcase'):
+                  for failure in case.findall('failure'):
+                      detail = (failure.text or '')[:3500].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                      print('::error title=' + case.get('name', 'Native test') + '::' + detail)
           PYTHON
           fi
           exit "$result"
