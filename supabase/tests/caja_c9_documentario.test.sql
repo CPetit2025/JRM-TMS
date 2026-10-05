@@ -81,6 +81,8 @@ BEGIN
   INSERT INTO public.dispatches (dispatch_number, vehicle_plate, status, site_id, contract_id, scheduled_departure, docs_required)
   VALUES ('ZZ-C9-D2', 'EXTERNO', 'PROGRAMADO', v_site, v_ct, now() + interval '5 hours', true) RETURNING id INTO d2;
   INSERT INTO public.dispatch_requests (dispatch_id, transport_request_id, status) VALUES (d1, r1, 'PROGRAMADO'), (d1, r2, 'PROGRAMADO'), (d2, r3, 'PROGRAMADO');
+  -- El recojo real se programa como NOTA_SALIDA; EXTERNO también puede ser un proveedor.
+  UPDATE public.dispatch_requests SET document_type = 'NOTA_SALIDA' WHERE dispatch_id = d2;
 
   -- T1: solo el Asistente carga; reglas de tipo, formato, número y parada
   PERFORM pg_temp.as_user(v_nobody);
