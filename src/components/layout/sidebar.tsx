@@ -38,7 +38,7 @@ function Row({ entry, active, fav, onFav, showSection, count }: {
   return (
     <div className="group relative">
       <Link href={item.href} aria-current={active ? 'page' : undefined}
-        className={`relative flex min-h-[34px] items-center gap-3 rounded-lg py-1.5 pl-3 pr-8 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--sb-red)] ${
+        className={`relative flex min-h-11 items-center gap-3 rounded-lg py-1.5 pl-3 pr-12 lg:min-h-[34px] lg:pr-8 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--sb-red)] ${
           active ? 'bg-[var(--sb-active)] font-semibold text-[var(--sb-active-fg)]' : 'font-medium text-[var(--sb-fg)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-strong)]'}`}>
         {active && <span className="absolute -left-2 top-1.5 bottom-1.5 w-[3px] rounded-r bg-[var(--sb-bar)]" />}
         <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-[var(--sb-red)]' : ''}`} />
@@ -53,8 +53,8 @@ function Row({ entry, active, fav, onFav, showSection, count }: {
       </Link>
       <button type="button" onClick={() => onFav(item.href)} aria-label={fav ? `Quitar ${item.label} de favoritos` : `Agregar ${item.label} a favoritos`}
         title={fav ? 'Quitar de favoritos' : 'Agregar a favoritos'}
-        className={`absolute right-1.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md transition-opacity hover:bg-[var(--sb-hover)] focus-visible:opacity-100 ${
-          fav ? 'text-amber-400 opacity-100' : 'text-[var(--sb-muted)] opacity-0 group-hover:opacity-100'}`}>
+        className={`absolute right-1 top-1/2 grid h-11 w-11 lg:right-1.5 lg:h-6 lg:w-6 -translate-y-1/2 place-items-center rounded-md transition-opacity hover:bg-[var(--sb-hover)] focus-visible:opacity-100 ${
+          fav ? 'text-amber-400 opacity-100' : 'text-[var(--sb-muted)] lg:opacity-0 lg:group-hover:opacity-100'}`}>
         <Star className={`h-3.5 w-3.5 ${fav ? 'fill-amber-400' : ''}`} />
       </button>
     </div>
@@ -140,10 +140,10 @@ export function Sidebar() {
       {!sb.pinned && <div aria-hidden className="fixed inset-y-0 left-0 z-[59] hidden w-2 lg:block" onMouseEnter={() => setSidebar({ overlay: true })} />}
       {sb.overlay && <div aria-hidden className={`fixed inset-0 z-[59] bg-slate-950/40 ${sb.pinned ? 'lg:hidden' : 'lg:bg-transparent'}`} onClick={() => setSidebar({ overlay: false })} />}
 
-      <aside aria-label="Menú principal" style={PALETTE[sb.theme] as CSSProperties}
+      <aside id="principal-navigation" aria-label="Menú principal" style={PALETTE[sb.theme] as CSSProperties}
         onMouseLeave={() => { if (!sb.pinned && sb.overlay && window.matchMedia('(min-width: 1024px)').matches && document.activeElement !== searchRef.current) setSidebar({ overlay: false }) }}
-        className={`fixed inset-y-0 left-0 z-[60] flex w-[264px] flex-col border-r border-[var(--sb-line)] bg-[var(--sb-bg)] text-[var(--sb-fg)] shadow-2xl transition-transform duration-200 motion-reduce:transition-none ${
-          sb.overlay ? 'translate-x-0' : '-translate-x-full'} ${sb.pinned ? 'lg:static lg:z-auto lg:shrink-0 lg:translate-x-0 lg:shadow-none' : ''}`}>
+        className={`fixed inset-y-0 left-0 z-[60] flex w-[264px] max-w-[calc(100vw-2rem)] flex-col border-r border-[var(--sb-line)] bg-[var(--sb-bg)] text-[var(--sb-fg)] shadow-2xl transition-transform duration-200 motion-reduce:transition-none ${
+          sb.overlay ? 'visible translate-x-0' : 'invisible -translate-x-full'} ${sb.pinned ? 'lg:visible lg:static lg:z-auto lg:shrink-0 lg:translate-x-0 lg:shadow-none' : ''}`}>
 
         <div aria-hidden className="h-1 shrink-0 bg-[var(--sb-red)]" />
         {/* Cabecera */}
@@ -162,7 +162,7 @@ export function Sidebar() {
             {sb.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
           </button>
           <button type="button" onClick={() => setSidebar({ overlay: false })} aria-label="Cerrar menú"
-            className="grid h-8 w-8 place-items-center rounded-lg text-[var(--sb-muted)] hover:bg-[var(--sb-hover)] lg:hidden">
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[var(--sb-muted)] hover:bg-[var(--sb-hover)] lg:hidden">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -182,7 +182,7 @@ export function Sidebar() {
         </div>
 
         {/* Navegación */}
-        <nav className="sidebar-scroll flex-1 overflow-y-auto px-2 pb-4">
+        <nav className="sidebar-scroll min-h-0 flex-1 overscroll-contain overflow-y-auto px-2 pb-4">
           {nq ? (
             results.length ? <div className="space-y-0.5 pt-1">{results.map(e => row(e, true))}</div>
               : <p className="px-3 py-4 text-xs text-[var(--sb-muted)]">No hay pantallas con «{q.trim()}».</p>
@@ -213,7 +213,7 @@ export function Sidebar() {
                   <div key={s.id} className={`mt-1 ${here ? 'rounded-xl bg-[var(--sb-sec)] pb-1 ring-1 ring-[var(--sb-sec-line)]' : ''}`}>
                     <button type="button" onClick={() => toggleSection(s.id)} aria-expanded={open}
                       title={here ? 'Estás en esta sección' : undefined}
-                      className={`flex w-full items-center gap-2 rounded-lg px-3 pb-1.5 pt-2.5 text-left text-[10.5px] font-extrabold uppercase tracking-[0.12em] transition-colors hover:text-[var(--sb-strong)] ${
+                      className={`flex min-h-11 w-full items-center gap-2 rounded-lg px-3 pb-1.5 pt-2.5 lg:min-h-0 text-left text-[10.5px] font-extrabold uppercase tracking-[0.12em] transition-colors hover:text-[var(--sb-strong)] ${
                         here ? 'text-[var(--sb-strong)]' : 'text-[var(--sb-label)]'}`}>
                       {here ? <span aria-hidden className="h-[3px] w-4 shrink-0 rounded bg-[var(--sb-red)]" /> : <SIcon className="h-3.5 w-3.5" />}
                       <span className="flex-1 truncate">{s.title}</span>

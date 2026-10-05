@@ -80,7 +80,7 @@ export default function Reportes() {
   const title = PERSPECTIVES.find(p => p.id === section)?.label || 'Reportes'
   if (!isLoaded) return <div className="flex justify-center p-12"><Loader2 className="h-6 w-6 animate-spin" /></div>
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div><p className="text-xs font-bold uppercase tracking-[.18em] text-[#cf152d]">Supply Chain Management</p><h1 className="mt-1 flex items-center gap-2 text-2xl font-extrabold text-[#002855]"><BarChart3 className="h-7 w-7" />Reportes y Analítica</h1><p className="mt-1 text-sm text-slate-500">Del resultado al sustento: operación, costos, activos y desempeño según su acceso.</p></div>
         {section !== 'desempeno' && <button onClick={() => setNonce(n => n + 1)} className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm"><RefreshCw className="h-4 w-4" />Actualizar</button>}
@@ -92,16 +92,16 @@ export default function Reportes() {
           onLoad={v => navigate(v.section, v.filters)} onDelete={name => saveViews(views.filter(v => v.name !== name))} />
         {viewError && <p role="alert" className="text-sm text-amber-700">{viewError}</p>}
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600"><span className="rounded-full bg-slate-200 px-3 py-1">{filters.from} → {filters.to}</span>
-          {activeFilters.map(([k, v]) => <button key={k} title="Quitar filtro" onClick={() => navigate(section, { ...filters, [k]: '' })} className="rounded-full bg-blue-50 px-3 py-1 text-[#002855]">{v} ×</button>)}
+          {activeFilters.map(([k, v]) => <button key={k} title="Quitar filtro" onClick={() => navigate(section, { ...filters, [k]: '' })} className="max-w-full break-all rounded-full bg-blue-50 px-3 py-1 text-[#002855]">{v} ×</button>)}
           {comparisonRange(filters) && <span>Comparación: {comparisonRange(filters)?.from} → {comparisonRange(filters)?.to}</span>}
           {data && <span className="ml-auto">Actualizado: {data.loaded} (Lima)</span>}
         </div>
         {!data ? <div role="status" className="flex items-center justify-center gap-2 rounded-xl border bg-white p-12 text-sm text-slate-500"><Loader2 className="h-5 w-5 animate-spin" />Consultando fuentes y comparación…</div>
-          : section === 'resumen' ? <div className="space-y-5">{data.items.map(item => {
+          : section === 'resumen' ? <div className="min-w-0 space-y-5">{data.items.map(item => {
             const label = PERSPECTIVES.find(p => p.id === item.section)?.label || item.section
             const d = item.current ? filteredDataset(item.section, item.current, filters) : null
             return <section key={item.section} className="space-y-3 rounded-2xl border bg-slate-50 p-4"><div className="flex items-center justify-between"><h2 className="font-semibold text-[#002855]">{label}</h2><button onClick={() => navigate(item.section)} className="flex items-center gap-1 text-sm font-semibold text-[#002855]">Explorar<ChevronRight className="h-4 w-4" /></button></div>
-              {item.error ? <p role="alert" className="text-sm text-red-700">No disponible: {item.error}</p> : d && <><p className="text-xs text-slate-500">{d.source} · {d.basis}</p><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{d.metrics.map(m => <MetricCard key={m.key} metric={m} previous={item.previous ? filteredDataset(item.section, item.previous, filters).metrics.find(x => x.key === m.key) : undefined} onClick={() => navigate(item.section)} />)}</div></>}
+              {item.error ? <p role="alert" className="text-sm text-red-700">No disponible: {item.error}</p> : d && <><p className="text-xs text-slate-500">{d.source} · {d.basis}</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">{d.metrics.map(m => <MetricCard key={m.key} metric={m} previous={item.previous ? filteredDataset(item.section, item.previous, filters).metrics.find(x => x.key === m.key) : undefined} onClick={() => navigate(item.section)} />)}</div></>}
               {item.comparisonError && <p className="text-xs text-amber-700">Comparación no disponible: {item.comparisonError}</p>}
             </section>
           })}<p className="text-xs text-slate-500">Cada bloque conserva su unidad y base de cálculo. No se construye un índice general mezclando rentabilidad, disponibilidad y desempeño.</p></div>

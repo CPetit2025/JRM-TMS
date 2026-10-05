@@ -12,9 +12,9 @@ export function MetricCard({ metric: m, previous, onClick }: { metric: Metric; p
   const delta = m.value != null && previous?.value != null ? m.value - previous.value : null
   const good = delta != null && m.direction ? (m.direction === 'up' ? delta >= 0 : delta <= 0) : null
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4">
       <div className="flex items-start justify-between gap-2"><span className="text-xs font-semibold uppercase tracking-wide text-slate-500">{m.label}</span><span title={m.formula}><Info className="h-3.5 w-3.5 text-slate-400" /></span></div>
-      <button disabled={!onClick} onClick={onClick} className="mt-2 text-left text-2xl font-extrabold text-[#002855] disabled:cursor-default">{formatValue(m.value, m.unit)}</button>
+      <button disabled={!onClick} onClick={onClick} className="mt-2 max-w-full break-words text-left text-2xl font-extrabold text-[#002855] disabled:cursor-default">{formatValue(m.value, m.unit)}</button>
       {previous && <div className="mt-1 text-xs text-slate-500">Anterior: {formatValue(previous.value, previous.unit)}{delta !== null && <span className={`ml-1 ${good === null ? '' : good ? 'text-emerald-700' : 'text-amber-700'}`}>({delta > 0 ? '+' : ''}{formatValue(delta, m.unit === '%' ? 'pp' : m.unit)})</span>}</div>}
       <details className="mt-2 text-[11px] text-slate-500"><summary className="cursor-pointer">Cómo se calcula</summary><p className="mt-1">{m.formula}</p></details>
     </div>
@@ -69,13 +69,13 @@ export function AnalysisPanel({ section, title, data, previous, filters, blocked
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
         <div><b className="text-slate-700">{data.source}</b> · {data.basis}{data.cutoff && ` · Corte: ${data.cutoff}`}</div>
         <div className="flex gap-2">
-          <button disabled={blocked || exporting} onClick={() => exportData('excel')} className="flex items-center gap-1 rounded-lg border bg-white px-3 py-2 text-sm text-[#002855] disabled:opacity-40"><Download className="h-4 w-4" />Excel</button>
-          <button disabled={blocked || exporting} onClick={() => exportData('pdf')} className="flex items-center gap-1 rounded-lg border bg-white px-3 py-2 text-sm text-[#002855] disabled:opacity-40"><FileText className="h-4 w-4" />PDF</button>
+          <button disabled={blocked || exporting} onClick={() => exportData('excel')} className="flex min-h-11 items-center gap-1 rounded-lg border bg-white px-3 py-2 text-sm text-[#002855] disabled:opacity-40"><Download className="h-4 w-4" />Excel</button>
+          <button disabled={blocked || exporting} onClick={() => exportData('pdf')} className="flex min-h-11 items-center gap-1 rounded-lg border bg-white px-3 py-2 text-sm text-[#002855] disabled:opacity-40"><FileText className="h-4 w-4" />PDF</button>
         </div>
       </div>
       {exportError && <p role="alert" className="text-sm text-red-700">{exportError}</p>}
       {data.note && <p className="rounded-lg border border-sky-100 bg-sky-50 p-3 text-xs text-sky-900">{data.note}</p>}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{data.metrics.map(m => <MetricCard key={m.key} metric={m} previous={previous?.metrics.find(x => x.key === m.key)} onClick={() => {
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">{data.metrics.map(m => <MetricCard key={m.key} metric={m} previous={previous?.metrics.find(x => x.key === m.key)} onClick={() => {
         if (m.key === 'incidents') onFilter({ incident: 'only' })
         document.getElementById('analytics-detail')?.scrollIntoView({ behavior: 'smooth' })
       }} />)}</div>
@@ -83,21 +83,21 @@ export function AnalysisPanel({ section, title, data, previous, filters, blocked
         <section className="rounded-xl border bg-white p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-slate-800">{chartMetric === 'count' ? 'Distribución de registros' : VALUE_LABELS[chartMetric]} · {data.rows.length} registros</h2>
-            <div className="flex flex-wrap gap-2 text-xs"><select aria-label="Medida del gráfico" className="rounded-lg border p-2" value={chartMetric} onChange={e => setChartMetric(e.target.value)}><option value="count">Número de registros</option>{valueKeys.filter(k => !['availability', 'cost_km', 'cost_tkm', 'cost_hour', 'days'].includes(k)).map(k => <option key={k} value={k}>{VALUE_LABELS[k] || k}</option>)}</select><select aria-label="Agrupar gráfico" className="rounded-lg border p-2" value={by} onChange={e => setBy(e.target.value as typeof by)}>
+            <div className="flex flex-wrap gap-2 text-xs"><select aria-label="Medida del gráfico" className="min-h-11 min-w-0 max-w-full rounded-lg border p-2 text-base sm:text-xs" value={chartMetric} onChange={e => setChartMetric(e.target.value)}><option value="count">Número de registros</option>{valueKeys.filter(k => !['availability', 'cost_km', 'cost_tkm', 'cost_hour', 'days'].includes(k)).map(k => <option key={k} value={k}>{VALUE_LABELS[k] || k}</option>)}</select><select aria-label="Agrupar gráfico" className="min-h-11 min-w-0 max-w-full rounded-lg border p-2 text-base sm:text-xs" value={by} onChange={e => setBy(e.target.value as typeof by)}>
               {section !== 'mantenimiento' && section !== 'eficiencia' && <option value="date">Fecha</option>}
               <option value="status">Estado</option>{section !== 'apt' && <option value="plate">Unidad / activo</option>}{section === 'transporte' && <option value="client">Cliente(s) del despacho</option>}
-            </select>{by === 'date' && <select aria-label="Granularidad temporal" className="rounded-lg border p-2" value={grain} onChange={e => setGrain(e.target.value as typeof grain)}><option value="day">Día</option><option value="week">Semana</option><option value="month">Mes</option></select>}</div>
+            </select>{by === 'date' && <select aria-label="Granularidad temporal" className="min-h-11 min-w-0 max-w-full rounded-lg border p-2 text-base sm:text-xs" value={grain} onChange={e => setGrain(e.target.value as typeof grain)}><option value="day">Día</option><option value="week">Semana</option><option value="month">Mes</option></select>}</div>
           </div>
           {series.length > 60 && <p className="mb-2 text-xs text-slate-500">El gráfico muestra las primeras 60 categorías; el detalle y la exportación incluyen todas.</p>}
-          <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={series.slice(0, 60)}>
+          <div className="h-64 min-w-0"><ResponsiveContainer width="100%" height="100%"><BarChart data={series.slice(0, 60)}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" tick={{ fontSize: 10 }} /><YAxis allowDecimals={chartMetric !== 'count'} tick={{ fontSize: 11 }} /><Tooltip />
             <Bar dataKey="count" name={chartMetric === 'count' ? (section === 'apt' ? 'Capas de ingreso' : section === 'mantenimiento' || section === 'eficiencia' ? 'Activos' : 'Despachos') : VALUE_LABELS[chartMetric] || chartMetric} fill="#002855" radius={[4, 4, 0, 0]} onClick={d => drilldown(String((d.payload as { label?: string } | undefined)?.label || ''))} />
           </BarChart></ResponsiveContainer></div>
           <p className="mt-2 text-xs text-slate-500">Pulse una barra de fecha, unidad o estado para acotar el reporte cuando esa dimensión admita filtros.</p>
         </section>
         <section id="analytics-detail" className="overflow-hidden rounded-xl border bg-white">
-          <div className="flex items-center justify-between border-b p-4"><h2 className="text-sm font-semibold text-slate-800">Detalle verificable</h2><span className="text-xs text-slate-500">{sorted.length} registros · pulse las columnas para ordenar</span></div>
-          <div className="overflow-auto"><table className="w-full text-left text-xs"><thead className="bg-slate-50 text-slate-500"><tr>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b p-4"><h2 className="text-sm font-semibold text-slate-800">Detalle verificable</h2><span className="text-xs text-slate-500">{sorted.length} registros · pulse las columnas para ordenar</span></div>
+          <div role="region" aria-label="Tabla de detalle analítico" tabIndex={0} className="max-w-full overflow-auto"><table className="w-full text-left text-xs"><thead className="bg-slate-50 text-slate-500"><tr>
             <th className="p-3">{sortHeader('code', 'Código')}</th><th className="p-3">{sortHeader('date', 'Fecha')}</th><th className="p-3">{sortHeader('status', 'Estado')}</th>
             {['transporte', 'costos'].includes(section) && <><th className="p-3">Unidad · conductor</th><th className="p-3">Contrato / ruta / sede</th></>}
             {valueKeys.map(k => <th key={k} className="p-3">{sortHeader(k, VALUE_LABELS[k] || k)}</th>)}<th className="p-3">Sustento</th>
@@ -105,14 +105,14 @@ export function AnalysisPanel({ section, title, data, previous, filters, blocked
             <td className="p-3 font-semibold text-[#002855]">{r.code}</td><td className="whitespace-nowrap p-3">{r.date || '—'}</td><td className="p-3">{section === 'transporte' || section === 'costos' ? dispatchStatusLabel(r.status) : r.status}</td>
             {['transporte', 'costos'].includes(section) && <><td className="p-3">{r.plate || '—'}<div className="text-slate-500">{r.driver || 'Sin conductor'}</div></td><td className="max-w-64 p-3">{r.contract || '—'}<div className="text-slate-500">{r.route || r.site}</div></td></>}
             {valueKeys.map(k => <td key={k} className="whitespace-nowrap p-3 text-right">{r.values[k] == null ? 'Sin dato' : r.values[k]?.toLocaleString('es-PE', { maximumFractionDigits: ['cost_km', 'cost_tkm', 'cost_hour'].includes(k) ? 4 : 2 })}</td>)}
-            <td className="p-3"><button onClick={() => setDetail(r)} className="font-semibold text-[#002855]">Ver detalle</button></td>
+            <td className="p-3"><button onClick={() => setDetail(r)} className="min-h-11 whitespace-nowrap font-semibold text-[#002855]">Ver detalle</button></td>
           </tr>)}</tbody></table></div>
-          <div className="flex items-center justify-between border-t p-3 text-xs"><button disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} className="rounded border px-3 py-1 disabled:opacity-30">Anterior</button><span>Página {currentPage + 1} de {pages}</span><button disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)} className="rounded border px-3 py-1 disabled:opacity-30">Siguiente</button></div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t p-3 text-xs"><button disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} className="min-h-11 rounded border px-3 py-1 disabled:opacity-30 sm:min-h-0">Anterior</button><span>Página {currentPage + 1} de {pages}</span><button disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)} className="min-h-11 rounded border px-3 py-1 disabled:opacity-30 sm:min-h-0">Siguiente</button></div>
         </section>
       </>}
       {detail && <section aria-label="Sustento del registro" className="rounded-xl border-2 border-[#002855] bg-white p-5">
-        <div className="flex items-center justify-between"><h3 className="font-semibold text-[#002855]">{detail.code} · Sustento</h3><button aria-label="Cerrar detalle" onClick={() => setDetail(null)}><X className="h-5 w-5" /></button></div>
-        <dl className="mt-4 grid gap-3 text-sm md:grid-cols-3">{Object.entries(detail.detail).map(([k, v]) => <div key={k}><dt className="text-xs text-slate-500">{k}</dt><dd className="break-words font-medium">{v == null || v === '' ? 'Sin dato' : String(v)}</dd></div>)}</dl>
+        <div className="flex items-center justify-between gap-2"><h3 className="min-w-0 break-words font-semibold text-[#002855]">{detail.code} · Sustento</h3><button aria-label="Cerrar detalle" onClick={() => setDetail(null)}><X className="h-5 w-5" /></button></div>
+        <dl className="mt-4 grid gap-3 text-sm md:grid-cols-3">{Object.entries(detail.detail).map(([k, v]) => <div key={k} className="min-w-0"><dt className="text-xs text-slate-500">{k}</dt><dd className="min-w-0 break-all font-medium">{v == null || v === '' ? 'Sin dato' : String(v)}</dd></div>)}</dl>
         {detail.href && <Link href={detail.href} className="mt-4 inline-block text-sm font-semibold text-[#002855]">Abrir registro en su módulo operativo →</Link>}
         <p className="mt-3 text-xs text-slate-500">{filters.from} a {filters.to} · {data.source}</p>
       </section>}

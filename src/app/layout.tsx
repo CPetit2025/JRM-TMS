@@ -24,7 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" data-build-id={webBuildId} data-app-version={webVersion}>
-      <body className={`${inter.variable} font-sans antialiased min-h-screen bg-slate-50`}>
+      <body className={`${inter.variable} font-sans antialiased min-h-dvh bg-slate-50`}>
         {children}
         <LegacyAiKeyCleanup />
         <Toaster richColors position="top-right" />

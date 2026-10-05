@@ -15,10 +15,10 @@ export function NotificationBanner() {
   if (alerts.length === 0) return null
 
   return (
-    <div className="z-10 flex w-full items-start justify-between gap-2 border-b border-red-200 bg-red-50 px-6 py-2 shadow-sm">
-      <ul className="flex w-full max-w-5xl flex-col gap-1">
+    <div className="z-10 flex w-full shrink-0 items-start justify-between gap-2 border-b border-red-200 bg-red-50 px-3 py-2 shadow-sm sm:px-6">
+      <ul className="flex min-w-0 flex-1 max-w-5xl flex-col gap-1">
         {alerts.map(a => (
-          <li key={a.id} className="flex items-center gap-2 text-sm font-medium text-red-800">
+          <li key={a.id} className="flex min-w-0 items-center gap-2 text-sm font-medium text-red-800">
             <AlertTriangle className="h-4 w-4 shrink-0 text-[#cf152d]" />
             <span className="min-w-0 truncate">{a.titulo}{a.cuerpo ? ` — ${a.cuerpo}` : ''}</span>
             {a.link && (

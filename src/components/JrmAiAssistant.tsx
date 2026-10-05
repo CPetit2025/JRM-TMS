@@ -363,7 +363,7 @@ export function JrmAiAssistant() {
 
           <section role="dialog" aria-label="Copiloto IA"
             className={isMobile
-              ? "fixed bottom-0 left-0 right-0 z-[100] flex h-[85vh] w-full flex-col rounded-t-3xl border-t border-slate-200 bg-white text-slate-900 shadow-2xl transition-transform animate-in slide-in-from-bottom-full duration-300"
+              ? "fixed bottom-0 left-0 right-0 z-[100] flex h-[85dvh] w-full flex-col rounded-t-3xl border-t border-slate-200 bg-white text-slate-900 shadow-2xl transition-transform animate-in slide-in-from-bottom-full duration-300"
               : "flex h-[min(620px,calc(100vh-2.5rem))] w-[min(420px,calc(100vw-2.5rem))] flex-col rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl"
             }>
 
@@ -405,7 +405,7 @@ export function JrmAiAssistant() {
             {sites.map(site => <option key={site.id} value={site.id}>{site.name}</option>)}
           </select>}
         </div>
-        <div className="flex-1 space-y-3 overflow-y-auto p-4" aria-live="polite">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4" aria-live="polite">
           {!enabled && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
             JRM IA está pendiente de configurar en el servidor. Solicita al administrador que configure GEMINI_API_KEY u OPENAI_API_KEY en el servidor.
           </p>}
@@ -482,7 +482,7 @@ export function JrmAiAssistant() {
           </button>
           <input type="text" value={question} onChange={event => setQuestion(event.target.value)}
             disabled={!enabled || busy} placeholder={transcribing ? "Transcribiendo tu mensaje..." : listening ? "Grabando… toca ■ para enviar" : "Escríbeme o toca el micrófono"}
-            className="flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:border-[#002855] focus:outline-none focus:ring-1 focus:ring-[#002855]" />
+            className="min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:border-[#002855] focus:outline-none focus:ring-1 focus:ring-[#002855]" />
           <button type="submit" disabled={!enabled || busy || !question.trim()} aria-label="Enviar pregunta"
             className="rounded-full bg-[#002855] p-2.5 text-white shadow-md disabled:opacity-50 hover:bg-[#003b78] transition-colors">
             <Send className="h-5 w-5" />

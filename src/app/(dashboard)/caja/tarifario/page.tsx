@@ -113,14 +113,14 @@ function RateForm({ rate, onClose, onDone }: { rate: Row; onClose: () => void; o
   return (
     <Modal isOpen onClose={onClose} title={rate.id ? `Editar tarifa ${rate.code}` : 'Nueva tarifa de ruta'} maxWidth="max-w-2xl">
       <div className="space-y-3 text-sm">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="block"><span className="text-xs font-bold text-slate-600">Código</span><input value={f.code} onChange={e => set({ code: e.target.value })} className="caja-input uppercase" placeholder="LIM-ARQ" /></label>
-          <label className="block col-span-2"><span className="text-xs font-bold text-slate-600">Nombre</span><input value={f.name} onChange={e => set({ name: e.target.value })} className="caja-input" placeholder="Lima – Arequipa" /></label>
+          <label className="block sm:col-span-2"><span className="text-xs font-bold text-slate-600">Nombre</span><input value={f.name} onChange={e => set({ name: e.target.value })} className="caja-input" placeholder="Lima – Arequipa" /></label>
           <label className="block"><span className="text-xs font-bold text-slate-600">Origen</span><input value={f.origin} onChange={e => set({ origin: e.target.value })} className="caja-input" /></label>
           <label className="block"><span className="text-xs font-bold text-slate-600">Destino</span><input value={f.destination} onChange={e => set({ destination: e.target.value })} className="caja-input" /></label>
           {num('distance_km', 'Km (solo ida)')}
         </div>
-        <div className="grid grid-cols-4 gap-3 items-end">
+        <div className="grid grid-cols-1 gap-3 items-end sm:grid-cols-2 lg:grid-cols-4">
           <label className="flex items-center gap-2 pb-2"><input type="checkbox" checked={!!f.round_trip} onChange={e => set({ round_trip: e.target.checked })} />Ida y vuelta</label>
           {num('days', 'Días')}{num('nights', 'Noches')}{num('fuel_price_per_gallon', 'Precio gal. (opcional)')}
           {num('toll_amount', 'Peajes (total)')}{num('meal_per_day', 'Alimentación / día')}{num('lodging_per_night', 'Hospedaje / noche')}{num('other_amount', 'Otros')}
@@ -300,7 +300,7 @@ function ReasonForm({ reason, onClose, onDone }: { reason: AdvanceReason; onClos
       <div className="space-y-3 text-sm">
         <label className="block"><span className="text-xs font-bold text-slate-600">Nombre</span><input value={f.label} onChange={e => setF({ ...f, label: e.target.value })} className="caja-input" /></label>
         <label className="block"><span className="text-xs font-bold text-slate-600">Descripción</span><input value={f.description} onChange={e => setF({ ...f, description: e.target.value })} className="caja-input" /></label>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="block"><span className="text-xs font-bold text-slate-600">Aprueba</span>
             <select value={f.approval_by} onChange={e => setF({ ...f, approval_by: e.target.value as 'CAJA' | 'JEFE' })} className="caja-input">
               <option value="CAJA">Caja</option><option value="JEFE">Jefe de Distribución</option></select></label>
