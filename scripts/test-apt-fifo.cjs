@@ -10,7 +10,9 @@ function sql(input){return run(['exec','-i',name,'psql','-U','postgres','-v','ON
 try {
  run(['run','-d','--name',name,'-e','POSTGRES_HOST_AUTH_METHOD=trust','postgres:16-alpine'])
  let ready=false
- for(let n=0;n<30;n++){if(spawnSync('docker',['exec',name,'pg_isready','-U','postgres']).status===0){ready=true;break} Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,200)}
+ // The entrypoint's temporary Unix-socket server shuts down after initialization.
+ // TCP accepts connections only once the final PostgreSQL process is ready.
+ for(let n=0;n<30;n++){if(spawnSync('docker',['exec',name,'pg_isready','-h','127.0.0.1','-U','postgres']).status===0){ready=true;break} Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,200)}
  if(!ready)throw Error('Scratch PostgreSQL did not become ready')
  const base=readFileSync(path.join(root,'supabase/migrations/20261002100000_apt_estadia_inventario.sql'),'utf8')
  const latest=readFileSync(path.join(root,'supabase/migrations/20261002110000_apt_cliente_ot_lote.sql'),'utf8')

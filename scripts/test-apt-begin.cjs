@@ -25,8 +25,9 @@ const asLoader = `SET ROLE authenticated; SET request.jwt.claim.sub='${owner}';`
 try {
   run(['run', '-d', '--name', name, '-e', 'POSTGRES_HOST_AUTH_METHOD=trust', 'postgres:16-alpine'])
   let ready = false
+  // Wait for the final TCP server, not the temporary initialization socket.
   for (let i = 0; i < 30; i++) {
-    if (spawnSync('docker', ['exec', name, 'pg_isready', '-U', 'postgres']).status === 0) {ready = true; break}
+    if (spawnSync('docker', ['exec', name, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres']).status === 0) {ready = true; break}
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
   }
   if (!ready) throw Error('Scratch PostgreSQL did not become ready')
