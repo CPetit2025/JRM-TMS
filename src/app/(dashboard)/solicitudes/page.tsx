@@ -9,11 +9,20 @@ import { normalizeRoleName } from '@/lib/roles'
 import { OtPicker, type OtNode } from '@/components/solicitudes/OtPicker'
 import { QuoteBreakdown } from '@/components/tarifas/TransportTariffManager'
 
+type AttentionMode = 'TRANSPORTE_JRM' | 'RECOJO_CLIENTE'
+const requiresOt = (area: string) => /^(OT(?:\s*[-(]|$)|administraci[oó]n de contratos$)/i.test(area.trim())
+
 interface TransportRequest {
   id: string
   request_number: string
   requester_name: string
   department: string
+  attention_mode?: AttentionMode | null
+  cost_center_id?: string | null
+  pickup_customer?: string | null
+  pickup_contact?: string | null
+  pickup_phone?: string | null
+  site_id?: string | null
   pickup_address: string
   pickup_department?: string
   pickup_province?: string
@@ -104,7 +113,7 @@ interface RequestSummary {
   root_balance_pen: number | null
 }
 
-const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : (error as { message?: string })?.message || String(error)
 
 export default function SolicitudesPage() {
   const { canWrite, role } = usePermissions()
@@ -115,6 +124,8 @@ export default function SolicitudesPage() {
   
   const [requests, setRequests] = useState<TransportRequest[]>([])
   const [requestSummaries, setRequestSummaries] = useState<Record<string, RequestSummary>>({})
+  const [sites, setSites] = useState<{ id: string; name: string }[]>([])
+  const [costCenters, setCostCenters] = useState<{ id: string; code: string; name: string }[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
   const [, setContractSearch] = useState('')
   const [otNodes, setOtNodes] = useState<OtNode[]>([])  // OT madre/independientes con sus subcontratos y errores
@@ -157,6 +168,8 @@ export default function SolicitudesPage() {
   const [newRequest, setNewRequest] = useState({
     requester_name: '',
     department: '',
+    attention_mode: 'TRANSPORTE_JRM' as AttentionMode,
+    site_id: '', cost_center_id: '', pickup_customer: '', pickup_contact: '', pickup_phone: '',
     request_type: 'DESPACHO',
     pickup_address: 'Planta Chilca',
     pickup_department: 'LIMA',
@@ -193,7 +206,9 @@ export default function SolicitudesPage() {
     option.destination_address?.trim().toLowerCase()).filter(Boolean)).size > 1
   const rootBudget = componentOptions.find(option => option.contract_id === newRequest.contract_id)
   const unloadingTotal = unloading.reduce((sum, u) => sum + (Number(u.estimated_pen) || 0), 0)
-  const estimatedCost = Number(newRequest.service_cost || 0) + unloadingTotal
+  const isCustomerPickup = newRequest.attention_mode === 'RECOJO_CLIENTE'
+  const otRequired = requiresOt(newRequest.department) || userRole === 'administrador de contratos'
+  const estimatedCost = (isCustomerPickup ? 0 : Number(newRequest.service_cost || 0)) + unloadingTotal
 
   const checkUser = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -208,11 +223,23 @@ export default function SolicitudesPage() {
         setNewRequest(prev => ({...prev, requester_name: `${profile.first_name} ${profile.last_name}`}))
         const roleName = Array.isArray(profile.roles) ? profile.roles[0]?.name : (profile.roles as { name?: string } | null)?.name
         if (roleName) {
-          setUserRole(normalizeRoleName(roleName))
+          const normalized = normalizeRoleName(roleName)
+          setUserRole(normalized)
+          if (normalized === 'administrador de contratos') setNewRequest(prev => ({ ...prev, department: 'OT (Administración de Contratos)' }))
         }
       }
     }
   }, [supabase, setNewRequest])
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([supabase.from('sites').select('id, name'), supabase.from('cost_centers').select('id, code, name').eq('is_active', true)]).then(([a,b]) => {
+      if (cancelled) return
+      if (a.error || b.error) toast.error('No se pudieron cargar sedes o centros de costo.')
+      setSites(a.data || []); setCostCenters(b.data || [])
+    })
+    return () => { cancelled = true }
+  }, [supabase])
 
   const fetchRequests = useCallback(async () => {
     setLoading(true)
@@ -311,7 +338,7 @@ export default function SolicitudesPage() {
   // Cotización con el tarifario: OT + destino + peso + recursos de descarga
   const unloadingKey = unloadingAnswer === 'SI' ? unloading.map(u => u.concept).join(',') : ''
   useEffect(() => {
-    if (!isModalOpen || !newRequest.contract_id || !newRequest.delivery_district) {
+    if (!isModalOpen || !newRequest.delivery_district) {
       const t = window.setTimeout(() => setQuote(null), 0)
       return () => window.clearTimeout(t)
     }
@@ -319,15 +346,21 @@ export default function SolicitudesPage() {
     const t = window.setTimeout(async () => {
       setQuoting(true)
       const { data, error } = await supabase.rpc('quote_transport', {
-        p_contract_id: newRequest.contract_id,
+        p_contract_id: newRequest.contract_id || null,
         p_stops: [{ district: newRequest.delivery_district, province: newRequest.delivery_province || null, department: newRequest.delivery_department || null }],
-        p_weight_kg: requestedWeight > 0 ? requestedWeight : null, p_vehicle_class: null, p_plate: null,
+        p_weight_kg: requestedWeight > 0 ? requestedWeight : Number(newRequest.estimated_weight) || null, p_vehicle_class: null, p_plate: null,
         p_unloading: unloadingKey ? unloadingKey.split(',').map(concept => ({ concept, quantity: 1 })) : [],
       })
       if (cancel) return
       setQuoting(false)
       if (error) { setQuote(null); return }
       const q = data as Record<string, unknown>
+      if (isCustomerPickup) {
+        q.freight_total = 0
+        q.total = Number(q.unloading_total || 0); q.client_total = null; q.vehicle_class = null
+        q.missing = ((q.missing || []) as string[]).filter(m => !/flete|parada adicional/i.test(m))
+        q.lines = ((q.lines || []) as { concept: string }[]).filter(l => !['FLETE','PARADA_ADICIONAL'].includes(l.concept))
+      }
       setQuote(q)
       // El costo referencial sigue siempre al tarifario (flete + paradas; la descarga va en sus propias líneas)
       setNewRequest(prev => ({ ...prev, service_cost: String(Number(q.freight_total) || 0) }))
@@ -338,9 +371,9 @@ export default function SolicitudesPage() {
       }))
     }, 500)
     return () => { cancel = true; window.clearTimeout(t) }
-  }, [supabase, isModalOpen, newRequest.contract_id, newRequest.delivery_district, newRequest.delivery_province, newRequest.delivery_department, requestedWeight, unloadingKey, setNewRequest])
+  }, [supabase, isModalOpen, newRequest.contract_id, newRequest.delivery_district, newRequest.delivery_province, newRequest.delivery_department, requestedWeight, newRequest.estimated_weight, isCustomerPickup, unloadingKey, setNewRequest])
 
-  const quoteFreight = Number(quote?.freight_total || 0)
+  const quoteFreight = isCustomerPickup ? 0 : Number(quote?.freight_total || 0)
 
   const applyUnloadingReference = (h: UnloadingHistory) => {
     const lines = (h.lines || []).map(l => ({
@@ -393,8 +426,8 @@ export default function SolicitudesPage() {
 
   const openEditModal = async (request: TransportRequest) => {
     const root = contracts.find(c => c.id === request.contract_id)
-    if (!root) { toast.error('Esta solicitud histórica no tiene una OT madre disponible para edición.'); return }
-    const options = await loadComponentOptions(root.id, request.id)
+    if (request.contract_id && !root) { toast.error('La OT de esta solicitud no está disponible para edición.'); return }
+    const options = root ? await loadComponentOptions(root.id, request.id) : []
     if (!options) return
     const unavailable = (request.transport_request_components || []).filter(item =>
       !options.some(option => option.contract_id === item.component_contract_id))
@@ -402,7 +435,7 @@ export default function SolicitudesPage() {
       toast.error('Esta solicitud contiene componentes inactivos o ya desvinculados de la OT; no se pueden editar sin revisión de datos.')
       return
     }
-    setContractSearch(root.code)
+    setContractSearch(root?.code || '')
     setDestinationAcknowledged(false)
     setSelectedComponents(Object.fromEntries((request.transport_request_components || []).map(item => [
       item.component_contract_id,
@@ -411,6 +444,9 @@ export default function SolicitudesPage() {
     setNewRequest({
       requester_name: request.requester_name,
       department: request.department.startsWith('OT -') ? 'OT (Administración de Contratos)' : request.department,
+      attention_mode: request.attention_mode || 'TRANSPORTE_JRM',
+      site_id: request.site_id || '', cost_center_id: request.cost_center_id || '',
+      pickup_customer: request.pickup_customer || '', pickup_contact: request.pickup_contact || '', pickup_phone: request.pickup_phone || '',
       request_type: request.request_type,
       pickup_address: request.pickup_address,
       pickup_department: request.pickup_department || '',
@@ -462,12 +498,12 @@ export default function SolicitudesPage() {
       return
     }
 
-    if (!newRequest.contract_id || !contracts.some(c => c.id === newRequest.contract_id)) {
+    if ((otRequired && !newRequest.contract_id) || (newRequest.contract_id && !contracts.some(c => c.id === newRequest.contract_id))) {
       toast.error('Selecciona una OT madre activa.')
       return
     }
     const selected = componentOptions.filter(c => selectedComponents[c.contract_id])
-    if (!selected.length) { toast.error('Selecciona al menos un componente.'); return }
+    if (newRequest.contract_id && !selected.length) { toast.error('Selecciona al menos un componente.'); return }
     const destinations = new Set(selected.map(c => c.destination_address?.trim().toLowerCase()).filter(Boolean))
     if (destinations.size > 1 && !destinationAcknowledged) {
       toast.error('Confirma el destino principal o separa la solicitud.')
@@ -486,7 +522,7 @@ export default function SolicitudesPage() {
       toast.error('Revise los costos estimados.')
       return
     }
-    if (estimatedCost > 0 && estimatedCost > Number(rootBalance || 0) && !window.confirm(
+    if (newRequest.contract_id && estimatedCost > 0 && estimatedCost > Number(rootBalance || 0) && !window.confirm(
       `El costo estimado (flete + descarga S/ ${estimatedCost.toLocaleString('es-PE')}) supera el saldo de la partida ` +
       `(S/ ${Number(rootBalance || 0).toLocaleString('es-PE')}). La solicitud quedará OBSERVADA y no se atenderá hasta ampliar la partida. ¿Registrar de todos modos?`)) {
       return
@@ -510,9 +546,10 @@ export default function SolicitudesPage() {
     setIsSubmitting(true)
 
     try {
-      const { data: savedId, error } = await supabase.rpc('save_transport_request', {
+      const { data: saved, error } = await supabase.rpc('save_transport_request_attention', {
         p_request_id: editingRequestId,
-        p_payload: { ...newRequest, destination_acknowledged: destinationAcknowledged },
+        p_payload: { ...newRequest, contract_id: newRequest.contract_id || null, service_cost: isCustomerPickup ? 0 : newRequest.service_cost, destination_acknowledged: destinationAcknowledged },
+        p_unloading: unloadingAnswer === 'SI' ? unloading.map(x => ({ concept: x.concept, estimated_pen: Number(x.estimated_pen) || 0, description: x.description || null })) : [],
         p_components: selected.map(c => ({
           contract_id: c.contract_id,
           weight_kg: selectedComponents[c.contract_id].weight_kg || null,
@@ -520,21 +557,7 @@ export default function SolicitudesPage() {
         }))
       })
       if (error) throw error
-      const requestId = (savedId as string | null) || editingRequestId
-      if (requestId) {
-        // Siempre se registra la respuesta: "No" = sin líneas; "Sí" = recursos (el monto puede quedar por cotizar)
-        const { data: u, error: uErr } = await supabase.rpc('save_request_unloading_costs', {
-          p_request_id: requestId,
-          p_items: unloadingAnswer === 'SI'
-            ? unloading.map(x => ({ concept: x.concept, estimated_pen: Number(x.estimated_pen) || 0, description: x.description || null }))
-            : [],
-        })
-        if (uErr || !u?.success) toast.warning('La solicitud se guardó, pero no los recursos de descarga: ' + (uErr ? errorMessage(uErr) : u?.error))
-        // Costo referencial: lo calcula el servidor con el tarifario (flete + descarga) y valida la partida
-        const { data: c, error: cErr } = await supabase.rpc('apply_request_tariff', { p_request_id: requestId })
-        if (cErr || !c?.success) toast.warning('No se pudo calcular el costo referencial: ' + (cErr ? errorMessage(cErr) : c?.error))
-        else if (c.status === 'OBSERVADA') toast.warning('Solicitud observada: la partida no cubre el costo referencial (flete + descarga). Se atenderá al ampliarse la partida.')
-      }
+      if (saved?.status === 'OBSERVADA') toast.warning('Solicitud observada: la partida no cubre los costos a cargo de JRM.')
 
       toast.success('Solicitud enviada correctamente')
       setUnloading([]); setUnloadingAnswer(''); setUnloadingHistory([])
@@ -542,7 +565,8 @@ export default function SolicitudesPage() {
       setIsModalOpen(false)
       setNewRequest(prev => ({
         ...prev, 
-        department: '',
+        attention_mode: 'TRANSPORTE_JRM', site_id: '', cost_center_id: '', pickup_customer: '', pickup_contact: '', pickup_phone: '',
+        department: userRole === 'administrador de contratos' ? 'OT (Administración de Contratos)' : '',
         pickup_address: 'Planta Chilca',
         pickup_department: 'LIMA',
         pickup_province: 'CAÑETE',
@@ -677,7 +701,8 @@ export default function SolicitudesPage() {
               componentLoadId.current++
               setNewRequest({
                 requester_name: newRequest.requester_name,
-                department: '',
+                attention_mode: 'TRANSPORTE_JRM', site_id: '', cost_center_id: '', pickup_customer: '', pickup_contact: '', pickup_phone: '',
+        department: userRole === 'administrador de contratos' ? 'OT (Administración de Contratos)' : '',
                 request_type: 'DESPACHO',
                 pickup_address: 'Planta Chilca',
                 pickup_department: 'LIMA',
@@ -881,6 +906,7 @@ export default function SolicitudesPage() {
                           </div>
                         )}
                         <span className="text-[10px] text-slate-500">{req.transport_request_components?.length || 0} componentes</span>
+                        <span className="text-xs font-semibold text-blue-700">{req.attention_mode === 'RECOJO_CLIENTE' ? 'Recojo por el cliente · flete JRM S/ 0' : req.attention_mode ? 'Transporte JRM' : 'Modalidad pendiente: edite la solicitud'}</span>
                         <span className="text-[10px] text-slate-500">Costo estimado: S/ {Number(req.service_cost || 0).toLocaleString('es-PE')}</span>
                         <span className="text-[10px] text-slate-500">Viajes: {requestSummaries[req.id]?.dispatch_count ?? '—'}</span>
                       </div>
@@ -989,8 +1015,23 @@ export default function SolicitudesPage() {
               </select>
             </div>
             
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">OT / Proyecto asociado *</label>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Modalidad de atención *</label>
+              <select value={newRequest.attention_mode} onChange={e => { setNewRequest(prev => ({ ...prev, attention_mode: e.target.value as AttentionMode, service_cost: '' })); setQuote(null) }}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900">
+                <option value="TRANSPORTE_JRM">Transporte gestionado por JRM</option><option value="RECOJO_CLIENTE">Recojo por el cliente</option>
+              </select>
+              <p className="mt-1 text-xs text-slate-600">El armado de ruta heredará esta modalidad. {isCustomerPickup ? 'Flete JRM: S/ 0.00. Se emite Nota de Salida; otros recursos conservan sus costos.' : 'El supervisor asignará unidad propia o proveedor.'}</p>
+            </div>
+            {isCustomerPickup && <div className="md:col-span-2 grid grid-cols-1 gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 md:grid-cols-3">
+              {([['pickup_customer','Cliente que recoge'],['pickup_contact','Contacto autorizado'],['pickup_phone','Teléfono del contacto']] as const).map(([key,label]) => <label key={key} className="text-sm text-slate-700">{label} *<input required value={newRequest[key]} type={key === 'pickup_phone' ? 'tel' : 'text'} onChange={e => setNewRequest(prev => ({ ...prev, [key]: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>)}
+            </div>}
+            {!newRequest.contract_id && <>
+              <label className="text-sm text-slate-700">Sede de atención *<select required value={newRequest.site_id} onChange={e => setNewRequest(prev => ({ ...prev, site_id: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="">Seleccione sede</option>{sites.map(site => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
+              <label className="text-sm text-slate-700">Centro de costo {!isCustomerPickup ? '*' : '(si genera otros gastos)'}<select required={!isCustomerPickup} value={newRequest.cost_center_id} onChange={e => setNewRequest(prev => ({ ...prev, cost_center_id: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="">Seleccione centro</option>{costCenters.map(c => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}</select></label>
+            </>}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">OT / Proyecto asociado {otRequired ? '*' : '(opcional)'}</label>
               <OtPicker
                 nodes={otNodes}
                 value={newRequest.contract_id}
@@ -1250,6 +1291,7 @@ export default function SolicitudesPage() {
             </div>
           </div>
 
+          {!newRequest.contract_id && <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{([['estimated_weight','Peso estimado (kg)'],['estimated_volume','Volumen estimado (m³)']] as const).map(([key,label]) => <label key={key} className="text-sm text-slate-700">{label}<input type="number" min="0" step="0.01" value={newRequest[key]} onChange={e => setNewRequest(prev => ({ ...prev, [key]: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>)}</div>}
           <div className="border-t border-slate-200 pt-6 mt-4">
             <h3 className="text-lg font-semibold text-slate-800 mb-4">Información de la Carga</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1282,15 +1324,14 @@ export default function SolicitudesPage() {
                   S/ {quoteFreight.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  Referencial: lo calcula el tarifario según OT, destino, peso y descarga; no se edita. Se reserva en la partida al
-                  aprobarse y el costo real del flete se define al programar en Despacho.
+                  {isCustomerPickup ? 'El cliente gestiona el transporte: no se cotiza ni reserva flete JRM.' : 'Costo referencial según tarifario. Requiere aprobación de la partida OT o del gasto en su centro de costo; el armado de ruta valida el importe.'}
                 </p>
                 {quote ? <QuoteBreakdown quote={quote} compact />
                   : <p className="text-xs text-slate-400 mt-1">Elige la OT y el distrito de destino para calcularlo.</p>}
               </div>
               <div className="md:col-span-2 rounded-lg border border-slate-200 p-3">
                 <label className="block text-sm font-semibold text-slate-800">¿La entrega requiere descarga especial? *</label>
-                <p className="text-xs text-slate-500 mb-2">Montacargas, grúa, estiba u otros en el punto de entrega. Se cargan a la partida de transporte de este contrato.</p>
+                <p className="text-xs text-slate-500 mb-2">Montacargas, grúa, estiba u otros en el punto de entrega. Mantienen su costo a cargo de JRM, incluso cuando el cliente recoge.</p>
                 <div className="flex gap-4 mb-2">
                   {(['NO', 'SI'] as const).map(v => (
                     <label key={v} className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm cursor-pointer ${unloadingAnswer === v ? 'border-[#002855] bg-blue-50 font-semibold text-[#002855]' : 'border-slate-300 text-slate-700'}`}>
@@ -1365,7 +1406,7 @@ export default function SolicitudesPage() {
             </button>
             <button 
               type="submit" 
-              disabled={isSubmitting || componentsLoading || !newRequest.contract_id || selectedOptions.length === 0}
+              disabled={isSubmitting || componentsLoading || (otRequired && !newRequest.contract_id) || (Boolean(newRequest.contract_id) && selectedOptions.length === 0)}
               className="px-4 py-2 bg-[#002855] text-white font-medium rounded-lg hover:bg-[#001d3d] transition-colors disabled:opacity-50 flex items-center gap-2"
             >
               {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -1406,6 +1447,7 @@ export default function SolicitudesPage() {
           <div className="grid grid-cols-2 gap-3 rounded-lg bg-blue-50 p-4">
             <div><span className="block text-xs text-slate-500">Peso de cabecera</span><strong>{Number(selectedRequestDetails.estimated_weight || 0).toLocaleString('es-PE')} kg</strong></div>
             <div><span className="block text-xs text-slate-500">Volumen de cabecera</span><strong>{Number(selectedRequestDetails.estimated_volume || 0).toLocaleString('es-PE')} m³</strong></div>
+            <div><span className="block text-xs text-slate-500">Modalidad de atención</span><strong>{selectedRequestDetails.attention_mode === 'RECOJO_CLIENTE' ? 'Recojo por el cliente' : selectedRequestDetails.attention_mode === 'TRANSPORTE_JRM' ? 'Transporte JRM' : 'Pendiente de confirmar'}</strong><p className="text-xs text-slate-600">{selectedRequestDetails.pickup_customer} {selectedRequestDetails.pickup_contact} {selectedRequestDetails.pickup_phone}</p></div>
             <div><span className="block text-xs text-slate-500">Costo estimado, una vez por solicitud</span><strong>S/ {Number(selectedRequestDetails.service_cost || 0).toLocaleString('es-PE')}</strong></div>
             <div><span className="block text-xs text-slate-500">Partida OT raíz</span><strong>{requestSummaries[selectedRequestDetails.id]?.root_allocated_pen == null ? 'Sin registrar' : `S/ ${Number(requestSummaries[selectedRequestDetails.id].root_allocated_pen).toLocaleString('es-PE')}`}</strong></div>
             <div><span className="block text-xs text-slate-500">Saldo actual OT raíz</span><strong>{requestSummaries[selectedRequestDetails.id]?.root_balance_pen == null ? 'Sin registrar' : `S/ ${Number(requestSummaries[selectedRequestDetails.id].root_balance_pen).toLocaleString('es-PE')}`}</strong></div>

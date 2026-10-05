@@ -31,6 +31,7 @@ jobs:
       - run: node scripts/test-apt-begin.cjs
       - run: node scripts/test-apt-fifo.cjs
       - run: node scripts/test-apt-almacenes.cjs
+      - run: node scripts/test-request-attention.cjs
       - run: node scripts/test-delivery-conformity.cjs
       - run: node scripts/test-delivery-offline.cjs
       - run: node scripts/test-delivery-api.cjs
