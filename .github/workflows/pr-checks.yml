@@ -48,4 +48,27 @@ jobs:
       - run: npx cap sync android
       - name: Compile APK and test native session lock
         working-directory: android
-        run: bash ./gradlew assembleDebug testDebugUnitTest --no-daemon
+        run: |
+          set +e
+          bash ./gradlew assembleDebug testDebugUnitTest --no-daemon > gradle-validation.log 2>&1
+          result=$?
+          cat gradle-validation.log
+          if [ "$result" -ne 0 ]; then
+            python - <<'PYTHON'
+          from pathlib import Path
+          message = '\n'.join(Path('gradle-validation.log').read_text().splitlines()[-100:])
+          message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print('::error title=Android validation::' + message)
+          PYTHON
+          fi
+          exit "$result"
+      - name: Native test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-session-test-reports
+          path: |
+            android/gradle-validation.log
+            android/app/build/test-results/testDebugUnitTest/*.xml
+            android/app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: warn
