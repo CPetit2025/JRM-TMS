@@ -5,7 +5,8 @@ import { createClient } from '@/lib/supabase/server'
 // Procesa una carga de APT en el servidor: aplicar el reemplazo por fechas, recalcular la estadía (FIFO) y el flujo
 // multi-almacén. Desde el navegador cada paso tiene un límite de 8 s por consulta; con el reporte total del ERP
 // (≈ 90 000 filas) se excedía. Aquí se verifica el permiso de carga del usuario y se ejecuta con la llave de servicio.
-export const maxDuration = 60
+// El rol de servicio dispone de 120 s por consulta; dejar margen para autenticar y devolver la respuesta.
+export const maxDuration = 180
 
 type Paso = { error: { message: string } | null; data: { success?: boolean; error?: string } & Record<string, unknown> | null }
 

@@ -12,7 +12,8 @@ import { CoverageAlerts, KIND_STYLE } from './uploadCoverage'
 // Carga diaria de ENTRADA / SALIDA / traspasos / consumos / devoluciones: lectura en el navegador (cada fila se enruta
 // por TIPODOCTO), vista previa, envío por lotes y recálculo FIFO y del flujo multi-almacén
 
-const BATCH = 1000
+// Reducir el trabajo por petición del rol authenticated (límite de 8 s).
+const BATCH = 250
 const MAX_MB = 60
 const MAX_FILES = 6
 const RETRIES = 3
@@ -23,6 +24,7 @@ type Phase =
   | { step: 'preview'; files: File[]; result: AptParseResult }
   | { step: 'sending'; sent: number; total: number; kind: string; retry: number }
   | { step: 'applying' }
+  | { step: 'rebuilding' }
 
 // Lee en un worker; si el navegador no puede crearlo, lee en el hilo principal
 function readFiles(files: File[], onProgress: (m: string) => void): Promise<AptParseResult> {
@@ -180,17 +182,18 @@ export function UploadPanel({ state }: { state: AptState | null }) {
   const [phase, setPhase] = useState<Phase>({ step: 'idle' })
   const [error, setError] = useState<string | null>(null)
   const [drag, setDrag] = useState(false)
+  const [pendingRebuild, setPendingRebuild] = useState<string | null>(null)
   const [last, setLast] = useState<AptUploadSummary | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const cancelRef = useRef(false)
   // Cobertura de fechas con la carga en vista previa: huecos, días a reemplazar y desfase ENTRADA/SALIDA
   const [cov, setCov] = useState<{ key: string; data: AptCoverage | null } | null>(null)
   const [ack, setAck] = useState('')
-  const busy = phase.step === 'reading' || phase.step === 'sending' || phase.step === 'applying'
+  const busy = phase.step === 'reading' || phase.step === 'sending' || phase.step === 'applying' || phase.step === 'rebuilding'
 
   // Evita cerrar la pestaña a mitad del envío
   useEffect(() => {
-    if (phase.step !== 'sending' && phase.step !== 'applying') return
+    if (phase.step !== 'sending' && phase.step !== 'applying' && phase.step !== 'rebuilding') return
     const h = (e: BeforeUnloadEvent) => { e.preventDefault() }
     window.addEventListener('beforeunload', h)
     return () => window.removeEventListener('beforeunload', h)
@@ -246,10 +249,16 @@ export function UploadPanel({ state }: { state: AptState | null }) {
       setPhase({ step: 'idle' })
       const part = (k: string, x?: AptUploadSummaryKind) =>
         x ? `${k}: ${fmtInt(x.validas)} válidas, ${fmtInt(x.excluidas)} excluidas, ${fmtInt(x.reemplazadas)} reemplazadas, ${fmtTn(x.tn)} TN` : null
-      toast.success('Carga aplicada; FIFO y flujo multi-almacén recalculados', {
+      if (res.warning) {
+        setPendingRebuild(res.warning)
+        toast.warning('Carga aplicada; recálculo pendiente', { description: 'No vuelva a subir el archivo. Use Reintentar recálculo.' })
+      } else {
+        setPendingRebuild(null)
+        toast.success('Carga aplicada; FIFO y flujo multi-almacén recalculados', {
         description: APT_KINDS.map(k => part(APT_KIND_LABEL[k], sum[summaryKey(k)])).filter(Boolean).join(' · '),
         duration: 8000,
-      })
+        })
+      }
       window.dispatchEvent(new Event('apt:updated'))
     } catch (e) {
       if (id) await aptApi.uploadDiscard(id).catch(() => undefined)
@@ -386,13 +395,32 @@ export function UploadPanel({ state }: { state: AptState | null }) {
           </div>
         )}
 
-        {phase.step === 'applying' && (
+        {(phase.step === 'applying' || phase.step === 'rebuilding') && (
           <div className="flex items-center gap-3 rounded-xl border border-[#002855]/20 bg-[#002855]/5 p-4 text-sm text-[#002855]">
             <Loader2 className="h-5 w-5 animate-spin" />
             <div>
               <p className="font-bold">Recalculando FIFO y flujo multi-almacén…</p>
-              <p className="text-xs">Reemplazando el rango de fechas de cada tipo y reasignando salidas a ingresos. Puede tardar unos segundos.</p>
+              <p className="text-xs">{phase.step === 'rebuilding' ? 'Actualizando la estadía y el flujo de los movimientos ya guardados. No se vuelve a cargar el archivo.' : 'Aplicando la carga y actualizando la estadía y el flujo. Puede tardar unos segundos.'}</p>
             </div>
+          </div>
+        )}
+
+        {pendingRebuild && (
+          <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <p>{pendingRebuild}</p>
+            <p>No vuelva a cargar el archivo: los movimientos ya fueron guardados.</p>
+            <button type="button" disabled={busy} className="mt-2 min-h-11 rounded-lg border border-amber-400 px-3 font-semibold disabled:opacity-50"
+              onClick={async () => {
+                setPhase({ step: 'rebuilding' })
+                try {
+                  await aptApi.rebuildModels()
+                  setPendingRebuild(null)
+                  toast.success('Estadía y flujo recalculados')
+                  window.dispatchEvent(new Event('apt:updated'))
+                } catch (e) {
+                  setPendingRebuild(`La carga sigue aplicada. ${e instanceof Error ? e.message : 'No se pudo recalcular'}`)
+                } finally { setPhase({ step: 'idle' }) }
+              }}>Reintentar recálculo</button>
           </div>
         )}
 
