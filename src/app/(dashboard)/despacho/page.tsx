@@ -13,6 +13,7 @@ import { calculateRouteDistance } from '@/lib/routing'
 import { usePermissions } from '@/hooks/usePermissions'
 import { checkDispatchEligibility } from '@/lib/eligibility'
 import { ReportarFallaButton } from '@/components/mantenimiento/ReportarFalla'
+import { TerceroAvanceModal, TerceroFields, TERCERO_VACIO, type TerceroForm } from '@/components/despacho/Tercero'
 
 interface TransportRequest {
   id: string
@@ -72,6 +73,8 @@ interface Dispatch {
   docs_ready_at?: string | null
   docs_reissue?: boolean
   docs_reissue_reason?: string | null
+  modalidad?: string | null
+  tercero_salida_at?: string | null
   dispatch_requests?: DispatchRequest[]
 }
 
@@ -89,6 +92,7 @@ export default function DespachoPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [filterStatus, setFilterStatus] = useState('TODOS')
+  const [filterModalidad, setFilterModalidad] = useState('TODAS')
 
   const filteredDispatches = dispatches.filter((d: any) => {
     const matchSearch = searchTerm === '' || 
@@ -96,7 +100,8 @@ export default function DespachoPage() {
       d.vehicle_plate.toLowerCase().includes(searchTerm.toLowerCase()) || 
       d.driver_name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchStatus = filterStatus === 'TODOS' || d.status === filterStatus;
-    return matchSearch && matchStatus;
+    const matchModalidad = filterModalidad === 'TODAS' || (d.modalidad || 'PROPIA') === filterModalidad;
+    return matchSearch && matchStatus && matchModalidad;
   })
   
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -116,6 +121,10 @@ export default function DespachoPage() {
   const [manualFreightCost, setManualFreightCost] = useState<string>('')
   // Cotización del tarifario con la placa real y todas las paradas (quote_transport)
   const [freightQuote, setFreightQuote] = useState<Record<string, unknown> | null>(null)
+  // Unidad propia o de un transportista tercero que no usa el app
+  const [modalidad, setModalidad] = useState<'PROPIA' | 'TERCERO'>('PROPIA')
+  const [tercero, setTercero] = useState<TerceroForm>(TERCERO_VACIO)
+  const [avanceId, setAvanceId] = useState<string | null>(null)
   const [newDispatch, setNewDispatch] = useState<{
     selected_requests: { id: string, document_number: string }[],
     driver_name: string,
@@ -248,7 +257,7 @@ export default function DespachoPage() {
         .from('dispatches')
         .select(`
           id, dispatch_number, driver_name, vehicle_plate, scheduled_departure, status, estimated_distance_km,
-          docs_required, docs_ready_at, docs_reissue, docs_reissue_reason,
+          docs_required, docs_ready_at, docs_reissue, docs_reissue_reason, modalidad, tercero_salida_at,
           dispatch_requests (
             transport_request_id,
             status,
@@ -367,6 +376,36 @@ export default function DespachoPage() {
     }
 
     setIsSubmitting(true)
+    if (modalidad === 'TERCERO' && newDispatch.document_type === 'GR') {
+      try {
+        if (!tercero.carrier_id || !tercero.placa.trim() || !tercero.conductor.trim() || !tercero.telefono.trim()) {
+          throw new Error('Complete transportista, placa, chofer y celular del tercero.')
+        }
+        const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
+        const freightCost = Number(manualFreightCost) > 0 ? Number(manualFreightCost) : (detectedFreightRate?.rate || 0)
+        const { data: newDispatchId, error } = await supabase.rpc('schedule_dispatch_tercero', {
+          p_carrier_id: tercero.carrier_id, p_plate: tercero.placa, p_conductor: tercero.conductor, p_telefono: tercero.telefono,
+          p_doc: tercero.doc || null, p_departure: newDispatch.scheduled_departure,
+          p_estimated_km: Number(newDispatch.estimated_distance_km) || 0, p_freight_cost: freightCost,
+          p_contract_id: firstReq?.contracts?.id || null,
+          p_requests: newDispatch.selected_requests.map(req => ({ ...req, leg_planned_km: reqDistances.current[req.id] ?? null })),
+        })
+        if (error) throw error
+        if (newDispatchId && freightQuote && detectedFreightRate?.rate && freightCost === detectedFreightRate.rate) {
+          await supabase.rpc('set_dispatch_freight_quote', { p_dispatch_id: newDispatchId, p_breakdown: freightQuote })
+        }
+        toast.success('Despacho tercerizado programado y flete reservado a nombre del proveedor.')
+        setIsModalOpen(false)
+        setNewDispatch({ selected_requests: [], driver_name: '', vehicle_plate: '', scheduled_departure: '', estimated_distance_km: '', document_type: 'GR' })
+        setManualFreightCost(''); setTercero(TERCERO_VACIO); setModalidad('PROPIA')
+        fetchData()
+      } catch (error) {
+        toast.error('Error al programar el despacho: ' + (error instanceof Error ? error.message : (error as { message?: string })?.message || String(error)))
+      } finally {
+        setIsSubmitting(false)
+      }
+      return
+    }
     try {
       const matches = drivers.filter(d => `${d.first_name} ${d.last_name}`.trim() === newDispatch.driver_name.trim())
       if (newDispatch.document_type !== 'NOTA_SALIDA' && matches.length !== 1) {
@@ -552,7 +591,7 @@ export default function DespachoPage() {
     const updatedIds = isSelected
       ? newDispatch.selected_requests.filter(r => r.id !== reqId).map(r => r.id)
       : [...newDispatch.selected_requests.map(r => r.id), reqId]
-    lookupFreightRate(newDispatch.vehicle_plate, updatedIds)
+    lookupFreightRate(modalidad === 'TERCERO' ? 'EXTERNO' : newDispatch.vehicle_plate, updatedIds)
   }
 
   return (
@@ -703,6 +742,18 @@ export default function DespachoPage() {
                 <option value="LIQUIDADO">Cerrado (ruta cerrada)</option>
               </select>
             </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Unidad</label>
+              <select
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none"
+                value={filterModalidad}
+                onChange={(e) => setFilterModalidad(e.target.value)}
+              >
+                <option value="TODAS">Todas</option>
+                <option value="PROPIA">Flota propia</option>
+                <option value="TERCERO">Tercerizada</option>
+              </select>
+            </div>
           </div>
         )}
       </div>
@@ -736,7 +787,7 @@ export default function DespachoPage() {
                       </td>
                     </tr>
                   ) : (
-                    dispatches.map(dispatch => (
+                    filteredDispatches.map(dispatch => (
                       <tr key={dispatch.id} className="hover:bg-slate-50 transition-colors">
                         <td className="p-4">
                           <button 
@@ -748,7 +799,10 @@ export default function DespachoPage() {
                         </td>
                         <td className="p-4">
                           <div className="flex flex-col">
-                            <span className="font-bold text-[#002855] text-sm uppercase">{dispatch.vehicle_plate}</span>
+                            <span className="font-bold text-[#002855] text-sm uppercase flex items-center gap-1.5">
+                              {dispatch.vehicle_plate}
+                              {dispatch.modalidad === 'TERCERO' && <span className="text-[10px] normal-case font-bold bg-violet-100 text-violet-700 border border-violet-200 px-1.5 py-0.5 rounded">Tercero</span>}
+                            </span>
                             <span className="text-xs text-slate-500">{dispatch.driver_name}</span>
                           </div>
                         </td>
@@ -805,7 +859,16 @@ export default function DespachoPage() {
                           )}
                         </td>
                         <td className="p-4 text-right">
-                          {dispatch.status === 'PROGRAMADO' && (
+                          {dispatch.modalidad === 'TERCERO' && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'ENTREGADO'].includes(dispatch.status) && (
+                            <button
+                              onClick={() => setAvanceId(dispatch.id)}
+                              className="mr-1 inline-flex items-center gap-1 px-3 py-1.5 bg-violet-50 text-violet-700 hover:bg-violet-100 transition-colors rounded-lg text-xs font-medium border border-violet-200 whitespace-nowrap"
+                            >
+                              <Truck className="w-3 h-3" />
+                              {dispatch.status === 'PROGRAMADO' ? 'Registrar salida' : dispatch.status === 'ENTREGADO' ? 'Ver entregas' : 'Registrar entregas'}
+                            </button>
+                          )}
+                          {dispatch.status === 'PROGRAMADO' && dispatch.modalidad !== 'TERCERO' && (
                             <button 
                               onClick={() => startRoute(dispatch.id, dispatch.dispatch_requests || [])}
                               className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 transition-colors rounded-lg text-xs font-medium border border-blue-200 whitespace-nowrap"
@@ -889,7 +952,37 @@ export default function DespachoPage() {
               </h4>
               
               <div className="space-y-3">
-                {newDispatch.document_type === 'GR' ? (
+                {newDispatch.document_type === 'GR' && (
+                  <div className="grid grid-cols-2 gap-1 p-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold">
+                    {(['PROPIA', 'TERCERO'] as const).map(m => (
+                      <button key={m} type="button"
+                        onClick={() => {
+                          setModalidad(m)
+                          lookupFreightRate(m === 'TERCERO' ? 'EXTERNO' : newDispatch.vehicle_plate, newDispatch.selected_requests.map(r => r.id))
+                        }}
+                        className={`py-1.5 rounded-md ${modalidad === m ? 'bg-[#002855] text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+                        {m === 'PROPIA' ? 'Unidad propia' : 'Tercero'}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {newDispatch.document_type === 'GR' && modalidad === 'TERCERO' ? (
+                  <>
+                    <TerceroFields value={tercero} onChange={setTercero} />
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Flete pactado con el proveedor (S/)</label>
+                      <input type="number" min="0" step="0.01"
+                        className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none text-sm"
+                        value={manualFreightCost} onChange={e => setManualFreightCost(e.target.value)}
+                        placeholder={detectedFreightRate ? `Tarifario: ${detectedFreightRate.rate}` : 'Monto acordado'} />
+                      {loadingRate && <p className="text-xs text-slate-400 flex items-center gap-1 mt-1"><Loader2 className="w-3 h-3 animate-spin" /> Buscando tarifa...</p>}
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        {Number(manualFreightCost) > 0 ? 'Se usará el monto pactado.' : detectedFreightRate ? `Vacío = se toma el tarifario (S/ ${detectedFreightRate.rate.toLocaleString('es-PE')}).` : 'Sin tarifa en el tarifario para esta ruta: indique el monto.'}
+                        {' '}Se reserva en la partida de la OT a nombre del proveedor.
+                      </p>
+                    </div>
+                  </>
+                ) : newDispatch.document_type === 'GR' ? (
                   <>
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">Placa del Vehículo</label>
@@ -1109,6 +1202,10 @@ export default function DespachoPage() {
                 <span className="text-xs text-slate-500 font-semibold uppercase block mb-1">Unidad y Chofer</span>
                 <div className="font-bold text-[#002855]">{selectedDispatchDetail.vehicle_plate}</div>
                 <div className="text-sm text-slate-600">{selectedDispatchDetail.driver_name}</div>
+                {selectedDispatchDetail.modalidad === 'TERCERO' && (
+                  <button onClick={() => { setAvanceId(selectedDispatchDetail.id); setSelectedDispatchDetail(null) }}
+                    className="mt-1 text-xs font-semibold text-violet-700 hover:underline">Unidad tercerizada · ver avance</button>
+                )}
               </div>
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <span className="text-xs text-slate-500 font-semibold uppercase block mb-1">Salida Programada</span>
@@ -1223,6 +1320,8 @@ export default function DespachoPage() {
           </div>
         )}
       </Modal>
+
+      <TerceroAvanceModal key={avanceId || 'none'} dispatchId={avanceId} onClose={() => setAvanceId(null)} onChanged={fetchData} />
     </div>
   )
 }
