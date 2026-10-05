@@ -26,3 +26,11 @@ Chromium real, mediante Playwright, renderizando componentes de la aplicación c
 Se verificaron límites del encabezado y paneles, apertura/cierre del menú, acceso al perfil, posición de campos, desplazamiento de la tabla, apertura del sustento, referencias largas, límites del modal y acceso a su última acción. El encabezado y el contenido analítico no tuvieron desbordamiento horizontal en estos escenarios.
 
 Contratos, tarifario, los formularios mensuales y el copiloto también se revisaron en código; sus flujos autenticados completos no se ejecutaron en esta prueba visual. No se probó Safari/iOS, teclado nativo, zoom del navegador, APK ni dispositivos físicos. La altura reducida simula menos espacio disponible, no un teclado real. No se afirma que cada pantalla del sistema haya sido comprobada de extremo a extremo.
+
+## Identidad del acceso principal
+
+El acceso `/login` conserva el mismo bloque corporativo en todos los tamaños: logo JRM, fondo azul con franja roja, presentación del sistema y etiqueta Torre de Control TMS. En móvil y tablet se dispone como cabecera sobre el formulario; a partir de 1024 px vuelve a ser el panel lateral del escritorio. Se mantiene un único contenido de marca para ambas distribuciones.
+
+Los campos de usuario y contraseña admiten autocompletado y tienen etiquetas asociadas. Recordarme, el enlace de contraseña, registro, descarga del APK e información de versión siguen disponibles. El registro usa una columna en móvil y dos donde hay espacio, evitando el doble margen interior anterior. Esta corrección conserva los manejadores de autenticación y registro existentes; no implementa funciones nuevas en esos controles.
+
+Se renderizaron las pantallas reales de login y registro en Chromium con el CSS de la aplicación y servicios sustituidos: 320×800, 360×800, 390×844, 640×800, 768×800, 1024×800, 1440×900, 1920×1080, 844×390 y 390×500. Los 10 escenarios verificaron marca visible, logo cargado sin deformación, distribución vertical/lateral, campos y controles dentro del ancho, destino de descarga y apertura/cierre del registro con sus seis campos. Un escenario adicional comprobó el estado sin APK disponible. Todos pasaron. El patrón decorativo remoto no formó parte de esta prueba aislada. No se iniciaron sesiones ni se enviaron registros a producción; quedan pendientes dispositivos físicos y Safari/iOS.

@@ -101,70 +101,81 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
-      {/* Sección Izquierda - Imagen Corporativa */}
-      <div className="hidden lg:flex lg:w-1/2 relative bg-[#002855] overflow-hidden items-center justify-center">
+    <div className="flex min-h-dvh min-w-0 flex-col bg-slate-50 lg:flex-row">
+      {/* La misma identidad corporativa: cabecera en móvil y panel lateral en escritorio. */}
+      <section aria-label="Presentación de JRM" className="relative flex shrink-0 items-center justify-center overflow-hidden bg-[#002855] px-6 py-7 sm:px-12 sm:py-9 lg:w-1/2 lg:p-12">
         {/* Abstract pattern / background */}
-        <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/cubes.png")' }}></div>
-        <div className="absolute top-0 left-0 w-full h-2 bg-[#cf152d]"></div>
-        <div className="z-10 px-12 text-white">
-          <img 
-            src="/logo-jrm.png" 
-            alt="JRM Logo" 
-            className="h-16 mb-8 object-contain"
-          />
-          <h1 className="text-4xl font-bold mb-6">Sistemas de Almacenamiento</h1>
-          <p className="text-xl text-blue-100 max-w-lg leading-relaxed">
+        <div aria-hidden="true" className="absolute inset-0 opacity-20" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/cubes.png")' }}></div>
+        <div aria-hidden="true" className="absolute top-0 left-0 h-2 w-full bg-[#cf152d]"></div>
+        <div className="relative z-10 w-full max-w-md text-white sm:max-w-lg">
+          <div className="mb-5 flex items-center justify-between gap-3 lg:mb-8">
+            <img
+              src="/logo-jrm.png"
+              alt="JRM Logo"
+              width={600}
+              height={249}
+              className="h-12 w-auto max-w-[65%] object-contain sm:h-14 lg:h-16"
+            />
+            <span className="shrink-0 text-[10px] font-semibold tracking-wider text-blue-200 sm:text-xs lg:hidden">JRM S.A.C.</span>
+          </div>
+          <h1 className="mb-3 text-2xl font-bold leading-tight sm:text-3xl lg:mb-6 lg:text-4xl">Sistemas de Almacenamiento</h1>
+          <p className="max-w-lg text-sm leading-relaxed text-blue-100 sm:text-base lg:text-xl">
             Gestión inteligente de despachos, transporte y entregas. Torre de control operativa para optimizar toda tu cadena de suministro.
           </p>
-          <div className="mt-12 flex gap-4 items-center">
-             <div className="w-16 h-1 bg-[#cf152d]"></div>
-             <p className="font-semibold uppercase tracking-widest text-sm">TORRE DE CONTROL TMS</p>
+          <div className="mt-5 flex items-center gap-3 lg:mt-12 lg:gap-4">
+             <div aria-hidden="true" className="h-1 w-8 shrink-0 bg-[#cf152d] lg:w-16"></div>
+             <p className="text-[10px] font-semibold uppercase tracking-widest sm:text-xs lg:text-sm">TORRE DE CONTROL TMS</p>
           </div>
         </div>
-      </div>
+      </section>
 
       {/* Sección Derecha - Login Form */}
-      <div className="flex-1 flex flex-col justify-center items-center px-8 sm:px-12 relative">
-        <div className="absolute top-8 right-12">
+      <main className="relative flex min-w-0 flex-1 flex-col items-center justify-center px-6 py-8 sm:px-12 sm:py-10 lg:py-20">
+        <div className="absolute top-8 right-12 hidden lg:block">
            <span className="text-sm font-semibold text-slate-400 tracking-wider">JRM S.A.C.</span>
         </div>
 
         <div className="w-full max-w-md">
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-bold text-slate-800">Iniciar Sesión</h2>
-            <p className="text-slate-500 mt-2">Ingresa tus credenciales para acceder a la plataforma</p>
+          <div className="mb-6 text-center lg:mb-10">
+            <h2 className="text-2xl font-bold text-slate-800 sm:text-3xl">Iniciar Sesión</h2>
+            <p className="mt-2 text-sm text-slate-500 sm:text-base">Ingresa tus credenciales para acceder a la plataforma</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Usuario</label>
+              <label htmlFor="login-username" className="block text-sm font-medium text-slate-700 mb-2">Usuario</label>
               <input 
                 type="text" 
+                id="login-username"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-4 py-3 bg-white text-slate-900 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none transition-all"
+                className="min-w-0 w-full px-4 py-3 text-base bg-white text-slate-900 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none transition-all"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Contraseña</label>
+              <label htmlFor="login-password" className="block text-sm font-medium text-slate-700 mb-2">Contraseña</label>
               <input 
                 type="password" 
+                id="login-password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-white text-slate-900 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none transition-all"
+                className="min-w-0 w-full px-4 py-3 text-base bg-white text-slate-900 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none transition-all"
                 required
               />
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center">
+            <div className="flex flex-wrap items-center justify-between gap-x-3">
+              <label className="flex min-h-11 items-center">
                 <input type="checkbox" className="w-4 h-4 text-[#002855] rounded border-slate-300 focus:ring-[#002855]" />
                 <span className="ml-2 text-sm text-slate-600">Recordarme</span>
               </label>
-              <a href="#" className="text-sm text-[#002855] hover:text-[#cf152d] font-medium transition-colors">¿Olvidaste tu contraseña?</a>
+              <a href="#" className="inline-flex min-h-11 items-center text-sm text-[#002855] hover:text-[#cf152d] font-medium transition-colors">¿Olvidaste tu contraseña?</a>
             </div>
 
             <button 
@@ -183,11 +194,12 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-8 text-center text-sm text-slate-600">
+          <div className="mt-5 text-center text-sm text-slate-600 sm:mt-8">
             ¿No tienes cuenta?{' '}
             <button 
               onClick={() => setIsRegisterModalOpen(true)}
-              className="text-[#cf152d] hover:text-red-700 font-semibold hover:underline"
+              type="button"
+              className="min-h-11 text-[#cf152d] hover:text-red-700 font-semibold hover:underline"
             >
               Regístrate aquí
             </button>
@@ -197,7 +209,7 @@ export default function LoginPage() {
             {androidInstallerUrl ? (
               <a href={androidInstallerUrl} target="_blank" rel="noopener noreferrer"
                 className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2">
-                <Download className="w-5 h-5" /> Descargar App para Conductores (APK)
+                <Download className="h-5 w-5 shrink-0" /><span className="text-center">Descargar App para Conductores (APK)</span>
               </a>
             ) : (
               <p className="text-center text-sm text-slate-600">La descarga Android estará disponible cuando se publique la versión firmada.</p>
@@ -211,7 +223,7 @@ export default function LoginPage() {
             <AppVersionInfo className="mt-3 text-center" />
           </div>
         </div>
-      </div>
+      </main>
 
       <PublicRegistrationModal 
         isOpen={isRegisterModalOpen}
