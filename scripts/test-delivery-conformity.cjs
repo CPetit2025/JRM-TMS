@@ -44,7 +44,7 @@ try {
   CREATE TABLE contracts(id uuid PRIMARY KEY,code text,client_id uuid);
   CREATE TABLE carriers(id uuid PRIMARY KEY,business_name text);
   CREATE TABLE dispatches(id uuid PRIMARY KEY,dispatch_number text,status text,site_id uuid,driver_id uuid,driver_name text,
-    vehicle_plate text,scheduled_departure timestamptz,modalidad text,carrier_id uuid,tercero_conductor text,tercero_telefono text,tercero_salida_at timestamptz,tercero_entrega_at timestamptz,last_gps_at timestamptz,contract_id uuid,freight_cost numeric DEFAULT 0,actual_distance_km numeric DEFAULT 0,return_gps_complete boolean,gps_coverage_complete boolean);
+    vehicle_plate text,scheduled_departure timestamptz,modalidad text,carrier_id uuid,tercero_conductor text,tercero_telefono text,tercero_salida_at timestamptz,tercero_entrega_at timestamptz,last_gps_at timestamptz,last_lat numeric,last_lon numeric,contract_id uuid,freight_cost numeric DEFAULT 0,actual_distance_km numeric DEFAULT 0,return_gps_complete boolean,gps_coverage_complete boolean);
   CREATE UNIQUE INDEX dispatch_one_active_driver ON dispatches(driver_id) WHERE status IN ('PROGRAMADO','EN_CURSO','EN RUTA','RETORNO');
   CREATE UNIQUE INDEX dispatch_one_active_vehicle ON dispatches(vehicle_plate) WHERE status IN ('PROGRAMADO','EN_CURSO','EN RUTA','RETORNO');
   CREATE TABLE transport_requests(id uuid PRIMARY KEY,request_number text,status text,pickup_address text,delivery_address text,contract_id uuid);
@@ -92,10 +92,11 @@ try {
     CREATE FUNCTION tercero_entrega_core(p_dispatch_id uuid,p_request_id uuid,p_at timestamptz,p_recibido_por text,p_foto text,p_nota text,p_fuente text) RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;
     CREATE FUNCTION tercero_generar_enlace(p_dispatch_id uuid) RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;
     CREATE FUNCTION tercero_enlace_info(p_token text) RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;
+    CREATE FUNCTION get_public_daily_tracking_locations(p_token uuid,p_pin text) RETURNS jsonb LANGUAGE sql AS $$ SELECT '[]'::jsonb $$;
     CREATE FUNCTION get_public_daily_tracking_info(p_token uuid,p_pin text) RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;
     REVOKE ALL ON FUNCTION complete_dispatch_stop(uuid,uuid,text),tercero_generar_enlace(uuid),tercero_entrega_core(uuid,uuid,timestamptz,text,text,text,text),tercero_enlace_info(text),get_public_daily_tracking_info(uuid,text),tercero_enlace_despacho(text) FROM PUBLIC,anon,authenticated;
     GRANT EXECUTE ON FUNCTION complete_dispatch_stop(uuid,uuid,text),tercero_generar_enlace(uuid) TO authenticated;
-    GRANT EXECUTE ON FUNCTION get_public_daily_tracking_info(uuid,text) TO anon,authenticated;
+    GRANT EXECUTE ON FUNCTION get_public_daily_tracking_info(uuid,text),get_public_daily_tracking_locations(uuid,text) TO anon,authenticated;
     GRANT EXECUTE ON FUNCTION tercero_enlace_info(text),tercero_enlace_despacho(text) TO service_role;`)
   sql(read('supabase/migrations/20261007130000_delivery_conformity.sql'))
   denied(`SET ROLE anon; SELECT complete_dispatch_stop(NULL,NULL,NULL);`,/permission denied/)
@@ -210,8 +211,12 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   assert.equal(sql(`SELECT status FROM dispatches WHERE id='${id(53)}';`),'ESPERANDO_AUTORIZACION')
   console.log('PASS: driver identity, GPS freshness, offline receipt replay, actual kilometers and existing supervised return flow.')
   sql(`INSERT INTO daily_tracking_links VALUES('${id(90)}','12345678',(now() AT TIME ZONE 'America/Lima')::date,now()+interval '1 hour'); GRANT EXECUTE ON FUNCTION get_public_daily_tracking_info(uuid,text) TO anon;`)
+  sql(`UPDATE dispatches SET last_gps_at=now(),last_lat=-12,last_lon=-77,scheduled_departure=(((now() AT TIME ZONE 'America/Lima')::date+1)::timestamp AT TIME ZONE 'UTC')+interval '30 minutes' WHERE id='${id(53)}';`)
   const publicRows=JSON.parse(sql(`SET ROLE anon; SELECT get_public_daily_tracking_info('${id(90)}','12345678');`))
   assert.ok(publicRows.rows.some(r=>r.ot_code==='OT-001'&&r.request_number==='RT-61'))
+  const gps=JSON.parse(sql(`SET ROLE anon; SELECT get_public_daily_tracking_locations('${id(90)}','12345678');`))
+  assert.equal(gps.length,1);assert.equal(gps[0].dispatch_id,id(53));assert.equal(gps[0].speed,undefined)
+  denied(`SET ROLE anon; SELECT get_public_daily_tracking_locations('${id(90)}','bad');`,/PIN incorrecto/)
   assert.ok(publicRows.rows.every(r=>!r.photos&&!r.access_code&&!r.tercero_telefono&&r.events.every(e=>e.description===null)))
   denied(`SET ROLE anon; SELECT get_public_daily_tracking_info('${id(90)}','bad');`,/PIN incorrecto/)
   sql(`UPDATE daily_tracking_links SET expires_at=now()-interval '1 second';`)

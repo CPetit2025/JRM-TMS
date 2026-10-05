@@ -347,6 +347,19 @@ BEGIN
  RETURN jsonb_build_object('planning_date',day,'rows',rows);
 END $$;
 
+-- El mapa usa el mismo día de Lima y no atribuye velocidad a un punto que no la informa.
+CREATE OR REPLACE FUNCTION public.get_public_daily_tracking_locations(p_token uuid,p_pin text) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE day date; locations jsonb;
+BEGIN
+ SELECT planning_date INTO day FROM public.daily_tracking_links WHERE tracking_token=p_token AND tracking_pin=p_pin AND expires_at>now();
+ IF day IS NULL THEN RAISE EXCEPTION 'PIN incorrecto, enlace vencido o no válido'; END IF;
+ SELECT COALESCE(jsonb_agg(jsonb_build_object('dispatch_id',d.id,'driver_name',d.driver_name,'vehicle_plate',d.vehicle_plate,
+  'lat',d.last_lat,'lng',d.last_lon,'last_gps_at',d.last_gps_at)),'[]'::jsonb) INTO locations FROM public.dispatches d
+ WHERE (d.scheduled_departure AT TIME ZONE 'America/Lima')::date=day AND d.last_gps_at>now()-interval '15 minutes' AND d.last_lat IS NOT NULL AND d.last_lon IS NOT NULL;
+ RETURN locations;
+END $$;
+
 CREATE OR REPLACE FUNCTION public.tercero_generar_enlace(p_dispatch_id uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE d jsonb; token text; code text; expires timestamptz;

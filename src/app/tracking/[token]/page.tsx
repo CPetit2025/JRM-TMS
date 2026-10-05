@@ -23,8 +23,8 @@ interface VehicleLocation {
   id: string
   plate: string
   driver: string
-  status: 'en_ruta' | 'detenido' | 'incidencia'
-  speed: number
+  status: 'en_ruta' | 'detenido' | 'incidencia' | 'ubicacion'
+  speed: number | null
   lat: number
   lng: number
   lastUpdate: string
@@ -70,9 +70,9 @@ export default function TrackingPage() {
       if (cancelled || error) return
       setVehicles((data || []).map((point: { dispatch_id: string; vehicle_plate?: string; driver_name?: string; lat: number; lng: number; last_gps_at: string }) => ({
         id: point.dispatch_id, plate: point.vehicle_plate || 'Sin placa',
-        driver: point.driver_name || 'Conductor', status: 'en_ruta', speed: 0,
+        driver: point.driver_name || 'Conductor', status: 'ubicacion', speed: null,
         lat: Number(point.lat), lng: Number(point.lng),
-        lastUpdate: new Date(point.last_gps_at).toLocaleTimeString('es-PE')
+        lastUpdate: new Date(point.last_gps_at).toLocaleTimeString('es-PE', { timeZone: 'America/Lima' })
       })))
     }
     void refresh()
