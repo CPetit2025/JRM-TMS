@@ -104,6 +104,10 @@ try {
   assert.notEqual(caja.status, 0)
   assert.match(caja.stderr, /CAJA C43 PASS \(3\/3\)/)
   console.log('PASS: begin under 500ms while old upload remains locked; 64,000 old movements unchanged; repeatable migration; ownership, filenames, ACL and authorization preserved; C43 passes.')
+} catch (error) {
+  const message = String(error.stack || error).slice(0, 6000).replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A')
+  console.error(`::error title=APT begin regression::${message}`)
+  throw error
 } finally {
   spawnSync('docker', ['rm', '-f', name], {stdio: 'ignore'})
 }

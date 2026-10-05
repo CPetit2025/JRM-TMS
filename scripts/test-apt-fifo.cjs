@@ -44,4 +44,9 @@ try {
  IF EXISTS((TABLE apt_exit_class EXCEPT TABLE expected_exits) UNION ALL (TABLE expected_exits EXCEPT TABLE apt_exit_class)) THEN RAISE EXCEPTION 'FIFO exit classification changed'; END IF;
  END $$;`)
  console.log('PASS: 64,000 movements; identical layers, allocations and exit classes; rebuild under 8s; repeatable migration.')
+} catch (error) {
+ // Expose the failure in check annotations when downloadable Actions logs are unavailable.
+ const message=String(error.stack||error).slice(0,6000).replaceAll('%','%25').replaceAll('\r','%0D').replaceAll('\n','%0A')
+ console.error(`::error title=APT FIFO regression::${message}`)
+ throw error
 } finally {spawnSync('docker',['rm','-f',name],{stdio:'ignore'})}
