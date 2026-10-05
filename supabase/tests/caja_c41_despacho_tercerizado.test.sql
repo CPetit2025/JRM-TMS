@@ -30,7 +30,7 @@ DECLARE
   v_desp uuid; v_nadie uuid; r_desp uuid; r_nadie uuid; v_site uuid; v_car uuid; v_propio uuid; v_ct uuid;
   q1 uuid; q2 uuid; q3 uuid; d uuid; v_plate text := 'ZZC' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 4));
   v_err text; r jsonb; v_res0 numeric; v_con0 numeric; v_tok text; v_n int; v_at timestamptz := now() - interval '20 minutes';
-  v_fail text[] := '{}'; v_pass int := 0;
+  v_fail text[] := '{}'; v_pass int := 0; v_ruc text := '20' || lpad((floor(random() * 1e9))::bigint::text, 9, '0');
 BEGIN
   SELECT id INTO v_desp FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u)
     AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) ORDER BY id LIMIT 1;
@@ -46,7 +46,7 @@ BEGIN
     EXECUTE 'INSERT INTO public.user_site_access (user_id, site_id) VALUES ($1, $2) ON CONFLICT DO NOTHING' USING v_desp, v_site;
   END IF;
   v_car := pg_temp.ins('carriers', jsonb_build_object('type', 'PROVEEDOR', 'business_name', 'ZZ C41 Transportes SAC',
-             'ruc', '20' || lpad((floor(random() * 1e9))::bigint::text, 9, '0'), 'is_active', true));
+             'ruc', v_ruc, 'tax_id', v_ruc, 'is_active', true));   -- producción usa tax_id; el repositorio, ruc
   SELECT id INTO v_propio FROM public.carriers WHERE upper(type) = 'PROPIO' LIMIT 1;
   v_ct := pg_temp.ins('contracts', jsonb_build_object('code', 'ZZ-C41-OT', 'type', 'CONTRATO', 'status', 'ACTIVO', 'site_id', v_site));
   UPDATE public.contract_budgets SET allocated_pen = 1000 WHERE contract_id = v_ct AND concept = 'PARTIDA_TRANSPORTE';
@@ -83,7 +83,7 @@ BEGIN
              AND x.carrier_id = v_car AND x.status = 'PROGRAMADO' AND x.tercero_telefono = '999888777')
      AND (SELECT reserved_pen FROM public.contract_budgets WHERE contract_id = v_ct AND concept = 'PARTIDA_TRANSPORTE') = v_res0 + 300
      AND EXISTS (SELECT 1 FROM public.contract_services s WHERE s.dispatch_id = d AND s.service_type = 'FLETE' AND s.amount_pen = 300
-                 AND s.provider_name = 'ZZ C41 Transportes SAC' AND s.provider_ruc IS NOT NULL)
+                 AND s.provider_name = 'ZZ C41 Transportes SAC' AND s.provider_ruc = v_ruc)
      AND (SELECT count(*) FROM public.transport_requests WHERE id IN (q1, q2) AND status = 'ASIGNADA') = 2
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T2 programar con tercero'::text; END IF;
 

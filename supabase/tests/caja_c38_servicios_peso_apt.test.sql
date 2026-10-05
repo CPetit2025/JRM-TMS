@@ -45,13 +45,14 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.contract_service_peso_apt WHERE service_id = v_srv) THEN v_pass := v_pass + 1;
   ELSE v_fail := v_fail || 'T4 sin guía'::text; END IF;
 
-  -- T5 (guía que aún no está en APT; luego se aplica una carga que la trae)
+  -- T5 (guía que aún no está en APT; luego se aplica una carga que la trae y corre la actualización horaria)
   UPDATE public.contract_services SET referral_guide = 'T9Z9-125' WHERE id = v_srv;
   INSERT INTO public.apt_uploads (file_name, status) VALUES ('ZZ C38 b', 'CARGANDO') RETURNING id INTO v_up2;
   INSERT INTO public.apt_movements (upload_id, kind, row_no, raw, active, valid, documento, peso_kg)
   VALUES (v_up2, 'SALIDA', 900004, '{}', true, true, 'T9Z9-00000125', 750);
   n := (SELECT encontradas FROM public.contract_service_peso_apt WHERE service_id = v_srv);
   UPDATE public.apt_uploads SET status = 'APLICADA' WHERE id = v_up2;
+  PERFORM public.servicios_sync_peso_apt(NULL);   -- lo hace el cron cada hora (o el botón «Actualizar peso»)
   SELECT * INTO p FROM public.contract_service_peso_apt WHERE service_id = v_srv;
   IF n = 0 AND p.kg = 750 AND p.encontradas = 1 THEN v_pass := v_pass + 1;
   ELSE v_fail := v_fail || ('T5 carga APT: antes ' || n || ', después ' || COALESCE(p.kg::text, 'null')); END IF;
