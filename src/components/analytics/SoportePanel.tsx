@@ -239,10 +239,10 @@ export function InformeSoporte() {
   const inf = k?.informe || {}
   const bloqueado = actual?.estado === 'REVISADO'
   const field = 'w-full rounded-lg border px-3 py-2 text-sm'
-  if (loadedKey !== requestKey) return <div className="space-y-3 rounded-xl border bg-white p-4 text-sm"><label>Mes del informe <input type="month" max={prev.slice(0, 7)} value={periodo.slice(0, 7)} onChange={e => e.target.value && setPeriodo(`${e.target.value}-01`)} className="rounded-lg border p-2" /></label>{failure?.key === requestKey ? <div role="alert"><p>{failure.message}</p><button onClick={() => void load()} className="font-semibold text-[#002855]">Reintentar</button></div> : <p role="status">Cargando el informe del período seleccionado…</p>}</div>
+  if (loadedKey !== requestKey) return <div className="min-w-0 space-y-3 rounded-xl border bg-white p-4 text-sm"><label>Mes del informe <input type="month" max={prev.slice(0, 7)} value={periodo.slice(0, 7)} onChange={e => e.target.value && setPeriodo(`${e.target.value}-01`)} className="rounded-lg border p-2" /></label>{failure?.key === requestKey ? <div role="alert"><p>{failure.message}</p><button onClick={() => void load()} className="font-semibold text-[#002855]">Reintentar</button></div> : <p role="status">Cargando el informe del período seleccionado…</p>}</div>
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-      <div className="space-y-3 rounded-xl border bg-white p-4 text-sm">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="min-w-0 space-y-3 rounded-xl border bg-white p-4 text-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <label className="text-slate-600">Mes del informe <input type="month" max={prev.slice(0, 7)} className="ml-1 rounded-lg border px-2 py-1.5" value={periodo.slice(0, 7)} onChange={e => e.target.value && setPeriodo(`${e.target.value}-01`)} /></label>
           <div className={(INFORME[inf.estado] || ['', ''])[1]}>{(INFORME[inf.estado] || ['—'])[0]} · vence el {inf.vence ? new Date(`${inf.vence}T12:00:00`).toLocaleDateString('es-PE') : '—'}

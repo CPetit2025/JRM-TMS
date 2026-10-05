@@ -200,9 +200,10 @@ export function AppUpdateNotice({ placement = 'floating' }: { placement?: 'heade
       {/* Web: píldora en la cabecera */}
       {inHeader && (
         <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
-          className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-[#cf152d] bg-white px-3 py-1.5 text-xs font-bold text-[#cf152d] shadow-sm hover:bg-red-50">
+          aria-label={`Nueva versión ${release.version}: actualizar`}
+          className="inline-flex h-11 w-11 items-center justify-center gap-2 whitespace-nowrap rounded-full border border-[#cf152d] bg-white text-xs font-bold text-[#cf152d] shadow-sm hover:bg-red-50 sm:h-auto sm:w-auto sm:px-3 sm:py-2">
           <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#cf152d] opacity-60 motion-reduce:animate-none" /><span className="relative inline-flex h-2 w-2 rounded-full bg-[#cf152d]" /></span>
-          <span className="hidden sm:inline">Nueva versión {release.version} ·</span> Actualizar
+          <RefreshCw className="h-4 w-4 sm:hidden" /><span className="hidden sm:inline"><span className="hidden xl:inline">Nueva versión {release.version} · </span>Actualizar</span>
         </button>
       )}
       {/* Web: franja bajo la cabecera, una vez por versión */}
@@ -230,7 +231,7 @@ export function AppUpdateNotice({ placement = 'floating' }: { placement?: 'heade
       {open && (
         <section role={forced ? 'alertdialog' : 'dialog'} aria-label="Actualización de JRM-TMS"
           aria-modal={forced ? true : undefined}
-          className={`${inHeader ? 'absolute right-0 top-full z-[90] mt-2' : ''} w-96 max-w-[calc(100vw-1.5rem)] rounded-xl border border-slate-200 border-t-4 border-t-[#cf152d] bg-white p-5 text-slate-900 shadow-2xl`}>
+          className={`${inHeader ? 'fixed left-3 right-3 top-16 z-[90] sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2' : ''} max-h-[calc(100dvh-5rem)] w-96 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-xl border border-slate-200 border-t-4 border-t-[#cf152d] bg-white p-5 text-slate-900 shadow-2xl`}>
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs font-bold uppercase tracking-wide text-[#cf152d]">

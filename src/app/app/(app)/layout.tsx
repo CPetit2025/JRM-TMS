@@ -16,7 +16,7 @@ import { useActiveTrip } from '@/contexts/ActiveTripContext'
 function OperativeShell({ children, onLogout }: { children: React.ReactNode; onLogout: () => void }) {
   const { user } = useActiveTrip()
   return <NotificationProvider role={user?.employee_type === 'CONDUCTOR' ? 'driver' : 'operario'}>
-    <div className="min-h-dvh bg-slate-50 pb-[76px] text-slate-900">
+    <div className="min-h-dvh bg-slate-50 pb-[calc(76px+env(safe-area-inset-bottom))] text-slate-900">
       <AppUpdateNotice />
       <OperativeHeader onLogout={onLogout} />
       <main>{children}</main>

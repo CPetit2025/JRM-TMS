@@ -492,12 +492,12 @@ export default function ContratosPage() {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col gap-4 mx-auto">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-start gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Alta de Contratos</h1>
           <p className="text-sm text-slate-500">Gestión unificada de Contratos, Subcontratos y Errores (Partidas de Transporte)</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <input
             type="file"
             accept=".xlsx, .xls"
@@ -590,8 +590,8 @@ export default function ContratosPage() {
       )}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="h-full overflow-y-auto overflow-x-hidden">
-          <table className="relative w-full table-fixed text-left text-sm">
+        <div role="region" aria-label="Tabla de contratos" tabIndex={0} className="h-full overflow-auto">
+          <table className="relative w-full min-w-[720px] table-fixed text-left text-sm">
             <colgroup>
               <col className="w-[19%]" />
               <col />
