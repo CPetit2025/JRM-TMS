@@ -1,7 +1,7 @@
 name: Deploy production (Supabase + Vercel)
 
 # Al llegar código a master: 1) aplica las migraciones nuevas a Supabase, 2) corre las pruebas SQL de caja
-# (informativas, siempre con ROLLBACK), 3) dispara el despliegue de producción en Vercel.
+# (obligatorias, siempre con ROLLBACK), 3) dispara el despliegue de producción en Vercel.
 # Vercel no despliega master por Git (vercel.json → git.deploymentEnabled.master = false): así el frontend
 # nunca llega a producción antes que el esquema que necesita. Las vistas previas de ramas siguen igual.
 # Secretos: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_ID, SUPABASE_DB_PASSWORD, VERCEL_DEPLOY_HOOK_URL

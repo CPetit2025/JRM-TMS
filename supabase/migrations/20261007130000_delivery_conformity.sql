@@ -237,6 +237,7 @@ BEGIN
  SELECT * INTO c FROM public.delivery_conformities WHERE dispatch_id=p_dispatch AND request_id=p_request FOR UPDATE;
  IF c.current_submission_id IS DISTINCT FROM p_submission OR c.state IS DISTINCT FROM 'RECIBIDA' THEN RAISE EXCEPTION 'El sustento cambió o ya fue revisado; actualice la vista'; END IF;
  IF p_decision NOT IN ('VALIDADA','OBSERVADA','RECHAZADA') OR p_decision IS NULL THEN RAISE EXCEPTION 'Decisión no válida'; END IF;
+ IF p_decision='VALIDADA' AND EXISTS(SELECT 1 FROM public.delivery_submissions s CROSS JOIN LATERAL unnest(s.photos) photo WHERE s.id=p_submission AND NOT EXISTS(SELECT 1 FROM storage.objects o WHERE o.bucket_id='driver_evidence' AND o.name=photo)) THEN RAISE EXCEPTION 'Una fotografía no está disponible; observe el sustento para solicitar una corrección'; END IF;
  IF p_decision<>'VALIDADA' AND NULLIF(trim(p_reason),'') IS NULL THEN RAISE EXCEPTION 'Indique el motivo de la observación o rechazo'; END IF;
  INSERT INTO public.delivery_reviews(submission_id,decision,reason,reviewed_by) VALUES(p_submission,p_decision,left(p_reason,1000),auth.uid());
  UPDATE public.delivery_conformities SET state=p_decision,updated_at=now() WHERE dispatch_id=p_dispatch AND request_id=p_request;
@@ -298,7 +299,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  'pickup_address',t.pickup_address,'delivery_address',t.delivery_address,'plate',d.vehicle_plate,
  'driver_name',COALESCE(NULLIF(d.driver_name,''),to_jsonb(d)->>'tercero_conductor'),
  'carrier_name',ca.business_name,'modalidad',CASE WHEN NOT public.delivery_required(d.id,t.id) THEN 'RECOJO_CLIENTE' ELSE to_jsonb(d)->>'modalidad' END,'scheduled_departure',d.scheduled_departure,
- 'guide_number',COALESCE(s.guide_number,dr.document_number),'conformity',CASE WHEN NOT public.delivery_required(d.id,t.id) THEN 'NO_APLICA' ELSE COALESCE(c.state,CASE WHEN d.status IN ('LIQUIDADO','CERRADO') THEN 'HISTORICA' ELSE 'PENDIENTE' END) END,
+ 'guide_number',COALESCE(s.guide_number,dr.document_number),
+ 'documents_state',CASE WHEN NOT COALESCE((to_jsonb(d)->>'docs_required')::boolean,false) THEN 'NO_REQUERIDO' WHEN COALESCE((to_jsonb(d)->>'docs_reissue')::boolean,false) THEN 'REEMISION' WHEN to_jsonb(d)->>'docs_ready_at' IS NOT NULL THEN 'LISTO' ELSE 'PENDIENTE' END,'conformity',CASE WHEN NOT public.delivery_required(d.id,t.id) THEN 'NO_APLICA' ELSE COALESCE(c.state,CASE WHEN d.status IN ('LIQUIDADO','CERRADO') THEN 'HISTORICA' ELSE 'PENDIENTE' END) END,
  'submission_id',c.current_submission_id,'photos_count',COALESCE(cardinality(s.photos),0),'submitted_at',s.submitted_at,'arrived_at',c.arrived_at,
  'state',CASE WHEN d.status IN ('LIQUIDADO','CERRADO','CANCELADO') THEN d.status
    WHEN NOT public.delivery_required(d.id,t.id) AND dr.status<>'ENTREGADO' THEN 'RECOJO_CLIENTE'
@@ -451,6 +453,8 @@ DO $patch$ DECLARE definition text; anchor text:='''RETORNO_COMPLETADO'')'; BEGI
  SELECT pg_get_functiondef('public.get_active_trip_context()'::regprocedure) INTO definition;
  IF position(anchor IN definition)=0 THEN RAISE EXCEPTION 'Sin punto de extensión en contexto de viaje'; END IF;
  definition:=replace(definition,anchor,'''RETORNO_COMPLETADO'',''ENTREGADO'')');
+ definition:=replace(definition,'''status'', dr.status, ''document_number''',
+   '''status'', dr.status, ''conformity'', COALESCE((SELECT c.state FROM public.delivery_conformities c WHERE c.dispatch_id=dr.dispatch_id AND c.request_id=dr.transport_request_id),CASE WHEN public.delivery_required(dr.dispatch_id,dr.transport_request_id) THEN ''PENDIENTE'' ELSE ''NO_APLICA'' END), ''document_number''');
  definition:=replace(definition,'''actual_distance_km'', v_dispatch.actual_distance_km',
    '''return_actual_km'', to_jsonb(v_dispatch)->''return_actual_km'', ''actual_distance_km'', v_dispatch.actual_distance_km');
  EXECUTE definition;

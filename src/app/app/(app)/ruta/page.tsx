@@ -30,16 +30,16 @@ export default function RutaActivaPage() {
     if (contextLoading) return
     if (!contextDriver) { router.replace('/app'); return }
     const timer = window.setTimeout(() => {
-    setDriver(contextDriver)
-    const requests = (trip?.stops || []).map(stop => ({ ...stop,
-      transport_requests: { request_number: stop.request_number, request_type: stop.request_type,
-        pickup_address: stop.pickup_address, delivery_address: stop.delivery_address } }))
-    const firstPending = requests.findIndex(stop => stop.status !== 'ENTREGADO')
-    setActiveStep(firstPending >= 0 ? firstPending : requests.length)
-    setDispatch(trip ? { ...trip, contract_id: trip.contract?.id, dispatch_requests: requests } : null)
-    setLoading(false)
-    void syncRoutePoints().catch(() => {})
-    void syncOfflineActions().catch(() => {})
+      setDriver(contextDriver)
+      const requests = (trip?.stops || []).map(stop => ({ ...stop,
+        transport_requests: { request_number: stop.request_number, request_type: stop.request_type,
+          pickup_address: stop.pickup_address, delivery_address: stop.delivery_address } }))
+      const firstPending = requests.findIndex(stop => stop.conformity ? !['VALIDADA', 'NO_APLICA'].includes(stop.conformity) : stop.status !== 'ENTREGADO')
+      setActiveStep(firstPending >= 0 ? firstPending : requests.length)
+      setDispatch(trip ? { ...trip, contract_id: trip.contract?.id, dispatch_requests: requests } : null)
+      setLoading(false)
+      void syncRoutePoints().catch(() => {})
+      void syncOfflineActions().catch(() => {})
     }, 0)
     return () => window.clearTimeout(timer)
   }, [contextDriver, contextLoading, router, trip])

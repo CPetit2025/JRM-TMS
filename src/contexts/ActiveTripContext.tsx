@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 export type TripStop = {
   transport_request_id: string
   sequence_order: number | null
+  conformity?: string
   status: string
   request_number: string | null
   request_type: string | null

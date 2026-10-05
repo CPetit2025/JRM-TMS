@@ -4,7 +4,7 @@ export type DeliveryRow = {
   ot_code: string; client_name: string | null; pickup_address: string; delivery_address: string
   plate: string; driver_name: string | null; carrier_name: string | null; modalidad: string | null
   scheduled_departure: string; guide_number: string | null; conformity: Conformity
-  submission_id: string | null; photos_count: number; submitted_at: string | null; arrived_at: string | null
+  documents_state?: string; submission_id: string | null; photos_count: number; submitted_at: string | null; arrived_at: string | null
   state: string; last_event_at: string; gps_at: string | null
   events: { type: string; description: string | null; at: string }[]
 }
