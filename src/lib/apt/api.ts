@@ -16,8 +16,8 @@ async function call<T>(fn: string, args: Record<string, unknown> = {}): Promise<
   return out as T
 }
 
-// Aplicar y recalcular en el servidor (/api/apt/procesar). Devuelve null si la ruta no está configurada (sin llave de
-// servicio) para usar el camino del navegador; cualquier otro error se informa tal cual.
+// Las cargas se procesan exclusivamente en el servidor. Una respuesta perdida nunca
+// autoriza repetir una operación de reemplazo con el límite del navegador.
 const PASO = { aplicar: 'aplicar la carga', estadia: 'recalcular la estadía', flujo: 'recalcular el flujo' } as const
 
 async function procesar(body: { accion: 'aplicar' | 'estadia' | 'flujo'; upload_id?: string }) {
@@ -25,13 +25,21 @@ async function procesar(body: { accion: 'aplicar' | 'estadia' | 'flujo'; upload_
   try {
     res = await fetch('/api/apt/procesar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   } catch {
-    return null
+    throw new Error(`Se perdió la conexión al ${PASO[body.accion]}. Revise el historial antes de repetir la carga.`)
   }
-  if (res.status === 404 || res.status === 503) return null
   const out = await res.json().catch(() => null) as { success?: boolean; error?: string; summary?: unknown; model?: unknown; flow?: unknown } | null
-  if (res.status === 504) throw new Error(`El servidor tardó demasiado en el paso «${PASO[body.accion]}». Intente de nuevo; si se repite, avise a soporte.`)
+  if (res.status === 404 || (res.status === 503 && !out?.success)) {
+    throw new Error('El procesamiento de APT en el servidor no está disponible. No se intentó aplicar desde el navegador. Contacte al administrador para revisar la configuración del servidor.')
+  }
+  if (res.status === 504) throw new Error(`El servidor tardó demasiado al ${PASO[body.accion]}. Revise el historial antes de repetir la carga.`)
   if (!res.ok || !out?.success) throw new Error(out?.error || `No se pudo procesar la carga (${res.status})`)
   return out
+}
+
+async function rebuildModels() {
+  const model = await procesar({ accion: 'estadia' })
+  const flow = await procesar({ accion: 'flujo' })
+  return { model: model.model, flow: flow.flow }
 }
 
 // Hojas de carga: ENTRADA (P/E Producción), SALIDA (despacho), lados de los traspasos, consumos internos y devoluciones
@@ -64,8 +72,7 @@ export const aptApi = {
   // Los parámetros recalculan la estadía; el flujo multi-almacén se recalcula en una segunda petición
   saveSettings: async (p: { cutoff_date: string | null; tolerance: number; alert_days: number; ranges: Array<{ desde: number; label: string }> }) => {
     const out = await call<{ model: unknown }>('apt_save_settings', { p })
-    const srv = await procesar({ accion: 'flujo' })
-    if (!srv) await call<{ cutoff: string | null }>('apt_flow_rebuild')
+    await procesar({ accion: 'flujo' })
     return out
   },
   // Cobertura de fechas cargadas y alertas de secuencia; preview evalúa una carga antes de confirmarla
@@ -74,20 +81,25 @@ export const aptApi = {
   uploadBegin: (fileName: string) => call<{ id: string }>('apt_upload_begin', { p_file_name: fileName }),
   uploadRows: (uploadId: string, kind: AptUploadKind, rows: Record<string, unknown>[]) =>
     call<{ rows: number }>('apt_upload_rows', { p_upload_id: uploadId, p_kind: kind, p_rows: rows }),
-  // Dos peticiones: aplicar la carga (reemplazo por fechas) y recalcular el FIFO; cada una con su propio límite de tiempo
-  // Tres peticiones, cada una con su propio límite de tiempo: aplicar (reemplazo por fechas), estadía FIFO y flujo multi-almacén
-  // En el servidor (sin el límite de 8 s por consulta del navegador); si la ruta no está disponible, tres peticiones
+  rebuildModels,
   uploadApply: async (uploadId: string) => {
-    const srv = await procesar({ accion: 'aplicar', upload_id: uploadId })
-    if (srv) {
-      const model = await procesar({ accion: 'estadia' })
-      const flow = await procesar({ accion: 'flujo' })
-      return { summary: srv.summary as AptUpload['summary'], model: model?.model, flow: flow?.flow }
+    let summary: AptUpload['summary']
+    try {
+      const srv = await procesar({ accion: 'aplicar', upload_id: uploadId })
+      summary = srv.summary as AptUpload['summary']
+    } catch (error) {
+      // La respuesta pudo perderse después de confirmar la transacción. Consultar
+      // el estado evita descartar una carga aplicada o reemplazar otra vez sus filas.
+      const { data, error: statusError } = await supabase.from('apt_uploads')
+        .select('status, summary').eq('id', uploadId).maybeSingle()
+      if (statusError || data?.status !== 'APLICADA') throw error
+      summary = data.summary as AptUpload['summary']
     }
-    const applied = await call<{ summary: AptUpload['summary'] }>('apt_upload_apply', { p_upload_id: uploadId, p_rebuild: false })
-    const model = await call<{ cutoff: string | null; capas: number; asignaciones: number }>('apt_model_rebuild')
-    const flow = await call<{ cutoff: string | null; capas?: number }>('apt_flow_rebuild')
-    return { summary: applied.summary, model, flow }
+    try {
+      return { summary, ...await rebuildModels(), warning: null }
+    } catch (error) {
+      return { summary, warning: `La carga está aplicada. El recálculo quedó pendiente: ${error instanceof Error ? error.message : 'error del servidor'}` }
+    }
   },
   uploadDiscard: (uploadId: string) => call<Record<string, never>>('apt_upload_discard', { p_upload_id: uploadId }),
   uploads: async (limit = 50) => {
