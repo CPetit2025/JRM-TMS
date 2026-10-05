@@ -20,4 +20,6 @@ En CI, `assembleDebug testDebugUnitTest` compila el plugin real y ejecuta prueba
 
 La publicación firmada usa el workflow Android existente con las credenciales de CI. Su script verifica firma, identidad, versión y SHA-256 de la descarga antes de registrar el APK publicado.
 
+El arnés simula el servicio Chromium de service workers, que Robolectric no implementa, y la versión instalada del WebView; ejecuta la actividad y el bloqueo reales.
+
 La autenticación con hardware real requiere comprobar en un teléfono: activación, cierre/apertura y reinicio del proceso; huella correcta/incorrecta y cancelación; bloqueo al regresar de segundo plano; recuperación con credencial o contraseña; continuidad del GPS durante el bloqueo; y cierre de sesión. Robolectric y la compilación no sustituyen esta comprobación física.
