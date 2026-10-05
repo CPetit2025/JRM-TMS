@@ -34,10 +34,11 @@ export function readActionQueue(): OfflineAction[] {
   } catch { return [] }
 }
 
-export function saveOfflineAction(type: string, payload: Record<string, unknown>): void {
+export function saveOfflineAction(type: string, payload: Record<string, unknown>, operationId = crypto.randomUUID()): void {
   const actions = readActionQueue()
+  if (actions.some(action => action.id === operationId)) return
   actions.push({
-    id: crypto.randomUUID(),
+    id: operationId,
     type,
     payload,
     created_at: new Date().toISOString(),
@@ -88,7 +89,28 @@ export function syncOfflineActions(): Promise<number> {
 
     for (const action of actions) {
       try {
-        if (action.type === 'complete_dispatch_stop') {
+        if (action.type === 'delivery_submit_driver') {
+          const { data: auth } = await supabase.auth.getUser()
+          if (!auth.user || auth.user.id !== action.payload.user_id) throw new Error('La sesión no corresponde a esta evidencia')
+          const photos = action.payload.photos_base64
+          if (!Array.isArray(photos) || photos.length < 1 || photos.length > 5) throw new Error('Fotos pendientes no válidas')
+          const paths: string[] = []
+          for (let index = 0; index < photos.length; index++) {
+            if (typeof photos[index] !== 'string' || !photos[index].startsWith('data:image/jpeg;base64,')) throw new Error('Fotografía no válida')
+            const blob = await (await fetch(photos[index])).blob()
+            const path = `${auth.user.id}/${action.payload.dispatch_id}/${action.payload.request_id}/${action.id}-${index}.jpg`
+            const { error } = await supabase.storage.from('driver_evidence').upload(path, blob, { upsert: false, contentType: 'image/jpeg' })
+            if (error && String(error.statusCode) !== '409') throw error
+            paths.push(path)
+          }
+          const { data, error } = await supabase.rpc('execute_driver_offline_action', {
+            p_operation_id: action.id, p_action_type: action.type,
+            p_payload: { dispatch_id: action.payload.dispatch_id, request_id: action.payload.request_id, photos: paths,
+              received_by: action.payload.received_by, guide: action.payload.guide, note: action.payload.note, captured_at: action.payload.captured_at },
+          })
+          if (error) throw error
+          if (!data?.success) throw new Error(data?.error || 'El servidor no confirmó la guía')
+        } else if (action.type === 'complete_dispatch_stop') {
           // If the payload contains a base64 photo, we must upload it first.
           const dispatchId = String(action.payload.p_dispatch_id || '')
           const requestId = String(action.payload.p_request_id || '')
@@ -102,9 +124,9 @@ export function syncOfflineActions(): Promise<number> {
             const filePath = `${userId}/${dispatchId}/${requestId}/${action.id}.jpg`
 
             const { error: uploadError } = await supabase.storage.from('driver_evidence')
-              .upload(filePath, blob, { upsert: true, contentType: 'image/jpeg' })
+              .upload(filePath, blob, { upsert: false, contentType: 'image/jpeg' })
 
-            if (uploadError) throw uploadError
+            if (uploadError && String(uploadError.statusCode) !== '409') throw uploadError
             finalPhotoUrl = filePath
           }
 
@@ -140,7 +162,7 @@ export function syncOfflineActions(): Promise<number> {
         if (target) {
           target.retry_count++
           target.status = 'error'
-          target.last_error = err instanceof Error ? err.message.slice(0, 300) : 'Error de sincronización'
+          target.last_error = err && typeof err === 'object' && 'message' in err ? String(err.message).slice(0, 300) : 'Error de sincronización'
           localStorage.setItem(actionQueueKey, JSON.stringify(currentQueue))
         }
       }

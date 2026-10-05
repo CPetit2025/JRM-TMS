@@ -91,8 +91,7 @@ jobs:
         run: supabase db push --password "$SUPABASE_DB_PASSWORD"
 
       # Pruebas de caja contra la base real; cada archivo termina en error a propósito para forzar ROLLBACK.
-      - name: Caja SQL tests (informativo)
-        continue-on-error: true
+      - name: Caja SQL tests
         run: |
           status=0
           for f in supabase/tests/caja_*.test.sql; do
@@ -100,7 +99,7 @@ jobs:
             line=$(echo "$out" | grep -oE 'CAJA C[0-9]+ (PASS|FAIL)[^"]*' | head -1)
             echo "$f → ${line:-sin resultado}"
             echo "- \`$(basename "$f")\`: ${line:-sin resultado}" >> "$GITHUB_STEP_SUMMARY"
-            case "$line" in *PASS*) ;; *) status=1; echo "$out" | tail -20 ;; esac
+            case "$line" in *PASS*) ;; *) status=1; echo "::error title=Caja SQL $(basename "$f")::${line:-sin resultado}"; echo "$out" | tail -20 ;; esac
           done
           exit $status
 
