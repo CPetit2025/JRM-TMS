@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Truck, Plus, Search, Building2, Save, X, Edit, Ban, CheckCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { TerceroDesempeno } from '@/components/despacho/Tercero'
 
 export default function TransportistasPage() {
   const [carriers, setCarriers] = useState<any[]>([])
@@ -225,6 +226,8 @@ export default function TransportistasPage() {
           </table>
         </div>
       </div>
+
+      <TerceroDesempeno />
 
       <Modal isOpen={isModalOpen} onClose={() => !isSubmitting && setIsModalOpen(false)} title={form.id ? "Editar Proveedor" : "Registrar Proveedor"}>
         <form onSubmit={handleSave} className="space-y-4">

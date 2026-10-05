@@ -25,9 +25,10 @@ export function transportRow(r: Record<string, unknown>): AnalysisRow {
   const clients = [...new Set(requests.map(x => text(relation(relation(x.contracts).clients).business_name)).filter(Boolean))]
   const routes = [...new Set(requests.map(x => [text(x.pickup_address), text(x.delivery_address)].filter(Boolean).join(' → ')).filter(Boolean))]
   const incident = array(r.dispatch_events).some(x => ['INCIDENCIA', 'RETRASO', 'DESVIO'].includes(text(x.event_type)))
-  return { ...baseRow(r), date: date(r.scheduled_departure), client: clients.join(' · '), contract: contracts.join(' · '), route: routes.join(' · '),
+  const base = baseRow(r)
+  return { ...base, driver: r.modalidad === 'TERCERO' ? `${base.driver} (tercero)` : base.driver, date: date(r.scheduled_departure), client: clients.join(' · '), contract: contracts.join(' · '), route: routes.join(' · '),
     clients, contracts, routes, values: { requests: requests.length, incident: incident ? 1 : 0 },
-    detail: { 'Despacho': text(r.dispatch_number), 'Salida programada': text(r.scheduled_departure), 'Estado': text(r.status),
+    detail: { 'Despacho': text(r.dispatch_number), 'Unidad': r.modalidad === 'TERCERO' ? 'Tercerizada' : 'Flota propia', 'Salida programada': text(r.scheduled_departure), 'Estado': text(r.status),
       'Cliente(s)': clients.join(' · '), 'Contrato(s)': contracts.join(' · '), 'Ruta(s)': routes.join(' · '),
       'Solicitudes vinculadas': requests.length, 'Incidencia registrada': incident ? 'Sí' : 'No' }, href: '/despacho' }
 }
@@ -38,7 +39,7 @@ export async function loadDataset(p: Perspective, f: Filters): Promise<Dataset> 
   const end = `${f.to}T23:59:59.999999-05:00`
   if (p === 'transporte') {
     const data = await allPages<Record<string, unknown>>((offset, size) => supabase.from('dispatches')
-      .select('id, dispatch_number, driver_name, vehicle_plate, status, scheduled_departure, dispatch_requests(transport_requests(pickup_address,delivery_address,contracts(code,clients(business_name)))),dispatch_events(event_type)', { count: 'exact' })
+      .select('id, dispatch_number, driver_name, vehicle_plate, status, scheduled_departure, modalidad, dispatch_requests(transport_requests(pickup_address,delivery_address,contracts(code,clients(business_name)))),dispatch_events(event_type)', { count: 'exact' })
       .gte('scheduled_departure', start).lte('scheduled_departure', end).order('scheduled_departure').order('id').range(offset, offset + size - 1))
     const rows = data.map(transportRow)
     return { source: 'dispatches · dispatch_requests · dispatch_events', basis: 'Salida programada (Lima)', rows, metrics: aggregate(p, rows), note: 'Solo despachos con salida programada en el rango. Las incidencias reflejan eventos registrados del viaje, incluso posteriores a esa salida.' }
