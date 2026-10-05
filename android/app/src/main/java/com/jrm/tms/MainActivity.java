@@ -147,14 +147,14 @@ public class MainActivity extends BridgeActivity {
         });
     }
 
-    @Override protected void onPause() {
+    @Override public void onPause() {
         foreground = false;
         android.webkit.CookieManager.getInstance().flush();
         if (biometricEnabled()) { locked = true; showLock(); }
         super.onPause();
     }
 
-    @Override protected void onResume() {
+    @Override public void onResume() {
         super.onResume();
         foreground = true;
         if (lockScreen != null && locked) { showLock(); unlock(); }
