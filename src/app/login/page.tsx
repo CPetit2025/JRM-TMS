@@ -122,9 +122,12 @@ export default function LoginPage() {
           <p className="max-w-lg text-sm leading-relaxed text-blue-100 sm:text-base lg:text-xl">
             Gestión inteligente de despachos, transporte y entregas. Torre de control operativa para optimizar toda tu cadena de suministro.
           </p>
-          <div className="mt-5 flex items-center gap-3 lg:mt-12 lg:gap-4">
-             <div aria-hidden="true" className="h-1 w-8 shrink-0 bg-[#cf152d] lg:w-16"></div>
-             <p className="text-[10px] font-semibold uppercase tracking-widest sm:text-xs lg:text-sm">TORRE DE CONTROL TMS</p>
+          <div className="mt-5 flex items-start gap-3 lg:mt-12 lg:gap-4">
+            <div aria-hidden="true" className="mt-1.5 h-1 w-8 shrink-0 bg-[#cf152d] lg:mt-2 lg:w-16"></div>
+            <div className="min-w-0 space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-widest sm:text-xs lg:text-sm">TORRE DE CONTROL TMS</p>
+              <p className="text-[10px] font-medium uppercase tracking-widest text-blue-200 sm:text-xs lg:text-sm">GERENCIA DE LOGISTICA</p>
+            </div>
           </div>
         </div>
       </section>
