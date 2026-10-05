@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, Receipt, Calendar, FileText, Check, Ban, Loader2, DollarSign, Upload, Download, AlertCircle, Search, Filter, X, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
+import { Plus, Receipt, Calendar, FileText, Check, Ban, Loader2, DollarSign, Upload, Download, AlertCircle, Search, Filter, X, ArrowUp, ArrowDown, ArrowUpDown, RefreshCw, Scale } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -64,11 +64,23 @@ interface ContractService {
   }
 }
 
-type SortKey = 'fecha' | 'contrato' | 'cliente' | 'servicio' | 'placa' | 'guia' | 'monto' | 'saldo' | 'estado'
+type SortKey = 'fecha' | 'contrato' | 'cliente' | 'servicio' | 'placa' | 'guia' | 'ton' | 'monto' | 'saldo' | 'estado'
+
+// Peso de las guías según la SALIDA cargada en Almacén APT (tabla contract_service_peso_apt, migración 20261006130000)
+interface PesoApt { service_id: string; guias: string; kg: number | null; encontradas: number; faltan: string | null; calculado_at: string }
+const fmtTon = (kg: number) => (kg / 1000).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// TON a mostrar: el de APT si hay; si no, el KG escrito a mano en la descripción
+const tonInfo = (srv: { description?: string }, p?: PesoApt): { ton: number | null; fuente: 'APT' | 'MANUAL' | null } => {
+  if (p?.kg != null) return { ton: Number(p.kg) / 1000, fuente: 'APT' }
+  const n = Number(srv.description)
+  return srv.description && !isNaN(n) ? { ton: n / 1000, fuente: 'MANUAL' } : { ton: null, fuente: null }
+}
 
 export default function ContractServicesPage() {
   const supabase = createClient()
   const [services, setServices] = useState<ContractService[]>([])
+  const [pesoApt, setPesoApt] = useState<Record<string, PesoApt>>({})
+  const [syncingPeso, setSyncingPeso] = useState(false)
   const [contracts, setContracts] = useState<Contract[]>([])
   const [orphanDispatches, setOrphanDispatches] = useState<Dispatch[]>([])
   const [loading, setLoading] = useState(true)
@@ -192,6 +204,9 @@ export default function ContractServicesPage() {
       
       if (sError) throw sError
       setServices((sData as any) || [])
+      // Peso según APT (si la tabla aún no existe, la columna usa el KG manual)
+      const { data: pData } = await supabase.from('contract_service_peso_apt').select('*')
+      setPesoApt(Object.fromEntries(((pData as PesoApt[]) || []).map(p => [p.service_id, p])))
 
       const { data: cData, error: cError } = await supabase
         .from('contracts')
@@ -441,6 +456,16 @@ export default function ContractServicesPage() {
     multiple: false
   })
 
+  const actualizarPesoApt = async () => {
+    setSyncingPeso(true)
+    const { data, error } = await supabase.rpc('servicios_actualizar_peso_apt')
+    setSyncingPeso(false)
+    if (error || !data?.success) return toast.error(error?.message || data?.error || 'No se pudo actualizar el peso')
+    const hasta = data.datos_apt_hasta ? ` · SALIDA de APT hasta ${new Date(`${String(data.datos_apt_hasta).slice(0, 10)}T12:00:00`).toLocaleDateString('es-PE')}` : ''
+    toast.success(`Peso actualizado: ${data.con_peso} de ${data.con_guia} servicios con guía${data.con_guias_faltantes ? ` · ${data.con_guias_faltantes} con guías que no están en APT` : ''}${hasta}`)
+    fetchData()
+  }
+
   const filteredServices = services.filter(srv => {
     const searchString = `${srv.contracts?.code} ${srv.contracts?.clients?.business_name} ${srv.service_type} ${srv.category} ${srv.description} ${srv.plate} ${srv.driver_name} ${srv.provider_name} ${srv.provider_ruc} ${srv.referral_guide || ''}`.toLowerCase()
     const matchesSearch = searchTerm ? searchString.includes(searchTerm.toLowerCase()) : true
@@ -471,6 +496,7 @@ export default function ContractServicesPage() {
       case 'servicio': return srv.service_type || ''
       case 'placa': return srv.plate || ''
       case 'guia': return srv.referral_guide || ''
+      case 'ton': return tonInfo(srv, pesoApt[srv.id]).ton ?? -1
       case 'monto': return Number(srv.amount_pen || 0)
       case 'saldo': return Number(srv.contracts?.contract_budgets?.[0]?.balance_pen || 0)
       case 'estado': return srv.status || ''
@@ -508,6 +534,16 @@ export default function ContractServicesPage() {
             Despachos sin Flete ({orphanDispatches.length})
           </button>
           
+          <button
+            onClick={actualizarPesoApt}
+            disabled={syncingPeso}
+            title="Recalcula el TON de cada servicio con el peso de sus guías en la SALIDA cargada en Almacén APT"
+            className="flex items-center gap-2 bg-white text-[#002855] border border-slate-300 px-4 py-2 rounded-lg font-medium hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
+          >
+            {syncingPeso ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Actualizar peso (APT)
+          </button>
+
           <button 
             onClick={downloadTemplate}
             className="flex items-center gap-2 bg-white text-slate-700 border border-slate-300 px-4 py-2 rounded-lg font-medium hover:bg-slate-50 transition-colors shadow-sm"
@@ -613,7 +649,7 @@ export default function ContractServicesPage() {
                 {sortHeader('Servicio', 'servicio')}
                 {sortHeader('Placa', 'placa')}
                 {sortHeader('Guía', 'guia')}
-                <th className="p-4 font-semibold">TON</th>
+                {sortHeader('TON', 'ton', 'text-right')}
                 {sortHeader('Monto (PEN)', 'monto', 'text-right')}
                 {sortHeader('Saldo (PEN)', 'saldo', 'text-right')}
                 {sortHeader('Estado', 'estado', 'text-center')}
@@ -679,10 +715,24 @@ export default function ContractServicesPage() {
                         </div>
                       ) : <span className="text-slate-400">-</span>}
                     </td>
-                    <td className="p-4 text-sm font-medium text-slate-800">
-                      {!isNaN(Number(srv.description)) && srv.description ? 
-                        (Number(srv.description) / 1000).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) 
-                        : (srv.description || '-')}
+                    <td className="p-4 text-right text-sm font-medium text-slate-800">
+                      {(() => {
+                        const p = pesoApt[srv.id]
+                        const t = tonInfo(srv, p)
+                        if (t.fuente === 'APT') return (
+                          <div title={`Peso de ${p.encontradas} guía(s) en la SALIDA de Almacén APT${p.faltan ? ` · no encontradas: ${p.faltan}` : ''}`}>
+                            <div className="font-bold text-slate-900">{fmtTon(Number(p.kg))}</div>
+                            <div className={`text-[10px] font-semibold ${p.faltan ? 'text-amber-600' : 'text-emerald-600'}`}>{p.faltan ? `APT · faltan ${p.faltan.split(',').length}` : 'APT'}</div>
+                          </div>
+                        )
+                        if (t.fuente === 'MANUAL') return (
+                          <div title={p ? `Las guías no están en la SALIDA de APT (${p.faltan || p.guias}); se muestra el KG escrito a mano` : 'KG escrito a mano (sin guía)'}>
+                            <div>{fmtTon(Number(srv.description))}</div>
+                            <div className={`text-[10px] ${p ? 'text-amber-600' : 'text-slate-400'}`}>{p ? 'manual · guía sin APT' : 'manual'}</div>
+                          </div>
+                        )
+                        return p ? <span className="text-[11px] text-amber-600" title={`No encontradas en APT: ${p.faltan || p.guias}`}>guía sin APT</span> : <span className="text-slate-400">{srv.description || '-'}</span>
+                      })()}
                     </td>
                     <td className={`p-4 text-sm font-bold text-right ${srv.status === 'ANULADO' ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
                       S/ {Number(srv.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
@@ -1053,6 +1103,22 @@ export default function ContractServicesPage() {
               <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Detalle / KG</span>
               <p className="text-slate-800 text-sm whitespace-pre-wrap">{viewingService.description || '-'}</p>
             </div>
+
+            {pesoApt[viewingService.id] && (() => {
+              const p = pesoApt[viewingService.id]
+              return (
+                <div className={`p-3 rounded border ${p.faltan ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
+                  <span className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500"><Scale className="h-3.5 w-3.5" />Peso según Almacén APT (SALIDA)</span>
+                  <p className="text-sm text-slate-800">
+                    <b>{p.kg != null ? `${fmtTon(Number(p.kg))} t` : 'Sin peso'}</b>
+                    {p.kg != null && <span className="text-slate-500"> ({Number(p.kg).toLocaleString('es-PE')} kg)</span>}
+                    {' · '}{p.encontradas} guía(s) encontrada(s)
+                  </p>
+                  {p.faltan && <p className="text-xs text-amber-800">No encontradas en la SALIDA de APT: {p.faltan}. Revise el número de guía o cargue la SALIDA que la contiene.</p>}
+                  <p className="text-[11px] text-slate-500">Calculado el {new Date(p.calculado_at).toLocaleString('es-PE')}</p>
+                </div>
+              )
+            })()}
 
             {(viewingService.plate || viewingService.driver_name) && (
               <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded border border-slate-200">
