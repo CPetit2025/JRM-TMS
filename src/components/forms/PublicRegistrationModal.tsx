@@ -56,13 +56,13 @@ export function PublicRegistrationModal({ isOpen, onClose }: PublicRegistrationM
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Registro de Nuevo Usuario">
-      <div className="p-6">
+      <div>
         <p className="text-sm text-slate-500 mb-6">
           Completa tus datos. Una vez registrado, un Administrador deberá aprobar tu cuenta antes de que puedas ingresar al sistema.
         </p>
 
         <form onSubmit={handleRegister} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Nombres</label>
               <input required type="text" value={newUser.first_name} onChange={e => setNewUser({...newUser, first_name: e.target.value})} className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" />
@@ -73,7 +73,7 @@ export function PublicRegistrationModal({ isOpen, onClose }: PublicRegistrationM
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">DNI / Documento</label>
               <input required type="text" value={newUser.document_number} onChange={e => setNewUser({...newUser, document_number: e.target.value})} className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none" />
@@ -86,7 +86,7 @@ export function PublicRegistrationModal({ isOpen, onClose }: PublicRegistrationM
 
           <p className="text-xs text-slate-500">Un administrador asignará tu rol al aprobar la cuenta.</p>
 
-          <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+          <div className="grid grid-cols-1 gap-4 pt-4 border-t sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Correo Corporativo</label>
               <input required type="email" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} placeholder="ejemplo@jrmsac.com.pe" className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none placeholder:text-slate-400" />
@@ -98,7 +98,7 @@ export function PublicRegistrationModal({ isOpen, onClose }: PublicRegistrationM
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 mt-8">
+          <div className="flex flex-wrap justify-end gap-3 mt-8">
             <button type="button" onClick={onClose} className="px-4 py-2 border border-slate-300 bg-white text-slate-700 font-medium rounded-md hover:bg-slate-50 hover:text-slate-900 transition-colors">Cancelar</button>
             <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-[#002855] text-white font-medium rounded-md flex items-center hover:bg-[#001d3d] transition-colors disabled:opacity-50">
               {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
