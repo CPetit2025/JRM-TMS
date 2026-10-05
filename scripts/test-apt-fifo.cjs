@@ -10,7 +10,9 @@ function sql(input){return run(['exec','-i',name,'psql','-U','postgres','-v','ON
 try {
  run(['run','-d','--name',name,'-e','POSTGRES_HOST_AUTH_METHOD=trust','postgres:16-alpine'])
  let ready=false
- for(let n=0;n<30;n++){if(spawnSync('docker',['exec',name,'pg_isready','-U','postgres']).status===0){ready=true;break} Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,200)}
+ // The entrypoint's temporary Unix-socket server shuts down after initialization.
+ // TCP accepts connections only once the final PostgreSQL process is ready.
+ for(let n=0;n<30;n++){if(spawnSync('docker',['exec',name,'pg_isready','-h','127.0.0.1','-U','postgres']).status===0){ready=true;break} Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,200)}
  if(!ready)throw Error('Scratch PostgreSQL did not become ready')
  const base=readFileSync(path.join(root,'supabase/migrations/20261002100000_apt_estadia_inventario.sql'),'utf8')
  const latest=readFileSync(path.join(root,'supabase/migrations/20261002110000_apt_cliente_ot_lote.sql'),'utf8')
@@ -44,4 +46,9 @@ try {
  IF EXISTS((TABLE apt_exit_class EXCEPT TABLE expected_exits) UNION ALL (TABLE expected_exits EXCEPT TABLE apt_exit_class)) THEN RAISE EXCEPTION 'FIFO exit classification changed'; END IF;
  END $$;`)
  console.log('PASS: 64,000 movements; identical layers, allocations and exit classes; rebuild under 8s; repeatable migration.')
+} catch (error) {
+ // Expose the failure in check annotations when downloadable Actions logs are unavailable.
+ const message=String(error.stack||error).slice(0,6000).replaceAll('%','%25').replaceAll('\r','%0D').replaceAll('\n','%0A')
+ console.error(`::error title=APT FIFO regression::${message}`)
+ throw error
 } finally {spawnSync('docker',['rm','-f',name],{stdio:'ignore'})}

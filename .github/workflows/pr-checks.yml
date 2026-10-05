@@ -28,6 +28,7 @@ jobs:
       - run: node scripts/test-analytics.cjs
       - run: node scripts/test-app-session.cjs
       - run: node scripts/test-apt-upload.cjs
+      - run: node scripts/test-apt-begin.cjs
       - run: node scripts/test-apt-fifo.cjs
       - run: npm run check:guards
       - run: npm run typecheck
