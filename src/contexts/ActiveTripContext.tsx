@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 export type TripStop = {
   transport_request_id: string
   sequence_order: number | null
+  conformity?: string
   status: string
   request_number: string | null
   request_type: string | null
@@ -25,6 +26,7 @@ export type ActiveTrip = {
   status: string
   scheduled_departure: string | null
   actual_distance_km: number | null
+  return_actual_km?: number | null
   last_lat: number | null
   last_lon: number | null
   last_gps_at: string | null

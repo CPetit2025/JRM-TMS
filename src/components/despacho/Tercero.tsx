@@ -71,13 +71,13 @@ export function TerceroFields({ value, onChange }: { value: TerceroForm; onChang
 
 type Parada = {
   request_id: string; orden: number; solicitud: string; destino: string | null; contacto: string | null; documento: string | null
-  estado: string; entregado_at: string | null; recibido_por: string | null; foto: string | null; nota: string | null; fuente: string | null
+  estado: string; conformidad: string; entregado_at: string | null; recibido_por: string | null; foto: string | null; nota: string | null; fuente: string | null
 }
 type Avance = {
   despacho: { id: string; numero: string; estado: string; placa: string; conductor: string | null; telefono: string | null; doc: string | null
     transportista: string | null; salida_programada: string | null; salida_at: string | null; entrega_at: string | null; docs_listos: boolean }
   paradas: Parada[]
-  enlace: { token: string; expires_at: string; last_used_at: string | null } | null
+  enlace: { token: string; codigo?: string; expires_at: string; last_used_at: string | null } | null
 }
 
 export const enlaceTercero = (token: string) => `${typeof window === 'undefined' ? '' : window.location.origin}/tracking/entrega/${token}`
@@ -147,7 +147,7 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
       if (error || !r?.success) await supabase.storage.from('driver_evidence').remove([path])
       if (error) throw error
       return r
-    }, 'Entrega registrada.')
+    }, 'Guía recibida: pendiente de validación del Supervisor de Transporte.')
     if (done) setForm(null)
   }
 
@@ -167,7 +167,8 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
   const enRuta = d && ['EN_CURSO', 'EN RUTA'].includes(d.estado)
   const abierto = d && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA'].includes(d.estado)
   const link = data?.enlace ? enlaceTercero(data.enlace.token) : null
-  const mensaje = d && link ? `Hola ${d.conductor || ''}, JRM: viaje ${d.numero} (placa ${d.placa}). Al salir y en cada entrega registre la hora y la foto de la guía firmada aquí: ${link}` : ''
+  const portal = typeof window === 'undefined' ? '/tracking/entregas' : `${window.location.origin}/tracking/entregas`
+  const mensaje = d && link ? `JRM · viaje ${d.numero}. Placa: ${d.placa}. Ingrese a ${portal} con código ${data?.enlace?.codigo || '(solicitar renovación)'} o use su enlace de viaje: ${link}. Sin guía firmada y aprobada por el Supervisor de Transporte, el servicio no puede avanzar. Al enviarla se bloquea el acceso a esa entrega; solo una observación o rechazo permite corregirla.` : ''
 
   return (
     <Modal isOpen={!!dispatchId} onClose={onClose} title={`Avance del tercero${d ? ` · ${d.numero}` : ''}`} maxWidth="max-w-3xl">
@@ -216,6 +217,7 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-semibold text-[#002855] text-sm">#{p.orden} · {p.solicitud}{p.documento ? <span className="ml-2 text-[11px] text-slate-500 font-normal">Guía {p.documento}</span> : null}</div>
+                    <p className="text-xs text-amber-800">{p.conformidad === 'RECIBIDA' ? 'Pendiente de validación del Supervisor de Transporte' : p.conformidad === 'OBSERVADA' ? 'Observada: corrija el sustento' : p.conformidad === 'RECHAZADA' ? 'Rechazada: corrija el sustento' : ''}</p>
                     <div className="text-xs text-slate-600 truncate" title={p.destino || ''}>{p.destino || '—'}</div>
                     {p.estado === 'ENTREGADO' && (
                       <div className="text-xs text-emerald-700 mt-1">
@@ -230,9 +232,9 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
                           <img src={fotos[p.request_id]!} alt="Constancia" className="w-full h-full object-cover" />
                         </a>
                       : <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                  ) : enRuta && form?.request_id !== p.request_id ? (
+                  ) : enRuta && ['PENDIENTE', 'OBSERVADA', 'RECHAZADA'].includes(p.conformidad) && form?.request_id !== p.request_id ? (
                     <button onClick={() => setForm({ request_id: p.request_id, at: nowLocal(), recibido: '', nota: '', file: null })}
-                      className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-semibold">Registrar entrega</button>
+                      className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-semibold">Enviar guía para validación</button>
                   ) : !enRuta ? <span className="text-[11px] text-slate-400">Pendiente</span> : null}
                 </div>
                 {form?.request_id === p.request_id && (
@@ -256,7 +258,7 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
                     <div className="sm:col-span-2 flex justify-end gap-2">
                       <button onClick={() => setForm(null)} className="px-3 py-1.5 text-sm bg-slate-100 rounded-lg">Cancelar</button>
                       <button onClick={registrarEntrega} disabled={!!busy} className="px-4 py-1.5 text-sm bg-emerald-600 text-white font-semibold rounded-lg disabled:opacity-50 flex items-center gap-2">
-                        {busy === 'entrega' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}Guardar entrega
+                        {busy === 'entrega' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}Enviar guía
                       </button>
                     </div>
                   </div>
@@ -268,10 +270,13 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
 
           {abierto && (
             <div className="border rounded-xl p-4 space-y-2">
-              <h4 className="font-semibold text-slate-800 flex items-center gap-2"><Link2 className="w-4 h-4 text-blue-600" />Enlace para el chofer (opcional)</h4>
+              <h4 className="font-semibold text-slate-800 flex items-center gap-2"><Link2 className="w-4 h-4 text-blue-600" />Acceso del tercero por placa</h4>
               <p className="text-xs text-slate-500">El chofer del tercero abre el enlace en su celular, marca la salida y registra cada entrega con foto, sin instalar nada ni crear cuenta. Vale solo para este viaje.</p>
               {link ? (
                 <div className="space-y-2">
+                  <p className="text-sm">Portal: <a href={portal} target="_blank" rel="noreferrer" className="text-blue-700 underline">{portal}</a></p>
+                  <p className="text-sm font-semibold">Placa: {d.placa} · Código: {data.enlace?.codigo || 'Renueve el enlace para asignar código'}</p>
+                  <p className="text-xs text-amber-800">Comparta el código con el contacto registrado del transportista. Solo el Supervisor de Transporte aprueba; el envío de la guía bloquea el acceso a esa entrega.</p>
                   <div className="flex gap-2">
                     <input readOnly value={link} className={`${input} text-xs`} onFocus={e => e.currentTarget.select()} />
                     <button onClick={() => { void navigator.clipboard.writeText(link); toast.success('Enlace copiado') }} className="px-3 bg-slate-100 rounded-lg" title="Copiar"><Copy className="w-4 h-4" /></button>

@@ -97,6 +97,8 @@ BEGIN
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T3 atajos: ' || COALESCE(v_err, '∅') || ' | ' || COALESCE(v_err2, '∅') || ' | ' || COALESCE(v_err3, '∅')); END IF;
 
   -- T4: entregado (paradas confirmadas) se cierra y consume la partida
+  -- Este caso prueba la partida; las guías ya aprobadas se preparan como fixture.
+  INSERT INTO public.delivery_conformities(dispatch_id,request_id,state) SELECT dispatch_id,transport_request_id,'VALIDADA' FROM public.dispatch_requests WHERE dispatch_id=d2 ON CONFLICT(dispatch_id,request_id) DO UPDATE SET state='VALIDADA';
   UPDATE public.dispatch_requests SET status = 'ENTREGADO' WHERE dispatch_id = d2;
   PERFORM pg_temp.as_user(v_desp);
   r := public.transition_dispatch_status(d2, 'ENTREGADO', 'fin de ruta');

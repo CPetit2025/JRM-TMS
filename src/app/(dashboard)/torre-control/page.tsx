@@ -1,11 +1,15 @@
 "use client"
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
-import { useState, useEffect, useMemo } from 'react'
-import { Truck, Search, Calendar, MapPin, ChevronRight, Loader2, Share2, AlertTriangle, CheckCircle2, Clock, Route, Activity } from 'lucide-react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { Truck, Search, Calendar, MapPin, Loader2, Share2, AlertTriangle, CheckCircle2, Route } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { usePermissions } from '@/hooks/usePermissions'
+import { DeliveryTable } from '@/components/delivery/DeliveryTable'
+import { DeliveryReview } from '@/components/delivery/DeliveryReview'
+import { TerceroAvanceModal } from '@/components/despacho/Tercero'
+import { filterDeliveries, type DeliveryRow } from '@/lib/delivery'
 import { ReportarFallaButton } from '@/components/mantenimiento/ReportarFalla'
 
 interface DispatchRequest {
@@ -44,12 +48,31 @@ const STATUS_BADGE = {
   'ENTREGADO': 'bg-emerald-50 text-emerald-700 border-emerald-200'
 } as Record<string, string>
 
+  const getLatestEvent = (events: NonNullable<Dispatch['dispatch_events']>) => {
+    if (!events || events.length === 0) return null;
+    return [...events].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+  }
+
+  const hasAlertEvent = (events: NonNullable<Dispatch['dispatch_events']>, maintenance_alerts?: Dispatch['maintenance_alerts']) => {
+    if (maintenance_alerts && maintenance_alerts.length > 0) return true;
+    if (!events || events.length === 0) return false;
+    // Buscamos si en las últimas 12 horas hubo una alerta que no haya sido resuelta (para simplificar, si el último evento es alerta)
+    const latest = getLatestEvent(events);
+    return latest && (latest.event_type === 'INCIDENCIA' || latest.event_type === 'RETRASO' || latest.event_type === 'DESVIO');
+  }
+
+
 export default function TorreControlPage() {
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const { isLoaded, canWrite } = usePermissions()
+  const [rows, setRows] = useState<DeliveryRow[]>([])
+  const [review, setReview] = useState<DeliveryRow | null>(null)
+  const [thirdId, setThirdId] = useState<string | null>(null)
+  const [refreshedAt, setRefreshedAt] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState('')
+  const fetchVersion = useRef(0)
   const [dispatches, setDispatches] = useState<Dispatch[]>([])
   // Estado documentario de los despachos programados (bandeja del Asistente Documentario)
-  const [docStatus, setDocStatus] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [selectedDispatch, setSelectedDispatch] = useState<Dispatch | null>(null)
 
@@ -67,16 +90,40 @@ export default function TorreControlPage() {
 
   const [isSharing, setIsSharing] = useState(false)
 
+  const fetchDispatches = useCallback(async () => {
+    const version = ++fetchVersion.current
+    try {
+      setLoading(true)
+      const { data, error } = await supabase.rpc('get_tower_dispatches', {
+        p_date: dateFilter || null,
+        p_responsible: responsibleFilter || null,
+        p_status: statusFilter,
+      })
+      if (error) throw error
+      const list = (data || []) as Dispatch[]
+      const { data: deliveries, error: rowError } = await supabase.rpc('delivery_tracking_rows', { p_dispatches: list.map(d => d.id) })
+      if (rowError) throw rowError
+      if (version !== fetchVersion.current) return
+      setDispatches(list); setRows((deliveries || []) as DeliveryRow[]); setRefreshedAt(new Date().toISOString()); setLoadError('')
+    } catch (err) {
+      if (version === fetchVersion.current) setLoadError('No se pudo actualizar la torre de control: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      if (version === fetchVersion.current) setLoading(false)
+    }
+  }, [dateFilter, responsibleFilter, statusFilter, supabase])
+
   useEffect(() => {
-    if (isLoaded) void fetchDispatches()
-  }, [statusFilter, dateFilter, responsibleFilter, isLoaded])
+    if (!isLoaded) return
+    const timer = window.setTimeout(() => void fetchDispatches(), 0)
+    return () => window.clearTimeout(timer)
+  }, [isLoaded, fetchDispatches, supabase])
 
   useEffect(() => {
     if (!isLoaded) return
     void supabase.rpc('get_tower_responsibles').then(({ data, error }) => {
       if (!error) setResponsibles((data || []) as Array<{ user_id: string, full_name: string }>)
     })
-  }, [isLoaded])
+  }, [isLoaded, supabase])
 
   useEffect(() => {
     const channel = supabase.channel('torre_control_changes')
@@ -88,10 +135,9 @@ export default function TorreControlPage() {
       })
       .subscribe()
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [statusFilter, dateFilter])
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void fetchDispatches() }, 15000)
+    return () => { void supabase.removeChannel(channel); window.clearInterval(timer) }
+  }, [isLoaded, fetchDispatches, supabase])
 
   const handleShareTracking = async () => {
     if (!canWrite('despacho')) return
@@ -122,45 +168,13 @@ Equipo JRM TMS`
         window.open(`mailto:?subject=Visibilidad de Operaciones JRM - ${formattedDate}&body=${encodeURIComponent(mailBody)}`, '_blank')
         toast.success('Enlace generado y copiado al correo.')
       }
-    } catch (error: any) {
-      toast.error('Error al generar enlace: ' + error.message)
+    } catch (error) {
+      toast.error('Error al generar enlace: ' + (error instanceof Error ? error.message : String(error)))
     } finally {
       setIsSharing(false)
     }
   }
 
-  const fetchDispatches = async () => {
-    try {
-      setLoading(true)
-      const { data, error } = await supabase.rpc('get_tower_dispatches', {
-        p_date: dateFilter || null,
-        p_responsible: responsibleFilter || null,
-        p_status: statusFilter,
-      })
-      if (error) throw error
-      setDispatches((data || []) as any)
-      const { data: queue } = await supabase.rpc('get_documentary_queue', { p_include_departed: false })
-      setDocStatus(Object.fromEntries(((queue || []) as { id: string; doc_status: string; docs_required: boolean }[])
-        .filter(q => q.docs_required).map(q => [q.id, q.doc_status])))
-    } catch (err: any) {
-      toast.error('Error al cargar torre de control: ' + err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const getLatestEvent = (events: any[]) => {
-    if (!events || events.length === 0) return null;
-    return [...events].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
-  }
-
-  const hasAlertEvent = (events: any[], maintenance_alerts?: any[]) => {
-    if (maintenance_alerts && maintenance_alerts.length > 0) return true;
-    if (!events || events.length === 0) return false;
-    // Buscamos si en las últimas 12 horas hubo una alerta que no haya sido resuelta (para simplificar, si el último evento es alerta)
-    const latest = getLatestEvent(events);
-    return latest && (latest.event_type === 'INCIDENCIA' || latest.event_type === 'RETRASO' || latest.event_type === 'DESVIO');
-  }
 
   const formatDate = (isoStr: string) => {
     if (!isoStr) return '-'
@@ -195,8 +209,9 @@ Equipo JRM TMS`
       const searchLower = searchTerm.toLowerCase()
       if (searchTerm && !(
         d.vehicle_plate.toLowerCase().includes(searchLower) ||
-        d.driver_name.toLowerCase().includes(searchLower) ||
-        d.dispatch_number.toLowerCase().includes(searchLower)
+        (d.driver_name || '').toLowerCase().includes(searchLower) ||
+        d.dispatch_number.toLowerCase().includes(searchLower) ||
+        filterDeliveries(rows.filter(row => row.dispatch_id === d.id), searchTerm, '', '').length > 0
       )) {
         return false
       }
@@ -205,7 +220,7 @@ Equipo JRM TMS`
     })
 
     return { filteredDispatches: filtered, kpis: { kpiProgramados, kpiEnCurso, kpiCompletadosHoy, kpiAlertas } }
-  }, [dispatches, searchTerm, onlyAlerts])
+  }, [dispatches, rows, searchTerm, onlyAlerts])
 
 
   const getStatusBadge = (status: string) => {
@@ -331,121 +346,9 @@ Equipo JRM TMS`
         </div>
       </div>
 
-      {/* Main Table */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-        <div className="overflow-auto max-h-[600px]">
-          <table className="w-full text-sm text-left relative">
-            <thead className="text-[11px] text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
-              <tr>
-                <th className="px-6 py-4 font-bold">Despacho</th>
-                <th className="px-6 py-4 font-bold">Cronograma</th>
-                <th className="px-6 py-4 font-bold">Último Reporte GPS</th>
-                <th className="px-6 py-4 font-bold">Recurso Asignado</th>
-                <th className="px-6 py-4 font-bold">Estado Actual</th>
-                <th className="px-6 py-4 font-bold text-center"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-[#002855]" />
-                    <p className="font-medium">Sincronizando telemetría...</p>
-                  </td>
-                </tr>
-              ) : filteredDispatches.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                    <Activity className="w-8 h-8 mx-auto mb-3 text-slate-300" />
-                    <p className="font-medium">No se encontraron operaciones con los filtros actuales.</p>
-                  </td>
-                </tr>
-              ) : (
-                filteredDispatches.map((dispatch) => {
-                  const latestEvent = getLatestEvent(dispatch.dispatch_events || []);
-                  const isMaintenanceAlert = dispatch.maintenance_alerts && dispatch.maintenance_alerts.length > 0;
-                  const isAlert = isMaintenanceAlert || (latestEvent && (latestEvent.event_type === 'INCIDENCIA' || latestEvent.event_type === 'RETRASO' || latestEvent.event_type === 'DESVIO'));
-
-                  return (
-                    <tr 
-                      key={dispatch.id} 
-                      className={`hover:bg-slate-50 transition-colors cursor-pointer group ${isAlert && dispatch.status !== 'LIQUIDADO' ? 'bg-red-50/30' : ''}`}
-                      onClick={() => setSelectedDispatch(dispatch)}
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-slate-900">{dispatch.dispatch_number}</span>
-                          {!!dispatch.contract_codes?.length && <span className="text-[11px] text-slate-500">OT: {dispatch.contract_codes.join(', ')}</span>}
-                          {!!dispatch.responsible_names?.length && <span className="text-[11px] text-slate-500">Responsable: {dispatch.responsible_names.join(', ')}</span>}
-                          <span className="text-[11px] font-medium text-slate-500 mt-0.5">
-                            {dispatch.dispatch_requests?.length || 0} OTs asignadas
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col">
-                          <span className="text-slate-700 font-semibold text-xs">Salida:</span>
-                          <span className="text-slate-600 text-sm">{formatDate(dispatch.scheduled_departure)}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        {!latestEvent ? (
-                          <span className="text-xs text-slate-400 italic">Esperando telemetría...</span>
-                        ) : (
-                          <div className="flex flex-col max-w-[250px]">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md border ${isAlert ? 'bg-red-50 text-red-700 border-red-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
-                                {latestEvent.event_type.replace('_', ' ')}
-                              </span>
-                              <span className="text-[10px] font-semibold text-slate-400 flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {new Date(latestEvent.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </div>
-                            <span className="text-xs text-slate-600 truncate font-medium" title={latestEvent.description}>
-                              {latestEvent.description || 'Reporte de posición'}
-                            </span>
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-2 font-bold text-slate-800">
-                            <div className="p-1.5 bg-slate-100 rounded-md border border-slate-200">
-                              <Truck className="w-3.5 h-3.5 text-slate-600" />
-                            </div>
-                            {dispatch.vehicle_plate}
-                            {isMaintenanceAlert && (
-                              <div className="flex items-center gap-1 px-1.5 py-0.5 bg-red-100 border border-red-200 rounded text-red-700" title="Falla Vehicular">
-                                <AlertTriangle className="w-3 h-3" />
-                                <span className="text-[10px] font-bold uppercase">Falla</span>
-                              </div>
-                            )}
-                          </div>
-                          <span className="text-xs font-medium text-slate-500 ml-8">{dispatch.driver_name}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        {getStatusBadge(dispatch.status)}
-                        {dispatch.status === 'PROGRAMADO' && docStatus[dispatch.id] && (
-                          <div className={`mt-1 text-[10px] font-semibold ${docStatus[dispatch.id] === 'LISTO' ? 'text-emerald-600' : docStatus[dispatch.id] === 'REEMISION' ? 'text-red-600' : 'text-amber-600'}`}>
-                            {docStatus[dispatch.id] === 'LISTO' ? 'Guías listas' : docStatus[dispatch.id] === 'REEMISION' ? 'Guías por reemitir' : 'Guías pendientes'}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <button className="p-2 text-slate-400 group-hover:text-[#002855] hover:bg-slate-200 rounded-full transition-colors">
-                          <ChevronRight className="w-5 h-5" />
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <DeliveryTable rows={rows.filter(row => filteredDispatches.some(d => d.id === row.dispatch_id))} loading={loading} error={loadError} refreshedAt={refreshedAt} onRefresh={() => void fetchDispatches()} onEvidence={setReview} onDispatch={row => setSelectedDispatch(dispatches.find(d => d.id === row.dispatch_id) || null)} onProvider={canWrite('despacho') ? row => setThirdId(row.dispatch_id) : undefined} />
+      <DeliveryReview row={review} onClose={() => setReview(null)} onChanged={() => void fetchDispatches()} />
+      <TerceroAvanceModal dispatchId={thirdId} onClose={() => setThirdId(null)} onChanged={() => void fetchDispatches()} />
 
       <Modal 
         isOpen={!!selectedDispatch} 

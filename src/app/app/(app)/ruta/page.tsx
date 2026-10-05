@@ -1,45 +1,51 @@
 "use client"
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useState, useEffect, useMemo } from 'react'
-import { Truck, MapPin, Camera, CheckCircle2, Clock, Navigation2, FileText, Upload, Loader2, AlertCircle, Navigation } from 'lucide-react'
+import { Truck, MapPin, CheckCircle2, Navigation2, Loader2, Navigation, AlertCircle, Clock, FileText } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { nativeRouteTracker } from '@/lib/native-route-tracker'
 import { readRouteQueue, routeQueueKey, syncRoutePoints, saveOfflineAction, syncOfflineActions } from '@/lib/route-point-sync'
-import { useActiveTrip } from '@/contexts/ActiveTripContext'
+import { useActiveTrip, type ActiveTrip, type ActiveTripContextValue, type TripStop } from '@/contexts/ActiveTripContext'
+import { DriverDelivery } from '@/components/delivery/DriverDelivery'
 import { TripDocuments } from '@/components/evidence/TripDocuments'
+
+type RouteStop = TripStop & { transport_requests: Pick<TripStop, 'request_number' | 'request_type' | 'pickup_address' | 'delivery_address'> }
+type RouteDispatch = ActiveTrip & { contract_id?: string; dispatch_requests: RouteStop[]; start_lat?: number; start_lon?: number; return_actual_km?: number | null }
+const message = (err: unknown) => err && typeof err === 'object' && 'message' in err ? String(err.message) : 'Error de conexión'
 
 export default function RutaActivaPage() {
   const router = useRouter()
-  const [driver, setDriver] = useState<any>(null)
-  const [dispatch, setDispatch] = useState<any>(null)
+  const [driver, setDriver] = useState<ActiveTripContextValue['driver']>(null)
+  const [dispatch, setDispatch] = useState<RouteDispatch | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeStep, setActiveStep] = useState(0)
-  const [kmInput, setKmInput] = useState('')
-  const [stopPhoto, setStopPhoto] = useState<string | null>(null)
-  const [stopPhotoFile, setStopPhotoFile] = useState<File | null>(null)
   const [processing, setProcessing] = useState(false)
 
   const supabase = useMemo(() => createClient(), [])
-  const { driver: contextDriver, trip, loading: contextLoading, refresh } = useActiveTrip()
+  const { driver: contextDriver, user, trip, loading: contextLoading, refresh } = useActiveTrip()
 
   useEffect(() => {
     if (contextLoading) return
     if (!contextDriver) { router.replace('/app'); return }
-    setDriver(contextDriver)
-    const requests = (trip?.stops || []).map(stop => ({ ...stop,
-      transport_requests: { request_number: stop.request_number, request_type: stop.request_type,
-        pickup_address: stop.pickup_address, delivery_address: stop.delivery_address } }))
-    const firstPending = requests.findIndex(stop => stop.status !== 'ENTREGADO')
-    setActiveStep(firstPending >= 0 ? firstPending : requests.length)
-    setDispatch(trip ? { ...trip, contract_id: trip.contract?.id, dispatch_requests: requests } : null)
-    setLoading(false)
-    void syncRoutePoints().catch(() => {})
-    void syncOfflineActions().catch(() => {})
+    const timer = window.setTimeout(() => {
+      setDriver(contextDriver)
+      const requests = (trip?.stops || []).map(stop => ({ ...stop,
+        transport_requests: { request_number: stop.request_number, request_type: stop.request_type,
+          pickup_address: stop.pickup_address, delivery_address: stop.delivery_address } }))
+      const firstPending = requests.findIndex(stop => stop.conformity ? !['VALIDADA', 'NO_APLICA'].includes(stop.conformity) : stop.status !== 'ENTREGADO')
+      setActiveStep(firstPending >= 0 ? firstPending : requests.length)
+      setDispatch(trip ? { ...trip, contract_id: trip.contract?.id, dispatch_requests: requests } : null)
+      setLoading(false)
+      void syncRoutePoints().catch(() => {})
+      void syncOfflineActions().catch(() => {})
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [contextDriver, contextLoading, router, trip])
 
   const handleIniciarRuta = async () => {
+    if (!dispatch || !driver) return
     setProcessing(true)
     const loadingToast = toast.loading('Obteniendo ubicación e iniciando ruta...')
 
@@ -57,7 +63,7 @@ export default function RutaActivaPage() {
           startLon = pos.coords.longitude
           startPosition = pos
         }
-      } catch (geoError) {
+      } catch {
         throw new Error('No se pudo obtener GPS preciso para iniciar la ruta.')
       }
       if (startLat === null || startLon === null) throw new Error('GPS no disponible')
@@ -90,119 +96,15 @@ export default function RutaActivaPage() {
       }
       setDispatch({ ...dispatch, status: 'EN RUTA', start_lat: startLat, start_lon: startLon })
       await refresh()
-    } catch (err: any) {
-      toast.error('Error al iniciar: ' + err.message, { id: loadingToast })
-    } finally {
-      setProcessing(false)
-    }
-  }
-
-  const handleRegisterKM = async (req: any, photoFile: File | null = stopPhotoFile) => {
-    if (!photoFile) {
-      toast.error('Debes tomar una foto de evidencia en el punto')
-      return
-    }
-
-    setProcessing(true)
-    const loadingToast = toast.loading('Validando GPS y guardando la parada...')
-    try {
-      const stopPosition = await new Promise<GeolocationPosition>((resolve, reject) =>
-        navigator.geolocation.getCurrentPosition(resolve, reject,
-          { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }))
-      if (stopPosition.coords.accuracy > 30) throw new Error('Espera una señal GPS de 30 m o mejor')
-      const pendingPoints = readRouteQueue()
-      pendingPoints.push({
-        id: crypto.randomUUID(), dispatch_id: dispatch.id, driver_id: driver.id,
-        recorded_at: new Date(stopPosition.timestamp).toISOString(),
-        latitude: stopPosition.coords.latitude, longitude: stopPosition.coords.longitude,
-        accuracy_m: stopPosition.coords.accuracy, speed_mps: stopPosition.coords.speed
-      })
-      localStorage.setItem(routeQueueKey, JSON.stringify(pendingPoints))
-      try {
-        const pendingCount = await syncRoutePoints()
-        if (pendingCount > 0) {
-          toast.warning(`Hay ${pendingCount} puntos GPS locales pendientes de envío.`, { id: loadingToast })
-        }
-      } catch (syncErr) {
-        console.warn('Error sincronizando GPS, se enviará luego:', syncErr)
-        toast.warning('Modo Offline: Puntos GPS guardados localmente.', { id: loadingToast })
-      }
-
-      const { data: userData } = await supabase.auth.getUser()
-      if (!userData.user) throw new Error('La sesión expiró')
-      const filePath = `${userData.user.id}/${dispatch.id}/${req.transport_request_id}/${crypto.randomUUID()}-${photoFile.name}`
-      const { error: uploadError } = await supabase.storage.from('driver_evidence')
-        .upload(filePath, photoFile, { upsert: false, contentType: photoFile.type })
-      if (uploadError) throw uploadError
-      const { data: result, error: stopError } = await supabase.rpc('complete_dispatch_stop', {
-        p_dispatch_id: dispatch.id,
-        p_request_id: req.transport_request_id,
-        p_photo_url: filePath
-      })
-      if (stopError) {
-        await supabase.storage.from('driver_evidence').remove([filePath])
-        throw stopError
-      }
-      const actualKm = Number(result.leg_actual_km)
-      toast.success(`Punto entregado: ${actualKm.toFixed(3)} km GPS${result.leg_gps_complete ? '' : ' (cobertura parcial)'}`, { id: loadingToast })
-
-      // Actualizar estado local
-      const updatedRequests = [...dispatch.dispatch_requests]
-      updatedRequests[activeStep] = {
-        ...updatedRequests[activeStep],
-        status: 'ENTREGADO',
-        arrival_lat: result.arrival_lat,
-        arrival_lon: result.arrival_lon,
-        leg_actual_km: actualKm,
-        leg_gps_complete: result.leg_gps_complete
-      }
-      setDispatch({ ...dispatch, dispatch_requests: updatedRequests })
-
-      setActiveStep(activeStep + 1)
-      setKmInput('')
-      setStopPhoto(null)
-      setStopPhotoFile(null)
-      await refresh()
-    } catch (err: any) {
-      if (!navigator.onLine || err.message.includes('fetch')) {
-        // Fallback offline real
-        toast.warning('Modo Offline: Parada registrada localmente. Se sincronizará luego.', { id: loadingToast })
-
-        // Convertir photo a base64
-        const reader = new FileReader()
-        reader.readAsDataURL(photoFile)
-        reader.onload = async () => {
-          const { data: userData } = await supabase.auth.getUser()
-          if (!userData.user) return
-          saveOfflineAction('complete_dispatch_stop', {
-            p_dispatch_id: dispatch.id,
-            p_request_id: req.transport_request_id,
-            user_id: userData.user.id,
-            photo_base64: reader.result
-          })
-
-          // Actualizar estado local optimistamente
-          const updatedRequests = [...dispatch.dispatch_requests]
-          updatedRequests[activeStep] = {
-            ...updatedRequests[activeStep],
-            status: 'ENTREGADO',
-            leg_actual_km: 0,
-            leg_gps_complete: false
-          }
-          setDispatch({ ...dispatch, dispatch_requests: updatedRequests })
-          setActiveStep(activeStep + 1)
-          setStopPhoto(null)
-          setStopPhotoFile(null)
-        }
-      } else {
-        toast.error('Error al registrar: ' + err.message, { id: loadingToast })
-      }
+    } catch (err) {
+      toast.error('Error al iniciar: ' + message(err), { id: loadingToast })
     } finally {
       setProcessing(false)
     }
   }
 
   const handleRequestReturn = async () => {
+    if (!dispatch || !driver) return
     setProcessing(true)
     try {
       if (nativeRouteTracker) {
@@ -213,7 +115,7 @@ export default function RutaActivaPage() {
         if (pendingCount > 0) {
           toast('Hay puntos pendientes de envío.', { icon: '⚠️' })
         }
-      } catch (err) {
+      } catch {
         toast('Modo Offline: Sincronización pendiente.', { icon: '⚠️' })
       }
       const { error } = await supabase.rpc('request_dispatch_return', { p_dispatch_id: dispatch.id })
@@ -221,8 +123,8 @@ export default function RutaActivaPage() {
       toast.success('Solicitud enviada al Supervisor.')
       setDispatch({ ...dispatch, status: 'ESPERANDO_AUTORIZACION' })
       await refresh()
-    } catch (err: any) {
-      if (!navigator.onLine || err.message.includes('fetch')) {
+    } catch (err) {
+      if (!navigator.onLine || message(err).includes('fetch')) {
          toast.warning('Modo Offline: Solicitud de retorno guardada localmente.', { icon: '⚠️' })
          saveOfflineAction('request_dispatch_return', { p_dispatch_id: dispatch.id })
          setDispatch({ ...dispatch, status: 'ESPERANDO_AUTORIZACION' })
@@ -230,7 +132,7 @@ export default function RutaActivaPage() {
          if (nativeRouteTracker) {
            void nativeRouteTracker.start({ dispatchId: dispatch.id, driverId: driver.id })
          }
-         toast.error('Error al solicitar retorno: ' + err.message)
+         toast.error('Error al solicitar retorno: ' + message(err))
       }
     } finally {
       setProcessing(false)
@@ -238,6 +140,7 @@ export default function RutaActivaPage() {
   }
 
   const handleCompleteReturn = async () => {
+    if (!dispatch || !driver) return
     setProcessing(true)
     try {
       if (nativeRouteTracker) await nativeRouteTracker.stop()
@@ -268,27 +171,17 @@ export default function RutaActivaPage() {
       setDispatch({ ...dispatch, status: 'RETORNO_COMPLETADO',
         return_actual_km: data.return_actual_km, actual_distance_km: data.actual_distance_km })
       await refresh()
-    } catch (err: any) {
-      if (!navigator.onLine || err.message.includes('fetch')) {
+    } catch (err) {
+      if (!navigator.onLine || message(err).includes('fetch')) {
          toast.warning('Modo Offline: Llegada a base guardada localmente.', { icon: '⚠️' })
          saveOfflineAction('complete_dispatch_return', { p_dispatch_id: dispatch.id })
          setDispatch({ ...dispatch, status: 'RETORNO_COMPLETADO' })
       } else {
          if (nativeRouteTracker) void nativeRouteTracker.start({ dispatchId: dispatch.id, driverId: driver.id })
-         toast.error('Error al confirmar llegada: ' + err.message)
+         toast.error('Error al confirmar llegada: ' + message(err))
       }
     } finally {
       setProcessing(false)
-    }
-  }
-
-  const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>, req: any) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setStopPhoto(URL.createObjectURL(file))
-      setStopPhotoFile(file)
-      // One-click UX: Automáticamente proceder a marcar llegada
-      handleRegisterKM(req, file)
     }
   }
 
@@ -359,7 +252,7 @@ export default function RutaActivaPage() {
       <TripDocuments dispatchId={dispatch.id} requestNumbers={Object.fromEntries((dispatch.dispatch_requests || [])
         .map((r: { transport_request_id: string; transport_requests?: { request_number?: string | null } }) => [r.transport_request_id, r.transport_requests?.request_number || '']))} />
 
-      {['PROGRAMADO', 'EN_CURSO'].includes(dispatch.status) ? (
+      {dispatch.status === 'PROGRAMADO' ? (
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm text-center">
           <div className="w-16 h-16 bg-blue-100 text-[#002855] rounded-full flex items-center justify-center mx-auto mb-4">
             <Navigation className="w-8 h-8" />
@@ -376,11 +269,11 @@ export default function RutaActivaPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {dispatch.dispatch_requests?.map((req: any, index: number) => {
-            const isActive = index === activeStep && dispatch.status === 'EN RUTA'
+          {dispatch.dispatch_requests?.map((req, index) => {
+            const isActive = index === activeStep && ['EN RUTA', 'EN_CURSO'].includes(dispatch.status)
             const isPast = index < activeStep
             const ot = req.transport_requests
-            const typeLabel = ot?.request_type || (ot?.pickup_address.includes('Lurin') ? 'RECOJO' : 'ENTREGA')
+            const typeLabel = ot?.request_type || (ot?.pickup_address?.includes('Lurin') ? 'RECOJO' : 'ENTREGA')
 
             return (
               <div key={req.transport_request_id} className={`relative flex gap-4 ${isPast ? 'opacity-60' : ''}`}>
@@ -425,31 +318,7 @@ export default function RutaActivaPage() {
                   <h3 className={`font-bold ${isActive ? 'text-blue-900' : 'text-slate-700'}`}>{ot.request_number}</h3>
                   <p className="text-xs text-slate-500 mt-1 line-clamp-2">{ot.delivery_address || ot.pickup_address}</p>
 
-                  {/* Acciones si es la parada activa */}
-                  {isActive && (
-                    <div className="mt-4 pt-4 border-t border-slate-100">
-                      <label className="block text-xs font-bold text-slate-700 mb-2">Completar Parada</label>
-                      {processing ? (
-                        <div className="h-24 mb-4 flex flex-col items-center justify-center bg-slate-50 rounded-lg border border-slate-200">
-                          <Loader2 className="w-8 h-8 animate-spin text-[#002855] mb-2" />
-                          <span className="text-xs font-semibold text-slate-600">Procesando...</span>
-                        </div>
-                      ) : (
-                        <label className="border-2 border-dashed border-blue-400 bg-blue-50/50 rounded-xl h-24 mb-4 flex flex-col items-center justify-center cursor-pointer hover:bg-blue-100/50 transition-colors shadow-sm">
-                          <Camera className="w-8 h-8 text-blue-600 mb-1" />
-                          <span className="text-sm font-bold text-[#002855]">Tomar Foto & Marcar Llegada</span>
-                          <span className="text-[10px] font-semibold text-slate-500 mt-1">Se requiere evidencia GPS</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            capture="environment"
-                            className="hidden"
-                            onChange={(e) => handlePhotoCapture(e, req)}
-                          />
-                        </label>
-                      )}
-                    </div>
-                  )}
+                  {(isActive || (isPast && ['EN RUTA','EN_CURSO','ESPERANDO_AUTORIZACION','RETORNO','RETORNO_COMPLETADO','ENTREGADO'].includes(dispatch.status))) && user && driver && <div className="mt-4 border-t pt-4"><DriverDelivery dispatchId={dispatch.id} requestId={req.transport_request_id} driverId={driver.id} userId={user.id} guide={req.document_number || ''} onChanged={refresh} /></div>}
                 </div>
               </div>
             )

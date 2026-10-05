@@ -3,7 +3,7 @@
 --   reservado en la partida a nombre del proveedor y solicitudes asignadas; T3 la misma placa no toma dos viajes
 --   activos y la empresa propia no se programa como tercero; T4 la salida exige la guía confirmada y guarda la hora
 --   real; T5 la entrega exige foto y deja la constancia en la galería del despacho; T6 el enlace del chofer muestra
---   el viaje sin costos, rechaza fotos ajenas y con la última entrega pasa a ENTREGADO; T7 "Cerrar ruta" consume la
+--   el viaje sin costos, rechaza fotos ajenas y exige aprobación antes de pasar a ENTREGADO; T7 "Cerrar ruta" consume la
 --   partida y el enlace deja de valer; T8 el desempeño por proveedor cuenta el viaje y sus entregas.
 -- Termina en error para forzar ROLLBACK.
 CREATE FUNCTION pg_temp.as_user(p_user uuid) RETURNS void LANGUAGE plpgsql AS $$
@@ -27,7 +27,7 @@ END $$;
 
 DO $test$
 DECLARE
-  v_desp uuid; v_nadie uuid; r_desp uuid; r_nadie uuid; v_site uuid; v_car uuid; v_propio uuid; v_ct uuid;
+  v_desp uuid; v_nadie uuid; r_super uuid; r_desp uuid; r_nadie uuid; v_site uuid; v_car uuid; v_propio uuid; v_ct uuid;
   q1 uuid; q2 uuid; q3 uuid; d uuid; v_plate text := 'ZZC' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 4));
   v_err text; r jsonb; v_res0 numeric; v_con0 numeric; v_tok text; v_n int; v_at timestamptz := now() - interval '20 minutes';
   v_fail text[] := '{}'; v_pass int := 0; v_ruc text := '20' || lpad((floor(random() * 1e9))::bigint::text, 9, '0');
@@ -123,31 +123,51 @@ BEGIN
           OR EXISTS (SELECT 1 FROM public.kpi_dispatch_log l WHERE l.dispatch_id = d AND l.estado_nuevo = 'EN_CURSO' AND l.at = v_at))
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T4 salida: ' || COALESCE(v_err, '-') || ' / ' || COALESCE(r::text, '')); END IF;
 
+  SELECT id INTO r_super FROM public.roles WHERE name='Supervisor de Transporte' LIMIT 1;
+  IF r_super IS NULL THEN RAISE EXCEPTION 'CAJA C41 FAIL (0/8): falta Supervisor de Transporte'; END IF;
+  INSERT INTO storage.objects(bucket_id,name,metadata) VALUES('driver_evidence',v_desp::text||'/tercero/'||d::text||'/g1.jpg','{"mimetype":"image/jpeg"}'),('driver_evidence','tercero/'||d::text||'/g2.jpg','{"mimetype":"image/jpeg"}');
+
   -- T5 entrega desde la web: sin foto no; con foto queda la constancia y sigue en ruta
   PERFORM pg_temp.as_user(v_desp);
   r := public.tercero_registrar_entrega(d, q1, now() - interval '5 minutes', 'Juan Almacén', '', NULL);
   v_err := r ->> 'error';
   r := public.tercero_registrar_entrega(d, q1, now() - interval '5 minutes', 'Juan Almacén', v_desp::text || '/tercero/' || d::text || '/g1.jpg', 'Guía firmada');
   PERFORM pg_temp.as_user(NULL);
-  IF v_err LIKE 'Adjunte la foto%' AND (r ->> 'success')::boolean AND (r ->> 'pendientes')::int = 1
+  IF v_err LIKE 'Adjunte la foto%' AND (r ->> 'success')::boolean AND (r ->> 'pendientes')::int = 2
      AND EXISTS (SELECT 1 FROM public.dispatches x WHERE x.id = d AND x.status = 'EN_CURSO')
      AND EXISTS (SELECT 1 FROM public.route_stops_log s WHERE s.dispatch_id = d AND s.transport_request_id = q1 AND s.photo_url LIKE '%/g1.jpg')
-     AND EXISTS (SELECT 1 FROM public.dispatch_requests WHERE dispatch_id = d AND transport_request_id = q1 AND status = 'ENTREGADO')
+     AND EXISTS (SELECT 1 FROM public.dispatch_requests WHERE dispatch_id = d AND transport_request_id = q1 AND status <> 'ENTREGADO')
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T5 entrega web: ' || COALESCE(v_err, '-') || ' / ' || COALESCE(r::text, '')); END IF;
+
+  -- Solo el supervisor aprueba; la foto no confirma la entrega por sí sola.
+  UPDATE public.profiles SET role_id=r_super WHERE id=v_desp;
+  PERFORM pg_temp.as_user(v_desp);
+  r:=public.delivery_get(d,q1);
+  PERFORM public.delivery_review(d,q1,(r->'submissions'->0->>'id')::uuid,'VALIDADA',NULL);
+  PERFORM pg_temp.as_user(NULL);
+  UPDATE public.profiles SET role_id=r_desp WHERE id=v_desp;
 
   -- T6 enlace del chofer (lo llama el servidor con la llave de servicio: sin sesión)
   PERFORM pg_temp.as_user(v_desp); r := public.tercero_generar_enlace(d); PERFORM pg_temp.as_user(NULL);
   v_tok := r ->> 'token';
   r := public.tercero_enlace_info(v_tok);
   v_err := NULL;
-  IF NOT (r ->> 'success')::boolean OR jsonb_array_length(r -> 'paradas') <> 2 OR r::text LIKE '%300%' THEN v_err := 'info: ' || left(r::text, 150); END IF;
+  IF NOT (r ->> 'success')::boolean OR jsonb_array_length(r -> 'paradas') <> 1 OR r::text LIKE '%300%' THEN v_err := 'info: ' || left(r::text, 150); END IF;
   r := public.tercero_enlace_entregar(v_tok, q2, 'Rosa Obra', 'otra/carpeta/x.jpg', NULL);
   IF COALESCE((r ->> 'success')::boolean, false) THEN v_err := COALESCE(v_err, '') || ' aceptó una foto ajena'; END IF;
   r := public.tercero_enlace_entregar(v_tok, q2, 'Rosa Obra', 'tercero/' || d::text || '/g2.jpg', NULL);
-  IF v_err IS NULL AND (r ->> 'success')::boolean AND (r ->> 'entregado')::boolean
-     AND EXISTS (SELECT 1 FROM public.dispatches x WHERE x.id = d AND x.status = 'ENTREGADO' AND x.tercero_entrega_at IS NOT NULL)
+  IF v_err IS NULL AND (r ->> 'success')::boolean AND NOT (r ->> 'entregado')::boolean
+     AND EXISTS (SELECT 1 FROM public.dispatches x WHERE x.id = d AND x.status = 'EN_CURSO')
+     AND EXISTS (SELECT 1 FROM public.delivery_conformities WHERE dispatch_id=d AND request_id=q2 AND state='RECIBIDA')
      AND EXISTS (SELECT 1 FROM public.dispatch_tercero_entregas e WHERE e.dispatch_id = d AND e.transport_request_id = q2 AND e.fuente = 'ENLACE')
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T6 enlace: ' || COALESCE(v_err, '-') || ' / ' || COALESCE(r::text, '')); END IF;
+
+  UPDATE public.profiles SET role_id=r_super WHERE id=v_desp;
+  PERFORM pg_temp.as_user(v_desp);
+  r:=public.delivery_get(d,q2);
+  PERFORM public.delivery_review(d,q2,(r->'submissions'->0->>'id')::uuid,'VALIDADA',NULL);
+  PERFORM pg_temp.as_user(NULL);
+  UPDATE public.profiles SET role_id=r_desp WHERE id=v_desp;
 
   -- T7 cerrar ruta: consume la partida; el enlace deja de valer
   PERFORM pg_temp.as_user(v_desp); PERFORM public.close_dispatch_route(d); PERFORM pg_temp.as_user(NULL);
