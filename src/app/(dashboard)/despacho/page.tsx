@@ -21,6 +21,11 @@ interface TransportRequest {
   requester_name: string
   pickup_address: string
   delivery_address: string
+  attention_mode?: 'TRANSPORTE_JRM' | 'RECOJO_CLIENTE' | null
+  cost_center_id?: string | null
+  site_id?: string | null
+  pickup_contact?: string | null
+  pickup_phone?: string | null
   request_type?: string
   status: string
   created_at: string
@@ -161,21 +166,25 @@ export default function DespachoPage() {
     return parts[parts.length - 1].trim()
   }
 
+  const freightLookupId = useRef(0)
   const lookupFreightRate = async (plate: string, selectedReqIds: string[]) => {
-    if (!plate || selectedReqIds.length === 0) { setDetectedFreightRate(null); setFreightQuote(null); return }
+    const lookupId = ++freightLookupId.current
+    if (pendingRequests.some(r => selectedReqIds.includes(r.id) && r.attention_mode === 'RECOJO_CLIENTE')) { setDetectedFreightRate(null); setFreightQuote(null); setLoadingRate(false); return }
+    if (!plate || selectedReqIds.length === 0) { setDetectedFreightRate(null); setFreightQuote(null); setLoadingRate(false); return }
     setLoadingRate(true)
     try {
       const selectedReqs = pendingRequests.filter(r => selectedReqIds.includes(r.id))
       const contractId = selectedReqs.find(r => r.contract_id)?.contract_id
-      if (!contractId) { setDetectedFreightRate(null); setFreightQuote(null); return }
+
       const stops = selectedReqs
         .map(r => ({ district: r.delivery_district || extractDistrict(r.delivery_address || '') }))
         .filter(st => st.district)
       const weight = selectedReqs.reduce((sum, r) => sum + Number(r.estimated_weight || 0), 0)
       const { data, error } = await supabase.rpc('quote_transport', {
-        p_contract_id: contractId, p_stops: stops, p_weight_kg: weight > 0 ? weight : null,
+        p_contract_id: contractId || null, p_stops: stops, p_weight_kg: weight > 0 ? weight : null,
         p_vehicle_class: null, p_plate: plate === 'EXTERNO' ? null : plate, p_unloading: [],
       })
+      if (lookupId !== freightLookupId.current) return
       if (error) throw error
       const q = data as Record<string, unknown>
       const main = ((q.lines || []) as { concept: string; district?: string }[]).find(l => l.concept === 'FLETE')
@@ -183,9 +192,9 @@ export default function DespachoPage() {
       setDetectedFreightRate(Number(q.freight_total) > 0
         ? { rate: Number(q.freight_total), district: main?.district || '', zone: String(q.vehicle_class || '') } : null)
     } catch {
-      setDetectedFreightRate(null); setFreightQuote(null)
+      if (lookupId === freightLookupId.current) { setDetectedFreightRate(null); setFreightQuote(null) }
     } finally {
-      setLoadingRate(false)
+      if (lookupId === freightLookupId.current) setLoadingRate(false)
     }
   }
 
@@ -361,20 +370,12 @@ export default function DespachoPage() {
       return
     }
 
-    // (Validación de documentos removida)
-
-    // Validar saldo del contrato de las solicitudes seleccionadas
     const selectedReqsFull = pendingRequests.filter(pr => newDispatch.selected_requests.some(sr => sr.id === pr.id))
-    for (const req of selectedReqsFull) {
-      if (req.contracts && req.contracts.contract_budgets && req.contracts.contract_budgets.length > 0) {
-        const balance = req.contracts.contract_budgets[0].balance_pen || 0;
-        if (balance <= 0) {
-          toast.error(`⚠️ ALERTA DE PRESUPUESTO: La solicitud ${req.request_number} pertenece al contrato ${req.contracts.code} que no tiene saldo disponible (S/ ${balance}). No se puede despachar sin ampliación de presupuesto.`, { duration: 8000 })
-          return
-        }
-      }
+    const isPickup = selectedReqsFull[0]?.attention_mode === 'RECOJO_CLIENTE'
+    if (selectedReqsFull.some(r => !r.attention_mode || (r.attention_mode === 'RECOJO_CLIENTE') !== isPickup)) {
+      toast.error('Defina la modalidad en Solicitudes; no mezcle recojos por cliente y transporte JRM.'); return
     }
-
+    // El servidor valida la reserva vigente y el gasto autorizado; saldo cero puede ser una reserva propia.
     setIsSubmitting(true)
     if (modalidad === 'TERCERO' && newDispatch.document_type === 'GR') {
       try {
@@ -386,12 +387,12 @@ export default function DespachoPage() {
         const { data: newDispatchId, error } = await supabase.rpc('schedule_dispatch_tercero', {
           p_carrier_id: tercero.carrier_id, p_plate: tercero.placa, p_conductor: tercero.conductor, p_telefono: tercero.telefono,
           p_doc: tercero.doc || null, p_departure: newDispatch.scheduled_departure,
-          p_estimated_km: Number(newDispatch.estimated_distance_km) || 0, p_freight_cost: freightCost,
+          p_estimated_km: isPickup ? 0 : Number(newDispatch.estimated_distance_km) || 0, p_freight_cost: freightCost,
           p_contract_id: firstReq?.contracts?.id || null,
           p_requests: newDispatch.selected_requests.map(req => ({ ...req, leg_planned_km: reqDistances.current[req.id] ?? null })),
         })
         if (error) throw error
-        if (newDispatchId && freightQuote && detectedFreightRate?.rate && freightCost === detectedFreightRate.rate) {
+        if (!isPickup && newDispatchId && freightQuote && detectedFreightRate?.rate && freightCost === detectedFreightRate.rate) {
           await supabase.rpc('set_dispatch_freight_quote', { p_dispatch_id: newDispatchId, p_breakdown: freightQuote })
         }
         toast.success('Despacho tercerizado programado y flete reservado a nombre del proveedor.')
@@ -439,13 +440,13 @@ export default function DespachoPage() {
       }
 
       const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
-      const freightCost = detectedFreightRate?.rate && detectedFreightRate.rate > 0
+      const freightCost = isPickup ? 0 : detectedFreightRate?.rate && detectedFreightRate.rate > 0
         ? detectedFreightRate.rate : (Number(manualFreightCost) || 0)
       const { data: newDispatchId, error } = await supabase.rpc('schedule_dispatch', {
-        p_driver_id: matches[0]?.id || null,
-        p_vehicle_plate: newDispatch.vehicle_plate,
+        p_driver_id: isPickup ? null : matches[0]?.id || null,
+        p_vehicle_plate: isPickup ? 'EXTERNO' : newDispatch.vehicle_plate,
         p_departure: newDispatch.scheduled_departure,
-        p_estimated_km: Number(newDispatch.estimated_distance_km) || 0,
+        p_estimated_km: isPickup ? 0 : Number(newDispatch.estimated_distance_km) || 0,
         p_freight_cost: freightCost,
         p_contract_id: firstReq?.contracts?.id || null,
         p_document_type: newDispatch.document_type,
@@ -456,10 +457,10 @@ export default function DespachoPage() {
       })
       if (error) throw error
       // Se guarda con qué tarifa se calculó el flete (si vino del tarifario)
-      if (newDispatchId && freightQuote && detectedFreightRate?.rate && freightCost === detectedFreightRate.rate) {
+      if (!isPickup && newDispatchId && freightQuote && detectedFreightRate?.rate && freightCost === detectedFreightRate.rate) {
         await supabase.rpc('set_dispatch_freight_quote', { p_dispatch_id: newDispatchId, p_breakdown: freightQuote })
       }
-      toast.success('Despacho programado y presupuesto reservado.')
+      toast.success(isPickup ? 'Recojo por el cliente programado con Nota de Salida y sin flete JRM.' : 'Despacho programado y financiamiento validado.')
       setIsModalOpen(false)
       setNewDispatch({ selected_requests: [], driver_name: '', vehicle_plate: '', scheduled_departure: '', estimated_distance_km: '', document_type: 'GR' })
       setManualFreightCost('')
@@ -534,11 +535,22 @@ export default function DespachoPage() {
   }
   const toggleRequestSelection = async (reqId: string, pickup: string, delivery: string) => {
     const isSelected = newDispatch.selected_requests.some(r => r.id === reqId)
+    const request = pendingRequests.find(r => r.id === reqId)
+    if (!isSelected && !request?.attention_mode) { toast.error('Defina la modalidad en Solicitudes antes de programar este requerimiento histórico.'); return }
+    const existing = pendingRequests.find(r => newDispatch.selected_requests.some(x => x.id === r.id))
+    if (!isSelected && existing && (existing.attention_mode !== request?.attention_mode || existing.contract_id !== request?.contract_id || existing.site_id !== request?.site_id || existing.cost_center_id !== request?.cost_center_id)) {
+      toast.error('Agrupe solicitudes de la misma modalidad, sede e imputación.'); return
+    }
+    const pickupByCustomer = request?.attention_mode === 'RECOJO_CLIENTE'
+    if (!isSelected && pickupByCustomer) {
+      setNewDispatch(prev => ({ ...prev, selected_requests: [...prev.selected_requests, { id: reqId, document_number: '' }], document_type: 'NOTA_SALIDA', driver_name: '', vehicle_plate: '', estimated_distance_km: '' }))
+      freightLookupId.current++; setLoadingRate(false); setDetectedFreightRate(null); setFreightQuote(null); setManualFreightCost(''); setModalidad('PROPIA'); return
+    }
     let nextRequests: { id: string, document_number: string }[]
     
     if (isSelected) {
       nextRequests = newDispatch.selected_requests.filter(r => r.id !== reqId)
-      setNewDispatch(prev => ({ ...prev, selected_requests: nextRequests }))
+      setNewDispatch(prev => ({ ...prev, selected_requests: nextRequests, document_type: nextRequests.length && pickupByCustomer ? 'NOTA_SALIDA' : 'GR' }))
 
       // Restar distancia (si ya estaba calculada)
       const distanceToSubtract = reqDistances.current[reqId]
@@ -551,7 +563,7 @@ export default function DespachoPage() {
       }
     } else {
       nextRequests = [...newDispatch.selected_requests, { id: reqId, document_number: '' }]
-      setNewDispatch(prev => ({ ...prev, selected_requests: nextRequests }))
+      setNewDispatch(prev => ({ ...prev, selected_requests: nextRequests, document_type: nextRequests.length && pickupByCustomer ? 'NOTA_SALIDA' : 'GR' }))
       
       // Si ya tenemos la distancia en caché, la sumamos al instante
       if (reqDistances.current[reqId]) {
@@ -932,15 +944,9 @@ export default function DespachoPage() {
               </h4>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Tipo de Despacho (Global)</label>
-                  <select 
-                    className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none text-sm font-medium"
-                    value={newDispatch.document_type}
-                    onChange={(e) => setNewDispatch({...newDispatch, document_type: e.target.value as 'GR' | 'NOTA_SALIDA'})}
-                  >
-                    <option value="GR">Transporte JRM (Se emitirán Guías de Remisión)</option>
-                    <option value="NOTA_SALIDA">Recojo por Cliente (Se emitirán Notas de Salida)</option>
-                  </select>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Modalidad heredada de la solicitud</label>
+                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#002855]">{newDispatch.selected_requests.length ? newDispatch.document_type === 'NOTA_SALIDA' ? 'Recojo por el cliente · Nota de Salida' : 'Transporte JRM · Guía de Remisión' : 'Seleccione una solicitud'}</div>
+                  <p className="mt-1 text-xs text-slate-500">Para cambiar la modalidad, edite la solicitud y vuelva a aprobarla.</p>
                 </div>
               </div>
             </div>
@@ -951,6 +957,7 @@ export default function DespachoPage() {
                 Datos del Vehículo
               </h4>
               
+              {newDispatch.document_type === 'NOTA_SALIDA' && <p className="mb-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-800">Retiro coordinado por el cliente. Sin conductor propio, monitoreo GPS ni reserva de flete JRM. El Asistente Documentario confirma la Nota de Despacho antes de la salida.</p>}
               <div className="space-y-3">
                 {newDispatch.document_type === 'GR' && (
                   <div className="grid grid-cols-2 gap-1 p-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold">
@@ -1075,7 +1082,7 @@ export default function DespachoPage() {
                   />
                 </div>
                 
-                <div>
+                {newDispatch.document_type === 'GR' && <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1 flex justify-between items-center">
                     Distancia KM (Sugerido Automático)
                     {calculatingDistance && <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />}
@@ -1090,7 +1097,7 @@ export default function DespachoPage() {
                     value={newDispatch.estimated_distance_km}
                     onChange={(e) => setNewDispatch({...newDispatch, estimated_distance_km: e.target.value === '' ? '' : Number(e.target.value)})}
                   />
-                </div>
+                </div>}
               </div>
             </div>
           </div>
@@ -1141,11 +1148,13 @@ export default function DespachoPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <span className="font-bold text-[#002855] text-sm">{req.request_number}</span>
+                              <span className="text-xs font-medium text-blue-700">{req.attention_mode === 'RECOJO_CLIENTE' ? 'Recojo por cliente' : req.attention_mode === 'TRANSPORTE_JRM' ? 'Transporte JRM' : 'Modalidad pendiente: revisar solicitud'}</span>
                               <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${typeColor}`}>
                                 {typeLabel}
                               </span>
                             </div>
                           
+                          {req.attention_mode === 'RECOJO_CLIENTE' && <p className="text-xs text-slate-600">Contacto: {req.pickup_contact || 'Sin registrar'} · {req.pickup_phone || 'Sin teléfono'}</p>}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
                             <div className="text-xs text-slate-600">
                               <span className="font-semibold text-slate-800 block mb-0.5">Origen:</span>

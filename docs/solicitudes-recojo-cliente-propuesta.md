@@ -1,4 +1,4 @@
-# Propuesta: modalidad y referencia de costo desde la solicitud
+# Modalidad y referencia de costo desde la solicitud
 
 ## Problema confirmado
 
@@ -36,4 +36,10 @@ Recojo por Cliente elimina únicamente el flete a cargo de JRM. Otros servicios 
 - Programación, cancelación y reprogramación mantienen consistencia financiera y documental; las órdenes ejecutadas conservan su historia.
 - RT-000006 deja de mostrarse observada por partida solo después de confirmar Recojo por Cliente y completar su validación operativa.
 
-Esta es una propuesta pendiente de desarrollo; el cambio actual de seguimiento/conformidad conserva el mecanismo vigente de recojo por cliente.
+Implementado en `20261007140000_request_attention_mode.sql`: formulario con modalidad y contacto de recojo, OT condicionada al área/rol, solicitudes sin OT con sede y centro de costo para gastos JRM, guardado atómico con tarifa/descarga, aprobación de importe operacional e imputación heredada en el despacho. La ruta no cambia la modalidad y bloquea mezclas entre modalidades/sedes/imputaciones. El cambio de una solicitud aprobada libera reserva y vuelve a aprobación; una asignada debe retirarse del despacho antes de editarla.
+
+RT-000006 / OT 16523 se corrige porque el dueño confirmó expresamente que es recojo: solo si sigue observada por partida y sin despacho, se elimina su flete y se recalculan los otros costos; conserva auditoría y vuelve a aprobación, nunca se aprueba automáticamente. Los otros requerimientos históricos sin modalidad deben confirmarla mediante edición de la solicitud.
+
+Para operación sin OT, el Supervisor de Despacho aprueba un importe imputado a un centro de costo activo. Programar no puede superar el flete aprobado; la descarga planificada no puede superar el resto del importe, y su costo real no supera lo planificado. No se inventa una OT ni se registra consumo contra una partida inexistente. Las líneas de descarga y el despacho conservan el centro de costo para su trazabilidad.
+
+Validación: `node scripts/test-request-attention.cjs` ejecuta la migración y las funciones reales en PostgreSQL aislado; `caja_c45_solicitud_recojo_cliente.test.sql` prueba solicitud, aprobación y programación en la base real con ROLLBACK. Los reportes existentes mantienen sus categorías históricas; la modalidad se muestra en Solicitudes y Armado de ruta.
