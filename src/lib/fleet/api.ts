@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
 import type { FleetSheetKind } from './parseFleetWorkbook'
-import type { FeDatos, FeEquipo, FeFilters, FeMensualRow, FeParams, FeRecambios, FeResumen, FeRutas, FeTransporte, FeUploadSummary, FeAsset } from './types'
+import type { FeIpr, FeIprFactorCodigo, FeDatos, FeEquipo, FeFilters, FeMensualRow, FeParams, FeRecambios, FeResumen, FeRutas, FeTransporte, FeUploadSummary, FeAsset } from './types'
 
 // Acceso a las funciones public.fe_* (Eficiencia de Flota). Todas devuelven { success, error?, ... }.
 const supabase = createClient()
@@ -20,6 +20,9 @@ export const fleetApi = {
   mensual: (f: FeFilters) => call<{ desde: string; hasta: string; filas: FeMensualRow[] }>('fe_mensual', { p: clean(f) }),
   rutas: (f: FeFilters) => call<FeRutas>('fe_rutas', { p: clean(f) }),
   recambios: () => call<FeRecambios>('fe_recambios'),
+  ipr: (f: FeFilters) => call<FeIpr>('fe_ipr', { p: clean(f) }),
+  iprGuardar: (pesos: Partial<Record<FeIprFactorCodigo, number>> | null, evaluacion: { code: string; obsolescencia: number | null; adecuacion: number | null; nota: string } | null) =>
+    call<object>('fe_ipr_guardar', { p_pesos: pesos, p_eval: evaluacion }),
   datos: () => call<FeDatos>('fe_datos'),
   activo: (plate: string) => call<{ desde?: string; hasta?: string; activo: (FeTransporte | FeEquipo) | null }>('fe_activo', { p_plate: plate }),
   saveSettings: (p: { desde?: string; corte?: string | null; params?: Partial<FeParams> }) => call<object>('fe_save_settings', { p }),

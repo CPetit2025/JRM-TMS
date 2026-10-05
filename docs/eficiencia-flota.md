@@ -154,7 +154,7 @@ Equipos, en este orden:
 | Unidades de transporte | S/ por t·km con mano de obra, vehículo vs asignación, decisión económica de reemplazo, mantenimiento por km por año y exportación a Excel |
 | Montacargas y elevación | Costo propio por hora frente al alquiler, registro del horómetro y detalle por equipo |
 | Rutas y carga | Productividad (horas, espera, no programados), toneladas por mes y unidad, costo por cliente y por distrito |
-| Recambios | Línea de vida de cada activo |
+| Recambios | Índice de Prioridad de Recambio (IPR): conclusión, matriz deterioro técnico vs costo para producir, ranking, sustento por unidad y pesos. Ver «Índice de Prioridad de Recambio» abajo |
 | Datos y parámetros | Carga del Excel, calidad de los datos, cobertura por mes, parámetros, activos, lecturas e historial de cargas |
 
 JRM IA cuenta con la herramienta `get_fleet_efficiency`, que devuelve el resumen o el detalle de un activo.
@@ -181,3 +181,50 @@ permisos de `fe_activo`.
 - las horas del montacargas.
 
 El mensaje de la prueba informa cuántos registros del TMS existen desde 2025 (`tms2025: …`).
+
+## Índice de Prioridad de Recambio (IPR)
+
+Pestaña **Recambios**. Función `fe_ipr` y migración `20261006140000_fe_indice_prioridad_recambio.sql`; prueba C39.
+
+La decisión de recambio no usa solo la antigüedad: combina factores técnicos, económicos y operativos. Cada factor recibe
+0–100 puntos (100 = más prioridad de recambio). El IPR es el promedio ponderado de los factores con dato.
+
+| Factor | Peso | Cómo se mide (últimos 12 meses) | 0 puntos | 100 puntos |
+|---|---|---|---|---|
+| Costo de mantenimiento | 20 | 60 %: S/ por km frente a la mediana del grupo. 40 %: tendencia, 12 meses frente a los 24 anteriores | 0,8× la mediana; sin alza | 2× la mediana; +60 % |
+| Disponibilidad | 15 | 1 − días fuera / 365 (horas inmovilizadas = días × 24) | ≥ 98 % | ≤ 85 % |
+| Frecuencia de fallas | 15 | Averías por 10 000 km frente al grupo (por año en equipos); +15 por sistema reincidente en 90 días. Se informa el MTBF | 0,5× el grupo | 2,5× el grupo |
+| Antigüedad | 10 | Edad / vida útil | 50 % | 130 % |
+| Kilometraje | 10 | Lectura más reciente y plausible / km de vida del grupo (horas en equipos) | 40 % | 120 % |
+| Consumo de combustible | 10 | km/galón frente al grupo (70 %) y caída frente a 24 meses antes (30 %) | igual al grupo | 25 % menos |
+| Costo por km | 10 | (combustible + mantenimiento + neumáticos + otros) / km, frente al grupo. En equipos: costo propio por hora frente al alquiler | 0,85× | 1,5× |
+| Productividad | 5 | Costo por tonelada transportada frente al grupo | 0,85× | 1,6× |
+| Seguridad / criticidad | 5 | Fallas críticas de seguridad | 0 | 2 o más |
+| Obsolescencia, adecuación | 0 | Evaluación manual 0–100 por unidad (opcional) | — | — |
+
+**Reglas de decisión**
+- **Rangos:** 0–39 conservar · 40–59 monitorear · 60–79 programar recambio · 80–100 recambio prioritario.
+- **Datos insuficientes:** cuando hay datos para menos del 50 % del peso.
+- **Factores sin dato:** no cuentan y su peso se reparte entre los demás. Por ejemplo, la disponibilidad sin ningún registro de días fuera de servicio no se asume 100 %.
+- **Falla crítica de seguridad:** cuenta como crítica si cumple una de estas condiciones:
+  - reportada en Mantenimiento como CRITICA;
+  - reportada como ALTA en un sistema de seguridad;
+  - correctivo de S/ 500 o más, o mayor, en frenos, suspensión y dirección, transmisión o sistema eléctrico (hidráulico en equipos).
+  - Con 2 fallas críticas en 12 meses el IPR queda al menos en 60; con 3 o más, al menos en 80.
+- **Costos por unidad producida:** se comparan por km y por tonelada frente a su grupo. Así no se castiga a la unidad que gasta más porque también produce más.
+
+**Matriz.** Ubica cada unidad según dos ejes:
+- **Deterioro técnico:** disponibilidad, fallas, seguridad, edad, km y tendencia del mantenimiento.
+- **Costo para producir:** nivel de mantenimiento, costo por km, costo por tonelada y consumo.
+
+Responde a la pregunta: «¿qué unidad cuesta más producir y además se deteriora?».
+
+**Economía.** Por unidad se muestran:
+- el valor residual (venderla hoy) y la pérdida de valor de seguir un año;
+- el costo de seguir (de `fe_resumen`) más el costo de indisponibilidad (días fuera × costo diario de reemplazo);
+- el costo anual equivalente de una unidad nueva.
+
+**Parámetros editables.** Los pesos se cambian en la misma pestaña (permiso de carga). Por API se pueden ajustar:
+- `fe_settings.params.ipr_km_vida` (TRACTO 1 200 000, CAMION 800 000, GRUA 600 000, LIVIANO 400 000);
+- `ipr_horas_vida` (MONTACARGA 20 000, ELEVACION 15 000);
+- `ipr_costo_dia` (TRACTO 1 500, CAMION 900, GRUA 1 200, LIVIANO 350).

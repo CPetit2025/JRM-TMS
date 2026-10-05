@@ -105,6 +105,30 @@ export interface FeRecambios {
   corte: FeCorte; hoy: string
   activos: Array<{ code: string; nombre: string; clase: FeClase; tipo: string | null; anio_fab: number | null; activo: boolean; desde: string; hasta: string; meses: number }>
 }
+// Índice de Prioridad de Recambio (fe_ipr, migración 20261006140000)
+export type FeIprCategoria = 'Recambio prioritario' | 'Programar recambio' | 'Monitorear' | 'Conservar' | 'Datos insuficientes'
+export type FeIprFactorCodigo = 'mantenimiento' | 'disponibilidad' | 'fallas' | 'antiguedad' | 'kilometraje' | 'consumo' | 'costo_km' | 'productividad' | 'seguridad' | 'obsolescencia' | 'adecuacion'
+export interface FeIprFactor {
+  codigo: FeIprFactorCodigo; nombre: string; peso: number; puntaje: number | null; valor: number | null; unidad: string
+  referencia?: number | null; detalle?: Record<string, number | string | null>
+}
+export interface FeIprActivo {
+  code: string; clase: FeClase; grupo: FeGrupo; tipo: string | null; marca: string | null; anio_fab: number | null; edad: number | null; vida: number | null
+  ipr: number | null; ipr_tecnico: number | null; ipr_economico: number | null; cobertura: number | null; categoria: FeIprCategoria; piso_seguridad: number | null
+  factores: FeIprFactor[]
+  economia: { econ: FeEcon | null; econ_bajo: FeEcon | null; econ_alto: FeEcon | null; rec: FeRec | null; valor_reposicion: number | null; valor_ref: boolean | null
+    venta_hoy: number | null; perdida_valor_anio: number | null; costo_indisponibilidad: number | null; costo_dia_reemplazo: number | null; seguir_total: number | null }
+  produccion: { ton_12m: number | null; viajes_12m: number | null; km_12m: number | null; costo_km: number | null; costo_ton: number | null }
+  evaluacion: { obsolescencia: number | null; adecuacion: number | null; nota: string | null }
+  confianza: FeConfianza | null
+}
+export interface FeIpr {
+  desde: string; hasta: string; pesos: Record<FeIprFactorCodigo, number>; tasas: [number, number, number]; puede_editar: boolean
+  parametros: { km_vida: Record<string, number>; horas_vida: Record<string, number>; costo_dia: Record<string, number> }
+  activos: FeIprActivo[]
+}
+export const IPR_CATEGORIAS: FeIprCategoria[] = ['Recambio prioritario', 'Programar recambio', 'Monitorear', 'Conservar', 'Datos insuficientes']
+
 export interface FeCalidad { fuente: string; problema: string; casos: number; monto?: number; tratamiento?: string; efecto?: string }
 export interface FeUploadSummary {
   mantenimiento: number; combustible_meses: number; viajes: number; activos: number; calidad: FeCalidad[]
