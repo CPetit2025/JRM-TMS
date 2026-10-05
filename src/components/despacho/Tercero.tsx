@@ -14,7 +14,7 @@ import { SearchableSelect } from '@/components/ui/SearchableSelect'
 
 export type TerceroForm = { carrier_id: string; placa: string; conductor: string; telefono: string; doc: string }
 export const TERCERO_VACIO: TerceroForm = { carrier_id: '', placa: '', conductor: '', telefono: '', doc: '' }
-type Carrier = { id: string; business_name: string; ruc: string | null; phone: string | null }
+type Carrier = { id: string; business_name: string; ruc: string | null }
 
 const input = 'w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none text-sm'
 const nowLocal = () => {
@@ -27,9 +27,11 @@ export function TerceroFields({ value, onChange }: { value: TerceroForm; onChang
   const supabase = useMemo(() => createClient(), [])
   const [carriers, setCarriers] = useState<Carrier[]>([])
   useEffect(() => {
-    void supabase.from('carriers').select('id, business_name, ruc, phone, type, is_active').order('business_name')
-      .then(({ data }) => setCarriers(((data || []) as (Carrier & { type: string | null; is_active: boolean | null })[])
-        .filter(c => c.is_active !== false && String(c.type || '').toUpperCase() !== 'PROPIO')))
+    // En producción el RUC está en tax_id (en el repositorio, ruc): se lee la fila completa
+    void supabase.from('carriers').select('*').order('business_name')
+      .then(({ data }) => setCarriers(((data || []) as Record<string, unknown>[])
+        .filter(c => c.is_active !== false && String(c.type || '').toUpperCase() !== 'PROPIO')
+        .map(c => ({ id: String(c.id), business_name: String(c.business_name || ''), ruc: (c.tax_id ?? c.ruc ?? null) as string | null }))))
   }, [supabase])
   const set = (k: keyof TerceroForm, v: string) => onChange({ ...value, [k]: v })
   return (
