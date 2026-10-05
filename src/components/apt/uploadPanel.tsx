@@ -24,6 +24,7 @@ type Phase =
   | { step: 'preview'; files: File[]; result: AptParseResult }
   | { step: 'sending'; sent: number; total: number; kind: string; retry: number }
   | { step: 'applying' }
+  | { step: 'rebuilding' }
 
 // Lee en un worker; si el navegador no puede crearlo, lee en el hilo principal
 function readFiles(files: File[], onProgress: (m: string) => void): Promise<AptParseResult> {
@@ -188,11 +189,11 @@ export function UploadPanel({ state }: { state: AptState | null }) {
   // Cobertura de fechas con la carga en vista previa: huecos, días a reemplazar y desfase ENTRADA/SALIDA
   const [cov, setCov] = useState<{ key: string; data: AptCoverage | null } | null>(null)
   const [ack, setAck] = useState('')
-  const busy = phase.step === 'reading' || phase.step === 'sending' || phase.step === 'applying'
+  const busy = phase.step === 'reading' || phase.step === 'sending' || phase.step === 'applying' || phase.step === 'rebuilding'
 
   // Evita cerrar la pestaña a mitad del envío
   useEffect(() => {
-    if (phase.step !== 'sending' && phase.step !== 'applying') return
+    if (phase.step !== 'sending' && phase.step !== 'applying' && phase.step !== 'rebuilding') return
     const h = (e: BeforeUnloadEvent) => { e.preventDefault() }
     window.addEventListener('beforeunload', h)
     return () => window.removeEventListener('beforeunload', h)
@@ -394,12 +395,12 @@ export function UploadPanel({ state }: { state: AptState | null }) {
           </div>
         )}
 
-        {phase.step === 'applying' && (
+        {(phase.step === 'applying' || phase.step === 'rebuilding') && (
           <div className="flex items-center gap-3 rounded-xl border border-[#002855]/20 bg-[#002855]/5 p-4 text-sm text-[#002855]">
             <Loader2 className="h-5 w-5 animate-spin" />
             <div>
               <p className="font-bold">Recalculando FIFO y flujo multi-almacén…</p>
-              <p className="text-xs">Reemplazando el rango de fechas de cada tipo y reasignando salidas a ingresos. Puede tardar unos segundos.</p>
+              <p className="text-xs">{phase.step === 'rebuilding' ? 'Actualizando la estadía y el flujo de los movimientos ya guardados. No se vuelve a cargar el archivo.' : 'Aplicando la carga y actualizando la estadía y el flujo. Puede tardar unos segundos.'}</p>
             </div>
           </div>
         )}
@@ -410,7 +411,7 @@ export function UploadPanel({ state }: { state: AptState | null }) {
             <p>No vuelva a cargar el archivo: los movimientos ya fueron guardados.</p>
             <button type="button" disabled={busy} className="mt-2 min-h-11 rounded-lg border border-amber-400 px-3 font-semibold disabled:opacity-50"
               onClick={async () => {
-                setPhase({ step: 'applying' })
+                setPhase({ step: 'rebuilding' })
                 try {
                   await aptApi.rebuildModels()
                   setPendingRebuild(null)

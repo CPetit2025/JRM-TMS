@@ -14,4 +14,4 @@ Validación reproducible:
 - `node scripts/test-apt-fifo.cjs`: Docker/PostgreSQL aislado, 64.000 movimientos, comparación exacta de capas, asignaciones y clasificación antes/después; permisos preservados; migración repetible y reconstrucción bajo 8 segundos en el arnés. El conjunto es sintético y no reproduce la distribución ni la concurrencia de producción.
 - `caja_c41_apt_fifo_plan.test.sql`: verifica instalación de la optimización en las pruebas de despliegue. Las pruebas existentes de APT comprueban las reglas de negocio.
 
-Estado del entorno: la credencial GitHub inyectada es inválida; sin esa conexión no se puede obtener la versión remota actual, crear el PR o desplegar. La compilación local completa también necesita las variables Supabase existentes en Vercel; no se sustituyen por valores ficticios. Antes de publicar, actualizar contra master, esperar CI/Vercel en verde y revisar el resultado real del paso SQL de producción.
+La compilación local completa requiere las variables Supabase existentes en Vercel; no se sustituyen por valores ficticios. Antes de publicar se verifica CI/Vercel y el resultado real del paso SQL de producción.
