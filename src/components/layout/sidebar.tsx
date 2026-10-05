@@ -149,7 +149,7 @@ export function Sidebar() {
         {/* Cabecera */}
         <div className="flex h-14 shrink-0 items-center gap-2 border-b border-[var(--sb-line)] pl-3 pr-2">
           <Link href="/" className="flex min-w-0 flex-1 items-center gap-2 rounded-md">
-            <span className="rounded-md bg-white px-1 py-0.5"><img src="/logo-jrm.png" alt="JRM" className="h-7 w-auto object-contain" /></span>
+            <img src="/logo-jrm.png" alt="JRM" className="h-7 w-auto shrink-0 object-contain" />
             <span className="min-w-0 leading-tight">
               <span className="block truncate text-[13px] font-extrabold text-[var(--sb-strong)]">JRM TMS</span>
               <span className="block truncate text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--sb-muted)]">Control Tower</span>
