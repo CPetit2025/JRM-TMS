@@ -12,7 +12,7 @@ BEGIN
 END $$;
 
 DO $test$
-DECLARE v_user uuid; r_p uuid; r_n uuid; c record; v_set uuid; r jsonb; a jsonb; v_fail text[] := '{}'; v_pass int := 0; n int; v_key text; v_rep text;
+DECLARE v_user uuid; r_p uuid; r_n uuid; c record; v_set uuid; r jsonb; a jsonb; v_fail text[] := '{}'; v_pass int := 0; n int; v_key text; v_rep text; v_lessor_name text;
 BEGIN
   SELECT id INTO v_user FROM public.profiles WHERE id IN (SELECT u2.id FROM auth.users u2)
     AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) ORDER BY id LIMIT 1;
@@ -23,6 +23,8 @@ BEGIN
   SELECT k.* INTO c FROM public.vehicle_lease_contracts k JOIN public.vehicles v ON v.id = k.vehicle_id
   WHERE public.fe_code(v.plate) = 'CJS 716' AND k.status = 'ACTIVO' ORDER BY k.start_date DESC LIMIT 1;
   IF c.id IS NULL THEN RAISE EXCEPTION 'CAJA C34 FAIL (0/8): no hay contrato activo de CJS716'; END IF;
+  -- El proveedor puede cambiar legítimamente: el documento debe mostrar el del contrato seleccionado.
+  SELECT business_name INTO v_lessor_name FROM public.carriers WHERE id = c.provider_id;
   INSERT INTO public.user_site_access (user_id, site_id) VALUES (v_user, c.site_id) ON CONFLICT DO NOTHING;
   SELECT id INTO v_set FROM public.lease_settlements WHERE contract_id = c.id AND period_start = DATE '2026-09-01' AND status <> 'ANULADA' LIMIT 1;
   -- La prueba parte de setiembre sin enviar (si ya se envió, se quita dentro de la transacción)
@@ -33,7 +35,8 @@ BEGIN
   -- T1
   PERFORM pg_temp.as_user(v_user); r := public.lease_settlement_document(v_set); PERFORM pg_temp.as_user(NULL);
   IF (r ->> 'success')::boolean AND (r -> 'calc' ->> 'subtotal')::numeric = 3834.29 AND r -> 'vehicle' ->> 'plate' IS NOT NULL
-     AND upper(COALESCE(r -> 'lessor' ->> 'name', '')) LIKE '%VALERIANI%' AND r -> 'company' ->> 'name' IS NOT NULL AND jsonb_typeof(r -> 'sends') = 'array'
+     AND NULLIF(trim(v_lessor_name), '') IS NOT NULL AND r -> 'lessor' ->> 'name' = v_lessor_name
+     AND r -> 'company' ->> 'name' IS NOT NULL AND jsonb_typeof(r -> 'sends') = 'array'
      AND jsonb_array_length(r -> 'calc' -> 'viajes') > 0
   THEN v_pass := v_pass + 1;
   ELSE v_fail := v_fail || ('T1 documento: success=' || COALESCE(r ->> 'success', '?') || ' subtotal=' || COALESCE(r -> 'calc' ->> 'subtotal', '?')
