@@ -2,6 +2,8 @@
 
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { nativeBiometric } from '@/lib/native-biometric'
+import { toast } from 'sonner'
 import { nativeRouteTracker } from '@/lib/native-route-tracker'
 import GPSGuard from '@/components/driver/GPSGuard'
 import NotificationProvider from '@/components/NotificationProvider'
@@ -32,10 +34,17 @@ export default function OperativeLayout({ children }: { children: React.ReactNod
   const router = useRouter()
   useSync()
   const handleLogout = async () => {
-    if (nativeRouteTracker) await nativeRouteTracker.stop()
+    try {
+      if (nativeRouteTracker) await nativeRouteTracker.stop()
+      const { error } = await createClient().auth.signOut({ scope: 'local' })
+      if (error) throw error
+      if (nativeBiometric) await nativeBiometric.clear()
+    } catch {
+      toast.error('No se pudo cerrar la sesión. Inténtalo nuevamente.')
+      return
+    }
     localStorage.removeItem('jrm_driver')
     localStorage.removeItem('jrm_active_trip_context_v1')
-    await createClient().auth.signOut()
     router.replace('/app/login')
   }
 

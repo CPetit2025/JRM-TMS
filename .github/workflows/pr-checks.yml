@@ -26,5 +26,25 @@ jobs:
       - run: npm ci
       - run: node scripts/test-kpi-review.cjs
       - run: node scripts/test-analytics.cjs
+      - run: node scripts/test-app-session.cjs
       - run: npm run check:guards
       - run: npm run typecheck
+
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v4
+      - run: npm ci
+      - run: npx cap sync android
+      - name: Compile APK and test native session lock
+        working-directory: android
+        run: bash ./gradlew assembleDebug testDebugUnitTest --no-daemon

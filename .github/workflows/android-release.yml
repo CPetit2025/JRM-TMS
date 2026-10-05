@@ -6,11 +6,11 @@ on:
       version_name:
         description: Android version name
         required: true
-        default: '1.0.4'
+        default: '1.0.5'
       version_code:
         description: Android version code (must increase)
         required: true
-        default: '5'
+        default: '6'
       publish:
         description: Publicar el APK (descarga del login y aviso de actualización en el app)
         type: boolean
@@ -18,7 +18,7 @@ on:
       release_notes:
         description: Novedades que verá el conductor
         required: false
-        default: 'Micrófono habilitado para mensajes de voz del Copiloto IA y audio de fallas.'
+        default: 'Sesión persistente y protección opcional con huella o rostro. Actívala en la cabecera del Portal Operativo.'
 
 permissions:
   contents: read
