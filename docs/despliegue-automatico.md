@@ -6,9 +6,9 @@ Workflow: `.github/workflows/deploy-production.yml`. Cada push a `master` (por e
    - Antes revisa el plan: si la base tiene pendientes migraciones que **no** vienen en ese push, se detiene.
      Esto indica un historial desalineado (migraciones aplicadas a mano) y aplicarlas a ciegas podría romper producción.
 2. **Pruebas SQL de caja** (`supabase/tests/caja_*.test.sql`): corren contra la base real. Siempre terminan con
-   `ROLLBACK`, así que no dejan datos. Son informativas: el resultado aparece en el resumen del workflow y no
-   detienen el despliegue.
-3. **Vercel**: dispara el despliegue de producción con un Deploy Hook, solo si las migraciones terminaron bien.
+   `ROLLBACK`, así que no dejan datos. El resultado aparece en el resumen del workflow; un fallo o un caso
+   sin resultado detiene el despliegue de la web hasta corregirlo.
+3. **Vercel**: dispara el despliegue de producción con un Deploy Hook, solo si las migraciones y las pruebas SQL terminaron bien.
 
 `vercel.json` desactiva el despliegue por Git de `master` (`git.deploymentEnabled.master = false`). Así el
 frontend nunca llega a producción antes que el esquema que necesita. Las vistas previas de las ramas y los PR
