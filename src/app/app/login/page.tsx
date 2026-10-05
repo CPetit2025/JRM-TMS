@@ -190,6 +190,8 @@ export default function OperativeLogin() {
           </button>
         </form>
 
+        <p className="mt-3 text-center text-xs text-slate-500">Tu sesión se mantiene abierta en este dispositivo hasta que cierres sesión. Usa un dispositivo personal.</p>
+
         <div className="mt-4 text-center">
           <p className="text-sm text-slate-600">
             ¿No tienes acceso?{' '}

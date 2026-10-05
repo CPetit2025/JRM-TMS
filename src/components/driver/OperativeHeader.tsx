@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import { BiometricSettings } from './BiometricSettings'
 import { LogOut } from 'lucide-react'
 import { useActiveTrip } from '@/contexts/ActiveTripContext'
 import { useOperationalStatus } from '@/contexts/OperationalStatusContext'
@@ -32,5 +33,6 @@ export function OperativeHeader({ onLogout }: { onLogout: () => void }) {
       <span className="inline-flex items-center gap-1"><i className={`h-2 w-2 rounded-full ${online ? dot.green : dot.red}`} />{online ? 'Online' : 'Sin conexión'}</span>
       <span className="inline-flex items-center gap-1"><i className={`h-2 w-2 rounded-full ${pendingSync ? dot.amber : dot.green}`} />{pendingSync ? `${pendingSync} pendientes` : 'Sincronizado'}</span>
     </div>
+    <BiometricSettings />
   </header>
 }

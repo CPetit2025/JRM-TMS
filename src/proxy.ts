@@ -28,6 +28,13 @@ export async function proxy(request: NextRequest) {
     }
   )
 
+  // Preserve refreshed/removed auth cookies on redirects as well as normal responses.
+  const redirect = (url: URL) => {
+    const response = NextResponse.redirect(url)
+    supabaseResponse.cookies.getAll().forEach(cookie => response.cookies.set(cookie))
+    return response
+  }
+
   // refreshes the auth token and gets the user
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -38,6 +45,7 @@ export async function proxy(request: NextRequest) {
   const isApiRoute = request.nextUrl.pathname.startsWith('/api')
   const isPublicTracking = request.nextUrl.pathname.startsWith('/tracking/')
   let hasDashboardAccess = false
+  let operativeDestination: string | null = null
   
   // Si no está autenticado y NO está en una página de login ni API
   if (!user && !isLoginPage && !isDriverLoginPage && !isDriverRegisterPage && !isApiRoute && !isPublicTracking) {
@@ -45,12 +53,12 @@ export async function proxy(request: NextRequest) {
     if (isDriverRoute) {
       const url = request.nextUrl.clone()
       url.pathname = '/app/login'
-      return NextResponse.redirect(url)
+      return redirect(url)
     }
     // Sino, mandarlo al login principal (Admin)
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    return NextResponse.redirect(url)
+    return redirect(url)
   }
 
   if (user && !isApiRoute && !isPublicTracking) {
@@ -60,28 +68,36 @@ export async function proxy(request: NextRequest) {
     if (!profile?.is_active) {
       const url = request.nextUrl.clone()
       url.pathname = isDriverRoute ? '/app/login' : '/login'
-      if (request.nextUrl.pathname !== url.pathname) return NextResponse.redirect(url)
+      if (request.nextUrl.pathname !== url.pathname) return redirect(url)
       return supabaseResponse
     }
+    operativeDestination = profile.employee_type === 'CONDUCTOR' ? '/app' : '/app/actividades'
     const role = Array.isArray(profile.roles) ? profile.roles[0] : profile.roles
     const permissions = Array.isArray(role?.permissions) ? role.permissions : []
     hasDashboardAccess = profile.employee_type !== 'CONDUCTOR' &&
       (isSystemAdminRole(role?.name) || permissions.includes('dashboard'))
     if (!isDriverRoute && !isLoginPage && !hasDashboardAccess) {
-      return NextResponse.redirect(new URL('/login', request.url))
+      return redirect(new URL('/login', request.url))
     }
-    if (isDriverRoute && !isDriverLoginPage && !isDriverRegisterPage && profile.employee_type === 'CONDUCTOR') {
+    if (isDriverRoute && !isDriverRegisterPage && profile.employee_type === 'CONDUCTOR') {
       const { data: driver } = await supabase.from('drivers').select('is_active')
         .eq('profile_id', user.id).maybeSingle()
-      if (!driver?.is_active) return NextResponse.redirect(new URL('/app/login', request.url))
+      if (!driver?.is_active) {
+        if (!isDriverLoginPage) return redirect(new URL('/app/login', request.url))
+        return supabaseResponse
+      }
     }
+  }
+
+  if (user && isDriverLoginPage && operativeDestination) {
+    return redirect(new URL(operativeDestination, request.url))
   }
 
   // Si YA está autenticado e intenta ir a la página de login (para evitar que vea el login si ya tiene sesión)
   if (user && isLoginPage && hasDashboardAccess) {
     const url = request.nextUrl.clone()
     url.pathname = '/'
-    return NextResponse.redirect(url)
+    return redirect(url)
   }
 
   return supabaseResponse
