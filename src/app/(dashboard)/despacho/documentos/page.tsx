@@ -7,26 +7,28 @@ import { GuiaDetalleModal } from '@/components/guias/GuiaDetalleModal'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
+import { DeliveryReview, type DeliveryReviewTarget } from '@/components/delivery/DeliveryReview'
+import { conformityLabels, type DeliveryRow } from '@/lib/delivery'
 import { DOCS_BUCKET, errorMessage, fmtDate, receiptUrl } from '@/lib/caja'
 
-// Bandeja del Asistente Documentario: por cada despacho programado carga las guías de remisión por parada
-// (PDF, varias por parada: PT, suministros, otros), el packing list (PDF o Excel) o, en recojos del cliente,
-// la Nota de Despacho. El despacho no sale hasta que se confirman los documentos (reglas en la BD, F3).
+// Asistente: Packing List firmado por el auditor y Nota de Despacho en recojos.
+// La guía de entrega obligatoria procede del app/proveedor; solo Transporte valida la conformidad.
 
 type Stop = { request_id: string; request_number: string; sequence: number | null; delivery: string; cargo: string | null; client: string | null }
 type Doc = {
   id: string; request_id: string | null; doc_type: string; cargo_type: string | null; document_number: string | null
+  signed?: boolean; auditor_name?: string | null; auditor_signed_date?: string | null
   file_path: string; file_name: string | null; mime_type: string | null; uploaded_at: string; uploaded_by: string | null
 }
 type QueueItem = {
   id: string; dispatch_number: string; status: string; vehicle_plate: string | null; driver_name: string | null
   scheduled_departure: string | null; docs_required: boolean; docs_ready_at: string | null; docs_ready_by_name: string | null
   docs_reissue: boolean; docs_reissue_reason: string | null; is_pickup: boolean; doc_status: 'PENDIENTE' | 'LISTO' | 'REEMISION' | 'SALIO'
-  missing: string | null; stops: Stop[]; documents: Doc[]
+  modalidad?: string; missing: string | null; stops: Stop[]; documents: Doc[]
 }
 
 const DOC_LABEL: Record<string, string> = {
-  GUIA_REMISION: 'Guía de remisión', PACKING_LIST: 'Packing list', NOTA_DESPACHO: 'Nota de Despacho', OTRO: 'Otro documento',
+  GUIA_REMISION: 'Guía de remisión', PACKING_LIST: 'Packing List firmado', NOTA_DESPACHO: 'Nota de Despacho', OTRO: 'Otro documento',
 }
 const CARGO_LABEL: Record<string, string> = { PT: 'Producto terminado', SUMINISTROS: 'Suministros', OTROS: 'Otros' }
 const STATUS_BADGE: Record<QueueItem['doc_status'], { label: string; cls: string }> = {
@@ -53,7 +55,8 @@ export default function DocumentosDespachoPage() {
 
   const [reload, setReload] = useState(0)
   const [anulando, setAnulando] = useState<Doc | null>(null)
-  const [cargos, setCargos] = useState<Record<string, string>>({})
+  const [deliveries, setDeliveries] = useState<DeliveryRow[]>([])
+  const [review, setReview] = useState<DeliveryReviewTarget | null>(null)
   const load = useCallback(async () => { setReload(n => n + 1) }, [])
 
   useEffect(() => {
@@ -64,15 +67,19 @@ export default function DocumentosDespachoPage() {
       if (error) toast.error(errorMessage(error))
       const list = error ? [] : (data || []) as QueueItem[]
       setItems(list)
-      // Cargo (guía firmada) de los despachos que ya salieron
-      const ids = list.filter(i => i.status !== 'PROGRAMADO').map(i => i.id)
-      if (ids.length) {
-        const { data: c } = await supabase.from('dispatch_cargos').select('dispatch_id, recibido_at').in('dispatch_id', ids)
-        if (!cancel) setCargos(Object.fromEntries((c || []).map(x => [x.dispatch_id, x.recibido_at])))
+      const rows: DeliveryRow[] = []
+      for (let offset = 0; offset < list.length; offset += 100) {
+        const { data: result, error } = await supabase.rpc('delivery_tracking_rows', { p_dispatches: list.slice(offset, offset + 100).map(i => i.id) })
+        if (cancel) return
+        if (error) { toast.error('No se pudo consultar la conformidad de guías: ' + errorMessage(error)); break }
+        rows.push(...((result || []) as DeliveryRow[]))
       }
+      if (!cancel) setDeliveries(rows)
+
     }
     void run()
-    return () => { cancel = true }
+    const timer = window.setInterval(() => void run(), 30000)
+    return () => { cancel = true; window.clearInterval(timer) }
   }, [supabase, showDeparted, reload])
 
   const counts = useMemo(() => {
@@ -107,7 +114,7 @@ export default function DocumentosDespachoPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><FileText className="w-6 h-6 text-blue-600" />Documentos de Despacho</h1>
-          <p className="text-sm text-slate-500">Guías de remisión por parada, packing list y Notas de Despacho. Ordenado por hora de salida.</p>
+          <p className="text-sm text-slate-500">Packing List firmado por el auditor de despacho y seguimiento de guías de entrega. Ordenado por hora de salida.</p>
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm text-slate-600 flex items-center gap-1.5">
@@ -117,6 +124,11 @@ export default function DocumentosDespachoPage() {
         </div>
       </div>
 
+      <div className="grid gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-4 text-sm md:grid-cols-3">
+        <div><p className="font-semibold text-[#002855]">1. Asistente Documentario</p><p className="mt-1 text-xs leading-5 text-slate-600">Carga el Packing List firmado por el auditor y confirma los documentos antes de la salida. En recojos, adjunta también la Nota de Despacho.</p></div>
+        <div><p className="font-semibold text-[#002855]">2. Conductor o proveedor</p><p className="mt-1 text-xs leading-5 text-slate-600">Después de entregar, sube obligatoriamente la guía firmada: conductor desde el app; proveedor contratado desde el portal de transportistas.</p></div>
+        <div><p className="font-semibold text-[#002855]">3. Supervisor de Transporte</p><p className="mt-1 text-xs leading-5 text-slate-600">Aprueba, observa o rechaza la guía. El servicio no avanza mientras falte el sustento o su aprobación.</p></div>
+      </div>
       <div className="flex flex-wrap gap-2">
         {([['TODOS', 'Todos'], ['PENDIENTE', `Pendientes (${counts.PENDIENTE})`], ['REEMISION', `Reemisión (${counts.REEMISION})`], ['LISTO', `Listos (${counts.LISTO})`]] as const).map(([k, l]) => (
           <button key={k} onClick={() => setFilter(k)}
@@ -125,7 +137,7 @@ export default function DocumentosDespachoPage() {
       </div>
 
       {isLoaded && !canEdit && (
-        <p className="text-sm text-slate-500 bg-slate-50 border rounded-lg p-3">Vista de consulta: solo el Asistente Documentario carga y confirma documentos.</p>
+        <p className="text-sm text-slate-500 bg-slate-50 border rounded-lg p-3">Vista de consulta: el Asistente Documentario carga y confirma el Packing List firmado. La validación de guías corresponde al Supervisor de Transporte.</p>
       )}
 
       {items === null ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
@@ -133,16 +145,17 @@ export default function DocumentosDespachoPage() {
         : visible.map(item => (
           <DispatchCard key={item.id} item={item} canEdit={canEdit && item.status === 'PROGRAMADO'} busy={busy === item.id}
             onConfirm={() => confirmDocs(item)} onVoid={voidDoc} onOpen={openDoc} onUploaded={load}
-            cargo={item.status !== 'PROGRAMADO' && item.docs_required ? { recibido: cargos[item.id] || null, canEdit } : null} />
+            deliveries={deliveries.filter(r => r.dispatch_id === item.id)} onEvidence={setReview} />
         ))}
+      <DeliveryReview row={review} onClose={() => setReview(null)} onChanged={() => void load()} />
       {anulando && <AnularModal doc={anulando} onClose={() => setAnulando(null)} onDone={() => { setAnulando(null); void load() }} />}
     </div>
   )
 }
 
-function DispatchCard({ item, canEdit, busy, onConfirm, onVoid, onOpen, onUploaded, cargo }: {
+function DispatchCard({ item, canEdit, busy, onConfirm, onVoid, onOpen, onUploaded, deliveries, onEvidence }: {
   item: QueueItem; canEdit: boolean; busy: boolean; onConfirm: () => void; onVoid: (d: Doc) => void
-  onOpen: (p: string) => void; onUploaded: () => Promise<void>; cargo: { recibido: string | null; canEdit: boolean } | null
+  onOpen: (p: string) => void; onUploaded: () => Promise<void>; deliveries: DeliveryRow[]; onEvidence: (row: DeliveryReviewTarget) => void
 }) {
   const h = hoursLeft(item.scheduled_departure)
   const urgent = item.doc_status !== 'LISTO' && item.doc_status !== 'SALIO' && h !== null && h < 2
@@ -175,7 +188,7 @@ function DispatchCard({ item, canEdit, busy, onConfirm, onVoid, onOpen, onUpload
         {canEdit && (item.doc_status === 'PENDIENTE' || item.doc_status === 'REEMISION') && (
           <button onClick={onConfirm} disabled={busy}
             className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2">
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}Confirmar documentos
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}Confirmar Packing List y documentos
           </button>
         )}
       </div>
@@ -194,11 +207,13 @@ function DispatchCard({ item, canEdit, busy, onConfirm, onVoid, onOpen, onUpload
         })}
         <div className="p-4 bg-slate-50/60 rounded-b-xl">
           <div className="text-sm font-semibold text-slate-700">Documentos generales del despacho</div>
-          <div className="text-xs text-slate-500">Packing list consolidado u otros documentos que no son de una parada.</div>
+          <div className="text-xs text-slate-500">Un Packing List consolidado firmado cubre todas las paradas. También puedes adjuntarlo por parada; debe estar firmado por el auditor.</div>
           <DocList docs={generalDocs} canEdit={canEdit} onVoid={onVoid} onOpen={onOpen} />
           {canEdit && <UploadForm dispatchId={item.id} requestId={null} isPickup={item.is_pickup} onUploaded={onUploaded} />}
         </div>
-        {cargo && <CargoSection dispatchId={item.id} recibido={cargo.recibido} canEdit={cargo.canEdit} onSaved={onUploaded} />}
+        <div className="space-y-3 p-4"><p className="flex items-center gap-2 text-sm font-semibold text-[#002855]"><FileCheck2 className="h-4 w-4" />Guías firmadas de entrega · obligatorias</p><p className="text-xs leading-5 text-slate-500">Responsable: {item.is_pickup ? 'cliente que retira · se conserva la Nota de Despacho' : item.modalidad === 'TERCERO' ? 'proveedor contratado por JRM, desde su portal' : 'conductor asignado, desde el app'}. El asistente consulta el sustento; el Supervisor de Transporte valida.</p>
+          {!deliveries.length ? <p className="text-xs text-slate-500">Conformidad no disponible. Actualiza la bandeja para consultar.</p> : deliveries.map(row => <div key={row.request_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm"><div><p className="font-semibold">{row.request_number} · OT {row.ot_code}</p><p className="mt-1 text-xs text-slate-600">{conformityLabels[row.conformity]}{row.guide_number ? ` · Guía ${row.guide_number}` : ''}{row.photos_count > 0 ? ` · ${row.photos_count} foto(s)` : ''}</p></div><button onClick={() => onEvidence(row)} className="min-h-10 rounded-lg border px-3 text-xs font-semibold text-blue-700">Consultar sustento y validación</button></div>)}
+        </div>
       </div>
     </div>
   )
@@ -235,46 +250,6 @@ function AnularModal({ doc, onClose, onDone }: { doc: Doc; onClose: () => void; 
   )
 }
 
-// Cargo: guía de remisión firmada por el cliente, registrada después de la entrega (KPI: cargo en ≤ 48 h)
-function CargoSection({ dispatchId, recibido, canEdit, onSaved }: { dispatchId: string; recibido: string | null; canEdit: boolean; onSaved: () => Promise<void> }) {
-  const supabase = useMemo(() => createClient(), [])
-  const [file, setFile] = useState<File | null>(null)
-  const [nota, setNota] = useState('')
-  const [saving, setSaving] = useState(false)
-  const submit = async () => {
-    if (!file && !nota.trim()) { toast.error('Adjunte la guía firmada o indique una nota'); return }
-    setSaving(true)
-    try {
-      let path: string | null = null
-      if (file) {
-        path = `${dispatchId}/cargo-${crypto.randomUUID()}-${file.name.replace(/[^\w.-]+/g, '_').slice(-80)}`
-        const { error: upErr } = await supabase.storage.from(DOCS_BUCKET).upload(path, file, { contentType: file.type || 'application/pdf' })
-        if (upErr) throw upErr
-      }
-      const { data, error } = await supabase.rpc('registrar_cargo', { p_dispatch_id: dispatchId, p_file_path: path, p_notas: nota.trim() || null })
-      if (error || !data?.success) {
-        if (path) await supabase.storage.from(DOCS_BUCKET).remove([path])
-        throw new Error(error ? errorMessage(error) : data?.error)
-      }
-      toast.success('Cargo registrado'); setFile(null); setNota('')
-      await onSaved()
-    } catch (e) { toast.error(errorMessage(e)) } finally { setSaving(false) }
-  }
-  return (
-    <div className="p-4 border-t bg-emerald-50/40 rounded-b-xl text-sm">
-      <div className="font-semibold text-slate-700 flex items-center gap-1.5"><FileCheck2 className="w-4 h-4 text-emerald-700" />Cargo (guía firmada por el cliente)</div>
-      {recibido ? <p className="text-xs text-emerald-700 mt-1">Recibido el {fmtDate(recibido, true)}</p> : canEdit ? (
-        <div className="mt-2 flex flex-wrap items-end gap-2">
-          <input type="file" accept="application/pdf,image/*" onChange={e => setFile(e.target.files?.[0] || null)} className="text-xs" />
-          <input value={nota} onChange={e => setNota(e.target.value)} placeholder="Nota (opcional)" className="border rounded-lg px-2 py-1.5 bg-white" />
-          <button onClick={submit} disabled={saving} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-semibold flex items-center gap-1.5 disabled:opacity-50">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}Registrar cargo</button>
-        </div>
-      ) : <p className="text-xs text-amber-700 mt-1">Pendiente de recepción</p>}
-    </div>
-  )
-}
-
 function DocList({ docs, canEdit, onVoid, onOpen }: { docs: Doc[]; canEdit: boolean; onVoid: (d: Doc) => void; onOpen: (p: string) => void }) {
   const [guia, setGuia] = useState<string | null>(null)
   if (docs.length === 0) return <p className="text-xs text-slate-400 mt-2">Sin documentos cargados.</p>
@@ -294,6 +269,7 @@ function DocList({ docs, canEdit, onVoid, onOpen }: { docs: Doc[]; canEdit: bool
               <ListTree className="w-3 h-3" /> SKUs
             </button>
           )}
+          {d.doc_type === 'PACKING_LIST' && <span className={`text-xs ${d.signed ? 'text-emerald-700' : 'text-amber-700'}`}>{d.signed ? `Firmado por ${d.auditor_name} · ${d.auditor_signed_date}` : 'Documento anterior: firma del auditor pendiente de registrar'}</span>}
           {d.cargo_type && <span className="text-xs text-slate-500">({CARGO_LABEL[d.cargo_type] || d.cargo_type})</span>}
           <span className="text-xs text-slate-400">{d.uploaded_by || '—'} · {fmtDate(d.uploaded_at, true)}</span>
           {canEdit && <button onClick={() => onVoid(d)} className="text-slate-400 hover:text-red-600" title="Anular"><Trash2 className="w-3.5 h-3.5" /></button>}
@@ -308,34 +284,42 @@ function UploadForm({ dispatchId, requestId, isPickup, onUploaded }: {
   dispatchId: string; requestId: string | null; isPickup: boolean; onUploaded: () => Promise<void>
 }) {
   const supabase = useMemo(() => createClient(), [])
-  const mainType = isPickup ? 'NOTA_DESPACHO' : 'GUIA_REMISION'
-  const types = requestId ? [mainType, 'PACKING_LIST', 'OTRO'] : ['PACKING_LIST', 'OTRO']
+  const types = requestId && isPickup ? ['PACKING_LIST', 'NOTA_DESPACHO', 'OTRO'] : ['PACKING_LIST', 'OTRO']
   const [docType, setDocType] = useState(types[0])
-  const [cargo, setCargo] = useState('PT')
+  const [auditor, setAuditor] = useState('')
+  const [today] = useState(() => new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10))
+  const [signedDate, setSignedDate] = useState(today)
+  const [signature, setSignature] = useState(false)
   const [number, setNumber] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
   const [inputKey, setInputKey] = useState(0)
   const needsNumber = docType === 'GUIA_REMISION' || docType === 'NOTA_DESPACHO'
-  const allowSheet = docType === 'PACKING_LIST' || docType === 'OTRO'
+  const allowSheet = docType === 'OTRO'
+  const packing = docType === 'PACKING_LIST'
 
   const submit = async () => {
     if (!file) { toast.error('Seleccione el archivo'); return }
+    if (file.size > 15 * 1024 * 1024) { toast.error('El archivo supera 15 MB'); return }
+    if (packing && (!auditor.trim() || !signedDate || !signature)) { toast.error('Indique auditor, fecha y confirme que el Packing List contiene su firma'); return }
     if (needsNumber && !number.trim()) { toast.error('Indique la serie y número'); return }
     const sheet = isSheetName(file.name)
-    if (!(file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) && !(allowSheet && sheet)) {
-      toast.error(allowSheet ? 'Cargue un PDF o un Excel' : 'La guía y la Nota de Despacho se cargan en PDF'); return
+    if (!(file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) && !(allowSheet && sheet) && !(packing && ['image/jpeg', 'image/png', 'image/webp'].includes(file.type))) {
+      toast.error(packing ? 'Adjunte el Packing List firmado en PDF o foto; un Excel no acredita la firma.' : allowSheet ? 'Cargue un PDF o un Excel' : 'La Nota de Despacho se carga en PDF'); return
     }
-    const mime = sheet ? sheetMime(file.name) : 'application/pdf'
+    const mime = packing && file.type.startsWith('image/') ? file.type : sheet ? sheetMime(file.name) : 'application/pdf'
     const path = `${dispatchId}/${crypto.randomUUID()}-${file.name.replace(/[^\w.-]+/g, '_').slice(-80)}`
     setSaving(true)
     try {
       const { error: upErr } = await supabase.storage.from(DOCS_BUCKET).upload(path, file, { contentType: mime })
       if (upErr) throw upErr
-      const { data, error } = await supabase.rpc('register_dispatch_document', {
-        p_dispatch_id: dispatchId, p_request_id: requestId, p_doc_type: docType,
-        p_cargo_type: docType === 'GUIA_REMISION' ? cargo : null, p_document_number: number.trim() || null,
-        p_file_path: path, p_file_name: file.name, p_mime_type: mime, p_size_bytes: file.size, p_notes: null,
+      const { data, error } = packing ? await supabase.rpc('register_signed_packing_list', {
+        p_dispatch_id: dispatchId, p_request_id: requestId, p_file_path: path, p_file_name: file.name,
+        p_mime_type: mime, p_size_bytes: file.size, p_auditor: auditor.trim(), p_signed_date: signedDate, p_signature_confirmed: signature,
+      }) : await supabase.rpc('register_dispatch_document', {
+        p_dispatch_id: dispatchId, p_request_id: requestId, p_doc_type: docType, p_cargo_type: null,
+        p_document_number: number.trim() || null, p_file_path: path, p_file_name: file.name,
+        p_mime_type: mime, p_size_bytes: file.size, p_notes: null,
       })
       if (error || !data?.success) {
         // El archivo sin registro no sirve: se retira para no dejar huérfanos
@@ -343,24 +327,20 @@ function UploadForm({ dispatchId, requestId, isPickup, onUploaded }: {
         throw new Error(error ? errorMessage(error) : data?.error)
       }
       toast.success(`${DOC_LABEL[docType]} cargado`)
-      setNumber(''); setFile(null); setInputKey(k => k + 1)
+      setNumber(''); setFile(null); setSignature(false); setInputKey(k => k + 1)
       await onUploaded()
     } catch (e) { toast.error(errorMessage(e)) } finally { setSaving(false) }
   }
 
   return (
-    <div className="mt-3 flex flex-wrap items-end gap-2 text-sm">
+    <div className="mt-3 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm">
       <select value={docType} onChange={e => setDocType(e.target.value)} className="border rounded-lg px-2 py-1.5 bg-white">
         {types.map(t => <option key={t} value={t}>{DOC_LABEL[t]}</option>)}
       </select>
-      {docType === 'GUIA_REMISION' && (
-        <select value={cargo} onChange={e => setCargo(e.target.value)} className="border rounded-lg px-2 py-1.5 bg-white">
-          {Object.entries(CARGO_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-        </select>
-      )}
+      {packing && <div className="grid w-full gap-3 sm:grid-cols-2"><label className="text-xs text-slate-600">Auditor firmante *<input value={auditor} maxLength={120} onChange={e => setAuditor(e.target.value)} placeholder="Nombre del auditor de despacho" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" /></label><label className="text-xs text-slate-600">Fecha de firma *<input type="date" value={signedDate} max={today} onChange={e => setSignedDate(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" /></label><label className="flex items-start gap-2 text-xs leading-5 text-slate-600 sm:col-span-2"><input type="checkbox" checked={signature} onChange={e => setSignature(e.target.checked)} className="mt-1" />Confirmo que el archivo adjunto es legible y contiene la firma del auditor de despacho. Se acepta PDF o foto del documento firmado.</label></div>}
       <input value={number} onChange={e => setNumber(e.target.value)} placeholder={needsNumber ? 'Serie-número (T001-000123)' : 'N° (opcional)'}
         className="border rounded-lg px-2 py-1.5 w-48" />
-      <input key={inputKey} type="file" accept={allowSheet ? '.pdf,.xlsx,.xls,.csv' : '.pdf'} onChange={e => setFile(e.target.files?.[0] || null)}
+      <input key={inputKey} type="file" accept={packing ? '.pdf,image/jpeg,image/png,image/webp' : allowSheet ? '.pdf,.xlsx,.xls,.csv' : '.pdf'} onChange={e => setFile(e.target.files?.[0] || null)}
         className="text-xs max-w-[220px]" />
       <button onClick={submit} disabled={saving}
         className="px-3 py-1.5 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5">

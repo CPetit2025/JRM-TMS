@@ -394,7 +394,8 @@ export default function DespachoPage() {
         if (!isPickup && newDispatchId && freightQuote && detectedFreightRate?.rate && freightCost === detectedFreightRate.rate) {
           await supabase.rpc('set_dispatch_freight_quote', { p_dispatch_id: newDispatchId, p_breakdown: freightQuote })
         }
-        toast.success('Despacho tercerizado programado y flete reservado a nombre del proveedor.')
+        toast.success('Servicio programado. El acceso del proveedor está listo para compartir.')
+        if (newDispatchId) setAvanceId(newDispatchId)
         setIsModalOpen(false)
         setNewDispatch({ selected_requests: [], driver_name: '', vehicle_plate: '', scheduled_departure: '', estimated_distance_km: '', document_type: 'GR' })
         setManualFreightCost(''); setTercero(TERCERO_VACIO); setModalidad('PROPIA')
