@@ -22,3 +22,12 @@ La reprogramación/cancelación normal está bloqueada. Registrar la incidencia 
 ## Validación
 
 La prueba transaccional C50 cubre el 80%, redondeo, asignación de flota, identidad propia/tercera, ruta de tres tipos y dos OT, distribución incoherente, exclusividad, descarga por OT, reprogramación de una parada, cancelación por Transporte y cierre idempotente. El arnés vuelve a ejecutar C9/C41/C46/C47/C48/C49 después de la migración. Las regresiones de presupuesto C7/C8/C9/C10/C15 mantienen el mismo escenario neto utilizando partidas brutas equivalentes.
+
+
+## Verificar la ejecución desde Solicitud de Transporte
+
+La tabla muestra fecha de solicitud, fecha de entrega vigente, tipo de servicio, OT, dirección, estado y acciones. En recojos muestra el origen; en entregas, el destino; en punto a punto, ambos. Código, emisión, glosa, componentes, costos y mediciones están en «Ver detalle». La fecha de emisión usa America/Lima.
+
+La ejecución se consulta por solicitud y parada, conservando su OT aunque la ruta consolide distintas OT. Los kilómetros son del tramo GPS de esa parada: no se reparte el total de ruta ni el retorno. Se distingue GPS completo/parcial y se deja sin medición un tercero que no tenga trazado registrado. Los viajes cancelados se conservan en el historial sin imputar kilómetros o peso.
+
+El peso solicitado es una estimación. El peso real mostrado requiere una guía vigente validada por Transporte, identificada con serie y número, con todas sus líneas de SALIDA APT activas/válidas y peso positivo. Una guía compartida entre servicios no se atribuye íntegramente a cada uno: falta una distribución sustentada. Recojos sin fuente de peso real y guías sin peso completo permanecen pendientes; no se usa el peso contractual o solicitado como sustituto del real. La consulta respeta perfil activo, sedes y cartera de OT y no devuelve fotos ni credenciales de proveedores.
