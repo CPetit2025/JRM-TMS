@@ -8,6 +8,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import * as XLSX from 'xlsx'
 import { usePermissions } from '@/hooks/usePermissions'
+import { emptyFleetFilters, filterFleetVehicles, filterFleetDrivers, type FleetFilters } from '@/lib/fleet-filters'
+import { limaDay } from '@/lib/preuse'
 
 // Estados y tipos canónicos de activos (migraciones 20260924133100 y 20260926200000).
 // El estado solo cambia vía transition_vehicle_status: la BD rechaza updates directos.
@@ -53,9 +55,13 @@ export default function FlotaPage() {
   const [originalDocs, setOriginalDocs] = useState({ soat: '', rt: '' })
   const [nextCode, setNextCode] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [searchTerm, setSearchTerm] = useState('')
+  const [vehicleFilters, setVehicleFilters] = useState<FleetFilters>({ ...emptyFleetFilters })
+  const [driverFilters, setDriverFilters] = useState<FleetFilters>({ ...emptyFleetFilters })
+  const filters = activeTab === 'vehicles' ? vehicleFilters : driverFilters
+  const setFilters = activeTab === 'vehicles' ? setVehicleFilters : setDriverFilters
+  const updateFilter = (key: keyof FleetFilters, value: string) => setFilters(current => ({ ...current, [key]: value }))
+  const activeFilterCount = Object.values(filters).filter(Boolean).length
   const [showFilters, setShowFilters] = useState(false)
-  const [filterStatus, setFilterStatus] = useState('TODOS')
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isImporting, setIsImporting] = useState(false)
@@ -65,17 +71,8 @@ export default function FlotaPage() {
   const [showAccessPassword, setShowAccessPassword] = useState(false)
   const [isSavingAccess, setIsSavingAccess] = useState(false)
   
-  const filteredVehicles = vehicles.filter((v: any) => {
-    const matchSearch = searchTerm === '' || v.plate.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchStatus = filterStatus === 'TODOS' || v.status === filterStatus;
-    return matchSearch && matchStatus;
-  })
-  
-  const filteredDrivers = drivers.filter((d: any) => {
-    const matchSearch = searchTerm === '' || (d.first_name + ' ' + d.last_name).toLowerCase().includes(searchTerm.toLowerCase()) || (d.document_number||'').includes(searchTerm);
-    const matchStatus = filterStatus === 'TODOS' || d.status === filterStatus;
-    return matchSearch && matchStatus;
-  })
+  const filteredVehicles = filterFleetVehicles(vehicles, drivers, carriers, vehicleFilters, limaDay())
+  const filteredDrivers = filterFleetDrivers(drivers, vehicles, carriers, driverFilters)
 
   // Forms
   const [newVehicle, setNewVehicle] = useState({
@@ -215,7 +212,9 @@ export default function FlotaPage() {
 
       if (error) throw error
 
-      if (editingVehicleId) toast.success('Vehículo y conductor asignado guardados correctamente')
+      if (editingVehicleId) toast.success('Vehículo guardado. La asignación se actualizará automáticamente en el app.')
+      const assigned = drivers.find(d => d.id === newVehicle.assigned_driver_id)
+      if (assigned && !assigned.profile_id) toast.warning('Conductor asignado sin cuenta de app. Habilite su acceso desde la pestaña Conductores.')
       if (!editingVehicleId) {
         toast.success('Vehículo registrado como OBSERVADA. Libérelo cuando cumpla los requisitos de elegibilidad.')
       }
@@ -471,13 +470,13 @@ export default function FlotaPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-theme(spacing.16))] bg-slate-50">
+    <div className="flex flex-col min-h-[calc(100vh-theme(spacing.16))] md:h-[calc(100vh-theme(spacing.16))] bg-slate-50">
       <div className="p-6 border-b border-slate-200 bg-white shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#002855]">Maestro de Unidades y Conductores</h1>
           <p className="text-sm text-slate-500">Gestión de unidades de transporte y conductores registrados.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {activeTab === 'vehicles' ? (
             <>
               <button 
@@ -564,7 +563,7 @@ export default function FlotaPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden flex flex-col">
+      <div className="flex min-h-0 flex-1 flex-col overflow-visible md:overflow-hidden">
         {/* Tabs */}
         <div className="bg-white border-b border-slate-200 px-6">
           <div className="flex gap-6">
@@ -603,10 +602,11 @@ export default function FlotaPage() {
               </div>
               <input
                 type="text"
-                placeholder={activeTab === 'vehicles' ? 'Buscar por placa...' : 'Buscar por nombre o DNI...'}
+                aria-label="Buscar en Flota"
+                placeholder={activeTab === 'vehicles' ? 'Placa, código, marca o conductor...' : 'Nombre, DNI, licencia o placa...'}
                 className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#002855] focus:border-transparent transition-colors sm:text-sm"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={filters.search}
+                onChange={(e) => updateFilter('search', e.target.value)}
               />
             </div>
             <button
@@ -614,31 +614,30 @@ export default function FlotaPage() {
               className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors border ${showFilters ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
             >
               <Filter className="w-4 h-4" />
-              Filtros Avanzados
+              Filtros Avanzados {activeFilterCount > 0 && <span className="rounded-full bg-[#002855] px-2 text-xs text-white">{activeFilterCount}</span>}
             </button>
           </div>
-          {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Estado</label>
-                <select
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none"
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                >
-                  <option value="TODOS">Todos</option>
-                  {activeTab === 'vehicles' ? (
-                    VEHICLE_STATUSES.map(st => <option key={st} value={st}>{st.replace(/_/g, ' ')}</option>)
-                  ) : (
-                    <>
-                      <option value="ACTIVO">Activo</option>
-                      <option value="INACTIVO">Inactivo</option>
-                    </>
-                  )}
-                </select>
-              </div>
-            </div>
-          )}
+          {showFilters && <div className="mt-4 grid grid-cols-1 gap-4 border-t border-slate-100 pt-4 sm:grid-cols-2 xl:grid-cols-4">
+            {([
+              ['status','Estado', activeTab === 'vehicles' ? VEHICLE_STATUSES.map(value => [value,value.replace(/_/g,' ')]) : [['ACTIVO','Activo'],['INACTIVO','Inactivo']]],
+              ['carrier','Transportista',carriers.map(c => [c.id,c.business_name])],
+              ['assignment',activeTab === 'vehicles' ? 'Conductor asignado' : 'Unidad asignada',[['ASIGNADO','Con asignación'],['SIN_ASIGNAR','Sin asignación']]],
+              ...(activeTab === 'vehicles' ? [
+                ['group','Clase de activo',[['TRANSPORTE','Unidades de transporte'],['EQUIPOS','Equipos de almacén']]],
+                ['type','Tipo de unidad',Object.entries(VEHICLE_TYPES)],
+                ['ownership','Propiedad',[['PROPIO','Propio'],['ALQUILADO','Alquilado'],['LEASING','Leasing']]],
+                ['documents','SOAT y revisión técnica',[['VIGENTES','Ambos vigentes'],['VENCIDOS','Con vencimientos'],['INCOMPLETOS','Sin datos completos']]],
+              ] : [['app','Acceso al app',[['VINCULADO','Cuenta vinculada'],['SIN_VINCULAR','Sin cuenta vinculada']]]]),
+            ] as [keyof FleetFilters,string,string[][]][]).map(([key,label,options]) => <label key={key} className="block text-xs font-semibold text-slate-600">{label}
+              <select aria-label={label} value={filters[key]} onChange={e => updateFilter(key,e.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal text-slate-800">
+                <option value="">Todos</option>{options.map(([value,text]) => <option key={value} value={value}>{text}</option>)}
+              </select>
+            </label>)}
+          </div>}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+            <p role="status">Mostrando {activeTab === 'vehicles' ? filteredVehicles.length : filteredDrivers.length} de {activeTab === 'vehicles' ? vehicles.length : drivers.length} {activeTab === 'vehicles' ? 'unidades · orden por tipo y placa' : 'conductores · orden por apellido'}</p>
+            {activeFilterCount > 0 && <button type="button" onClick={() => setFilters({ ...emptyFleetFilters })} className="min-h-11 font-semibold text-[#002855]">Limpiar filtros</button>}
+          </div>
         </div>
         </div>
 
@@ -685,7 +684,7 @@ export default function FlotaPage() {
                         >
                           <td className="p-4 font-bold text-[#002855] group-hover:text-blue-600 transition-colors">
                             {v.plate}
-                            <div className="mt-1 text-xs font-normal text-slate-500">{v.assigned_driver_id ? (() => { const d = drivers.find(driver => driver.id === v.assigned_driver_id); return d ? `${d.first_name} ${d.last_name}` : 'Conductor asignado' })() : 'Sin conductor asignado'}</div>
+                            <div className="mt-1 text-xs font-normal text-slate-500">{v.assigned_driver_id ? (() => { const d = drivers.find(driver => driver.id === v.assigned_driver_id); return d ? `${d.first_name} ${d.last_name} · ${d.profile_id ? 'App vinculado' : 'Sin cuenta de app'}` : 'Conductor asignado' })() : 'Sin conductor asignado'}</div>
                           </td>
                           <td className="p-4">
                             <div className="text-sm font-medium text-slate-800">{v.type}</div>
@@ -804,7 +803,7 @@ export default function FlotaPage() {
                     ) : (
                       filteredDrivers.map(d => (
                         <tr key={d.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="p-4 font-bold text-[#002855]">{d.first_name} {d.last_name}</td>
+                          <td className="p-4 font-bold text-[#002855]">{d.first_name} {d.last_name}<div className="mt-1 text-xs font-normal text-slate-500">{vehicles.find(v => v.assigned_driver_id === d.id)?.plate || 'Sin unidad asignada'}</div></td>
                           <td className="p-4 text-sm text-slate-600">{d.document_number}</td>
                           <td className="p-4">
                             <div className="text-sm font-medium text-slate-800">{d.license_number}</div>
@@ -1040,7 +1039,7 @@ export default function FlotaPage() {
                   <option key={d.id} value={d.id}>{d.first_name} {d.last_name}</option>
                 ))}
               </select>
-              <p className="mt-1 text-xs text-slate-500">Una unidad por conductor. Para cambiar una pareja con ruta activa, primero reprograme el servicio desde Despacho.</p>
+              <p className="mt-1 text-xs text-slate-500">La unidad aparece automáticamente en el app del conductor, con o sin ruta. El conductor debe tener su cuenta de app vinculada. Para cambiar una pareja con ruta activa, primero reprograme desde Despacho.</p>
             </div>
           </div>
             <div className="pt-4 flex justify-end gap-2 border-t mt-4">

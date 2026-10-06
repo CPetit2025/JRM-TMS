@@ -469,6 +469,12 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
     assert.match(result.stderr,/CAJA C(?:9|41|46|47|48|49) PASS/,result.stderr)
   }
   console.log('PASS: C50 multi-OT routes, protected 20% profit, actual vehicle assignment, exclusivity, per-OT unload reserves, cancellation, stop withdrawal and idempotent close; C9/C41/C46/C47/C48/C49 pass after new migration.')
+  sql(read('supabase/migrations/20261007210000_fleet_assignment_app_link.sql'))
+  for (const test of ['caja_c51_flota_app_asignacion','caja_c50_ruta_mixta_partida_flota','caja_c49_preuso_diario_conductor']) {
+    const result=query(read('supabase/tests/'+test+'.test.sql'))
+    assert.match(result.stderr,/CAJA C(?:49|50|51) PASS/,result.stderr)
+  }
+  console.log('PASS: C51 fleet assignment reaches driver app without a route, account linked later, A-B-A requires inspection, cross-driver isolation, backfill and history; C49/C50 regressions pass.')
 } catch(error) {
   console.error(error.message)
   console.error('::error title=Delivery conformity validation::' + error.message.replaceAll('%','%25').replaceAll('\n','%0A'))

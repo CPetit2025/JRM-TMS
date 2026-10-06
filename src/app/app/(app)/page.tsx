@@ -15,7 +15,7 @@ function dateTime(value?: string | null) {
 }
 
 export default function OperationalHome() {
-  const { user, driver, trip, pending, summary, loading, error, refresh } = useActiveTrip()
+  const { user, driver, trip, assigned_unit, pending, summary, loading, error, refresh } = useActiveTrip()
   if (loading && !user) return <div className="flex min-h-[55vh] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-[#002855]" /></div>
 
   const nextStop = trip?.stops.find(stop => stop.status !== 'ENTREGADO')
@@ -46,6 +46,8 @@ export default function OperationalHome() {
       <div className="bg-[#002855] p-5 text-white"><div className="flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-wide text-blue-200">Estado operativo</p><h2 className="mt-1 text-xl font-black">Disponible</h2></div><span className="h-3 w-3 rounded-full bg-emerald-400 ring-4 ring-emerald-400/20" /></div><p className="mt-2 text-sm text-blue-100">Tu sesión de conductor está activa.</p></div>
       <div className="p-4">{nextTrip ? <><p className="text-xs font-bold uppercase text-slate-400">Próxima programación</p><p className="mt-1 font-black text-[#002855]">{nextTrip.dispatch_number} · {nextTrip.vehicle_plate || 'Unidad por asignar'}</p><p className="mt-1 text-sm text-slate-600">{nextTrip.origin || 'Origen por confirmar'} → {nextTrip.destination || nextTrip.destination_address || 'Destino por confirmar'}</p><p className="mt-2 text-xs font-semibold text-slate-500">{dateTime(nextTrip.scheduled_departure)}</p></> : <div className="flex gap-3"><CalendarClock className="h-9 w-9 shrink-0 text-[#002855]" /><div><h3 className="font-bold text-slate-800">Sin programación asignada</h3><p className="mt-1 text-sm text-slate-500">La próxima ruta aparecerá aquí automáticamente cuando despacho la asigne.</p></div></div>}</div>
     </section>}
+
+    {driver && <section className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Unidad asignada en Flota</p><p className="mt-2 flex items-center gap-2 text-lg font-black text-[#002855]"><Truck className="h-5 w-5" />{assigned_unit?.plate || 'Sin unidad asignada'}</p><p className="mt-1 text-xs text-slate-500">{assigned_unit ? 'Disponible en tu app con o sin ruta. Realiza la inspección diaria antes de operar.' : 'Solicita a Transporte que revise tu asignación. Tu próxima ruta aparecerá por separado.'}</p></section>}
 
     {!driver && user?.employee_type !== 'CONDUCTOR' && <Link href="/app/equipos" className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm">
       <span className="rounded-full bg-blue-50 p-2 text-[#002855]"><Forklift className="h-6 w-6" /></span><span className="flex-1"><b className="block text-[#002855]">Equipos</b><small className="text-slate-500">Horómetro del turno y checklist del montacargas o elevador</small></span><ChevronRight className="h-5 w-5 text-slate-400" />

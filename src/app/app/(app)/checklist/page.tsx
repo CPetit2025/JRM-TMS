@@ -16,7 +16,7 @@ import { errorMessage } from '@/lib/caja'
 type Draft = { answers: PreuseAnswer[]; license: string; soat_expiration: string; technical_review_expiration: string; vehicle_operational: boolean | null; observation: string; inspector_name: string; signature: SignaturePoint[][] }
 export default function ChecklistPage() {
  const supabase = useMemo(() => createClient(), [])
- const { refresh } = useActiveTrip()
+ const { refresh, assigned_unit } = useActiveTrip()
  const [context, setContext] = useState<PreuseContext | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(true)
  const [plate, setPlate] = useState(''), [revision, setRevision] = useState<string | null>(null), [busy, setBusy] = useState(false)
  const [draft, setDraft] = useState<Draft>({ answers: blankPreuseAnswers(), license: '', soat_expiration: '', technical_review_expiration: '', vehicle_operational: null, observation: '', inspector_name: '', signature: [] })
@@ -29,7 +29,8 @@ export default function ChecklistPage() {
    const value = data as PreuseContext; setContext(value); setError(''); setPlate(value.unit?.vehicle_plate || value.route_plate || '')
   } catch (e) { setError(errorMessage(e)) } finally { setLoading(false) }
  }, [supabase])
- useEffect(() => { const initial = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(initial) }, [load])
+ useEffect(() => { if (revision) return; const initial = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(initial) }, [load, assigned_unit?.plate, revision])
+ const assignmentChanged = !!revision && (assigned_unit ? assigned_unit.plate !== plate : assigned_unit === null && !!context?.assigned_unit)
  useEffect(() => {
   if (!storageKey) return
   try { localStorage.setItem(storageKey, JSON.stringify({ draft, retry })) } catch { /* The form remains in memory if local storage is full. */ }
@@ -53,7 +54,7 @@ export default function ChecklistPage() {
   } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
  }
  const submit = async (event: React.FormEvent) => {
-  event.preventDefault(); if (!revision || !context?.driver || !context.driver.profile_id || busy) return
+  event.preventDefault(); if (!revision || !context?.driver || !context.driver.profile_id || busy || assignmentChanged) return
   if (!validatePreuseAnswers(draft.answers)) { toast.error('Complete los 34 ítems: B, M, R o N/A.'); return }
   if (draft.vehicle_operational === null || !validPreuseSignature(draft.signature)) { toast.error('Indique Vehículo Operativo y registre la firma de quien inspecciona.'); return }
   const operation = retry || { operation: crypto.randomUUID(), captured: new Date().toISOString() }
@@ -81,14 +82,16 @@ export default function ChecklistPage() {
   {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
   {loading && !context ? <p className="flex justify-center p-6"><Loader2 className="h-6 w-6 animate-spin" /></p> : !revision ? <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
    <p className="text-sm"><b>Conductor:</b> {context?.driver?.name || 'Sin conductor activo'} · <b>Fecha:</b> {context?.operation_date || 'Sin confirmar'}</p>
+   {context?.assigned_unit && <p className="rounded-lg bg-blue-50 p-3 text-sm text-[#002855]">Unidad asignada por Transporte: <b>{context.assigned_unit.plate}</b>. Para cambiarla, solicita la actualización en Flota.</p>}
    {context?.latest && <p className={`rounded-lg p-3 text-sm ${context.pending ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-800'}`}>Última inspección del día: {context.latest.vehicle_plate}. {context.pending ? 'Operación pendiente de habilitar.' : 'Inspección vigente para la unidad actual.'}</p>}
-   <label className="block text-sm font-semibold">Placa<select value={plate} onChange={e => setPlate(e.target.value)} className={input}><option value="">Seleccione la unidad que utilizará</option>{context?.vehicles.map(v => <option key={v.plate} value={v.plate}>{v.plate}</option>)}</select></label>
+   <label className="block text-sm font-semibold">Placa<select aria-label="Placa" value={plate} onChange={e => setPlate(e.target.value)} className={input}><option value="">Seleccione la unidad que utilizará</option>{context?.vehicles.map(v => <option key={v.plate} value={v.plate}>{v.plate}</option>)}</select></label>
    {!context?.vehicles.length && !error && <p className="text-sm text-amber-800">No hay unidades disponibles para tu sede. Solicita a Transporte que revise tu acceso de sede o tu unidad asignada.</p>}
    <p className="text-xs text-slate-500">Confirma la unidad al iniciar el día. Si cambias de placa, el checklist anterior deja de habilitar operaciones.</p>
    <button type="button" disabled={!plate || busy} onClick={() => void begin()} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white disabled:opacity-50">{busy && <Loader2 className="h-4 w-4 animate-spin" />}Confirmar unidad e iniciar inspección</button>
    <button type="button" onClick={() => void load()} className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm"><RefreshCw className="h-4 w-4" />Actualizar</button>
   </section> : <form onSubmit={submit} className="space-y-4">
-   <fieldset disabled={busy} className="space-y-4 disabled:opacity-70">
+   {assignmentChanged && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Transporte cambió tu asignación{assigned_unit ? ` a ${assigned_unit.plate}` : ''}. Pulsa «Cambiar unidad» y confirma la unidad vigente antes de registrar.</p>}
+   <fieldset disabled={busy || assignmentChanged} className="space-y-4 disabled:opacity-70">
     <section className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
      <p className="text-sm sm:col-span-2"><b>Nombres y Apellidos del Conductor:</b> {context?.driver?.name}</p>
      <p className="text-sm"><b>Placa:</b> {plate}</p><p className="text-sm"><b>Fecha:</b> {context?.operation_date}</p>
