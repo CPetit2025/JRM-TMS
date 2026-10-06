@@ -12,7 +12,7 @@ function sql(input) { const r=query(input);if(r.status)throw Error(r.stderr||r.s
 const staff = `SET ROLE authenticated; SET request.jwt.claim.sub='${id(2)}'; `
 function deny(input,pattern) {const r=query(input);assert.notEqual(r.status,0);assert.match(r.stderr,pattern)}
 const json = input => JSON.parse(sql(staff+'SELECT '+input+';'))
-function payload(extra={}) {return {department:'OT (Administración de Contratos)',contract_id:id(3),attention_mode:'RECOJO_CLIENTE',request_type:'DESPACHO',required_date:'2099-01-01',cargo_description:'Carga',pickup_address:'Planta',pickup_district:'Chilca',delivery_address:'Destino',delivery_district:'Callao',pickup_customer:'Cliente',pickup_contact:'Responsable',pickup_phone:'999999999',...extra}}
+function payload(extra={}) {return {department:'OT (Administración de Contratos)',contract_id:id(3),attention_mode:'RECOJO_CLIENTE',request_type:'DESPACHO',required_date:'2099-01-01',cargo_description:'Carga',pickup_address:'Planta',pickup_district:'Chilca',delivery_address:'Destino',delivery_district:'Callao',...extra}}
 const lit = value => "'"+JSON.stringify(value).replaceAll("'","''")+"'::jsonb"
 const comp = contract => [{contract_id:contract,weight_kg:100,volume_m3:2}]
 const save = (p,c=[],u=[],request=null) => json(`public.save_transport_request_attention(${request?"'"+request+"'":'NULL'},${lit(p)},${lit(c)},${lit(u)})`)
@@ -22,6 +22,8 @@ try {
  sql(`CREATE ROLE authenticated; CREATE ROLE anon; CREATE ROLE service_role; CREATE SCHEMA auth;
  CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULLIF(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
  CREATE TABLE sites(id uuid PRIMARY KEY,name text); INSERT INTO sites VALUES('${id(1)}','Planta');
+ CREATE TABLE user_site_access(user_id uuid,site_id uuid); INSERT INTO user_site_access VALUES('${id(2)}','${id(1)}');
+ CREATE FUNCTION primary_site_id() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT '${id(1)}'::uuid $$;
  CREATE TABLE profiles(id uuid PRIMARY KEY,first_name text,last_name text,is_active boolean,contract_admin boolean DEFAULT false);
  INSERT INTO profiles VALUES('${id(2)}','Solicitud','Prueba',true,false);
  CREATE FUNCTION has_tms_permission(code text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$ SELECT EXISTS(SELECT 1 FROM profiles WHERE id=auth.uid() AND is_active) $$;
@@ -56,6 +58,7 @@ try {
  sql(fn('supabase/migrations/20260929200000_documentario_f3.sql','schedule_dispatch'))
  sql(`INSERT INTO transport_requests(request_number,department,status,contract_id,site_id,service_cost,budget_shortfall,budget_observation,unloading_estimate_pen) VALUES('RT-000006','OT (Administración de Contratos)','OBSERVADA','${id(3)}','${id(1)}',308,308,'Partida insuficiente: faltan S/ 308',0),('RT-HISTORICA','OT (Administración de Contratos)','OBSERVADA','${id(3)}','${id(1)}',308,308,'Partida insuficiente: faltan S/ 308',0);`)
  sql(read('supabase/migrations/20261007140000_request_attention_mode.sql'))
+ sql(read('supabase/migrations/20261007150000_request_optional_pickup_details.sql'))
  assert.equal(sql("SELECT attention_mode||'/'||service_cost||'/'||status FROM transport_requests WHERE request_number='RT-000006'"),'RECOJO_CLIENTE/0/PENDIENTE DE APROBACIÓN')
  assert.equal(sql("SELECT count(*) FROM transport_requests WHERE request_number='RT-HISTORICA' AND attention_mode IS NULL AND service_cost=308"),'1')
  console.log('PASS: owner-confirmed RT-000006 is corrected with audit and fresh approval; unrelated historical requests keep their funding.')
@@ -75,13 +78,13 @@ try {
  const costly=save(payload(),comp(id(3)),[{concept:'MONTACARGAS',estimated_pen:50}]);assert.equal(costly.status,'OBSERVADA');assert.equal(costly.unloading_estimate_pen,50);assert.equal(costly.quote.total,50)
  console.log('PASS: customer pickup retains unloading charges and their budget observation.')
  deny(staff+`SELECT save_transport_request_attention(NULL,${lit(payload({contract_id:null}))},'[]','[]');`,/requiere una OT/)
- const generic=save(payload({department:'Logística',contract_id:null,site_id:id(1),estimated_weight:120,estimated_volume:3}))
+ const generic=save(payload({department:'Logística',contract_id:null,estimated_weight:120,estimated_volume:3}))
  assert.equal(generic.status,'PENDIENTE DE APROBACIÓN');assert.equal(sql(`SELECT estimated_weight FROM transport_requests WHERE id='${generic.id}'`),'120')
  deny(staff+`SELECT save_transport_request_attention(NULL,${lit(payload({department:'Logística',contract_id:null,site_id:id(8)}))},'[]','[]');`,/sede autorizada/)
  sql(`UPDATE profiles SET contract_admin=true WHERE id='${id(2)}';`)
  deny(staff+`SELECT save_transport_request_attention(NULL,${lit(payload({department:'Logística',contract_id:null,site_id:id(1)}))},'[]','[]');`,/requiere una OT/)
  sql(`UPDATE profiles SET contract_admin=false WHERE id='${id(2)}';`)
- console.log('PASS: OT area/contract administrators require OT; other areas save without OT with authorized site and generic weight.')
+ console.log('PASS: OT area/contract administrators require OT; other areas save without OT, site/cost-center inputs or pickup contacts; site is internally scoped.')
  const funded=save(payload({contract_id:id(4),attention_mode:'TRANSPORTE_JRM'}),comp(id(4)))
  sql(`UPDATE transport_requests SET status='APROBADA' WHERE id='${funded.id}'`)
  assert.equal(sql(`SELECT reserved_pen FROM contract_budgets WHERE contract_id='${id(4)}'`),'308')
@@ -89,26 +92,53 @@ try {
  assert.equal(edited.status,'PENDIENTE DE APROBACIÓN');assert.equal(sql(`SELECT reserved_pen FROM contract_budgets WHERE contract_id='${id(4)}'`),'0')
  assert.equal(sql(`SELECT count(*) FROM transport_request_events WHERE request_id='${funded.id}' AND next_state->>'attention_mode'='RECOJO_CLIENTE'`),'1')
  console.log('PASS: switching approved transport to pickup releases its reserve, records history and requires fresh approval.')
- const operational=save(payload({department:'Logística',contract_id:null,site_id:id(1),cost_center_id:id(5),attention_mode:'TRANSPORTE_JRM'}))
- sql(`UPDATE transport_requests SET status='APROBADA' WHERE id='${operational.id}'`)
- deny(staff+`SELECT schedule_dispatch('${id(6)}','ZZ-A',now(),10,309,NULL,'GR',${lit([{id:operational.id}])});`,/supera el gasto autorizado/)
- deny(staff+`UPDATE transport_requests SET operational_approved_pen=9999 WHERE id='${operational.id}'`,/nueva aprobación/);
- const opDispatch=sql(staff+`SELECT schedule_dispatch('${id(6)}','ZZ-A',now(),10,308,NULL,'GR',${lit([{id:operational.id}])});`)
- assert.equal(sql(`SELECT cost_center_id FROM dispatches WHERE id='${opDispatch}'`),id(5))
- console.log('PASS: operational requests inherit active cost center and cannot program more freight than approved.')
- const operationalUnloading=save(payload({department:'Logística',contract_id:null,site_id:id(1),cost_center_id:id(5),attention_mode:'RECOJO_CLIENTE'}),[],[{concept:'ESTIBA',estimated_pen:50}])
- sql(`UPDATE transport_requests SET status='APROBADA' WHERE id='${operationalUnloading.id}'`)
- const unloadDispatch=sql(staff+`SELECT schedule_dispatch(NULL,'EXTERNO',now(),0,0,NULL,'NOTA_SALIDA',${lit([{id:operationalUnloading.id}])});`)
- const line=sql(`SELECT id FROM transport_unloading_costs WHERE transport_request_id='${operationalUnloading.id}'`)
- assert.equal(json(`plan_dispatch_unloading('${unloadDispatch}',${lit([{id:line,planned_pen:51}])})`).success,false)
- assert.equal(json(`plan_dispatch_unloading('${unloadDispatch}',${lit([{id:line,planned_pen:50}])})`).success,true)
- deny(staff+`SELECT register_unloading_actual('${line}',51,'Proveedor');`,/costo planificado autorizado/)
- assert.equal(json(`register_unloading_actual('${line}',50,'Proveedor')`).success,true)
- assert.equal(sql(`SELECT status||'/'||actual_pen FROM transport_unloading_costs WHERE id='${line}'`),'CONSUMIDO/50')
- console.log('PASS: pickup unloading without OT uses the approved cost center, blocks excess and records actual cost without a fictitious contract.')
+ const operational=save(payload({department:'Logística',contract_id:null,attention_mode:'TRANSPORTE_JRM',cost_center_id:id(5)}))
+ assert.equal(operational.status,'OBSERVADA')
+ assert.equal(sql(`SELECT cost_center_id IS NULL FROM transport_requests WHERE id='${operational.id}'`),'t')
+ sql(staff+`UPDATE transport_requests SET status='APROBADA' WHERE id='${operational.id}'`)
+ assert.equal(sql(`SELECT status||'/'||COALESCE(approved_at::text,'NULL') FROM transport_requests WHERE id='${operational.id}'`),'OBSERVADA/NULL')
+ deny(staff+`SELECT schedule_dispatch('${id(6)}','ZZ-A',now(),10,308,NULL,'GR',${lit([{id:operational.id}])});`,/debe imputarse a una OT/)
+ deny(staff+`UPDATE transport_requests SET operational_approved_pen=9999 WHERE id='${operational.id}'`,/nueva aprobación/)
+ deny(staff+`UPDATE transport_requests SET status='ASIGNADA' WHERE id='${operational.id}'`,/Vincule una OT/)
+ const linked=save(payload({department:'Logística',contract_id:id(4),attention_mode:'TRANSPORTE_JRM'}),comp(id(4)),[],operational.id)
+ assert.equal(linked.status,'PENDIENTE DE APROBACIÓN')
+ sql(staff+`UPDATE transport_requests SET status='APROBADA' WHERE id='${operational.id}'`)
+ assert.equal(sql(`SELECT reserved_pen FROM contract_budgets WHERE contract_id='${id(4)}'`),'308')
+ const opDispatch=sql(staff+`SELECT schedule_dispatch('${id(6)}','ZZ-A',now(),10,308,'${id(4)}','GR',${lit([{id:operational.id}])});`)
+ assert.equal(sql(`SELECT cost_center_id IS NULL FROM dispatches WHERE id='${opDispatch}'`),'t')
+ console.log('PASS: other-area JRM requests register without OT/CC; paid approval and scheduling require OT, then reserve/consume its budget.')
+ const operationalUnloading=save(payload({department:'Logística',contract_id:null,attention_mode:'RECOJO_CLIENTE'}),[],[{concept:'ESTIBA',estimated_pen:50}])
+ assert.equal(operationalUnloading.status,'OBSERVADA')
+ sql(staff+`UPDATE transport_requests SET status='APROBADA' WHERE id='${operationalUnloading.id}'`)
+ assert.equal(sql(`SELECT status FROM transport_requests WHERE id='${operationalUnloading.id}'`),'OBSERVADA')
+ const freePickup=save(payload({department:'Logística',contract_id:null,attention_mode:'RECOJO_CLIENTE'}),[],[],operationalUnloading.id)
+ assert.equal(freePickup.status,'PENDIENTE DE APROBACIÓN')
+ sql(staff+`UPDATE transport_requests SET status='APROBADA' WHERE id='${freePickup.id}'`)
+ const unloadDispatch=sql(staff+`SELECT schedule_dispatch(NULL,'EXTERNO',now(),0,0,NULL,'NOTA_SALIDA',${lit([{id:freePickup.id}])});`)
+ assert.equal(json(`plan_dispatch_unloading('${unloadDispatch}',${lit([{request_id:freePickup.id,concept:'ESTIBA',planned_pen:50}])})`).success,false)
+ assert.equal(json(`plan_dispatch_unloading('${unloadDispatch}',${lit([{request_id:freePickup.id,concept:'ESTIBA',planned_pen:0}])})`).success,true)
+ const zeroLine=sql(`SELECT id FROM transport_unloading_costs WHERE dispatch_id='${unloadDispatch}'`)
+ deny(staff+`SELECT register_unloading_actual('${zeroLine}',50,'Proveedor');`,/Vincule una OT/)
+ assert.equal(json(`register_unloading_actual('${zeroLine}',0,'Cliente')`).success,true)
+
+ console.log('PASS: pickup without OT/contact/site/CC approves and programs free; extra JRM unloading still requires OT funding.')
+ // Default site must remain authorized; fall back to the user scope instead of prompting in the form.
+ sql(`CREATE OR REPLACE FUNCTION primary_site_id() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT '${id(8)}'::uuid $$;`)
+ const fallback=save(payload({department:'Logística',contract_id:null}))
+ assert.equal(sql(`SELECT site_id FROM transport_requests WHERE id='${fallback.id}'`),id(1))
+ sql(`DELETE FROM user_site_access`)
+ deny(staff+`SELECT save_transport_request_attention(NULL,${lit(payload({department:'Logística',contract_id:null}))},'[]','[]');`,/sede autorizada/)
+ sql(`CREATE OR REPLACE FUNCTION primary_site_id() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT '${id(1)}'::uuid $$;`)
+ console.log('PASS: internal default/fallback site respects user access; registration without authorized access is rejected.')
  const count=sql('SELECT count(*) FROM transport_requests')
  deny(staff+`SELECT save_transport_request_attention(NULL,${lit(payload({contract_id:id(4)}))},${lit(comp(id(4)))},${lit([{concept:'INVALIDO'}])});`,/Concepto o monto/)
  assert.equal(sql('SELECT count(*) FROM transport_requests'),count)
  deny(staff+`SELECT schedule_dispatch_attention_legacy(NULL,'EXTERNO',now(),0,0,NULL,'NOTA_SALIDA','[]');`,/permission denied/)
  console.log('PASS: invalid unloading rolls back the complete save; legacy scheduling cannot bypass the new gateway.')
+ // Execute the exact production regression against the same realistic schema, always rolled back.
+ sql(`CREATE TABLE auth.users(id uuid PRIMARY KEY); INSERT INTO auth.users VALUES('${id(2)}'); CREATE TABLE vehicles(site_id uuid); INSERT INTO vehicles VALUES('${id(1)}'); ALTER TABLE contracts ALTER COLUMN id SET DEFAULT gen_random_uuid(); CREATE OR REPLACE FUNCTION is_tms_admin() RETURNS boolean LANGUAGE sql AS $$ SELECT true $$;`)
+ const c45=query(read('supabase/tests/caja_c45_solicitud_recojo_cliente.test.sql'))
+ assert.notEqual(c45.status,0); assert.match(c45.stderr,/CAJA C45 PASS \(3\/3\)/)
+ console.log('PASS: exact production C45 proves registration without pickup details or site/CC inputs and rolls back intentionally.')
+
 } finally {spawnSync('docker',['rm','-f',name],{stdio:'ignore'})}
