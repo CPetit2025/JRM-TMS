@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { isSystemAdminRole } from '@/lib/roles'
+import { isSystemAdminRole, isDispatchAuditorRole, dispatchAuditorPathAllowed } from '@/lib/roles'
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -74,8 +74,12 @@ export async function proxy(request: NextRequest) {
     operativeDestination = profile.employee_type === 'CONDUCTOR' ? '/app' : '/app/actividades'
     const role = Array.isArray(profile.roles) ? profile.roles[0] : profile.roles
     const permissions = Array.isArray(role?.permissions) ? role.permissions : []
+    const auditor = profile.employee_type !== 'CONDUCTOR' && isDispatchAuditorRole(role?.name)
     hasDashboardAccess = profile.employee_type !== 'CONDUCTOR' &&
-      (isSystemAdminRole(role?.name) || permissions.includes('dashboard'))
+      (isSystemAdminRole(role?.name) || permissions.includes('dashboard') || auditor)
+    if (auditor && !dispatchAuditorPathAllowed(request.nextUrl.pathname)) {
+      return redirect(new URL('/despacho/planificacion', request.url))
+    }
     if (!isDriverRoute && !isLoginPage && !hasDashboardAccess) {
       return redirect(new URL('/login', request.url))
     }

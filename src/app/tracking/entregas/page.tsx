@@ -7,7 +7,7 @@ import { ProviderBrand, ProviderFooter } from '@/components/delivery/ProviderBra
 
 const steps = [
   { icon: KeyRound, title: 'Recibe tu acceso', text: 'Transporte de JRM te comparte el enlace, la placa y un código exclusivo para tu servicio.' },
-  { icon: Truck, title: 'Consulta tus entregas', text: 'Revisa el cliente y destino. Registra la salida y la llegada cuando correspondan.' },
+  { icon: Truck, title: 'Consulta tus entregas', text: 'Verifica el cliente y destino del servicio. Este acceso permite únicamente enviar la guía de remisión firmada.' },
   { icon: Camera, title: 'Envía la guía firmada', text: 'Adjunta fotos legibles de todas las páginas con la firma o sello de recepción y el número de guía.' },
 ]
 

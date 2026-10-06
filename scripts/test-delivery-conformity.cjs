@@ -482,6 +482,19 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   const c52=query(read('supabase/tests/caja_c52_reprogramacion_armado_ruta.test.sql'))
   assert.match(c52.stderr,/CAJA C52 PASS/,c52.stderr)
   console.log('PASS: C52 actual cancel/reschedule/reassign/cancel retains date and reschedule history; latest event and permission/site isolation.')
+  // Install actual suffix-aware permission helpers and enforce real Storage RLS for the new role.
+  for (const [file, name] of [['supabase/migrations/000172_site_scopes.sql','has_tms_read_permission'],['supabase/migrations/000162_secure_tracking.sql','has_tms_permission']]) {
+    const source=read(file), start=source.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`)
+    sql(source.slice(start,source.indexOf('$$;',start)+3).replaceAll('p_permission','code'))
+  }
+  sql(`DROP POLICY fixture_owner ON storage.objects; GRANT INSERT ON storage.objects TO authenticated;`)
+  sql(read('supabase/migrations/20261008000000_dispatch_auditor_packing.sql'))
+  for (const test of ['caja_c53_auditor_packing','caja_c9_documentario','caja_c41_despacho_tercerizado','caja_c46_responsabilidad_documentaria','caja_c48_bandeja_documentaria_ot','caja_c51_flota_app_asignacion','caja_c52_reprogramacion_armado_ruta']) {
+    const result=query(read('supabase/tests/'+test+'.test.sql'))
+    assert.match(result.stderr,/CAJA C(?:9|41|46|48|51|52|53) PASS/,result.stderr)
+  }
+  console.log('PASS: C53 restricted auditor, Storage RLS, PDF/photo/Excel, replacements and retry history, assistant separation, site isolation; previous documentary/fleet/rescheduling regressions pass.')
+
 } catch(error) {
   console.error(error.message)
   console.error('::error title=Delivery conformity validation::' + error.message.replaceAll('%','%25').replaceAll('\n','%0A'))

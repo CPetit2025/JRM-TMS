@@ -24,11 +24,11 @@ END $$;
 CREATE FUNCTION pg_temp.doc(p_dispatch uuid,p_req uuid,p_type text,p_cargo text,p_number text,
  p_mime text DEFAULT 'application/pdf',p_signature boolean DEFAULT true)
 RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE r jsonb; path text:=p_dispatch::text||'/'||gen_random_uuid()::text||'.pdf';
+DECLARE r jsonb; path text:=p_dispatch::text||'/'||CASE WHEN p_type='PACKING_LIST' THEN 'packing/'||auth.uid()::text||'/' ELSE '' END||gen_random_uuid()::text||'.pdf';
 BEGIN
  INSERT INTO storage.objects(bucket_id,name,metadata) VALUES('dispatch_documents',path,jsonb_build_object('mimetype',p_mime));
  IF p_type='PACKING_LIST' THEN
-  r:=public.register_signed_packing_list(p_dispatch,p_req,path,'packing.pdf',p_mime,1000,'Auditor C9',current_date,p_signature);
+  r:=public.register_signed_packing_list(p_dispatch,p_req,path,'packing.pdf',p_mime,1000,'Auditor C9',(now() AT TIME ZONE 'America/Lima')::date,p_signature);
  ELSE
   r:=public.register_dispatch_document(p_dispatch,p_req,p_type,p_cargo,p_number,path,'archivo.pdf',p_mime,1000,NULL);
  END IF;
@@ -60,7 +60,7 @@ BEGIN
   SELECT id INTO v_drv_prof FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u)
     AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) AND id NOT IN (v_admin, v_doc, v_desp, v_nobody) ORDER BY id LIMIT 1;
   IF v_drv_prof IS NULL THEN RAISE EXCEPTION 'CAJA C9 FAIL: se requieren 5 perfiles'; END IF;
-  INSERT INTO public.roles (name, permissions) VALUES ('ZZ Documentario C9', '["documentario","despacho:read"]') RETURNING id INTO v_role_doc;
+  INSERT INTO public.roles (name, permissions) VALUES ('ZZ Documentario C9', '["documentario","despacho:read","packing-list:write"]') RETURNING id INTO v_role_doc;
   INSERT INTO public.roles (name, permissions) VALUES ('ZZ Transporte C9', '["despacho"]') RETURNING id INTO v_role_desp;
   UPDATE public.profiles SET role_id = v_role_doc, is_active = true WHERE id = v_doc;
   UPDATE public.profiles SET role_id = v_role_desp, is_active = true WHERE id = v_desp;
@@ -94,10 +94,10 @@ BEGIN
   v_err:=pg_temp.doc(d1,r1,'PACKING_LIST',NULL,NULL);
   PERFORM pg_temp.as_user(v_doc);
   v_err2:=pg_temp.doc(d1,r1,'NOTA_DESPACHO',NULL,'ND-1');
-  v_err3:=pg_temp.doc(d1,r1,'PACKING_LIST',NULL,NULL,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  v_err3:=pg_temp.doc(d1,r1,'PACKING_LIST',NULL,NULL,'application/x-test-invalid');
   v_err4:=pg_temp.doc(d1,r3,'PACKING_LIST',NULL,NULL);
   v_err5:=pg_temp.doc(d1,r2,'PACKING_LIST',NULL,NULL,'application/pdf',false);
-  IF v_err LIKE 'Solo el Asistente Documentario%' AND v_err2 LIKE '%solo para recojos%' AND v_err3 LIKE '%PDF%'
+  IF (v_err LIKE 'Solo el Asistente Documentario%' OR v_err LIKE 'Solo el Auditor de Despacho%') AND v_err2 LIKE '%solo para recojos%' AND v_err3 LIKE '%PDF%'
     AND v_err4 LIKE '%no pertenece%' AND v_err5 LIKE '%contiene su firma%'
     AND pg_temp.doc(d1,r1,'GUIA_REMISION','PT','T001-1') LIKE '%conductor desde el app%'
     AND pg_temp.doc(d1,r1,'PACKING_LIST',NULL,NULL) IS NULL

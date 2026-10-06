@@ -52,3 +52,11 @@ test('varias imágenes reales se decodifican sin metadatos y se envían como una
 test('consulta pública omite identificador interno y prohíbe cache/referrer',async()=>{
  const f=fixture();const response=await f.api.GET({},params);assert.equal(response.body.dispatch_id,undefined);assert.equal(response.headers['Cache-Control'],'no-store');assert.equal(response.headers['Referrer-Policy'],'no-referrer')
 })
+
+test('el enlace solo registra la guía: salida, llegada y Packing List se rechazan sin ejecutar RPC ni subir archivos',async()=>{
+ for(const action of ['salida','llegada','packing_list']){
+  const f=fixture(),data=new FormData();data.set('accion',action);data.set('request_id',requestId)
+  const response=await f.api.POST({formData:async()=>data,headers:new Headers()},params)
+  assert.equal(response.status,400);assert.equal(f.calls.length,0);assert.equal(f.uploaded.length,0)
+ }
+})

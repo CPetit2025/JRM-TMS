@@ -5,6 +5,9 @@ const ts = require('typescript')
 const vm = require('node:vm')
 const path = require('node:path')
 
+const roleContext = { exports: {} }
+vm.runInNewContext(ts.transpileModule(readFileSync(path.join(__dirname, '../src/lib/roles.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, roleContext)
+
 function fixture({ user = { id: 'user1' }, profile = { is_active: true, employee_type: 'CONDUCTOR' }, driver = { is_active: true }, refresh = true } = {}) {
   const queries = []
   const response = (location) => ({ location, cookies: { items: [], set(cookie, value, options) { this.items.push(typeof cookie === 'string' ? { name: cookie, value, ...options } : cookie) }, getAll() { return this.items } } })
@@ -13,7 +16,7 @@ function fixture({ user = { id: 'user1' }, profile = { is_active: true, employee
   }).outputText
   const context = { exports: {}, process: { env: {} }, URL, require(name) {
     if (name === 'next/server') return { NextResponse: { next: () => response(), redirect: url => response(url.pathname) } }
-    if (name === '@/lib/roles') return { isSystemAdminRole: () => false }
+    if (name === '@/lib/roles') return roleContext.exports
     if (name === '@supabase/ssr') return { createServerClient: (_, __, options) => ({
       auth: { getUser: async () => {
         if (refresh) options.cookies.setAll([{ name: 'session', value: user ? 'refreshed' : '', options: { secure: true, maxAge: user ? 3600 : 0 } }])
