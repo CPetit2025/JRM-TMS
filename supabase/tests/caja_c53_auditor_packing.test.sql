@@ -58,6 +58,10 @@ BEGIN
    r:=public.register_signed_packing_list(d,NULL,path,'packing.'||ext,mime,1000,'Auditor C53',(now() AT TIME ZONE 'America/Lima')::date,true);
    IF r->>'duplicate' IS DISTINCT FROM 'true' OR r->>'id'<>doc_id::text THEN RAISE EXCEPTION 'CAJA C53 FAIL: reintento duplica la versión'; END IF;
  END LOOP;
+ -- Storage activa esta opción al tramitar remove() por su API. Solo aplica
+ -- en esta transacción con ROLLBACK; el rol authenticated y las políticas RLS
+ -- siguen comprobando qué archivos puede retirar el auditor.
+ PERFORM set_config('storage.allow_delete_query','true',true);
  DELETE FROM storage.objects WHERE bucket_id='dispatch_documents' AND name=path;
  GET DIAGNOSTICS removed=ROW_COUNT;
  IF removed<>0 THEN RAISE EXCEPTION 'CAJA C53 FAIL: eliminó un archivo registrado'; END IF;
@@ -66,6 +70,7 @@ BEGIN
  DELETE FROM storage.objects WHERE bucket_id='dispatch_documents' AND name=pending_path;
  GET DIAGNOSTICS removed=ROW_COUNT;
  IF removed<>1 THEN RAISE EXCEPTION 'CAJA C53 FAIL: no retiró el archivo propio sin registro'; END IF;
+ PERFORM set_config('storage.allow_delete_query','false',true);
  IF (SELECT count(*) FROM public.dispatch_documents WHERE dispatch_id=d)<>1 OR
     EXISTS(SELECT 1 FROM storage.objects WHERE bucket_id='dispatch_documents' AND name=d::text||'/otro.pdf') THEN RAISE EXCEPTION 'CAJA C53 FAIL: auditor consulta otros documentos o versiones anuladas'; END IF;
  r:=public.register_signed_packing_list(d,NULL,path,'packing.xlsx',mime,1000,'Auditor C53',current_date,false);

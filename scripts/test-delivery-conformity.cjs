@@ -488,6 +488,19 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
     sql(source.slice(start,source.indexOf('$$;',start)+3).replaceAll('p_permission','code'))
   }
   sql(`DROP POLICY fixture_owner ON storage.objects; GRANT INSERT ON storage.objects TO authenticated;`)
+  // Supabase Storage 0055: remove() enables deletion inside its transaction;
+  // direct SQL must still fail before the API context is established.
+  sql(`CREATE FUNCTION storage.protect_delete() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF COALESCE(current_setting('storage.allow_delete_query',true),'false') <> 'true' THEN
+        RAISE EXCEPTION 'Direct deletion from storage tables is not allowed. Use the Storage API instead.'
+          USING ERRCODE='42501';
+      END IF;
+      RETURN NULL;
+    END $$;
+    CREATE TRIGGER protect_objects_delete BEFORE DELETE ON storage.objects
+      FOR EACH STATEMENT EXECUTE FUNCTION storage.protect_delete();`)
+  denied(user(12)+`DELETE FROM storage.objects WHERE false;`, /Direct deletion from storage tables/)
   sql(read('supabase/migrations/20261008000000_dispatch_auditor_packing.sql'))
   for (const test of ['caja_c53_auditor_packing','caja_c9_documentario','caja_c41_despacho_tercerizado','caja_c46_responsabilidad_documentaria','caja_c48_bandeja_documentaria_ot','caja_c51_flota_app_asignacion','caja_c52_reprogramacion_armado_ruta']) {
     const result=query(read('supabase/tests/'+test+'.test.sql'))
