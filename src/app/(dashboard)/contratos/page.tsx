@@ -1,4 +1,5 @@
 "use client"
+import { operatingBudget } from '@/lib/transport-budget'
 import { useState, useEffect, useRef } from 'react'
 import { Plus, Search, Layers, FileWarning, Briefcase, FilePlus2, CheckCircle2, Upload, Download, Edit2, Filter, MapPin, UserCog, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -292,6 +293,7 @@ export default function ContratosPage() {
             .from('contract_budgets')
             .update({ allocated_pen: newBudget })
             .eq('contract_id', editingContract.id)
+            .eq('concept', 'PARTIDA_TRANSPORTE')
           if (budgetError) throw budgetError
         } else if (newBudget > 0) {
           // Insert new budget if it didn't exist
@@ -629,9 +631,10 @@ export default function ContratosPage() {
                 filteredContracts.map((contract) => {
                   const allocated = Number(contract.budget?.allocated_pen || 0)
                   const balance = Number(contract.budget?.balance_pen || 0)
-                  const used = Math.max(allocated - balance, 0)
-                  const usedPct = allocated > 0 ? Math.min(100, (used / allocated) * 100) : (balance < 0 ? 100 : 0)
-                  const tone = balance < 0 ? 'red' : allocated > 0 && balance / allocated < 0.15 ? 'amber' : allocated > 0 ? 'emerald' : 'slate'
+                  const operating = operatingBudget(allocated)
+                  const used = Math.max(operating - balance, 0)
+                  const usedPct = operating > 0 ? Math.min(100, (used / operating) * 100) : (balance < 0 ? 100 : 0)
+                  const tone = balance < 0 ? 'red' : operating > 0 && balance / operating < 0.15 ? 'amber' : allocated > 0 ? 'emerald' : 'slate'
                   const toneText = { red: 'text-red-600', amber: 'text-amber-600', emerald: 'text-emerald-700', slate: 'text-slate-500' }[tone]
                   const toneBar = { red: 'bg-red-500', amber: 'bg-amber-500', emerald: 'bg-emerald-500', slate: 'bg-slate-300' }[tone]
                   const responsible = profileNames[assignments.find(item => item.contract_id === contract.id && item.role === 'ADMIN_CONTRATO' && item.active)?.user_id || '']
@@ -678,7 +681,7 @@ export default function ContratosPage() {
                         <div className={`h-full rounded-full ${toneBar}`} style={{ width: `${usedPct}%` }} />
                       </div>
                       <div className="mt-1 text-[11px] text-slate-500 tabular-nums">
-                        {allocated > 0 ? `Asignado S/ ${money(allocated)}` : 'Sin partida asignada'}
+                        {allocated > 0 ? `Bruto S/ ${money(allocated)} · Operación 80% S/ ${money(operatingBudget(allocated))}` : 'Sin partida asignada'}
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -840,7 +843,7 @@ export default function ContratosPage() {
               <h3 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Presupuesto y Carga</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Partida de Transporte Inicial (S/)</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Partida de transporte bruta (S/) · 80% para operación</label>
                   <input
                     type="number"
                     step="0.01"
@@ -966,7 +969,7 @@ export default function ContratosPage() {
               <h3 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Presupuesto y Carga</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Partida de Transporte Inicial (S/)</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Partida de transporte bruta (S/) · 80% para operación</label>
                   <input
                     type="number"
                     step="0.01"

@@ -1,3 +1,4 @@
+-- Partida bruta: 1250 deja 1000 operativos (80%); se conserva el escenario de saldo de esta regresión.
 -- Pruebas C7 — Despacho F1: permisos del cambio de estado, cancelación que libera, cierre que consume y
 -- servicios de contrato con saldo validado. Termina en error para forzar ROLLBACK: "CAJA C7 PASS/FAIL".
 --   npx supabase db query --linked -f supabase/tests/caja_c7_despacho_estados.test.sql
@@ -46,7 +47,7 @@ BEGIN
   INSERT INTO public.vehicles (plate, carrier_id, site_id, type, status, current_odometer) VALUES
     ('ZZC7A', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100), ('ZZC7B', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100);
   INSERT INTO public.contracts (code, type, status, site_id) VALUES ('ZZ-C7-OT', 'CONTRATO', 'ACTIVO', v_site) RETURNING id INTO v_ct;
-  INSERT INTO public.contract_budgets (contract_id, concept, allocated_pen) VALUES (v_ct, 'PARTIDA_TRANSPORTE', 1000);
+  INSERT INTO public.contract_budgets (contract_id, concept, allocated_pen) VALUES (v_ct, 'PARTIDA_TRANSPORTE', 1250);
   INSERT INTO public.transport_requests (request_number, status, site_id, contract_id, requester_name, department, request_type, cargo_description, pickup_address, pickup_district, delivery_address, delivery_district, required_date) VALUES
     ('ZZ-C7-R1', 'ASIGNADA', v_site, v_ct, 'ZZ', 'Logística', 'DESPACHO', 'Carga de prueba', 'Planta', 'Lurín', 'Obra', 'Ate', current_date), ('ZZ-C7-R2', 'ASIGNADA', v_site, v_ct, 'ZZ', 'Logística', 'DESPACHO', 'Carga de prueba', 'Planta', 'Lurín', 'Obra', 'Ate', current_date),
     ('ZZ-C7-R3', 'ASIGNADA', v_site, v_ct, 'ZZ', 'Logística', 'DESPACHO', 'Carga de prueba', 'Planta', 'Lurín', 'Obra', 'Ate', current_date);

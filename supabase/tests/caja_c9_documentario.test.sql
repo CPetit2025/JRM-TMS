@@ -1,3 +1,4 @@
+-- Partida bruta: 1250 deja 1000 operativos (80%); se conserva el escenario de saldo de esta regresión.
 -- Pruebas C9 — Responsabilidad documentaria: Packing List firmado por el auditor, Nota de Despacho, bloqueo de salida,
 -- reemisión, anulación, bandeja) y validación de saldo de schedule_dispatch con la reserva de F2.
 -- Termina en error para forzar ROLLBACK: "CAJA C9 PASS/FAIL".
@@ -71,7 +72,7 @@ BEGIN
     ('ZZC9A', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100), ('ZZC9B', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100),
     ('ZZC9C', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100);
   INSERT INTO public.contracts (code, type, status, site_id) VALUES ('ZZ-C9-OT', 'CONTRATO', 'ACTIVO', v_site) RETURNING id INTO v_ct;
-  INSERT INTO public.contract_budgets (contract_id, concept, allocated_pen) VALUES (v_ct, 'PARTIDA_TRANSPORTE', 1000);
+  INSERT INTO public.contract_budgets (contract_id, concept, allocated_pen) VALUES (v_ct, 'PARTIDA_TRANSPORTE', 1250);
   INSERT INTO public.transport_requests (request_number, status, site_id, contract_id, requester_name, department, request_type, cargo_description, pickup_address, pickup_district, delivery_address, delivery_district, required_date) VALUES
     ('ZZ-C9-R1', 'ASIGNADA', v_site, v_ct, 'ZZ', 'Logística', 'DESPACHO', 'Carga de prueba', 'Planta', 'Lurín', 'Obra 1', 'Ate', current_date),
     ('ZZ-C9-R2', 'ASIGNADA', v_site, v_ct, 'ZZ', 'Logística', 'DESPACHO', 'Carga de prueba', 'Planta', 'Lurín', 'Obra 2', 'Ate', current_date),

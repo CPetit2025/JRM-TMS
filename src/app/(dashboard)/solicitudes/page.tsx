@@ -1,4 +1,5 @@
 "use client"
+import { operatingBudget } from '@/lib/transport-budget'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Plus, Send, Check, X, Search, Filter, Loader2, Calendar, Clock, CalendarClock, Ban, Activity, Edit2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -118,7 +119,7 @@ export default function SolicitudesPage() {
   const { canWrite, role } = usePermissions()
   // F2: aprueba/rechaza el Supervisor de Despacho; reprograman él y el Administrador de Contratos
   const canApprove = canWrite('despacho-aprobacion')
-  const canReschedule = canApprove || role === 'administrador de contratos'
+  const canReschedule = canApprove || canWrite('despacho') || role === 'administrador de contratos'
   const supabase = useMemo(() => createClient(), [])
   
   const [requests, setRequests] = useState<TransportRequest[]>([])
@@ -1037,8 +1038,8 @@ export default function SolicitudesPage() {
               {newRequest.contract_id && componentOptions.length > 0 && (() => {
                 const root = componentOptions.find(c => c.contract_id === newRequest.contract_id)
                 return root && <p className="mt-1 text-xs text-slate-600">
-                  Partida OT raíz: S/ {Number(root.allocated_pen || 0).toLocaleString('es-PE')} ·
-                  Saldo: S/ {Number(root.balance_pen || 0).toLocaleString('es-PE')}
+                  Partida bruta OT raíz: S/ {Number(root.allocated_pen || 0).toLocaleString('es-PE')} ·
+                  Operación 80%: S/ {operatingBudget(Number(root.allocated_pen || 0)).toLocaleString('es-PE')} · Saldo operativo: S/ {Number(root.balance_pen || 0).toLocaleString('es-PE')}
                   <span className="block text-amber-700">Presupuestos de hijos pendientes de clasificación; no se suman.</span>
                 </p>
               })()}

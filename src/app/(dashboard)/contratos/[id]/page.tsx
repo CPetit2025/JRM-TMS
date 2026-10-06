@@ -1,4 +1,5 @@
 "use client"
+import { operatingBudget } from '@/lib/transport-budget'
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Briefcase, Layers, FileWarning, DollarSign, MapPin, Send, Receipt } from 'lucide-react'
@@ -386,12 +387,17 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
         {activeTab === 'finanzas' && (
           <div>
             <h3 className="text-sm font-semibold text-slate-800 mb-4">Resumen Presupuestal</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                <span className="block text-xs font-medium text-slate-500 mb-1">Presupuesto Asignado</span>
+                <span className="block text-xs font-medium text-slate-500 mb-1">Partida bruta (100%)</span>
                 <span className="text-xl font-bold text-slate-800">
                   S/ {contract.allocated_pen?.toLocaleString('en-US', {minimumFractionDigits: 2}) || '0.00'}
                 </span>
+              </div>
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <span className="block text-xs text-blue-700">Disponible para operación (80%)</span>
+                <strong className="text-xl text-[#002855]">S/ {operatingBudget(Number(contract.allocated_pen || 0)).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</strong>
+                <p className="text-xs text-slate-600">20% reservado para utilidad</p>
               </div>
               <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
                 <span className="block text-xs font-medium text-orange-600 mb-1">Monto Reservado (En tránsito)</span>
@@ -400,7 +406,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
                 </span>
               </div>
               <div className="bg-emerald-50 p-4 rounded-lg border border-emerald-200">
-                <span className="block text-xs font-medium text-emerald-600 mb-1">Saldo Disponible</span>
+                <span className="block text-xs font-medium text-emerald-600 mb-1">Saldo operativo disponible</span>
                 <span className="text-xl font-bold text-emerald-700">
                   S/ {contract.balance_pen?.toLocaleString('en-US', {minimumFractionDigits: 2}) || '0.00'}
                 </span>

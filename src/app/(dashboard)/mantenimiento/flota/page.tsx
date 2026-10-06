@@ -96,6 +96,7 @@ export default function FlotaPage() {
     ownership_status: 'PROPIO',
     current_hours: 0,
     responsible_id: '',
+    assigned_driver_id: '',
     current_location: ''
   })
   // Código que se asignará automáticamente según el tipo de unidad
@@ -179,7 +180,8 @@ export default function FlotaPage() {
         internal_code: newVehicle.internal_code.trim() || null,
         soat_expiration: newVehicle.soat_expiration || null,
         technical_review_expiration: newVehicle.technical_review_expiration || null,
-        responsible_id: newVehicle.responsible_id || null
+        responsible_id: newVehicle.responsible_id || null,
+        assigned_driver_id: newVehicle.assigned_driver_id || null
       }
 
       if (editingVehicleId) {
@@ -191,6 +193,8 @@ export default function FlotaPage() {
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
           .update(editable.internal_code ? editable : (({ internal_code: _code, ...rest }) => rest)(editable))
           .eq('id', editingVehicleId)
+          .select('id')
+          .single()
         error = updateError
         const soat = newVehicle.soat_expiration !== originalDocs.soat ? newVehicle.soat_expiration || null : null
         const rt = newVehicle.technical_review_expiration !== originalDocs.rt ? newVehicle.technical_review_expiration || null : null
@@ -211,13 +215,14 @@ export default function FlotaPage() {
 
       if (error) throw error
 
+      if (editingVehicleId) toast.success('Vehículo y conductor asignado guardados correctamente')
       if (!editingVehicleId) {
         toast.success('Vehículo registrado como OBSERVADA. Libérelo cuando cumpla los requisitos de elegibilidad.')
       }
       setIsVehicleModalOpen(false)
       fetchData()
     } catch (err: any) {
-      toast.error('Error al guardar vehículo. Verifique los datos o si la placa ya existe.')
+      toast.error(`No se pudo guardar el vehículo: ${err?.message || 'Verifique la placa y los datos.'}`)
     } finally {
       setIsSubmitting(false)
     }
@@ -244,6 +249,7 @@ export default function FlotaPage() {
       ownership_status: v.ownership_status || 'PROPIO',
       current_hours: v.current_hours || 0,
       responsible_id: v.responsible_id || '',
+      assigned_driver_id: v.assigned_driver_id || '',
       current_location: v.current_location || ''
     })
     setIsVehicleModalOpen(true)
@@ -496,6 +502,7 @@ export default function FlotaPage() {
                     ownership_status: 'PROPIO',
                     current_hours: 0,
                     responsible_id: '',
+                    assigned_driver_id: '',
                     current_location: ''
                   })
                   setIsVehicleModalOpen(true)
@@ -678,6 +685,7 @@ export default function FlotaPage() {
                         >
                           <td className="p-4 font-bold text-[#002855] group-hover:text-blue-600 transition-colors">
                             {v.plate}
+                            <div className="mt-1 text-xs font-normal text-slate-500">{v.assigned_driver_id ? (() => { const d = drivers.find(driver => driver.id === v.assigned_driver_id); return d ? `${d.first_name} ${d.last_name}` : 'Conductor asignado' })() : 'Sin conductor asignado'}</div>
                           </td>
                           <td className="p-4">
                             <div className="text-sm font-medium text-slate-800">{v.type}</div>
@@ -1021,17 +1029,18 @@ export default function FlotaPage() {
           </div>
           <div className="grid grid-cols-1 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Conductor/Responsable Asignado</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Conductor asignado a la unidad</label>
               <select
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-[#002855] outline-none"
-                value={newVehicle.responsible_id}
-                onChange={(e) => setNewVehicle({...newVehicle, responsible_id: e.target.value})}
+                value={newVehicle.assigned_driver_id}
+                onChange={(e) => setNewVehicle({...newVehicle, assigned_driver_id: e.target.value})}
               >
                 <option value="">Sin asignar</option>
-                {drivers.map(d => (
+                {drivers.filter(d => d.is_active).map(d => (
                   <option key={d.id} value={d.id}>{d.first_name} {d.last_name}</option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-slate-500">Una unidad por conductor. Para cambiar una pareja con ruta activa, primero reprograme el servicio desde Despacho.</p>
             </div>
           </div>
             <div className="pt-4 flex justify-end gap-2 border-t mt-4">

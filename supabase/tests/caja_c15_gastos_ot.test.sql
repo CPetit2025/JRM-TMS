@@ -1,3 +1,4 @@
+-- Partida bruta: 1250 deja 1000 operativos (80%); se conserva el escenario de saldo de esta regresión.
 -- CAJA C15 — Regularización de gastos de OT, subcontrato o error: partida, historial y anulación
 -- Se ejecuta dentro de un bloque que siempre se revierte: no deja datos.
 CREATE FUNCTION pg_temp.as_user(p_user uuid) RETURNS void LANGUAGE plpgsql AS $$
@@ -49,9 +50,9 @@ BEGIN
   INSERT INTO public.contracts (code, type, status, site_id) VALUES ('ZZ-C15-OT', 'CONTRATO', 'ACTIVO', v_site) RETURNING id INTO v_root;
   INSERT INTO public.contracts (code, type, status, site_id, parent_contract_id) VALUES ('ZZ-C15-OT-S1', 'SUBCONTRATO', 'ACTIVO', v_site, v_root) RETURNING id INTO v_sub;
   INSERT INTO public.contracts (code, type, status, site_id, parent_contract_id) VALUES ('ZZ-C15-OT-E1', 'ERROR', 'ACTIVO', v_site, v_root) RETURNING id INTO v_err;
-  UPDATE public.contract_budgets SET allocated_pen = 1000 WHERE contract_id = v_root AND concept = 'PARTIDA_TRANSPORTE';
+  UPDATE public.contract_budgets SET allocated_pen = 1250 WHERE contract_id = v_root AND concept = 'PARTIDA_TRANSPORTE';
   IF NOT FOUND THEN
-    INSERT INTO public.contract_budgets (contract_id, concept, allocated_pen) VALUES (v_root, 'PARTIDA_TRANSPORTE', 1000);
+    INSERT INTO public.contract_budgets (contract_id, concept, allocated_pen) VALUES (v_root, 'PARTIDA_TRANSPORTE', 1250);
   END IF;
   DELETE FROM public.contract_budgets WHERE contract_id IN (v_sub, v_err);
 

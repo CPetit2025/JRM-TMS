@@ -1,3 +1,4 @@
+-- Partida bruta: 1250 deja 1000 operativos (80%); se conserva el escenario de saldo de esta regresión.
 -- Pruebas C8 — Solicitudes F2: partida observada, reserva al aprobar, levantamiento automático,
 -- reprogramación y cancelación de solicitudes asignadas. Termina en error (ROLLBACK): "CAJA C8 PASS/FAIL".
 --   npx supabase db query --linked -f supabase/tests/caja_c8_solicitud_partida.test.sql
@@ -47,7 +48,7 @@ BEGIN
   INSERT INTO public.vehicles (plate, carrier_id, site_id, type, status, current_odometer) VALUES
     ('ZZC8A', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100), ('ZZC8B', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100);
   INSERT INTO public.contracts (code, type, status, site_id) VALUES ('ZZ-C8-OT', 'CONTRATO', 'ACTIVO', v_site) RETURNING id INTO v_ct;
-  INSERT INTO public.contract_budgets (contract_id, concept, allocated_pen) VALUES (v_ct, 'PARTIDA_TRANSPORTE', 1000);
+  INSERT INTO public.contract_budgets (contract_id, concept, allocated_pen) VALUES (v_ct, 'PARTIDA_TRANSPORTE', 1250);
   INSERT INTO public.transport_requests (request_number, status, site_id, contract_id, service_cost, requester_name, department, request_type, cargo_description, pickup_address, pickup_district, delivery_address, delivery_district, required_date) VALUES
     ('ZZ-C8-RA', 'PENDIENTE DE APROBACIÓN', v_site, v_ct, 400, 'ZZ', 'Logística', 'DESPACHO', 'Carga de prueba', 'Planta', 'Lurín', 'Obra', 'Ate', current_date),
     ('ZZ-C8-RB', 'PENDIENTE DE APROBACIÓN', v_site, v_ct, 800, 'ZZ', 'Logística', 'DESPACHO', 'Carga de prueba', 'Planta', 'Lurín', 'Obra', 'Ate', current_date),
@@ -78,7 +79,7 @@ BEGIN
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T2 observada: ' || COALESCE(v_err, '∅') || ' | ' || COALESCE(v_err2, '∅')); END IF;
 
   -- T3: ampliar la partida levanta la observación; luego se aprueba y reserva
-  UPDATE public.contract_budgets SET allocated_pen = 1200 WHERE contract_id = v_ct;
+  UPDATE public.contract_budgets SET allocated_pen = 1500 WHERE contract_id = v_ct;
   PERFORM pg_temp.as_user(v_sup);
   v_err := pg_temp.try_status(rb, 'APROBADA');
   PERFORM pg_temp.as_user(NULL);

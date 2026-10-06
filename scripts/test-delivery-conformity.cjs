@@ -444,7 +444,31 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
     const result=query(read('supabase/tests/'+test+'.test.sql'))
     assert.match(result.stderr,/CAJA C(?:9|41|46|47|48) PASS/,result.stderr)
   }
-  console.log('PASS: production F6 + C49: full daily inspections without routes, A-B-A reinspection, separate start, original response M triggers canonical critical failure, idempotency, locked format, per-inspection exports. C9/C41/C46/C47/C48 still pass after migration.')
+  // Extend the production-shaped fixture only with verified/new columns and install real funding engines.
+  sql(`ALTER TABLE vehicles ADD PRIMARY KEY(id); ALTER TABLE contract_budgets ADD UNIQUE(contract_id,concept);
+    ALTER TABLE transport_requests ADD COLUMN attention_mode text, ADD COLUMN operational_approved_pen numeric DEFAULT 0, ADD COLUMN cost_center_id uuid, ADD COLUMN unloading_estimate_pen numeric DEFAULT 0;
+    ALTER TABLE dispatches ADD COLUMN cost_center_id uuid, ADD COLUMN tercero_doc text;
+    ALTER TABLE contract_services ADD COLUMN budget_contract_id uuid, ADD COLUMN status text;
+    CREATE TABLE transport_unloading_costs(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),transport_request_id uuid,dispatch_id uuid,contract_id uuid,concept text,description text,estimated_pen numeric DEFAULT 0,planned_pen numeric,actual_pen numeric,status text DEFAULT 'ESTIMADO',created_by uuid,planned_by uuid,planned_at timestamptz,consumed_by uuid,consumed_at timestamptz,expense_id uuid,provider_name text,contract_service_id uuid,cost_center_id uuid,void_reason text);
+    ALTER TABLE dispatch_expenses ADD COLUMN expense_type text;
+    ALTER FUNCTION schedule_dispatch(uuid,text,timestamptz,numeric,numeric,uuid,text,jsonb) RENAME TO schedule_dispatch_attention_legacy;
+    ALTER FUNCTION schedule_dispatch_tercero(uuid,text,text,text,text,timestamptz,numeric,numeric,uuid,jsonb) RENAME TO schedule_dispatch_tercero_attention_legacy;
+    CREATE FUNCTION is_contract_administrator() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT false $$;
+    CREATE FUNCTION has_assigned_request(uuid,boolean) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT false $$;
+    CREATE TABLE transport_request_events(request_id uuid,actor_id uuid,action text,previous_state jsonb,next_state jsonb);
+    CREATE VIEW budget_dependency_probe AS SELECT balance_pen FROM contract_budgets;`)
+  const optional='supabase/migrations/20261007150000_request_optional_pickup_details.sql'
+  sql(installed(optional,'request_attention_for_dispatch')+installed(optional,'plan_dispatch_unloading')+
+    installed(optional,'set_transport_request_status')+installed(optional,'transport_request_budget_sync')+installed(f1,'cancel_dispatch')+
+    installed('supabase/migrations/20260930130000_gastos_ot_regularizacion.sql','update_contract_service_amount'))
+  sql(read('supabase/migrations/20261007200000_mixed_routes_operating_budget.sql'))
+  const c50=query(read('supabase/tests/caja_c50_ruta_mixta_partida_flota.test.sql'))
+  assert.match(c50.stderr,/CAJA C50 PASS/,c50.stderr)
+  for (const test of ['caja_c9_documentario','caja_c41_despacho_tercerizado','caja_c46_responsabilidad_documentaria','caja_c47_presencia_conductor_gps','caja_c48_bandeja_documentaria_ot','caja_c49_preuso_diario_conductor']) {
+    const result=query(read('supabase/tests/'+test+'.test.sql'))
+    assert.match(result.stderr,/CAJA C(?:9|41|46|47|48|49) PASS/,result.stderr)
+  }
+  console.log('PASS: C50 multi-OT routes, protected 20% profit, actual vehicle assignment, exclusivity, per-OT unload reserves, cancellation, stop withdrawal and idempotent close; C9/C41/C46/C47/C48/C49 pass after new migration.')
 } catch(error) {
   console.error(error.message)
   console.error('::error title=Delivery conformity validation::' + error.message.replaceAll('%','%25').replaceAll('\n','%0A'))
