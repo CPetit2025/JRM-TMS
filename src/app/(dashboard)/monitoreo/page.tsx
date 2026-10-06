@@ -1,393 +1,115 @@
-"use client"
+'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import dynamic from 'next/dynamic'
-import { Truck, Search, AlertCircle, Navigation, MapPin, Activity, Radio, Layers, CheckCircle2, Clock, Plus, Loader2 } from 'lucide-react'
+import Link from 'next/link'
+import { Navigation, Search, Radio, Loader2, RefreshCw, MapPin, Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { usePermissions } from '@/hooks/usePermissions'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { errorMessage } from '@/lib/caja'
+import { gpsTime, monitorMarker, monitorStates, stateFor, type DriverMonitorRow } from '@/lib/gps-monitor'
 
-const MapComponent = dynamic(() => import('@/components/map/MapComponent'), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-full bg-slate-100 flex flex-col items-center justify-center text-slate-400 rounded-xl border border-slate-200">
-      <div className="w-10 h-10 border-4 border-[#002855] border-t-transparent rounded-full animate-spin mb-4"></div>
-      <p className="font-medium">Cargando mapa en tiempo real...</p>
-    </div>
-  )
-})
-
-interface Dispatch {
-  id: string
-  dispatch_number: string
-  vehicle_plate: string
-  driver_name: string
-  status: string
-}
-
-interface VehicleLocation {
-  id: string // dispatch_id
-  plate: string
-  driver: string
-  status: 'en_ruta' | 'detenido' | 'incidencia'
-  speed: number
-  lat: number
-  lng: number
-  lastUpdate: string
-}
+const MapComponent = dynamic(() => import('@/components/map/MapComponent'), { ssr: false,
+  loading: () => <div className="flex h-full items-center justify-center bg-slate-100 text-slate-500"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Cargando mapa…</div> })
+const tones: Record<string, string> = { blue: 'border-blue-200 bg-blue-50 text-blue-800', green: 'border-emerald-200 bg-emerald-50 text-emerald-800', amber: 'border-amber-200 bg-amber-50 text-amber-900', red: 'border-red-200 bg-red-50 text-red-800' }
+const Status = ({ row }: { row: DriverMonitorRow }) => { const state = stateFor(row); return <span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-semibold ${tones[state.color]}`}>{state.label}</span> }
 
 export default function MonitoreoPage() {
-  const supabase = createClient()
-  const [vehicles, setVehicles] = useState<VehicleLocation[]>([])
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null)
-  const [showGeofences, setShowGeofences] = useState(true)
-  const [filterStatus, setFilterStatus] = useState<'all' | 'en_ruta' | 'detenido' | 'incidencia'>('all')
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
-
-  // Modal Novedad
-  const [isEventModalOpen, setIsEventModalOpen] = useState(false)
+  const supabase = useMemo(() => createClient(), [])
+  const { canWrite } = usePermissions()
+  const canRegister = canWrite('monitoreo') || canWrite('despacho') || canWrite('torre-control')
+  const [rows, setRows] = useState<DriverMonitorRow[]>([])
+  const [search, setSearch] = useState('')
+  const [state, setState] = useState('all')
+  const [connection, setConnection] = useState('all')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [geofences, setGeofences] = useState(true)
+  const [asOf, setAsOf] = useState<string | null>(null)
+  const [error, setError] = useState('')
+  const [now, setNow] = useState(0)
+  const [loadedAt, setLoadedAt] = useState(0)
+  const [eventOpen, setEventOpen] = useState(false)
   const [eventType, setEventType] = useState('CHECKPOINT')
-  const [eventDescription, setEventDescription] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
+  const [description, setDescription] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [version, setVersion] = useState(0)
   useEffect(() => {
-    fetchActiveDispatches()
-
-    const channel = supabase.channel('monitoreo_dispatches')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches' }, () => {
-        fetchActiveDispatches()
-      })
-      .subscribe()
-    const timer = window.setInterval(fetchActiveDispatches, 15000)
-
-    return () => {
-      supabase.removeChannel(channel)
-      window.clearInterval(timer)
+    let stopped = false, fetching = false
+    const load = async () => {
+      setNow(Date.now())
+      if (fetching) return; fetching = true
+      try {
+        const { data, error } = await supabase.rpc('get_driver_gps_monitor')
+        if (stopped) return
+        if (error) { setError(errorMessage(error)); return }
+        setRows((data?.drivers || []) as DriverMonitorRow[]); setAsOf(data?.as_of || null); setLoadedAt(Date.now()); setNow(Date.now()); setError('')
+      } catch (e) { if (!stopped) setError(errorMessage(e)) }
+      finally { fetching = false }
     }
-  }, [])
-
-  const fetchActiveDispatches = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('dispatches')
-        .select('id, dispatch_number, vehicle_plate, driver_name, status, last_lat, last_lon, last_gps_at')
-        .in('status', ['EN RUTA', 'EN_CURSO', 'RETORNO'])
-
-      if (error) throw error
-
-      setLastRefresh(new Date())
-      
-      if (data) {
-        const mappedVehicles: VehicleLocation[] = data
-          .filter(d => d.last_lat != null && d.last_lon != null && d.last_gps_at && Date.now() - Date.parse(d.last_gps_at) < 15 * 60 * 1000)
-          .map(d => ({
-            id: d.id, // Usamos el ID del despacho como ID del vehículo en el mapa
-            plate: d.vehicle_plate,
-            driver: d.driver_name,
-            status: 'en_ruta',
-            speed: 0,
-            lat: Number(d.last_lat),
-            lng: Number(d.last_lon),
-            lastUpdate: new Date(d.last_gps_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
-          })) as VehicleLocation[]
-        setVehicles(mappedVehicles)
-      }
-    } catch (err) {
-      console.error('Error fetching active dispatches:', err)
-      toast.error('Error al cargar la flota activa.')
-    }
-  }
-
-  const handleRegisterEvent = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!selectedVehicleId) return
-
-    setIsSubmitting(true)
-    try {
-      // 1. Registrar el evento
-      const { error: eventError } = await supabase
-        .from('dispatch_events')
-        .insert([{
-          dispatch_id: selectedVehicleId,
-          event_type: eventType,
-          description: eventDescription
-          // el autor lo pone la base de datos con el usuario de la sesión
-        }])
-
-      if (eventError) throw eventError
-
-      // 2. Si es FIN_RUTA o ENTREGA_CONFIRMADA, actualizar estado del despacho
-      if (eventType === 'FIN_RUTA' || eventType === 'ENTREGA_CONFIRMADA') {
-        const { data, error: dispatchError } = await supabase.rpc('transition_dispatch_status', {
-          p_dispatch_id: selectedVehicleId,
-          p_new_status: 'ENTREGADO',
-          p_reason: 'Ruta finalizada desde Monitoreo por evento ' + eventType
-        })
-
-        if (dispatchError || (data && !data.success)) throw new Error(dispatchError?.message || data?.error || 'Error al finalizar ruta')
-        toast.success('Ruta finalizada correctamente.')
-        setSelectedVehicleId(null)
-      } else {
-        toast.success('Novedad registrada exitosamente.')
-      }
-
-      setIsEventModalOpen(false)
-      setEventDescription('')
-      setEventType('CHECKPOINT')
-      
-      // No necesitamos llamar a fetchActiveDispatches manualmente si no es fin_ruta
-      // pero por si acaso, refrescamos.
-      fetchActiveDispatches()
-
-    } catch (error: any) {
-      toast.error('Error al registrar novedad: ' + error.message)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const activeCount = vehicles.filter(v => v.status === 'en_ruta').length
-  const stoppedCount = vehicles.filter(v => v.status === 'detenido').length
-  const issueCount = vehicles.filter(v => v.status === 'incidencia').length
-
-  const filteredVehicles = vehicles.filter(v => {
-    const matchSearch = v.plate.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      v.driver.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchFilter = filterStatus === 'all' || v.status === filterStatus
-    return matchSearch && matchFilter
+    void load()
+    const timer = window.setInterval(() => void load(), 15000)
+    return () => { stopped = true; window.clearInterval(timer) }
+  }, [supabase, version])
+  // Expire snapshot flags even if the next poll fails; use server time to tolerate device clock skew.
+  const serverNow = asOf ? Date.parse(asOf) + Math.max(0, now - loadedAt) : 0
+  const drivers = rows.map(row => ({ ...row,
+    connected: !!row.connected && !!row.last_seen_at && Date.parse(row.last_seen_at) >= serverNow - 90000,
+    gps_fresh: !!row.gps_fresh && !!row.gps_at && Date.parse(row.gps_at) >= serverNow - 120000,
+  }))
+  const filtered = drivers.filter(row => {
+    const text = `${row.driver} ${row.plate || ''} ${row.dispatch_number || ''}`.toLowerCase()
+    return text.includes(search.trim().toLowerCase()) && (state === 'all' || row.operational_status === state) &&
+      (connection === 'all' || (connection === 'connected' ? row.connected : !row.connected))
   })
-
-  const selectedVehicle = vehicles.find(v => v.id === selectedVehicleId)
-
-  return (
-    <div className="h-[calc(100vh-2rem)] flex flex-col gap-3">
-      
-      {/* Header con KPIs */}
-      <div className="flex items-center justify-between bg-white px-5 py-3 rounded-xl shadow-sm border border-slate-200 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-[#002855] rounded-lg flex items-center justify-center">
-            <Navigation className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-lg font-black text-slate-800 leading-tight">Monitoreo GPS</h1>
-            <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-              <p className="text-xs text-slate-500">Última posición GPS de despachos activos</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex gap-3">
-          {/* KPI: En Ruta */}
-          <div className="bg-green-50 border border-green-200 px-4 py-2 rounded-xl flex items-center gap-3">
-            <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
-            <div>
-              <p className="text-[10px] text-green-700 font-bold uppercase tracking-wide">En Ruta</p>
-              <p className="text-2xl font-black text-green-800 leading-none">{activeCount}</p>
-            </div>
-          </div>
-
-          {/* Última actualización */}
-          <div className="bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl flex items-center gap-2">
-            <Clock className="w-4 h-4 text-slate-400" />
-            <div>
-              <p className="text-[10px] text-slate-500 font-medium">Última señal</p>
-              <p className="text-xs font-bold text-slate-700">
-                {lastRefresh.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main content */}
-      <div className="flex-1 flex gap-3 min-h-0">
-
-        {/* Panel Lateral — Lista de Flota */}
-        <div className="w-72 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col shrink-0 overflow-hidden">
-          
-          {/* Search + Filter */}
-          <div className="p-3 border-b border-slate-100 bg-slate-50 space-y-2">
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Buscar placa o conductor..."
-                className="w-full pl-8 pr-3 py-2 bg-white text-slate-900 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002855]"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Vehicle list */}
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
-            {filteredVehicles.length === 0 ? (
-              <div className="p-8 text-center text-slate-400">
-                <Radio className="w-8 h-8 mx-auto mb-3 opacity-30" />
-                <p className="text-sm font-medium">Sin Despachos Activos</p>
-                <p className="text-xs mt-1 opacity-70">
-                  {vehicles.length === 0
-                    ? 'No hay rutas en curso actualmente'
-                    : 'No coincide con la búsqueda'}
-                </p>
-              </div>
-            ) : (
-              filteredVehicles.map(vehicle => (
-                <div
-                  key={vehicle.id}
-                  onClick={() => setSelectedVehicleId(vehicle.id === selectedVehicleId ? null : vehicle.id)}
-                  className={`p-3 cursor-pointer transition-all ${
-                    selectedVehicleId === vehicle.id
-                      ? 'bg-blue-50 border-l-4 border-l-[#002855]'
-                      : 'hover:bg-slate-50 border-l-4 border-l-transparent'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
-                        vehicle.status === 'en_ruta' && vehicle.speed > 5 ? 'bg-green-100' :
-                        vehicle.status === 'incidencia' ? 'bg-red-100' : 'bg-orange-100'
-                      }`}>
-                        <Truck className={`w-3.5 h-3.5 ${
-                          vehicle.status === 'en_ruta' && vehicle.speed > 5 ? 'text-green-600' :
-                          vehicle.status === 'incidencia' ? 'text-red-600' : 'text-orange-500'
-                        }`} />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">{vehicle.plate}</p>
-                        <p className="text-[10px] text-slate-500">{vehicle.driver}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between text-[10px] text-slate-500 pl-9">
-                    <span className="flex items-center gap-1">
-                      <Activity className="w-3 h-3" />
-                      {vehicle.speed} km/h
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <MapPin className="w-3 h-3" />
-                      {vehicle.lastUpdate}
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Map area */}
-        <div className="flex-1 relative rounded-xl overflow-hidden border border-slate-200">
-          <MapComponent
-            vehicles={vehicles}
-            selectedVehicleId={selectedVehicleId}
-            onVehicleSelect={setSelectedVehicleId}
-            showGeofences={showGeofences}
-          />
-
-          {/* Selected vehicle detail overlay */}
-          {selectedVehicle && (
-            <div className="absolute bottom-4 left-4 bg-white rounded-xl shadow-xl border border-slate-200 p-4 min-w-[280px] z-[500]">
-              <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
-                  <span className="font-black text-[#002855] text-lg">{selectedVehicle.plate}</span>
-                </div>
-                <button
-                  onClick={() => setSelectedVehicleId(null)}
-                  className="text-slate-400 hover:text-slate-600 text-lg leading-none"
-                >×</button>
-              </div>
-              
-              <div className="space-y-3 mb-4">
-                <p className="text-sm text-slate-600">
-                  <span className="font-semibold block text-[10px] uppercase tracking-wide text-slate-400">Conductor</span>
-                  {selectedVehicle.driver}
-                </p>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-2 mb-4">
-                <div className="bg-slate-50 rounded-lg p-2 text-center border border-slate-100">
-                  <p className="text-[9px] text-slate-400 font-bold uppercase">Velocidad</p>
-                  <p className="text-xl font-black text-slate-800">{selectedVehicle.speed}</p>
-                  <p className="text-[9px] text-slate-400">km/h</p>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-2 text-center border border-slate-100 flex flex-col justify-center">
-                  <p className="text-[9px] text-slate-400 font-bold uppercase">Señal</p>
-                  <p className="text-xs font-bold text-green-600 mt-1">{selectedVehicle.lastUpdate}</p>
-                </div>
-              </div>
-              
-              <div className="flex flex-col gap-2 border-t border-slate-100 pt-3">
-                <button 
-                  onClick={() => setIsEventModalOpen(true)}
-                  className="w-full flex justify-center items-center gap-2 bg-[#002855] text-white py-2 rounded-lg text-xs font-semibold hover:bg-[#001f42] transition-colors"
-                >
-                  <Plus className="w-4 h-4" /> Registrar Novedad
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <Modal
-        isOpen={isEventModalOpen}
-        onClose={() => setIsEventModalOpen(false)}
-        title={`Registrar Novedad - ${selectedVehicle?.plate}`}
-        maxWidth="max-w-md"
-      >
-        <form onSubmit={handleRegisterEvent} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Evento</label>
-            <select
-              required
-              value={eventType}
-              onChange={(e) => setEventType(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002855]"
-            >
-              <option value="CHECKPOINT">Punto de Control (Checkpoint)</option>
-              <option value="LLEGADA_CLIENTE">Llegada a Cliente</option>
-              <option value="SALIDA_CLIENTE">Salida de Cliente</option>
-              <option value="RETRASO">Retraso / Tráfico</option>
-              <option value="INCIDENCIA">Incidencia (Avería/Siniestro)</option>
-              <option value="FIN_RUTA" className="text-emerald-700 font-bold">▶ Finalizar Ruta (Entregado)</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Descripción / Observaciones</label>
-            <textarea
-              required
-              rows={3}
-              value={eventDescription}
-              onChange={(e) => setEventDescription(e.target.value)}
-              placeholder="Detalles del reporte..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002855]"
-            ></textarea>
-          </div>
-
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-            <button
-              type="button"
-              onClick={() => setIsEventModalOpen(false)}
-              className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="flex items-center gap-2 bg-[#002855] text-white px-6 py-2 rounded-lg font-medium hover:bg-[#001f42] transition-colors disabled:opacity-50"
-            >
-              {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-              Guardar Reporte
-            </button>
-          </div>
-        </form>
-      </Modal>
+  const markers = filtered.map(monitorMarker).filter((row): row is NonNullable<typeof row> => !!row)
+  const selected = filtered.find(row => row.id === selectedId)
+  const register = async (e: FormEvent) => {
+    e.preventDefault(); if (!selected?.dispatch_id || busy || !canRegister) return
+    setBusy(true)
+    try {
+      const { error } = await supabase.from('dispatch_events').insert({ dispatch_id: selected.dispatch_id, event_type: eventType, description: description.trim() })
+      if (error) throw error
+      if (eventType === 'FIN_RUTA') {
+        const { data, error: transitionError } = await supabase.rpc('transition_dispatch_status', { p_dispatch_id: selected.dispatch_id, p_new_status: 'ENTREGADO', p_reason: 'Ruta finalizada desde Monitoreo' })
+        if (transitionError || !data?.success) throw new Error(transitionError?.message || data?.error || 'No se puede finalizar la ruta')
+      }
+      toast.success(eventType === 'FIN_RUTA' ? 'Ruta finalizada' : 'Novedad registrada'); setEventOpen(false); setDescription(''); setVersion(v => v + 1)
+    } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
+  }
+  return <div className="flex min-h-[calc(100dvh-7rem)] flex-col gap-4">
+    <header className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex items-center gap-3"><span className="rounded-xl bg-[#002855] p-3 text-white"><Navigation className="h-5 w-5" /></span><div><h1 className="text-xl font-bold text-[#002855]">Monitoreo GPS</h1><p className="mt-1 text-xs text-slate-500">Conductores del app, con y sin ruta · actualización cada 15 segundos</p></div></div>
+      <button onClick={() => setVersion(v => v + 1)} className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm"><RefreshCw className="h-4 w-4" />Actualizar</button>
+    </header>
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[
+      ['App conectada', drivers.filter(r => r.connected).length], ['Sin ruta · conectados', drivers.filter(r => r.connected && r.operational_status === 'SIN_RUTA').length],
+      ['En ruta / retorno', drivers.filter(r => ['EN_RUTA','RETORNO'].includes(r.operational_status)).length], ['Pendientes de documentos', drivers.filter(r => ['ESPERANDO_DOCUMENTOS','ESPERANDO_GUIA','GUIA_EN_VALIDACION','GUIA_OBSERVADA'].includes(r.operational_status)).length],
+    ].map(([label, count]) => <div key={label} className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 text-2xl font-bold text-[#002855]">{count}</p></div>)}</div>
+    <details className="rounded-xl border border-slate-200 bg-white p-3 text-xs leading-5 text-slate-600"><summary className="cursor-pointer font-semibold text-[#002855]">Cómo leer la conexión y el GPS · Consulta: {gpsTime(asOf)}</summary><div className="mt-2"><p>«App conectada» indica una señal recibida en los últimos 90 segundos. La sesión guardada no implica conexión. Las ubicaciones con más de 2 minutos se muestran en gris como última posición conocida.</p><p>Sin GPS o con permiso denegado, el conductor permanece en la lista. Se muestran conexiones de las últimas 24 horas y servicios abiertos de tu sede.</p></div></details>
+    {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">No se pudo actualizar el monitor: {error}. La información anterior puede estar desactualizada.</p>}
+    <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-2 xl:grid-cols-4">
+      <label className="relative"><span className="sr-only">Buscar conductor, placa o despacho</span><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Conductor, placa o despacho" className="min-h-11 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm" /></label>
+      <label><span className="sr-only">Estado operativo</span><select value={state} onChange={e => setState(e.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"><option value="all">Todos los estados</option>{Object.entries(monitorStates).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</select></label>
+      <label><span className="sr-only">Conexión del app</span><select value={connection} onChange={e => setConnection(e.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"><option value="all">Todas las conexiones</option><option value="connected">App conectada</option><option value="disconnected">Sin conexión reciente</option></select></label>
+      <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={geofences} onChange={e => setGeofences(e.target.checked)} />Mostrar geocercas</label>
     </div>
-  )
+    <div className="grid min-w-0 flex-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
+      <section aria-label="Conductores y estados" className="max-h-[42dvh] overflow-y-auto rounded-xl border border-slate-200 bg-white lg:max-h-[65dvh]">
+        {!asOf && !error ? <p className="flex items-center justify-center p-6 text-sm"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Consultando conductores…</p> : !filtered.length ? <div className="p-6 text-center text-slate-500"><Radio className="mx-auto mb-2 h-7 w-7" /><p>Sin conductores para estos filtros</p></div> : filtered.map(row => <button key={row.id} type="button" onClick={() => setSelectedId(row.id === selectedId ? null : row.id)} className={`w-full space-y-2 border-b border-slate-100 p-4 text-left ${row.id === selectedId ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
+          <p className="break-words text-sm font-bold text-[#002855]">{row.driver}</p><p className="text-xs text-slate-600">{row.plate || 'Sin unidad asignada'}{row.dispatch_number && ` · ${row.dispatch_number}`}</p><Status row={row} />
+          <p className={`text-xs ${row.connected ? 'font-semibold text-emerald-700' : 'text-slate-500'}`}>{row.driver_id ? (row.connected ? '● App conectada' : '○ Sin conexión reciente') : 'Sin app vinculada'}</p>
+          <p className="text-xs text-slate-500">Conexión: {gpsTime(row.last_seen_at)}</p>
+          <p className={`flex items-start gap-1 text-xs ${row.gps_fresh ? 'text-slate-600' : 'text-amber-800'}`}><MapPin className="mt-0.5 h-3 w-3 shrink-0" />{row.gps_state === 'denied' ? 'Permiso GPS denegado · ' : !row.gps_fresh ? 'GPS sin señal reciente · ' : 'GPS · '}{gpsTime(row.gps_at)}</p>
+        </button>)}
+      </section>
+      <section aria-label="Mapa GPS" className="relative h-[52dvh] min-h-[330px] min-w-0 overflow-hidden rounded-xl border border-slate-200 lg:h-[65dvh]">
+        <MapComponent vehicles={markers} selectedVehicleId={selectedId} onVehicleSelect={setSelectedId} showGeofences={geofences} />
+        {!markers.length && <p className="pointer-events-none absolute left-3 right-3 top-3 z-[500] rounded-xl border border-slate-200 bg-white/95 p-3 text-xs text-slate-600 shadow">Los conductores sin ubicación disponible se muestran en la lista. No hay puntos GPS para estos filtros.</p>}
+      </section>
+    </div>
+    {selected && <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-[#002855]">{selected.driver}</h2><p className="text-sm text-slate-600">{selected.plate || 'Sin unidad asignada'} · {selected.dispatch_number || 'Sin ruta asignada'}</p></div><Status row={selected} /></div><p className="text-sm text-slate-600">GPS: {gpsTime(selected.gps_at)}{selected.accuracy_m !== null && ` · precisión ±${Math.round(selected.accuracy_m)} m`}{selected.gps_fresh && selected.speed !== null && ` · ${Math.round(selected.speed)} km/h`}</p><div className="flex flex-wrap gap-2">{selected.dispatch_id && canRegister && <button onClick={() => setEventOpen(true)} className="flex min-h-11 items-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white"><Plus className="h-4 w-4" />Registrar novedad</button>}{selected.dispatch_id && <Link href="/torre-control" className="flex min-h-11 items-center rounded-lg border border-slate-300 px-4 text-sm">Revisar servicio y conformidad</Link>}</div></section>}
+    <Modal isOpen={eventOpen} onClose={() => setEventOpen(false)} title={`Registrar novedad · ${selected?.plate || selected?.driver || ''}`} maxWidth="max-w-md"><form onSubmit={register} className="space-y-4"><label className="block text-sm">Tipo de evento<select value={eventType} onChange={e => setEventType(e.target.value)} className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3">{[['CHECKPOINT','Punto de control'],['LLEGADA_CLIENTE','Llegada a cliente'],['SALIDA_CLIENTE','Salida de cliente'],['RETRASO','Retraso / tráfico'],['INCIDENCIA','Incidencia'],['FIN_RUTA','Finalizar ruta (exige conformidad aprobada)']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="block text-sm">Descripción<textarea required maxLength={1000} value={description} onChange={e => setDescription(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 p-3" rows={3} /></label><p className="text-xs text-slate-500">La novedad registra el reporte. El avance del servicio sigue sujeto a su flujo operativo y a la guía aprobada.</p><button disabled={busy || !description.trim()} className="min-h-11 w-full rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Guardando…' : 'Guardar novedad'}</button></form></Modal>
+  </div>
 }

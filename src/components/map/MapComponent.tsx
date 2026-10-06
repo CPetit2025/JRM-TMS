@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState, useCallback } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl, Polygon, Circle, useMap } from 'react-leaflet'
+import { useEffect, useState } from 'react'
+import { MapContainer, TileLayer, Marker, Popup, ZoomControl, Polygon, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -23,8 +23,8 @@ interface GeofenceData {
 }
 
 // Create directional truck icon based on status and speed
-function createTruckIcon(status: string, speed: number | null) {
-  const color = status === 'ubicacion' ? '#2563EB' : status === 'en_ruta' && speed !== null && speed > 5
+function createTruckIcon(status: string, speed: number | null, operational = false) {
+  const color = status === 'sin_senal' ? '#64748B' : status === 'esperando' ? '#D97706' : status === 'ubicacion' ? '#2563EB' : operational && status === 'en_ruta' ? '#16A34A' : status === 'en_ruta' && speed !== null && speed > 5
     ? '#16A34A'   // verde - en movimiento
     : status === 'en_ruta' && speed !== null && speed <= 5
     ? '#F59E0B'   // amarillo - ralentí
@@ -79,11 +79,15 @@ interface VehicleLocation {
   id: string
   plate: string
   driver: string
-  status: 'en_ruta' | 'detenido' | 'incidencia' | 'ubicacion'
+  status: 'en_ruta' | 'detenido' | 'incidencia' | 'ubicacion' | 'esperando' | 'sin_senal'
   speed: number | null
   lat: number
   lng: number
   lastUpdate: string
+  operationalLabel?: string
+  connectionLabel?: string
+  gpsFresh?: boolean
+  accuracy?: number | null
 }
 
 interface MapComponentProps {
@@ -121,7 +125,7 @@ export default function MapComponent({ vehicles, selectedVehicleId, onVehicleSel
           .select('id, name, color, coordinates, is_active')
           .eq('is_active', true)
         if (data) setGeofences(data)
-      } catch (e) {
+      } catch {
         // Silently fail — map still works without geofences
       }
     }
@@ -170,7 +174,7 @@ export default function MapComponent({ vehicles, selectedVehicleId, onVehicleSel
           <Marker
             key={vehicle.id}
             position={[vehicle.lat, vehicle.lng]}
-            icon={createTruckIcon(vehicle.status, vehicle.speed)}
+            icon={createTruckIcon(vehicle.status, vehicle.speed, !!vehicle.operationalLabel)}
             eventHandlers={{ click: () => onVehicleSelect(vehicle.id) }}
           >
             <Popup className="rounded-xl vehicle-popup" minWidth={220}>
@@ -179,7 +183,8 @@ export default function MapComponent({ vehicles, selectedVehicleId, onVehicleSel
                 <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     <div className={`w-2.5 h-2.5 rounded-full ${
-                      vehicle.status === 'ubicacion' ? 'bg-blue-500' :
+                      vehicle.status === 'sin_senal' ? 'bg-slate-500' : vehicle.status === 'esperando' ? 'bg-amber-500' :
+                      vehicle.operationalLabel && vehicle.status === 'en_ruta' ? 'bg-green-500' : vehicle.status === 'ubicacion' ? 'bg-blue-500' :
                       vehicle.status === 'en_ruta' && vehicle.speed !== null && vehicle.speed > 5 ? 'bg-green-500 animate-pulse' :
                       vehicle.status === 'en_ruta' ? 'bg-yellow-500' :
                       vehicle.status === 'incidencia' ? 'bg-red-500 animate-pulse' : 'bg-orange-500'
@@ -187,14 +192,15 @@ export default function MapComponent({ vehicles, selectedVehicleId, onVehicleSel
                     <span className="font-black text-slate-800 text-base">{vehicle.plate}</span>
                   </div>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    vehicle.status === 'ubicacion' ? 'bg-blue-100 text-blue-700' :
+                    vehicle.status === 'sin_senal' ? 'bg-slate-100 text-slate-700' : vehicle.status === 'esperando' ? 'bg-amber-100 text-amber-800' :
+                    vehicle.operationalLabel && vehicle.status === 'en_ruta' ? 'bg-green-100 text-green-700' : vehicle.status === 'ubicacion' ? 'bg-blue-100 text-blue-700' :
                     vehicle.status === 'en_ruta' && vehicle.speed !== null && vehicle.speed > 5 ? 'bg-green-100 text-green-700' :
                     vehicle.status === 'en_ruta' ? 'bg-yellow-100 text-yellow-700' :
                     vehicle.status === 'incidencia' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
                   }`}>
-                    {vehicle.status === 'ubicacion' ? 'UBICACIÓN GPS' : vehicle.status === 'en_ruta' && vehicle.speed !== null && vehicle.speed > 5 ? 'EN MOVIMIENTO' :
+                    {vehicle.operationalLabel || (vehicle.status === 'ubicacion' ? 'UBICACIÓN GPS' : vehicle.status === 'en_ruta' && vehicle.speed !== null && vehicle.speed > 5 ? 'EN MOVIMIENTO' :
                      vehicle.status === 'en_ruta' ? 'RALENTÍ' :
-                     vehicle.status === 'incidencia' ? 'INCIDENCIA' : 'DETENIDO'}
+                     vehicle.status === 'incidencia' ? 'INCIDENCIA' : 'DETENIDO')}
                   </span>
                 </div>
 
@@ -206,6 +212,9 @@ export default function MapComponent({ vehicles, selectedVehicleId, onVehicleSel
                   <span className="text-xs text-slate-700 font-medium">{vehicle.driver}</span>
                 </div>
 
+                {vehicle.connectionLabel && <p className="text-xs text-slate-600">{vehicle.connectionLabel}</p>}
+                {vehicle.gpsFresh === false && <p className="mt-1 text-xs text-amber-800">Última ubicación conocida · GPS sin señal reciente</p>}
+                {vehicle.accuracy != null && <p className="mt-1 text-xs text-slate-500">Precisión: ±{Math.round(vehicle.accuracy)} m</p>}
                 {/* Telemetry grid */}
                 <div className="grid grid-cols-2 gap-2 mt-3">
                   <div className="bg-slate-50 rounded-lg p-2 text-center">

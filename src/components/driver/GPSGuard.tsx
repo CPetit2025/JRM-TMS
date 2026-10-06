@@ -2,16 +2,19 @@
 
 import { useEffect, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { createDriverPresenceReporter } from '@/lib/driver-presence'
 import { nativeRouteTracker } from '@/lib/native-route-tracker'
 import { activeRouteKey, readRouteQueue, routeQueueKey, syncRoutePoints } from '@/lib/route-point-sync'
 
 export default function GPSGuard({ children }: { children: ReactNode }) {
   useEffect(() => {
-    if (!navigator.geolocation) {
-      window.dispatchEvent(new CustomEvent('jrm:gps-status', { detail: { state: 'unavailable' } }))
-      return
-    }
     const supabase = createClient()
+    const presence = createDriverPresenceReporter(supabase)
+    const heartbeat = () => { void presence.send().catch(() => {}) }
+    heartbeat()
+    const presenceTimer = window.setInterval(heartbeat, 15000)
+    window.addEventListener('online', heartbeat)
+    window.addEventListener('focus', heartbeat)
     let stopped = false
     let driverId: string | null = null
     let dispatchId: string | null = localStorage.getItem(activeRouteKey)
@@ -23,6 +26,7 @@ export default function GPSGuard({ children }: { children: ReactNode }) {
       if (!userData.user) {
         if (nativeRouteTracker) await nativeRouteTracker.stop()
         nativeStarted = false
+        driverId = null
         dispatchId = null
         localStorage.removeItem(activeRouteKey)
         return
@@ -71,11 +75,16 @@ export default function GPSGuard({ children }: { children: ReactNode }) {
       }
     }
 
-    void refreshAssignment().then(flush)
-    const assignmentTimer = window.setInterval(() => void refreshAssignment().then(flush), 15000)
+    void refreshAssignment().then(flush).catch(() => {})
+    const assignmentTimer = window.setInterval(() => void refreshAssignment().then(flush).catch(() => {}), 15000)
     const flushTimer = window.setInterval(() => void flush(), 5000)
     window.addEventListener('online', flush)
-    const watchId = navigator.geolocation.watchPosition(position => {
+    if (!navigator.geolocation) {
+      presence.gps('unavailable'); heartbeat()
+      window.dispatchEvent(new CustomEvent('jrm:gps-status', { detail: { state: 'unavailable' } }))
+    }
+    const watchId = navigator.geolocation?.watchPosition(position => {
+      presence.position(position); heartbeat()
       const { latitude, longitude, accuracy, speed } = position.coords
       window.dispatchEvent(new CustomEvent('jrm:gps-status', {
         detail: { state: 'active', at: new Date(position.timestamp).toISOString(), accuracy },
@@ -94,13 +103,18 @@ export default function GPSGuard({ children }: { children: ReactNode }) {
       localStorage.setItem(routeQueueKey, JSON.stringify(queue))
       void flush()
     }, geoError => {
+      presence.gps(geoError.code === 1 ? 'denied' : 'unavailable'); heartbeat()
       window.dispatchEvent(new CustomEvent('jrm:gps-status', {
         detail: { state: geoError.code === 1 ? 'denied' : 'unavailable' },
       }))
     }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 })
     return () => {
       stopped = true
-      navigator.geolocation.clearWatch(watchId)
+      presence.stop()
+      window.clearInterval(presenceTimer)
+      window.removeEventListener('online', heartbeat)
+      window.removeEventListener('focus', heartbeat)
+      if (watchId !== undefined) navigator.geolocation.clearWatch(watchId)
       window.clearInterval(assignmentTimer); window.clearInterval(flushTimer)
       window.removeEventListener('online', flush)
     }
