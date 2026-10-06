@@ -1,45 +1,22 @@
-# Modalidad y referencia de costo desde la solicitud
+# Modalidad de atención desde la solicitud
 
-## Problema confirmado
+La solicitud define Transporte gestionado por JRM o Recojo por el cliente. El armado de ruta hereda esa modalidad; no puede cambiarla ni mezclar modalidades, sedes internas u OT. El recojo genera Nota de Salida con flete JRM cero, sin conductor propio ni distancia GPS ficticia.
 
-`upsert_transport_request_with_components` exige una OT raíz activa, y la solicitud compara el costo referencial contra la partida antes de que se defina el recojo por cliente. En Armado de ruta, `NOTA_SALIDA` representa Recojo por Cliente, pero la selección llega demasiado tarde. Además, Armado de ruta revisa saldo antes de distinguir la modalidad. RT-000006 puede quedar observada por S/308 aunque JRM no pague ese transporte. La ausencia de partida, por sí sola, no demuestra un recojo por cliente: debe indicarse y confirmarse explícitamente.
-
-## Reglas propuestas
-
-| Dato | Área OT / Administración de Contratos | Otra área / Departamento |
+| Regla | Área OT / Administración de Contratos | Otras áreas |
 |---|---|---|
-| Área solicitante | Precargada desde el perfil, identificada por maestro de áreas | Selección de un área válida |
-| OT | Obligatoria; únicamente activas y del alcance del usuario | Opcional; no exige crear una OT ficticia |
-| Modalidad de atención | Transporte gestionado por JRM o Recojo por Cliente | Igual |
-| Financiamiento si JRM paga transporte | Partida de la OT | Partida si vinculó OT; centro de costo operativo y aprobador si no vinculó OT |
-| Recojo por Cliente | OT para trazabilidad, sin reservar flete JRM | Referencia de atención / cliente, sin reservar flete JRM |
+| OT en la solicitud | Obligatoria, activa y asignada al usuario | Opcional al registrar |
+| Modalidad | Transporte JRM o Recojo por el cliente | Igual |
+| Costos a cargo de JRM | Partida de la OT | Debe vincularse una OT antes de aprobar y programar gastos |
+| Recojo sin gastos JRM | Puede aprobarse aunque la OT no tenga partida de transporte | Puede registrarse, aprobarse y programarse sin OT |
 
-La modalidad expresa quién organiza/paga el transporte, separada del tipo de solicitud (despacho/recojo/traslado) y del documento. El supervisor elige unidad propia/proveedor cuando arma un transporte gestionado por JRM. En Recojo por Cliente se capturan cliente, contacto autorizado, fecha/ventana de recojo, origen, carga y datos de identificación de quien retirará. Al ejecutar se registra placa/transportista del cliente si corresponde y constancia firmada de salida. No se inventan conductor propio, GPS ni entregas en ruta.
+El formulario no solicita Sede de atención ni Centro de costo. La sede permanece únicamente como alcance interno de acceso: se hereda de la OT, de la solicitud al editar, o de la sede principal autorizada / acceso de sedes del usuario. Nunca se asigna una sede fuera de su autorización.
 
-Recojo por Cliente elimina únicamente el flete a cargo de JRM. Otros servicios (carga, descarga, almacenaje) mantienen su costo, responsable de pago e imputación; no se vuelven gratuitos al cambiar la modalidad. El circuito documental y de aprobación operativa se conserva.
+Cliente que recoge, Contacto autorizado y Teléfono del contacto son opcionales en esta etapa. Su ausencia no impide guardar, aprobar o programar un recojo. Los datos existentes se conservan cuando la API los omite al editar.
 
-## Cambios a desarrollar
+Los gastos de transporte se imputan a una OT, sin aprobación directa por centro de costo. Otras áreas pueden registrar un transporte sin OT: si el tarifario determina gastos JRM, queda observado con «Vincule una OT para financiar los costos a cargo de JRM». Al vincular una OT con saldo suficiente, pasa nuevamente a aprobación. El recojo elimina solo el flete: los recursos adicionales pagados por JRM, como descarga, conservan sus costos y requieren partida OT.
 
-1. Nuevos datos persistentes: modalidad de atención, área normalizada, OT nullable según área, centro de costo/aprobador cuando corresponda y contacto de retiro. No depender del nombre del documento para reglas financieras.
-2. Formulario: precargar área OT para Administradores de Contratos y exigir selección explícita de OT de su cartera; habilitar OT opcional para otras áreas. Al cambiar modalidad, mostrar los costos y responsables aplicables con claridad.
-3. Servidor y presupuesto: validar las mismas reglas del formulario; reservar/liberar solo costos pagados por JRM. Sin OT y con costo JRM, bloquear la aprobación hasta tener imputación y autorización operativa; sin flete JRM, no observar por falta de partida de transporte.
-4. Armado de ruta: heredar modalidad, separar la cola de recojos por cliente y emitir el documento correspondiente. El cambio de Recojo por Cliente a Transporte JRM requiere autorización del supervisor y nueva validación/reserva financiera antes de programar. Cambios quedan auditados y no alteran viajes ya ejecutados.
-5. Tablas y reportes: mostrar modalidad y fuente de financiamiento; excluir recojos por cliente de costos/km, desempeño del conductor propio y cumplimiento del proveedor pagado por JRM. Contabilizarlos como retiros documentados.
-6. Casos existentes: identificar candidatos, confirmar modalidad con el supervisor y corregir solo las observaciones por partida relacionadas. RT-000006 es un candidato indicado por el usuario; no se reclasifican automáticamente todas las solicitudes sin partida. Liberar reservas que correspondan y conservar solicitud, OT, guías y auditoría.
+Cambiar una solicitud aprobada libera su reserva y exige nueva aprobación. Una solicitud asignada debe retirarse del despacho antes de editar su modalidad o financiamiento. Se mantienen auditoría, columnas e historia de servicios ejecutados. RT-000006 / OT 16523 ya fue corregida según la confirmación expresa del dueño; no se reclasifican otros casos históricos automáticamente.
 
-## Criterios de aceptación
+Implementación: `20261007140000_request_attention_mode.sql` y la migración posterior `20261007150000_request_optional_pickup_details.sql`. No se modifica una migración aplicada. El guardado atómico aplica modalidad, tarifa y descarga conjuntamente; las validaciones de aprobación y programación también se ejecutan en el servidor y cubren escrituras directas.
 
-- Área OT rechaza solicitudes sin OT tanto en formulario como por API; otras áreas aceptan una solicitud sin OT con los datos/imputación requeridos.
-- Recojo por Cliente con OT sin partida se registra y puede aprobarse sin reserva de flete JRM; los otros costos mantienen sus controles.
-- Transporte JRM sin OT exige centro de costo y autorización; con OT exige partida según costos reales.
-- Cambiar modalidad recalcula costos/reservas sin duplicarlos y vuelve a validar aprobación cuando genera gasto.
-- Programación, cancelación y reprogramación mantienen consistencia financiera y documental; las órdenes ejecutadas conservan su historia.
-- RT-000006 deja de mostrarse observada por partida solo después de confirmar Recojo por Cliente y completar su validación operativa.
-
-Implementado en `20261007140000_request_attention_mode.sql`: formulario con modalidad y contacto de recojo, OT condicionada al área/rol, solicitudes sin OT con sede y centro de costo para gastos JRM, guardado atómico con tarifa/descarga, aprobación de importe operacional e imputación heredada en el despacho. La ruta no cambia la modalidad y bloquea mezclas entre modalidades/sedes/imputaciones. El cambio de una solicitud aprobada libera reserva y vuelve a aprobación; una asignada debe retirarse del despacho antes de editarla.
-
-RT-000006 / OT 16523 se corrige porque el dueño confirmó expresamente que es recojo: solo si sigue observada por partida y sin despacho, se elimina su flete y se recalculan los otros costos; conserva auditoría y vuelve a aprobación, nunca se aprueba automáticamente. Los otros requerimientos históricos sin modalidad deben confirmarla mediante edición de la solicitud.
-
-Para operación sin OT, el Supervisor de Despacho aprueba un importe imputado a un centro de costo activo. Programar no puede superar el flete aprobado; la descarga planificada no puede superar el resto del importe, y su costo real no supera lo planificado. No se inventa una OT ni se registra consumo contra una partida inexistente. Las líneas de descarga y el despacho conservan el centro de costo para su trazabilidad.
-
-Validación: `node scripts/test-request-attention.cjs` ejecuta la migración y las funciones reales en PostgreSQL aislado; `caja_c45_solicitud_recojo_cliente.test.sql` prueba solicitud, aprobación y programación en la base real con ROLLBACK. Los reportes existentes mantienen sus categorías históricas; la modalidad se muestra en Solicitudes y Armado de ruta.
+Validación: `node scripts/test-request-attention.cjs` ejecuta las funciones reales en PostgreSQL aislado con restricciones tipo producción. Cubre registro sin datos de retiro/sede/CC, OT según área, alcance de sedes, financiamiento OT, costos adicionales, cambio de modalidad y rollback. `caja_c45_solicitud_recojo_cliente.test.sql` prueba guardado, aprobación y programación en la base real con ROLLBACK.

@@ -18,7 +18,6 @@ interface TransportRequest {
   requester_name: string
   department: string
   attention_mode?: AttentionMode | null
-  cost_center_id?: string | null
   pickup_customer?: string | null
   pickup_contact?: string | null
   pickup_phone?: string | null
@@ -124,8 +123,6 @@ export default function SolicitudesPage() {
   
   const [requests, setRequests] = useState<TransportRequest[]>([])
   const [requestSummaries, setRequestSummaries] = useState<Record<string, RequestSummary>>({})
-  const [sites, setSites] = useState<{ id: string; name: string }[]>([])
-  const [costCenters, setCostCenters] = useState<{ id: string; code: string; name: string }[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
   const [, setContractSearch] = useState('')
   const [otNodes, setOtNodes] = useState<OtNode[]>([])  // OT madre/independientes con sus subcontratos y errores
@@ -169,7 +166,7 @@ export default function SolicitudesPage() {
     requester_name: '',
     department: '',
     attention_mode: 'TRANSPORTE_JRM' as AttentionMode,
-    site_id: '', cost_center_id: '', pickup_customer: '', pickup_contact: '', pickup_phone: '',
+    pickup_customer: '', pickup_contact: '', pickup_phone: '',
     request_type: 'DESPACHO',
     pickup_address: 'Planta Chilca',
     pickup_department: 'LIMA',
@@ -230,16 +227,6 @@ export default function SolicitudesPage() {
       }
     }
   }, [supabase, setNewRequest])
-
-  useEffect(() => {
-    let cancelled = false
-    Promise.all([supabase.from('sites').select('id, name'), supabase.from('cost_centers').select('id, code, name').eq('is_active', true)]).then(([a,b]) => {
-      if (cancelled) return
-      if (a.error || b.error) toast.error('No se pudieron cargar sedes o centros de costo.')
-      setSites(a.data || []); setCostCenters(b.data || [])
-    })
-    return () => { cancelled = true }
-  }, [supabase])
 
   const fetchRequests = useCallback(async () => {
     setLoading(true)
@@ -445,7 +432,6 @@ export default function SolicitudesPage() {
       requester_name: request.requester_name,
       department: request.department.startsWith('OT -') ? 'OT (Administración de Contratos)' : request.department,
       attention_mode: request.attention_mode || 'TRANSPORTE_JRM',
-      site_id: request.site_id || '', cost_center_id: request.cost_center_id || '',
       pickup_customer: request.pickup_customer || '', pickup_contact: request.pickup_contact || '', pickup_phone: request.pickup_phone || '',
       request_type: request.request_type,
       pickup_address: request.pickup_address,
@@ -557,7 +543,7 @@ export default function SolicitudesPage() {
         }))
       })
       if (error) throw error
-      if (saved?.status === 'OBSERVADA') toast.warning('Solicitud observada: la partida no cubre los costos a cargo de JRM.')
+      if (saved?.status === 'OBSERVADA') toast.warning(newRequest.contract_id ? 'Solicitud observada: la partida no cubre los costos a cargo de JRM.' : 'Solicitud registrada y observada: vincule una OT para financiar los gastos JRM antes de aprobar y programar.')
 
       toast.success('Solicitud enviada correctamente')
       setUnloading([]); setUnloadingAnswer(''); setUnloadingHistory([])
@@ -565,7 +551,7 @@ export default function SolicitudesPage() {
       setIsModalOpen(false)
       setNewRequest(prev => ({
         ...prev, 
-        attention_mode: 'TRANSPORTE_JRM', site_id: '', cost_center_id: '', pickup_customer: '', pickup_contact: '', pickup_phone: '',
+        attention_mode: 'TRANSPORTE_JRM', pickup_customer: '', pickup_contact: '', pickup_phone: '',
         department: userRole === 'administrador de contratos' ? 'OT (Administración de Contratos)' : '',
         pickup_address: 'Planta Chilca',
         pickup_department: 'LIMA',
@@ -608,7 +594,7 @@ export default function SolicitudesPage() {
         // Sin saldo en la partida la aprobación deja la solicitud OBSERVADA (no se reserva)
         const { data: after } = await supabase.from('transport_requests').select('status, budget_observation').eq('id', id).maybeSingle()
         if (after?.status === 'OBSERVADA') {
-          toast.warning(`No se aprobó: ${after.budget_observation || 'partida insuficiente'}. Contratos debe ampliar la partida.`)
+          toast.warning(`No se aprobó: ${after.budget_observation || 'partida insuficiente'}.`)
           fetchRequests()
           return
         }
@@ -674,7 +660,7 @@ export default function SolicitudesPage() {
       case 'REPROGRAMADA':
         return <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded text-xs font-semibold">Reprogramada</span>
       case 'OBSERVADA':
-        return <span className="bg-rose-100 text-rose-800 px-2 py-1 rounded text-xs font-semibold">Observada · partida</span>
+        return <span className="bg-rose-100 text-rose-800 px-2 py-1 rounded text-xs font-semibold">Observada</span>
       default:
         return <span className="bg-slate-100 text-slate-800 px-2 py-1 rounded text-xs font-semibold">{status}</span>
     }
@@ -701,7 +687,7 @@ export default function SolicitudesPage() {
               componentLoadId.current++
               setNewRequest({
                 requester_name: newRequest.requester_name,
-                attention_mode: 'TRANSPORTE_JRM', site_id: '', cost_center_id: '', pickup_customer: '', pickup_contact: '', pickup_phone: '',
+                attention_mode: 'TRANSPORTE_JRM', pickup_customer: '', pickup_contact: '', pickup_phone: '',
         department: userRole === 'administrador de contratos' ? 'OT (Administración de Contratos)' : '',
                 request_type: 'DESPACHO',
                 pickup_address: 'Planta Chilca',
@@ -914,7 +900,7 @@ export default function SolicitudesPage() {
                     <td className="p-3">
                       {getStatusBadge(req.status)}
                       {req.status === 'OBSERVADA' && req.budget_observation && (
-                        <div className="mt-1 max-w-40 text-[10px] font-medium text-rose-700">{req.budget_observation}. Amplíe la partida de la OT.</div>
+                        <div className="mt-1 max-w-40 text-[10px] font-medium text-rose-700">{req.budget_observation}.{req.contract_id ? ' Amplíe la partida de la OT.' : ''}</div>
                       )}
                     </td>
                     <td className="sticky right-0 z-10 bg-white p-2 text-right shadow-[-6px_0_8px_-8px_rgba(15,23,42,0.45)]">
@@ -1024,12 +1010,8 @@ export default function SolicitudesPage() {
               <p className="mt-1 text-xs text-slate-600">El armado de ruta heredará esta modalidad. {isCustomerPickup ? 'Flete JRM: S/ 0.00. Se emite Nota de Salida; otros recursos conservan sus costos.' : 'El supervisor asignará unidad propia o proveedor.'}</p>
             </div>
             {isCustomerPickup && <div className="md:col-span-2 grid grid-cols-1 gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 md:grid-cols-3">
-              {([['pickup_customer','Cliente que recoge'],['pickup_contact','Contacto autorizado'],['pickup_phone','Teléfono del contacto']] as const).map(([key,label]) => <label key={key} className="text-sm text-slate-700">{label} *<input required value={newRequest[key]} type={key === 'pickup_phone' ? 'tel' : 'text'} onChange={e => setNewRequest(prev => ({ ...prev, [key]: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>)}
+              {([['pickup_customer','Cliente que recoge'],['pickup_contact','Contacto autorizado'],['pickup_phone','Teléfono del contacto']] as const).map(([key,label]) => <label key={key} className="text-sm text-slate-700">{label} (opcional)<input value={newRequest[key]} type={key === 'pickup_phone' ? 'tel' : 'text'} onChange={e => setNewRequest(prev => ({ ...prev, [key]: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>)}
             </div>}
-            {!newRequest.contract_id && <>
-              <label className="text-sm text-slate-700">Sede de atención *<select required value={newRequest.site_id} onChange={e => setNewRequest(prev => ({ ...prev, site_id: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="">Seleccione sede</option>{sites.map(site => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
-              <label className="text-sm text-slate-700">Centro de costo {!isCustomerPickup ? '*' : '(si genera otros gastos)'}<select required={!isCustomerPickup} value={newRequest.cost_center_id} onChange={e => setNewRequest(prev => ({ ...prev, cost_center_id: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="">Seleccione centro</option>{costCenters.map(c => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}</select></label>
-            </>}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">OT / Proyecto asociado {otRequired ? '*' : '(opcional)'}</label>
               <OtPicker
@@ -1324,7 +1306,7 @@ export default function SolicitudesPage() {
                   S/ {quoteFreight.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  {isCustomerPickup ? 'El cliente gestiona el transporte: no se cotiza ni reserva flete JRM.' : 'Costo referencial según tarifario. Requiere aprobación de la partida OT o del gasto en su centro de costo; el armado de ruta valida el importe.'}
+                  {isCustomerPickup ? 'El cliente gestiona el transporte: no se cotiza ni reserva flete JRM.' : 'Costo referencial según tarifario. Los gastos JRM se imputan a la partida de una OT antes de aprobar y programar; el armado de ruta valida el importe.'}
                 </p>
                 {quote ? <QuoteBreakdown quote={quote} compact />
                   : <p className="text-xs text-slate-400 mt-1">Elige la OT y el distrito de destino para calcularlo.</p>}

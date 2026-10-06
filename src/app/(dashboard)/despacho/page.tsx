@@ -22,7 +22,6 @@ interface TransportRequest {
   pickup_address: string
   delivery_address: string
   attention_mode?: 'TRANSPORTE_JRM' | 'RECOJO_CLIENTE' | null
-  cost_center_id?: string | null
   site_id?: string | null
   pickup_contact?: string | null
   pickup_phone?: string | null
@@ -538,7 +537,7 @@ export default function DespachoPage() {
     const request = pendingRequests.find(r => r.id === reqId)
     if (!isSelected && !request?.attention_mode) { toast.error('Defina la modalidad en Solicitudes antes de programar este requerimiento histórico.'); return }
     const existing = pendingRequests.find(r => newDispatch.selected_requests.some(x => x.id === r.id))
-    if (!isSelected && existing && (existing.attention_mode !== request?.attention_mode || existing.contract_id !== request?.contract_id || existing.site_id !== request?.site_id || existing.cost_center_id !== request?.cost_center_id)) {
+    if (!isSelected && existing && (existing.attention_mode !== request?.attention_mode || existing.contract_id !== request?.contract_id || existing.site_id !== request?.site_id)) {
       toast.error('Agrupe solicitudes de la misma modalidad, sede e imputación.'); return
     }
     const pickupByCustomer = request?.attention_mode === 'RECOJO_CLIENTE'

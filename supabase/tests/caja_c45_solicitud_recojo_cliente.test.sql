@@ -15,7 +15,7 @@ BEGIN
  INSERT INTO public.contract_budgets(contract_id,concept,allocated_pen) VALUES(v_ct,'PARTIDA_TRANSPORTE',0);
  p:=jsonb_build_object('contract_id',v_ct,'department','OT (Administración de Contratos)','attention_mode','RECOJO_CLIENTE',
  'request_type','DESPACHO','required_date',current_date,'cargo_description','Prueba C45','pickup_address','Planta','pickup_district','CHILCA',
- 'delivery_address','Retiro por cliente','delivery_district','CHILCA','pickup_customer','Cliente C45','pickup_contact','Responsable C45','pickup_phone','999999999','service_cost',308);
+ 'delivery_address','Retiro por cliente','delivery_district','CHILCA','service_cost',308);
  r:=public.save_transport_request_attention(NULL,p,jsonb_build_array(jsonb_build_object('contract_id',v_ct,'weight_kg',1)),'[]');
  v_req:=(r->>'id')::uuid;
  IF NOT COALESCE((r->>'success')::boolean,false) OR (r->>'service_cost')::numeric<>0 OR r->>'status'<>'PENDIENTE DE APROBACIÓN' THEN
@@ -34,13 +34,22 @@ BEGIN
    RAISE EXCEPTION 'CAJA C45 FAIL: no heredó Nota de Salida/flete cero/sede'; END IF;
  v_pass:=v_pass+1;
  v_err:=NULL;
- BEGIN PERFORM public.save_transport_request_attention(NULL,p||jsonb_build_object('contract_id',NULL,'site_id',v_site),'[]','[]');
+ BEGIN PERFORM public.save_transport_request_attention(NULL,p||jsonb_build_object('contract_id',NULL),'[]','[]');
  EXCEPTION WHEN OTHERS THEN v_err:=SQLERRM; END;
  IF COALESCE(v_err,'') NOT LIKE 'El área OT%' THEN RAISE EXCEPTION 'CAJA C45 FAIL: permitió área OT sin OT %',v_err; END IF;
- r:=public.save_transport_request_attention(NULL,p||jsonb_build_object('contract_id',NULL,'department','Logística','site_id',v_site,'estimated_weight',2),'[]','[]');
+ r:=public.save_transport_request_attention(NULL,p||jsonb_build_object('contract_id',NULL,'department','Logística','estimated_weight',2),'[]','[]');
  v_generic:=(r->>'id')::uuid;
  IF NOT EXISTS(SELECT 1 FROM public.transport_requests WHERE id=v_generic AND contract_id IS NULL AND attention_mode='RECOJO_CLIENTE' AND estimated_weight=2 AND status='PENDIENTE DE APROBACIÓN') THEN
    RAISE EXCEPTION 'CAJA C45 FAIL: otra área sigue exigiendo OT %',r; END IF;
+ PERFORM public.set_transport_request_status(v_generic,'APROBADA',NULL);
+ IF NOT EXISTS(SELECT 1 FROM public.transport_requests WHERE id=v_generic AND status='APROBADA' AND reserved_pen=0
+   AND cost_center_id IS NULL AND pickup_customer IS NULL AND pickup_contact IS NULL AND pickup_phone IS NULL
+   AND public.can_access_site(site_id)) THEN
+   RAISE EXCEPTION 'CAJA C45 FAIL: recojo genérico exige datos opcionales o reserva flete'; END IF;
+ v_dispatch:=public.schedule_dispatch(NULL,'EXTERNO',now(),10,0,NULL,'NOTA_SALIDA',jsonb_build_array(jsonb_build_object('id',v_generic)));
+ IF NOT EXISTS(SELECT 1 FROM public.dispatches WHERE id=v_dispatch AND contract_id IS NULL AND cost_center_id IS NULL
+   AND driver_id IS NULL AND freight_cost=0 AND estimated_distance_km=0) THEN
+   RAISE EXCEPTION 'CAJA C45 FAIL: no programó recojo genérico sin OT/CC/contacto'; END IF;
  v_pass:=v_pass+1;
  RAISE EXCEPTION 'CAJA C45 PASS (%/3)',v_pass;
 END $test$;
