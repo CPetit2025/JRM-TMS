@@ -50,7 +50,7 @@ export function TerceroFields({ value, onChange }: { value: TerceroForm; onChang
           <input className={`${input} uppercase`} value={value.placa} onChange={e => set('placa', e.target.value.toUpperCase())} placeholder="ABC-123" maxLength={10} />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">DNI / licencia (opcional)</label>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">DNI / CE del conductor</label>
           <input className={input} value={value.doc} onChange={e => set('doc', e.target.value)} maxLength={20} />
         </div>
       </div>
