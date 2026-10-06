@@ -52,6 +52,9 @@ BEGIN
  bad:=false;
  BEGIN INSERT INTO public.dispatches(dispatch_number,vehicle_plate,driver_name,status,scheduled_departure,modalidad,tercero_doc) VALUES('ZZ-C50-DOC-VACIO',plate||'X','ZZ','PROGRAMADO',now(),'TERCERO','---'); EXCEPTION WHEN raise_exception THEN bad:=true; END;
  IF NOT bad THEN RAISE EXCEPTION 'CAJA C50 FAIL: permite documento vacío normalizado'; END IF;
+ bad:=false;
+ BEGIN INSERT INTO public.dispatches(dispatch_number,vehicle_plate,driver_name,status,scheduled_departure,modalidad,tercero_doc) VALUES('ZZ-C50-UNIDAD-OTRO',plate,'Otro','PROGRAMADO',now(),'TERCERO','OTRO-DOC'); EXCEPTION WHEN raise_exception THEN bad:=true; END;
+ IF NOT bad THEN RAISE EXCEPTION 'CAJA C50 FAIL: tercero ignora conductor asignado a la unidad'; END IF;
  -- Servicios mixtos y dos OT. Se usa proveedor para verificar también identificación sin app.
  provider:=pg_temp.ins('carriers',jsonb_build_object('type','PROVEEDOR','business_name','ZZ C50 tercero','ruc','20'||lpad((floor(random()*1e9))::bigint::text,9,'0'),'tax_id','20'||lpad((floor(random()*1e9))::bigint::text,9,'0'),'is_active',true));
  req:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C50-R1','request_type','DESPACHO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',ct,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Planta','delivery_address','Obra','required_date',current_date+1));
@@ -85,11 +88,9 @@ BEGIN
  UPDATE public.dispatches SET docs_required=false,status='ENTREGADO' WHERE id=route;
  PERFORM public.close_dispatch_route(route); PERFORM public.close_dispatch_route(route);
  IF EXISTS(SELECT 1 FROM public.contract_budgets WHERE contract_id IN(ct,ct2) AND reserved_pen<>0)
-   OR (SELECT consumed_pen||'/'||balance_pen FROM public.contract_budgets WHERE contract_id=ct)<>'300.00/500.00'
-   OR (SELECT consumed_pen FROM public.contract_budgets WHERE contract_id=ct2)<>200 THEN
-   -- Numerics in a local fixture may omit trailing zeros.
-   IF (SELECT consumed_pen FROM public.contract_budgets WHERE contract_id=ct)<>300 OR (SELECT balance_pen FROM public.contract_budgets WHERE contract_id=ct)<>500
-     OR (SELECT consumed_pen FROM public.contract_budgets WHERE contract_id=ct2)<>200 OR EXISTS(SELECT 1 FROM public.contract_budgets WHERE contract_id IN(ct,ct2) AND reserved_pen<>0) THEN RAISE EXCEPTION 'CAJA C50 FAIL: consumo doble o OT incorrecta'; END IF;
+   OR (SELECT consumed_pen FROM public.contract_budgets WHERE contract_id=ct)<>300 OR (SELECT balance_pen FROM public.contract_budgets WHERE contract_id=ct)<>500
+   OR (SELECT consumed_pen FROM public.contract_budgets WHERE contract_id=ct2)<>200 OR (SELECT balance_pen FROM public.contract_budgets WHERE contract_id=ct2)<>600 THEN
+   RAISE EXCEPTION 'CAJA C50 FAIL: consumo doble o OT incorrecta';
  END IF;
  -- Flota propia: una pareja reúne tres servicios sin crear tres rutas, y no se puede duplicar.
  PERFORM set_config('request.jwt.claim.sub','',true);

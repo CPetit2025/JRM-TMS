@@ -43,7 +43,7 @@ CREATE TRIGGER vehicle_driver_assignment_guard BEFORE INSERT OR UPDATE OF assign
 FOR EACH ROW EXECUTE FUNCTION public.vehicle_driver_assignment_guard();
 CREATE OR REPLACE FUNCTION public.dispatch_driver_assignment_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE v_assigned uuid; v_key text;
+DECLARE v_assigned uuid; v_key text; v_assigned_key text;
 BEGIN
  IF NEW.status NOT IN ('PROGRAMADO','EN_CURSO','EN RUTA','ESPERANDO_AUTORIZACION','RETORNO') OR NEW.vehicle_plate='EXTERNO' THEN RETURN NEW; END IF;
  IF NEW.driver_id IS NOT NULL THEN
@@ -57,6 +57,9 @@ BEGIN
    IF TG_OP='INSERT' AND NULLIF(trim(to_jsonb(NEW)->>'tercero_doc'),'') IS NULL THEN RAISE EXCEPTION 'Indique el documento del chofer para controlar una sola unidad por conductor'; END IF;
    v_key:=upper(regexp_replace(COALESCE(to_jsonb(NEW)->>'tercero_doc',''),'[^A-Za-z0-9]','','g'));
    IF TG_OP='INSERT' AND NULLIF(v_key,'') IS NULL THEN RAISE EXCEPTION 'Documento del chofer inválido'; END IF;
+   SELECT upper(regexp_replace(COALESCE(dr.document_number,''),'[^A-Za-z0-9]','','g')) INTO v_assigned_key
+   FROM public.vehicles v JOIN public.drivers dr ON dr.id=v.assigned_driver_id WHERE v.plate=NEW.vehicle_plate;
+   IF v_assigned_key IS NOT NULL AND v_assigned_key IS DISTINCT FROM v_key THEN RAISE EXCEPTION 'La unidad tiene otro conductor asignado en Flota'; END IF;
  END IF;
  IF NULLIF(v_key,'') IS NOT NULL THEN
    PERFORM pg_advisory_xact_lock(hashtextextended(v_key,451));
@@ -192,7 +195,7 @@ BEGIN
      UPDATE public.contract_budgets SET reserved_pen=reserved_pen+r.amount,updated_at=now() WHERE contract_id=r.contract_id AND concept='PARTIDA_TRANSPORTE';
      INSERT INTO public.contract_services(contract_id,service_type,description,amount_pen,service_date,plate,driver_name,category,created_by,dispatch_id,provider_ruc,provider_name)
      VALUES(r.contract_id,'FLETE','Ruta mixta '||d.dispatch_number||' · '||r.request_number,r.amount,(d.scheduled_departure AT TIME ZONE 'America/Lima')::date,d.vehicle_plate,d.driver_name,'Contrato',auth.uid(),p_id,
-       COALESCE(c->>'tax_id',c->>'ruc'),c->>'business_name') RETURNING id INTO v_service;
+       COALESCE(NULLIF(c->>'tax_id',''),NULLIF(c->>'ruc','')),c->>'business_name') RETURNING id INTO v_service;
    END IF;
    INSERT INTO public.dispatch_request_freight(dispatch_id,request_id,contract_id,amount_pen,service_id) VALUES(p_id,r.id,r.contract_id,r.amount,v_service);
  END LOOP;
