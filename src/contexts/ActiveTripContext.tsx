@@ -61,6 +61,7 @@ export type ActiveTripContextValue = {
     phone: string | null; license_number: string | null; license_category: string | null
     license_expiration: string | null
   }
+  assigned_unit?: { plate: string } | null
   trip: ActiveTrip | null
   pending: { checklist?: boolean; stops?: number; expenses?: number; failures?: number }
   summary: DriverPortalSummary

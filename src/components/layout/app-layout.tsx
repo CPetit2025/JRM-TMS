@@ -25,7 +25,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     if (!path || path === '/') return { title: 'Dashboard Ejecutivo', subtitle: 'Resumen gerencial de operaciones' }
     if (path.includes('/contratos/servicios')) return { title: 'Servicios de Contrato', subtitle: 'Gestión de servicios asignados' }
     if (path.includes('/contratos')) return { title: 'Contratos y OTs', subtitle: 'Gestión de acuerdos comerciales' }
-    if (path.includes('/solicitudes')) return { title: 'Solicitudes de Carga', subtitle: 'Requerimientos de transporte' }
+    if (path.includes('/solicitudes')) return { title: 'Solicitud de Transporte', subtitle: 'Requerimientos de transporte' }
     if (path.includes('/despacho')) return { title: 'Gestión de Despachos', subtitle: 'Asignación de unidades y planificación' }
     if (path.includes('/monitoreo')) return { title: 'Monitoreo GPS', subtitle: 'Seguimiento en campo' }
     if (path.includes('/torre-control')) return { title: 'Torre de Control JRM', subtitle: 'Vista general operativa' }

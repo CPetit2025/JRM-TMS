@@ -15,6 +15,7 @@ export type PreuseUnit = { plate: string; soat_expiration: string | null; techni
 export type PreuseContext = {
   operation_date: string; driver: { id: string; profile_id: string; name: string; license: string } | null
   vehicles: PreuseUnit[]; unit: { vehicle_plate: string; revision: string; operation_date: string } | null
+  assigned_unit?: PreuseUnit | null
   latest: PreuseInspection | null; pending: boolean; route_plate: string | null
 }
 export const limaDay = (at = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(at)

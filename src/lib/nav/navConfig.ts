@@ -44,7 +44,7 @@ export const NAV_SECTIONS: NavSection[] = [
   { id: 'comercial', title: 'Comercial', icon: Briefcase, groups: [{ items: [
     { href: '/clientes', label: 'Directorio Clientes', icon: Building2, show: any('clientes'), keywords: 'cliente ruc cartera' },
     { href: '/contratos', label: 'Contratos y OTs', icon: FileSignature, show: any('ot'), keywords: 'ot contrato subcontrato' },
-    { href: '/solicitudes', label: 'Solicitudes de Carga', icon: ClipboardList, show: any('solicitudes'), keywords: 'solicitud pedido carga' },
+    { href: '/solicitudes', label: 'Solicitud de Transporte', icon: ClipboardList, show: any('solicitudes'), keywords: 'solicitud transporte pedido carga requerimiento' },
   ] }] },
   { id: 'operacion', title: 'Operación', icon: Truck, groups: [{ items: [
     { href: '/torre-control', label: 'Torre de Control', icon: Radar, show: any('monitoreo', 'despacho', 'torre-control'), keywords: 'torre control vista' },
