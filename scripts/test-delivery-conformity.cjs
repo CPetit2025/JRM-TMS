@@ -470,6 +470,7 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   }
   console.log('PASS: C50 multi-OT routes, protected 20% profit, actual vehicle assignment, exclusivity, per-OT unload reserves, cancellation, stop withdrawal and idempotent close; C9/C41/C46/C47/C48/C49 pass after new migration.')
   sql(read('supabase/migrations/20261007210000_fleet_assignment_app_link.sql'))
+  sql(`UPDATE public.drivers SET license_number='FIXTURE-'||id::text WHERE license_number IS NULL; ALTER TABLE public.drivers ALTER COLUMN license_number SET NOT NULL;`)
   for (const test of ['caja_c51_flota_app_asignacion','caja_c50_ruta_mixta_partida_flota','caja_c49_preuso_diario_conductor']) {
     const result=query(read('supabase/tests/'+test+'.test.sql'))
     assert.match(result.stderr,/CAJA C(?:49|50|51) PASS/,result.stderr)

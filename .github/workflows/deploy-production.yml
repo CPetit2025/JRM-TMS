@@ -99,7 +99,18 @@ jobs:
             line=$(echo "$out" | grep -oE 'CAJA C[0-9]+ (PASS|FAIL)[^"]*' | head -1)
             echo "$f → ${line:-sin resultado}"
             echo "- \`$(basename "$f")\`: ${line:-sin resultado}" >> "$GITHUB_STEP_SUMMARY"
-            case "$line" in *PASS*) ;; *) status=1; echo "::error title=Caja SQL $(basename "$f")::${line:-sin resultado}"; echo "$out" | tail -20 ;; esac
+            case "$line" in
+              *PASS*) ;;
+              *)
+                status=1
+                detail=$(echo "$out" | tail -20)
+                detail=${detail//%/%25}
+                detail=${detail//$'\r'/%0D}
+                detail=${detail//$'\n'/%0A}
+                echo "::error title=Caja SQL $(basename "$f")::${line:-sin resultado}%0A$detail"
+                echo "$out" | tail -20
+                ;;
+            esac
           done
           exit $status
 
