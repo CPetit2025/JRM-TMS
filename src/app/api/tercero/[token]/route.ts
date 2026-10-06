@@ -29,20 +29,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   let form: FormData
   try { form = await request.formData() } catch { return json({ success: false, error: 'Solicitud no válida' }, 400) }
   const action = String(form.get('accion') || '')
-  if (action === 'salida') {
-    // El acceso también se comprueba cuando el enlace ya no tiene entregas habilitadas.
-    const info = await db.rpc('tercero_enlace_info', { p_token: token })
-    if (info.error || !info.data?.success) return json({ success: false, error: info.data?.error || 'Acceso no disponible' }, 403)
-    const { data, error } = await db.rpc('tercero_enlace_salida', { p_token: token })
-    return error ? json({ success: false, error: error.message }, 400) : json(data)
-  }
+  if (action !== 'entrega') return json({ success: false, error: 'Este enlace permite únicamente subir la guía de remisión firmada en destino. Transporte de JRM registra la salida y llegada.' }, 400)
   const id = String(form.get('request_id') || '')
   if (!UUID.test(id)) return json({ success: false, error: 'Entrega no válida' }, 400)
-  if (action === 'llegada') {
-    const { data, error } = await db.rpc('delivery_public_arrive', { p_token: token, p_request: id })
-    return error ? json({ success: false, error: error.message }, 400) : json(data)
-  }
-  if (action !== 'entrega') return json({ success: false, error: 'Acción no válida' }, 400)
   // Clientes anteriores no enviaban operation_id; se mantienen compatibles.
   const operation = String(form.get('operation_id') || crypto.randomUUID())
   if (!UUID.test(operation)) return json({ success: false, error: 'Operación no válida' }, 400)

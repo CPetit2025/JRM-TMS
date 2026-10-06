@@ -153,7 +153,7 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
     `Placa: ${d.placa}`, `Código de acceso: ${code.toUpperCase()}`,
     `Vigencia: ${fmtDate(data!.enlace!.expires_at, true)} (hora de Lima).`,
     '1. Ingresa al portal con tu placa y código. No necesitas instalar el app.',
-    '2. Registra salida y llegada. Después de entregar, adjunta fotos legibles de la guía completa con firma o sello, número de guía y nombre del receptor.',
+    '2. Después de entregar, adjunta fotos legibles de la guía de remisión completa con firma o sello de recepción en destino, número de guía y nombre del receptor. Este enlace solo permite subir esa guía.',
     '3. El Supervisor de Transporte valida la guía. Sin aprobación, el servicio no avanza.',
     'Al enviar, esa entrega queda bloqueada. Solo una observación o rechazo permite corregirla. Las demás entregas pendientes siguen disponibles.',
     'Si necesitas ayuda, contacta al responsable de Transporte de JRM que coordinó el servicio.',
@@ -191,7 +191,7 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
           {d.estado === 'PROGRAMADO' && (
             <div className="border rounded-xl p-4 space-y-2">
               <h4 className="font-semibold text-slate-800 flex items-center gap-2"><PlayCircle className="w-4 h-4 text-blue-600" />Registrar salida</h4>
-              {!d.docs_listos && <p className="text-xs text-amber-700">El Packing List firmado por el auditor aún no está confirmado. El Asistente Documentario debe cargarlo y confirmarlo antes de la salida.</p>}
+              {!d.docs_listos && <p className="text-xs text-amber-700">El Packing List firmado por el auditor aún no está confirmado. El Auditor de Despacho debe cargarlo y el Asistente Documentario confirmarlo antes de la salida.</p>}
               <div className="flex flex-wrap items-end gap-2">
                 <div>
                   <label className="block text-xs text-slate-600 mb-1">Hora real de salida</label>

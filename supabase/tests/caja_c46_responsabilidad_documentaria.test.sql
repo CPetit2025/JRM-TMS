@@ -28,16 +28,16 @@ BEGIN
  INSERT INTO public.dispatch_requests(dispatch_id,transport_request_id,status,document_type,sequence_order)
  VALUES(v_dispatch,v_req,'PROGRAMADO','GR',1);
  v_path:=v_dispatch::text||'/packing.pdf';
- r:=public.register_signed_packing_list(v_dispatch,NULL,v_path,'packing.pdf','application/pdf',1000,'Auditor C46',current_date,true);
+ r:=public.register_signed_packing_list(v_dispatch,NULL,v_path,'packing.pdf','application/pdf',1000,'Auditor C46',(now() AT TIME ZONE 'America/Lima')::date,true);
  IF COALESCE((r->>'success')::boolean,false) THEN fail:=array_append(fail,'Aceptó archivo inexistente'); END IF;
  INSERT INTO storage.objects(bucket_id,name,metadata) VALUES('dispatch_documents',v_path,'{"mimetype":"application/pdf"}');
- r:=public.register_signed_packing_list(v_dispatch,NULL,v_path,'packing.pdf','application/pdf',1000,'Auditor C46',current_date,false);
+ r:=public.register_signed_packing_list(v_dispatch,NULL,v_path,'packing.pdf','application/pdf',1000,'Auditor C46',(now() AT TIME ZONE 'America/Lima')::date,false);
  IF COALESCE((r->>'success')::boolean,false) THEN fail:=array_append(fail,'Aceptó firma no confirmada'); END IF;
  r:=public.register_dispatch_document(v_dispatch,v_req,'GUIA_REMISION','PT','C46-1',v_path,'guia.pdf','application/pdf',1000,NULL);
  IF COALESCE((r->>'success')::boolean,false) THEN fail:=array_append(fail,'Asistente sigue cargando la guía'); END IF;
  r:=public.confirm_dispatch_documents(v_dispatch);
  IF COALESCE((r->>'success')::boolean,false) THEN fail:=array_append(fail,'Confirmó sin Packing firmado'); END IF;
- r:=public.register_signed_packing_list(v_dispatch,NULL,v_path,'packing.pdf','application/pdf',1000,'Auditor C46',current_date,true);
+ r:=public.register_signed_packing_list(v_dispatch,NULL,v_path,'packing.pdf','application/pdf',1000,'Auditor C46',(now() AT TIME ZONE 'America/Lima')::date,true);
  IF NOT COALESCE((r->>'success')::boolean,false) THEN fail:=fail||('No registró firma: '||r::text); END IF;
  r:=public.confirm_dispatch_documents(v_dispatch);
  IF NOT COALESCE((r->>'success')::boolean,false) THEN fail:=fail||('No confirmó Packing: '||r::text); END IF;

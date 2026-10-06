@@ -9,10 +9,12 @@ import { usePathname } from 'next/navigation'
 import { AppUpdateNotice } from '@/components/AppUpdateNotice'
 import { JrmAiAssistant } from '@/components/JrmAiAssistant'
 import { NAV_SECTIONS, activeEntry, flatEntries } from '@/lib/nav/navConfig'
+import { usePermissions } from '@/hooks/usePermissions'
+import { isDispatchAuditorRole } from '@/lib/roles'
 import { setSidebar, useSidebar } from '@/lib/nav/sidebarStore'
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const [role, setRole] = useState('operador')
+  const { role, isLoaded } = usePermissions()
   const [email, setEmail] = useState('')
   const pathname = usePathname()
 
@@ -43,11 +45,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const { title, subtitle } = getPageTitle(pathname)
 
   useEffect(() => {
-    const storedRole = localStorage.getItem('userRole')
-    if (storedRole) {
-      setRole(storedRole)
-    }
-    
     const fetchUser = async () => {
       try {
         const { createClient } = await import('@/lib/supabase/client')
@@ -65,7 +62,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-dvh min-w-0 bg-slate-50">
-      <JrmAiAssistant />
+      {isLoaded && !isDispatchAuditorRole(role) && <JrmAiAssistant />}
       <Sidebar />
       <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
         <header className="h-16 shrink-0 bg-white border-b border-slate-200 border-t-[3px] border-t-[#cf152d] flex items-center justify-between gap-2 px-3 sm:h-20 sm:gap-3 sm:px-4 lg:px-8 z-20 relative">
