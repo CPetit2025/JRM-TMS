@@ -475,6 +475,12 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
     assert.match(result.stderr,/CAJA C(?:49|50|51) PASS/,result.stderr)
   }
   console.log('PASS: C51 fleet assignment reaches driver app without a route, account linked later, A-B-A requires inspection, cross-driver isolation, backfill and history; C49/C50 regressions pass.')
+  sql(`CREATE TABLE public.kpi_reprogramaciones(id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,request_id uuid NOT NULL,causa text NOT NULL,detalle text,fecha_anterior date,fecha_nueva date NOT NULL,at timestamptz NOT NULL DEFAULT now(),by uuid);`)
+  sql(installed('supabase/migrations/20261005180000_desempeno_por_rol.sql','reprogramar_solicitud'))
+  sql(read('supabase/migrations/20261007220000_request_reschedule_visibility.sql'))
+  const c52=query(read('supabase/tests/caja_c52_reprogramacion_armado_ruta.test.sql'))
+  assert.match(c52.stderr,/CAJA C52 PASS/,c52.stderr)
+  console.log('PASS: C52 actual cancel/reschedule/reassign/cancel retains date and reschedule history; latest event and permission/site isolation.')
 } catch(error) {
   console.error(error.message)
   console.error('::error title=Delivery conformity validation::' + error.message.replaceAll('%','%25').replaceAll('\n','%0A'))

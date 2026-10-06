@@ -418,7 +418,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
         {activeTab === 'solicitudes' && (
           <div>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-sm font-semibold text-slate-800">Solicitudes de Carga</h3>
+              <h3 className="text-sm font-semibold text-slate-800">Solicitud de Transporte</h3>
               <button 
                 onClick={() => router.push('/solicitudes')}
                 className="text-sm bg-[#002855] text-white px-3 py-1.5 rounded-lg font-medium hover:bg-[#001d3d]"

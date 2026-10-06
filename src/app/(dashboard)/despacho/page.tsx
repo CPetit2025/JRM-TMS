@@ -12,6 +12,7 @@ import { QuoteBreakdown } from '@/components/tarifas/TransportTariffManager'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { calculateRouteDistance } from '@/lib/routing'
 import { usePermissions } from '@/hooks/usePermissions'
+import { serviceDate, wasRescheduled, withRescheduling, type RequestRescheduling } from '@/lib/request-schedule'
 import { checkDispatchEligibility } from '@/lib/eligibility'
 import { ReportarFallaButton } from '@/components/mantenimiento/ReportarFalla'
 import { TerceroAvanceModal, TerceroFields, TERCERO_VACIO, type TerceroForm } from '@/components/despacho/Tercero'
@@ -30,6 +31,8 @@ interface TransportRequest {
   status: string
   created_at: string
   required_date?: string
+  time_window?: string | null
+  rescheduling?: RequestRescheduling
   contract_id?: string
   delivery_district?: string | null
   estimated_weight?: number | null
@@ -150,6 +153,7 @@ export default function DespachoPage() {
   const [freightShares, setFreightShares] = useState<Record<string, string>>({})
   const selectedServices = newDispatch.selected_requests.map(selected => pendingRequests.find(r => r.id === selected.id)).filter((r): r is TransportRequest => !!r)
   const mixedOT = new Set(selectedServices.map(r => r.contract_id || 'SIN_OT')).size > 1
+  const selectedDates = [...new Set(selectedServices.map(r => r.required_date?.slice(0,10)).filter((date): date is string => !!date))]
   const customerPickup = selectedServices[0]?.attention_mode === 'RECOJO_CLIENTE'
   const routeFreight = customerPickup ? 0 : modalidad === 'TERCERO'
     ? (Number(manualFreightCost) > 0 ? Number(manualFreightCost) : detectedFreightRate?.rate || 0)
@@ -269,10 +273,13 @@ export default function DespachoPage() {
           )
         `)
         .in('status', ['APROBADA', 'REPROGRAMADA'])
+        .order('required_date', { ascending: true })
         .order('created_at', { ascending: false })
 
       if (reqError) throw reqError
-      setPendingRequests(reqData || [])
+      const { data: history, error: historyError } = reqData?.length ? await supabase.rpc('get_transport_request_rescheduling', { p_request_ids: reqData.map(r => r.id) }) : { data: [], error: null }
+      if (historyError) throw historyError
+      setPendingRequests(withRescheduling(reqData || [], history || []))
 
       // 2. Obtener los despachos ya programados con sus múltiples solicitudes
       // Ahora usamos dispatch_requests
@@ -676,11 +683,8 @@ export default function DespachoPage() {
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex flex-col gap-1">
                         <span className="font-bold text-[#002855] text-sm">{req.request_number}</span>
-                        {req.status === 'REPROGRAMADA' && (
-                          <span className="text-[10px] bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold flex items-center gap-1 border border-orange-200">
-                            ⚠️ Nueva Fecha: {req.required_date ? new Date(req.required_date).toLocaleDateString() : 'N/A'}
-                          </span>
-                        )}
+                        {wasRescheduled(req) && <span className="text-[10px] bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-semibold border border-orange-200">Reprogramado</span>}
+                        <span className="text-xs text-slate-600">Fecha requerida: <b>{serviceDate(req.required_date)}</b>{req.time_window ? ` · ${req.time_window}` : ''}</span>
                       </div>
                       <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${typeColor} whitespace-nowrap h-fit`}>
                         {typeLabel}
@@ -1069,11 +1073,15 @@ export default function DespachoPage() {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Fecha Programada Salida</label>
                   <input 
                     type="datetime-local" 
+                    aria-label="Fecha Programada Salida"
                     required
                     className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none text-sm"
                     value={newDispatch.scheduled_departure}
                     onChange={(e) => setNewDispatch({...newDispatch, scheduled_departure: e.target.value})}
                   />
+                  {selectedDates.length === 1 && <button type="button" onClick={() => setNewDispatch(current => ({ ...current, scheduled_departure: `${selectedDates[0]}T${current.scheduled_departure.slice(11,16) || '08:00'}` }))} className="mt-2 min-h-11 text-xs font-semibold text-blue-700 underline">Usar fecha requerida: {serviceDate(selectedDates[0])}</button>}
+                  {selectedDates.length > 1 && <p className="mt-2 text-xs text-amber-800">Las solicitudes tienen fechas distintas: {selectedDates.map(serviceDate).join(', ')}. Confirme la salida según el orden de atención.</p>}
+                  <p className="mt-1 text-[11px] text-slate-500">La fecha de salida se confirma por separado de la fecha requerida de cada servicio.</p>
                 </div>
                 
                 {newDispatch.document_type === 'GR' && <div>
@@ -1140,7 +1148,7 @@ export default function DespachoPage() {
                             />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
+                            <div className="flex flex-wrap items-center gap-2 mb-1">
                               <span className="font-bold text-[#002855] text-sm">{req.request_number}</span>
                               <span className="text-xs font-semibold text-blue-700">OT {req.contracts?.code || 'Sin OT'}</span>
                               <span className="text-xs font-medium text-blue-700">{req.attention_mode === 'RECOJO_CLIENTE' ? 'Recojo por cliente' : req.attention_mode === 'TRANSPORTE_JRM' ? 'Transporte JRM' : 'Modalidad pendiente: revisar solicitud'}</span>
@@ -1149,6 +1157,8 @@ export default function DespachoPage() {
                               </span>
                             </div>
                           
+                          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs"><span className="text-slate-700">Fecha requerida: <b>{serviceDate(req.required_date)}</b>{req.time_window ? ` · ${req.time_window}` : ''}</span>{wasRescheduled(req) && <span className="rounded-full border border-orange-200 bg-orange-100 px-2 py-0.5 font-bold text-orange-800">Reprogramado</span>}</div>
+                          {req.rescheduling?.fecha_anterior && <p className="mb-2 text-[11px] text-slate-500">Fecha anterior: {serviceDate(req.rescheduling.fecha_anterior)}</p>}
                           {req.attention_mode === 'RECOJO_CLIENTE' && <p className="text-xs text-slate-600">Contacto: {req.pickup_contact || 'Sin registrar'} · {req.pickup_phone || 'Sin teléfono'}</p>}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
                             <div className="text-xs text-slate-600">

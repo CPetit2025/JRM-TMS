@@ -671,7 +671,7 @@ export default function SolicitudesPage() {
     <div className="flex h-full min-h-0 w-full flex-col gap-4 mx-auto">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Solicitudes de Transporte</h1>
+          <h1 className="text-2xl font-bold text-slate-800">Solicitud de Transporte</h1>
           <p className="text-sm text-slate-500">Gestión de requerimientos internos de servicio</p>
         </div>
         {canWrite('solicitudes') && (
