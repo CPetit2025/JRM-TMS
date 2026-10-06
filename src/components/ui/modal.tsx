@@ -9,9 +9,10 @@ interface ModalProps {
   title: string
   children: ReactNode
   maxWidth?: string
+  footer?: ReactNode
 }
 
-export function Modal({ isOpen, onClose, title, children, maxWidth = "max-w-lg" }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, maxWidth = "max-w-lg", footer }: ModalProps) {
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -65,6 +66,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "max-w-lg" 
         <div className="min-h-0 min-w-0 p-4 overflow-auto flex-1 sm:p-6">
           {children}
         </div>
+        {footer && <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">{footer}</div>}
       </div>
     </div>,
     document.body
