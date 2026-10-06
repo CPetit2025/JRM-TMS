@@ -36,7 +36,9 @@ export default function OperativeLayout({ children }: { children: React.ReactNod
   const handleLogout = async () => {
     try {
       if (nativeRouteTracker) await nativeRouteTracker.stop()
-      const { error } = await createClient().auth.signOut({ scope: 'local' })
+      const supabase = createClient()
+      await supabase.rpc('driver_app_disconnect').then(() => {}, () => {})
+      const { error } = await supabase.auth.signOut({ scope: 'local' })
       if (error) throw error
       if (nativeBiometric) await nativeBiometric.clear()
     } catch {
