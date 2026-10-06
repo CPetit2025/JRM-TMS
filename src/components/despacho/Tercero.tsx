@@ -1,16 +1,17 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Camera, CheckCircle2, Copy, Link2, Loader2, MessageCircle, PlayCircle, RefreshCw, Truck, XCircle } from 'lucide-react'
+import { Copy, Link2, Loader2, MessageCircle, PlayCircle, RefreshCw, Truck, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
-import { errorMessage, fmtDate, money, receiptUrl } from '@/lib/caja'
+import { errorMessage, fmtDate, money } from '@/lib/caja'
 import { Modal } from '@/components/ui/modal'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
+import { DeliveryReview, type DeliveryReviewTarget } from '@/components/delivery/DeliveryReview'
 
 // Despacho tercerizado: la unidad es de un transportista que no usa el app. Despacho / Torre de Control registra la
-// salida y cada entrega (hora, quién recibió y foto de la guía firmada), o se envía al chofer un enlace para que lo
-// haga desde su celular sin instalar nada (/tracking/entrega/[token]).
+// salida y consulta las guías. El proveedor sube el sustento mediante su acceso exclusivo
+// desde el portal público, sin instalar nada (/tracking/entregas).
 
 export type TerceroForm = { carrier_id: string; placa: string; conductor: string; telefono: string; doc: string }
 export const TERCERO_VACIO: TerceroForm = { carrier_id: '', placa: '', conductor: '', telefono: '', doc: '' }
@@ -63,7 +64,7 @@ export function TerceroFields({ value, onChange }: { value: TerceroForm; onChang
       </div>
       <p className="text-[11px] text-slate-500 leading-snug">
         Sin checklist pre-ruta ni GPS: el avance se registra desde Despacho o con el enlace para el chofer. La guía de remisión
-        la sigue confirmando la Asistente Documentario antes de la salida.
+        firmada la sube el proveedor desde su portal después de entregar. El Asistente Documentario confirma el Packing List firmado por el auditor antes de salir. El acceso se genera al programar y se comparte desde «Acceso tercero».
       </p>
     </div>
   )
@@ -94,8 +95,7 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
   const [data, setData] = useState<Avance | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [salidaAt, setSalidaAt] = useState(nowLocal())
-  const [form, setForm] = useState<{ request_id: string; at: string; recibido: string; nota: string; file: File | null } | null>(null)
-  const [fotos, setFotos] = useState<Record<string, string | null>>({})
+  const [review, setReview] = useState<DeliveryReviewTarget | null>(null)
 
   const [version, setVersion] = useState(0)
   const load = useCallback(() => setVersion(v => v + 1), [])
@@ -106,9 +106,7 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
       const { data: r, error } = await supabase.rpc('tercero_avance', { p_dispatch_id: dispatchId })
       if (cancel) return
       if (error || !r?.success) { toast.error(error?.message || r?.error || 'No se pudo cargar el avance'); return }
-      const urls: Record<string, string | null> = {}
-      await Promise.all((r as Avance).paradas.filter(p => p.foto).map(async p => { urls[p.request_id] = await receiptUrl(supabase, p.foto) }))
-      if (!cancel) { setData(r as Avance); setFotos(urls) }
+      if (!cancel) setData(r as Avance)
     })()
     return () => { cancel = true }
   }, [dispatchId, supabase, version])
@@ -130,32 +128,11 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
     return r
   }, 'Salida registrada: el despacho pasó a En ruta.')
 
-  const registrarEntrega = async () => {
-    if (!form || !dispatchId) return
-    if (!form.file) { toast.error('Adjunte la foto de la guía firmada o de la constancia'); return }
-    const done = await run('entrega', async () => {
-      const { data: auth } = await supabase.auth.getUser()
-      if (!auth.user) throw new Error('Sesión vencida')
-      const ext = (form.file!.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
-      const path = `${auth.user.id}/tercero/${dispatchId}/${crypto.randomUUID()}.${ext}`
-      const { error: up } = await supabase.storage.from('driver_evidence').upload(path, form.file!, { contentType: form.file!.type })
-      if (up) throw new Error('No se pudo subir la foto: ' + up.message)
-      const { data: r, error } = await supabase.rpc('tercero_registrar_entrega', {
-        p_dispatch_id: dispatchId, p_request_id: form.request_id, p_at: new Date(form.at).toISOString(),
-        p_recibido_por: form.recibido, p_foto: path, p_nota: form.nota || null,
-      })
-      if (error || !r?.success) await supabase.storage.from('driver_evidence').remove([path])
-      if (error) throw error
-      return r
-    }, 'Guía recibida: pendiente de validación del Supervisor de Transporte.')
-    if (done) setForm(null)
-  }
-
   const generarEnlace = () => run('enlace', async () => {
     const { data: r, error } = await supabase.rpc('tercero_generar_enlace', { p_dispatch_id: dispatchId })
     if (error) throw error
     return r
-  }, 'Enlace generado: compártalo con el chofer.')
+  }, 'Acceso generado: comparte enlace, placa y código con el proveedor.')
 
   const revocarEnlace = () => run('revocar', async () => {
     const { data: r, error } = await supabase.rpc('tercero_revocar_enlace', { p_dispatch_id: dispatchId })
@@ -168,9 +145,27 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
   const abierto = d && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA'].includes(d.estado)
   const link = data?.enlace ? enlaceTercero(data.enlace.token) : null
   const portal = typeof window === 'undefined' ? '/tracking/entregas' : `${window.location.origin}/tracking/entregas`
-  const mensaje = d && link ? `JRM · viaje ${d.numero}. Placa: ${d.placa}. Ingrese a ${portal} con código ${data?.enlace?.codigo || '(solicitar renovación)'} o use su enlace de viaje: ${link}. Sin guía firmada y aprobada por el Supervisor de Transporte, el servicio no puede avanzar. Al enviarla se bloquea el acceso a esa entrega; solo una observación o rechazo permite corregirla.` : ''
+  const code = data?.enlace?.codigo || ''
+  const enabled = data?.paradas.some(p => ['PENDIENTE', 'OBSERVADA', 'RECHAZADA'].includes(p.conformidad)) ?? false
+  const mensaje = d && code ? [
+    `JRM S.A.C. · Servicio ${d.numero}`,
+    `Portal de transportistas: ${portal}`,
+    `Placa: ${d.placa}`, `Código de acceso: ${code.toUpperCase()}`,
+    `Vigencia: ${fmtDate(data!.enlace!.expires_at, true)} (hora de Lima).`,
+    '1. Ingresa al portal con tu placa y código. No necesitas instalar el app.',
+    '2. Registra salida y llegada. Después de entregar, adjunta fotos legibles de la guía completa con firma o sello, número de guía y nombre del receptor.',
+    '3. El Supervisor de Transporte valida la guía. Sin aprobación, el servicio no avanza.',
+    'Al enviar, esa entrega queda bloqueada. Solo una observación o rechazo permite corregirla. Las demás entregas pendientes siguen disponibles.',
+    'Si necesitas ayuda, contacta al responsable de Transporte de JRM que coordinó el servicio.',
+  ].join('\n\n') : ''
+  const copy = async (text: string, label: string) => {
+    try { await navigator.clipboard.writeText(text); toast.success(label) }
+    catch { toast.error('No se pudo copiar. Selecciona el texto y cópialo manualmente.') }
+  }
+
 
   return (
+    <>
     <Modal isOpen={!!dispatchId} onClose={onClose} title={`Avance del tercero${d ? ` · ${d.numero}` : ''}`} maxWidth="max-w-3xl">
       {!data || !d ? <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : (
         <div className="space-y-5">
@@ -196,7 +191,7 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
           {d.estado === 'PROGRAMADO' && (
             <div className="border rounded-xl p-4 space-y-2">
               <h4 className="font-semibold text-slate-800 flex items-center gap-2"><PlayCircle className="w-4 h-4 text-blue-600" />Registrar salida</h4>
-              {!d.docs_listos && <p className="text-xs text-amber-700">La guía aún no está confirmada por la Asistente Documentario: la salida se bloqueará hasta entonces.</p>}
+              {!d.docs_listos && <p className="text-xs text-amber-700">El Packing List firmado por el auditor aún no está confirmado. El Asistente Documentario debe cargarlo y confirmarlo antes de la salida.</p>}
               <div className="flex flex-wrap items-end gap-2">
                 <div>
                   <label className="block text-xs text-slate-600 mb-1">Hora real de salida</label>
@@ -225,44 +220,11 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
                       </div>
                     )}
                   </div>
-                  {p.estado === 'ENTREGADO' ? (
-                    fotos[p.request_id]
-                      ? <a href={fotos[p.request_id]!} target="_blank" rel="noreferrer" className="block w-20 h-14 rounded-lg overflow-hidden border">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={fotos[p.request_id]!} alt="Constancia" className="w-full h-full object-cover" />
-                        </a>
-                      : <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                  ) : enRuta && ['PENDIENTE', 'OBSERVADA', 'RECHAZADA'].includes(p.conformidad) && form?.request_id !== p.request_id ? (
-                    <button onClick={() => setForm({ request_id: p.request_id, at: nowLocal(), recibido: '', nota: '', file: null })}
-                      className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-semibold">Enviar guía para validación</button>
-                  ) : !enRuta ? <span className="text-[11px] text-slate-400">Pendiente</span> : null}
+                  <button type="button" onClick={() => setReview({ dispatch_id: d.id, request_id: p.request_id, request_number: p.solicitud, ot_code: 'Servicio', plate: d.placa, delivery_address: p.destino || '' })}
+                    className="min-h-10 rounded-lg border px-3 text-xs font-semibold text-[#002855]">Consultar guía y validación</button>
                 </div>
-                {form?.request_id === p.request_id && (
-                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 bg-emerald-50/50 rounded-lg p-3">
-                    <div>
-                      <label className="block text-xs text-slate-600 mb-1">Hora de entrega</label>
-                      <input type="datetime-local" className={input} value={form.at} max={nowLocal()} onChange={e => setForm({ ...form, at: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-600 mb-1">Recibió (nombre)</label>
-                      <input className={input} value={form.recibido} onChange={e => setForm({ ...form, recibido: e.target.value })} maxLength={120} />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-600 mb-1">Foto de la guía firmada / constancia</label>
-                      <input type="file" accept="image/jpeg,image/png,image/webp" className="text-xs" onChange={e => setForm({ ...form, file: e.target.files?.[0] || null })} />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-600 mb-1">Nota (opcional)</label>
-                      <input className={input} value={form.nota} onChange={e => setForm({ ...form, nota: e.target.value })} placeholder="Ej.: recibido por WhatsApp" maxLength={200} />
-                    </div>
-                    <div className="sm:col-span-2 flex justify-end gap-2">
-                      <button onClick={() => setForm(null)} className="px-3 py-1.5 text-sm bg-slate-100 rounded-lg">Cancelar</button>
-                      <button onClick={registrarEntrega} disabled={!!busy} className="px-4 py-1.5 text-sm bg-emerald-600 text-white font-semibold rounded-lg disabled:opacity-50 flex items-center gap-2">
-                        {busy === 'entrega' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}Enviar guía
-                      </button>
-                    </div>
-                  </div>
-                )}
+                {enRuta && ['PENDIENTE', 'OBSERVADA', 'RECHAZADA'].includes(p.conformidad) && <p className="mt-2 text-xs text-slate-500">El proveedor debe subir o corregir la guía desde su portal. Comparte el acceso de este servicio.</p>}
+
               </div>
             ))}
             {d.estado === 'ENTREGADO' && <p className="text-xs text-emerald-700">Todas las paradas están entregadas: use «Cerrar ruta» en la lista para consumir la partida.</p>}
@@ -271,33 +233,30 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
           {abierto && (
             <div className="border rounded-xl p-4 space-y-2">
               <h4 className="font-semibold text-slate-800 flex items-center gap-2"><Link2 className="w-4 h-4 text-blue-600" />Acceso del tercero por placa</h4>
-              <p className="text-xs text-slate-500">El chofer del tercero abre el enlace en su celular, marca la salida y registra cada entrega con foto, sin instalar nada ni crear cuenta. Vale solo para este viaje.</p>
-              {link ? (
-                <div className="space-y-2">
-                  <p className="text-sm">Portal: <a href={portal} target="_blank" rel="noreferrer" className="text-blue-700 underline">{portal}</a></p>
-                  <p className="text-sm font-semibold">Placa: {d.placa} · Código: {data.enlace?.codigo || 'Renueve el enlace para asignar código'}</p>
-                  <p className="text-xs text-amber-800">Comparta el código con el contacto registrado del transportista. Solo el Supervisor de Transporte aprueba; el envío de la guía bloquea el acceso a esa entrega.</p>
-                  <div className="flex gap-2">
-                    <input readOnly value={link} className={`${input} text-xs`} onFocus={e => e.currentTarget.select()} />
-                    <button onClick={() => { void navigator.clipboard.writeText(link); toast.success('Enlace copiado') }} className="px-3 bg-slate-100 rounded-lg" title="Copiar"><Copy className="w-4 h-4" /></button>
-                  </div>
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    <a href={whatsappUrl(d.telefono, mensaje)} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg font-semibold flex items-center gap-1"><MessageCircle className="w-3.5 h-3.5" />Enviar por WhatsApp</a>
-                    <button onClick={generarEnlace} disabled={!!busy} className="px-3 py-1.5 bg-slate-100 rounded-lg flex items-center gap-1"><RefreshCw className="w-3.5 h-3.5" />Generar otro</button>
-                    <button onClick={revocarEnlace} disabled={!!busy} className="px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg flex items-center gap-1"><XCircle className="w-3.5 h-3.5" />Anular</button>
-                    <span className="text-slate-500 self-center">Vence {fmtDate(data.enlace!.expires_at, true)}{data.enlace!.last_used_at ? ` · abierto ${fmtDate(data.enlace!.last_used_at, true)}` : ' · aún no abierto'}</span>
-                  </div>
+              <p className="text-sm leading-6 text-slate-600">El código se genera automáticamente al programar este servicio. Comparte el portal, la placa y el código con el proveedor registrado; no se envían mensajes automáticamente.</p>
+              {link && code ? <div className="space-y-3">
+                <div className="grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2"><div><p className="text-xs text-slate-500">Placa del servicio</p><p className="mt-1 text-lg font-bold text-[#002855]">{d.placa}</p></div><div><p className="text-xs text-slate-500">Código de acceso</p><p className="mt-1 break-all font-mono text-lg font-bold tracking-wider text-[#002855]">{code.toUpperCase()}</p></div></div>
+                <p className="text-sm">Portal: <a href={portal} target="_blank" rel="noreferrer" className="break-all text-blue-700 underline">{portal}</a></p>
+                <p className="text-xs text-slate-500">Vence {fmtDate(data.enlace!.expires_at, true)} · Solo para este servicio y las entregas habilitadas.</p>
+                {!enabled && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">No quedan entregas habilitadas para subir guías. Una observación o rechazo del Supervisor de Transporte vuelve a abrir únicamente la entrega afectada.</p>}
+                <textarea readOnly value={mensaje} aria-label="Instrucciones para compartir con el proveedor" className="min-h-36 w-full rounded-xl border border-slate-200 bg-white p-3 text-xs leading-5 text-slate-600" onFocus={e => e.currentTarget.select()} />
+                <div className="flex flex-wrap gap-2">
+                  <button disabled={!enabled} onClick={() => void copy(mensaje, 'Portal, placa, código e instrucciones copiados')} className="flex min-h-11 items-center gap-2 rounded-lg bg-[#002855] px-3 text-sm font-semibold text-white disabled:opacity-50"><Copy className="h-4 w-4" />Copiar instrucciones</button>
+                  {enabled && <a href={whatsappUrl(d.telefono, mensaje)} target="_blank" rel="noreferrer" className="flex min-h-11 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-sm font-semibold text-white"><MessageCircle className="h-4 w-4" />Compartir por WhatsApp</a>}
+                  <button disabled={!enabled} onClick={() => void copy(portal, 'Portal copiado')} className="min-h-11 rounded-lg border px-3 text-sm disabled:opacity-50">Copiar portal</button>
+                  <button disabled={!enabled} onClick={() => void copy(code.toUpperCase(), 'Código copiado')} className="min-h-11 rounded-lg border px-3 text-sm disabled:opacity-50">Copiar código</button>
                 </div>
-              ) : (
-                <button onClick={generarEnlace} disabled={!!busy} className="px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 text-sm font-semibold rounded-lg flex items-center gap-2">
-                  {busy === 'enlace' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}Generar enlace
-                </button>
-              )}
+                <p className="text-xs text-slate-500">WhatsApp abre un mensaje preparado para {d.telefono || 'el contacto que selecciones'}. Revisa el destinatario y envíalo desde WhatsApp.</p>
+                <div className="flex flex-wrap items-center gap-2 border-t pt-3"><button onClick={generarEnlace} disabled={!!busy} className="flex min-h-10 items-center gap-1 rounded-lg border px-3 text-xs"><RefreshCw className="h-3.5 w-3.5" />Renovar acceso</button><button onClick={revocarEnlace} disabled={!!busy} className="flex min-h-10 items-center gap-1 rounded-lg border border-red-200 px-3 text-xs text-red-700"><XCircle className="h-3.5 w-3.5" />Revocar acceso</button><span className="text-xs text-slate-500">Renovar invalida el enlace y código anteriores: comparte los nuevos datos.</span></div>
+              </div> : <button onClick={generarEnlace} disabled={!!busy} className="flex min-h-11 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-700">{busy === 'enlace' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}Generar acceso para este servicio</button>}
+
             </div>
           )}
         </div>
       )}
     </Modal>
+    <DeliveryReview row={review} onClose={() => setReview(null)} onChanged={() => { load(); onChanged() }} />
+    </>
   )
 }
 

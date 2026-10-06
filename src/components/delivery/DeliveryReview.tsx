@@ -6,7 +6,9 @@ import { Modal } from '@/components/ui/modal'
 import { createClient } from '@/lib/supabase/client'
 import { conformityLabels, deliveryTime, type DeliveryDetail, type DeliveryRow } from '@/lib/delivery'
 
-export function DeliveryReview({ row, onClose, onChanged }: { row: DeliveryRow | null; onClose: () => void; onChanged: () => void }) {
+export type DeliveryReviewTarget = Pick<DeliveryRow, 'dispatch_id' | 'request_id' | 'ot_code' | 'request_number' | 'plate' | 'delivery_address'>
+
+export function DeliveryReview({ row, onClose, onChanged }: { row: DeliveryReviewTarget | null; onClose: () => void; onChanged: () => void }) {
   const supabase = useMemo(() => createClient(), [])
   const [detail, setDetail] = useState<DeliveryDetail | null>(null), [urls, setUrls] = useState<Record<string, string>>({})
   const [reason, setReason] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('')
@@ -56,7 +58,7 @@ export function DeliveryReview({ row, onClose, onChanged }: { row: DeliveryRow |
       {!detail.submissions.length && detail.state !== 'NO_APLICA' && <p className="text-sm text-slate-500">Todavía no se ha recibido la guía de entrega.</p>}
       {detail.submissions.map((submission, i) => <article key={submission.id} className="space-y-2 rounded-xl border p-4">
         <p className="font-semibold">{i === 0 ? 'Sustento actual' : 'Versión anterior'} · {deliveryTime(submission.submitted_at)}</p>
-        <p className="text-sm">Guía: {submission.guide_number || 'Sin número vinculado'} · Recibió: {submission.received_by || 'Sin nombre registrado'} · {submission.source}</p>
+        <p className="text-sm">Guía: {submission.guide_number || 'Sin número vinculado'} · Recibió: {submission.received_by || 'Sin nombre registrado'} · {submission.source === 'APP' ? 'App del conductor' : submission.source === 'ENLACE' ? 'Portal del proveedor' : 'Registro anterior'}</p>
         {submission.note && <p className="whitespace-pre-wrap text-sm">{submission.note}</p>}
         <div className="flex flex-wrap gap-2">{submission.photos.map(photo => urls[photo] ? <a key={photo} href={urls[photo]} target="_blank" rel="noreferrer" className="block h-28 w-40 overflow-hidden rounded-lg border">
           {/* eslint-disable-next-line @next/next/no-img-element */}

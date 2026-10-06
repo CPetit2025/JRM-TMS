@@ -1,4 +1,4 @@
--- Pruebas C9 — Despacho F3: Asistente Documentario (guías por parada, Nota de Despacho, bloqueo de salida,
+-- Pruebas C9 — Responsabilidad documentaria: Packing List firmado por el auditor, Nota de Despacho, bloqueo de salida,
 -- reemisión, anulación, bandeja) y validación de saldo de schedule_dispatch con la reserva de F2.
 -- Termina en error para forzar ROLLBACK: "CAJA C9 PASS/FAIL".
 --   npx supabase db query --linked -f supabase/tests/caja_c9_documentario.test.sql
@@ -19,15 +19,19 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN RETURN SQLERRM;
 END $$;
 
--- Registra un documento y devuelve el error (NULL si pasó)
-CREATE FUNCTION pg_temp.doc(p_dispatch uuid, p_req uuid, p_type text, p_cargo text, p_number text, p_mime text DEFAULT 'application/pdf')
-RETURNS text LANGUAGE plpgsql AS $$
-DECLARE r jsonb;
+-- Temporary fixture stores a real object record; signed packing is registered through the actual role-checked RPC.
+CREATE FUNCTION pg_temp.doc(p_dispatch uuid,p_req uuid,p_type text,p_cargo text,p_number text,
+ p_mime text DEFAULT 'application/pdf',p_signature boolean DEFAULT true)
+RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE r jsonb; path text:=p_dispatch::text||'/'||gen_random_uuid()::text||'.pdf';
 BEGIN
-  r := public.register_dispatch_document(p_dispatch, p_req, p_type, p_cargo, p_number,
-    p_dispatch::text || '/' || gen_random_uuid()::text || CASE WHEN p_mime = 'application/pdf' THEN '.pdf' ELSE '.xlsx' END,
-    'archivo', p_mime, 1000, NULL);
-  RETURN CASE WHEN (r->>'success')::boolean THEN NULL ELSE COALESCE(r->>'error', 'error') END;
+ INSERT INTO storage.objects(bucket_id,name,metadata) VALUES('dispatch_documents',path,jsonb_build_object('mimetype',p_mime));
+ IF p_type='PACKING_LIST' THEN
+  r:=public.register_signed_packing_list(p_dispatch,p_req,path,'packing.pdf',p_mime,1000,'Auditor C9',current_date,p_signature);
+ ELSE
+  r:=public.register_dispatch_document(p_dispatch,p_req,p_type,p_cargo,p_number,path,'archivo.pdf',p_mime,1000,NULL);
+ END IF;
+ RETURN CASE WHEN (r->>'success')::boolean THEN NULL ELSE COALESCE(r->>'error','error') END;
 END $$;
 
 DO $test$
@@ -84,32 +88,33 @@ BEGIN
   -- El recojo real se programa como NOTA_SALIDA; EXTERNO también puede ser un proveedor.
   UPDATE public.dispatch_requests SET document_type = 'NOTA_SALIDA' WHERE dispatch_id = d2;
 
-  -- T1: solo el Asistente carga; reglas de tipo, formato, número y parada
+  -- T1: role, signed-file format, auditor signature, stop scope and separation from delivery guides.
   PERFORM pg_temp.as_user(v_nobody);
-  v_err := pg_temp.doc(d1, r1, 'GUIA_REMISION', 'PT', 'T001-1');
+  v_err:=pg_temp.doc(d1,r1,'PACKING_LIST',NULL,NULL);
   PERFORM pg_temp.as_user(v_doc);
-  v_err2 := pg_temp.doc(d1, r1, 'NOTA_DESPACHO', NULL, 'ND-1');
-  v_err3 := pg_temp.doc(d1, r1, 'GUIA_REMISION', 'PT', 'T001-1', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  v_err4 := pg_temp.doc(d1, r3, 'GUIA_REMISION', 'PT', 'T001-9');
-  IF pg_temp.doc(d1, r1, 'GUIA_REMISION', 'PT', 'T001-1') IS NOT NULL THEN v_err5 := 'no registró la guía'; END IF;
-  v_err5 := COALESCE(v_err5, pg_temp.doc(d1, r2, 'GUIA_REMISION', 'PT', 't001-1'));  -- duplicada
+  v_err2:=pg_temp.doc(d1,r1,'NOTA_DESPACHO',NULL,'ND-1');
+  v_err3:=pg_temp.doc(d1,r1,'PACKING_LIST',NULL,NULL,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  v_err4:=pg_temp.doc(d1,r3,'PACKING_LIST',NULL,NULL);
+  v_err5:=pg_temp.doc(d1,r2,'PACKING_LIST',NULL,NULL,'application/pdf',false);
+  IF v_err LIKE 'Solo el Asistente Documentario%' AND v_err2 LIKE '%solo para recojos%' AND v_err3 LIKE '%PDF%'
+    AND v_err4 LIKE '%no pertenece%' AND v_err5 LIKE '%contiene su firma%'
+    AND pg_temp.doc(d1,r1,'GUIA_REMISION','PT','T001-1') LIKE '%conductor desde el app%'
+    AND pg_temp.doc(d1,r1,'PACKING_LIST',NULL,NULL) IS NULL
+  THEN v_pass:=v_pass+1; ELSE v_fail:=v_fail||('T1 responsabilidades: '||concat_ws(' | ',v_err,v_err2,v_err3,v_err4,v_err5)); END IF;
   PERFORM pg_temp.as_user(NULL);
-  IF v_err LIKE 'Solo el Asistente Documentario%' AND v_err2 LIKE '%solo para recojos%' AND v_err3 LIKE '%en PDF%'
-     AND v_err4 LIKE '%no pertenece%' AND v_err5 LIKE '%ya está registrada%'
-  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T1 reglas: ' || concat_ws(' | ', COALESCE(v_err, '∅'), COALESCE(v_err2, '∅'), COALESCE(v_err3, '∅'), COALESCE(v_err4, '∅'), COALESCE(v_err5, '∅'))); END IF;
 
-  -- T2: sin documentos confirmados no sale; con guías en todas las paradas (varias por parada) sí
-  v_err := pg_temp.try_depart(d1, 'EN RUTA');
+  -- T2: signed packing must cover every stop; other spreadsheets never replace the signed evidence.
+  v_err:=pg_temp.try_depart(d1,'EN RUTA');
   PERFORM pg_temp.as_user(v_doc);
-  v_err2 := public.confirm_dispatch_documents(d1)->>'error';
-  v_err3 := concat_ws(' | ', pg_temp.doc(d1, r2, 'GUIA_REMISION', 'PT', 'T001-2'), pg_temp.doc(d1, r2, 'GUIA_REMISION', 'SUMINISTROS', 'T001-3'),
-    pg_temp.doc(d1, NULL, 'PACKING_LIST', NULL, NULL, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
-  r := public.confirm_dispatch_documents(d1);
+  v_err2:=public.confirm_dispatch_documents(d1)->>'error';
+  v_err3:=concat_ws(' | ',pg_temp.doc(d1,r2,'PACKING_LIST',NULL,NULL),
+    pg_temp.doc(d1,NULL,'OTRO',NULL,NULL,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
+  r:=public.confirm_dispatch_documents(d1);
   PERFORM pg_temp.as_user(NULL);
-  IF v_err LIKE 'Documentos pendientes%' AND v_err2 LIKE '%ZZ-C9-R2%' AND NULLIF(v_err3, '') IS NULL AND (r->>'success')::boolean
-     AND (SELECT docs_ready_at IS NOT NULL AND docs_ready_by = v_doc FROM public.dispatches WHERE id = d1)
-     AND (SELECT count(*) = 4 FROM public.dispatch_documents WHERE dispatch_id = d1 AND voided_at IS NULL)
-  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T2 salida: ' || concat_ws(' | ', COALESCE(v_err, '∅'), COALESCE(v_err2, '∅'), COALESCE(v_err3, '∅'), COALESCE(r::text, '∅'))); END IF;
+  IF v_err LIKE 'Documentos pendientes%' AND v_err2 LIKE '%ZZ-C9-R2%' AND NULLIF(v_err3,'') IS NULL AND (r->>'success')::boolean
+    AND (SELECT docs_ready_at IS NOT NULL AND docs_ready_by=v_doc FROM public.dispatches WHERE id=d1)
+    AND (SELECT count(*)=3 FROM public.dispatch_documents WHERE dispatch_id=d1 AND voided_at IS NULL)
+  THEN v_pass:=v_pass+1; ELSE v_fail:=v_fail||('T2 salida: '||concat_ws(' | ',v_err,v_err2,v_err3,r::text)); END IF;
 
   -- T3: cambio de placa o de paradas después de confirmar → reemisión y bloqueo hasta reconfirmar
   UPDATE public.dispatches SET vehicle_plate = 'ZZC9B' WHERE id = d1;
@@ -124,39 +129,40 @@ BEGIN
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T3 reemisión: ' || COALESCE(v_err, '∅') || ' | ' || COALESCE(r::text, '∅') || ' n=' || v_n); END IF;
   INSERT INTO public.dispatch_requests (dispatch_id, transport_request_id, status) VALUES (d1, r2, 'PROGRAMADO');
 
-  -- T4: recojo del cliente: Nota de Despacho (no guía); cancelar no exige documentos
+  -- T4: customer pickup retains its release note and signed packing; cancellation remains available.
   PERFORM pg_temp.as_user(v_doc);
-  v_err := pg_temp.doc(d2, r3, 'GUIA_REMISION', 'PT', 'T001-50');
-  v_err2 := public.confirm_dispatch_documents(d2)->>'error';
-  v_err3 := pg_temp.doc(d2, r3, 'NOTA_DESPACHO', NULL, 'ND-0001');
-  r := public.confirm_dispatch_documents(d2);
+  v_err:=pg_temp.doc(d2,r3,'GUIA_REMISION','PT','T001-50');
+  v_err2:=public.confirm_dispatch_documents(d2)->>'error';
+  v_err3:=concat_ws(' | ',pg_temp.doc(d2,r3,'NOTA_DESPACHO',NULL,'ND-0001'),pg_temp.doc(d2,NULL,'PACKING_LIST',NULL,NULL));
+  r:=public.confirm_dispatch_documents(d2);
   PERFORM pg_temp.as_user(NULL);
-  v_err4 := pg_temp.try_depart(d2, 'ENTREGADO');
-  INSERT INTO public.dispatches (dispatch_number, vehicle_plate, driver_id, status, site_id, docs_required)
-  VALUES ('ZZ-C9-D3', 'ZZC9C', NULL, 'PROGRAMADO', v_site, true) RETURNING id INTO d3;
-  v_err5 := pg_temp.try_depart(d3, 'CANCELADO');
-  IF v_err LIKE 'Recojo por el cliente%' AND v_err2 LIKE 'Falta la Nota de Despacho%' AND v_err3 IS NULL
-     AND (r->>'success')::boolean AND v_err4 IS NULL AND v_err5 IS NULL
-  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T4 recojo: ' || concat_ws(' | ', COALESCE(v_err, '∅'), COALESCE(v_err2, '∅'), COALESCE(v_err3, '∅'), COALESCE(r::text, '∅'), COALESCE(v_err4, '∅'), COALESCE(v_err5, '∅'))); END IF;
+  v_err4:=pg_temp.try_depart(d2,'ENTREGADO');
+  INSERT INTO public.dispatches(dispatch_number,vehicle_plate,driver_id,status,site_id,docs_required)
+  VALUES('ZZ-C9-D3','ZZC9C',NULL,'PROGRAMADO',v_site,true) RETURNING id INTO d3;
+  v_err5:=pg_temp.try_depart(d3,'CANCELADO');
+  IF v_err IS NOT NULL AND v_err2 LIKE '%Nota de Despacho%' AND NULLIF(v_err3,'') IS NULL AND (r->>'success')::boolean AND v_err4 IS NULL AND v_err5 IS NULL
+  THEN v_pass:=v_pass+1; ELSE v_fail:=v_fail||('T4 recojo: '||concat_ws(' | ',v_err,v_err2,v_err3,r::text,v_err4,v_err5)); END IF;
 
-  -- T5: anular una guía confirmada exige reconfirmar; tras la salida no se anula; conductor ve sus documentos
+  -- T5: voiding signed packing reblocks departure; replacement and reconfirmation are required; driver reads the file.
   PERFORM pg_temp.as_user(v_doc);
-  r := public.confirm_dispatch_documents(d1);
-  SELECT id INTO v_doc_id FROM public.dispatch_documents WHERE dispatch_id = d1 AND document_number = 'T001-3';
-  v_err := public.void_dispatch_document(v_doc_id, '')->>'error';
-  q := public.void_dispatch_document(v_doc_id, 'Guía mal emitida');
-  r := public.confirm_dispatch_documents(d1);
+  r:=public.confirm_dispatch_documents(d1);
+  SELECT id INTO v_doc_id FROM public.dispatch_documents WHERE dispatch_id=d1 AND transport_request_id=r2 AND doc_type='PACKING_LIST' AND voided_at IS NULL;
+  v_err:=public.void_dispatch_document(v_doc_id,'')->>'error';
+  q:=public.void_dispatch_document(v_doc_id,'Packing mal firmado');
+  v_err2:=public.confirm_dispatch_documents(d1)->>'error';
+  v_err4:=pg_temp.doc(d1,r2,'PACKING_LIST',NULL,NULL);
+  r:=public.confirm_dispatch_documents(d1);
   PERFORM pg_temp.as_user(NULL);
-  v_err2 := pg_temp.try_depart(d1, 'EN RUTA');
+  v_err5:=pg_temp.try_depart(d1,'EN RUTA');
   PERFORM pg_temp.as_user(v_doc);
-  SELECT id INTO v_doc_id FROM public.dispatch_documents WHERE dispatch_id = d1 AND document_number = 'T001-2';
-  v_err3 := public.void_dispatch_document(v_doc_id, 'tarde')->>'error';
+  SELECT id INTO v_doc_id FROM public.dispatch_documents WHERE dispatch_id=d1 AND transport_request_id=r1 AND doc_type='PACKING_LIST' AND voided_at IS NULL;
+  v_err3:=public.void_dispatch_document(v_doc_id,'tarde')->>'error';
   PERFORM pg_temp.as_user(v_drv_prof);
-  SELECT count(*) INTO v_n FROM public.dispatch_documents WHERE dispatch_id = d1;
+  SELECT count(*) INTO v_n FROM public.dispatch_documents WHERE dispatch_id=d1;
   PERFORM pg_temp.as_user(NULL);
-  IF v_err LIKE 'Indique el motivo%' AND (q->>'success')::boolean AND (r->>'success')::boolean AND v_err2 IS NULL
-     AND v_err3 LIKE 'El despacho ya salió%' AND v_n = 4
-  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T5 anulación: ' || concat_ws(' | ', COALESCE(v_err, '∅'), COALESCE(q::text, '∅'), COALESCE(r::text, '∅'), COALESCE(v_err2, '∅'), COALESCE(v_err3, '∅')) || ' n=' || v_n); END IF;
+  IF v_err LIKE 'Indique el motivo%' AND (q->>'success')::boolean AND v_err2 LIKE '%Packing List%' AND v_err4 IS NULL
+    AND (r->>'success')::boolean AND v_err5 IS NULL AND v_err3 LIKE 'El despacho ya salió%' AND v_n=4
+  THEN v_pass:=v_pass+1; ELSE v_fail:=v_fail||('T5 anulación: '||concat_ws(' | ',v_err,q::text,v_err2,r::text,v_err3)||' n='||v_n); END IF;
 
   -- T6: bandeja ordenada por salida con estado documentario; terceros sin acceso
   INSERT INTO public.dispatches (dispatch_number, vehicle_plate, status, site_id, scheduled_departure, docs_required)

@@ -15,7 +15,7 @@ Las guardas de base de datos impiden confirmar solicitudes/paradas, autorizar re
 
 ## Transportista sin app
 
-Portal público: `/tracking/entregas`. Operaciones genera o renueva el acceso en **Acceso tercero**, y comparte por el botón WhatsApp con el contacto registrado: URL, placa y código aleatorio. También se conserva el enlace directo de viaje para clientes anteriores. No se envían mensajes automáticamente ni se requiere una cuenta del proveedor.
+Portal público: `/tracking/entregas`. El código se genera automáticamente al programar el servicio. Operaciones lo consulta o renueva en **Acceso tercero**, y comparte las instrucciones mediante copia o el botón WhatsApp: URL, placa y código aleatorio. También se conserva el enlace directo de viaje para clientes anteriores. No se envían mensajes automáticamente ni se requiere una cuenta del proveedor.
 
 Placa y código identifican un único servicio. Solo se muestran las entregas pendientes, observadas o rechazadas. Una entrega recibida/aprobada desaparece y no acepta otro envío; las demás entregas pendientes del mismo viaje siguen disponibles. Una observación/rechazo vuelve a habilitar exclusivamente la entrega afectada. Un servicio posterior de la misma placa usa un acceso nuevo. Los accesos vencen después de tres días desde la fecha programada o su generación y pueden revocarse. Diez intentos fallidos por dirección de origen en diez minutos bloquean nuevas consultas temporalmente. Los códigos/tokens deben tratarse como credenciales de ese viaje.
 
@@ -32,3 +32,9 @@ Los viajes cerrados antes de esta migración conservan su historia. Las fotos ex
 ## Validación y despliegue
 
 Migración: `20261007130000_delivery_conformity.sql`, posterior a las ya aplicadas. El arnés aislado PostgreSQL ejecuta la migración completa y las funciones instaladas del proveedor y del sincronizador. Cubre rol/sede/conductor, almacenamiento real, placa/código, límites de intentos, vencimiento, envío y bloqueo, repetición, observación/rechazo/reenvío, revisiones antiguas, múltiples entregas, nuevo viaje de la misma placa, GPS y retorno. Las pruebas de sincronización cubren offline, múltiples fotos, sesión ajena, fallos y reintentos sin sobrescritura. C41 prueba la aprobación antes del consumo de partida en el esquema real; C44 verifica privilegios y guardas instalados.
+
+## Responsabilidades y acceso automático (20261007160000)
+
+El acceso del proveedor se genera al programar el servicio. Despacho abre el panel para compartir portal, placa, código e instrucciones por copia o WhatsApp, siempre con envío manual por Operaciones. La generación/renovación está limitada al personal autorizado y a la sede; cambiar placa/proveedor/contacto rota los datos anteriores. Los viajes existentes abiertos sin acceso válido reciben uno; un enlace vigente y una revocación explícita se conservan.
+
+El portal público usa identidad JRM, instrucciones de captura y validación y ayuda para obtener el código. El app y el proveedor deben registrar el número de guía, receptor y fotos; el supervisor conserva la validación exclusiva. Control de Documentos muestra las guías en consulta y asigna al asistente la carga del Packing List firmado por el auditor antes de salir. Ninguna carga o nota manual del asistente reemplaza la guía del conductor/proveedor.

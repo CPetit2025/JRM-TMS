@@ -109,13 +109,16 @@ BEGIN
   PERFORM pg_temp.as_user(NULL);
   IF v_err IS NULL THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T3 ' || v_err); END IF;
 
-  -- T4 salida: primero exige la guía confirmada; luego guarda la hora real
+  -- T4 salida: primero exige Packing List firmado confirmado; luego guarda la hora real
   PERFORM pg_temp.as_user(v_desp);
   BEGIN r := public.tercero_registrar_salida(d, v_at); v_err := r ->> 'error';
   EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
   END;
   PERFORM pg_temp.as_user(NULL);
-  UPDATE public.dispatches SET docs_ready_at = now() WHERE id = d;   -- la Asistente Documentario confirma la guía
+  INSERT INTO storage.objects(bucket_id,name,metadata) VALUES('dispatch_documents',d::text||'/packing.pdf','{"mimetype":"application/pdf"}');
+  INSERT INTO public.dispatch_documents(dispatch_id,doc_type,file_path,file_name,mime_type,size_bytes,auditor_name,auditor_signed_date,auditor_signature_confirmed)
+  VALUES(d,'PACKING_LIST',d::text||'/packing.pdf','packing.pdf','application/pdf',1000,'Auditor C41',current_date,true);
+  UPDATE public.dispatches SET docs_ready_at=now() WHERE id=d; -- fixture: signed packing confirmed before departure
   PERFORM pg_temp.as_user(v_desp); r := public.tercero_registrar_salida(d, v_at); PERFORM pg_temp.as_user(NULL);
   IF v_err LIKE 'Documentos pendientes%' AND (r ->> 'success')::boolean
      AND EXISTS (SELECT 1 FROM public.dispatches x WHERE x.id = d AND x.status = 'EN_CURSO' AND x.tercero_salida_at = v_at)
@@ -125,19 +128,21 @@ BEGIN
 
   SELECT id INTO r_super FROM public.roles WHERE name='Supervisor de Transporte' LIMIT 1;
   IF r_super IS NULL THEN RAISE EXCEPTION 'CAJA C41 FAIL (0/8): falta Supervisor de Transporte'; END IF;
-  INSERT INTO storage.objects(bucket_id,name,metadata) VALUES('driver_evidence',v_desp::text||'/tercero/'||d::text||'/g1.jpg','{"mimetype":"image/jpeg"}'),('driver_evidence','tercero/'||d::text||'/g2.jpg','{"mimetype":"image/jpeg"}');
+  INSERT INTO storage.objects(bucket_id,name,metadata) VALUES('driver_evidence','tercero/'||d::text||'/g1.jpg','{"mimetype":"image/jpeg"}'),('driver_evidence','tercero/'||d::text||'/g2.jpg','{"mimetype":"image/jpeg"}');
 
-  -- T5 entrega desde la web: sin foto no; con foto queda la constancia y sigue en ruta
+  -- T5: internal staff cannot upload the provider's guide; actual provider submission stays pending review.
   PERFORM pg_temp.as_user(v_desp);
-  r := public.tercero_registrar_entrega(d, q1, now() - interval '5 minutes', 'Juan Almacén', '', NULL);
-  v_err := r ->> 'error';
-  r := public.tercero_registrar_entrega(d, q1, now() - interval '5 minutes', 'Juan Almacén', v_desp::text || '/tercero/' || d::text || '/g1.jpg', 'Guía firmada');
+  r:=public.tercero_registrar_entrega(d,q1,now(),'Juan Almacén','foto.jpg',NULL);
+  v_err:=r->>'error';
   PERFORM pg_temp.as_user(NULL);
-  IF v_err LIKE 'Adjunte la foto%' AND (r ->> 'success')::boolean AND (r ->> 'pendientes')::int = 2
-     AND EXISTS (SELECT 1 FROM public.dispatches x WHERE x.id = d AND x.status = 'EN_CURSO')
-     AND EXISTS (SELECT 1 FROM public.route_stops_log s WHERE s.dispatch_id = d AND s.transport_request_id = q1 AND s.photo_url LIKE '%/g1.jpg')
-     AND EXISTS (SELECT 1 FROM public.dispatch_requests WHERE dispatch_id = d AND transport_request_id = q1 AND status <> 'ENTREGADO')
-  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T5 entrega web: ' || COALESCE(v_err, '-') || ' / ' || COALESCE(r::text, '')); END IF;
+  SELECT token INTO v_tok FROM public.dispatch_tercero_enlaces WHERE dispatch_id=d AND revoked_at IS NULL AND expires_at>now();
+  IF v_tok IS NULL THEN RAISE EXCEPTION 'CAJA C41 FAIL: programación no generó acceso del proveedor'; END IF;
+  r:=public.delivery_public_submit(v_tok,q1,gen_random_uuid(),ARRAY['tercero/'||d::text||'/g1.jpg'],'Juan Almacén','Guía firmada','T001-41');
+  IF v_err LIKE 'El proveedor contratado%' AND (r->>'success')::boolean AND (r->>'pending_review')::boolean
+    AND EXISTS(SELECT 1 FROM public.dispatches WHERE id=d AND status='EN_CURSO')
+    AND EXISTS(SELECT 1 FROM public.route_stops_log WHERE dispatch_id=d AND transport_request_id=q1 AND photo_url LIKE '%/g1.jpg')
+    AND EXISTS(SELECT 1 FROM public.dispatch_requests WHERE dispatch_id=d AND transport_request_id=q1 AND status<>'ENTREGADO')
+  THEN v_pass:=v_pass+1; ELSE v_fail:=v_fail||('T5 proveedor: '||COALESCE(v_err,'-')||' / '||COALESCE(r::text,'')); END IF;
 
   -- Solo el supervisor aprueba; la foto no confirma la entrega por sí sola.
   UPDATE public.profiles SET role_id=r_super WHERE id=v_desp;
