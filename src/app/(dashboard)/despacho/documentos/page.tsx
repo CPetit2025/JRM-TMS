@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Clock, FileCheck2, FileSpreadsheet, FileText, ListTree, Loader2, RefreshCw, Trash2, Truck, Upload } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock, FileCheck2, FileSpreadsheet, FileText, ListTree, Loader2, RefreshCw, Search, Trash2, Truck, Upload } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { GuiaDetalleModal } from '@/components/guias/GuiaDetalleModal'
 import { toast } from 'sonner'
@@ -14,7 +14,7 @@ import { DOCS_BUCKET, errorMessage, fmtDate, receiptUrl } from '@/lib/caja'
 // Asistente: Packing List firmado por el auditor y Nota de Despacho en recojos.
 // La guía de entrega obligatoria procede del app/proveedor; solo Transporte valida la conformidad.
 
-type Stop = { request_id: string; request_number: string; sequence: number | null; delivery: string; cargo: string | null; client: string | null }
+type Stop = { request_id: string; request_number: string; ot_code: string | null; sequence: number | null; delivery: string; cargo: string | null; client: string | null }
 type Doc = {
   id: string; request_id: string | null; doc_type: string; cargo_type: string | null; document_number: string | null
   signed?: boolean; auditor_name?: string | null; auditor_signed_date?: string | null
@@ -51,6 +51,9 @@ export default function DocumentosDespachoPage() {
   const [items, setItems] = useState<QueueItem[] | null>(null)
   const [filter, setFilter] = useState<'TODOS' | 'PENDIENTE' | 'REEMISION' | 'LISTO'>('TODOS')
   const [showDeparted, setShowDeparted] = useState(false)
+  const [search, setSearch] = useState('')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [queueError, setQueueError] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
 
   const [reload, setReload] = useState(0)
@@ -60,12 +63,16 @@ export default function DocumentosDespachoPage() {
   const load = useCallback(async () => { setReload(n => n + 1) }, [])
 
   useEffect(() => {
-    let cancel = false
+    let cancel = false, fetching = false
     const run = async () => {
+      if (fetching) return
+      fetching = true
+      try {
       const { data, error } = await supabase.rpc('get_documentary_queue', { p_include_departed: showDeparted })
       if (cancel) return
-      if (error) toast.error(errorMessage(error))
-      const list = error ? [] : (data || []) as QueueItem[]
+      if (error) { setQueueError(errorMessage(error)); return }
+      setQueueError('')
+      const list = (data || []) as QueueItem[]
       setItems(list)
       const rows: DeliveryRow[] = []
       for (let offset = 0; offset < list.length; offset += 100) {
@@ -75,7 +82,8 @@ export default function DocumentosDespachoPage() {
         rows.push(...((result || []) as DeliveryRow[]))
       }
       if (!cancel) setDeliveries(rows)
-
+      } catch (e) { if (!cancel) setQueueError(errorMessage(e)) }
+      finally { fetching = false }
     }
     void run()
     const timer = window.setInterval(() => void run(), 30000)
@@ -84,10 +92,15 @@ export default function DocumentosDespachoPage() {
 
   const counts = useMemo(() => {
     const c = { PENDIENTE: 0, REEMISION: 0, LISTO: 0 }
-    ;(items || []).forEach(i => { if (i.doc_status in c) c[i.doc_status as keyof typeof c]++ })
+    ;(items || []).forEach(i => { if (i.doc_status in c) c[i.doc_status as keyof typeof c] += Math.max(1, i.stops.length) })
     return c
   }, [items])
-  const visible = (items || []).filter(i => filter === 'TODOS' || i.doc_status === filter)
+  const needle = search.trim().toLocaleLowerCase('es-PE')
+  const visible = (items || []).filter(i => filter === 'TODOS' || i.doc_status === filter).flatMap(item =>
+    (item.stops.length ? item.stops : [null]).filter(stop => !needle || [item.dispatch_number, item.vehicle_plate,
+      item.driver_name, stop?.ot_code, stop?.request_number, stop?.client, stop?.delivery].join(' ').toLocaleLowerCase('es-PE').includes(needle))
+      .map(stop => ({ item, stop })))
+  const selected = items?.find(item => item.id === selectedId)
 
   const openDoc = async (path: string) => {
     const url = await receiptUrl(supabase, `${DOCS_BUCKET}/${path}`)
@@ -110,47 +123,75 @@ export default function DocumentosDespachoPage() {
   const voidDoc = (doc: Doc) => setAnulando(doc)
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-4">
+    <div className="min-w-0 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><FileText className="w-6 h-6 text-blue-600" />Documentos de Despacho</h1>
-          <p className="text-sm text-slate-500">Packing List firmado por el auditor de despacho y seguimiento de guías de entrega. Ordenado por hora de salida.</p>
+          <h1 className="text-2xl font-bold text-[#002855] flex items-center gap-2"><FileText className="w-6 h-6" />Documentos de Despacho</h1>
+          <p className="mt-1 text-sm text-slate-500">Control por solicitud y OT · desde el Packing List hasta la conformidad de entrega.</p>
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm text-slate-600 flex items-center gap-1.5">
             <input type="checkbox" checked={showDeparted} onChange={e => setShowDeparted(e.target.checked)} />Ver los que ya salieron (7 días)
           </label>
-          <button onClick={() => { setItems(null); void load() }} className="p-2 rounded-lg border hover:bg-slate-50" title="Actualizar"><RefreshCw className="w-4 h-4" /></button>
+          <button onClick={() => void load()} className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button>
         </div>
       </div>
 
-      <div className="grid gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-4 text-sm md:grid-cols-3">
-        <div><p className="font-semibold text-[#002855]">1. Asistente Documentario</p><p className="mt-1 text-xs leading-5 text-slate-600">Carga el Packing List firmado por el auditor y confirma los documentos antes de la salida. En recojos, adjunta también la Nota de Despacho.</p></div>
-        <div><p className="font-semibold text-[#002855]">2. Conductor o proveedor</p><p className="mt-1 text-xs leading-5 text-slate-600">Después de entregar, sube obligatoriamente la guía firmada: conductor desde el app; proveedor contratado desde el portal de transportistas.</p></div>
-        <div><p className="font-semibold text-[#002855]">3. Supervisor de Transporte</p><p className="mt-1 text-xs leading-5 text-slate-600">Aprueba, observa o rechaza la guía. El servicio no avanza mientras falte el sustento o su aprobación.</p></div>
-      </div>
-      <div className="flex flex-wrap gap-2">
+      <ol aria-label="Secuencia documentaria" className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm md:grid-cols-3">
+        {[['Packing List firmado', 'Asistente Documentario', 'Carga el documento firmado por el auditor y confirma antes de la salida. En recojos, también la Nota de Despacho.'], ['Guía de entrega', 'Conductor / proveedor JRM', 'Adjunta la guía firmada desde el app o el portal del proveedor al realizar la entrega.'], ['Conformidad', 'Supervisor de Transporte', 'Aprueba, observa o rechaza el sustento. Sin aprobación, el servicio no puede avanzar.']].map(([title, role, detail], index) => <li key={title} className="flex items-start gap-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#002855] font-bold text-white">{index + 1}</span><div><p className="font-semibold text-[#002855]">{title}</p><p className="mt-1 text-xs font-medium text-slate-700">{role}</p><p className="mt-1 text-xs leading-5 text-slate-500">{detail}</p></div></li>)}
+      </ol>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
+        <label className="relative w-full sm:max-w-sm"><span className="sr-only">Buscar OT, solicitud, cliente o despacho</span><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="OT, solicitud, cliente o despacho" className="min-h-11 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm" /></label>
+        <div className="flex flex-wrap gap-2">
         {([['TODOS', 'Todos'], ['PENDIENTE', `Pendientes (${counts.PENDIENTE})`], ['REEMISION', `Reemisión (${counts.REEMISION})`], ['LISTO', `Listos (${counts.LISTO})`]] as const).map(([k, l]) => (
           <button key={k} onClick={() => setFilter(k)}
-            className={`px-3 py-1.5 rounded-full text-sm border ${filter === k ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>{l}</button>
+            className={`min-h-11 px-3 rounded-lg text-sm border ${filter === k ? 'bg-[#002855] text-white border-[#002855]' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>{l}</button>
         ))}
+        </div>
       </div>
 
       {isLoaded && !canEdit && (
         <p className="text-sm text-slate-500 bg-slate-50 border rounded-lg p-3">Vista de consulta: el Asistente Documentario carga y confirma el Packing List firmado. La validación de guías corresponde al Supervisor de Transporte.</p>
       )}
 
-      {items === null ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
-        : visible.length === 0 ? <p className="text-slate-400 text-sm p-6 text-center border rounded-xl bg-white">No hay despachos en esta bandeja.</p>
-        : visible.map(item => (
-          <DispatchCard key={item.id} item={item} canEdit={canEdit && item.status === 'PROGRAMADO'} busy={busy === item.id}
-            onConfirm={() => confirmDocs(item)} onVoid={voidDoc} onOpen={openDoc} onUploaded={load}
-            deliveries={deliveries.filter(r => r.dispatch_id === item.id)} onEvidence={setReview} />
-        ))}
+      {queueError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">No se pudo actualizar la bandeja: {queueError}. {items ? 'Se conserva la última consulta.' : 'Pulsa Actualizar para reintentar.'}</p>}
+      {items === null && !queueError ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
+        : !visible.length ? <p className="text-slate-500 text-sm p-6 text-center border border-slate-200 rounded-xl bg-white">{queueError && !items ? 'La bandeja no está disponible.' : 'No hay solicitudes para estos filtros.'}</p>
+        : <section aria-label="Control documentario por OT" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 px-4 py-3 text-sm text-slate-600">{visible.length} solicitud(es) · ordenadas por salida del despacho. Un despacho puede reunir varias OT.</div>
+          <div className="overflow-x-auto"><table className="block w-full text-left text-sm lg:table"><caption className="sr-only">Solicitudes y OT asociadas, Packing List, guía de entrega y conformidad</caption><thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['OT / Solicitud', 'Cliente / Destino', 'Despacho / Salida', '1. Packing List', '2. Guía de entrega', '3. Conformidad', 'Acciones'].map(label => <th key={label} scope="col" className="px-4 py-3 font-semibold">{label}</th>)}</tr></thead><tbody className="block divide-y divide-slate-200 lg:table-row-group">{visible.map(({ item, stop }) => <DocumentRow key={`${item.id}/${stop?.request_id || 'empty'}`} item={item} stop={stop} delivery={deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)} canEdit={canEdit} onManage={() => setSelectedId(item.id)} onEvidence={setReview} />)}</tbody></table></div>
+        </section>}
+      <Modal isOpen={!!selected} onClose={() => setSelectedId(null)} title={`Documentos · ${selected?.dispatch_number || ''}`} maxWidth="max-w-5xl">
+        {selected && <DispatchCard item={selected} canEdit={canEdit && selected.status === 'PROGRAMADO'} busy={busy === selected.id}
+          onConfirm={() => confirmDocs(selected)} onVoid={voidDoc} onOpen={openDoc} onUploaded={load}
+          deliveries={deliveries.filter(row => row.dispatch_id === selected.id)} onEvidence={row => { setSelectedId(null); setReview(row) }} />}
+      </Modal>
       <DeliveryReview row={review} onClose={() => setReview(null)} onChanged={() => void load()} />
       {anulando && <AnularModal doc={anulando} onClose={() => setAnulando(null)} onDone={() => { setAnulando(null); void load() }} />}
     </div>
   )
+}
+
+function DocumentRow({ item, stop, delivery, canEdit, onManage, onEvidence }: {
+  item: QueueItem; stop: Stop | null; delivery?: DeliveryRow; canEdit: boolean; onManage: () => void; onEvidence: (row: DeliveryReviewTarget) => void
+}) {
+  const badge = STATUS_BADGE[item.doc_status]
+  const docs = item.documents.filter(doc => !doc.request_id || doc.request_id === stop?.request_id)
+  const packing = docs.find(doc => doc.doc_type === 'PACKING_LIST' && doc.signed && doc.auditor_name && doc.auditor_signed_date)
+  const note = docs.find(doc => doc.doc_type === 'NOTA_DESPACHO' && doc.request_id === stop?.request_id)
+  const urgent = !['LISTO', 'SALIO'].includes(item.doc_status) && (hoursLeft(item.scheduled_departure) ?? Infinity) < 2
+  const tone = delivery?.conformity === 'VALIDADA' ? 'text-emerald-700' : ['OBSERVADA', 'RECHAZADA'].includes(delivery?.conformity || '') ? 'text-red-700' : 'text-slate-600'
+  const cell = 'min-w-0 px-4 py-3 align-top lg:max-w-64'
+  const label = (text: string) => <p className="mb-1 text-xs font-semibold text-slate-500 lg:hidden">{text}</p>
+  return <tr className={`grid grid-cols-1 sm:grid-cols-2 lg:table-row ${urgent ? 'bg-amber-50/40' : ''}`}>
+    <td className={cell}>{label('OT / Solicitud')}<p className="break-words text-base font-bold text-[#002855]">{stop?.ot_code ? `OT ${stop.ot_code}` : 'Sin OT vinculada'}</p><p className="mt-1 text-xs text-slate-600">{stop?.request_number || 'Sin solicitud asociada'}{stop && ` · Parada ${stop.sequence || item.stops.indexOf(stop) + 1}`}</p></td>
+    <td className={cell}>{label('Cliente / Destino')}<p className="break-words font-medium text-slate-800">{stop?.client || 'Sin cliente registrado'}</p><p className="mt-1 break-words text-xs leading-5 text-slate-500">{stop?.delivery || 'Sin destino registrado'}</p></td>
+    <td className={cell}>{label('Despacho / Salida')}<p className="break-words text-xs font-semibold text-slate-700">{item.dispatch_number}</p><p className={`mt-1 text-xs ${urgent ? 'font-semibold text-amber-800' : 'text-slate-500'}`}>{fmtDate(item.scheduled_departure, true)}</p><p className="mt-1 text-xs text-slate-500">{item.is_pickup ? 'Recojo del cliente' : `${item.vehicle_plate || 'Sin placa'} · ${item.driver_name || (item.modalidad === 'TERCERO' ? 'Proveedor JRM' : 'Sin conductor')}`}</p></td>
+    <td className={cell}>{label('1. Packing List')}<span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-semibold ${badge.cls}`}>{badge.label}</span><p className="mt-2 text-xs text-slate-600">{packing ? `Firmado adjunto${packing.request_id ? '' : ' · consolidado'}` : 'Firma pendiente de adjuntar'}</p>{item.is_pickup && <p className="mt-1 text-xs text-slate-500">Nota de Despacho: {note ? 'adjunta' : 'pendiente'}</p>}{item.docs_reissue && <p className="mt-1 text-xs text-red-700">{item.docs_reissue_reason || 'Actualizar y confirmar documentos'}</p>}</td>
+    <td className={cell}>{label('2. Guía de entrega')}<p className="text-xs font-medium text-slate-700">{item.is_pickup ? 'Nota de Despacho' : delivery ? delivery.guide_number || 'Guía aún no recibida' : 'Consulta de guía pendiente'}</p><p className="mt-1 text-xs text-slate-500">{item.is_pickup ? 'Circuito de recojo del cliente' : item.modalidad === 'TERCERO' ? 'Responsable: proveedor JRM' : 'Responsable: conductor · app'}</p>{delivery && delivery.photos_count > 0 && <p className="mt-1 text-xs text-slate-500">{delivery.photos_count} foto(s) recibida(s)</p>}</td>
+    <td className={cell}>{label('3. Conformidad')}<p className={`text-xs font-semibold ${tone}`}>{item.is_pickup ? 'No aplica guía de entrega' : delivery ? conformityLabels[delivery.conformity] : 'Conformidad no disponible'}</p>{!item.is_pickup && <p className="mt-1 text-xs text-slate-500">Supervisor de Transporte</p>}</td>
+    <td className={cell}>{label('Acciones')}<div className="flex flex-wrap gap-2"><button type="button" onClick={onManage} className="min-h-11 rounded-lg bg-[#002855] px-3 text-xs font-semibold text-white">{canEdit && item.status === 'PROGRAMADO' ? 'Gestionar documentos' : 'Ver documentos'}</button>{delivery && !item.is_pickup && <button type="button" onClick={() => onEvidence(delivery)} className="min-h-11 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-[#002855]">Ver guía y conformidad</button>}</div></td>
+  </tr>
 }
 
 function DispatchCard({ item, canEdit, busy, onConfirm, onVoid, onOpen, onUploaded, deliveries, onEvidence }: {
@@ -186,30 +227,33 @@ function DispatchCard({ item, canEdit, busy, onConfirm, onVoid, onOpen, onUpload
           )}
         </div>
         {canEdit && (item.doc_status === 'PENDIENTE' || item.doc_status === 'REEMISION') && (
-          <button onClick={onConfirm} disabled={busy}
+          <button onClick={onConfirm} disabled={busy || !!item.missing}
             className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2">
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}Confirmar Packing List y documentos
           </button>
         )}
       </div>
 
+      {item.missing && <p className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">Antes de confirmar este despacho, completa: {item.missing}.</p>}
+
       <div className="divide-y">
         {item.stops.map((s, i) => {
           const docs = item.documents.filter(d => d.request_id === s.request_id)
           return (
             <div key={s.request_id} className="p-4">
-              <div className="text-sm font-semibold text-slate-700">Parada {s.sequence || i + 1} · {s.request_number}</div>
+              <div className="text-sm font-semibold text-[#002855]">{s.ot_code ? `OT ${s.ot_code}` : 'Sin OT vinculada'} · {s.request_number} · Parada {s.sequence || i + 1}</div>
               <div className="text-xs text-slate-500">{[s.client, s.delivery, s.cargo].filter(Boolean).join(' · ')}</div>
               <DocList docs={docs} canEdit={canEdit} onVoid={onVoid} onOpen={onOpen} />
-              {canEdit && <UploadForm dispatchId={item.id} requestId={s.request_id} isPickup={item.is_pickup} onUploaded={onUploaded} />}
+              {canEdit && <details className="mt-3 rounded-lg border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold text-[#002855]">Adjuntar documento a {s.request_number}</summary><UploadForm dispatchId={item.id} requestId={s.request_id} isPickup={item.is_pickup} onUploaded={onUploaded} /></details>}
             </div>
           )
         })}
         <div className="p-4 bg-slate-50/60 rounded-b-xl">
           <div className="text-sm font-semibold text-slate-700">Documentos generales del despacho</div>
+          <p className="mt-1 text-xs font-medium text-[#002855]">OT cubiertas: {[...new Set(item.stops.map(stop => stop.ot_code || 'Sin OT vinculada'))].join(' · ') || 'Sin solicitudes asociadas'}</p>
           <div className="text-xs text-slate-500">Un Packing List consolidado firmado cubre todas las paradas. También puedes adjuntarlo por parada; debe estar firmado por el auditor.</div>
           <DocList docs={generalDocs} canEdit={canEdit} onVoid={onVoid} onOpen={onOpen} />
-          {canEdit && <UploadForm dispatchId={item.id} requestId={null} isPickup={item.is_pickup} onUploaded={onUploaded} />}
+          {canEdit && <details className="mt-3 rounded-lg border border-slate-200 bg-white p-3"><summary className="cursor-pointer text-sm font-semibold text-[#002855]">Adjuntar documento consolidado</summary><UploadForm dispatchId={item.id} requestId={null} isPickup={item.is_pickup} onUploaded={onUploaded} /></details>}
         </div>
         <div className="space-y-3 p-4"><p className="flex items-center gap-2 text-sm font-semibold text-[#002855]"><FileCheck2 className="h-4 w-4" />Guías firmadas de entrega · obligatorias</p><p className="text-xs leading-5 text-slate-500">Responsable: {item.is_pickup ? 'cliente que retira · se conserva la Nota de Despacho' : item.modalidad === 'TERCERO' ? 'proveedor contratado por JRM, desde su portal' : 'conductor asignado, desde el app'}. El asistente consulta el sustento; el Supervisor de Transporte valida.</p>
           {!deliveries.length ? <p className="text-xs text-slate-500">Conformidad no disponible. Actualiza la bandeja para consultar.</p> : deliveries.map(row => <div key={row.request_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm"><div><p className="font-semibold">{row.request_number} · OT {row.ot_code}</p><p className="mt-1 text-xs text-slate-600">{conformityLabels[row.conformity]}{row.guide_number ? ` · Guía ${row.guide_number}` : ''}{row.photos_count > 0 ? ` · ${row.photos_count} foto(s)` : ''}</p></div><button onClick={() => onEvidence(row)} className="min-h-10 rounded-lg border px-3 text-xs font-semibold text-blue-700">Consultar sustento y validación</button></div>)}
@@ -334,16 +378,16 @@ function UploadForm({ dispatchId, requestId, isPickup, onUploaded }: {
 
   return (
     <div className="mt-3 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm">
-      <select value={docType} onChange={e => setDocType(e.target.value)} className="border rounded-lg px-2 py-1.5 bg-white">
+      <label className="text-xs text-slate-600">Tipo de documento<select value={docType} onChange={e => setDocType(e.target.value)} className="mt-1 min-h-11 w-full border border-slate-300 rounded-lg px-3 bg-white text-sm">
         {types.map(t => <option key={t} value={t}>{DOC_LABEL[t]}</option>)}
-      </select>
+      </select></label>
       {packing && <div className="grid w-full gap-3 sm:grid-cols-2"><label className="text-xs text-slate-600">Auditor firmante *<input value={auditor} maxLength={120} onChange={e => setAuditor(e.target.value)} placeholder="Nombre del auditor de despacho" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" /></label><label className="text-xs text-slate-600">Fecha de firma *<input type="date" value={signedDate} max={today} onChange={e => setSignedDate(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" /></label><label className="flex items-start gap-2 text-xs leading-5 text-slate-600 sm:col-span-2"><input type="checkbox" checked={signature} onChange={e => setSignature(e.target.checked)} className="mt-1" />Confirmo que el archivo adjunto es legible y contiene la firma del auditor de despacho. Se acepta PDF o foto del documento firmado.</label></div>}
-      <input value={number} onChange={e => setNumber(e.target.value)} placeholder={needsNumber ? 'Serie-número (T001-000123)' : 'N° (opcional)'}
-        className="border rounded-lg px-2 py-1.5 w-48" />
-      <input key={inputKey} type="file" accept={packing ? '.pdf,image/jpeg,image/png,image/webp' : allowSheet ? '.pdf,.xlsx,.xls,.csv' : '.pdf'} onChange={e => setFile(e.target.files?.[0] || null)}
-        className="text-xs max-w-[220px]" />
+      {!packing && <label className="text-xs text-slate-600">Número {needsNumber ? '*' : '(opcional)'}<input value={number} onChange={e => setNumber(e.target.value)} placeholder={needsNumber ? 'T001-000123' : 'Número del documento'}
+        className="mt-1 min-h-11 w-full max-w-48 border border-slate-300 rounded-lg px-3 text-sm" /></label>}
+      <label className="min-w-0 text-xs text-slate-600">Archivo · máximo 15 MB<input key={inputKey} type="file" accept={packing ? '.pdf,image/jpeg,image/png,image/webp' : allowSheet ? '.pdf,.xlsx,.xls,.csv' : '.pdf'} onChange={e => setFile(e.target.files?.[0] || null)}
+        className="mt-2 block w-full min-w-0 max-w-[220px] text-xs" /></label>
       <button onClick={submit} disabled={saving}
-        className="px-3 py-1.5 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5">
+        className="min-h-11 px-3 rounded-lg bg-[#002855] text-white font-semibold disabled:opacity-50 flex items-center gap-1.5">
         {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}Subir
       </button>
     </div>

@@ -394,10 +394,26 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   const c47=query(read('supabase/tests/caja_c47_presencia_conductor_gps.test.sql'))
   assert.match(c47.stderr,/CAJA C47 PASS/,c47.stderr)
   console.log('PASS: complete GPS presence migration and real C47: idle/denied GPS, own identity, role/site, expiry/logout, late samples, assigned/guide/return states, no route kilometers changed.')
-
-
-
-
+  sql(read('supabase/migrations/20261007180000_documentary_queue_ot.sql'))
+  sql(`INSERT INTO contracts(id,code,client_id) VALUES('${id(110)}','OT-002','${id(41)}');
+    INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,scheduled_departure,docs_required) VALUES('${id(111)}','D-MULTI-OT','PROGRAMADO','${id(21)}','OT-111',now(),true);
+    INSERT INTO transport_requests(id,request_number,status,pickup_address,delivery_address,contract_id) VALUES
+      ('${id(112)}','RT-OT-1','ASIGNADA','Planta','Destino 1','${id(42)}'),
+      ('${id(113)}','RT-OT-2','ASIGNADA','Planta','Destino 2','${id(110)}'),
+      ('${id(114)}','RT-SIN-OT','ASIGNADA','Planta','Destino 3',NULL);
+    INSERT INTO dispatch_requests(dispatch_id,transport_request_id,status,sequence_order) VALUES
+      ('${id(111)}','${id(112)}','PROGRAMADO',1),('${id(111)}','${id(113)}','PROGRAMADO',2),('${id(111)}','${id(114)}','PROGRAMADO',3);`)
+  const multiOtQueue=rpc(16,'get_documentary_queue(false)').find(d=>d.id===id(111))
+  assert.deepEqual(multiOtQueue.stops.map(s=>s.ot_code),['OT-001','OT-002',null])
+  assert.equal(multiOtQueue.stops[0].client,'Cliente SCM')
+  denied(user(13)+'SELECT get_documentary_queue(false)',/Sin permiso/)
+  denied('SET ROLE anon; SELECT get_documentary_queue(false)',/permission denied/)
+  sql(`UPDATE dispatches SET site_id='${id(22)}' WHERE id='${id(111)}'`)
+  assert.equal(rpc(16,'get_documentary_queue(false)').some(d=>d.id===id(111)),false)
+  sql(`UPDATE dispatches SET site_id='${id(21)}' WHERE id='${id(111)}'`)
+  const c48=query(read('supabase/tests/caja_c48_bandeja_documentaria_ot.test.sql'))
+  assert.match(c48.stderr,/CAJA C48 PASS/,c48.stderr)
+  console.log('PASS: documentary queue preserves per-request OT on a consolidated route, no-OT requests, real client, role/site and exact production C48, rolled back.')
 } catch(error) {
   console.error(error.message)
   console.error('::error title=Delivery conformity validation::' + error.message.replaceAll('%','%25').replaceAll('\n','%0A'))
