@@ -507,6 +507,28 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
     assert.match(result.stderr,/CAJA C(?:9|41|46|48|51|52|53) PASS/,result.stderr)
   }
   console.log('PASS: C53 restricted auditor, Storage RLS, PDF/photo/Excel, replacements and retry history, assistant separation, site isolation; previous documentary/fleet/rescheduling regressions pass.')
+  // Use installed portfolio helpers and the real APT shape for request-level execution.
+  sql(`ALTER TABLE contracts ADD COLUMN parent_contract_id uuid, ADD COLUMN created_by uuid REFERENCES auth.users(id);
+    ALTER TABLE transport_requests ADD COLUMN estimated_weight numeric;
+    CREATE TABLE contract_user_assignments(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),contract_id uuid,user_id uuid,role text,active boolean);
+    GRANT SELECT ON contract_user_assignments TO authenticated;`)
+  for (const name of ['is_contract_administrator','contract_root_id','has_assigned_contract','has_assigned_request']) {
+    const source=read('supabase/migrations/20260922100000_contract_portfolio_security.sql'),start=source.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`)
+    sql(source.slice(start,source.indexOf('$$;',start)+3))
+  }
+  const portfolio='supabase/migrations/20260922100000_contract_portfolio_security.sql'
+  sql(installed(portfolio,'validate_contract_assignment')+installed(portfolio,'track_new_contract')+installed(portfolio,'assign_new_contract_creator')+`
+    CREATE TRIGGER validate_contract_assignment BEFORE INSERT OR UPDATE OF contract_id,user_id,role,active ON contract_user_assignments FOR EACH ROW EXECUTE FUNCTION validate_contract_assignment();
+    CREATE TRIGGER track_new_contract BEFORE INSERT OR UPDATE ON contracts FOR EACH ROW EXECUTE FUNCTION track_new_contract();
+    CREATE TRIGGER assign_new_contract_creator AFTER INSERT ON contracts FOR EACH ROW EXECUTE FUNCTION assign_new_contract_creator();`)
+  const apt=read('supabase/migrations/20261002100000_apt_estadia_inventario.sql')
+  sql(apt.slice(apt.indexOf('CREATE TABLE IF NOT EXISTS public.apt_uploads'),apt.indexOf('CREATE UNIQUE INDEX IF NOT EXISTS apt_movements_row_key')))
+  const guide=read('supabase/migrations/20261003140000_guia_detalle_skus.sql'),guideStart=guide.indexOf('CREATE OR REPLACE FUNCTION public.apt_guia_key(')
+  sql(guide.slice(guideStart,guide.indexOf('$$;',guideStart)+3))
+  sql(read('supabase/migrations/20261008010000_request_execution_traceability.sql'))
+  const c54=query(read('supabase/tests/caja_c54_request_execution.test.sql'))
+  assert.match(c54.stderr,/CAJA C54 PASS/,c54.stderr)
+  console.log('PASS: C54 request OT, mixed delivery/pickup/point-to-point, actual leg km, approved APT weight, incomplete/shared guides, cancelled trips and site/portfolio privacy.')
 
 } catch(error) {
   console.error(error.message)

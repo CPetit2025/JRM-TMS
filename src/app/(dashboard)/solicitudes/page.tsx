@@ -1,7 +1,7 @@
 "use client"
 import { operatingBudget } from '@/lib/transport-budget'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Plus, Send, Check, X, Search, Filter, Loader2, Calendar, Clock, CalendarClock, Ban, Activity, Edit2 } from 'lucide-react'
+import { Plus, Send, Check, X, Search, Filter, Loader2, Calendar, Clock, CalendarClock, Ban, Activity, Edit2, Eye } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -9,6 +9,13 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { normalizeRoleName } from '@/lib/roles'
 import { OtPicker, type OtNode } from '@/components/solicitudes/OtPicker'
 import { QuoteBreakdown } from '@/components/tarifas/TransportTariffManager'
+import { serviceAddresses, serviceLabel, executionWeightLabels, type RequestExecution } from '@/lib/request-service'
+import { serviceDate } from '@/lib/request-schedule'
+
+const requestDate = (value: string, withTime = false) => value ? new Date(value).toLocaleString('es-PE', {
+  timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: 'numeric',
+  ...(withTime ? { hour: '2-digit', minute: '2-digit' } as const : {}),
+}) : 'Sin fecha'
 
 type AttentionMode = 'TRANSPORTE_JRM' | 'RECOJO_CLIENTE'
 const requiresOt = (area: string) => /^(OT(?:\s*[-(]|$)|administraci[oó]n de contratos$)/i.test(area.trim())
@@ -138,13 +145,15 @@ export default function SolicitudesPage() {
   const [filterStatus, setFilterStatus] = useState('TODOS')
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
+  const [filterService, setFilterService] = useState('TODOS')
 
   const filteredRequests = requests.filter(r => {
-    const matchesSearch = searchTerm === '' || r.request_number.toLowerCase().includes(searchTerm.toLowerCase()) || r.requester_name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = [r.request_number, r.requester_name, r.contracts?.code, r.contracts?.clients?.business_name, r.cargo_description, r.pickup_address, r.delivery_address].join(' ').toLocaleLowerCase('es-PE').includes(searchTerm.trim().toLocaleLowerCase('es-PE'));
     const matchesStatus = filterStatus === 'TODOS' || r.status === filterStatus;
     const matchesDateFrom = filterDateFrom === '' || r.required_date >= filterDateFrom;
     const matchesDateTo = filterDateTo === '' || r.required_date <= filterDateTo;
-    return matchesSearch && matchesStatus && matchesDateFrom && matchesDateTo;
+    const matchesService = filterService === 'TODOS' || (filterService === 'RECOJO_CLIENTE' ? r.attention_mode === 'RECOJO_CLIENTE' : r.attention_mode !== 'RECOJO_CLIENTE' && r.request_type === filterService)
+    return matchesSearch && matchesStatus && matchesDateFrom && matchesDateTo && matchesService;
   });
 
   
@@ -157,6 +166,9 @@ export default function SolicitudesPage() {
   const [detailContracts, setDetailContracts] = useState<Record<string, { code: string; type: string }>>({})
   const [detailEvents, setDetailEvents] = useState<Array<{ id: string; action: string; created_at: string; previous_state: Record<string, unknown> | null; next_state: Record<string, unknown> }>>([])
   const [detailsLoading, setDetailsLoading] = useState(false)
+  const [detailExecution, setDetailExecution] = useState<RequestExecution | null>(null)
+  const [executionError, setExecutionError] = useState('')
+  const detailLoadId = useRef(0)
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
   const [newRescheduleDate, setNewRescheduleDate] = useState('')
   // Causa obligatoria al reprogramar (KPI de Despacho, migración 20261005180000)
@@ -462,15 +474,22 @@ export default function SolicitudesPage() {
   }
 
   const openRequestDetails = async (request: TransportRequest) => {
+    const loadId = ++detailLoadId.current
     setSelectedRequestDetails(request)
     setDetailsLoading(true)
     setDetailContracts({})
     setDetailEvents([])
+    setDetailExecution(null)
+    setExecutionError('')
     const ids = (request.transport_request_components || []).map(item => item.component_contract_id)
-    const [contractsResult, eventsResult] = await Promise.all([
+    const [contractsResult, eventsResult, executionResult] = await Promise.all([
       ids.length ? supabase.from('contracts').select('id, code, type').in('id', ids) : Promise.resolve({ data: [], error: null }),
-      supabase.from('transport_request_events').select('id, action, created_at, previous_state, next_state').eq('request_id', request.id).order('created_at', { ascending: false })
+      supabase.from('transport_request_events').select('id, action, created_at, previous_state, next_state').eq('request_id', request.id).order('created_at', { ascending: false }),
+      supabase.rpc('get_transport_request_execution', { p_request_id: request.id }),
     ])
+    if (loadId !== detailLoadId.current) return
+    if (executionResult.error) setExecutionError(errorMessage(executionResult.error))
+    else setDetailExecution(executionResult.data as RequestExecution)
     if (contractsResult.error || eventsResult.error) toast.error('No se pudo cargar todo el historial de la solicitud.')
     setDetailContracts(Object.fromEntries((contractsResult.data || []).map(c => [c.id, { code: c.code, type: c.type }])))
     setDetailEvents((eventsResult.data || []) as typeof detailEvents)
@@ -668,8 +687,8 @@ export default function SolicitudesPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col gap-4 mx-auto">
-      <div className="flex justify-between items-center">
+    <div className="flex min-h-0 w-full flex-col gap-4 mx-auto lg:h-full">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Solicitud de Transporte</h1>
           <p className="text-sm text-slate-500">Gestión de requerimientos internos de servicio</p>
@@ -718,10 +737,10 @@ export default function SolicitudesPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase">Total (Mes)</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase">Total de solicitudes</p>
             <p className="text-2xl font-bold text-[#002855]">{requests.length}</p>
           </div>
           <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
@@ -757,13 +776,13 @@ export default function SolicitudesPage() {
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-          <div className="relative w-72">
+      <div className="flex min-h-0 flex-col overflow-hidden rounded-xl lg:flex-1 border border-slate-200 bg-white shadow-sm">
+        <div className="p-4 border-b border-slate-200 flex flex-wrap gap-3 justify-between items-center bg-slate-50">
+          <div className="relative w-full sm:max-w-md">
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Buscar por código o solicitante..." 
+              placeholder="Buscar por OT, código, solicitante o dirección…"
               value={searchTerm}
               onChange={event => setSearchTerm(event.target.value)}
               className="w-full pl-9 pr-4 py-2 bg-white text-slate-900 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002855]"
@@ -778,184 +797,39 @@ export default function SolicitudesPage() {
           <label>Estado <select value={filterStatus} onChange={event => setFilterStatus(event.target.value)} className="ml-2 border rounded p-1 bg-white">
             {['TODOS', 'PENDIENTE', 'PENDIENTE DE APROBACIÓN', 'OBSERVADA', 'APROBADA', 'REPROGRAMADA', 'RECHAZADA', 'CANCELADA', 'ASIGNADA'].map(status => <option key={status} value={status}>{status}</option>)}
           </select></label>
-          <label>Desde <input type="date" value={filterDateFrom} onChange={event => setFilterDateFrom(event.target.value)} className="ml-2 border rounded p-1 bg-white" /></label>
-          <label>Hasta <input type="date" value={filterDateTo} onChange={event => setFilterDateTo(event.target.value)} className="ml-2 border rounded p-1 bg-white" /></label>
+          <label>Servicio <select aria-label="Filtrar por tipo de servicio" value={filterService} onChange={e => setFilterService(e.target.value)} className="ml-2 rounded border bg-white p-1"><option value="TODOS">Todos</option><option value="DESPACHO">Entrega de contrato / entrega</option><option value="RECOJO">Recojo hacia planta</option><option value="TRASLADO">Entrega de punto a punto</option><option value="RECOJO_CLIENTE">Recojo por el cliente</option></select></label>
+          <label>Entrega desde <input type="date" value={filterDateFrom} onChange={event => setFilterDateFrom(event.target.value)} className="ml-2 border rounded p-1 bg-white" /></label>
+          <label>Entrega hasta <input type="date" value={filterDateTo} onChange={event => setFilterDateTo(event.target.value)} className="ml-2 border rounded p-1 bg-white" /></label>
         </div>}
 
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-          <table className="relative w-full table-fixed border-collapse text-left">
-            <colgroup>
-              <col className="w-[15%]" />
-              <col className="w-[13%]" />
-              <col className="w-[13%]" />
-              <col className="hidden xl:table-column w-[13%]" />
-              <col className="hidden 2xl:table-column w-[12%]" />
-              <col className="w-[16%]" />
-              <col className="hidden xl:table-column w-[14%]" />
-              <col className="w-[14%]" />
-              <col className="w-[15%]" />
-            </colgroup>
-            <thead className="sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
-              <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
-                <th className="p-3 font-semibold">Código / Emisión</th>
-                <th className="p-3 font-semibold">Fecha / Ventana</th>
-                <th className="p-3 font-semibold">OT / Contrato</th>
-                <th className="hidden p-3 font-semibold xl:table-cell">Cliente</th>
-                <th className="hidden p-3 font-semibold 2xl:table-cell">Origen</th>
-                <th className="p-3 font-semibold">Destino</th>
-                <th className="hidden p-3 font-semibold xl:table-cell">Carga</th>
-                <th className="p-3 font-semibold">Estado</th>
-                <th className="sticky right-0 z-20 bg-slate-50 p-3 text-right font-semibold shadow-[-6px_0_8px_-8px_rgba(15,23,42,0.45)]">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={9} className="p-8 text-center text-slate-500">
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                    Cargando solicitudes...
-                  </td>
+        <div className="min-h-0 overflow-auto lg:flex-1">
+          <table className="block w-full table-fixed text-left lg:table"><caption className="sr-only">Solicitud de Transporte: fechas, tipo de servicio, OT, dirección, estado y acciones</caption>
+            <thead className="sticky top-0 z-10 hidden bg-slate-50 text-xs uppercase tracking-wide text-slate-500 lg:table-header-group"><tr>
+              {['Fecha solicitud', 'Fecha de entrega', 'Tipo de servicio', 'OT', 'Dirección', 'Estado', 'Acciones'].map((title, index) => <th key={title} scope="col" className={`px-3 py-3 font-semibold ${['w-[12%]','w-[12%]','w-[16%]','w-[10%]','w-[23%]','w-[12%]','w-[15%]'][index]}`}>{title}</th>)}
+            </tr></thead>
+            <tbody className="block divide-y divide-slate-200 lg:table-row-group">
+              {loading || !filteredRequests.length ? <tr className="block lg:table-row"><td colSpan={7} className="p-8 text-center text-sm text-slate-500">{loading ? <><Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin" />Cargando solicitudes…</> : 'No hay solicitudes para estos filtros.'}</td></tr> : filteredRequests.map(req => {
+                const cell = 'min-w-0 px-3 py-4 align-top text-sm'
+                const label = (value: string) => <p className="mb-2 text-xs font-semibold text-slate-500 lg:hidden">{value}</p>
+                const button = 'inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold'
+                return <tr key={req.id} className="grid grid-cols-1 hover:bg-slate-50 sm:grid-cols-2 lg:table-row">
+                  <td className={cell}>{label('Fecha solicitud')}<p className="flex items-center gap-1.5 font-medium text-slate-700"><Calendar className="h-4 w-4 shrink-0 text-slate-400" />{requestDate(req.created_at)}</p></td>
+                  <td className={cell}>{label('Fecha de entrega')}<p className="font-semibold text-[#002855]">{serviceDate(req.required_date)}</p>{req.status === 'REPROGRAMADA' && <p className="mt-1 text-xs font-semibold text-orange-700">Fecha reprogramada</p>}</td>
+                  <td className={cell}>{label('Tipo de servicio')}<span className={`inline-flex rounded-lg px-2 py-1 text-xs font-semibold ${req.attention_mode === 'RECOJO_CLIENTE' ? 'bg-violet-50 text-violet-800' : req.request_type === 'RECOJO' ? 'bg-amber-50 text-amber-800' : req.request_type === 'TRASLADO' ? 'bg-teal-50 text-teal-800' : 'bg-blue-50 text-blue-800'}`}>{serviceLabel(req)}</span></td>
+                  <td className={cell}>{label('OT')}<p className="break-words font-bold text-[#002855]">{req.contracts?.code || (req.contract_id ? 'OT vinculada' : 'Sin OT')}</p></td>
+                  <td className={cell}>{label('Dirección')}<div className="space-y-2">{serviceAddresses(req).map(place => <div key={place.label}><p className="text-xs font-semibold text-slate-500">{place.label}</p><p className="break-words text-sm leading-5 text-slate-700">{place.address}</p></div>)}</div></td>
+                  <td className={cell}>{label('Estado')}{getStatusBadge(req.status)}</td>
+                  <td className={cell}>{label('Acciones')}<div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => void openRequestDetails(req)} aria-label={`Ver detalle de ${req.request_number}`} className={`${button} border-[#002855] bg-white text-[#002855] hover:bg-blue-50`}><Eye className="h-4 w-4" />Ver detalle</button>
+                    {['PENDIENTE DE APROBACIÓN','PENDIENTE','REPROGRAMADA'].includes(req.status) && canApprove && <><button type="button" onClick={() => void updateStatus(req.id,'APROBADA')} className={`${button} border-green-200 bg-green-50 text-green-700`}><Check className="h-4 w-4" />Aprobar</button><button type="button" onClick={() => void updateStatus(req.id,'RECHAZADA')} className={`${button} border-red-200 bg-red-50 text-red-700`}><X className="h-4 w-4" />Rechazar</button></>}
+                    {(canWrite('solicitudes') || canApprove || canReschedule) && ['PENDIENTE DE APROBACIÓN','PENDIENTE','REPROGRAMADA','APROBADA','OBSERVADA','ASIGNADA'].includes(req.status) && <>
+                      {canWrite('solicitudes') && req.status !== 'ASIGNADA' && <button type="button" onClick={() => void openEditModal(req)} className={`${button} border-blue-200 bg-blue-50 text-blue-700`}><Edit2 className="h-4 w-4" />Editar</button>}
+                      {canReschedule && <button type="button" onClick={() => { setSelectedRequestId(req.id);setNewRescheduleDate(req.required_date.split('T')[0] || '');setIsRescheduleModalOpen(true) }} className={`${button} border-orange-200 bg-orange-50 text-orange-700`}><CalendarClock className="h-4 w-4" />Reprogramar</button>}
+                      <button type="button" onClick={() => void handleCancelRequest(req.id)} className={`${button} border-slate-300 bg-slate-50 text-slate-600`}><Ban className="h-4 w-4" />Cancelar</button>
+                    </>}
+                  </div></td>
                 </tr>
-              ) : filteredRequests.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="p-8 text-center text-slate-500">
-                    No hay solicitudes para los filtros seleccionados.
-                  </td>
-                </tr>
-              ) : (
-                filteredRequests.map(req => (
-                  <tr key={req.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-3">
-                      <div className="flex flex-col">
-                        <button 
-                          onClick={() => void openRequestDetails(req)}
-                          className="font-bold text-[#002855] text-sm text-left hover:underline hover:text-blue-600 transition-all"
-                        >
-                          {req.request_number}
-                        </button>
-                        <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap mt-0.5">
-                          Emitido: {new Date(req.created_at).toLocaleDateString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="p-3 text-sm">
-                      <div className="flex flex-col">
-                        <span className="flex items-center gap-1 font-semibold text-[#002855]">
-                          <Calendar className="w-3 h-3 text-slate-400" />
-                          {(() => { const [y,m,d] = req.required_date.split('T')[0].split('-'); return `${d}/${m}/${y}`; })()}
-                        </span>
-                        {req.time_window && (
-                          <span className="flex items-center gap-1 text-[11px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded w-fit mt-1">
-                            <Clock className="w-3 h-3" />
-                            {req.time_window}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-3">
-                      <div className="flex flex-col">
-                        {req.contracts?.code ? (
-                          <span className="font-bold text-[#002855] text-sm">{req.contracts.code}</span>
-                        ) : req.purchase_order ? (
-                          <span className="font-medium text-slate-700 text-sm">{req.purchase_order}</span>
-                        ) : (
-                          <span className="text-slate-400 text-sm">-</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="hidden p-3 xl:table-cell">
-                      {req.contracts?.clients?.business_name ? (
-                        <span className="text-sm font-medium text-[#002855]">{req.contracts.clients.business_name}</span>
-                      ) : (
-                        <span className="text-sm text-slate-400">-</span>
-                      )}
-                    </td>
-                    <td className="hidden p-3 2xl:table-cell">
-                      <span className="text-sm text-slate-800 block truncate" title={req.pickup_address}>
-                        {req.pickup_address || '-'}
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      <span className="text-sm text-slate-800 block truncate" title={req.delivery_address}>
-                        {req.delivery_address || '-'}
-                      </span>
-                    </td>
-                    <td className="hidden p-3 text-sm xl:table-cell">
-                      <div className="flex flex-col gap-1">
-                        {req.cargo_description && (
-                          <div className="text-xs text-slate-700 font-medium truncate" title={req.cargo_description}>
-                            Glosa: {req.cargo_description}
-                          </div>
-                        )}
-                        {req.estimated_weight > 0 && (
-                          <div className="text-[10px] text-slate-400 font-medium">
-                            {req.estimated_weight} KG | {req.estimated_volume} M3 Estimados
-                          </div>
-                        )}
-                        <span className="text-[10px] text-slate-500">{req.transport_request_components?.length || 0} componentes</span>
-                        <span className="text-xs font-semibold text-blue-700">{req.attention_mode === 'RECOJO_CLIENTE' ? 'Recojo por el cliente · flete JRM S/ 0' : req.attention_mode ? 'Transporte JRM' : 'Modalidad pendiente: edite la solicitud'}</span>
-                        <span className="text-[10px] text-slate-500">Costo estimado: S/ {Number(req.service_cost || 0).toLocaleString('es-PE')}</span>
-                        <span className="text-[10px] text-slate-500">Viajes: {requestSummaries[req.id]?.dispatch_count ?? '—'}</span>
-                      </div>
-                    </td>
-                    <td className="p-3">
-                      {getStatusBadge(req.status)}
-                      {req.status === 'OBSERVADA' && req.budget_observation && (
-                        <div className="mt-1 max-w-40 text-[10px] font-medium text-rose-700">{req.budget_observation}.{req.contract_id ? ' Amplíe la partida de la OT.' : ''}</div>
-                      )}
-                    </td>
-                    <td className="sticky right-0 z-10 bg-white p-2 text-right shadow-[-6px_0_8px_-8px_rgba(15,23,42,0.45)]">
-                      {(req.status === 'PENDIENTE DE APROBACIÓN' || req.status === 'PENDIENTE' || req.status === 'REPROGRAMADA') && canApprove && (
-                        <div className="flex justify-end gap-2 mb-2">
-                          <button 
-                            onClick={() => updateStatus(req.id, 'APROBADA')}
-                            title="Aprobar"
-                            className="p-1.5 text-green-600 bg-green-50 hover:bg-green-100 transition-colors rounded border border-green-200"
-                          >
-                            <Check className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => updateStatus(req.id, 'RECHAZADA')}
-                            title="Rechazar"
-                            className="p-1.5 text-red-600 bg-red-50 hover:bg-red-100 transition-colors rounded border border-red-200"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      )}
-                      {(canWrite('solicitudes') || canApprove || canReschedule) && ['PENDIENTE DE APROBACIÓN', 'PENDIENTE', 'REPROGRAMADA', 'APROBADA', 'OBSERVADA', 'ASIGNADA'].includes(req.status) && (
-                        <div className="flex justify-end gap-2 mt-1">
-                          {canWrite('solicitudes') && req.status !== 'ASIGNADA' && <button 
-                            onClick={() => openEditModal(req)}
-                            title="Editar Solicitud"
-                            className="p-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors rounded border border-blue-200"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>}
-                          {canReschedule && <button 
-                            onClick={() => {
-                              setSelectedRequestId(req.id)
-                              setNewRescheduleDate(req.required_date.split('T')[0] || '')
-                              setIsRescheduleModalOpen(true)
-                            }}
-                            title="Reprogramar Fecha"
-                            className="p-1.5 text-orange-600 bg-orange-50 hover:bg-orange-100 transition-colors rounded border border-orange-200"
-                          >
-                            <CalendarClock className="w-4 h-4" />
-                          </button>}
-                          <button 
-                            onClick={() => handleCancelRequest(req.id)}
-                            title="Cancelar Solicitud"
-                            className="p-1.5 text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors rounded border border-slate-300"
-                          >
-                            <Ban className="w-4 h-4" />
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
+              })}
             </tbody>
           </table>
         </div>
@@ -1401,19 +1275,20 @@ export default function SolicitudesPage() {
 
       <Modal
         isOpen={Boolean(selectedRequestDetails)}
-        onClose={() => setSelectedRequestDetails(null)}
+        onClose={() => { detailLoadId.current++;setSelectedRequestDetails(null) }}
         title={`Solicitud ${selectedRequestDetails?.request_number || ''}`}
         maxWidth="max-w-2xl"
       >
         {selectedRequestDetails && <div className="space-y-5 text-sm text-slate-700">
           <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-4">
-            <div><span className="block text-xs text-slate-500">OT madre</span><strong>{selectedRequestDetails.contracts?.code || 'Sin OT identificada'}</strong></div>
+            <div><span className="block text-xs text-slate-500">OT madre</span><strong>{detailExecution?.ot_code || selectedRequestDetails.contracts?.code || (selectedRequestDetails.contract_id ? 'OT vinculada sin código disponible' : 'Sin OT')}</strong></div>
             <div><span className="block text-xs text-slate-500">Estado</span>{getStatusBadge(selectedRequestDetails.status)}</div>
-            <div><span className="block text-xs text-slate-500">Solicitante</span>{selectedRequestDetails.requester_name}</div>
-            <div><span className="block text-xs text-slate-500">Fecha requerida</span>{selectedRequestDetails.required_date?.split('T')[0] || 'Sin fecha'}</div>
+            <div><span className="block text-xs text-slate-500">Código / Emisión</span><strong>{selectedRequestDetails.request_number}</strong><p className="mt-1">{requestDate(selectedRequestDetails.created_at, true)}</p></div><div><span className="block text-xs text-slate-500">Tipo de servicio</span>{serviceLabel(selectedRequestDetails)}</div><div><span className="block text-xs text-slate-500">Cliente</span>{selectedRequestDetails.contracts?.clients?.business_name || 'Sin cliente registrado'}</div><div><span className="block text-xs text-slate-500">Área / Departamento</span>{selectedRequestDetails.department}</div><div><span className="block text-xs text-slate-500">Solicitante</span>{selectedRequestDetails.requester_name}</div>
+            <div><span className="block text-xs text-slate-500">Fecha requerida</span>{serviceDate(selectedRequestDetails.required_date)}{selectedRequestDetails.time_window && <p className="mt-1 flex items-center gap-1 text-xs"><Clock className="h-3 w-3" />{selectedRequestDetails.time_window}</p>}</div>
             <div><span className="block text-xs text-slate-500">Origen</span>{selectedRequestDetails.pickup_address || 'Sin origen'}</div>
             <div><span className="block text-xs text-slate-500">Destino</span>{selectedRequestDetails.delivery_address || 'Sin destino'}</div>
           </div>
+          <div className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-slate-900">Glosa / Detalle de carga</h3><p className="mt-2 whitespace-pre-wrap break-words">{selectedRequestDetails.cargo_description || 'Sin glosa registrada'}</p>{selectedRequestDetails.purchase_order && <p className="mt-2 text-xs">Orden de compra: {selectedRequestDetails.purchase_order}</p>}{selectedRequestDetails.budget_observation && <p className="mt-3 rounded-lg bg-rose-50 p-3 text-xs text-rose-800">Observación: {selectedRequestDetails.budget_observation}</p>}</div>
           <div>
             <h3 className="font-semibold text-slate-900 mb-2">Componentes incluidos</h3>
             {detailsLoading ? <p className="text-slate-500">Cargando detalle...</p> :
@@ -1428,22 +1303,20 @@ export default function SolicitudesPage() {
                 </div> : <p className="text-slate-500">La solicitud histórica no tiene componentes identificados con certeza.</p>}
           </div>
           <div className="grid grid-cols-2 gap-3 rounded-lg bg-blue-50 p-4">
-            <div><span className="block text-xs text-slate-500">Peso de cabecera</span><strong>{Number(selectedRequestDetails.estimated_weight || 0).toLocaleString('es-PE')} kg</strong></div>
+            <div><span className="block text-xs text-slate-500">Peso solicitado (estimado)</span><strong>{selectedRequestDetails.estimated_weight > 0 ? `${Number(selectedRequestDetails.estimated_weight).toLocaleString('es-PE')} kg` : 'Sin peso solicitado registrado'}</strong></div>
             <div><span className="block text-xs text-slate-500">Volumen de cabecera</span><strong>{Number(selectedRequestDetails.estimated_volume || 0).toLocaleString('es-PE')} m³</strong></div>
             <div><span className="block text-xs text-slate-500">Modalidad de atención</span><strong>{selectedRequestDetails.attention_mode === 'RECOJO_CLIENTE' ? 'Recojo por el cliente' : selectedRequestDetails.attention_mode === 'TRANSPORTE_JRM' ? 'Transporte JRM' : 'Pendiente de confirmar'}</strong><p className="text-xs text-slate-600">{selectedRequestDetails.pickup_customer} {selectedRequestDetails.pickup_contact} {selectedRequestDetails.pickup_phone}</p></div>
             <div><span className="block text-xs text-slate-500">Costo estimado, una vez por solicitud</span><strong>S/ {Number(selectedRequestDetails.service_cost || 0).toLocaleString('es-PE')}</strong></div>
             <div><span className="block text-xs text-slate-500">Partida OT raíz</span><strong>{requestSummaries[selectedRequestDetails.id]?.root_allocated_pen == null ? 'Sin registrar' : `S/ ${Number(requestSummaries[selectedRequestDetails.id].root_allocated_pen).toLocaleString('es-PE')}`}</strong></div>
             <div><span className="block text-xs text-slate-500">Saldo actual OT raíz</span><strong>{requestSummaries[selectedRequestDetails.id]?.root_balance_pen == null ? 'Sin registrar' : `S/ ${Number(requestSummaries[selectedRequestDetails.id].root_balance_pen).toLocaleString('es-PE')}`}</strong></div>
           </div>
-          <div><h3 className="font-semibold text-slate-900 mb-1">Viajes vinculados</h3>
-            <p>{requestSummaries[selectedRequestDetails.id] ?
-              (requestSummaries[selectedRequestDetails.id].dispatch_numbers.join(', ') || 'Sin viajes vinculados') :
-              'Resumen de viajes no disponible'}</p>
-          </div>
+          <section className="space-y-3"><h3 className="font-semibold text-slate-900">Ejecución del servicio · kilómetros y peso sustentado</h3><p className="text-xs leading-5 text-slate-500">Los kilómetros pertenecen al tramo de esta solicitud; el retorno y el total de la ruta no se reparten entre sus OT. El peso real requiere guía validada y peso completo de SALIDA APT. Recojos y guías compartidas quedan pendientes de sustento específico.</p>
+            {detailsLoading ? <p className="text-slate-500">Consultando viajes y mediciones…</p> : executionError ? <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-800">No se pudo consultar la ejecución: {executionError}</p> : !detailExecution?.legs.length ? <p className="rounded-lg bg-slate-50 p-3 text-slate-500">Sin viajes vinculados; aún no hay kilómetros ni peso transportado registrados.</p> : <div className="overflow-hidden rounded-lg border border-slate-200"><table className="block w-full text-left md:table"><thead className="hidden bg-slate-50 text-xs text-slate-500 md:table-header-group"><tr>{['Viaje / Unidad','Estado / Guía','KM del tramo','Peso real transportado'].map(t => <th key={t} className="p-3" scope="col">{t}</th>)}</tr></thead><tbody className="block divide-y md:table-row-group">{detailExecution.legs.map(leg => <tr key={leg.dispatch_id} className="grid grid-cols-1 sm:grid-cols-2 md:table-row"><td className="p-3 align-top"><p className="break-words text-xs font-bold text-[#002855]">{leg.dispatch_number}</p><p className="mt-1 text-xs">{leg.vehicle_plate || 'Sin unidad'} · {leg.driver_name || 'Sin conductor'}</p><p className="mt-1 text-xs text-slate-500">Parada {leg.sequence ?? 'sin orden'}</p></td><td className="p-3 align-top"><p className="text-xs font-semibold">{leg.dispatch_status} · {leg.conformity}</p><p className="mt-1 text-xs text-slate-500">Guía: {leg.guide_number || 'Sin guía registrada'}</p></td><td className="p-3 align-top"><p className="mb-1 text-xs text-slate-500 md:hidden">KM del tramo</p><p className="font-semibold">{leg.actual_km == null ? 'Sin medición' : `${Number(leg.actual_km).toLocaleString('es-PE',{maximumFractionDigits:3})} km`}</p><p className="mt-1 text-xs text-slate-500">{leg.actual_km == null ? leg.modalidad === 'TERCERO' ? 'Proveedor sin trazado GPS registrado' : 'Sin trazado GPS registrado' : leg.gps_complete === true ? 'GPS completo' : 'GPS parcial · no es el recorrido completo'}</p></td><td className="p-3 align-top"><p className="mb-1 text-xs text-slate-500 md:hidden">Peso real transportado</p><p className="font-semibold">{leg.actual_weight_kg == null ? 'Sin peso real sustentado' : `${Number(leg.actual_weight_kg).toLocaleString('es-PE')} kg`}</p><p className="mt-1 max-w-64 text-xs leading-5 text-slate-500">{executionWeightLabels[leg.weight_status] || 'Origen del peso no identificado'}</p></td></tr>)}</tbody></table></div>}
+          </section>
           <div>
             <h3 className="font-semibold text-slate-900 mb-2">Historial</h3>
             {detailEvents.length ? <div className="space-y-2">{detailEvents.map(event => <details key={event.id} className="rounded border border-slate-200 p-3">
-              <summary className="cursor-pointer">{event.action === 'CREATED' ? 'Creada' : event.action === 'UPDATED' ? 'Actualizada' : 'Estado cambiado'} · {new Date(event.created_at).toLocaleString('es-PE')}</summary>
+              <summary className="cursor-pointer">{event.action === 'CREATED' ? 'Creada' : event.action === 'UPDATED' ? 'Actualizada' : 'Estado cambiado'} · {requestDate(event.created_at, true)}</summary>
               <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-xs text-slate-600">{JSON.stringify({ anterior: event.previous_state, nuevo: event.next_state }, null, 2)}</pre>
             </details>)}</div> : <p className="text-slate-500">No hay eventos de auditoría registrados para esta solicitud.</p>}
           </div>
