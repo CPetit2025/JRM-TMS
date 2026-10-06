@@ -28,8 +28,8 @@ BEGIN
  IF actor IS NULL OR other_actor IS NULL OR site IS NULL THEN RAISE EXCEPTION 'CAJA C51 FAIL: faltan perfiles o sede'; END IF;
  UPDATE public.profiles SET is_active=true,role_id=NULL WHERE id IN(actor,other_actor);
  INSERT INTO public.user_site_access(user_id,site_id) VALUES(actor,site),(other_actor,site) ON CONFLICT DO NOTHING;
- driver:=pg_temp.ins('drivers',jsonb_build_object('carrier_id',carrier,'profile_id',actor,'first_name','Victor','last_name','Prueba C51','document_number',plate||'D1','is_active',true));
- driver2:=pg_temp.ins('drivers',jsonb_build_object('carrier_id',carrier,'first_name','Segundo','last_name','Prueba C51','document_number',plate||'D2','is_active',true));
+ driver:=pg_temp.ins('drivers',jsonb_build_object('carrier_id',carrier,'profile_id',actor,'first_name','Victor','last_name','Prueba C51','document_number',plate||'D1','license_number',plate||'LIC1','is_active',true));
+ driver2:=pg_temp.ins('drivers',jsonb_build_object('carrier_id',carrier,'first_name','Segundo','last_name','Prueba C51','document_number',plate||'D2','license_number',plate||'LIC2','is_active',true));
  vehicle:=pg_temp.ins('vehicles',jsonb_build_object('plate',plate,'carrier_id',carrier,'site_id',site,'type','CAMION','status','DISPONIBLE','assigned_driver_id',driver,'current_odometer',1000,'soat_expiration',current_date+365,'technical_review_expiration',current_date+365));
  vehicle2:=pg_temp.ins('vehicles',jsonb_build_object('plate',plate||'B','carrier_id',carrier,'site_id',site,'type','CAMION','status','DISPONIBLE','current_odometer',1000,'soat_expiration',current_date+365,'technical_review_expiration',current_date+365));
  IF (SELECT vehicle_plate FROM public.driver_preuse_units WHERE driver_id=driver) IS DISTINCT FROM plate THEN RAISE EXCEPTION 'CAJA C51 FAIL: asignación en Flota no llega al app sin ruta'; END IF;
