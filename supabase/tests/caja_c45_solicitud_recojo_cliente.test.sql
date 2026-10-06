@@ -41,6 +41,15 @@ BEGIN
  v_generic:=(r->>'id')::uuid;
  IF NOT EXISTS(SELECT 1 FROM public.transport_requests WHERE id=v_generic AND contract_id IS NULL AND attention_mode='RECOJO_CLIENTE' AND estimated_weight=2 AND status='PENDIENTE DE APROBACIÓN') THEN
    RAISE EXCEPTION 'CAJA C45 FAIL: otra área sigue exigiendo OT %',r; END IF;
+ PERFORM public.set_transport_request_status(v_generic,'APROBADA',NULL);
+ IF NOT EXISTS(SELECT 1 FROM public.transport_requests WHERE id=v_generic AND status='APROBADA' AND reserved_pen=0
+   AND cost_center_id IS NULL AND pickup_customer IS NULL AND pickup_contact IS NULL AND pickup_phone IS NULL
+   AND public.can_access_site(site_id)) THEN
+   RAISE EXCEPTION 'CAJA C45 FAIL: recojo genérico exige datos opcionales o reserva flete'; END IF;
+ v_dispatch:=public.schedule_dispatch(NULL,'EXTERNO',now(),10,0,NULL,'NOTA_SALIDA',jsonb_build_array(jsonb_build_object('id',v_generic)));
+ IF NOT EXISTS(SELECT 1 FROM public.dispatches WHERE id=v_dispatch AND contract_id IS NULL AND cost_center_id IS NULL
+   AND driver_id IS NULL AND freight_cost=0 AND estimated_distance_km=0) THEN
+   RAISE EXCEPTION 'CAJA C45 FAIL: no programó recojo genérico sin OT/CC/contacto'; END IF;
  v_pass:=v_pass+1;
  RAISE EXCEPTION 'CAJA C45 PASS (%/3)',v_pass;
 END $test$;
