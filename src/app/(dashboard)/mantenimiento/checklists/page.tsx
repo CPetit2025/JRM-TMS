@@ -6,6 +6,7 @@ import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { ClipboardCheck, Plus, RefreshCw, Loader2, Trash2, Edit2, Camera, Eraser } from 'lucide-react'
+import { PreuseReports } from '@/components/driver/PreuseReports'
 
 // Inspecciones y checklist (Fase 6). Toda inspección entra por submit_inspection (web y App);
 // una respuesta crítica genera la falla y bloquea la unidad (migración 20260927180000).
@@ -37,7 +38,7 @@ function loadAll() {
 }
 
 export default function ChecklistsPage() {
-  const [tab, setTab] = useState<'inspecciones' | 'nueva' | 'plantillas'>('inspecciones')
+  const [tab, setTab] = useState<'preuso' | 'inspecciones' | 'nueva' | 'plantillas'>('preuso')
   const [inspections, setInspections] = useState<InspectionRow[]>([])
   const [templates, setTemplates] = useState<Template[]>([])
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
@@ -74,14 +75,15 @@ export default function ChecklistsPage() {
           .map(([l, v]) => <div key={l as string} className="bg-white border rounded-xl p-3"><div className="text-xs text-slate-500">{l}</div><div className="text-2xl font-bold">{v}</div></div>)}
       </div>
 
-      <div className="flex gap-1 border-b">
-        {([['inspecciones', 'Inspecciones'], ['nueva', 'Nueva inspección'], ['plantillas', 'Plantillas']] as const).map(([k, l]) => (
+      <div className="flex flex-wrap gap-1 border-b">
+        {([['preuso', 'FR-DT 007 · Pre uso'], ['inspecciones', 'Inspecciones'], ['nueva', 'Nueva inspección'], ['plantillas', 'Plantillas']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className={`px-3 py-2 text-sm border-b-2 -mb-px ${tab === k ? 'border-[#002855] text-[#002855] font-semibold' : 'border-transparent text-slate-500'}`}>{l}</button>
         ))}
       </div>
 
       {loading ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : (
         <>
+          {tab === 'preuso' && <PreuseReports />}
           {tab === 'inspecciones' && (
             <div className="space-y-3">
               <select value={resultFilter} onChange={e => setResultFilter(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
@@ -111,7 +113,7 @@ export default function ChecklistsPage() {
               </div>
             </div>
           )}
-          {tab === 'nueva' && <InspectionForm templates={templates.filter(t => t.active !== false)} vehicles={vehicles} onDone={() => { setTab('inspecciones'); refresh() }} />}
+          {tab === 'nueva' && <InspectionForm templates={templates.filter(t => t.active !== false && t.code !== 'FR_DT007')} vehicles={vehicles} onDone={() => { setTab('inspecciones'); refresh() }} />}
           {tab === 'plantillas' && (
             <div className="space-y-3">
               <button onClick={() => setEditing('new')} className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm flex items-center gap-2"><Plus className="w-4 h-4" />Nueva plantilla</button>
@@ -120,7 +122,7 @@ export default function ChecklistsPage() {
                   <div key={t.id} className="bg-white border rounded-xl p-4 space-y-2">
                     <div className="flex justify-between gap-2">
                       <div><div className="font-semibold">{t.name}</div><div className="text-xs text-slate-500">{t.type} · {t.asset_types?.length ? t.asset_types.join(', ') : 'todos los activos'}</div></div>
-                      {t.code !== 'APP_PRE_RUTA' && <button onClick={() => setEditing(t)} className="p-1.5 border rounded-lg h-fit"><Edit2 className="w-4 h-4" /></button>}
+                      {!['APP_PRE_RUTA','FR_DT007'].includes(t.code || '') && <button onClick={() => setEditing(t)} className="p-1.5 border rounded-lg h-fit"><Edit2 className="w-4 h-4" /></button>}
                     </div>
                     <div className="text-xs text-slate-500">{t.checklist_items.length} preguntas · {t.checklist_items.filter(i => i.is_critical).length} críticas{t.requires_signature ? ' · requiere firma' : ''}{t.code === 'APP_PRE_RUTA' ? ' · plantilla del sistema (App)' : ''}</div>
                     <ul className="text-xs text-slate-600 list-disc ml-4">{t.checklist_items.slice(0, 5).map(i => <li key={i.id}>{i.text}{i.is_critical ? ' ⚠' : ''}</li>)}</ul>

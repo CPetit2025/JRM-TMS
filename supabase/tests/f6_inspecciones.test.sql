@@ -106,32 +106,24 @@ BEGIN
   -- Evidencia fotográfica en storage (requisito de validate_driver_checklist) y GPS dentro de geocerca
   INSERT INTO storage.objects (bucket_id, name, owner) VALUES ('driver_evidence', v_admin || '/f6/check.jpg', v_admin);
 
-  -- T10: checklist pre-ruta de la App ⇒ inspección canónica + registro de despacho; con falla crítica no inicia ruta
+  -- T10/T11: el formato legado no sustituye FR-DT 007 ni inicia rutas.
+  -- El registro diario completo y las fallas críticas de la App se verifican en Caja C49.
   INSERT INTO public.dispatches (dispatch_number, vehicle_plate, driver_id, status, site_id)
   VALUES ('ZZ-F6-1', 'ZZF6B1', v_driver, 'PROGRAMADO', v_site) RETURNING id INTO v_disp;
   r := public.submit_pre_route_checklist(v_disp, 'ZZF6B1', v_driver, 5100,
-         jsonb_build_object('llantas', 'OK', 'aceite', 'OK', 'luces', 'OK', 'frenos', 'MAL', 'combustible', 'OK', 'photo_url', v_admin || '/f6/check.jpg'),
+         jsonb_build_object('llantas', 'OK', 'aceite', 'OK', 'luces', 'OK', 'frenos', 'MAL', 'combustible', 'OK'),
          '{"lat": -11.99, "lon": -77.0}'::jsonb);
-  IF (r->>'success')::boolean AND NOT (r->>'can_start')::boolean AND r->>'global_result' = 'FAILED'
+  IF NOT (r->>'success')::boolean AND r->>'message' LIKE '%FR-DT 007%'
      AND (SELECT status FROM public.dispatches WHERE id = v_disp) = 'PROGRAMADO'
-     AND (SELECT status FROM public.vehicles WHERE plate = 'ZZF6B1') = 'BLOQUEADA'
-     AND EXISTS (SELECT 1 FROM public.driver_checklists WHERE dispatch_id = v_disp AND inspection_id = (r->>'inspection_id')::uuid)
-     AND EXISTS (SELECT 1 FROM public.inspections WHERE id = (r->>'inspection_id')::uuid AND source = 'APP' AND inspection_type = 'PREOPERACIONAL' AND odometer = 5100)
-     AND (SELECT count(*) FROM public.maintenance_requests WHERE vehicle_plate = 'ZZF6B1' AND source = 'INSPECCION') = 1 THEN
-    v_pass := v_pass + 1;
-  ELSE v_fail := v_fail || ('T10 App pre-ruta: ' || r::text); END IF;
-
-  -- T11: checklist pre-ruta sin fallas inicia la ruta (un conductor tiene un solo despacho activo)
-  PERFORM public.transition_dispatch_status(v_disp, 'CANCELADO', 'prueba', v_admin);
-  UPDATE public.vehicles SET status = 'DISPONIBLE', soat_expiration = CURRENT_DATE + 365 WHERE plate = 'ZZF6A1';
-  INSERT INTO public.dispatches (dispatch_number, vehicle_plate, driver_id, status, site_id)
-  VALUES ('ZZ-F6-2', 'ZZF6A1', v_driver, 'PROGRAMADO', v_site) RETURNING id INTO v_disp;
-  r := public.submit_pre_route_checklist(v_disp, 'ZZF6A1', v_driver, 1200,
-         jsonb_build_object('llantas', 'OK', 'aceite', 'OK', 'luces', 'OK', 'frenos', 'OK', 'combustible', 'MAL', 'photo_url', v_admin || '/f6/check.jpg'),
+     AND NOT EXISTS (SELECT 1 FROM public.driver_checklists WHERE dispatch_id = v_disp)
+     AND NOT EXISTS (SELECT 1 FROM public.inspections WHERE dispatch_id = v_disp) THEN v_pass := v_pass + 1;
+  ELSE v_fail := v_fail || ('T10 App formato desactualizado: ' || r::text); END IF;
+  r := public.submit_pre_route_checklist(v_disp, 'ZZF6B1', v_driver, 5100,
+         jsonb_build_object('llantas', 'OK', 'aceite', 'OK', 'luces', 'OK', 'frenos', 'OK', 'combustible', 'OK'),
          '{"lat": -11.99, "lon": -77.0}'::jsonb);
-  IF (r->>'success')::boolean AND (r->>'can_start')::boolean AND r->>'global_result' = 'WARNING'
-     AND (SELECT status || '/' || start_odometer FROM public.dispatches WHERE id = v_disp) = 'EN_CURSO/1200' THEN v_pass := v_pass + 1;
-  ELSE v_fail := v_fail || ('T11 pre-ruta OK: ' || r::text); END IF;
+  IF NOT (r->>'success')::boolean AND (SELECT status FROM public.dispatches WHERE id = v_disp) = 'PROGRAMADO'
+     AND (SELECT start_odometer FROM public.dispatches WHERE id = v_disp) IS NULL THEN v_pass := v_pass + 1;
+  ELSE v_fail := v_fail || ('T11 formato legado inició ruta: ' || r::text); END IF;
 
   -- T12: RLS y permisos (sin inserción directa; plantilla del sistema protegida; sin permiso no inspecciona ni ve)
   EXECUTE 'SET LOCAL ROLE authenticated';

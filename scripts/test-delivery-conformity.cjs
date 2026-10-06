@@ -414,6 +414,37 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   const c48=query(read('supabase/tests/caja_c48_bandeja_documentaria_ot.test.sql'))
   assert.match(c48.stderr,/CAJA C48 PASS/,c48.stderr)
   console.log('PASS: documentary queue preserves per-request OT on a consolidated route, no-OT requests, real client, role/site and exact production C48, rolled back.')
+  // The production F6 engine, rather than a mock of its critical-failure behavior.
+  sql(`CREATE TABLE sites(id uuid PRIMARY KEY);
+    INSERT INTO sites VALUES('${id(21)}'),('${id(22)}');
+    ALTER TABLE user_site_access ADD PRIMARY KEY(user_id,site_id);
+    ALTER TABLE vehicles ALTER COLUMN id SET DEFAULT gen_random_uuid(), ADD COLUMN current_hours numeric, ADD COLUMN soat_expiration date, ADD COLUMN technical_review_expiration date;
+    CREATE UNIQUE INDEX fixture_vehicle_plate ON vehicles(plate);
+    ALTER TABLE profiles ADD COLUMN phone text, ADD COLUMN employee_type text;
+    ALTER TABLE drivers ADD COLUMN phone text, ADD COLUMN license_category text, ADD COLUMN license_expiration date;
+    ALTER TABLE dispatches ADD COLUMN created_at timestamptz DEFAULT now(), ADD COLUMN departure_time timestamptz, ADD COLUMN start_lat numeric, ADD COLUMN start_lon numeric, ADD COLUMN start_odometer numeric;
+    ALTER TABLE contracts ADD COLUMN destination_address text;
+    ALTER TABLE clients ADD COLUMN phone text;
+    CREATE TABLE dispatch_expenses(dispatch_id uuid,status text);
+    CREATE TABLE vehicle_maintenance_records(dispatch_id uuid,status text);
+    CREATE TABLE driver_checklists(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),dispatch_id uuid,driver_id uuid,vehicle_plate text,checklist_data jsonb,photo_url text,location_lat numeric,location_lon numeric,is_approved boolean);
+    CREATE TABLE maintenance_requests(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),vehicle_plate text,driver_id uuid,dispatch_id uuid,description text,severity text,status text,source text,source_ref_id uuid UNIQUE,odometer_at_report numeric,horometer numeric,photo_url text,notes text,reported_at timestamptz,reported_by uuid);
+    CREATE FUNCTION has_cmms_permission(code text) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT has_tms_permission('mantenimiento-'||code) $$;
+    CREATE FUNCTION has_cmms_read_permission(code text) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT has_tms_read_permission('mantenimiento-'||code) $$;`)
+  sql(read('supabase/migrations/20260924150000_fase6_dynamic_inspections.sql'))
+  sql(read('supabase/migrations/20260927180000_f6_inspecciones.sql'))
+  sql(installed('supabase/migrations/20261005180000_desempeno_por_rol.sql','desempeno_calcular'))
+  sql(read('supabase/migrations/20261007190000_daily_driver_preuse_fr_dt007.sql'))
+  // pg_get_functiondef is multiline, so inspect with SQL rather than the last-line helper.
+  assert.equal(sql("SELECT (length(pg_get_functiondef('public.desempeno_calcular(text,uuid,date)'::regprocedure))-length(replace(pg_get_functiondef('public.desempeno_calcular(text,uuid,date)'::regprocedure),'public.driver_preuse_departure_recorded(v.id)','')))/length('public.driver_preuse_departure_recorded(v.id)')"),'2')
+  const c49=query(read('supabase/tests/caja_c49_preuso_diario_conductor.test.sql'))
+  assert.match(c49.stderr,/CAJA C49 PASS/,c49.stderr)
+  sql(`INSERT INTO profiles(id,is_active) VALUES('${id(17)}',true); INSERT INTO auth.users VALUES('${id(17)}');`)
+  for (const test of ['caja_c9_documentario','caja_c41_despacho_tercerizado','caja_c46_responsabilidad_documentaria','caja_c47_presencia_conductor_gps','caja_c48_bandeja_documentaria_ot']) {
+    const result=query(read('supabase/tests/'+test+'.test.sql'))
+    assert.match(result.stderr,/CAJA C(?:9|41|46|47|48) PASS/,result.stderr)
+  }
+  console.log('PASS: production F6 + C49: full daily inspections without routes, A-B-A reinspection, separate start, original response M triggers canonical critical failure, idempotency, locked format, per-inspection exports. C9/C41/C46/C47/C48 still pass after migration.')
 } catch(error) {
   console.error(error.message)
   console.error('::error title=Delivery conformity validation::' + error.message.replaceAll('%','%25').replaceAll('\n','%0A'))

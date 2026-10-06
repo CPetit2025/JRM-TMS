@@ -33,6 +33,9 @@ jobs:
       - run: node scripts/test-apt-almacenes.cjs
       - run: node scripts/test-request-attention.cjs
       - run: node scripts/test-delivery-conformity.cjs
+      - name: PDF verification tools
+        run: sudo apt-get update -qq && sudo apt-get install -y poppler-utils
+      - run: node scripts/test-preuse.cjs
       - run: node scripts/test-driver-presence.cjs
       - run: node scripts/test-delivery-offline.cjs
       - run: node scripts/test-delivery-api.cjs
