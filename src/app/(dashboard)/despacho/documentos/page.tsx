@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Clock, FileCheck2, FileSpreadsheet, FileText, ListTree, Loader2, RefreshCw, Search, Trash2, Truck, Upload } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { Modal } from '@/components/ui/modal'
@@ -16,7 +16,7 @@ import { DOCS_BUCKET, errorMessage, fmtDate, receiptUrl } from '@/lib/caja'
 // Auditor: Packing List. Asistente: confirmación documentaria y Nota de Despacho en recojos.
 // La guía de entrega obligatoria procede del app/proveedor; solo Transporte valida la conformidad.
 
-type Stop = { request_id: string; request_number: string; ot_code: string | null; sequence: number | null; delivery: string; cargo: string | null; client: string | null }
+type Stop = { request_id: string; request_number: string; ot_code: string | null; sequence: number | null; origin?: string | null; delivery: string; cargo: string | null; client: string | null }
 type Doc = {
   id: string; request_id: string | null; doc_type: string; cargo_type: string | null; document_number: string | null
   signed?: boolean; auditor_name?: string | null; auditor_signed_date?: string | null
@@ -174,9 +174,10 @@ function DocumentaryQueue() {
           <div className="border-b border-slate-200 px-4 py-3 text-sm text-slate-600">{visible.length} solicitud(es) · ordenadas por salida del despacho. Un despacho puede reunir varias OT.</div>
           <div className="overflow-x-auto"><table className="block w-full text-left text-sm lg:table"><caption className="sr-only">Solicitudes y OT asociadas, Packing List, guía de entrega y conformidad</caption><thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['OT / Solicitud', 'Cliente / Destino', 'Despacho / Salida', '1. Packing List', ...(packingOnly ? [] : ['2. Guía de entrega', '3. Conformidad']), 'Acciones'].map(label => <th key={label} scope="col" className="px-4 py-3 font-semibold">{label}</th>)}</tr></thead><tbody className="block divide-y divide-slate-200 lg:table-row-group">{visible.map(({ item, stop }) => <DocumentRow key={`${item.id}/${stop?.request_id || 'empty'}`} item={item} stop={stop} delivery={deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)} canEdit={canEdit || canPacking} packingOnly={packingOnly} onManage={() => setSelectedId(item.id)} onEvidence={setReview} />)}</tbody></table></div>
         </section>}
-      <Modal isOpen={!!selected} onClose={() => setSelectedId(null)} title={`Documentos · ${selected?.dispatch_number || ''}`} maxWidth="max-w-5xl">
-        {selected && <DispatchCard item={selected} canEdit={canEdit && selected.status === 'PROGRAMADO'} canPacking={canPacking && selected.status === 'PROGRAMADO'} packingOnly={packingOnly} busy={busy === selected.id}
-          onConfirm={() => confirmDocs(selected)} onVoid={voidDoc} onOpen={openDoc} onUploaded={load}
+      <Modal isOpen={!!selected} onClose={() => setSelectedId(null)} title={`Documentos · ${selected?.dispatch_number || ''}`} maxWidth="max-w-[1440px]"
+        footer={<div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-600">{selected?.missing ? 'Completa los documentos pendientes para autorizar la salida.' : selected?.docs_ready_at ? 'Documentos confirmados para salida.' : 'Documentos y archivos asociados al servicio.'}</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setSelectedId(null)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Cerrar</button>{selected && canEdit && selected.status === 'PROGRAMADO' && ['PENDIENTE', 'REEMISION'].includes(selected.doc_status) && <button type="button" onClick={() => void confirmDocs(selected)} disabled={busy === selected.id || !!selected.missing} className="flex min-h-11 items-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-500">{busy === selected.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar documentos para salida</button>}</div></div>}>
+        {selected && <DispatchCard key={selected.id} item={selected} canEdit={canEdit && selected.status === 'PROGRAMADO'} canPacking={canPacking && selected.status === 'PROGRAMADO'} packingOnly={packingOnly}
+          onVoid={voidDoc} onOpen={openDoc} onUploaded={load}
           deliveries={deliveries.filter(row => row.dispatch_id === selected.id)} onEvidence={row => { setSelectedId(null); setReview(row) }} />}
       </Modal>
       {!packingOnly && <DeliveryReview row={review} onClose={() => setReview(null)} onChanged={() => void load()} />}
@@ -207,73 +208,53 @@ function DocumentRow({ item, stop, delivery, canEdit, packingOnly, onManage, onE
   </tr>
 }
 
-function DispatchCard({ item, canEdit, canPacking, packingOnly, busy, onConfirm, onVoid, onOpen, onUploaded, deliveries, onEvidence }: {
-  item: QueueItem; canEdit: boolean; canPacking: boolean; packingOnly: boolean; busy: boolean; onConfirm: () => void; onVoid: (d: Doc) => void
+function DispatchCard({ item, canEdit, canPacking, packingOnly, onVoid, onOpen, onUploaded, deliveries, onEvidence }: {
+  item: QueueItem; canEdit: boolean; canPacking: boolean; packingOnly: boolean; onVoid: (d: Doc) => void
   onOpen: (p: string) => void; onUploaded: () => Promise<void>; deliveries: DeliveryRow[]; onEvidence: (row: DeliveryReviewTarget) => void
 }) {
-  const h = hoursLeft(item.scheduled_departure)
-  const urgent = item.doc_status !== 'LISTO' && item.doc_status !== 'SALIO' && h !== null && h < 2
+  const [upload, setUpload] = useState<{ requestId: string | null; type: string; label: string } | null>(null)
+  const uploadPanel = useRef<HTMLDivElement>(null)
+  useEffect(() => { if (upload) uploadPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) }, [upload])
   const badge = STATUS_BADGE[item.doc_status]
   const generalDocs = item.documents.filter(d => !d.request_id)
+  const consolidated = generalDocs.find(d => d.doc_type === 'PACKING_LIST' && d.signed && d.auditor_name && d.auditor_signed_date)
+  const h = hoursLeft(item.scheduled_departure)
+  const urgent = !['LISTO', 'SALIO'].includes(item.doc_status) && h !== null && h < 2
+  const action = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold'
+  const cell = 'min-w-0 px-4 py-4 align-top'
+  const label = (text: string) => <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">{text}</p>
+  const status = (title: string, ready: boolean, detail: string) => <div className="space-y-1"><p className="flex items-center gap-2 text-sm font-semibold text-slate-800">{ready ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : <Clock className="h-4 w-4 shrink-0 text-amber-600" />}{title}</p><p className={`text-xs leading-5 ${ready ? 'text-emerald-700' : 'text-amber-800'}`}>{detail}</p></div>
+  const beginUpload = (requestId: string | null, type: string, title: string) => setUpload({ requestId, type, label: title })
 
-  return (
-    <div className={`bg-white rounded-xl border shadow-sm ${urgent ? 'border-red-400 ring-1 ring-red-200' : ''}`}>
-      <div className="p-4 border-b flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-bold text-slate-800">{item.dispatch_number}</span>
-            <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${badge.cls}`}>{badge.label}</span>
-            {item.is_pickup && <span className="text-xs px-2 py-0.5 rounded-full border bg-violet-50 text-violet-700 border-violet-200">Recojo del cliente</span>}
-          </div>
-          <div className="text-sm text-slate-500 mt-1 flex flex-wrap gap-x-4 gap-y-1">
-            <span className="flex items-center gap-1"><Truck className="w-3.5 h-3.5" />{item.is_pickup ? 'Unidad del cliente' : `${item.vehicle_plate || '—'} · ${item.driver_name || 'Sin conductor'}`}</span>
-            <span className={`flex items-center gap-1 ${urgent ? 'text-red-600 font-semibold' : ''}`}>
-              <Clock className="w-3.5 h-3.5" />Salida {fmtDate(item.scheduled_departure, true)}
-              {h !== null && item.doc_status !== 'SALIO' && (h < 0 ? ' · atrasado' : ` · en ${h < 1 ? `${Math.max(1, Math.round(h * 60))} min` : `${h.toFixed(1)} h`}`)}
-            </span>
-          </div>
-          {item.docs_reissue && (
-            <p className="mt-2 text-sm text-red-700 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" />Reemitir: {item.docs_reissue_reason || 'cambió el despacho'}</p>
-          )}
-          {item.docs_ready_at && !item.docs_reissue && (
-            <p className="mt-2 text-xs text-emerald-700">Confirmado por {item.docs_ready_by_name || '—'} · {fmtDate(item.docs_ready_at, true)}</p>
-          )}
-        </div>
-        {canEdit && (item.doc_status === 'PENDIENTE' || item.doc_status === 'REEMISION') && (
-          <button onClick={onConfirm} disabled={busy || !!item.missing}
-            className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2">
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}Confirmar documentos para salida
-          </button>
-        )}
-      </div>
-
-      {item.missing && <p className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">Antes de confirmar este despacho, completa: {item.missing}.</p>}
-
-      <div className="divide-y">
-        {item.stops.map((s, i) => {
-          const docs = item.documents.filter(d => d.request_id === s.request_id)
-          return (
-            <div key={s.request_id} className="p-4">
-              <div className="text-sm font-semibold text-[#002855]">{s.ot_code ? `OT ${s.ot_code}` : 'Sin OT vinculada'} · {s.request_number} · Parada {s.sequence || i + 1}</div>
-              <div className="text-xs text-slate-500">{[s.client, s.delivery, s.cargo].filter(Boolean).join(' · ')}</div>
-              <DocList docs={docs} canEdit={canEdit} onVoid={onVoid} onOpen={onOpen} />
-              {(canEdit || canPacking) && <details className="mt-3 rounded-lg border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold text-[#002855]">Adjuntar documento a {s.request_number}</summary><UploadForm dispatchId={item.id} requestId={s.request_id} isPickup={item.is_pickup} canPacking={canPacking} canDocuments={canEdit} onUploaded={onUploaded} /></details>}
-            </div>
-          )
-        })}
-        <div className="p-4 bg-slate-50/60 rounded-b-xl">
-          <div className="text-sm font-semibold text-slate-700">Documentos generales del despacho</div>
-          <p className="mt-1 text-xs font-medium text-[#002855]">OT cubiertas: {[...new Set(item.stops.map(stop => stop.ot_code || 'Sin OT vinculada'))].join(' · ') || 'Sin solicitudes asociadas'}</p>
-          <div className="text-xs text-slate-500">Un Packing List consolidado firmado cubre todas las paradas. También puedes adjuntarlo por parada; debe estar firmado por el auditor.</div>
-          <DocList docs={generalDocs} canEdit={canEdit} onVoid={onVoid} onOpen={onOpen} />
-          {(canEdit || canPacking) && <details className="mt-3 rounded-lg border border-slate-200 bg-white p-3"><summary className="cursor-pointer text-sm font-semibold text-[#002855]">Adjuntar documento consolidado</summary><UploadForm dispatchId={item.id} requestId={null} isPickup={item.is_pickup} canPacking={canPacking} canDocuments={canEdit} onUploaded={onUploaded} /></details>}
-        </div>
-        {!packingOnly && <div className="space-y-3 p-4"><p className="flex items-center gap-2 text-sm font-semibold text-[#002855]"><FileCheck2 className="h-4 w-4" />Guías firmadas de entrega · obligatorias</p><p className="text-xs leading-5 text-slate-500">Responsable: {item.is_pickup ? 'cliente que retira · se conserva la Nota de Despacho' : item.modalidad === 'TERCERO' ? 'proveedor contratado por JRM, desde su portal' : 'conductor asignado, desde el app'}. El personal documentario consulta el sustento; el Supervisor de Transporte valida.</p>
-          {!deliveries.length ? <p className="text-xs text-slate-500">Conformidad no disponible. Actualiza la bandeja para consultar.</p> : deliveries.map(row => <div key={row.request_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm"><div><p className="font-semibold">{row.request_number} · OT {row.ot_code}</p><p className="mt-1 text-xs text-slate-600">{conformityLabels[row.conformity]}{row.guide_number ? ` · Guía ${row.guide_number}` : ''}{row.photos_count > 0 ? ` · ${row.photos_count} foto(s)` : ''}</p></div><button onClick={() => onEvidence(row)} className="min-h-10 rounded-lg border px-3 text-xs font-semibold text-blue-700">Consultar sustento y validación</button></div>)}
-        </div>}
-      </div>
+  return <div className="min-w-0 space-y-4">
+    <div className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Unidad</p><p className="mt-2 flex items-center gap-2 text-lg font-bold text-[#002855]"><Truck className="h-5 w-5" />{item.is_pickup ? 'Unidad del cliente' : item.vehicle_plate || 'Sin unidad'}</p><p className="mt-1 text-xs text-slate-600">{item.is_pickup ? 'Recojo por el cliente' : item.modalidad === 'TERCERO' ? 'Transporte contratado por JRM' : 'Transporte JRM'}</p></div>
+      <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Conductor</p><p className="mt-2 break-words text-sm font-semibold text-slate-800">{item.is_pickup ? 'No aplica' : item.driver_name || 'Sin conductor registrado'}</p></div>
+      <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Salida programada</p><p className={`mt-2 text-sm font-semibold ${urgent ? 'text-red-700' : 'text-slate-800'}`}>{fmtDate(item.scheduled_departure, true)}</p>{urgent && <p className="mt-1 text-xs text-red-700">{h !== null && h < 0 ? 'Salida atrasada' : 'Salida próxima'}</p>}</div>
+      <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Estado documentario</p><span className={`mt-2 inline-flex rounded-lg border px-2 py-1 text-xs font-semibold ${badge.cls}`}>{badge.label}</span>{item.docs_ready_at && !item.docs_reissue && <p className="mt-1 text-xs text-emerald-700">Confirmado · {fmtDate(item.docs_ready_at, true)}</p>}</div>
     </div>
-  )
+    {item.docs_reissue && <p className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Reemisión: {item.docs_reissue_reason || 'Actualizar los documentos del servicio.'}</p>}
+    <section className="overflow-hidden rounded-xl border border-slate-200" aria-label="Documentos por servicio">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white p-4"><div><h3 className="font-bold text-[#002855]">Servicios y documentos</h3><p className="mt-1 text-xs text-slate-500">{item.stops.length} servicio(s) asociados{item.is_pickup ? ' · Recojo por el cliente' : ''}</p></div>{canPacking && <button type="button" onClick={() => beginUpload(null, 'PACKING_LIST', 'Todas las solicitudes del despacho')} className={`${action} border border-[#002855] bg-white text-[#002855] hover:bg-blue-50`}><Upload className="h-4 w-4" />{consolidated ? 'Reemplazar Packing List consolidado' : 'Cargar Packing List consolidado'}</button>}</div>
+      <table className="block w-full table-fixed text-left lg:table"><caption className="sr-only">OT, detalles del servicio, documentos requeridos y botones para cargar o consultar</caption><thead className="hidden bg-slate-50 text-xs font-semibold text-slate-500 lg:table-header-group"><tr><th scope="col" className="w-[16%] px-4 py-3">OT / Solicitud</th><th scope="col" className="w-[32%] px-4 py-3">Detalle del servicio</th><th scope="col" className="w-[27%] px-4 py-3">Documentos requeridos</th><th scope="col" className="w-[25%] px-4 py-3">Archivos y acciones</th></tr></thead>
+        <tbody className="block divide-y divide-slate-200 lg:table-row-group">{item.stops.map((s, i) => {
+          const docs = item.documents.filter(d => d.request_id === s.request_id)
+          const packing = docs.find(d => d.doc_type === 'PACKING_LIST' && d.signed && d.auditor_name && d.auditor_signed_date) || consolidated
+          const note = docs.find(d => d.doc_type === 'NOTA_DESPACHO')
+          const delivery = deliveries.find(d => d.request_id === s.request_id)
+          const title = `${s.ot_code ? `OT ${s.ot_code}` : 'Sin OT vinculada'} · ${s.request_number}`
+          return <tr key={s.request_id} className="grid grid-cols-1 bg-white sm:grid-cols-2 lg:table-row">
+            <td className={cell}>{label('OT / Solicitud')}<p className="break-words text-base font-bold text-[#002855]">{s.ot_code ? `OT ${s.ot_code}` : 'Sin OT vinculada'}</p><p className="mt-2 text-sm font-semibold text-slate-700">{s.request_number}</p><p className="mt-1 text-xs text-slate-500">Parada {s.sequence || i + 1}</p></td>
+            <td className={cell}>{label('Detalle del servicio')}<p className="break-words text-sm font-semibold text-slate-800">{s.client || 'Sin cliente registrado'}</p><dl className="mt-2 space-y-2 text-xs leading-5"><div><dt className="font-semibold text-slate-500">Origen</dt><dd className="break-words text-slate-700">{s.origin || 'Sin origen registrado'}</dd></div><div><dt className="font-semibold text-slate-500">Destino</dt><dd className="break-words text-slate-700">{s.delivery || 'Sin destino registrado'}</dd></div><div><dt className="font-semibold text-slate-500">Carga / Servicio</dt><dd className="break-words text-slate-700">{s.cargo || 'Sin detalle registrado'}</dd></div></dl></td>
+            <td className={cell}>{label('Documentos requeridos')}<div className="space-y-3">{status('Packing List firmado', !!packing, packing ? `${packing.request_id ? 'Cargado' : 'Consolidado'} · ${packing.auditor_name}` : 'Pendiente · Auditor de Despacho')}{item.is_pickup && status('Nota de Despacho', !!note, note ? 'Cargada' : 'Pendiente · Asistente Documentario')}{!packingOnly && !item.is_pickup && <div className="space-y-1"><p className="text-sm font-semibold text-slate-800">Guía firmada en destino</p><p className="text-xs leading-5 text-slate-600">{delivery ? conformityLabels[delivery.conformity] : 'Aún no disponible'}{delivery?.guide_number ? ` · ${delivery.guide_number}` : ''}</p><p className="text-xs text-slate-500">{item.modalidad === 'TERCERO' ? 'Proveedor JRM · enlace de entrega' : 'Conductor · app'}</p></div>}</div></td>
+            <td className={cell}>{label('Archivos y acciones')}<div className="flex flex-col items-start gap-2">{canPacking && <button type="button" onClick={() => beginUpload(s.request_id, 'PACKING_LIST', title)} className={`${action} bg-[#002855] text-white hover:bg-[#003b7a]`}><Upload className="h-4 w-4" />{packing ? 'Actualizar Packing List' : 'Cargar Packing List'}</button>}{canEdit && item.is_pickup && <button type="button" onClick={() => beginUpload(s.request_id, 'NOTA_DESPACHO', title)} className={`${action} border border-slate-300 text-[#002855] hover:bg-slate-50`}><Upload className="h-4 w-4" />{note ? 'Cargar nueva Nota de Despacho' : 'Cargar Nota de Despacho'}</button>}{canEdit && <button type="button" onClick={() => beginUpload(s.request_id, 'OTRO', title)} className={`${action} border border-slate-300 text-[#002855] hover:bg-slate-50`}><Upload className="h-4 w-4" />Cargar otro documento</button>}{consolidated && <button type="button" onClick={() => onOpen(consolidated.file_path)} className={`${action} border border-blue-200 bg-blue-50 text-blue-800`}><FileText className="h-4 w-4" />Ver Packing List consolidado</button>}</div><DocList docs={docs} canEdit={canEdit} onVoid={onVoid} onOpen={onOpen} />{!packingOnly && !item.is_pickup && delivery && <button type="button" onClick={() => onEvidence(delivery)} className={`${action} mt-2 border border-slate-300 text-[#002855] hover:bg-slate-50`}><FileCheck2 className="h-4 w-4" />Ver guía y conformidad</button>}</td>
+          </tr>
+        })}{!item.stops.length && <tr className="block lg:table-row"><td colSpan={4} className="p-4 text-sm text-slate-500">Este despacho no tiene solicitudes asociadas.</td></tr>}</tbody>
+      </table>
+    </section>
+    {(!!generalDocs.length || canEdit) && <section className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-semibold text-[#002855]">Archivos consolidados · todas las OT del despacho</h3>{canEdit && <button type="button" onClick={() => beginUpload(null, 'OTRO', 'Todas las solicitudes del despacho')} className={`${action} border border-slate-300 bg-white text-[#002855] hover:bg-slate-50`}><Upload className="h-4 w-4" />Cargar otro archivo consolidado</button>}</div><DocList docs={generalDocs} canEdit={canEdit} onVoid={onVoid} onOpen={onOpen} /></section>}
+    {upload && (canPacking || canEdit) && <div ref={uploadPanel} className="scroll-m-4 rounded-xl border-2 border-blue-200 bg-blue-50/40 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-bold text-[#002855]">{DOC_LABEL[upload.type]}</h3><p className="mt-1 text-sm font-semibold text-slate-700">{upload.label}</p><p className="mt-1 text-xs text-slate-500">{upload.requestId ? 'El archivo se vincula únicamente a esta solicitud.' : 'Este archivo cubre todas las solicitudes y OT del despacho.'}</p></div><button type="button" onClick={() => setUpload(null)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700">Cerrar formulario</button></div><UploadForm key={`${upload.requestId}/${upload.type}`} dispatchId={item.id} requestId={upload.requestId} isPickup={item.is_pickup} canPacking={canPacking} canDocuments={canEdit} documentType={upload.type} onUploaded={async () => { await onUploaded(); setUpload(null) }} /></div>}
+  </div>
 }
 
 const CAUSAS_ANULACION: Array<[string, string]> = [
@@ -309,16 +290,16 @@ function AnularModal({ doc, onClose, onDone }: { doc: Doc; onClose: () => void; 
 
 function DocList({ docs, canEdit, onVoid, onOpen }: { docs: Doc[]; canEdit: boolean; onVoid: (d: Doc) => void; onOpen: (p: string) => void }) {
   const [guia, setGuia] = useState<string | null>(null)
-  if (docs.length === 0) return <p className="text-xs text-slate-400 mt-2">Sin documentos cargados.</p>
+  if (docs.length === 0) return null
   return (
     <>
     <GuiaDetalleModal key={guia || 'none'} guias={guia} onClose={() => setGuia(null)} />
-    <ul className="mt-2 space-y-1">
+    <ul className="mt-3 space-y-3">
       {docs.map(d => (
-        <li key={d.id} className="flex flex-wrap items-center gap-2 text-sm">
-          {isSheetName(d.file_name || d.file_path) ? <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> : <FileText className="w-4 h-4 text-blue-600" />}
-          <button onClick={() => onOpen(d.file_path)} className="text-blue-700 hover:underline font-medium">
-            {DOC_LABEL[d.doc_type]}{d.document_number ? ` ${d.document_number}` : ''}
+        <li key={d.id} className="min-w-0 space-y-1 text-xs">
+          <button type="button" onClick={() => onOpen(d.file_path)} className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-left font-semibold text-blue-800 hover:bg-blue-100">
+            {isSheetName(d.file_name || d.file_path) ? <FileSpreadsheet className="h-4 w-4 shrink-0" /> : <FileText className="h-4 w-4 shrink-0" />}
+            <span className="break-words">Ver {DOC_LABEL[d.doc_type] || 'documento'}{d.document_number ? ` ${d.document_number}` : ''}</span>
           </button>
           {d.doc_type === 'GUIA_REMISION' && d.document_number && (
             <button type="button" onClick={() => setGuia(d.document_number)} title="Ver los SKUs de la guía (SALIDA del ERP)"
@@ -326,10 +307,10 @@ function DocList({ docs, canEdit, onVoid, onOpen }: { docs: Doc[]; canEdit: bool
               <ListTree className="w-3 h-3" /> SKUs
             </button>
           )}
-          {d.doc_type === 'PACKING_LIST' && <span className={`text-xs ${d.signed ? 'text-emerald-700' : 'text-amber-700'}`}>{d.signed ? `Firmado por ${d.auditor_name} · ${d.auditor_signed_date}` : 'Documento anterior: firma del auditor pendiente de registrar'}</span>}
+          <p className="break-all text-slate-500">{d.file_name || 'Archivo adjunto'}</p>
+          {d.doc_type === 'PACKING_LIST' && <p className={`${d.signed ? 'text-emerald-700' : 'text-amber-700'}`}>{d.signed ? `Firmado por ${d.auditor_name} · ${fmtDate(d.auditor_signed_date || null)}` : 'Firma del auditor pendiente de registrar'}</p>}
           {d.cargo_type && <span className="text-xs text-slate-500">({CARGO_LABEL[d.cargo_type] || d.cargo_type})</span>}
-          <span className="text-xs text-slate-400">{d.uploaded_by || '—'} · {fmtDate(d.uploaded_at, true)}</span>
-          {canEdit && <button onClick={() => onVoid(d)} className="text-slate-400 hover:text-red-600" title="Anular"><Trash2 className="w-3.5 h-3.5" /></button>}
+          {canEdit && <button type="button" onClick={() => onVoid(d)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 font-semibold text-red-700 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" />Anular documento</button>}
         </li>
       ))}
     </ul>
@@ -337,12 +318,12 @@ function DocList({ docs, canEdit, onVoid, onOpen }: { docs: Doc[]; canEdit: bool
   )
 }
 
-function UploadForm({ dispatchId, requestId, isPickup, canPacking, canDocuments, onUploaded }: {
-  dispatchId: string; requestId: string | null; isPickup: boolean; canPacking: boolean; canDocuments: boolean; onUploaded: () => Promise<void>
+function UploadForm({ dispatchId, requestId, isPickup, canPacking, canDocuments, documentType, onUploaded }: {
+  dispatchId: string; requestId: string | null; isPickup: boolean; canPacking: boolean; canDocuments: boolean; documentType: string; onUploaded: () => Promise<void>
 }) {
   const supabase = useMemo(() => createClient(), [])
   const types = [...(canPacking ? ['PACKING_LIST'] : []), ...(canDocuments ? [...(requestId && isPickup ? ['NOTA_DESPACHO'] : []), 'OTRO'] : [])]
-  const [docType, setDocType] = useState(types[0])
+  const docType = types.includes(documentType) ? documentType : types[0]
   const [auditor, setAuditor] = useState('')
   const [today] = useState(() => new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10))
   const [signedDate, setSignedDate] = useState(today)
@@ -396,17 +377,14 @@ function UploadForm({ dispatchId, requestId, isPickup, canPacking, canDocuments,
 
   return (
     <div className="mt-3 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm">
-      <label className="text-xs text-slate-600">Tipo de documento<select value={docType} onChange={e => setDocType(e.target.value)} className="mt-1 min-h-11 w-full border border-slate-300 rounded-lg px-3 bg-white text-sm">
-        {types.map(t => <option key={t} value={t}>{DOC_LABEL[t]}</option>)}
-      </select></label>
       {packing && <div className="grid w-full gap-3 sm:grid-cols-2"><label className="text-xs text-slate-600">Auditor firmante *<input value={auditor} maxLength={120} onChange={e => setAuditor(e.target.value)} placeholder="Nombre y apellido del Auditor de Despacho" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" /></label><label className="text-xs text-slate-600">Fecha de firma *<input type="date" value={signedDate} max={today} onChange={e => setSignedDate(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" /></label><label className="flex items-start gap-2 text-xs leading-5 text-slate-600 sm:col-span-2"><input type="checkbox" checked={signature} onChange={e => setSignature(e.target.checked)} className="mt-1" />Confirmo que el archivo adjunto es legible y contiene la firma del auditor de despacho. Se acepta PDF, foto o Excel (XLS/XLSX) del Packing List firmado.</label></div>}
       {!packing && <label className="text-xs text-slate-600">Número {needsNumber ? '*' : '(opcional)'}<input value={number} onChange={e => setNumber(e.target.value)} placeholder={needsNumber ? 'T001-000123' : 'Número del documento'}
         className="mt-1 min-h-11 w-full max-w-48 border border-slate-300 rounded-lg px-3 text-sm" /></label>}
-      <label className="min-w-0 text-xs text-slate-600">Archivo · máximo 15 MB<input disabled={saving} key={inputKey} type="file" accept={packing ? PACKING_ACCEPT : allowSheet ? '.pdf,.xlsx,.xls,.csv' : '.pdf'} onChange={e => setFile(e.target.files?.[0] || null)}
-        className="mt-2 block w-full min-w-0 max-w-[220px] text-xs" /></label>
+      <label className="block w-full min-w-0 text-xs text-slate-600 sm:flex-1">Archivo · máximo 15 MB<input disabled={saving} key={inputKey} type="file" accept={packing ? PACKING_ACCEPT : allowSheet ? '.pdf,.xlsx,.xls,.csv' : '.pdf'} onChange={e => setFile(e.target.files?.[0] || null)}
+        className="mt-2 block min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-slate-50 text-xs file:mr-3 file:min-h-11 file:border-0 file:bg-slate-200 file:px-3 file:font-semibold file:text-[#002855]" /></label>
       <button onClick={submit} disabled={saving}
         className="min-h-11 px-3 rounded-lg bg-[#002855] text-white font-semibold disabled:opacity-50 flex items-center gap-1.5">
-        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}Subir
+        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}{saving ? 'Cargando…' : 'Subir archivo'}
       </button>
     </div>
   )
