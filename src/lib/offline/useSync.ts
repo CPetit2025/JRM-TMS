@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { db } from './db';
 import { createClient } from '@/lib/supabase/client';
+import { syncOwnPreuse } from './preuse-runtime';
+import { toast } from 'sonner';
 
 export function useSync() {
   useEffect(() => {
@@ -45,35 +47,17 @@ export function useSync() {
         }
       }
 
-      // Sync Checklists
+      // El formato anterior no contiene los 34 ítems: se conserva, sin simular una inspección completa.
       const offlineChecklists = await db.checklists.where('synced').equals(0).toArray();
-      for (const chk of offlineChecklists) {
-        try {
-          let photo_url = null;
-          if (chk.photo_blob) {
-            const { data: userData } = await supabase.auth.getUser();
-            const filePath = `${userData.user?.id}/${chk.dispatch_id}/checklist/${crypto.randomUUID()}-offline.jpg`;
-            const { error: upErr } = await supabase.storage.from('driver_evidence').upload(filePath, chk.photo_blob, { contentType: 'image/jpeg' });
-            if (!upErr) photo_url = filePath;
-          }
-          
-          const checklistPayload = { ...chk.checklist_data, photo_url };
-          await supabase.rpc('submit_pre_route_checklist', {
-            p_dispatch_id: chk.dispatch_id,
-            p_vehicle_plate: chk.vehicle_plate,
-            p_driver_id: chk.driver_id,
-            p_odometer: chk.odometer,
-            p_checklist_data: checklistPayload,
-            p_location: chk.location
-          });
-          await db.checklists.update(chk.id!, { synced: 1 });
-        } catch (e) {
-          console.error('Failed to sync checklist', e);
-        }
-      }
+      const { data: current } = await supabase.auth.getUser();
+      const { data: ownDriver } = current.user ? await supabase.from('drivers').select('id').eq('profile_id',current.user.id).eq('is_active',true).maybeSingle() : { data: null };
+      if (ownDriver && offlineChecklists.some(row => row.driver_id === ownDriver.id)) toast.warning('Tienes un checklist del formato anterior pendiente. Abre Checklist y completa los 34 ítems del FR-DT 007. El registro anterior se conserva en el dispositivo.');
+      await syncOwnPreuse(supabase);
     };
 
-    window.addEventListener('online', handleOnline);
-    return () => window.removeEventListener('online', handleOnline);
+    const online = () => { void handleOnline().catch(() => toast.warning('No se pudo completar la sincronización. Los registros pendientes se conservan.')); };
+    window.addEventListener('online', online);
+    const initial = window.setTimeout(() => { if (navigator.onLine) void syncOwnPreuse(createClient()).catch(() => {}); },0);
+    return () => { window.removeEventListener('online', online); window.clearTimeout(initial); };
   }, []);
 }

@@ -57,8 +57,9 @@ export default function OperationalHome() {
       <span className="rounded-full bg-white/15 p-2"><Bot className="h-6 w-6 text-[#f8c400]" /></span><span className="flex-1"><b className="block">Copiloto IA</b><small className="text-blue-100">Habla, consulta tu viaje o prepara una acción</small></span><ChevronRight className="h-5 w-5" />
     </button>
 
-    {trip && <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><h2 className="font-black text-slate-800">Pendientes del viaje</h2><div className="mt-3 space-y-2 text-sm">
-      {pending.checklist && <Link href="/app/checklist" className="flex items-center gap-2 rounded-xl bg-amber-50 p-3 text-amber-900"><AlertTriangle className="h-4 w-4" />Checklist pendiente</Link>}
+    {driver && <Link href="/app/checklist" className="flex min-h-14 items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-[#002855]"><ClipboardCheck className="h-5 w-5 shrink-0" />Inspección de pre uso · FR-DT 007<ChevronRight className="ml-auto h-5 w-5 shrink-0" /></Link>}
+    {(trip || driver) && <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><h2 className="font-black text-slate-800">Pendientes de operación</h2><div className="mt-3 space-y-2 text-sm">
+      {pending.checklist && <Link href="/app/checklist" className="flex items-center gap-2 rounded-xl bg-amber-50 p-3 text-amber-900"><AlertTriangle className="h-4 w-4" />Inspección del día/unidad pendiente</Link>}
       {(pending.stops || 0) > 0 && <div className="flex items-center gap-2 rounded-xl bg-blue-50 p-3 text-blue-900"><MapPin className="h-4 w-4" />{pending.stops} parada(s) por completar</div>}
       {(pending.expenses || 0) > 0 && <Link href="/app/gastos" className="flex items-center gap-2 rounded-xl bg-violet-50 p-3 text-violet-900"><DollarSign className="h-4 w-4" />{pending.expenses} gasto(s) pendientes</Link>}
       {!pending.checklist && !pending.stops && !pending.expenses && <div className="flex items-center gap-2 rounded-xl bg-emerald-50 p-3 text-emerald-800"><CheckCircle2 className="h-4 w-4" />Sin pendientes inmediatos</div>}

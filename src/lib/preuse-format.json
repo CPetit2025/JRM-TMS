@@ -1,0 +1,144 @@
+{
+  "code": "FR-DT 007",
+  "version": "01",
+  "formatDate": "22.01.14",
+  "title": "INSPECCIÓN DE PRE USO DE VEHÍCULOS LIVIANOS Y PESADOS",
+  "items": [
+    {
+      "code": "i01",
+      "text": "Sistema de Frenos"
+    },
+    {
+      "code": "i02",
+      "text": "Sistema frenos de estacionamiento"
+    },
+    {
+      "code": "i03",
+      "text": "Luces delanteras (Izquierda, Derecha)"
+    },
+    {
+      "code": "i04",
+      "text": "Luces traseras (Izquierda, Derecha)"
+    },
+    {
+      "code": "i05",
+      "text": "Luces de freno"
+    },
+    {
+      "code": "i06",
+      "text": "Luces direccionales"
+    },
+    {
+      "code": "i07",
+      "text": "Luz de retroceso"
+    },
+    {
+      "code": "i08",
+      "text": "Luces de peligro"
+    },
+    {
+      "code": "i09",
+      "text": "Nivel combustible"
+    },
+    {
+      "code": "i10",
+      "text": "Nivel líquido de frenos / Sistema de frenos Aire."
+    },
+    {
+      "code": "i11",
+      "text": "Nivel de aceite del motor"
+    },
+    {
+      "code": "i12",
+      "text": "Nivel de agua en radiador"
+    },
+    {
+      "code": "i13",
+      "text": "Batería/Bornes /Nivel de electrolito"
+    },
+    {
+      "code": "i14",
+      "text": "Instrumentos del panel / tablero de control"
+    },
+    {
+      "code": "i15",
+      "text": "Bocina"
+    },
+    {
+      "code": "i16",
+      "text": "Espejos"
+    },
+    {
+      "code": "i17",
+      "text": "Funcionamiento Alarma para dar Marcha Atrás"
+    },
+    {
+      "code": "i18",
+      "text": "Parabrisas (Vidrio no está rajado ni quebrado)"
+    },
+    {
+      "code": "i19",
+      "text": "Plumillas del parabrisas"
+    },
+    {
+      "code": "i20",
+      "text": "Dispositivo de radio de comunicación"
+    },
+    {
+      "code": "i21",
+      "text": "Defensa de la cabina/toldo"
+    },
+    {
+      "code": "i22",
+      "text": "Asientos firmemente asegurados"
+    },
+    {
+      "code": "i23",
+      "text": "Cinturones de seguridad en operación"
+    },
+    {
+      "code": "i24",
+      "text": "Cuñas o Tacos para ruedas"
+    },
+    {
+      "code": "i25",
+      "text": "Manija de Puertas"
+    },
+    {
+      "code": "i26",
+      "text": "Llantas/Presión"
+    },
+    {
+      "code": "i27",
+      "text": "Botiquín de primeros auxilios"
+    },
+    {
+      "code": "i28",
+      "text": "Herramientas"
+    },
+    {
+      "code": "i29",
+      "text": "Equipo de remolque"
+    },
+    {
+      "code": "i30",
+      "text": "Conos de seguridad"
+    },
+    {
+      "code": "i31",
+      "text": "Extintor"
+    },
+    {
+      "code": "i32",
+      "text": "Llanta de repuesto"
+    },
+    {
+      "code": "i33",
+      "text": "Ganchos de Faja"
+    },
+    {
+      "code": "i34",
+      "text": "Fajas de Amarre"
+    }
+  ]
+}

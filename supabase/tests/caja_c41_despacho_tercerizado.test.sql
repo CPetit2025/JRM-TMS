@@ -157,7 +157,7 @@ BEGIN
   v_tok := r ->> 'token';
   r := public.tercero_enlace_info(v_tok);
   v_err := NULL;
-  IF NOT (r ->> 'success')::boolean OR jsonb_array_length(r -> 'paradas') <> 1 OR r::text LIKE '%300%' THEN v_err := 'info: ' || left(r::text, 150); END IF;
+  IF NOT (r ->> 'success')::boolean OR jsonb_array_length(r -> 'paradas') <> 1 OR jsonb_path_exists(r,'$.**.freight_cost') OR jsonb_path_exists(r,'$.**.service_cost') THEN v_err := 'info: ' || left(r::text, 150); END IF;
   r := public.tercero_enlace_entregar(v_tok, q2, 'Rosa Obra', 'otra/carpeta/x.jpg', NULL);
   IF COALESCE((r ->> 'success')::boolean, false) THEN v_err := COALESCE(v_err, '') || ' aceptó una foto ajena'; END IF;
   r := public.tercero_enlace_entregar(v_tok, q2, 'Rosa Obra', 'tercero/' || d::text || '/g2.jpg', NULL);

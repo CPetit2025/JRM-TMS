@@ -1,7 +1,7 @@
 "use client"
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useState, useEffect, useMemo } from 'react'
-import { Truck, MapPin, CheckCircle2, Navigation2, Loader2, Navigation, AlertCircle, Clock, FileText } from 'lucide-react'
+import { MapPin, CheckCircle2, Navigation2, Loader2, Navigation, AlertCircle, Clock, FileText } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
@@ -67,11 +67,6 @@ export default function RutaActivaPage() {
         throw new Error('No se pudo obtener GPS preciso para iniciar la ruta.')
       }
       if (startLat === null || startLon === null) throw new Error('GPS no disponible')
-
-      const { data: checklist } = await supabase.from('driver_checklists')
-        .select('id').eq('dispatch_id', dispatch.id).eq('driver_id', driver.id).eq('is_approved', true)
-        .limit(1).maybeSingle()
-      if (!checklist) throw new Error('Completa y guarda el checklist antes de iniciar.')
 
       const { error } = await supabase.rpc('start_dispatch_route', {
         p_dispatch_id: dispatch.id, p_lat: startLat, p_lon: startLon

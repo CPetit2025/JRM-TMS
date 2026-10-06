@@ -7,7 +7,7 @@ import { useActiveTrip } from '@/contexts/ActiveTripContext'
 export default function AlertasPage() {
   const { pending, summary, trip } = useActiveTrip()
   const operational = [
-    trip && pending.checklist ? { code: 'CHECKLIST', message: 'Checklist del viaje pendiente.', href: '/app/checklist' } : null,
+    pending.checklist ? { code: 'CHECKLIST', message: 'Inspección de pre uso del día/unidad pendiente.', href: '/app/checklist' } : null,
     trip && (pending.stops || 0) > 0 ? { code: 'STOPS', message: `${pending.stops} parada(s) pendientes de completar.`, href: '/app/ruta' } : null,
     summary.stats.open_failures > 0 ? { code: 'FAILURES', message: `${summary.stats.open_failures} reporte(s) de falla abiertos.`, href: '/app/fallas' } : null,
   ].filter(Boolean) as Array<{ code: string; message: string; href: string }>
