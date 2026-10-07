@@ -33,6 +33,9 @@ BEGIN
    AND id NOT IN(SELECT profile_id FROM public.drivers WHERE profile_id IS NOT NULL) ORDER BY id LIMIT 1;
  SELECT id INTO audit_role FROM public.roles WHERE lower(trim(name))='auditor de despacho';
  SELECT id INTO foreign_site FROM public.sites WHERE id<>site LIMIT 1;
+ IF foreign_site IS NULL THEN
+   INSERT INTO public.sites(name) VALUES('ZZ C59 sede de aislamiento') RETURNING id INTO foreign_site;
+ END IF;
  IF auditor IS NULL OR audit_role IS NULL OR foreign_site IS NULL THEN RAISE EXCEPTION 'CAJA C59 FAIL: faltan auditor/sede para comprobar aislamiento'; END IF;
  UPDATE public.profiles SET is_active=true,role_id=audit_role WHERE id=auditor;
  DELETE FROM public.user_site_access WHERE user_id=auditor;
