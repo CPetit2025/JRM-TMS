@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -91,7 +92,7 @@ export default function ChecklistsPage() {
               </select>
               <div className="bg-white border rounded-xl overflow-x-auto">
                 {filtered.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">Sin inspecciones registradas.</p> : (
-                  <table className="w-full text-sm">
+                  <DataTable className="w-full text-sm">
                     <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
                       <th className="text-left p-3">Fecha</th><th className="text-left p-3">Unidad</th><th className="text-left p-3">Tipo / plantilla</th>
                       <th className="text-left p-3">Resultado</th><th className="text-left p-3">Inspector</th><th className="text-right p-3">Fallas generadas</th>
@@ -108,7 +109,7 @@ export default function ChecklistsPage() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </DataTable>
                 )}
               </div>
             </div>
@@ -153,7 +154,7 @@ function InspectionDetail({ row, onClose }: { row: InspectionRow; onClose: () =>
           <span className={`px-2 py-1 rounded text-xs font-bold ${RESULT_STYLE[row.global_result] || ''}`}>{RESULT_LABEL[row.global_result] || row.global_result}</span>
           <span className="text-slate-500">{row.template_name} · odómetro {row.odometer ?? '—'} · horómetro {row.hours ?? '—'} · {row.requests_created} falla(s) generada(s)</span>
         </div>
-        <table className="w-full text-sm"><tbody className="divide-y">
+        <DataTable className="w-full text-sm"><tbody className="divide-y">
           {results.map(r => (
             <tr key={r.id}>
               <td className="py-2">{r.checklist_items?.text}{r.checklist_items?.is_critical ? <span className="text-red-600 text-xs"> (crítica)</span> : null}{r.observation && <div className="text-xs text-slate-500">{r.observation}</div>}</td>
@@ -161,7 +162,7 @@ function InspectionDetail({ row, onClose }: { row: InspectionRow; onClose: () =>
               <td className="py-2 text-right w-16">{r.photo_url && /^https?:/.test(r.photo_url) ? <a href={r.photo_url} target="_blank" rel="noreferrer" className="text-blue-600 text-xs">foto</a> : null}</td>
             </tr>
           ))}
-        </tbody></table>
+        </tbody></DataTable>
         {row.notes && <p className="text-slate-600">{row.notes}</p>}
         {row.signature_url && /^https?:/.test(row.signature_url) && <a href={row.signature_url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 underline">Ver firma del inspector</a>}
       </div>

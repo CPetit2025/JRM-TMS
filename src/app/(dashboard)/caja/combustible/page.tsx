@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -82,7 +83,7 @@ function Loads() {
       </div>
       <div className="bg-white border rounded-xl overflow-auto max-h-[calc(100vh-340px)]">
         {loading ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin" /></div> : (
-          <table className="w-full text-sm">
+          <DataTable className="w-full text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500 sticky top-0"><tr>
               <th className="p-3 text-left">Fecha</th><th className="p-3 text-left">Unidad / viaje</th><th className="p-3 text-left">Grifo</th><th className="p-3 text-right">Galones</th>
               <th className="p-3 text-right">Importe</th><th className="p-3 text-right">S/ gal</th><th className="p-3 text-right">Odómetro</th><th className="p-3 text-right">Km/gal</th><th className="p-3 text-left">Pagó</th><th className="p-3 text-left">Estado</th>
@@ -109,7 +110,7 @@ function Loads() {
                 )
               })}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
     </div>
@@ -135,7 +136,7 @@ function Efficiency({ canManage }: { canManage: boolean }) {
     <div className="space-y-3">
       <p className="text-xs text-slate-500">Últimos 90 días. El rendimiento de cada tramo es km desde la carga anterior entre los galones repuestos; configure el rendimiento esperado y la capacidad del tanque por unidad para las alertas.</p>
       <div className="bg-white border rounded-xl overflow-auto">
-        <table className="w-full text-sm">
+        <DataTable className="w-full text-sm">
           <thead className="bg-slate-50 text-xs text-slate-500"><tr>
             <th className="p-3 text-left">Unidad</th><th className="p-3 text-right">Cargas</th><th className="p-3 text-right">Galones</th><th className="p-3 text-right">Importe</th>
             <th className="p-3 text-right">S/ por gal</th><th className="p-3 text-right">Km medidos</th><th className="p-3 text-right">Km/gal real</th><th className="p-3 text-right">Esperado</th>
@@ -163,7 +164,7 @@ function Efficiency({ canManage }: { canManage: boolean }) {
               )
             })}
           </tbody>
-        </table>
+        </DataTable>
       </div>
       {edit && (
         <Modal isOpen onClose={() => setEdit(null)} title={`Combustible de ${edit.plate}`}>
@@ -203,7 +204,7 @@ function Stations({ canManage }: { canManage: boolean }) {
     <div className="space-y-3">
       {canManage && <button onClick={() => setEdit({ name: '', ruc: '', has_credit: true, billing_cycle: 'MENSUAL', is_active: true })} className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm font-semibold flex items-center gap-2"><Plus className="w-4 h-4" />Nuevo grifo</button>}
       <div className="bg-white border rounded-xl overflow-auto">
-        <table className="w-full text-sm">
+        <DataTable className="w-full text-sm">
           <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="p-3 text-left">Grifo</th><th className="p-3 text-left">RUC</th><th className="p-3 text-left">Crédito</th><th className="p-3 text-left">Facturación</th><th className="p-3 text-left">Estado</th><th className="p-3" /></tr></thead>
           <tbody className="divide-y">
             {rows.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-400">Sin grifos registrados</td></tr>}
@@ -218,7 +219,7 @@ function Stations({ canManage }: { canManage: boolean }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </DataTable>
       </div>
       {edit && (
         <Modal isOpen onClose={() => setEdit(null)} title={edit.id ? 'Editar grifo' : 'Nuevo grifo'}>
@@ -276,7 +277,7 @@ function Invoices({ canManage }: { canManage: boolean }) {
       {canManage && <button onClick={() => setForm({ station_id: stations[0]?.id || '', series: '', number: '', issue_date: todayLima(), period_start: '', period_end: todayLima(), amount: '', gallons: '' })}
         className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm font-semibold flex items-center gap-2"><Plus className="w-4 h-4" />Registrar factura de grifo</button>}
       <div className="bg-white border rounded-xl overflow-auto">
-        <table className="w-full text-sm">
+        <DataTable className="w-full text-sm">
           <thead className="bg-slate-50 text-xs text-slate-500"><tr>
             <th className="p-3 text-left">Grifo</th><th className="p-3 text-left">Factura</th><th className="p-3 text-left">Periodo</th><th className="p-3 text-right">Facturado</th>
             <th className="p-3 text-right">Cargas registradas</th><th className="p-3 text-right">Diferencia</th><th className="p-3 text-left">Estado</th><th className="p-3" />
@@ -299,7 +300,7 @@ function Invoices({ canManage }: { canManage: boolean }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </DataTable>
       </div>
       {form && (
         <Modal isOpen onClose={() => setForm(null)} title="Factura de grifo">

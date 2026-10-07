@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { Suspense, useMemo } from 'react'
 import Link from 'next/link'
@@ -114,7 +115,7 @@ function Resumen() {
       <Conclusiones d={d} />
       <Panel title="Decisión por activo" hint={`Reemplazar: el costo de seguir un año más (mantenimiento, combustible, pérdida de valor y costo de capital) supera al de una unidad nueva con tasas de ${fmt((d.tasas?.[0] ?? 0.06) * 100)} % a ${fmt((d.tasas?.[2] ?? 0.15) * 100)} %. Equipos: costo propio por hora frente al alquiler (S/ ${fmt(d.alquiler_hora)} + IGV).`}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] text-sm">
+          <DataTable className="w-full min-w-[1080px] text-sm">
             <thead className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">
               <tr className="border-b border-slate-200"><th className="px-3 py-2">Activo</th><th className="px-3 py-2">Decisión</th><th className="px-3 py-2">Datos</th><th className="px-3 py-2 text-right">Edad</th>
                 <th className="px-3 py-2">Indicador clave</th><th className="px-3 py-2">Impacto anual</th><th className="px-3 py-2">Motivos</th></tr>
@@ -132,7 +133,7 @@ function Resumen() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </Panel>
     </div>

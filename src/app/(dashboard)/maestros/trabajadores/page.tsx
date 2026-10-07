@@ -1,4 +1,5 @@
 "use client"
+import { DataTable } from '@/components/ui/data-table'
 
 import { useState, useEffect } from 'react'
 import { Plus, Users, Edit2, ShieldAlert, Loader2 , Filter, Search} from 'lucide-react'
@@ -208,7 +209,7 @@ export default function TrabajadoresPage() {
             No hay trabajadores operativos registrados.
           </div>
         ) : (
-          <table className="w-full text-sm text-left">
+          <DataTable className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b">
               <tr>
                 <th className="p-4 font-semibold">Apellidos y Nombres</th>
@@ -260,7 +261,7 @@ export default function TrabajadoresPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
 

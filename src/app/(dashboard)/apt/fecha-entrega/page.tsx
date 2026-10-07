@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -167,7 +168,7 @@ export default function FechaEntregaPage() {
         </div>
         {top.length ? (
           <div className="mt-4 max-h-[460px] overflow-auto rounded-lg border border-slate-100">
-            <table className="w-full text-xs">
+            <DataTable className="w-full text-xs">
               <thead className="sticky top-0 z-10 bg-slate-50 text-slate-500 shadow-[0_1px_0_#e2e8f0]">
                 <tr>
                   <SortTh k="lote" sort={sort} onSort={setSort} right={false}>Lote (NumRel)</SortTh>
@@ -194,7 +195,7 @@ export default function FechaEntregaPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         ) : (
           <p className="mt-4 text-sm text-slate-500">No hay saldo con FechaEntrega anterior al corte.</p>

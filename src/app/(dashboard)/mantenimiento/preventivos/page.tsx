@@ -1,4 +1,6 @@
 "use client"
+import { DataTable } from '@/components/ui/data-table'
+
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/modal'
@@ -163,7 +165,7 @@ export default function PreventivosPage() {
               </div>
               <div className="bg-white border rounded-xl overflow-x-auto">
                 {filtered.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">No hay planes con estos filtros.</p> : (
-                  <table className="w-full text-sm">
+                  <DataTable className="w-full text-sm">
                     <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
                       <th className="text-left p-3">Unidad / plan</th><th className="text-left p-3">Alerta</th><th className="text-right p-3">Km rest.</th>
                       <th className="text-right p-3">Horas rest.</th><th className="text-right p-3">Días rest.</th><th className="text-left p-3">Fecha proyectada</th>
@@ -189,7 +191,7 @@ export default function PreventivosPage() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </DataTable>
                 )}
               </div>
             </div>
@@ -218,7 +220,7 @@ export default function PreventivosPage() {
           {tab === 'planes' && (
             <div className="bg-white border rounded-xl overflow-x-auto">
               {plans.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">Aún no hay planes. Cree el primero con “Nuevo plan”.</p> : (
-                <table className="w-full text-sm">
+                <DataTable className="w-full text-sm">
                   <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
                     <th className="text-left p-3">Plan</th><th className="text-left p-3">Unidad</th><th className="text-left p-3">Frecuencia</th>
                     <th className="text-left p-3">Última ejecución</th><th className="text-left p-3">Estado</th><th className="p-3"></th>
@@ -235,7 +237,7 @@ export default function PreventivosPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               )}
             </div>
           )}
@@ -249,13 +251,13 @@ export default function PreventivosPage() {
                 <button disabled={busy === 'scheduler'} onClick={runScheduler} className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm flex items-center gap-2"><Play className="w-4 h-4" />Ejecutar ahora</button>
               </div>
               <div className="bg-white border rounded-xl overflow-x-auto">
-                <table className="w-full text-sm">
+                <DataTable className="w-full text-sm">
                   <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="text-left p-3">Fecha</th><th className="text-left p-3">Origen</th><th className="text-right p-3">Evaluados</th><th className="text-right p-3">OT generadas</th></tr></thead>
                   <tbody className="divide-y">
                     {runs.map(r => <tr key={r.id}><td className="p-3">{format(new Date(r.run_at), 'dd/MM/yyyy HH:mm')}</td><td className="p-3">{r.triggered_by}</td><td className="p-3 text-right">{r.evaluated}</td><td className="p-3 text-right">{r.generated}</td></tr>)}
                     {runs.length === 0 && <tr><td colSpan={4} className="p-6 text-center text-slate-500">Sin corridas registradas.</td></tr>}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             </div>
           )}

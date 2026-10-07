@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useMemo, useState } from 'react'
 import { ArrowRight, Search } from 'lucide-react'
@@ -92,7 +93,7 @@ export function CambiosTable({ rows }: { rows: Cambio[] }) {
         </div>
       </div>
       <div className="max-h-[560px] overflow-auto">
-        <table className="w-full min-w-[1100px] text-xs">
+        <DataTable className="w-full min-w-[1100px] text-xs">
           <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
             <tr>
               <SortTh k="fecha" sort={sort} onSort={setSort} right={false}>Fecha</SortTh>
@@ -134,7 +135,7 @@ export function CambiosTable({ rows }: { rows: Cambio[] }) {
             ))}
             {!filtered.length && <tr><td colSpan={9} className="p-6 text-center text-sm text-slate-500">Sin cambios de lote con estos criterios.</td></tr>}
           </tbody>
-        </table>
+        </DataTable>
       </div>
       <MoreRows shown={Math.min(limit, filtered.length)} total={filtered.length} onMore={() => setLimit(l => l + PAGE)} />
     </div>
@@ -162,7 +163,7 @@ export function ContratosTable({ rows }: { rows: Contrato[] }) {
         <ExportButton onClick={doExport} disabled={!filtered.length} />
       </div>
       <div className="max-h-[420px] overflow-auto">
-        <table className="w-full min-w-[640px] text-xs">
+        <DataTable className="w-full min-w-[640px] text-xs">
           <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
             <tr>
               <SortTh k="contrato" sort={sort} onSort={setSort} right={false}>Contrato</SortTh>
@@ -188,7 +189,7 @@ export function ContratosTable({ rows }: { rows: Contrato[] }) {
             ))}
             {!filtered.length && <tr><td colSpan={7} className="p-6 text-center text-sm text-slate-500">Sin contratos con estos criterios.</td></tr>}
           </tbody>
-        </table>
+        </DataTable>
       </div>
       <MoreRows shown={Math.min(limit, filtered.length)} total={filtered.length} onMore={() => setLimit(l => l + PAGE)} />
     </div>
@@ -220,7 +221,7 @@ export function ConsumosTable({ rows }: { rows: Consumo[] }) {
         </div>
       </div>
       <div className="max-h-[460px] overflow-auto">
-        <table className="w-full min-w-[900px] text-xs">
+        <DataTable className="w-full min-w-[900px] text-xs">
           <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
             <tr>
               <SortTh k="fecha" sort={sort} onSort={setSort} right={false}>Fecha</SortTh>
@@ -249,7 +250,7 @@ export function ConsumosTable({ rows }: { rows: Consumo[] }) {
             ))}
             {!filtered.length && <tr><td colSpan={7} className="p-6 text-center text-sm text-slate-500">Sin consumos internos con estos criterios.</td></tr>}
           </tbody>
-        </table>
+        </DataTable>
       </div>
       <MoreRows shown={Math.min(limit, filtered.length)} total={filtered.length} onMore={() => setLimit(l => l + PAGE)} />
     </div>

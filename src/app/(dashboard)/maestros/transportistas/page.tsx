@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -161,7 +162,7 @@ export default function TransportistasPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap">
+          <DataTable className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-slate-50 text-slate-500 font-medium">
               <tr>
                 <th className="px-6 py-4">RUC</th>
@@ -223,7 +224,7 @@ export default function TransportistasPage() {
                 ))
               )}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </div>
 

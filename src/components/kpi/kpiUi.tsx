@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { Fragment, useMemo } from 'react'
 import { ArrowDownRight, ArrowLeft, ArrowUpRight, Minus } from 'lucide-react'
@@ -101,7 +102,7 @@ export function TablaKpis({ k }: { k: Row }) {
   }, [k])
   return (
     <div className="overflow-x-auto rounded-xl border bg-white">
-      <table className="w-full text-sm">
+      <DataTable className="w-full text-sm">
         <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
           <th className="p-2 text-left">Indicador</th><th className="p-2 text-right">Resultado</th><th className="p-2 text-right">Meta</th><th className="p-2 text-right">Peso</th><th className="w-40 p-2 text-left">Puntaje</th>
         </tr></thead>
@@ -126,7 +127,7 @@ export function TablaKpis({ k }: { k: Row }) {
             </Fragment>
           ))}
         </tbody>
-      </table>
+      </DataTable>
     </div>
   )
 }

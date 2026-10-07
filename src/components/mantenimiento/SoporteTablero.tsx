@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -132,7 +133,7 @@ export default function SoporteTablero() {
             <section className="rounded-xl border bg-white p-4">
               <h2 className="mb-2 text-sm font-bold text-slate-800">Respuesta por criticidad (plazos SLA)</h2>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <DataTable className="w-full text-sm">
                   <thead className="text-[11px] uppercase text-slate-500"><tr><th className="p-2 text-left">Criticidad</th><th className="p-2 text-right">Plazo respuesta / solución</th><th className="p-2 text-right">Recibidas</th><th className="p-2 text-right">Respuesta mediana</th><th className="p-2 text-left">Dentro del plazo</th><th className="p-2 text-right">Abiertas</th></tr></thead>
                   <tbody className="divide-y">
                     {(d.por_criticidad || []).map((c: Row) => (
@@ -146,7 +147,7 @@ export default function SoporteTablero() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             </section>
             <section className="rounded-xl border bg-white p-4">
@@ -174,7 +175,7 @@ export default function SoporteTablero() {
             </div>
             {(d.abiertas || []).length === 0 ? <p className="p-6 text-center text-sm text-emerald-700">No hay fallas abiertas.</p> : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[900px] text-sm">
+                <DataTable className="w-full min-w-[900px] text-sm">
                   <thead className="bg-slate-50 text-[11px] uppercase text-slate-500"><tr>
                     <th className="p-2 text-left">Unidad</th><th className="p-2 text-left">Criticidad</th><th className="p-2 text-left">Falla</th><th className="p-2 text-left">Reportó</th>
                     <th className="p-2 text-right">Abierta hace</th><th className="p-2 text-left">Estado</th><th className="p-2 text-left">Técnico</th><th className="p-2" />
@@ -199,7 +200,7 @@ export default function SoporteTablero() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             )}
           </section>
@@ -208,7 +209,7 @@ export default function SoporteTablero() {
             <section className="rounded-xl border bg-white p-4">
               <h2 className="mb-2 text-sm font-bold text-slate-800">Por técnico</h2>
               {(d.por_tecnico || []).length === 0 ? <p className="text-sm text-slate-500">Sin fallas en el periodo.</p> : (
-                <table className="w-full text-sm">
+                <DataTable className="w-full text-sm">
                   <thead className="text-[11px] uppercase text-slate-500"><tr><th className="p-2 text-left">Técnico</th><th className="p-2 text-right">Fallas</th><th className="p-2 text-right">Respuesta mediana</th><th className="p-2 text-left">Dentro del plazo</th><th className="p-2 text-right">Cerradas</th><th className="p-2 text-right">Abiertas</th></tr></thead>
                   <tbody className="divide-y">
                     {d.por_tecnico.map((t: Row) => (
@@ -219,7 +220,7 @@ export default function SoporteTablero() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               )}
             </section>
             <section className="rounded-xl border bg-white p-4">

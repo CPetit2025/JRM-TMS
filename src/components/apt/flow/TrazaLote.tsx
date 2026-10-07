@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useMemo, useState } from 'react'
 import {
@@ -183,7 +184,7 @@ export function TrazaLote({ d }: { d: FlowTraceLote }) {
           </header>
           {d.guias.length ? (
             <div className="max-h-[640px] overflow-auto">
-              <table className="w-full text-xs">
+              <DataTable className="w-full text-xs">
                 <thead className="sticky top-0 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
                   <tr>
                     <th className="px-3 py-2 text-left font-bold">Guía</th>
@@ -211,7 +212,7 @@ export function TrazaLote({ d }: { d: FlowTraceLote }) {
                     )
                   })}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           ) : <p className="p-6 text-center text-sm text-slate-500">El lote aún no tiene guías.</p>}
         </section>

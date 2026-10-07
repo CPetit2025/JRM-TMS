@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -120,7 +121,7 @@ export default function CajasPage() {
             </>}
           </div>
           <div className="overflow-auto max-h-[28rem]">
-            <table className="w-full text-sm">
+            <DataTable className="w-full text-sm">
               <thead className="bg-slate-50 text-xs text-slate-500 sticky top-0"><tr>
                 <th className="p-3 text-left">Fecha</th><th className="p-3 text-left">Tipo</th><th className="p-3 text-left">Descripción</th>
                 <th className="p-3 text-left">Forma / referencia</th><th className="p-3 text-right">Ingreso</th><th className="p-3 text-right">Egreso</th>
@@ -138,7 +139,7 @@ export default function CajasPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
           {closures.length > 0 && (
             <div className="p-4 border-t">
@@ -286,9 +287,9 @@ function Reposicion({ box, movements, onClose }: { box: Row; movements: Row[]; o
       <div className="space-y-3 text-sm">
         <p>Egresos desde {since ? fmtDate(since.toISOString(), true) : 'la apertura'}: <b>{outs.length}</b> movimientos por <b>{money(total)}</b>. {box.max_balance && <>Para volver al fondo fijo ({money(box.max_balance)}) se requiere <b>{money(target)}</b>.</>}</p>
         <div className="max-h-80 overflow-auto border rounded-lg">
-          <table className="w-full text-xs"><tbody className="divide-y">
+          <DataTable className="w-full text-xs"><tbody className="divide-y">
             {outs.map(m => <tr key={m.id}><td className="p-2">{fmtDate(m.created_at)}</td><td className="p-2">{TYPES[m.movement_type]}</td><td className="p-2">{m.description}</td><td className="p-2 text-right">{money(m.amount)}</td></tr>)}
-          </tbody></table>
+          </tbody></DataTable>
         </div>
         <div className="flex justify-end gap-2">
           <button onClick={() => exportXlsx(`reposicion_${box.code}_${todayLima()}.xlsx`, {

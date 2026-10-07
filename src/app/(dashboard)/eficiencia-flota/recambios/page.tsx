@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { Fragment, Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -159,7 +160,7 @@ function Detalle({ a, puedeEditar, onGuardado }: { a: FeIprActivo; puedeEditar: 
   return (
     <div className="grid gap-3 bg-slate-50 p-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full text-xs">
+        <DataTable className="w-full text-xs">
           <thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr>
             <th className="p-2 text-left">Factor</th><th className="p-2 text-right">Resultado</th><th className="p-2 text-right">Referencia</th>
             <th className="w-32 p-2 text-left">Puntaje</th><th className="p-2 text-right">Peso</th><th className="p-2 text-right">Aporte</th>
@@ -190,7 +191,7 @@ function Detalle({ a, puedeEditar, onGuardado }: { a: FeIprActivo; puedeEditar: 
               )
             })}
           </tbody>
-        </table>
+        </DataTable>
         <p className="p-2 text-[10px] text-slate-500">Puntaje 0–100: 100 = mayor prioridad de recambio. Costos comparados con la mediana del grupo (referencia). Los factores sin dato no cuentan y su peso se reparte.
           {a.piso_seguridad != null && <b className="text-[#cf152d]"> Fallas críticas de seguridad repetidas: el IPR se eleva al menos a {a.piso_seguridad}.</b>}</p>
       </div>
@@ -235,7 +236,7 @@ function Detalle({ a, puedeEditar, onGuardado }: { a: FeIprActivo; puedeEditar: 
 function Tabla({ A, abierto, setAbierto, puedeEditar, onGuardado }: { A: FeIprActivo[]; abierto: string | null; setAbierto: (c: string | null) => void; puedeEditar: boolean; onGuardado: () => void }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[1000px] text-sm">
+      <DataTable className="w-full min-w-[1000px] text-sm">
         <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
           <tr>
             <th className="w-6 p-2" /><th className="p-2 text-left">Unidad</th><th className="p-2 text-right">IPR</th><th className="p-2 text-left">Decisión</th>
@@ -270,7 +271,7 @@ function Tabla({ A, abierto, setAbierto, puedeEditar, onGuardado }: { A: FeIprAc
             )
           })}
         </tbody>
-      </table>
+      </DataTable>
     </div>
   )
 }

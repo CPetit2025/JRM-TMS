@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -128,7 +129,7 @@ export default function AnticiposPage() {
 
       <div className="bg-white border rounded-xl overflow-auto">
         {loading ? <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div> : (
-          <table className="w-full text-sm">
+          <DataTable className="w-full text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500"><tr>
               <th className="p-3 text-left">Código</th><th className="p-3 text-left">Motivo</th><th className="p-3 text-left">Viaje / unidad</th><th className="p-3 text-left">Conductor</th>
               <th className="p-3 text-right">Monto</th><th className="p-3 text-left">Estado</th><th className="p-3 text-left">Entrega / rendición</th><th className="p-3" />
@@ -182,7 +183,7 @@ export default function AnticiposPage() {
                 )
               })}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
 

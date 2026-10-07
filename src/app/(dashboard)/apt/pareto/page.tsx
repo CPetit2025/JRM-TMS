@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -182,7 +183,7 @@ export default function AptParetoPage() {
             subtitle={`${fmtInt(d.items.length)} ${plural}${d.items.length < d.items_total ? ` (primeros ${fmtInt(d.items.length)} de ${fmtInt(d.items_total)}; el resto es clase C)` : ''} · clic para ${dim === 'lote' ? 'abrir la ficha del lote' : 'filtrar el módulo'}`}
             actions={<ExportButton onClick={exportar} busy={exporting} />} bodyClassName="p-0">
             <div className="max-h-[560px] overflow-auto">
-              <table className="w-full min-w-[820px] text-sm">
+              <DataTable className="w-full min-w-[820px] text-sm">
                 <thead>
                   <tr className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
                     {['#', DIMS.find(x => x.value === dim)!.label, dim === 'producto' || dim === 'lote' ? 'Glosa principal' : '', unit, '% del total', '% acum.', 'Clase', 'Días'].map((h, i) => (
@@ -216,7 +217,7 @@ export default function AptParetoPage() {
                     )
                   })}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           </ChartCard>
         </div>

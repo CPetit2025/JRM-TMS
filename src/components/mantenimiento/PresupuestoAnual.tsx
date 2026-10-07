@@ -1,4 +1,6 @@
 "use client"
+import { DataTable } from '@/components/ui/data-table'
+
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -110,7 +112,7 @@ export function PresupuestoAnual() {
         </section>
 
         <section className="overflow-x-auto rounded-xl border bg-white">
-          <table className="w-full min-w-[1100px] text-sm">
+          <DataTable className="w-full min-w-[1100px] text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500">
               <tr><th className="p-2 text-left">Unidad</th>{MESES.map(m => <th key={m} className="w-12 p-1 text-center">{m}</th>)}
                 <th className="p-2 text-right">Preventivo</th><th className="p-2 text-right">Reserva corr.</th><th className="p-2 text-right">% corr. 12m</th><th className="p-2 text-right">MTBF</th><th className="p-2">Planes</th></tr>
@@ -118,7 +120,7 @@ export function PresupuestoAnual() {
             <tbody>
               {grupos.map(([fam, us]) => <FamRows key={fam} fam={fam} us={us} umbral={data.meta_correctivo} onValidar={setValidar} />)}
             </tbody>
-          </table>
+          </DataTable>
           <p className="border-t p-2 text-[11px] text-slate-500">Cada celda muestra los servicios del mes (A, B, C; 250 h, 500 h…; M = mensual, T = trimestral, An = anual). En rojo, vencidos. Un servicio mayor reemplaza a los que incluye en el mismo mes. MTBF = días promedio entre correctivos.</p>
         </section>
 
@@ -199,7 +201,7 @@ function ValidarPlanes({ unidad, onClose, onSaved }: { unidad: Unidad; onClose: 
         <p className="text-slate-600">Confirme la última vez que se hizo cada servicio. Los valores propuestos salen del historial; corríjalos si hubo servicios después de junio.
           Lectura actual: {lect.odometro ? `${fmt(lect.odometro)} km` : ''}{lect.horometro ? ` ${fmt(lect.horometro)} h` : ''}.</p>
         <div className="max-h-[60vh] overflow-y-auto">
-          <table className="w-full">
+          <DataTable className="w-full">
             <thead className="text-left text-xs text-slate-500"><tr><th className="p-1">Servicio</th><th className="p-1">Frecuencia</th><th className="p-1">Última fecha</th><th className="p-1">Última lectura</th><th className="p-1">Activar</th></tr></thead>
             <tbody>{planes.map(p => <tr key={p.id} className="border-t align-top">
               <td className="p-1"><b className="text-slate-800">{p.nombre}</b><div className="max-w-xs text-[11px] text-slate-500">{p.origen || 'Plan existente'}</div></td>
@@ -209,7 +211,7 @@ function ValidarPlanes({ unidad, onClose, onSaved }: { unidad: Unidad; onClose: 
                 : p.horas ? <input type="number" className={field} value={p.ultima_horas ?? ''} onChange={e => set(p.id, 'ultima_horas', e.target.value)} placeholder="h" /> : <span className="text-xs text-slate-400">Por calendario</span>}</td>
               <td className="p-1 text-center"><input type="checkbox" className="h-4 w-4 accent-[#002855]" checked={p.activo} onChange={e => set(p.id, 'activo', e.target.checked)} /></td>
             </tr>)}</tbody>
-          </table>
+          </DataTable>
         </div>
         <div className="flex justify-end gap-2 border-t pt-3">
           <button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 font-semibold text-slate-600">Cancelar</button>

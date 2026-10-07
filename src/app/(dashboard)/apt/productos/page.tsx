@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useState } from 'react'
 import Link from 'next/link'
@@ -168,7 +169,7 @@ export default function AptProductosPage() {
             {!t ? <LoadingBlock /> : (
               <div className={`relative transition-opacity ${table.loading ? 'opacity-60' : ''}`}>
                 <div className="max-h-[640px] overflow-auto">
-                  <table className="w-full min-w-[1100px] text-sm">
+                  <DataTable className="w-full min-w-[1100px] text-sm">
                     <thead>
                       <tr>
                         <SortTh label={vista === 'producto' ? 'Producto / glosa' : vista === 'glosa' ? 'Glosa' : 'Familia'} k="clave" sort={sort} desc={desc} onSort={onSort} align="left" />
@@ -219,7 +220,7 @@ export default function AptProductosPage() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </DataTable>
                 </div>
                 <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
                   <span>{t.total ? `${fmtInt(page * PAGE + 1)}–${fmtInt(Math.min((page + 1) * PAGE, t.total))} de ${fmtInt(t.total)}` : 'Sin filas'}</span>

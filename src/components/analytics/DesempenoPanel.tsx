@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import SoportePanel from './SoportePanel'
@@ -291,7 +292,7 @@ function Metas() {
         </div>
       ) : <>
       <div className="overflow-x-auto rounded-xl border bg-white">
-        <table className="w-full text-sm">
+        <DataTable className="w-full text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-2 text-left">Indicador</th><th className="p-2 text-right">Meta</th><th className="p-2 text-right">Peso</th></tr></thead>
           <tbody className="divide-y">{vis.map(r => (
             <tr key={r.codigo}>
@@ -300,7 +301,7 @@ function Metas() {
               <td className="p-2 text-right"><input type="number" min={0} className={field} value={r.peso} onChange={e => set(r.codigo, 'peso', e.target.value)} /></td>
             </tr>
           ))}</tbody>
-        </table>
+        </DataTable>
       </div>
       <div className="flex items-center justify-between text-sm text-slate-600">
         <span>Suma de pesos: <b>{fmt(total)}</b> (el índice se normaliza; con 0 el indicador queda como informativo)</span>

@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { Suspense, useMemo } from 'react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -87,7 +88,7 @@ function Rutas() {
       {d.clientes?.length > 0 && (
         <Panel title="Costo por cliente" hint={`Costo estimado de cada viaje: km × costo por km de la unidad (combustible a precio constante + mantenimiento) + horas × (conductor S/ ${fmt(p?.conductor_hora, 2)}/h + ayudantes S/ ${fmt(p?.ayudante_hora, 2)}/h). Historia de rutas del periodo; compárelo con la tarifa del cliente.`}>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] text-sm">
+            <DataTable className="w-full min-w-[960px] text-sm">
               <thead className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-500"><tr className="border-b border-slate-200">
                 <th className="px-2 py-2">Cliente</th><th className="px-2 py-2 text-right">Viajes</th><th className="px-2 py-2 text-right">Toneladas</th><th className="px-2 py-2 text-right">Km/viaje</th>
                 <th className="px-2 py-2 text-right">Costo</th><th className="px-2 py-2 text-right">S/ por viaje</th><th className="px-2 py-2 text-right">S/ por t</th>
@@ -103,7 +104,7 @@ function Rutas() {
                     <td className="px-2 py-2 text-right font-mono">{c.no_programados || '—'}</td></tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
           <p className="mt-2 text-xs text-slate-500">Los 25 clientes de mayor costo. Los envíos a JRM se agrupan como traslado interno. Espera de 1,5 h o más por viaje en ámbar.</p>
         </Panel>

@@ -1,4 +1,6 @@
 "use client"
+import { DataTable } from '@/components/ui/data-table'
+
 import { operatingBudget } from '@/lib/transport-budget'
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
@@ -304,7 +306,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
               </p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
+                <DataTable className="w-full text-sm text-left">
                   <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
                     <tr>
                       <th className="px-4 py-3 font-semibold">Código</th>
@@ -331,7 +333,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             )}
           </div>
@@ -355,7 +357,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
               </p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
+                <DataTable className="w-full text-sm text-left">
                   <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
                     <tr>
                       <th className="px-4 py-3 font-semibold">Código</th>
@@ -378,7 +380,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             )}
           </div>
@@ -433,7 +435,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
               </p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
+                <DataTable className="w-full text-sm text-left">
                   <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
                     <tr>
                       <th className="px-4 py-3 font-semibold">N° Solicitud</th>
@@ -458,7 +460,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             )}
           </div>
@@ -483,7 +485,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
               </p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
+                <DataTable className="w-full text-sm text-left">
                   <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
                     <tr>
                       <th className="px-4 py-3 font-semibold">Fecha</th>
@@ -527,7 +529,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
                       <td />
                     </tr>
                   </tfoot>
-                </table>
+                </DataTable>
               </div>
             )}
           </div>

@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
@@ -88,7 +89,7 @@ export function StDetenidoTable({ rows }: { rows: Det[] }) {
         <ExportButton onClick={exportar} disabled={!shown.length} />
       </>}>
       <div className="max-h-[520px] overflow-auto">
-        <table className="w-full min-w-[900px] text-xs">
+        <DataTable className="w-full min-w-[900px] text-xs">
           <thead>
             <tr>
               <SortTh label="Lote" k="lote" sort={sort} desc={desc} onSort={onSort} align="left" />
@@ -138,7 +139,7 @@ export function StDetenidoTable({ rows }: { rows: Det[] }) {
               </tr>
             </tfoot>
           )}
-        </table>
+        </DataTable>
       </div>
     </ChartCard>
   )
@@ -171,7 +172,7 @@ export function StRetornosTable({ rows, extra }: { rows: Ret[]; extra?: ReactNod
       info="Material que se pasó a ST para guiar y volvió a 647/540 sin despacharse: doble manipuleo y señal de programación de despacho fallida."
       actions={<>{extra}<SearchBox value={search} onChange={setSearch} /><ExportButton onClick={exportar} disabled={!shown.length} /></>}>
       <div className="max-h-[460px] overflow-auto">
-        <table className="w-full min-w-[720px] text-xs">
+        <DataTable className="w-full min-w-[720px] text-xs">
           <thead>
             <tr>
               <SortTh label="Fecha" k="fecha" sort={sort} desc={desc} onSort={onSort} align="center" />
@@ -209,7 +210,7 @@ export function StRetornosTable({ rows, extra }: { rows: Ret[]; extra?: ReactNod
             ))}
             {!shown.length && <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">Sin retornos en el periodo</td></tr>}
           </tbody>
-        </table>
+        </DataTable>
       </div>
     </ChartCard>
   )

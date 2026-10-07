@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -362,7 +363,7 @@ export default function GastosPage() {
       ) : (
         <div className="bg-white border border-slate-200 rounded-xl overflow-auto">
           {loadingMine ? <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div> : (
-            <table className="w-full text-sm">
+            <DataTable className="w-full text-sm">
               <thead className="bg-slate-50 text-xs text-slate-500"><tr>
                 <th className="p-3 text-left">Fecha</th><th className="p-3 text-left">Viaje / Unidad</th><th className="p-3 text-left">Categoría</th>
                 <th className="p-3 text-left">Comprobante</th><th className="p-3 text-right">Monto</th><th className="p-3 text-left">Estado</th><th className="p-3" />
@@ -391,7 +392,7 @@ export default function GastosPage() {
                   )
                 })}
               </tbody>
-            </table>
+            </DataTable>
           )}
         </div>
       )}

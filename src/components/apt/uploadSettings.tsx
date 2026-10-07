@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -155,7 +156,7 @@ export function SettingsPanel({ data, canLoad }: { data: AptSettings; canLoad: b
             )}
           </div>
           <div className="overflow-hidden rounded-lg border border-slate-200">
-            <table className="w-full text-sm">
+            <DataTable className="w-full text-sm">
               <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="w-8 px-2 py-1.5" />
@@ -187,7 +188,7 @@ export function SettingsPanel({ data, canLoad }: { data: AptSettings; canLoad: b
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
           {!ro && errors.length > 0 && (
             <ul className="mt-2 space-y-0.5 text-[11px] text-red-600">{errors.map(e => <li key={e}>· {e}</li>)}</ul>

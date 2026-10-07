@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -299,7 +300,7 @@ function KardexTable({ rows, nivel, onGuia }: { rows: KardexRow[]; nivel: Kardex
   })
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-      <table className="w-full min-w-[1400px] text-xs">
+      <DataTable className="w-full min-w-[1400px] text-xs">
         <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
           <tr className="border-b border-slate-200">
             <th className="px-3 py-2 text-left">Fecha</th>
@@ -357,7 +358,7 @@ function KardexTable({ rows, nivel, onGuia }: { rows: KardexRow[]; nivel: Kardex
             </tr>
           ))}
         </tbody>
-      </table>
+      </DataTable>
     </div>
   )
 }

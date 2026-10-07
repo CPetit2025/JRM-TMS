@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -176,7 +177,7 @@ export function GuiaDetalleModal({ guias, onClose }: { guias: string | null; onC
               </div>
 
               <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full min-w-[960px] text-xs">
+                <DataTable className="w-full min-w-[960px] text-xs">
                   <thead className="sticky top-0 bg-slate-50 text-[10px]">
                     <tr className="border-b border-slate-200">
                       <th className="px-3 py-2 text-left font-bold uppercase tracking-wider text-slate-500">#</th>
@@ -216,7 +217,7 @@ export function GuiaDetalleModal({ guias, onClose }: { guias: string | null; onC
                       <td />
                     </tr>
                   </tfoot>
-                </table>
+                </DataTable>
               </div>
             </>
           )}

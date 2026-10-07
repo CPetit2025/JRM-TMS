@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -69,7 +70,7 @@ export default function ContratosAlquilerPage() {
         {loading ? <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : filtered.length === 0 ? (
           <p className="p-8 text-center text-sm text-slate-500">Sin contratos.</p>
         ) : (
-          <table className="w-full text-sm">
+          <DataTable className="w-full text-sm">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
               <th className="text-left p-3">Contrato</th><th className="text-left p-3">Unidad / arrendador</th><th className="text-left p-3">Tarifa</th>
               <th className="text-left p-3">Incluido / excesos</th><th className="text-left p-3">Vigencia</th><th className="text-left p-3">Estado</th><th className="p-3"></th>
@@ -90,7 +91,7 @@ export default function ContratosAlquilerPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
       {editing && <ContractModal contract={editing === 'new' ? null : editing} vehicles={vehicles} lessors={lessors} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh() }} />}

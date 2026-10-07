@@ -1,4 +1,6 @@
 "use client"
+import { DataTable } from '@/components/ui/data-table'
+
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -134,7 +136,7 @@ function ResumenTab({ d, go }: { d: Data; go: (t: Tab) => void }) {
     </div>
 
     <section className="overflow-x-auto rounded-xl border bg-white">
-      <table className="w-full text-sm">
+      <DataTable className="w-full text-sm">
         <thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-2">Unidad</th><th className="p-2 text-right">Gasto 12 meses</th><th className="p-2 text-right">Correctivo</th><th className="p-2 text-right">% correctivo</th><th className="p-2">Riesgo</th></tr></thead>
         <tbody>{r.por_unidad.map(u => {
           const c = d.correctivo.find(x => x.plate === u.plate)
@@ -145,7 +147,7 @@ function ResumenTab({ d, go }: { d: Data; go: (t: Tab) => void }) {
             <td className="p-2">{c && <Nivel n={c.nivel} />}</td>
           </tr>
         })}</tbody>
-      </table>
+      </DataTable>
     </section>
   </div>
 }
@@ -170,7 +172,7 @@ function PreventivoTab({ d, onDone }: { d: Data; onDone: () => void }) {
       <Link href="/mantenimiento/preventivos" className="text-sm font-semibold text-[#002855] hover:underline">Planes, lecturas y OT preventivas →</Link>
     </div>
     <section className="overflow-x-auto rounded-xl border bg-white">
-      <table className="w-full min-w-[900px] text-sm">
+      <DataTable className="w-full min-w-[900px] text-sm">
         <thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-2">Cuándo</th><th className="p-2">Unidad</th><th className="p-2">Servicio</th><th className="p-2">Al llegar a</th><th className="p-2">Qué incluye</th><th className="p-2 text-right">Costo ref.</th><th className="p-2">Plan</th></tr></thead>
         <tbody>{items.map((p, i) => <tr key={i} className={`border-t align-top ${p.vencido ? 'bg-red-50/50' : ''}`}>
           <td className="whitespace-nowrap p-2">{p.vencido ? <span className="font-bold text-[#cf152d]">Vencido</span> : <><b>{fecha(p.fecha)}</b><div className="text-[11px] text-slate-500">en {p.dias} días</div></>}</td>
@@ -182,7 +184,7 @@ function PreventivoTab({ d, onDone }: { d: Data; onDone: () => void }) {
           <td className="p-2 text-right">{soles(p.costo)}</td>
           <td className="p-2 text-xs">{p.plan_activo ? <span className="font-semibold text-emerald-700">Activo</span> : <span className="font-semibold text-amber-700">Por activar</span>}</td>
         </tr>)}</tbody>
-      </table>
+      </DataTable>
       {items.length === 0 && <p className="p-6 text-center text-sm text-slate-400">Nada pendiente en este filtro.</p>}
     </section>
     <p className="text-[11px] text-slate-500">La fecha sale de la última ejecución y del uso real de la unidad (km u horas por día): vence lo que ocurra primero. Con el plan activo, el programador diario genera la OT preventiva al vencer.</p>

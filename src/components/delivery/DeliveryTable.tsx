@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useMemo, useState } from 'react'
 import { Download, FileCheck2, RefreshCw, Search } from 'lucide-react'
@@ -56,7 +57,7 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
     </div>
     {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error} La información anterior puede estar desactualizada.</p>}
     <div className="overflow-x-auto rounded-xl border bg-white shadow-sm">
-      <table className="w-full min-w-[1150px] text-left text-xs">
+      <DataTable className="w-full min-w-[1150px] text-left text-xs">
         <thead className="bg-slate-50 text-slate-600"><tr>{['OT · solicitud · guía','Cliente · recorrido','Unidad · proveedor','Programación','Avance','Conformidad','Último evento','Acciones'].map((label, i) => <th key={label} className={`px-3 py-3 font-semibold ${i === 0 ? 'sticky left-0 z-10 bg-slate-50' : ''}`}>{label}</th>)}</tr></thead>
         <tbody className="divide-y">
           {!visible.length && <tr><td colSpan={8} className="p-8 text-center text-slate-500">{loading ? 'Cargando entregas…' : 'No hay entregas con los filtros seleccionados.'}</td></tr>}
@@ -71,7 +72,7 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
             <td className="px-3 py-3">{onEvidence ? <button type="button" onClick={() => onEvidence(row)} className="flex min-h-10 items-center gap-1.5 rounded-lg border px-2 font-semibold text-[#002855]"><FileCheck2 className="h-4 w-4" />Conformidad</button> : <button type="button" onClick={() => setHistory(row)} className="min-h-10 rounded-lg border px-3">Historial</button>}{onProvider && row.modalidad === 'TERCERO' && <button type="button" onClick={() => onProvider(row)} className="mt-2 min-h-10 rounded-lg border px-2 text-blue-700">Acceso tercero</button>}</td>
           </tr>)}
         </tbody>
-      </table>
+      </DataTable>
     </div>
     <div className="flex items-center justify-between gap-2 text-xs text-slate-500"><span>{filtered.length} entregas · Página {current + 1} de {pages}</span><div className="flex gap-2"><button type="button" disabled={current === 0} onClick={() => setPage(current - 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Anterior</button><button type="button" disabled={current + 1 >= pages} onClick={() => setPage(current + 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Siguiente</button></div></div>
     <Modal isOpen={!!history} onClose={() => setHistory(null)} title={`Historial · ${history?.ot_code || ''}`} maxWidth="max-w-xl">

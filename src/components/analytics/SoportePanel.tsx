@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
@@ -160,7 +161,7 @@ function Desempeno({ mes, usuario, onVolver }: { mes: string; usuario: { id: str
       <div className="overflow-x-auto rounded-xl border bg-white">
         <div className="border-b px-3 py-2 text-sm font-semibold text-slate-800">Fallas atendidas en el mes</div>
         {(k.detalle || []).length === 0 ? <p className="p-6 text-center text-sm text-slate-500">Sin fallas atendidas en el mes.</p> : (
-          <table className="w-full text-sm">
+          <DataTable className="w-full text-sm">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
               <th className="p-2 text-left">Reportada</th><th className="p-2 text-left">Unidad</th><th className="p-2 text-left">Criticidad</th><th className="p-2 text-left">Reportó</th>
               <th className="p-2 text-right">Respuesta</th><th className="p-2 text-right">Solución</th><th className="p-2 text-left">Estado</th>
@@ -178,7 +179,7 @@ function Desempeno({ mes, usuario, onVolver }: { mes: string; usuario: { id: str
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
       <p className="text-xs text-slate-500">
@@ -318,7 +319,7 @@ function Equipo({ mes, setMes, onVer }: { mes: string; setMes: (m: string) => vo
         {(d.tecnicos || []).length === 0 ? (
           <p className="p-6 text-center text-sm text-slate-500">No hay usuarios con el rol Soporte Mecánico. Asígnelo en Usuarios (rol «Soporte Mecánico»).</p>
         ) : (
-          <table className="w-full text-sm">
+          <DataTable className="w-full text-sm">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
               <th className="p-2 text-left">Técnico</th><th className="p-2 text-right">Índice</th><th className="p-2 text-right">Atendidas</th><th className="p-2 text-right">Respuesta en plazo</th>
               <th className="p-2 text-right">Solución en plazo</th><th className="p-2 text-right">Reincid.</th><th className="p-2 text-right">Backlog</th><th className="p-2 text-left">Informe</th><th className="p-2"></th>
@@ -342,7 +343,7 @@ function Equipo({ mes, setMes, onVer }: { mes: string; setMes: (m: string) => vo
                 )
               })}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
       <div className="rounded-xl border bg-white">
@@ -389,7 +390,7 @@ function Plazos() {
   return (
     <div className="max-w-3xl space-y-4">
       <div className="overflow-x-auto rounded-xl border bg-white">
-        <table className="w-full text-sm">
+        <DataTable className="w-full text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-2 text-left">Criticidad</th><th className="p-2 text-right">Plazo de respuesta (h)</th><th className="p-2 text-right">Plazo de solución (h)</th></tr></thead>
           <tbody className="divide-y">{sla.map((s, i) => (
             <tr key={s.severidad}>
@@ -398,7 +399,7 @@ function Plazos() {
               <td className="p-2 text-right"><input type="number" min={1} className={field} value={s.solucion_horas} onChange={e => setSla(sla.map((x, j) => j === i ? { ...x, solucion_horas: e.target.value } : x))} /></td>
             </tr>
           ))}</tbody>
-        </table>
+        </DataTable>
       </div>
       <div className="space-y-2 rounded-xl border bg-white p-3 text-sm">
         {par.map((p, i) => (

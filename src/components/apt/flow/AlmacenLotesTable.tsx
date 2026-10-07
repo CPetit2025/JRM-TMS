@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -77,7 +78,7 @@ export function AlmacenLotesTable({ rows, alertDays, cutoff }: { rows: FlowLoteS
         </button>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px] text-xs">
+        <DataTable className="w-full min-w-[860px] text-xs">
           <thead>
             <tr className="border-y border-slate-100 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
               {COLS.map(c => (
@@ -127,7 +128,7 @@ export function AlmacenLotesTable({ rows, alertDays, cutoff }: { rows: FlowLoteS
               <tr><td colSpan={COLS.length + 1} className="px-3 py-10 text-center text-sm text-slate-400">Ningún lote coincide con la búsqueda.</td></tr>
             )}
           </tbody>
-        </table>
+        </DataTable>
       </div>
       {pages > 1 && (
         <div className="flex items-center justify-between gap-2 px-3 pt-3 text-xs text-slate-500 sm:px-1">

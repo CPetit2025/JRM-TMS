@@ -1,4 +1,6 @@
 "use client"
+import { DataTable } from '@/components/ui/data-table'
+
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { Plus, Building2, Search, Loader2, Edit2, CheckCircle2, XCircle, Upload, Download, ChevronUp, ChevronDown, ChevronsUpDown, Trash2, Filter } from 'lucide-react'
 import * as XLSX from 'xlsx'
@@ -237,7 +239,7 @@ export default function ClientesPage() {
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-auto max-h-[calc(100vh-220px)]">
-          <table className="w-full text-left border-collapse relative">
+          <DataTable className="w-full text-left border-collapse relative">
             <thead className="sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider ">
                 <th className="p-4 font-semibold cursor-pointer" onClick={() => handleSort('business_name')}>
@@ -295,7 +297,7 @@ export default function ClientesPage() {
                 ))
               )}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </div>
 

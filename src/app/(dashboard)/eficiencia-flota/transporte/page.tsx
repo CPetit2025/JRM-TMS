@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { Suspense, useMemo, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, LabelList, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -128,7 +129,7 @@ function Transporte() {
         </Panel>
         <Panel title="Productividad por viaje" hint="Meses con rutas y peso del periodo · horas y espera de la hoja de rutas">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
+            <DataTable className="w-full min-w-[640px] text-sm">
               <thead className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-500"><tr className="border-b border-slate-200">
                 <th className="px-2 py-2">Unidad</th><th className="px-2 py-2 text-right">Toneladas</th><th className="px-2 py-2 text-right">Kg/viaje</th>
                 <th className="px-2 py-2 text-right">Viajes/mes</th><th className="px-2 py-2 text-right">Horas/viaje</th><th className="px-2 py-2 text-right">Espera/viaje</th>
@@ -142,14 +143,14 @@ function Transporte() {
                     <td className="px-2 py-2 text-right font-mono">{fmt(u.costo_t, 1)}</td></tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </Panel>
       </div>
 
       <Panel title="¿El costo alto es del vehículo o de la asignación?" hint={`Rendimiento y mantenimiento por km frente a la mediana de su grupo (mismo tipo de unidad); llenado = kg por viaje entre la capacidad (de la ficha, de Flota o práctica: el 95 % de sus viajes pesa menos; con la práctica el llenado típico ronda 50 % y solo cuenta el % de volumen). Umbrales: rendimiento bajo ${pct(d.params.rendimiento_min ?? 0.85)} del grupo, mantenimiento alto ${fmt(d.params.factor_mant ?? 1.5, 1)} veces, llenado bajo ${pct(d.params.volumen_min ?? 0.55)}.`}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-sm">
+          <DataTable className="w-full min-w-[980px] text-sm">
             <thead className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-500"><tr className="border-b border-slate-200">
               <th className="px-2 py-2">Unidad</th><th className="px-2 py-2">Grupo</th><th className="px-2 py-2 text-right">Km/gal</th><th className="px-2 py-2 text-right">vs grupo</th>
               <th className="px-2 py-2 text-right">Mant. S/km</th><th className="px-2 py-2 text-right">vs grupo</th><th className="px-2 py-2 text-right">Capacidad</th>
@@ -172,14 +173,14 @@ function Transporte() {
                 )
               })}
             </tbody>
-          </table>
+          </DataTable>
         </div>
         <p className="mt-2 text-xs text-slate-500">Las unidades a GLP y la grúa no se comparan en km por galón: su consumo no es comparable con el diésel o depende de la operación de la grúa.</p>
       </Panel>
 
       <Panel title="Decisión económica de reemplazo" hint={`Costo de seguir un año más = mantenimiento (sin llantas) + combustible + pérdida de valor del año + costo de capital sobre su valor de reventa. Unidad nueva = costo anual equivalente de comprarla y venderla al final de su vida útil, con ${pct(d.params.mejora_nuevo ?? 0.1)} menos combustible y el mantenimiento que tuvieron las unidades del grupo hasta los 4 años. Reventa según avisos de Lima. Tasas de ${pct(d.tasas?.[0])} a ${pct(d.tasas?.[2])} porque la tasa de la empresa es confidencial.`}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] text-sm">
+          <DataTable className="w-full min-w-[1080px] text-sm">
             <thead className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-500"><tr className="border-b border-slate-200">
               <th className="px-2 py-2">Unidad</th><th className="px-2 py-2 text-right">Edad</th><th className="px-2 py-2 text-right">Valor nuevo</th><th className="px-2 py-2 text-right">Reventa hoy</th>
               <th className="px-2 py-2 text-right">Seguir 1 año</th><th className="px-2 py-2 text-right">Unidad nueva/año</th>
@@ -198,7 +199,7 @@ function Transporte() {
                   <td className="px-2 py-2"><RecPill rec={u.rec} /></td></tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
         <p className="mt-2 text-xs text-slate-500">Ahorro positivo (rojo): reemplazar cuesta menos al año que seguir con la unidad. Se recomienda reemplazar solo si el ahorro es positivo con las tres tasas. Sin año de fabricación no se calcula; el valor referencial se reemplaza con la cotización real en Datos y parámetros.</p>
       </Panel>
@@ -224,7 +225,7 @@ function Transporte() {
             className={`rounded-md px-2.5 py-1 text-xs font-bold ${met === m.k ? 'bg-[#002855] text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{m.label}</button>)}
         </div>}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
+          <DataTable className="w-full min-w-[720px] text-sm">
             <thead className="text-[10px] font-bold uppercase tracking-wider text-slate-500"><tr className="border-b border-slate-200">
               <th className="px-2 py-2 text-left">Unidad</th>{years.map(y => <th key={y} className="px-2 py-2 text-right">{y}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
@@ -239,14 +240,14 @@ function Transporte() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
         <p className="mt-2 text-xs text-slate-500">El superíndice indica cuántos meses con km tiene el año. Precio promedio del galón (sin GLP): {Object.entries(d.precio_anio).map(([y, p]) => `${y} S/ ${fmt(p, 2)}`).join(' · ')}.</p>
       </Panel>
 
       <Panel title="Indicadores del periodo" hint="Meses completos de cada unidad dentro del periodo elegido. Total S/km: combustible a precio constante + mantenimiento repartido; pagado: lo efectivamente pagado en esos meses.">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1280px] text-sm">
+          <DataTable className="w-full min-w-[1280px] text-sm">
             <thead className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-500"><tr className="border-b border-slate-200">
               <th className="px-2 py-2">Unidad</th><th className="px-2 py-2 text-right">Edad</th><th className="px-2 py-2 text-right">Meses</th><th className="px-2 py-2 text-right">Km/año</th>
               <th className="px-2 py-2 text-right">Km/gal</th><th className="px-2 py-2 text-right">Comb. S/km</th><th className="px-2 py-2 text-right">Mant. S/km</th>
@@ -265,7 +266,7 @@ function Transporte() {
                   <td className="px-2 py-2"><RecPill rec={u.rec} /></td></tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </Panel>
     </div>

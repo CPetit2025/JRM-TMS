@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import type { ReactNode } from 'react'
 import {
@@ -271,7 +272,7 @@ export function EstadosBar({ data, onSelect, active }: { data: AptEstadoRow[]; o
             style={{ width: `${total ? (r.tn_in / total) * 100 : 0}%`, background: ESTADO_STYLE[r.estado].color, opacity: active?.length && !active.includes(r.estado) ? 0.3 : 1 }} />
         ))}
       </div>
-      <table className="w-full text-xs">
+      <DataTable className="w-full text-xs">
         <thead>
           <tr className="text-[10px] uppercase tracking-wider text-slate-400">
             <th className="pb-1 text-left font-semibold">Estado</th>
@@ -294,7 +295,7 @@ export function EstadosBar({ data, onSelect, active }: { data: AptEstadoRow[]; o
             </tr>
           ))}
         </tbody>
-      </table>
+      </DataTable>
     </div>
   )
 }
