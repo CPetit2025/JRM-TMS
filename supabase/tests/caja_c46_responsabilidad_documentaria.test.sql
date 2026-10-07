@@ -1,5 +1,12 @@
 -- Real role/storage/function checks; terminal exception deliberately rolls back every fixture.
 BEGIN;
+-- Isolate this legacy scenario from the separately tested mandatory anticipation policy.
+-- The change is transaction-local and is rolled back with every fixture.
+DO $legacy_policy$ BEGIN
+ IF to_regclass('public.transport_lead_time_settings') IS NOT NULL THEN
+  EXECUTE 'UPDATE public.transport_lead_time_settings SET settings=jsonb_set(settings,''{enabled}'',''false''::jsonb)';
+ END IF;
+END $legacy_policy$;
 DO $test$
 DECLARE v_admin uuid; v_site uuid; v_dispatch uuid; v_req uuid; v_path text; r jsonb; fail text[]:='{}'; f record;
 BEGIN

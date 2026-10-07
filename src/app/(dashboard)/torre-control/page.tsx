@@ -1,9 +1,9 @@
 "use client"
+import Link from 'next/link'
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { Truck, Search, Calendar, MapPin, Loader2, Share2, AlertTriangle, CheckCircle2, Route } from 'lucide-react'
+import { Truck, Search, Calendar, MapPin, Share2, AlertTriangle, CheckCircle2, Route } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { usePermissions } from '@/hooks/usePermissions'
 import { DeliveryTable } from '@/components/delivery/DeliveryTable'
@@ -11,6 +11,9 @@ import { DeliveryReview } from '@/components/delivery/DeliveryReview'
 import { TerceroAvanceModal } from '@/components/despacho/Tercero'
 import { filterDeliveries, type DeliveryRow } from '@/lib/delivery'
 import { ReportarFallaButton } from '@/components/mantenimiento/ReportarFalla'
+import { TrackingPortalManager } from '@/components/tracking/TrackingPortalManager'
+import { TransportWorkflow } from '@/components/transport/TransportWorkflow'
+import { DispatchExecutionActions } from '@/components/transport/DispatchExecutionActions'
 
 interface DispatchRequest {
   transport_request_id: string
@@ -29,6 +32,7 @@ interface Dispatch {
   driver_name: string
   vehicle_plate: string
   status: string
+  modalidad?: string
   estimated_distance_km: number
   scheduled_departure: string
   dispatch_requests?: DispatchRequest[]
@@ -64,7 +68,7 @@ const STATUS_BADGE = {
 
 export default function TorreControlPage() {
   const supabase = useMemo(() => createClient(), [])
-  const { isLoaded, canWrite } = usePermissions()
+  const { isLoaded, canRead, canWrite } = usePermissions()
   const [rows, setRows] = useState<DeliveryRow[]>([])
   const [review, setReview] = useState<DeliveryRow | null>(null)
   const [thirdId, setThirdId] = useState<string | null>(null)
@@ -75,6 +79,8 @@ export default function TorreControlPage() {
   // Estado documentario de los despachos programados (bandeja del Asistente Documentario)
   const [loading, setLoading] = useState(true)
   const [selectedDispatch, setSelectedDispatch] = useState<Dispatch | null>(null)
+  const requestedDispatch = useRef<string | null>(null)
+  const requestedProvider = useRef(false)
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('jrm:context', { detail: selectedDispatch ? { dispatchId: selectedDispatch.id } : {} }))
@@ -88,7 +94,21 @@ export default function TorreControlPage() {
   const [responsibleFilter, setResponsibleFilter] = useState('')
   const [responsibles, setResponsibles] = useState<Array<{ user_id: string, full_name: string }>>([])
 
-  const [isSharing, setIsSharing] = useState(false)
+  const [portalOpen, setPortalOpen] = useState(false)
+
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search)
+    const id = query.get('despacho')
+    if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return
+    requestedDispatch.current = id
+    requestedProvider.current = query.get('proveedor') === '1'
+    const timer = window.setTimeout(() => {
+      setStatusFilter('TODOS')
+      const day = query.get('fecha')
+      if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) setDateFilter(day)
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   const fetchDispatches = useCallback(async () => {
     const version = ++fetchVersion.current
@@ -105,12 +125,20 @@ export default function TorreControlPage() {
       if (rowError) throw rowError
       if (version !== fetchVersion.current) return
       setDispatches(list); setRows((deliveries || []) as DeliveryRow[]); setRefreshedAt(new Date().toISOString()); setLoadError('')
+      if (requestedDispatch.current) {
+        const selected = list.find(item => item.id === requestedDispatch.current)
+        if (selected) {
+          if (requestedProvider.current && selected.modalidad === 'TERCERO' && canWrite('despacho')) setThirdId(selected.id)
+          else setSelectedDispatch(selected)
+          requestedDispatch.current = null
+        }
+      }
     } catch (err) {
       if (version === fetchVersion.current) setLoadError('No se pudo actualizar la torre de control: ' + (err instanceof Error ? err.message : String(err)))
     } finally {
       if (version === fetchVersion.current) setLoading(false)
     }
-  }, [dateFilter, responsibleFilter, statusFilter, supabase])
+  }, [dateFilter, responsibleFilter, statusFilter, supabase, canWrite])
 
   useEffect(() => {
     if (!isLoaded) return
@@ -139,43 +167,6 @@ export default function TorreControlPage() {
     return () => { void supabase.removeChannel(channel); window.clearInterval(timer) }
   }, [isLoaded, fetchDispatches, supabase])
 
-  const handleShareTracking = async () => {
-    if (!canWrite('despacho')) return
-    const targetDate = dateFilter || new Date().toISOString().split('T')[0]
-    setIsSharing(true)
-    
-    try {
-      const { data, error } = await supabase.rpc('generate_daily_tracking_link', { p_date: targetDate })
-      if (error) throw error
-
-      if (data && data.length > 0) {
-        const { token, pin } = data[0]
-        const trackingUrl = `https://jrm-tms.vercel.app/tracking/${token}`
-        
-        const mailBody = `Estimado equipo,
-        
-Se adjunta el enlace de seguimiento operativo del día ${targetDate}. Acceda al portal de visibilidad GPS:
-
-🔗 Enlace Seguro: ${trackingUrl}
-🔑 PIN de Acceso: ${pin}
-
-⏱️ Este enlace caducará en 24 horas.
-
-Saludos cordiales,
-Equipo JRM TMS`
-
-        const formattedDate = new Date(`${targetDate}T00:00:00`).toLocaleDateString('es-PE')
-        window.open(`mailto:?subject=Visibilidad de Operaciones JRM - ${formattedDate}&body=${encodeURIComponent(mailBody)}`, '_blank')
-        toast.success('Enlace generado y copiado al correo.')
-      }
-    } catch (error) {
-      toast.error('Error al generar enlace: ' + (error instanceof Error ? error.message : String(error)))
-    } finally {
-      setIsSharing(false)
-    }
-  }
-
-
   const formatDate = (isoStr: string) => {
     if (!isoStr) return '-'
     const d = new Date(isoStr)
@@ -187,18 +178,16 @@ Equipo JRM TMS`
 
   // Derived state for KPIs and Filters
   const { filteredDispatches, kpis } = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0]
-    
     let kpiProgramados = 0
     let kpiEnCurso = 0
-    let kpiCompletadosHoy = 0
+    let kpiCompletados = 0
     let kpiAlertas = 0
 
     const filtered = dispatches.filter(d => {
       // Calculate KPIs (independently of search term, but dependent on loaded data)
       if (d.status === 'PROGRAMADO') kpiProgramados++
       if (d.status === 'EN_CURSO' || d.status === 'EN RUTA' || d.status === 'RETORNO') kpiEnCurso++
-      if ((d.status === 'ENTREGADO' || d.status === 'LIQUIDADO') && d.scheduled_departure.startsWith(todayStr)) kpiCompletadosHoy++
+      if (['ENTREGADO', 'LIQUIDADO', 'CERRADO'].includes(d.status)) kpiCompletados++
       
       const isAlert = hasAlertEvent(d.dispatch_events || [], d.maintenance_alerts)
       if (isAlert && d.status !== 'LIQUIDADO' && d.status !== 'ENTREGADO') kpiAlertas++
@@ -219,7 +208,7 @@ Equipo JRM TMS`
       return true
     })
 
-    return { filteredDispatches: filtered, kpis: { kpiProgramados, kpiEnCurso, kpiCompletadosHoy, kpiAlertas } }
+    return { filteredDispatches: filtered, kpis: { kpiProgramados, kpiEnCurso, kpiCompletados, kpiAlertas } }
   }, [dispatches, rows, searchTerm, onlyAlerts])
 
 
@@ -243,15 +232,17 @@ Equipo JRM TMS`
         <div className="flex flex-wrap gap-2">
         <ReportarFallaButton />
         {canWrite('despacho') && <button
-          onClick={handleShareTracking}
-          disabled={isSharing}
+          onClick={() => setPortalOpen(true)}
           className="flex items-center gap-2 bg-white text-[#002855] border border-[#002855] px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50 shadow-sm"
         >
-          {isSharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
-          Compartir Visibilidad
+          <Share2 className="w-4 h-4" />
+          Portal permanente
         </button>}
         </div>
       </div>
+
+      <TransportWorkflow />
+      {canWrite('despacho') && <TrackingPortalManager open={portalOpen} onClose={() => setPortalOpen(false)} />}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -277,8 +268,8 @@ Equipo JRM TMS`
 
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider">Completados Hoy</p>
-            <p className="text-3xl font-black text-emerald-700 mt-1">{kpis.kpiCompletadosHoy}</p>
+            <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider">Entregados / cerrados</p>
+            <p className="text-3xl font-black text-emerald-700 mt-1">{kpis.kpiCompletados}</p>
           </div>
           <div className="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center border border-emerald-100">
             <CheckCircle2 className="w-6 h-6 text-emerald-500" />
@@ -381,6 +372,12 @@ Equipo JRM TMS`
                 <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Salida Programada</p>
                 <p className="font-semibold text-slate-700 mt-1.5">{formatDate(selectedDispatch.scheduled_departure)}</p>
               </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <DispatchExecutionActions dispatch={{ ...selectedDispatch, modalidad: rows.find(row => row.dispatch_id === selectedDispatch.id)?.modalidad || selectedDispatch.modalidad }} onChanged={async () => { setSelectedDispatch(null); await fetchDispatches() }} />
+              {canWrite('despacho') && (selectedDispatch.modalidad === 'TERCERO' || rows.some(row => row.dispatch_id === selectedDispatch.id && row.modalidad === 'TERCERO')) && <button onClick={() => { setThirdId(selectedDispatch.id); setSelectedDispatch(null) }} className="min-h-11 rounded-lg border border-violet-200 px-4 text-sm font-semibold text-violet-700">Acceso y avance del transportista</button>}
+              {['documentario', 'packing-list', 'planificacion'].some(module => canRead(module)) && <Link href={`/despacho/documentos?despacho=${selectedDispatch.id}&vista=${selectedDispatch.status === 'PROGRAMADO' ? 'salida' : 'historial'}&desde=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(selectedDispatch.scheduled_departure))}`} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855]">Documentos del servicio</Link>}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

@@ -1,10 +1,13 @@
 "use client"
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { TransportWorkflow } from '@/components/transport/TransportWorkflow'
 import { DataTable } from '@/components/ui/data-table'
 
 import { splitFreight } from '@/lib/transport-budget'
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
-import { useState, useEffect, useRef } from 'react'
-import { Truck, MapPin, Loader2, PlayCircle, Calendar, Plus, FileText, ArrowRight, CheckCircle2, DollarSign, Tag, Search, Filter, Save, XCircle } from 'lucide-react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { Truck, MapPin, Loader2, Calendar, Plus, FileText, Tag, Search, Filter, XCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -14,10 +17,15 @@ import { QuoteBreakdown } from '@/components/tarifas/TransportTariffManager'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { calculateRouteDistance } from '@/lib/routing'
 import { usePermissions } from '@/hooks/usePermissions'
+import { errorMessage } from '@/lib/caja'
 import { serviceDate, wasRescheduled, withRescheduling, type RequestRescheduling } from '@/lib/request-schedule'
 import { checkDispatchEligibility } from '@/lib/eligibility'
 import { ReportarFallaButton } from '@/components/mantenimiento/ReportarFalla'
-import { TerceroAvanceModal, TerceroFields, TERCERO_VACIO, type TerceroForm } from '@/components/despacho/Tercero'
+import { TerceroFields, TERCERO_VACIO, type TerceroForm } from '@/components/despacho/Tercero'
+
+type PlanningCarrier = { business_name: string | null }
+type PlanningVehicle = { plate: string; brand: string | null; model: string | null; assigned_driver_id: string | null; carriers: PlanningCarrier | null }
+type PlanningDriver = { id: string; first_name: string; last_name: string; document_number: string; profile_id: string | null; carriers: PlanningCarrier | null }
 
 interface TransportRequest {
   id: string
@@ -33,6 +41,7 @@ interface TransportRequest {
   status: string
   created_at: string
   required_date?: string
+  required_at?: string | null
   time_window?: string | null
   rescheduling?: RequestRescheduling
   contract_id?: string
@@ -63,6 +72,10 @@ interface DispatchRequest {
     pickup_address: string
     delivery_address: string
     request_type?: string
+    required_date?: string | null
+    required_at?: string | null
+    time_window?: string | null
+    rescheduling?: RequestRescheduling
     contracts?: { code: string } | null
     transport_request_items?: Array<{
       weight?: number
@@ -70,6 +83,11 @@ interface DispatchRequest {
       volume_m3?: number
     }>
   }
+}
+
+function requestedAttention(request: { required_at?: string | null; required_date?: string | null; time_window?: string | null }) {
+  if (request.required_at) return new Date(request.required_at).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short', hour12: false })
+  return `${serviceDate(request.required_date)}${request.time_window ? ` · ${request.time_window}` : ''}`
 }
 
 interface Dispatch {
@@ -90,12 +108,13 @@ interface Dispatch {
 }
 
 export default function DespachoPage() {
-  const { canWrite } = usePermissions()
-  const supabase = createClient()
+  const router = useRouter()
+  const { canWrite, canRead } = usePermissions()
+  const supabase = useMemo(() => createClient(), [])
   const [pendingRequests, setPendingRequests] = useState<TransportRequest[]>([])
   const [dispatches, setDispatches] = useState<Dispatch[]>([])
-  const [vehicles, setVehicles] = useState<any[]>([])
-  const [drivers, setDrivers] = useState<any[]>([])
+  const [vehicles, setVehicles] = useState<PlanningVehicle[]>([])
+  const [drivers, setDrivers] = useState<PlanningDriver[]>([])
   
   const alertedDispatches = useRef<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
@@ -105,11 +124,12 @@ export default function DespachoPage() {
   const [filterStatus, setFilterStatus] = useState('TODOS')
   const [filterModalidad, setFilterModalidad] = useState('TODAS')
 
-  const filteredDispatches = dispatches.filter((d: any) => {
+  const filteredDispatches = dispatches.filter(d => {
     const matchSearch = searchTerm === '' || 
-      d.dispatch_number.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      d.vehicle_plate.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      d.driver_name.toLowerCase().includes(searchTerm.toLowerCase());
+      (d.dispatch_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (d.vehicle_plate || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (d.driver_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      d.dispatch_requests?.some((r: DispatchRequest) => [r.transport_requests?.request_number, r.transport_requests?.contracts?.code].join(' ').toLowerCase().includes(searchTerm.toLowerCase()));
     const matchStatus = filterStatus === 'TODOS' || d.status === filterStatus;
     const matchModalidad = filterModalidad === 'TODAS' || (d.modalidad || 'PROPIA') === filterModalidad;
     return matchSearch && matchStatus && matchModalidad;
@@ -118,10 +138,6 @@ export default function DespachoPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedDispatchDetail, setSelectedDispatchDetail] = useState<Dispatch | null>(null)
   
-  // Modal de Documentos
-  const [isDocModalOpen, setIsDocModalOpen] = useState(false)
-  const [docModalData, setDocModalData] = useState<Dispatch | null>(null)
-  const [isSavingDocs, setIsSavingDocs] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [calculatingDistance, setCalculatingDistance] = useState(false)
   const reqDistances = useRef<Record<string, number>>({})
@@ -135,7 +151,6 @@ export default function DespachoPage() {
   // Unidad propia o de un transportista tercero que no usa el app
   const [modalidad, setModalidad] = useState<'PROPIA' | 'TERCERO'>('PROPIA')
   const [tercero, setTercero] = useState<TerceroForm>(TERCERO_VACIO)
-  const [avanceId, setAvanceId] = useState<string | null>(null)
   const [newDispatch, setNewDispatch] = useState<{
     selected_requests: { id: string, document_number: string }[],
     driver_name: string,
@@ -218,38 +233,7 @@ export default function DespachoPage() {
     }
   }
 
-  useEffect(() => {
-    fetchData()
-
-    // Suscripción a cambios en tiempo real
-    const channel = supabase.channel('dispatches_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'dispatches'
-        },
-        (payload) => {
-          if (payload.new.status === 'ESPERANDO_AUTORIZACION' && payload.old.status !== 'ESPERANDO_AUTORIZACION') {
-            toast.error(`⚠️ ATENCIÓN: El despacho ${payload.new.dispatch_number} espera autorización de retorno.`, { duration: 10000 })
-            // Intentar reproducir sonido
-            try {
-              const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3')
-              audio.play().catch(e => console.log('Auto-play prevent:', e))
-            } catch(e) {}
-            fetchData()
-          }
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [])
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true)
     try {
       // 1. Obtener Solicitudes pendientes de asignar
@@ -299,6 +283,9 @@ export default function DespachoPage() {
               id,
               request_number,
               request_type,
+              required_date,
+              required_at,
+              time_window,
               contracts(code),
               pickup_address,
               delivery_address,
@@ -313,12 +300,20 @@ export default function DespachoPage() {
         .in('status', ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'RETORNO', 'RETORNO_COMPLETADO', 'ESPERANDO_AUTORIZACION', 'ENTREGADO'])
         .order('created_at', { ascending: false })
 
+      if (dispatchError) throw dispatchError
       if (!dispatchData) {
         // Set vacío para evitar null
         setDispatches([])
       } else {
         const fetchedDispatches = dispatchData as unknown as Dispatch[] || []
-        setDispatches(fetchedDispatches)
+        const assignedIds = fetchedDispatches.flatMap(d => (d.dispatch_requests || []).map(r => r.transport_request_id))
+        const { data: assignedHistory, error: assignedHistoryError } = assignedIds.length
+          ? await supabase.rpc('get_transport_request_rescheduling', { p_request_ids: [...new Set(assignedIds)] })
+          : { data: [], error: null }
+        if (assignedHistoryError) throw assignedHistoryError
+        setDispatches(fetchedDispatches.map(d => ({ ...d, dispatch_requests: d.dispatch_requests?.map(r => ({ ...r,
+          transport_requests: { ...r.transport_requests, rescheduling: (assignedHistory || []).find((h: RequestRescheduling) => h.request_id === r.transport_request_id) },
+        })) })))
         
         // Disparar alertas para los que ya están ESPERANDO_AUTORIZACION
         let shouldAlert = false
@@ -339,53 +334,52 @@ export default function DespachoPage() {
       }
 
       // 3. Obtener vehículos y conductores para el select
-      const { data: vData } = await supabase.from('vehicles').select('plate, brand, model, carriers(business_name)').eq('status', 'DISPONIBLE')
+      const { data: vData } = await supabase.from('vehicles').select('plate, brand, model, assigned_driver_id, carriers(business_name)').eq('status', 'DISPONIBLE')
       const { data: dData } = await supabase.from('drivers')
         .select('id, first_name, last_name, document_number, profile_id, carriers(business_name)')
         .eq('is_active', true).not('profile_id', 'is', null)
       
-      setVehicles(vData || [])
-      setDrivers(dData || [])
+      setVehicles((vData || []).map(vehicle => ({ ...vehicle, carriers: Array.isArray(vehicle.carriers) ? vehicle.carriers[0] || null : vehicle.carriers })))
+      setDrivers((dData || []).map(driver => ({ ...driver, carriers: Array.isArray(driver.carriers) ? driver.carriers[0] || null : driver.carriers })))
 
-    } catch (error: any) {
-      toast.error('Error al cargar datos de despacho: ' + error.message)
+    } catch (error) {
+      toast.error('Error al cargar datos de despacho: ' + errorMessage(error))
     } finally {
       setLoading(false)
     }
-  }
+  }, [supabase])
 
-  const handleSaveDocuments = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!docModalData || !docModalData.dispatch_requests) return
-    setIsSavingDocs(true)
-    
-    try {
-      for (const req of docModalData.dispatch_requests) {
-        if (!req.document_number?.trim()) {
-          toast.error('Todos los documentos deben estar completos.')
-          setIsSavingDocs(false)
-          return
+  useEffect(() => {
+    const initialLoad = window.setTimeout(() => void fetchData(), 0)
+
+    // Suscripción a cambios en tiempo real
+    const channel = supabase.channel('dispatches_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'dispatches'
+        },
+        (payload) => {
+          if (payload.new.status === 'ESPERANDO_AUTORIZACION' && payload.old.status !== 'ESPERANDO_AUTORIZACION') {
+            toast.error(`⚠️ ATENCIÓN: El despacho ${payload.new.dispatch_number} espera autorización de retorno.`, { duration: 10000 })
+            // Intentar reproducir sonido
+            try {
+              const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3')
+              audio.play().catch(e => console.log('Auto-play prevent:', e))
+            } catch(e) {}
+            fetchData()
+          }
         }
-      }
+      )
+      .subscribe()
 
-      for (const req of docModalData.dispatch_requests) {
-        const { error } = await supabase
-          .from('dispatch_requests')
-          .update({ document_number: req.document_number })
-          .eq('dispatch_id', docModalData.id)
-          .eq('transport_request_id', req.transport_request_id)
-        if (error) throw error
-      }
-
-      toast.success('Documentos vinculados correctamente')
-      setIsDocModalOpen(false)
-      fetchData()
-    } catch (error: any) {
-      toast.error('Error al guardar documentos: ' + error.message)
-    } finally {
-      setIsSavingDocs(false)
+    return () => {
+      window.clearTimeout(initialLoad)
+      void supabase.removeChannel(channel)
     }
-  }
+  }, [fetchData, supabase])
 
   const handleProgramar = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -421,7 +415,10 @@ export default function DespachoPage() {
           await supabase.rpc('set_dispatch_freight_quote', { p_dispatch_id: newDispatchId, p_breakdown: freightQuote })
         }
         toast.success('Servicio programado. El acceso del proveedor está listo para compartir.')
-        if (newDispatchId) setAvanceId(newDispatchId)
+        if (newDispatchId) {
+          const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(newDispatch.scheduled_departure))
+          router.push(`/torre-control?despacho=${newDispatchId}&fecha=${day}&proveedor=1`)
+        }
         setIsModalOpen(false)
         setNewDispatch({ selected_requests: [], driver_name: '', vehicle_plate: '', scheduled_departure: '', estimated_distance_km: '', document_type: 'GR' })
         setManualFreightCost(''); setTercero(TERCERO_VACIO); setModalidad('PROPIA')
@@ -488,46 +485,10 @@ export default function DespachoPage() {
       setNewDispatch({ selected_requests: [], driver_name: '', vehicle_plate: '', scheduled_departure: '', estimated_distance_km: '', document_type: 'GR' })
       setManualFreightCost('')
       fetchData()
-    } catch (error: any) {
-      toast.error('Error al programar el despacho: ' + error.message)
+    } catch (error) {
+      toast.error('Error al programar el despacho: ' + errorMessage(error))
     } finally {
       setIsSubmitting(false)
-    }
-  }
-
-  const startRoute = async (dispatchId: string, dispatchRequests: DispatchRequest[]) => {
-    try {
-      // Validar que todas las solicitudes tengan documento vinculado antes de iniciar
-      const missingDocs = dispatchRequests.some(r => !r.document_number || !r.document_number.trim());
-      if (missingDocs) {
-        toast.error('Falta vincular documentos (GR/NS) en algunas solicitudes antes de poder iniciar la ruta.');
-        return;
-      }
-      const { data, error } = await supabase.rpc('transition_dispatch_status', {
-        p_dispatch_id: dispatchId,
-        p_new_status: 'EN_CURSO',
-        p_reason: 'Ruta iniciada desde torre de control'
-      })
-      if (error || (data && !data.success)) throw new Error(error?.message || data?.error || 'Error al iniciar ruta')
-      toast.success('Despacho preparado. El conductor iniciará el GPS desde la app.')
-      fetchData()
-    } catch (error: any) {
-      toast.error('Error al iniciar ruta: ' + error.message)
-    }
-  }
-
-  const handleAuthorizeReturn = async (dispatchId: string) => {
-    try {
-      const { data, error } = await supabase.rpc('transition_dispatch_status', {
-        p_dispatch_id: dispatchId,
-        p_new_status: 'RETORNO',
-        p_reason: 'Autorizado desde torre de control'
-      })
-      if (error || (data && !data.success)) throw new Error(error?.message || data?.error || 'Error al autorizar retorno')
-      toast.success('Retorno autorizado. El conductor ha sido notificado.')
-      fetchData()
-    } catch (err: any) {
-      toast.error('Error al autorizar: ' + err.message)
     }
   }
 
@@ -545,17 +506,6 @@ export default function DespachoPage() {
     }
   }
 
-  const handleCloseRoute = async (dispatchId: string) => {
-    try {
-      const { data, error } = await supabase.rpc('close_dispatch_route', { p_dispatch_id: dispatchId })
-      if (error) throw error
-      const km = Number(data.actual_distance_km || 0).toFixed(3)
-      toast.success(`Ruta cerrada: ${km} km GPS${data.gps_complete ? '' : ' · cobertura parcial, kilometraje vehicular pendiente de conciliación'}`)
-      fetchData()
-    } catch (err: any) {
-      toast.error('Error al cerrar ruta: ' + err.message)
-    }
-  }
   const toggleRequestSelection = async (reqId: string, pickup: string, delivery: string) => {
     const isSelected = newDispatch.selected_requests.some(r => r.id === reqId)
     const request = pendingRequests.find(r => r.id === reqId)
@@ -632,6 +582,7 @@ export default function DespachoPage() {
 
   return (
     <div className="space-y-6 w-full mx-auto">
+      <TransportWorkflow current="programacion" />
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Programación de Despachos y Ruteo</h1>
@@ -686,7 +637,7 @@ export default function DespachoPage() {
                       <div className="flex flex-col gap-1">
                         <span className="font-bold text-[#002855] text-sm">{req.request_number}</span>
                         {wasRescheduled(req) && <span className="text-[10px] bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-semibold border border-orange-200">Reprogramado</span>}
-                        <span className="text-xs text-slate-600">Fecha requerida: <b>{serviceDate(req.required_date)}</b>{req.time_window ? ` · ${req.time_window}` : ''}</span>
+                        <span className="text-xs text-slate-600">Atención requerida · Lima: <b>{requestedAttention(req)}</b></span>
                       </div>
                       <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${typeColor} whitespace-nowrap h-fit`}>
                         {typeLabel}
@@ -800,7 +751,7 @@ export default function DespachoPage() {
                     <th className="p-4 font-semibold whitespace-nowrap">Unidad / Chofer</th>
                     <th className="p-4 font-semibold whitespace-nowrap text-right">Dist. (KM)</th>
                     <th className="p-4 font-semibold">Solicitudes (Ruta)</th>
-                    <th className="p-4 font-semibold whitespace-nowrap">Salida Programada</th>
+                    <th className="p-4 font-semibold whitespace-nowrap">Salida confirmada · Lima</th>
                     <th className="p-4 font-semibold whitespace-nowrap">Estado</th>
                     <th className="p-4 font-semibold text-right whitespace-nowrap">Acción</th>
                   </tr>
@@ -850,11 +801,12 @@ export default function DespachoPage() {
                               const traslados = reqs.filter(r => r.transport_requests.request_type === 'TRASLADO').length;
                               const despachos = reqs.filter(r => !r.transport_requests.request_type || r.transport_requests.request_type === 'DESPACHO').length;
                               
-                              const tooltipText = reqs.map(r => r.transport_requests.request_number).join(', ');
+                              const tooltipText = reqs.map(r => `${r.transport_requests.request_number} · OT ${r.transport_requests.contracts?.code || 'sin OT'}`).join(', ');
 
                               return (
-                                <div className="flex flex-col gap-1.5" title={`OTs: ${tooltipText}`}>
-                                  <div className="font-bold text-slate-700">{reqs.length} Punto{reqs.length !== 1 ? 's' : ''} de Ruta</div>
+                                <div className="flex flex-col gap-1.5" title={tooltipText}>
+                                  <div className="font-bold text-slate-700">{reqs.length} servicio{reqs.length !== 1 ? 's' : ''} · {new Set(reqs.map(r => r.transport_requests.contracts?.code).filter(Boolean)).size} OT</div>
+                                  <details className="rounded-lg border border-slate-200 bg-white p-2"><summary className="cursor-pointer font-semibold text-[#002855]">Ver servicios y fechas solicitadas</summary><ul className="mt-2 space-y-2">{reqs.map(r => <li key={r.transport_request_id} className="border-t border-slate-100 pt-2"><p className="font-semibold">{r.transport_requests.request_number} · {r.transport_requests.contracts?.code ? `OT ${r.transport_requests.contracts.code}` : 'Sin OT'}</p><p>{r.transport_requests.request_type === 'RECOJO' ? 'Recojo' : r.transport_requests.request_type === 'TRASLADO' ? 'Punto a punto' : 'Entrega'} · Solicitada · Lima: {requestedAttention(r.transport_requests)}</p>{r.transport_requests.rescheduling && <p className="font-semibold text-amber-800">Reprogramado · {serviceDate(r.transport_requests.rescheduling.fecha_anterior)} → {serviceDate(r.transport_requests.rescheduling.fecha_nueva)}</p>}</li>)}</ul></details>
                                   <div className="flex flex-wrap gap-1">
                                     {recojos > 0 && <span className="bg-orange-50 text-orange-700 text-[10px] px-1.5 py-0.5 rounded font-semibold border border-orange-200">Recojos: {recojos}</span>}
                                     {despachos > 0 && <span className="bg-emerald-50 text-emerald-700 text-[10px] px-1.5 py-0.5 rounded font-semibold border border-emerald-200">Despachos: {despachos}</span>}
@@ -870,7 +822,7 @@ export default function DespachoPage() {
                         <td className="p-4 text-sm text-slate-600">
                           <div className="flex items-center gap-1">
                             <Calendar className="w-3 h-3" />
-                            {new Date(dispatch.scheduled_departure).toLocaleString()}
+                            {new Date(dispatch.scheduled_departure).toLocaleString('es-PE', { timeZone: 'America/Lima' })}
                           </div>
                         </td>
                         <td className="p-4">
@@ -892,49 +844,15 @@ export default function DespachoPage() {
                           )}
                         </td>
                         <td className="p-4 text-right">
-                          {dispatch.modalidad === 'TERCERO' && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'ENTREGADO'].includes(dispatch.status) && (
-                            <button
-                              onClick={() => setAvanceId(dispatch.id)}
-                              className="mr-1 inline-flex items-center gap-1 px-3 py-1.5 bg-violet-50 text-violet-700 hover:bg-violet-100 transition-colors rounded-lg text-xs font-medium border border-violet-200 whitespace-nowrap"
-                            >
-                              <Truck className="w-3 h-3" />
-                              {dispatch.status === 'PROGRAMADO' ? 'Registrar salida' : dispatch.status === 'ENTREGADO' ? 'Ver entregas' : 'Registrar entregas'}
-                            </button>
-                          )}
-                          {dispatch.status === 'PROGRAMADO' && dispatch.modalidad !== 'TERCERO' && (
-                            <button 
-                              onClick={() => startRoute(dispatch.id, dispatch.dispatch_requests || [])}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 transition-colors rounded-lg text-xs font-medium border border-blue-200 whitespace-nowrap"
-                            >
-                              <PlayCircle className="w-3 h-3" />
-                              Preparar
-                            </button>
-                          )}
-                          {dispatch.status === 'PROGRAMADO' && (
+                          {(canRead('documentario') || canRead('packing-list') || canRead('planificacion')) && <Link href={`/despacho/documentos?despacho=${dispatch.id}&vista=${dispatch.status === 'PROGRAMADO' ? 'salida' : 'historial'}&desde=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(dispatch.scheduled_departure))}`} className="mb-2 inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-[#002855]"><FileText className="h-4 w-4" />Documentos</Link>}
+{(canRead('torre-control') || canRead('despacho')) && <Link href={`/torre-control?despacho=${dispatch.id}&fecha=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(dispatch.scheduled_departure))}`} className="mb-2 ml-1 inline-flex min-h-11 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-[#002855]"><Truck className="h-4 w-4" />Gestionar operación</Link>}
+                          {canWrite('despacho') && dispatch.status === 'PROGRAMADO' && (
                             <button
                               onClick={() => handleCancelDispatch(dispatch.id, dispatch.dispatch_number)}
                               className="ml-1 inline-flex items-center gap-1 px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 transition-colors rounded-lg text-xs font-medium border border-red-200 whitespace-nowrap"
                             >
                               <XCircle className="w-3 h-3" />
                               Cancelar
-                            </button>
-                          )}
-                          {dispatch.status === 'ESPERANDO_AUTORIZACION' && (
-                            <button 
-                              onClick={() => handleAuthorizeReturn(dispatch.id)}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 transition-colors rounded-lg text-xs font-medium border border-indigo-200 whitespace-nowrap"
-                            >
-                              <CheckCircle2 className="w-3 h-3" />
-                              Autorizar Retorno
-                            </button>
-                          )}
-                          {(dispatch.status === 'RETORNO_COMPLETADO' || dispatch.status === 'ENTREGADO') && (
-                            <button 
-                              onClick={() => handleCloseRoute(dispatch.id)}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800 transition-colors rounded-lg text-xs font-medium border border-green-200 whitespace-nowrap"
-                            >
-                              <CheckCircle2 className="w-3 h-3" />
-                              Cerrar Ruta
                             </button>
                           )}
                         </td>
@@ -1159,7 +1077,7 @@ export default function DespachoPage() {
                               </span>
                             </div>
                           
-                          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs"><span className="text-slate-700">Fecha requerida: <b>{serviceDate(req.required_date)}</b>{req.time_window ? ` · ${req.time_window}` : ''}</span>{wasRescheduled(req) && <span className="rounded-full border border-orange-200 bg-orange-100 px-2 py-0.5 font-bold text-orange-800">Reprogramado</span>}</div>
+                          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs"><span className="text-slate-700">Atención requerida · Lima: <b>{requestedAttention(req)}</b></span>{wasRescheduled(req) && <span className="rounded-full border border-orange-200 bg-orange-100 px-2 py-0.5 font-bold text-orange-800">Reprogramado</span>}</div>
                           {req.rescheduling?.fecha_anterior && <p className="mb-2 text-[11px] text-slate-500">Fecha anterior: {serviceDate(req.rescheduling.fecha_anterior)}</p>}
                           {req.attention_mode === 'RECOJO_CLIENTE' && <p className="text-xs text-slate-600">Contacto: {req.pickup_contact || 'Sin registrar'} · {req.pickup_phone || 'Sin teléfono'}</p>}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
@@ -1238,8 +1156,8 @@ export default function DespachoPage() {
                 <div className="font-bold text-[#002855]">{selectedDispatchDetail.vehicle_plate}</div>
                 <div className="text-sm text-slate-600">{selectedDispatchDetail.driver_name}</div>
                 {selectedDispatchDetail.modalidad === 'TERCERO' && (
-                  <button onClick={() => { setAvanceId(selectedDispatchDetail.id); setSelectedDispatchDetail(null) }}
-                    className="mt-1 text-xs font-semibold text-violet-700 hover:underline">Unidad tercerizada · ver avance</button>
+                  <Link href={`/torre-control?despacho=${selectedDispatchDetail.id}&fecha=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(selectedDispatchDetail.scheduled_departure))}&proveedor=1`}
+                    className="mt-1 inline-flex min-h-11 items-center text-xs font-semibold text-violet-700 hover:underline">Unidad tercerizada · acceso y avance</Link>
                 )}
               </div>
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
@@ -1275,8 +1193,8 @@ export default function DespachoPage() {
               <div className="space-y-3">
                 {selectedDispatchDetail.dispatch_requests?.map((dr, idx) => {
                   const req = dr.transport_requests;
-                  const totalWeight = req.transport_request_items?.reduce((sum: number, item: any) => sum + ((item.weight || 0) * (item.quantity || 1)), 0) || 0;
-                  const totalVol = req.transport_request_items?.reduce((sum: number, item: any) => sum + ((item.volume_m3 || 0) * (item.quantity || 1)), 0) || 0;
+                  const totalWeight = req.transport_request_items?.reduce((sum, item) => sum + (Number(item.weight || 0) * Number(item.quantity || 1)), 0) || 0;
+                  const totalVol = req.transport_request_items?.reduce((sum, item) => sum + (Number(item.volume_m3 || 0) * Number(item.quantity || 1)), 0) || 0;
                   const isRecojo = req.request_type === 'RECOJO';
                   const isTraslado = req.request_type === 'TRASLADO';
                   const typeLabel = req.request_type || (isRecojo ? 'RECOJO' : 'DESPACHO');
@@ -1342,7 +1260,7 @@ export default function DespachoPage() {
             </div>
 
             <div className="border-t pt-4">
-              <EvidenceGallery dispatchId={selectedDispatchDetail.id} title="Evidencias del conductor (entregas, checklist, guías, odómetro)" />
+              <EvidenceGallery dispatchId={selectedDispatchDetail.id} title="Evidencias registradas · consulta" />
             </div>
 
             <div className="flex justify-end">
@@ -1357,7 +1275,6 @@ export default function DespachoPage() {
         )}
       </Modal>
 
-      <TerceroAvanceModal key={avanceId || 'none'} dispatchId={avanceId} onClose={() => setAvanceId(null)} onChanged={fetchData} />
     </div>
   )
 }

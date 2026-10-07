@@ -1,0 +1,38 @@
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+const ts = require('typescript')
+const vm = require('node:vm')
+const source = fs.readFileSync(path.join(__dirname, '../src/lib/transport-lead-time.ts'), 'utf8')
+const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
+const exportsObject = {}
+vm.runInNewContext(compiled, { exports: exportsObject, Date, Number, NaN })
+const { evaluateLeadTime, DEFAULT_LEAD_TIME_SETTINGS, limaDateTimeToIso, limaInputParts, settingsForRequest } = exportsObject
+const registeredAt = limaDateTimeToIso('2026-10-07', '17:45')
+const evaluate = (date, time, zone = 'LIMA', settings = DEFAULT_LEAD_TIME_SETTINGS) => evaluateLeadTime({ registeredAt, requiredAt: limaDateTimeToIso(date, time), zone, settings })
+assert.equal(registeredAt, '2026-10-07T22:45:00.000Z')
+assert.equal(evaluate('2026-10-08', '08:00').status, 'INSUFFICIENT')
+assert.equal(evaluate('2026-10-08', '08:00').anticipationHours, 14.25)
+assert.equal(evaluate('2026-10-08', '17:44').enough, false)
+assert.equal(evaluate('2026-10-08', '17:45').enough, true)
+assert.equal(evaluate('2026-10-09', '17:44', 'PROVINCIA').status, 'INSUFFICIENT')
+assert.equal(evaluate('2026-10-09', '17:45', 'PROVINCIA').status, 'COMPLIANT')
+assert.equal(evaluate('2026-10-10', '17:44', 'EXTERIOR').status, 'INSUFFICIENT')
+assert.equal(evaluate('2026-10-10', '17:45', 'EXTERIOR').status, 'COMPLIANT')
+const disabled = JSON.parse(JSON.stringify(DEFAULT_LEAD_TIME_SETTINGS))
+disabled.enabled = false
+assert.equal(evaluate('2026-10-08', '08:00', 'LIMA', disabled).status, 'DISABLED')
+disabled.enabled = true
+disabled.zones.LIMA.enabled = false
+assert.equal(evaluate('2026-10-08', '08:00', 'LIMA', disabled).status, 'DISABLED')
+assert.equal(evaluate('2026-10-08', '08:00', 'PROVINCIA', disabled).status, 'INSUFFICIENT')
+assert.equal(settingsForRequest(null, DEFAULT_LEAD_TIME_SETTINGS), null)
+assert.equal(evaluateLeadTime({ registeredAt, requiredAt: null, zone: 'LIMA', settings: DEFAULT_LEAD_TIME_SETTINGS }).minimumAt, '2026-10-08T22:45:00.000Z')
+assert.equal(limaDateTimeToIso('2026-02-30', '17:45'), null)
+assert.equal(limaDateTimeToIso('2026-10-08', '24:00'), null)
+assert.equal(limaDateTimeToIso('2026-10-08', ''), null)
+const parts = limaInputParts('2026-10-08T02:45:00.000Z')
+assert.equal(parts.date, '2026-10-07')
+assert.equal(parts.time, '21:45')
+assert.equal(evaluateLeadTime({ registeredAt: 'bad', requiredAt: registeredAt, zone: 'LIMA', settings: DEFAULT_LEAD_TIME_SETTINGS }).status, 'UNASSESSED')
+console.log('PASS: minimum 24/48/72 continuous hours, exact equality, 17:45 → 08:00 blocked, disabled rules, historical snapshots and Lima dates.')

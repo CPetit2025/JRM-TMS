@@ -8,6 +8,8 @@ import { Truck, Clock, ShieldCheck, Loader2, Navigation, Layers } from 'lucide-r
 import { toast } from 'sonner'
 import { DeliveryTable } from '@/components/delivery/DeliveryTable'
 import type { DeliveryRow } from '@/lib/delivery'
+import { TrackingCalendar } from '@/components/tracking/TrackingCalendar'
+import { limaDay, monthDays, type PortalRequest } from '@/lib/tracking-calendar'
 
 const MapComponent = dynamic(() => import('@/components/map/MapComponent'), {
   ssr: false,
@@ -35,7 +37,9 @@ export default function TrackingPage() {
   const [pin, setPin] = useState('')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [trackingData, setTrackingData] = useState<{ planning_date: string; rows: DeliveryRow[] } | null>(null)
+  const [trackingData, setTrackingData] = useState<{ mode: 'permanent' | 'legacy'; planning_date?: string; rows: DeliveryRow[]; requests: PortalRequest[]; locations: {dispatch_id:string;vehicle_plate?:string;driver_name?:string;lat:number;lng:number;last_gps_at:string}[]; error?:string; limited?:boolean } | null>(null)
+  const [month, setMonth] = useState(() => limaDay(new Date().toISOString()).slice(0,7))
+  const range = useMemo(() => { const days=monthDays(month); return {p_from:days[0],p_to:days[41]} },[month])
   const [activeTab, setActiveTab] = useState<'list' | 'map'>('list')
   const [vehicles, setVehicles] = useState<VehicleLocation[]>([])
   
@@ -47,10 +51,10 @@ export default function TrackingPage() {
     if (!isAuthenticated) return
     let cancelled = false
     const load = async () => {
-      const { data, error } = await supabase.rpc('get_public_daily_tracking_info', { p_token: token, p_pin: pin })
+      const { data, error } = await supabase.rpc('get_public_tracking_portal_info', { p_token: token, p_pin: pin, ...range })
       if (cancelled) return
-      if (error) {
-        if (/PIN|vencido|no válido/i.test(error.message)) { setIsAuthenticated(false); setTrackingData(null); setVehicles([]) }
+      if (error || data?.error) {
+        if (data?.error || /PIN|vencido|no válido/i.test(error?.message || '')) { setIsAuthenticated(false); setTrackingData(null); setVehicles([]) }
         else setRefreshError('No se pudo actualizar el seguimiento.')
         return
       }
@@ -58,16 +62,14 @@ export default function TrackingPage() {
     }
     void load(); const timer = window.setInterval(load, 15000)
     return () => { cancelled = true; window.clearInterval(timer) }
-  }, [isAuthenticated, token, pin, supabase, version])
+  }, [isAuthenticated, token, pin, supabase, version, range])
 
   useEffect(() => {
     if (!isAuthenticated || activeTab !== 'map') return
     let cancelled = false
     const refresh = async () => {
-      const { data, error } = await supabase.rpc('get_public_daily_tracking_locations', {
-        p_token: token, p_pin: pin
-      })
-      if (cancelled || error) return
+      const data = trackingData?.locations || []
+      if (cancelled) return
       setVehicles((data || []).map((point: { dispatch_id: string; vehicle_plate?: string; driver_name?: string; lat: number; lng: number; last_gps_at: string }) => ({
         id: point.dispatch_id, plate: point.vehicle_plate || 'Sin placa',
         driver: point.driver_name || 'Conductor', status: 'ubicacion', speed: null,
@@ -78,7 +80,7 @@ export default function TrackingPage() {
     void refresh()
     const timer = window.setInterval(refresh, 15000)
     return () => { cancelled = true; window.clearInterval(timer) }
-  }, [isAuthenticated, activeTab, token, pin, supabase])
+  }, [isAuthenticated, activeTab, trackingData])
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -89,18 +91,18 @@ export default function TrackingPage() {
 
     setIsLoading(true)
     try {
-      const { data, error } = await supabase.rpc('get_public_daily_tracking_info', {
-        p_token: token,
-        p_pin: pin
+      const { data, error } = await supabase.rpc('get_public_tracking_portal_info', {
+        p_token: token, p_pin: pin, ...range
       })
 
       if (error) throw error
+      if (data?.error) throw new Error(data.error)
 
       setTrackingData(data); setUpdatedAt(new Date().toISOString()); setRefreshError('')
       setIsAuthenticated(true)
       toast.success('Acceso autorizado')
     } catch (err) {
-      toast.error('PIN incorrecto, enlace expirado o inválido.')
+      toast.error(err instanceof Error ? err.message : 'PIN incorrecto, enlace expirado o inválido.')
       console.error(err)
     } finally {
       setIsLoading(false)
@@ -117,9 +119,9 @@ export default function TrackingPage() {
               <ShieldCheck className="w-8 h-8" />
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-center text-slate-800 mb-2">Seguimiento de Planificación</h1>
+          <h1 className="text-2xl font-bold text-center text-slate-800 mb-2">Planificación y Seguimiento de Transporte</h1>
           <p className="text-center text-slate-500 mb-8">
-            Ingrese el PIN recibido para visualizar el estado de todas las rutas del día.
+            Ingrese el código recibido para consultar el calendario y las operaciones autorizadas.
           </p>
           
           <form onSubmit={handleAuth} className="space-y-6">
@@ -148,7 +150,7 @@ export default function TrackingPage() {
           </form>
           
           <p className="text-center text-xs text-slate-400 mt-8">
-            Los enlaces de seguimiento expiran por seguridad después de 24 horas.
+            Acceso de consulta protegido. El administrador puede revocarlo o cambiar su código.
           </p>
         </div>
       </div>
@@ -160,34 +162,34 @@ export default function TrackingPage() {
       {/* Header Público */}
       <div className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center min-h-16 gap-2 py-3">
+          <div className="flex flex-col items-stretch justify-between gap-3 py-3 sm:min-h-16 sm:flex-row sm:items-center">
             <div className="flex items-center gap-3">
-              <img src="/logo-jrm.png" alt="JRM" className="h-8 object-contain" />
-              <div className="h-6 w-px bg-slate-300"></div>
-              <Truck className="w-5 h-5 text-blue-600" />
-              <span className="font-bold text-sm sm:text-lg text-slate-800">Seguimiento de Planificación</span>
+              <img src="/logo-jrm.png" alt="JRM" className="h-8 shrink-0 object-contain" />
+              <div className="hidden h-6 w-px bg-slate-300 sm:block"></div>
+              <Truck className="hidden w-5 h-5 text-blue-600 sm:block" />
+              <span className="font-bold text-base leading-snug sm:text-lg text-slate-800">Planificación y Seguimiento de Transporte</span>
             </div>
-            <div className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-medium border border-blue-200">
-              {trackingData?.planning_date ? new Date(`${trackingData?.planning_date}T00:00:00`).toLocaleDateString('es-PE') : 'Fecha'}
-            </div>
+            <div className="flex items-center justify-between gap-2 sm:justify-end"><button className="rounded-lg border px-3 py-2 text-xs text-slate-600" onClick={() => {setIsAuthenticated(false);setPin('');setTrackingData(null);setVehicles([])}}>Salir</button><div className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-medium border border-blue-200">
+              {trackingData?.planning_date ? new Date(`${trackingData?.planning_date}T00:00:00`).toLocaleDateString('es-PE') : 'Portal de seguimiento'}
+            </div></div>
           </div>
           
           {/* Navegación de Pestañas */}
           <div className="flex border-t border-slate-200 mt-2">
             <button
               onClick={() => setActiveTab('list')}
-              className={`flex items-center gap-2 px-6 py-4 font-medium text-sm transition-colors border-b-2 ${
+              className={`flex items-center gap-2 px-3 py-4 font-medium text-xs sm:px-6 sm:text-sm transition-colors border-b-2 ${
                 activeTab === 'list'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
               }`}
             >
               <Layers className="w-4 h-4" />
-              Torre de Control
+              {trackingData?.mode === 'permanent' ? 'Calendario y servicios' : 'Torre de Control'}
             </button>
             <button
               onClick={() => setActiveTab('map')}
-              className={`flex items-center gap-2 px-6 py-4 font-medium text-sm transition-colors border-b-2 ${
+              className={`flex items-center gap-2 px-3 py-4 font-medium text-xs sm:px-6 sm:text-sm transition-colors border-b-2 ${
                 activeTab === 'map'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
@@ -202,16 +204,16 @@ export default function TrackingPage() {
 
       <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-6">
         {/* Alerta de GPS */}
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
+        {activeTab === 'map' && <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
           <Clock className="w-5 h-5 text-amber-500 shrink-0" />
           <div className="text-sm text-amber-800">
             <span className="font-semibold block mb-1">Nota sobre Monitoreo GPS:</span>
             El monitoreo en tiempo real puede presentar ligeras latencias o discrepancias dependiendo de la cobertura de red móvil en la zona de tránsito del vehículo.
           </div>
-        </div>
+        </div>}
 
         {activeTab === 'list' ? (
-          <DeliveryTable rows={trackingData?.rows || []} error={refreshError} refreshedAt={updatedAt} onRefresh={() => setVersion(v => v + 1)} />
+          <div className="space-y-6">{trackingData?.mode === 'permanent' && <TrackingCalendar month={month} onMonth={setMonth} requests={trackingData.requests || []} rows={trackingData.rows || []} />}{trackingData?.limited && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Hay más solicitudes. Consulta un período más específico o solicita un acceso acotado.</p>}<DeliveryTable rows={trackingData?.rows || []} error={refreshError} refreshedAt={updatedAt} onRefresh={() => setVersion(v => v + 1)} /></div>
         ) : (
           <div className="h-[600px] bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden relative">
             {/* Si no hay vehículos con GPS actualmente, mostrar el mapa igual pero con un overlay o solo el componente */}

@@ -1,4 +1,5 @@
 "use client"
+import { TransportLeadTimeSettings } from '@/components/configuracion/TransportLeadTimeSettings'
 import { protectedFileHref } from '@/lib/protected-files'
 import { useState, useEffect } from 'react'
 import { Save, Building2, Truck, CreditCard, Loader2, Bot, Lock, FileSignature, Upload, FileImage, Trash2, CheckCircle2 } from 'lucide-react'
@@ -29,7 +30,7 @@ export default function ConfiguracionPage() {
   useEffect(() => {
     const init = async () => {
       const saved = localStorage.getItem('jrm_sys_config')
-      let localConfig = saved ? JSON.parse(saved) : {}
+      const localConfig = saved ? JSON.parse(saved) : {}
       // Las versiones anteriores guardaban credenciales de IA en el navegador.
       // Eliminarlas al cargar sin volver a exponerlas en la configuración.
       if (localConfig.openAiKey || localConfig.geminiKey) {
@@ -106,8 +107,8 @@ export default function ConfiguracionPage() {
 
       setConfig(prev => ({ ...prev, adminSignatureUrl: urlData.publicUrl }))
       toast.success('Firma cargada correctamente. No olvides guardar los cambios.')
-    } catch (e: any) {
-      toast.error('Error al subir firma: Verifica que el bucket "signatures" exista. ' + e.message)
+    } catch (e: unknown) {
+      toast.error('Error al subir firma: Verifica que el bucket "signatures" exista. ' + ((e as { message?: string })?.message || 'Error de carga'))
     } finally {
       setIsUploadingSignature(false)
     }
@@ -139,7 +140,8 @@ export default function ConfiguracionPage() {
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         {/* Tabs */}
-        <div className="flex border-b border-slate-200 bg-slate-50">
+        <div className="flex overflow-x-auto border-b border-slate-200 bg-slate-50">
+          <button onClick={() => setActiveTab('plazos')} className={`shrink-0 px-6 py-4 text-sm font-medium ${activeTab === 'plazos' ? 'border-b-2 border-[#002855] bg-white text-[#002855]' : 'text-slate-500 hover:bg-slate-100'}`}>Planificación y plazos</button>
           <button 
             onClick={() => setActiveTab('empresa')}
             className={`px-6 py-4 text-sm font-medium flex items-center gap-2 transition-colors ${
@@ -199,6 +201,7 @@ export default function ConfiguracionPage() {
 
         {/* Tab Content */}
         <div className="p-6">
+          {activeTab === 'plazos' && <TransportLeadTimeSettings />}
           {activeTab === 'empresa' && (
             <div className="space-y-6 animate-in fade-in duration-300">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -345,7 +348,7 @@ export default function ConfiguracionPage() {
             </div>
           )}
 
-          <div className="mt-8 flex justify-end">
+          {activeTab !== 'plazos' && <div className="mt-8 flex justify-end">
             <button 
               onClick={handleSave}
               disabled={isSaving}
@@ -354,7 +357,7 @@ export default function ConfiguracionPage() {
               {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               Guardar Cambios
             </button>
-          </div>
+          </div>}
         </div>
       </div>
     </div>

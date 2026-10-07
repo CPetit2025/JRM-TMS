@@ -1,8 +1,10 @@
 "use client"
+import { TransportWorkflow } from '@/components/transport/TransportWorkflow'
 import { DataTable } from '@/components/ui/data-table'
 import { TableActions, type TableAction } from '@/components/ui/table-actions'
 import { TablePagination } from '@/components/ui/table-pagination'
 
+import { DEFAULT_LEAD_TIME_SETTINGS, evaluateLeadTime, settingsForRequest, limaDateTimeToIso, limaInputParts, formatLeadTimeStatus, type DeliveryZone, type TransportLeadTimeSettings } from '@/lib/transport-lead-time'
 import { operatingBudget } from '@/lib/transport-budget'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Plus, Send, Check, X, Search, Loader2, Clock, CalendarClock, Ban, Edit2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
@@ -43,6 +45,9 @@ interface TransportRequest {
   delivery_province?: string
   delivery_district?: string
   required_date: string
+  required_at?: string | null
+  delivery_zone?: DeliveryZone | null
+  lead_time_policy?: TransportLeadTimeSettings | null
   time_window: string
   cargo_description: string
   estimated_weight: number
@@ -196,6 +201,12 @@ export default function SolicitudesPage() {
   const detailLoadId = useRef(0)
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
   const [newRescheduleDate, setNewRescheduleDate] = useState('')
+  const [newRescheduleTime, setNewRescheduleTime] = useState('')
+  const [rescheduleZone, setRescheduleZone] = useState<DeliveryZone>('LIMA')
+  const [leadTimeSettings, setLeadTimeSettings] = useState<TransportLeadTimeSettings>(DEFAULT_LEAD_TIME_SETTINGS)
+  const [leadTimeLoaded, setLeadTimeLoaded] = useState(false)
+  const [leadTimeError, setLeadTimeError] = useState('')
+  const [registrationPreview, setRegistrationPreview] = useState(() => new Date().toISOString())
   // Causa obligatoria al reprogramar (KPI de Despacho, migración 20261005180000)
   const [rescheduleCause, setRescheduleCause] = useState('')
   const [rescheduleDetail, setRescheduleDetail] = useState('')
@@ -215,6 +226,8 @@ export default function SolicitudesPage() {
     delivery_province: '',
     delivery_district: '',
     required_date: '',
+    required_time: '',
+    delivery_zone: 'LIMA' as DeliveryZone,
     time_window: '',
     contract_id: '',
     cargo_description: '',
@@ -244,6 +257,31 @@ export default function SolicitudesPage() {
   const isCustomerPickup = newRequest.attention_mode === 'RECOJO_CLIENTE'
   const otRequired = requiresOt(newRequest.department) || userRole === 'administrador de contratos'
   const estimatedCost = (isCustomerPickup ? 0 : Number(newRequest.service_cost || 0)) + unloadingTotal
+
+
+  const editingRequest = requests.find(request => request.id === editingRequestId)
+  const reschedulingRequest = requests.find(request => request.id === selectedRequestId)
+  const requiresDeliveryLeadTime = newRequest.request_type === 'DESPACHO' && !isCustomerPickup
+  const requiredAt = limaDateTimeToIso(newRequest.required_date, newRequest.required_time)
+  const previewRegisteredAt = editingRequest?.created_at || new Date(Math.ceil(new Date(registrationPreview).getTime() / 60000) * 60000).toISOString()
+  const leadTimeEvaluation = evaluateLeadTime({ registeredAt: previewRegisteredAt, requiredAt: requiredAt || previewRegisteredAt, zone: newRequest.delivery_zone, settings: editingRequest?.lead_time_policy || leadTimeSettings })
+  const rescheduleRequiredAt = limaDateTimeToIso(newRescheduleDate, newRescheduleTime)
+  const rescheduleApplies = reschedulingRequest?.request_type === 'DESPACHO' && reschedulingRequest.attention_mode !== 'RECOJO_CLIENTE'
+  const rescheduleEvaluation = evaluateLeadTime({ registeredAt: reschedulingRequest?.created_at || null, requiredAt: rescheduleRequiredAt || reschedulingRequest?.created_at, zone: rescheduleZone, settings: reschedulingRequest?.lead_time_policy || leadTimeSettings })
+  const firstAllowed = (value: string | null) => value ? requestDate(new Date(Math.ceil(new Date(value).getTime() / 60000) * 60000).toISOString(), true) : 'Sin plazo'
+  const requestLeadTime = (request: TransportRequest) => evaluateLeadTime({ registeredAt: request.created_at, requiredAt: request.required_at || null, zone: request.delivery_zone || null, settings: settingsForRequest(request.lead_time_policy, leadTimeSettings) })
+
+  const fetchLeadTimeSettings = useCallback(async () => {
+    const { data, error } = await supabase.rpc('get_transport_lead_time_settings')
+    if (error || !data) { setLeadTimeError(error?.message || 'No se pudieron consultar los plazos.'); setLeadTimeLoaded(false); return }
+    setLeadTimeSettings(data as TransportLeadTimeSettings); setLeadTimeLoaded(true); setLeadTimeError('')
+  }, [supabase])
+
+  useEffect(() => {
+    if (!isModalOpen) return
+    const timer = window.setInterval(() => setRegistrationPreview(new Date().toISOString()), 15000)
+    return () => window.clearInterval(timer)
+  }, [isModalOpen])
 
   const checkUser = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -339,9 +377,10 @@ export default function SolicitudesPage() {
       void fetchRequests()
       void fetchContracts()
       void checkUser()
+      void fetchLeadTimeSettings()
     }, 0)
     return () => window.clearTimeout(task)
-  }, [fetchRequests, fetchContracts, checkUser])
+  }, [fetchRequests, fetchContracts, checkUser, fetchLeadTimeSettings])
 
   // Memoria: solicitudes anteriores al mismo destino / cliente / OT y la descarga que necesitaron
   useEffect(() => {
@@ -480,7 +519,9 @@ export default function SolicitudesPage() {
       delivery_department: request.delivery_department || '',
       delivery_province: request.delivery_province || '',
       delivery_district: request.delivery_district || '',
-      required_date: request.required_date ? request.required_date.split('T')[0] : '',
+      required_date: request.required_at ? limaInputParts(request.required_at).date : request.required_date ? request.required_date.split('T')[0] : '',
+      required_time: request.required_at ? limaInputParts(request.required_at).time : '',
+      delivery_zone: request.delivery_zone || 'LIMA',
       time_window: request.time_window || '',
       contract_id: request.contract_id || '',
       cargo_description: request.cargo_description || '',
@@ -490,6 +531,7 @@ export default function SolicitudesPage() {
       purchase_order: request.purchase_order || ''
     })
 
+    void fetchLeadTimeSettings()
     setEditingRequestId(request.id)
     const { data: unloadingRows } = await supabase.from('transport_unloading_costs')
       .select('concept, estimated_pen, description').eq('transport_request_id', request.id).eq('status', 'ESTIMADO')
@@ -523,7 +565,11 @@ export default function SolicitudesPage() {
 
   const handleCreateRequest = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+    if (requiresDeliveryLeadTime && !leadTimeLoaded) { toast.error('No se pudieron consultar los plazos. Reintenta antes de guardar.'); return }
+    if (!requiredAt) { toast.error('Selecciona fecha y hora de atención válidas.'); return }
+    if (requiresDeliveryLeadTime && leadTimeEvaluation.enough === false) {
+      toast.error(`La entrega requiere ${leadTimeEvaluation.hours} horas de anticipación. Selecciona desde ${firstAllowed(leadTimeEvaluation.minimumAt)}.`); return
+    }
     if (!newRequest.cargo_description || !newRequest.cargo_description.trim()) {
       toast.error('Debes ingresar la descripción general de la carga.')
       return
@@ -579,7 +625,7 @@ export default function SolicitudesPage() {
     try {
       const { data: saved, error } = await supabase.rpc('save_transport_request_attention', {
         p_request_id: editingRequestId,
-        p_payload: { ...newRequest, contract_id: newRequest.contract_id || null, service_cost: isCustomerPickup ? 0 : newRequest.service_cost, destination_acknowledged: destinationAcknowledged },
+        p_payload: { ...newRequest, required_at: requiredAt, delivery_zone: requiresDeliveryLeadTime ? newRequest.delivery_zone : null, contract_id: newRequest.contract_id || null, service_cost: isCustomerPickup ? 0 : newRequest.service_cost, destination_acknowledged: destinationAcknowledged },
         p_unloading: unloadingAnswer === 'SI' ? unloading.map(x => ({ concept: x.concept, estimated_pen: Number(x.estimated_pen) || 0, description: x.description || null })) : [],
         p_components: selected.map(c => ({
           contract_id: c.contract_id,
@@ -607,6 +653,8 @@ export default function SolicitudesPage() {
         delivery_province: '',
         delivery_district: '',
         required_date: '',
+        required_time: '',
+        delivery_zone: 'LIMA' as DeliveryZone,
         time_window: '',
         contract_id: '',
         cargo_description: '',
@@ -668,12 +716,14 @@ export default function SolicitudesPage() {
 
   const handleRescheduleRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedRequestId || !newRescheduleDate) return;
+    if (!selectedRequestId || !newRescheduleDate || !rescheduleRequiredAt) return;
+    if (rescheduleApplies && !leadTimeLoaded) { toast.error('No se pudieron consultar los plazos.'); return }
+    if (rescheduleApplies && rescheduleEvaluation.enough === false) { toast.error(`Selecciona desde ${firstAllowed(rescheduleEvaluation.minimumAt)}; la reprogramación conserva el registro original.`); return }
     
     try {
       setIsSubmitting(true);
-      const { data, error } = await supabase.rpc('reprogramar_solicitud', {
-        p_request_id: selectedRequestId, p_fecha: newRescheduleDate, p_causa: rescheduleCause, p_detalle: rescheduleDetail || null
+      const { data, error } = await supabase.rpc('reprogramar_solicitud_at', {
+        p_request_id: selectedRequestId, p_required_at: rescheduleRequiredAt, p_delivery_zone: rescheduleApplies ? rescheduleZone : null, p_causa: rescheduleCause, p_detalle: rescheduleDetail || null
       })
         
       if (error) throw error;
@@ -700,6 +750,7 @@ export default function SolicitudesPage() {
 
   return (
     <div className="flex min-h-0 w-full flex-col gap-4 mx-auto lg:h-full">
+      <TransportWorkflow current="solicitud" />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Solicitud de Transporte</h1>
@@ -709,6 +760,8 @@ export default function SolicitudesPage() {
           <button 
             onClick={() => {
               if (contracts.length === 0) fetchContracts()
+              setRegistrationPreview(new Date().toISOString())
+              void fetchLeadTimeSettings()
               setEditingRequestId(null)
               setUnloading([]); setUnloadingAnswer(''); setUnloadingHistory([])
               setQuote(null)
@@ -731,6 +784,8 @@ export default function SolicitudesPage() {
                 delivery_province: '',
                 delivery_district: '',
                 required_date: '',
+                required_time: '',
+                delivery_zone: 'LIMA' as DeliveryZone,
                 time_window: '',
                 contract_id: '',
                 cargo_description: '',
@@ -793,12 +848,12 @@ export default function SolicitudesPage() {
                     { id: 'reject', label: 'Rechazar solicitud', icon: <X className="h-4 w-4" />, tone: 'danger' as const, onSelect: () => { void updateStatus(req.id, 'RECHAZADA') } },
                   ] : []),
                   ...(editable && canWrite('solicitudes') && req.status !== 'ASIGNADA' ? [{ id: 'edit', label: 'Editar solicitud', icon: <Edit2 className="h-4 w-4" />, onSelect: () => { void openEditModal(req) } }] : []),
-                  ...(editable && canReschedule ? [{ id: 'reschedule', label: 'Reprogramar', icon: <CalendarClock className="h-4 w-4" />, onSelect: () => { setSelectedRequestId(req.id); setNewRescheduleDate(req.required_date.split('T')[0] || ''); setIsRescheduleModalOpen(true) } }] : []),
+                  ...(editable && canReschedule ? [{ id: 'reschedule', label: 'Reprogramar', icon: <CalendarClock className="h-4 w-4" />, onSelect: () => { setSelectedRequestId(req.id); setNewRescheduleDate(req.required_at ? limaInputParts(req.required_at).date : req.required_date.split('T')[0] || ''); setNewRescheduleTime(req.required_at ? limaInputParts(req.required_at).time : ''); setRescheduleZone(req.delivery_zone || 'LIMA'); void fetchLeadTimeSettings(); setIsRescheduleModalOpen(true) } }] : []),
                   ...(editable ? [{ id: 'cancel', label: 'Cancelar servicio', icon: <Ban className="h-4 w-4" />, tone: 'danger' as const, onSelect: () => { void handleCancelRequest(req.id) } }] : []),
                 ]
                 return <tr key={req.id} className="grid grid-cols-2 hover:bg-slate-50/70 lg:table-row">
-                  <td className={cell}>{label('Fecha solicitud')}<p className="font-medium text-slate-700">{requestDate(req.created_at)}</p></td>
-                  <td className={cell}>{label('Fecha atención')}<p className="font-medium text-slate-700">{serviceDate(req.required_date)}</p>{req.status === 'REPROGRAMADA' && <p className="mt-0.5 text-xs text-amber-700">Reprogramada</p>}</td>
+                  <td className={cell}>{label('Fecha solicitud')}<p className="font-medium text-slate-700">{requestDate(req.created_at, true)}</p></td>
+                  <td className={cell}>{label('Fecha atención')}<p className="font-medium text-slate-700">{req.required_at ? requestDate(req.required_at, true) : serviceDate(req.required_date)}</p>{req.request_type === 'DESPACHO' && req.attention_mode !== 'RECOJO_CLIENTE' && <p className={`mt-1 text-[11px] ${requestLeadTime(req).enough === false ? 'text-red-700' : 'text-slate-500'}`}>{!req.required_at ? 'Sin hora registrada' : !leadTimeLoaded ? 'Plazo no disponible' : formatLeadTimeStatus(requestLeadTime(req).status)}</p>}{req.status === 'REPROGRAMADA' && <p className="mt-0.5 text-xs text-amber-700">Reprogramada</p>}</td>
                   <td className={cell}>{label('Tipo de servicio')}<span title={serviceLabel(req)} className="text-slate-700">{compactService(req)}</span></td>
                   <td className={cell}>{label('OT')}<p className="break-words font-semibold text-[#002855]">{req.contracts?.code || (req.contract_id ? 'OT vinculada' : 'Sin OT')}</p></td>
                   <td className={`${cell} col-span-2`}>{label('Punto de atención')}<div title={addresses.map(place => `${place.label}: ${place.address}`).join(' → ')} className="text-slate-700">
@@ -1109,7 +1164,7 @@ export default function SolicitudesPage() {
               </div>
             </div>
             <div className="col-span-2 md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Fecha Requerida</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de atención solicitada</label>
               <input 
                 type="date" 
                 required
@@ -1118,6 +1173,18 @@ export default function SolicitudesPage() {
                 onChange={(e) => setNewRequest({...newRequest, required_date: e.target.value})}
               />
             </div>
+            <div className="col-span-2 md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1" htmlFor="request-required-time">Hora de atención · Lima</label>
+              <input id="request-required-time" type="time" required value={newRequest.required_time} onChange={event => setNewRequest({ ...newRequest, required_time: event.target.value })} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900" />
+            </div>
+            {requiresDeliveryLeadTime && <div className="col-span-2 md:col-span-4 space-y-3">
+              <label className="block text-sm font-medium text-slate-700">Zona de entrega
+                <select value={newRequest.delivery_zone} onChange={event => setNewRequest({ ...newRequest, delivery_zone: event.target.value as DeliveryZone })} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900"><option value="LIMA">Lima y Callao</option><option value="PROVINCIA">Provincia</option><option value="EXTERIOR">Exterior</option></select>
+              </label>
+              <div role="status" className={`rounded-lg p-3 text-sm ${requiredAt && leadTimeEvaluation.enough === false ? 'bg-red-50 text-red-800' : 'bg-blue-50 text-blue-900'}`}>
+                {!leadTimeLoaded ? <span>{leadTimeError || 'Consultando plazos…'} <button type="button" onClick={() => void fetchLeadTimeSettings()} className="underline">Reintentar</button></span> : leadTimeEvaluation.minimumAt ? <><strong>{leadTimeEvaluation.hours} horas mínimas de anticipación.</strong> Primera atención permitida: {firstAllowed(leadTimeEvaluation.minimumAt)}.{requiredAt && leadTimeEvaluation.enough === false && <p className="mt-1">La fecha y hora seleccionadas son anteriores al mínimo. Corrígelas para guardar.</p>}<p className="mt-1 text-xs">{editingRequest ? `Se conserva el registro original: ${requestDate(editingRequest.created_at, true)}.` : 'El plazo definitivo comienza al guardar. El primer horario sugerido se redondea al siguiente minuto.'}</p></> : 'El control está desactivado para esta zona.'}
+              </div>
+            </div>}
             <div className="col-span-2 md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Ventana Horaria (Opcional)</label>
               <input 
@@ -1245,7 +1312,7 @@ export default function SolicitudesPage() {
             </button>
             <button 
               type="submit" 
-              disabled={isSubmitting || componentsLoading || (otRequired && !newRequest.contract_id) || (Boolean(newRequest.contract_id) && selectedOptions.length === 0)}
+              disabled={isSubmitting || (requiresDeliveryLeadTime && !leadTimeLoaded) || !requiredAt || (requiresDeliveryLeadTime && leadTimeEvaluation.enough === false) || componentsLoading || (otRequired && !newRequest.contract_id) || (Boolean(newRequest.contract_id) && selectedOptions.length === 0)}
               className="px-4 py-2 bg-[#002855] text-white font-medium rounded-lg hover:bg-[#001d3d] transition-colors disabled:opacity-50 flex items-center gap-2"
             >
               {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -1266,10 +1333,11 @@ export default function SolicitudesPage() {
             <div><span className="block text-xs text-slate-500">OT madre</span><strong>{detailExecution?.ot_code || selectedRequestDetails.contracts?.code || (selectedRequestDetails.contract_id ? 'OT vinculada sin código disponible' : 'Sin OT')}</strong></div>
             <div><span className="block text-xs text-slate-500">Estado</span>{getStatusBadge(selectedRequestDetails.status)}</div>
             <div><span className="block text-xs text-slate-500">Código / Emisión</span><strong>{selectedRequestDetails.request_number}</strong><p className="mt-1">{requestDate(selectedRequestDetails.created_at, true)}</p></div><div><span className="block text-xs text-slate-500">Tipo de servicio</span>{serviceLabel(selectedRequestDetails)}</div><div><span className="block text-xs text-slate-500">Cliente</span>{selectedRequestDetails.contracts?.clients?.business_name || 'Sin cliente registrado'}</div><div><span className="block text-xs text-slate-500">Área / Departamento</span>{selectedRequestDetails.department}</div><div><span className="block text-xs text-slate-500">Solicitante</span>{selectedRequestDetails.requester_name}</div>
-            <div><span className="block text-xs text-slate-500">Fecha requerida</span>{serviceDate(selectedRequestDetails.required_date)}{selectedRequestDetails.time_window && <p className="mt-1 flex items-center gap-1 text-xs"><Clock className="h-3 w-3" />{selectedRequestDetails.time_window}</p>}</div>
+            <div><span className="block text-xs text-slate-500">Fecha requerida</span>{selectedRequestDetails.required_at ? requestDate(selectedRequestDetails.required_at, true) : serviceDate(selectedRequestDetails.required_date)}{selectedRequestDetails.time_window && <p className="mt-1 flex items-center gap-1 text-xs"><Clock className="h-3 w-3" />{selectedRequestDetails.time_window}</p>}</div>
             <div><span className="block text-xs text-slate-500">Origen</span>{selectedRequestDetails.pickup_address || 'Sin origen'}</div>
             <div><span className="block text-xs text-slate-500">Destino</span>{selectedRequestDetails.delivery_address || 'Sin destino'}</div>
           </div>
+          {selectedRequestDetails.request_type === 'DESPACHO' && selectedRequestDetails.attention_mode !== 'RECOJO_CLIENTE' && <div className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-slate-900">Anticipación de entrega</h3><p className="mt-2">{!selectedRequestDetails.required_at ? 'Sin evaluación: registro histórico sin fecha y hora precisas.' : !leadTimeLoaded ? 'Configuración no disponible.' : formatLeadTimeStatus(requestLeadTime(selectedRequestDetails).status)}</p>{leadTimeLoaded && selectedRequestDetails.required_at && requestLeadTime(selectedRequestDetails).minimumAt && <p className="mt-1 text-xs text-slate-500">Zona: {selectedRequestDetails.delivery_zone || 'Sin zona'} · Plazo: {requestLeadTime(selectedRequestDetails).hours} horas · Primera atención permitida: {firstAllowed(requestLeadTime(selectedRequestDetails).minimumAt)}</p>}</div>}
           <div className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-slate-900">Glosa / Detalle de carga</h3><p className="mt-2 whitespace-pre-wrap break-words">{selectedRequestDetails.cargo_description || 'Sin glosa registrada'}</p>{selectedRequestDetails.purchase_order && <p className="mt-2 text-xs">Orden de compra: {selectedRequestDetails.purchase_order}</p>}{selectedRequestDetails.budget_observation && <p className="mt-3 rounded-lg bg-rose-50 p-3 text-xs text-rose-800">Observación: {selectedRequestDetails.budget_observation}</p>}</div>
           <div>
             <h3 className="font-semibold text-slate-900 mb-2">Componentes incluidos</h3>
@@ -1317,12 +1385,14 @@ export default function SolicitudesPage() {
             <input 
               type="date" 
               required
-              min={new Date().toISOString().split('T')[0]}
+              min={limaInputParts(new Date().toISOString()).date}
               className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
               value={newRescheduleDate}
               onChange={(e) => setNewRescheduleDate(e.target.value)}
             />
           </div>
+          <div><label htmlFor="reschedule-required-time" className="mb-1 block text-sm font-medium text-slate-700">Nueva hora · Lima</label><input id="reschedule-required-time" type="time" required value={newRescheduleTime} onChange={event => setNewRescheduleTime(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900" /></div>
+          {rescheduleApplies && <div className="space-y-2"><label className="block text-sm font-medium text-slate-700">Zona de entrega<select value={rescheduleZone} onChange={event => setRescheduleZone(event.target.value as DeliveryZone)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"><option value="LIMA">Lima y Callao</option><option value="PROVINCIA">Provincia</option><option value="EXTERIOR">Exterior</option></select></label><p role="status" className={`rounded-lg p-3 text-xs ${rescheduleRequiredAt && rescheduleEvaluation.enough === false ? 'bg-red-50 text-red-800' : 'bg-blue-50 text-blue-900'}`}>{!leadTimeLoaded ? leadTimeError || 'Consultando plazos…' : rescheduleEvaluation.minimumAt ? `Primera atención permitida: ${firstAllowed(rescheduleEvaluation.minimumAt)}. Se conserva el registro original de la solicitud.` : 'Control de anticipación desactivado.'}</p></div>}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Causa de la reprogramación</label>
             <select required value={rescheduleCause} onChange={(e) => setRescheduleCause(e.target.value)}
@@ -1353,7 +1423,7 @@ export default function SolicitudesPage() {
             </button>
             <button 
               type="submit" 
-              disabled={isSubmitting}
+              disabled={isSubmitting || (Boolean(rescheduleApplies) && !leadTimeLoaded) || !rescheduleRequiredAt || (Boolean(rescheduleApplies) && rescheduleEvaluation.enough === false)}
               className="px-4 py-2 bg-orange-600 text-white font-medium rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 flex items-center gap-2"
             >
               {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarClock className="w-4 h-4" />}

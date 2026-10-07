@@ -1,3 +1,10 @@
+BEGIN;
+-- This legacy scenario isolates anticipation; the terminal exception rolls back this setting.
+DO $legacy_policy$ BEGIN
+ IF to_regclass('public.transport_lead_time_settings') IS NOT NULL THEN
+  EXECUTE 'UPDATE public.transport_lead_time_settings SET settings=jsonb_set(settings,''{enabled}'',''false''::jsonb)';
+ END IF;
+END $legacy_policy$;
 -- CAJA C41 — Despacho tercerizado (unidad de un transportista que no usa el app).
 --   T1 sin permiso no se programa; T2 Despacho programa con un tercero: sin conductor propio, placa escrita, flete
 --   reservado en la partida a nombre del proveedor y solicitudes asignadas; T3 la misma placa no toma dos viajes
