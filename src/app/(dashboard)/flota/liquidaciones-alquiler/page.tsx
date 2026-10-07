@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -158,7 +159,7 @@ export default function LiquidacionesAlquilerPage() {
         {loading ? <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : settlements.length === 0 ? (
           <p className="p-8 text-center text-sm text-slate-500">Sin liquidaciones registradas.</p>
         ) : (
-          <table className="w-full text-sm">
+          <DataTable className="w-full text-sm">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
               <th className="text-left p-3">Periodo</th><th className="text-left p-3">Contrato / unidad</th><th className="text-right p-3">Km</th><th className="text-right p-3">Horas</th>
               <th className="text-right p-3">Subtotal</th><th className="text-right p-3">Total</th><th className="text-left p-3">Estado</th><th className="text-left p-3">Envío</th><th className="p-3"></th>
@@ -182,7 +183,7 @@ export default function LiquidacionesAlquilerPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
     </div>
@@ -210,9 +211,9 @@ function Breakdown({ s }: { s: Row }) {
   ]
   return (
     <div className="space-y-3">
-      <table className="w-full max-w-xl text-sm border rounded-lg">
+      <DataTable className="w-full max-w-xl text-sm border rounded-lg">
         <tbody className="divide-y">{rows.map(([k, v]) => <tr key={k}><td className="p-2 text-slate-600">{k}</td><td className="p-2 text-right">{v}</td></tr>)}</tbody>
-      </table>
+      </DataTable>
       {s.km_fuente && <Valorizacion s={s} />}
     </div>
   )
@@ -249,7 +250,7 @@ function Valorizacion({ s }: { s: Row }) {
         <details className="rounded-lg border">
           <summary className="cursor-pointer p-2 font-medium text-slate-700">Detalle de viajes ({viajes.length})</summary>
           <div className="max-h-80 overflow-auto print:max-h-none">
-            <table className="w-full text-xs">
+            <DataTable className="w-full text-xs">
               <thead className="sticky top-0 bg-slate-50 text-slate-500"><tr>
                 <th className="p-2 text-left">Fecha</th><th className="p-2 text-left">Guía / viaje</th><th className="p-2 text-left">Cliente / destino</th><th className="p-2 text-right">Km</th><th className="p-2 text-left">Fuente</th>
               </tr></thead>
@@ -260,7 +261,7 @@ function Valorizacion({ s }: { s: Row }) {
                   <td className="p-2 text-right">{v.km != null ? km(v.km) : '—'}</td><td className="p-2">{v.km_fuente}</td>
                 </tr>))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </details>
       )}

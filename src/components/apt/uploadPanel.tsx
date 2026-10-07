@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -104,7 +105,7 @@ function PreviewTable({ sheets }: { sheets: AptParsedSheet[] }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm">
+        <DataTable className="w-full min-w-[720px] text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
             <tr className="border-b border-slate-200">
               <th className="px-3 py-2 text-left font-bold">Tipo de movimiento</th>
@@ -142,7 +143,7 @@ function PreviewTable({ sheets }: { sheets: AptParsedSheet[] }) {
               )
             })}
           </tbody>
-        </table>
+        </DataTable>
       </div>
       {notes.length > 0 && (
         <ul className="space-y-1 border-t border-slate-100 px-3 py-2 text-xs text-slate-600">

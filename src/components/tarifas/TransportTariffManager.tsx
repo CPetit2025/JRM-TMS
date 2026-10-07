@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Calculator, Download, History, Loader2, Pencil, Plus, Power, Search, Upload } from 'lucide-react'
@@ -238,7 +239,7 @@ export function TransportTariffManager() {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
+        <DataTable className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-3 py-2.5">Concepto</th><th className="px-3 py-2.5">Destino</th><th className="px-3 py-2.5">Unidad</th>
@@ -271,7 +272,7 @@ export function TransportTariffManager() {
                 )
               })}
           </tbody>
-        </table>
+        </DataTable>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">

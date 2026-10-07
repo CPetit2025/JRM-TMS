@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { Suspense, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -208,7 +209,7 @@ function DimSection({ dim, setDim, rows, clickable, onSelect, exportar }: {
             <ExportButton onClick={exportar} disabled={!all.length} />
           </>}>
           <div className="max-h-[560px] overflow-auto">
-            <table className="w-full min-w-[640px] text-xs">
+            <DataTable className="w-full min-w-[640px] text-xs">
               <thead>
                 <tr>
                   <SortTh label={dimLabel} k="clave" sort={sort} desc={desc} onSort={onSort} align="left" />
@@ -245,7 +246,7 @@ function DimSection({ dim, setDim, rows, clickable, onSelect, exportar }: {
                 ))}
                 {!shown.length && <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">Sin coincidencias</td></tr>}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </ChartCard>
       </div>

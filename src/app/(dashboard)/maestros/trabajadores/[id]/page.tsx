@@ -1,4 +1,5 @@
 "use client"
+import { DataTable } from '@/components/ui/data-table'
 
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useEffect, useState } from 'react'
@@ -232,7 +233,7 @@ export default function DriverProfile360() {
             
             {dispatches.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
+                <DataTable className="w-full text-left text-sm">
                   <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-semibold">
                     <tr>
                       <th className="px-5 py-3">Fecha</th>
@@ -261,7 +262,7 @@ export default function DriverProfile360() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             ) : (
               <div className="p-8 text-center text-slate-500 flex flex-col items-center">

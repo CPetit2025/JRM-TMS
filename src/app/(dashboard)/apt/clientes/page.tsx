@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { Fragment, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -215,7 +216,7 @@ export default function AptClientesPage() {
             subtitle="Despliegue cada fila para ver su detalle. Último despacho = última guía de SALIDA de sus lotes; saldo final = ingresado − despachado (FIFO)."
             bodyClassName="p-0">
             <div className="max-h-[70vh] overflow-auto">
-              <table className="w-full min-w-[1250px] text-xs">
+              <DataTable className="w-full min-w-[1250px] text-xs">
                 <thead>
                   <tr>
                     <SortTh label={vista === 'cliente' ? 'Cliente' : vista === 'contrato' ? 'OT' : 'Lote / NumRel'} k="clave" sort={sort} desc={desc} onSort={onSort} align="left" />
@@ -249,7 +250,7 @@ export default function AptClientesPage() {
                     <td />
                   </tr>
                 </tfoot>
-              </table>
+              </DataTable>
             </div>
           </ChartCard>
         </div>

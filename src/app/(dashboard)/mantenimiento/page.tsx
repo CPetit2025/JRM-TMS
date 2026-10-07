@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -128,7 +129,7 @@ export default function CentroControlPage() {
           )}
 
           <div className="bg-white border rounded-xl overflow-x-auto">
-            <table className="w-full text-sm">
+            <DataTable className="w-full text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
                 <th className="text-left p-3">Unidad</th><th className="text-right p-3">Disponibilidad</th><th className="text-right p-3">Fuera de servicio</th><th className="text-right p-3">Fallas</th>
                 <th className="text-right p-3">MTBF</th><th className="text-right p-3">Km</th><th className="text-right p-3">Costo</th><th className="text-right p-3">Costo/km</th>
@@ -144,7 +145,7 @@ export default function CentroControlPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
           <p className="text-xs text-slate-400">Disponibilidad = 1 − horas fuera de servicio por OT (intervalos fusionados) / (unidades × horas). MTBF = horas disponibles / fallas. MTTR = promedio de horas fuera de servicio de OT correctivas cerradas. Costo/km = libro de costos / km reales.</p>
         </>

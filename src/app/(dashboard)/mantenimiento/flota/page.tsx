@@ -1,11 +1,13 @@
 "use client"
+import { DataTable } from '@/components/ui/data-table'
+import { TableActions } from '@/components/ui/table-actions'
+
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2, ArrowRight, Filter, Upload, MoreVertical, Ban, Download, KeyRound, Eye, EyeOff, ShieldCheck, Wrench, Lock } from 'lucide-react'
+import { Truck, Users, Plus, Edit2, Trash2, Search, AlertCircle, Loader2, Filter, Upload, Ban, Download, KeyRound, Eye, EyeOff, ShieldCheck, Wrench, Lock } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import * as XLSX from 'xlsx'
 import { usePermissions } from '@/hooks/usePermissions'
 import { emptyFleetFilters, filterFleetVehicles, filterFleetDrivers, type FleetFilters } from '@/lib/fleet-filters'
@@ -65,7 +67,6 @@ export default function FlotaPage() {
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isImporting, setIsImporting] = useState(false)
-  const [activeDropdown, setActiveDropdown] = useState<string | null>(null)
   const [accessDriver, setAccessDriver] = useState<any | null>(null)
   const [accessPassword, setAccessPassword] = useState('')
   const [showAccessPassword, setShowAccessPassword] = useState(false)
@@ -653,7 +654,7 @@ export default function FlotaPage() {
           {activeTab === 'vehicles' && (
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
               <div className="overflow-auto max-h-[calc(100vh-220px)]">
-          <table className="w-full text-left border-collapse relative">
+          <DataTable className="w-full text-left border-collapse relative">
             <thead className="sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
               <tr className="bg-slate-50  border-slate-200">
                       <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Placa</th>
@@ -703,76 +704,24 @@ export default function FlotaPage() {
                               <div className="mt-1 text-[11px] text-red-600" title={v.block_reason || ''}>Bloqueo administrativo</div>
                             )}
                           </td>
-                          <td className="p-4 text-right relative">
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setActiveDropdown(activeDropdown === v.id ? null : v.id)
-                              }}
-                              className="p-2 text-slate-400 hover:text-[#002855] transition-colors rounded-lg hover:bg-slate-100"
-                            >
-                              <MoreVertical className="w-5 h-5" />
-                            </button>
-                            
-                            {activeDropdown === v.id && (
-                              <div className="absolute right-8 top-10 w-48 bg-white rounded-lg shadow-lg border border-slate-200 z-50 py-1" onClick={e => e.stopPropagation()}>
-                                <Link 
-                                  href={`/mantenimiento/flota/${v.plate}`}
-                                  onClick={() => setActiveDropdown(null)}
-                                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                                >
-                                  <ArrowRight className="w-4 h-4" /> Ver Ficha 360
-                                </Link>
-                                <button 
-                                  onClick={() => { setActiveDropdown(null); handleEditVehicle(v) }}
-                                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                                >
-                                  <Edit2 className="w-4 h-4" /> Editar
-                                </button>
-                                {v.status !== 'DISPONIBLE' && (
-                                  <button
-                                    onClick={() => { setActiveDropdown(null); handleTransitionVehicle(v.plate, 'DISPONIBLE', `¿Liberar ${v.plate}? Se validará su elegibilidad.`) }}
-                                    className="w-full text-left px-4 py-2 text-sm text-emerald-700 hover:bg-emerald-50 flex items-center gap-2"
-                                  >
-                                    <ShieldCheck className="w-4 h-4" /> Liberar (DISPONIBLE)
-                                  </button>
-                                )}
-                                {!['MANTENIMIENTO', 'FUERA_DE_SERVICIO'].includes(v.status) && (
-                                  <button
-                                    onClick={() => { setActiveDropdown(null); handleTransitionVehicle(v.plate, 'MANTENIMIENTO', `¿Enviar ${v.plate} a MANTENIMIENTO?`) }}
-                                    className="w-full text-left px-4 py-2 text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2"
-                                  >
-                                    <Wrench className="w-4 h-4" /> Enviar a mantenimiento
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => { setActiveDropdown(null); handleAdministrativeBlock(v.plate, !v.is_blocked) }}
-                                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                                >
-                                  <Lock className="w-4 h-4" /> {v.is_blocked ? 'Quitar bloqueo admin.' : 'Bloqueo administrativo'}
-                                </button>
-                                {v.status !== 'FUERA_DE_SERVICIO' && (
-                                  <button
-                                    onClick={() => { setActiveDropdown(null); handleTransitionVehicle(v.plate, 'FUERA_DE_SERVICIO', `¿Dar de baja ${v.plate} (FUERA DE SERVICIO)?`) }}
-                                    className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"
-                                  >
-                                    <Ban className="w-4 h-4" /> Fuera de servicio
-                                  </button>
-                                )}
-                                <button 
-                                  onClick={() => { setActiveDropdown(null); handleDeleteVehicle(v.id) }}
-                                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                                >
-                                  <Trash2 className="w-4 h-4" /> Eliminar
-                                </button>
-                              </div>
-                            )}
+                          <td className="p-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button type="button" onClick={e => { e.stopPropagation(); router.push(`/mantenimiento/flota/${v.plate}`) }} className="min-h-11 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-[#002855] hover:bg-slate-50">Ver ficha</button>
+                              <TableActions label={`Más acciones de ${v.plate}`} actions={[
+                                { id: 'edit', label: 'Editar vehículo', icon: <Edit2 className="h-4 w-4" />, onSelect: () => handleEditVehicle(v) },
+                                ...(v.status !== 'DISPONIBLE' ? [{ id: 'release', label: 'Liberar unidad', icon: <ShieldCheck className="h-4 w-4" />, onSelect: () => handleTransitionVehicle(v.plate, 'DISPONIBLE', `¿Liberar ${v.plate}? Se validará su elegibilidad.`) }] : []),
+                                ...(!['MANTENIMIENTO', 'FUERA_DE_SERVICIO'].includes(v.status) ? [{ id: 'maintenance', label: 'Enviar a mantenimiento', icon: <Wrench className="h-4 w-4" />, onSelect: () => handleTransitionVehicle(v.plate, 'MANTENIMIENTO', `¿Enviar ${v.plate} a MANTENIMIENTO?`) }] : []),
+                                { id: 'block', label: v.is_blocked ? 'Quitar bloqueo admin.' : 'Bloqueo administrativo', icon: <Lock className="h-4 w-4" />, tone: 'danger', onSelect: () => handleAdministrativeBlock(v.plate, !v.is_blocked) },
+                                ...(v.status !== 'FUERA_DE_SERVICIO' ? [{ id: 'retire', label: 'Fuera de servicio', icon: <Ban className="h-4 w-4" />, onSelect: () => handleTransitionVehicle(v.plate, 'FUERA_DE_SERVICIO', `¿Dar de baja ${v.plate} (FUERA DE SERVICIO)?`) }] : []),
+                                { id: 'delete', label: 'Eliminar vehículo', icon: <Trash2 className="h-4 w-4" />, tone: 'danger', onSelect: () => handleDeleteVehicle(v.id) },
+                              ]} />
+                            </div>
                           </td>
                         </tr>
                       ))
                     )}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             </div>
           )}
@@ -780,7 +729,7 @@ export default function FlotaPage() {
           {activeTab === 'drivers' && (
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
               <div className="overflow-auto max-h-[calc(100vh-220px)]">
-          <table className="w-full text-left border-collapse relative">
+          <DataTable className="w-full text-left border-collapse relative">
             <thead className="sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
               <tr className="bg-slate-50  border-slate-200">
                       <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Nombre Completo</th>
@@ -865,7 +814,7 @@ export default function FlotaPage() {
                       ))
                     )}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             </div>
           )}

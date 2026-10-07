@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useEffect, useMemo, useState } from 'react'
 import { Ban, Loader2, Plus, Receipt, Save, Trash2, Users, Wrench } from 'lucide-react'
@@ -172,7 +173,7 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
         </p>
         {lines === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" /> : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <DataTable className="w-full text-sm">
               <thead><tr className="text-left text-xs text-slate-500 border-b">
                 <th className="py-1 pr-2">Parada</th><th className="pr-2">Concepto</th><th className="pr-2 text-right">Estimado</th>
                 <th className="pr-2 text-right">Planificado</th><th className="pr-2 text-right">Real</th><th className="pr-2">Estado</th><th />
@@ -220,7 +221,7 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         )}
         {editable && lines && stops.length > 0 && (

@@ -1,4 +1,5 @@
 "use client"
+import { DataTable } from '@/components/ui/data-table'
 
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useState, useEffect, useMemo } from 'react'
@@ -354,7 +355,7 @@ export default function DashboardEjecutivo() {
           </div>
           
           <div className="overflow-x-auto flex-1">
-            <table className="w-full text-left border-collapse">
+            <DataTable className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-500">
                   <th className="pb-3 font-bold">Despacho</th>
@@ -395,7 +396,7 @@ export default function DashboardEjecutivo() {
                   ))
                 )}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </div>
       </div>

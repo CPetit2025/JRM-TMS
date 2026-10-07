@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -160,7 +161,7 @@ export function Equipo({ t, rol, setRol, onVer }: { t: Row; rol: string; setRol:
       <div className="text-sm text-slate-600">{miembros.length} integrante(s){r?.promedio != null ? ` · índice promedio ${fmt(r.promedio)}` : ''}</div>
       <div className="overflow-x-auto rounded-xl border bg-white">
         {miembros.length === 0 ? <p className="p-6 text-center text-sm text-slate-500">Nadie registrado en este rol. Se mide a quien tiene el rol o el permiso correspondiente en Usuarios (conductores: maestro de conductores; Soporte: permiso «mantenimiento-soporte»).</p> : (
-          <table className="w-full text-sm">
+          <DataTable className="w-full text-sm">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
               <th className="p-2 text-left">#</th><th className="p-2 text-left">Nombre</th><th className="p-2 text-right">Índice</th><th className="w-32 p-2"></th><th className="p-2 text-left">Por mejorar</th>{r?.informe && <th className="p-2 text-left">Informe</th>}<th className="p-2"></th>
             </tr></thead>
@@ -180,7 +181,7 @@ export function Equipo({ t, rol, setRol, onVer }: { t: Row; rol: string; setRol:
                 )
               })}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
     </div>

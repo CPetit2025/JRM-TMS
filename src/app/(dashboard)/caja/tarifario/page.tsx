@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -57,7 +58,7 @@ function Rates({ canEdit }: { canEdit: boolean }) {
       {canEdit && <button onClick={() => setEdit({ ...EMPTY_RATE })} className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm font-semibold flex items-center gap-2"><Plus className="w-4 h-4" />Nueva tarifa</button>}
       <div className="bg-white border rounded-xl overflow-auto">
         {loading ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin" /></div> : (
-          <table className="w-full text-sm">
+          <DataTable className="w-full text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500"><tr>
               <th className="p-3 text-left">Ruta</th><th className="p-3 text-right">Km (ida)</th><th className="p-3 text-left">Duración</th><th className="p-3 text-right">Peajes</th>
               <th className="p-3 text-right">Alimentación/día</th><th className="p-3 text-right">Hospedaje/noche</th><th className="p-3 text-right">Otros</th><th className="p-3 text-left">Estado</th><th className="p-3" />
@@ -78,7 +79,7 @@ function Rates({ canEdit }: { canEdit: boolean }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
       {edit && <RateForm rate={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); void load() }} />}
@@ -167,7 +168,7 @@ function Categories({ canEdit }: { canEdit: boolean }) {
   return (
     <div className="space-y-3">
       <div className="bg-white border rounded-xl overflow-auto">
-        <table className="w-full text-sm">
+        <DataTable className="w-full text-sm">
           <thead className="bg-slate-50 text-xs text-slate-500"><tr>
             <th className="p-3 text-left">Categoría</th><th className="p-3 text-left">Costo en TCO</th><th className="p-3 text-left">Presupuesto</th>
             <th className="p-3 text-center">Comprobante obligatorio</th><th className="p-3 text-right">Tope por gasto (S/)</th><th className="p-3 text-left">Cuenta contable</th><th className="p-3 text-center">Activa</th>
@@ -185,7 +186,7 @@ function Categories({ canEdit }: { canEdit: boolean }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </DataTable>
       </div>
       {canEdit && Object.keys(dirty).length > 0 && (
         <button disabled={busy} onClick={save} className="px-4 py-2 bg-[#002855] text-white rounded-lg font-semibold flex items-center gap-2 disabled:opacity-50"><Save className="w-4 h-4" />Guardar cambios ({Object.keys(dirty).length})</button>
@@ -248,7 +249,7 @@ function Reasons({ canEdit }: { canEdit: boolean }) {
       <p className="text-sm text-slate-500">Cada motivo define si exige ruta, a qué se carga el costo, quién aprueba y en cuánto tiempo se rinde. Los montos mayores al tope pasan a aprobación del Jefe de Distribución.</p>
       <div className="bg-white border rounded-xl overflow-auto">
         {loading ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin" /></div> : (
-          <table className="w-full text-sm">
+          <DataTable className="w-full text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500"><tr>
               <th className="p-3 text-left">Motivo</th><th className="p-3 text-left">Requiere ruta</th><th className="p-3 text-left">Cargo</th><th className="p-3 text-left">Aprueba</th>
               <th className="p-3 text-right">Tope</th><th className="p-3 text-left">Rendir en</th><th className="p-3 text-left">Evidencia</th><th className="p-3 text-left">Emergencia</th><th className="p-3 text-left">Estado</th><th className="p-3" />
@@ -269,7 +270,7 @@ function Reasons({ canEdit }: { canEdit: boolean }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
       {edit && <ReasonForm reason={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); void load() }} />}

@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
@@ -396,7 +397,7 @@ export default function AptDetallePage() {
             </div>
           )}
           <div className={`max-h-[70vh] overflow-auto transition-opacity ${loading ? 'opacity-60' : ''}`}>
-            <table className="w-full border-separate border-spacing-0 text-xs">
+            <DataTable className="w-full border-separate border-spacing-0 text-xs">
               <thead>
                 <tr>
                   {shownCols.map((c, i) => (
@@ -418,7 +419,7 @@ export default function AptDetallePage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
           <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-2.5 text-xs text-slate-500">
             <div className="flex items-center gap-2">

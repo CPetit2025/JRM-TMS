@@ -1,4 +1,6 @@
 "use client"
+import { DataTable } from '@/components/ui/data-table'
+
 import { operatingBudget } from '@/lib/transport-budget'
 import { useState, useEffect, useRef } from 'react'
 import { Plus, Search, Layers, FileWarning, Briefcase, FilePlus2, CheckCircle2, Upload, Download, Edit2, Filter, MapPin, UserCog, ChevronRight } from 'lucide-react'
@@ -593,7 +595,7 @@ export default function ContratosPage() {
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div role="region" aria-label="Tabla de contratos" tabIndex={0} className="h-full overflow-auto">
-          <table className="relative w-full min-w-[720px] table-fixed text-left text-sm">
+          <DataTable className="relative w-full min-w-[720px] table-fixed text-left text-sm">
             <colgroup>
               <col className="w-[19%]" />
               <col />
@@ -719,7 +721,7 @@ export default function ContratosPage() {
                 })
               )}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </div>
 

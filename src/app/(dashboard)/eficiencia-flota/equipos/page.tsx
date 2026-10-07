@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { Suspense, useState, type FormEvent } from 'react'
 import { CartesianGrid, Legend, ReferenceLine, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis, LabelList } from 'recharts'
@@ -94,7 +95,7 @@ function Equipos() {
 
       <Panel title="Detalle por equipo" hint={`Propiedad anual = pérdida de valor del año + costo de capital (tasa ${pct(d.tasas?.[1])}) sobre el valor de reventa. "Propio conviene desde": horas por año a partir de las cuales tener el equipo cuesta menos que alquilarlo a S/ ${fmt(d.alquiler_hora ?? 60)} por hora. El operador no se incluye: se paga igual en ambos casos.`}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1400px] text-sm [&_td.font-mono]:whitespace-nowrap">
+          <DataTable className="w-full min-w-[1400px] text-sm [&_td.font-mono]:whitespace-nowrap">
             <thead className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-500"><tr className="border-b border-slate-200">
               <th className="px-2 py-2">Equipo</th><th className="px-2 py-2 text-right">Edad</th><th className="px-2 py-2 text-right">Horas/año</th><th className="px-2 py-2 text-right">Lecturas</th>
               <th className="px-2 py-2 text-right">Mant. anual</th><th className="px-2 py-2 text-right">Propiedad anual</th><th className="px-2 py-2 text-right">S/ por hora propio</th>
@@ -116,7 +117,7 @@ function Equipos() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </Panel>
     </div>

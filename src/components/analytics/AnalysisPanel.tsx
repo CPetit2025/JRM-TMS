@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -97,7 +98,7 @@ export function AnalysisPanel({ section, title, data, previous, filters, blocked
         </section>
         <section id="analytics-detail" className="overflow-hidden rounded-xl border bg-white">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b p-4"><h2 className="text-sm font-semibold text-slate-800">Detalle verificable</h2><span className="text-xs text-slate-500">{sorted.length} registros · pulse las columnas para ordenar</span></div>
-          <div role="region" aria-label="Tabla de detalle analítico" tabIndex={0} className="max-w-full overflow-auto"><table className="w-full text-left text-xs"><thead className="bg-slate-50 text-slate-500"><tr>
+          <div role="region" aria-label="Tabla de detalle analítico" tabIndex={0} className="max-w-full overflow-auto"><DataTable className="w-full text-left text-xs"><thead className="bg-slate-50 text-slate-500"><tr>
             <th className="p-3">{sortHeader('code', 'Código')}</th><th className="p-3">{sortHeader('date', 'Fecha')}</th><th className="p-3">{sortHeader('status', 'Estado')}</th>
             {['transporte', 'costos'].includes(section) && <><th className="p-3">Unidad · conductor</th><th className="p-3">Contrato / ruta / sede</th></>}
             {valueKeys.map(k => <th key={k} className="p-3">{sortHeader(k, VALUE_LABELS[k] || k)}</th>)}<th className="p-3">Sustento</th>
@@ -106,7 +107,7 @@ export function AnalysisPanel({ section, title, data, previous, filters, blocked
             {['transporte', 'costos'].includes(section) && <><td className="p-3">{r.plate || '—'}<div className="text-slate-500">{r.driver || 'Sin conductor'}</div></td><td className="max-w-64 p-3">{r.contract || '—'}<div className="text-slate-500">{r.route || r.site}</div></td></>}
             {valueKeys.map(k => <td key={k} className="whitespace-nowrap p-3 text-right">{r.values[k] == null ? 'Sin dato' : r.values[k]?.toLocaleString('es-PE', { maximumFractionDigits: ['cost_km', 'cost_tkm', 'cost_hour'].includes(k) ? 4 : 2 })}</td>)}
             <td className="p-3"><button onClick={() => setDetail(r)} className="min-h-11 whitespace-nowrap font-semibold text-[#002855]">Ver detalle</button></td>
-          </tr>)}</tbody></table></div>
+          </tr>)}</tbody></DataTable></div>
           <div className="flex flex-wrap items-center justify-between gap-2 border-t p-3 text-xs"><button disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} className="min-h-11 rounded border px-3 py-1 disabled:opacity-30 sm:min-h-0">Anterior</button><span>Página {currentPage + 1} de {pages}</span><button disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)} className="min-h-11 rounded border px-3 py-1 disabled:opacity-30 sm:min-h-0">Siguiente</button></div>
         </section>
       </>}

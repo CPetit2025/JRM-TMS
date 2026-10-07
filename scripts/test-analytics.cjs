@@ -84,6 +84,11 @@ test('filtros KPI recalculan promedios, historia, alertas e informes de la misma
 
 const React = require('react')
 const renderer = require('react-test-renderer')
+// Node does not run Next's CSS Modules loader; render the real table component
+// while replacing only its stylesheet import.
+const dataTable = load('src/components/ui/data-table.tsx', {
+  './data-table.module.css': { __esModule: true, default: { table: 'jrm-data-table-test' } },
+})
 global.IS_REACT_ACT_ENVIRONMENT = true
 const deferred = () => { let resolve, reject; const promise = new Promise((r, j) => { resolve = r; reject = j }); return { promise, resolve, reject } }
 const dataset = code => ({ source: 'prueba', basis: 'Salida programada', metrics: [], rows: [row(code)] })
@@ -160,6 +165,7 @@ for (const kind of ['Desempeno', 'Soporte']) {
       '@/lib/analytics/export': {}, '@/lib/kpi/reportReview': {}, '@/lib/fleet/api': { fmt: String },
       '@/components/kpi/kpiUi': { INFORME: {}, Indice: () => null, fecha: String, mesTxt: String },
       '@/components/kpi/MiAvance': {}, '@/components/kpi/TableroKpi': {},
+      '@/components/ui/data-table': dataTable,
       './SoportePanel': { __esModule: true, default: () => null },
     }
     const Component = load(`src/components/analytics/${kind}Panel.tsx`, mocks)[`Informe${kind}`]

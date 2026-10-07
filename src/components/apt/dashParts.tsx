@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import type { ReactNode } from 'react'
 import Link from 'next/link'
@@ -112,7 +113,7 @@ export function LiberarTable({ rows, aging, alert, filters }: { rows: AptLoteTop
   const max = sorted[0]?.tn_dias || 0
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[720px] text-xs">
+      <DataTable className="w-full min-w-[720px] text-xs">
         <thead className="sticky top-0 bg-white">
           <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-400">
             <th className="px-2 py-2 text-left font-semibold">#</th>
@@ -152,7 +153,7 @@ export function LiberarTable({ rows, aging, alert, filters }: { rows: AptLoteTop
             </tr>
           ))}
         </tbody>
-      </table>
+      </DataTable>
     </div>
   )
 }

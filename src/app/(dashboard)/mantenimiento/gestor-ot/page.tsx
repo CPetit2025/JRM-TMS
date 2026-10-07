@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -193,7 +194,7 @@ export default function GestorOT() {
         ) : filtered.length === 0 ? (
           <div className="p-10 text-center text-slate-500 text-sm">No hay órdenes de trabajo con estos filtros.</div>
         ) : (
-          <table className="w-full text-sm">
+          <DataTable className="w-full text-sm">
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
               <tr>
                 <th className="text-left p-3">OT</th><th className="text-left p-3">Unidad</th><th className="text-left p-3">Tipo / prioridad</th>
@@ -214,7 +215,7 @@ export default function GestorOT() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
 
@@ -526,7 +527,7 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
             <Info label="Mano de obra" value={money(order.labor_cost)} /><Info label="Repuestos" value={money(order.parts_cost)} />
             <Info label="Servicios" value={money(order.services_cost)} /><Info label="Total" value={money(order.total_cost)} />
           </div>
-          <table className="w-full text-xs">
+          <DataTable className="w-full text-xs">
             <tbody className="divide-y">
               {costs.map(c => (
                 <tr key={c.id}>
@@ -539,7 +540,7 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
           {!locked && (
             <>
               <form onSubmit={addCost} className="flex flex-wrap gap-2">

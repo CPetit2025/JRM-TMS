@@ -1,4 +1,6 @@
 "use client"
+import { DataTable } from '@/components/ui/data-table'
+
 import { splitFreight } from '@/lib/transport-budget'
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useState, useEffect, useRef } from 'react'
@@ -791,7 +793,7 @@ export default function DespachoPage() {
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="overflow-auto max-h-[calc(100vh-220px)]">
-          <table className="w-full text-left border-collapse relative">
+          <DataTable className="w-full text-left border-collapse relative">
             <thead className="bg-slate-50 text-slate-500 text-xs text-left sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0] border-slate-100 uppercase tracking-wider">
                   <tr>
                     <th className="p-4 font-semibold whitespace-nowrap">Despacho</th>
@@ -940,7 +942,7 @@ export default function DespachoPage() {
                     ))
                   )}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           </div>
         </div>

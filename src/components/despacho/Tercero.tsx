@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Copy, Link2, Loader2, MessageCircle, PlayCircle, RefreshCw, Truck, XCircle } from 'lucide-react'
@@ -297,7 +298,7 @@ export function TerceroDesempeno() {
       ) : (
         <>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <DataTable className="w-full text-sm">
               <thead className="text-xs text-slate-500 uppercase bg-slate-50">
                 <tr>
                   <th className="p-2 text-left">Transportista</th><th className="p-2 text-right">Viajes</th><th className="p-2 text-right">Cerrados</th>
@@ -319,12 +320,12 @@ export function TerceroDesempeno() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
           <details>
             <summary className="text-xs text-blue-700 cursor-pointer">Ver viajes ({data.viajes.length})</summary>
             <div className="overflow-x-auto mt-2">
-              <table className="w-full text-xs">
+              <DataTable className="w-full text-xs">
                 <thead className="text-slate-500 bg-slate-50"><tr><th className="p-1.5 text-left">Despacho</th><th className="p-1.5 text-left">Transportista</th><th className="p-1.5 text-left">Placa / chofer</th><th className="p-1.5 text-left">Programado</th><th className="p-1.5 text-left">Salida real</th><th className="p-1.5 text-left">Entrega</th><th className="p-1.5 text-left">Estado</th><th className="p-1.5 text-right">Flete</th></tr></thead>
                 <tbody className="divide-y">
                   {data.viajes.map(v => (
@@ -337,7 +338,7 @@ export function TerceroDesempeno() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           </details>
         </>

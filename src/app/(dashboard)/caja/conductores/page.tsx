@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -74,7 +75,7 @@ export default function ConductoresCajaPage() {
 
       <div className="bg-white border rounded-xl overflow-auto">
         {loading ? <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div> : (
-          <table className="w-full text-sm">
+          <DataTable className="w-full text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500"><tr>
               <th className="p-3 text-left">Conductor</th><th className="p-3 text-right">Anticipos y reembolsos</th><th className="p-3 text-right">Gastos, devoluciones y descuentos</th>
               <th className="p-3 text-right">Saldo</th><th className="p-3 text-right">Gastos por aprobar</th><th className="p-3 text-left">Antigüedad</th><th className="p-3 text-left">Alertas</th><th className="p-3" />
@@ -96,7 +97,7 @@ export default function ConductoresCajaPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
 
@@ -125,7 +126,7 @@ function Statement({ account, onClose }: { account: Row; onClose: () => void }) 
   return (
     <Modal isOpen onClose={onClose} title={`Estado de cuenta · ${account.driver_name}`} maxWidth="max-w-3xl">
       {!rows ? <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div> : (
-        <table className="w-full text-sm">
+        <DataTable className="w-full text-sm">
           <thead className="bg-slate-50 text-xs text-slate-500"><tr>
             <th className="p-2 text-left">Fecha</th><th className="p-2 text-left">Concepto</th><th className="p-2 text-left">Viaje</th>
             <th className="p-2 text-right">Cargo</th><th className="p-2 text-right">Abono</th><th className="p-2 text-right">Saldo</th>
@@ -144,7 +145,7 @@ function Statement({ account, onClose }: { account: Row; onClose: () => void }) 
               )
             })}
           </tbody>
-        </table>
+        </DataTable>
       )}
     </Modal>
   )

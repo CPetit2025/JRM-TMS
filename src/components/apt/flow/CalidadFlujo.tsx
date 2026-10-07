@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback } from 'react'
 import Link from 'next/link'
@@ -112,7 +113,7 @@ export function CalidadFlujo() {
       <div className="grid gap-4 xl:grid-cols-2">
         <ChartCard title="Hojas cargadas del flujo" subtitle="Filas leídas, válidas y excluidas por hoja" bodyClassName="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-xs">
+            <DataTable className="w-full min-w-[560px] text-xs">
               <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-3 py-2 text-left font-bold">Hoja</th>
@@ -136,7 +137,7 @@ export function CalidadFlujo() {
                 ))}
                 {!hojas.length && <tr><td colSpan={6} className="p-4 text-center text-slate-500">Sin hojas cargadas.</td></tr>}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </ChartCard>
 
@@ -145,7 +146,7 @@ export function CalidadFlujo() {
           actions={<span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${cuadra ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{cuadra ? '✓ Cuadra' : 'No cuadra'}</span>}
           bodyClassName="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[620px] text-xs">
+            <DataTable className="w-full min-w-[620px] text-xs">
               <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-3 py-2 text-left font-bold">Almacén</th>
@@ -175,7 +176,7 @@ export function CalidadFlujo() {
                   )
                 })}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </ChartCard>
       </div>

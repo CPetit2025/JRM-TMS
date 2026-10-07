@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -214,7 +215,7 @@ export default function CalidadPage() {
 
       <ChartCard title="Conciliación fuente vs modelo" subtitle="Toneladas de las hojas cargadas frente a lo que reconstruye el modelo FIFO" bodyClassName="p-0">
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+          <DataTable className="w-full text-xs">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
                 <th className="px-3 py-2 text-left font-bold">Concepto</th>
@@ -242,7 +243,7 @@ export default function CalidadPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </ChartCard>
 
@@ -268,7 +269,7 @@ export default function CalidadPage() {
           </ResponsiveContainer>
         </div>
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-xs">
+          <DataTable className="w-full text-xs">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
                 <th className="px-3 py-2 text-left font-bold">Clase</th>
@@ -291,13 +292,13 @@ export default function CalidadPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </ChartCard>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <ChartCard title="Capas por estado" subtitle={`${fmtInt(capasTot)} capas · ${fmtTn(tnCapasTot)} TN ingresadas`} bodyClassName="p-0">
-          <table className="w-full text-xs">
+          <DataTable className="w-full text-xs">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
                 <th className="px-3 py-2 text-left font-bold">Estado</th>
@@ -316,7 +317,7 @@ export default function CalidadPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </ChartCard>
 
         <ChartCard title="Salidas registradas antes del ingreso" subtitle="Despachos con fecha anterior a la fecha de ingreso de la capa que consumen">
@@ -336,7 +337,7 @@ export default function CalidadPage() {
       <ChartCard title="Filas excluidas" subtitle={`${fmtInt(data.excluidas.length)} filas${data.excluidas.length >= 200 ? ' (se muestran las primeras 200)' : ''} · no entran al cálculo`} bodyClassName="p-0">
         {data.excluidas.length ? (
           <div className="max-h-[420px] overflow-auto">
-            <table className="w-full text-xs">
+            <DataTable className="w-full text-xs">
               <thead className="sticky top-0 bg-slate-50 text-slate-500 shadow-[0_1px_0_#e2e8f0]">
                 <tr>
                   <th className="px-3 py-2 text-left font-bold">Hoja</th>
@@ -362,7 +363,7 @@ export default function CalidadPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         ) : <p className="p-4 text-sm text-slate-500">No hay filas excluidas.</p>}
       </ChartCard>
@@ -372,7 +373,7 @@ export default function CalidadPage() {
       {raw && (
         <Modal title={`Fila original · ${raw.tipo} · fila ${raw.fila}`} onClose={closeRaw}>
           <p className="mb-3 text-xs text-slate-500">{raw.archivo} · Motivo: <b className="text-slate-700">{raw.motivo}</b></p>
-          <table className="w-full text-xs">
+          <DataTable className="w-full text-xs">
             <tbody className="divide-y divide-slate-100">
               {Object.entries(raw.raw || {}).map(([k, v]) => (
                 <tr key={k}>
@@ -381,7 +382,7 @@ export default function CalidadPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </Modal>
       )}
     </div>

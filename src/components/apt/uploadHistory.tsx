@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useState } from 'react'
 import { Download } from 'lucide-react'
@@ -90,7 +91,7 @@ export function UploadHistory() {
         : rows.length === 0 ? <div className="p-4"><EmptyState title="Aún no hay cargas">Cargue el archivo con las hojas ENTRADA y SALIDA y los reportes de traspasos.</EmptyState></div>
         : (
           <div className="max-h-[420px] overflow-auto">
-            <table className="w-full text-sm" style={{ minWidth: 360 + KINDS.length * 370 }}>
+            <DataTable className="w-full text-sm" style={{ minWidth: 360 + KINDS.length * 370 }}>
               <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                 <tr className="border-b border-slate-200">
                   <th rowSpan={2} className="px-3 py-2 text-left font-bold">Fecha</th>
@@ -120,7 +121,7 @@ export function UploadHistory() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         )}
     </ChartCard>

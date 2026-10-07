@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -87,7 +88,7 @@ export default function LiquidacionesPage() {
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-auto max-h-[calc(100vh-280px)]">
         {loading ? <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div> : (
-          <table className="w-full text-sm">
+          <DataTable className="w-full text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500 sticky top-0"><tr>
               <th className="p-3 text-left">Despacho / Placa</th><th className="p-3 text-left">Conductor</th><th className="p-3 text-left">Viaje</th>
               <th className="p-3 text-right">Anticipos</th><th className="p-3 text-right">Gastos conductor</th><th className="p-3 text-right">Pagado por caja/empresa</th>
@@ -123,7 +124,7 @@ export default function LiquidacionesPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
 
@@ -209,17 +210,17 @@ function SettlementModal({ trip, driverName, canClose, isAdmin, onClose, onDone 
           <div className="grid md:grid-cols-2 gap-4">
             <div>
               <h4 className="text-xs font-bold uppercase text-slate-500 mb-1">Anticipos</h4>
-              <table className="w-full text-xs border rounded-lg overflow-hidden">
+              <DataTable className="w-full text-xs border rounded-lg overflow-hidden">
                 <tbody className="divide-y">
                   {advances.length === 0 && <tr><td className="p-2 text-slate-400">Sin anticipos</td></tr>}
                   {advances.map(a => <tr key={a.id}><td className="p-2">{a.code}</td><td className="p-2">{a.status}</td><td className="p-2">{a.payment_method || '—'}</td><td className="p-2 text-right font-semibold">{money(a.amount)}</td></tr>)}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
             <div>
               <h4 className="text-xs font-bold uppercase text-slate-500 mb-1">Gastos ({expenses.length})</h4>
               <div className="max-h-48 overflow-auto border rounded-lg">
-                <table className="w-full text-xs">
+                <DataTable className="w-full text-xs">
                   <tbody className="divide-y">
                     {expenses.map(e => (
                       <tr key={e.id}>
@@ -230,7 +231,7 @@ function SettlementModal({ trip, driverName, canClose, isAdmin, onClose, onDone 
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             </div>
           </div>

@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -188,7 +189,7 @@ export default function AprobacionesPage() {
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-auto max-h-[calc(100vh-380px)]">
         {loading ? <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div> : (
-          <table className="w-full text-sm">
+          <DataTable className="w-full text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500 sticky top-0 z-10">
               <tr>
                 <th className="p-3 w-8">
@@ -241,7 +242,7 @@ export default function AprobacionesPage() {
                 )
               })}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
 

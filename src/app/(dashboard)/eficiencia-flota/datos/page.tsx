@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { Suspense, useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react'
 import Link from 'next/link'
@@ -87,7 +88,7 @@ function Cobertura({ d }: { d: FeDatos }) {
   return (
     <Panel title="Cobertura por mes" hint="K km · C combustible · M mantenimiento · R rutas. Fondo azul: mes completo para costo por km (km, combustible y mantenimiento cubierto).">
       <div className="overflow-x-auto">
-        <table className="text-[10px]">
+        <DataTable className="text-[10px]">
           <thead><tr><th className="sticky left-0 bg-white px-2 py-1 text-left">Activo</th>{meses.map(m => <th key={m} className="px-0.5 py-1 font-mono font-normal text-slate-500">{mes(m)}</th>)}</tr></thead>
           <tbody>
             {codes.map(a => (
@@ -102,7 +103,7 @@ function Cobertura({ d }: { d: FeDatos }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </DataTable>
       </div>
     </Panel>
   )
@@ -225,7 +226,7 @@ function Activos({ d, onSaved }: { d: FeDatos; onSaved: () => void }) {
   return (
     <Panel title="Ficha de cada activo" hint="La capacidad mejora el control de peso; el valor de reposición (cotización de una unidad nueva equivalente) y la vida útil afinan la decisión. Vincule cada activo con su unidad de Flota para sumar los costos de OT, neumáticos, multas, fallas y horómetro de Mantenimiento.">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1150px] text-sm">
+        <DataTable className="w-full min-w-[1150px] text-sm">
           <thead className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-500"><tr className="border-b border-slate-200">
             <th className="px-2 py-2">Código</th><th className="px-2 py-2">Clase</th><th className="px-2 py-2">Tipo</th><th className="px-2 py-2">Año fab.</th><th className="px-2 py-2">Capacidad (kg)</th>
             <th className="px-2 py-2">Valor reposición S/</th><th className="px-2 py-2">Vida útil</th><th className="px-2 py-2">Unidad de Flota</th><th className="px-2 py-2">Activo</th><th /></tr></thead>
@@ -250,7 +251,7 @@ function Activos({ d, onSaved }: { d: FeDatos; onSaved: () => void }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </DataTable>
       </div>
     </Panel>
   )
@@ -274,12 +275,12 @@ function Datos() {
       {d.can_load && <Carga onDone={reload} />}
       <Panel title="Calidad de los datos" hint="Excel: lo corregido al cargar. TMS: registros que faltan para calcular los meses nuevos.">
         {calidad.length ? (
-          <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-sm">
+          <div className="overflow-x-auto"><DataTable className="w-full min-w-[700px] text-sm">
             <thead className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-500"><tr className="border-b border-slate-200"><th className="px-2 py-2">Origen</th><th className="px-2 py-2">Fuente</th><th className="px-2 py-2">Hallazgo</th><th className="px-2 py-2 text-right">Casos</th><th className="px-2 py-2">Efecto</th></tr></thead>
             <tbody className="divide-y divide-slate-100">{calidad.map((q, i) => (
               <tr key={i}><td className="px-2 py-2 text-xs font-bold">{q.origen}</td><td className="px-2 py-2">{q.fuente}</td><td className="px-2 py-2">{q.problema}</td>
                 <td className="px-2 py-2 text-right font-mono">{fmt(q.casos)}</td><td className="px-2 py-2 text-xs text-slate-600">{q.efecto ?? q.tratamiento}</td></tr>))}</tbody>
-          </table></div>
+          </DataTable></div>
         ) : <Note>Sin observaciones.</Note>}
       </Panel>
       <Cobertura d={d} />

@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -99,17 +100,17 @@ export function MantHistorialPanel({ plate }: { plate: string }) {
 
       {h.turnos.length > 0 && <section className="rounded-xl border bg-white p-4">
         <h3 className="mb-2 font-semibold text-slate-800">Turnos del operario</h3>
-        <table className="w-full text-sm"><thead><tr className="text-left text-xs text-slate-500"><th className="py-1">Fecha</th><th>Tipo</th><th>Horómetro</th><th>Checklist</th></tr></thead>
+        <DataTable className="w-full text-sm"><thead><tr className="text-left text-xs text-slate-500"><th className="py-1">Fecha</th><th>Tipo</th><th>Horómetro</th><th>Checklist</th></tr></thead>
           <tbody>{h.turnos.map((t, i) => <tr key={i} className="border-t">
             <td className="py-1.5">{new Date(t.fecha).toLocaleString('es-PE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
             <td>{t.tipo === 'SEMANAL' ? 'Semanal' : 'Turno'}</td>
             <td>{t.horas != null ? `${fmt(t.horas, 1)} h` : '—'}{t.estado === 'POR_VALIDAR' && <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] font-bold text-amber-800">por validar</span>}</td>
             <td className={t.no_ok?.length ? 'text-[#cf152d]' : 'text-emerald-700'}>{t.no_ok?.length ? t.no_ok.join(', ') : 'Todo bien'}</td>
-          </tr>)}</tbody></table>
+          </tr>)}</tbody></DataTable>
       </section>}
 
       <section className="overflow-x-auto rounded-xl border bg-white">
-        <table className="w-full text-sm">
+        <DataTable className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-2">Fecha</th><th className="p-2">Tipo</th><th className="p-2">Sistema</th><th className="p-2">Detalle</th><th className="p-2 text-right">Km/h</th><th className="p-2 text-right">Monto</th></tr></thead>
           <tbody>{items.map((x, i) => <tr key={i} className="border-t align-top">
             <td className="whitespace-nowrap p-2">{fecha(x.fecha)}<div className="text-[11px] text-slate-400">{x.fuente}</div></td>
@@ -119,7 +120,7 @@ export function MantHistorialPanel({ plate }: { plate: string }) {
             <td className="p-2 text-right text-slate-500">{x.lectura ? fmt(x.lectura) : '—'}</td>
             <td className="p-2 text-right font-semibold text-slate-800">{soles(x.monto, 2)}</td>
           </tr>)}</tbody>
-        </table>
+        </DataTable>
         {!todo && h.items.length > 25 && <button type="button" onClick={() => setTodo(true)} className="w-full border-t p-2 text-sm font-semibold text-[#002855] hover:bg-slate-50">Ver los {h.items.length} registros</button>}
       </section>
     </div>

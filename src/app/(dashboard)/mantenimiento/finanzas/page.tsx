@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -85,8 +86,8 @@ export default function FinanzasTcoPage() {
           <div className="grid md:grid-cols-2 gap-4">
             <div className="bg-white border rounded-xl p-4">
               <h3 className="font-semibold mb-3">Propios vs alquilados</h3>
-              <table className="w-full text-sm"><thead className="text-xs text-slate-500"><tr><th className="text-left">Propiedad</th><th className="text-right">Unidades</th><th className="text-right">TCO</th><th className="text-right">Costo/km</th></tr></thead>
-                <tbody>{byOwnership.map(([k, v]) => <tr key={k}><td className="py-1">{k}</td><td className="text-right">{v.units}</td><td className="text-right">{money(v.tco)}</td><td className="text-right">{v.km > 0 ? `S/ ${(v.tco / v.km).toFixed(3)}` : '—'}</td></tr>)}</tbody></table>
+              <DataTable className="w-full text-sm"><thead className="text-xs text-slate-500"><tr><th className="text-left">Propiedad</th><th className="text-right">Unidades</th><th className="text-right">TCO</th><th className="text-right">Costo/km</th></tr></thead>
+                <tbody>{byOwnership.map(([k, v]) => <tr key={k}><td className="py-1">{k}</td><td className="text-right">{v.units}</td><td className="text-right">{money(v.tco)}</td><td className="text-right">{v.km > 0 ? `S/ ${(v.tco / v.km).toFixed(3)}` : '—'}</td></tr>)}</tbody></DataTable>
             </div>
             <div className="bg-white border rounded-xl p-4">
               <h3 className="font-semibold mb-3">TCO por mes (últimos 12)</h3>
@@ -99,7 +100,7 @@ export default function FinanzasTcoPage() {
           </div>
 
           <div className="bg-white border rounded-xl overflow-x-auto">
-            <table className="w-full text-sm">
+            <DataTable className="w-full text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
                 <th className="text-left p-3">Unidad</th>{CATS.map(([, l]) => <th key={l} className="text-right p-3">{l}</th>)}<th className="text-right p-3">TCO</th><th className="text-right p-3">Costo/km</th><th className="text-right p-3">Costo/h</th>
               </tr></thead>
@@ -114,7 +115,7 @@ export default function FinanzasTcoPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </>
       )}

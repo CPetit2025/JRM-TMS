@@ -1,4 +1,6 @@
 "use client"
+import { DataTable } from '@/components/ui/data-table'
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plus, Receipt, Calendar, FileText, Check, Ban, Loader2, DollarSign, Upload, Download, AlertCircle, Search, Filter, X, ArrowUp, ArrowDown, ArrowUpDown, RefreshCw, Scale } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -639,7 +641,7 @@ export default function ContractServicesPage() {
       {/* Lista de Servicios */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-auto max-h-[calc(100vh-220px)]">
-          <table className="w-full text-left border-collapse relative">
+          <DataTable className="w-full text-left border-collapse relative">
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
               <tr>
                 <th className="p-4 font-semibold w-16 text-center">N°</th>
@@ -749,7 +751,7 @@ export default function ContractServicesPage() {
                 )})
               )}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </div>
 
@@ -765,7 +767,7 @@ export default function ContractServicesPage() {
             Haga clic en "Registrar" para generar el gasto correspondiente.
           </p>
           <div className="overflow-auto max-h-[500px]">
-            <table className="w-full text-left border-collapse">
+            <DataTable className="w-full text-left border-collapse">
               <thead className="bg-slate-50 text-slate-500 text-xs sticky top-0 uppercase">
                 <tr>
                   <th className="p-3 font-semibold">Despacho</th>
@@ -812,7 +814,7 @@ export default function ContractServicesPage() {
                   ))
                 )}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </div>
       </Modal>

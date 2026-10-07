@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
@@ -285,7 +286,7 @@ export default function TendenciasPage() {
       <ChartCard title="Detalle por periodo" subtitle={`${rows.length} periodos · clic en el ícono para ver las capas ingresadas en ese periodo`}
         actions={<ExportButton onClick={doExport} />} bodyClassName="p-0">
         <div className="max-h-[520px] overflow-auto">
-          <table className="w-full text-xs">
+          <DataTable className="w-full text-xs">
             <thead className="sticky top-0 z-10 bg-slate-50 text-slate-500 shadow-[0_1px_0_#e2e8f0]">
               <tr>
                 <SortTh k="periodo" sort={sort} onSort={setSort} right={false}>Periodo</SortTh>
@@ -337,7 +338,7 @@ export default function TendenciasPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </ChartCard>
     </div>

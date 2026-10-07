@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -170,10 +171,10 @@ function Table({ rows, cols, empty }: { rows: Row[]; cols: [string, (r: Row) => 
   if (!rows.length) return <p className="text-sm text-slate-500 p-4">{empty}</p>
   return (
     <div className="bg-white border rounded-xl overflow-x-auto">
-      <table className="w-full text-sm">
+      <DataTable className="w-full text-sm">
         <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{cols.map(([h], i) => <th key={i} className="text-left p-3">{h}</th>)}</tr></thead>
         <tbody className="divide-y">{rows.map((r, i) => <tr key={r.id ?? r.ref_id ?? i}>{cols.map(([, fn], j) => <td key={j} className="p-3">{fn(r)}</td>)}</tr>)}</tbody>
-      </table>
+      </DataTable>
     </div>
   )
 }

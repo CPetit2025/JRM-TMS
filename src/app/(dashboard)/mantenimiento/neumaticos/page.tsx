@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -118,7 +119,7 @@ export default function NeumaticosPage() {
                 </select>
               </div>
               <div className="bg-white border rounded-xl overflow-x-auto">
-                <table className="w-full text-sm">
+                <DataTable className="w-full text-sm">
                   <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
                     <th className="text-left p-3">Neumático</th><th className="text-left p-3">Estado</th><th className="text-left p-3">Ubicación</th>
                     <th className="text-right p-3">Cocada</th><th className="text-right p-3">Km</th><th className="text-right p-3">Reenc.</th>
@@ -149,7 +150,7 @@ export default function NeumaticosPage() {
                     ))}
                     {filtered.length === 0 && <tr><td colSpan={9} className="p-8 text-center text-slate-500">Sin neumáticos con estos filtros.</td></tr>}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             </div>
           )}
@@ -181,7 +182,7 @@ export default function NeumaticosPage() {
                 <option value="">Todos los neumáticos</option>{tires.map(t => <option key={t.id} value={t.id}>{t.codigo_interno}</option>)}
               </select>
               <div className="bg-white border rounded-xl overflow-x-auto">
-                <table className="w-full text-sm">
+                <DataTable className="w-full text-sm">
                   <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
                     <th className="text-left p-3">Fecha</th><th className="text-left p-3">Neumático</th><th className="text-left p-3">Evento</th><th className="text-left p-3">Unidad / posición</th>
                     <th className="text-right p-3">Odómetro</th><th className="text-right p-3">Cocada</th><th className="text-right p-3">Km</th><th className="text-right p-3">Costo</th><th className="text-left p-3">Detalle</th>
@@ -201,7 +202,7 @@ export default function NeumaticosPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             </div>
           )}

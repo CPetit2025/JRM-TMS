@@ -1,0 +1,38 @@
+/* Screen styling must not alter printed documents or exported formats. */
+@media screen {
+  .table:not(:where(:global(.caja-printable) table, :global(.liq-page) table)) {
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .table:not(:where(:global(.caja-printable) table, :global(.liq-page) table)) > thead {
+    background-color: #f8fafc;
+  }
+
+  .table:not(:where(:global(.caja-printable) table, :global(.liq-page) table)) > thead > tr > th {
+    padding: 0.75rem;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.25rem;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
+  .table:not(:where(:global(.caja-printable) table, :global(.liq-page) table)) > tbody > tr > :is(td, th) {
+    padding: 0.75rem;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+  }
+
+  /* Loading / empty messages need space and are not ordinary compact rows. */
+  .table:not(:where(:global(.caja-printable) table, :global(.liq-page) table)) > tbody > tr > td[colspan][class*="text-center"] {
+    padding-block: 1.5rem;
+  }
+
+  .table:not(:where(:global(.caja-printable) table, :global(.liq-page) table)) > tbody > tr:focus-within {
+    outline: 2px solid #bfdbfe;
+    outline-offset: -2px;
+  }
+}

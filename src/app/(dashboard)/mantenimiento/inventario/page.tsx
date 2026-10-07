@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -122,7 +123,7 @@ export default function InventarioPage() {
                 </select>
               </div>
               <div className="bg-white border rounded-xl overflow-x-auto">
-                <table className="w-full text-sm">
+                <DataTable className="w-full text-sm">
                   <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
                     <th className="text-left p-3">Repuesto</th><th className="text-right p-3">Stock</th><th className="text-right p-3">Reservado</th><th className="text-right p-3">Disponible</th>
                     <th className="text-right p-3">Mín / Máx</th><th className="text-right p-3">Costo prom.</th><th className="text-left p-3">Estado</th><th className="p-3"></th>
@@ -148,7 +149,7 @@ export default function InventarioPage() {
                     ))}
                     {filtered.length === 0 && <tr><td colSpan={8} className="p-8 text-center text-slate-500">Sin repuestos con estos filtros.</td></tr>}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             </div>
           )}
@@ -203,10 +204,10 @@ function Table<T extends { id?: string }>({ rows, cols, empty }: { rows: T[]; co
   if (!rows.length) return <p className="text-sm text-slate-500 p-4">{empty}</p>
   return (
     <div className="bg-white border rounded-xl overflow-x-auto">
-      <table className="w-full text-sm">
+      <DataTable className="w-full text-sm">
         <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{cols.map(([h], i) => <th key={i} className="text-left p-3">{h}</th>)}</tr></thead>
         <tbody className="divide-y">{rows.map((r, i) => <tr key={r.id ?? i}>{cols.map(([, fn], j) => <td key={j} className="p-3">{fn(r)}</td>)}</tr>)}</tbody>
-      </table>
+      </DataTable>
     </div>
   )
 }

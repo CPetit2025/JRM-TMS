@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
@@ -294,7 +295,7 @@ function LoteView({ data, alert, producto, setProducto, onOrigen }: {
           <ChartCard className="xl:col-span-2" title="Saldo por producto" bodyClassName="p-0"
             subtitle={producto ? <>Filtrando tablas por <b className="font-mono">{producto}</b> · <button type="button" className="font-semibold text-[#cf152d] hover:underline" onClick={() => setProducto(null)}>quitar</button></> : 'Clic en un producto para filtrar las tablas de abajo'}>
             <div className="max-h-72 overflow-auto">
-              <table className="w-full border-separate border-spacing-0 text-xs">
+              <DataTable className="w-full border-separate border-spacing-0 text-xs">
                 <thead>
                   <tr>{['Producto', 'Saldo TN', 'Días', 'TN×Días', 'Estado'].map((h, i) => (
                     <th key={h} className={`sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 ${i === 0 ? 'text-left' : i === 4 ? 'text-left' : 'text-right'}`}>{h}</th>
@@ -322,7 +323,7 @@ function LoteView({ data, alert, producto, setProducto, onOrigen }: {
                     )
                   })}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           </ChartCard>
         </div>
@@ -434,7 +435,7 @@ function Table<T>({ rows, cols, rowKey, rowClass }: {
   const hasTotals = cols.some(c => c.t)
   return (
     <div className="max-h-[480px] overflow-auto">
-      <table className="w-full border-separate border-spacing-0 text-xs">
+      <DataTable className="w-full border-separate border-spacing-0 text-xs">
         <thead>
           <tr>
             {cols.map((c, i) => (
@@ -466,7 +467,7 @@ function Table<T>({ rows, cols, rowKey, rowClass }: {
             </tr>
           </tfoot>
         )}
-      </table>
+      </DataTable>
     </div>
   )
 }

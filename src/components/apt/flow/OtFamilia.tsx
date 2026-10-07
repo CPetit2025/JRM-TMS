@@ -1,4 +1,5 @@
 'use client'
+import { DataTable } from '@/components/ui/data-table'
 
 import { useState, type ReactNode } from 'react'
 import Link from 'next/link'
@@ -177,7 +178,7 @@ export function OtFamiliaFicha({ d }: { d: OtFamilia }) {
           <GitBranch className="h-4 w-4 text-[#002855]" /> Lotes de la OT <span className="text-xs font-normal text-slate-400">({miembros.length})</span>
         </header>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1100px] text-xs">
+          <DataTable className="w-full min-w-[1100px] text-xs">
             <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
               <tr>
                 <th className="px-3 py-2 text-left">Lote</th>
@@ -215,7 +216,7 @@ export function OtFamiliaFicha({ d }: { d: OtFamilia }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </section>
 
@@ -226,7 +227,7 @@ export function OtFamiliaFicha({ d }: { d: OtFamilia }) {
             <p className="text-[11px] text-slate-500">Adelantos que se asignaron a la OT, insumos que consumió, material que pasó a otro lote o movimientos que el ERP marca con el contrato de la OT. No se suman a la familia.</p>
           </header>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-xs">
+            <DataTable className="w-full min-w-[900px] text-xs">
               <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-3 py-2 text-left">Lote</th>
@@ -257,7 +258,7 @@ export function OtFamiliaFicha({ d }: { d: OtFamilia }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
           {d.vinculados.length > 12 && (
             <button type="button" onClick={() => setVerTodos(x => !x)} className="w-full border-t border-slate-100 py-2 text-xs font-semibold text-[#002855] hover:bg-slate-50">

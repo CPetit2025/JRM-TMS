@@ -1,4 +1,6 @@
 "use client"
+import { DataTable } from '@/components/ui/data-table'
+
 import React, { useState, useEffect } from "react"
 import { Zap, DollarSign, Check, X, Loader2, AlertTriangle, LinkIcon, Link2Off, MapPin, Search } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
@@ -245,7 +247,7 @@ export default function TarifasPage() {
           {/* Tabla principal */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="overflow-auto max-h-[calc(100vh-220px)]">
-          <table className="w-full text-left border-collapse relative">
+          <DataTable className="w-full text-left border-collapse relative">
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0] border-slate-100">
                   <tr>
                     <th className="p-4 font-semibold">Placa</th>
@@ -371,7 +373,7 @@ export default function TarifasPage() {
                     ))
                   )}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           </div>
 
