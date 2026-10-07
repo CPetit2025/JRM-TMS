@@ -153,4 +153,19 @@ jobs:
       - name: Read-only catalog and aggregate audit
         run: |
           supabase db query --linked -f scripts/security/audit.sql -o json > security-catalog.json
-          node scripts/security/annotate-audit.cjs security-catalog.json
+      - name: Publish metadata 1
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 0
+      - name: Publish metadata 2
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 1
+      - name: Publish metadata 3
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 2
+      - name: Publish metadata 4
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 3
+      - name: Publish metadata 5
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 4
+      - name: Publish metadata 6
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 5
+      - name: Publish metadata 7
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 6
+      - name: Publish metadata 8
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 7
