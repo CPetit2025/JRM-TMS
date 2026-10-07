@@ -40,8 +40,16 @@ BEGIN
  UPDATE public.profiles SET is_active=true,role_id=audit_role WHERE id=auditor;
  DELETE FROM public.user_site_access WHERE user_id=auditor;
  INSERT INTO public.user_site_access(user_id,site_id) VALUES(auditor,site);
- INSERT INTO public.dispatches(dispatch_number,vehicle_plate,status,site_id,scheduled_departure,docs_required)
- VALUES('ZZ-C59-NULL','ZZ59N'||substr(gen_random_uuid()::text,1,6),'PROGRAMADO',NULL,now()-interval '60 days',true) RETURNING id INTO null_d;
+ BEGIN
+   INSERT INTO public.dispatches(dispatch_number,vehicle_plate,status,site_id,scheduled_departure,docs_required)
+   VALUES('ZZ-C59-NULL','ZZ59N'||substr(gen_random_uuid()::text,1,6),'PROGRAMADO',NULL,now()-interval '60 days',true) RETURNING id INTO null_d;
+ EXCEPTION WHEN not_null_violation THEN
+   -- Production excludes these records structurally; older schemas permit them.
+   -- Accept only the expected site constraint, never another fixture failure.
+   IF NOT EXISTS(SELECT 1 FROM information_schema.columns
+     WHERE table_schema='public' AND table_name='dispatches' AND column_name='site_id' AND is_nullable='NO')
+     OR SQLERRM NOT LIKE '%"site_id"%' THEN RAISE; END IF;
+ END;
  INSERT INTO public.dispatches(dispatch_number,vehicle_plate,status,site_id,scheduled_departure,docs_required)
  VALUES('ZZ-C59-FOREIGN','ZZ59F'||substr(gen_random_uuid()::text,1,6),'PROGRAMADO',foreign_site,now()-interval '60 days',true) RETURNING id INTO foreign_d;
  INSERT INTO public.dispatch_documents(dispatch_id,doc_type,file_path,mime_type)

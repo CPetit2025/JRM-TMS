@@ -47,6 +47,14 @@ const extension = `
     const number=file.match(/^caja_c(\\d+)_/)[1];
     assert.match(result.stderr,new RegExp('CAJA C'+number+' PASS'),result.stderr||result.stdout);
     console.log('PASS: '+file);
+    if(number==='59') {
+      // The narrow legacy scheduler lacks production's site-population path.
+      // Exercise the documentary constraint separately after its economic scenarios.
+      sql("UPDATE public.dispatches SET site_id=(SELECT id FROM public.sites LIMIT 1) WHERE site_id IS NULL; ALTER TABLE public.dispatches ALTER COLUMN site_id SET NOT NULL;");
+      const mandatory=query(read('supabase/tests/'+file));
+      assert.match(mandatory.stderr,/CAJA C59 PASS/,mandatory.stderr||mandatory.stdout);
+      console.log('PASS: C59 also enforces production mandatory site');
+    }
   }
 `
 const runner = new Module(fixture, module)
