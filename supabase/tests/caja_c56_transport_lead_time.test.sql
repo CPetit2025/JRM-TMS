@@ -57,11 +57,11 @@ BEGIN
  IF NOT blocked THEN RAISE EXCEPTION 'CAJA C56 FAIL: edición insuficiente no bloqueada'; END IF;
  blocked:=false; BEGIN UPDATE public.transport_requests SET lead_time_policy='{"enabled":false}' WHERE id=req; EXCEPTION WHEN raise_exception THEN blocked:=true; END;
  IF NOT blocked THEN RAISE EXCEPTION 'CAJA C56 FAIL: snapshot modificable'; END IF;
- blocked:=false; BEGIN UPDATE public.transport_requests SET required_date=required_date+1 WHERE id=req; EXCEPTION WHEN raise_exception THEN blocked:=true; END;
+ blocked:=false; BEGIN UPDATE public.transport_requests SET required_date=required_date+interval '1 day' WHERE id=req; EXCEPTION WHEN raise_exception THEN blocked:=true; END;
  -- A date-only change is intentionally valid and preserves the registered clock time.
  IF blocked THEN RAISE EXCEPTION 'CAJA C56 FAIL: reprogramación heredada pierde hora'; END IF;
  UPDATE public.transport_requests SET required_date=(requested AT TIME ZONE 'America/Lima')::date,required_at=requested WHERE id=req;
- blocked:=false; BEGIN UPDATE public.transport_requests SET required_date=required_date+1,required_at=required_at+interval '2 days' WHERE id=req; EXCEPTION WHEN raise_exception THEN blocked:=true; END;
+ blocked:=false; BEGIN UPDATE public.transport_requests SET required_date=required_date+interval '1 day',required_at=required_at+interval '2 days' WHERE id=req; EXCEPTION WHEN raise_exception THEN blocked:=true; END;
  IF NOT blocked THEN RAISE EXCEPTION 'CAJA C56 FAIL: fecha/hora discrepantes aceptadas'; END IF;
  blocked:=false; BEGIN UPDATE public.transport_requests SET delivery_zone=NULL WHERE id=req; EXCEPTION WHEN raise_exception THEN blocked:=true; END;
  IF NOT blocked THEN RAISE EXCEPTION 'CAJA C56 FAIL: zona obligatoria eliminable'; END IF;

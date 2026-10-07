@@ -15,6 +15,8 @@ const extension = `
   assert.ok(flowMigrations.length, 'Transport flow migrations exist');
   // Exercise existing projects whose pgcrypto was installed outside extensions.
   sql('CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;');
+  // Reproduce the production timestamp type before exercising new anticipation guards.
+  sql("ALTER TABLE public.transport_requests ALTER COLUMN required_date TYPE timestamptz USING required_date::timestamp AT TIME ZONE 'UTC';");
   // Add only live columns missing from the intentionally narrow historical fixture.
   const productionShape=read('scripts/security/production-shape.sql');
   sql('SET check_function_bodies=off;');
