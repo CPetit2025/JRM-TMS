@@ -13,7 +13,7 @@ function flush() {
 }
 for (const row of rows) {
   const len = JSON.stringify(row).length
-  if (size + len > 18000) flush()
+  if (size + len > 3000) flush()
   chunk.push(row); size += len
 }
 flush()
