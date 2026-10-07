@@ -11,6 +11,9 @@ BEGIN
   PERFORM set_config('role', CASE WHEN p_user IS NULL THEN 'none' ELSE 'authenticated' END, true);
 END $$;
 
+-- Test-only temporary helpers: public execution defaults are intentionally revoked.
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
+
 DO $test$
 DECLARE v_user uuid; r_p uuid; r_n uuid; c record; v_set uuid; r jsonb; a jsonb; v_fail text[] := '{}'; v_pass int := 0; n int; v_key text; v_rep text; v_lessor_name text;
 BEGIN

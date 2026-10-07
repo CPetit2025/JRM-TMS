@@ -18,6 +18,9 @@ BEGIN
   RETURN v_id;
 END $$;
 
+-- Test-only temporary helpers: public execution defaults are intentionally revoked.
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
+
 DO $test$
 DECLARE actor uuid; other_actor uuid; site uuid; carrier uuid; driver uuid; driver2 uuid; vehicle uuid; vehicle2 uuid;
  plate text:='ZZ51'||upper(substr(replace(gen_random_uuid()::text,'-',''),1,5)); unit jsonb; next_unit jsonb; r jsonb; data jsonb; bad boolean; operation uuid:=gen_random_uuid();

@@ -14,6 +14,9 @@ END $$;
 CREATE TEMP TABLE zz_c29_req (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), status text, department text, created_by uuid);
 CREATE TRIGGER zz_c29_trg AFTER INSERT OR UPDATE ON zz_c29_req FOR EACH ROW EXECUTE FUNCTION public.notif_trg_solicitud();
 
+-- Test-only temporary helpers: public execution defaults are intentionally revoked.
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
+
 DO $test$
 DECLARE v_user uuid; r_d uuid; r_c uuid; r_n uuid; r jsonb; v_fail text[] := '{}'; v_pass int := 0; g bigint; n int; rid uuid;
   has_t boolean := true;

@@ -35,6 +35,9 @@ BEGIN
  RETURN CASE WHEN (r->>'success')::boolean THEN NULL ELSE COALESCE(r->>'error','error') END;
 END $$;
 
+-- Test-only temporary helpers: public execution defaults are intentionally revoked.
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
+
 DO $test$
 DECLARE
   v_admin uuid; v_doc uuid; v_desp uuid; v_nobody uuid; v_drv_prof uuid;

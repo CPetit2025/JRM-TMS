@@ -72,6 +72,10 @@ try {
  sql(`UPDATE dispatches SET end_odometer=NULL WHERE id='${id(42)}';UPDATE vehicles SET current_odometer=1000 WHERE id='${id(32)}';`)
  console.log('PASS: production-era owner-view leak, unrestricted write and anonymous post-route mutation reproduced.')
  sql(read('supabase/migrations/20261008020000_production_security_boundaries.sql'))
+ // Revoking PUBLIC defaults also protects new temporary functions. SQL regression helpers
+ // grant their own session-local execution explicitly, without reopening production RPCs.
+ denied(`CREATE FUNCTION pg_temp.security_probe() RETURNS uuid LANGUAGE sql AS $$SELECT auth.uid()$$;`+user(12)+`SELECT pg_temp.security_probe();`,/permission denied/)
+ assert.equal(sql(`CREATE FUNCTION pg_temp.security_probe() RETURNS uuid LANGUAGE sql AS $$SELECT auth.uid()$$; GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;`+user(12)+`SELECT pg_temp.security_probe();`),id(12))
  denied(`SET ROLE anon; SELECT * FROM vehicle_fuel_efficiency;`,/permission denied/)
  denied(`SET ROLE anon; SELECT submit_post_route_checklist(NULL,NULL,NULL,NULL,NULL);`,/permission denied/)
  denied(`SET ROLE anon; SELECT tax_id FROM carriers;`,/permission denied/)

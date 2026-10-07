@@ -18,6 +18,9 @@ BEGIN
   RETURN v_id;
 END $$;
 
+-- Test-only temporary helpers: public execution defaults are intentionally revoked.
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
+
 DO $test$
 DECLARE actor uuid; other_actor uuid; test_role uuid; site uuid; other_site uuid; carrier uuid; req uuid; ct uuid; route uuid; r jsonb;
  plate text:='ZZ52'||upper(substr(replace(gen_random_uuid()::text,'-',''),1,5)); original date:=(now() AT TIME ZONE 'America/Lima')::date+1; next_date date:=(now() AT TIME ZONE 'America/Lima')::date+3; bad boolean;
