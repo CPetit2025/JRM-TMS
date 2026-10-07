@@ -169,3 +169,19 @@ jobs:
         run: node scripts/security/annotate-audit.cjs security-catalog.json 6
       - name: Publish metadata 8
         run: node scripts/security/annotate-audit.cjs security-catalog.json 7
+      - name: Publish metadata 9
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 8
+      - name: Publish metadata 10
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 9
+      - name: Publish metadata 11
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 10
+      - name: Publish metadata 12
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 11
+      - name: Publish metadata 13
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 12
+      - name: Publish metadata 14
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 13
+      - name: Publish metadata 15
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 14
+      - name: Publish metadata 16
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 15

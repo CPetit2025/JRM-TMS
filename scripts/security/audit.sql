@@ -44,5 +44,10 @@ UNION ALL
 SELECT 'buckets' AS section,jsonb_build_object('bucket',id,'public',public,'max_bytes',file_size_limit,'mime',allowed_mime_types) AS finding FROM storage.buckets
 UNION ALL
 SELECT 'columns' AS section,jsonb_build_object('table',table_name,'column',column_name,'type',data_type,'nullable',is_nullable,'default',column_default) AS finding
-FROM information_schema.columns WHERE table_schema='public';
+FROM information_schema.columns WHERE table_schema='public'
+UNION ALL
+SELECT 'function_sources' AS section,jsonb_build_object('signature',p.oid::regprocedure::text,'definition',pg_get_functiondef(p.oid)) AS finding
+FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.prosecdef
+UNION ALL
+SELECT 'storage_counts' AS section,jsonb_build_object('bucket',bucket_id,'objects',count(*)) AS finding FROM storage.objects GROUP BY bucket_id;
 ROLLBACK;
