@@ -29,6 +29,8 @@ const extension = `
     }
   }
   sql(augment.join('\\n'));
+  sql("ALTER TABLE public.transport_request_events ADD CONSTRAINT flow_fixture_action_check CHECK (action IN ('CREATED','UPDATED','STATUS_CHANGED')); UPDATE public.sites SET code='FIXTURE-'||id::text WHERE code IS NULL; ALTER TABLE public.sites ALTER COLUMN code SET NOT NULL;");
+
   sql(installed('supabase/migrations/20261007150000_request_optional_pickup_details.sql','save_transport_request')+
       installed('supabase/migrations/20261007150000_request_optional_pickup_details.sql','set_transport_request_status'));
   const security=read('supabase/migrations/20261008020000_production_security_boundaries.sql');
