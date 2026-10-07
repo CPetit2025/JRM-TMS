@@ -15,7 +15,7 @@ END $$;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
 
 DO $test$
-DECLARE v_user uuid; r_m uuid; r_n uuid; r jsonb; v_fail text[] := '{}'; v_pass int := 0; v_vid uuid; v_plate text; h0 numeric; h1 numeric;
+DECLARE v_user uuid; r_m uuid; r_n uuid; r jsonb; v_fail text[] := '{}'; v_pass int := 0; v_vid uuid; v_site uuid; v_plate text; h0 numeric; h1 numeric;
   n int; v_rep text; v_eq text;
 BEGIN
   SELECT id INTO v_user FROM public.profiles WHERE id IN (SELECT u2.id FROM auth.users u2)
@@ -52,6 +52,17 @@ BEGIN
   END IF;
   EXECUTE 'SELECT COALESCE(current_hours, 0) FROM public.vehicles WHERE id = $1' INTO h0 USING v_vid;
 
+  -- An operator needs explicit access to the equipment's site. All fixture changes roll back.
+  SELECT id INTO v_site FROM public.sites ORDER BY id LIMIT 1;
+  IF v_site IS NULL THEN RAISE EXCEPTION 'CAJA C30 FAIL: sede de prueba ausente'; END IF;
+  UPDATE public.vehicles SET site_id=v_site,status='DISPONIBLE' WHERE id=v_vid;
+  DELETE FROM public.user_site_access WHERE user_id=v_user;
+  PERFORM pg_temp.as_user(v_user); r:=public.mant_registrar_turno(v_vid,h0+1,'[]'::jsonb,NULL); PERFORM pg_temp.as_user(NULL);
+  IF NOT COALESCE((r->>'success')::boolean,false) AND (SELECT COALESCE(current_hours,0) FROM public.vehicles WHERE id=v_vid) IS NOT DISTINCT FROM h0 THEN
+    v_pass:=v_pass+1;
+  ELSE v_fail:=v_fail||'T0 equipo fuera de sede no se deniega'::text; END IF;
+  INSERT INTO public.user_site_access(user_id,site_id) VALUES(v_user,v_site);
+
   -- T3
   PERFORM pg_temp.as_user(v_user); r := public.mant_registrar_turno(v_vid, h0 + 5, '[]'::jsonb, 'ZZ C30'); PERFORM pg_temp.as_user(NULL);
   EXECUTE 'SELECT current_hours FROM public.vehicles WHERE id = $1' INTO h1 USING v_vid;
@@ -73,6 +84,7 @@ BEGIN
   r := public.mant_registrar_turno(v_vid, h0 + 6, '[{"id":"frenos","ok":false,"obs":"ZZ C30 freno largo"}]'::jsonb, NULL);
   PERFORM pg_temp.as_user(NULL);
   IF (r ->> 'fallas')::int = 1 AND EXISTS (SELECT 1 FROM public.maintenance_requests WHERE vehicle_plate = v_plate AND description LIKE '%ZZ C30 freno largo%' AND severity = 'CRITICA')
+  AND (SELECT status FROM public.vehicles WHERE id=v_vid)='BLOQUEADA'
   THEN v_pass := v_pass + 1;
   ELSE v_fail := v_fail || ('T6 falla: ' || r::text || ' ' || COALESCE((SELECT string_agg(detalle, '; ') FROM public.mant_setup_log WHERE paso = 'turno'), '')); END IF;
 
@@ -98,8 +110,8 @@ BEGIN
        OR EXISTS (SELECT 1 FROM public.fe_fuel_month f WHERE f.asset_code = a.code AND f.mes >= DATE '2025-01-01'))$q$ INTO v_rep;
 
   IF array_length(v_fail, 1) IS NULL THEN
-    RAISE EXCEPTION 'CAJA C30 PASS (%/8) transporte: %', v_pass, COALESCE(v_rep, '-');
+    RAISE EXCEPTION 'CAJA C30 PASS (%/9) transporte: %', v_pass, COALESCE(v_rep, '-');
   ELSE
-    RAISE EXCEPTION 'CAJA C30 FAIL (%/8): % || transporte: %', v_pass, array_to_string(v_fail, ' || '), COALESCE(v_rep, '-');
+    RAISE EXCEPTION 'CAJA C30 FAIL (%/9): % || transporte: %', v_pass, array_to_string(v_fail, ' || '), COALESCE(v_rep, '-');
   END IF;
 END $test$;
