@@ -1,4 +1,5 @@
 "use client"
+import { protectedFileHref } from '@/lib/protected-files'
 import { useState, useEffect } from 'react'
 import { Save, Building2, Truck, CreditCard, Loader2, Bot, Lock, FileSignature, Upload, FileImage, Trash2, CheckCircle2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -312,7 +313,7 @@ export default function ConfiguracionPage() {
                   {config.adminSignatureUrl ? (
                     <div className="space-y-4">
                       <div className="border border-slate-200 rounded-lg p-6 bg-slate-50 flex justify-center items-center h-48 relative overflow-hidden group">
-                        <img src={config.adminSignatureUrl} alt="Firma Admin" className="max-h-full max-w-full object-contain" />
+                        <img src={protectedFileHref(config.adminSignatureUrl)} alt="Firma Admin" className="max-h-full max-w-full object-contain" />
                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                           <button 
                             onClick={handleDeleteSignature}
