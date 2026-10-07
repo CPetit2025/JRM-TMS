@@ -162,7 +162,12 @@ jobs:
             rpc-b) audit_file=scripts/security/details-b.sql ;;
             integrity) audit_file=scripts/security/integrity.sql ;;
           esac
-          supabase db query --linked -f "$audit_file" -o json > security-catalog.json
+          if ! supabase db query --linked -f "$audit_file" -o json > security-catalog.json 2> security-error.txt; then
+            detail=$(tail -c 3000 security-error.txt)
+            detail=${detail//%/%25}; detail=${detail//$'\r'/%0D}; detail=${detail//$'\n'/%0A}
+            echo "::error title=Read-only audit::${detail}"
+            exit 1
+          fi
       - name: Publish metadata 1
         run: node scripts/security/annotate-audit.cjs security-catalog.json 0
       - name: Publish metadata 2
