@@ -1,4 +1,5 @@
 'use client'
+import { protectedFileHref } from '@/lib/protected-files'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -573,7 +574,7 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
           <h3 className="font-semibold">Evidencias</h3>
           <div className="flex flex-wrap gap-2">
             {(order.evidence_urls || []).map(url => (
-              <a key={url} href={url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 underline break-all">{url.split('/').pop()}</a>
+              <a key={url} href={protectedFileHref(url)} target="_blank" rel="noreferrer" className="text-xs text-blue-600 underline break-all">{url.split('/').pop()}</a>
             ))}
             {!order.evidence_urls?.length && <span className="text-slate-400 text-xs">Sin evidencias</span>}
           </div>

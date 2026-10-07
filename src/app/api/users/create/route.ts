@@ -1,3 +1,4 @@
+import { reserveRegistration } from '@/lib/server/registration-limit'
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { isSystemAdminRole } from '@/lib/roles'
@@ -7,7 +8,7 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { first_name, last_name, username, document_number, phone, role_id, password } = body
 
-    if (!username || !password || password.length < 8 || !document_number) {
+    if (typeof username !== 'string' || typeof password !== 'string' || password.length < 8 || password.length > 200 || typeof document_number !== 'string' || !document_number || document_number.length > 20 || [first_name, last_name, phone].some(value => value != null && (typeof value !== 'string' || value.length > 120))) {
       return NextResponse.json(
         { error: 'Usuario, documento y contraseña de al menos 8 caracteres son obligatorios' },
         { status: 400 }
@@ -73,12 +74,19 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Cuenta sin autorización' }, { status: 403 })
       }
       const role = Array.isArray(currentProfile.roles) ? currentProfile.roles[0] : currentProfile.roles
-      const permissions = role?.permissions
-      isAdmin = isSystemAdminRole(role?.name) ||
-        (Array.isArray(permissions) && permissions.includes('usuarios'))
+      isAdmin = isSystemAdminRole(role?.name)
       if (!isAdmin) {
         return NextResponse.json({ error: 'Solo un administrador puede crear usuarios' }, { status: 403 })
       }
+    }
+    if (!isAdmin) {
+      const quota = await reserveRegistration(request, supabaseAdmin, 'staff')
+      if (quota !== 'allowed') return NextResponse.json({ error: quota === 'limited' ? 'Demasiados intentos. Intente nuevamente en 15 minutos.' : 'Registro temporalmente no disponible' }, { status: quota === 'limited' ? 429 : 503 })
+    }
+    if (isAdmin && role_id) {
+      if (typeof role_id !== 'string') return NextResponse.json({ error: 'Rol inválido' }, { status: 400 })
+      const { data: role } = await supabaseAdmin.from('roles').select('id').eq('id', role_id).maybeSingle()
+      if (!role) return NextResponse.json({ error: 'Rol inválido' }, { status: 400 })
     }
     const is_active = isAdmin
 
@@ -125,7 +133,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true, userId })
-  } catch (error: any) {
+  } catch (error) {
     console.error('API Error:', error)
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
   }

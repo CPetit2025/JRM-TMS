@@ -1,3 +1,4 @@
+import { reserveRegistration } from '@/lib/server/registration-limit'
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
@@ -21,6 +22,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Faltan campos obligatorios' }, { status: 400 })
     }
 
+    if (typeof dni !== 'string' || !/^\d{8}$/.test(dni) ||
+        [firstName, lastName, licenseNumber, pin, carrierId].some(value => typeof value !== 'string' || value.length > 200) ||
+        !/^[0-9a-f-]{36}$/i.test(carrierId) || (phone != null && (typeof phone !== 'string' || phone.length > 30))) {
+      return NextResponse.json({ error: 'Datos de registro inválidos' }, { status: 400 })
+    }
+    const quota = await reserveRegistration(request, supabaseAdmin, 'driver')
+    if (quota !== 'allowed') return NextResponse.json({ error: quota === 'limited' ? 'Demasiados intentos. Intente nuevamente en 15 minutos.' : 'Registro temporalmente no disponible' }, { status: quota === 'limited' ? 429 : 503 })
+    const { data: carrier } = await supabaseAdmin.from('carriers').select('id').eq('id', carrierId).eq('is_active', true).maybeSingle()
+    if (!carrier) return NextResponse.json({ error: 'Transportista no disponible' }, { status: 400 })
     const email = `${dni}@jrm.com`
 
     // 1. Create auth user WITHOUT email confirmation (admin API)
@@ -91,6 +101,6 @@ export async function POST(request: Request) {
 
   } catch (err: unknown) {
     console.error('Register error:', err)
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Error al registrar' }, { status: 500 })
+    return NextResponse.json({ error: 'No se pudo completar el registro' }, { status: 500 })
   }
 }

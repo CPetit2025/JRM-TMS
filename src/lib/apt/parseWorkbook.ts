@@ -66,23 +66,17 @@ function kindByName(name: string): AptSheetKind | null {
   return n === 'ENTRADA' ? 'ENTRADA' : n === 'SALIDA' ? 'SALIDA' : null
 }
 
-// xlsx 0.18 construye las fechas con el desfase horario histórico de 1899 (en algunos husos queda en el día anterior).
-// Se reconstruye el número de serie de Excel con la misma fórmula de la librería y se lee la fecha calendario.
-const BASE_DATE = new Date(1899, 11, 30, 0, 0, 0)
-const DNTHRESH = BASE_DATE.getTime() + (new Date().getTimezoneOffset() - BASE_DATE.getTimezoneOffset()) * 60000
+// SheetJS 0.20 resolves the workbook epoch (1900/1904) while creating Date cells.
+// Preserve that local calendar date; the old 0.18 offset workaround shifted dates in Peru.
 const pad = (n: number) => String(n).padStart(2, '0')
-function dateToIso(d: Date, date1904: boolean): string | null {
+function dateToIso(d: Date): string | null {
   if (isNaN(d.getTime())) return null
-  let serial = (d.getTime() - DNTHRESH) / 86400000
-  if (serial <= 60) serial -= 1
-  const p = XLSX.SSF.parse_date_code(serial, { date1904 })
-  if (!p || !p.y) return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-  return `${p.y}-${pad(p.m)}-${pad(p.d)}`
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-function cellValue(v: unknown, date1904: boolean): unknown {
+function cellValue(v: unknown): unknown {
   if (v === null || v === undefined) return undefined
-  if (v instanceof Date) return dateToIso(v, date1904) ?? undefined
+  if (v instanceof Date) return dateToIso(v) ?? undefined
   if (typeof v === 'string') {
     const t = v.trim()
     return t === '' ? undefined : t
@@ -181,7 +175,7 @@ const emptyStats = (): AptSheetStats => ({
 
 type SheetOut = { skip: string } | { parts: AptParsedSheet[]; sinTipo: number }
 
-function parseSheet(ws: XLSX.WorkSheet, date1904: boolean, fileName: string, sheetName: string, byName: AptSheetKind | null): SheetOut {
+function parseSheet(ws: XLSX.WorkSheet, fileName: string, sheetName: string, byName: AptSheetKind | null): SheetOut {
   const ref = ws['!ref']
   if (!ref) return { skip: 'Hoja vacía' }
   const start = XLSX.utils.decode_range(ref).s.r
@@ -238,7 +232,7 @@ function parseSheet(ws: XLSX.WorkSheet, date1904: boolean, fileName: string, she
     for (let c = 0; c < headers.length; c++) {
       const key = headers[c]
       if (!key) continue
-      const v = cellValue(r[c], date1904)
+      const v = cellValue(r[c])
       if (v === undefined) continue
       obj[key] = v
     }
@@ -303,12 +297,11 @@ export function parseWorkbooks(files: AptInputFile[], onProgress?: (msg: string)
     if (!candidates.length) continue
 
     const wb = XLSX.read(data, { type: 'array', cellDates: true, sheets: candidates })
-    const date1904 = !!wb.Workbook?.WBProps?.date1904
     for (const n of candidates) {
       const ws = wb.Sheets[n]
       if (!ws) continue
       onProgress?.(`Procesando hoja ${n}…`)
-      const res = parseSheet(ws, date1904, f.name, n, kindByName(n))
+      const res = parseSheet(ws, f.name, n, kindByName(n))
       if ('skip' in res) { ignored.push({ fileName: f.name, sheetName: n, reason: res.skip }); continue }
       const kept = res.parts.filter(p => p.rows.length > 0)
       if (!kept.length) {

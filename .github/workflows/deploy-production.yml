@@ -12,6 +12,10 @@ on:
     branches: [master]
   workflow_dispatch:
     inputs:
+      audit_only:
+        description: Inspección de seguridad de solo lectura (sin migraciones ni despliegue)
+        type: boolean
+        default: false
       apply_all_pending:
         description: Aplicar todas las migraciones pendientes aunque no vengan en este push
         type: boolean
@@ -31,7 +35,7 @@ concurrency:
 
 jobs:
   migrate:
-    if: ${{ !inputs.skip_migrations }}
+    if: ${{ !inputs.skip_migrations && !inputs.audit_only }}
     runs-on: ubuntu-24.04
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -66,7 +70,7 @@ jobs:
           APPLY_ALL: ${{ inputs.apply_all_pending }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          LAST_OK=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy-production.yml --branch master \
+          LAST_OK=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy-production.yml --branch master --event push \
             --status success --limit 1 --json headSha -q '.[0].headSha' 2>/dev/null || true)
           if [ -n "$LAST_OK" ] && git cat-file -e "$LAST_OK^{commit}" 2>/dev/null && git merge-base --is-ancestor "$LAST_OK" "$AFTER"; then
             echo "Último despliegue exitoso: $LAST_OK"; BEFORE="$LAST_OK"
@@ -116,7 +120,7 @@ jobs:
 
   deploy:
     needs: migrate
-    if: ${{ always() && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') }}
+    if: ${{ always() && !inputs.audit_only && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') }}
     runs-on: ubuntu-24.04
     steps:
       - name: Trigger Vercel production deployment
@@ -127,3 +131,52 @@ jobs:
           curl -fsS -X POST "$HOOK" | tee response.json
           echo
           echo "Despliegue de Vercel solicitado: $(cat response.json)" >> "$GITHUB_STEP_SUMMARY"
+
+  security-audit:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.audit_only }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        section: [catalog, rpc-a, rpc-b, integrity]
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.118.0
+      - name: Link project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
+      - name: Read-only catalog and aggregate audit
+        run: |
+          case "${{ matrix.section }}" in
+            catalog) audit_file=scripts/security/audit.sql ;;
+            rpc-a) audit_file=scripts/security/details-a.sql ;;
+            rpc-b) audit_file=scripts/security/details-b.sql ;;
+            integrity) audit_file=scripts/security/integrity.sql ;;
+          esac
+          if ! supabase db query --linked -f "$audit_file" -o json > security-catalog.json 2> security-error.txt; then
+            detail=$(tail -c 3000 security-error.txt)
+            detail=${detail//%/%25}; detail=${detail//$'\r'/%0D}; detail=${detail//$'\n'/%0A}
+            echo "::error title=Read-only audit::${detail}"
+            exit 1
+          fi
+      - name: Publish metadata 1
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 0
+      - name: Publish metadata 2
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 1
+      - name: Publish metadata 3
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 2
+      - name: Publish metadata 4
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 3
+      - name: Publish metadata 5
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 4
+      - name: Publish metadata 6
+        run: node scripts/security/annotate-audit.cjs security-catalog.json 5

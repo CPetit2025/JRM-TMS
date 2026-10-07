@@ -1,9 +1,11 @@
+> Documento histórico. No representa el estado actual de producción ni garantiza seguridad absoluta. La inspección del 07/10/2026 encontró exposiciones adicionales; consultar [la auditoría actual](SEGURIDAD_PRODUCCION_2026-10-07.md). Las afirmaciones sobre APK offline y ausencia de errores de lint deben contrastarse con el código y las validaciones actuales.
+
 # AUDITORÍA INTEGRAL JRM-TMS — DICTAMEN FINAL Y RESOLUCIÓN
 
 ## 1. RESUMEN EJECUTIVO
 Se ha completado una auditoría exhaustiva, profunda e independiente de las arquitecturas, lógicas de negocio, seguridades, motores de base de datos y despliegue móvil (App Android) correspondientes al Ecosistema **JRM-TMS**. El proceso se llevó a cabo aplicando el ciclo riguroso de `DETECTAR → DEMOSTRAR → CORREGIR → PROBAR → REAUDITAR → DOCUMENTAR`.
 
-**Estado Final de la Auditoría:** ✅ APROBADO 100%
+**Estado histórico declarado:** aprobación limitada a los casos entonces revisados; sustituida por la inspección actual.
 **Fallas Críticas Detectadas en Diagnóstico:** 11
 **Fallas Críticas Posteriores a Remediación:** 0
 **Regresiones Conocidas:** 0
