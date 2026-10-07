@@ -25,7 +25,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     const nav = path && path !== '/' ? activeEntry(flatEntries(NAV_SECTIONS), path) : null
     if (nav?.section) return { title: nav.item.label, subtitle: `${nav.section.title}${nav.group ? ` › ${nav.group}` : ''}` }
     if (!path || path === '/') return { title: 'Dashboard Ejecutivo', subtitle: 'Resumen gerencial de operaciones' }
-    if (path.includes('/contratos/servicios')) return { title: 'Servicios de Contrato', subtitle: 'Gestión de servicios asignados' }
+    if (path.includes('/contratos/servicios')) return { title: 'Registro de Servicios', subtitle: 'Compromisos, servicios realizados y control económico' }
     if (path.includes('/contratos')) return { title: 'Contratos y OTs', subtitle: 'Gestión de acuerdos comerciales' }
     if (path.includes('/solicitudes')) return { title: 'Solicitud de Transporte', subtitle: 'Requerimientos de transporte' }
     if (path.includes('/despacho')) return { title: 'Gestión de Despachos', subtitle: 'Asignación de unidades y planificación' }

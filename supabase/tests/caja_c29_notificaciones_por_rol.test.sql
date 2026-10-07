@@ -1,3 +1,10 @@
+BEGIN;
+-- This legacy scenario isolates anticipation; the terminal exception rolls back this setting.
+DO $legacy_policy$ BEGIN
+ IF to_regclass('public.transport_lead_time_settings') IS NOT NULL THEN
+  EXECUTE 'UPDATE public.transport_lead_time_settings SET settings=jsonb_set(settings,''{enabled}'',''false''::jsonb)';
+ END IF;
+END $legacy_policy$;
 -- CAJA C29 — Notificaciones dirigidas por rol:
 --   T1 quien tiene "despacho" ve el aviso de despacho y no el de caja; T2 quien tiene "caja-aprobacion" ve el de caja y no
 --   el de despacho; T3 un usuario sin esos permisos solo ve el aviso dirigido a él (solicitante); T4 silenciar una

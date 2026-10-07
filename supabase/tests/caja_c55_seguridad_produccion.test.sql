@@ -22,7 +22,7 @@ BEGIN
   RAISE EXCEPTION 'CAJA C55 FAIL: vista omite RLS sin barrera explícita';
  END IF;
  IF EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.prosecdef
- AND has_function_privilege('anon',p.oid,'EXECUTE') AND p.proname NOT IN ('get_public_tracking_info','get_public_daily_tracking_info','get_public_daily_tracking_locations')) THEN
+ AND has_function_privilege('anon',p.oid,'EXECUTE') AND p.proname NOT IN ('get_public_tracking_info','get_public_daily_tracking_info','get_public_daily_tracking_locations','get_public_tracking_portal_info')) THEN
   RAISE EXCEPTION 'CAJA C55 FAIL: RPC privilegiado expuesto a anónimos';
  END IF;
  IF EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.prosecdef

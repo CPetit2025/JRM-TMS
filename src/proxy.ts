@@ -78,7 +78,7 @@ export async function proxy(request: NextRequest) {
     hasDashboardAccess = profile.employee_type !== 'CONDUCTOR' &&
       (isSystemAdminRole(role?.name) || permissions.includes('dashboard') || auditor)
     if (auditor && !dispatchAuditorPathAllowed(request.nextUrl.pathname)) {
-      return redirect(new URL('/despacho/planificacion', request.url))
+      return redirect(new URL('/despacho/documentos?vista=salida', request.url))
     }
     if (!isDriverRoute && !isLoginPage && !hasDashboardAccess) {
       return redirect(new URL('/login', request.url))

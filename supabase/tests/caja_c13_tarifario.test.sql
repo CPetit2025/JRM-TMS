@@ -3,6 +3,13 @@
 -- Termina en error para forzar ROLLBACK: "CAJA C13 PASS/FAIL".
 --   npx supabase db query --linked -f supabase/tests/caja_c13_tarifario.test.sql
 BEGIN;
+-- Isolate this legacy scenario from the separately tested mandatory anticipation policy.
+-- The change is transaction-local and is rolled back with every fixture.
+DO $legacy_policy$ BEGIN
+ IF to_regclass('public.transport_lead_time_settings') IS NOT NULL THEN
+  EXECUTE 'UPDATE public.transport_lead_time_settings SET settings=jsonb_set(settings,''{enabled}'',''false''::jsonb)';
+ END IF;
+END $legacy_policy$;
 
 CREATE FUNCTION pg_temp.as_user(p_user uuid) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN

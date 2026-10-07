@@ -48,11 +48,10 @@ export const NAV_SECTIONS: NavSection[] = [
   ] }] },
   { id: 'operacion', title: 'Operación', icon: Truck, groups: [{ items: [
     { href: '/torre-control', label: 'Torre de Control', icon: Radar, show: any('monitoreo', 'despacho', 'torre-control'), keywords: 'torre control vista' },
-    { href: '/despacho', label: 'Gestión de Despachos', icon: PackageCheck, show: any('despacho'), keywords: 'despacho viaje unidad' },
-    { href: '/despacho/planificacion', label: 'Planificación de Despachos', icon: CalendarRange, show: any('planificacion'), keywords: 'planificacion auditor ot packing' },
-    { href: '/despacho/documentos', label: 'Documentos de Despacho', icon: FileText, show: any('documentario', 'packing-list'), keywords: 'guia packing nota documentario' },
+    { href: '/despacho', label: 'Programación y Ruteo', icon: PackageCheck, show: any('despacho'), keywords: 'despacho programacion ruta viaje unidad' },
+    { href: '/despacho/documentos', label: 'Documentos de Despacho', icon: FileText, show: any('documentario', 'packing-list', 'planificacion'), keywords: 'planificacion auditor guia packing nota documentario conformidad' },
     { href: '/monitoreo', label: 'Monitoreo GPS', icon: MapIcon, show: any('monitoreo'), keywords: 'gps mapa seguimiento' },
-    { href: '/contratos/servicios', label: 'Servicios de Contrato', icon: Receipt, show: any('contratos-servicios'), keywords: 'servicio gasto montacarga grua estiba' },
+    { href: '/contratos/servicios', label: 'Registro de Servicios', icon: Receipt, show: any('contratos-servicios'), keywords: 'servicio realizado comprometido gasto montacarga grua estiba' },
   ] }] },
   { id: 'apt', title: 'Almacén APT', icon: Warehouse, groups: [{ items: [
     { href: '/apt', label: 'Estadía de Inventario', icon: Hourglass, show: any('apt', 'apt-carga'), keywords: 'apt estadia inventario fifo aging' },

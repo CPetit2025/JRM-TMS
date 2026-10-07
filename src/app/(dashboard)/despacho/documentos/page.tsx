@@ -1,4 +1,5 @@
 'use client'
+import { TransportWorkflow } from '@/components/transport/TransportWorkflow'
 import { DataTable } from '@/components/ui/data-table'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -10,6 +11,7 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { DeliveryReview, type DeliveryReviewTarget } from '@/components/delivery/DeliveryReview'
+import { documentPhaseMatches, type DocumentPhase } from '@/lib/document-flow'
 import { conformityLabels, type DeliveryRow } from '@/lib/delivery'
 import { PACKING_ACCEPT, packingMime } from '@/lib/packing-list'
 import { DOCS_BUCKET, errorMessage, fmtDate, receiptUrl } from '@/lib/caja'
@@ -45,6 +47,9 @@ const isSheetName = (n: string) => /\.(xlsx|xls|csv)$/i.test(n)
 const sheetMime = (n: string) => /\.csv$/i.test(n) ? 'text/csv' : /\.xls$/i.test(n) ? 'application/vnd.ms-excel' : SHEET_TYPES[0]
 
 // Horas que faltan para la salida (negativo = atrasado)
+const limaDay = (date = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
+const thirtyDaysAgo = () => limaDay(new Date(Date.now() - 30 * 864e5))
+
 const hoursLeft = (d: string | null) => (d ? (new Date(d).getTime() - Date.now()) / 36e5 : null)
 
 export default function DocumentosDespachoPage() {
@@ -56,12 +61,19 @@ function DocumentaryQueue() {
   const { canWrite, canRead, isLoaded } = usePermissions()
   const canEdit = canWrite('documentario')
   const canPacking = canWrite('packing-list')
-  const packingOnly = !canRead('documentario') && canRead('packing-list')
+  const packingOnly = !canRead('documentario') && (canRead('packing-list') || canRead('planificacion'))
   const [items, setItems] = useState<QueueItem[] | null>(null)
   const [filter, setFilter] = useState<'TODOS' | 'PENDIENTE' | 'REEMISION' | 'LISTO'>('TODOS')
-  const [showDeparted, setShowDeparted] = useState(false)
+  const params = useSearchParams()
+  const requestedPhase = params.get('vista')
+  const [phaseChoice, setPhaseChoice] = useState<DocumentPhase | null>(null)
+  const chosenPhase = phaseChoice || (['salida', 'conformidad', 'observados', 'historial'].includes(requestedPhase || '') ? requestedPhase as DocumentPhase : 'salida')
+  const phase: DocumentPhase = packingOnly && !['salida', 'historial'].includes(chosenPhase) ? 'salida' : chosenPhase
+  const showDeparted = phase !== 'salida'
+  const [dateFrom, setDateFrom] = useState(() => /^\d{4}-\d{2}-\d{2}$/.test(params.get('desde') || '') ? params.get('desde')! : thirtyDaysAgo())
+  const [dateUntil, setDateUntil] = useState(limaDay)
   const [search, setSearch] = useState('')
-  const dispatchParam = useSearchParams().get('despacho')
+  const dispatchParam = params.get('despacho')
   const [selection, setSelection] = useState<{ query: string | null; id: string | null } | null>(null)
   const selectedId = selection?.query === dispatchParam ? selection.id : dispatchParam
   const setSelectedId = (id: string | null) => setSelection({ query: dispatchParam, id })
@@ -81,7 +93,14 @@ function DocumentaryQueue() {
       if (fetching) return
       fetching = true
       try {
-      const { data, error } = await supabase.rpc('get_documentary_queue', { p_include_departed: showDeparted })
+      if (showDeparted && (!dateFrom || !dateUntil || dateUntil < dateFrom || (Date.parse(dateUntil) - Date.parse(dateFrom)) / 864e5 > 365)) {
+        setQueueError('Selecciona un período válido de hasta 366 días.'); return
+      }
+      const { data, error } = await supabase.rpc('get_documentary_queue_period', {
+        p_include_departed: showDeparted,
+        p_from: showDeparted ? `${dateFrom}T00:00:00-05:00` : null,
+        p_until: showDeparted ? `${dateUntil}T23:59:59.999-05:00` : null,
+      })
       if (cancel) return
       if (error) { setQueueError(errorMessage(error)); return }
       setQueueError('')
@@ -102,7 +121,7 @@ function DocumentaryQueue() {
     void run()
     const timer = window.setInterval(() => void run(), 30000)
     return () => { cancel = true; window.clearInterval(timer) }
-  }, [supabase, showDeparted, reload, packingOnly, isLoaded])
+  }, [supabase, showDeparted, dateFrom, dateUntil, reload, packingOnly, isLoaded])
 
   const counts = useMemo(() => {
     const c = { PENDIENTE: 0, REEMISION: 0, LISTO: 0 }
@@ -110,10 +129,10 @@ function DocumentaryQueue() {
     return c
   }, [items])
   const needle = search.trim().toLocaleLowerCase('es-PE')
-  const visible = (items || []).filter(i => filter === 'TODOS' || i.doc_status === filter).flatMap(item =>
+  const visible = (items || []).filter(i => phase !== 'salida' || filter === 'TODOS' || i.doc_status === filter).flatMap(item =>
     (item.stops.length ? item.stops : [null]).filter(stop => !needle || [item.dispatch_number, item.vehicle_plate,
       item.driver_name, stop?.ot_code, stop?.request_number, stop?.client, stop?.delivery].join(' ').toLocaleLowerCase('es-PE').includes(needle))
-      .map(stop => ({ item, stop })))
+      .map(stop => ({ item, stop }))).filter(({ item, stop }) => documentPhaseMatches(phase, item, deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)))
   const selected = items?.find(item => item.id === selectedId)
 
   const openDoc = async (path: string) => {
@@ -138,26 +157,28 @@ function DocumentaryQueue() {
 
   return (
     <div className="min-w-0 space-y-4">
+      <TransportWorkflow current="documentos" />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-[#002855] flex items-center gap-2"><FileText className="w-6 h-6" />Documentos de Despacho</h1>
-          <p className="mt-1 text-sm text-slate-500">Control por solicitud y OT · desde el Packing List hasta la conformidad de entrega.</p>
+          <p className="mt-1 text-sm text-slate-500">Salida y conformidad en un único espacio · documentos por servicio, parada y OT.</p>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-sm text-slate-600 flex items-center gap-1.5">
-            <input type="checkbox" checked={showDeparted} onChange={e => setShowDeparted(e.target.checked)} />Ver los que ya salieron (7 días)
-          </label>
           <button onClick={() => void load()} className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button>
         </div>
       </div>
 
+      <nav aria-label="Etapas documentarias" className="flex flex-wrap gap-2">
+        {([['salida', packingOnly ? 'Planificación · Packing List' : 'Previos a salida'], ...(!packingOnly ? [['conformidad', 'Conformidad de entrega'], ['observados', 'Observados / reemisión'], ['historial', 'Historial']] : [['historial', 'Historial de Packing List']])] as [DocumentPhase, string][]).map(([value, title]) => <button key={value} type="button" aria-pressed={phase === value} onClick={() => { setPhaseChoice(value); setFilter('TODOS') }} className={`min-h-11 rounded-lg border px-4 text-sm font-semibold ${phase === value ? 'border-[#002855] bg-[#002855] text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{title}</button>)}
+      </nav>
+      {showDeparted && <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4"><label className="text-xs font-semibold text-slate-600">Desde · salida programada<input type="date" value={dateFrom} max={dateUntil} onChange={e => setDateFrom(e.target.value)} className="mt-2 block min-h-11 rounded-lg border border-slate-300 px-3 text-sm" /></label><label className="text-xs font-semibold text-slate-600">Hasta · Lima<input type="date" value={dateUntil} min={dateFrom} onChange={e => setDateUntil(e.target.value)} className="mt-2 block min-h-11 rounded-lg border border-slate-300 px-3 text-sm" /></label><p className="text-xs leading-5 text-slate-500">Consulta por período de hasta 366 días. {packingOnly ? 'Historial de Packing List por despacho, unidad y OT.' : 'Historial incluye despachos cancelados y sus documentos vigentes; las evidencias y revisiones conservan su historial.'}</p></div>}
       <ol aria-label="Secuencia documentaria" className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm md:grid-cols-3">
         {[['Packing List firmado', 'Auditor de Despacho', 'Carga el Packing List en PDF, foto o Excel con su firma. El asistente confirma los documentos y, en recojos, registra la Nota de Despacho.'], ['Guía de entrega', 'Conductor / proveedor JRM', 'Adjunta la guía firmada desde el app o el portal del proveedor al realizar la entrega.'], ['Conformidad', 'Supervisor de Transporte', 'Aprueba, observa o rechaza el sustento. Sin aprobación, el servicio no puede avanzar.']].map(([title, role, detail], index) => <li key={title} className="flex items-start gap-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#002855] font-bold text-white">{index + 1}</span><div><p className="font-semibold text-[#002855]">{title}</p><p className="mt-1 text-xs font-medium text-slate-700">{role}</p><p className="mt-1 text-xs leading-5 text-slate-500">{detail}</p></div></li>)}
       </ol>
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
         <label className="relative w-full sm:max-w-sm"><span className="sr-only">Buscar OT, solicitud, cliente o despacho</span><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="OT, solicitud, cliente o despacho" className="min-h-11 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm" /></label>
         <div className="flex flex-wrap gap-2">
-        {([['TODOS', 'Todos'], ['PENDIENTE', `Pendientes (${counts.PENDIENTE})`], ['REEMISION', `Reemisión (${counts.REEMISION})`], ['LISTO', `Listos (${counts.LISTO})`]] as const).map(([k, l]) => (
+        {phase === 'salida' && ([['TODOS', 'Todos'], ['PENDIENTE', `Pendientes (${counts.PENDIENTE})`], ['REEMISION', `Reemisión (${counts.REEMISION})`], ['LISTO', `Listos (${counts.LISTO})`]] as const).map(([k, l]) => (
           <button key={k} onClick={() => setFilter(k)}
             className={`min-h-11 px-3 rounded-lg text-sm border ${filter === k ? 'bg-[#002855] text-white border-[#002855]' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>{l}</button>
         ))}
@@ -172,7 +193,7 @@ function DocumentaryQueue() {
       {items === null && !queueError ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
         : !visible.length ? <p className="text-slate-500 text-sm p-6 text-center border border-slate-200 rounded-xl bg-white">{queueError && !items ? 'La bandeja no está disponible.' : 'No hay solicitudes para estos filtros.'}</p>
         : <section aria-label="Control documentario por OT" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <div className="border-b border-slate-200 px-4 py-3 text-sm text-slate-600">{visible.length} solicitud(es) · ordenadas por salida del despacho. Un despacho puede reunir varias OT.</div>
+          <div className="border-b border-slate-200 px-4 py-3 text-sm text-slate-600">{visible.length} solicitud(es) · ordenadas por salida del despacho. Una fila corresponde a un servicio; el despacho puede reunir varias OT.</div>
           <div className="overflow-x-auto"><DataTable className="block w-full text-left text-sm lg:table"><caption className="sr-only">Solicitudes y OT asociadas, Packing List, guía de entrega y conformidad</caption><thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['OT / Solicitud', 'Cliente / Destino', 'Despacho / Salida', '1. Packing List', ...(packingOnly ? [] : ['2. Guía de entrega', '3. Conformidad']), 'Acciones'].map(label => <th key={label} scope="col" className="px-4 py-3 font-semibold">{label}</th>)}</tr></thead><tbody className="block divide-y divide-slate-200 lg:table-row-group">{visible.map(({ item, stop }) => <DocumentRow key={`${item.id}/${stop?.request_id || 'empty'}`} item={item} stop={stop} delivery={deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)} canEdit={canEdit || canPacking} packingOnly={packingOnly} onManage={() => setSelectedId(item.id)} onEvidence={setReview} />)}</tbody></DataTable></div>
         </section>}
       <Modal isOpen={!!selected} onClose={() => setSelectedId(null)} title={`Documentos · ${selected?.dispatch_number || ''}`} maxWidth="max-w-[1440px]"

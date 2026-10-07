@@ -1,8 +1,9 @@
 "use client"
+import { TransportWorkflow } from '@/components/transport/TransportWorkflow'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, Receipt, Calendar, FileText, Check, Ban, Loader2, DollarSign, Upload, Download, AlertCircle, Search, Filter, X, ArrowUp, ArrowDown, ArrowUpDown, RefreshCw, Scale } from 'lucide-react'
+import { Plus, Calendar, Check, Ban, Loader2, Upload, Download, AlertCircle, Search, Filter, X, ArrowUp, ArrowDown, ArrowUpDown, RefreshCw, Scale } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -59,17 +60,20 @@ interface ContractService {
   created_at: string
   contracts?: {
     code: string
-    contract_budgets?: Array<{ balance_pen: number }>
     clients?: {
       business_name: string
     }
   }
 }
 
-type SortKey = 'fecha' | 'contrato' | 'cliente' | 'servicio' | 'placa' | 'guia' | 'ton' | 'monto' | 'saldo' | 'estado'
+interface RegistryContext { service_id: string; dispatch_number: string | null; request_numbers: string[]; operation_state: string | null; stage: 'COMPROMETIDO' | 'REALIZADO' | 'ANULADO' | 'REGISTRO_MANUAL' }
+const stageLabels: Record<RegistryContext['stage'], string> = { COMPROMETIDO: 'Comprometido', REALIZADO: 'Realizado', ANULADO: 'Anulado', REGISTRO_MANUAL: 'Registro manual' }
+
+type SortKey = 'fecha' | 'contrato' | 'cliente' | 'servicio' | 'placa' | 'guia' | 'ton' | 'monto' | 'traza' | 'estado'
 
 // Peso de las guías según la SALIDA cargada en Almacén APT (tabla contract_service_peso_apt, migración 20261006130000)
 interface PesoApt { service_id: string; guias: string; kg: number | null; encontradas: number; faltan: string | null; calculado_at: string }
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String((error as { message?: string } | null)?.message || error)
 const fmtTon = (kg: number) => (kg / 1000).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 // TON a mostrar: el de APT si hay; si no, el KG escrito a mano en la descripción
 const tonInfo = (srv: { description?: string }, p?: PesoApt): { ton: number | null; fuente: 'APT' | 'MANUAL' | null } => {
@@ -81,6 +85,10 @@ const tonInfo = (srv: { description?: string }, p?: PesoApt): { ton: number | nu
 export default function ContractServicesPage() {
   const supabase = createClient()
   const [services, setServices] = useState<ContractService[]>([])
+  const [registryContext, setRegistryContext] = useState<Record<string, RegistryContext>>({})
+  const [budgetContract, setBudgetContract] = useState('')
+  const [reconcilingDispatch, setReconcilingDispatch] = useState<string | null>(null)
+  const stageOf = (s: ContractService): RegistryContext['stage'] => s.status === 'ANULADO' ? 'ANULADO' : registryContext[s.id]?.stage || (s.dispatch_id ? 'COMPROMETIDO' : 'REGISTRO_MANUAL')
   const [pesoApt, setPesoApt] = useState<Record<string, PesoApt>>({})
   const [syncingPeso, setSyncingPeso] = useState(false)
   const [contracts, setContracts] = useState<Contract[]>([])
@@ -144,9 +152,6 @@ export default function ContractServicesPage() {
   const categoryOf = (type?: string) => type === 'SUBCONTRATO' ? 'Subcontrato' : type === 'ERROR' ? 'Error' : 'Contrato'
   const typeTag = (type?: string) => type === 'SUBCONTRATO' ? ' · Subcontrato' : type === 'ERROR' ? ' · Error' : ''
 
-  useEffect(() => {
-    fetchData()
-  }, [])
 
   // Desde la ficha de la OT: /contratos/servicios?contrato=<id> abre el registro con la OT elegida (una vez)
   const preselectDone = useRef(false)
@@ -198,14 +203,21 @@ export default function ContractServicesPage() {
           *,
           contracts!contract_id (
             code,
-            clients (business_name),
-            contract_budgets (balance_pen)
+            clients (business_name)
           )
         `)
         .order('created_at', { ascending: false })
       
       if (sError) throw sError
-      setServices((sData as any) || [])
+      const rows = (sData as unknown as ContractService[]) || []
+      const contexts: RegistryContext[] = []
+      for (let offset = 0; offset < rows.length; offset += 200) {
+        const { data, error } = await supabase.rpc('get_service_registry_context', { p_services: rows.slice(offset, offset + 200).map(s => s.id) })
+        if (error) throw error
+        contexts.push(...((data as RegistryContext[]) || []))
+      }
+      setRegistryContext(Object.fromEntries(contexts.map(c => [c.service_id, c])))
+      setServices(rows)
       // Peso según APT (si la tabla aún no existe, la columna usa el KG manual)
       const { data: pData } = await supabase.from('contract_service_peso_apt').select('*')
       setPesoApt(Object.fromEntries(((pData as PesoApt[]) || []).map(p => [p.service_id, p])))
@@ -221,34 +233,25 @@ export default function ContractServicesPage() {
         .order('code')
 
       if (cError) throw cError
-      setContracts((cData as any) || [])
+      setContracts((cData as unknown as Contract[]) || [])
       applyPreselect(((cData as unknown) as Contract[]) || [])
       const { data: canVoid } = await supabase.rpc('can_void_contract_service')
       setCanVoidDirect(canVoid === true)
 
-      // Fetch orphan dispatches (Dispatches without a contract_service)
-      const { data: dData, error: dError } = await supabase
-        .from('dispatches')
-        .select(`
-          id, dispatch_number, driver_name, vehicle_plate, scheduled_departure, status, freight_cost, contract_id,
-          contracts (code, clients (business_name))
-        `)
-        .not('contract_id', 'is', null)
-        .neq('vehicle_plate', 'EXTERNO') // Exclude NOTA_SALIDA
-      
-      if (dError) throw dError
-      
-      // Filter out dispatches that already have a contract service
-      const dispatchesWithServices = new Set(sData?.map(s => s.dispatch_id).filter(Boolean))
-      const orphans = (dData || []).filter(d => !dispatchesWithServices.has(d.id))
-      setOrphanDispatches(orphans as any)
+      const { data: queue, error: queueError } = await supabase.rpc('get_dispatch_freight_reconciliation_queue')
+      // Read-only roles can consult the registry without financial write access.
+      setOrphanDispatches(queueError ? [] : ((queue as Dispatch[]) || []))
 
-    } catch (error: any) {
-      toast.error('Error al cargar datos: ' + error.message)
+    } catch (error: unknown) {
+      toast.error('Error al cargar datos: ' + errorMessage(error))
     } finally {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    fetchData()
+  }, [])
 
   const handleSaveAmount = async () => {
     if (!viewingService) return
@@ -271,9 +274,9 @@ export default function ContractServicesPage() {
       setIsEditingAmount(false)
       setViewingService({...viewingService, amount_pen: newAmount})
       fetchData()
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error updating amount:', error)
-      toast.error('Error al actualizar: ' + error.message)
+      toast.error('Error al actualizar: ' + errorMessage(error))
     } finally {
       setIsSavingAmount(false)
     }
@@ -314,8 +317,8 @@ export default function ContractServicesPage() {
       setIsModalOpen(false)
       resetForm()
       fetchData()
-    } catch (error: any) {
-      toast.error('Error: ' + error.message)
+    } catch (error: unknown) {
+      toast.error('Error: ' + errorMessage(error))
     } finally {
       setIsSubmitting(false)
     }
@@ -323,37 +326,17 @@ export default function ContractServicesPage() {
 
 
   const handleRegisterOrphan = async (dispatch: Dispatch) => {
+    if (reconcilingDispatch) return
+    setReconcilingDispatch(dispatch.id)
     try {
-      const effectiveFreightCost = dispatch.freight_cost > 0 ? dispatch.freight_cost : 0
-      if (effectiveFreightCost <= 0) {
-        toast.error('Este despacho no tiene costo de flete registrado (S/ 0).')
-        return
-      }
-      
-      const { data: serviceData, error: serviceError } = await supabase.rpc('register_contract_service', {
-        p_contract_id: dispatch.contract_id,
-        p_service_type: 'FLETE',
-        p_description: `Flete (Recuperado) - Despacho ${dispatch.dispatch_number}`,
-        p_amount_pen: effectiveFreightCost,
-        p_service_date: dispatch.scheduled_departure.split('T')[0],
-        p_plate: dispatch.vehicle_plate,
-        p_driver_name: dispatch.driver_name,
-        p_category: 'Contrato'
-      })
-
-      if (serviceError) throw serviceError
-
-      if (serviceData) {
-        await supabase
-          .from('contract_services')
-          .update({ dispatch_id: dispatch.id })
-          .eq('id', serviceData)
-      }
-
-      toast.success(`Servicio para ${dispatch.dispatch_number} registrado correctamente`)
-      fetchData()
-    } catch (error: any) {
-      toast.error('Error al registrar servicio: ' + error.message)
+      const { data, error } = await supabase.rpc('reconcile_dispatch_freight', { p_dispatch: dispatch.id })
+      if (error) throw error
+      toast.success(data?.created ? 'Vínculo regularizado sin volver a descontar la partida' : 'El flete ya estaba vinculado')
+      await fetchData()
+    } catch (error: unknown) {
+      toast.error('No se pudo regularizar: ' + (error instanceof Error ? error.message : String((error as { message?: string })?.message || error)))
+    } finally {
+      setReconcilingDispatch(null)
     }
   }
 
@@ -391,7 +374,7 @@ export default function ContractServicesPage() {
         const workbook = XLSX.read(data, { type: 'array' })
         const sheetName = workbook.SheetNames[0]
         const worksheet = workbook.Sheets[sheetName]
-        const json = XLSX.utils.sheet_to_json(worksheet) as any[]
+        const json = XLSX.utils.sheet_to_json(worksheet) as Array<Record<string, string | number>>
 
         let successCount = 0
         let errorCount = 0
@@ -420,11 +403,11 @@ export default function ContractServicesPage() {
             p_contract_id: contract.id,
             p_service_type: row.Servicio || row.Tipo_Servicio || 'OTROS',
             p_description: row.KG || row.Descripcion || '',
-            p_amount_pen: parseFloat(row['Monto (PEN)'] || row.Monto) || 0,
+            p_amount_pen: parseFloat(String(row['Monto (PEN)'] || row.Monto)) || 0,
             p_service_date: parsedDate,
             p_plate: row.Placa || null,
             p_driver_name: row.Conductor || null,
-            p_hours: row.Horas ? parseFloat(row.Horas) : null,
+            p_hours: row.Horas ? parseFloat(String(row.Horas)) : null,
             p_provider_ruc: row.Proveedor_RUC ? String(row.Proveedor_RUC) : null,
             p_provider_name: row.Proveedor_Nombre || null,
             p_category: row.Categoria || 'Contrato',
@@ -440,8 +423,8 @@ export default function ContractServicesPage() {
 
         toast.success(`Carga completada: ${successCount} exitosos, ${errorCount} errores.`)
         fetchData()
-      } catch (err: any) {
-        toast.error('Error procesando el archivo: ' + err.message)
+      } catch (err: unknown) {
+        toast.error('Error procesando el archivo: ' + errorMessage(err))
       } finally {
         setIsUploading(false)
       }
@@ -449,7 +432,7 @@ export default function ContractServicesPage() {
     reader.readAsArrayBuffer(file)
   }, [contracts])
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps } = useDropzone({
     onDrop,
     accept: {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
@@ -484,7 +467,7 @@ export default function ContractServicesPage() {
     const matchesDateFrom = dateFrom ? srvDate >= dateFrom : true
     const matchesDateTo = dateTo ? srvDate <= dateTo : true
     
-    const matchesStatus = filterStatus === 'TODOS' ? true : srv.status === filterStatus
+    const matchesStatus = filterStatus === 'TODOS' ? true : stageOf(srv) === filterStatus
     
     return matchesSearch && matchesDateFrom && matchesDateTo && matchesStatus
   })
@@ -500,8 +483,8 @@ export default function ContractServicesPage() {
       case 'guia': return srv.referral_guide || ''
       case 'ton': return tonInfo(srv, pesoApt[srv.id]).ton ?? -1
       case 'monto': return Number(srv.amount_pen || 0)
-      case 'saldo': return Number(srv.contracts?.contract_budgets?.[0]?.balance_pen || 0)
-      case 'estado': return srv.status || ''
+      case 'traza': return registryContext[srv.id]?.dispatch_number || ''
+      case 'estado': return stageLabels[stageOf(srv)]
     }
   }
   const sortedServices = [...filteredServices].sort((a, b) => {
@@ -522,18 +505,19 @@ export default function ContractServicesPage() {
 
   return (
     <div className="space-y-6 w-full mx-auto">
-      <div className="flex justify-between items-center">
+      <TransportWorkflow current="registro" />
+      <div className="flex flex-col gap-4 xl:flex-row xl:justify-between xl:items-center">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Servicios de Contratos</h1>
-          <p className="text-sm text-slate-500">Registro manual y masivo de gastos por servicios que descuentan de la partida del contrato.</p>
+          <h1 className="text-2xl font-bold text-slate-800">Registro de Servicios</h1>
+          <p className="text-sm text-slate-500">Compromisos de transporte, servicios realizados y gastos adicionales vinculados a la OT. El cierre operativo no significa pago.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <button 
             onClick={() => setIsOrphanModalOpen(true)}
             className="flex items-center gap-2 bg-rose-50 text-rose-700 border border-rose-200 px-4 py-2 rounded-lg font-medium hover:bg-rose-100 transition-colors shadow-sm"
           >
             <AlertCircle className="w-4 h-4" />
-            Despachos sin Flete ({orphanDispatches.length})
+            Regularizar vínculos ({orphanDispatches.length})
           </button>
           
           <button
@@ -627,9 +611,9 @@ export default function ContractServicesPage() {
                 onChange={(e) => setFilterStatus(e.target.value)}
               >
                 <option value="TODOS">Todos los Estados</option>
-                <option value="REGISTRADO">Registrado</option>
-                <option value="FACTURADO">Facturado</option>
-                <option value="PAGADO">Pagado</option>
+                <option value="COMPROMETIDO">Comprometidos</option>
+                <option value="REALIZADO">Realizados</option>
+                <option value="REGISTRO_MANUAL">Registros manuales</option>
                 <option value="ANULADO">Anulado</option>
               </select>
             </div>
@@ -637,6 +621,18 @@ export default function ContractServicesPage() {
         )}
       </div>
 
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <label htmlFor="registry-budget" className="text-sm font-semibold text-[#002855]">Disponible actual de la partida · OT</label>
+        <select id="registry-budget" value={budgetContract} onChange={e => setBudgetContract(e.target.value)} className="mt-2 block w-full rounded-lg border border-slate-300 p-2 text-sm md:max-w-lg">
+          <option value="">Seleccionar OT para consultar su saldo actual</option>
+          {contracts.map(c => <option key={c.id} value={c.id}>{c.code}{typeTag(c.type)}</option>)}
+        </select>
+        {budgetContract && (() => {
+          const budget = partidaOf(budgetContract)
+          return <p className="mt-2 text-sm text-slate-600">{budget ? <>OT que financia: <strong>{budget.owner.code}</strong> · Disponible actual: <strong>S/ {budget.balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</strong></> : 'Sin partida de transporte disponible'}<br />El saldo actual considera el 80 % operativo menos reservas y consumos. No es un saldo histórico por servicio.</p>
+        })()}
+      </div>
 
       {/* Lista de Servicios */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -653,7 +649,7 @@ export default function ContractServicesPage() {
                 {sortHeader('Guía', 'guia')}
                 {sortHeader('TON', 'ton', 'text-right')}
                 {sortHeader('Monto (PEN)', 'monto', 'text-right')}
-                {sortHeader('Saldo (PEN)', 'saldo', 'text-right')}
+                {sortHeader('Despacho / Solicitud', 'traza')}
                 {sortHeader('Estado', 'estado', 'text-center')}
               </tr>
             </thead>
@@ -673,14 +669,14 @@ export default function ContractServicesPage() {
                 </tr>
               ) : (
                 sortedServices.map((srv, idx) => {
-                  const balance = srv.contracts?.contract_budgets?.[0]?.balance_pen || 0;
-                  const isNegative = balance < 0;
+                  const stage = stageOf(srv);
+                  const context = registryContext[srv.id];
                   const correlative = filteredServices.length - idx;
                   return (
                   <tr 
                     key={srv.id} 
                     onClick={() => setViewingService(srv)}
-                    className={`cursor-pointer transition-colors ${srv.status === 'ANULADO' ? 'bg-slate-200/70 text-slate-400 hover:bg-slate-200 [&_td]:opacity-70' : isNegative ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-slate-50'}`}
+                    className={`cursor-pointer transition-colors ${srv.status === 'ANULADO' ? 'bg-slate-200/70 text-slate-400 hover:bg-slate-200 [&_td]:opacity-70' : 'hover:bg-slate-50'}`}
                     title={srv.status === 'ANULADO' ? `Anulado${srv.void_reason ? `: ${srv.void_reason}` : ''}` : undefined}
                   >
                     <td className="p-4 text-sm font-bold text-slate-400 text-center">
@@ -733,19 +729,21 @@ export default function ContractServicesPage() {
                             <div className={`text-[10px] ${p ? 'text-amber-600' : 'text-slate-400'}`}>{p ? 'manual · guía sin APT' : 'manual'}</div>
                           </div>
                         )
-                        return p ? <span className="text-[11px] text-amber-600" title={`No encontradas en APT: ${p.faltan || p.guias}`}>guía sin APT</span> : <span className="text-slate-400">{srv.description || '-'}</span>
+                        return p ? <span className="text-[11px] text-amber-600" title={`No encontradas en APT: ${p.faltan || p.guias}`}>guía sin APT</span> : <span className="text-slate-400">Sin peso sustentado</span>
                       })()}
                     </td>
                     <td className={`p-4 text-sm font-bold text-right ${srv.status === 'ANULADO' ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
                       S/ {Number(srv.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                     </td>
-                    <td className={`p-4 text-sm font-bold text-right ${isNegative ? 'text-red-600' : 'text-emerald-600'}`}>
-                      S/ {balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                    <td className="p-4 text-sm">
+                      {context?.dispatch_number ? <a href={`/torre-control?despacho=${srv.dispatch_id}`} onClick={e => e.stopPropagation()} className="font-semibold text-[#002855] underline">{context.dispatch_number}</a> : <span className="text-slate-400">Sin despacho</span>}
+                      <div className="text-xs text-slate-500">{context?.request_numbers?.join(' · ')}</div>
                     </td>
                     <td className="p-4 text-center">
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${srv.status === 'ANULADO' ? 'bg-slate-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
-                        {srv.status}
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${stage === 'ANULADO' ? 'bg-slate-500 text-white' : stage === 'REALIZADO' ? 'bg-emerald-100 text-emerald-700' : stage === 'COMPROMETIDO' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}`}>
+                        {stageLabels[stage]}
                       </span>
+                      <div className="mt-1 text-[10px] text-slate-500">Estado financiero: {srv.status}</div>
                     </td>
                   </tr>
                 )})
@@ -758,13 +756,12 @@ export default function ContractServicesPage() {
       <Modal
         isOpen={isOrphanModalOpen}
         onClose={() => setIsOrphanModalOpen(false)}
-        title="Despachos sin Servicio de Contrato Registrado"
+        title="Regularización de vínculos de flete"
         maxWidth="max-w-4xl"
       >
         <div className="space-y-4">
           <p className="text-sm text-slate-600">
-            Los siguientes despachos se crearon sin registrar su costo de flete en los servicios de contrato. 
-            Haga clic en "Registrar" para generar el gasto correspondiente.
+            Restablece el vínculo económico de fletes ya imputados a una partida. No vuelve a reservar ni consumir el monto. Las imputaciones inconsistentes requieren revisión y no se regularizan automáticamente.
           </p>
           <div className="overflow-auto max-h-[500px]">
             <DataTable className="w-full text-left border-collapse">
@@ -781,7 +778,7 @@ export default function ContractServicesPage() {
                 {orphanDispatches.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="p-6 text-center text-slate-500">
-                      No hay despachos huérfanos. Todos tienen servicio registrado.
+                      No hay vínculos de flete pendientes de regularización.
                     </td>
                   </tr>
                 ) : (
@@ -804,10 +801,10 @@ export default function ContractServicesPage() {
                       <td className="p-3 text-right">
                         <button
                           onClick={() => handleRegisterOrphan(d)}
-                          disabled={!d.freight_cost || d.freight_cost <= 0}
+                          disabled={reconcilingDispatch !== null || !d.freight_cost || d.freight_cost <= 0}
                           className="px-3 py-1.5 bg-[#002855] text-white rounded text-xs font-medium hover:bg-[#001d3d] disabled:opacity-50"
                         >
-                          Registrar
+                          {reconcilingDispatch === d.id ? 'Regularizando…' : 'Regularizar vínculo'}
                         </button>
                       </td>
                     </tr>
