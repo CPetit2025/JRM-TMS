@@ -14,6 +14,9 @@ BEGIN
    WHERE EXISTS(SELECT 1 FROM information_schema.columns c WHERE c.table_schema='public' AND c.table_name=p_table AND c.column_name=k.key)) INTO v_id;
  RETURN v_id;
 END $$;
+-- Test-only temporary helpers: public execution defaults are intentionally revoked.
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
+
 DO $test$
 DECLARE actor uuid; assistant uuid; audit_role uuid; doc_role uuid; site uuid; foreign_site uuid; d uuid; other_d uuid; req uuid;
  path text; pending_path text; doc_id uuid; r jsonb; q jsonb; mime text; ext text; denied boolean; removed integer; n integer:=0;

@@ -18,6 +18,9 @@ BEGIN
   RETURN v_id;
 END $$;
 
+-- Test-only temporary helpers: public execution defaults are intentionally revoked.
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
+
 DO $test$
 DECLARE actor uuid; other_actor uuid; site uuid; carrier uuid; provider uuid; test_role uuid; driver uuid; driver2 uuid;
  vehicle uuid; vehicle2 uuid; ct uuid; ct2 uuid; req uuid; req2 uuid; req3 uuid; route uuid; r jsonb; bad boolean;

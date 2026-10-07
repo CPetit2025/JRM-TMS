@@ -25,6 +25,9 @@ BEGIN
   RETURN v_id;
 END $$;
 
+-- Test-only temporary helpers: public execution defaults are intentionally revoked.
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
+
 DO $test$
 DECLARE
   v_desp uuid; v_nadie uuid; r_super uuid; r_desp uuid; r_nadie uuid; v_site uuid; v_car uuid; v_propio uuid; v_ct uuid;

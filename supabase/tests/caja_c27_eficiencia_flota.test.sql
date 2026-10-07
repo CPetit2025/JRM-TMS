@@ -16,6 +16,9 @@ CREATE FUNCTION pg_temp.cnt(q text) RETURNS text LANGUAGE plpgsql AS $$
 DECLARE n bigint;
 BEGIN EXECUTE q INTO n; RETURN n::text; EXCEPTION WHEN OTHERS THEN RETURN 'ERR:' || SQLSTATE; END $$;
 
+-- Test-only temporary helpers: public execution defaults are intentionally revoked.
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
+
 DO $test$
 DECLARE v_user uuid; v_rc uuid; v_rv uuid; v_up uuid; r jsonb; r2 jsonb; r_no jsonb; r_beg jsonb; u jsonb; e jsonb;
   v_fail text[] := '{}'; v_pass int := 0; v_diag text := '';

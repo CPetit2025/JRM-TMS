@@ -16,6 +16,9 @@ CREATE TEMP TABLE zz_c31_ot (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), stat
   total_cost numeric, approved_quote_id uuid);
 CREATE TRIGGER zz_c31_trg BEFORE UPDATE ON zz_c31_ot FOR EACH ROW EXECUTE FUNCTION public.mant_trg_ot_umbral();
 
+-- Test-only temporary helpers: public execution defaults are intentionally revoked.
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
+
 DO $test$
 DECLARE v_user uuid; r_p uuid; r_n uuid; r jsonb; v_fail text[] := '{}'; v_pass int := 0; v_plate text; v_pid uuid; n int; n2 int;
   v_ok boolean; v_ot uuid; v_rep text; v_fecha date := (now() AT TIME ZONE 'America/Lima')::date - 10;

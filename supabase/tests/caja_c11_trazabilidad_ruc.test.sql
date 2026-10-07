@@ -11,6 +11,9 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN RETURN SQLERRM;
 END $$;
 
+-- Test-only temporary helpers: public execution defaults are intentionally revoked.
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
+
 DO $test$
 DECLARE
   v_user uuid; v_site uuid; v_disp uuid; v_legacy uuid;
