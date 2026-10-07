@@ -1,4 +1,5 @@
 'use client'
+import { protectedFileHref } from '@/lib/protected-files'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -115,7 +116,7 @@ export default function CumplimientoPage() {
               <Table rows={data.vdocs} empty="Sin documentos registrados" cols={[
                 ['Unidad', r => r.vehicle_plate], ['Documento', r => r.document_type.replace(/_/g, ' ')], ['Número', r => r.document_number || '—'],
                 ['Emisor', r => r.issuer || '—'], ['Vence', r => d(r.expiration_date)], ['Estado', r => <Badge v={r.status} />],
-                ['Archivo', r => r.file_url ? <a href={r.file_url} target="_blank" rel="noreferrer" className="text-blue-600 text-xs">ver</a> : '—']]} />
+                ['Archivo', r => r.file_url ? <a href={protectedFileHref(r.file_url)} target="_blank" rel="noreferrer" className="text-blue-600 text-xs">ver</a> : '—']]} />
             </Section>
           )}
 

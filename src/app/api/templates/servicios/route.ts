@@ -1,7 +1,12 @@
+import { getActiveSession } from '@/lib/server/active-session'
 import { NextResponse } from 'next/server'
 import * as ExcelJS from 'exceljs'
 
 export async function GET() {
+  const session = await getActiveSession()
+  if (!session) return NextResponse.json({ error: 'Sesión no autorizada' }, { status: 401 })
+  if (!["contratos-servicios", "clientes"].some(module => session.canRead(module))) return NextResponse.json({ error: 'Sin permiso para esta consulta' }, { status: 403 })
+
   try {
     const workbook = new ExcelJS.Workbook()
     const worksheet = workbook.addWorksheet('Servicios')

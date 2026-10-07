@@ -1,4 +1,5 @@
 'use client'
+import { protectedFileHref } from '@/lib/protected-files'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -159,12 +160,12 @@ function InspectionDetail({ row, onClose }: { row: InspectionRow; onClose: () =>
             <tr key={r.id}>
               <td className="py-2">{r.checklist_items?.text}{r.checklist_items?.is_critical ? <span className="text-red-600 text-xs"> (crítica)</span> : null}{r.observation && <div className="text-xs text-slate-500">{r.observation}</div>}</td>
               <td className="py-2 font-semibold text-right">{r.response}</td>
-              <td className="py-2 text-right w-16">{r.photo_url && /^https?:/.test(r.photo_url) ? <a href={r.photo_url} target="_blank" rel="noreferrer" className="text-blue-600 text-xs">foto</a> : null}</td>
+              <td className="py-2 text-right w-16">{r.photo_url && /^https?:/.test(r.photo_url) ? <a href={protectedFileHref(r.photo_url)} target="_blank" rel="noreferrer" className="text-blue-600 text-xs">foto</a> : null}</td>
             </tr>
           ))}
         </tbody></DataTable>
         {row.notes && <p className="text-slate-600">{row.notes}</p>}
-        {row.signature_url && /^https?:/.test(row.signature_url) && <a href={row.signature_url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 underline">Ver firma del inspector</a>}
+        {row.signature_url && /^https?:/.test(row.signature_url) && <a href={protectedFileHref(row.signature_url)} target="_blank" rel="noreferrer" className="text-xs text-blue-600 underline">Ver firma del inspector</a>}
       </div>
     </Modal>
   )
