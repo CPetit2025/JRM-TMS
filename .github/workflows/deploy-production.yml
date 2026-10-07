@@ -70,7 +70,7 @@ jobs:
           APPLY_ALL: ${{ inputs.apply_all_pending }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          LAST_OK=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy-production.yml --branch master \
+          LAST_OK=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy-production.yml --branch master --event push \
             --status success --limit 1 --json headSha -q '.[0].headSha' 2>/dev/null || true)
           if [ -n "$LAST_OK" ] && git cat-file -e "$LAST_OK^{commit}" 2>/dev/null && git merge-base --is-ancestor "$LAST_OK" "$AFTER"; then
             echo "Último despliegue exitoso: $LAST_OK"; BEFORE="$LAST_OK"
