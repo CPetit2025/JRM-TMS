@@ -12,6 +12,10 @@ on:
     branches: [master]
   workflow_dispatch:
     inputs:
+      audit_details:
+        description: Inspeccionar definiciones RPC y relaciones (solo con audit_only)
+        type: boolean
+        default: false
       audit_only:
         description: Inspección de seguridad de solo lectura (sin migraciones ni despliegue)
         type: boolean
@@ -152,7 +156,8 @@ jobs:
         run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
       - name: Read-only catalog and aggregate audit
         run: |
-          supabase db query --linked -f scripts/security/audit.sql -o json > security-catalog.json
+          if [ "${{ inputs.audit_details }}" = "true" ]; then audit_file=scripts/security/details.sql; else audit_file=scripts/security/audit.sql; fi
+          supabase db query --linked -f "$audit_file" -o json > security-catalog.json
       - name: Publish metadata 1
         run: node scripts/security/annotate-audit.cjs security-catalog.json 0
       - name: Publish metadata 2
