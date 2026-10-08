@@ -8,7 +8,8 @@ import { Modal } from '@/components/ui/modal'
 import { DataTable } from '@/components/ui/data-table'
 
 type Site = { id: string; name: string }
-type Contract = { id: string; code: string; site_id: string }
+type Contract = { id: string; code: string; site_id: string; type?: string | null; parent_id?: string | null }
+const KIND: Record<string, string> = { SUBCONTRATO: 'Subcontrato', ERROR: 'Error' }
 type PortalLink = { token: string; site_id: string; contract_ids: string[]; created_at: string; revoked_at: string | null; rotated_at: string | null }
 type Credential = { token: string; pin: string }
 
@@ -25,6 +26,21 @@ export function TrackingPortalManager({ open, onClose }: { open: boolean; onClos
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // OT de la sede en orden jerárquico: cada madre seguida de sus subcontratos y errores. Marcar la madre incluye a
+  // toda su familia (también la que se registre después), así que los hijos se muestran como incluidos.
+  const siteContracts = useMemo(() => {
+    const list = contracts.filter(item => item.site_id === site)
+    const ids = new Set(list.map(item => item.id))
+    const children = new Map<string, Contract[]>()
+    list.forEach(item => { if (item.parent_id && ids.has(item.parent_id)) children.set(item.parent_id, [...(children.get(item.parent_id) || []), item]) })
+    const out: { item: Contract; depth: number; ancestors: string[] }[] = []
+    const walk = (item: Contract, depth: number, ancestors: string[]) => {
+      out.push({ item, depth, ancestors })
+      ;(children.get(item.id) || []).forEach(child => walk(child, depth + 1, [...ancestors, item.id]))
+    }
+    list.filter(item => !item.parent_id || !ids.has(item.parent_id)).forEach(item => walk(item, 0, []))
+    return out
+  }, [contracts, site])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -92,8 +108,16 @@ export function TrackingPortalManager({ open, onClose }: { open: boolean; onClos
         </div>
         {scope === 'contracts' && <fieldset className="space-y-2"><legend className="text-sm font-semibold text-slate-700">OT autorizadas · {selected.length} seleccionada(s)</legend>
           <input aria-label="Buscar OT para autorizar" placeholder="Buscar número de OT" value={search} onChange={event => setSearch(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm" />
-          <div className="grid max-h-44 gap-1 overflow-y-auto rounded-lg border border-slate-200 p-2 sm:grid-cols-3">{contracts.filter(item => item.site_id === site && item.code.toLowerCase().includes(search.toLowerCase())).map(item => <label key={item.id} className="flex min-h-11 items-center gap-2 rounded px-2 text-sm hover:bg-slate-50"><input type="checkbox" checked={selected.includes(item.id)} onChange={event => setSelected(previous => event.target.checked ? [...previous, item.id] : previous.filter(id => id !== item.id))} />OT {item.code}</label>)}</div>
-          <p className="text-xs text-slate-500">Este alcance muestra únicamente los servicios de esas OT. El GPS de rutas compartidas queda fuera de esta vista.</p>
+          <div className="max-h-64 space-y-0.5 overflow-y-auto rounded-lg border border-slate-200 p-2">{siteContracts.filter(({ item }) => item.code.toLowerCase().includes(search.toLowerCase())).map(({ item, depth, ancestors }) => {
+            const inherited = ancestors.some(id => selected.includes(id))
+            return <label key={item.id} style={{ paddingLeft: `${0.5 + depth * 1.5}rem` }} className={`flex min-h-10 items-center gap-2 rounded pr-2 text-sm hover:bg-slate-50 ${inherited ? 'text-slate-500' : ''}`}>
+              <input type="checkbox" disabled={inherited} checked={inherited || selected.includes(item.id)} onChange={event => setSelected(previous => event.target.checked ? [...previous, item.id] : previous.filter(id => id !== item.id))} />
+              OT {item.code}
+              {item.type && KIND[item.type] && <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase ${item.type === 'ERROR' ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-violet-200 bg-violet-50 text-violet-800'}`}>{KIND[item.type]}</span>}
+              {inherited && <span className="text-xs">· incluida por la OT madre</span>}
+            </label>
+          })}</div>
+          <p className="text-xs text-slate-500">Al marcar una OT madre se incluyen sus subcontratos y errores, también los que se registren después. El portal muestra el calendario (OT, subcontratos, errores y órdenes OS / OC / RQ), la ruta del día con guías y Packing List, y el GPS de las rutas cuyas paradas están todas dentro de este acceso.</p>
         </fieldset>}
         {scope === 'site' && <p className="text-xs leading-5 text-amber-800">El destinatario podrá consultar todas las solicitudes y rutas de esta sede, incluidas las que se registren después de crear el enlace.</p>}
         <button disabled={busy || loading || !site || (scope === 'contracts' && (!selected.length || selected.length > 100))} onClick={() => void generate()} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white disabled:opacity-50">{busy ? <Loader2 aria-hidden className="h-4 w-4 animate-spin" /> : <Plus aria-hidden className="h-4 w-4" />}Crear enlace permanente</button>
