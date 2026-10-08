@@ -2,7 +2,7 @@
 import { fetchServiceTypes } from '@/lib/request-service'
 import { PageHeader } from '@/components/ui/page-header'
 import Link from 'next/link'
-import { dispatchStatusLabel, DISPATCH_STATUS_GROUPS, isDispatchStatusGroup } from '@/lib/dispatch-status'
+import { dispatchStatusLabel, isDispatchStatusGroup } from '@/lib/dispatch-status'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Truck, Search, Calendar, MapPin, Share2, AlertTriangle, CheckCircle2, Route } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -127,7 +127,7 @@ export default function TorreControlPage() {
       const { data, error } = await supabase.rpc('get_tower_dispatches', {
         p_date: dateFilter || null,
         p_responsible: responsibleFilter || null,
-        p_status: isDispatchStatusGroup(statusFilter) ? 'TODOS' : statusFilter,
+        p_status: statusFilter,
       })
       if (error) throw error
       const list = (data || []) as Dispatch[]
@@ -215,7 +215,6 @@ export default function TorreControlPage() {
       if (isAlert && d.status !== 'LIQUIDADO' && d.status !== 'ENTREGADO') kpiAlertas++
 
       // Apply Filters
-      if (isDispatchStatusGroup(statusFilter) && !(DISPATCH_STATUS_GROUPS[statusFilter] as readonly string[]).includes(d.status)) return false
       if (onlyAlerts && !isAlert) return false
 
       const searchLower = searchTerm.toLowerCase()
@@ -232,7 +231,7 @@ export default function TorreControlPage() {
     })
 
     return { filteredDispatches: filtered, kpis: { kpiProgramados, kpiEnCurso, kpiCompletados, kpiAlertas } }
-  }, [dispatches, rows, searchTerm, onlyAlerts, statusFilter])
+  }, [dispatches, rows, searchTerm, onlyAlerts])
 
 
   const getStatusBadge = (status: string) => {

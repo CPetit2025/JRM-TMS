@@ -27,23 +27,22 @@ BEGIN
     PERFORM set_config('request.jwt.claim.sub', actor::text, true);
     EXIT WHEN public.is_tms_admin(); actor := NULL;
   END LOOP;
-  IF actor IS NOT NULL THEN
-    PERFORM set_config('request.jwt.claims', json_build_object('sub', actor, 'role', 'authenticated')::text, true);
-  END IF;
-  IF req IS NULL OR actor IS NULL THEN
-    v_pass := v_pass + 1; -- sin datos o sin administrador en esta base: no aplica
-  ELSE
+  -- Sin administrador o sin despachos con solicitudes, T3-T4 no se pueden ejecutar: se informa como FAIL
+  IF actor IS NULL THEN RAISE EXCEPTION 'CAJA C61 FAIL (%/4): falta administrador activo para ejecutar T3-T4', v_pass; END IF;
+  IF req IS NULL THEN RAISE EXCEPTION 'CAJA C61 FAIL (%/4): no hay solicitudes programadas para ejecutar T3-T4', v_pass; END IF;
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', actor, 'role', 'authenticated')::text, true);
+  BEGIN
     q := public.request_service_types(ARRAY[req]);
     IF jsonb_array_length(q) = 1 AND q->0->>'request_type' = (SELECT request_type FROM public.transport_requests WHERE id = req)
     THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T3 respuesta ' || q::text); END IF;
-  END IF;
+  END;
 
   -- T4
-  IF req IS NULL OR actor IS NULL OR public.request_service_types(array_fill(req, ARRAY[1001])) = '[]'::jsonb
+  IF public.request_service_types(array_fill(req, ARRAY[1001])) = '[]'::jsonb
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T4 acepta más de 1000 solicitudes'::text; END IF;
 
   IF array_length(v_fail, 1) IS NULL THEN
-    RAISE EXCEPTION 'CAJA C61 PASS (%/4) tipo de servicio autorizado%', v_pass, CASE WHEN req IS NULL OR actor IS NULL THEN ' (T3 sin datos)' ELSE '' END;
+    RAISE EXCEPTION 'CAJA C61 PASS (%/4) tipo de servicio autorizado', v_pass;
   ELSE
     RAISE EXCEPTION 'CAJA C61 FAIL (%/4): %', v_pass, array_to_string(v_fail, ' || ');
   END IF;
