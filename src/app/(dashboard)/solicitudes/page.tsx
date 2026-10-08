@@ -11,7 +11,7 @@ import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 import { DEFAULT_LEAD_TIME_SETTINGS, evaluateLeadTime, settingsForRequest, limaDateTimeToIso, limaInputParts, formatLeadTimeStatus, type DeliveryZone, type TransportLeadTimeSettings } from '@/lib/transport-lead-time'
 import { operatingBudget } from '@/lib/transport-budget'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Plus, Send, Check, X, Search, Loader2, Clock, CalendarClock, Ban, Edit2, ArrowUpDown, ArrowUp, ArrowDown, Eye, Layers, CheckCircle2, Truck, CircleDashed } from 'lucide-react'
+import { Plus, Send, Check, X, Search, Loader2, Clock, CalendarClock, Ban, Edit2, ArrowUpDown, ArrowUp, ArrowDown, Eye, Layers, CheckCircle2, Truck, Copy, FilePen, History } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -24,6 +24,7 @@ import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 import { districtOf } from '@/lib/address'
 import { cellDateTime, fullDateTime } from '@/lib/table-format'
 import { SupplierOriginPicker } from '@/components/solicitudes/SupplierOriginPicker'
+import { FormSection, PendingPanel, PendingStatus } from '@/components/ui/form-section'
 import { partyName, referenceLabel, REFERENCE_TYPES, requiresSupplier, type ReferenceType, type Supplier } from '@/lib/suppliers'
 import { serviceDate } from '@/lib/request-schedule'
 
@@ -213,6 +214,8 @@ export default function SolicitudesPage() {
   }, [isModalOpen, suppliers.length, fetchSuppliers])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [userRole, setUserRole] = useState<string>('')
+  const [userId, setUserId] = useState('')
+  const [currentRequester, setCurrentRequester] = useState('')
   
   const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false)
   const [selectedRequestDetails, setSelectedRequestDetails] = useState<TransportRequest | null>(null)
@@ -315,7 +318,9 @@ export default function SolicitudesPage() {
         .eq('id', user.id)
         .single()
       
+      setUserId(user.id)
       if (profile) {
+        setCurrentRequester(`${profile.first_name} ${profile.last_name}`)
         setNewRequest(prev => ({...prev, requester_name: `${profile.first_name} ${profile.last_name}`}))
         const roleName = Array.isArray(profile.roles) ? profile.roles[0]?.name : (profile.roles as { name?: string } | null)?.name
         if (roleName) {
@@ -512,10 +517,44 @@ export default function SolicitudesPage() {
     })
   }
 
-  const openEditModal = async (request: TransportRequest) => {
+  // Borrador de la solicitud nueva: se guarda en este equipo mientras se llena y se ofrece al volver a abrir.
+  type RequestDraft = { saved_at: string; request: typeof newRequest; components: typeof selectedComponents; unloadingAnswer: typeof unloadingAnswer; unloading: typeof unloading }
+  const draftKey = userId ? `jrm:solicitud-borrador:${userId}` : ''
+  const [draftFound, setDraftFound] = useState<RequestDraft | null>(null)
+  // Solo la solicitud nueva en blanco usa el borrador; editar o duplicar no lo tocan.
+  const [draftMode, setDraftMode] = useState(false)
+  const readDraft = (): RequestDraft | null => {
+    if (!draftKey) return null
+    try { const raw = window.localStorage.getItem(draftKey); return raw ? JSON.parse(raw) as RequestDraft : null } catch { return null }
+  }
+  const clearDraft = () => { try { if (draftKey) window.localStorage.removeItem(draftKey) } catch { /* sin almacenamiento */ } setDraftFound(null) }
+  const draftDirty = Boolean(newRequest.contract_id || newRequest.cargo_description.trim() || newRequest.supplier_id || newRequest.required_date
+    || newRequest.required_time || newRequest.reference_type || newRequest.reference_number.trim() || newRequest.time_window.trim()
+    || newRequest.estimated_weight || newRequest.estimated_volume || newRequest.request_type !== 'DESPACHO' || newRequest.attention_mode !== 'TRANSPORTE_JRM'
+    || (newRequest.pickup_address.trim() && newRequest.pickup_address.trim() !== 'Planta Chilca') || newRequest.pickup_customer.trim()
+    || newRequest.pickup_contact.trim() || newRequest.pickup_phone.trim()
+    || newRequest.delivery_address.trim() || unloadingAnswer)
+  useEffect(() => {
+    if (!isModalOpen || !draftMode || editingRequestId || !draftKey || draftFound || !draftDirty) return
+    const timer = window.setTimeout(() => {
+      const draft: RequestDraft = { saved_at: new Date().toISOString(), request: newRequest, components: selectedComponents, unloadingAnswer, unloading }
+      try { window.localStorage.setItem(draftKey, JSON.stringify(draft)) } catch { /* sin almacenamiento: el borrador es opcional */ }
+    }, 800)
+    return () => window.clearTimeout(timer)
+  }, [isModalOpen, draftMode, editingRequestId, draftKey, draftFound, draftDirty, newRequest, selectedComponents, unloadingAnswer, unloading])
+  const resumeDraft = (draft: RequestDraft) => {
+    setNewRequest(prev => ({ ...prev, ...draft.request, requester_name: prev.requester_name }))
+    setUnloadingAnswer(draft.unloadingAnswer || ''); setUnloading(draft.unloading || [])
+    setDraftFound(null)
+    if (draft.request.contract_id) {
+      void loadComponentOptions(draft.request.contract_id).then(() => setSelectedComponents(draft.components || {}))
+    }
+  }
+
+  const openEditModal = async (request: TransportRequest, duplicate = false) => {
     const root = contracts.find(c => c.id === request.contract_id)
     if (request.contract_id && !root) { toast.error('La OT de esta solicitud no está disponible para edición.'); return }
-    const options = root ? await loadComponentOptions(root.id, request.id) : []
+    const options = root ? await loadComponentOptions(root.id, duplicate ? undefined : request.id) : []
     if (!options) return
     const unavailable = (request.transport_request_components || []).filter(item =>
       !options.some(option => option.contract_id === item.component_contract_id))
@@ -530,7 +569,7 @@ export default function SolicitudesPage() {
       { weight_kg: item.requested_weight_kg?.toString() || '', volume_m3: item.requested_volume_m3?.toString() || '' }
     ])))
     setNewRequest({
-      requester_name: request.requester_name,
+      requester_name: duplicate ? currentRequester || newRequest.requester_name : request.requester_name,
       department: request.department.startsWith('OT -') ? 'OT (Administración de Contratos)' : request.department,
       attention_mode: request.attention_mode || 'TRANSPORTE_JRM',
       pickup_customer: request.pickup_customer || '', pickup_contact: request.pickup_contact || '', pickup_phone: request.pickup_phone || '',
@@ -543,8 +582,8 @@ export default function SolicitudesPage() {
       delivery_department: request.delivery_department || '',
       delivery_province: request.delivery_province || '',
       delivery_district: request.delivery_district || '',
-      required_date: request.required_at ? limaInputParts(request.required_at).date : request.required_date ? request.required_date.split('T')[0] : '',
-      required_time: request.required_at ? limaInputParts(request.required_at).time : '',
+      required_date: duplicate ? '' : request.required_at ? limaInputParts(request.required_at).date : request.required_date ? request.required_date.split('T')[0] : '',
+      required_time: duplicate ? '' : request.required_at ? limaInputParts(request.required_at).time : '',
       delivery_zone: request.delivery_zone || 'LIMA',
       time_window: request.time_window || '',
       contract_id: request.contract_id || '',
@@ -552,12 +591,17 @@ export default function SolicitudesPage() {
       estimated_weight: request.estimated_weight ? request.estimated_weight.toString() : '',
       estimated_volume: request.estimated_volume ? request.estimated_volume.toString() : '',
       service_cost: request.service_cost?.toString() || '',
-      purchase_order: request.purchase_order || '', supplier_id: request.supplier_id || '', supplier_location_id: request.supplier_location_id || '',
-      reference_type: request.reference_type || '', reference_number: request.reference_number || ''
+      purchase_order: duplicate ? '' : request.purchase_order || '', supplier_id: request.supplier_id || '', supplier_location_id: request.supplier_location_id || '',
+      reference_type: request.reference_type || '', reference_number: duplicate ? '' : request.reference_number || ''
     })
 
     void fetchLeadTimeSettings()
-    setEditingRequestId(request.id)
+    setEditingRequestId(duplicate ? null : request.id)
+    setDraftFound(null); setDraftMode(false)
+    if (duplicate) {
+      setRegistrationPreview(new Date().toISOString())
+      toast.info(`Copia de ${request.request_number}: indique la fecha de atención y el número de documento.`)
+    }
     const { data: unloadingRows } = await supabase.from('transport_unloading_costs')
       .select('concept, estimated_pen, description').eq('transport_request_id', request.id).eq('status', 'ESTIMADO')
     setUnloading((unloadingRows || []).map(u => ({ concept: u.concept, estimated_pen: String(u.estimated_pen), description: u.description || '' })))
@@ -670,6 +714,7 @@ export default function SolicitudesPage() {
       if (saved?.status === 'OBSERVADA') toast.warning(newRequest.contract_id ? 'Solicitud observada: la partida no cubre los costos a cargo de JRM.' : 'Solicitud registrada y observada: vincule una OT para financiar los gastos JRM antes de aprobar y programar.')
 
       toast.success('Solicitud enviada correctamente')
+      if (!editingRequestId && draftMode) clearDraft()
       setUnloading([]); setUnloadingAnswer(''); setUnloadingHistory([])
       setQuote(null)
       setIsModalOpen(false)
@@ -782,6 +827,22 @@ export default function SolicitudesPage() {
     return <StatusBadge tone={tone} title={status.replaceAll('_', ' ')}>{statusLabels[status] || status.replaceAll('_', ' ')}</StatusBadge>
   }
 
+  // Destinos frecuentes: del cliente de la OT elegida o, sin OT, de las solicitudes visibles.
+  const clientName = (c?: { clients?: { business_name: string } | { business_name: string }[] | null } | null) => Array.isArray(c?.clients) ? c?.clients[0]?.business_name : c?.clients?.business_name
+  const selectedClient = clientName(contracts.find(c => c.id === newRequest.contract_id))
+  const frequentDestinations = useMemo(() => {
+    const groups = new Map<string, { address: string; department: string; province: string; district: string; zone: DeliveryZone | null; count: number; last: string }>()
+    for (const r of requests) {
+      if (r.request_type === 'RECOJO' || !r.delivery_address?.trim() || ['CANCELADA', 'RECHAZADA'].includes(r.status)) continue
+      if (selectedClient && clientName(r.contracts) !== selectedClient) continue
+      const key = `${r.delivery_address.trim().toLocaleLowerCase('es-PE')}|${(r.delivery_district || '').toLocaleLowerCase('es-PE')}`
+      const g = groups.get(key)
+      if (g) { g.count++; if (r.created_at > g.last) { g.last = r.created_at; if (r.delivery_zone) g.zone = r.delivery_zone } }
+      else groups.set(key, { address: r.delivery_address.trim(), department: r.delivery_department || '', province: r.delivery_province || '', district: (r.delivery_district || districtOf(r.delivery_address) || '').toUpperCase(), zone: r.delivery_zone || null, count: 1, last: r.created_at })
+    }
+    return [...groups.values()].sort((a, b) => b.count - a.count || b.last.localeCompare(a.last)).slice(0, 6)
+  }, [requests, selectedClient])
+
   const needsSupplier = requiresSupplier({ request_type: newRequest.request_type, attention_mode: newRequest.attention_mode })
   const changeRequestType = (type: string) => {
     if (type === newRequest.request_type) return
@@ -853,6 +914,7 @@ export default function SolicitudesPage() {
                 service_cost: '',
                 purchase_order: '', supplier_id: '', supplier_location_id: '', reference_type: '', reference_number: ''
               })
+              setDraftFound(readDraft()); setDraftMode(true)
               setIsModalOpen(true)
             }}
             className="flex h-10 items-center justify-center gap-2 rounded-lg bg-jrm-navy px-5 font-semibold text-white shadow-sm transition-colors hover:bg-jrm-navy-dark"
@@ -910,6 +972,7 @@ export default function SolicitudesPage() {
                     { id: 'reject', label: 'Rechazar solicitud', icon: <X className="h-4 w-4" />, tone: 'danger' as const, onSelect: () => { void updateStatus(req.id, 'RECHAZADA') } },
                   ] : []),
                   ...(editable && canWrite('solicitudes') && req.status !== 'ASIGNADA' ? [{ id: 'edit', label: 'Editar solicitud', icon: <Edit2 className="h-4 w-4" />, onSelect: () => { void openEditModal(req) } }] : []),
+                  ...(canWrite('solicitudes') ? [{ id: 'duplicate', label: 'Duplicar como nueva', icon: <Copy className="h-4 w-4" />, onSelect: () => { if (contracts.length === 0) fetchContracts(); void openEditModal(req, true) } }] : []),
                   ...(editable && canReschedule ? [{ id: 'reschedule', label: 'Reprogramar', icon: <CalendarClock className="h-4 w-4" />, onSelect: () => { setSelectedRequestId(req.id); setNewRescheduleDate(req.required_at ? limaInputParts(req.required_at).date : req.required_date.split('T')[0] || ''); setNewRescheduleTime(req.required_at ? limaInputParts(req.required_at).time : ''); setRescheduleZone(req.delivery_zone || 'LIMA'); void fetchLeadTimeSettings(); setIsRescheduleModalOpen(true) } }] : []),
                   ...(editable ? [{ id: 'cancel', label: 'Cancelar servicio', icon: <Ban className="h-4 w-4" />, tone: 'danger' as const, onSelect: () => { void handleCancelRequest(req.id) } }] : []),
                 ]
@@ -946,9 +1009,10 @@ export default function SolicitudesPage() {
         title={editingRequestId ? 'Editar solicitud de transporte' : 'Nueva solicitud de transporte'}
         maxWidth="max-w-7xl"
         footer={<div className="flex flex-wrap items-center justify-between gap-3">
-          <p role="status" className={`flex items-center gap-2 text-sm font-medium ${pendingItems.length ? 'text-amber-700' : 'text-emerald-700'}`}>
-            {pendingItems.length ? <><CircleDashed className="h-4 w-4" />Faltan {pendingItems.length} {pendingItems.length === 1 ? 'dato' : 'datos'} para enviar</> : <><CheckCircle2 className="h-4 w-4" />Lista para enviar</>}
-          </p>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <PendingStatus count={pendingItems.length} readyText="Lista para enviar" />
+            {draftMode && !editingRequestId && <span className="text-xs text-slate-500">Se guarda como borrador en este equipo mientras la llena.</span>}
+          </div>
           <div className="flex gap-2">
             <button type="button" onClick={() => setIsModalOpen(false)} className="rounded-lg px-4 py-2 font-medium text-slate-600 transition-colors hover:bg-slate-100">Cancelar</button>
             <button type="submit" form="request-form"
@@ -962,6 +1026,12 @@ export default function SolicitudesPage() {
       >
         <form id="request-form" onSubmit={handleCreateRequest} className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <div className="min-w-0 space-y-4">
+            {draftFound && !editingRequestId && <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+              <FilePen aria-hidden className="h-5 w-5 shrink-0" />
+              <span className="min-w-0 flex-1">Tiene un borrador sin enviar del {fullDateTime(draftFound.saved_at)}{draftFound.request.cargo_description ? ` · «${draftFound.request.cargo_description.slice(0, 60)}»` : ''}.</span>
+              <button type="button" onClick={() => resumeDraft(draftFound)} className="rounded-lg bg-[#002855] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#001d3d]">Retomar borrador</button>
+              <button type="button" onClick={clearDraft} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-blue-900 hover:bg-blue-100">Descartar</button>
+            </div>}
             <FormSection id="req-servicio" step={1} title="Servicio" hint="Tipo de servicio, modalidad y solicitante">
               <div role="radiogroup" aria-label="Tipo de solicitud" className="grid gap-2 sm:grid-cols-3">
                 {REQUEST_TYPE_OPTIONS.map(option => {
@@ -1110,6 +1180,16 @@ export default function SolicitudesPage() {
                   </div>
                 </div>
               </div>
+              {newRequest.request_type !== 'RECOJO' && frequentDestinations.length > 0 && <div className="mt-3">
+                <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600"><History aria-hidden className="h-3.5 w-3.5" />Destinos frecuentes {selectedClient ? `de ${selectedClient}` : 'de sus solicitudes'}</p>
+                <div className="flex flex-wrap gap-1.5">{frequentDestinations.map(d => {
+                  const active = newRequest.delivery_address.trim().toLocaleLowerCase('es-PE') === d.address.toLocaleLowerCase('es-PE')
+                  return <button key={`${d.address}|${d.district}`} type="button" title={`${d.address} · usado ${d.count} ${d.count === 1 ? 'vez' : 'veces'}`}
+                    onClick={() => setNewRequest(prev => ({ ...prev, delivery_address: d.address, delivery_department: d.department, delivery_province: d.province, delivery_district: d.district, delivery_zone: d.zone || prev.delivery_zone }))}
+                    className={`max-w-xs truncate rounded-full border px-2.5 py-1 text-xs transition-colors ${active ? 'border-[#002855] bg-blue-50 font-semibold text-[#002855]' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'}`}>
+                    <b>{d.district || 'Sin distrito'}</b> · {d.address}</button>
+                })}</div>
+              </div>}
               {!newRequest.contract_id && <div className="mt-3 grid grid-cols-2 gap-3">{([['estimated_weight', 'Peso estimado (kg)'], ['estimated_volume', 'Volumen estimado (m³)']] as const).map(([key, label]) => <label key={key} className="block text-sm font-medium text-slate-700">{label}<input type="number" min="0" step="0.01" value={newRequest[key]} onChange={e => setNewRequest(prev => ({ ...prev, [key]: e.target.value }))} className={field} /></label>)}</div>}
             </FormSection>
 
@@ -1244,13 +1324,7 @@ export default function SolicitudesPage() {
                 <div><dt className="text-xs text-slate-500">Flete referencial{unloadingTotal > 0 ? ' + descarga' : ''}</dt><dd className="font-semibold tabular-nums text-slate-900">S/ {(quoteFreight + unloadingTotal).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd></div>
               </dl>
             </div>
-            <div className={`rounded-xl border p-4 text-sm ${pendingItems.length ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
-              <p className={`mb-2 text-xs font-bold uppercase tracking-wide ${pendingItems.length ? 'text-amber-800' : 'text-emerald-800'}`}>{pendingItems.length ? 'Pendiente para enviar' : 'Todo completo'}</p>
-              {pendingItems.length ? <ul className="space-y-1">{pendingItems.map(item => <li key={item.label}>
-                <button type="button" onClick={() => document.getElementById(item.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-amber-900 hover:bg-amber-100">
-                  <CircleDashed className="h-3.5 w-3.5 shrink-0" />{item.label}</button></li>)}</ul>
-                : <p className="text-emerald-800">Revise el resumen y envíe la solicitud.</p>}
-            </div>
+            <PendingPanel items={pendingItems} doneText="Revise el resumen y envíe la solicitud." />
           </aside>
         </form>
       </Modal>
@@ -1378,13 +1452,3 @@ const REQUEST_TYPE_OPTIONS: { value: string; kind: ServiceKind; title: string; h
 const field = 'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#002855] disabled:bg-slate-100 disabled:text-slate-500'
 const fieldSm = 'mt-1 w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#002855]'
 
-/** Sección numerada del formulario de solicitud; el id permite saltar desde la lista de pendientes. */
-function FormSection({ id, step, title, hint, children }: { id: string; step: number; title: string; hint?: string; children: React.ReactNode }) {
-  return <section id={id} className="scroll-mt-2 rounded-xl border border-slate-200 bg-white p-4">
-    <header className="mb-3 flex items-start gap-3">
-      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#002855] text-xs font-bold text-white">{step}</span>
-      <div className="min-w-0"><h3 className="text-sm font-semibold text-slate-900">{title}</h3>{hint && <p className="text-xs text-slate-500">{hint}</p>}</div>
-    </header>
-    {children}
-  </section>
-}
