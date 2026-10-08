@@ -1,4 +1,5 @@
 "use client"
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -119,18 +120,14 @@ export default function PreventivosPage() {
   }, [projections])
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="space-y-3">
       <PlanesPorActivarAviso />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Planificación preventiva</h1>
-          <p className="text-sm text-slate-500">Planes por kilometraje, horómetro, fecha o combinación; vence lo primero que ocurra. Proyección según uso real.</p>
-        </div>
-        <div className="flex gap-2">
+      <PageHeader showTitle title="Planificación preventiva" description="Planes por kilometraje, horómetro, fecha o combinación; vence lo primero que ocurra. Proyección según uso real." actions={<>
+<div className="flex gap-2">
           <button onClick={() => setEditing('new')} className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm flex items-center gap-2"><Plus className="w-4 h-4" />Nuevo plan</button>
           <button onClick={refresh} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
         </div>
-      </div>
+</>} />
 
       <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
         {(['VENCIDO', 'URGENTE', 'PRÓXIMO', 'NORMAL'] as Alert[]).map(a => (

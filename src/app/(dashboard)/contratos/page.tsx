@@ -1,9 +1,10 @@
 "use client"
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { operatingBudget } from '@/lib/transport-budget'
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Search, Layers, FileWarning, Briefcase, FilePlus2, CheckCircle2, Upload, Download, Edit2, Filter, MapPin, UserCog, ChevronRight } from 'lucide-react'
+import { Plus, Search, Layers, FileWarning, Briefcase, CheckCircle2, Upload, Download, Edit2, Filter, MapPin, UserCog, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -495,13 +496,9 @@ export default function ContratosPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col gap-4 mx-auto">
-      <div className="flex flex-wrap justify-between items-start gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Alta de Contratos</h1>
-          <p className="text-sm text-slate-500">Gestión unificada de Contratos, Subcontratos y Errores (Partidas de Transporte)</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
+    <div className="flex h-full min-h-0 w-full flex-col gap-3 mx-auto">
+      <PageHeader showTitle title="Alta de Contratos" description="Gestión unificada de Contratos, Subcontratos y Errores (Partidas de Transporte)" actions={<>
+<div className="flex flex-wrap items-center gap-3">
           <input
             type="file"
             accept=".xlsx, .xls"
@@ -533,7 +530,7 @@ export default function ContratosPage() {
             Nuevo Contrato
           </button>
         </div>
-      </div>
+</>} />
 
       {/* Buscador y Filtros */}
       <div className="flex flex-col md:flex-row gap-4">

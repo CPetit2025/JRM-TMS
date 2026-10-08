@@ -6,7 +6,7 @@ import { useClaimPageTitle } from '@/lib/nav/pageChromeStore'
 /** Page identity row. Default: description + actions (the application bar shows the title).
  *  `showTitle`: compact enterprise row — title and short description on the left, primary actions on the right —
  *  and the application bar drops its own title so it is never shown twice. The h1 always exists for assistive tech. */
-export function PageHeader({ title, description, actions, showTitle = false }: { title: string; description?: string; actions?: ReactNode; showTitle?: boolean }) {
+export function PageHeader({ title, description, actions, showTitle = false }: { title: string; description?: ReactNode; actions?: ReactNode; showTitle?: boolean }) {
   useClaimPageTitle(showTitle)
   return <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
     {showTitle

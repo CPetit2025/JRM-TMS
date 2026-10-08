@@ -1,10 +1,11 @@
 'use client'
 
+import { PageHeader } from '@/components/ui/page-header'
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Bot, Loader2, RefreshCw, MessageSquare } from 'lucide-react'
+import { Loader2, RefreshCw, MessageSquare } from 'lucide-react'
 
 // Copiloto CMMS (Fase 12): respuestas con datos reales (get_cmms_copilot_brief, SECURITY INVOKER) y
 // acceso a JRM IA con herramientas del CMMS. La IA es asistiva: no modifica datos; las acciones pasan
@@ -44,14 +45,10 @@ export default function CopilotoPage() {
   ]
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><Bot className="w-6 h-6" />Copiloto de mantenimiento</h1>
-          <p className="text-sm text-slate-500">{brief?.disclaimer || 'Respuestas calculadas con datos reales del CMMS.'}</p>
-        </div>
-        <button onClick={refresh} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
-      </div>
+    <div className="space-y-3">
+      <PageHeader showTitle title="Copiloto de mantenimiento" description={<>{brief?.disclaimer || 'Respuestas calculadas con datos reales del CMMS.'}</>} actions={<>
+<button onClick={refresh} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
+</>} />
 
       {loading ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : !brief ? (
         <p className="text-sm text-slate-500">No hay datos disponibles con sus permisos.</p>

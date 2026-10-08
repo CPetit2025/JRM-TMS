@@ -1,4 +1,5 @@
 'use client'
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -65,19 +66,15 @@ export default function CentroControlPage() {
   ] : []
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Centro de Control de Mantenimiento</h1>
-          <p className="text-sm text-slate-500">Indicadores del sistema (OT, fallas, lecturas y libro de costos por activo) y, arriba, el historial completo.</p>
-        </div>
-        <div className="flex gap-2">
+    <div className="space-y-3">
+      <PageHeader showTitle title="Centro de Control de Mantenimiento" description="Indicadores del sistema (OT, fallas, lecturas y libro de costos por activo) y, arriba, el historial completo." actions={<>
+<div className="flex gap-2">
           <select value={days} onChange={e => { const d = Number(e.target.value); setDays(d); refresh(d) }} className="border rounded-lg px-3 py-2 text-sm">
             <option value={7}>Últimos 7 días</option><option value={30}>Últimos 30 días</option><option value={90}>Últimos 90 días</option><option value={365}>Últimos 365 días</option>
           </select>
           <button onClick={() => refresh(days)} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
         </div>
-      </div>
+</>} />
 
       <HistorialResumen />
       {loading || !kpi ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : (

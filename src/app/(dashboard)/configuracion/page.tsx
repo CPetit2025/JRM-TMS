@@ -1,4 +1,5 @@
 "use client"
+import { PageHeader } from '@/components/ui/page-header'
 import { TransportLeadTimeSettings } from '@/components/configuracion/TransportLeadTimeSettings'
 import { protectedFileHref } from '@/lib/protected-files'
 import { useState, useEffect } from 'react'
@@ -124,10 +125,7 @@ export default function ConfiguracionPage() {
   if (role !== 'admin') {
     if (canWrite('configuracion')) {
       return <div className="space-y-6 max-w-4xl mx-auto">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Planificación y plazos</h1>
-          <p className="text-sm text-slate-500">Configura la anticipación mínima de las nuevas solicitudes de transporte.</p>
-        </div>
+        <PageHeader showTitle title="Planificación y plazos" description="Configura la anticipación mínima de las nuevas solicitudes de transporte." />
         <TransportLeadTimeSettings />
       </div>
     }
@@ -141,7 +139,7 @@ export default function ConfiguracionPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-3 max-w-4xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold text-slate-800">Configuración del Sistema</h1>
         <p className="text-sm text-slate-500">Administra los parámetros generales de la plataforma</p>

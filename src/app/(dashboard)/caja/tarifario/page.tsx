@@ -1,9 +1,10 @@
 'use client'
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Calculator, Loader2, Pencil, Plus, Save, Settings2, Tags } from 'lucide-react'
+import { Loader2, Pencil, Plus, Save, Settings2, Tags } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Modal } from '@/components/ui/modal'
@@ -22,11 +23,8 @@ export default function TarifarioPage() {
   const isAdmin = role === 'admin'
   const [tab, setTab] = useState<'tarifas' | 'motivos' | 'categorias' | 'parametros'>('tarifas')
   return (
-    <div className="p-6 space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><Calculator className="w-6 h-6" />Tarifario y reglas de caja</h1>
-        <p className="text-sm text-slate-500">Viáticos por ruta para presupuestar anticipos, topes por categoría y parámetros de control. {!canEdit && 'Solo lectura: requiere el permiso Tarifario de caja.'}</p>
-      </div>
+    <div className="space-y-3">
+      <PageHeader showTitle title="Tarifario y reglas de caja" description={<>Viáticos por ruta para presupuestar anticipos, topes por categoría y parámetros de control. {!canEdit && 'Solo lectura: requiere el permiso Tarifario de caja.'}</>} />
       <div className="flex bg-white border rounded-xl overflow-hidden text-sm font-semibold w-fit">
         {([['tarifas', 'Tarifas por ruta'], ['motivos', 'Motivos de anticipo'], ['categorias', 'Categorías de gasto'], ['parametros', 'Parámetros']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className={`px-4 py-2.5 ${tab === k ? 'bg-[#002855] text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>
