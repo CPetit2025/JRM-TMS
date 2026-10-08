@@ -20,6 +20,26 @@ const session={access_token:jwt,refresh_token:'synthetic-ui-refresh',expires_at:
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Mobile overflow '+route)
    await page.screenshot({path:'/tmp/transport-flow-screenshots/'+route.replaceAll('/','-')+'-mobile.png'})
   }
+  // Return a mixed fleet deliberately: the request must restrict types and the
+  // selector must also exclude industrial/unknown assets from stale responses.
+  let transportQuery=false
+  await page.route('**/rest/v1/vehicles?*',async route=>{
+   const query=new URL(route.request().url()).searchParams
+   assert.equal(query.get('status'),'eq.DISPONIBLE');assert.equal(query.get('is_active'),'eq.true')
+   assert.equal(query.get('type'),'in.(CAMION,CAMIONETA,FURGON,TRAILER,TRACTO,SEMIRREMOLQUE)');transportQuery=true
+   const units=[['CFO-930','CAMION'],['TST-123','TRACTO'],['MC-001','MONTACARGAS'],['EL-001','ELEVADOR'],['EQ-001','OTRO']]
+    .map(([plate,type])=>({plate,type,brand:'QA',model:'Unidad',assigned_driver_id:null,carriers:{business_name:'JRM'}}))
+   await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(units)})
+  })
+  await page.setViewportSize({width:1600,height:1000});await page.goto(origin+'/despacho')
+  await page.getByRole('button',{name:'Armar Ruta',exact:true}).click()
+  const routeModal=page.getByRole('dialog',{name:'Armar Ruta y Programar Unidad'})
+  await routeModal.getByText('Seleccione vehículo...',{exact:true}).click()
+  await routeModal.getByText('CFO-930 - QA Unidad (JRM)',{exact:true}).waitFor()
+  assert.equal(transportQuery,true)
+  assert.equal(await routeModal.getByText('TST-123 - QA Unidad (JRM)',{exact:true}).isVisible(),true)
+  for(const plate of ['MC-001','EL-001','EQ-001'])assert.equal(await routeModal.getByText(new RegExp(plate)).count(),0)
+  await routeModal.getByRole('button',{name:'Cancelar',exact:true}).click()
   await page.setViewportSize({width:1600,height:1000});await page.goto(origin+'/solicitudes');await page.getByRole('button',{name:'Nueva Solicitud',exact:true}).click()
   const modal=page.getByRole('dialog');await modal.getByRole('heading',{name:'Crear Nueva Solicitud'}).waitFor()
   await modal.locator('select').filter({has:page.locator('option[value="Logística"]')}).selectOption('Logística')
@@ -77,7 +97,7 @@ const session={access_token:jwt,refresh_token:'synthetic-ui-refresh',expires_at:
    await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(single?profile:[profile])})
   })
   await page.goto(origin+'/configuracion')
-  await page.getByRole('heading',{name:'Planificación y plazos',exact:true}).waitFor()
+  await page.getByRole('heading',{name:'Planificación y plazos',exact:true,level:1}).waitFor()
   await page.getByLabel('Horas mínimas').first().waitFor()
   assert.equal(await page.getByRole('button',{name:'Datos de la Empresa',exact:true}).count(),0,'Delegated settings must not expose administrator forms')
   rolePermissions=['clientes:read']

@@ -1,12 +1,16 @@
 const {test}=require('node:test'), assert=require('node:assert/strict'), ts=require('typescript'), {readFileSync}=require('node:fs'), Module=require('node:module'), path=require('node:path')
 const file=path.resolve(__dirname,'../src/lib/fleet-filters.ts'), mod=new Module(file,module)
 mod._compile(ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,file)
-const {emptyFleetFilters,filterFleetVehicles,filterFleetDrivers}=mod.exports
+const {emptyFleetFilters,filterFleetVehicles,filterFleetDrivers,isTransportUnit}=mod.exports
 const carriers=[{id:'own',business_name:'JRM'},{id:'supplier',business_name:'Transportes Pérez'}]
 const drivers=[{id:'victor',first_name:'Víctor',last_name:'Medardo',is_active:true,profile_id:'app-victor',carrier_id:'own'}, {id:'inactive',first_name:'José',last_name:'Pérez',is_active:false,carrier_id:'supplier'}]
 const vehicles=[{id:'1',plate:'CFO-930',type:'CAMION',status:'DISPONIBLE',carrier_id:'own',assigned_driver_id:'victor',soat_expiration:'2026-10-06',technical_review_expiration:'2027-01-01'}, {id:'2',plate:'ABC-100',type:'MONTACARGAS',status:'MANTENIMIENTO',carrier_id:'own'}, {id:'3',plate:'XYZ-123',type:'CAMION',status:'DISPONIBLE',carrier_id:'supplier',soat_expiration:'2026-10-05',technical_review_expiration:'2027-01-01'}]
 const units=filters=>filterFleetVehicles(vehicles,drivers,carriers,{...emptyFleetFilters,...filters},'2026-10-06').map(v=>v.id)
 const people=filters=>filterFleetDrivers(drivers,vehicles,carriers,{...emptyFleetFilters,...filters}).map(d=>d.id)
+test('el armado de ruta admite tipos de transporte y excluye equipos y activos sin clasificación',()=>{
+ for(const type of ['CAMION','Camión','CAMIONETA','FURGON','Tráiler','TRACTO','SEMIRREMOLQUE'])assert.equal(isTransportUnit(type),true,type)
+ for(const type of ['MONTACARGAS','Montacarga','APILADOR','TRANSPALETA','ELEVADOR','OTRO','GRUA INDUSTRIAL','',null,undefined])assert.equal(isTransportUnit(type),false,String(type))
+})
 test('combina transporte, transportista, conductor y estado sin mezclar equipos',()=>{
  assert.deepEqual(units({group:'TRANSPORTE',carrier:'own',assignment:'ASIGNADO',status:'DISPONIBLE'}),['1'])
  assert.deepEqual(units({group:'EQUIPOS'}),['2']);assert.deepEqual(units({group:'TRANSPORTE',status:'MANTENIMIENTO'}),[])

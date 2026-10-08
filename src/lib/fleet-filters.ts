@@ -4,6 +4,8 @@ type Carrier = { id: string; business_name?: string; type?: string }
 type Driver = { id: string; first_name?: string; last_name?: string; document_number?: string; license_number?: string; is_active?: boolean; profile_id?: string | null; carrier_id?: string }
 type Vehicle = { id: string; plate?: string; internal_code?: string; brand?: string; model?: string; type?: string; status?: string; carrier_id?: string; ownership_status?: string; assigned_driver_id?: string | null; soat_expiration?: string | null; technical_review_expiration?: string | null }
 const normalized = (value?: string | null) => (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+export const TRANSPORT_VEHICLE_TYPES = ['CAMION', 'CAMIONETA', 'FURGON', 'TRAILER', 'TRACTO', 'SEMIRREMOLQUE'] as const
+export const isTransportUnit = (type?: string | null) => TRANSPORT_VEHICLE_TYPES.some(value => value === normalized(type))
 const matches = (query: string, fields: (string | null | undefined)[]) => query.trim().split(/\s+/).every(word => fields.some(field => normalized(field).includes(normalized(word))))
 export const isIndustrialUnit = (type?: string) => ['MONTACARGAS','APILADOR','TRANSPALETA','ELEVADOR'].includes(normalized(type))
 export function filterFleetVehicles<T extends Vehicle>(vehicles: T[], drivers: Driver[], carriers: Carrier[], filters: FleetFilters, today: string) {
