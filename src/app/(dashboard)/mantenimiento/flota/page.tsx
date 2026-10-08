@@ -472,7 +472,7 @@ export default function FlotaPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-theme(spacing.16))] md:h-[calc(100vh-theme(spacing.16))] bg-slate-50">
+    <div className="flex flex-col gap-3 min-h-[calc(100vh-theme(spacing.16))] md:h-[calc(100vh-theme(spacing.16))] bg-slate-50">
       <PageHeader showTitle title="Maestro de Unidades y Conductores" description="Gestión de unidades de transporte y conductores registrados." actions={<>
 <div className="flex flex-wrap items-center gap-2">
           {activeTab === 'vehicles' ? (

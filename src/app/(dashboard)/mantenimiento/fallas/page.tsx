@@ -247,7 +247,7 @@ export default function FallasBacklogPage() {
   };
 
   return (
-    <div className="container mx-auto py-6 space-y-3">
+    <div className="container mx-auto space-y-3">
       <PageHeader showTitle title="Backlog de Fallas" description="Fuente única de anomalías: App conductor, inspecciones, supervisores, Copiloto AI y Torre de Control." actions={<>
 <div className="flex gap-2">
           <Button onClick={() => setShowForm(s => !s)} className="gap-2"><Plus className="w-4 h-4" />Registrar falla</Button>

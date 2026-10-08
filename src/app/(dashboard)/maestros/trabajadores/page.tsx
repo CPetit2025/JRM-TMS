@@ -139,7 +139,7 @@ export default function TrabajadoresPage() {
   }
 
   return (
-    <div className="">
+    <div className="space-y-3">
       <PageHeader showTitle title="Maestro de Trabajadores Operativos" description="Personal sin acceso al sistema para asignación de Tareo Automático y Rutas." actions={<>
 <button 
           onClick={openNew}
