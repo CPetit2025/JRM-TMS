@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import type { GanttFilters, GanttResult } from './ganttTypes'
 import type { FlowAdelantos, FlowFilters, Kardex, KardexFilters, KardexNivel, OtFamilia, FlowLeadDim, FlowLeadtime, FlowQuality, FlowSt, FlowStock, FlowSummary, FlowTrace } from './flowTypes'
 import type {
   AptDashboard, AptDetail, AptDim, AptFechaEntrega, AptFilterOptions, AptFilters, AptGrain, AptHeatmap, AptLevel, AptLoteFicha,
@@ -57,6 +58,8 @@ export function cleanFilters<T extends object = AptFilters>(f: T): T {
 }
 
 export const aptApi = {
+  gantt: (f: GanttFilters, limit = 25, offset = 0) =>
+    call<GanttResult>('apt_gantt', { p: cleanFilters(f), p_limit: limit, p_offset: offset }),
   dashboard: (f: AptFilters, grain: AptGrain = 'semana') => call<AptDashboard>('apt_dashboard', { p: cleanFilters(f), p_grain: grain }),
   trends: (f: AptFilters, grain: AptGrain) =>
     call<{ grain: AptGrain; cutoff: string | null; series: AptTrendPoint[] }>('apt_trends', { p: cleanFilters(f), p_grain: grain }),

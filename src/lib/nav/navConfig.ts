@@ -56,6 +56,7 @@ export const NAV_SECTIONS: NavSection[] = [
   ] }] },
   { id: 'apt', title: 'Almacén APT', icon: Warehouse, groups: [{ items: [
     { href: '/apt', label: 'Estadía de Inventario', icon: Hourglass, show: any('apt', 'apt-carga'), keywords: 'apt estadia inventario fifo aging' },
+    { href: '/apt/gantt', label: 'Trazabilidad SCM · Gantt', icon: CalendarRange, show: any('apt', 'apt-carga'), keywords: 'apt gantt ot lote trazabilidad toneladas tn permanencia' },
     { href: '/apt/flujo', label: 'Flujo multi‑almacén', icon: Workflow, show: any('apt'), keywords: '647 540 st ventas flujo almacen' },
     { href: '/apt/flujo/trazabilidad', label: 'Trazabilidad', icon: Route, show: any('apt'), keywords: 'trazabilidad guia lote ot familia' },
     { href: '/apt/flujo/kardex', label: 'Kardex', icon: BookOpenCheck, show: any('apt'), keywords: 'kardex movimientos saldo' },
