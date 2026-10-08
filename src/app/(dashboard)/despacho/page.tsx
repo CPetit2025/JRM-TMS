@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { InlineStatusBar } from '@/components/ui/inline-status-bar'
 import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filter-toolbar'
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
+import { TableActions, type TableAction } from '@/components/ui/table-actions'
 
 import { splitFreight } from '@/lib/transport-budget'
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
@@ -118,6 +119,12 @@ const dispatchTone = (status: string): StatusTone =>
   : ['ENTREGADO', 'RETORNO_COMPLETADO', 'LIQUIDADO', 'CERRADO'].includes(status) ? 'success'
   : status === 'CANCELADO' ? 'danger' : 'neutral'
 
+const STATUS_GROUPS: Record<'programados' | 'ruta' | 'cerrar', string[]> = {
+  programados: ['PROGRAMADO'],
+  ruta: ['EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'],
+  cerrar: ['ENTREGADO', 'RETORNO_COMPLETADO'],
+}
+
 export default function DespachoPage() {
   const router = useRouter()
   const { canWrite, canRead } = usePermissions()
@@ -134,6 +141,9 @@ export default function DespachoPage() {
   const [filterStatus, setFilterStatus] = useState('TODOS')
   const [filterModalidad, setFilterModalidad] = useState('TODAS')
 
+  const [statusGroup, setStatusGroup] = useState<'' | 'programados' | 'ruta' | 'cerrar'>('')
+  const [mobileTab, setMobileTab] = useState<'pendientes' | 'programados'>('pendientes')
+
   const filteredDispatches = dispatches.filter(d => {
     const matchSearch = searchTerm === '' || 
       (d.dispatch_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -142,7 +152,8 @@ export default function DespachoPage() {
       d.dispatch_requests?.some((r: DispatchRequest) => [r.transport_requests?.request_number, r.transport_requests?.contracts?.code].join(' ').toLowerCase().includes(searchTerm.toLowerCase()));
     const matchStatus = filterStatus === 'TODOS' || d.status === filterStatus;
     const matchModalidad = filterModalidad === 'TODAS' || (d.modalidad || 'PROPIA') === filterModalidad;
-    return matchSearch && matchStatus && matchModalidad;
+    const matchGroup = !statusGroup || STATUS_GROUPS[statusGroup].includes(d.status);
+    return matchSearch && matchStatus && matchModalidad && matchGroup;
   })
   
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -605,103 +616,98 @@ export default function DespachoPage() {
         )}
         <TorreControlButton />
       </>} />
-      <TransportWorkflow current="programacion" torre={false} />
-      <InlineStatusBar label="Resumen operativo" loading={loading} items={[
-        { key: 'asignar', label: 'Solicitudes por asignar', count: pendingRequests.length, icon: <FileText />, tone: 'amber' },
-        { key: 'programados', label: 'Programados', count: dispatches.filter(d => d.status === 'PROGRAMADO').length, icon: <Clock />, tone: 'navy' },
-        { key: 'ruta', label: 'En ruta', count: dispatches.filter(d => ['EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'].includes(d.status)).length, icon: <Route />, tone: 'blue' },
-        { key: 'cerrar', label: 'Por cerrar', count: dispatches.filter(d => ['ENTREGADO', 'RETORNO_COMPLETADO'].includes(d.status)).length, icon: <PackageCheck />, tone: 'emerald' }]} />
+      <div className="flex flex-wrap items-center gap-2">
+        <TransportWorkflow current="programacion" torre={false} />
+        <div className="ml-auto min-w-0">
+          <InlineStatusBar label="Resumen operativo (filtra la tabla)" loading={loading} active={statusGroup || undefined}
+            onChange={key => {
+              if (key === 'asignar') { setStatusGroup(''); setMobileTab('pendientes'); return }
+              setMobileTab('programados'); setStatusGroup(prev => prev === key ? '' : key as 'programados' | 'ruta' | 'cerrar')
+            }}
+            items={[
+              { key: 'asignar', label: 'Por asignar', count: pendingRequests.length, icon: <FileText />, tone: 'amber' },
+              { key: 'programados', label: 'Programados', count: dispatches.filter(d => d.status === 'PROGRAMADO').length, icon: <Clock />, tone: 'navy' },
+              { key: 'ruta', label: 'En ruta', count: dispatches.filter(d => STATUS_GROUPS.ruta.includes(d.status)).length, icon: <Route />, tone: 'blue' },
+              { key: 'cerrar', label: 'Por cerrar', count: dispatches.filter(d => STATUS_GROUPS.cerrar.includes(d.status)).length, icon: <PackageCheck />, tone: 'emerald' }]} />
+        </div>
+      </div>
 
-      <div className="flex flex-col gap-3">
-        
-        {/* Sección Superior: OTs Pendientes */}
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-blue-600" />
-            Solicitudes por Asignar ({pendingRequests.length})
-          </h2>
-          
-          <div className="flex overflow-x-auto gap-4 pb-4 snap-x">
+      <div role="tablist" aria-label="Vista de despacho" className="flex gap-1 xl:hidden">
+        {([['pendientes', `Por asignar (${pendingRequests.length})`], ['programados', 'Programados']] as const).map(([key, text]) => (
+          <button key={key} type="button" role="tab" aria-selected={mobileTab === key} onClick={() => setMobileTab(key)}
+            className={`min-h-11 flex-1 rounded-jrm border px-3 text-sm font-semibold ${mobileTab === key ? 'border-jrm-navy bg-jrm-navy text-white' : 'border-jrm-line bg-jrm-surface text-slate-600'}`}>{text}</button>
+        ))}
+      </div>
+
+      <div className="grid items-start gap-3 xl:grid-cols-[19rem_minmax(0,1fr)]">
+
+        {/* Panel izquierdo: solicitudes por asignar */}
+        <section aria-label="Solicitudes por asignar" className={`${mobileTab === 'pendientes' ? 'block' : 'hidden'} overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card xl:block`}>
+          <div className="flex h-11 items-center justify-between border-b border-jrm-line px-3">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+              <FileText className="h-4 w-4 text-amber-600" aria-hidden="true" />
+              Solicitudes por asignar <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">{pendingRequests.length}</span>
+            </h2>
+          </div>
+          <div className="max-h-[calc(100vh-260px)] overflow-y-auto">
             {loading ? (
-              <div className="p-8 w-full text-center text-slate-500 bg-white rounded-xl border border-slate-200">
-                <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                Cargando...
-              </div>
+              <div className="p-6 text-center text-sm text-slate-500"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Cargando...</div>
             ) : pendingRequests.length === 0 ? (
-              <div className="p-6 w-full text-center text-slate-500 bg-white rounded-xl border border-slate-200 shadow-sm text-sm">
-                No hay solicitudes pendientes de asignación.
-              </div>
+              <div className="p-6 text-center text-sm text-slate-500">No hay solicitudes pendientes de asignación.</div>
             ) : (
-              pendingRequests.map(req => {
-                const isRecojo = req.request_type === 'RECOJO'
-                const isTraslado = req.request_type === 'TRASLADO'
-                const typeLabel = req.request_type || (isRecojo ? 'RECOJO' : 'DESPACHO')
-                
-                let typeColor = 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                if (isRecojo) typeColor = 'bg-orange-100 text-orange-700 border-orange-200'
-                if (isTraslado) typeColor = 'bg-purple-100 text-purple-700 border-purple-200'
-                
-                return (
-                  <div key={req.id} className="min-w-[300px] w-[300px] bg-white p-4 rounded-xl shadow-sm border border-l-4 border-l-blue-500 border-slate-200 hover:shadow-md transition-shadow snap-start">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex flex-col gap-1">
-                        <span className="font-bold text-[#002855] text-sm">{req.request_number}</span>
-                        {wasRescheduled(req) && <span className="text-[10px] bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-semibold border border-orange-200">Reprogramado</span>}
-                        <span className="text-xs text-slate-600">Atención requerida · Lima: <b>{requestedAttention(req)}</b></span>
+              <ul className="divide-y divide-slate-100">
+                {pendingRequests.map(req => {
+                  const isRecojo = req.request_type === 'RECOJO'
+                  const isTraslado = req.request_type === 'TRASLADO'
+                  const typeLabel = req.request_type || 'DESPACHO'
+                  const typeColor = isRecojo ? 'bg-orange-100 text-orange-700 border-orange-200' : isTraslado ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                  const selected = newDispatch.selected_requests.some(r => r.id === req.id)
+                  const balance = req.contracts?.contract_budgets?.[0]?.balance_pen
+                  return (
+                    <li key={req.id} className="px-3 py-2.5 hover:bg-slate-50">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate text-sm font-bold text-jrm-navy">{req.request_number}</span>
+                          <span className={`whitespace-nowrap rounded border px-1.5 py-0.5 text-[10px] font-bold ${typeColor}`}>{typeLabel}</span>
+                          {wasRescheduled(req) && <span className="whitespace-nowrap rounded border border-orange-200 bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-800">Reprogramado</span>}
+                        </span>
+                        {canWrite('despacho') && (
+                          <button type="button" onClick={() => { setIsModalOpen(true); if (!selected) void toggleRequestSelection(req.id, req.pickup_address, req.delivery_address) }}
+                            aria-label={`Asignar ${req.request_number}`}
+                            className="inline-flex min-h-11 shrink-0 items-center rounded-lg border border-jrm-navy px-3 text-xs font-semibold text-jrm-navy hover:bg-blue-50 lg:min-h-8">
+                            Asignar
+                          </button>
+                        )}
                       </div>
-                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${typeColor} whitespace-nowrap h-fit`}>
-                        {typeLabel}
-                      </span>
-                    </div>
-                    <p className="text-sm font-semibold text-slate-800 mb-1 truncate" title={req.requester_name}>{req.requester_name}</p>
-                    {req.contracts?.clients?.business_name && (
-                      <p className="text-xs font-medium text-[#002855] mb-1 truncate" title={req.contracts.clients.business_name}>
-                        {req.contracts.clients.business_name}
+                      <p className="mt-0.5 truncate text-xs text-slate-700" title={req.requester_name}>
+                        {req.requester_name}{req.contracts?.clients?.business_name ? <span className="text-slate-500"> · {req.contracts.clients.business_name}</span> : null}
                       </p>
-                    )}
-                    <div className="text-xs text-slate-500 flex flex-col gap-1 mt-2">
-                      <div className="flex items-start gap-1">
-                        <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-blue-500" />
-                        <span className="truncate" title={req.pickup_address}>{req.pickup_address}</span>
-                      </div>
-                      <div className="flex items-start gap-1">
-                        <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-red-400" />
-                        <span className="truncate" title={req.delivery_address}>{req.delivery_address}</span>
-                      </div>
-                      
-                      {/* Presupuesto Alert */}
-                      {req.contracts && req.contracts.contract_budgets && req.contracts.contract_budgets.length > 0 && (
-                        <div className={`mt-2 p-1.5 rounded border text-[10px] font-bold flex justify-between items-center ${
-                          (req.contracts.contract_budgets[0].balance_pen || 0) < 500 
-                            ? 'bg-red-50 text-red-700 border-red-200' 
-                            : 'bg-slate-50 text-slate-700 border-slate-200'
-                        }`}>
-                          <span>{req.contracts.code}</span>
-                          <span>Saldo: S/ {(req.contracts.contract_budgets[0].balance_pen || 0).toLocaleString('es-PE')}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )
-              })
+                      <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-slate-500" title={`${req.pickup_address} → ${req.delivery_address}`}>
+                        <MapPin className="h-3 w-3 shrink-0 text-blue-500" aria-hidden="true" />
+                        <span className="truncate">{req.pickup_address} → {req.delivery_address}</span>
+                      </p>
+                      <p className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                        <span>Lima: <b className="text-slate-700">{requestedAttention(req)}</b></span>
+                        {req.contracts?.code && balance !== undefined && (
+                          <span className={`font-semibold ${(balance || 0) < 500 ? 'text-red-700' : 'text-slate-600'}`}>{req.contracts.code} · S/ {(balance || 0).toLocaleString('es-PE')}</span>
+                        )}
+                      </p>
+                    </li>
+                  )
+                })}
+              </ul>
             )}
           </div>
-        </div>
+        </section>
 
-        {/* Sección Inferior: Despachos Programados */}
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            <Truck className="w-5 h-5 text-green-600" />
-            Despachos / Rutas Programadas
-          </h2>
-
-          {/* Filtros y Búsqueda */}
-          <FilterToolbar compact label="Búsqueda y filtros de despachos" onClear={() => { setSearchTerm(''); setFilterStatus('TODOS'); setFilterModalidad('TODAS') }}>
+        {/* Panel derecho: despachos / rutas programadas */}
+        <section aria-label="Despachos y rutas programadas" className={`${mobileTab === 'programados' ? 'block' : 'hidden'} min-w-0 space-y-2 xl:block`}>
+          <FilterToolbar compact label="Búsqueda y filtros de despachos" onClear={() => { setSearchTerm(''); setFilterStatus('TODOS'); setFilterModalidad('TODAS'); setStatusGroup('') }}>
             <label className="relative min-w-0 flex-1 basis-60">
               <span className="sr-only">Buscar despachos</span><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" aria-hidden="true" />
               <input type="search" placeholder="Buscar por nro, placa, conductor u OT…" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`${filterControl} pl-9`} />
             </label>
-            <FilterField inline label="Estado" className="w-64">
+            <FilterField inline label="Estado" className="w-56">
               <select className={filterControl} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
                 <option value="TODOS">Todos</option>
                 <option value="PROGRAMADO">Programado</option>
@@ -712,7 +718,7 @@ export default function DespachoPage() {
                 <option value="LIQUIDADO">Cerrado (ruta cerrada)</option>
               </select>
             </FilterField>
-            <FilterField inline label="Unidad" className="w-56">
+            <FilterField inline label="Unidad" className="w-52">
               <select className={filterControl} value={filterModalidad} onChange={(e) => setFilterModalidad(e.target.value)}>
                 <option value="TODAS">Todas</option>
                 <option value="PROPIA">Flota propia</option>
@@ -721,25 +727,25 @@ export default function DespachoPage() {
             </FilterField>
           </FilterToolbar>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="overflow-auto max-h-[calc(100vh-220px)]">
-          <DataTable dense className="w-full text-left border-collapse relative">
-            <thead className="bg-slate-50 text-slate-500 text-xs text-left sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0] border-slate-100 uppercase tracking-wider">
+          <div className="overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
+            <div className="max-h-[calc(100vh-260px)] overflow-auto">
+              <DataTable dense className="relative w-full border-collapse text-left">
+                <thead className="sticky top-0 z-10 border-slate-100 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500 shadow-[0_1px_0_0_#e2e8f0]">
                   <tr>
-                    <th className="p-4 font-semibold whitespace-nowrap">Despacho</th>
-                    <th className="p-4 font-semibold whitespace-nowrap">Unidad / Chofer</th>
-                    <th className="p-4 font-semibold whitespace-nowrap text-right">Dist. (KM)</th>
-                    <th className="p-4 font-semibold">Solicitudes (Ruta)</th>
-                    <th className="p-4 font-semibold whitespace-nowrap">Salida confirmada · Lima</th>
-                    <th className="p-4 font-semibold whitespace-nowrap">Estado</th>
-                    <th className="p-4 font-semibold text-right whitespace-nowrap">Acción</th>
+                    <th className="whitespace-nowrap font-semibold">Despacho</th>
+                    <th className="whitespace-nowrap font-semibold">Unidad / Chofer</th>
+                    <th className="whitespace-nowrap text-right font-semibold">Dist. (KM)</th>
+                    <th className="font-semibold">Solicitudes (Ruta)</th>
+                    <th className="whitespace-nowrap font-semibold">Salida · Lima</th>
+                    <th className="whitespace-nowrap font-semibold">Estado</th>
+                    <th className="whitespace-nowrap text-right font-semibold">Acción</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {loading ? (
                     <tr>
                       <td colSpan={7} className="p-8 text-center text-slate-500">
-                        <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                        <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin" />
                         Cargando despachos...
                       </td>
                     </tr>
@@ -750,47 +756,60 @@ export default function DespachoPage() {
                       </td>
                     </tr>
                   ) : (
-                    filteredDispatches.map(dispatch => (
-                      <tr key={dispatch.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-4">
-                          <button 
+                    // eslint-disable-next-line react-hooks/refs -- los manejadores solo se ejecutan al elegir una acción, no durante el render
+                    filteredDispatches.map(dispatch => {
+                      const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(dispatch.scheduled_departure))
+                      const docsHref = `/despacho/documentos?despacho=${dispatch.id}&vista=${dispatch.status === 'PROGRAMADO' ? 'salida' : 'historial'}&desde=${day}`
+                      const opHref = `/torre-control?despacho=${dispatch.id}&fecha=${day}`
+                      const canDocs = canRead('documentario') || canRead('packing-list') || canRead('planificacion')
+                      const canOp = canRead('torre-control') || canRead('despacho')
+                      const programado = dispatch.status === 'PROGRAMADO'
+                      const primaryDocs = programado && canDocs
+                      const menu: TableAction[] = []
+                      if (primaryDocs && canOp) menu.push({ id: 'op', label: 'Gestionar operación', icon: <Truck className="h-4 w-4" />, onSelect: () => router.push(opHref) })
+                      if (!primaryDocs && canDocs) menu.push({ id: 'docs', label: 'Documentos', icon: <FileText className="h-4 w-4" />, onSelect: () => router.push(docsHref) })
+                      if (canWrite('despacho') && programado) menu.push({ id: 'cancel', label: 'Cancelar despacho', icon: <XCircle className="h-4 w-4" />, tone: 'danger', onSelect: () => handleCancelDispatch(dispatch.id, dispatch.dispatch_number) })
+                      return (
+                      <tr key={dispatch.id} className="transition-colors hover:bg-slate-50">
+                        <td>
+                          <button
                             onClick={() => setSelectedDispatchDetail(dispatch)}
-                            className="font-bold text-[#002855] text-sm hover:underline hover:text-blue-600 transition-all text-left"
+                            className="whitespace-nowrap text-left text-sm font-bold text-jrm-navy transition-all hover:text-blue-600 hover:underline"
                           >
                             {dispatch.dispatch_number}
                           </button>
                         </td>
-                        <td className="p-4">
+                        <td>
                           <div className="flex flex-col">
-                            <span className="font-bold text-[#002855] text-sm uppercase flex items-center gap-1.5">
+                            <span className="flex items-center gap-1.5 whitespace-nowrap text-sm font-bold uppercase text-jrm-navy">
                               {dispatch.vehicle_plate}
-                              {dispatch.modalidad === 'TERCERO' && <span className="text-[10px] normal-case font-bold bg-violet-100 text-violet-700 border border-violet-200 px-1.5 py-0.5 rounded">Tercero</span>}
+                              {dispatch.modalidad === 'TERCERO' && <span className="rounded border border-violet-200 bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold normal-case text-violet-700">Tercero</span>}
                             </span>
                             <span className="text-xs text-slate-500">{dispatch.driver_name}</span>
                           </div>
                         </td>
-                        <td className="p-4 text-sm font-semibold text-slate-700 text-right">
+                        <td className="text-right text-sm font-semibold text-slate-700">
                           {dispatch.estimated_distance_km ? `${dispatch.estimated_distance_km} KM` : '-'}
                         </td>
-                        <td className="p-4 text-xs text-slate-600">
+                        <td className="min-w-[11rem] text-xs text-slate-600">
                           {dispatch.dispatch_requests && dispatch.dispatch_requests.length > 0 ? (
                             (() => {
                               const reqs = dispatch.dispatch_requests;
                               const recojos = reqs.filter(r => r.transport_requests.request_type === 'RECOJO').length;
                               const traslados = reqs.filter(r => r.transport_requests.request_type === 'TRASLADO').length;
                               const despachos = reqs.filter(r => !r.transport_requests.request_type || r.transport_requests.request_type === 'DESPACHO').length;
-                              
+
                               const tooltipText = reqs.map(r => `${r.transport_requests.request_number} · OT ${r.transport_requests.contracts?.code || 'sin OT'}`).join(', ');
 
                               return (
-                                <div className="flex flex-col gap-1.5" title={tooltipText}>
-                                  <div className="font-bold text-slate-700">{reqs.length} servicio{reqs.length !== 1 ? 's' : ''} · {new Set(reqs.map(r => r.transport_requests.contracts?.code).filter(Boolean)).size} OT</div>
-                                  <details className="rounded-lg border border-slate-200 bg-white p-2"><summary className="cursor-pointer font-semibold text-[#002855]">Ver servicios y fechas solicitadas</summary><ul className="mt-2 space-y-2">{reqs.map(r => <li key={r.transport_request_id} className="border-t border-slate-100 pt-2"><p className="font-semibold">{r.transport_requests.request_number} · {r.transport_requests.contracts?.code ? `OT ${r.transport_requests.contracts.code}` : 'Sin OT'}</p><p>{r.transport_requests.request_type === 'RECOJO' ? 'Recojo' : r.transport_requests.request_type === 'TRASLADO' ? 'Punto a punto' : 'Entrega'} · Solicitada · Lima: {requestedAttention(r.transport_requests)}</p>{r.transport_requests.rescheduling && <p className="font-semibold text-amber-800">Reprogramado · {serviceDate(r.transport_requests.rescheduling.fecha_anterior)} → {serviceDate(r.transport_requests.rescheduling.fecha_nueva)}</p>}</li>)}</ul></details>
-                                  <div className="flex flex-wrap gap-1">
-                                    {recojos > 0 && <span className="bg-orange-50 text-orange-700 text-[10px] px-1.5 py-0.5 rounded font-semibold border border-orange-200">Recojos: {recojos}</span>}
-                                    {despachos > 0 && <span className="bg-emerald-50 text-emerald-700 text-[10px] px-1.5 py-0.5 rounded font-semibold border border-emerald-200">Despachos: {despachos}</span>}
-                                    {traslados > 0 && <span className="bg-purple-50 text-purple-700 text-[10px] px-1.5 py-0.5 rounded font-semibold border border-purple-200">Traslados: {traslados}</span>}
+                                <div className="flex flex-col gap-1" title={tooltipText}>
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    <span className="whitespace-nowrap font-bold text-slate-700">{reqs.length} servicio{reqs.length !== 1 ? 's' : ''} · {new Set(reqs.map(r => r.transport_requests.contracts?.code).filter(Boolean)).size} OT</span>
+                                    {recojos > 0 && <span className="rounded border border-orange-200 bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">Recojos: {recojos}</span>}
+                                    {despachos > 0 && <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Despachos: {despachos}</span>}
+                                    {traslados > 0 && <span className="rounded border border-purple-200 bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700">Traslados: {traslados}</span>}
                                   </div>
+                                  <details className="rounded-lg border border-slate-200 bg-white px-2 py-1"><summary className="cursor-pointer font-semibold text-jrm-navy">Ver servicios y fechas</summary><ul className="mt-2 space-y-2">{reqs.map(r => <li key={r.transport_request_id} className="border-t border-slate-100 pt-2"><p className="font-semibold">{r.transport_requests.request_number} · {r.transport_requests.contracts?.code ? `OT ${r.transport_requests.contracts.code}` : 'Sin OT'}</p><p>{r.transport_requests.request_type === 'RECOJO' ? 'Recojo' : r.transport_requests.request_type === 'TRASLADO' ? 'Punto a punto' : 'Entrega'} · Solicitada · Lima: {requestedAttention(r.transport_requests)}</p>{r.transport_requests.rescheduling && <p className="font-semibold text-amber-800">Reprogramado · {serviceDate(r.transport_requests.rescheduling.fecha_anterior)} → {serviceDate(r.transport_requests.rescheduling.fecha_nueva)}</p>}</li>)}</ul></details>
                                 </div>
                               );
                             })()
@@ -798,45 +817,40 @@ export default function DespachoPage() {
                             <span className="text-slate-400">Sin detalles</span>
                           )}
                         </td>
-                        <td className="p-4 text-sm text-slate-600">
+                        <td className="whitespace-nowrap text-sm text-slate-600">
                           <div className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {new Date(dispatch.scheduled_departure).toLocaleString('es-PE', { timeZone: 'America/Lima' })}
+                            <Calendar className="h-3 w-3" aria-hidden="true" />
+                            {new Date(dispatch.scheduled_departure).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short', hour12: false })}
                           </div>
                         </td>
-                        <td className="p-4">
+                        <td>
                           <StatusBadge tone={dispatchTone(dispatch.status)}>{dispatchStatusLabel(dispatch.status)}</StatusBadge>
-                          {dispatch.status === 'PROGRAMADO' && dispatch.docs_required && (
+                          {programado && dispatch.docs_required && (
                             <div className={`mt-1 text-[10px] font-semibold ${dispatch.docs_reissue ? 'text-red-600' : dispatch.docs_ready_at ? 'text-emerald-600' : 'text-amber-600'}`}
                               title={dispatch.docs_reissue_reason || undefined}>
                               {dispatch.docs_reissue ? 'Guías por reemitir' : dispatch.docs_ready_at ? 'Documentos listos' : 'Documentos pendientes'}
                             </div>
                           )}
                         </td>
-                        <td className="p-4 text-right">
-                          {(canRead('documentario') || canRead('packing-list') || canRead('planificacion')) && <Link href={`/despacho/documentos?despacho=${dispatch.id}&vista=${dispatch.status === 'PROGRAMADO' ? 'salida' : 'historial'}&desde=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(dispatch.scheduled_departure))}`} className="mb-2 inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-[#002855]"><FileText className="h-4 w-4" />Documentos</Link>}
-{(canRead('torre-control') || canRead('despacho')) && <Link href={`/torre-control?despacho=${dispatch.id}&fecha=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(dispatch.scheduled_departure))}`} className="mb-2 ml-1 inline-flex min-h-11 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-[#002855]"><Truck className="h-4 w-4" />Gestionar operación</Link>}
-                          {canWrite('despacho') && dispatch.status === 'PROGRAMADO' && (
-                            <button
-                              onClick={() => handleCancelDispatch(dispatch.id, dispatch.dispatch_number)}
-                              className="ml-1 inline-flex items-center gap-1 px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 transition-colors rounded-lg text-xs font-medium border border-red-200 whitespace-nowrap"
-                            >
-                              <XCircle className="w-3 h-3" />
-                              Cancelar
-                            </button>
-                          )}
+                        <td>
+                          <div className="flex items-center justify-end gap-1">
+                            {primaryDocs
+                              ? <Link href={docsHref} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-jrm-navy hover:bg-slate-50 lg:min-h-8"><FileText className="h-4 w-4" />Documentos</Link>
+                              : canOp && <Link href={opHref} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-jrm-navy hover:bg-blue-100 lg:min-h-8"><Truck className="h-4 w-4" />Gestionar</Link>}
+                            <TableActions compact label={`Más acciones de ${dispatch.dispatch_number}`} actions={menu} />
+                          </div>
                         </td>
                       </tr>
-                    ))
+                      )
+                    })
                   )}
                 </tbody>
               </DataTable>
             </div>
           </div>
-        </div>
+        </section>
 
       </div>
-
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
