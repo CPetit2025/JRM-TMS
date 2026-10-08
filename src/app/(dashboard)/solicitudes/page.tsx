@@ -521,21 +521,27 @@ export default function SolicitudesPage() {
   type RequestDraft = { saved_at: string; request: typeof newRequest; components: typeof selectedComponents; unloadingAnswer: typeof unloadingAnswer; unloading: typeof unloading }
   const draftKey = userId ? `jrm:solicitud-borrador:${userId}` : ''
   const [draftFound, setDraftFound] = useState<RequestDraft | null>(null)
+  // Solo la solicitud nueva en blanco usa el borrador; editar o duplicar no lo tocan.
+  const [draftMode, setDraftMode] = useState(false)
   const readDraft = (): RequestDraft | null => {
     if (!draftKey) return null
     try { const raw = window.localStorage.getItem(draftKey); return raw ? JSON.parse(raw) as RequestDraft : null } catch { return null }
   }
   const clearDraft = () => { try { if (draftKey) window.localStorage.removeItem(draftKey) } catch { /* sin almacenamiento */ } setDraftFound(null) }
   const draftDirty = Boolean(newRequest.contract_id || newRequest.cargo_description.trim() || newRequest.supplier_id || newRequest.required_date
-    || newRequest.reference_number.trim() || (newRequest.request_type !== 'RECOJO' && newRequest.delivery_address.trim()) || unloadingAnswer)
+    || newRequest.required_time || newRequest.reference_type || newRequest.reference_number.trim() || newRequest.time_window.trim()
+    || newRequest.estimated_weight || newRequest.estimated_volume || newRequest.request_type !== 'DESPACHO' || newRequest.attention_mode !== 'TRANSPORTE_JRM'
+    || (newRequest.pickup_address.trim() && newRequest.pickup_address.trim() !== 'Planta Chilca') || newRequest.pickup_customer.trim()
+    || newRequest.pickup_contact.trim() || newRequest.pickup_phone.trim()
+    || newRequest.delivery_address.trim() || unloadingAnswer)
   useEffect(() => {
-    if (!isModalOpen || editingRequestId || !draftKey || draftFound || !draftDirty) return
+    if (!isModalOpen || !draftMode || editingRequestId || !draftKey || draftFound || !draftDirty) return
     const timer = window.setTimeout(() => {
       const draft: RequestDraft = { saved_at: new Date().toISOString(), request: newRequest, components: selectedComponents, unloadingAnswer, unloading }
       try { window.localStorage.setItem(draftKey, JSON.stringify(draft)) } catch { /* sin almacenamiento: el borrador es opcional */ }
     }, 800)
     return () => window.clearTimeout(timer)
-  }, [isModalOpen, editingRequestId, draftKey, draftFound, draftDirty, newRequest, selectedComponents, unloadingAnswer, unloading])
+  }, [isModalOpen, draftMode, editingRequestId, draftKey, draftFound, draftDirty, newRequest, selectedComponents, unloadingAnswer, unloading])
   const resumeDraft = (draft: RequestDraft) => {
     setNewRequest(prev => ({ ...prev, ...draft.request, requester_name: prev.requester_name }))
     setUnloadingAnswer(draft.unloadingAnswer || ''); setUnloading(draft.unloading || [])
@@ -591,7 +597,7 @@ export default function SolicitudesPage() {
 
     void fetchLeadTimeSettings()
     setEditingRequestId(duplicate ? null : request.id)
-    setDraftFound(null)
+    setDraftFound(null); setDraftMode(false)
     if (duplicate) {
       setRegistrationPreview(new Date().toISOString())
       toast.info(`Copia de ${request.request_number}: indique la fecha de atención y el número de documento.`)
@@ -708,7 +714,7 @@ export default function SolicitudesPage() {
       if (saved?.status === 'OBSERVADA') toast.warning(newRequest.contract_id ? 'Solicitud observada: la partida no cubre los costos a cargo de JRM.' : 'Solicitud registrada y observada: vincule una OT para financiar los gastos JRM antes de aprobar y programar.')
 
       toast.success('Solicitud enviada correctamente')
-      if (!editingRequestId) clearDraft()
+      if (!editingRequestId && draftMode) clearDraft()
       setUnloading([]); setUnloadingAnswer(''); setUnloadingHistory([])
       setQuote(null)
       setIsModalOpen(false)
@@ -825,14 +831,14 @@ export default function SolicitudesPage() {
   const clientName = (c?: { clients?: { business_name: string } | { business_name: string }[] | null } | null) => Array.isArray(c?.clients) ? c?.clients[0]?.business_name : c?.clients?.business_name
   const selectedClient = clientName(contracts.find(c => c.id === newRequest.contract_id))
   const frequentDestinations = useMemo(() => {
-    const groups = new Map<string, { address: string; department: string; province: string; district: string; count: number; last: string }>()
+    const groups = new Map<string, { address: string; department: string; province: string; district: string; zone: DeliveryZone | null; count: number; last: string }>()
     for (const r of requests) {
       if (r.request_type === 'RECOJO' || !r.delivery_address?.trim() || ['CANCELADA', 'RECHAZADA'].includes(r.status)) continue
       if (selectedClient && clientName(r.contracts) !== selectedClient) continue
       const key = `${r.delivery_address.trim().toLocaleLowerCase('es-PE')}|${(r.delivery_district || '').toLocaleLowerCase('es-PE')}`
       const g = groups.get(key)
-      if (g) { g.count++; if (r.created_at > g.last) g.last = r.created_at }
-      else groups.set(key, { address: r.delivery_address.trim(), department: r.delivery_department || '', province: r.delivery_province || '', district: (r.delivery_district || districtOf(r.delivery_address) || '').toUpperCase(), count: 1, last: r.created_at })
+      if (g) { g.count++; if (r.created_at > g.last) { g.last = r.created_at; if (r.delivery_zone) g.zone = r.delivery_zone } }
+      else groups.set(key, { address: r.delivery_address.trim(), department: r.delivery_department || '', province: r.delivery_province || '', district: (r.delivery_district || districtOf(r.delivery_address) || '').toUpperCase(), zone: r.delivery_zone || null, count: 1, last: r.created_at })
     }
     return [...groups.values()].sort((a, b) => b.count - a.count || b.last.localeCompare(a.last)).slice(0, 6)
   }, [requests, selectedClient])
@@ -908,7 +914,7 @@ export default function SolicitudesPage() {
                 service_cost: '',
                 purchase_order: '', supplier_id: '', supplier_location_id: '', reference_type: '', reference_number: ''
               })
-              setDraftFound(readDraft())
+              setDraftFound(readDraft()); setDraftMode(true)
               setIsModalOpen(true)
             }}
             className="flex h-10 items-center justify-center gap-2 rounded-lg bg-jrm-navy px-5 font-semibold text-white shadow-sm transition-colors hover:bg-jrm-navy-dark"
@@ -1005,7 +1011,7 @@ export default function SolicitudesPage() {
         footer={<div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <PendingStatus count={pendingItems.length} readyText="Lista para enviar" />
-            {!editingRequestId && <span className="text-xs text-slate-500">Se guarda como borrador en este equipo mientras la llena.</span>}
+            {draftMode && !editingRequestId && <span className="text-xs text-slate-500">Se guarda como borrador en este equipo mientras la llena.</span>}
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={() => setIsModalOpen(false)} className="rounded-lg px-4 py-2 font-medium text-slate-600 transition-colors hover:bg-slate-100">Cancelar</button>
@@ -1179,7 +1185,7 @@ export default function SolicitudesPage() {
                 <div className="flex flex-wrap gap-1.5">{frequentDestinations.map(d => {
                   const active = newRequest.delivery_address.trim().toLocaleLowerCase('es-PE') === d.address.toLocaleLowerCase('es-PE')
                   return <button key={`${d.address}|${d.district}`} type="button" title={`${d.address} · usado ${d.count} ${d.count === 1 ? 'vez' : 'veces'}`}
-                    onClick={() => setNewRequest(prev => ({ ...prev, delivery_address: d.address, delivery_department: d.department, delivery_province: d.province, delivery_district: d.district }))}
+                    onClick={() => setNewRequest(prev => ({ ...prev, delivery_address: d.address, delivery_department: d.department, delivery_province: d.province, delivery_district: d.district, delivery_zone: d.zone || prev.delivery_zone }))}
                     className={`max-w-xs truncate rounded-full border px-2.5 py-1 text-xs transition-colors ${active ? 'border-[#002855] bg-blue-50 font-semibold text-[#002855]' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'}`}>
                     <b>{d.district || 'Sin distrito'}</b> · {d.address}</button>
                 })}</div>
