@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from '@/components/ui/page-header'
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -246,22 +247,16 @@ export default function FallasBacklogPage() {
   };
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div className="flex flex-wrap justify-between items-center gap-3">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Backlog de Fallas</h1>
-          <p className="text-muted-foreground mt-2">
-            Fuente única de anomalías: App conductor, inspecciones, supervisores, Copiloto AI y Torre de Control.
-          </p>
-        </div>
-        <div className="flex gap-2">
+    <div className="container mx-auto py-6 space-y-3">
+      <PageHeader showTitle title="Backlog de Fallas" description="Fuente única de anomalías: App conductor, inspecciones, supervisores, Copiloto AI y Torre de Control." actions={<>
+<div className="flex gap-2">
           <Button onClick={() => setShowForm(s => !s)} className="gap-2"><Plus className="w-4 h-4" />Registrar falla</Button>
           <Button onClick={fetchBacklog} variant="outline" disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Clock className="w-4 h-4 mr-2" />}
             Actualizar
           </Button>
         </div>
-      </div>
+</>} />
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[

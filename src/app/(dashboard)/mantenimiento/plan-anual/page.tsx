@@ -1,4 +1,5 @@
 "use client"
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -63,11 +64,8 @@ export default function PlanificacionPage() {
   const crit = data?.calidad.filter(c => c.nivel === 'crit').length || 0
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-black text-slate-900">Planificación de mantenimiento</h1>
-        <p className="text-sm text-slate-500">Qué toca hacer, qué puede fallar y cuánto cuesta, con el historial completo de cada unidad (Excel, OT y Caja).</p>
-      </div>
+    <div className="space-y-3">
+      <PageHeader showTitle title="Planificación de mantenimiento" description="Qué toca hacer, qué puede fallar y cuánto cuesta, con el historial completo de cada unidad (Excel, OT y Caja)." />
 
       <div className="flex flex-wrap gap-1 border-b">
         {TABS.map(([k, label, Icon]) => <button key={k} type="button" onClick={() => go(k)}

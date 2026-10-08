@@ -1,4 +1,5 @@
 "use client"
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useState, useEffect, useCallback } from 'react'
@@ -286,20 +287,16 @@ export default function PermisosPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Roles y Permisos</h1>
-          <p className="text-sm text-slate-500">El Administrador del Sistema puede crear, editar y eliminar roles y permisos.</p>
-        </div>
-        <button 
+    <div className="space-y-3 max-w-7xl mx-auto">
+      <PageHeader showTitle title="Roles y Permisos" description="El Administrador del Sistema puede crear, editar y eliminar roles y permisos." actions={<>
+<button 
           onClick={openCreateModal}
           className="flex items-center gap-2 bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#001d3d] transition-colors shadow-sm"
         >
           <Plus className="w-4 h-4" />
           Nuevo Rol
         </button>
-      </div>
+</>} />
 
             {/* Filtros y Búsqueda */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">

@@ -1,5 +1,6 @@
 "use client"
 
+import { PageHeader } from '@/components/ui/page-header'
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
@@ -183,10 +184,7 @@ export default function GeocercasPage() {
           <div className="w-9 h-9 bg-[#002855] rounded-lg flex items-center justify-center">
             <Layers className="w-5 h-5 text-white" />
           </div>
-          <div>
-            <h1 className="text-lg font-black text-slate-800">Gestión de Geocercas</h1>
-            <p className="text-xs text-slate-500">Zonas operativas y de control sobre el mapa</p>
-          </div>
+          <PageHeader showTitle title="Gestión de Geocercas" description="Zonas operativas y de control sobre el mapa" />
         </div>
         <button
           onClick={() => openModal()}

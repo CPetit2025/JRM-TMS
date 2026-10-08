@@ -1,5 +1,6 @@
 'use client'
 
+import { PageHeader } from '@/components/ui/page-header'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -79,18 +80,14 @@ export default function CajaDashboardPage() {
   const maxPlate = Math.max(1, ...byPlate.map(([, v]) => v))
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><Wallet className="w-6 h-6" />Caja de transporte</h1>
-          <p className="text-sm text-slate-500">Dinero de cada viaje de principio a fin: presupuesto, anticipo, gastos, aprobación, liquidación y costo real.</p>
-        </div>
-        <div className="flex gap-2">
+    <div className="space-y-3">
+      <PageHeader showTitle title="Caja de transporte" description="Dinero de cada viaje de principio a fin: presupuesto, anticipo, gastos, aprobación, liquidación y costo real." actions={<>
+<div className="flex gap-2">
           <button onClick={load} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button>
           {hasAccess('caja-gastos') && <Link href="/caja/gastos" className="px-4 py-2 border rounded-lg text-sm font-semibold flex items-center gap-2 bg-white"><FileText className="w-4 h-4" />Registrar gasto</Link>}
           {hasAccess('caja-anticipos') && <Link href="/caja/anticipos" className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm font-semibold flex items-center gap-2"><Banknote className="w-4 h-4" />Anticipos</Link>}
         </div>
-      </div>
+</>} />
 
       {loading ? <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div> : <>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

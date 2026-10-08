@@ -11,7 +11,7 @@
   }
 
   .table:not(:where(:global(.caja-printable) table, :global(.liq-page) table)) > thead > tr > th {
-    padding: 0.75rem;
+    padding: 0.625rem 0.75rem;
     border-bottom: 1px solid #e2e8f0;
     font-size: 0.75rem;
     font-weight: 600;
@@ -21,7 +21,7 @@
   }
 
   .table:not(:where(:global(.caja-printable) table, :global(.liq-page) table)) > tbody > tr > :is(td, th) {
-    padding: 0.75rem;
+    padding: 0.5rem 0.75rem;
     border-bottom: 1px solid #f1f5f9;
     vertical-align: middle;
   }

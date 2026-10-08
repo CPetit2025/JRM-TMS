@@ -1,9 +1,10 @@
 'use client'
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Truck, Plus, Search, Building2, Save, X, Edit, Ban, CheckCircle } from 'lucide-react'
+import { Plus, Search, Save, Edit, Ban, CheckCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { TerceroDesempeno } from '@/components/despacho/Tercero'
@@ -123,26 +124,16 @@ export default function TransportistasPage() {
   )
 
   return (
-    <div className="p-4 max-w-7xl mx-auto space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <Building2 className="w-8 h-8 text-blue-600" />
-            Proveedores de Transporte
-          </h1>
-          <p className="text-slate-500">
-            Gestión de dueños de camiones, asociados y subcontratistas.
-          </p>
-        </div>
-        
-        <button 
+    <div className="max-w-7xl mx-auto space-y-3">
+      <PageHeader showTitle title="Proveedores de Transporte" description="Gestión de dueños de camiones, asociados y subcontratistas." actions={<>
+<button 
           onClick={openNew}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-lg shadow-blue-500/20"
         >
           <Plus className="w-5 h-5" />
           Registrar Proveedor
         </button>
-      </div>
+</>} />
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
         <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row gap-4 items-center justify-between">

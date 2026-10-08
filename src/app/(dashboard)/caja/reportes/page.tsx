@@ -1,9 +1,10 @@
 'use client'
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { BarChart3, Download, FileSpreadsheet, Loader2, RefreshCw } from 'lucide-react'
+import { Download, FileSpreadsheet, Loader2, RefreshCw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { daysAgo, exportXlsx, fmtDate, money, todayLima, type Row } from '@/lib/caja'
 import { evidenceLink } from '@/components/evidence/EvidenceGallery'
@@ -100,13 +101,9 @@ export default function ReportesCajaPage() {
   })
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><BarChart3 className="w-6 h-6" />Reportes de caja</h1>
-          <p className="text-sm text-slate-500">Rentabilidad por viaje con gastos aprobados, presupuesto contra real y exportación contable.</p>
-        </div>
-        <div className="flex flex-wrap items-end gap-2 text-sm">
+    <div className="space-y-3">
+      <PageHeader showTitle title="Reportes de caja" description="Rentabilidad por viaje con gastos aprobados, presupuesto contra real y exportación contable." actions={<>
+<div className="flex flex-wrap items-end gap-2 text-sm">
           <label>Desde<input type="date" value={range.from} onChange={e => setRange({ ...range, from: e.target.value })} className="block border rounded-lg px-2 py-1.5" /></label>
           <label>Hasta<input type="date" value={range.to} onChange={e => setRange({ ...range, to: e.target.value })} className="block border rounded-lg px-2 py-1.5" /></label>
           <button onClick={() => load(range)} className="px-3 py-2 border rounded-lg flex items-center gap-1.5"><RefreshCw className="w-4 h-4" /></button>
@@ -115,7 +112,7 @@ export default function ReportesCajaPage() {
             {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}Exportación contable
           </button>
         </div>
-      </div>
+</>} />
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Stat label="Flete + refacturable" value={money(tot.freight + tot.billable, 0)} sub={`${trips.length} viajes`} />

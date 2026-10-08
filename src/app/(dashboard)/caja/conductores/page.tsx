@@ -1,9 +1,10 @@
 'use client'
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, Loader2, RefreshCw, Search, UserRound } from 'lucide-react'
+import { AlertTriangle, Loader2, RefreshCw, Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/modal'
 import { fmtDate, money, type Row } from '@/lib/caja'
@@ -50,14 +51,10 @@ export default function ConductoresCajaPage() {
   const owing = rows.filter(r => Number(r.balance) < 0).reduce((s, r) => s - Number(r.balance), 0)
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><UserRound className="w-6 h-6" />Cuenta corriente de conductores</h1>
-          <p className="text-sm text-slate-500">Saldo de cada conductor: anticipos recibidos contra gastos aprobados, devoluciones, reembolsos y descuentos.</p>
-        </div>
-        <button onClick={load} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button>
-      </div>
+    <div className="space-y-3">
+      <PageHeader showTitle title="Cuenta corriente de conductores" description="Saldo de cada conductor: anticipos recibidos contra gastos aprobados, devoluciones, reembolsos y descuentos." actions={<>
+<button onClick={load} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button>
+</>} />
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Stat label="Por rendir / devolver" value={money(owed)} />

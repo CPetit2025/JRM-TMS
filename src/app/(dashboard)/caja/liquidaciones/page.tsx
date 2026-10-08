@@ -1,11 +1,12 @@
 'use client'
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { AlertTriangle, CheckCircle2, FileCheck2, Loader2, Printer, RefreshCw, RotateCcw, Search } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Loader2, Printer, RefreshCw, RotateCcw, Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Modal } from '@/components/ui/modal'
@@ -65,14 +66,10 @@ export default function LiquidacionesPage() {
   }), [rows, view, q, people])
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><FileCheck2 className="w-6 h-6" />Liquidación de viajes</h1>
-          <p className="text-sm text-slate-500">Cuadre de anticipos contra gastos aprobados y cierre con devolución, reembolso o descuento por planilla. La aprobación de cada gasto se hace en <Link href="/caja/aprobaciones" className="text-blue-600 hover:underline">Aprobación de gastos</Link>.</p>
-        </div>
-        <button onClick={load} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button>
-      </div>
+    <div className="space-y-3">
+      <PageHeader showTitle title="Liquidación de viajes" description={<>Cuadre de anticipos contra gastos aprobados y cierre con devolución, reembolso o descuento por planilla. La aprobación de cada gasto se hace en <Link href="/caja/aprobaciones" className="text-blue-600 hover:underline">Aprobación de gastos</Link>.</>} actions={<>
+<button onClick={load} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button>
+</>} />
 
       <div className="flex flex-wrap items-center gap-2">
         {VIEWS.map(([k, l]) => (

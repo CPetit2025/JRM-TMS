@@ -1,4 +1,5 @@
 "use client"
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
@@ -123,7 +124,7 @@ export default function DriverProfile360() {
     : 'No registrado'
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-3">
       {/* Header */}
       <div className="flex items-center gap-4 mb-8">
         <button 
@@ -133,10 +134,7 @@ export default function DriverProfile360() {
         >
           <ArrowLeft className="w-5 h-5 text-slate-600" />
         </button>
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Perfil 360 del Conductor</h1>
-          <p className="text-slate-500">Vista integral de recursos humanos y desempeño</p>
-        </div>
+        <PageHeader showTitle title="Perfil 360 del Conductor" description="Vista integral de recursos humanos y desempeño" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

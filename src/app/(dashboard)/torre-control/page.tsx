@@ -1,4 +1,5 @@
 "use client"
+import { PageHeader } from '@/components/ui/page-header'
 import Link from 'next/link'
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
@@ -223,13 +224,9 @@ export default function TorreControlPage() {
   }
 
   return (
-    <div className="space-y-6 w-full mx-auto pb-10">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Torre de Control</h1>
-          <p className="text-sm text-slate-500 mt-1">Supervisión operativa y telemetría de flota en tiempo real.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <div className="space-y-3 w-full mx-auto pb-10">
+      <PageHeader showTitle title="Torre de Control" description="Supervisión operativa y telemetría de flota en tiempo real." actions={<>
+<div className="flex flex-wrap gap-2">
         <ReportarFallaButton />
         {canWrite('despacho') && <button
           onClick={() => setPortalOpen(true)}
@@ -239,7 +236,7 @@ export default function TorreControlPage() {
           Portal permanente
         </button>}
         </div>
-      </div>
+</>} />
 
       <TransportWorkflow />
       {canWrite('despacho') && <TrackingPortalManager open={portalOpen} onClose={() => setPortalOpen(false)} />}

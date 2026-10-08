@@ -1,4 +1,5 @@
 'use client'
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -6,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
-import { Building2, Plus, RefreshCw, Loader2, Edit2, Check, X } from 'lucide-react'
+import { Plus, RefreshCw, Loader2, Edit2, Check, X } from 'lucide-react'
 
 // Proveedores, talleres y garantías (Fase 10). Los KPI se calculan desde las OT reales
 // (vw_provider_performance); no hay puntajes almacenados (migración 20260928110000).
@@ -61,17 +62,13 @@ export default function ProveedoresPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><Building2 className="w-6 h-6" />Proveedores, talleres y garantías</h1>
-          <p className="text-sm text-slate-500">Desempeño calculado desde las OT: tiempo de atención, cumplimiento de SLA, costo, retrabajos, reclamos de garantía y calificación.</p>
-        </div>
-        <div className="flex gap-2">
+    <div className="space-y-3">
+      <PageHeader showTitle title="Proveedores, talleres y garantías" description="Desempeño calculado desde las OT: tiempo de atención, cumplimiento de SLA, costo, retrabajos, reclamos de garantía y calificación." actions={<>
+<div className="flex gap-2">
           <button onClick={() => setEditing('new')} className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm flex items-center gap-2"><Plus className="w-4 h-4" />Nuevo proveedor</button>
           <button onClick={refresh} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
         </div>
-      </div>
+</>} />
 
       <div className="flex gap-1 border-b">
         {([['desempeno', 'Proveedores y desempeño'], ['tarifario', 'Tarifario'], ['cotizaciones', 'Cotizaciones'], ['garantias', 'Garantías vigentes']] as const).map(([k, l]) => (

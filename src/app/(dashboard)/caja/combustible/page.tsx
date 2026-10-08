@@ -1,10 +1,11 @@
 'use client'
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { AlertTriangle, CheckCircle2, Download, Fuel, Gauge, Loader2, Pencil, Plus, Receipt, Store } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Download, Gauge, Loader2, Pencil, Plus, Receipt, Store } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Modal } from '@/components/ui/modal'
@@ -21,13 +22,8 @@ export default function CombustiblePage() {
   const canManage = canWrite('caja-combustible')
   const [tab, setTab] = useState<'cargas' | 'rendimiento' | 'grifos' | 'facturas'>('cargas')
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><Fuel className="w-6 h-6" />Control de combustible</h1>
-          <p className="text-sm text-slate-500">Cargas, rendimiento km/galón, grifos y conciliación de facturas de crédito. Para registrar una carga use <Link href="/caja/gastos" className="text-blue-600 hover:underline">Registro de gastos</Link> (categoría Combustible) o la app del conductor.</p>
-        </div>
-      </div>
+    <div className="space-y-3">
+      <PageHeader showTitle title="Control de combustible" description={<>Cargas, rendimiento km/galón, grifos y conciliación de facturas de crédito. Para registrar una carga use <Link href="/caja/gastos" className="text-blue-600 hover:underline">Registro de gastos</Link> (categoría Combustible) o la app del conductor.</>} />
       <div className="flex bg-white border rounded-xl overflow-hidden text-sm font-semibold w-fit">
         {([['cargas', 'Cargas'], ['rendimiento', 'Rendimiento por unidad'], ['grifos', 'Grifos'], ['facturas', 'Facturas y conciliación']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className={`px-4 py-2.5 ${tab === k ? 'bg-[#002855] text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>

@@ -1,4 +1,5 @@
 "use client"
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import React, { useState, useEffect } from "react"
@@ -141,15 +142,8 @@ export default function TarifasPage() {
   const avgRate = rates.filter(r => r.vehicle_plate).reduce((s, r) => s + r.fixed_cost_per_km + r.driver_cost_per_km, 0) / (rates.filter(r => r.vehicle_plate).length || 1)
 
   return (
-    <div className="p-6 w-full space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-[#002855] flex items-center gap-2">
-          <DollarSign className="w-6 h-6 text-yellow-500" /> Modelos de Tarifario
-        </h1>
-        <p className="text-slate-500 text-sm mt-1">
-          Configura y administra las tarifas de flete para la flota propia y tercerizada.
-        </p>
-      </div>
+    <div className="w-full space-y-3">
+      <PageHeader showTitle title="Modelos de Tarifario" description="Configura y administra las tarifas de flete para la flota propia y tercerizada." />
 
       {/* Tabs */}
       <div className="flex space-x-1 border-b border-slate-200">

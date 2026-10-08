@@ -105,3 +105,23 @@ Resultado medido con las mismas 14 solicitudes de ejemplo a 1680 × 940: antes s
 Alcance: `TransportWorkflow`, `FilterToolbar`, `DataTable`, `TablePagination`, `TableActions` y la barra superior son compartidos; cambian
 solo en aspecto. Despacho, Documentos y Registro de servicios ya usan esta versión (etapa 5b): `PageHeader showTitle`, `TransportWorkflow torre={false}`
 + `TorreControlButton`, `InlineStatusBar` (informativa en Despacho, filtro en Documentos y Registro), `FilterToolbar compact` y `DataTable dense`.
+
+## 9. Migración global (etapa 6a, 08/10/2026)
+
+Cabecera de página unificada (`PageHeader showTitle`: título + descripción + acciones en una fila, sin repetir el título en la barra
+superior) aplicada con una transformación mecánica a 36 pantallas que tenían su propio título: Caja (9), Mantenimiento (13),
+Maestros (4), Clientes, Contratos y OT, Usuarios, Permisos, Configuración (2), Flota (2), Perfil, Torre de Control e Inicio.
+Además:
+
+- Contenedores raíz sin el relleno propio (`p-6`/`p-4`) que se sumaba al de la barra de contenido, y separación de 12 px entre bloques.
+- `DataTable`: relleno vertical de celdas de 12 → 8 px (filas de 40–48 px) en todas las tablas.
+- Se retiraron 24 íconos de título que quedaron sin uso.
+
+Quedan fuera, a propósito, y conservan su cabecera previa:
+
+| Pantalla | Motivo |
+|---|---|
+| Aprobaciones de Caja, Expediente de OT (`contratos/[id]`), Ficha de unidad (`mantenimiento/flota/[plate]`) | Título dinámico o doble `h1`: se revisan a mano |
+| Monitoreo GPS | Título con insignia de ícono propia sobre el mapa |
+| APT (18), Eficiencia de flota (6), Reportes, Desempeño, Evidencia, Planificación | No tienen título propio: la barra superior ya lo muestra; se revisan en la etapa 6b junto con sus tarjetas y filtros |
+| App del conductor (`/app`) | Fuera de alcance |

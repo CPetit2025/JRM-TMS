@@ -1,4 +1,5 @@
 "use client"
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
@@ -8,10 +9,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, Legend
 } from 'recharts'
-import { 
-  Truck, Calendar, AlertTriangle, CheckCircle2, Route, 
-  Activity, TrendingUp, Filter, Loader2, ChevronRight
-} from 'lucide-react'
+import { Truck, Route, Activity, TrendingUp, Filter, Loader2, ChevronRight } from 'lucide-react'
 import { MiAvanceWidget } from '@/components/kpi/MiAvance'
 
 const COLORS = ['#002855', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#8b5cf6'];
@@ -152,15 +150,10 @@ export default function DashboardEjecutivo() {
   }
 
   return (
-    <div className="space-y-6 pb-10">
+    <div className="space-y-3 pb-10">
       {/* Dashboard Header & Filters */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Resumen Ejecutivo</h1>
-          <p className="text-sm text-slate-500">Métricas en tiempo real de operaciones logísticas</p>
-        </div>
-        
-        <div className="flex items-center gap-3">
+      <PageHeader showTitle title="Resumen Ejecutivo" description="Métricas en tiempo real de operaciones logísticas" actions={<>
+<div className="flex items-center gap-3">
           <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
             <Filter className="w-4 h-4 text-slate-400" />
             <select
@@ -182,7 +175,7 @@ export default function DashboardEjecutivo() {
             <Activity className={`w-4 h-4 ${loading ? 'animate-spin text-[#002855]' : ''}`} />
           </button>
         </div>
-      </div>
+</>} />
 
       {/* Mi avance (solo si el usuario está en un rol medido) */}
       <MiAvanceWidget />

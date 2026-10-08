@@ -1,8 +1,9 @@
 "use client"
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Plus, Building2, Search, Loader2, Edit2, CheckCircle2, XCircle, Upload, Download, ChevronUp, ChevronDown, ChevronsUpDown, Trash2, Filter } from 'lucide-react'
+import { Plus, Building2, Search, Loader2, Edit2, CheckCircle2, XCircle, Upload, Download, ChevronUp, ChevronDown, ChevronsUpDown, Filter } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import ExcelJS from 'exceljs'
 import { createClient } from '@/lib/supabase/client'
@@ -172,13 +173,9 @@ export default function ClientesPage() {
   }
 
   return (
-    <div className="space-y-6 w-full mx-auto">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Clientes</h1>
-          <p className="text-sm text-slate-500">Directorio de empresas y solicitantes de servicio</p>
-        </div>
-        <div className="flex items-center gap-3">
+    <div className="space-y-3 w-full mx-auto">
+      <PageHeader showTitle title="Clientes" description="Directorio de empresas y solicitantes de servicio" actions={<>
+<div className="flex items-center gap-3">
           <input type="file" ref={fileInputRef} onChange={handleBulkUpload} accept=".xlsx, .xls" className="hidden" />
           <button type="button" onClick={downloadTemplate} className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-lg font-medium hover:bg-slate-50 transition-colors shadow-sm">
             <Download className="w-4 h-4" /> Plantilla
@@ -190,7 +187,7 @@ export default function ClientesPage() {
             <Plus className="w-4 h-4" /> Nuevo Cliente
           </button>
         </div>
-      </div>
+</>} />
 
       {/* Filtros y Búsqueda */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
