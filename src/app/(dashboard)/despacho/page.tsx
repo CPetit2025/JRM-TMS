@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { InlineStatusBar } from '@/components/ui/inline-status-bar'
 import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filter-toolbar'
 import { districtOf } from '@/lib/address'
+import { cellDateTime } from '@/lib/table-format'
 import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 import { serviceLabel, serviceKind, SERVICE_KINDS, type ServiceKind } from '@/lib/request-service'
 
@@ -591,7 +592,7 @@ export default function DespachoPage() {
             <DataTable dense className="w-full border-collapse text-left">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  {['Atención', 'Servicio', 'OT · Cliente', 'Solicitud', 'Origen → Destino', 'Partida', 'Acciones'].map((title, i) => <th key={title} className={`whitespace-nowrap font-semibold ${i === 6 ? 'text-right' : ''}`}>{title}</th>)}
+                  {['Atención', 'Servicio', 'OT', 'Cliente', 'Origen → Destino', 'Partida', 'Acciones'].map((title, i) => <th key={title} className={`whitespace-nowrap font-semibold ${i === 6 ? 'text-right' : ''}`}>{title}</th>)}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -602,23 +603,14 @@ export default function DespachoPage() {
                 ) : visiblePending.map(req => {
                   const selected = newDispatch.selected_requests.some(r => r.id === req.id)
                   const balance = req.contracts?.contract_budgets?.[0]?.balance_pen
-                  const [day, time] = requestedAttention(req).split(/, | · /)
                   return (
                     <tr key={req.id} className={selected ? 'bg-blue-50/50' : 'hover:bg-slate-50'}>
                       <td className="whitespace-nowrap">
-                        <p className="text-sm text-slate-700">{day}</p>
-                        {time && <p className="mt-0.5 text-xs text-slate-500">{time}</p>}
-                        {wasRescheduled(req) && <p className="mt-0.5 text-[11px] font-semibold text-orange-700">Reprogramado</p>}
+                        <span className={`text-sm ${wasRescheduled(req) ? 'font-semibold text-orange-700' : 'text-slate-700'}`} title={wasRescheduled(req) ? 'Reprogramado' : undefined}>{req.required_at ? cellDateTime(req.required_at) : `${serviceDate(req.required_date).slice(0, 5)}${req.time_window ? ` ${req.time_window}` : ''}`}</span>
                       </td>
                       <td><ServiceTypeBadge request={req} /></td>
-                      <td className="max-w-48">
-                        <p className="whitespace-nowrap text-sm font-bold text-jrm-navy">{req.contracts?.code ? `OT ${req.contracts.code}` : 'Sin OT'}</p>
-                        <p className="mt-0.5 truncate text-xs text-slate-500" title={req.contracts?.clients?.business_name || undefined}>{req.contracts?.clients?.business_name || 'Sin cliente'}</p>
-                      </td>
-                      <td className="max-w-40">
-                        <p className="whitespace-nowrap text-sm font-semibold text-slate-800">{req.request_number}</p>
-                        <p className="mt-0.5 truncate text-xs text-slate-500" title={req.requester_name}>{req.requester_name}</p>
-                      </td>
+                      <td className="whitespace-nowrap text-sm font-bold text-jrm-navy" title={`Solicitud ${req.request_number} · ${req.requester_name}`}>{req.contracts?.code ? `OT ${req.contracts.code}` : 'Sin OT'}</td>
+                      <td className="max-w-40"><p className="truncate text-sm text-slate-700" title={req.contracts?.clients?.business_name || undefined}>{req.contracts?.clients?.business_name || 'Sin cliente'}</p></td>
                       <td className="max-w-48">
                         <p className="flex items-center gap-1 truncate text-sm text-slate-700" title={`Origen: ${req.pickup_address}\nDestino: ${req.delivery_address}`}>
                           <MapPin className="h-3.5 w-3.5 shrink-0 text-blue-500" aria-hidden="true" />
