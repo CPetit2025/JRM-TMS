@@ -579,16 +579,13 @@ export default function ContractServicesPage() {
       {/* Lista de Servicios */}
       <div className="overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
         <div className="overflow-auto max-h-[calc(100vh-250px)]">
-          <DataTable dense className="w-full text-left border-collapse relative">
+          <DataTable dense className="relative w-full border-collapse text-left 2xl:[&_td]:!px-3 2xl:[&_th]:!px-3 [&_td]:!px-2 [&_th]:!px-2">
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
               <tr>
                 <th className="hidden w-12 text-center font-semibold 2xl:table-cell">N°</th>
                 {sortHeader('Fecha', 'fecha')}
-                <th className="font-semibold" aria-sort={['contrato', 'cliente'].includes(sort.key) ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                  <span className="inline-flex items-center gap-1 whitespace-nowrap uppercase">
-                    {(['contrato', 'cliente'] as const).map((k, i) => <span key={k} className="inline-flex items-center gap-1">{i > 0 && <span aria-hidden>·</span>}<button type="button" onClick={() => toggleSort(k)} className={`inline-flex items-center gap-1 uppercase hover:text-slate-800 ${sort.key === k ? 'text-slate-800' : ''}`}>{k === 'contrato' ? 'OT' : 'Cliente'}{sort.key === k ? (sort.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-40" />}</button></span>)}
-                  </span>
-                </th>
+                {sortHeader('OT', 'contrato')}
+                {sortHeader('Cliente', 'cliente')}
                 {sortHeader('Servicio', 'servicio')}
                 {sortHeader('Placa', 'placa')}
                 {sortHeader('Guía', 'guia')}
@@ -601,14 +598,14 @@ export default function ContractServicesPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="p-8 text-center text-slate-500">
+                  <td colSpan={11} className="p-8 text-center text-slate-500">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                     Cargando servicios...
                   </td>
                 </tr>
               ) : filteredServices.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="p-8 text-center text-slate-500">
+                  <td colSpan={11} className="p-8 text-center text-slate-500">
                     No hay servicios registrados o que coincidan con los filtros.
                   </td>
                 </tr>
@@ -630,10 +627,8 @@ export default function ContractServicesPage() {
                     <td className="whitespace-nowrap text-sm text-slate-600">
                       {srv.service_date ? new Date(`${srv.service_date.slice(0, 10)}T12:00:00`).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—'}
                     </td>
-                    <td>
-                      <span className="block whitespace-nowrap text-sm font-bold text-jrm-navy">{srv.contracts?.code}</span>
-                      <span className="block max-w-32 truncate text-xs text-slate-500 2xl:max-w-56" title={srv.contracts?.clients?.business_name || undefined}>{srv.contracts?.clients?.business_name || 'Sin Cliente'}</span>
-                    </td>
+                    <td className="whitespace-nowrap text-sm font-bold text-jrm-navy">{srv.contracts?.code || '—'}</td>
+                    <td className="max-w-32 truncate text-sm text-slate-700 xl:max-w-40 2xl:max-w-64" title={srv.contracts?.clients?.business_name || undefined}>{srv.contracts?.clients?.business_name || 'Sin cliente'}</td>
                     <td>
                       <span className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-semibold w-fit block">
                         {srv.service_type}
@@ -643,45 +638,36 @@ export default function ContractServicesPage() {
                       {srv.plate || '-'}
                     </td>
                     <td className="text-sm text-slate-700">
-                      {srv.referral_guide ? (
-                        <div className="flex flex-col items-start gap-0.5">
-                          {srv.referral_guide.split(',').map(g => g.trim()).filter(Boolean).map(g => (
-                            <button key={g} type="button" title="Ver los SKUs de la guía"
-                              onClick={e => { e.stopPropagation(); setGuiaAbierta(g) }}
-                              className="whitespace-nowrap rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-xs font-semibold text-blue-700 underline-offset-2 hover:bg-blue-100 hover:underline">{g}</button>
-                          ))}
-                        </div>
-                      ) : <span className="text-slate-400">-</span>}
+                      {srv.referral_guide ? (() => {
+                        const guias = srv.referral_guide.split(',').map(g => g.trim()).filter(Boolean)
+                        return <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                          <button type="button" title="Ver los SKUs de la guía" onClick={e => { e.stopPropagation(); setGuiaAbierta(guias[0]) }}
+                            className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-xs font-semibold text-blue-700 underline-offset-2 hover:bg-blue-100 hover:underline">{guias[0]}</button>
+                          {guias.length > 1 && <span className="text-xs font-semibold text-slate-500" title={`Otras guías: ${guias.slice(1).join(', ')} (ver en el detalle)`}>+{guias.length - 1}</span>}
+                        </span>
+                      })() : <span className="text-slate-400">-</span>}
                     </td>
                     <td className="text-right text-sm font-medium text-slate-800">
                       {(() => {
                         const p = pesoApt[srv.id]
                         const t = tonInfo(srv, p)
                         if (t.fuente === 'APT') return (
-                          <div title={`Peso de ${p.encontradas} guía(s) en la SALIDA de Almacén APT${p.faltan ? ` · no encontradas: ${p.faltan}` : ''}`}>
-                            <div className="font-bold text-slate-900">{fmtTon(Number(p.kg))}</div>
-                            <div className={`text-[10px] font-semibold ${p.faltan ? 'text-amber-600' : 'text-emerald-600'}`}>{p.faltan ? `APT · faltan ${p.faltan.split(',').length}` : 'APT'}</div>
-                          </div>
+                          <span className={`whitespace-nowrap font-bold ${p.faltan ? 'text-amber-700' : 'text-slate-900'}`} title={`Peso APT de ${p.encontradas} guía(s) en la SALIDA de Almacén APT${p.faltan ? ` · faltan ${p.faltan.split(',').length}: ${p.faltan}` : ''}`}>{fmtTon(Number(p.kg))}</span>
                         )
                         if (t.fuente === 'MANUAL') return (
-                          <div title={p ? `Las guías no están en la SALIDA de APT (${p.faltan || p.guias}); se muestra el KG escrito a mano` : 'KG escrito a mano (sin guía)'}>
-                            <div>{fmtTon(Number(srv.description))}</div>
-                            <div className={`text-[10px] ${p ? 'text-amber-600' : 'text-slate-400'}`}>{p ? 'manual · guía sin APT' : 'manual'}</div>
-                          </div>
+                          <span className={`whitespace-nowrap ${p ? 'text-amber-700' : 'text-slate-700'}`} title={p ? `Manual: las guías no están en la SALIDA de APT (${p.faltan || p.guias}); se muestra el KG escrito a mano` : 'Manual: KG escrito a mano (sin guía)'}>{fmtTon(Number(srv.description))}</span>
                         )
                         return p ? <span className="text-[11px] text-amber-600" title={`No encontradas en APT: ${p.faltan || p.guias}`}>guía sin APT</span> : <span className="text-slate-400">Sin peso sustentado</span>
                       })()}
                     </td>
                     <td className={`whitespace-nowrap text-sm font-bold text-right ${srv.status === 'ANULADO' ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
-                      S/ {Number(srv.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                      {Number(srv.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="text-sm">
-                      {context?.dispatch_number ? <a href={`/torre-control?despacho=${srv.dispatch_id}`} onClick={e => e.stopPropagation()} className="whitespace-nowrap font-semibold text-[#002855] underline">{context.dispatch_number}</a> : <span className="text-slate-400">Sin despacho</span>}
-                      <div className="max-w-36 truncate text-xs text-slate-500" title={context?.request_numbers?.join(' · ')}>{context?.request_numbers?.join(' · ')}</div>
+                      {context?.dispatch_number ? <a href={`/torre-control?despacho=${srv.dispatch_id}`} onClick={e => e.stopPropagation()} title={context.request_numbers?.length ? `Solicitudes: ${context.request_numbers.join(' · ')}` : undefined} className="whitespace-nowrap font-semibold text-[#002855] underline">{context.dispatch_number}</a> : <span className="whitespace-nowrap text-slate-400">Sin despacho</span>}
                     </td>
                     <td className="text-center">
-                      <StatusBadge tone={stageTone[stage]}>{stageLabels[stage]}</StatusBadge>
-                      <div className="mt-0.5 whitespace-nowrap text-[10px] text-slate-500" title={`Estado financiero: ${srv.status}`}>Fin.: {srv.status}</div>
+                      <span title={`Estado financiero: ${srv.status}`}><StatusBadge tone={stageTone[stage]}>{stageLabels[stage]}</StatusBadge></span>
                     </td>
                   </tr>
                 )})
@@ -1013,6 +999,16 @@ export default function ContractServicesPage() {
               <div className="bg-slate-50 p-3 rounded border border-slate-200">
                 <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Tipo de Servicio</span>
                 <span className="font-bold text-[#002855]">{viewingService.service_type}</span>
+              </div>
+              <div className="bg-slate-50 p-3 rounded border border-slate-200">
+                <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Despacho y solicitudes</span>
+                <span className="font-bold text-slate-800">{registryContext[viewingService.id]?.dispatch_number || 'Sin despacho'}</span>
+                <span className="block text-xs text-slate-600">{registryContext[viewingService.id]?.request_numbers?.join(' · ') || 'Sin solicitudes vinculadas'}</span>
+              </div>
+              <div className="bg-slate-50 p-3 rounded border border-slate-200">
+                <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Estado</span>
+                <span className="font-bold text-slate-800">{stageLabels[stageOf(viewingService)]}</span>
+                <span className="block text-xs text-slate-600">Financiero: {viewingService.status}</span>
               </div>
             </div>
 
