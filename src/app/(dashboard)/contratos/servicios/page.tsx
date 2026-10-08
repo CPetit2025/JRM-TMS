@@ -1,8 +1,8 @@
 "use client"
-import { TransportWorkflow } from '@/components/transport/TransportWorkflow'
+import { TransportWorkflow, TorreControlButton } from '@/components/transport/TransportWorkflow'
 import { DataTable } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
-import { KpiStatCard } from '@/components/ui/kpi-stat-card'
+import { InlineStatusBar } from '@/components/ui/inline-status-bar'
 import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filter-toolbar'
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 
@@ -508,9 +508,8 @@ export default function ContractServicesPage() {
   )
 
   return (
-    <div className="space-y-6 w-full mx-auto">
-      <TransportWorkflow current="registro" />
-      <PageHeader title="Registro de Servicios" description="Compromisos de transporte, servicios realizados y gastos adicionales vinculados a la OT. El cierre operativo no significa pago." actions={<>
+    <div className="w-full mx-auto space-y-2.5">
+      <PageHeader showTitle title="Registro de Servicios" description="Compromisos de transporte, servicios realizados y gastos adicionales vinculados a la OT. El cierre operativo no significa pago." actions={<>
           <button 
             onClick={() => setIsOrphanModalOpen(true)}
             className="flex items-center gap-2 bg-rose-50 text-rose-700 border border-rose-200 px-4 py-2 rounded-lg font-medium hover:bg-rose-100 transition-colors shadow-sm"
@@ -550,28 +549,27 @@ export default function ContractServicesPage() {
 
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="flex min-h-11 items-center gap-2 rounded-lg bg-jrm-navy px-4 py-2 font-medium text-white shadow-sm transition-colors hover:bg-jrm-navy-dark"
+            className="flex h-10 items-center gap-2 rounded-lg bg-jrm-navy px-4 font-medium text-white shadow-sm transition-colors hover:bg-jrm-navy-dark"
           >
             <Plus className="w-4 h-4" />
             Registrar Servicio
           </button>
+        <TorreControlButton />
       </>} />
-
-      <div aria-label="Resumen por etapa" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        {([['TODOS', 'Todos', Layers, 'navy'], ['COMPROMETIDO', 'Comprometidos', Clock, 'amber'], ['REALIZADO', 'Realizados', CheckCircle2, 'emerald'], ['REGISTRO_MANUAL', 'Registros manuales', FileEdit, 'slate'], ['ANULADO', 'Anulados', Ban, 'rose']] as const).map(([key, label, Icon, tone]) =>
-          <KpiStatCard key={key} label={label} icon={<Icon className="h-5 w-5" />} tone={tone} loading={loading}
-            value={key === 'TODOS' ? services.length : services.filter(srv => stageOf(srv) === key).length} active={filterStatus === key} onClick={() => setFilterStatus(key)} />)}
-      </div>
+      <TransportWorkflow current="registro" torre={false} />
+      <InlineStatusBar label="Resumen por etapa" active={filterStatus} loading={loading} onChange={setFilterStatus}
+        items={([['TODOS', 'Todos', Layers, 'navy'], ['COMPROMETIDO', 'Comprometidos', Clock, 'amber'], ['REALIZADO', 'Realizados', CheckCircle2, 'emerald'], ['REGISTRO_MANUAL', 'Registros manuales', FileEdit, 'slate'], ['ANULADO', 'Anulados', Ban, 'rose']] as const)
+          .map(([key, label, Icon, tone]) => ({ key, label, icon: <Icon />, tone, count: key === 'TODOS' ? services.length : services.filter(srv => stageOf(srv) === key).length }))} />
 
       {/* Filtros y Búsqueda */}
-      <FilterToolbar label="Búsqueda y filtros de servicios" onClear={() => { setSearchTerm(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterStatus('TODOS') }}>
+      <FilterToolbar compact label="Búsqueda y filtros de servicios" onClear={() => { setSearchTerm(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterStatus('TODOS') }}>
         <label className="relative min-w-0 flex-1 basis-64">
           <span className="sr-only">Buscar servicios</span><Search aria-hidden className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
           <input type="search" placeholder="Buscar por contrato, cliente, placa, etc..." className={`${filterControl} pl-9`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </label>
-        <FilterField label="Fecha desde" className="w-40"><input type="date" className={filterControl} value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} /></FilterField>
-        <FilterField label="Fecha hasta" className="w-40"><input type="date" className={filterControl} value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} /></FilterField>
-        <FilterField label="Estado" className="w-48">
+        <FilterField inline label="Desde" className="w-52"><input type="date" className={filterControl} value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} /></FilterField>
+        <FilterField inline label="Hasta" className="w-52"><input type="date" className={filterControl} value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} /></FilterField>
+        <FilterField inline label="Estado" className="w-64">
           <select className={filterControl} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
             <option value="TODOS">Todos los Estados</option>
             <option value="COMPROMETIDO">Comprometidos</option>
@@ -597,7 +595,7 @@ export default function ContractServicesPage() {
       {/* Lista de Servicios */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-auto max-h-[calc(100vh-220px)]">
-          <DataTable className="w-full text-left border-collapse relative">
+          <DataTable dense className="w-full text-left border-collapse relative">
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
               <tr>
                 <th className="p-4 font-semibold w-16 text-center">N°</th>
