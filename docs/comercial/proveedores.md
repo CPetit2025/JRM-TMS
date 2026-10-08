@@ -23,3 +23,11 @@ Es distinto de los transportistas (`carriers`) y de los talleres (`maintenance_p
 ## Pendiente
 - Validar o importar RQ/OS desde el ERP cuando se confirme que la descarga es completa.
 - Carga masiva de proveedores desde Excel.
+
+## Garantías en base de datos
+
+- Un trigger diferido (`transport_requests_supplier_insert/update`) exige proveedor en recojos y traslados
+  aunque la solicitud se guarde por otra vía; las solicitudes antiguas sin proveedor siguen editables mientras
+  no cambien tipo, modalidad o proveedor.
+- `save_supplier` guarda el proveedor y sus puntos de recojo en una sola transacción (respeta RLS).
+- `request_service_types` también devuelve `purchase_order` para mostrar la OC/OS de solicitudes antiguas.

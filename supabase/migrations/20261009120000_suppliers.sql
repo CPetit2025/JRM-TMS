@@ -5,7 +5,8 @@
 --    (OC, RQ u OS + número). Recojos y traslados punto a punto exigen proveedor; el documento es opcional.
 -- 3. save_transport_request_full: guarda con save_transport_request_attention (sin cambios) y aplica
 --    proveedor y documento en la misma transacción.
--- 4. request_service_types también devuelve proveedor y documento para Torre de Control y Documentos.
+-- 4. request_service_types también devuelve proveedor y documento (y la OC/OS antigua) para Torre y Documentos.
+-- 5. Trigger diferido que exige proveedor aunque se guarde por otra vía; save_supplier guarda proveedor y puntos juntos.
 
 CREATE TABLE IF NOT EXISTS public.suppliers (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -139,13 +140,78 @@ END $$;
 REVOKE ALL ON FUNCTION public.save_transport_request_full(uuid, jsonb, jsonb, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.save_transport_request_full(uuid, jsonb, jsonb, jsonb) TO authenticated, service_role;
 
+-- Invariante en la tabla (no solo en el RPC): un recojo o traslado nuevo, o uno al que se le cambia el tipo, la
+-- modalidad o el proveedor, debe quedar con proveedor al confirmar la transacción. Es diferido porque
+-- save_transport_request_full guarda primero la solicitud y luego aplica el proveedor; relee la fila vigente.
+-- Las solicitudes antiguas sin proveedor siguen editables mientras no cambien esos campos.
+CREATE OR REPLACE FUNCTION public.enforce_request_supplier() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE r public.transport_requests;
+BEGIN
+  SELECT * INTO r FROM public.transport_requests WHERE id = NEW.id;
+  IF FOUND AND r.request_type IN ('RECOJO','TRASLADO') AND COALESCE(to_jsonb(r)->>'attention_mode', '') <> 'RECOJO_CLIENTE'
+     AND r.supplier_id IS NULL THEN
+    RAISE EXCEPTION 'Seleccione el proveedor del recojo o traslado' USING ERRCODE = '23514';
+  END IF;
+  RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION public.enforce_request_supplier() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS transport_requests_supplier_insert ON public.transport_requests;
+CREATE CONSTRAINT TRIGGER transport_requests_supplier_insert AFTER INSERT ON public.transport_requests
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.enforce_request_supplier();
+DROP TRIGGER IF EXISTS transport_requests_supplier_update ON public.transport_requests;
+CREATE CONSTRAINT TRIGGER transport_requests_supplier_update AFTER UPDATE ON public.transport_requests
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+  WHEN (OLD.request_type IS DISTINCT FROM NEW.request_type OR OLD.supplier_id IS DISTINCT FROM NEW.supplier_id
+    OR to_jsonb(OLD)->>'attention_mode' IS DISTINCT FROM to_jsonb(NEW)->>'attention_mode')
+  EXECUTE FUNCTION public.enforce_request_supplier();
+
+-- Alta/edición de proveedor y sus puntos de recojo en una sola transacción. SECURITY INVOKER: aplica RLS.
+CREATE OR REPLACE FUNCTION public.save_supplier(p_supplier jsonb, p_locations jsonb) RETURNS uuid
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_temp AS $$
+DECLARE v_id uuid := NULLIF(p_supplier->>'id', '')::uuid; l jsonb; v_loc uuid;
+BEGIN
+  IF v_id IS NULL THEN
+    INSERT INTO public.suppliers (tax_id, business_name, category, contact_name, contact_phone, contact_email, notes, is_active)
+    VALUES (p_supplier->>'tax_id', p_supplier->>'business_name', COALESCE(p_supplier->>'category', 'MATERIA_PRIMA'),
+      NULLIF(p_supplier->>'contact_name', ''), NULLIF(p_supplier->>'contact_phone', ''), NULLIF(p_supplier->>'contact_email', ''),
+      NULLIF(p_supplier->>'notes', ''), COALESCE((p_supplier->>'is_active')::boolean, true))
+    RETURNING id INTO v_id;
+  ELSE
+    UPDATE public.suppliers SET tax_id = p_supplier->>'tax_id', business_name = p_supplier->>'business_name',
+      category = COALESCE(p_supplier->>'category', category), contact_name = NULLIF(p_supplier->>'contact_name', ''),
+      contact_phone = NULLIF(p_supplier->>'contact_phone', ''), contact_email = NULLIF(p_supplier->>'contact_email', ''),
+      notes = NULLIF(p_supplier->>'notes', ''), is_active = COALESCE((p_supplier->>'is_active')::boolean, is_active)
+     WHERE id = v_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Proveedor inexistente o sin permiso de edición'; END IF;
+  END IF;
+  FOR l IN SELECT * FROM jsonb_array_elements(COALESCE(p_locations, '[]'::jsonb)) LOOP
+    v_loc := NULLIF(l->>'id', '')::uuid;
+    IF v_loc IS NULL THEN
+      INSERT INTO public.supplier_locations (supplier_id, name, address, department, province, district, contact_name, contact_phone, is_active)
+      VALUES (v_id, btrim(l->>'name'), btrim(l->>'address'), NULLIF(l->>'department', ''), NULLIF(l->>'province', ''),
+        NULLIF(l->>'district', ''), NULLIF(l->>'contact_name', ''), NULLIF(l->>'contact_phone', ''), COALESCE((l->>'is_active')::boolean, true));
+    ELSE
+      UPDATE public.supplier_locations SET name = btrim(l->>'name'), address = btrim(l->>'address'), department = NULLIF(l->>'department', ''),
+        province = NULLIF(l->>'province', ''), district = NULLIF(l->>'district', ''), contact_name = NULLIF(l->>'contact_name', ''),
+        contact_phone = NULLIF(l->>'contact_phone', ''), is_active = COALESCE((l->>'is_active')::boolean, is_active)
+       WHERE id = v_loc AND supplier_id = v_id;
+      IF NOT FOUND THEN RAISE EXCEPTION 'El punto de recojo no pertenece al proveedor'; END IF;
+    END IF;
+  END LOOP;
+  RETURN v_id;
+END $$;
+REVOKE ALL ON FUNCTION public.save_supplier(jsonb, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.save_supplier(jsonb, jsonb) TO authenticated, service_role;
+
 -- Tipo de servicio + proveedor y documento para tablas que solo reciben request_id
 CREATE OR REPLACE FUNCTION public.request_service_types(p_requests uuid[])
 RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
   SELECT COALESCE(jsonb_agg(jsonb_build_object(
            'id', t.id, 'request_type', t.request_type,
            'attention_mode', to_jsonb(t)->>'attention_mode', 'contract_id', t.contract_id,
-           'supplier_name', s.business_name, 'reference_type', t.reference_type, 'reference_number', t.reference_number)), '[]'::jsonb)
+           'supplier_name', s.business_name, 'reference_type', t.reference_type, 'reference_number', t.reference_number,
+           'purchase_order', t.purchase_order)), '[]'::jsonb)
     FROM public.transport_requests t
     LEFT JOIN public.suppliers s ON s.id = t.supplier_id
    WHERE auth.uid() IS NOT NULL

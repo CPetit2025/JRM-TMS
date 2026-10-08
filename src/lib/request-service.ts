@@ -30,7 +30,7 @@ export function serviceLabel(request: Partial<RequestService> | null | undefined
 /** Completa filas que solo traen request_id (Torre, Documentos) con el tipo de servicio de la solicitud.
  *  Usa la RPC autorizada por permiso y sede: los perfiles de la bandeja no siempre leen transport_requests. */
 export async function fetchServiceTypes(db: SupabaseClient, ids: string[]) {
-  type ServiceInfo = Pick<RequestService, 'request_type' | 'attention_mode' | 'contract_id'> & { supplier_name: string | null; reference_type: string | null; reference_number: string | null }
+  type ServiceInfo = Pick<RequestService, 'request_type' | 'attention_mode' | 'contract_id'> & { supplier_name: string | null; reference_type: string | null; reference_number: string | null; purchase_order: string | null }
   const map = new Map<string, ServiceInfo>()
   const unique = [...new Set(ids.filter(Boolean))]
   for (let i = 0; i < unique.length; i += 500) {
@@ -38,7 +38,7 @@ export async function fetchServiceTypes(db: SupabaseClient, ids: string[]) {
     if (error) break
     for (const r of (data || []) as (ServiceInfo & { id: string })[])
       map.set(r.id, { request_type: r.request_type, attention_mode: r.attention_mode, contract_id: r.contract_id,
-        supplier_name: r.supplier_name ?? null, reference_type: r.reference_type ?? null, reference_number: r.reference_number ?? null })
+        supplier_name: r.supplier_name ?? null, reference_type: r.reference_type ?? null, reference_number: r.reference_number ?? null, purchase_order: r.purchase_order ?? null })
   }
   return map
 }

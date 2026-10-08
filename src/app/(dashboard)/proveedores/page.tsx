@@ -72,19 +72,13 @@ export default function ProveedoresPage() {
     if (!form.business_name.trim()) { toast.error('Ingrese la razón social.'); return }
     setSaving(true)
     try {
-      const payload = { tax_id: taxId, business_name: form.business_name.trim(), category: form.category, contact_name: form.contact_name || null,
+      const supplier = { id: form.id || null, tax_id: taxId, business_name: form.business_name.trim(), category: form.category, contact_name: form.contact_name || null,
         contact_phone: form.contact_phone || null, contact_email: form.contact_email || null, notes: form.notes || null, is_active: form.is_active }
-      const { data, error } = form.id
-        ? await supabase.from('suppliers').update(payload).eq('id', form.id).select('id').single()
-        : await supabase.from('suppliers').insert(payload).select('id').single()
+      const points = locations.map(l => ({ id: l.id || null, name: l.name.trim(), address: l.address.trim(), department: l.department || null, province: l.province || null,
+        district: l.district || null, contact_name: l.contact_name || null, contact_phone: l.contact_phone || null, is_active: l.is_active }))
+      // Proveedor y puntos de recojo en una sola transacción: si algo falla no queda nada a medias.
+      const { error } = await supabase.rpc('save_supplier', { p_supplier: supplier, p_locations: points })
       if (error) throw error
-      const supplierId = data.id as string
-      for (const l of locations) {
-        const row = { supplier_id: supplierId, name: l.name.trim(), address: l.address.trim(), department: l.department || null, province: l.province || null,
-          district: l.district || null, contact_name: l.contact_name || null, contact_phone: l.contact_phone || null, is_active: l.is_active }
-        const { error: locError } = l.id ? await supabase.from('supplier_locations').update(row).eq('id', l.id) : await supabase.from('supplier_locations').insert(row)
-        if (locError) throw locError
-      }
       toast.success(form.id ? 'Proveedor actualizado' : 'Proveedor registrado')
       setForm(null); await load()
     } catch (e) {

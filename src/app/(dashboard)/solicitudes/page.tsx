@@ -1114,7 +1114,7 @@ export default function SolicitudesPage() {
               <div className="grid gap-3 md:grid-cols-2">
                 <SearchableSelect placeholder="Buscar proveedor por razón social o RUC…" value={newRequest.supplier_id}
                   options={suppliers.map(x => ({ value: x.id, label: `${x.business_name} · ${x.tax_id}` }))}
-                  onChange={(value: string) => { setNewRequest(prev => ({ ...prev, supplier_id: value, supplier_location_id: '' })); const only = (suppliers.find(x => x.id === value)?.supplier_locations || []).filter(l => l.is_active); if (only.length === 1) pickPoint(only[0].id, only) }} />
+                  onChange={(value: string) => { if (value === newRequest.supplier_id) return; setNewRequest(prev => ({ ...prev, supplier_id: value, supplier_location_id: '', pickup_address: '', pickup_department: '', pickup_province: '', pickup_district: '', pickup_contact: '', pickup_phone: '' })); const only = (suppliers.find(x => x.id === value)?.supplier_locations || []).filter(l => l.is_active); if (only.length === 1) pickPoint(only[0].id, only) }} />
                 <select value={newRequest.supplier_location_id} onChange={e => pickPoint(e.target.value)} disabled={!supplier}
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#002855] disabled:bg-slate-100">
                   <option value="">{!supplier ? 'Elija primero el proveedor' : points.length ? 'Punto de recojo (completa el origen)' : 'Sin puntos registrados: ingrese el origen'}</option>
