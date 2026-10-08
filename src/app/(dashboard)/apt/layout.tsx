@@ -22,6 +22,7 @@ const SECTIONS = [
     key: 'estadia', label: 'Estadía APT', icon: Warehouse, desc: 'Permanencia consolidada del producto terminado (FIFO)',
     tabs: [
       { href: '/apt', label: 'Dashboard' },
+      { href: '/apt/gantt', label: 'Gantt · OT y lotes' },
       { href: '/apt/clientes', label: 'Cliente · OT · Lote' },
       { href: '/apt/detalle', label: 'Detalle APT' },
       { href: '/apt/productos', label: 'Productos y glosas' },
@@ -51,7 +52,7 @@ const SECTIONS = [
     ],
   },
 ] as const
-const NO_FILTERS = ['/apt/calidad', '/apt/cargas', '/apt/flujo/trazabilidad', '/apt/flujo/kardex']
+const NO_FILTERS = ['/apt/calidad', '/apt/cargas', '/apt/gantt', '/apt/flujo/trazabilidad', '/apt/flujo/kardex']
 
 function tabActive(href: string, pathname: string) {
   if (href === '/apt' || href === '/apt/flujo') return pathname === href
@@ -133,12 +134,13 @@ export default function AptLayout({ children }: { children: React.ReactNode }) {
   }
 
   const showFilters = !NO_FILTERS.some(p => pathname.startsWith(p))
+  const isGantt = pathname === '/apt/gantt'
   const isFlow = pathname.startsWith('/apt/flujo')
   const st = info?.state
   return (
     <div className="space-y-4 pb-10">
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-4">
+        <div className={isGantt ? 'hidden' : 'flex flex-wrap items-center justify-between gap-3 px-5 pt-4'}>
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#002855] to-[#0b3d7a] text-white shadow">
               <Warehouse className="h-5 w-5" />
@@ -173,7 +175,7 @@ export default function AptLayout({ children }: { children: React.ReactNode }) {
             )}
           </div>
         </div>
-        <div className="mt-3 border-t border-slate-100">
+        <div className={isGantt ? '' : 'mt-3 border-t border-slate-100'}>
           <Suspense fallback={null}><Tabs /></Suspense>
         </div>
       </div>

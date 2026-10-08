@@ -32,6 +32,7 @@ jobs:
       - run: node scripts/test-apt-fifo.cjs
       - run: node scripts/test-apt-family.cjs
       - run: node scripts/test-apt-almacenes.cjs
+      - run: node scripts/test-apt-gantt.cjs
       - run: node scripts/test-request-attention.cjs
       - run: node scripts/test-delivery-conformity.cjs
       - name: PDF verification tools
