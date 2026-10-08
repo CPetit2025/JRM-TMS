@@ -804,11 +804,13 @@ export default function SolicitudesPage() {
         )}
         <TorreControlButton />
       </>} />
+      <div className="flex flex-wrap items-center gap-2">
       <TransportWorkflow current="solicitud" torre={false} />
-      <InlineStatusBar label="Resumen por estado" active={filterStatus} loading={loading} onChange={key => { setFilterStatus(key); setPage(1) }}
+      <div className="ml-auto min-w-0"><InlineStatusBar label="Resumen por estado (filtra la tabla)" active={filterStatus} loading={loading} onChange={key => { setFilterStatus(key); setPage(1) }}
         items={([{ key: 'TODOS', label: 'Todas', icon: <Layers />, tone: 'navy' }, { key: 'PENDIENTE', label: 'Pendientes', icon: <Clock />, tone: 'amber' },
           { key: 'APROBADA', label: 'Aprobadas', icon: <CheckCircle2 />, tone: 'emerald' }, { key: 'ASIGNADA', label: 'Asignadas', icon: <Truck />, tone: 'blue' },
-          { key: 'REPROGRAMADA', label: 'Reprogramadas', icon: <CalendarClock />, tone: 'violet' }] as const).map(tab => ({ ...tab, count: requests.filter(r => matchesStatus(r.status, tab.key)).length }))} />
+          { key: 'REPROGRAMADA', label: 'Reprogramadas', icon: <CalendarClock />, tone: 'violet' }] as const).map(tab => ({ ...tab, count: requests.filter(r => matchesStatus(r.status, tab.key)).length }))} /></div>
+      </div>
 
       <FilterToolbar compact label="Búsqueda y filtros de solicitudes" onClear={clearFilters}>
         <label className="relative min-w-[15rem] flex-1 basis-60">
