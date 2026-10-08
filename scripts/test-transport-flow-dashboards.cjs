@@ -69,7 +69,25 @@ const session={access_token:jwt,refresh_token:'synthetic-ui-refresh',expires_at:
   await page.getByRole('button',{name:'Guardar plazos',exact:true}).click()
   await page.getByText('Anticipación actualizada para las nuevas solicitudes.',{exact:true}).waitFor()
   assert.equal(central.zones.LIMA.hours,36);assert.equal(central.version,2)
+  // The server grants these modules by permission, not by the administrator label.
+  let rolePermissions=['configuracion:write']
+  await page.route('**/rest/v1/profiles?*',async route=>{
+   const profile={id:uid,is_active:true,roles:{name:'Responsable de plazos',permissions:rolePermissions}}
+   const single=(route.request().headers().accept||'').includes('object+json')
+   await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(single?profile:[profile])})
+  })
+  await page.goto(origin+'/configuracion')
+  await page.getByRole('heading',{name:'Planificación y plazos',exact:true}).waitFor()
+  await page.getByLabel('Horas mínimas').first().waitFor()
+  assert.equal(await page.getByRole('button',{name:'Datos de la Empresa',exact:true}).count(),0,'Delegated settings must not expose administrator forms')
+  rolePermissions=['clientes:read']
+  await page.goto(origin+'/contratos/servicios')
+  await page.getByRole('navigation',{name:'Flujo de transporte'}).getByRole('link',{name:'Registro de servicios',exact:true}).waitFor()
+  rolePermissions=[]
+  await page.goto(origin+'/configuracion')
+  await page.getByRole('heading',{name:'Acceso Restringido',exact:true}).waitFor()
+  assert.equal(await page.getByLabel('Horas mínimas').count(),0,'Unprivileged users must not receive the settings form')
   assert.deepEqual(errors,[])
-  console.log('PASS: actual SSR dashboards desktop/mobile, request date blocking, scoped portal create/rotate/revoke and central settings save without browser errors.')
+  console.log('PASS: actual SSR dashboards desktop/mobile, request date blocking, scoped portal create/rotate/revoke, central settings save and delegated permission navigation without browser errors.')
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1})
