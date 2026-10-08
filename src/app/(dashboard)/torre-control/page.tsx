@@ -16,6 +16,9 @@ import { ReportarFallaButton } from '@/components/mantenimiento/ReportarFalla'
 import { TrackingPortalManager } from '@/components/tracking/TrackingPortalManager'
 import { TransportWorkflow } from '@/components/transport/TransportWorkflow'
 import { DispatchExecutionActions } from '@/components/transport/DispatchExecutionActions'
+import { DispatchCrewUnloading } from '@/components/despacho/DispatchCrewUnloading'
+import { EvidenceGallery } from '@/components/evidence/EvidenceGallery'
+import { toast } from 'sonner'
 
 interface DispatchRequest {
   transport_request_id: string
@@ -100,6 +103,11 @@ export default function TorreControlPage() {
 
   useEffect(() => {
     const query = new URLSearchParams(window.location.search)
+    const estado = query.get('estado')
+    if (estado && ['ACTIVOS', 'HISTORIAL', 'TODOS', 'PROGRAMADO'].includes(estado)) {
+      const timer = window.setTimeout(() => setStatusFilter(estado), 0)
+      if (!query.get('despacho')) return () => window.clearTimeout(timer)
+    }
     const id = query.get('despacho')
     if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return
     requestedDispatch.current = id
@@ -142,6 +150,17 @@ export default function TorreControlPage() {
       if (version === fetchVersion.current) setLoading(false)
     }
   }, [dateFilter, responsibleFilter, statusFilter, supabase, canWrite])
+
+  // Solo un despacho PROGRAMADO se cancela: libera la partida, anula el flete y devuelve las solicitudes a Por asignar
+  const cancelDispatch = async (dispatch: Dispatch) => {
+    const reason = prompt(`Motivo de la cancelación del despacho ${dispatch.dispatch_number}:`)
+    if (!reason?.trim()) return
+    const { data, error } = await supabase.rpc('cancel_dispatch', { p_dispatch_id: dispatch.id, p_reason: reason.trim() })
+    if (error || (data && !data.success)) { toast.error('Error al cancelar: ' + (error?.message || data?.error || 'No se pudo cancelar')); return }
+    toast.success('Despacho cancelado: se liberó la partida y las solicitudes volvieron a Por asignar.')
+    setSelectedDispatch(null)
+    await fetchDispatches()
+  }
 
   useEffect(() => {
     if (!isLoaded) return
@@ -377,6 +396,7 @@ export default function TorreControlPage() {
               <DispatchExecutionActions dispatch={{ ...selectedDispatch, modalidad: rows.find(row => row.dispatch_id === selectedDispatch.id)?.modalidad || selectedDispatch.modalidad }} onChanged={async () => { setSelectedDispatch(null); await fetchDispatches() }} />
               {canWrite('despacho') && (selectedDispatch.modalidad === 'TERCERO' || rows.some(row => row.dispatch_id === selectedDispatch.id && row.modalidad === 'TERCERO')) && <button onClick={() => { setThirdId(selectedDispatch.id); setSelectedDispatch(null) }} className="min-h-11 rounded-lg border border-violet-200 px-4 text-sm font-semibold text-violet-700">Acceso y avance del transportista</button>}
               {['documentario', 'packing-list', 'planificacion'].some(module => canRead(module)) && <Link href={`/despacho/documentos?despacho=${selectedDispatch.id}&vista=${selectedDispatch.status === 'PROGRAMADO' ? 'salida' : 'historial'}&desde=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(selectedDispatch.scheduled_departure))}`} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855]">Documentos del servicio</Link>}
+              {canWrite('despacho') && selectedDispatch.status === 'PROGRAMADO' && <button type="button" onClick={() => void cancelDispatch(selectedDispatch)} className="min-h-11 rounded-lg border border-red-200 px-4 text-sm font-semibold text-red-700 hover:bg-red-50">Cancelar despacho</button>}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -507,6 +527,14 @@ export default function TorreControlPage() {
                   )}
                 </div>
               </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <DispatchCrewUnloading dispatchId={selectedDispatch.id} status={selectedDispatch.status} canEdit={canWrite('despacho')}
+                stops={rows.filter(row => row.dispatch_id === selectedDispatch.id).map(row => ({ request_id: row.request_id, request_number: row.request_number }))} />
+            </div>
+            <div className="border-t pt-4">
+              <EvidenceGallery dispatchId={selectedDispatch.id} title="Evidencias registradas · consulta" />
             </div>
           </div>
         )}
