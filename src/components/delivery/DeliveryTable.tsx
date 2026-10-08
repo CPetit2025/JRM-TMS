@@ -2,8 +2,10 @@
 import { DataTable } from '@/components/ui/data-table'
 
 import { useMemo, useState } from 'react'
-import { Download, Eye, FileCheck2, RefreshCw, Search, Truck } from 'lucide-react'
+import { ChevronRight, Download, Eye, FileCheck2, RefreshCw, Search, Truck } from 'lucide-react'
 import { districtOf } from '@/lib/address'
+import { cellDateTime } from '@/lib/table-format'
+import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { conformityLabels, deliveryServiceKind, deliveryStatus, deliveryTime, filterDeliveries, type DeliveryRow } from '@/lib/delivery'
@@ -19,7 +21,19 @@ export function DeliverySignal({ state, onClick, compact = false }: { state: str
   </button>
 }
 
-const shortTime = (v: string | null) => v ? new Date(v).toLocaleString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '—'
+/** Guía y conformidad en un solo estado (el detalle se abre al hacer clic). */
+function guideStatus(row: DeliveryRow): { label: string; tone: StatusTone; title: string } {
+  const guide = row.guide_number ? `Guía ${row.guide_number}` : 'Sin guía'
+  const photos = row.photos_count ? ` · ${row.photos_count} foto(s)` : ''
+  if (row.state === 'PROGRAMADO' && row.documents_state && row.documents_state !== 'NO_REQUERIDO' && row.documents_state !== 'LISTO')
+    return { label: row.documents_state === 'REEMISION' ? 'Por reemitir' : 'Salida pendiente', tone: row.documents_state === 'REEMISION' ? 'danger' : 'warning', title: 'Documentos de salida pendientes' }
+  const map: Record<DeliveryRow['conformity'], [string, StatusTone]> = {
+    PENDIENTE: ['Guía pendiente', 'warning'], RECIBIDA: ['Por validar', 'info'], VALIDADA: ['Conforme', 'success'],
+    OBSERVADA: ['Observada', 'danger'], RECHAZADA: ['Rechazada', 'danger'], HISTORICA: ['Histórica', 'neutral'], NO_APLICA: ['No aplica', 'neutral'],
+  }
+  const [label, tone] = map[row.conformity]
+  return { label, tone, title: `${guide}${photos} · ${conformityLabels[row.conformity]}` }
+}
 const conformityTone = (c: DeliveryRow['conformity']) => c === 'VALIDADA' ? 'text-emerald-700' : c === 'OBSERVADA' || c === 'RECHAZADA' ? 'text-red-700' : c === 'NO_APLICA' || c === 'HISTORICA' ? 'text-slate-600' : 'text-amber-800'
 
 export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, onEvidence, onDispatch, onProvider }: {
@@ -66,23 +80,22 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
     {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error} La información anterior puede estar desactualizada.</p>}
     <div className="overflow-x-auto rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
       <DataTable dense className="w-full min-w-[900px] text-left text-xs">
-        <thead className="bg-slate-50 text-slate-600"><tr>{['Fecha', 'Servicio', 'OT', 'Unidad', 'Guía', 'Cliente · punto', 'Conformidad', 'Último evento', 'Acciones'].map((label, i) => <th key={label} className={`whitespace-nowrap font-semibold ${i === 8 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead>
+        <thead className="bg-slate-50 text-slate-600"><tr>{['Fecha', 'Servicio', 'OT', 'Unidad', 'Cliente', 'Destino', 'Guía y conformidad', 'Último evento', 'Acciones'].map((label, i) => <th key={label} className={`whitespace-nowrap font-semibold ${i === 8 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead>
         <tbody className="divide-y">
           {!visible.length && <tr><td colSpan={9} className="p-8 text-center text-slate-500">{loading ? 'Cargando entregas…' : 'No hay entregas con los filtros seleccionados.'}</td></tr>}
-          {visible.map(row => <tr key={`${row.dispatch_id}/${row.request_id}`} className="align-top hover:bg-slate-50">
-            <td className="whitespace-nowrap text-slate-700">{(([d, t]) => <><p>{d}</p><p className="mt-0.5 text-[11px] text-slate-500">{t}</p></>)(shortTime(row.scheduled_departure).split(', '))}</td>
+          {visible.map(row => { const pickup = deliveryServiceKind(row) === 'RECOJO', point = pickup ? row.pickup_address : row.delivery_address, doc = guideStatus(row); return <tr key={`${row.dispatch_id}/${row.request_id}`} className="align-middle hover:bg-slate-50">
+            <td className="whitespace-nowrap text-slate-700" title={deliveryTime(row.scheduled_departure)}>{cellDateTime(row.scheduled_departure)}</td>
             <td><ServiceTypeBadge kind={deliveryServiceKind(row)} /></td>
-            <td className="whitespace-nowrap"><p className="font-bold text-jrm-navy">{row.ot_code ? `OT ${row.ot_code}` : 'Sin OT'}</p><p className="mt-0.5 text-[11px] text-slate-500">{row.request_number}</p></td>
-            <td className="max-w-28"><p className="whitespace-nowrap font-bold">{row.plate || 'Sin placa'}{row.modalidad === 'TERCERO' && <span className="ml-1 text-[11px] font-semibold text-violet-700">Tercero</span>}</p><p className="mt-0.5 truncate text-[11px] text-slate-500" title={row.driver_name || undefined}>{row.driver_name || (row.modalidad === 'RECOJO_CLIENTE' ? 'Unidad del cliente' : 'Sin conductor')}</p></td>
-            <td className="whitespace-nowrap"><p className={row.guide_number ? 'font-medium text-slate-800' : 'text-slate-500'}>{row.guide_number || 'Pendiente'}</p>{row.state === 'PROGRAMADO' && row.documents_state && row.documents_state !== 'NO_REQUERIDO' && <p className="mt-0.5 text-[11px] text-amber-800">{row.documents_state === 'LISTO' ? 'Salida lista' : row.documents_state === 'REEMISION' ? 'Por reemitir' : 'Salida pendiente'}</p>}</td>
-            <td className="max-w-32">{(() => { const pickup = deliveryServiceKind(row) === 'RECOJO', point = pickup ? row.pickup_address : row.delivery_address; return <><p className="truncate font-semibold text-slate-800" title={row.client_name || undefined}>{row.client_name || 'Cliente sin vincular'}</p><p className="mt-0.5 truncate text-[11px] text-slate-500" title={point}>{pickup ? 'Desde ' : '→ '}{districtOf(point)}</p></> })()}</td>
-            <td className="max-w-28"><p className={`text-[11px] font-semibold leading-4 ${conformityTone(row.conformity)}`}>{conformityLabels[row.conformity]}</p>{row.photos_count > 0 && <p className="mt-0.5 text-[11px] text-slate-500">{row.photos_count} foto(s)</p>}</td>
-            <td className="whitespace-nowrap"><DeliverySignal compact state={row.state} onClick={() => setHistory(row)} /><p className="mt-0.5 text-[11px] text-slate-500">{shortTime(row.last_event_at)}</p></td>
+            <td className="whitespace-nowrap font-bold text-jrm-navy" title={`Solicitud ${row.request_number} · Despacho ${row.dispatch_number}`}>{row.ot_code ? `OT ${row.ot_code}` : 'Sin OT'}</td>
+            <td className="whitespace-nowrap font-bold" title={`${row.driver_name || (row.modalidad === 'RECOJO_CLIENTE' ? 'Unidad del cliente' : 'Sin conductor')}${row.modalidad === 'TERCERO' ? ` · Tercero${row.carrier_name ? ` (${row.carrier_name})` : ''}` : ''}`}>{row.plate || 'Sin placa'}{row.modalidad === 'TERCERO' && <span className="ml-1 text-[11px] font-semibold text-violet-700">T</span>}</td>
+            <td className="max-w-36"><p className="truncate font-semibold text-slate-800" title={row.client_name || undefined}>{row.client_name || 'Cliente sin vincular'}</p></td>
+            <td className="max-w-32"><p className="truncate text-slate-700" title={`${pickup ? 'Origen' : 'Destino'}: ${point}`}>{districtOf(point)}</p></td>
+            <td><button type="button" onClick={() => onEvidence ? onEvidence(row) : setHistory(row)} title={doc.title} className="inline-flex items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-jrm-navy"><StatusBadge tone={doc.tone}>{doc.label}</StatusBadge><ChevronRight aria-hidden className="h-3.5 w-3.5 text-slate-400" /></button></td>
+            <td className="whitespace-nowrap" title={`Actualizado ${deliveryTime(row.last_event_at)}`}><DeliverySignal compact state={row.state} onClick={() => setHistory(row)} /></td>
             <td><div className="flex justify-end gap-1.5">
               <button type="button" onClick={() => setHistory(row)} title="Ver detalle" aria-label="Ver detalle" className="flex min-h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-2.5 font-semibold text-jrm-navy hover:bg-slate-50"><Eye className="h-4 w-4" /><span className="hidden 2xl:inline">Ver detalle</span></button>
-              {onEvidence && <button type="button" onClick={() => onEvidence(row)} title="Revisar guía y conformidad" aria-label="Revisar guía y conformidad" className="grid min-h-9 w-9 place-items-center rounded-lg border border-slate-300 bg-white text-jrm-navy hover:bg-slate-50"><FileCheck2 className="h-4 w-4" /></button>}
             </div></td>
-          </tr>)}
+          </tr> })}
         </tbody>
       </DataTable>
     </div>

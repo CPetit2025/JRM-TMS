@@ -22,6 +22,7 @@ import { QuoteBreakdown } from '@/components/tarifas/TransportTariffManager'
 import { serviceAddresses, serviceLabel, serviceKind, SERVICE_KINDS, executionWeightLabels, type RequestExecution, type ServiceKind } from '@/lib/request-service'
 import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 import { districtOf } from '@/lib/address'
+import { cellDateTime, fullDateTime } from '@/lib/table-format'
 import { serviceDate } from '@/lib/request-schedule'
 
 const requestDate = (value: string, withTime = false) => value ? new Date(value).toLocaleString('es-PE', {
@@ -163,7 +164,7 @@ export default function SolicitudesPage() {
 
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
-  const [sort, setSort] = useState<{ key: 'created_at' | 'required_date' | 'service' | 'ot' | 'address' | 'status'; direction: 'asc' | 'desc' }>({ key: 'created_at', direction: 'desc' })
+  const [sort, setSort] = useState<{ key: 'created_at' | 'required_date' | 'service' | 'ot' | 'client' | 'address' | 'status'; direction: 'asc' | 'desc' }>({ key: 'created_at', direction: 'desc' })
   const statusLabels: Record<string, string> = {
     PENDIENTE: 'Pendiente', 'PENDIENTE DE APROBACIÓN': 'Pendiente', APROBADA: 'Aprobada', APROBADO: 'Aprobada',
     ASIGNADA: 'Asignada', REPROGRAMADA: 'Reprogramada', OBSERVADA: 'Observada', RECHAZADA: 'Rechazada',
@@ -179,7 +180,7 @@ export default function SolicitudesPage() {
     const matchesService = filterService === 'TODOS' || serviceKind(r) === filterService
     return matchesSearch && matchesStatus(r.status, filterStatus) && matchesDateFrom && matchesDateTo && matchesService
   }).sort((a, b) => {
-    const value = (r: TransportRequest) => sort.key === 'service' ? compactService(r) : sort.key === 'ot' ? r.contracts?.code || ''
+    const value = (r: TransportRequest) => sort.key === 'service' ? compactService(r) : sort.key === 'ot' ? r.contracts?.code || '' : sort.key === 'client' ? r.contracts?.clients?.business_name || ''
       : sort.key === 'address' ? serviceAddresses(r).map(place => place.address).join(' → ') : sort.key === 'status' ? statusLabels[r.status] || r.status : r[sort.key]
     const comparison = value(a).localeCompare(value(b), 'es-PE', { numeric: true, sensitivity: 'base' })
     return (sort.direction === 'asc' ? comparison : -comparison) || a.id.localeCompare(b.id)
@@ -834,9 +835,9 @@ export default function SolicitudesPage() {
 
       <div className="flex min-h-0 flex-col overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card lg:flex-1">
         <div role="region" aria-label="Tabla de solicitudes de transporte" tabIndex={0} className="min-h-0 overflow-auto lg:flex-1">
-          <DataTable dense className="block w-full table-fixed text-left lg:min-w-[980px] lg:table"><caption className="sr-only">Solicitud de Transporte: fechas, tipo de servicio, OT, punto de atención, estado y acciones</caption>
+          <DataTable dense className="block w-full table-fixed text-left lg:min-w-[940px] lg:table"><caption className="sr-only">Solicitud de Transporte: fechas, tipo de servicio, OT, punto de atención, estado y acciones</caption>
             <thead className="sticky top-0 z-10 hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>
-              {[{ title: 'Fecha solicitud', key: 'created_at', width: 'w-[14%]' }, { title: 'Fecha atención', key: 'required_date', width: 'w-[14%]' }, { title: 'Tipo de servicio', key: 'service', width: 'w-[12%]' }, { title: 'OT', key: 'ot', width: 'w-[7%]' }, { title: 'Punto de atención', key: 'address', width: 'w-[24%]' }, { title: 'Estado', key: 'status', width: 'w-[13%]' }, { title: 'Acciones', width: 'w-[17%]' }].map(column => <th key={column.title} scope="col" className={column.width} aria-sort={column.key && sort.key === column.key ? sort.direction === 'asc' ? 'ascending' : 'descending' : undefined}>
+              {[{ title: 'Solicitada', key: 'created_at', width: 'w-[10%]' }, { title: 'Atención', key: 'required_date', width: 'w-[10%]' }, { title: 'Servicio', key: 'service', width: 'w-[11%]' }, { title: 'OT', key: 'ot', width: 'w-[7%]' }, { title: 'Cliente', key: 'client', width: 'w-[14%]' }, { title: 'Punto de atención', key: 'address', width: 'w-[14%]' }, { title: 'Estado', key: 'status', width: 'w-[12%]' }, { title: 'Acciones', width: 'w-[22%]' }].map(column => <th key={column.title} scope="col" className={column.width} aria-sort={column.key && sort.key === column.key ? sort.direction === 'asc' ? 'ascending' : 'descending' : undefined}>
                 {column.key ? <button type="button" onClick={() => changeSort(column.key as typeof sort.key)} aria-label={`Ordenar por ${column.title.toLowerCase()}`} className="flex min-h-8 items-center gap-1.5 text-left hover:text-[#002855]">{column.title}{sort.key === column.key ? sort.direction === 'asc' ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" /> : <ArrowUpDown className="h-3 w-3 shrink-0 text-slate-400" />}</button> : column.title}
               </th>)}
             </tr></thead>
@@ -856,16 +857,21 @@ export default function SolicitudesPage() {
                   ...(editable ? [{ id: 'cancel', label: 'Cancelar servicio', icon: <Ban className="h-4 w-4" />, tone: 'danger' as const, onSelect: () => { void handleCancelRequest(req.id) } }] : []),
                 ]
                 return <tr key={req.id} className="grid grid-cols-2 hover:bg-slate-50/70 lg:table-row">
-                  <td className={cell}>{label('Fecha solicitud')}<p className="whitespace-nowrap font-medium text-slate-700">{requestDate(req.created_at, true)}</p></td>
-                  <td className={cell}>{label('Fecha atención')}<p className="whitespace-nowrap font-medium text-slate-700">{req.required_at ? requestDate(req.required_at, true) : serviceDate(req.required_date)}</p>{req.request_type === 'DESPACHO' && req.attention_mode !== 'RECOJO_CLIENTE' && <p className={`mt-1 text-[11px] ${requestLeadTime(req).enough === false ? 'text-red-700' : 'text-slate-500'}`}>{!req.required_at ? 'Sin hora registrada' : !leadTimeLoaded ? 'Plazo no disponible' : formatLeadTimeStatus(requestLeadTime(req).status)}</p>}{req.status === 'REPROGRAMADA' && <p className="mt-0.5 text-xs text-amber-700">Reprogramada</p>}</td>
-                  <td className={cell}>{label('Tipo de servicio')}<ServiceTypeBadge request={req} /></td>
-                  <td className={cell}>{label('OT')}<p className="break-words font-semibold text-[#002855]">{req.contracts?.code || (req.contract_id ? 'OT vinculada' : 'Sin OT')}</p>{req.contracts?.clients?.business_name && <p className="mt-0.5 truncate text-[11px] text-slate-500" title={req.contracts.clients.business_name}>{req.contracts.clients.business_name}</p>}</td>
+                  <td className={cell}>{label('Solicitada')}<span className="whitespace-nowrap text-slate-700" title={fullDateTime(req.created_at)}>{cellDateTime(req.created_at)}</span></td>
+                  <td className={cell}>{label('Atención')}{(() => {
+                    const lead = req.request_type === 'DESPACHO' && req.attention_mode !== 'RECOJO_CLIENTE' ? requestLeadTime(req) : null
+                    const note = [req.status === 'REPROGRAMADA' ? 'Reprogramada' : '', !req.required_at ? 'Sin hora registrada' : lead && leadTimeLoaded ? formatLeadTimeStatus(lead.status) : ''].filter(Boolean).join(' · ')
+                    return <span title={note || undefined} className={`whitespace-nowrap ${lead?.enough === false ? 'font-semibold text-red-700' : req.status === 'REPROGRAMADA' ? 'font-semibold text-amber-700' : 'text-slate-700'}`}>{req.required_at ? cellDateTime(req.required_at) : serviceDate(req.required_date)}</span>
+                  })()}</td>
+                  <td className={cell}>{label('Servicio')}<ServiceTypeBadge request={req} /></td>
+                  <td className={cell}>{label('OT')}<span className="whitespace-nowrap font-semibold text-[#002855]" title={`Solicitud ${req.request_number}`}>{req.contracts?.code || (req.contract_id ? 'OT vinculada' : 'Sin OT')}</span></td>
+                  <td className={cell}>{label('Cliente')}<p className="truncate text-slate-700" title={req.contracts?.clients?.business_name || undefined}>{req.contracts?.clients?.business_name || 'Sin cliente'}</p></td>
                   <td className={`${cell} col-span-2`}>{label('Punto de atención')}<div title={addresses.map(place => `${place.label}: ${place.address}`).join(' → ')} className="text-slate-700">
                     <p className="truncate leading-5">{addresses.map((place, index) => <span key={place.label}>{index > 0 && <span className="text-slate-400"> → </span>}{districtOf(place.address, place.label === 'Entrega' ? req.delivery_district : req.pickup_district)}</span>)}</p>
                   </div></td>
                   <td className={cell}>{label('Estado')}{getStatusBadge(req.status)}</td>
                   <td className={cell}>{label('Acciones')}<div className="flex flex-wrap items-center gap-1.5 lg:flex-nowrap">
-                    <button type="button" onClick={() => void openRequestDetails(req)} aria-label={`Ver detalle de ${req.request_number}`} className="inline-flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-jrm-navy hover:border-slate-300 hover:bg-slate-50 lg:min-h-0 lg:h-8"><Eye aria-hidden className="h-3.5 w-3.5" />Ver detalle</button>
+                    <button type="button" onClick={() => void openRequestDetails(req)} aria-label={`Ver detalle de ${req.request_number}`} className="inline-flex min-h-11 items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-jrm-navy hover:border-slate-300 hover:bg-slate-50 lg:min-h-0 lg:h-8"><Eye aria-hidden className="h-3.5 w-3.5" />Ver detalle</button>
                     <TableActions compact label={`Más acciones de ${req.request_number}`} actions={actions} />
                   </div></td>
                 </tr>

@@ -7,7 +7,7 @@ import { FilterToolbar, filterControl } from '@/components/ui/filter-toolbar'
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Clock, Info, Layers, FileCheck2, FileSpreadsheet, FileText, ListTree, Loader2, RefreshCw, Search, Trash2, Truck, Upload } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronRight, Clock, Info, Layers, FileCheck2, FileSpreadsheet, FileText, ListTree, Loader2, RefreshCw, Search, Trash2, Truck, Upload } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { Modal } from '@/components/ui/modal'
 import { GuiaDetalleModal } from '@/components/guias/GuiaDetalleModal'
@@ -20,6 +20,7 @@ import { conformityLabels, type DeliveryRow } from '@/lib/delivery'
 import { PACKING_ACCEPT, packingMime } from '@/lib/packing-list'
 import { DOCS_BUCKET, errorMessage, fmtDate, receiptUrl } from '@/lib/caja'
 import { districtOf } from '@/lib/address'
+import { cellDateTime, fullDateTime } from '@/lib/table-format'
 import { fetchServiceTypes, serviceKind, type ServiceKind } from '@/lib/request-service'
 import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 
@@ -49,7 +50,6 @@ const STATUS_BADGE: Record<QueueItem['doc_status'], { label: string; tone: Statu
   LISTO: { label: 'Documentos listos', tone: 'success' },
   SALIO: { label: 'Salió', tone: 'neutral' },
 }
-const SHORT_STATUS: Record<QueueItem['doc_status'], string> = { PENDIENTE: 'Pendientes', REEMISION: 'Reemisión', LISTO: 'Listos', SALIO: 'Salió' }
 const SHEET_TYPES = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'text/csv']
 const isSheetName = (n: string) => /\.(xlsx|xls|csv)$/i.test(n)
 const sheetMime = (n: string) => /\.csv$/i.test(n) ? 'text/csv' : /\.xls$/i.test(n) ? 'application/vnd.ms-excel' : SHEET_TYPES[0]
@@ -93,6 +93,7 @@ function DocumentaryQueue() {
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([])
   const [serviceTypes, setServiceTypes] = useState<Awaited<ReturnType<typeof fetchServiceTypes>>>(new Map())
   const [review, setReview] = useState<DeliveryReviewTarget | null>(null)
+  const [statusOf, setStatusOf] = useState<{ item: QueueItem; stop: Stop | null; delivery?: DeliveryRow } | null>(null)
   const load = useCallback(async () => { setReload(n => n + 1) }, [])
 
   useEffect(() => {
@@ -208,7 +209,7 @@ function DocumentaryQueue() {
       {items === null && !queueError ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
         : !visible.length ? <p className="text-slate-500 text-sm p-6 text-center border border-slate-200 rounded-xl bg-white">{queueError && !items ? 'La bandeja no está disponible.' : 'No hay solicitudes para estos filtros.'}</p>
         : <section aria-label="Control documentario por OT" className="overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
-          <div className="overflow-x-auto"><DataTable dense className="block w-full text-left text-sm lg:table"><caption className="sr-only">Solicitudes y OT asociadas, Packing List, guía de entrega y conformidad</caption><thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['Salida', 'Servicio', 'OT / Solicitud', 'Placa', 'Cliente · punto', 'Documentos', ...(packingOnly ? [] : ['Guía']), 'Acciones'].map(label => <th key={label} scope="col" className="whitespace-nowrap px-3 py-2.5 font-semibold">{label}</th>)}</tr></thead><tbody className="block divide-y divide-slate-200 lg:table-row-group">{visible.map(({ item, stop }) => <DocumentRow key={`${item.id}/${stop?.request_id || 'empty'}`} item={item} stop={stop} kind={stop && serviceTypes.has(stop.request_id) ? serviceKind(serviceTypes.get(stop.request_id)) : item.is_pickup ? 'RECOJO_CLIENTE' : null} delivery={deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)} canEdit={canEdit || canPacking} packingOnly={packingOnly} onManage={() => setSelectedId(item.id)} onEvidence={setReview} />)}</tbody></DataTable></div>
+          <div className="overflow-x-auto"><DataTable dense className="block w-full text-left text-sm lg:table"><caption className="sr-only">Solicitudes y OT asociadas, Packing List, guía de entrega y conformidad</caption><thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['Salida', 'Servicio', 'OT', 'Placa', 'Cliente', 'Destino', 'Estado', 'Acciones'].map((label, i) => <th key={label} scope="col" className={`whitespace-nowrap px-3 py-2.5 font-semibold ${i === 7 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead><tbody className="block divide-y divide-slate-200 lg:table-row-group">{visible.map(({ item, stop }) => <DocumentRow key={`${item.id}/${stop?.request_id || 'empty'}`} item={item} stop={stop} kind={stop && serviceTypes.has(stop.request_id) ? serviceKind(serviceTypes.get(stop.request_id)) : item.is_pickup ? 'RECOJO_CLIENTE' : null} delivery={deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)} canEdit={canEdit || canPacking} packingOnly={packingOnly} onManage={() => setSelectedId(item.id)} onStatus={() => setStatusOf({ item, stop, delivery: deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id) })} />)}</tbody></DataTable></div>
         </section>}
       <Modal isOpen={!!selected} onClose={() => setSelectedId(null)} title={`Documentos · ${selected?.dispatch_number || ''}`} maxWidth="max-w-[1440px]"
         footer={<div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-600">{selected?.missing ? 'Completa los documentos pendientes para autorizar la salida.' : selected?.docs_ready_at ? 'Documentos confirmados para salida.' : 'Documentos y archivos asociados al servicio.'}</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setSelectedId(null)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Cerrar</button>{selected && canEdit && selected.status === 'PROGRAMADO' && ['PENDIENTE', 'REEMISION'].includes(selected.doc_status) && <button type="button" onClick={() => void confirmDocs(selected)} disabled={busy === selected.id || !!selected.missing} className="flex min-h-11 items-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-500">{busy === selected.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar documentos para salida</button>}</div></div>}>
@@ -216,34 +217,95 @@ function DocumentaryQueue() {
           onVoid={voidDoc} onOpen={openDoc} onUploaded={load}
           deliveries={deliveries.filter(row => row.dispatch_id === selected.id)} onEvidence={row => { setSelectedId(null); setReview(row) }} />}
       </Modal>
+      <DocumentStatusModal target={statusOf} packingOnly={packingOnly} canEdit={canEdit || canPacking} onClose={() => setStatusOf(null)} onManage={setSelectedId} onEvidence={setReview} />
       {!packingOnly && <DeliveryReview row={review} onClose={() => setReview(null)} onChanged={() => void load()} />}
       {anulando && <AnularModal doc={anulando} onClose={() => setAnulando(null)} onDone={() => { setAnulando(null); void load() }} />}
     </div>
   )
 }
 
-function DocumentRow({ item, stop, kind, delivery, canEdit, packingOnly, onManage, onEvidence }: {
-  item: QueueItem; stop: Stop | null; kind: ServiceKind | null; delivery?: DeliveryRow; canEdit: boolean; packingOnly: boolean; onManage: () => void; onEvidence: (row: DeliveryReviewTarget) => void
-}) {
-  const badge = STATUS_BADGE[item.doc_status]
+type DocStep = { label: string; detail: string; done: boolean; tone: 'ok' | 'pending' | 'danger' | 'na' }
+type DocState = { label: string; tone: StatusTone; steps: DocStep[] }
+
+/** Estado documentario único del servicio: resume Packing List, guía (o Nota de Despacho) y conformidad. */
+function documentState(item: QueueItem, stop: Stop | null, delivery: DeliveryRow | undefined, packingOnly: boolean): DocState {
   const docs = item.documents.filter(doc => !doc.request_id || doc.request_id === stop?.request_id)
   const packing = docs.find(doc => doc.doc_type === 'PACKING_LIST' && doc.signed && doc.auditor_name && doc.auditor_signed_date)
   const note = docs.find(doc => doc.doc_type === 'NOTA_DESPACHO' && doc.request_id === stop?.request_id)
+  const conformity = delivery?.conformity
+  const steps: DocStep[] = [
+    { label: '1. Packing List', detail: packing ? `Firmado${packing.request_id ? '' : ' · consolidado'}${packing.auditor_name ? ` · ${packing.auditor_name}` : ''}` : 'Firma pendiente del Auditor de Despacho', done: !!packing, tone: packing ? 'ok' : 'pending' },
+    item.is_pickup
+      ? { label: '2. Nota de Despacho', detail: note ? 'Adjunta' : 'Pendiente', done: !!note, tone: note ? 'ok' : 'pending' }
+      : { label: '2. Guía de entrega', detail: delivery?.guide_number ? `${delivery.guide_number}${delivery.photos_count ? ` · ${delivery.photos_count} foto(s)` : ''}` : item.status === 'PROGRAMADO' ? 'Se recibe del conductor o proveedor al entregar' : 'Aún no recibida', done: !!delivery?.guide_number, tone: delivery?.guide_number ? 'ok' : 'pending' },
+    item.is_pickup
+      ? { label: '3. Conformidad', detail: 'No aplica · recojo del cliente', done: true, tone: 'na' }
+      : item.status === 'PROGRAMADO' && !conformity
+        ? { label: '3. Conformidad', detail: 'Después de la entrega', done: false, tone: 'na' }
+        : { label: '3. Conformidad', detail: conformity ? conformityLabels[conformity] : 'No disponible', done: conformity === 'VALIDADA', tone: conformity === 'VALIDADA' ? 'ok' : ['OBSERVADA', 'RECHAZADA'].includes(conformity || '') ? 'danger' : 'pending' },
+  ]
+  if (packingOnly) {
+    // El perfil de Packing List no consulta guías ni conformidad: su estado es solo el del Packing List
+    const own = steps.slice(0, 1)
+    if (item.docs_reissue) return { label: 'Reemisión', tone: 'danger', steps: own }
+    return packing ? { label: 'Packing firmado', tone: 'success', steps: own } : { label: 'Packing pendiente', tone: 'warning', steps: own }
+  }
+  if (item.docs_reissue) return { label: 'Reemisión', tone: 'danger', steps }
+  if (item.status === 'PROGRAMADO') return item.doc_status === 'LISTO' ? { label: 'Listo para salir', tone: 'success', steps } : { label: 'Docs. pendientes', tone: 'warning', steps }
+  if (item.is_pickup) return note ? { label: 'Completo', tone: 'success', steps } : { label: 'Nota pendiente', tone: 'warning', steps }
+  if (conformity === 'VALIDADA') return { label: 'Conforme', tone: 'success', steps }
+  if (conformity === 'OBSERVADA' || conformity === 'RECHAZADA') return { label: conformityLabels[conformity], tone: 'danger', steps }
+  if (conformity === 'RECIBIDA') return { label: 'Por validar', tone: 'info', steps }
+  if (conformity === 'HISTORICA') return { label: 'Histórica', tone: 'neutral', steps }
+  if (conformity === 'NO_APLICA') return { label: 'No aplica', tone: 'neutral', steps }
+  if (!delivery) return { label: 'Sin consultar', tone: 'neutral', steps }
+  return { label: 'Guía pendiente', tone: 'warning', steps }
+}
+
+function DocumentRow({ item, stop, kind, delivery, canEdit, packingOnly, onManage, onStatus }: {
+  item: QueueItem; stop: Stop | null; kind: ServiceKind | null; delivery?: DeliveryRow; canEdit: boolean; packingOnly: boolean; onManage: () => void; onStatus: () => void
+}) {
+  const state = documentState(item, stop, delivery, packingOnly)
   const urgent = !['LISTO', 'SALIO'].includes(item.doc_status) && (hoursLeft(item.scheduled_departure) ?? Infinity) < 2
-  const tone = delivery?.conformity === 'VALIDADA' ? 'text-emerald-700' : ['OBSERVADA', 'RECHAZADA'].includes(delivery?.conformity || '') ? 'text-red-700' : 'text-slate-600'
-  const cell = 'min-w-0 px-3 py-2 align-top lg:px-2.5'
+  const cell = 'min-w-0 px-3 py-2 align-middle lg:px-2.5'
   const label = (text: string) => <p className="mb-1 text-xs font-semibold text-slate-500 lg:hidden">{text}</p>
-  const unit = item.is_pickup ? 'Recojo del cliente' : `${item.vehicle_plate || 'Sin placa'} · ${item.driver_name || (item.modalidad === 'TERCERO' ? 'Proveedor JRM' : 'Sin conductor')}`
-  return <tr className={`grid grid-cols-1 sm:grid-cols-2 lg:table-row ${urgent ? 'bg-amber-50/40' : ''}`}>
-    <td className={cell}>{label('Salida')}<p className={`whitespace-nowrap text-xs ${urgent ? 'font-semibold text-amber-800' : 'text-slate-700'}`}>{item.scheduled_departure ? new Date(item.scheduled_departure).toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit' }) : 'Sin fecha'}</p>{item.scheduled_departure && <p className="mt-0.5 whitespace-nowrap text-xs text-slate-500">{new Date(item.scheduled_departure).toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hour12: false })}</p>}{urgent && <p className="mt-0.5 text-[11px] font-semibold text-amber-800">Sale pronto</p>}</td>
+  const driver = item.is_pickup ? 'Recoge el cliente en planta' : item.driver_name || (item.modalidad === 'TERCERO' ? 'Proveedor JRM' : 'Sin conductor')
+  const point = kind === 'RECOJO' ? stop?.origin : stop?.delivery
+  return <tr className={`grid grid-cols-1 sm:grid-cols-2 lg:table-row ${urgent ? 'bg-amber-50/50' : ''}`}>
+    <td className={cell}>{label('Salida')}<span className={`whitespace-nowrap text-xs ${urgent ? 'font-semibold text-amber-800' : 'text-slate-700'}`} title={urgent ? 'Sale en menos de 2 horas' : fullDateTime(item.scheduled_departure)}>{cellDateTime(item.scheduled_departure)}</span></td>
     <td className={cell}>{label('Servicio')}<ServiceTypeBadge kind={kind} /></td>
-    <td className={cell}>{label('OT / Solicitud')}<p className="whitespace-nowrap font-bold text-jrm-navy">{stop?.ot_code ? `OT ${stop.ot_code}` : 'Sin OT vinculada'}</p><p className="mt-0.5 whitespace-nowrap text-xs text-slate-500">{stop?.request_number || 'Sin solicitud asociada'}</p></td>
-    <td className={cell}>{label('Placa')}<p className="whitespace-nowrap text-xs font-bold uppercase text-slate-800">{item.is_pickup ? 'Cliente' : item.vehicle_plate || 'Sin placa'}</p><p className="mt-0.5 truncate text-xs text-slate-500 lg:max-w-28" title={unit}>{item.is_pickup ? 'Recoge en planta' : item.driver_name || (item.modalidad === 'TERCERO' ? 'Proveedor JRM' : 'Sin conductor')}</p></td>
-    <td className={cell}>{label('Cliente · punto')}{(() => { const point = kind === 'RECOJO' ? stop?.origin : stop?.delivery; return <><p className="truncate font-medium text-slate-800 lg:max-w-32 xl:max-w-36 2xl:max-w-56" title={stop?.client || undefined}>{stop?.client || 'Sin cliente registrado'}</p><p className="mt-0.5 truncate text-xs text-slate-500 lg:max-w-32 xl:max-w-36 2xl:max-w-56" title={point || undefined}>{point ? `${kind === 'RECOJO' ? 'Desde' : '→'} ${districtOf(point)}` : 'Sin dirección registrada'}</p></> })()}</td>
-    <td className={cell}>{label('Documentos')}<span title={item.docs_reissue ? item.docs_reissue_reason || 'Actualizar y confirmar documentos' : undefined}><StatusBadge tone={badge.tone}>{SHORT_STATUS[item.doc_status]}</StatusBadge></span><p className="mt-1 text-xs text-slate-500 lg:max-w-36">Packing {packing ? 'firmado' : 'pendiente'}{item.is_pickup && ` · Nota ${note ? 'adjunta' : 'pendiente'}`}</p></td>
-    {!packingOnly && <td className={cell}>{label('Guía')}<p className="whitespace-nowrap text-xs font-medium text-slate-700" title={item.is_pickup ? 'Recojo del cliente' : item.modalidad === 'TERCERO' ? 'Guía del proveedor JRM' : 'Guía desde el app del conductor'}>{item.is_pickup ? 'Nota de Despacho' : delivery ? delivery.guide_number || 'Guía no recibida' : 'Guía pendiente'}{delivery && delivery.photos_count > 0 ? <span className="font-normal text-slate-500"> · {delivery.photos_count} foto(s)</span> : null}</p><p className={`mt-0.5 whitespace-nowrap text-xs font-semibold ${tone}`}>{item.is_pickup ? 'No aplica' : delivery ? conformityLabels[delivery.conformity] : 'No disponible'}</p></td>}
-    <td className={`${cell} lg:text-right`}>{label('Acciones')}<div className="flex flex-wrap gap-1.5 lg:flex-nowrap lg:justify-end"><button type="button" onClick={onManage} className="min-h-11 whitespace-nowrap rounded-lg bg-jrm-navy px-3 text-xs font-semibold text-white hover:bg-jrm-navy-dark lg:min-h-8">{canEdit && item.status === 'PROGRAMADO' ? packingOnly ? 'Cargar Packing List' : 'Gestionar' : 'Ver documentos'}</button>{delivery && !item.is_pickup && <button type="button" onClick={() => onEvidence(delivery)} title="Guía y conformidad" aria-label="Guía y conformidad" className="inline-flex min-h-11 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-300 px-2.5 text-xs font-semibold text-jrm-navy hover:bg-slate-50 lg:min-h-8"><FileCheck2 className="h-4 w-4" /><span className="lg:hidden 2xl:inline">Guía y conformidad</span></button>}</div></td>
+    <td className={cell}>{label('OT')}<span className="whitespace-nowrap font-bold text-jrm-navy" title={stop ? `Solicitud ${stop.request_number} · Despacho ${item.dispatch_number}` : undefined}>{stop?.ot_code ? `OT ${stop.ot_code}` : 'Sin OT'}</span></td>
+    <td className={cell}>{label('Placa')}<span className="whitespace-nowrap text-xs font-bold uppercase text-slate-800" title={driver}>{item.is_pickup ? 'Cliente' : item.vehicle_plate || 'Sin placa'}</span></td>
+    <td className={cell}>{label('Cliente')}<p className="truncate font-medium text-slate-800 lg:max-w-40 xl:max-w-48 2xl:max-w-64" title={stop?.client || undefined}>{stop?.client || 'Sin cliente registrado'}</p></td>
+    <td className={cell}>{label(kind === 'RECOJO' ? 'Origen' : 'Destino')}<p className="truncate text-slate-700 lg:max-w-32 xl:max-w-40" title={point || undefined}>{point ? districtOf(point) : 'Sin dirección'}</p></td>
+    <td className={cell}>{label('Estado')}<button type="button" onClick={onStatus} title="Ver Packing List, guía y conformidad" className="inline-flex items-center gap-1 rounded-full focus-visible:outline-2 focus-visible:outline-jrm-navy"><StatusBadge tone={state.tone}>{state.label}</StatusBadge><ChevronRight aria-hidden className="h-3.5 w-3.5 text-slate-400" /></button></td>
+    <td className={`${cell} lg:text-right`}>{label('Acciones')}<button type="button" onClick={onManage} className="min-h-11 whitespace-nowrap rounded-lg bg-jrm-navy px-3 text-xs font-semibold text-white hover:bg-jrm-navy-dark lg:min-h-8">{canEdit && item.status === 'PROGRAMADO' ? packingOnly ? 'Cargar Packing List' : 'Gestionar' : 'Ver documentos'}</button></td>
   </tr>
+}
+
+/** Modal de estado documentario: los tres pasos del servicio y sus acciones. */
+function DocumentStatusModal({ target, packingOnly, canEdit, onClose, onManage, onEvidence }: {
+  target: { item: QueueItem; stop: Stop | null; delivery?: DeliveryRow } | null; packingOnly: boolean; canEdit: boolean
+  onClose: () => void; onManage: (id: string) => void; onEvidence: (row: DeliveryReviewTarget) => void
+}) {
+  if (!target) return null
+  const { item, stop, delivery } = target
+  const state = documentState(item, stop, delivery, packingOnly)
+  const tone = { ok: 'border-emerald-200 bg-emerald-50 text-emerald-800', pending: 'border-amber-200 bg-amber-50 text-amber-800', danger: 'border-rose-200 bg-rose-50 text-rose-800', na: 'border-slate-200 bg-slate-50 text-slate-600' }
+  return <Modal isOpen onClose={onClose} title={`Estado documentario · ${stop?.ot_code ? `OT ${stop.ot_code}` : 'Sin OT'}`} maxWidth="max-w-lg"
+    footer={<div className="flex flex-wrap justify-end gap-2">
+      <button type="button" onClick={onClose} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Cerrar</button>
+      {!packingOnly && delivery && !item.is_pickup && <button type="button" onClick={() => { onClose(); onEvidence(delivery) }} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-jrm-navy"><FileCheck2 className="h-4 w-4" />Guía y conformidad</button>}
+      <button type="button" onClick={() => { onClose(); onManage(item.id) }} className="min-h-11 rounded-lg bg-jrm-navy px-4 text-sm font-semibold text-white">{canEdit && item.status === 'PROGRAMADO' ? 'Gestionar documentos' : 'Ver documentos'}</button>
+    </div>}>
+    <div className="space-y-3 text-sm">
+      <div className="flex flex-wrap items-center gap-2"><StatusBadge tone={state.tone}>{state.label}</StatusBadge><span className="text-xs text-slate-500">Solicitud {stop?.request_number || '—'} · Despacho {item.dispatch_number} · Sale {cellDateTime(item.scheduled_departure)}</span></div>
+      {item.docs_reissue && <p className="rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs font-medium text-rose-800">Reemisión: {item.docs_reissue_reason || 'actualizar y confirmar documentos'}</p>}
+      <ol className="space-y-2">{state.steps.map(step => <li key={step.label} className={`flex items-start justify-between gap-3 rounded-lg border p-3 ${tone[step.tone]}`}>
+        <span className="font-semibold">{step.label}</span><span className="text-right text-xs">{step.detail}</span>
+      </li>)}</ol>
+    </div>
+  </Modal>
 }
 
 function DispatchCard({ item, canEdit, canPacking, packingOnly, onVoid, onOpen, onUploaded, deliveries, onEvidence }: {
