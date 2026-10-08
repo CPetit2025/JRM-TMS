@@ -20,6 +20,7 @@ import { normalizeRoleName } from '@/lib/roles'
 import { OtPicker, type OtNode } from '@/components/solicitudes/OtPicker'
 import { QuoteBreakdown } from '@/components/tarifas/TransportTariffManager'
 import { serviceAddresses, serviceLabel, executionWeightLabels, type RequestExecution } from '@/lib/request-service'
+import { districtOf } from '@/lib/address'
 import { serviceDate } from '@/lib/request-schedule'
 
 const requestDate = (value: string, withTime = false) => value ? new Date(value).toLocaleString('es-PE', {
@@ -858,9 +859,9 @@ export default function SolicitudesPage() {
                   <td className={cell}>{label('Fecha solicitud')}<p className="whitespace-nowrap font-medium text-slate-700">{requestDate(req.created_at, true)}</p></td>
                   <td className={cell}>{label('Fecha atención')}<p className="whitespace-nowrap font-medium text-slate-700">{req.required_at ? requestDate(req.required_at, true) : serviceDate(req.required_date)}</p>{req.request_type === 'DESPACHO' && req.attention_mode !== 'RECOJO_CLIENTE' && <p className={`mt-1 text-[11px] ${requestLeadTime(req).enough === false ? 'text-red-700' : 'text-slate-500'}`}>{!req.required_at ? 'Sin hora registrada' : !leadTimeLoaded ? 'Plazo no disponible' : formatLeadTimeStatus(requestLeadTime(req).status)}</p>}{req.status === 'REPROGRAMADA' && <p className="mt-0.5 text-xs text-amber-700">Reprogramada</p>}</td>
                   <td className={cell}>{label('Tipo de servicio')}<span title={serviceLabel(req)} className="text-slate-700">{compactService(req)}</span></td>
-                  <td className={cell}>{label('OT')}<p className="break-words font-semibold text-[#002855]">{req.contracts?.code || (req.contract_id ? 'OT vinculada' : 'Sin OT')}</p></td>
+                  <td className={cell}>{label('OT')}<p className="break-words font-semibold text-[#002855]">{req.contracts?.code || (req.contract_id ? 'OT vinculada' : 'Sin OT')}</p>{req.contracts?.clients?.business_name && <p className="mt-0.5 truncate text-[11px] text-slate-500" title={req.contracts.clients.business_name}>{req.contracts.clients.business_name}</p>}</td>
                   <td className={`${cell} col-span-2`}>{label('Punto de atención')}<div title={addresses.map(place => `${place.label}: ${place.address}`).join(' → ')} className="text-slate-700">
-                    {addresses.map((place, index) => <p key={place.label} className={addresses.length === 1 ? 'line-clamp-2 break-words leading-5' : 'truncate leading-5'}>{addresses.length > 1 && <span className="text-slate-400">{index === 0 ? 'Origen: ' : '→ '}</span>}{place.address}</p>)}
+                    <p className="truncate leading-5">{addresses.map((place, index) => <span key={place.label}>{index > 0 && <span className="text-slate-400"> → </span>}{districtOf(place.address, place.label === 'Entrega' ? req.delivery_district : req.pickup_district)}</span>)}</p>
                   </div></td>
                   <td className={cell}>{label('Estado')}{getStatusBadge(req.status)}</td>
                   <td className={cell}>{label('Acciones')}<div className="flex flex-wrap items-center gap-1.5 lg:flex-nowrap">

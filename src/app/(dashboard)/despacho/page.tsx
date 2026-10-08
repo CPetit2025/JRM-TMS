@@ -8,12 +8,13 @@ import { InlineStatusBar } from '@/components/ui/inline-status-bar'
 import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filter-toolbar'
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 import { TableActions, type TableAction } from '@/components/ui/table-actions'
+import { districtOf } from '@/lib/address'
 
 import { splitFreight } from '@/lib/transport-budget'
 import { isTransportUnit, TRANSPORT_VEHICLE_TYPES } from '@/lib/fleet-filters'
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Truck, MapPin, Loader2, Calendar, Plus, FileText, Tag, Search, XCircle, Clock, Route, PackageCheck } from 'lucide-react'
+import { Truck, MapPin, Loader2, Plus, FileText, Tag, Search, XCircle, Clock, Route, PackageCheck, Eye } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -52,6 +53,7 @@ interface TransportRequest {
   rescheduling?: RequestRescheduling
   contract_id?: string
   delivery_district?: string | null
+  pickup_district?: string | null
   estimated_weight?: number | null
   service_cost?: number | null
   contracts?: {
@@ -77,12 +79,13 @@ interface DispatchRequest {
     request_number: string
     pickup_address: string
     delivery_address: string
+    delivery_district?: string | null
     request_type?: string
     required_date?: string | null
     required_at?: string | null
     time_window?: string | null
     rescheduling?: RequestRescheduling
-    contracts?: { code: string } | null
+    contracts?: { code: string; clients?: { business_name: string } | null } | null
     transport_request_items?: Array<{
       weight?: number
       quantity?: number
@@ -144,7 +147,7 @@ export default function DespachoPage() {
   const [filterModalidad, setFilterModalidad] = useState('TODAS')
 
   const [statusGroup, setStatusGroup] = useState<'' | 'programados' | 'ruta' | 'cerrar'>('')
-  const [mobileTab, setMobileTab] = useState<'pendientes' | 'programados'>('pendientes')
+  const [mobileTab, setMobileTab] = useState<'pendientes' | 'programados'>('programados')
 
   const filteredDispatches = dispatches.filter(d => {
     const matchSearch = searchTerm === '' || 
@@ -310,7 +313,8 @@ export default function DespachoPage() {
               required_date,
               required_at,
               time_window,
-              contracts(code),
+              contracts(code, clients(business_name)),
+              delivery_district,
               pickup_address,
               delivery_address,
               transport_request_items (
@@ -636,17 +640,17 @@ export default function DespachoPage() {
         </div>
       </div>
 
-      <div role="tablist" aria-label="Vista de despacho" className="flex gap-1 xl:hidden">
+      <div role="tablist" aria-label="Vista de despacho" className="flex gap-1 2xl:hidden">
         {([['pendientes', `Por asignar (${pendingRequests.length})`], ['programados', 'Programados']] as const).map(([key, text]) => (
           <button key={key} type="button" role="tab" aria-selected={mobileTab === key} onClick={() => setMobileTab(key)}
             className={`min-h-11 flex-1 rounded-jrm border px-3 text-sm font-semibold ${mobileTab === key ? 'border-jrm-navy bg-jrm-navy text-white' : 'border-jrm-line bg-jrm-surface text-slate-600'}`}>{text}</button>
         ))}
       </div>
 
-      <div className="grid items-start gap-3 xl:grid-cols-[19rem_minmax(0,1fr)]">
+      <div className="grid items-start gap-3 2xl:grid-cols-[19rem_minmax(0,1fr)]">
 
         {/* Panel izquierdo: solicitudes por asignar */}
-        <section aria-label="Solicitudes por asignar" className={`${mobileTab === 'pendientes' ? 'block' : 'hidden'} overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card xl:block`}>
+        <section aria-label="Solicitudes por asignar" className={`${mobileTab === 'pendientes' ? 'block' : 'hidden'} overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card 2xl:block`}>
           <div className="flex h-11 items-center justify-between border-b border-jrm-line px-3">
             <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-800">
               <FileText className="h-4 w-4 text-amber-600" aria-hidden="true" />
@@ -686,9 +690,9 @@ export default function DespachoPage() {
                       <p className="mt-0.5 truncate text-xs text-slate-700" title={req.requester_name}>
                         {req.requester_name}{req.contracts?.clients?.business_name ? <span className="text-slate-500"> · {req.contracts.clients.business_name}</span> : null}
                       </p>
-                      <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-slate-500" title={`${req.pickup_address} → ${req.delivery_address}`}>
+                      <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-slate-500" title={`Origen: ${req.pickup_address}\nDestino: ${req.delivery_address}`}>
                         <MapPin className="h-3 w-3 shrink-0 text-blue-500" aria-hidden="true" />
-                        <span className="truncate">{req.pickup_address} → {req.delivery_address}</span>
+                        <span className="truncate">{districtOf(req.pickup_address, req.pickup_district)} → {districtOf(req.delivery_address, req.delivery_district)}</span>
                       </p>
                       <p className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-slate-500">
                         <span>Lima: <b className="text-slate-700">{requestedAttention(req)}</b></span>
@@ -705,7 +709,7 @@ export default function DespachoPage() {
         </section>
 
         {/* Panel derecho: despachos / rutas programadas */}
-        <section aria-label="Despachos y rutas programadas" className={`${mobileTab === 'programados' ? 'block' : 'hidden'} min-w-0 space-y-2 xl:block`}>
+        <section aria-label="Despachos y rutas programadas" className={`${mobileTab === 'programados' ? 'block' : 'hidden'} min-w-0 space-y-2 2xl:block`}>
           <FilterToolbar compact label="Búsqueda y filtros de despachos" onClear={() => { setSearchTerm(''); setFilterStatus('TODOS'); setFilterModalidad('TODAS'); setStatusGroup('') }}>
             <label className="relative min-w-0 flex-1 basis-60">
               <span className="sr-only">Buscar despachos</span><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" aria-hidden="true" />
@@ -736,13 +740,13 @@ export default function DespachoPage() {
               <DataTable dense className="relative w-full border-collapse text-left">
                 <thead className="sticky top-0 z-10 border-slate-100 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500 shadow-[0_1px_0_0_#e2e8f0]">
                   <tr>
+                    <th className="whitespace-nowrap font-semibold">OT · Cliente</th>
+                    <th className="whitespace-nowrap font-semibold">Destino</th>
                     <th className="whitespace-nowrap font-semibold">Despacho</th>
-                    <th className="whitespace-nowrap font-semibold">Unidad / Chofer</th>
-                    <th className="whitespace-nowrap text-right font-semibold">Dist. (KM)</th>
-                    <th className="font-semibold">Solicitudes (Ruta)</th>
+                    <th className="whitespace-nowrap font-semibold">Unidad · Conductor</th>
                     <th className="whitespace-nowrap font-semibold">Salida · Lima</th>
                     <th className="whitespace-nowrap font-semibold">Estado</th>
-                    <th className="whitespace-nowrap text-right font-semibold">Acción</th>
+                    <th className="whitespace-nowrap text-right font-semibold">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -774,62 +778,39 @@ export default function DespachoPage() {
                       if (!primaryDocs && canDocs) menu.push({ id: 'docs', label: 'Documentos', icon: <FileText className="h-4 w-4" />, onSelect: () => router.push(docsHref) })
                       if (canWrite('despacho') && programado) menu.push({ id: 'cancel', label: 'Cancelar despacho', icon: <XCircle className="h-4 w-4" />, tone: 'danger', onSelect: () => handleCancelDispatch(dispatch.id, dispatch.dispatch_number) })
                       return (
-                      <tr key={dispatch.id} className="transition-colors hover:bg-slate-50">
+                      <tr key={dispatch.id} className="cursor-pointer transition-colors hover:bg-slate-50" onClick={() => setSelectedDispatchDetail(dispatch)}>
+                        {(() => {
+                          const reqs = dispatch.dispatch_requests || []
+                          const ots = [...new Set(reqs.map(r => r.transport_requests?.contracts?.code).filter(Boolean))] as string[]
+                          const clients = [...new Set(reqs.map(r => r.transport_requests?.contracts?.clients?.business_name).filter(Boolean))] as string[]
+                          const districts = [...new Set(reqs.map(r => districtOf(r.transport_requests?.delivery_address, r.transport_requests?.delivery_district)))]
+                          const more = (list: string[]) => list.length > 1 ? ` +${list.length - 1}` : ''
+                          return <>
+                            <td className="max-w-40">
+                              <p className="whitespace-nowrap text-sm font-bold text-jrm-navy" title={ots.map(o => `OT ${o}`).join(', ') || undefined}>{ots.length ? `OT ${ots[0]}${more(ots)}` : 'Sin OT'}</p>
+                              <p className="mt-0.5 truncate text-xs text-slate-500" title={clients.join(', ') || undefined}>{clients.length ? `${clients[0]}${more(clients)}` : 'Sin cliente'}</p>
+                            </td>
+                            <td className="max-w-40">
+                              <p className="truncate text-sm text-slate-700" title={reqs.map(r => `${r.transport_requests?.request_number}: ${r.transport_requests?.delivery_address}`).join('\n') || undefined}>{districts.length ? `${districts[0]}${more(districts)}` : 'Sin destino'}</p>
+                              <p className="mt-0.5 whitespace-nowrap text-xs text-slate-500">{reqs.length} servicio{reqs.length === 1 ? '' : 's'}{reqs.some(r => r.transport_requests?.request_type === 'RECOJO') ? ' · incluye recojo' : ''}{reqs.some(r => r.transport_requests?.rescheduling) ? ' · reprogramado' : ''}</p>
+                            </td>
+                          </>
+                        })()}
                         <td>
-                          <button
-                            onClick={() => setSelectedDispatchDetail(dispatch)}
-                            title={dispatch.legacy_dispatch_number ? `Código anterior: ${dispatch.legacy_dispatch_number}` : undefined}
-                            className="whitespace-nowrap text-left text-sm font-bold text-jrm-navy transition-all hover:text-blue-600 hover:underline"
-                          >
-                            {dispatch.dispatch_number}
-                          </button>
+                          <span className="whitespace-nowrap text-sm font-bold text-jrm-navy" title={dispatch.legacy_dispatch_number ? `Código anterior: ${dispatch.legacy_dispatch_number}` : undefined}>{dispatch.dispatch_number}</span>
                         </td>
                         <td>
-                          <div className="flex flex-col">
-                            <span className="flex items-center gap-1.5 whitespace-nowrap text-sm font-bold uppercase text-jrm-navy">
-                              {dispatch.vehicle_plate}
-                              {dispatch.modalidad === 'TERCERO' && <span className="rounded border border-violet-200 bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold normal-case text-violet-700">Tercero</span>}
-                            </span>
-                            <span className="text-xs text-slate-500">{dispatch.driver_name}</span>
-                          </div>
-                        </td>
-                        <td className="text-right text-sm font-semibold text-slate-700">
-                          {dispatch.estimated_distance_km ? `${dispatch.estimated_distance_km} KM` : '-'}
-                        </td>
-                        <td className="min-w-[11rem] text-xs text-slate-600">
-                          {dispatch.dispatch_requests && dispatch.dispatch_requests.length > 0 ? (
-                            (() => {
-                              const reqs = dispatch.dispatch_requests;
-                              const recojos = reqs.filter(r => r.transport_requests.request_type === 'RECOJO').length;
-                              const traslados = reqs.filter(r => r.transport_requests.request_type === 'TRASLADO').length;
-                              const despachos = reqs.filter(r => !r.transport_requests.request_type || r.transport_requests.request_type === 'DESPACHO').length;
-
-                              const tooltipText = reqs.map(r => `${r.transport_requests.request_number} · OT ${r.transport_requests.contracts?.code || 'sin OT'}`).join(', ');
-
-                              return (
-                                <div className="flex flex-col gap-1" title={tooltipText}>
-                                  <div className="flex flex-wrap items-center gap-1">
-                                    <span className="whitespace-nowrap font-bold text-slate-700">{reqs.length} servicio{reqs.length !== 1 ? 's' : ''} · {new Set(reqs.map(r => r.transport_requests.contracts?.code).filter(Boolean)).size} OT</span>
-                                    {recojos > 0 && <span className="rounded border border-orange-200 bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">Recojos: {recojos}</span>}
-                                    {despachos > 0 && <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Despachos: {despachos}</span>}
-                                    {traslados > 0 && <span className="rounded border border-purple-200 bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700">Traslados: {traslados}</span>}
-                                  </div>
-                                  <details className="rounded-lg border border-slate-200 bg-white px-2 py-1"><summary className="cursor-pointer font-semibold text-jrm-navy">Ver servicios y fechas</summary><ul className="mt-2 space-y-2">{reqs.map(r => <li key={r.transport_request_id} className="border-t border-slate-100 pt-2"><p className="font-semibold">{r.transport_requests.request_number} · {r.transport_requests.contracts?.code ? `OT ${r.transport_requests.contracts.code}` : 'Sin OT'}</p><p>{r.transport_requests.request_type === 'RECOJO' ? 'Recojo' : r.transport_requests.request_type === 'TRASLADO' ? 'Punto a punto' : 'Entrega'} · Solicitada · Lima: {requestedAttention(r.transport_requests)}</p>{r.transport_requests.rescheduling && <p className="font-semibold text-amber-800">Reprogramado · {serviceDate(r.transport_requests.rescheduling.fecha_anterior)} → {serviceDate(r.transport_requests.rescheduling.fecha_nueva)}</p>}</li>)}</ul></details>
-                                </div>
-                              );
-                            })()
-                          ) : (
-                            <span className="text-slate-400">Sin detalles</span>
-                          )}
+                          <span className="flex items-center gap-1.5 whitespace-nowrap text-sm font-bold uppercase text-slate-800">
+                            {dispatch.vehicle_plate}
+                            {dispatch.modalidad === 'TERCERO' && <span className="rounded border border-violet-200 bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold normal-case text-violet-700">Tercero</span>}
+                          </span>
+                          <span className="block max-w-36 truncate text-xs text-slate-500" title={dispatch.driver_name || undefined}>{dispatch.driver_name}</span>
                         </td>
                         <td className="whitespace-nowrap text-sm text-slate-600">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" aria-hidden="true" />
-                            {new Date(dispatch.scheduled_departure).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short', hour12: false })}
-                          </div>
+                          {new Date(dispatch.scheduled_departure).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short', hour12: false })}
                         </td>
                         <td>
-                          <StatusBadge tone={dispatchTone(dispatch.status)}>{dispatchStatusLabel(dispatch.status)}</StatusBadge>
+                          <span className="block max-w-32 [&>span]:whitespace-normal [&>span]:leading-4"><StatusBadge tone={dispatchTone(dispatch.status)}>{dispatchStatusLabel(dispatch.status)}</StatusBadge></span>
                           {programado && dispatch.docs_required && (
                             <div className={`mt-1 text-[10px] font-semibold ${dispatch.docs_reissue ? 'text-red-600' : dispatch.docs_ready_at ? 'text-emerald-600' : 'text-amber-600'}`}
                               title={dispatch.docs_reissue_reason || undefined}>
@@ -837,11 +818,13 @@ export default function DespachoPage() {
                             </div>
                           )}
                         </td>
-                        <td>
+                        <td onClick={e => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
+                            <button type="button" onClick={() => setSelectedDispatchDetail(dispatch)} aria-label={`Ver detalle de ${dispatch.dispatch_number}`} title="Ver detalle"
+                              className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-300 px-2.5 text-xs font-semibold text-jrm-navy hover:bg-slate-50 lg:min-h-8"><Eye className="h-4 w-4" /><span className="hidden 2xl:inline">Ver detalle</span></button>
                             {primaryDocs
-                              ? <Link href={docsHref} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-jrm-navy hover:bg-slate-50 lg:min-h-8"><FileText className="h-4 w-4" />Documentos</Link>
-                              : canOp && <Link href={opHref} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-jrm-navy hover:bg-blue-100 lg:min-h-8"><Truck className="h-4 w-4" />Gestionar</Link>}
+                              ? <Link href={docsHref} title="Documentos" aria-label="Documentos" className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-jrm-navy hover:bg-slate-50 lg:min-h-8"><FileText className="h-4 w-4" /><span className="hidden 2xl:inline">Documentos</span></Link>
+                              : canOp && <Link href={opHref} title="Gestionar operación" aria-label="Gestionar operación" className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-jrm-navy hover:bg-blue-100 lg:min-h-8"><Truck className="h-4 w-4" /><span className="hidden 2xl:inline">Gestionar</span></Link>}
                             <TableActions compact label={`Más acciones de ${dispatch.dispatch_number}`} actions={menu} />
                           </div>
                         </td>
@@ -1135,7 +1118,7 @@ export default function DespachoPage() {
       <Modal
         isOpen={!!selectedDispatchDetail}
         onClose={() => setSelectedDispatchDetail(null)}
-        title={`Detalle de Despacho: ${selectedDispatchDetail?.dispatch_number}`}
+        title={`Detalle del despacho ${selectedDispatchDetail?.dispatch_number || ''}${selectedDispatchDetail?.legacy_dispatch_number ? ` · antes ${selectedDispatchDetail.legacy_dispatch_number}` : ''}`}
         maxWidth="max-w-4xl"
       >
         {selectedDispatchDetail && (
@@ -1153,7 +1136,7 @@ export default function DespachoPage() {
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <span className="text-xs text-slate-500 font-semibold uppercase block mb-1">Salida Programada</span>
                 <div className="font-semibold text-slate-800">
-                  {new Date(selectedDispatchDetail.scheduled_departure).toLocaleString()}
+                  {new Date(selectedDispatchDetail.scheduled_departure).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short', hour12: false })}
                 </div>
                 <div className="text-sm text-slate-600">
                   Distancia: {selectedDispatchDetail.estimated_distance_km ? `${selectedDispatchDetail.estimated_distance_km} KM` : 'N/A'}
@@ -1199,8 +1182,8 @@ export default function DespachoPage() {
                       
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className="font-bold text-[#002855] text-base">{req.request_number}</span>
-                          <span className="text-xs font-semibold text-blue-700">OT {req.contracts?.code || 'Sin OT'}</span>
+                          <span className="font-bold text-[#002855] text-base">{req.contracts?.code ? `OT ${req.contracts.code}` : 'Sin OT'}</span>
+                          <span className="text-xs font-semibold text-slate-600">{req.request_number}</span>
                           <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${typeColor}`}>
                             {typeLabel}
                           </span>
@@ -1208,6 +1191,9 @@ export default function DespachoPage() {
                             {dr.document_type}: {dr.document_number}
                           </span>
                         </div>
+                        <p className="text-sm text-slate-700">{req.contracts?.clients?.business_name || 'Sin cliente'}</p>
+                        <p className="mt-1 text-xs text-slate-600">{req.request_type === 'RECOJO' ? 'Recojo' : req.request_type === 'TRASLADO' ? 'Punto a punto' : 'Entrega'} · Solicitada · Lima: {requestedAttention(req)}</p>
+                        {req.rescheduling && <p className="mt-1 text-xs font-semibold text-amber-800">Reprogramado · {serviceDate(req.rescheduling.fecha_anterior)} → {serviceDate(req.rescheduling.fecha_nueva)}</p>}
                         
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
                           <div className="text-sm text-slate-600">
