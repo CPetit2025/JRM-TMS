@@ -21,7 +21,13 @@ const NOISE = /^(lima|lima metropolitana|lima - lima|peru|perú|provincia de lim
 
 /** Distrito para tablas. Usa el distrito guardado si existe; si no, lo reconoce en la dirección. */
 export function districtOf(address?: string | null, district?: string | null): string {
-  if (district && district.trim()) return district.trim()
+  if (district && district.trim()) {
+    const key = fold(district.trim())
+    const known = INDEX.find(d => d.key === key)
+    if (known) return known.name === 'Surco' ? 'Santiago de Surco' : known.name === 'Magdalena' ? 'Magdalena del Mar' : known.name
+    const clean = district.trim()
+    return clean === clean.toUpperCase() ? clean.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_, a: string, b: string) => a + b.toUpperCase()) : clean
+  }
   if (!address || !address.trim()) return 'Sin dirección'
   const text = fold(address)
   // Coincidencia de palabra completa; gana la que termina más a la derecha y, si empatan, la más larga

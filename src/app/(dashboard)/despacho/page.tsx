@@ -53,6 +53,7 @@ interface TransportRequest {
   rescheduling?: RequestRescheduling
   contract_id?: string
   delivery_district?: string | null
+  pickup_district?: string | null
   estimated_weight?: number | null
   service_cost?: number | null
   contracts?: {
@@ -78,6 +79,7 @@ interface DispatchRequest {
     request_number: string
     pickup_address: string
     delivery_address: string
+    delivery_district?: string | null
     request_type?: string
     required_date?: string | null
     required_at?: string | null
@@ -312,6 +314,7 @@ export default function DespachoPage() {
               required_at,
               time_window,
               contracts(code, clients(business_name)),
+              delivery_district,
               pickup_address,
               delivery_address,
               transport_request_items (
@@ -689,7 +692,7 @@ export default function DespachoPage() {
                       </p>
                       <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-slate-500" title={`Origen: ${req.pickup_address}\nDestino: ${req.delivery_address}`}>
                         <MapPin className="h-3 w-3 shrink-0 text-blue-500" aria-hidden="true" />
-                        <span className="truncate">{districtOf(req.pickup_address)} → {districtOf(req.delivery_address, req.delivery_district)}</span>
+                        <span className="truncate">{districtOf(req.pickup_address, req.pickup_district)} → {districtOf(req.delivery_address, req.delivery_district)}</span>
                       </p>
                       <p className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-slate-500">
                         <span>Lima: <b className="text-slate-700">{requestedAttention(req)}</b></span>
@@ -780,7 +783,7 @@ export default function DespachoPage() {
                           const reqs = dispatch.dispatch_requests || []
                           const ots = [...new Set(reqs.map(r => r.transport_requests?.contracts?.code).filter(Boolean))] as string[]
                           const clients = [...new Set(reqs.map(r => r.transport_requests?.contracts?.clients?.business_name).filter(Boolean))] as string[]
-                          const districts = [...new Set(reqs.map(r => districtOf(r.transport_requests?.delivery_address)))]
+                          const districts = [...new Set(reqs.map(r => districtOf(r.transport_requests?.delivery_address, r.transport_requests?.delivery_district)))]
                           const more = (list: string[]) => list.length > 1 ? ` +${list.length - 1}` : ''
                           return <>
                             <td className="max-w-40">
