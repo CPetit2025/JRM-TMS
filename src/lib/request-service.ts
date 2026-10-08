@@ -27,12 +27,13 @@ export function serviceLabel(request: Partial<RequestService> | null | undefined
   return kind ? SERVICE_KINDS[kind].label : 'Tipo sin identificar'
 }
 
-/** Completa filas que solo traen request_id (Torre, Documentos) con el tipo de servicio de la solicitud. */
+/** Completa filas que solo traen request_id (Torre, Documentos) con el tipo de servicio de la solicitud.
+ *  Usa la RPC autorizada por permiso y sede: los perfiles de la bandeja no siempre leen transport_requests. */
 export async function fetchServiceTypes(db: SupabaseClient, ids: string[]) {
   const map = new Map<string, Pick<RequestService, 'request_type' | 'attention_mode' | 'contract_id'>>()
   const unique = [...new Set(ids.filter(Boolean))]
-  for (let i = 0; i < unique.length; i += 150) {
-    const { data, error } = await db.from('transport_requests').select('id, request_type, attention_mode, contract_id').in('id', unique.slice(i, i + 150))
+  for (let i = 0; i < unique.length; i += 500) {
+    const { data, error } = await db.rpc('request_service_types', { p_requests: unique.slice(i, i + 500) })
     if (error) break
     for (const r of (data || []) as { id: string; request_type: string; attention_mode: string | null; contract_id: string | null }[])
       map.set(r.id, { request_type: r.request_type, attention_mode: r.attention_mode, contract_id: r.contract_id })

@@ -30,7 +30,7 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
   const [page, setPage] = useState(0), [history, setHistory] = useState<DeliveryRow | null>(null)
   const [exporting, setExporting] = useState(false)
   const filtered = useMemo(() => filterDeliveries(rows, search, state, conformity).filter(row => !service || deliveryServiceKind(row) === service), [rows, search, state, conformity, service])
-  const services = (Object.keys(SERVICE_KINDS) as ServiceKind[]).filter(kind => rows.some(row => deliveryServiceKind(row) === kind))
+  const services = (Object.keys(SERVICE_KINDS) as ServiceKind[]).filter(kind => kind === service || rows.some(row => deliveryServiceKind(row) === kind))
   const pages = Math.max(1, Math.ceil(filtered.length / 25)), current = Math.min(page, pages - 1)
   const visible = filtered.slice(current * 25, (current + 1) * 25)
   const states = Array.from(new Set(rows.map(row => row.state)))
@@ -59,7 +59,7 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
     </div>
     <div className="flex flex-wrap gap-2">
       <label className="relative flex-1 min-w-48"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><input aria-label="Buscar OT, guía, cliente, placa o proveedor" placeholder="OT, guía, cliente, placa o proveedor…" value={search} onChange={e => { setSearch(e.target.value); setPage(0) }} className="h-10 w-full rounded-lg border bg-white pl-9 pr-3 text-sm" /></label>
-      {services.length > 1 && <select aria-label="Filtrar tipo de servicio" value={service} onChange={e => { setService(e.target.value); setPage(0) }} className="h-10 max-w-full rounded-lg border bg-white px-2 text-sm"><option value="">Todos los servicios</option>{services.map(kind => <option key={kind} value={kind}>{SERVICE_KINDS[kind].short}</option>)}</select>}
+      {(services.length > 1 || !!service) && <select aria-label="Filtrar tipo de servicio" value={service} onChange={e => { setService(e.target.value); setPage(0) }} className="h-10 max-w-full rounded-lg border bg-white px-2 text-sm"><option value="">Todos los servicios</option>{services.map(kind => <option key={kind} value={kind}>{SERVICE_KINDS[kind].short}</option>)}</select>}
       <select aria-label="Filtrar estado operativo" value={state} onChange={e => { setState(e.target.value); setPage(0) }} className="h-10 max-w-full rounded-lg border bg-white px-2 text-sm"><option value="">Todos los estados</option>{states.map(s => <option key={s} value={s}>{deliveryStatus(s).label}</option>)}</select>
       <select aria-label="Filtrar conformidad" value={conformity} onChange={e => { setConformity(e.target.value); setPage(0) }} className="h-10 max-w-full rounded-lg border bg-white px-2 text-sm"><option value="">Todas las conformidades</option>{Object.entries(conformityLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
     </div>
