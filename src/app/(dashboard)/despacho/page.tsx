@@ -6,22 +6,18 @@ import { DataTable } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
 import { InlineStatusBar } from '@/components/ui/inline-status-bar'
 import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filter-toolbar'
-import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
-import { TableActions, type TableAction } from '@/components/ui/table-actions'
 import { districtOf } from '@/lib/address'
-import { ServiceTypeBadge, ServiceTypeList } from '@/components/ui/service-type-badge'
-import { serviceLabel } from '@/lib/request-service'
+import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
+import { serviceLabel, serviceKind, SERVICE_KINDS, type ServiceKind } from '@/lib/request-service'
 
+import { DISPATCH_STATUS_GROUPS } from '@/lib/dispatch-status'
 import { splitFreight } from '@/lib/transport-budget'
 import { isTransportUnit, TRANSPORT_VEHICLE_TYPES } from '@/lib/fleet-filters'
-import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Truck, MapPin, Loader2, Plus, FileText, Tag, Search, XCircle, Clock, Route, PackageCheck, Eye } from 'lucide-react'
+import { Truck, MapPin, Loader2, Plus, FileText, Tag, Search, Clock, Route, PackageCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
-import { EvidenceGallery } from '@/components/evidence/EvidenceGallery'
-import { DispatchCrewUnloading } from '@/components/despacho/DispatchCrewUnloading'
 import { QuoteBreakdown } from '@/components/tarifas/TransportTariffManager'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { calculateRouteDistance } from '@/lib/routing'
@@ -121,22 +117,11 @@ interface Dispatch {
   dispatch_requests?: DispatchRequest[]
 }
 
-const dispatchTone = (status: string): StatusTone =>
-  status === 'PROGRAMADO' ? 'warning'
-  : ['EN_CURSO', 'EN RUTA', 'RETORNO'].includes(status) ? 'info'
-  : status === 'ESPERANDO_AUTORIZACION' ? 'special'
-  : ['ENTREGADO', 'RETORNO_COMPLETADO', 'LIQUIDADO', 'CERRADO'].includes(status) ? 'success'
-  : status === 'CANCELADO' ? 'danger' : 'neutral'
-
-const STATUS_GROUPS: Record<'programados' | 'ruta' | 'cerrar', string[]> = {
-  programados: ['PROGRAMADO'],
-  ruta: ['EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'],
-  cerrar: ['ENTREGADO', 'RETORNO_COMPLETADO'],
-}
+const STATUS_GROUPS = { ruta: DISPATCH_STATUS_GROUPS.RUTA as readonly string[], cerrar: DISPATCH_STATUS_GROUPS.POR_CERRAR as readonly string[] }
 
 export default function DespachoPage() {
   const router = useRouter()
-  const { canWrite, canRead } = usePermissions()
+  const { canWrite } = usePermissions()
   const supabase = useMemo(() => createClient(), [])
   const [pendingRequests, setPendingRequests] = useState<TransportRequest[]>([])
   const [dispatches, setDispatches] = useState<Dispatch[]>([])
@@ -146,28 +131,16 @@ export default function DespachoPage() {
   const alertedDispatches = useRef<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
 
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filterStatus, setFilterStatus] = useState('TODOS')
-  const [filterModalidad, setFilterModalidad] = useState('TODAS')
-
-  const [statusGroup, setStatusGroup] = useState<'' | 'programados' | 'ruta' | 'cerrar'>('')
-  const [mobileTab, setMobileTab] = useState<'pendientes' | 'programados'>('programados')
-
-  const filteredDispatches = dispatches.filter(d => {
-    const matchSearch = searchTerm === '' || 
-      (d.dispatch_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (d.legacy_dispatch_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (d.vehicle_plate || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (d.driver_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      d.dispatch_requests?.some((r: DispatchRequest) => [r.transport_requests?.request_number, r.transport_requests?.contracts?.code].join(' ').toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchStatus = filterStatus === 'TODOS' || d.status === filterStatus;
-    const matchModalidad = filterModalidad === 'TODAS' || (d.modalidad || 'PROPIA') === filterModalidad;
-    const matchGroup = !statusGroup || STATUS_GROUPS[statusGroup].includes(d.status);
-    return matchSearch && matchStatus && matchModalidad && matchGroup;
+  const [pendingSearch, setPendingSearch] = useState('')
+  const [pendingService, setPendingService] = useState('')
+  const visiblePending = pendingRequests.filter(r => {
+    const term = pendingSearch.trim().toLocaleLowerCase('es-PE')
+    const matchSearch = !term || [r.request_number, r.requester_name, r.contracts?.code, r.contracts?.clients?.business_name,
+      districtOf(r.pickup_address, r.pickup_district), districtOf(r.delivery_address, r.delivery_district)].join(' ').toLocaleLowerCase('es-PE').includes(term)
+    return matchSearch && (!pendingService || serviceKind(r) === pendingService)
   })
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [selectedDispatchDetail, setSelectedDispatchDetail] = useState<Dispatch | null>(null)
   
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [calculatingDistance, setCalculatingDistance] = useState(false)
@@ -298,41 +271,11 @@ export default function DespachoPage() {
       if (historyError) throw historyError
       setPendingRequests(withRescheduling(reqData || [], history || []))
 
-      // 2. Obtener los despachos ya programados con sus múltiples solicitudes
-      // Ahora usamos dispatch_requests
+      // 2. Despachos asignados: solo para los contadores y el aviso de retorno (se gestionan en Torre de Control)
       const { data: dispatchData, error: dispatchError } = await supabase
         .from('dispatches')
-        .select(`
-          id, dispatch_number, legacy_dispatch_number, driver_name, vehicle_plate, scheduled_departure, status, estimated_distance_km,
-          docs_required, docs_ready_at, docs_reissue, docs_reissue_reason, modalidad, tercero_salida_at,
-          dispatch_requests (
-            transport_request_id,
-            status,
-            document_type,
-            document_number,
-            transport_requests (
-              id,
-              request_number,
-              request_type,
-              required_date,
-              required_at,
-              time_window,
-              contracts(code, clients(business_name)),
-              delivery_district,
-              attention_mode,
-              contract_id,
-              pickup_address,
-              delivery_address,
-              transport_request_items (
-                weight,
-                volume_m3,
-                quantity
-              )
-            )
-          )
-        `)
+        .select('id, dispatch_number, status')
         .in('status', ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'RETORNO', 'RETORNO_COMPLETADO', 'ESPERANDO_AUTORIZACION', 'ENTREGADO'])
-        .order('created_at', { ascending: false })
 
       if (dispatchError) throw dispatchError
       if (!dispatchData) {
@@ -340,15 +283,8 @@ export default function DespachoPage() {
         setDispatches([])
       } else {
         const fetchedDispatches = dispatchData as unknown as Dispatch[] || []
-        const assignedIds = fetchedDispatches.flatMap(d => (d.dispatch_requests || []).map(r => r.transport_request_id))
-        const { data: assignedHistory, error: assignedHistoryError } = assignedIds.length
-          ? await supabase.rpc('get_transport_request_rescheduling', { p_request_ids: [...new Set(assignedIds)] })
-          : { data: [], error: null }
-        if (assignedHistoryError) throw assignedHistoryError
-        setDispatches(fetchedDispatches.map(d => ({ ...d, dispatch_requests: d.dispatch_requests?.map(r => ({ ...r,
-          transport_requests: { ...r.transport_requests, rescheduling: (assignedHistory || []).find((h: RequestRescheduling) => h.request_id === r.transport_request_id) },
-        })) })))
-        
+        setDispatches(fetchedDispatches)
+
         // Disparar alertas para los que ya están ESPERANDO_AUTORIZACION
         let shouldAlert = false
         fetchedDispatches.forEach(d => {
@@ -527,20 +463,6 @@ export default function DespachoPage() {
     }
   }
 
-  // Solo un despacho PROGRAMADO se cancela: libera la partida, anula el flete y devuelve las solicitudes a aprobadas
-  const handleCancelDispatch = async (dispatchId: string, dispatchNumber: string) => {
-    const reason = prompt(`Motivo de la cancelación del despacho ${dispatchNumber}:`)
-    if (!reason?.trim()) return
-    try {
-      const { data, error } = await supabase.rpc('cancel_dispatch', { p_dispatch_id: dispatchId, p_reason: reason.trim() })
-      if (error || (data && !data.success)) throw new Error(error?.message || data?.error || 'No se pudo cancelar')
-      toast.success('Despacho cancelado: se liberó la partida y las solicitudes volvieron a aprobadas.')
-      fetchData()
-    } catch (err) {
-      toast.error('Error al cancelar: ' + (err instanceof Error ? err.message : String(err)))
-    }
-  }
-
   const toggleRequestSelection = async (reqId: string, pickup: string, delivery: string) => {
     const isSelected = newDispatch.selected_requests.some(r => r.id === reqId)
     const request = pendingRequests.find(r => r.id === reqId)
@@ -633,11 +555,8 @@ export default function DespachoPage() {
       <div className="flex flex-wrap items-center gap-2">
         <TransportWorkflow current="programacion" torre={false} />
         <div className="ml-auto min-w-0">
-          <InlineStatusBar label="Resumen operativo (filtra la tabla)" loading={loading} active={statusGroup || undefined}
-            onChange={key => {
-              if (key === 'asignar') { setStatusGroup(''); setMobileTab('pendientes'); return }
-              setMobileTab('programados'); setStatusGroup(prev => prev === key ? '' : key as 'programados' | 'ruta' | 'cerrar')
-            }}
+          <InlineStatusBar label="Resumen operativo: los despachos asignados se siguen en Torre de Control" loading={loading} active="asignar"
+            onChange={key => { if (key !== 'asignar') router.push(`/torre-control?estado=${({ programados: 'PROGRAMADO', ruta: 'RUTA', cerrar: 'POR_CERRAR' } as Record<string, string>)[key]}`) }}
             items={[
               { key: 'asignar', label: 'Por asignar', count: pendingRequests.length, icon: <FileText />, tone: 'amber' },
               { key: 'programados', label: 'Programados', count: dispatches.filter(d => d.status === 'PROGRAMADO').length, icon: <Clock />, tone: 'navy' },
@@ -646,200 +565,88 @@ export default function DespachoPage() {
         </div>
       </div>
 
-      <div role="tablist" aria-label="Vista de despacho" className="flex gap-1 2xl:hidden">
-        {([['pendientes', `Por asignar (${pendingRequests.length})`], ['programados', 'Programados']] as const).map(([key, text]) => (
-          <button key={key} type="button" role="tab" aria-selected={mobileTab === key} onClick={() => setMobileTab(key)}
-            className={`min-h-11 flex-1 rounded-jrm border px-3 text-sm font-semibold ${mobileTab === key ? 'border-jrm-navy bg-jrm-navy text-white' : 'border-jrm-line bg-jrm-surface text-slate-600'}`}>{text}</button>
-        ))}
-      </div>
+      <section aria-label="Solicitudes por asignar" className="min-w-0 space-y-2">
+        <FilterToolbar compact label="Búsqueda y filtros de solicitudes por asignar" onClear={() => { setPendingSearch(''); setPendingService('') }}>
+          <label className="relative min-w-0 flex-1 basis-60">
+            <span className="sr-only">Buscar solicitudes</span><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" aria-hidden="true" />
+            <input type="search" placeholder="Buscar por OT, cliente, solicitud o distrito…" value={pendingSearch} onChange={e => setPendingSearch(e.target.value)} className={`${filterControl} pl-9`} />
+          </label>
+          <FilterField inline label="Servicio" className="w-60">
+            <select className={filterControl} value={pendingService} onChange={e => setPendingService(e.target.value)}>
+              <option value="">Todos</option>
+              {(Object.keys(SERVICE_KINDS) as ServiceKind[]).map(kind => <option key={kind} value={kind}>{SERVICE_KINDS[kind].short}</option>)}
+            </select>
+          </FilterField>
+        </FilterToolbar>
 
-      <div className="grid items-start gap-3 2xl:grid-cols-[19rem_minmax(0,1fr)]">
-
-        {/* Panel izquierdo: solicitudes por asignar */}
-        <section aria-label="Solicitudes por asignar" className={`${mobileTab === 'pendientes' ? 'block' : 'hidden'} overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card 2xl:block`}>
-          <div className="flex h-11 items-center justify-between border-b border-jrm-line px-3">
+        <div className="overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-jrm-line px-3 py-2.5">
             <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-800">
               <FileText className="h-4 w-4 text-amber-600" aria-hidden="true" />
-              Solicitudes por asignar <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">{pendingRequests.length}</span>
+              Solicitudes por asignar <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">{visiblePending.length}</span>
             </h2>
+            <p className="text-xs text-slate-500">Programados y en ruta: <Link href="/torre-control" className="font-semibold text-jrm-navy hover:underline">Torre de Control</Link> · Servicios realizados: <Link href="/contratos/servicios" className="font-semibold text-jrm-navy hover:underline">Registro de servicios</Link></p>
           </div>
-          <div className="max-h-[calc(100vh-260px)] overflow-y-auto">
-            {loading ? (
-              <div className="p-6 text-center text-sm text-slate-500"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Cargando...</div>
-            ) : pendingRequests.length === 0 ? (
-              <div className="p-6 text-center text-sm text-slate-500">No hay solicitudes pendientes de asignación.</div>
-            ) : (
-              <ul className="divide-y divide-slate-100">
-                {pendingRequests.map(req => {
+          <div className="overflow-x-auto">
+            <DataTable dense className="w-full border-collapse text-left">
+              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
+                <tr>
+                  {['Atención', 'Servicio', 'OT · Cliente', 'Solicitud', 'Origen → Destino', 'Partida', 'Acciones'].map((title, i) => <th key={title} className={`whitespace-nowrap font-semibold ${i === 6 ? 'text-right' : ''}`}>{title}</th>)}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <tr><td colSpan={7} className="p-8 text-center text-slate-500"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Cargando solicitudes…</td></tr>
+                ) : visiblePending.length === 0 ? (
+                  <tr><td colSpan={7} className="p-8 text-center text-slate-500">{pendingRequests.length ? 'No hay solicitudes con estos filtros.' : 'No hay solicitudes pendientes de asignación.'}</td></tr>
+                ) : visiblePending.map(req => {
                   const selected = newDispatch.selected_requests.some(r => r.id === req.id)
                   const balance = req.contracts?.contract_budgets?.[0]?.balance_pen
+                  const [day, time] = requestedAttention(req).split(/, | · /)
                   return (
-                    <li key={req.id} className="px-3 py-2.5 hover:bg-slate-50">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          <span className="truncate text-sm font-bold text-jrm-navy">{req.request_number}</span>
-                          <ServiceTypeBadge request={req} />
-                          {wasRescheduled(req) && <span className="whitespace-nowrap rounded border border-orange-200 bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-800">Reprogramado</span>}
-                        </span>
+                    <tr key={req.id} className={selected ? 'bg-blue-50/50' : 'hover:bg-slate-50'}>
+                      <td className="whitespace-nowrap">
+                        <p className="text-sm text-slate-700">{day}</p>
+                        {time && <p className="mt-0.5 text-xs text-slate-500">{time}</p>}
+                        {wasRescheduled(req) && <p className="mt-0.5 text-[11px] font-semibold text-orange-700">Reprogramado</p>}
+                      </td>
+                      <td><ServiceTypeBadge request={req} /></td>
+                      <td className="max-w-48">
+                        <p className="whitespace-nowrap text-sm font-bold text-jrm-navy">{req.contracts?.code ? `OT ${req.contracts.code}` : 'Sin OT'}</p>
+                        <p className="mt-0.5 truncate text-xs text-slate-500" title={req.contracts?.clients?.business_name || undefined}>{req.contracts?.clients?.business_name || 'Sin cliente'}</p>
+                      </td>
+                      <td className="max-w-40">
+                        <p className="whitespace-nowrap text-sm font-semibold text-slate-800">{req.request_number}</p>
+                        <p className="mt-0.5 truncate text-xs text-slate-500" title={req.requester_name}>{req.requester_name}</p>
+                      </td>
+                      <td className="max-w-48">
+                        <p className="flex items-center gap-1 truncate text-sm text-slate-700" title={`Origen: ${req.pickup_address}\nDestino: ${req.delivery_address}`}>
+                          <MapPin className="h-3.5 w-3.5 shrink-0 text-blue-500" aria-hidden="true" />
+                          <span className="truncate">{districtOf(req.pickup_address, req.pickup_district)} → {districtOf(req.delivery_address, req.delivery_district)}</span>
+                        </p>
+                      </td>
+                      <td className="whitespace-nowrap text-sm">
+                        {req.contracts?.code && balance !== undefined && balance !== null
+                          ? <span className={`font-semibold ${(balance || 0) < 500 ? 'text-red-700' : 'text-slate-700'}`}>S/ {(balance || 0).toLocaleString('es-PE')}</span>
+                          : <span className="text-slate-400">—</span>}
+                      </td>
+                      <td className="text-right">
                         {canWrite('despacho') && (
                           <button type="button" onClick={() => { setIsModalOpen(true); if (!selected) void toggleRequestSelection(req.id, req.pickup_address, req.delivery_address) }}
                             aria-label={`Asignar ${req.request_number}`}
-                            className="inline-flex min-h-11 shrink-0 items-center rounded-lg border border-jrm-navy px-3 text-xs font-semibold text-jrm-navy hover:bg-blue-50 lg:min-h-8">
-                            Asignar
+                            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-jrm-navy px-3 text-xs font-semibold text-white hover:bg-jrm-navy-dark lg:min-h-8">
+                            <Truck className="h-4 w-4" aria-hidden="true" />{selected ? 'En la ruta' : 'Asignar'}
                           </button>
                         )}
-                      </div>
-                      <p className="mt-0.5 truncate text-xs text-slate-700" title={req.requester_name}>
-                        {req.requester_name}{req.contracts?.clients?.business_name ? <span className="text-slate-500"> · {req.contracts.clients.business_name}</span> : null}
-                      </p>
-                      <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-slate-500" title={`Origen: ${req.pickup_address}\nDestino: ${req.delivery_address}`}>
-                        <MapPin className="h-3 w-3 shrink-0 text-blue-500" aria-hidden="true" />
-                        <span className="truncate">{districtOf(req.pickup_address, req.pickup_district)} → {districtOf(req.delivery_address, req.delivery_district)}</span>
-                      </p>
-                      <p className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-slate-500">
-                        <span>Lima: <b className="text-slate-700">{requestedAttention(req)}</b></span>
-                        {req.contracts?.code && balance !== undefined && (
-                          <span className={`font-semibold ${(balance || 0) < 500 ? 'text-red-700' : 'text-slate-600'}`}>{req.contracts.code} · S/ {(balance || 0).toLocaleString('es-PE')}</span>
-                        )}
-                      </p>
-                    </li>
+                      </td>
+                    </tr>
                   )
                 })}
-              </ul>
-            )}
+              </tbody>
+            </DataTable>
           </div>
-        </section>
-
-        {/* Panel derecho: despachos / rutas programadas */}
-        <section aria-label="Despachos y rutas programadas" className={`${mobileTab === 'programados' ? 'block' : 'hidden'} min-w-0 space-y-2 2xl:block`}>
-          <FilterToolbar compact label="Búsqueda y filtros de despachos" onClear={() => { setSearchTerm(''); setFilterStatus('TODOS'); setFilterModalidad('TODAS'); setStatusGroup('') }}>
-            <label className="relative min-w-0 flex-1 basis-60">
-              <span className="sr-only">Buscar despachos</span><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" aria-hidden="true" />
-              <input type="search" placeholder="Buscar por nro, placa, conductor u OT…" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`${filterControl} pl-9`} />
-            </label>
-            <FilterField inline label="Estado" className="w-56">
-              <select className={filterControl} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-                <option value="TODOS">Todos</option>
-                <option value="PROGRAMADO">Programado</option>
-                <option value="EN RUTA">En Ruta</option>
-                <option value="RETORNO">Retorno</option>
-                <option value="RETORNO_COMPLETADO">Retorno completado</option>
-                <option value="CERRADO">Cerrado</option>
-                <option value="LIQUIDADO">Cerrado (ruta cerrada)</option>
-              </select>
-            </FilterField>
-            <FilterField inline label="Unidad" className="w-52">
-              <select className={filterControl} value={filterModalidad} onChange={(e) => setFilterModalidad(e.target.value)}>
-                <option value="TODAS">Todas</option>
-                <option value="PROPIA">Flota propia</option>
-                <option value="TERCERO">Tercerizada</option>
-              </select>
-            </FilterField>
-          </FilterToolbar>
-
-          <div className="overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
-            <div className="max-h-[calc(100vh-260px)] overflow-auto">
-              <DataTable dense className="relative w-full border-collapse text-left">
-                <thead className="sticky top-0 z-10 border-slate-100 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500 shadow-[0_1px_0_0_#e2e8f0]">
-                  <tr>
-                    <th className="whitespace-nowrap font-semibold">Salida</th>
-                    <th className="whitespace-nowrap font-semibold">Servicio</th>
-                    <th className="whitespace-nowrap font-semibold">OT · Cliente</th>
-                    <th className="whitespace-nowrap font-semibold">Unidad</th>
-                    <th className="whitespace-nowrap font-semibold">Destino</th>
-                    <th className="whitespace-nowrap font-semibold">Estado</th>
-                    <th className="whitespace-nowrap text-right font-semibold">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-500">
-                        <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin" />
-                        Cargando despachos...
-                      </td>
-                    </tr>
-                  ) : filteredDispatches.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-500">
-                        No hay despachos registrados.
-                      </td>
-                    </tr>
-                  ) : (
-                    // eslint-disable-next-line react-hooks/refs -- los manejadores solo se ejecutan al elegir una acción, no durante el render
-                    filteredDispatches.map(dispatch => {
-                      const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(dispatch.scheduled_departure))
-                      const docsHref = `/despacho/documentos?despacho=${dispatch.id}&vista=${dispatch.status === 'PROGRAMADO' ? 'salida' : 'historial'}&desde=${day}`
-                      const opHref = `/torre-control?despacho=${dispatch.id}&fecha=${day}`
-                      const canDocs = canRead('documentario') || canRead('packing-list') || canRead('planificacion')
-                      const canOp = canRead('torre-control') || canRead('despacho')
-                      const programado = dispatch.status === 'PROGRAMADO'
-                      const primaryDocs = programado && canDocs
-                      const menu: TableAction[] = []
-                      if (primaryDocs && canOp) menu.push({ id: 'op', label: 'Gestionar operación', icon: <Truck className="h-4 w-4" />, onSelect: () => router.push(opHref) })
-                      if (!primaryDocs && canDocs) menu.push({ id: 'docs', label: 'Documentos', icon: <FileText className="h-4 w-4" />, onSelect: () => router.push(docsHref) })
-                      if (canWrite('despacho') && programado) menu.push({ id: 'cancel', label: 'Cancelar despacho', icon: <XCircle className="h-4 w-4" />, tone: 'danger', onSelect: () => handleCancelDispatch(dispatch.id, dispatch.dispatch_number) })
-                      return (
-                      <tr key={dispatch.id} className="cursor-pointer transition-colors hover:bg-slate-50" onClick={() => setSelectedDispatchDetail(dispatch)}>
-                        {(() => {
-                          const reqs = dispatch.dispatch_requests || []
-                          const ots = [...new Set(reqs.map(r => r.transport_requests?.contracts?.code).filter(Boolean))] as string[]
-                          const clients = [...new Set(reqs.map(r => r.transport_requests?.contracts?.clients?.business_name).filter(Boolean))] as string[]
-                          const districts = [...new Set(reqs.map(r => districtOf(r.transport_requests?.delivery_address, r.transport_requests?.delivery_district)))]
-                          const more = (list: string[]) => list.length > 1 ? ` +${list.length - 1}` : ''
-                          return <>
-                            <td className="whitespace-nowrap">
-                              <p className="text-sm text-slate-700">{new Date(dispatch.scheduled_departure).toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit' })}</p>
-                              <p className="mt-0.5 text-xs text-slate-500">{new Date(dispatch.scheduled_departure).toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hour12: false })}</p>
-                            </td>
-                            <td className="max-w-36"><ServiceTypeList requests={reqs.map(r => r.transport_requests)} /></td>
-                            <td className="max-w-36">
-                              <p className="whitespace-nowrap text-sm font-bold text-jrm-navy" title={ots.map(o => `OT ${o}`).join(', ') || undefined}>{ots.length ? `OT ${ots[0]}${more(ots)}` : 'Sin OT'}</p>
-                              <p className="mt-0.5 truncate text-xs text-slate-500" title={clients.join(', ') || undefined}>{clients.length ? `${clients[0]}${more(clients)}` : 'Sin cliente'}</p>
-                            </td>
-                            <td>
-                              <span className="flex items-center gap-1.5 whitespace-nowrap text-sm font-bold uppercase text-slate-800">
-                                {dispatch.vehicle_plate}
-                                {dispatch.modalidad === 'TERCERO' && <span className="rounded border border-violet-200 bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold normal-case text-violet-700">Tercero</span>}
-                              </span>
-                              <span className="block max-w-32 truncate text-xs text-slate-500" title={dispatch.driver_name || undefined}>{dispatch.driver_name}</span>
-                            </td>
-                            <td className="max-w-36">
-                              <p className="truncate text-sm text-slate-700" title={reqs.map(r => `${r.transport_requests?.request_number}: ${r.transport_requests?.delivery_address}`).join('\n') || undefined}>{districts.length ? `${districts[0]}${more(districts)}` : 'Sin destino'}</p>
-                              <p className="mt-0.5 whitespace-nowrap text-xs text-slate-500">{reqs.length} servicio{reqs.length === 1 ? '' : 's'}{reqs.some(r => r.transport_requests?.rescheduling) ? ' · reprogramado' : ''}</p>
-                            </td>
-                          </>
-                        })()}
-                        <td>
-                          <span className="block max-w-32 [&>span]:whitespace-normal [&>span]:leading-4"><StatusBadge tone={dispatchTone(dispatch.status)}>{dispatchStatusLabel(dispatch.status)}</StatusBadge></span>
-                          {programado && dispatch.docs_required && (
-                            <div className={`mt-1 text-[10px] font-semibold ${dispatch.docs_reissue ? 'text-red-600' : dispatch.docs_ready_at ? 'text-emerald-600' : 'text-amber-600'}`}
-                              title={dispatch.docs_reissue_reason || undefined}>
-                              {dispatch.docs_reissue ? 'Guías por reemitir' : dispatch.docs_ready_at ? 'Documentos listos' : 'Documentos pendientes'}
-                            </div>
-                          )}
-                        </td>
-                        <td onClick={e => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-1">
-                            <button type="button" onClick={() => setSelectedDispatchDetail(dispatch)} aria-label={`Ver detalle de ${dispatch.dispatch_number}`} title="Ver detalle"
-                              className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-300 px-2.5 text-xs font-semibold text-jrm-navy hover:bg-slate-50 lg:min-h-8"><Eye className="h-4 w-4" /><span className="hidden 2xl:inline">Ver detalle</span></button>
-                            {primaryDocs
-                              ? <Link href={docsHref} title="Documentos" aria-label="Documentos" className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-jrm-navy hover:bg-slate-50 lg:min-h-8"><FileText className="h-4 w-4" /><span className="hidden 2xl:inline">Documentos</span></Link>
-                              : canOp && <Link href={opHref} title="Gestionar operación" aria-label="Gestionar operación" className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-jrm-navy hover:bg-blue-100 lg:min-h-8"><Truck className="h-4 w-4" /><span className="hidden 2xl:inline">Gestionar</span></Link>}
-                            <TableActions compact label={`Más acciones de ${dispatch.dispatch_number}`} actions={menu} />
-                          </div>
-                        </td>
-                      </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </DataTable>
-            </div>
-          </div>
-        </section>
-
-      </div>
+        </div>
+      </section>
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -1105,133 +912,6 @@ export default function DespachoPage() {
         </form>
       </Modal>
 
-      {/* Modal de Detalles del Despacho */}
-      <Modal
-        isOpen={!!selectedDispatchDetail}
-        onClose={() => setSelectedDispatchDetail(null)}
-        title={`Detalle del despacho ${selectedDispatchDetail?.dispatch_number || ''}${selectedDispatchDetail?.legacy_dispatch_number ? ` · antes ${selectedDispatchDetail.legacy_dispatch_number}` : ''}`}
-        maxWidth="max-w-4xl"
-      >
-        {selectedDispatchDetail && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <span className="text-xs text-slate-500 font-semibold uppercase block mb-1">Unidad y Chofer</span>
-                <div className="font-bold text-[#002855]">{selectedDispatchDetail.vehicle_plate}</div>
-                <div className="text-sm text-slate-600">{selectedDispatchDetail.driver_name}</div>
-                {selectedDispatchDetail.modalidad === 'TERCERO' && (
-                  <Link href={`/torre-control?despacho=${selectedDispatchDetail.id}&fecha=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(selectedDispatchDetail.scheduled_departure))}&proveedor=1`}
-                    className="mt-1 inline-flex min-h-11 items-center text-xs font-semibold text-violet-700 hover:underline">Unidad tercerizada · acceso y avance</Link>
-                )}
-              </div>
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <span className="text-xs text-slate-500 font-semibold uppercase block mb-1">Salida Programada</span>
-                <div className="font-semibold text-slate-800">
-                  {new Date(selectedDispatchDetail.scheduled_departure).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short', hour12: false })}
-                </div>
-                <div className="text-sm text-slate-600">
-                  Distancia: {selectedDispatchDetail.estimated_distance_km ? `${selectedDispatchDetail.estimated_distance_km} KM` : 'N/A'}
-                </div>
-              </div>
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <span className="text-xs text-slate-500 font-semibold uppercase block mb-1">Estado Actual</span>
-                <span className={`px-2 py-1 text-xs font-bold rounded-md whitespace-nowrap inline-block mt-1 ${
-                  selectedDispatchDetail.status === 'PROGRAMADO' ? 'bg-yellow-100 text-yellow-700' :
-                  (selectedDispatchDetail.status === 'EN_CURSO' || selectedDispatchDetail.status === 'EN RUTA') ? 'bg-blue-100 text-blue-700' :
-                  selectedDispatchDetail.status === 'ESPERANDO_AUTORIZACION' ? 'bg-orange-100 text-orange-700' :
-                  selectedDispatchDetail.status === 'RETORNO' ? 'bg-indigo-100 text-indigo-700' :
-                  selectedDispatchDetail.status === 'ENTREGADO' || selectedDispatchDetail.status === 'LIQUIDADO' ? 'bg-green-100 text-green-700' :
-                  'bg-red-100 text-red-700'
-                }`}>
-                  {dispatchStatusLabel(selectedDispatchDetail.status)}
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-blue-600" />
-                Puntos de Ruta ({selectedDispatchDetail.dispatch_requests?.length || 0})
-              </h3>
-              
-              <div className="space-y-3">
-                {selectedDispatchDetail.dispatch_requests?.map((dr, idx) => {
-                  const req = dr.transport_requests;
-                  const totalWeight = req.transport_request_items?.reduce((sum, item) => sum + (Number(item.weight || 0) * Number(item.quantity || 1)), 0) || 0;
-                  const totalVol = req.transport_request_items?.reduce((sum, item) => sum + (Number(item.volume_m3 || 0) * Number(item.quantity || 1)), 0) || 0;
-
-                  return (
-                    <div key={dr.transport_request_id} className="bg-white border border-slate-200 p-4 rounded-xl shadow-sm flex flex-col md:flex-row gap-4 justify-between items-start md:items-center relative">
-                      <div className="absolute top-4 right-4 text-slate-300 font-black text-2xl opacity-50">#{idx + 1}</div>
-                      
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="font-bold text-[#002855] text-base">{req.contracts?.code ? `OT ${req.contracts.code}` : 'Sin OT'}</span>
-                          <span className="text-xs font-semibold text-slate-600">{req.request_number}</span>
-                          <ServiceTypeBadge request={req} />
-                          <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-semibold">
-                            {dr.document_type}: {dr.document_number}
-                          </span>
-                        </div>
-                        <p className="text-sm text-slate-700">{req.contracts?.clients?.business_name || 'Sin cliente'}</p>
-                        <p className="mt-1 text-xs text-slate-600">{serviceLabel(req)} · Solicitada · Lima: {requestedAttention(req)}</p>
-                        {req.rescheduling && <p className="mt-1 text-xs font-semibold text-amber-800">Reprogramado · {serviceDate(req.rescheduling.fecha_anterior)} → {serviceDate(req.rescheduling.fecha_nueva)}</p>}
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
-                          <div className="text-sm text-slate-600">
-                            <div className="flex items-start gap-1">
-                              <MapPin className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
-                              <div>
-                                <span className="block text-xs font-bold text-slate-500">ORIGEN</span>
-                                <span>{req.pickup_address}</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-sm text-slate-600">
-                            <div className="flex items-start gap-1">
-                              <MapPin className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                              <div>
-                                <span className="block text-xs font-bold text-slate-500">DESTINO</span>
-                                <span>{req.delivery_address}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="bg-slate-50 rounded-lg p-3 min-w-[120px] text-center border border-slate-100 mt-2 md:mt-0 self-stretch flex flex-col justify-center">
-                        <span className="block text-xs text-slate-500 font-semibold mb-1">Carga Total</span>
-                        <div className="font-bold text-slate-700">{totalWeight.toFixed(2)} KG</div>
-                        <div className="font-bold text-slate-700">{totalVol.toFixed(2)} M3</div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            <div className="border-t pt-4">
-              <DispatchCrewUnloading dispatchId={selectedDispatchDetail.id} status={selectedDispatchDetail.status}
-                canEdit={canWrite('despacho')}
-                stops={(selectedDispatchDetail.dispatch_requests || []).filter(dr => dr.transport_request_id)
-                  .map(dr => ({ request_id: dr.transport_request_id as string, request_number: dr.transport_requests?.request_number || '—' }))} />
-            </div>
-
-            <div className="border-t pt-4">
-              <EvidenceGallery dispatchId={selectedDispatchDetail.id} title="Evidencias registradas · consulta" />
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                onClick={() => setSelectedDispatchDetail(null)}
-                className="px-5 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200 transition-colors"
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
 
     </div>
   )
