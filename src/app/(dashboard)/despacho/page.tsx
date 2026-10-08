@@ -5,6 +5,7 @@ import { TransportWorkflow } from '@/components/transport/TransportWorkflow'
 import { DataTable } from '@/components/ui/data-table'
 
 import { splitFreight } from '@/lib/transport-budget'
+import { isTransportUnit, TRANSPORT_VEHICLE_TYPES } from '@/lib/fleet-filters'
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Truck, MapPin, Loader2, Calendar, Plus, FileText, Tag, Search, Filter, XCircle } from 'lucide-react'
@@ -24,7 +25,7 @@ import { ReportarFallaButton } from '@/components/mantenimiento/ReportarFalla'
 import { TerceroFields, TERCERO_VACIO, type TerceroForm } from '@/components/despacho/Tercero'
 
 type PlanningCarrier = { business_name: string | null }
-type PlanningVehicle = { plate: string; brand: string | null; model: string | null; assigned_driver_id: string | null; carriers: PlanningCarrier | null }
+type PlanningVehicle = { plate: string; type: string | null; brand: string | null; model: string | null; assigned_driver_id: string | null; carriers: PlanningCarrier | null }
 type PlanningDriver = { id: string; first_name: string; last_name: string; document_number: string; profile_id: string | null; carriers: PlanningCarrier | null }
 
 interface TransportRequest {
@@ -334,12 +335,13 @@ export default function DespachoPage() {
       }
 
       // 3. Obtener vehículos y conductores para el select
-      const { data: vData } = await supabase.from('vehicles').select('plate, brand, model, assigned_driver_id, carriers(business_name)').eq('status', 'DISPONIBLE')
+      const { data: vData } = await supabase.from('vehicles').select('plate, type, brand, model, assigned_driver_id, carriers(business_name)')
+        .eq('status', 'DISPONIBLE').eq('is_active', true).in('type', [...TRANSPORT_VEHICLE_TYPES])
       const { data: dData } = await supabase.from('drivers')
         .select('id, first_name, last_name, document_number, profile_id, carriers(business_name)')
         .eq('is_active', true).not('profile_id', 'is', null)
       
-      setVehicles((vData || []).map(vehicle => ({ ...vehicle, carriers: Array.isArray(vehicle.carriers) ? vehicle.carriers[0] || null : vehicle.carriers })))
+      setVehicles((vData || []).filter(vehicle => isTransportUnit(vehicle.type)).map(vehicle => ({ ...vehicle, carriers: Array.isArray(vehicle.carriers) ? vehicle.carriers[0] || null : vehicle.carriers })))
       setDrivers((dData || []).map(driver => ({ ...driver, carriers: Array.isArray(driver.carriers) ? driver.carriers[0] || null : driver.carriers })))
 
     } catch (error) {
@@ -440,7 +442,7 @@ export default function DespachoPage() {
       // GR = despacho con vehículo propio: validación de elegibilidad obligatoria
       if (newDispatch.document_type !== 'NOTA_SALIDA') {
         // Fail-safe: si falta placa o conductor para un GR, bloquear — no saltar validación
-        if (!newDispatch.vehicle_plate || !matches[0]?.id) {
+        if (!vehicles.some(vehicle => vehicle.plate === newDispatch.vehicle_plate) || !matches[0]?.id) {
           toast.error('Para despachos GR debes seleccionar vehículo y conductor antes de programar.')
           setIsSubmitting(false)
           return
@@ -943,6 +945,7 @@ export default function DespachoPage() {
                         options={vehicles.map(v => ({ value: v.plate, label: `${v.plate} - ${v.brand} ${v.model} (${v.carriers?.business_name})` }))}
                         placeholder="Seleccione vehículo..."
                       />
+                      <p className="mt-1 text-xs text-slate-500">Solo unidades de transporte disponibles.</p>
                       {/* Tarifa detectada */}
                       {loadingRate && (
                         <p className="text-xs text-slate-400 flex items-center gap-1 mt-1"><Loader2 className="w-3 h-3 animate-spin" /> Buscando tarifa...</p>
