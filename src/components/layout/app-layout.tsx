@@ -34,6 +34,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     if (path.includes('/monitoreo')) return { title: 'Monitoreo GPS', subtitle: 'Seguimiento en campo' }
     if (path.includes('/torre-control')) return { title: 'Torre de Control JRM', subtitle: 'Vista general operativa' }
     if (path.includes('/clientes')) return { title: 'Directorio Clientes', subtitle: 'Gestión de cartera comercial' }
+    if (path.startsWith('/proveedores')) return { title: 'Proveedores', subtitle: 'Materia prima, producción y proyectos' }
     
     const parts = path.split('/').filter(Boolean)
     if (parts.length > 0) {
