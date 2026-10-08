@@ -35,4 +35,12 @@
     outline: 2px solid #bfdbfe;
     outline-offset: -2px;
   }
+
+  .dense:not(:where(:global(.caja-printable) table, :global(.liq-page) table)) > thead > tr > th {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .dense:not(:where(:global(.caja-printable) table, :global(.liq-page) table)) > tbody > tr > :is(td, th) {
+    padding: 0.375rem 0.75rem;
+  }
 }

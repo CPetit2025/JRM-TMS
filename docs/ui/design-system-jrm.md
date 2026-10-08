@@ -84,3 +84,24 @@ Orden: navegación del proceso → descripción → 5 tarjetas KPI + «Nueva Sol
 3. Caja (cuidando la impresión) y Mantenimiento.
 4. APT y Eficiencia de flota: solo tokens, KPI e insignias; se respetan sus vistas analíticas.
 5. Auditoría final de accesibilidad y regresiones.
+
+## 8. Versión compacta aprobada (referencia 2, 08/10/2026)
+
+La segunda imagen aprobada de Solicitud de Transporte prioriza ver más registros. Medidas aplicadas (referencia → resultado):
+
+| Bloque | Referencia | Implementación |
+|---|---|---|
+| Barra superior | 52–56 px | `h-14` (56 px); muestra solo la sección si la página lleva su título (`PageHeader showTitle`) |
+| Título de página + acciones | 44–56 px | `PageHeader showTitle`: título, descripción y acciones (Nueva Solicitud, Torre de Control) en una fila |
+| Navegación del proceso | 40–44 px | `TransportWorkflow` compacto (`h-10`, sin subtítulos; el subtítulo queda como tooltip). `torre={false}` + `TorreControlButton` para ubicarla en la fila del título |
+| Barra de estados | 36–40 px | `InlineStatusBar`: ícono, nombre y contador por estado; mismos filtros y conteos reales que las tarjetas |
+| Filtros | 40–44 px | `FilterToolbar compact` + `FilterField inline` (controles `h-10`) |
+| Tabla | encabezado 38–42, filas 40–48 | `DataTable dense`; botones de fila de 32 px en escritorio (44 px en táctil) |
+| Paginación | — | `TablePagination compact`: «Mostrando 1 - 14 de 14 resultados», filas por página y números de página |
+| Separación entre bloques | 8–12 px | `gap-2.5` |
+
+Resultado medido con las mismas 14 solicitudes de ejemplo a 1680 × 940: antes se veían 4 filas completas; ahora 9.
+
+Alcance: `TransportWorkflow`, `FilterToolbar`, `DataTable`, `TablePagination`, `TableActions` y la barra superior son compartidos; cambian
+solo en aspecto. Despacho, Documentos y Registro de servicios conservan por ahora sus tarjetas KPI (etapa 5a) y se pasarán a
+`InlineStatusBar` tras aprobar esta versión.
