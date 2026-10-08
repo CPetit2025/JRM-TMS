@@ -5,7 +5,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { ArrowDownLeft, ArrowUpRight, BookOpenCheck, ChevronLeft, ChevronRight, Download, Filter, Layers, RotateCcw, Scale, Search } from 'lucide-react'
-import { aptApi, cleanFilters, flowApi } from '@/lib/apt/api'
+import { aptApi, cleanFilters, flowApi, clearAptCache } from '@/lib/apt/api'
 import { exportAptXlsx } from '@/lib/apt/export'
 import { fmtDate, fmtInt, fmtTn } from '@/lib/apt/format'
 import {
@@ -132,7 +132,7 @@ function KardexPage() {
             inicial incluye el stock previo inferido y los movimientos anteriores al periodo.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => setNonce(n => n + 1)} className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50">Actualizar</button>
+          <button type="button" onClick={() => { clearAptCache(); setNonce(n => n + 1) }} className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50">Actualizar</button>
           <button type="button" onClick={exportar} disabled={exporting || !data}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
             <Download className="h-3.5 w-3.5" /> {exporting ? 'Exportando…' : 'Excel (hasta 20 000 filas)'}
