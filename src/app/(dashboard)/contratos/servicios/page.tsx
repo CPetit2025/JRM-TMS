@@ -5,9 +5,10 @@ import { PageHeader } from '@/components/ui/page-header'
 import { InlineStatusBar } from '@/components/ui/inline-status-bar'
 import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filter-toolbar'
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
+import { TableActions } from '@/components/ui/table-actions'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, Calendar, Check, Ban, Loader2, Upload, Download, AlertCircle, Search, X, ArrowUp, ArrowDown, ArrowUpDown, RefreshCw, Scale, Layers, Clock, CheckCircle2, FileEdit } from 'lucide-react'
+import { Plus, Check, Ban, Loader2, Upload, Download, AlertCircle, Search, X, ArrowUp, ArrowDown, ArrowUpDown, RefreshCw, Scale, Info, Layers, Clock, CheckCircle2, FileEdit } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -499,8 +500,8 @@ export default function ContractServicesPage() {
   const toggleSort = (key: SortKey) =>
     setSort(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'fecha' || key === 'monto' ? 'desc' : 'asc' })
   const sortHeader = (label: string, k: SortKey, className = '') => (
-    <th className={`p-4 font-semibold ${className}`} aria-sort={sort.key === k ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-      <button type="button" onClick={() => toggleSort(k)} className={`inline-flex items-center gap-1 uppercase tracking-wider hover:text-slate-800 ${sort.key === k ? 'text-slate-800' : ''}`}>
+    <th className={`font-semibold ${className}`} aria-sort={sort.key === k ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button type="button" onClick={() => toggleSort(k)} className={`inline-flex items-center gap-1 whitespace-nowrap uppercase hover:text-slate-800 ${sort.key === k ? 'text-slate-800' : ''}`}>
         {label}
         {sort.key === k ? (sort.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-40" />}
       </button>
@@ -510,118 +511,104 @@ export default function ContractServicesPage() {
   return (
     <div className="w-full mx-auto space-y-2.5">
       <PageHeader showTitle title="Registro de Servicios" description="Compromisos de transporte, servicios realizados y gastos adicionales vinculados a la OT. El cierre operativo no significa pago." actions={<>
-          <button 
+          <button
             onClick={() => setIsOrphanModalOpen(true)}
-            className="flex items-center gap-2 bg-rose-50 text-rose-700 border border-rose-200 px-4 py-2 rounded-lg font-medium hover:bg-rose-100 transition-colors shadow-sm"
+            className={`flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors ${orphanDispatches.length ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
           >
             <AlertCircle className="w-4 h-4" />
             Regularizar vínculos ({orphanDispatches.length})
           </button>
-          
-          <button
-            onClick={actualizarPesoApt}
-            disabled={syncingPeso}
-            title="Recalcula el TON de cada servicio con el peso de sus guías en la SALIDA cargada en Almacén APT"
-            className="flex items-center gap-2 bg-white text-[#002855] border border-slate-300 px-4 py-2 rounded-lg font-medium hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
-          >
-            {syncingPeso ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            Actualizar peso (APT)
-          </button>
 
-          <button 
-            onClick={downloadTemplate}
-            className="flex items-center gap-2 bg-white text-slate-700 border border-slate-300 px-4 py-2 rounded-lg font-medium hover:bg-slate-50 transition-colors shadow-sm"
-          >
-            <Download className="w-4 h-4" />
-            Plantilla Excel
-          </button>
-          
-          <div {...getRootProps()} className="flex cursor-pointer">
+          <div {...getRootProps()} className="flex cursor-pointer" title="Haga clic o arrastre aquí el Excel de la plantilla">
             <input {...getInputProps()} />
-            <button 
-              className="flex items-center gap-2 bg-amber-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-amber-700 transition-colors shadow-sm disabled:opacity-50 pointer-events-none"
+            <button
+              className="pointer-events-none flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
               disabled={isUploading}
             >
               {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              {isUploading ? 'Procesando...' : 'Carga Masiva'}
+              {isUploading ? 'Procesando...' : 'Carga masiva'}
             </button>
           </div>
 
-          <button 
+          <button
             onClick={() => setIsModalOpen(true)}
             className="flex h-10 items-center gap-2 rounded-lg bg-jrm-navy px-4 font-medium text-white shadow-sm transition-colors hover:bg-jrm-navy-dark"
           >
             <Plus className="w-4 h-4" />
             Registrar Servicio
           </button>
+          <TableActions label="Más acciones del registro" actions={[
+            { id: 'peso', label: syncingPeso ? 'Actualizando peso (APT)…' : 'Actualizar peso (APT)', icon: syncingPeso ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />, disabled: syncingPeso, onSelect: actualizarPesoApt },
+            { id: 'plantilla', label: 'Descargar plantilla Excel', icon: <Download className="h-4 w-4" />, onSelect: downloadTemplate },
+          ]} />
         <TorreControlButton />
       </>} />
-      <TransportWorkflow current="registro" torre={false} />
-      <InlineStatusBar label="Resumen por etapa" active={filterStatus} loading={loading} onChange={setFilterStatus}
-        items={([['TODOS', 'Todos', Layers, 'navy'], ['COMPROMETIDO', 'Comprometidos', Clock, 'amber'], ['REALIZADO', 'Realizados', CheckCircle2, 'emerald'], ['REGISTRO_MANUAL', 'Registros manuales', FileEdit, 'slate'], ['ANULADO', 'Anulados', Ban, 'rose']] as const)
-          .map(([key, label, Icon, tone]) => ({ key, label, icon: <Icon />, tone, count: key === 'TODOS' ? services.length : services.filter(srv => stageOf(srv) === key).length }))} />
+      <div className="flex flex-wrap items-center gap-2">
+        <TransportWorkflow current="registro" torre={false} />
+        <div className="ml-auto min-w-0">
+          <InlineStatusBar label="Resumen por etapa (filtra la tabla)" active={filterStatus} loading={loading} onChange={setFilterStatus}
+            items={([['TODOS', 'Todos', Layers, 'navy'], ['COMPROMETIDO', 'Comprometidos', Clock, 'amber'], ['REALIZADO', 'Realizados', CheckCircle2, 'emerald'], ['REGISTRO_MANUAL', 'Manuales', FileEdit, 'slate'], ['ANULADO', 'Anulados', Ban, 'rose']] as const)
+              .map(([key, label, Icon, tone]) => ({ key, label, icon: <Icon />, tone, count: key === 'TODOS' ? services.length : services.filter(srv => stageOf(srv) === key).length }))} />
+        </div>
+      </div>
 
-      {/* Filtros y Búsqueda */}
+      {/* Filtros, búsqueda y saldo de partida en una fila */}
       <FilterToolbar compact label="Búsqueda y filtros de servicios" onClear={() => { setSearchTerm(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterStatus('TODOS') }}>
-        <label className="relative min-w-0 flex-1 basis-64">
+        <label className="relative min-w-0 flex-1 basis-56">
           <span className="sr-only">Buscar servicios</span><Search aria-hidden className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
           <input type="search" placeholder="Buscar por contrato, cliente, placa, etc..." className={`${filterControl} pl-9`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </label>
-        <FilterField inline label="Desde" className="w-52"><input type="date" className={filterControl} value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} /></FilterField>
-        <FilterField inline label="Hasta" className="w-52"><input type="date" className={filterControl} value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} /></FilterField>
-        <FilterField inline label="Estado" className="w-64">
-          <select className={filterControl} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-            <option value="TODOS">Todos los Estados</option>
-            <option value="COMPROMETIDO">Comprometidos</option>
-            <option value="REALIZADO">Realizados</option>
-            <option value="REGISTRO_MANUAL">Registros manuales</option>
-            <option value="ANULADO">Anulado</option>
-          </select>
-        </FilterField>
+        <FilterField inline label="Desde" className="w-48"><input type="date" className={filterControl} value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} /></FilterField>
+        <FilterField inline label="Hasta" className="w-48"><input type="date" className={filterControl} value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} /></FilterField>
+        <span className="ml-auto whitespace-nowrap text-xs text-slate-500" aria-live="polite">{loading ? '' : `${filteredServices.length} servicio(s)`}</span>
       </FilterToolbar>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <label htmlFor="registry-budget" className="text-sm font-semibold text-[#002855]">Disponible actual de la partida · OT</label>
-        <select id="registry-budget" value={budgetContract} onChange={e => setBudgetContract(e.target.value)} className="mt-2 block w-full rounded-lg border border-slate-300 p-2 text-sm md:max-w-lg">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-jrm border border-jrm-line bg-jrm-surface px-3 py-2 shadow-jrm-card">
+        <label htmlFor="registry-budget" className="flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-jrm-navy"><Scale className="h-4 w-4" aria-hidden="true" />Disponible de la partida · OT</label>
+        <select id="registry-budget" value={budgetContract} onChange={e => setBudgetContract(e.target.value)} className={`${filterControl} w-full sm:w-72`}>
           <option value="">Seleccionar OT para consultar su saldo actual</option>
           {contracts.map(c => <option key={c.id} value={c.id}>{c.code}{typeTag(c.type)}</option>)}
         </select>
-        {budgetContract && (() => {
+        {budgetContract ? (() => {
           const budget = partidaOf(budgetContract)
-          return <p className="mt-2 text-sm text-slate-600">{budget ? <>OT que financia: <strong>{budget.owner.code}</strong> · Disponible actual: <strong>S/ {budget.balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</strong></> : 'Sin partida de transporte disponible'}<br />El saldo actual considera el 80 % operativo menos reservas y consumos. No es un saldo histórico por servicio.</p>
-        })()}
+          return <p className="text-sm text-slate-600" title="El saldo actual considera el 80 % operativo menos reservas y consumos. No es un saldo histórico por servicio.">{budget ? <>OT que financia: <strong>{budget.owner.code}</strong> · Disponible actual: <strong>S/ {budget.balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</strong></> : 'Sin partida de transporte disponible'}</p>
+        })() : null}
+        <span className="inline-flex items-center gap-1 text-xs text-slate-500" title="El saldo actual considera el 80 % operativo menos reservas y consumos. No es un saldo histórico por servicio."><Info className="h-3.5 w-3.5" aria-hidden="true" />80 % operativo menos reservas y consumos</span>
       </div>
 
       {/* Lista de Servicios */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-auto max-h-[calc(100vh-220px)]">
+      <div className="overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
+        <div className="overflow-auto max-h-[calc(100vh-250px)]">
           <DataTable dense className="w-full text-left border-collapse relative">
-            <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
+            <thead className="bg-slate-50 text-slate-500 text-xs uppercase sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
               <tr>
-                <th className="p-4 font-semibold w-16 text-center">N°</th>
+                <th className="hidden w-12 text-center font-semibold 2xl:table-cell">N°</th>
                 {sortHeader('Fecha', 'fecha')}
-                {sortHeader('Contrato', 'contrato')}
-                {sortHeader('Cliente', 'cliente')}
+                <th className="font-semibold" aria-sort={['contrato', 'cliente'].includes(sort.key) ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                  <span className="inline-flex items-center gap-1 whitespace-nowrap uppercase">
+                    {(['contrato', 'cliente'] as const).map((k, i) => <span key={k} className="inline-flex items-center gap-1">{i > 0 && <span aria-hidden>·</span>}<button type="button" onClick={() => toggleSort(k)} className={`inline-flex items-center gap-1 uppercase hover:text-slate-800 ${sort.key === k ? 'text-slate-800' : ''}`}>{k === 'contrato' ? 'OT' : 'Cliente'}{sort.key === k ? (sort.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-40" />}</button></span>)}
+                  </span>
+                </th>
                 {sortHeader('Servicio', 'servicio')}
                 {sortHeader('Placa', 'placa')}
                 {sortHeader('Guía', 'guia')}
                 {sortHeader('TON', 'ton', 'text-right')}
-                {sortHeader('Monto (PEN)', 'monto', 'text-right')}
-                {sortHeader('Despacho / Solicitud', 'traza')}
+                {sortHeader('Monto S/', 'monto', 'text-right')}
+                {sortHeader('Despacho', 'traza')}
                 {sortHeader('Estado', 'estado', 'text-center')}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="p-8 text-center text-slate-500">
+                  <td colSpan={10} className="p-8 text-center text-slate-500">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                     Cargando servicios...
                   </td>
                 </tr>
               ) : filteredServices.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="p-8 text-center text-slate-500">
+                  <td colSpan={10} className="p-8 text-center text-slate-500">
                     No hay servicios registrados o que coincidan con los filtros.
                   </td>
                 </tr>
@@ -637,41 +624,36 @@ export default function ContractServicesPage() {
                     className={`cursor-pointer transition-colors ${srv.status === 'ANULADO' ? 'bg-slate-200/70 text-slate-400 hover:bg-slate-200 [&_td]:opacity-70' : 'hover:bg-slate-50'}`}
                     title={srv.status === 'ANULADO' ? `Anulado${srv.void_reason ? `: ${srv.void_reason}` : ''}` : undefined}
                   >
-                    <td className="p-4 text-sm font-bold text-slate-400 text-center">
+                    <td className="hidden 2xl:table-cell text-sm font-bold text-slate-400 text-center">
                       {correlative}
                     </td>
-                    <td className="p-4 text-sm text-slate-600">
-                      <div className="flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                        {srv.service_date ? new Date(`${srv.service_date.slice(0, 10)}T12:00:00`).toLocaleDateString('es-PE') : '—'}
-                      </div>
+                    <td className="whitespace-nowrap text-sm text-slate-600">
+                      {srv.service_date ? new Date(`${srv.service_date.slice(0, 10)}T12:00:00`).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—'}
                     </td>
-                    <td className="p-4">
-                      <span className="font-bold text-[#002855] text-sm">{srv.contracts?.code}</span>
+                    <td>
+                      <span className="block whitespace-nowrap text-sm font-bold text-jrm-navy">{srv.contracts?.code}</span>
+                      <span className="block max-w-32 truncate text-xs text-slate-500 2xl:max-w-56" title={srv.contracts?.clients?.business_name || undefined}>{srv.contracts?.clients?.business_name || 'Sin Cliente'}</span>
                     </td>
-                    <td className="p-4">
-                      <span className="text-sm text-slate-700">{srv.contracts?.clients?.business_name || 'Sin Cliente'}</span>
-                    </td>
-                    <td className="p-4">
+                    <td>
                       <span className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-semibold w-fit block">
                         {srv.service_type}
                       </span>
                     </td>
-                    <td className="p-4 text-sm font-medium text-slate-800">
+                    <td className="text-sm font-medium text-slate-800">
                       {srv.plate || '-'}
                     </td>
-                    <td className="p-4 text-sm text-slate-700">
+                    <td className="text-sm text-slate-700">
                       {srv.referral_guide ? (
-                        <div className="flex max-w-[180px] flex-wrap gap-1">
+                        <div className="flex flex-col items-start gap-0.5">
                           {srv.referral_guide.split(',').map(g => g.trim()).filter(Boolean).map(g => (
                             <button key={g} type="button" title="Ver los SKUs de la guía"
                               onClick={e => { e.stopPropagation(); setGuiaAbierta(g) }}
-                              className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-xs font-semibold text-blue-700 underline-offset-2 hover:bg-blue-100 hover:underline">{g}</button>
+                              className="whitespace-nowrap rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-xs font-semibold text-blue-700 underline-offset-2 hover:bg-blue-100 hover:underline">{g}</button>
                           ))}
                         </div>
                       ) : <span className="text-slate-400">-</span>}
                     </td>
-                    <td className="p-4 text-right text-sm font-medium text-slate-800">
+                    <td className="text-right text-sm font-medium text-slate-800">
                       {(() => {
                         const p = pesoApt[srv.id]
                         const t = tonInfo(srv, p)
@@ -690,16 +672,16 @@ export default function ContractServicesPage() {
                         return p ? <span className="text-[11px] text-amber-600" title={`No encontradas en APT: ${p.faltan || p.guias}`}>guía sin APT</span> : <span className="text-slate-400">Sin peso sustentado</span>
                       })()}
                     </td>
-                    <td className={`p-4 text-sm font-bold text-right ${srv.status === 'ANULADO' ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
+                    <td className={`whitespace-nowrap text-sm font-bold text-right ${srv.status === 'ANULADO' ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
                       S/ {Number(srv.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                     </td>
-                    <td className="p-4 text-sm">
-                      {context?.dispatch_number ? <a href={`/torre-control?despacho=${srv.dispatch_id}`} onClick={e => e.stopPropagation()} className="font-semibold text-[#002855] underline">{context.dispatch_number}</a> : <span className="text-slate-400">Sin despacho</span>}
-                      <div className="text-xs text-slate-500">{context?.request_numbers?.join(' · ')}</div>
+                    <td className="text-sm">
+                      {context?.dispatch_number ? <a href={`/torre-control?despacho=${srv.dispatch_id}`} onClick={e => e.stopPropagation()} className="whitespace-nowrap font-semibold text-[#002855] underline">{context.dispatch_number}</a> : <span className="text-slate-400">Sin despacho</span>}
+                      <div className="max-w-36 truncate text-xs text-slate-500" title={context?.request_numbers?.join(' · ')}>{context?.request_numbers?.join(' · ')}</div>
                     </td>
-                    <td className="p-4 text-center">
+                    <td className="text-center">
                       <StatusBadge tone={stageTone[stage]}>{stageLabels[stage]}</StatusBadge>
-                      <div className="mt-1 text-[10px] text-slate-500">Estado financiero: {srv.status}</div>
+                      <div className="mt-0.5 whitespace-nowrap text-[10px] text-slate-500" title={`Estado financiero: ${srv.status}`}>Fin.: {srv.status}</div>
                     </td>
                   </tr>
                 )})
