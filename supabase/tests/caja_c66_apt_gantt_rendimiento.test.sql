@@ -34,6 +34,10 @@ BEGIN
   got := (q->'serie'->-1->>'saldo_tn')::numeric;
   IF abs(got-expected) > 0.001 THEN RAISE EXCEPTION 'CAJA C66 FAIL (T2): serie al % = % vs %', v_to, got, expected; END IF;
  END IF;
+ IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'apt_uploads_gantt_meta' AND tgrelid = 'public.apt_uploads'::regclass)
+    OR (SELECT data_max FROM public.apt_gantt_meta WHERE id=1) IS DISTINCT FROM (SELECT max(fecha) FROM public.apt_movements WHERE active AND valid) THEN
+  RAISE EXCEPTION 'CAJA C66 FAIL (T3): rango de datos del Gantt no sigue a las cargas';
+ END IF;
  IF NOT EXISTS (SELECT 1 FROM public.apt_gantt_meta m JOIN public.apt_flow_state s ON s.id=1 WHERE m.flow_rebuilt_at = s.rebuilt_at) THEN
   RAISE EXCEPTION 'CAJA C66 FAIL (T3): resumen precalculado desactualizado respecto del último recálculo';
  END IF;
