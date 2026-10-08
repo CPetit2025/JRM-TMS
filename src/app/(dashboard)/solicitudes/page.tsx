@@ -11,7 +11,7 @@ import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 import { DEFAULT_LEAD_TIME_SETTINGS, evaluateLeadTime, settingsForRequest, limaDateTimeToIso, limaInputParts, formatLeadTimeStatus, type DeliveryZone, type TransportLeadTimeSettings } from '@/lib/transport-lead-time'
 import { operatingBudget } from '@/lib/transport-budget'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Plus, Send, Check, X, Search, Loader2, Clock, CalendarClock, Ban, Edit2, ArrowUpDown, ArrowUp, ArrowDown, Eye, Layers, CheckCircle2, Truck } from 'lucide-react'
+import { Plus, Send, Check, X, Search, Loader2, Clock, CalendarClock, Ban, Edit2, ArrowUpDown, ArrowUp, ArrowDown, Eye, Layers, CheckCircle2, Truck, CircleDashed } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -23,7 +23,7 @@ import { serviceAddresses, serviceLabel, serviceKind, SERVICE_KINDS, executionWe
 import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 import { districtOf } from '@/lib/address'
 import { cellDateTime, fullDateTime } from '@/lib/table-format'
-import { SearchableSelect } from '@/components/ui/SearchableSelect'
+import { SupplierOriginPicker } from '@/components/solicitudes/SupplierOriginPicker'
 import { partyName, referenceLabel, REFERENCE_TYPES, requiresSupplier, type ReferenceType, type Supplier } from '@/lib/suppliers'
 import { serviceDate } from '@/lib/request-schedule'
 
@@ -202,11 +202,15 @@ export default function SolicitudesPage() {
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const fetchSuppliers = useCallback(async () => {
+    const { data } = await supabase.from('suppliers').select('id, tax_id, business_name, category, contact_name, contact_phone, contact_email, notes, is_active, supplier_locations(id, supplier_id, name, address, department, province, district, contact_name, contact_phone, is_active)')
+      .eq('is_active', true).order('business_name')
+    return (data || []) as Supplier[]
+  }, [supabase])
+  const loadSuppliers = useCallback(async () => { const list = await fetchSuppliers(); setSuppliers(list); return list }, [fetchSuppliers])
   useEffect(() => {
-    if (!isModalOpen || suppliers.length) return
-    void supabase.from('suppliers').select('id, tax_id, business_name, category, contact_name, contact_phone, contact_email, notes, is_active, supplier_locations(id, supplier_id, name, address, department, province, district, contact_name, contact_phone, is_active)')
-      .eq('is_active', true).order('business_name').then(({ data }) => setSuppliers((data || []) as Supplier[]))
-  }, [isModalOpen, suppliers.length, supabase])
+    if (isModalOpen && !suppliers.length) void fetchSuppliers().then(setSuppliers)
+  }, [isModalOpen, suppliers.length, fetchSuppliers])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [userRole, setUserRole] = useState<string>('')
   
@@ -642,7 +646,7 @@ export default function SolicitudesPage() {
     }
 
     if (requiresSupplier({ request_type: newRequest.request_type, attention_mode: newRequest.attention_mode }) && !newRequest.supplier_id) {
-      toast.error('Seleccione el proveedor del recojo o traslado. Si no existe, regístrelo en Proveedores.')
+      toast.error('Seleccione el proveedor del recojo o traslado. Si no existe, use «Nuevo proveedor» en la misma solicitud.')
       return
     }
     if (newRequest.reference_type && !newRequest.reference_number.trim()) {
@@ -778,6 +782,36 @@ export default function SolicitudesPage() {
     return <StatusBadge tone={tone} title={status.replaceAll('_', ' ')}>{statusLabels[status] || status.replaceAll('_', ' ')}</StatusBadge>
   }
 
+  const needsSupplier = requiresSupplier({ request_type: newRequest.request_type, attention_mode: newRequest.attention_mode })
+  const changeRequestType = (type: string) => {
+    if (type === newRequest.request_type) return
+    if (type === 'DESPACHO') {
+      const selC = contracts.find(c => c.id === newRequest.contract_id)
+      setNewRequest({ ...newRequest, request_type: type, pickup_address: 'Planta Chilca', pickup_department: 'LIMA', pickup_province: 'CAÑETE', pickup_district: 'CHILCA',
+        delivery_address: selC?.destination_address || '', delivery_department: selC?.destination_department || '', delivery_province: selC?.destination_province || '', delivery_district: selC?.destination_district || '' })
+    } else if (type === 'RECOJO') {
+      setNewRequest({ ...newRequest, request_type: type, pickup_address: '', pickup_department: '', pickup_province: '', pickup_district: '', delivery_address: 'Planta Chilca', delivery_department: 'LIMA', delivery_province: 'CAÑETE', delivery_district: 'CHILCA' })
+    } else {
+      setNewRequest({ ...newRequest, request_type: type, pickup_address: '', pickup_department: '', pickup_province: '', pickup_district: '', delivery_address: '', delivery_department: '', delivery_province: '', delivery_district: '' })
+    }
+  }
+  // Lo que falta para enviar, en el orden del formulario; cada ítem lleva a su sección.
+  const pendingItems = ([
+    !newRequest.requester_name.trim() && { label: 'Solicitante', target: 'req-servicio' },
+    !newRequest.department && { label: 'Área / departamento', target: 'req-servicio' },
+    otRequired && !newRequest.contract_id && { label: 'OT madre', target: 'req-ot' },
+    Boolean(newRequest.contract_id) && !componentsLoading && selectedOptions.length === 0 && { label: 'Componentes de la OT', target: 'req-ot' },
+    mixedDestinations && !destinationAcknowledged && { label: 'Confirmar destino principal', target: 'req-ot' },
+    needsSupplier && !newRequest.supplier_id && { label: 'Proveedor de origen', target: 'req-proveedor' },
+    (!newRequest.pickup_address.trim() || !newRequest.pickup_district.trim()) && { label: 'Origen: dirección y distrito', target: 'req-ruta' },
+    (!newRequest.delivery_address.trim() || !newRequest.delivery_district.trim()) && { label: 'Destino: dirección y distrito', target: 'req-ruta' },
+    !requiredAt && { label: 'Fecha y hora de atención', target: 'req-fecha' },
+    Boolean(requiredAt) && requiresDeliveryLeadTime && leadTimeEvaluation.enough === false && { label: 'Anticipación mínima', target: 'req-fecha' },
+    !newRequest.cargo_description.trim() && { label: 'Glosa de la carga', target: 'req-carga' },
+    Boolean(newRequest.reference_type) && !newRequest.reference_number.trim() && { label: `Número de ${newRequest.reference_type}`, target: 'req-carga' },
+    !unloadingAnswer && { label: 'Descarga especial (Sí/No)', target: 'req-descarga' },
+  ].filter(Boolean) as { label: string; target: string }[])
+
   return (
     <div className="flex min-h-0 w-full flex-col gap-2.5 mx-auto lg:h-full">
       <PageHeader showTitle title="Solicitud de Transporte" description="Control de servicios programados" actions={<>
@@ -909,57 +943,58 @@ export default function SolicitudesPage() {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingRequestId ? "Editar Solicitud" : "Crear Nueva Solicitud"}
-        maxWidth="max-w-4xl"
+        title={editingRequestId ? 'Editar solicitud de transporte' : 'Nueva solicitud de transporte'}
+        maxWidth="max-w-7xl"
+        footer={<div className="flex flex-wrap items-center justify-between gap-3">
+          <p role="status" className={`flex items-center gap-2 text-sm font-medium ${pendingItems.length ? 'text-amber-700' : 'text-emerald-700'}`}>
+            {pendingItems.length ? <><CircleDashed className="h-4 w-4" />Faltan {pendingItems.length} {pendingItems.length === 1 ? 'dato' : 'datos'} para enviar</> : <><CheckCircle2 className="h-4 w-4" />Lista para enviar</>}
+          </p>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setIsModalOpen(false)} className="rounded-lg px-4 py-2 font-medium text-slate-600 transition-colors hover:bg-slate-100">Cancelar</button>
+            <button type="submit" form="request-form"
+              disabled={isSubmitting || (requiresDeliveryLeadTime && !leadTimeLoaded) || !requiredAt || (requiresDeliveryLeadTime && leadTimeEvaluation.enough === false) || componentsLoading || (otRequired && !newRequest.contract_id) || (Boolean(newRequest.contract_id) && selectedOptions.length === 0)}
+              className="flex items-center gap-2 rounded-lg bg-[#002855] px-4 py-2 font-medium text-white transition-colors hover:bg-[#001d3d] disabled:opacity-50">
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {editingRequestId ? 'Actualizar solicitud' : 'Enviar solicitud'}
+            </button>
+          </div>
+        </div>}
       >
-        <form onSubmit={handleCreateRequest} className="space-y-6">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Solicitante</label>
-              <input 
-                type="text" 
-                required
-                disabled={userRole !== 'admin'}
-                placeholder="Nombre completo"
-                className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none disabled:bg-slate-100 disabled:text-slate-500"
-                value={newRequest.requester_name}
-                onChange={(e) => setNewRequest({...newRequest, requester_name: e.target.value})}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Área / Departamento</label>
-              <select
-                required
-                className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
-                value={newRequest.department}
-                onChange={(e) => {
-                  setNewRequest({...newRequest, department: e.target.value})
-                }}
-              >
-                <option value="" disabled>Seleccionar Área...</option>
-                <option value="OT (Administración de Contratos)">OT (Administración de Contratos)</option>
-                <option value="Recursos Humanos">Recursos Humanos</option>
-                <option value="Logística">Logística</option>
-                <option value="Gerencia">Gerencia</option>
-                <option value="Producción">Producción</option>
-                <option value="Almacén">Almacén</option>
-                <option value="Otros">Otros</option>
-              </select>
-            </div>
-            
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Modalidad de atención *</label>
-              <select value={newRequest.attention_mode} onChange={e => { setNewRequest(prev => ({ ...prev, attention_mode: e.target.value as AttentionMode, service_cost: '' })); setQuote(null) }}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900">
-                <option value="TRANSPORTE_JRM">Transporte gestionado por JRM</option><option value="RECOJO_CLIENTE">Recojo por el cliente</option>
-              </select>
-              <p className="mt-1 text-xs text-slate-600">El armado de ruta heredará esta modalidad. {isCustomerPickup ? 'Flete JRM: S/ 0.00. Se emite Nota de Salida; otros recursos conservan sus costos.' : 'El supervisor asignará unidad propia o proveedor.'}</p>
-            </div>
-            {isCustomerPickup && <div className="md:col-span-2 grid grid-cols-1 gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 md:grid-cols-3">
+        <form id="request-form" onSubmit={handleCreateRequest} className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="min-w-0 space-y-4">
+            <FormSection id="req-servicio" step={1} title="Servicio" hint="Tipo de servicio, modalidad y solicitante">
+              <div role="radiogroup" aria-label="Tipo de solicitud" className="grid gap-2 sm:grid-cols-3">
+                {REQUEST_TYPE_OPTIONS.map(option => {
+                  const active = newRequest.request_type === option.value
+                  return <button key={option.value} type="button" role="radio" aria-checked={active} onClick={() => changeRequestType(option.value)}
+                    className={`rounded-lg border p-3 text-left transition-colors ${active ? 'border-[#002855] bg-blue-50 ring-1 ring-[#002855]' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}>
+                    <ServiceTypeBadge kind={option.value === 'DESPACHO' ? (newRequest.contract_id ? 'ENTREGA_OT' : 'ENTREGA') : option.kind} />
+                    <span className="mt-1.5 block text-sm font-semibold text-slate-900">{option.title}</span>
+                    <span className="block text-xs text-slate-500">{option.hint}</span>
+                  </button>
+                })}
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <label className="block text-sm font-medium text-slate-700">Solicitante *
+                  <input type="text" required disabled={userRole !== 'admin'} placeholder="Nombre completo" className={field}
+                    value={newRequest.requester_name} onChange={e => setNewRequest({ ...newRequest, requester_name: e.target.value })} /></label>
+                <label className="block text-sm font-medium text-slate-700">Área / departamento *
+                  <select required className={field} value={newRequest.department} onChange={e => setNewRequest({ ...newRequest, department: e.target.value })}>
+                    <option value="" disabled>Seleccionar área…</option>
+                    {REQUEST_AREAS.map(area => <option key={area} value={area}>{area}</option>)}
+                  </select></label>
+                <label className="block text-sm font-medium text-slate-700">Modalidad de atención *
+                  <select value={newRequest.attention_mode} onChange={e => { setNewRequest(prev => ({ ...prev, attention_mode: e.target.value as AttentionMode, service_cost: '' })); setQuote(null) }} className={field}>
+                    <option value="TRANSPORTE_JRM">Transporte gestionado por JRM</option><option value="RECOJO_CLIENTE">Recojo por el cliente</option>
+                  </select></label>
+              </div>
+              <p className="mt-1.5 text-xs text-slate-500">El armado de ruta heredará esta modalidad. {isCustomerPickup ? 'Flete JRM: S/ 0.00. Se emite Nota de Salida; otros recursos conservan sus costos.' : 'El supervisor asignará unidad propia o proveedor.'}</p>
+            {isCustomerPickup && <div className="mt-3 grid grid-cols-1 gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 md:grid-cols-3">
               {([['pickup_customer','Cliente que recoge'],['pickup_contact','Contacto autorizado'],['pickup_phone','Teléfono del contacto']] as const).map(([key,label]) => <label key={key} className="text-sm text-slate-700">{label} (opcional)<input value={newRequest[key]} type={key === 'pickup_phone' ? 'tel' : 'text'} onChange={e => setNewRequest(prev => ({ ...prev, [key]: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2" /></label>)}
             </div>}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">OT / Proyecto asociado {otRequired ? '*' : '(opcional)'}</label>
+            </FormSection>
+
+            <FormSection id="req-ot" step={2} title="OT / proyecto" hint={otRequired ? 'Obligatoria para el área seleccionada' : 'Opcional: vincula la carga a una OT y sus componentes'}>
               <OtPicker
                 nodes={otNodes}
                 value={newRequest.contract_id}
@@ -988,10 +1023,7 @@ export default function SolicitudesPage() {
                   <span className="block text-amber-700">Presupuestos de hijos pendientes de clasificación; no se suman.</span>
                 </p>
               })()}
-            </div>
-          </div>
-
-          {newRequest.contract_id && (
+              {newRequest.contract_id && <div className="mt-3">
             <div className="rounded-lg border border-slate-200 p-4 space-y-3">
               <div>
                 <h3 className="font-semibold text-slate-800">Componentes incluidos en la solicitud</h3>
@@ -1045,201 +1077,51 @@ export default function SolicitudesPage() {
                 {rootBudget && <span className="block mt-1">Saldo OT raíz: S/ {Number(rootBudget.balance_pen || 0).toLocaleString('es-PE')} · Costo estimado: S/ {estimatedCost.toLocaleString('es-PE')} · Saldo proyectado: S/ {(Number(rootBudget.balance_pen || 0) - estimatedCost).toLocaleString('es-PE')}</span>}
               </div>
             </div>
-          )}
+              </div>}
+            </FormSection>
 
-          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mt-4">
-            <label className="block text-sm font-semibold text-slate-800 mb-3">Tipo de Solicitud</label>
-            <div className="flex gap-6">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="radio" 
-                  name="request_type" 
-                  value="DESPACHO"
-                  checked={newRequest.request_type === 'DESPACHO'}
-                  onChange={(e) => {
-                    const selC = contracts.find(c => c.id === newRequest.contract_id)
-                    setNewRequest({
-                      ...newRequest, 
-                      request_type: e.target.value, 
-                      pickup_address: 'Planta Chilca', 
-                      delivery_address: selC?.destination_address || '',
-                      delivery_department: selC?.destination_department || '',
-                      delivery_province: selC?.destination_province || '',
-                      delivery_district: selC?.destination_district || ''
-                    })
-                  }}
-                  className="w-4 h-4 text-[#002855] focus:ring-[#002855]"
-                />
-                <span className="text-sm font-medium text-slate-700">Despacho (Salida de Planta)</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="radio" 
-                  name="request_type" 
-                  value="RECOJO"
-                  checked={newRequest.request_type === 'RECOJO'}
-                  onChange={(e) => setNewRequest({...newRequest, request_type: e.target.value, pickup_address: '', pickup_department: '', pickup_province: '', pickup_district: '', delivery_address: 'Planta Chilca', delivery_department: 'LIMA', delivery_province: 'CAÑETE', delivery_district: 'CHILCA'})}
-                  className="w-4 h-4 text-[#002855] focus:ring-[#002855]"
-                />
-                <span className="text-sm font-medium text-slate-700">Recojo (Retorno a Planta)</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="radio" 
-                  name="request_type" 
-                  value="TRASLADO"
-                  checked={newRequest.request_type === 'TRASLADO'}
-                  onChange={(e) => setNewRequest({...newRequest, request_type: e.target.value, pickup_address: '', pickup_department: '', pickup_province: '', pickup_district: '', delivery_address: '', delivery_department: '', delivery_province: '', delivery_district: ''})}
-                  className="w-4 h-4 text-[#002855] focus:ring-[#002855]"
-                />
-                <span className="text-sm font-medium text-slate-700">Traslado (Punto a Punto)</span>
-              </label>
-            </div>
-          </div>
+            {needsSupplier && <FormSection id="req-proveedor" step={3} title="Proveedor de origen" hint="¿No existe? Regístrelo aquí mismo con «Nuevo proveedor» o «Nuevo punto».">
+              <SupplierOriginPicker suppliers={suppliers} reload={loadSuppliers}
+                value={{ supplier_id: newRequest.supplier_id, supplier_location_id: newRequest.supplier_location_id, pickup_address: newRequest.pickup_address, pickup_department: newRequest.pickup_department, pickup_province: newRequest.pickup_province, pickup_district: newRequest.pickup_district, pickup_contact: newRequest.pickup_contact, pickup_phone: newRequest.pickup_phone }}
+                onChange={patch => setNewRequest(prev => ({ ...prev, ...patch }))} />
+            </FormSection>}
 
-          {requiresSupplier({ request_type: newRequest.request_type, attention_mode: newRequest.attention_mode }) && (() => {
-            const supplier = suppliers.find(x => x.id === newRequest.supplier_id)
-            const points = (supplier?.supplier_locations || []).filter(l => l.is_active)
-            const pickPoint = (id: string, list = points) => {
-              const point = list.find(l => l.id === id)
-              setNewRequest(prev => ({ ...prev, supplier_location_id: id, ...(point ? {
-                pickup_address: point.address, pickup_department: point.department || '', pickup_province: point.province || '', pickup_district: point.district || '',
-                pickup_contact: point.contact_name || prev.pickup_contact, pickup_phone: point.contact_phone || prev.pickup_phone } : {}) }))
-            }
-            return <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50/40 p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <label className="text-sm font-semibold text-slate-800">Proveedor de origen *</label>
-                <a href="/proveedores" target="_blank" rel="noreferrer" className="text-xs font-semibold text-jrm-navy hover:underline">Registrar o editar proveedores</a>
-              </div>
+            <FormSection id="req-ruta" step={needsSupplier ? 4 : 3} title="Origen y destino" hint={newRequest.request_type === 'DESPACHO' ? 'Sale de planta; el destino se completa con la OT' : newRequest.request_type === 'RECOJO' ? 'Retorna a Planta Chilca' : 'Traslado entre dos puntos'}>
               <div className="grid gap-3 md:grid-cols-2">
-                <SearchableSelect placeholder="Buscar proveedor por razón social o RUC…" value={newRequest.supplier_id}
-                  options={suppliers.map(x => ({ value: x.id, label: `${x.business_name} · ${x.tax_id}` }))}
-                  onChange={(value: string) => { if (value === newRequest.supplier_id) return; setNewRequest(prev => ({ ...prev, supplier_id: value, supplier_location_id: '', pickup_address: '', pickup_department: '', pickup_province: '', pickup_district: '', pickup_contact: '', pickup_phone: '' })); const only = (suppliers.find(x => x.id === value)?.supplier_locations || []).filter(l => l.is_active); if (only.length === 1) pickPoint(only[0].id, only) }} />
-                <select value={newRequest.supplier_location_id} onChange={e => pickPoint(e.target.value)} disabled={!supplier}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#002855] disabled:bg-slate-100">
-                  <option value="">{!supplier ? 'Elija primero el proveedor' : points.length ? 'Punto de recojo (completa el origen)' : 'Sin puntos registrados: ingrese el origen'}</option>
-                  {points.map(l => <option key={l.id} value={l.id}>{l.name} · {l.district || l.address}</option>)}
-                </select>
+                <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Origen</p>
+                  <label className="block text-xs font-medium text-slate-700">Dirección exacta *
+                    <input type="text" required className={fieldSm} value={newRequest.pickup_address} onChange={e => setNewRequest({ ...newRequest, pickup_address: e.target.value })} /></label>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    <label className="block text-xs font-medium text-slate-700">Departamento<input type="text" placeholder="Ej. LIMA" className={fieldSm} value={newRequest.pickup_department} onChange={e => setNewRequest({ ...newRequest, pickup_department: e.target.value.toUpperCase() })} /></label>
+                    <label className="block text-xs font-medium text-slate-700">Provincia<input type="text" placeholder="Ej. CAÑETE" className={fieldSm} value={newRequest.pickup_province} onChange={e => setNewRequest({ ...newRequest, pickup_province: e.target.value.toUpperCase() })} /></label>
+                    <label className="block text-xs font-medium text-slate-700">Distrito *<input type="text" required placeholder="Ej. CHILCA" className={fieldSm} value={newRequest.pickup_district} onChange={e => setNewRequest({ ...newRequest, pickup_district: e.target.value.toUpperCase() })} /></label>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Destino</p>
+                  <label className="block text-xs font-medium text-slate-700">Dirección exacta *
+                    <input type="text" list="historical-delivery-addresses" required className={fieldSm} value={newRequest.delivery_address} onChange={e => setNewRequest({ ...newRequest, delivery_address: e.target.value })} /></label>
+                  <datalist id="historical-delivery-addresses">{Array.from(new Set(contracts.map(c => c.destination_address).filter(Boolean))).map((addr, idx) => <option key={idx} value={addr} />)}</datalist>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    <label className="block text-xs font-medium text-slate-700">Departamento<input type="text" placeholder="Ej. LIMA" className={fieldSm} value={newRequest.delivery_department} onChange={e => setNewRequest({ ...newRequest, delivery_department: e.target.value.toUpperCase() })} /></label>
+                    <label className="block text-xs font-medium text-slate-700">Provincia<input type="text" placeholder="Ej. LIMA" className={fieldSm} value={newRequest.delivery_province} onChange={e => setNewRequest({ ...newRequest, delivery_province: e.target.value.toUpperCase() })} /></label>
+                    <label className="block text-xs font-medium text-slate-700">Distrito *<input type="text" required placeholder="Ej. ATE" className={fieldSm} value={newRequest.delivery_district} onChange={e => setNewRequest({ ...newRequest, delivery_district: e.target.value.toUpperCase() })} /></label>
+                  </div>
+                </div>
               </div>
-              {!suppliers.length && <p className="mt-2 text-xs text-slate-500">No hay proveedores activos. Regístrelos en Proveedores.</p>}
-            </div>
-          })()}
+              {!newRequest.contract_id && <div className="mt-3 grid grid-cols-2 gap-3">{([['estimated_weight', 'Peso estimado (kg)'], ['estimated_volume', 'Volumen estimado (m³)']] as const).map(([key, label]) => <label key={key} className="block text-sm font-medium text-slate-700">{label}<input type="number" min="0" step="0.01" value={newRequest[key]} onChange={e => setNewRequest(prev => ({ ...prev, [key]: e.target.value }))} className={field} /></label>)}</div>}
+            </FormSection>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-            <div className="col-span-2 md:col-span-2 border border-slate-200 rounded-lg p-3 bg-slate-50/50">
-              <h4 className="text-sm font-semibold text-slate-800 mb-2">Origen de Carga</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="md:col-span-3">
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Dirección Exacta</label>
-                  <input 
-                    type="text" 
-                    required
-                    className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
-                    value={newRequest.pickup_address}
-                    onChange={(e) => setNewRequest({...newRequest, pickup_address: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Departamento</label>
-                  <input 
-                    type="text" 
-                    placeholder="Ej. LIMA"
-                    className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
-                    value={newRequest.pickup_department}
-                    onChange={(e) => setNewRequest({...newRequest, pickup_department: e.target.value.toUpperCase()})}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Provincia</label>
-                  <input 
-                    type="text" 
-                    placeholder="Ej. CAÑETE"
-                    className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
-                    value={newRequest.pickup_province}
-                    onChange={(e) => setNewRequest({...newRequest, pickup_province: e.target.value.toUpperCase()})}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Distrito *</label>
-                  <input 
-                    type="text" 
-                    required
-                    placeholder="Ej. CHILCA"
-                    className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
-                    value={newRequest.pickup_district}
-                    onChange={(e) => setNewRequest({...newRequest, pickup_district: e.target.value.toUpperCase()})}
-                  />
-                </div>
-              </div>
-            </div>
-            
-            <div className="col-span-2 md:col-span-2 border border-slate-200 rounded-lg p-3 bg-slate-50/50">
-              <h4 className="text-sm font-semibold text-slate-800 mb-2">Destino de Carga</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="md:col-span-3">
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Dirección Exacta</label>
-                  <input 
-                    type="text" 
-                    list="historical-delivery-addresses"
-                    required
-                    className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
-                    value={newRequest.delivery_address}
-                    onChange={(e) => setNewRequest({...newRequest, delivery_address: e.target.value})}
-                  />
-                  <datalist id="historical-delivery-addresses">
-                    {Array.from(new Set(contracts.map(c => c.destination_address).filter(Boolean))).map((addr, idx) => (
-                      <option key={idx} value={addr} />
-                    ))}
-                  </datalist>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Departamento</label>
-                  <input 
-                    type="text" 
-                    placeholder="Ej. LIMA"
-                    className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
-                    value={newRequest.delivery_department}
-                    onChange={(e) => setNewRequest({...newRequest, delivery_department: e.target.value.toUpperCase()})}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Provincia</label>
-                  <input 
-                    type="text" 
-                    placeholder="Ej. LIMA"
-                    className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
-                    value={newRequest.delivery_province}
-                    onChange={(e) => setNewRequest({...newRequest, delivery_province: e.target.value.toUpperCase()})}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Distrito *</label>
-                  <input 
-                    type="text" 
-                    required
-                    placeholder="Ej. ATE"
-                    className="w-full px-3 py-1.5 bg-white text-slate-900 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-[#002855] outline-none"
-                    value={newRequest.delivery_district}
-                    onChange={(e) => setNewRequest({...newRequest, delivery_district: e.target.value.toUpperCase()})}
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="col-span-2 md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de atención solicitada</label>
-              <input 
-                type="date" 
-                required
-                className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
-                value={newRequest.required_date}
-                onChange={(e) => setNewRequest({...newRequest, required_date: e.target.value})}
-              />
-            </div>
-            <div className="col-span-2 md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1" htmlFor="request-required-time">Hora de atención · Lima</label>
-              <input id="request-required-time" type="time" required value={newRequest.required_time} onChange={event => setNewRequest({ ...newRequest, required_time: event.target.value })} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900" />
-            </div>
-            {requiresDeliveryLeadTime && <div className="col-span-2 md:col-span-4 space-y-3">
+            <FormSection id="req-fecha" step={needsSupplier ? 5 : 4} title="Fecha de atención" hint="Hora de Lima">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="block text-sm font-medium text-slate-700">Fecha *
+                  <input type="date" required className={field} value={newRequest.required_date} onChange={e => setNewRequest({ ...newRequest, required_date: e.target.value })} /></label>
+                <label className="block text-sm font-medium text-slate-700" htmlFor="request-required-time">Hora *
+                  <input id="request-required-time" type="time" required value={newRequest.required_time} onChange={event => setNewRequest({ ...newRequest, required_time: event.target.value })} className={field} /></label>
+                <label className="block text-sm font-medium text-slate-700">Ventana horaria (opcional)
+                  <input type="text" placeholder="Ej. 08:00 AM - 12:00 PM" className={field} value={newRequest.time_window} onChange={e => setNewRequest({ ...newRequest, time_window: e.target.value })} /></label>
+            {requiresDeliveryLeadTime && <div className="space-y-3 sm:col-span-3">
               <label className="block text-sm font-medium text-slate-700">Zona de entrega
                 <select value={newRequest.delivery_zone} onChange={event => setNewRequest({ ...newRequest, delivery_zone: event.target.value as DeliveryZone })} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900"><option value="LIMA">Lima y Callao</option><option value="PROVINCIA">Provincia</option><option value="EXTERIOR">Exterior</option></select>
               </label>
@@ -1247,46 +1129,27 @@ export default function SolicitudesPage() {
                 {!leadTimeLoaded ? <span>{leadTimeError || 'Consultando plazos…'} <button type="button" onClick={() => void fetchLeadTimeSettings()} className="underline">Reintentar</button></span> : leadTimeEvaluation.minimumAt ? <><strong>{leadTimeEvaluation.hours} horas mínimas de anticipación.</strong> Primera atención permitida: {firstAllowed(leadTimeEvaluation.minimumAt)}.{requiredAt && leadTimeEvaluation.enough === false && <p className="mt-1">La fecha y hora seleccionadas son anteriores al mínimo. Corrígelas para guardar.</p>}<p className="mt-1 text-xs">{editingRequest ? `Se conserva el registro original: ${requestDate(editingRequest.created_at, true)}.` : 'El plazo definitivo comienza al guardar. El primer horario sugerido se redondea al siguiente minuto.'}</p></> : 'El control está desactivado para esta zona.'}
               </div>
             </div>}
-            <div className="col-span-2 md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Ventana Horaria (Opcional)</label>
-              <input 
-                type="text" 
-                placeholder="Ej. 08:00 AM - 12:00 PM"
-                className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
-                value={newRequest.time_window}
-                onChange={(e) => setNewRequest({...newRequest, time_window: e.target.value})}
-              />
-            </div>
-          </div>
+              </div>
+            </FormSection>
 
-          {!newRequest.contract_id && <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{([['estimated_weight','Peso estimado (kg)'],['estimated_volume','Volumen estimado (m³)']] as const).map(([key,label]) => <label key={key} className="text-sm text-slate-700">{label}<input type="number" min="0" step="0.01" value={newRequest[key]} onChange={e => setNewRequest(prev => ({ ...prev, [key]: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>)}</div>}
-          <div className="border-t border-slate-200 pt-6 mt-4">
-            <h3 className="text-lg font-semibold text-slate-800 mb-4">Información de la Carga</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Descripción General / Glosa *</label>
-                <textarea 
-                  required
-                  rows={3}
-                  placeholder="Ej. 20 bobinas de acero para el proyecto Sur..."
-                  className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none resize-none"
-                  value={newRequest.cargo_description}
-                  onChange={(e) => setNewRequest({...newRequest, cargo_description: e.target.value})}
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Documento de referencia (opcional)</label>
-                <div className="flex gap-2">
-                  <select aria-label="Tipo de documento" value={newRequest.reference_type} onChange={e => setNewRequest({ ...newRequest, reference_type: e.target.value, reference_number: e.target.value ? newRequest.reference_number : '' })}
-                    className="w-44 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:ring-2 focus:ring-[#002855]">
-                    <option value="">Sin documento</option>
-                    {(Object.keys(REFERENCE_TYPES) as ReferenceType[]).map(k => <option key={k} value={k}>{k} · {REFERENCE_TYPES[k]}</option>)}
-                  </select>
-                  <input type="text" aria-label="Número de documento" disabled={!newRequest.reference_type} placeholder={newRequest.reference_type ? `Número de ${newRequest.reference_type}` : newRequest.purchase_order ? `Registrado antes: ${newRequest.purchase_order}` : 'Elija el tipo de documento'}
-                    className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:ring-2 focus:ring-[#002855] disabled:bg-slate-100"
-                    value={newRequest.reference_number} onChange={e => setNewRequest({ ...newRequest, reference_number: e.target.value })} />
+            <FormSection id="req-carga" step={needsSupplier ? 6 : 5} title="Carga y documento" hint="Glosa, documento de referencia y costo referencial">
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block text-sm font-medium text-slate-700 md:col-span-2">Descripción general / glosa *
+                  <textarea required rows={3} placeholder="Ej. 20 bobinas de acero para el proyecto Sur..." className={`${field} resize-none`}
+                    value={newRequest.cargo_description} onChange={e => setNewRequest({ ...newRequest, cargo_description: e.target.value })} /></label>
+                <div>
+                  <span className="mb-1 block text-sm font-medium text-slate-700">Documento de referencia (opcional)</span>
+                  <div className="flex gap-2">
+                    <select aria-label="Tipo de documento" value={newRequest.reference_type} onChange={e => setNewRequest({ ...newRequest, reference_type: e.target.value, reference_number: e.target.value ? newRequest.reference_number : '' })}
+                      className="w-36 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:ring-2 focus:ring-[#002855]">
+                      <option value="">Sin documento</option>
+                      {(Object.keys(REFERENCE_TYPES) as ReferenceType[]).map(k => <option key={k} value={k}>{k} · {REFERENCE_TYPES[k]}</option>)}
+                    </select>
+                    <input type="text" aria-label="Número de documento" disabled={!newRequest.reference_type} placeholder={newRequest.reference_type ? `Número de ${newRequest.reference_type}` : newRequest.purchase_order ? `Registrado antes: ${newRequest.purchase_order}` : 'Elija el tipo'}
+                      className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:ring-2 focus:ring-[#002855] disabled:bg-slate-100"
+                      value={newRequest.reference_number} onChange={e => setNewRequest({ ...newRequest, reference_number: e.target.value })} />
+                  </div>
                 </div>
-              </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Costo referencial del flete {quoting && <Loader2 className="ml-1 inline h-3 w-3 animate-spin" />}
@@ -1300,8 +1163,10 @@ export default function SolicitudesPage() {
                 {quote ? <QuoteBreakdown quote={quote} compact />
                   : <p className="text-xs text-slate-400 mt-1">Elige la OT y el distrito de destino para calcularlo.</p>}
               </div>
-              <div className="md:col-span-2 rounded-lg border border-slate-200 p-3">
-                <label className="block text-sm font-semibold text-slate-800">¿La entrega requiere descarga especial? *</label>
+              </div>
+            </FormSection>
+
+            <FormSection id="req-descarga" step={needsSupplier ? 7 : 6} title="Descarga especial *" hint="¿La entrega requiere montacargas, grúa, estiba u otros?">
                 <p className="text-xs text-slate-500 mb-2">Montacargas, grúa, estiba u otros en el punto de entrega. Mantienen su costo a cargo de JRM, incluso cuando el cliente recoge.</p>
                 <div className="flex gap-4 mb-2">
                   {(['NO', 'SI'] as const).map(v => (
@@ -1363,27 +1228,30 @@ export default function SolicitudesPage() {
                     className="text-sm text-[#002855] font-medium hover:underline">+ Agregar recurso de descarga</button>
                   {unloadingTotal > 0 && <span className="ml-3 text-xs text-slate-600">Total descarga: S/ {unloadingTotal.toLocaleString('es-PE')}</span>}
                 </>}
-              </div>
-            </div>
+            </FormSection>
           </div>
 
-          <div className="pt-4 flex justify-end gap-3 border-t border-slate-200 mt-4">
-            <button 
-              type="button" 
-              onClick={() => setIsModalOpen(false)}
-              className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition-colors"
-            >
-              Cancelar
-            </button>
-            <button 
-              type="submit" 
-              disabled={isSubmitting || (requiresDeliveryLeadTime && !leadTimeLoaded) || !requiredAt || (requiresDeliveryLeadTime && leadTimeEvaluation.enough === false) || componentsLoading || (otRequired && !newRequest.contract_id) || (Boolean(newRequest.contract_id) && selectedOptions.length === 0)}
-              className="px-4 py-2 bg-[#002855] text-white font-medium rounded-lg hover:bg-[#001d3d] transition-colors disabled:opacity-50 flex items-center gap-2"
-            >
-              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              {editingRequestId ? "Actualizar Solicitud" : "Enviar Solicitud"}
-            </button>
-          </div>
+          <aside className="space-y-3 lg:sticky lg:top-0 lg:self-start">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">Resumen</p>
+              <dl className="space-y-2">
+                <div><dt className="text-xs text-slate-500">Servicio</dt><dd className="mt-0.5"><ServiceTypeBadge full request={{ request_type: newRequest.request_type, attention_mode: newRequest.attention_mode, contract_id: newRequest.contract_id || null }} /></dd></div>
+                <div><dt className="text-xs text-slate-500">OT</dt><dd className="font-semibold text-slate-900">{contracts.find(c => c.id === newRequest.contract_id)?.code || 'Sin OT'}{selectedOptions.length > 0 && <span className="font-normal text-slate-500"> · {selectedOptions.length} comp.</span>}</dd></div>
+                {needsSupplier && <div><dt className="text-xs text-slate-500">Proveedor</dt><dd className="truncate font-semibold text-slate-900">{suppliers.find(s => s.id === newRequest.supplier_id)?.business_name || '—'}</dd></div>}
+                <div><dt className="text-xs text-slate-500">Ruta</dt><dd className="font-semibold text-slate-900">{newRequest.pickup_district || '—'} → {newRequest.delivery_district || '—'}</dd></div>
+                <div><dt className="text-xs text-slate-500">Atención</dt><dd className="font-semibold text-slate-900">{requiredAt ? fullDateTime(requiredAt) : '—'}</dd></div>
+                <div><dt className="text-xs text-slate-500">Documento</dt><dd className="font-semibold text-slate-900">{referenceLabel(newRequest) || 'Sin documento'}</dd></div>
+                <div><dt className="text-xs text-slate-500">Flete referencial{unloadingTotal > 0 ? ' + descarga' : ''}</dt><dd className="font-semibold tabular-nums text-slate-900">S/ {(quoteFreight + unloadingTotal).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd></div>
+              </dl>
+            </div>
+            <div className={`rounded-xl border p-4 text-sm ${pendingItems.length ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
+              <p className={`mb-2 text-xs font-bold uppercase tracking-wide ${pendingItems.length ? 'text-amber-800' : 'text-emerald-800'}`}>{pendingItems.length ? 'Pendiente para enviar' : 'Todo completo'}</p>
+              {pendingItems.length ? <ul className="space-y-1">{pendingItems.map(item => <li key={item.label}>
+                <button type="button" onClick={() => document.getElementById(item.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-amber-900 hover:bg-amber-100">
+                  <CircleDashed className="h-3.5 w-3.5 shrink-0" />{item.label}</button></li>)}</ul>
+                : <p className="text-emerald-800">Revise el resumen y envíe la solicitud.</p>}
+            </div>
+          </aside>
         </form>
       </Modal>
 
@@ -1499,4 +1367,24 @@ export default function SolicitudesPage() {
       </Modal>
     </div>
   )
+}
+
+const REQUEST_AREAS = ['OT (Administración de Contratos)', 'Recursos Humanos', 'Logística', 'Gerencia', 'Producción', 'Almacén', 'Otros']
+const REQUEST_TYPE_OPTIONS: { value: string; kind: ServiceKind; title: string; hint: string }[] = [
+  { value: 'DESPACHO', kind: 'ENTREGA_OT', title: 'Despacho', hint: 'Salida de planta hacia el cliente' },
+  { value: 'RECOJO', kind: 'RECOJO', title: 'Recojo', hint: 'Del proveedor hacia planta' },
+  { value: 'TRASLADO', kind: 'PUNTO_A_PUNTO', title: 'Punto a punto', hint: 'Entre dos puntos externos' },
+]
+const field = 'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#002855] disabled:bg-slate-100 disabled:text-slate-500'
+const fieldSm = 'mt-1 w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#002855]'
+
+/** Sección numerada del formulario de solicitud; el id permite saltar desde la lista de pendientes. */
+function FormSection({ id, step, title, hint, children }: { id: string; step: number; title: string; hint?: string; children: React.ReactNode }) {
+  return <section id={id} className="scroll-mt-2 rounded-xl border border-slate-200 bg-white p-4">
+    <header className="mb-3 flex items-start gap-3">
+      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#002855] text-xs font-bold text-white">{step}</span>
+      <div className="min-w-0"><h3 className="text-sm font-semibold text-slate-900">{title}</h3>{hint && <p className="text-xs text-slate-500">{hint}</p>}</div>
+    </header>
+    {children}
+  </section>
 }
