@@ -121,7 +121,7 @@ Quedan fuera, a propósito, y conservan su cabecera previa:
 
 | Pantalla | Motivo |
 |---|---|
-| Aprobaciones de Caja, Expediente de OT (`contratos/[id]`), Ficha de unidad (`mantenimiento/flota/[plate]`) | Título dinámico o doble `h1`: se revisan a mano |
+| Expediente de OT (`contratos/[id]`), Ficha de unidad (`mantenimiento/flota/[plate]`) | Título dinámico con insignias y botón «volver»: se revisan a mano (Aprobaciones de Caja ya migrada) |
 | Monitoreo GPS | Título con insignia de ícono propia sobre el mapa |
 | APT (18), Eficiencia de flota (6), Reportes, Desempeño, Evidencia, Planificación | No tienen título propio: la barra superior ya lo muestra; se revisan en la etapa 6b junto con sus tarjetas y filtros |
 | App del conductor (`/app`) | Fuera de alcance |
