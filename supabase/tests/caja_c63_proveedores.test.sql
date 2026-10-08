@@ -17,6 +17,8 @@ BEGIN
      AND (SELECT count(*) FROM pg_policy p WHERE p.polrelid IN ('public.suppliers'::regclass, 'public.supplier_locations'::regclass)
           AND p.polname = 'security_active_account' AND NOT p.polpermissive) = 2
      AND NOT has_table_privilege('anon', 'public.suppliers', 'SELECT') AND NOT has_table_privilege('anon', 'public.supplier_locations', 'SELECT')
+     AND NOT EXISTS (SELECT 1 FROM unnest(ARRAY['public.suppliers', 'public.supplier_locations']) tb, unnest(ARRAY['anon', 'authenticated']) rl,
+          unnest(ARRAY['TRUNCATE', 'TRIGGER', 'DELETE']) pv WHERE has_table_privilege(rl, tb, pv))
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T1 seguridad de tablas'::text; END IF;
 
   -- T2
