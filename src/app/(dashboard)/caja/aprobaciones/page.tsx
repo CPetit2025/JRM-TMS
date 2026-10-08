@@ -1,11 +1,12 @@
 'use client'
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import {
-  AlertTriangle, CheckCircle2, ClipboardCheck, Clock, Eye, FileText, Loader2, RefreshCw, RotateCcw, Search, ShieldAlert, XCircle,
+  AlertTriangle, CheckCircle2, Clock, Eye, FileText, Loader2, RefreshCw, RotateCcw, Search, ShieldAlert, XCircle,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -127,17 +128,12 @@ export default function AprobacionesPage() {
   )
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><ClipboardCheck className="w-6 h-6" />Aprobación de gastos</h1>
-          <p className="text-sm text-slate-500">
+    <div className="space-y-3">
+      <PageHeader showTitle title="Aprobación de gastos" description={<>
             Gastos de la app del conductor y de Caja web. Solo lo aprobado pasa al costo del viaje y al TCO de la unidad.
             {settings?.double_approval_threshold && <> Montos desde <b>{money(settings.double_approval_threshold)}</b> requieren confirmación del Administrador.</>}
-          </p>
-        </div>
-        <button onClick={() => load(filters)} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button>
-      </div>
+          </>}
+        actions={<button onClick={() => load(filters)} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button>} />
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Kpi icon={<Clock className="w-4 h-4" />} label="Pendientes" value={`${stats.pendingCount ?? 0}`} sub={money(stats.pendingAmount)} onClick={() => setF({ status: 'PENDIENTE', onlyAlerts: false })} />
