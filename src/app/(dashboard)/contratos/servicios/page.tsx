@@ -1000,6 +1000,16 @@ export default function ContractServicesPage() {
                 <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Tipo de Servicio</span>
                 <span className="font-bold text-[#002855]">{viewingService.service_type}</span>
               </div>
+              <div className="bg-slate-50 p-3 rounded border border-slate-200">
+                <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Despacho y solicitudes</span>
+                <span className="font-bold text-slate-800">{registryContext[viewingService.id]?.dispatch_number || 'Sin despacho'}</span>
+                <span className="block text-xs text-slate-600">{registryContext[viewingService.id]?.request_numbers?.join(' · ') || 'Sin solicitudes vinculadas'}</span>
+              </div>
+              <div className="bg-slate-50 p-3 rounded border border-slate-200">
+                <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Estado</span>
+                <span className="font-bold text-slate-800">{stageLabels[stageOf(viewingService)]}</span>
+                <span className="block text-xs text-slate-600">Financiero: {viewingService.status}</span>
+              </div>
             </div>
 
             <div className="bg-white p-3 rounded border border-slate-200">
