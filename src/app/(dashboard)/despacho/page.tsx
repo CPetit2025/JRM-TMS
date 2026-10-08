@@ -20,6 +20,7 @@ import { Truck, MapPin, Loader2, Plus, FileText, Tag, Search, Clock, Route, Pack
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { FormSection, PendingPanel, PendingStatus, type PendingItem } from '@/components/ui/form-section'
 import { QuoteBreakdown } from '@/components/tarifas/TransportTariffManager'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { calculateRouteDistance } from '@/lib/routing'
@@ -188,6 +189,24 @@ export default function DespachoPage() {
   const defaultShares = splitFreight(routeFreight, selectedServices)
   const serviceShare = (id: string) => Number(freightShares[id] ?? defaultShares.find(r => r.id === id)?.amount ?? 0)
   const allocationMatches = Math.round(selectedServices.reduce((sum, r) => sum + serviceShare(r.id), 0) * 100) === Math.round(routeFreight * 100)
+  const [routeSearch, setRouteSearch] = useState('')
+  const [routeService, setRouteService] = useState<ServiceKind | ''>('')
+  const routeCandidates = pendingRequests.filter(r => {
+    if (newDispatch.selected_requests.some(s => s.id === r.id)) return true
+    if (routeService && serviceKind(r) !== routeService) return false
+    const term = routeSearch.trim().toLocaleLowerCase('es-PE')
+    return !term || [r.request_number, r.contracts?.code, r.contracts?.clients?.business_name, r.suppliers?.business_name, referenceLabel(r),
+      districtOf(r.pickup_address, r.pickup_district), districtOf(r.delivery_address, r.delivery_district)].join(' ').toLocaleLowerCase('es-PE').includes(term)
+  })
+  // Lo que falta para programar, en el orden del formulario; cada ítem lleva a su sección.
+  const routePending = ([
+    !newDispatch.selected_requests.length && { label: 'Seleccionar al menos un servicio', target: 'ruta-servicios' },
+    newDispatch.selected_requests.length > 0 && newDispatch.document_type === 'GR' && modalidad === 'PROPIA' && !newDispatch.vehicle_plate && { label: 'Placa del vehículo', target: 'ruta-unidad' },
+    newDispatch.selected_requests.length > 0 && newDispatch.document_type === 'GR' && modalidad === 'PROPIA' && !newDispatch.driver_name && { label: 'Conductor', target: 'ruta-unidad' },
+    newDispatch.selected_requests.length > 0 && newDispatch.document_type === 'GR' && modalidad === 'TERCERO' && (!tercero.carrier_id || !tercero.placa.trim() || !tercero.conductor.trim() || !tercero.telefono.trim() || !tercero.doc.trim()) && { label: 'Datos del transportista tercero', target: 'ruta-unidad' },
+    !newDispatch.scheduled_departure && { label: 'Fecha y hora de salida', target: 'ruta-salida' },
+    mixedOT && !allocationMatches && { label: 'Distribución del flete por OT', target: 'ruta-flete' },
+  ].filter(Boolean) as PendingItem[])
   const programmingRequests = () => newDispatch.selected_requests.map(req => ({ ...req,
     leg_planned_km: reqDistances.current[req.id] ?? null, freight_share_pen: serviceShare(req.id) }))
 
@@ -648,32 +667,66 @@ export default function DespachoPage() {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Armar Ruta y Programar Unidad"
-        maxWidth="max-w-5xl"
+        title="Armar ruta y programar unidad"
+        maxWidth="max-w-7xl"
+        footer={<div className="flex flex-wrap items-center justify-between gap-3">
+          <PendingStatus count={routePending.length} readyText="Lista para programar" />
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setIsModalOpen(false)} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100">Cancelar</button>
+            <button type="submit" form="route-form"
+              disabled={isSubmitting || newDispatch.selected_requests.length === 0 || (mixedOT && !allocationMatches)}
+              className="flex items-center gap-2 rounded-lg bg-[#002855] px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-[#001d3d] disabled:opacity-50">
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}
+              Programar ruta
+            </button>
+          </div>
+        </div>}
       >
-        <form onSubmit={handleProgramar} className="flex flex-col lg:flex-row gap-6">
-          {/* Columna Izquierda: Datos del Viaje */}
-          <div className="lg:w-1/3 flex flex-col gap-4">
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm">
-              <h4 className="font-semibold text-[#002855] flex items-center gap-2 mb-4">
-                <FileText className="w-4 h-4" />
-                Documento de Salida
-              </h4>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Modalidad heredada de la solicitud</label>
-                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#002855]">{newDispatch.selected_requests.length ? newDispatch.document_type === 'NOTA_SALIDA' ? 'Recojo por el cliente · Nota de Salida' : 'Transporte JRM · Guía de Remisión' : 'Seleccione una solicitud'}</div>
-                  <p className="mt-1 text-xs text-slate-500">Para cambiar la modalidad, edite la solicitud y vuelva a aprobarla.</p>
-                </div>
+        <form id="route-form" onSubmit={handleProgramar} className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="min-w-0 space-y-4">
+            <FormSection id="ruta-servicios" step={1} title="Servicios de la ruta" hint="Combine entregas, recojos y traslados de varias OT con la misma modalidad y sede. El orden de selección es el orden de las paradas."
+              aside={<span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800">{newDispatch.selected_requests.length} seleccionadas</span>}>
+              <div className="mb-2 flex flex-wrap gap-2">
+                <label className="relative min-w-0 flex-1 basis-56"><span className="sr-only">Buscar servicios</span><Search aria-hidden className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <input type="search" value={routeSearch} onChange={e => setRouteSearch(e.target.value)} placeholder="Buscar RT, OT, empresa o distrito…" className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#002855]" /></label>
+                <select aria-label="Tipo de servicio" value={routeService} onChange={e => setRouteService(e.target.value as ServiceKind | '')} className="w-48 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#002855]">
+                  <option value="">Todos los servicios</option>
+                  {(Object.keys(SERVICE_KINDS) as ServiceKind[]).map(k => <option key={k} value={k}>{SERVICE_KINDS[k].short}</option>)}
+                </select>
               </div>
-            </div>
+              <div className="max-h-[42vh] overflow-y-auto rounded-lg border border-slate-200">
+                {pendingRequests.length === 0 ? <div className="p-8 text-center text-slate-500"><p className="font-medium">No hay solicitudes disponibles</p><p className="mt-1 text-xs">Las solicitudes aprobadas aparecen aquí para armar la ruta.</p></div>
+                  : routeCandidates.length === 0 ? <p className="p-6 text-center text-sm text-slate-500">Ningún servicio coincide con la búsqueda.</p>
+                  : <ul className="divide-y divide-slate-100">{routeCandidates.map(req => {
+                    const stop = newDispatch.selected_requests.findIndex(r => r.id === req.id)
+                    return <li key={req.id}>
+                      <label className={`flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors ${stop >= 0 ? 'bg-blue-50/70' : 'hover:bg-slate-50'}`}>
+                        <input type="checkbox" className="h-4 w-4 shrink-0 rounded border-slate-300 text-[#002855] focus:ring-[#002855]" checked={stop >= 0}
+                          onChange={() => toggleRequestSelection(req.id, req.pickup_address, req.delivery_address)} />
+                        <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold ${stop >= 0 ? 'bg-[#002855] text-white' : 'border border-dashed border-slate-300 text-slate-300'}`} title={stop >= 0 ? `Parada ${stop + 1}` : 'Sin seleccionar'}>{stop >= 0 ? stop + 1 : ''}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="text-sm font-bold text-[#002855]">{req.request_number}</span>
+                            <ServiceTypeBadge request={req} />
+                            <span className="text-xs font-semibold text-slate-700">{req.contracts?.code ? `OT ${req.contracts.code}` : referenceLabel(req) || 'Sin OT'}</span>
+                            <span className="truncate text-xs text-slate-500">{partyName(req, req.contracts?.clients?.business_name, req.suppliers?.business_name)}</span>
+                            {req.attention_mode === 'RECOJO_CLIENTE' && <span className="text-xs font-medium text-teal-700">Recojo por cliente</span>}
+                            {!req.attention_mode && <span className="text-xs font-medium text-red-700">Modalidad pendiente</span>}
+                            {wasRescheduled(req) && <span className="rounded-full border border-orange-200 bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-800" title={req.rescheduling?.fecha_anterior ? `Fecha anterior: ${serviceDate(req.rescheduling.fecha_anterior)}` : undefined}>Reprogramado</span>}
+                          </span>
+                          <span className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-slate-600">
+                            <span>Atención: <b className="text-slate-800">{requestedAttention(req)}</b></span>
+                            <span className="truncate" title={`${req.pickup_address} → ${req.delivery_address}`}>{districtOf(req.pickup_address, req.pickup_district) || 'Origen'} → {districtOf(req.delivery_address, req.delivery_district) || 'Destino'}</span>
+                          </span>
+                        </span>
+                      </label>
+                    </li>
+                  })}</ul>}
+              </div>
+            </FormSection>
 
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm">
-              <h4 className="font-semibold text-[#002855] flex items-center gap-2 mb-4">
-                <Truck className="w-4 h-4" />
-                Datos del Vehículo
-              </h4>
-              
+            <FormSection id="ruta-unidad" step={2} title={newDispatch.document_type === 'NOTA_SALIDA' ? 'Retiro por el cliente' : 'Unidad y conductor'}
+              hint={newDispatch.selected_requests.length ? (newDispatch.document_type === 'NOTA_SALIDA' ? 'Modalidad heredada: recojo por el cliente · Nota de Salida' : 'Modalidad heredada: transporte JRM · Guía de Remisión') + '. Para cambiarla, edite la solicitud y vuelva a aprobarla.' : 'Seleccione primero los servicios: la modalidad se hereda de la solicitud.'}>
               {newDispatch.document_type === 'NOTA_SALIDA' && <p className="mb-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-800">Retiro coordinado por el cliente. Sin conductor propio, monitoreo GPS ni reserva de flete JRM. El Asistente Documentario confirma la Nota de Despacho antes de la salida.</p>}
               <div className="space-y-3">
                 {newDispatch.document_type === 'GR' && (
@@ -707,7 +760,7 @@ export default function DespachoPage() {
                     </div>
                   </>
                 ) : newDispatch.document_type === 'GR' ? (
-                  <>
+                  <div className="grid gap-3 md:grid-cols-2">
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">Placa del Vehículo</label>
                       <SearchableSelect
@@ -761,13 +814,17 @@ export default function DespachoPage() {
                         placeholder="Seleccione conductor..."
                       />
                     </div>
-                  </>
+                  </div>
                 ) : (
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 mb-3">
                     Nota de salida seleccionada. El cliente recoge, no requiere asignar conductor ni vehículo.
                   </div>
                 )}
+              </div>
+            </FormSection>
 
+            <FormSection id="ruta-salida" step={3} title="Salida" hint="La fecha de salida se confirma por separado de la fecha requerida de cada servicio.">
+              <div className="grid gap-3 md:grid-cols-2">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Fecha Programada Salida</label>
                   <input 
@@ -782,7 +839,6 @@ export default function DespachoPage() {
                   {selectedDates.length > 1 && <p className="mt-2 text-xs text-amber-800">Las solicitudes tienen fechas distintas: {selectedDates.map(serviceDate).join(', ')}. Confirme la salida según el orden de atención.</p>}
                   <p className="mt-1 text-[11px] text-slate-500">La fecha de salida se confirma por separado de la fecha requerida de cada servicio.</p>
                 </div>
-                
                 {newDispatch.document_type === 'GR' && <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1 flex justify-between items-center">
                     Distancia KM (Sugerido Automático)
@@ -800,79 +856,12 @@ export default function DespachoPage() {
                   />
                 </div>}
               </div>
-            </div>
-          </div>
-          
-          {/* Columna Derecha: Selección de Solicitudes */}
-          <div className="lg:w-2/3 flex flex-col">
-            <h4 className="font-semibold text-slate-700 flex items-center justify-between mb-2">
-              Seleccionar Solicitudes
-              <span className="text-xs font-medium bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
-                {newDispatch.selected_requests.length} seleccionadas
-              </span>
-            </h4>
-            
-            <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden flex-1 flex flex-col">
-              <div className="overflow-y-auto p-2 space-y-2" style={{ maxHeight: 'calc(60vh - 120px)' }}>
-                {pendingRequests.length === 0 ? (
-                  <div className="p-8 text-center text-slate-500">
-                    <p className="font-medium">No hay solicitudes disponibles</p>
-                    <p className="text-xs mt-1">Crea nuevas solicitudes desde el módulo principal</p>
-                  </div>
-                ) : (
-                  pendingRequests.map(req => {
-                    return (
-                      <div key={req.id} className="flex flex-col gap-2">
-                        <label 
-                          className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                            newDispatch.selected_requests.some(r => r.id === req.id)
-                              ? 'bg-white border-blue-400 shadow-md ring-1 ring-blue-400' 
-                              : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-sm'
-                          }`}
-                        >
-                          <div className="pt-0.5">
-                            <input 
-                              type="checkbox" 
-                              className="w-4 h-4 text-[#002855] rounded border-slate-300 focus:ring-[#002855]"
-                              checked={newDispatch.selected_requests.some(r => r.id === req.id)}
-                              onChange={() => toggleRequestSelection(req.id, req.pickup_address, req.delivery_address)}
-                            />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 mb-1">
-                              <span className="font-bold text-[#002855] text-sm">{req.request_number}</span>
-                              <span className="text-xs font-semibold text-blue-700">OT {req.contracts?.code || 'Sin OT'}</span>
-                              <span className="text-xs font-medium text-blue-700">{req.attention_mode === 'RECOJO_CLIENTE' ? 'Recojo por cliente' : req.attention_mode === 'TRANSPORTE_JRM' ? 'Transporte JRM' : 'Modalidad pendiente: revisar solicitud'}</span>
-                              <ServiceTypeBadge request={req} />
-                            </div>
-                          
-                          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs"><span className="text-slate-700">Atención requerida · Lima: <b>{requestedAttention(req)}</b></span>{wasRescheduled(req) && <span className="rounded-full border border-orange-200 bg-orange-100 px-2 py-0.5 font-bold text-orange-800">Reprogramado</span>}</div>
-                          {req.rescheduling?.fecha_anterior && <p className="mb-2 text-[11px] text-slate-500">Fecha anterior: {serviceDate(req.rescheduling.fecha_anterior)}</p>}
-                          {req.attention_mode === 'RECOJO_CLIENTE' && <p className="text-xs text-slate-600">Contacto: {req.pickup_contact || 'Sin registrar'} · {req.pickup_phone || 'Sin teléfono'}</p>}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                            <div className="text-xs text-slate-600">
-                              <span className="font-semibold text-slate-800 block mb-0.5">Origen:</span>
-                              <span className="truncate block" title={req.pickup_address}>{req.pickup_address}</span>
-                            </div>
-                            <div className="text-xs text-slate-600">
-                              <span className="font-semibold text-slate-800 block mb-0.5">Destino:</span>
-                              <span className="truncate block" title={req.delivery_address}>{req.delivery_address}</span>
-                            </div>
-                          </div>
-                          </div>
-                        </label>
-                        
-                      </div>
-                    )
-                  })
-                )}
-              </div>
-            </div>
-            
-            {mixedOT && (
-              <section className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-3">
+            </FormSection>
+
+            {mixedOT && <FormSection id="ruta-flete" step={4} title="Flete distribuido por OT" hint="Cada OT financia su parte sobre el 80% operativo; el 20% de utilidad queda protegido.">
+              <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="font-bold text-sm text-[#002855]">Flete distribuido por OT</h3>
+                  <span className="text-xs text-slate-600">Total de ruta S/ {routeFreight.toFixed(2)}</span>
                   <button type="button" onClick={() => setFreightShares({})} className="text-xs text-blue-700 underline">Distribuir según los estimados</button>
                 </div>
                 <p className="text-xs text-slate-600">La propuesta usa los costos estimados de las solicitudes; puede ajustar cada monto antes de confirmar. Cada OT financia su parte sobre el 80% operativo. El 20% de utilidad queda protegido.</p>
@@ -885,28 +874,33 @@ export default function DespachoPage() {
                   </label>
                 ))}
                 <p className={`text-xs font-semibold ${allocationMatches ? 'text-emerald-700' : 'text-red-700'}`}>Total de ruta S/ {routeFreight.toFixed(2)} · Distribuido S/ {selectedServices.reduce((sum, r) => sum + serviceShare(r.id), 0).toFixed(2)}{!allocationMatches && ' · Ajuste la distribución para continuar'}</p>
-              </section>
-            )}
-            <p className="mt-3 text-xs text-slate-500">Una ruta puede combinar entregas, recojos y traslados de varias OT con la misma pareja conductor–unidad. Para sumar servicios después de programar y antes de salir, cancele y rearme la ruta; el sistema libera las reservas y conserva el motivo. En ruta, registre una incidencia.</p>
-            {/* Botones de acción al final de la columna derecha */}
-            <div className="mt-4 flex justify-end gap-3 pt-2">
-              <button 
-                type="button" 
-                onClick={() => setIsModalOpen(false)}
-                className="px-5 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-              >
-                Cancelar
-              </button>
-              <button 
-                type="submit" 
-                disabled={isSubmitting || newDispatch.selected_requests.length === 0 || (mixedOT && !allocationMatches)}
-                className="px-6 py-2 bg-[#002855] text-white text-sm font-bold rounded-lg hover:bg-[#001d3d] transition-colors disabled:opacity-50 flex items-center gap-2 shadow-md hover:shadow-lg disabled:shadow-none"
-              >
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Truck className="w-4 h-4" />}
-                Programar Ruta
-              </button>
-            </div>
+              </div>
+            </FormSection>}
+            <p className="text-xs text-slate-500">Para sumar servicios después de programar y antes de salir, cancele y rearme la ruta; el sistema libera las reservas y conserva el motivo. En ruta, registre una incidencia.</p>
           </div>
+
+          <aside className="space-y-3 lg:sticky lg:top-0 lg:self-start">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">Resumen de la ruta</p>
+              <p className="text-xs text-slate-500">Paradas</p>
+              {selectedServices.length ? <ol className="mt-1 space-y-1.5">{selectedServices.map((req, i) => <li key={req.id} className="flex items-center gap-2">
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#002855] text-[10px] font-bold text-white">{i + 1}</span>
+                <span className="min-w-0 flex-1 truncate"><b className="text-slate-900">{req.request_number}</b> <span className="text-slate-500">· {(req.request_type === 'RECOJO' || req.attention_mode === 'RECOJO_CLIENTE' ? districtOf(req.pickup_address, req.pickup_district) : districtOf(req.delivery_address, req.delivery_district)) || 'Sin distrito'}</span></span>
+                <ServiceTypeBadge request={req} />
+              </li>)}</ol> : <p className="mt-1 font-semibold text-slate-400">Sin servicios</p>}
+              <dl className="mt-3 space-y-2 border-t border-slate-200 pt-3">
+                <div className="flex justify-between gap-2"><dt className="text-slate-500">Documento</dt><dd className="font-semibold text-slate-900">{newDispatch.selected_requests.length ? newDispatch.document_type === 'NOTA_SALIDA' ? 'Nota de Salida' : 'Guía de Remisión' : '—'}</dd></div>
+                {newDispatch.document_type === 'GR' && <>
+                  <div className="flex justify-between gap-2"><dt className="text-slate-500">Unidad</dt><dd className="truncate font-semibold text-slate-900">{(modalidad === 'TERCERO' ? tercero.placa : newDispatch.vehicle_plate) || '—'}{modalidad === 'TERCERO' && <span className="font-normal text-slate-500"> · tercero</span>}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-slate-500">Conductor</dt><dd className="truncate font-semibold text-slate-900">{(modalidad === 'TERCERO' ? tercero.conductor : newDispatch.driver_name) || '—'}</dd></div>
+                </>}
+                <div className="flex justify-between gap-2"><dt className="text-slate-500">Salida</dt><dd className="font-semibold text-slate-900">{newDispatch.scheduled_departure ? cellDateTime(new Date(newDispatch.scheduled_departure).toISOString()) : '—'}</dd></div>
+                {newDispatch.document_type === 'GR' && <div className="flex justify-between gap-2"><dt className="text-slate-500">Distancia</dt><dd className="font-semibold tabular-nums text-slate-900">{newDispatch.estimated_distance_km !== '' ? `${newDispatch.estimated_distance_km} km` : '—'}</dd></div>}
+                <div className="flex justify-between gap-2"><dt className="text-slate-500">Flete de ruta</dt><dd className="font-semibold tabular-nums text-slate-900">S/ {routeFreight.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd></div>
+              </dl>
+            </div>
+            <PendingPanel items={routePending} doneText="Revise las paradas y programe la ruta." />
+          </aside>
         </form>
       </Modal>
 
