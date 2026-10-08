@@ -1,9 +1,10 @@
 'use client'
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, Banknote, Calculator, CheckCircle2, FileCheck2, ImageIcon, Loader2, Plus, RefreshCw, Search, Send, Wrench, XCircle } from 'lucide-react'
+import { AlertTriangle, Calculator, CheckCircle2, FileCheck2, ImageIcon, Loader2, Plus, RefreshCw, Search, Send, Wrench, XCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Modal } from '@/components/ui/modal'
@@ -91,17 +92,13 @@ export default function AnticiposPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><Banknote className="w-6 h-6" />Anticipos</h1>
-          <p className="text-sm text-slate-500">Dinero entregado al conductor a rendir: viáticos del viaje o anticipos por la unidad u otro motivo (neumático, mecánica, trámites), con sus propias reglas de aprobación y rendición.</p>
-        </div>
-        <div className="flex gap-2">
+    <div className="space-y-3">
+      <PageHeader showTitle title="Anticipos" description="Dinero entregado al conductor a rendir: viáticos del viaje o anticipos por la unidad u otro motivo (neumático, mecánica, trámites), con sus propias reglas de aprobación y rendición." actions={<>
+<div className="flex gap-2">
           <button onClick={load} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button>
           {canManage && <button onClick={() => setCreating(true)} className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm font-semibold flex items-center gap-2"><Plus className="w-4 h-4" />Nuevo anticipo</button>}
         </div>
-      </div>
+</>} />
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Stat label="Solicitados por entregar" value={money(totals.requested)} />

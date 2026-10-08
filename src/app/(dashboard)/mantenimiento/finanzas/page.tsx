@@ -1,10 +1,11 @@
 'use client'
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { BarChart3, Loader2, RefreshCw } from 'lucide-react'
+import { Loader2, RefreshCw } from 'lucide-react'
 
 // Finanzas y TCO (Fase 11): todo sale del libro de costos por activo (vw_vehicle_cost_ledger):
 // mantenimiento, operación, combustible, neumáticos, multas/siniestros y alquiler (migración 20260928130000).
@@ -62,19 +63,15 @@ export default function FinanzasTcoPage() {
   const maxMonth = Math.max(1, ...months.map(([, v]) => v))
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><BarChart3 className="w-6 h-6" />Finanzas y TCO</h1>
-          <p className="text-sm text-slate-500">Costo total de propiedad por activo desde el libro de costos: mantenimiento, operación, combustible, neumáticos, cumplimiento y alquiler.</p>
-        </div>
-        <div className="flex gap-2">
+    <div className="space-y-3">
+      <PageHeader showTitle title="Finanzas y TCO" description="Costo total de propiedad por activo desde el libro de costos: mantenimiento, operación, combustible, neumáticos, cumplimiento y alquiler." actions={<>
+<div className="flex gap-2">
           <select value={ownership} onChange={e => setOwnership(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
             <option value="TODOS">Propios y alquilados</option><option value="PROPIO">Solo propios</option><option value="ALQUILADO">Solo alquilados</option><option value="LEASING">Leasing</option>
           </select>
           <button onClick={refresh} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
         </div>
-      </div>
+</>} />
 
       {loading ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : (
         <>

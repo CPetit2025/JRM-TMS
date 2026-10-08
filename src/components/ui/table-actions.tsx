@@ -14,7 +14,7 @@ export type TableAction = {
 }
 
 /** A fixed portal keeps row actions accessible inside scrolling / sticky tables. */
-export function TableActions({ label, actions }: { label: string; actions: TableAction[] }) {
+export function TableActions({ label, actions, compact = false }: { label: string; actions: TableAction[]; compact?: boolean }) {
   const id = useId()
   const trigger = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
@@ -65,7 +65,7 @@ export function TableActions({ label, actions }: { label: string; actions: Table
   return <>
     <button ref={trigger} type="button" title={label} aria-label={label} aria-haspopup="menu"
       aria-expanded={!!position} aria-controls={position ? id : undefined}
-      className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-[#002855] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#002855]"
+      className={`grid ${compact ? 'h-11 w-11 lg:h-8 lg:w-8' : 'h-11 w-11'} shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-[#002855] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#002855]`}
       onClick={event => { event.stopPropagation(); if (position) close(true); else open() }}
       onKeyDown={event => {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {

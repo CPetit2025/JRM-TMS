@@ -1,4 +1,5 @@
 "use client"
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 import { TableActions } from '@/components/ui/table-actions'
 
@@ -471,13 +472,9 @@ export default function FlotaPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-theme(spacing.16))] md:h-[calc(100vh-theme(spacing.16))] bg-slate-50">
-      <div className="p-6 border-b border-slate-200 bg-white shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-[#002855]">Maestro de Unidades y Conductores</h1>
-          <p className="text-sm text-slate-500">Gestión de unidades de transporte y conductores registrados.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-col gap-3 min-h-[calc(100vh-theme(spacing.16))] md:h-[calc(100vh-theme(spacing.16))] bg-slate-50">
+      <PageHeader showTitle title="Maestro de Unidades y Conductores" description="Gestión de unidades de transporte y conductores registrados." actions={<>
+<div className="flex flex-wrap items-center gap-2">
           {activeTab === 'vehicles' ? (
             <>
               <button 
@@ -562,7 +559,7 @@ export default function FlotaPage() {
             </button>
           )}
         </div>
-      </div>
+</>} />
 
       <div className="flex min-h-0 flex-1 flex-col overflow-visible md:overflow-hidden">
         {/* Tabs */}

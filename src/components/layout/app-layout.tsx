@@ -12,6 +12,7 @@ import { NAV_SECTIONS, activeEntry, flatEntries } from '@/lib/nav/navConfig'
 import { usePermissions } from '@/hooks/usePermissions'
 import { isDispatchAuditorRole } from '@/lib/roles'
 import { setSidebar, useSidebar } from '@/lib/nav/sidebarStore'
+import { usePageOwnsTitle } from '@/lib/nav/pageChromeStore'
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { role, isLoaded } = usePermissions()
@@ -19,6 +20,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
 
   const sidebar = useSidebar()
+  const pageOwnsTitle = usePageOwnsTitle()
 
   const getPageTitle = (path: string) => {
     // Título desde el menú: nombre de la pantalla y su sección (Almacén APT › Kardex)
@@ -65,7 +67,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {isLoaded && !isDispatchAuditorRole(role) && <JrmAiAssistant />}
       <Sidebar />
       <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 shrink-0 bg-white border-b border-slate-200 border-t-[3px] border-t-[#cf152d] flex items-center justify-between gap-2 px-3 sm:h-20 sm:gap-3 sm:px-4 lg:px-8 z-20 relative">
+        <header className="h-14 shrink-0 bg-white border-b border-slate-200 border-t-[3px] border-t-[#cf152d] flex items-center justify-between gap-2 px-3 sm:gap-3 sm:px-4 lg:px-6 z-20 relative">
           <div className="flex min-w-0 items-center gap-3">
             <button type="button" onClick={() => setSidebar({ overlay: true })} aria-label="Mostrar menú" title="Mostrar menú (Ctrl + B)"
               aria-expanded={sidebar.overlay} aria-controls="principal-navigation"
@@ -76,7 +78,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             {/* Sección del menú arriba, con la línea roja del login; la pantalla en grande */}
             <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#002855] sm:text-[11px]">
               <span aria-hidden className="h-[3px] w-4 shrink-0 rounded bg-[#cf152d] sm:w-6" /><span className="truncate">{subtitle}</span></p>
-            <h2 className="truncate text-base font-black text-slate-900 sm:text-xl" title={title}>{title}</h2>
+            {!pageOwnsTitle && <h2 className="truncate text-base font-black text-slate-900 sm:text-lg" title={title}>{title}</h2>}
           </div>
           </div>
           <div className="flex shrink-0 items-center gap-1 sm:gap-3">
@@ -96,7 +98,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </header>
         <div id="app-update-slot" />
         <NotificationBanner />
-        <main className="relative z-0 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-auto p-3 sm:p-5 lg:p-8">
+        <main className="relative z-0 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-auto p-3 sm:p-4 lg:p-5">
           {children}
         </main>
       </div>

@@ -195,7 +195,7 @@ BEGIN
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T7 cierre: ' || COALESCE(r::text, '')); END IF;
 
   -- T8 desempeño por proveedor
-  PERFORM pg_temp.as_user(v_desp); r := public.tercero_desempeno(NULL, NULL); PERFORM pg_temp.as_user(NULL);
+  PERFORM pg_temp.as_user(v_desp); r := public.tercero_desempeno(NULL, ((now() + interval '1 day') AT TIME ZONE 'America/Lima')::date); PERFORM pg_temp.as_user(NULL);
   SELECT count(*) INTO v_n FROM jsonb_array_elements(r -> 'proveedores') p
   WHERE p ->> 'carrier_id' = v_car::text AND (p ->> 'viajes')::int = 1 AND (p ->> 'entregas')::int = 2 AND (p ->> 'cerrados')::int = 1
     AND (p ->> 'salida_puntual_pct')::numeric = 100 AND (p ->> 'entrega_a_tiempo_pct')::numeric = 100 AND (p ->> 'flete')::numeric = 300;

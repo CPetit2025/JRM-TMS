@@ -1,11 +1,12 @@
 'use client'
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
-import { FileSignature, Plus, RefreshCw, Loader2, RotateCw, Edit2 } from 'lucide-react'
+import { Plus, RefreshCw, Loader2, RotateCw, Edit2 } from 'lucide-react'
 
 // Contratos de alquiler (Fase 11): tarifa mensual/diaria/horaria/por km, km/horas incluidos, excesos,
 // descuento por indisponibilidad, condiciones y renovación encadenada. Sin traslapes por unidad
@@ -54,17 +55,13 @@ export default function ContratosAlquilerPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><FileSignature className="w-6 h-6" />Contratos de alquiler</h1>
-          <p className="text-sm text-slate-500">Unidades alquiladas (alquiler seco) por arrendador, con tarifas, condiciones y renovaciones.</p>
-        </div>
-        <div className="flex gap-2">
+    <div className="space-y-3">
+      <PageHeader showTitle title="Contratos de alquiler" description="Unidades alquiladas (alquiler seco) por arrendador, con tarifas, condiciones y renovaciones." actions={<>
+<div className="flex gap-2">
           <button onClick={() => setEditing('new')} className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm flex items-center gap-2"><Plus className="w-4 h-4" />Nuevo contrato</button>
           <button onClick={refresh} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
         </div>
-      </div>
+</>} />
       <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar código, placa o arrendador…" className="border rounded-lg px-3 py-2 text-sm w-72" />
       <div className="bg-white border rounded-xl overflow-x-auto">
         {loading ? <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : filtered.length === 0 ? (

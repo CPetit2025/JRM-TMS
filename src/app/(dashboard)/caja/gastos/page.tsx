@@ -1,4 +1,5 @@
 'use client'
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -197,11 +198,8 @@ export default function GastosPage() {
   if (isLoaded && !canWrite('caja-gastos')) return <div className="p-10 text-center text-slate-500">No tiene permiso para registrar gastos.</div>
 
   return (
-    <div className="p-6 space-y-5 max-w-5xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><FileText className="w-6 h-6" />Registro de gastos</h1>
-        <p className="text-sm text-slate-500">Gastos de viaje o de la unidad pagados por Caja, la empresa o el conductor. Todo gasto queda pendiente hasta que lo apruebe el Jefe de Distribución o el Administrador.</p>
-      </div>
+    <div className="space-y-3 max-w-5xl mx-auto">
+      <PageHeader showTitle title="Registro de gastos" description="Gastos de viaje o de la unidad pagados por Caja, la empresa o el conductor. Todo gasto queda pendiente hasta que lo apruebe el Jefe de Distribución o el Administrador." />
 
       <div className="flex bg-white border border-slate-200 rounded-xl overflow-hidden text-sm font-semibold">
         <button onClick={() => setTab('nuevo')} className={`flex-1 py-2.5 ${tab === 'nuevo' ? 'bg-[#002855] text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{editing ? 'Corregir gasto' : 'Nuevo gasto'}</button>

@@ -1,8 +1,9 @@
 "use client"
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useState, useEffect } from 'react'
-import { Plus, Users, Edit2, ShieldAlert, Loader2 , Filter, Search} from 'lucide-react'
+import { Plus, Edit2, ShieldAlert, Loader2, Filter, Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -138,25 +139,16 @@ export default function TrabajadoresPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <Users className="w-6 h-6 text-indigo-600" />
-            Maestro de Trabajadores Operativos
-          </h1>
-          <p className="text-slate-500 mt-1">
-            Personal sin acceso al sistema para asignación de Tareo Automático y Rutas.
-          </p>
-        </div>
-        <button 
+    <div className="space-y-3">
+      <PageHeader showTitle title="Maestro de Trabajadores Operativos" description="Personal sin acceso al sistema para asignación de Tareo Automático y Rutas." actions={<>
+<button 
           onClick={openNew}
           className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
         >
           <Plus className="w-5 h-5" />
           Registrar Trabajador
         </button>
-      </div>
+</>} />
 
             {/* Filtros y Búsqueda */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">

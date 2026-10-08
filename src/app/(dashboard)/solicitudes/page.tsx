@@ -1,13 +1,17 @@
 "use client"
-import { TransportWorkflow } from '@/components/transport/TransportWorkflow'
+import { TransportWorkflow, TorreControlButton } from '@/components/transport/TransportWorkflow'
 import { DataTable } from '@/components/ui/data-table'
 import { TableActions, type TableAction } from '@/components/ui/table-actions'
 import { TablePagination } from '@/components/ui/table-pagination'
+import { PageHeader } from '@/components/ui/page-header'
+import { InlineStatusBar } from '@/components/ui/inline-status-bar'
+import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filter-toolbar'
+import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 
 import { DEFAULT_LEAD_TIME_SETTINGS, evaluateLeadTime, settingsForRequest, limaDateTimeToIso, limaInputParts, formatLeadTimeStatus, type DeliveryZone, type TransportLeadTimeSettings } from '@/lib/transport-lead-time'
 import { operatingBudget } from '@/lib/transport-budget'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Plus, Send, Check, X, Search, Loader2, Clock, CalendarClock, Ban, Edit2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { Plus, Send, Check, X, Search, Loader2, Clock, CalendarClock, Ban, Edit2, ArrowUpDown, ArrowUp, ArrowDown, Eye, Layers, CheckCircle2, Truck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -156,7 +160,7 @@ export default function SolicitudesPage() {
   const [filterService, setFilterService] = useState('TODOS')
 
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(25)
+  const [pageSize, setPageSize] = useState(20)
   const [sort, setSort] = useState<{ key: 'created_at' | 'required_date' | 'service' | 'ot' | 'address' | 'status'; direction: 'asc' | 'desc' }>({ key: 'created_at', direction: 'desc' })
   const statusLabels: Record<string, string> = {
     PENDIENTE: 'Pendiente', 'PENDIENTE DE APROBACIÓN': 'Pendiente', APROBADA: 'Aprobada', APROBADO: 'Aprobada',
@@ -741,21 +745,17 @@ export default function SolicitudesPage() {
   }
 
   const getStatusBadge = (status: string) => {
-    const tone = ['PENDIENTE', 'PENDIENTE DE APROBACIÓN', 'REPROGRAMADA'].includes(status) ? 'bg-amber-50 text-amber-800'
-      : ['APROBADA', 'APROBADO', 'ENTREGADA', 'FINALIZADA'].includes(status) ? 'bg-emerald-50 text-emerald-800'
-      : ['OBSERVADA', 'RECHAZADA'].includes(status) ? 'bg-rose-50 text-rose-800'
-      : ['ASIGNADA', 'EN_TRANSITO', 'EN_DESTINO'].includes(status) ? 'bg-blue-50 text-[#002855]' : 'bg-slate-100 text-slate-600'
-    return <span title={status.replaceAll('_', ' ')} className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone}`}>{statusLabels[status] || status.replaceAll('_', ' ')}</span>
+    const tone: StatusTone = ['PENDIENTE', 'PENDIENTE DE APROBACIÓN'].includes(status) ? 'warning'
+      : status === 'REPROGRAMADA' ? 'special'
+      : ['APROBADA', 'APROBADO', 'ENTREGADA', 'FINALIZADA'].includes(status) ? 'success'
+      : ['OBSERVADA', 'RECHAZADA'].includes(status) ? 'danger'
+      : ['ASIGNADA', 'EN_TRANSITO', 'EN_DESTINO'].includes(status) ? 'info' : 'neutral'
+    return <StatusBadge tone={tone} title={status.replaceAll('_', ' ')}>{statusLabels[status] || status.replaceAll('_', ' ')}</StatusBadge>
   }
 
   return (
-    <div className="flex min-h-0 w-full flex-col gap-4 mx-auto lg:h-full">
-      <TransportWorkflow current="solicitud" />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Solicitud de Transporte</h1>
-          <p className="text-sm text-slate-500">Control de servicios programados</p>
-        </div>
+    <div className="flex min-h-0 w-full flex-col gap-2.5 mx-auto lg:h-full">
+      <PageHeader showTitle title="Solicitud de Transporte" description="Control de servicios programados" actions={<>
         {canWrite('solicitudes') && (
           <button 
             onClick={() => {
@@ -796,43 +796,44 @@ export default function SolicitudesPage() {
               })
               setIsModalOpen(true)
             }}
-            className="flex items-center gap-2 bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#001d3d] transition-colors shadow-sm"
+            className="flex h-10 items-center justify-center gap-2 rounded-lg bg-jrm-navy px-5 font-semibold text-white shadow-sm transition-colors hover:bg-jrm-navy-dark"
           >
-            <Plus className="w-4 h-4" />
+            <Plus aria-hidden className="h-4 w-4" />
             Nueva Solicitud
           </button>
         )}
-      </div>
+        <TorreControlButton />
+      </>} />
+      <TransportWorkflow current="solicitud" torre={false} />
+      <InlineStatusBar label="Resumen por estado" active={filterStatus} loading={loading} onChange={key => { setFilterStatus(key); setPage(1) }}
+        items={([{ key: 'TODOS', label: 'Todas', icon: <Layers />, tone: 'navy' }, { key: 'PENDIENTE', label: 'Pendientes', icon: <Clock />, tone: 'amber' },
+          { key: 'APROBADA', label: 'Aprobadas', icon: <CheckCircle2 />, tone: 'emerald' }, { key: 'ASIGNADA', label: 'Asignadas', icon: <Truck />, tone: 'blue' },
+          { key: 'REPROGRAMADA', label: 'Reprogramadas', icon: <CalendarClock />, tone: 'violet' }] as const).map(tab => ({ ...tab, count: requests.filter(r => matchesStatus(r.status, tab.key)).length }))} />
 
-      <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:flex-1">
-        <div className="flex flex-wrap items-end gap-3 border-b border-slate-200 bg-white p-3 sm:p-4">
-          <label className="relative min-w-0 flex-1 basis-60">
-            <span className="sr-only">Buscar solicitudes</span><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" aria-hidden="true" />
-            <input type="search" placeholder="Buscar OT, solicitud o dirección…" value={searchTerm}
-              onChange={event => { setSearchTerm(event.target.value); setPage(1) }}
-              className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#002855]" />
-          </label>
-          <label className="min-w-0 text-xs text-slate-500">Desde<input aria-label="Atención desde" type="date" value={filterDateFrom}
-            onChange={event => { setFilterDateFrom(event.target.value); setPage(1) }} className="mt-1 block h-11 max-w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700" /></label>
-          <label className="min-w-0 text-xs text-slate-500">Hasta<input aria-label="Atención hasta" type="date" min={filterDateFrom || undefined} value={filterDateTo}
-            onChange={event => { setFilterDateTo(event.target.value); setPage(1) }} className="mt-1 block h-11 max-w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700" /></label>
-          <select aria-label="Filtrar por tipo de servicio" value={filterService} onChange={e => { setFilterService(e.target.value); setPage(1) }} className="h-11 max-w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700">
-            <option value="TODOS">Tipo de servicio</option><option value="DESPACHO">Entrega</option><option value="RECOJO">Recojo</option><option value="TRASLADO">Punto a punto</option><option value="RECOJO_CLIENTE">Recojo cliente</option>
-          </select>
-          <select aria-label="Filtrar estado" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1) }} className="h-11 max-w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700">
-            <option value="TODOS">Todos los estados</option>{Array.from(new Set(['PENDIENTE', 'APROBADA', 'ASIGNADA', 'REPROGRAMADA', 'OBSERVADA', 'RECHAZADA', 'CANCELADA', ...requests.map(r => r.status).filter(status => status !== 'PENDIENTE DE APROBACIÓN' && status !== 'APROBADO')])).map(status => <option key={status} value={status}>{statusLabels[status] || status.replaceAll('_', ' ')}</option>)}
-          </select>
-          <button type="button" onClick={clearFilters} className="min-h-11 rounded-lg px-3 text-sm text-slate-500 hover:bg-slate-50 hover:text-[#002855]">Limpiar</button>
-        </div>
-        <div aria-label="Resumen por estado" className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-1 border-b border-slate-200 px-3 py-2 sm:px-4">
-          {[{ key: 'TODOS', label: 'Todas' }, { key: 'PENDIENTE', label: 'Pendientes' }, { key: 'APROBADA', label: 'Aprobadas' }, { key: 'ASIGNADA', label: 'Asignadas' }, { key: 'REPROGRAMADA', label: 'Reprogramadas' }].map(tab => <button key={tab.key} type="button" aria-pressed={filterStatus === tab.key} onClick={() => { setFilterStatus(tab.key); setPage(1) }} className={`flex min-h-11 items-center gap-2 border-b-2 text-xs ${filterStatus === tab.key ? 'border-[#002855] font-semibold text-[#002855]' : 'border-transparent text-slate-500 hover:text-[#002855]'}`}>
-            {tab.label}<span className="rounded-full bg-slate-100 px-2 py-0.5 tabular-nums text-slate-600">{requests.filter(r => matchesStatus(r.status, tab.key)).length}</span>
-          </button>)}
-        </div>
+      <FilterToolbar compact label="Búsqueda y filtros de solicitudes" onClear={clearFilters}>
+        <label className="relative min-w-[15rem] flex-1 basis-60">
+          <span className="sr-only">Buscar solicitudes</span><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" aria-hidden="true" />
+          <input type="search" placeholder="Buscar OT, solicitud o dirección…" value={searchTerm}
+            onChange={event => { setSearchTerm(event.target.value); setPage(1) }}
+            className={`${filterControl} pl-9`} />
+        </label>
+        <FilterField inline label="Desde" className="w-48"><input aria-label="Atención desde" type="date" value={filterDateFrom}
+          onChange={event => { setFilterDateFrom(event.target.value); setPage(1) }} className={filterControl} /></FilterField>
+        <FilterField inline label="Hasta" className="w-48"><input aria-label="Atención hasta" type="date" min={filterDateFrom || undefined} value={filterDateTo}
+          onChange={event => { setFilterDateTo(event.target.value); setPage(1) }} className={filterControl} /></FilterField>
+        <FilterField inline label="Tipo de servicio" className="w-64"><select aria-label="Filtrar por tipo de servicio" value={filterService} onChange={e => { setFilterService(e.target.value); setPage(1) }} className={filterControl}>
+          <option value="TODOS">Todos</option><option value="DESPACHO">Entrega</option><option value="RECOJO">Recojo</option><option value="TRASLADO">Punto a punto</option><option value="RECOJO_CLIENTE">Recojo cliente</option>
+        </select></FilterField>
+        <FilterField inline label="Estado" className="w-60"><select aria-label="Filtrar estado" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1) }} className={filterControl}>
+          <option value="TODOS">Todos los estados</option>{Array.from(new Set(['PENDIENTE', 'APROBADA', 'ASIGNADA', 'REPROGRAMADA', 'OBSERVADA', 'RECHAZADA', 'CANCELADA', ...requests.map(r => r.status).filter(status => status !== 'PENDIENTE DE APROBACIÓN' && status !== 'APROBADO')])).map(status => <option key={status} value={status}>{statusLabels[status] || status.replaceAll('_', ' ')}</option>)}
+          </select></FilterField>
+      </FilterToolbar>
+
+      <div className="flex min-h-0 flex-col overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card lg:flex-1">
         <div role="region" aria-label="Tabla de solicitudes de transporte" tabIndex={0} className="min-h-0 overflow-auto lg:flex-1">
-          <DataTable className="block w-full table-fixed text-left lg:min-w-[980px] lg:table"><caption className="sr-only">Solicitud de Transporte: fechas, tipo de servicio, OT, punto de atención, estado y acciones</caption>
+          <DataTable dense className="block w-full table-fixed text-left lg:min-w-[980px] lg:table"><caption className="sr-only">Solicitud de Transporte: fechas, tipo de servicio, OT, punto de atención, estado y acciones</caption>
             <thead className="sticky top-0 z-10 hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>
-              {[{ title: 'Fecha solicitud', key: 'created_at', width: 'w-[12%]' }, { title: 'Fecha atención', key: 'required_date', width: 'w-[12%]' }, { title: 'Tipo de servicio', key: 'service', width: 'w-[12%]' }, { title: 'OT', key: 'ot', width: 'w-[7%]' }, { title: 'Punto de atención', key: 'address', width: 'w-[27%]' }, { title: 'Estado', key: 'status', width: 'w-[13%]' }, { title: 'Acciones', width: 'w-[17%]' }].map(column => <th key={column.title} scope="col" className={column.width} aria-sort={column.key && sort.key === column.key ? sort.direction === 'asc' ? 'ascending' : 'descending' : undefined}>
+              {[{ title: 'Fecha solicitud', key: 'created_at', width: 'w-[14%]' }, { title: 'Fecha atención', key: 'required_date', width: 'w-[14%]' }, { title: 'Tipo de servicio', key: 'service', width: 'w-[12%]' }, { title: 'OT', key: 'ot', width: 'w-[7%]' }, { title: 'Punto de atención', key: 'address', width: 'w-[24%]' }, { title: 'Estado', key: 'status', width: 'w-[13%]' }, { title: 'Acciones', width: 'w-[17%]' }].map(column => <th key={column.title} scope="col" className={column.width} aria-sort={column.key && sort.key === column.key ? sort.direction === 'asc' ? 'ascending' : 'descending' : undefined}>
                 {column.key ? <button type="button" onClick={() => changeSort(column.key as typeof sort.key)} aria-label={`Ordenar por ${column.title.toLowerCase()}`} className="flex min-h-8 items-center gap-1.5 text-left hover:text-[#002855]">{column.title}{sort.key === column.key ? sort.direction === 'asc' ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" /> : <ArrowUpDown className="h-3 w-3 shrink-0 text-slate-400" />}</button> : column.title}
               </th>)}
             </tr></thead>
@@ -852,8 +853,8 @@ export default function SolicitudesPage() {
                   ...(editable ? [{ id: 'cancel', label: 'Cancelar servicio', icon: <Ban className="h-4 w-4" />, tone: 'danger' as const, onSelect: () => { void handleCancelRequest(req.id) } }] : []),
                 ]
                 return <tr key={req.id} className="grid grid-cols-2 hover:bg-slate-50/70 lg:table-row">
-                  <td className={cell}>{label('Fecha solicitud')}<p className="font-medium text-slate-700">{requestDate(req.created_at, true)}</p></td>
-                  <td className={cell}>{label('Fecha atención')}<p className="font-medium text-slate-700">{req.required_at ? requestDate(req.required_at, true) : serviceDate(req.required_date)}</p>{req.request_type === 'DESPACHO' && req.attention_mode !== 'RECOJO_CLIENTE' && <p className={`mt-1 text-[11px] ${requestLeadTime(req).enough === false ? 'text-red-700' : 'text-slate-500'}`}>{!req.required_at ? 'Sin hora registrada' : !leadTimeLoaded ? 'Plazo no disponible' : formatLeadTimeStatus(requestLeadTime(req).status)}</p>}{req.status === 'REPROGRAMADA' && <p className="mt-0.5 text-xs text-amber-700">Reprogramada</p>}</td>
+                  <td className={cell}>{label('Fecha solicitud')}<p className="whitespace-nowrap font-medium text-slate-700">{requestDate(req.created_at, true)}</p></td>
+                  <td className={cell}>{label('Fecha atención')}<p className="whitespace-nowrap font-medium text-slate-700">{req.required_at ? requestDate(req.required_at, true) : serviceDate(req.required_date)}</p>{req.request_type === 'DESPACHO' && req.attention_mode !== 'RECOJO_CLIENTE' && <p className={`mt-1 text-[11px] ${requestLeadTime(req).enough === false ? 'text-red-700' : 'text-slate-500'}`}>{!req.required_at ? 'Sin hora registrada' : !leadTimeLoaded ? 'Plazo no disponible' : formatLeadTimeStatus(requestLeadTime(req).status)}</p>}{req.status === 'REPROGRAMADA' && <p className="mt-0.5 text-xs text-amber-700">Reprogramada</p>}</td>
                   <td className={cell}>{label('Tipo de servicio')}<span title={serviceLabel(req)} className="text-slate-700">{compactService(req)}</span></td>
                   <td className={cell}>{label('OT')}<p className="break-words font-semibold text-[#002855]">{req.contracts?.code || (req.contract_id ? 'OT vinculada' : 'Sin OT')}</p></td>
                   <td className={`${cell} col-span-2`}>{label('Punto de atención')}<div title={addresses.map(place => `${place.label}: ${place.address}`).join(' → ')} className="text-slate-700">
@@ -861,15 +862,15 @@ export default function SolicitudesPage() {
                   </div></td>
                   <td className={cell}>{label('Estado')}{getStatusBadge(req.status)}</td>
                   <td className={cell}>{label('Acciones')}<div className="flex flex-wrap items-center gap-1.5 lg:flex-nowrap">
-                    <button type="button" onClick={() => void openRequestDetails(req)} aria-label={`Ver detalle de ${req.request_number}`} className="inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-[#002855] hover:border-slate-300 hover:bg-slate-50">Ver detalle</button>
-                    <TableActions label={`Más acciones de ${req.request_number}`} actions={actions} />
+                    <button type="button" onClick={() => void openRequestDetails(req)} aria-label={`Ver detalle de ${req.request_number}`} className="inline-flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-jrm-navy hover:border-slate-300 hover:bg-slate-50 lg:min-h-0 lg:h-8"><Eye aria-hidden className="h-3.5 w-3.5" />Ver detalle</button>
+                    <TableActions compact label={`Más acciones de ${req.request_number}`} actions={actions} />
                   </div></td>
                 </tr>
               })}
             </tbody>
           </DataTable>
         </div>
-        <TablePagination total={loading ? 0 : filteredRequests.length} page={currentPage} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1) }} />
+        <TablePagination total={loading ? 0 : filteredRequests.length} page={currentPage} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1) }} itemLabel="resultados" pageSizeOptions={[10, 20, 50, 100]} compact />
       </div>
 
       <Modal

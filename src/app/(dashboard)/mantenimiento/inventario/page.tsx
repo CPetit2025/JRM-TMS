@@ -1,4 +1,5 @@
 'use client'
+import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -6,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
-import { Package, Plus, RefreshCw, Loader2, Edit2, ArrowDownToLine, SlidersHorizontal, ShieldCheck } from 'lucide-react'
+import { Plus, RefreshCw, Loader2, Edit2, ArrowDownToLine, SlidersHorizontal, ShieldCheck } from 'lucide-react'
 
 // Inventario CMMS (Fase 7). Stock y costo promedio solo cambian por movimientos del kardex
 // (register_inventory_movement / consume_work_order_part); migración 20260927200000.
@@ -91,17 +92,13 @@ export default function InventarioPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><Package className="w-6 h-6" />Repuestos e inventario</h1>
-          <p className="text-sm text-slate-500">Kardex con costo promedio ponderado, reservas por OT, reposición automática y garantías de repuestos instalados.</p>
-        </div>
-        <div className="flex gap-2">
+    <div className="space-y-3">
+      <PageHeader showTitle title="Repuestos e inventario" description="Kardex con costo promedio ponderado, reservas por OT, reposición automática y garantías de repuestos instalados." actions={<>
+<div className="flex gap-2">
           <button onClick={() => setEditing('new')} className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm flex items-center gap-2"><Plus className="w-4 h-4" />Nuevo repuesto</button>
           <button onClick={refresh} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
         </div>
-      </div>
+</>} />
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[['Valor del stock', money(kpis.value)], ['Valor reservado', money(kpis.reserved)], ['Sin stock', kpis.empty], ['Bajo mínimo', kpis.below], ['Reposiciones abiertas', kpis.repl]]
