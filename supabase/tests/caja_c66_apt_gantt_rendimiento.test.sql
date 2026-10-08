@@ -1,7 +1,8 @@
 -- Pruebas C66 — Rendimiento del Gantt APT con la data completa (incidente: statement timeout en /apt/gantt).
 -- T1 la vista inicial (sin filtros) responde como usuario autenticado dentro de 2 s (límite del rol: 8 s; lee el resumen precalculado);
 -- T2 la serie de saldo conserva el cálculo: cada punto = movimientos sin fecha + movimientos hasta esa fecha;
--- T3 el resumen precalculado (apt_gantt_lotes) devuelve lo mismo que el cálculo en vivo, con y sin filtros.
+-- T3 el resumen precalculado (apt_gantt_lotes) devuelve lo mismo que el cálculo en vivo, con y sin filtros;
+--    con el modelo aún vacío, la respuesta trae la cobertura vigente de las cargas.
 -- Termina en error para forzar ROLLBACK: "CAJA C66 PASS/FAIL".
 BEGIN;
 CREATE FUNCTION pg_temp.c66_user(p_user uuid) RETURNS void LANGUAGE plpgsql AS $$
@@ -34,6 +35,10 @@ BEGIN
   got := (q->'serie'->-1->>'saldo_tn')::numeric;
   IF abs(got-expected) > 0.001 THEN RAISE EXCEPTION 'CAJA C66 FAIL (T2): serie al % = % vs %', v_to, got, expected; END IF;
  END IF;
+ IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'apt_uploads_gantt_meta' AND tgrelid = 'public.apt_uploads'::regclass)
+    OR (SELECT data_max FROM public.apt_gantt_meta WHERE id=1) IS DISTINCT FROM (SELECT max(fecha) FROM public.apt_movements WHERE active AND valid) THEN
+  RAISE EXCEPTION 'CAJA C66 FAIL (T3): rango de datos del Gantt no sigue a las cargas';
+ END IF;
  IF NOT EXISTS (SELECT 1 FROM public.apt_gantt_meta m JOIN public.apt_flow_state s ON s.id=1 WHERE m.flow_rebuilt_at = s.rebuilt_at) THEN
   RAISE EXCEPTION 'CAJA C66 FAIL (T3): resumen precalculado desactualizado respecto del último recálculo';
  END IF;
@@ -50,6 +55,13 @@ BEGIN
   IF f IS DISTINCT FROM fast[i] THEN RAISE EXCEPTION 'CAJA C66 FAIL (T3): precalculado difiere del cálculo en vivo con %', filtro; END IF;
  END LOOP;
  PERFORM pg_temp.c66_user(NULL);
+ UPDATE public.apt_flow_state SET cutoff = NULL WHERE id=1;
+ PERFORM pg_temp.c66_user(actor);
+ f := public.apt_gantt('{}',25,0);
+ PERFORM pg_temp.c66_user(NULL);
+ IF (f->>'vacio')::boolean IS DISTINCT FROM true OR f->'cobertura' IS DISTINCT FROM (SELECT COALESCE(coverage,'[]') FROM public.apt_gantt_meta WHERE id=1) THEN
+  RAISE EXCEPTION 'CAJA C66 FAIL (T3): con el modelo vacío el Gantt no devuelve la cobertura vigente';
+ END IF;
  RAISE EXCEPTION 'CAJA C66 PASS (3/3) Gantt APT % ms · % lotes · serie % · precalculado = en vivo', ms, q->>'total', jsonb_array_length(q->'serie');
 END $test$;
 ROLLBACK;
