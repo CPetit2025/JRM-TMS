@@ -29,6 +29,10 @@ const MAX_ENTRIES = 150
 let dataVersion: string | null = null
 let checkedAt = 0
 let versionRequest: Promise<string> | null = null
+// Cada limpieza abre una generación nueva: lo que estaba en curso al limpiar ya no se guarda.
+let generation = 0
+// La caché es de un solo usuario: si cambia la sesión en la pestaña, se descarta todo.
+let cacheUser: string | null = null
 
 function storedKeys() {
   try { return Object.keys(window.sessionStorage).filter(k => k.startsWith(STORE)) } catch { return [] }
@@ -46,30 +50,45 @@ function dropEntries() {
 
 /** Descarta los resultados guardados; la siguiente lectura consulta al servidor. */
 export function clearAptCache() {
-  dropEntries(); inflight.clear(); dataVersion = null; checkedAt = 0
+  generation++
+  dropEntries(); inflight.clear(); dataVersion = null; checkedAt = 0; versionRequest = null
 }
 
 async function currentVersion(): Promise<string> {
   if (dataVersion && Date.now() - checkedAt < VERSION_TTL) return dataVersion
-  versionRequest ??= call<{ version: string }>('apt_data_version').then(r => {
-    if (dataVersion !== null && r.version !== dataVersion) dropEntries()
-    dataVersion = r.version; checkedAt = Date.now()
-    return r.version
-  }).finally(() => { versionRequest = null })
+  if (!versionRequest) {
+    const started = generation
+    const request: Promise<string> = call<{ version: string }>('apt_data_version').then(r => {
+      if (started === generation) {
+        if (dataVersion !== null && r.version !== dataVersion) dropEntries()
+        dataVersion = r.version; checkedAt = Date.now()
+      }
+      return r.version
+    }).finally(() => { if (versionRequest === request) versionRequest = null })
+    versionRequest = request
+  }
   return versionRequest
 }
 
 // Lectura con caché; si la versión no se puede consultar se lee directo (sin guardar).
 async function read<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
+  const { data: { session } } = await supabase.auth.getSession()
+  const user = session?.user.id ?? null
+  if (!user) return call<T>(fn, args)
+  // Las claves llevan el usuario; tras recargar la pestaña solo se leen las de la sesión actual.
+  if (cacheUser !== null && user !== cacheUser) clearAptCache()
+  cacheUser = user
   let version: string
   try { version = await currentVersion() } catch { return call<T>(fn, args) }
-  const key = `${fn}:${JSON.stringify(args)}`
+  const started = generation
+  const key = `${user}:${fn}:${JSON.stringify(args)}`
   const hit = memory.get(key) ?? readStored(key)
   if (hit && hit.version === version) { memory.set(key, hit); return hit.value as T }
   const flight = `${version}|${key}`
   let pending = inflight.get(flight) as Promise<T> | undefined
   if (!pending) {
     pending = call<T>(fn, args).then(value => {
+      if (started !== generation) return value
       const entry = { version, value }
       if (memory.size >= MAX_ENTRIES) memory.delete(memory.keys().next().value as string)
       memory.set(key, entry); writeStored(key, entry)
