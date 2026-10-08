@@ -24,7 +24,7 @@ ni Supabase. El piloto es **Solicitud de Transporte** (`/solicitudes`).
 | Módulo | Diseño actual | Problema UX/UI | Mejora propuesta | Riesgo |
 |---|---|---|---|---|
 | Solicitud de Transporte | Tabla ya compacta; KPI como pestañas de texto | Estados poco visibles, filtros sin etiqueta, paginación sin números | **Piloto hecho** (sección 4) | Bajo |
-| Despacho / Documentos / Registro de servicios | Usan `TransportWorkflow` (ahora rediseñado) | Cabecera con título repetido, filtros propios | `PageHeader`, `FilterToolbar`, `StatusBadge` | Medio (despacho es la pantalla más grande, 1 200+ líneas) |
+| Despacho / Documentos / Registro de servicios | **Aplicado (etapa 5a)**: `PageHeader`, KPI reales, `FilterToolbar`, `StatusBadge` | Filtros ocultos tras «Filtros avanzados»; insignias propias | Hecho; la lógica no cambió | Bajo |
 | Torre de Control / Monitoreo | Mapa y paneles propios | Tarjetas con estilos propios | `KpiStatCard` solo en indicadores; mapa se conserva | Medio |
 | Contratos y OT | Tablas con `DataTable` | Insignias y filtros distintos entre sí | `StatusBadge`, `FilterToolbar` | Bajo |
 | Caja (11 pantallas) | Estilo propio (`caja-input`) | Formularios y tarjetas sin estructura común | `FormSection` + tokens | Medio (hay impresión de documentos: `caja-printable`) |

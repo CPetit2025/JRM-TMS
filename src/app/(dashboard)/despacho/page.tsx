@@ -3,11 +3,15 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { TransportWorkflow } from '@/components/transport/TransportWorkflow'
 import { DataTable } from '@/components/ui/data-table'
+import { PageHeader } from '@/components/ui/page-header'
+import { KpiStatCard } from '@/components/ui/kpi-stat-card'
+import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filter-toolbar'
+import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 
 import { splitFreight } from '@/lib/transport-budget'
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Truck, MapPin, Loader2, Calendar, Plus, FileText, Tag, Search, Filter, XCircle } from 'lucide-react'
+import { Truck, MapPin, Loader2, Calendar, Plus, FileText, Tag, Search, XCircle, Clock, Route, PackageCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -107,6 +111,13 @@ interface Dispatch {
   dispatch_requests?: DispatchRequest[]
 }
 
+const dispatchTone = (status: string): StatusTone =>
+  status === 'PROGRAMADO' ? 'warning'
+  : ['EN_CURSO', 'EN RUTA', 'RETORNO'].includes(status) ? 'info'
+  : status === 'ESPERANDO_AUTORIZACION' ? 'special'
+  : ['ENTREGADO', 'RETORNO_COMPLETADO', 'LIQUIDADO', 'CERRADO'].includes(status) ? 'success'
+  : status === 'CANCELADO' ? 'danger' : 'neutral'
+
 export default function DespachoPage() {
   const router = useRouter()
   const { canWrite, canRead } = usePermissions()
@@ -120,7 +131,6 @@ export default function DespachoPage() {
   const [loading, setLoading] = useState(true)
 
   const [searchTerm, setSearchTerm] = useState('')
-  const [showFilters, setShowFilters] = useState(false)
   const [filterStatus, setFilterStatus] = useState('TODOS')
   const [filterModalidad, setFilterModalidad] = useState('TODAS')
 
@@ -583,23 +593,24 @@ export default function DespachoPage() {
   return (
     <div className="space-y-6 w-full mx-auto">
       <TransportWorkflow current="programacion" />
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Programación de Despachos y Ruteo</h1>
-          <p className="text-sm text-slate-500">Asignación de unidades de transporte a Solicitudes</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+      <PageHeader title="Programación de Despachos y Ruteo" description="Asignación de unidades de transporte a Solicitudes" actions={<>
         <ReportarFallaButton />
         {canWrite('despacho') && (
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#001d3d] transition-colors shadow-sm"
+            className="flex min-h-11 items-center gap-2 rounded-lg bg-jrm-navy px-4 py-2 font-medium text-white shadow-sm transition-colors hover:bg-jrm-navy-dark"
           >
             <Plus className="w-4 h-4" />
             Armar Ruta
           </button>
         )}
-        </div>
+      </>} />
+
+      <div aria-label="Resumen operativo" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KpiStatCard label="Solicitudes por asignar" icon={<FileText className="h-5 w-5" />} tone="amber" loading={loading} value={pendingRequests.length} />
+        <KpiStatCard label="Programados" icon={<Clock className="h-5 w-5" />} tone="navy" loading={loading} value={dispatches.filter(d => d.status === 'PROGRAMADO').length} />
+        <KpiStatCard label="En ruta" icon={<Route className="h-5 w-5" />} tone="blue" loading={loading} value={dispatches.filter(d => ['EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'].includes(d.status)).length} />
+        <KpiStatCard label="Por cerrar" icon={<PackageCheck className="h-5 w-5" />} tone="emerald" loading={loading} value={dispatches.filter(d => ['ENTREGADO', 'RETORNO_COMPLETADO'].includes(d.status)).length} />
       </div>
 
       <div className="flex flex-col gap-6">
@@ -686,37 +697,13 @@ export default function DespachoPage() {
           </h2>
 
           {/* Filtros y Búsqueda */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
-        <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
-          <div className="relative w-full md:w-96">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-slate-400" />
-            </div>
-            <input
-              type="text"
-              placeholder="Buscar por nro, placa o conductor..."
-              className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#002855] focus:border-transparent transition-colors sm:text-sm"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors border ${showFilters ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-          >
-            <Filter className="w-4 h-4" />
-            Filtros Avanzados
-          </button>
-        </div>
-        {showFilters && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Estado</label>
-              <select
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none"
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-              >
+          <FilterToolbar label="Búsqueda y filtros de despachos" onClear={() => { setSearchTerm(''); setFilterStatus('TODOS'); setFilterModalidad('TODAS') }}>
+            <label className="relative min-w-0 flex-1 basis-60">
+              <span className="sr-only">Buscar despachos</span><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" aria-hidden="true" />
+              <input type="search" placeholder="Buscar por nro, placa, conductor u OT…" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`${filterControl} pl-9`} />
+            </label>
+            <FilterField label="Estado" className="w-52">
+              <select className={filterControl} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
                 <option value="TODOS">Todos</option>
                 <option value="PROGRAMADO">Programado</option>
                 <option value="EN RUTA">En Ruta</option>
@@ -725,22 +712,15 @@ export default function DespachoPage() {
                 <option value="CERRADO">Cerrado</option>
                 <option value="LIQUIDADO">Cerrado (ruta cerrada)</option>
               </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Unidad</label>
-              <select
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none"
-                value={filterModalidad}
-                onChange={(e) => setFilterModalidad(e.target.value)}
-              >
+            </FilterField>
+            <FilterField label="Unidad" className="w-44">
+              <select className={filterControl} value={filterModalidad} onChange={(e) => setFilterModalidad(e.target.value)}>
                 <option value="TODAS">Todas</option>
                 <option value="PROPIA">Flota propia</option>
                 <option value="TERCERO">Tercerizada</option>
               </select>
-            </div>
-          </div>
-        )}
-      </div>
+            </FilterField>
+          </FilterToolbar>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="overflow-auto max-h-[calc(100vh-220px)]">
@@ -826,16 +806,7 @@ export default function DespachoPage() {
                           </div>
                         </td>
                         <td className="p-4">
-                          <span className={`px-2 py-1 text-xs font-semibold rounded-md whitespace-nowrap ${
-                            dispatch.status === 'PROGRAMADO' ? 'bg-yellow-100 text-yellow-700' :
-                            (dispatch.status === 'EN_CURSO' || dispatch.status === 'EN RUTA') ? 'bg-blue-100 text-blue-700' :
-                            dispatch.status === 'ESPERANDO_AUTORIZACION' ? 'bg-orange-100 text-orange-700' :
-                            dispatch.status === 'RETORNO' ? 'bg-indigo-100 text-indigo-700' :
-                            (dispatch.status === 'ENTREGADO' || dispatch.status === 'RETORNO_COMPLETADO') ? 'bg-green-100 text-green-700' :
-                            'bg-red-100 text-red-700'
-                          }`}>
-                            {dispatchStatusLabel(dispatch.status)}
-                          </span>
+                          <StatusBadge tone={dispatchTone(dispatch.status)}>{dispatchStatusLabel(dispatch.status)}</StatusBadge>
                           {dispatch.status === 'PROGRAMADO' && dispatch.docs_required && (
                             <div className={`mt-1 text-[10px] font-semibold ${dispatch.docs_reissue ? 'text-red-600' : dispatch.docs_ready_at ? 'text-emerald-600' : 'text-amber-600'}`}
                               title={dispatch.docs_reissue_reason || undefined}>

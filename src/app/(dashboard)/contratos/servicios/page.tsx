@@ -1,9 +1,13 @@
 "use client"
 import { TransportWorkflow } from '@/components/transport/TransportWorkflow'
 import { DataTable } from '@/components/ui/data-table'
+import { PageHeader } from '@/components/ui/page-header'
+import { KpiStatCard } from '@/components/ui/kpi-stat-card'
+import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filter-toolbar'
+import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, Calendar, Check, Ban, Loader2, Upload, Download, AlertCircle, Search, Filter, X, ArrowUp, ArrowDown, ArrowUpDown, RefreshCw, Scale } from 'lucide-react'
+import { Plus, Calendar, Check, Ban, Loader2, Upload, Download, AlertCircle, Search, X, ArrowUp, ArrowDown, ArrowUpDown, RefreshCw, Scale, Layers, Clock, CheckCircle2, FileEdit } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -68,6 +72,7 @@ interface ContractService {
 
 interface RegistryContext { service_id: string; dispatch_number: string | null; request_numbers: string[]; operation_state: string | null; stage: 'COMPROMETIDO' | 'REALIZADO' | 'ANULADO' | 'REGISTRO_MANUAL' }
 const stageLabels: Record<RegistryContext['stage'], string> = { COMPROMETIDO: 'Comprometido', REALIZADO: 'Realizado', ANULADO: 'Anulado', REGISTRO_MANUAL: 'Registro manual' }
+const stageTone: Record<RegistryContext['stage'], StatusTone> = { COMPROMETIDO: 'warning', REALIZADO: 'success', ANULADO: 'danger', REGISTRO_MANUAL: 'neutral' }
 
 type SortKey = 'fecha' | 'contrato' | 'cliente' | 'servicio' | 'placa' | 'guia' | 'ton' | 'monto' | 'traza' | 'estado'
 
@@ -109,7 +114,6 @@ export default function ContractServicesPage() {
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
   const [filterStatus, setFilterStatus] = useState('TODOS')
-  const [showFilters, setShowFilters] = useState(false)
 
   const [newService, setNewService] = useState({
     contract_id: '',
@@ -506,12 +510,7 @@ export default function ContractServicesPage() {
   return (
     <div className="space-y-6 w-full mx-auto">
       <TransportWorkflow current="registro" />
-      <div className="flex flex-col gap-4 xl:flex-row xl:justify-between xl:items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Registro de Servicios</h1>
-          <p className="text-sm text-slate-500">Compromisos de transporte, servicios realizados y gastos adicionales vinculados a la OT. El cierre operativo no significa pago.</p>
-        </div>
-        <div className="flex flex-wrap gap-3">
+      <PageHeader title="Registro de Servicios" description="Compromisos de transporte, servicios realizados y gastos adicionales vinculados a la OT. El cierre operativo no significa pago." actions={<>
           <button 
             onClick={() => setIsOrphanModalOpen(true)}
             className="flex items-center gap-2 bg-rose-50 text-rose-700 border border-rose-200 px-4 py-2 rounded-lg font-medium hover:bg-rose-100 transition-colors shadow-sm"
@@ -551,76 +550,37 @@ export default function ContractServicesPage() {
 
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-[#002855] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#001d3d] transition-colors shadow-sm"
+            className="flex min-h-11 items-center gap-2 rounded-lg bg-jrm-navy px-4 py-2 font-medium text-white shadow-sm transition-colors hover:bg-jrm-navy-dark"
           >
             <Plus className="w-4 h-4" />
             Registrar Servicio
           </button>
-        </div>
+      </>} />
+
+      <div aria-label="Resumen por etapa" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        {([['TODOS', 'Todos', Layers, 'navy'], ['COMPROMETIDO', 'Comprometidos', Clock, 'amber'], ['REALIZADO', 'Realizados', CheckCircle2, 'emerald'], ['REGISTRO_MANUAL', 'Registros manuales', FileEdit, 'slate'], ['ANULADO', 'Anulados', Ban, 'rose']] as const).map(([key, label, Icon, tone]) =>
+          <KpiStatCard key={key} label={label} icon={<Icon className="h-5 w-5" />} tone={tone} loading={loading}
+            value={key === 'TODOS' ? services.length : services.filter(srv => stageOf(srv) === key).length} active={filterStatus === key} onClick={() => setFilterStatus(key)} />)}
       </div>
 
       {/* Filtros y Búsqueda */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-        <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
-          <div className="relative w-full md:w-96">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-slate-400" />
-            </div>
-            <input
-              type="text"
-              placeholder="Buscar por contrato, cliente, placa, etc..."
-              className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#002855] focus:border-transparent transition-colors sm:text-sm"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors border ${showFilters ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-          >
-            <Filter className="w-4 h-4" />
-            Filtros Avanzados
-          </button>
-        </div>
-
-        {showFilters && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Fecha Desde</label>
-              <input
-                type="date"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none"
-                value={filterDateFrom}
-                onChange={(e) => setFilterDateFrom(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Fecha Hasta</label>
-              <input
-                type="date"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none"
-                value={filterDateTo}
-                onChange={(e) => setFilterDateTo(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Estado</label>
-              <select
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#002855] outline-none"
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-              >
-                <option value="TODOS">Todos los Estados</option>
-                <option value="COMPROMETIDO">Comprometidos</option>
-                <option value="REALIZADO">Realizados</option>
-                <option value="REGISTRO_MANUAL">Registros manuales</option>
-                <option value="ANULADO">Anulado</option>
-              </select>
-            </div>
-          </div>
-        )}
-      </div>
-
+      <FilterToolbar label="Búsqueda y filtros de servicios" onClear={() => { setSearchTerm(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterStatus('TODOS') }}>
+        <label className="relative min-w-0 flex-1 basis-64">
+          <span className="sr-only">Buscar servicios</span><Search aria-hidden className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
+          <input type="search" placeholder="Buscar por contrato, cliente, placa, etc..." className={`${filterControl} pl-9`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+        </label>
+        <FilterField label="Fecha desde" className="w-40"><input type="date" className={filterControl} value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} /></FilterField>
+        <FilterField label="Fecha hasta" className="w-40"><input type="date" className={filterControl} value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} /></FilterField>
+        <FilterField label="Estado" className="w-48">
+          <select className={filterControl} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+            <option value="TODOS">Todos los Estados</option>
+            <option value="COMPROMETIDO">Comprometidos</option>
+            <option value="REALIZADO">Realizados</option>
+            <option value="REGISTRO_MANUAL">Registros manuales</option>
+            <option value="ANULADO">Anulado</option>
+          </select>
+        </FilterField>
+      </FilterToolbar>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <label htmlFor="registry-budget" className="text-sm font-semibold text-[#002855]">Disponible actual de la partida · OT</label>
@@ -740,9 +700,7 @@ export default function ContractServicesPage() {
                       <div className="text-xs text-slate-500">{context?.request_numbers?.join(' · ')}</div>
                     </td>
                     <td className="p-4 text-center">
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${stage === 'ANULADO' ? 'bg-slate-500 text-white' : stage === 'REALIZADO' ? 'bg-emerald-100 text-emerald-700' : stage === 'COMPROMETIDO' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}`}>
-                        {stageLabels[stage]}
-                      </span>
+                      <StatusBadge tone={stageTone[stage]}>{stageLabels[stage]}</StatusBadge>
                       <div className="mt-1 text-[10px] text-slate-500">Estado financiero: {srv.status}</div>
                     </td>
                   </tr>

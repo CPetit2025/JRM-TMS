@@ -1,9 +1,13 @@
 'use client'
 import { TransportWorkflow } from '@/components/transport/TransportWorkflow'
 import { DataTable } from '@/components/ui/data-table'
+import { PageHeader } from '@/components/ui/page-header'
+import { KpiStatCard } from '@/components/ui/kpi-stat-card'
+import { FilterToolbar, filterControl } from '@/components/ui/filter-toolbar'
+import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Clock, FileCheck2, FileSpreadsheet, FileText, ListTree, Loader2, RefreshCw, Search, Trash2, Truck, Upload } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock, Layers, FileCheck2, FileSpreadsheet, FileText, ListTree, Loader2, RefreshCw, Search, Trash2, Truck, Upload } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { Modal } from '@/components/ui/modal'
 import { GuiaDetalleModal } from '@/components/guias/GuiaDetalleModal'
@@ -36,11 +40,11 @@ const DOC_LABEL: Record<string, string> = {
   GUIA_REMISION: 'Guía de remisión', PACKING_LIST: 'Packing List firmado', NOTA_DESPACHO: 'Nota de Despacho', OTRO: 'Otro documento',
 }
 const CARGO_LABEL: Record<string, string> = { PT: 'Producto terminado', SUMINISTROS: 'Suministros', OTROS: 'Otros' }
-const STATUS_BADGE: Record<QueueItem['doc_status'], { label: string; cls: string }> = {
-  PENDIENTE: { label: 'Documentos pendientes', cls: 'bg-amber-100 text-amber-800 border-amber-200' },
-  REEMISION: { label: 'Requiere reemisión', cls: 'bg-red-100 text-red-700 border-red-200' },
-  LISTO: { label: 'Documentos listos', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-  SALIO: { label: 'Salió', cls: 'bg-slate-100 text-slate-600 border-slate-200' },
+const STATUS_BADGE: Record<QueueItem['doc_status'], { label: string; tone: StatusTone }> = {
+  PENDIENTE: { label: 'Documentos pendientes', tone: 'warning' },
+  REEMISION: { label: 'Requiere reemisión', tone: 'danger' },
+  LISTO: { label: 'Documentos listos', tone: 'success' },
+  SALIO: { label: 'Salió', tone: 'neutral' },
 }
 const SHEET_TYPES = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'text/csv']
 const isSheetName = (n: string) => /\.(xlsx|xls|csv)$/i.test(n)
@@ -158,32 +162,25 @@ function DocumentaryQueue() {
   return (
     <div className="min-w-0 space-y-4">
       <TransportWorkflow current="documentos" />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-[#002855] flex items-center gap-2"><FileText className="w-6 h-6" />Documentos de Despacho</h1>
-          <p className="mt-1 text-sm text-slate-500">Salida y conformidad en un único espacio · documentos por servicio, parada y OT.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => void load()} className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button>
-        </div>
-      </div>
+      <PageHeader title="Documentos de Despacho" description="Salida y conformidad en un único espacio · documentos por servicio, parada y OT."
+        actions={<button onClick={() => void load()} className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button>} />
 
       <nav aria-label="Etapas documentarias" className="flex flex-wrap gap-2">
         {([['salida', packingOnly ? 'Planificación · Packing List' : 'Previos a salida'], ...(!packingOnly ? [['conformidad', 'Conformidad de entrega'], ['observados', 'Observados / reemisión'], ['historial', 'Historial']] : [['historial', 'Historial de Packing List']])] as [DocumentPhase, string][]).map(([value, title]) => <button key={value} type="button" aria-pressed={phase === value} onClick={() => { setPhaseChoice(value); setFilter('TODOS') }} className={`min-h-11 rounded-lg border px-4 text-sm font-semibold ${phase === value ? 'border-[#002855] bg-[#002855] text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{title}</button>)}
       </nav>
-      {showDeparted && <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4"><label className="text-xs font-semibold text-slate-600">Desde · salida programada<input type="date" value={dateFrom} max={dateUntil} onChange={e => setDateFrom(e.target.value)} className="mt-2 block min-h-11 rounded-lg border border-slate-300 px-3 text-sm" /></label><label className="text-xs font-semibold text-slate-600">Hasta · Lima<input type="date" value={dateUntil} min={dateFrom} onChange={e => setDateUntil(e.target.value)} className="mt-2 block min-h-11 rounded-lg border border-slate-300 px-3 text-sm" /></label><p className="text-xs leading-5 text-slate-500">Consulta por período de hasta 366 días. {packingOnly ? 'Historial de Packing List por despacho, unidad y OT.' : 'Historial incluye despachos cancelados y sus documentos vigentes; las evidencias y revisiones conservan su historial.'}</p></div>}
+      {showDeparted && <FilterToolbar label="Período del historial"><label className="text-xs font-medium text-slate-500">Desde · salida programada<input type="date" value={dateFrom} max={dateUntil} onChange={e => setDateFrom(e.target.value)} className={`${filterControl} mt-1 w-44`} /></label><label className="text-xs font-medium text-slate-500">Hasta · Lima<input type="date" value={dateUntil} min={dateFrom} onChange={e => setDateUntil(e.target.value)} className={`${filterControl} mt-1 w-44`} /></label><p className="min-w-0 flex-1 basis-64 text-xs leading-5 text-slate-500">Consulta por período de hasta 366 días. {packingOnly ? 'Historial de Packing List por despacho, unidad y OT.' : 'Historial incluye despachos cancelados y sus documentos vigentes; las evidencias y revisiones conservan su historial.'}</p></FilterToolbar>}
       <ol aria-label="Secuencia documentaria" className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm md:grid-cols-3">
         {[['Packing List firmado', 'Auditor de Despacho', 'Carga el Packing List en PDF, foto o Excel con su firma. El asistente confirma los documentos y, en recojos, registra la Nota de Despacho.'], ['Guía de entrega', 'Conductor / proveedor JRM', 'Adjunta la guía firmada desde el app o el portal del proveedor al realizar la entrega.'], ['Conformidad', 'Supervisor de Transporte', 'Aprueba, observa o rechaza el sustento. Sin aprobación, el servicio no puede avanzar.']].map(([title, role, detail], index) => <li key={title} className="flex items-start gap-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#002855] font-bold text-white">{index + 1}</span><div><p className="font-semibold text-[#002855]">{title}</p><p className="mt-1 text-xs font-medium text-slate-700">{role}</p><p className="mt-1 text-xs leading-5 text-slate-500">{detail}</p></div></li>)}
       </ol>
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
-        <label className="relative w-full sm:max-w-sm"><span className="sr-only">Buscar OT, solicitud, cliente o despacho</span><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="OT, solicitud, cliente o despacho" className="min-h-11 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm" /></label>
-        <div className="flex flex-wrap gap-2">
-        {phase === 'salida' && ([['TODOS', 'Todos'], ['PENDIENTE', `Pendientes (${counts.PENDIENTE})`], ['REEMISION', `Reemisión (${counts.REEMISION})`], ['LISTO', `Listos (${counts.LISTO})`]] as const).map(([k, l]) => (
-          <button key={k} onClick={() => setFilter(k)}
-            className={`min-h-11 px-3 rounded-lg text-sm border ${filter === k ? 'bg-[#002855] text-white border-[#002855]' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>{l}</button>
-        ))}
-        </div>
-      </div>
+      {phase === 'salida' && <div aria-label="Resumen documentario" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {([['TODOS', 'Todos', counts.PENDIENTE + counts.REEMISION + counts.LISTO, <Layers key="i" className="h-5 w-5" />, 'navy'], ['PENDIENTE', 'Pendientes', counts.PENDIENTE, <Clock key="i" className="h-5 w-5" />, 'amber'],
+          ['REEMISION', 'Reemisión', counts.REEMISION, <AlertTriangle key="i" className="h-5 w-5" />, 'rose'], ['LISTO', 'Listos', counts.LISTO, <CheckCircle2 key="i" className="h-5 w-5" />, 'emerald']] as const).map(([k, l, n, icon, tone]) =>
+          <KpiStatCard key={k} label={l} value={n} icon={icon} tone={tone} loading={items === null} active={filter === k} onClick={() => setFilter(k)} />)}
+      </div>}
+      <FilterToolbar label="Búsqueda de documentos">
+        <label className="relative min-w-0 flex-1 basis-64"><span className="sr-only">Buscar OT, solicitud, cliente o despacho</span><Search aria-hidden className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="OT, solicitud, cliente o despacho" className={`${filterControl} pl-9`} /></label>
+        {search && <button type="button" onClick={() => setSearch('')} className="min-h-11 rounded-lg px-3 text-sm font-medium text-blue-700 hover:bg-blue-50">Limpiar</button>}
+      </FilterToolbar>
 
       {isLoaded && !canEdit && !canPacking && (
         <p className="text-sm text-slate-500 bg-slate-50 border rounded-lg p-3">Vista de consulta: el Auditor de Despacho carga el Packing List; el Asistente Documentario confirma los documentos. La validación de guías corresponde al Supervisor de Transporte.</p>
@@ -223,7 +220,7 @@ function DocumentRow({ item, stop, delivery, canEdit, packingOnly, onManage, onE
     <td className={cell}>{label('OT / Solicitud')}<p className="break-words text-base font-bold text-[#002855]">{stop?.ot_code ? `OT ${stop.ot_code}` : 'Sin OT vinculada'}</p><p className="mt-1 text-xs text-slate-600">{stop?.request_number || 'Sin solicitud asociada'}{stop && ` · Parada ${stop.sequence || item.stops.indexOf(stop) + 1}`}</p></td>
     <td className={cell}>{label('Cliente / Destino')}<p className="break-words font-medium text-slate-800">{stop?.client || 'Sin cliente registrado'}</p><p className="mt-1 break-words text-xs leading-5 text-slate-500">{stop?.delivery || 'Sin destino registrado'}</p></td>
     <td className={cell}>{label('Despacho / Salida')}<p className="break-words text-xs font-semibold text-slate-700">{item.dispatch_number}</p><p className={`mt-1 text-xs ${urgent ? 'font-semibold text-amber-800' : 'text-slate-500'}`}>{fmtDate(item.scheduled_departure, true)}</p><p className="mt-1 text-xs text-slate-500">{item.is_pickup ? 'Recojo del cliente' : `${item.vehicle_plate || 'Sin placa'} · ${item.driver_name || (item.modalidad === 'TERCERO' ? 'Proveedor JRM' : 'Sin conductor')}`}</p></td>
-    <td className={cell}>{label('1. Packing List')}<span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-semibold ${badge.cls}`}>{badge.label}</span><p className="mt-2 text-xs text-slate-600">{packing ? `Firmado adjunto${packing.request_id ? '' : ' · consolidado'}` : 'Firma pendiente de adjuntar'}</p>{item.is_pickup && <p className="mt-1 text-xs text-slate-500">Nota de Despacho: {note ? 'adjunta' : 'pendiente'}</p>}{item.docs_reissue && <p className="mt-1 text-xs text-red-700">{item.docs_reissue_reason || 'Actualizar y confirmar documentos'}</p>}</td>
+    <td className={cell}>{label('1. Packing List')}<StatusBadge tone={badge.tone}>{badge.label}</StatusBadge><p className="mt-2 text-xs text-slate-600">{packing ? `Firmado adjunto${packing.request_id ? '' : ' · consolidado'}` : 'Firma pendiente de adjuntar'}</p>{item.is_pickup && <p className="mt-1 text-xs text-slate-500">Nota de Despacho: {note ? 'adjunta' : 'pendiente'}</p>}{item.docs_reissue && <p className="mt-1 text-xs text-red-700">{item.docs_reissue_reason || 'Actualizar y confirmar documentos'}</p>}</td>
     {!packingOnly && <td className={cell}>{label('2. Guía de entrega')}<p className="text-xs font-medium text-slate-700">{item.is_pickup ? 'Nota de Despacho' : delivery ? delivery.guide_number || 'Guía aún no recibida' : 'Consulta de guía pendiente'}</p><p className="mt-1 text-xs text-slate-500">{item.is_pickup ? 'Circuito de recojo del cliente' : item.modalidad === 'TERCERO' ? 'Responsable: proveedor JRM' : 'Responsable: conductor · app'}</p>{delivery && delivery.photos_count > 0 && <p className="mt-1 text-xs text-slate-500">{delivery.photos_count} foto(s) recibida(s)</p>}</td>}
     {!packingOnly && <td className={cell}>{label('3. Conformidad')}<p className={`text-xs font-semibold ${tone}`}>{item.is_pickup ? 'No aplica guía de entrega' : delivery ? conformityLabels[delivery.conformity] : 'Conformidad no disponible'}</p>{!item.is_pickup && <p className="mt-1 text-xs text-slate-500">Supervisor de Transporte</p>}</td>}
     <td className={cell}>{label('Acciones')}<div className="flex flex-wrap gap-2"><button type="button" onClick={onManage} className="min-h-11 rounded-lg bg-[#002855] px-3 text-xs font-semibold text-white">{canEdit && item.status === 'PROGRAMADO' ? packingOnly ? 'Cargar Packing List' : 'Gestionar documentos' : 'Ver documentos'}</button>{delivery && !item.is_pickup && <button type="button" onClick={() => onEvidence(delivery)} className="min-h-11 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-[#002855]">Ver guía y conformidad</button>}</div></td>
@@ -253,7 +250,7 @@ function DispatchCard({ item, canEdit, canPacking, packingOnly, onVoid, onOpen, 
       <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Unidad</p><p className="mt-2 flex items-center gap-2 text-lg font-bold text-[#002855]"><Truck className="h-5 w-5" />{item.is_pickup ? 'Unidad del cliente' : item.vehicle_plate || 'Sin unidad'}</p><p className="mt-1 text-xs text-slate-600">{item.is_pickup ? 'Recojo por el cliente' : item.modalidad === 'TERCERO' ? 'Transporte contratado por JRM' : 'Transporte JRM'}</p></div>
       <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Conductor</p><p className="mt-2 break-words text-sm font-semibold text-slate-800">{item.is_pickup ? 'No aplica' : item.driver_name || 'Sin conductor registrado'}</p></div>
       <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Salida programada</p><p className={`mt-2 text-sm font-semibold ${urgent ? 'text-red-700' : 'text-slate-800'}`}>{fmtDate(item.scheduled_departure, true)}</p>{urgent && <p className="mt-1 text-xs text-red-700">{h !== null && h < 0 ? 'Salida atrasada' : 'Salida próxima'}</p>}</div>
-      <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Estado documentario</p><span className={`mt-2 inline-flex rounded-lg border px-2 py-1 text-xs font-semibold ${badge.cls}`}>{badge.label}</span>{item.docs_ready_at && !item.docs_reissue && <p className="mt-1 text-xs text-emerald-700">Confirmado · {fmtDate(item.docs_ready_at, true)}</p>}</div>
+      <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Estado documentario</p><span className="mt-2 inline-flex"><StatusBadge tone={badge.tone}>{badge.label}</StatusBadge></span>{item.docs_ready_at && !item.docs_reissue && <p className="mt-1 text-xs text-emerald-700">Confirmado · {fmtDate(item.docs_ready_at, true)}</p>}</div>
     </div>
     {item.docs_reissue && <p className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Reemisión: {item.docs_reissue_reason || 'Actualizar los documentos del servicio.'}</p>}
     <section className="overflow-hidden rounded-xl border border-slate-200" aria-label="Documentos por servicio">
