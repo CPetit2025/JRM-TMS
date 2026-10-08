@@ -11,7 +11,7 @@ export default function ConfiguracionPage() {
   const [activeTab, setActiveTab] = useState('empresa')
   const [isSaving, setIsSaving] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
-  const { role, isLoaded: permissionsLoaded } = usePermissions()
+  const { role, canWrite, isLoaded: permissionsLoaded } = usePermissions()
 
   // Estado del formulario
   const [config, setConfig] = useState({
@@ -122,11 +122,20 @@ export default function ConfiguracionPage() {
   if (!isLoaded || !permissionsLoaded) return null
   
   if (role !== 'admin') {
+    if (canWrite('configuracion')) {
+      return <div className="space-y-6 max-w-4xl mx-auto">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Planificación y plazos</h1>
+          <p className="text-sm text-slate-500">Configura la anticipación mínima de las nuevas solicitudes de transporte.</p>
+        </div>
+        <TransportLeadTimeSettings />
+      </div>
+    }
     return (
       <div className="flex flex-col items-center justify-center h-[60vh]">
         <Lock className="w-16 h-16 text-slate-300 mb-4" />
         <h2 className="text-xl font-bold text-slate-700">Acceso Restringido</h2>
-        <p className="text-slate-500 mt-2">Solo los Administradores del Sistema pueden acceder a este módulo.</p>
+        <p className="text-slate-500 mt-2">Necesitas permiso de configuración para gestionar los plazos de transporte.</p>
       </div>
     )
   }

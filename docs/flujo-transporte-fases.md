@@ -57,6 +57,14 @@ Un flete comprometido no acredita un servicio realizado. La vista económica dis
 
 El arnés local de transporte reproduce restricciones operativas importantes, pero no sustituye todas las restricciones históricas ni todas las pruebas de Caja de la base desplegada. El workflow debe aplicar migraciones y ejecutar la suite SQL completa antes de solicitar el despliegue de Vercel. No se borran tablas, documentos históricos ni enlaces anteriores.
 
+### Revisión posterior a la publicación
+
+La auditoría de solo lectura de la versión `f2780d1` ([ejecución 37714047975](https://github.com/CPetit2025/JRM-TMS/actions/runs/37714047975)) verificó RLS en las 168 tablas, claves foráneas validadas e indexadas y ausencia de índices inválidos. Las tablas nuevas del portal y los plazos no conceden acceso anónimo directo. Los cuatro RPC públicos de seguimiento mantienen su acceso por token y código. Las tres vistas sanitizadas de Caja conservan sus filtros explícitos por módulo/sede.
+
+Se revisaron 386 relaciones: las referencias de negocio comprobadas no tienen huérfanos. Hay 11 perfiles sin cuenta en `auth.users`; se conservan sin borrar ni crear cuentas automáticamente, porque el catálogo no determina su finalidad ni los registros que necesitan conservarlos.
+
+El acceso delegado a plazos requiere escritura en `configuracion` y muestra únicamente ese formulario; las opciones generales siguen reservadas al administrador. El Registro de Servicios admite también el permiso histórico `clientes`, igual que sus RPC, conservando los controles de sede, OT y escritura en el servidor.
+
 ### Navegador local sin credenciales de producción
 
 Iniciar `node scripts/test-transport-flow-fixture.cjs` (Supabase sintético en 127.0.0.1:3019). Compilar con `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:3019 NEXT_PUBLIC_SUPABASE_ANON_KEY=fixture-public SUPABASE_SERVICE_ROLE_KEY=fixture-service npm run build`, iniciar `npm run start -- --port 3020` y ejecutar las dos pruebas de navegador. Las claves citadas son cadenas sintéticas de prueba, no credenciales de producción. Los artefactos visuales se guardan en `/tmp/transport-flow-screenshots`.

@@ -10,7 +10,7 @@ const stages = [
   { id: 'solicitud', label: 'Solicitud', href: '/solicitudes', modules: ['solicitudes'], icon: ClipboardList },
   { id: 'programacion', label: 'Programación y ruteo', href: '/despacho', modules: ['despacho'], icon: Route },
   { id: 'documentos', label: 'Documentos y conformidad', href: '/despacho/documentos', modules: ['documentario', 'packing-list', 'planificacion'], icon: FileCheck2 },
-  { id: 'registro', label: 'Registro de servicios', href: '/contratos/servicios', modules: ['contratos-servicios'], icon: Receipt },
+  { id: 'registro', label: 'Registro de servicios', href: '/contratos/servicios', modules: ['contratos-servicios', 'clientes'], icon: Receipt },
 ] as const
 
 /** A single navigation for the operational flow; server policies still authorize each action. */
