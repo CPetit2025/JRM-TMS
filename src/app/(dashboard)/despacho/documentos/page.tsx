@@ -20,6 +20,8 @@ import { conformityLabels, type DeliveryRow } from '@/lib/delivery'
 import { PACKING_ACCEPT, packingMime } from '@/lib/packing-list'
 import { DOCS_BUCKET, errorMessage, fmtDate, receiptUrl } from '@/lib/caja'
 import { districtOf } from '@/lib/address'
+import { fetchServiceTypes, serviceKind, type ServiceKind } from '@/lib/request-service'
+import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 
 // Auditor: Packing List. Asistente: confirmación documentaria y Nota de Despacho en recojos.
 // La guía de entrega obligatoria procede del app/proveedor; solo Transporte valida la conformidad.
@@ -47,6 +49,7 @@ const STATUS_BADGE: Record<QueueItem['doc_status'], { label: string; tone: Statu
   LISTO: { label: 'Documentos listos', tone: 'success' },
   SALIO: { label: 'Salió', tone: 'neutral' },
 }
+const SHORT_STATUS: Record<QueueItem['doc_status'], string> = { PENDIENTE: 'Pendientes', REEMISION: 'Reemisión', LISTO: 'Listos', SALIO: 'Salió' }
 const SHEET_TYPES = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'text/csv']
 const isSheetName = (n: string) => /\.(xlsx|xls|csv)$/i.test(n)
 const sheetMime = (n: string) => /\.csv$/i.test(n) ? 'text/csv' : /\.xls$/i.test(n) ? 'application/vnd.ms-excel' : SHEET_TYPES[0]
@@ -55,7 +58,6 @@ const sheetMime = (n: string) => /\.csv$/i.test(n) ? 'text/csv' : /\.xls$/i.test
 const limaDay = (date = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
 const thirtyDaysAgo = () => limaDay(new Date(Date.now() - 30 * 864e5))
 
-const shortDate = (d: string | null) => d ? new Date(d).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short', hour12: false }) : 'Sin fecha'
 const hoursLeft = (d: string | null) => (d ? (new Date(d).getTime() - Date.now()) / 36e5 : null)
 
 export default function DocumentosDespachoPage() {
@@ -89,6 +91,7 @@ function DocumentaryQueue() {
   const [reload, setReload] = useState(0)
   const [anulando, setAnulando] = useState<Doc | null>(null)
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([])
+  const [serviceTypes, setServiceTypes] = useState<Awaited<ReturnType<typeof fetchServiceTypes>>>(new Map())
   const [review, setReview] = useState<DeliveryReviewTarget | null>(null)
   const load = useCallback(async () => { setReload(n => n + 1) }, [])
 
@@ -112,6 +115,9 @@ function DocumentaryQueue() {
       setQueueError('')
       const list = (data || []) as QueueItem[]
       setItems(list)
+      const types = await fetchServiceTypes(supabase, list.flatMap(i => i.stops.map(st => st.request_id)))
+      if (cancel) return
+      setServiceTypes(types)
       if (packingOnly) { setDeliveries([]); return }
       const rows: DeliveryRow[] = []
       for (let offset = 0; offset < list.length; offset += 100) {
@@ -202,7 +208,7 @@ function DocumentaryQueue() {
       {items === null && !queueError ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
         : !visible.length ? <p className="text-slate-500 text-sm p-6 text-center border border-slate-200 rounded-xl bg-white">{queueError && !items ? 'La bandeja no está disponible.' : 'No hay solicitudes para estos filtros.'}</p>
         : <section aria-label="Control documentario por OT" className="overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
-          <div className="overflow-x-auto"><DataTable dense className="block w-full text-left text-sm lg:table"><caption className="sr-only">Solicitudes y OT asociadas, Packing List, guía de entrega y conformidad</caption><thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['OT / Solicitud', 'Cliente / Destino', 'Despacho / Salida', '1. Packing List', ...(packingOnly ? [] : ['2. Guía · 3. Conformidad']), 'Acciones'].map(label => <th key={label} scope="col" className="whitespace-nowrap px-3 py-2.5 font-semibold">{label}</th>)}</tr></thead><tbody className="block divide-y divide-slate-200 lg:table-row-group">{visible.map(({ item, stop }) => <DocumentRow key={`${item.id}/${stop?.request_id || 'empty'}`} item={item} stop={stop} delivery={deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)} canEdit={canEdit || canPacking} packingOnly={packingOnly} onManage={() => setSelectedId(item.id)} onEvidence={setReview} />)}</tbody></DataTable></div>
+          <div className="overflow-x-auto"><DataTable dense className="block w-full text-left text-sm lg:table"><caption className="sr-only">Solicitudes y OT asociadas, Packing List, guía de entrega y conformidad</caption><thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['Salida', 'Servicio', 'OT / Solicitud', 'Placa', 'Cliente · punto', 'Documentos', ...(packingOnly ? [] : ['Guía']), 'Acciones'].map(label => <th key={label} scope="col" className="whitespace-nowrap px-3 py-2.5 font-semibold">{label}</th>)}</tr></thead><tbody className="block divide-y divide-slate-200 lg:table-row-group">{visible.map(({ item, stop }) => <DocumentRow key={`${item.id}/${stop?.request_id || 'empty'}`} item={item} stop={stop} kind={stop && serviceTypes.has(stop.request_id) ? serviceKind(serviceTypes.get(stop.request_id)) : item.is_pickup ? 'RECOJO_CLIENTE' : null} delivery={deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)} canEdit={canEdit || canPacking} packingOnly={packingOnly} onManage={() => setSelectedId(item.id)} onEvidence={setReview} />)}</tbody></DataTable></div>
         </section>}
       <Modal isOpen={!!selected} onClose={() => setSelectedId(null)} title={`Documentos · ${selected?.dispatch_number || ''}`} maxWidth="max-w-[1440px]"
         footer={<div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-600">{selected?.missing ? 'Completa los documentos pendientes para autorizar la salida.' : selected?.docs_ready_at ? 'Documentos confirmados para salida.' : 'Documentos y archivos asociados al servicio.'}</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setSelectedId(null)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Cerrar</button>{selected && canEdit && selected.status === 'PROGRAMADO' && ['PENDIENTE', 'REEMISION'].includes(selected.doc_status) && <button type="button" onClick={() => void confirmDocs(selected)} disabled={busy === selected.id || !!selected.missing} className="flex min-h-11 items-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-500">{busy === selected.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar documentos para salida</button>}</div></div>}>
@@ -216,8 +222,8 @@ function DocumentaryQueue() {
   )
 }
 
-function DocumentRow({ item, stop, delivery, canEdit, packingOnly, onManage, onEvidence }: {
-  item: QueueItem; stop: Stop | null; delivery?: DeliveryRow; canEdit: boolean; packingOnly: boolean; onManage: () => void; onEvidence: (row: DeliveryReviewTarget) => void
+function DocumentRow({ item, stop, kind, delivery, canEdit, packingOnly, onManage, onEvidence }: {
+  item: QueueItem; stop: Stop | null; kind: ServiceKind | null; delivery?: DeliveryRow; canEdit: boolean; packingOnly: boolean; onManage: () => void; onEvidence: (row: DeliveryReviewTarget) => void
 }) {
   const badge = STATUS_BADGE[item.doc_status]
   const docs = item.documents.filter(doc => !doc.request_id || doc.request_id === stop?.request_id)
@@ -229,12 +235,14 @@ function DocumentRow({ item, stop, delivery, canEdit, packingOnly, onManage, onE
   const label = (text: string) => <p className="mb-1 text-xs font-semibold text-slate-500 lg:hidden">{text}</p>
   const unit = item.is_pickup ? 'Recojo del cliente' : `${item.vehicle_plate || 'Sin placa'} · ${item.driver_name || (item.modalidad === 'TERCERO' ? 'Proveedor JRM' : 'Sin conductor')}`
   return <tr className={`grid grid-cols-1 sm:grid-cols-2 lg:table-row ${urgent ? 'bg-amber-50/40' : ''}`}>
-    <td className={cell}>{label('OT / Solicitud')}<p className="whitespace-nowrap font-bold text-jrm-navy">{stop?.ot_code ? `OT ${stop.ot_code}` : 'Sin OT vinculada'}</p><p className="mt-0.5 whitespace-nowrap text-xs text-slate-500">{stop?.request_number || 'Sin solicitud asociada'}{stop && ` · Parada ${stop.sequence || item.stops.indexOf(stop) + 1}`}</p></td>
-    <td className={cell}>{label('Cliente / Destino')}<p className="truncate font-medium text-slate-800 lg:max-w-36 xl:max-w-40 2xl:max-w-60" title={stop?.client || undefined}>{stop?.client || 'Sin cliente registrado'}</p><p className="mt-0.5 truncate text-xs text-slate-500 lg:max-w-36 xl:max-w-40 2xl:max-w-60" title={stop?.delivery || undefined}>→ {stop?.delivery ? districtOf(stop.delivery) : 'Sin destino registrado'}</p></td>
-    <td className={cell}>{label('Despacho / Salida')}<p className="whitespace-nowrap text-xs font-semibold text-slate-700" title={unit}>{item.dispatch_number}</p><p className="mt-0.5 whitespace-nowrap text-xs" title={unit}><span className={urgent ? 'font-semibold text-amber-800' : 'text-slate-500'}>{shortDate(item.scheduled_departure)}</span><span className="text-slate-500"> · {item.is_pickup ? 'Recojo' : item.vehicle_plate || 'Sin placa'}</span></p></td>
-    <td className={cell}>{label('1. Packing List')}<StatusBadge tone={badge.tone}>{badge.label}</StatusBadge><p className="mt-1 text-xs text-slate-500 lg:max-w-40">{packing ? `Firmado adjunto${packing.request_id ? '' : ' · consolidado'}` : 'Firma pendiente'}{item.is_pickup && ` · Nota: ${note ? 'adjunta' : 'pendiente'}`}</p>{item.docs_reissue && <p className="mt-0.5 text-xs font-medium text-red-700 lg:max-w-40">{item.docs_reissue_reason || 'Actualizar y confirmar documentos'}</p>}</td>
-    {!packingOnly && <td className={cell}>{label('2. Guía · 3. Conformidad')}<p className="text-xs font-medium text-slate-700 lg:max-w-44">{item.is_pickup ? 'Nota de Despacho' : delivery ? delivery.guide_number || 'Guía aún no recibida' : 'Guía pendiente'}<span className="font-normal text-slate-500"> · {item.is_pickup ? 'Recojo del cliente' : item.modalidad === 'TERCERO' ? 'Proveedor JRM' : 'Conductor · app'}{delivery && delivery.photos_count > 0 ? ` · ${delivery.photos_count} foto(s)` : ''}</span></p><p className={`mt-0.5 whitespace-nowrap text-xs font-semibold ${tone}`}>{item.is_pickup ? 'Conformidad: no aplica' : delivery ? `Conformidad: ${conformityLabels[delivery.conformity]}` : 'Conformidad: no disponible'}</p></td>}
-    <td className={`${cell} lg:text-right`}>{label('Acciones')}<div className="flex flex-wrap gap-1.5 lg:flex-nowrap lg:justify-end"><button type="button" onClick={onManage} className="min-h-11 whitespace-nowrap rounded-lg bg-jrm-navy px-3 text-xs font-semibold text-white hover:bg-jrm-navy-dark lg:min-h-8">{canEdit && item.status === 'PROGRAMADO' ? packingOnly ? 'Cargar Packing List' : 'Gestionar' : 'Ver documentos'}</button>{delivery && !item.is_pickup && <button type="button" onClick={() => onEvidence(delivery)} className="min-h-11 whitespace-nowrap rounded-lg border border-slate-300 px-3 text-xs font-semibold text-jrm-navy hover:bg-slate-50 lg:min-h-8">Guía y conformidad</button>}</div></td>
+    <td className={cell}>{label('Salida')}<p className={`whitespace-nowrap text-xs ${urgent ? 'font-semibold text-amber-800' : 'text-slate-700'}`}>{item.scheduled_departure ? new Date(item.scheduled_departure).toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit' }) : 'Sin fecha'}</p>{item.scheduled_departure && <p className="mt-0.5 whitespace-nowrap text-xs text-slate-500">{new Date(item.scheduled_departure).toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hour12: false })}</p>}{urgent && <p className="mt-0.5 text-[11px] font-semibold text-amber-800">Sale pronto</p>}</td>
+    <td className={cell}>{label('Servicio')}<ServiceTypeBadge kind={kind} /></td>
+    <td className={cell}>{label('OT / Solicitud')}<p className="whitespace-nowrap font-bold text-jrm-navy">{stop?.ot_code ? `OT ${stop.ot_code}` : 'Sin OT vinculada'}</p><p className="mt-0.5 whitespace-nowrap text-xs text-slate-500">{stop?.request_number || 'Sin solicitud asociada'}</p></td>
+    <td className={cell}>{label('Placa')}<p className="whitespace-nowrap text-xs font-bold uppercase text-slate-800">{item.is_pickup ? 'Cliente' : item.vehicle_plate || 'Sin placa'}</p><p className="mt-0.5 truncate text-xs text-slate-500 lg:max-w-28" title={unit}>{item.is_pickup ? 'Recoge en planta' : item.driver_name || (item.modalidad === 'TERCERO' ? 'Proveedor JRM' : 'Sin conductor')}</p></td>
+    <td className={cell}>{label('Cliente · punto')}{(() => { const point = kind === 'RECOJO' ? stop?.origin : stop?.delivery; return <><p className="truncate font-medium text-slate-800 lg:max-w-32 xl:max-w-36 2xl:max-w-56" title={stop?.client || undefined}>{stop?.client || 'Sin cliente registrado'}</p><p className="mt-0.5 truncate text-xs text-slate-500 lg:max-w-32 xl:max-w-36 2xl:max-w-56" title={point || undefined}>{point ? `${kind === 'RECOJO' ? 'Desde' : '→'} ${districtOf(point)}` : 'Sin dirección registrada'}</p></> })()}</td>
+    <td className={cell}>{label('Documentos')}<span title={item.docs_reissue ? item.docs_reissue_reason || 'Actualizar y confirmar documentos' : undefined}><StatusBadge tone={badge.tone}>{SHORT_STATUS[item.doc_status]}</StatusBadge></span><p className="mt-1 text-xs text-slate-500 lg:max-w-36">Packing {packing ? 'firmado' : 'pendiente'}{item.is_pickup && ` · Nota ${note ? 'adjunta' : 'pendiente'}`}</p></td>
+    {!packingOnly && <td className={cell}>{label('Guía')}<p className="whitespace-nowrap text-xs font-medium text-slate-700" title={item.is_pickup ? 'Recojo del cliente' : item.modalidad === 'TERCERO' ? 'Guía del proveedor JRM' : 'Guía desde el app del conductor'}>{item.is_pickup ? 'Nota de Despacho' : delivery ? delivery.guide_number || 'Guía no recibida' : 'Guía pendiente'}{delivery && delivery.photos_count > 0 ? <span className="font-normal text-slate-500"> · {delivery.photos_count} foto(s)</span> : null}</p><p className={`mt-0.5 whitespace-nowrap text-xs font-semibold ${tone}`}>{item.is_pickup ? 'No aplica' : delivery ? conformityLabels[delivery.conformity] : 'No disponible'}</p></td>}
+    <td className={`${cell} lg:text-right`}>{label('Acciones')}<div className="flex flex-wrap gap-1.5 lg:flex-nowrap lg:justify-end"><button type="button" onClick={onManage} className="min-h-11 whitespace-nowrap rounded-lg bg-jrm-navy px-3 text-xs font-semibold text-white hover:bg-jrm-navy-dark lg:min-h-8">{canEdit && item.status === 'PROGRAMADO' ? packingOnly ? 'Cargar Packing List' : 'Gestionar' : 'Ver documentos'}</button>{delivery && !item.is_pickup && <button type="button" onClick={() => onEvidence(delivery)} title="Guía y conformidad" aria-label="Guía y conformidad" className="inline-flex min-h-11 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-300 px-2.5 text-xs font-semibold text-jrm-navy hover:bg-slate-50 lg:min-h-8"><FileCheck2 className="h-4 w-4" /><span className="lg:hidden 2xl:inline">Guía y conformidad</span></button>}</div></td>
   </tr>
 }
 

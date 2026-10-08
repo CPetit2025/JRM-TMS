@@ -19,7 +19,8 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { normalizeRoleName } from '@/lib/roles'
 import { OtPicker, type OtNode } from '@/components/solicitudes/OtPicker'
 import { QuoteBreakdown } from '@/components/tarifas/TransportTariffManager'
-import { serviceAddresses, serviceLabel, executionWeightLabels, type RequestExecution } from '@/lib/request-service'
+import { serviceAddresses, serviceLabel, serviceKind, SERVICE_KINDS, executionWeightLabels, type RequestExecution, type ServiceKind } from '@/lib/request-service'
+import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 import { districtOf } from '@/lib/address'
 import { serviceDate } from '@/lib/request-schedule'
 
@@ -168,15 +169,14 @@ export default function SolicitudesPage() {
     ASIGNADA: 'Asignada', REPROGRAMADA: 'Reprogramada', OBSERVADA: 'Observada', RECHAZADA: 'Rechazada',
     CANCELADA: 'Cancelada', EN_TRANSITO: 'En ruta', EN_DESTINO: 'En destino', ENTREGADA: 'Entregada', FINALIZADA: 'Finalizada',
   }
-  const compactService = (request: TransportRequest) => request.attention_mode === 'RECOJO_CLIENTE' ? 'Recojo cliente'
-    : request.request_type === 'DESPACHO' ? 'Entrega' : request.request_type === 'RECOJO' ? 'Recojo' : request.request_type === 'TRASLADO' ? 'Punto a punto' : 'Sin identificar'
+  const compactService = (request: TransportRequest) => { const kind = serviceKind(request); return kind ? SERVICE_KINDS[kind].short : 'Sin identificar' }
   const matchesStatus = (status: string, filter: string) => filter === 'TODOS' || status === filter
     || (filter === 'PENDIENTE' && status === 'PENDIENTE DE APROBACIÓN') || (filter === 'APROBADA' && status === 'APROBADO')
   const filteredRequests = requests.filter(r => {
     const matchesSearch = [r.request_number, r.requester_name, r.contracts?.code, r.contracts?.clients?.business_name, r.cargo_description, r.pickup_address, r.delivery_address].join(' ').toLocaleLowerCase('es-PE').includes(searchTerm.trim().toLocaleLowerCase('es-PE'))
     const matchesDateFrom = filterDateFrom === '' || r.required_date >= filterDateFrom
     const matchesDateTo = filterDateTo === '' || r.required_date <= filterDateTo
-    const matchesService = filterService === 'TODOS' || (filterService === 'RECOJO_CLIENTE' ? r.attention_mode === 'RECOJO_CLIENTE' : r.attention_mode !== 'RECOJO_CLIENTE' && r.request_type === filterService)
+    const matchesService = filterService === 'TODOS' || serviceKind(r) === filterService
     return matchesSearch && matchesStatus(r.status, filterStatus) && matchesDateFrom && matchesDateTo && matchesService
   }).sort((a, b) => {
     const value = (r: TransportRequest) => sort.key === 'service' ? compactService(r) : sort.key === 'ot' ? r.contracts?.code || ''
@@ -825,7 +825,7 @@ export default function SolicitudesPage() {
         <FilterField inline label="Hasta" className="w-48"><input aria-label="Atención hasta" type="date" min={filterDateFrom || undefined} value={filterDateTo}
           onChange={event => { setFilterDateTo(event.target.value); setPage(1) }} className={filterControl} /></FilterField>
         <FilterField inline label="Tipo de servicio" className="w-64"><select aria-label="Filtrar por tipo de servicio" value={filterService} onChange={e => { setFilterService(e.target.value); setPage(1) }} className={filterControl}>
-          <option value="TODOS">Todos</option><option value="DESPACHO">Entrega</option><option value="RECOJO">Recojo</option><option value="TRASLADO">Punto a punto</option><option value="RECOJO_CLIENTE">Recojo cliente</option>
+          <option value="TODOS">Todos</option>{(Object.keys(SERVICE_KINDS) as ServiceKind[]).map(kind => <option key={kind} value={kind}>{SERVICE_KINDS[kind].short}</option>)}
         </select></FilterField>
         <FilterField inline label="Estado" className="w-60"><select aria-label="Filtrar estado" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1) }} className={filterControl}>
           <option value="TODOS">Todos los estados</option>{Array.from(new Set(['PENDIENTE', 'APROBADA', 'ASIGNADA', 'REPROGRAMADA', 'OBSERVADA', 'RECHAZADA', 'CANCELADA', ...requests.map(r => r.status).filter(status => status !== 'PENDIENTE DE APROBACIÓN' && status !== 'APROBADO')])).map(status => <option key={status} value={status}>{statusLabels[status] || status.replaceAll('_', ' ')}</option>)}
@@ -858,7 +858,7 @@ export default function SolicitudesPage() {
                 return <tr key={req.id} className="grid grid-cols-2 hover:bg-slate-50/70 lg:table-row">
                   <td className={cell}>{label('Fecha solicitud')}<p className="whitespace-nowrap font-medium text-slate-700">{requestDate(req.created_at, true)}</p></td>
                   <td className={cell}>{label('Fecha atención')}<p className="whitespace-nowrap font-medium text-slate-700">{req.required_at ? requestDate(req.required_at, true) : serviceDate(req.required_date)}</p>{req.request_type === 'DESPACHO' && req.attention_mode !== 'RECOJO_CLIENTE' && <p className={`mt-1 text-[11px] ${requestLeadTime(req).enough === false ? 'text-red-700' : 'text-slate-500'}`}>{!req.required_at ? 'Sin hora registrada' : !leadTimeLoaded ? 'Plazo no disponible' : formatLeadTimeStatus(requestLeadTime(req).status)}</p>}{req.status === 'REPROGRAMADA' && <p className="mt-0.5 text-xs text-amber-700">Reprogramada</p>}</td>
-                  <td className={cell}>{label('Tipo de servicio')}<span title={serviceLabel(req)} className="text-slate-700">{compactService(req)}</span></td>
+                  <td className={cell}>{label('Tipo de servicio')}<ServiceTypeBadge request={req} /></td>
                   <td className={cell}>{label('OT')}<p className="break-words font-semibold text-[#002855]">{req.contracts?.code || (req.contract_id ? 'OT vinculada' : 'Sin OT')}</p>{req.contracts?.clients?.business_name && <p className="mt-0.5 truncate text-[11px] text-slate-500" title={req.contracts.clients.business_name}>{req.contracts.clients.business_name}</p>}</td>
                   <td className={`${cell} col-span-2`}>{label('Punto de atención')}<div title={addresses.map(place => `${place.label}: ${place.address}`).join(' → ')} className="text-slate-700">
                     <p className="truncate leading-5">{addresses.map((place, index) => <span key={place.label}>{index > 0 && <span className="text-slate-400"> → </span>}{districtOf(place.address, place.label === 'Entrega' ? req.delivery_district : req.pickup_district)}</span>)}</p>

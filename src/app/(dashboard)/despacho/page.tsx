@@ -9,6 +9,8 @@ import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filte
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 import { TableActions, type TableAction } from '@/components/ui/table-actions'
 import { districtOf } from '@/lib/address'
+import { ServiceTypeBadge, ServiceTypeList } from '@/components/ui/service-type-badge'
+import { serviceLabel } from '@/lib/request-service'
 
 import { splitFreight } from '@/lib/transport-budget'
 import { isTransportUnit, TRANSPORT_VEHICLE_TYPES } from '@/lib/fleet-filters'
@@ -81,6 +83,8 @@ interface DispatchRequest {
     delivery_address: string
     delivery_district?: string | null
     request_type?: string
+    attention_mode?: string | null
+    contract_id?: string | null
     required_date?: string | null
     required_at?: string | null
     time_window?: string | null
@@ -315,6 +319,8 @@ export default function DespachoPage() {
               time_window,
               contracts(code, clients(business_name)),
               delivery_district,
+              attention_mode,
+              contract_id,
               pickup_address,
               delivery_address,
               transport_request_items (
@@ -665,10 +671,6 @@ export default function DespachoPage() {
             ) : (
               <ul className="divide-y divide-slate-100">
                 {pendingRequests.map(req => {
-                  const isRecojo = req.request_type === 'RECOJO'
-                  const isTraslado = req.request_type === 'TRASLADO'
-                  const typeLabel = req.request_type || 'DESPACHO'
-                  const typeColor = isRecojo ? 'bg-orange-100 text-orange-700 border-orange-200' : isTraslado ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'
                   const selected = newDispatch.selected_requests.some(r => r.id === req.id)
                   const balance = req.contracts?.contract_budgets?.[0]?.balance_pen
                   return (
@@ -676,7 +678,7 @@ export default function DespachoPage() {
                       <div className="flex items-center justify-between gap-2">
                         <span className="flex min-w-0 items-center gap-1.5">
                           <span className="truncate text-sm font-bold text-jrm-navy">{req.request_number}</span>
-                          <span className={`whitespace-nowrap rounded border px-1.5 py-0.5 text-[10px] font-bold ${typeColor}`}>{typeLabel}</span>
+                          <ServiceTypeBadge request={req} />
                           {wasRescheduled(req) && <span className="whitespace-nowrap rounded border border-orange-200 bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-800">Reprogramado</span>}
                         </span>
                         {canWrite('despacho') && (
@@ -740,11 +742,11 @@ export default function DespachoPage() {
               <DataTable dense className="relative w-full border-collapse text-left">
                 <thead className="sticky top-0 z-10 border-slate-100 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500 shadow-[0_1px_0_0_#e2e8f0]">
                   <tr>
+                    <th className="whitespace-nowrap font-semibold">Salida</th>
+                    <th className="whitespace-nowrap font-semibold">Servicio</th>
                     <th className="whitespace-nowrap font-semibold">OT · Cliente</th>
+                    <th className="whitespace-nowrap font-semibold">Unidad</th>
                     <th className="whitespace-nowrap font-semibold">Destino</th>
-                    <th className="whitespace-nowrap font-semibold">Despacho</th>
-                    <th className="whitespace-nowrap font-semibold">Unidad · Conductor</th>
-                    <th className="whitespace-nowrap font-semibold">Salida · Lima</th>
                     <th className="whitespace-nowrap font-semibold">Estado</th>
                     <th className="whitespace-nowrap text-right font-semibold">Acciones</th>
                   </tr>
@@ -786,29 +788,28 @@ export default function DespachoPage() {
                           const districts = [...new Set(reqs.map(r => districtOf(r.transport_requests?.delivery_address, r.transport_requests?.delivery_district)))]
                           const more = (list: string[]) => list.length > 1 ? ` +${list.length - 1}` : ''
                           return <>
-                            <td className="max-w-40">
+                            <td className="whitespace-nowrap">
+                              <p className="text-sm text-slate-700">{new Date(dispatch.scheduled_departure).toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit' })}</p>
+                              <p className="mt-0.5 text-xs text-slate-500">{new Date(dispatch.scheduled_departure).toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hour12: false })}</p>
+                            </td>
+                            <td className="max-w-36"><ServiceTypeList requests={reqs.map(r => r.transport_requests)} /></td>
+                            <td className="max-w-36">
                               <p className="whitespace-nowrap text-sm font-bold text-jrm-navy" title={ots.map(o => `OT ${o}`).join(', ') || undefined}>{ots.length ? `OT ${ots[0]}${more(ots)}` : 'Sin OT'}</p>
                               <p className="mt-0.5 truncate text-xs text-slate-500" title={clients.join(', ') || undefined}>{clients.length ? `${clients[0]}${more(clients)}` : 'Sin cliente'}</p>
                             </td>
-                            <td className="max-w-40">
+                            <td>
+                              <span className="flex items-center gap-1.5 whitespace-nowrap text-sm font-bold uppercase text-slate-800">
+                                {dispatch.vehicle_plate}
+                                {dispatch.modalidad === 'TERCERO' && <span className="rounded border border-violet-200 bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold normal-case text-violet-700">Tercero</span>}
+                              </span>
+                              <span className="block max-w-32 truncate text-xs text-slate-500" title={dispatch.driver_name || undefined}>{dispatch.driver_name}</span>
+                            </td>
+                            <td className="max-w-36">
                               <p className="truncate text-sm text-slate-700" title={reqs.map(r => `${r.transport_requests?.request_number}: ${r.transport_requests?.delivery_address}`).join('\n') || undefined}>{districts.length ? `${districts[0]}${more(districts)}` : 'Sin destino'}</p>
-                              <p className="mt-0.5 whitespace-nowrap text-xs text-slate-500">{reqs.length} servicio{reqs.length === 1 ? '' : 's'}{reqs.some(r => r.transport_requests?.request_type === 'RECOJO') ? ' · incluye recojo' : ''}{reqs.some(r => r.transport_requests?.rescheduling) ? ' · reprogramado' : ''}</p>
+                              <p className="mt-0.5 whitespace-nowrap text-xs text-slate-500">{reqs.length} servicio{reqs.length === 1 ? '' : 's'}{reqs.some(r => r.transport_requests?.rescheduling) ? ' · reprogramado' : ''}</p>
                             </td>
                           </>
                         })()}
-                        <td>
-                          <span className="whitespace-nowrap text-sm font-bold text-jrm-navy" title={dispatch.legacy_dispatch_number ? `Código anterior: ${dispatch.legacy_dispatch_number}` : undefined}>{dispatch.dispatch_number}</span>
-                        </td>
-                        <td>
-                          <span className="flex items-center gap-1.5 whitespace-nowrap text-sm font-bold uppercase text-slate-800">
-                            {dispatch.vehicle_plate}
-                            {dispatch.modalidad === 'TERCERO' && <span className="rounded border border-violet-200 bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold normal-case text-violet-700">Tercero</span>}
-                          </span>
-                          <span className="block max-w-36 truncate text-xs text-slate-500" title={dispatch.driver_name || undefined}>{dispatch.driver_name}</span>
-                        </td>
-                        <td className="whitespace-nowrap text-sm text-slate-600">
-                          {new Date(dispatch.scheduled_departure).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short', hour12: false })}
-                        </td>
                         <td>
                           <span className="block max-w-32 [&>span]:whitespace-normal [&>span]:leading-4"><StatusBadge tone={dispatchTone(dispatch.status)}>{dispatchStatusLabel(dispatch.status)}</StatusBadge></span>
                           {programado && dispatch.docs_required && (
@@ -1015,14 +1016,6 @@ export default function DespachoPage() {
                   </div>
                 ) : (
                   pendingRequests.map(req => {
-                    const isRecojo = req.request_type === 'RECOJO'
-                    const isTraslado = req.request_type === 'TRASLADO'
-                    const typeLabel = req.request_type || (isRecojo ? 'RECOJO' : 'DESPACHO')
-                    
-                    let typeColor = 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                    if (isRecojo) typeColor = 'bg-orange-100 text-orange-700 border-orange-200'
-                    if (isTraslado) typeColor = 'bg-purple-100 text-purple-700 border-purple-200'
-
                     return (
                       <div key={req.id} className="flex flex-col gap-2">
                         <label 
@@ -1045,9 +1038,7 @@ export default function DespachoPage() {
                               <span className="font-bold text-[#002855] text-sm">{req.request_number}</span>
                               <span className="text-xs font-semibold text-blue-700">OT {req.contracts?.code || 'Sin OT'}</span>
                               <span className="text-xs font-medium text-blue-700">{req.attention_mode === 'RECOJO_CLIENTE' ? 'Recojo por cliente' : req.attention_mode === 'TRANSPORTE_JRM' ? 'Transporte JRM' : 'Modalidad pendiente: revisar solicitud'}</span>
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${typeColor}`}>
-                                {typeLabel}
-                              </span>
+                              <ServiceTypeBadge request={req} />
                             </div>
                           
                           <div className="mb-2 flex flex-wrap items-center gap-2 text-xs"><span className="text-slate-700">Atención requerida · Lima: <b>{requestedAttention(req)}</b></span>{wasRescheduled(req) && <span className="rounded-full border border-orange-200 bg-orange-100 px-2 py-0.5 font-bold text-orange-800">Reprogramado</span>}</div>
@@ -1082,7 +1073,7 @@ export default function DespachoPage() {
                 <p className="text-xs text-slate-600">La propuesta usa los costos estimados de las solicitudes; puede ajustar cada monto antes de confirmar. Cada OT financia su parte sobre el 80% operativo. El 20% de utilidad queda protegido.</p>
                 {selectedServices.map(req => (
                   <label key={req.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <span><strong>{req.request_number}</strong> · OT {req.contracts?.code || 'Sin OT'} · {req.request_type === 'RECOJO' ? 'Recojo' : req.request_type === 'TRASLADO' ? 'Punto a punto' : 'Entrega'}</span>
+                    <span><strong>{req.request_number}</strong> · OT {req.contracts?.code || 'Sin OT'} · {serviceLabel(req)}</span>
                     <span className="flex items-center gap-1">S/
                       <input type="number" min="0" step="0.01" aria-label={`Flete ${req.request_number}`} value={freightShares[req.id] ?? serviceShare(req.id).toFixed(2)} onChange={e => setFreightShares(prev => ({ ...prev, [req.id]: e.target.value }))} className="w-28 rounded border border-blue-200 bg-white px-2 py-1 text-right" />
                     </span>
@@ -1168,13 +1159,6 @@ export default function DespachoPage() {
                   const req = dr.transport_requests;
                   const totalWeight = req.transport_request_items?.reduce((sum, item) => sum + (Number(item.weight || 0) * Number(item.quantity || 1)), 0) || 0;
                   const totalVol = req.transport_request_items?.reduce((sum, item) => sum + (Number(item.volume_m3 || 0) * Number(item.quantity || 1)), 0) || 0;
-                  const isRecojo = req.request_type === 'RECOJO';
-                  const isTraslado = req.request_type === 'TRASLADO';
-                  const typeLabel = req.request_type || (isRecojo ? 'RECOJO' : 'DESPACHO');
-                  
-                  let typeColor = 'bg-emerald-100 text-emerald-700 border-emerald-200';
-                  if (isRecojo) typeColor = 'bg-orange-100 text-orange-700 border-orange-200';
-                  if (isTraslado) typeColor = 'bg-purple-100 text-purple-700 border-purple-200';
 
                   return (
                     <div key={dr.transport_request_id} className="bg-white border border-slate-200 p-4 rounded-xl shadow-sm flex flex-col md:flex-row gap-4 justify-between items-start md:items-center relative">
@@ -1184,15 +1168,13 @@ export default function DespachoPage() {
                         <div className="flex items-center gap-2 mb-2">
                           <span className="font-bold text-[#002855] text-base">{req.contracts?.code ? `OT ${req.contracts.code}` : 'Sin OT'}</span>
                           <span className="text-xs font-semibold text-slate-600">{req.request_number}</span>
-                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${typeColor}`}>
-                            {typeLabel}
-                          </span>
+                          <ServiceTypeBadge request={req} />
                           <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-semibold">
                             {dr.document_type}: {dr.document_number}
                           </span>
                         </div>
                         <p className="text-sm text-slate-700">{req.contracts?.clients?.business_name || 'Sin cliente'}</p>
-                        <p className="mt-1 text-xs text-slate-600">{req.request_type === 'RECOJO' ? 'Recojo' : req.request_type === 'TRASLADO' ? 'Punto a punto' : 'Entrega'} · Solicitada · Lima: {requestedAttention(req)}</p>
+                        <p className="mt-1 text-xs text-slate-600">{serviceLabel(req)} · Solicitada · Lima: {requestedAttention(req)}</p>
                         {req.rescheduling && <p className="mt-1 text-xs font-semibold text-amber-800">Reprogramado · {serviceDate(req.rescheduling.fecha_anterior)} → {serviceDate(req.rescheduling.fecha_nueva)}</p>}
                         
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">

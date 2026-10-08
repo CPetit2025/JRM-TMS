@@ -1,3 +1,4 @@
+import { serviceKind, type ServiceKind } from '@/lib/request-service'
 export type Conformity = 'PENDIENTE' | 'RECIBIDA' | 'OBSERVADA' | 'RECHAZADA' | 'VALIDADA' | 'HISTORICA' | 'NO_APLICA'
 export type DeliveryRow = {
   dispatch_id: string; request_id: string; dispatch_number: string; request_number: string
@@ -7,6 +8,12 @@ export type DeliveryRow = {
   documents_state?: string; submission_id: string | null; photos_count: number; submitted_at: string | null; arrived_at: string | null
   state: string; last_event_at: string; gps_at: string | null
   events: { type: string; description: string | null; at: string }[]
+  /** Tipo de la solicitud (se completa en la pantalla con fetchServiceTypes) */
+  request_type?: string; attention_mode?: string | null; contract_id?: string | null
+}
+/** Tipo de servicio de una entrega: usa los datos de la solicitud; sin ellos, solo reconoce el recojo por el cliente. */
+export function deliveryServiceKind(row: DeliveryRow): ServiceKind | null {
+  return row.request_type ? serviceKind(row) : row.modalidad === 'RECOJO_CLIENTE' ? 'RECOJO_CLIENTE' : null
 }
 export type DeliverySubmission = {
   id: string; operation_id: string; photos: string[]; guide_number: string | null; received_by: string | null
