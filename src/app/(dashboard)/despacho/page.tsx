@@ -1,10 +1,10 @@
 "use client"
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { TransportWorkflow } from '@/components/transport/TransportWorkflow'
+import { TransportWorkflow, TorreControlButton } from '@/components/transport/TransportWorkflow'
 import { DataTable } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
-import { KpiStatCard } from '@/components/ui/kpi-stat-card'
+import { InlineStatusBar } from '@/components/ui/inline-status-bar'
 import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filter-toolbar'
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 
@@ -591,29 +591,28 @@ export default function DespachoPage() {
   }
 
   return (
-    <div className="space-y-6 w-full mx-auto">
-      <TransportWorkflow current="programacion" />
-      <PageHeader title="Programación de Despachos y Ruteo" description="Asignación de unidades de transporte a Solicitudes" actions={<>
+    <div className="w-full mx-auto space-y-2.5">
+      <PageHeader showTitle title="Programación de Despachos y Ruteo" description="Asignación de unidades de transporte a Solicitudes" actions={<>
         <ReportarFallaButton />
         {canWrite('despacho') && (
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="flex min-h-11 items-center gap-2 rounded-lg bg-jrm-navy px-4 py-2 font-medium text-white shadow-sm transition-colors hover:bg-jrm-navy-dark"
+            className="flex min-h-10 items-center gap-2 rounded-lg bg-jrm-navy px-4 font-medium text-white shadow-sm transition-colors hover:bg-jrm-navy-dark"
           >
             <Plus className="w-4 h-4" />
             Armar Ruta
           </button>
         )}
+        <TorreControlButton />
       </>} />
+      <TransportWorkflow current="programacion" torre={false} />
+      <InlineStatusBar label="Resumen operativo" loading={loading} items={[
+        { key: 'asignar', label: 'Solicitudes por asignar', count: pendingRequests.length, icon: <FileText />, tone: 'amber' },
+        { key: 'programados', label: 'Programados', count: dispatches.filter(d => d.status === 'PROGRAMADO').length, icon: <Clock />, tone: 'navy' },
+        { key: 'ruta', label: 'En ruta', count: dispatches.filter(d => ['EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'].includes(d.status)).length, icon: <Route />, tone: 'blue' },
+        { key: 'cerrar', label: 'Por cerrar', count: dispatches.filter(d => ['ENTREGADO', 'RETORNO_COMPLETADO'].includes(d.status)).length, icon: <PackageCheck />, tone: 'emerald' }]} />
 
-      <div aria-label="Resumen operativo" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiStatCard label="Solicitudes por asignar" icon={<FileText className="h-5 w-5" />} tone="amber" loading={loading} value={pendingRequests.length} />
-        <KpiStatCard label="Programados" icon={<Clock className="h-5 w-5" />} tone="navy" loading={loading} value={dispatches.filter(d => d.status === 'PROGRAMADO').length} />
-        <KpiStatCard label="En ruta" icon={<Route className="h-5 w-5" />} tone="blue" loading={loading} value={dispatches.filter(d => ['EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'].includes(d.status)).length} />
-        <KpiStatCard label="Por cerrar" icon={<PackageCheck className="h-5 w-5" />} tone="emerald" loading={loading} value={dispatches.filter(d => ['ENTREGADO', 'RETORNO_COMPLETADO'].includes(d.status)).length} />
-      </div>
-
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-3">
         
         {/* Sección Superior: OTs Pendientes */}
         <div className="space-y-4">
@@ -697,12 +696,12 @@ export default function DespachoPage() {
           </h2>
 
           {/* Filtros y Búsqueda */}
-          <FilterToolbar label="Búsqueda y filtros de despachos" onClear={() => { setSearchTerm(''); setFilterStatus('TODOS'); setFilterModalidad('TODAS') }}>
+          <FilterToolbar compact label="Búsqueda y filtros de despachos" onClear={() => { setSearchTerm(''); setFilterStatus('TODOS'); setFilterModalidad('TODAS') }}>
             <label className="relative min-w-0 flex-1 basis-60">
               <span className="sr-only">Buscar despachos</span><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" aria-hidden="true" />
               <input type="search" placeholder="Buscar por nro, placa, conductor u OT…" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`${filterControl} pl-9`} />
             </label>
-            <FilterField label="Estado" className="w-52">
+            <FilterField inline label="Estado" className="w-64">
               <select className={filterControl} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
                 <option value="TODOS">Todos</option>
                 <option value="PROGRAMADO">Programado</option>
@@ -713,7 +712,7 @@ export default function DespachoPage() {
                 <option value="LIQUIDADO">Cerrado (ruta cerrada)</option>
               </select>
             </FilterField>
-            <FilterField label="Unidad" className="w-44">
+            <FilterField inline label="Unidad" className="w-56">
               <select className={filterControl} value={filterModalidad} onChange={(e) => setFilterModalidad(e.target.value)}>
                 <option value="TODAS">Todas</option>
                 <option value="PROPIA">Flota propia</option>
@@ -724,7 +723,7 @@ export default function DespachoPage() {
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="overflow-auto max-h-[calc(100vh-220px)]">
-          <DataTable className="w-full text-left border-collapse relative">
+          <DataTable dense className="w-full text-left border-collapse relative">
             <thead className="bg-slate-50 text-slate-500 text-xs text-left sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0] border-slate-100 uppercase tracking-wider">
                   <tr>
                     <th className="p-4 font-semibold whitespace-nowrap">Despacho</th>

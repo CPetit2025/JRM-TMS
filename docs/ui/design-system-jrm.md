@@ -103,5 +103,5 @@ La segunda imagen aprobada de Solicitud de Transporte prioriza ver más registro
 Resultado medido con las mismas 14 solicitudes de ejemplo a 1680 × 940: antes se veían 4 filas completas; ahora 9.
 
 Alcance: `TransportWorkflow`, `FilterToolbar`, `DataTable`, `TablePagination`, `TableActions` y la barra superior son compartidos; cambian
-solo en aspecto. Despacho, Documentos y Registro de servicios conservan por ahora sus tarjetas KPI (etapa 5a) y se pasarán a
-`InlineStatusBar` tras aprobar esta versión.
+solo en aspecto. Despacho, Documentos y Registro de servicios ya usan esta versión (etapa 5b): `PageHeader showTitle`, `TransportWorkflow torre={false}`
++ `TorreControlButton`, `InlineStatusBar` (informativa en Despacho, filtro en Documentos y Registro), `FilterToolbar compact` y `DataTable dense`.

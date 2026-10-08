@@ -1,8 +1,8 @@
 'use client'
-import { TransportWorkflow } from '@/components/transport/TransportWorkflow'
+import { TransportWorkflow, TorreControlButton } from '@/components/transport/TransportWorkflow'
 import { DataTable } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
-import { KpiStatCard } from '@/components/ui/kpi-stat-card'
+import { InlineStatusBar } from '@/components/ui/inline-status-bar'
 import { FilterToolbar, filterControl } from '@/components/ui/filter-toolbar'
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 
@@ -160,10 +160,10 @@ function DocumentaryQueue() {
   const voidDoc = (doc: Doc) => setAnulando(doc)
 
   return (
-    <div className="min-w-0 space-y-4">
-      <TransportWorkflow current="documentos" />
-      <PageHeader title="Documentos de Despacho" description="Salida y conformidad en un único espacio · documentos por servicio, parada y OT."
-        actions={<button onClick={() => void load()} className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button>} />
+    <div className="min-w-0 space-y-2.5">
+      <PageHeader showTitle title="Documentos de Despacho" description="Salida y conformidad en un único espacio · documentos por servicio, parada y OT."
+        actions={<><button onClick={() => void load()} className="flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button><TorreControlButton /></>} />
+      <TransportWorkflow current="documentos" torre={false} />
 
       <nav aria-label="Etapas documentarias" className="flex flex-wrap gap-2">
         {([['salida', packingOnly ? 'Planificación · Packing List' : 'Previos a salida'], ...(!packingOnly ? [['conformidad', 'Conformidad de entrega'], ['observados', 'Observados / reemisión'], ['historial', 'Historial']] : [['historial', 'Historial de Packing List']])] as [DocumentPhase, string][]).map(([value, title]) => <button key={value} type="button" aria-pressed={phase === value} onClick={() => { setPhaseChoice(value); setFilter('TODOS') }} className={`min-h-11 rounded-lg border px-4 text-sm font-semibold ${phase === value ? 'border-[#002855] bg-[#002855] text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{title}</button>)}
@@ -172,12 +172,10 @@ function DocumentaryQueue() {
       <ol aria-label="Secuencia documentaria" className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm md:grid-cols-3">
         {[['Packing List firmado', 'Auditor de Despacho', 'Carga el Packing List en PDF, foto o Excel con su firma. El asistente confirma los documentos y, en recojos, registra la Nota de Despacho.'], ['Guía de entrega', 'Conductor / proveedor JRM', 'Adjunta la guía firmada desde el app o el portal del proveedor al realizar la entrega.'], ['Conformidad', 'Supervisor de Transporte', 'Aprueba, observa o rechaza el sustento. Sin aprobación, el servicio no puede avanzar.']].map(([title, role, detail], index) => <li key={title} className="flex items-start gap-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#002855] font-bold text-white">{index + 1}</span><div><p className="font-semibold text-[#002855]">{title}</p><p className="mt-1 text-xs font-medium text-slate-700">{role}</p><p className="mt-1 text-xs leading-5 text-slate-500">{detail}</p></div></li>)}
       </ol>
-      {phase === 'salida' && <div aria-label="Resumen documentario" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {([['TODOS', 'Todos', counts.PENDIENTE + counts.REEMISION + counts.LISTO, <Layers key="i" className="h-5 w-5" />, 'navy'], ['PENDIENTE', 'Pendientes', counts.PENDIENTE, <Clock key="i" className="h-5 w-5" />, 'amber'],
-          ['REEMISION', 'Reemisión', counts.REEMISION, <AlertTriangle key="i" className="h-5 w-5" />, 'rose'], ['LISTO', 'Listos', counts.LISTO, <CheckCircle2 key="i" className="h-5 w-5" />, 'emerald']] as const).map(([k, l, n, icon, tone]) =>
-          <KpiStatCard key={k} label={l} value={n} icon={icon} tone={tone} loading={items === null} active={filter === k} onClick={() => setFilter(k)} />)}
-      </div>}
-      <FilterToolbar label="Búsqueda de documentos">
+      {phase === 'salida' && <InlineStatusBar label="Resumen documentario" active={filter} loading={items === null} onChange={k => setFilter(k as typeof filter)}
+        items={[{ key: 'TODOS', label: 'Todos', count: counts.PENDIENTE + counts.REEMISION + counts.LISTO, icon: <Layers />, tone: 'navy' }, { key: 'PENDIENTE', label: 'Pendientes', count: counts.PENDIENTE, icon: <Clock />, tone: 'amber' },
+          { key: 'REEMISION', label: 'Reemisión', count: counts.REEMISION, icon: <AlertTriangle />, tone: 'rose' }, { key: 'LISTO', label: 'Listos', count: counts.LISTO, icon: <CheckCircle2 />, tone: 'emerald' }]} />}
+      <FilterToolbar compact label="Búsqueda de documentos">
         <label className="relative min-w-0 flex-1 basis-64"><span className="sr-only">Buscar OT, solicitud, cliente o despacho</span><Search aria-hidden className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="OT, solicitud, cliente o despacho" className={`${filterControl} pl-9`} /></label>
         {search && <button type="button" onClick={() => setSearch('')} className="min-h-11 rounded-lg px-3 text-sm font-medium text-blue-700 hover:bg-blue-50">Limpiar</button>}
       </FilterToolbar>
@@ -191,7 +189,7 @@ function DocumentaryQueue() {
         : !visible.length ? <p className="text-slate-500 text-sm p-6 text-center border border-slate-200 rounded-xl bg-white">{queueError && !items ? 'La bandeja no está disponible.' : 'No hay solicitudes para estos filtros.'}</p>
         : <section aria-label="Control documentario por OT" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <div className="border-b border-slate-200 px-4 py-3 text-sm text-slate-600">{visible.length} solicitud(es) · ordenadas por salida del despacho. Una fila corresponde a un servicio; el despacho puede reunir varias OT.</div>
-          <div className="overflow-x-auto"><DataTable className="block w-full text-left text-sm lg:table"><caption className="sr-only">Solicitudes y OT asociadas, Packing List, guía de entrega y conformidad</caption><thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['OT / Solicitud', 'Cliente / Destino', 'Despacho / Salida', '1. Packing List', ...(packingOnly ? [] : ['2. Guía de entrega', '3. Conformidad']), 'Acciones'].map(label => <th key={label} scope="col" className="px-4 py-3 font-semibold">{label}</th>)}</tr></thead><tbody className="block divide-y divide-slate-200 lg:table-row-group">{visible.map(({ item, stop }) => <DocumentRow key={`${item.id}/${stop?.request_id || 'empty'}`} item={item} stop={stop} delivery={deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)} canEdit={canEdit || canPacking} packingOnly={packingOnly} onManage={() => setSelectedId(item.id)} onEvidence={setReview} />)}</tbody></DataTable></div>
+          <div className="overflow-x-auto"><DataTable dense className="block w-full text-left text-sm lg:table"><caption className="sr-only">Solicitudes y OT asociadas, Packing List, guía de entrega y conformidad</caption><thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['OT / Solicitud', 'Cliente / Destino', 'Despacho / Salida', '1. Packing List', ...(packingOnly ? [] : ['2. Guía de entrega', '3. Conformidad']), 'Acciones'].map(label => <th key={label} scope="col" className="px-4 py-3 font-semibold">{label}</th>)}</tr></thead><tbody className="block divide-y divide-slate-200 lg:table-row-group">{visible.map(({ item, stop }) => <DocumentRow key={`${item.id}/${stop?.request_id || 'empty'}`} item={item} stop={stop} delivery={deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)} canEdit={canEdit || canPacking} packingOnly={packingOnly} onManage={() => setSelectedId(item.id)} onEvidence={setReview} />)}</tbody></DataTable></div>
         </section>}
       <Modal isOpen={!!selected} onClose={() => setSelectedId(null)} title={`Documentos · ${selected?.dispatch_number || ''}`} maxWidth="max-w-[1440px]"
         footer={<div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-600">{selected?.missing ? 'Completa los documentos pendientes para autorizar la salida.' : selected?.docs_ready_at ? 'Documentos confirmados para salida.' : 'Documentos y archivos asociados al servicio.'}</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setSelectedId(null)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Cerrar</button>{selected && canEdit && selected.status === 'PROGRAMADO' && ['PENDIENTE', 'REEMISION'].includes(selected.doc_status) && <button type="button" onClick={() => void confirmDocs(selected)} disabled={busy === selected.id || !!selected.missing} className="flex min-h-11 items-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-500">{busy === selected.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar documentos para salida</button>}</div></div>}>
