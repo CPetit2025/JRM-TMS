@@ -228,7 +228,7 @@ type DocStep = { label: string; detail: string; done: boolean; tone: 'ok' | 'pen
 type DocState = { label: string; tone: StatusTone; steps: DocStep[] }
 
 /** Estado documentario único del servicio: resume Packing List, guía (o Nota de Despacho) y conformidad. */
-function documentState(item: QueueItem, stop: Stop | null, delivery?: DeliveryRow): DocState {
+function documentState(item: QueueItem, stop: Stop | null, delivery: DeliveryRow | undefined, packingOnly: boolean): DocState {
   const docs = item.documents.filter(doc => !doc.request_id || doc.request_id === stop?.request_id)
   const packing = docs.find(doc => doc.doc_type === 'PACKING_LIST' && doc.signed && doc.auditor_name && doc.auditor_signed_date)
   const note = docs.find(doc => doc.doc_type === 'NOTA_DESPACHO' && doc.request_id === stop?.request_id)
@@ -244,19 +244,28 @@ function documentState(item: QueueItem, stop: Stop | null, delivery?: DeliveryRo
         ? { label: '3. Conformidad', detail: 'Después de la entrega', done: false, tone: 'na' }
         : { label: '3. Conformidad', detail: conformity ? conformityLabels[conformity] : 'No disponible', done: conformity === 'VALIDADA', tone: conformity === 'VALIDADA' ? 'ok' : ['OBSERVADA', 'RECHAZADA'].includes(conformity || '') ? 'danger' : 'pending' },
   ]
+  if (packingOnly) {
+    // El perfil de Packing List no consulta guías ni conformidad: su estado es solo el del Packing List
+    const own = steps.slice(0, 1)
+    if (item.docs_reissue) return { label: 'Reemisión', tone: 'danger', steps: own }
+    return packing ? { label: 'Packing firmado', tone: 'success', steps: own } : { label: 'Packing pendiente', tone: 'warning', steps: own }
+  }
   if (item.docs_reissue) return { label: 'Reemisión', tone: 'danger', steps }
   if (item.status === 'PROGRAMADO') return item.doc_status === 'LISTO' ? { label: 'Listo para salir', tone: 'success', steps } : { label: 'Docs. pendientes', tone: 'warning', steps }
   if (item.is_pickup) return note ? { label: 'Completo', tone: 'success', steps } : { label: 'Nota pendiente', tone: 'warning', steps }
   if (conformity === 'VALIDADA') return { label: 'Conforme', tone: 'success', steps }
   if (conformity === 'OBSERVADA' || conformity === 'RECHAZADA') return { label: conformityLabels[conformity], tone: 'danger', steps }
   if (conformity === 'RECIBIDA') return { label: 'Por validar', tone: 'info', steps }
+  if (conformity === 'HISTORICA') return { label: 'Histórica', tone: 'neutral', steps }
+  if (conformity === 'NO_APLICA') return { label: 'No aplica', tone: 'neutral', steps }
+  if (!delivery) return { label: 'Sin consultar', tone: 'neutral', steps }
   return { label: 'Guía pendiente', tone: 'warning', steps }
 }
 
 function DocumentRow({ item, stop, kind, delivery, canEdit, packingOnly, onManage, onStatus }: {
   item: QueueItem; stop: Stop | null; kind: ServiceKind | null; delivery?: DeliveryRow; canEdit: boolean; packingOnly: boolean; onManage: () => void; onStatus: () => void
 }) {
-  const state = documentState(item, stop, delivery)
+  const state = documentState(item, stop, delivery, packingOnly)
   const urgent = !['LISTO', 'SALIO'].includes(item.doc_status) && (hoursLeft(item.scheduled_departure) ?? Infinity) < 2
   const cell = 'min-w-0 px-3 py-2 align-middle lg:px-2.5'
   const label = (text: string) => <p className="mb-1 text-xs font-semibold text-slate-500 lg:hidden">{text}</p>
@@ -281,7 +290,7 @@ function DocumentStatusModal({ target, packingOnly, canEdit, onClose, onManage, 
 }) {
   if (!target) return null
   const { item, stop, delivery } = target
-  const state = documentState(item, stop, delivery)
+  const state = documentState(item, stop, delivery, packingOnly)
   const tone = { ok: 'border-emerald-200 bg-emerald-50 text-emerald-800', pending: 'border-amber-200 bg-amber-50 text-amber-800', danger: 'border-rose-200 bg-rose-50 text-rose-800', na: 'border-slate-200 bg-slate-50 text-slate-600' }
   return <Modal isOpen onClose={onClose} title={`Estado documentario · ${stop?.ot_code ? `OT ${stop.ot_code}` : 'Sin OT'}`} maxWidth="max-w-lg"
     footer={<div className="flex flex-wrap justify-end gap-2">
