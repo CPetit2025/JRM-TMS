@@ -176,4 +176,20 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.get_public_tracking_document(uuid,text,text,uuid,uuid,integer) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.get_public_tracking_document(uuid,text,text,uuid,uuid,integer) TO service_role;
+-- pgcrypto puede estar en otro esquema (ver 20261009020000): calificar sus funciones igual que allí.
+DO $crypto_schema$
+DECLARE crypto_schema text; signature regprocedure; source text;
+BEGIN
+ SELECT n.nspname INTO crypto_schema FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace WHERE e.extname='pgcrypto';
+ IF crypto_schema IS NULL THEN RAISE EXCEPTION 'Se requiere pgcrypto para proteger los códigos de acceso'; END IF;
+ IF crypto_schema <> 'extensions' THEN
+  FOREACH signature IN ARRAY ARRAY['public.get_public_tracking_portal_info(uuid,text,date,date)'::regprocedure,
+    'public.get_public_tracking_document(uuid,text,text,uuid,uuid,integer)'::regprocedure] LOOP
+   SELECT pg_get_functiondef(signature) INTO source;
+   source:=replace(source,'extensions.crypt(',format('%I.crypt(',crypto_schema));
+   source:=replace(source,'extensions.gen_salt(',format('%I.gen_salt(',crypto_schema));
+   EXECUTE source;
+  END LOOP;
+ END IF;
+END $crypto_schema$;
 COMMIT;
