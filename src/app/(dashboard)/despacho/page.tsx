@@ -99,6 +99,7 @@ function requestedAttention(request: { required_at?: string | null; required_dat
 interface Dispatch {
   id: string
   dispatch_number: string
+  legacy_dispatch_number?: string | null
   driver_name: string
   vehicle_plate: string
   scheduled_departure: string
@@ -148,6 +149,7 @@ export default function DespachoPage() {
   const filteredDispatches = dispatches.filter(d => {
     const matchSearch = searchTerm === '' || 
       (d.dispatch_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (d.legacy_dispatch_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (d.vehicle_plate || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (d.driver_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       d.dispatch_requests?.some((r: DispatchRequest) => [r.transport_requests?.request_number, r.transport_requests?.contracts?.code].join(' ').toLowerCase().includes(searchTerm.toLowerCase()));
@@ -294,7 +296,7 @@ export default function DespachoPage() {
       const { data: dispatchData, error: dispatchError } = await supabase
         .from('dispatches')
         .select(`
-          id, dispatch_number, driver_name, vehicle_plate, scheduled_departure, status, estimated_distance_km,
+          id, dispatch_number, legacy_dispatch_number, driver_name, vehicle_plate, scheduled_departure, status, estimated_distance_km,
           docs_required, docs_ready_at, docs_reissue, docs_reissue_reason, modalidad, tercero_salida_at,
           dispatch_requests (
             transport_request_id,
@@ -776,6 +778,7 @@ export default function DespachoPage() {
                         <td>
                           <button
                             onClick={() => setSelectedDispatchDetail(dispatch)}
+                            title={dispatch.legacy_dispatch_number ? `Código anterior: ${dispatch.legacy_dispatch_number}` : undefined}
                             className="whitespace-nowrap text-left text-sm font-bold text-jrm-navy transition-all hover:text-blue-600 hover:underline"
                           >
                             {dispatch.dispatch_number}
