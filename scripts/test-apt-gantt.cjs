@@ -11,7 +11,7 @@ try{
  const table=n=>{const start=shape.indexOf(`CREATE TABLE public."${n}" (`);assert.ok(start>=0);return shape.slice(start,shape.indexOf(';',start)+1)}
  sql(`CREATE ROLE anon;CREATE ROLE authenticated;CREATE ROLE service_role;
  CREATE FUNCTION apt_can_view() RETURNS boolean LANGUAGE sql AS $$SELECT COALESCE(current_setting('test.can_view',true),'true')='true'$$;`+
- ['apt_flow_layers','apt_flow_exits','apt_flow_alloc','apt_flow_pieces','apt_flow_state','apt_settings','apt_movements'].map(table).join('\n')+fn(family,'apt_ot_raiz'))
+ ['apt_flow_layers','apt_flow_exits','apt_flow_alloc','apt_flow_pieces','apt_flow_state','apt_settings','apt_movements','apt_uploads'].map(table).join('\n')+fn(family,'apt_ot_raiz'))
  const migration=read('supabase/migrations/20261009150000_apt_gantt.sql');sql(migration);sql(migration)
  sql(`INSERT INTO apt_settings(id,alert_days,tolerance) VALUES(1,7,0.02);
  INSERT INTO apt_flow_state(id,cutoff,data_min,rebuilt_at) VALUES(1,'2026-01-20','2026-01-01',now());
@@ -46,6 +46,25 @@ try{
  assert.equal(json(`SELECT apt_gantt('{"corte":"bad"}')`).success,false)
  assert.equal(json(`SET test.can_view='false';SELECT apt_gantt('{}')`).success,false)
  sql(`DO $$ BEGIN IF has_function_privilege('anon','apt_gantt(jsonb,integer,integer)','EXECUTE') THEN RAISE EXCEPTION 'anon access';END IF;END $$;`)
+ // A replacement on identical ERP dates can invalidate the model without advancing data_max.
+ sql(`BEGIN;
+ INSERT INTO apt_uploads(id,file_name,status,applied_at) VALUES
+ ('22222222-2222-2222-2222-222222222222','same-date replacement','APLICADA',(SELECT rebuilt_at+interval '1 minute' FROM apt_flow_state WHERE id=1)),
+ ('33333333-3333-3333-3333-333333333333','discarded upload','DESCARTADA',(SELECT rebuilt_at+interval '2 minutes' FROM apt_flow_state WHERE id=1));
+ DO $$ DECLARE q jsonb; prior timestamptz; BEGIN
+ SELECT rebuilt_at INTO prior FROM apt_flow_state WHERE id=1;
+ q:=apt_gantt('{}');
+ IF (q->>'model_pending')::boolean IS DISTINCT FROM true OR (q->>'last_upload_at')::timestamptz<>prior+interval '1 minute'
+  OR (q->>'data_max')::date>(q->>'model_cutoff')::date THEN RAISE EXCEPTION 'Same-date applied upload must flag pending model without a new movement date'; END IF;
+ UPDATE apt_uploads SET applied_at=prior-interval '1 minute' WHERE status='APLICADA';
+ q:=apt_gantt('{}');
+ IF (q->>'model_pending')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'Backdated applied upload must clear pending model; discarded uploads are ignored'; END IF;
+ UPDATE apt_flow_state SET cutoff=NULL,rebuilt_at=NULL WHERE id=1;
+ q:=apt_gantt('{}');
+ IF (q->>'vacio')::boolean IS DISTINCT FROM true OR (q->>'model_pending')::boolean IS DISTINCT FROM true
+  OR q->>'last_upload_at' IS NULL THEN RAISE EXCEPTION 'Empty model must expose pending applied upload metadata'; END IF;
+ END $$;
+ ROLLBACK;`)
  // Isolated lifecycle cases: rolled back so the main fixture and load totals remain stable.
  sql(`BEGIN;
  INSERT INTO apt_flow_layers(id,almacen,lote,producto,tipo,fecha,kg_in,kg_out,kg_saldo,cliente,exit_id,lote_origen) VALUES
@@ -106,5 +125,5 @@ try{
  GRANT USAGE ON SCHEMA auth TO authenticated;GRANT SELECT ON roles,profiles,drivers,auth.users TO authenticated;`+
  fn(read('supabase/migrations/20261002100000_apt_estadia_inventario.sql'),'apt_can_view'))
  sql(read('supabase/tests/caja_c65_apt_gantt.test.sql').replace("RAISE EXCEPTION 'CAJA C65 PASS:","RAISE NOTICE 'CAJA C65 PASS:"))
- console.log('PASS: Gantt production-shaped schema; FIFO partial/historical cutoff, internal transfers/reassignments, dated returns, nonzero residuals, OT family, initial unknown age, root-age critical quantities, preperiod balances, non-delivery exits, promise dates, pagination, date validation authorization and paginated 64,000-layer/exit/alloc workload under 8s.')
+ console.log('PASS: Gantt production-shaped schema; FIFO partial/historical cutoff, internal transfers/reassignments, dated returns, nonzero residuals, OT family, same-date pending recalculation, initial unknown age, root-age critical quantities, preperiod balances, non-delivery exits, promise dates, pagination, date validation authorization and paginated 64,000-layer/exit/alloc workload under 8s.')
 }catch(e){console.error(e);process.exitCode=1}finally{spawnSync('docker',['rm','-f',name],{stdio:'ignore'})}

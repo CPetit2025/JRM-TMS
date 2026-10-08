@@ -34,3 +34,5 @@ El filtro de almacén selecciona los lotes con paso registrado por ese almacén,
 `node scripts/test-apt-gantt.cjs` ejecuta la consulta SQL real en PostgreSQL aislado con las tablas documentadas de producción. Comprueba saldos históricos, traspasos internos, salidas parciales, stock previo sin fecha, TN críticas por origen, familias de OT, paginación, permisos y carga sintética de 64.000 capas/salidas/asignaciones. Es una prueba de volumen reproducible; no sustituye la medición de concurrencia real.
 
 `supabase/tests/caja_c65_apt_gantt.test.sql` verifica la instalación y el contrato en el workflow de producción, dentro de una transacción con reversión.
+
+Una carga aplicada después del último recálculo activa el aviso de modelo pendiente, incluso si reemplaza exactamente las mismas fechas. El Gantt conserva el resultado anterior, lo identifica y enlaza a Cargas para revisar el recálculo; consultar la ventana nunca inicia una reconstrucción.

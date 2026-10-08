@@ -7,16 +7,18 @@ CREATE OR REPLACE FUNCTION public.apt_gantt(p jsonb DEFAULT '{}'::jsonb, p_limit
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE st record; v_cut date; v_from date; v_to date; v_alert integer; v_tol numeric;
   v_limit integer := LEAST(50,GREATEST(1,COALESCE(p_limit,25))); v_offset integer := GREATEST(0,COALESCE(p_offset,0));
-  v_rows jsonb; v_kpi jsonb; v_priority jsonb; v_series jsonb; v_coverage jsonb; v_total integer; v_max date;
+  v_rows jsonb; v_kpi jsonb; v_priority jsonb; v_series jsonb; v_coverage jsonb; v_total integer; v_max date; v_last_upload timestamptz; v_pending boolean;
 BEGIN
   IF NOT public.apt_can_view() THEN RETURN jsonb_build_object('success',false,'error','Sin acceso al módulo APT'); END IF;
   p := COALESCE(p,'{}');
   SELECT * INTO st FROM public.apt_flow_state WHERE id=1;
+  SELECT max(applied_at) INTO v_last_upload FROM public.apt_uploads WHERE status='APLICADA';
+  v_pending := COALESCE(v_last_upload>st.rebuilt_at,v_last_upload IS NOT NULL);
   SELECT max(fecha) INTO v_max FROM public.apt_movements WHERE active AND valid;
   SELECT COALESCE(alert_days,60),COALESCE(tolerance,0.02) INTO v_alert,v_tol FROM public.apt_settings WHERE id=1;
   v_alert := COALESCE(v_alert,60); v_tol := COALESCE(v_tol,0.02);
   IF st.cutoff IS NULL THEN
-    RETURN jsonb_build_object('success',true,'vacio',true,'cutoff',NULL,'data_min',NULL,'data_max',v_max,'model_cutoff',NULL,'requested_cutoff',NULLIF(p->>'corte',''),'age_basis','ORIGEN','desde',NULL,'hasta',NULL,'rebuilt_at',st.rebuilt_at,
+    RETURN jsonb_build_object('success',true,'vacio',true,'cutoff',NULL,'data_min',NULL,'data_max',v_max,'model_cutoff',NULL,'requested_cutoff',NULLIF(p->>'corte',''),'age_basis','ORIGEN','desde',NULL,'hasta',NULL,'rebuilt_at',st.rebuilt_at,'model_pending',v_pending,'last_upload_at',v_last_upload,
       'alert_days',v_alert,'tolerance',v_tol,'total',0,'limit',v_limit,'offset',v_offset,'filas','[]'::jsonb,'prioridades','[]'::jsonb,'serie','[]'::jsonb,'cobertura','[]'::jsonb,
       'kpis',jsonb_build_object('lotes',0,'ot',0,'abiertas',0,'ingresadas_tn',0,'inicial_tn',0,'asignadas_tn',0,'cedidas_tn',0,'despachadas_tn',0,'saldo_tn',0,'criticas_tn',0,'sin_fecha_tn',0,'edad_ponderada',NULL,'tn_dias',0));
   END IF;
@@ -143,7 +145,7 @@ BEGIN
   SELECT COALESCE(jsonb_agg(jsonb_build_object('tipo',kind,'desde',f0,'hasta',f1,'filas',n,'sin_peso',sp) ORDER BY kind),'[]') INTO v_coverage
     FROM (SELECT kind,min(fecha) AS f0,max(fecha) AS f1,count(*) AS n,count(*) FILTER(WHERE peso_kg IS NULL OR peso_kg<=0) AS sp
       FROM public.apt_movements WHERE active AND valid GROUP BY kind) c;
-  RETURN jsonb_build_object('success',true,'cutoff',v_cut,'data_min',st.data_min,'data_max',v_max,'model_cutoff',st.cutoff,'requested_cutoff',NULLIF(p->>'corte',''),'age_basis',CASE WHEN v_cut=st.cutoff THEN 'ORIGEN' ELSE 'ALMACEN' END,'desde',v_from,'hasta',v_to,'rebuilt_at',st.rebuilt_at,
+  RETURN jsonb_build_object('success',true,'cutoff',v_cut,'data_min',st.data_min,'data_max',v_max,'model_cutoff',st.cutoff,'requested_cutoff',NULLIF(p->>'corte',''),'age_basis',CASE WHEN v_cut=st.cutoff THEN 'ORIGEN' ELSE 'ALMACEN' END,'desde',v_from,'hasta',v_to,'rebuilt_at',st.rebuilt_at,'model_pending',v_pending,'last_upload_at',v_last_upload,
     'alert_days',v_alert,'tolerance',v_tol,'total',v_total,'limit',v_limit,'offset',v_offset,'kpis',v_kpi,'filas',v_rows,
     'prioridades',v_priority,'serie',v_series,'cobertura',v_coverage);
 END $$;

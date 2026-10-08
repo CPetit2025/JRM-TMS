@@ -26,6 +26,7 @@ export interface GanttRow {
 export interface GanttResult {
   age_basis: 'ALMACEN' | 'ORIGEN'; data_max: string | null; model_cutoff: string | null; requested_cutoff: string | null
   vacio?: boolean; cutoff: string | null; data_min: string | null; desde: string | null; hasta: string | null
+  model_pending: boolean; last_upload_at: string | null
   rebuilt_at: string | null; alert_days: number; tolerance: number; total: number; limit: number; offset: number
   cobertura: Array<{ tipo: string; desde: string | null; hasta: string | null; filas: number; sin_peso: number }>
   kpis: { lotes: number; ot: number; abiertas: number; ingresadas_tn: number; inicial_tn: number
