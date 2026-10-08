@@ -4,11 +4,12 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
-import { Truck, Clock, ShieldCheck, Loader2, Navigation, Layers } from 'lucide-react'
+import { Truck, Clock, ShieldCheck, Loader2, Navigation, CalendarDays, Route } from 'lucide-react'
 import { toast } from 'sonner'
 import { DeliveryTable } from '@/components/delivery/DeliveryTable'
-import type { DeliveryRow } from '@/lib/delivery'
 import { TrackingCalendar } from '@/components/tracking/TrackingCalendar'
+import { RouteDay } from '@/components/tracking/RouteDay'
+import type { PortalRow } from '@/lib/tracking-portal'
 import { limaDay, monthDays, type PortalRequest } from '@/lib/tracking-calendar'
 
 const MapComponent = dynamic(() => import('@/components/map/MapComponent'), {
@@ -37,10 +38,12 @@ export default function TrackingPage() {
   const [pin, setPin] = useState('')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [trackingData, setTrackingData] = useState<{ mode: 'permanent' | 'legacy'; planning_date?: string; rows: DeliveryRow[]; requests: PortalRequest[]; locations: {dispatch_id:string;vehicle_plate?:string;driver_name?:string;lat:number;lng:number;last_gps_at:string}[]; error?:string; limited?:boolean } | null>(null)
+  const [trackingData, setTrackingData] = useState<{ mode: 'permanent' | 'legacy'; planning_date?: string; rows: PortalRow[]; requests: PortalRequest[]; locations: {dispatch_id:string;dispatch_number?:string;vehicle_plate?:string;driver_name?:string;lat:number;lng:number;last_gps_at:string}[]; error?:string; limited?:boolean } | null>(null)
   const [month, setMonth] = useState(() => limaDay(new Date().toISOString()).slice(0,7))
   const range = useMemo(() => { const days=monthDays(month); return {p_from:days[0],p_to:days[41]} },[month])
-  const [activeTab, setActiveTab] = useState<'list' | 'map'>('list')
+  const [activeTab, setActiveTab] = useState<'calendar' | 'route' | 'map'>('calendar')
+  const [routeDay, setRouteDay] = useState(() => limaDay(new Date().toISOString()))
+  const changeRouteDay = (day: string) => { setRouteDay(day); if (day < range.p_from || day > range.p_to) setMonth(day.slice(0, 7)) }
   const [vehicles, setVehicles] = useState<VehicleLocation[]>([])
   
   const supabase = useMemo(() => createClient(), [])
@@ -99,6 +102,7 @@ export default function TrackingPage() {
       if (data?.error) throw new Error(data.error)
 
       setTrackingData(data); setUpdatedAt(new Date().toISOString()); setRefreshError('')
+      setActiveTab(data?.mode === 'permanent' ? 'calendar' : 'route')
       setIsAuthenticated(true)
       toast.success('Acceso autorizado')
     } catch (err) {
@@ -175,29 +179,15 @@ export default function TrackingPage() {
           </div>
           
           {/* Navegación de Pestañas */}
-          <div className="flex border-t border-slate-200 mt-2">
-            <button
-              onClick={() => setActiveTab('list')}
-              className={`flex items-center gap-2 px-3 py-4 font-medium text-xs sm:px-6 sm:text-sm transition-colors border-b-2 ${
-                activeTab === 'list'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-              }`}
-            >
-              <Layers className="w-4 h-4" />
-              {trackingData?.mode === 'permanent' ? 'Calendario y servicios' : 'Torre de Control'}
-            </button>
-            <button
-              onClick={() => setActiveTab('map')}
-              className={`flex items-center gap-2 px-3 py-4 font-medium text-xs sm:px-6 sm:text-sm transition-colors border-b-2 ${
-                activeTab === 'map'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-              }`}
-            >
-              <Navigation className="w-4 h-4" />
-              Monitoreo GPS
-            </button>
+          <div className="mt-2 flex overflow-x-auto border-t border-slate-200">
+            {([
+              ...(trackingData?.mode === 'permanent' ? [{ key: 'calendar', label: 'Calendario', icon: CalendarDays }] : []),
+              { key: 'route', label: 'Ruta del día', icon: Route },
+              { key: 'map', label: 'Monitoreo GPS', icon: Navigation },
+            ] as const).map(tab => <button key={tab.key} onClick={() => setActiveTab(tab.key as 'calendar' | 'route' | 'map')}
+              className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-4 text-xs font-medium transition-colors sm:px-6 sm:text-sm ${activeTab === tab.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800'}`}>
+              <tab.icon className="h-4 w-4" />{tab.label}
+            </button>)}
           </div>
         </div>
       </div>
@@ -212,12 +202,16 @@ export default function TrackingPage() {
           </div>
         </div>}
 
-        {activeTab === 'list' ? (
-          <div className="space-y-6">{trackingData?.mode === 'permanent' && <TrackingCalendar month={month} onMonth={setMonth} requests={trackingData.requests || []} rows={trackingData.rows || []} />}{trackingData?.limited && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Hay más solicitudes. Consulta un período más específico o solicita un acceso acotado.</p>}<DeliveryTable rows={trackingData?.rows || []} error={refreshError} refreshedAt={updatedAt} onRefresh={() => setVersion(v => v + 1)} /></div>
-        ) : (
+        {activeTab === 'calendar' && trackingData?.mode === 'permanent' && <div className="space-y-6">
+          {trackingData.limited && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Hay más solicitudes. Consulta un período más específico o solicita un acceso acotado.</p>}
+          <TrackingCalendar month={month} onMonth={setMonth} requests={trackingData.requests || []} rows={trackingData.rows || []} />
+        </div>}
+        {(activeTab === 'route' || (activeTab === 'calendar' && trackingData?.mode !== 'permanent')) && (trackingData?.mode === 'permanent'
+          ? <RouteDay rows={trackingData.rows || []} day={routeDay} onDay={changeRouteDay} access={{ token: String(token), pin }} refreshedAt={updatedAt} error={refreshError} onRefresh={() => setVersion(v => v + 1)} />
+          : <DeliveryTable rows={trackingData?.rows || []} error={refreshError} refreshedAt={updatedAt} onRefresh={() => setVersion(v => v + 1)} />)}
+        {activeTab === 'map' && <>
           <div className="h-[600px] bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden relative">
-            {/* Si no hay vehículos con GPS actualmente, mostrar el mapa igual pero con un overlay o solo el componente */}
-            <MapComponent 
+            <MapComponent
               vehicles={vehicles}
               selectedVehicleId={null}
               onVehicleSelect={() => {}}
@@ -230,7 +224,14 @@ export default function TrackingPage() {
               </div>
             )}
           </div>
-        )}
+          <div className="rounded-xl border border-slate-200 bg-white">
+            <p className="border-b px-4 py-3 text-sm font-bold text-[#002855]">Unidades con señal en los últimos 15 minutos · {vehicles.length}</p>
+            {vehicles.length ? <ul className="divide-y">{(trackingData?.locations || []).map(point => <li key={point.dispatch_id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+              <span><b>{point.vehicle_plate || 'Sin placa'}</b>{point.dispatch_number ? ` · Ruta ${point.dispatch_number}` : ''} · {point.driver_name || 'Conductor'}</span>
+              <span className="text-xs text-slate-500">Última señal {new Date(point.last_gps_at).toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+            </li>)}</ul> : <p className="px-4 py-3 text-sm text-slate-500">Ninguna unidad del alcance autorizado reporta posición ahora. Se muestran las rutas en curso cuyas paradas están todas dentro de este acceso.</p>}
+          </div>
+        </>}
       </div>
     </div>
   )
