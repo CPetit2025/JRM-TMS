@@ -337,7 +337,7 @@ export async function executeAiTool(
       else {
         const ref = raw.replace(/[^A-Za-z0-9-]/g, '').slice(0, 30)
         if (!ref) return { asOf, error: 'Indique el número de despacho o la placa.' }
-        query = query.or(`dispatch_number.ilike.%${ref}%,vehicle_plate.ilike.%${ref}%`)
+        query = query.or(`dispatch_number.ilike.%${ref}%,legacy_dispatch_number.ilike.%${ref}%,vehicle_plate.ilike.%${ref}%`)
       }
     } else if (context.dispatchId && UUID.test(context.dispatchId)) query = query.eq('id', context.dispatchId)
     else return { asOf, error: 'Indique el número de despacho o la placa.' }
