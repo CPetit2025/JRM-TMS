@@ -10,6 +10,7 @@ import { districtOf } from '@/lib/address'
 import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 import { serviceLabel, serviceKind, SERVICE_KINDS, type ServiceKind } from '@/lib/request-service'
 
+import { DISPATCH_STATUS_GROUPS } from '@/lib/dispatch-status'
 import { splitFreight } from '@/lib/transport-budget'
 import { isTransportUnit, TRANSPORT_VEHICLE_TYPES } from '@/lib/fleet-filters'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
@@ -116,11 +117,7 @@ interface Dispatch {
   dispatch_requests?: DispatchRequest[]
 }
 
-const STATUS_GROUPS: Record<'programados' | 'ruta' | 'cerrar', string[]> = {
-  programados: ['PROGRAMADO'],
-  ruta: ['EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'],
-  cerrar: ['ENTREGADO', 'RETORNO_COMPLETADO'],
-}
+const STATUS_GROUPS = { ruta: DISPATCH_STATUS_GROUPS.RUTA as readonly string[], cerrar: DISPATCH_STATUS_GROUPS.POR_CERRAR as readonly string[] }
 
 export default function DespachoPage() {
   const router = useRouter()
@@ -559,7 +556,7 @@ export default function DespachoPage() {
         <TransportWorkflow current="programacion" torre={false} />
         <div className="ml-auto min-w-0">
           <InlineStatusBar label="Resumen operativo: los despachos asignados se siguen en Torre de Control" loading={loading} active="asignar"
-            onChange={key => { if (key !== 'asignar') router.push(`/torre-control${key === 'programados' ? '?estado=PROGRAMADO' : ''}`) }}
+            onChange={key => { if (key !== 'asignar') router.push(`/torre-control?estado=${({ programados: 'PROGRAMADO', ruta: 'RUTA', cerrar: 'POR_CERRAR' } as Record<string, string>)[key]}`) }}
             items={[
               { key: 'asignar', label: 'Por asignar', count: pendingRequests.length, icon: <FileText />, tone: 'amber' },
               { key: 'programados', label: 'Programados', count: dispatches.filter(d => d.status === 'PROGRAMADO').length, icon: <Clock />, tone: 'navy' },
