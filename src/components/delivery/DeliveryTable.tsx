@@ -6,6 +6,7 @@ import { ChevronRight, Download, Eye, FileCheck2, RefreshCw, Search, Truck } fro
 import { districtOf } from '@/lib/address'
 import { cellDateTime } from '@/lib/table-format'
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
+import { partyName, referenceLabel, requiresSupplier } from '@/lib/suppliers'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { conformityLabels, deliveryServiceKind, deliveryStatus, deliveryTime, filterDeliveries, type DeliveryRow } from '@/lib/delivery'
@@ -34,6 +35,7 @@ function guideStatus(row: DeliveryRow): { label: string; tone: StatusTone; title
   const [label, tone] = map[row.conformity]
   return { label, tone, title: `${guide}${photos} · ${conformityLabels[row.conformity]}` }
 }
+const hasOt = (row: DeliveryRow) => !!row.ot_code && row.ot_code !== 'Sin OT vinculada'
 const conformityTone = (c: DeliveryRow['conformity']) => c === 'VALIDADA' ? 'text-emerald-700' : c === 'OBSERVADA' || c === 'RECHAZADA' ? 'text-red-700' : c === 'NO_APLICA' || c === 'HISTORICA' ? 'text-slate-600' : 'text-amber-800'
 
 export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, onEvidence, onDispatch, onProvider }: {
@@ -80,15 +82,15 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
     {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error} La información anterior puede estar desactualizada.</p>}
     <div className="overflow-x-auto rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
       <DataTable dense className="w-full min-w-[900px] text-left text-xs">
-        <thead className="bg-slate-50 text-slate-600"><tr>{['Fecha', 'Servicio', 'OT', 'Unidad', 'Cliente', 'Destino', 'Guía y conformidad', 'Último evento', 'Acciones'].map((label, i) => <th key={label} className={`whitespace-nowrap font-semibold ${i === 8 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead>
+        <thead className="bg-slate-50 text-slate-600"><tr>{['Fecha', 'Servicio', 'OT', 'Unidad', 'Empresa', 'Destino', 'Guía y conformidad', 'Último evento', 'Acciones'].map((label, i) => <th key={label} className={`whitespace-nowrap font-semibold ${i === 8 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead>
         <tbody className="divide-y">
           {!visible.length && <tr><td colSpan={9} className="p-8 text-center text-slate-500">{loading ? 'Cargando entregas…' : 'No hay entregas con los filtros seleccionados.'}</td></tr>}
           {visible.map(row => { const pickup = deliveryServiceKind(row) === 'RECOJO', point = pickup ? row.pickup_address : row.delivery_address, doc = guideStatus(row); return <tr key={`${row.dispatch_id}/${row.request_id}`} className="align-middle hover:bg-slate-50">
             <td className="whitespace-nowrap text-slate-700" title={deliveryTime(row.scheduled_departure)}>{cellDateTime(row.scheduled_departure)}</td>
             <td><ServiceTypeBadge kind={deliveryServiceKind(row)} /></td>
-            <td className="whitespace-nowrap font-bold text-jrm-navy" title={`Solicitud ${row.request_number} · Despacho ${row.dispatch_number}`}>{row.ot_code ? `OT ${row.ot_code}` : 'Sin OT'}</td>
+            <td className="whitespace-nowrap font-bold text-jrm-navy" title={`Solicitud ${row.request_number} · Despacho ${row.dispatch_number}`}>{hasOt(row) ? `OT ${row.ot_code}` : referenceLabel(row) || 'Sin OT'}</td>
             <td className="whitespace-nowrap font-bold" title={`${row.driver_name || (row.modalidad === 'RECOJO_CLIENTE' ? 'Unidad del cliente' : 'Sin conductor')}${row.modalidad === 'TERCERO' ? ` · Tercero${row.carrier_name ? ` (${row.carrier_name})` : ''}` : ''}`}>{row.plate || 'Sin placa'}{row.modalidad === 'TERCERO' && <span className="ml-1 text-[11px] font-semibold text-violet-700">T</span>}</td>
-            <td className="max-w-36"><p className="truncate font-semibold text-slate-800" title={row.client_name || undefined}>{row.client_name || 'Cliente sin vincular'}</p></td>
+            <td className="max-w-36">{(() => { const party = partyName(row, row.client_name, row.supplier_name); return <p className="truncate font-semibold text-slate-800" title={party ? `${requiresSupplier(row) ? 'Proveedor' : 'Cliente'}: ${party}` : undefined}>{party || (requiresSupplier(row) ? 'Proveedor sin vincular' : 'Cliente sin vincular')}</p> })()}</td>
             <td className="max-w-32"><p className="truncate text-slate-700" title={`${pickup ? 'Origen' : 'Destino'}: ${point}`}>{districtOf(point)}</p></td>
             <td><button type="button" onClick={() => onEvidence ? onEvidence(row) : setHistory(row)} title={doc.title} className="inline-flex items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-jrm-navy"><StatusBadge tone={doc.tone}>{doc.label}</StatusBadge><ChevronRight aria-hidden className="h-3.5 w-3.5 text-slate-400" /></button></td>
             <td className="whitespace-nowrap" title={`Actualizado ${deliveryTime(row.last_event_at)}`}><DeliverySignal compact state={row.state} onClick={() => setHistory(row)} /></td>
@@ -111,8 +113,8 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
         <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
           {([
             ['Tipo de servicio', (k => k ? SERVICE_KINDS[k].label : 'Sin identificar')(deliveryServiceKind(history))],
-            ['OT', history.ot_code || 'Sin OT'], ['Solicitud', history.request_number], ['Despacho', history.dispatch_number],
-            ['Cliente', history.client_name || 'Cliente sin vincular'], ['Programación', deliveryTime(history.scheduled_departure)],
+            ['OT', hasOt(history) ? history.ot_code : 'Sin OT'], ['Documento', referenceLabel(history) || 'Sin documento'], ['Solicitud', history.request_number], ['Despacho', history.dispatch_number],
+            ['Cliente', history.client_name || 'Cliente sin vincular'], ['Proveedor', history.supplier_name || (requiresSupplier(history) ? 'Proveedor sin vincular' : 'No aplica')], ['Programación', deliveryTime(history.scheduled_departure)],
             ['Llegada a destino', history.arrived_at ? deliveryTime(history.arrived_at) : 'Sin registrar'],
             ['Origen', history.pickup_address || '—'], ['Destino', history.delivery_address || '—'],
             ['Unidad', history.plate || 'Sin placa'], ['Conductor', history.driver_name || 'Sin conductor'],

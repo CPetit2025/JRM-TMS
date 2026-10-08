@@ -10,6 +10,7 @@ export type DeliveryRow = {
   events: { type: string; description: string | null; at: string }[]
   /** Tipo de la solicitud (se completa en la pantalla con fetchServiceTypes) */
   request_type?: string; attention_mode?: string | null; contract_id?: string | null
+  supplier_name?: string | null; reference_type?: string | null; reference_number?: string | null; purchase_order?: string | null
 }
 /** Tipo de servicio de una entrega: usa los datos de la solicitud; sin ellos, solo reconoce el recojo por el cliente. */
 export function deliveryServiceKind(row: DeliveryRow): ServiceKind | null {

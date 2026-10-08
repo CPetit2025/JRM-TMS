@@ -8,6 +8,7 @@ import { InlineStatusBar } from '@/components/ui/inline-status-bar'
 import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filter-toolbar'
 import { districtOf } from '@/lib/address'
 import { cellDateTime } from '@/lib/table-format'
+import { partyName, referenceLabel, requiresSupplier } from '@/lib/suppliers'
 import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 import { serviceLabel, serviceKind, SERVICE_KINDS, type ServiceKind } from '@/lib/request-service'
 
@@ -53,6 +54,10 @@ interface TransportRequest {
   contract_id?: string
   delivery_district?: string | null
   pickup_district?: string | null
+  reference_type?: string | null
+  reference_number?: string | null
+  purchase_order?: string | null
+  suppliers?: { business_name: string } | null
   estimated_weight?: number | null
   service_cost?: number | null
   contracts?: {
@@ -136,7 +141,7 @@ export default function DespachoPage() {
   const [pendingService, setPendingService] = useState('')
   const visiblePending = pendingRequests.filter(r => {
     const term = pendingSearch.trim().toLocaleLowerCase('es-PE')
-    const matchSearch = !term || [r.request_number, r.requester_name, r.contracts?.code, r.contracts?.clients?.business_name,
+    const matchSearch = !term || [r.request_number, r.requester_name, r.contracts?.code, r.contracts?.clients?.business_name, r.suppliers?.business_name, referenceLabel(r),
       districtOf(r.pickup_address, r.pickup_district), districtOf(r.delivery_address, r.delivery_district)].join(' ').toLocaleLowerCase('es-PE').includes(term)
     return matchSearch && (!pendingService || serviceKind(r) === pendingService)
   })
@@ -246,6 +251,7 @@ export default function DespachoPage() {
         .from('transport_requests')
         .select(`
           *,
+          suppliers(business_name),
           transport_request_items (
             weight,
             volume_m3,
@@ -592,7 +598,7 @@ export default function DespachoPage() {
             <DataTable dense className="w-full border-collapse text-left">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  {['Atención', 'Servicio', 'OT', 'Cliente', 'Origen → Destino', 'Partida', 'Acciones'].map((title, i) => <th key={title} className={`whitespace-nowrap font-semibold ${i === 6 ? 'text-right' : ''}`}>{title}</th>)}
+                  {['Atención', 'Servicio', 'OT', 'Empresa', 'Origen → Destino', 'Partida', 'Acciones'].map((title, i) => <th key={title} className={`whitespace-nowrap font-semibold ${i === 6 ? 'text-right' : ''}`}>{title}</th>)}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -609,8 +615,8 @@ export default function DespachoPage() {
                         <span className={`text-sm ${wasRescheduled(req) ? 'font-semibold text-orange-700' : 'text-slate-700'}`} title={wasRescheduled(req) ? 'Reprogramado' : undefined}>{req.required_at ? cellDateTime(req.required_at) : `${serviceDate(req.required_date).slice(0, 5)}${req.time_window ? ` ${req.time_window}` : ''}`}</span>
                       </td>
                       <td><ServiceTypeBadge request={req} /></td>
-                      <td className="whitespace-nowrap text-sm font-bold text-jrm-navy" title={`Solicitud ${req.request_number} · ${req.requester_name}`}>{req.contracts?.code ? `OT ${req.contracts.code}` : 'Sin OT'}</td>
-                      <td className="max-w-40"><p className="truncate text-sm text-slate-700" title={req.contracts?.clients?.business_name || undefined}>{req.contracts?.clients?.business_name || 'Sin cliente'}</p></td>
+                      <td className="whitespace-nowrap text-sm font-bold text-jrm-navy" title={`Solicitud ${req.request_number} · ${req.requester_name}`}>{req.contracts?.code ? `OT ${req.contracts.code}` : referenceLabel(req) || 'Sin OT'}</td>
+                      <td className="max-w-40">{(() => { const party = partyName(req, req.contracts?.clients?.business_name, req.suppliers?.business_name); return <p className="truncate text-sm text-slate-700" title={party ? `${requiresSupplier(req) ? 'Proveedor' : 'Cliente'}: ${party}` : undefined}>{party || (requiresSupplier(req) ? 'Proveedor sin vincular' : 'Sin cliente')}</p> })()}</td>
                       <td className="max-w-48">
                         <p className="flex items-center gap-1 truncate text-sm text-slate-700" title={`Origen: ${req.pickup_address}\nDestino: ${req.delivery_address}`}>
                           <MapPin className="h-3.5 w-3.5 shrink-0 text-blue-500" aria-hidden="true" />

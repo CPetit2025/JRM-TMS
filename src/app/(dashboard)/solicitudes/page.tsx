@@ -23,6 +23,8 @@ import { serviceAddresses, serviceLabel, serviceKind, SERVICE_KINDS, executionWe
 import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 import { districtOf } from '@/lib/address'
 import { cellDateTime, fullDateTime } from '@/lib/table-format'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
+import { partyName, referenceLabel, REFERENCE_TYPES, requiresSupplier, type ReferenceType, type Supplier } from '@/lib/suppliers'
 import { serviceDate } from '@/lib/request-schedule'
 
 const requestDate = (value: string, withTime = false) => value ? new Date(value).toLocaleString('es-PE', {
@@ -65,6 +67,11 @@ interface TransportRequest {
   contract_id?: string
   service_cost?: number
   purchase_order?: string
+  supplier_id?: string | null
+  supplier_location_id?: string | null
+  reference_type?: string | null
+  reference_number?: string | null
+  suppliers?: { business_name: string } | null
   budget_shortfall?: number | null
   budget_observation?: string | null
   unloading_required?: boolean | null
@@ -174,13 +181,13 @@ export default function SolicitudesPage() {
   const matchesStatus = (status: string, filter: string) => filter === 'TODOS' || status === filter
     || (filter === 'PENDIENTE' && status === 'PENDIENTE DE APROBACIÓN') || (filter === 'APROBADA' && status === 'APROBADO')
   const filteredRequests = requests.filter(r => {
-    const matchesSearch = [r.request_number, r.requester_name, r.contracts?.code, r.contracts?.clients?.business_name, r.cargo_description, r.pickup_address, r.delivery_address].join(' ').toLocaleLowerCase('es-PE').includes(searchTerm.trim().toLocaleLowerCase('es-PE'))
+    const matchesSearch = [r.request_number, r.requester_name, r.contracts?.code, r.contracts?.clients?.business_name, r.suppliers?.business_name, referenceLabel(r), r.cargo_description, r.pickup_address, r.delivery_address].join(' ').toLocaleLowerCase('es-PE').includes(searchTerm.trim().toLocaleLowerCase('es-PE'))
     const matchesDateFrom = filterDateFrom === '' || r.required_date >= filterDateFrom
     const matchesDateTo = filterDateTo === '' || r.required_date <= filterDateTo
     const matchesService = filterService === 'TODOS' || serviceKind(r) === filterService
     return matchesSearch && matchesStatus(r.status, filterStatus) && matchesDateFrom && matchesDateTo && matchesService
   }).sort((a, b) => {
-    const value = (r: TransportRequest) => sort.key === 'service' ? compactService(r) : sort.key === 'ot' ? r.contracts?.code || '' : sort.key === 'client' ? r.contracts?.clients?.business_name || '' : sort.key === 'requester' ? r.requester_name || ''
+    const value = (r: TransportRequest) => sort.key === 'service' ? compactService(r) : sort.key === 'ot' ? r.contracts?.code || '' : sort.key === 'client' ? partyName(r, r.contracts?.clients?.business_name, r.suppliers?.business_name) || '' : sort.key === 'requester' ? r.requester_name || ''
       : sort.key === 'address' ? serviceAddresses(r).map(place => place.address).join(' → ') : sort.key === 'status' ? statusLabels[r.status] || r.status : r[sort.key]
     const comparison = value(a).localeCompare(value(b), 'es-PE', { numeric: true, sensitivity: 'base' })
     return (sort.direction === 'asc' ? comparison : -comparison) || a.id.localeCompare(b.id)
@@ -194,6 +201,12 @@ export default function SolicitudesPage() {
   const clearFilters = () => { setSearchTerm(''); setFilterStatus('TODOS'); setFilterService('TODOS'); setFilterDateFrom(''); setFilterDateTo(''); setPage(1) }
 
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  useEffect(() => {
+    if (!isModalOpen || suppliers.length) return
+    void supabase.from('suppliers').select('id, tax_id, business_name, category, contact_name, contact_phone, contact_email, notes, is_active, supplier_locations(id, supplier_id, name, address, department, province, district, contact_name, contact_phone, is_active)')
+      .eq('is_active', true).order('business_name').then(({ data }) => setSuppliers((data || []) as Supplier[]))
+  }, [isModalOpen, suppliers.length, supabase])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [userRole, setUserRole] = useState<string>('')
   
@@ -240,7 +253,7 @@ export default function SolicitudesPage() {
     estimated_weight: '',
     estimated_volume: '',
     service_cost: '',
-    purchase_order: ''
+    purchase_order: '', supplier_id: '', supplier_location_id: '', reference_type: '', reference_number: ''
   })
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
   // Costos de descarga estimados (montacargas, grúa, estiba, otros): suman al costo que se valida con la partida
@@ -317,6 +330,7 @@ export default function SolicitudesPage() {
         .from('transport_requests')
         .select(`
           *,
+          suppliers(business_name),
           transport_request_components(id, component_contract_id, requested_weight_kg, requested_volume_m3),
           contracts(
             code,
@@ -534,7 +548,8 @@ export default function SolicitudesPage() {
       estimated_weight: request.estimated_weight ? request.estimated_weight.toString() : '',
       estimated_volume: request.estimated_volume ? request.estimated_volume.toString() : '',
       service_cost: request.service_cost?.toString() || '',
-      purchase_order: request.purchase_order || ''
+      purchase_order: request.purchase_order || '', supplier_id: request.supplier_id || '', supplier_location_id: request.supplier_location_id || '',
+      reference_type: request.reference_type || '', reference_number: request.reference_number || ''
     })
 
     void fetchLeadTimeSettings()
@@ -626,12 +641,20 @@ export default function SolicitudesPage() {
       }
     }
 
+    if (requiresSupplier({ request_type: newRequest.request_type, attention_mode: newRequest.attention_mode }) && !newRequest.supplier_id) {
+      toast.error('Seleccione el proveedor del recojo o traslado. Si no existe, regístrelo en Proveedores.')
+      return
+    }
+    if (newRequest.reference_type && !newRequest.reference_number.trim()) {
+      toast.error(`Ingrese el número de ${newRequest.reference_type}.`)
+      return
+    }
     setIsSubmitting(true)
 
     try {
-      const { data: saved, error } = await supabase.rpc('save_transport_request_attention', {
+      const { data: saved, error } = await supabase.rpc('save_transport_request_full', {
         p_request_id: editingRequestId,
-        p_payload: { ...newRequest, required_at: requiredAt, delivery_zone: requiresDeliveryLeadTime ? newRequest.delivery_zone : null, contract_id: newRequest.contract_id || null, service_cost: isCustomerPickup ? 0 : newRequest.service_cost, destination_acknowledged: destinationAcknowledged },
+        p_payload: { ...newRequest, purchase_order: newRequest.reference_type === 'OC' ? newRequest.reference_number : newRequest.reference_type ? '' : newRequest.purchase_order, required_at: requiredAt, delivery_zone: requiresDeliveryLeadTime ? newRequest.delivery_zone : null, contract_id: newRequest.contract_id || null, service_cost: isCustomerPickup ? 0 : newRequest.service_cost, destination_acknowledged: destinationAcknowledged },
         p_unloading: unloadingAnswer === 'SI' ? unloading.map(x => ({ concept: x.concept, estimated_pen: Number(x.estimated_pen) || 0, description: x.description || null })) : [],
         p_components: selected.map(c => ({
           contract_id: c.contract_id,
@@ -667,7 +690,7 @@ export default function SolicitudesPage() {
         estimated_weight: '',
         estimated_volume: '',
         service_cost: '',
-        purchase_order: ''
+        purchase_order: '', supplier_id: '', supplier_location_id: '', reference_type: '', reference_number: ''
       }))
       setContractSearch('')
       setComponentOptions([])
@@ -794,7 +817,7 @@ export default function SolicitudesPage() {
                 estimated_weight: '',
                 estimated_volume: '',
                 service_cost: '',
-                purchase_order: ''
+                purchase_order: '', supplier_id: '', supplier_location_id: '', reference_type: '', reference_number: ''
               })
               setIsModalOpen(true)
             }}
@@ -837,7 +860,7 @@ export default function SolicitudesPage() {
         <div role="region" aria-label="Tabla de solicitudes de transporte" tabIndex={0} className="min-h-0 overflow-auto lg:flex-1">
           <DataTable dense className="block w-full table-fixed text-left lg:min-w-[940px] lg:table"><caption className="sr-only">Solicitud de Transporte: fechas, tipo de servicio, OT, punto de atención, estado y acciones</caption>
             <thead className="sticky top-0 z-10 hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>
-              {[{ title: 'Solicitada', key: 'created_at', width: 'w-[10%]' }, { title: 'Atención', key: 'required_date', width: 'w-[10%]' }, { title: 'Servicio', key: 'service', width: 'w-[11%]' }, { title: 'OT', key: 'ot', width: 'w-[7%]' }, { title: 'Solicitante', key: 'requester', width: 'w-[13%]' }, { title: 'Cliente', key: 'client', width: 'w-[14%] 2xl:w-[12%]' }, { title: 'Punto de atención', key: 'address', width: 'w-[13%] 2xl:w-[11%]' }, { title: 'Estado', key: 'status', width: 'w-[12%]' }, { title: 'Acciones', width: 'w-[10%] 2xl:w-[14%]' }].map(column => <th key={column.title} scope="col" className={column.width} aria-sort={column.key && sort.key === column.key ? sort.direction === 'asc' ? 'ascending' : 'descending' : undefined}>
+              {[{ title: 'Solicitada', key: 'created_at', width: 'w-[10%]' }, { title: 'Atención', key: 'required_date', width: 'w-[10%]' }, { title: 'Servicio', key: 'service', width: 'w-[11%]' }, { title: 'OT', key: 'ot', width: 'w-[7%]' }, { title: 'Solicitante', key: 'requester', width: 'w-[13%]' }, { title: 'Empresa', key: 'client', width: 'w-[14%] 2xl:w-[12%]' }, { title: 'Punto de atención', key: 'address', width: 'w-[13%] 2xl:w-[11%]' }, { title: 'Estado', key: 'status', width: 'w-[12%]' }, { title: 'Acciones', width: 'w-[10%] 2xl:w-[14%]' }].map(column => <th key={column.title} scope="col" className={column.width} aria-sort={column.key && sort.key === column.key ? sort.direction === 'asc' ? 'ascending' : 'descending' : undefined}>
                 {column.key ? <button type="button" onClick={() => changeSort(column.key as typeof sort.key)} aria-label={`Ordenar por ${column.title.toLowerCase()}`} className="flex min-h-8 items-center gap-1.5 text-left hover:text-[#002855]">{column.title}{sort.key === column.key ? sort.direction === 'asc' ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" /> : <ArrowUpDown className="h-3 w-3 shrink-0 text-slate-400" />}</button> : column.title}
               </th>)}
             </tr></thead>
@@ -864,9 +887,9 @@ export default function SolicitudesPage() {
                     return <span title={note || undefined} className={`whitespace-nowrap ${lead?.enough === false ? 'font-semibold text-red-700' : req.status === 'REPROGRAMADA' ? 'font-semibold text-amber-700' : 'text-slate-700'}`}>{req.required_at ? cellDateTime(req.required_at) : serviceDate(req.required_date)}</span>
                   })()}</td>
                   <td className={cell}>{label('Servicio')}<ServiceTypeBadge request={req} /></td>
-                  <td className={cell}>{label('OT')}<span className="whitespace-nowrap font-semibold text-[#002855]" title={`Solicitud ${req.request_number}`}>{req.contracts?.code || (req.contract_id ? 'OT vinculada' : 'Sin OT')}</span></td>
+                  <td className={cell}>{label('OT')}<span className="whitespace-nowrap font-semibold text-[#002855]" title={[`Solicitud ${req.request_number}`, req.contracts?.code && referenceLabel(req)].filter(Boolean).join(' · ')}>{req.contracts?.code || (req.contract_id ? 'OT vinculada' : referenceLabel(req) || 'Sin OT')}</span></td>
                   <td className={cell}>{label('Solicitante')}<p className="truncate text-slate-700" title={[req.requester_name, req.department].filter(Boolean).join(' · ') || undefined}>{req.requester_name || 'Sin solicitante'}</p></td>
-                  <td className={cell}>{label('Cliente')}<p className="truncate text-slate-700" title={req.contracts?.clients?.business_name || undefined}>{req.contracts?.clients?.business_name || 'Sin cliente'}</p></td>
+                  <td className={cell}>{label('Empresa')}{(() => { const party = partyName(req, req.contracts?.clients?.business_name, req.suppliers?.business_name); return <p className="truncate text-slate-700" title={party ? `${requiresSupplier(req) ? 'Proveedor' : 'Cliente'}: ${party}` : undefined}>{party || (requiresSupplier(req) ? 'Proveedor sin vincular' : 'Sin cliente')}</p> })()}</td>
                   <td className={`${cell} col-span-2`}>{label('Punto de atención')}<div title={addresses.map(place => `${place.label}: ${place.address}`).join(' → ')} className="text-slate-700">
                     <p className="truncate leading-5">{addresses.map((place, index) => <span key={place.label}>{index > 0 && <span className="text-slate-400"> → </span>}{districtOf(place.address, place.label === 'Entrega' ? req.delivery_district : req.pickup_district)}</span>)}</p>
                   </div></td>
@@ -1074,6 +1097,34 @@ export default function SolicitudesPage() {
             </div>
           </div>
 
+          {requiresSupplier({ request_type: newRequest.request_type, attention_mode: newRequest.attention_mode }) && (() => {
+            const supplier = suppliers.find(x => x.id === newRequest.supplier_id)
+            const points = (supplier?.supplier_locations || []).filter(l => l.is_active)
+            const pickPoint = (id: string, list = points) => {
+              const point = list.find(l => l.id === id)
+              setNewRequest(prev => ({ ...prev, supplier_location_id: id, ...(point ? {
+                pickup_address: point.address, pickup_department: point.department || '', pickup_province: point.province || '', pickup_district: point.district || '',
+                pickup_contact: point.contact_name || prev.pickup_contact, pickup_phone: point.contact_phone || prev.pickup_phone } : {}) }))
+            }
+            return <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50/40 p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <label className="text-sm font-semibold text-slate-800">Proveedor de origen *</label>
+                <a href="/proveedores" target="_blank" rel="noreferrer" className="text-xs font-semibold text-jrm-navy hover:underline">Registrar o editar proveedores</a>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <SearchableSelect placeholder="Buscar proveedor por razón social o RUC…" value={newRequest.supplier_id}
+                  options={suppliers.map(x => ({ value: x.id, label: `${x.business_name} · ${x.tax_id}` }))}
+                  onChange={(value: string) => { if (value === newRequest.supplier_id) return; setNewRequest(prev => ({ ...prev, supplier_id: value, supplier_location_id: '', pickup_address: '', pickup_department: '', pickup_province: '', pickup_district: '', pickup_contact: '', pickup_phone: '' })); const only = (suppliers.find(x => x.id === value)?.supplier_locations || []).filter(l => l.is_active); if (only.length === 1) pickPoint(only[0].id, only) }} />
+                <select value={newRequest.supplier_location_id} onChange={e => pickPoint(e.target.value)} disabled={!supplier}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#002855] disabled:bg-slate-100">
+                  <option value="">{!supplier ? 'Elija primero el proveedor' : points.length ? 'Punto de recojo (completa el origen)' : 'Sin puntos registrados: ingrese el origen'}</option>
+                  {points.map(l => <option key={l.id} value={l.id}>{l.name} · {l.district || l.address}</option>)}
+                </select>
+              </div>
+              {!suppliers.length && <p className="mt-2 text-xs text-slate-500">No hay proveedores activos. Regístrelos en Proveedores.</p>}
+            </div>
+          })()}
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
             <div className="col-span-2 md:col-span-2 border border-slate-200 rounded-lg p-3 bg-slate-50/50">
               <h4 className="text-sm font-semibold text-slate-800 mb-2">Origen de Carga</h4>
@@ -1224,14 +1275,17 @@ export default function SolicitudesPage() {
                 />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Orden de Compra / Orden de Servicio (Opcional)</label>
-                <input 
-                  type="text" 
-                  placeholder="Ej. OC-2023-001"
-                  className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
-                  value={newRequest.purchase_order || ''}
-                  onChange={(e) => setNewRequest({...newRequest, purchase_order: e.target.value})}
-                />
+                <label className="block text-sm font-medium text-slate-700 mb-1">Documento de referencia (opcional)</label>
+                <div className="flex gap-2">
+                  <select aria-label="Tipo de documento" value={newRequest.reference_type} onChange={e => setNewRequest({ ...newRequest, reference_type: e.target.value, reference_number: e.target.value ? newRequest.reference_number : '' })}
+                    className="w-44 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:ring-2 focus:ring-[#002855]">
+                    <option value="">Sin documento</option>
+                    {(Object.keys(REFERENCE_TYPES) as ReferenceType[]).map(k => <option key={k} value={k}>{k} · {REFERENCE_TYPES[k]}</option>)}
+                  </select>
+                  <input type="text" aria-label="Número de documento" disabled={!newRequest.reference_type} placeholder={newRequest.reference_type ? `Número de ${newRequest.reference_type}` : newRequest.purchase_order ? `Registrado antes: ${newRequest.purchase_order}` : 'Elija el tipo de documento'}
+                    className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:ring-2 focus:ring-[#002855] disabled:bg-slate-100"
+                    value={newRequest.reference_number} onChange={e => setNewRequest({ ...newRequest, reference_number: e.target.value })} />
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -1343,7 +1397,7 @@ export default function SolicitudesPage() {
           <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-4">
             <div><span className="block text-xs text-slate-500">OT madre</span><strong>{detailExecution?.ot_code || selectedRequestDetails.contracts?.code || (selectedRequestDetails.contract_id ? 'OT vinculada sin código disponible' : 'Sin OT')}</strong></div>
             <div><span className="block text-xs text-slate-500">Estado</span>{getStatusBadge(selectedRequestDetails.status)}</div>
-            <div><span className="block text-xs text-slate-500">Código / Emisión</span><strong>{selectedRequestDetails.request_number}</strong><p className="mt-1">{requestDate(selectedRequestDetails.created_at, true)}</p></div><div><span className="block text-xs text-slate-500">Tipo de servicio</span>{serviceLabel(selectedRequestDetails)}</div><div><span className="block text-xs text-slate-500">Cliente</span>{selectedRequestDetails.contracts?.clients?.business_name || 'Sin cliente registrado'}</div><div><span className="block text-xs text-slate-500">Área / Departamento</span>{selectedRequestDetails.department}</div><div><span className="block text-xs text-slate-500">Solicitante</span>{selectedRequestDetails.requester_name}</div>
+            <div><span className="block text-xs text-slate-500">Código / Emisión</span><strong>{selectedRequestDetails.request_number}</strong><p className="mt-1">{requestDate(selectedRequestDetails.created_at, true)}</p></div><div><span className="block text-xs text-slate-500">Tipo de servicio</span>{serviceLabel(selectedRequestDetails)}</div><div><span className="block text-xs text-slate-500">Cliente</span>{selectedRequestDetails.contracts?.clients?.business_name || 'Sin cliente registrado'}</div><div><span className="block text-xs text-slate-500">Proveedor de origen</span>{selectedRequestDetails.suppliers?.business_name || (requiresSupplier(selectedRequestDetails) ? 'Proveedor sin vincular' : 'No aplica')}</div><div><span className="block text-xs text-slate-500">Documento de referencia</span>{referenceLabel(selectedRequestDetails) || 'Sin documento'}</div><div><span className="block text-xs text-slate-500">Área / Departamento</span>{selectedRequestDetails.department}</div><div><span className="block text-xs text-slate-500">Solicitante</span>{selectedRequestDetails.requester_name}</div>
             <div><span className="block text-xs text-slate-500">Fecha requerida</span>{selectedRequestDetails.required_at ? requestDate(selectedRequestDetails.required_at, true) : serviceDate(selectedRequestDetails.required_date)}{selectedRequestDetails.time_window && <p className="mt-1 flex items-center gap-1 text-xs"><Clock className="h-3 w-3" />{selectedRequestDetails.time_window}</p>}</div>
             <div><span className="block text-xs text-slate-500">Origen</span>{selectedRequestDetails.pickup_address || 'Sin origen'}</div>
             <div><span className="block text-xs text-slate-500">Destino</span>{selectedRequestDetails.delivery_address || 'Sin destino'}</div>

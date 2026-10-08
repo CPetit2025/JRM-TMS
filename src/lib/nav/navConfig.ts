@@ -43,6 +43,7 @@ export const NAV_SECTIONS: NavSection[] = [
   ] }] },
   { id: 'comercial', title: 'Comercial', icon: Briefcase, groups: [{ items: [
     { href: '/clientes', label: 'Directorio Clientes', icon: Building2, show: any('clientes'), keywords: 'cliente ruc cartera' },
+    { href: '/proveedores', label: 'Proveedores', icon: Factory, show: any('proveedores', 'clientes', 'solicitudes', 'despacho'), keywords: 'proveedor materia prima mp insumos produccion proyectos ruc recojo' },
     { href: '/contratos', label: 'Contratos y OTs', icon: FileSignature, show: any('ot'), keywords: 'ot contrato subcontrato' },
     { href: '/solicitudes', label: 'Solicitud de Transporte', icon: ClipboardList, show: any('solicitudes'), keywords: 'solicitud transporte pedido carga requerimiento' },
   ] }] },
