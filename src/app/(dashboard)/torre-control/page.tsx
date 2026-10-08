@@ -1,4 +1,5 @@
 "use client"
+import { fetchServiceTypes } from '@/lib/request-service'
 import { PageHeader } from '@/components/ui/page-header'
 import Link from 'next/link'
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
@@ -124,8 +125,9 @@ export default function TorreControlPage() {
       const list = (data || []) as Dispatch[]
       const { data: deliveries, error: rowError } = await supabase.rpc('delivery_tracking_rows', { p_dispatches: list.map(d => d.id) })
       if (rowError) throw rowError
+      const types = await fetchServiceTypes(supabase, ((deliveries || []) as DeliveryRow[]).map(r => r.request_id))
       if (version !== fetchVersion.current) return
-      setDispatches(list); setRows((deliveries || []) as DeliveryRow[]); setRefreshedAt(new Date().toISOString()); setLoadError('')
+      setDispatches(list); setRows(((deliveries || []) as DeliveryRow[]).map(r => ({ ...r, ...types.get(r.request_id) }))); setRefreshedAt(new Date().toISOString()); setLoadError('')
       if (requestedDispatch.current) {
         const selected = list.find(item => item.id === requestedDispatch.current)
         if (selected) {

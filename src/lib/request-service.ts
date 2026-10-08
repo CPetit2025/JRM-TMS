@@ -1,14 +1,44 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
+
 export type RequestService = {
   request_type: string; attention_mode?: string | null; contract_id?: string | null
   pickup_address?: string | null; delivery_address?: string | null
 }
 
-export function serviceLabel(request: RequestService) {
-  if (request.attention_mode === 'RECOJO_CLIENTE') return 'Recojo por el cliente'
-  if (request.request_type === 'RECOJO') return 'Recojo hacia planta'
-  if (request.request_type === 'TRASLADO') return 'Entrega de punto a punto'
-  if (request.request_type === 'DESPACHO') return request.contract_id ? 'Entrega de contrato' : 'Entrega'
-  return 'Tipo sin identificar'
+/** Tipo de servicio único para todo el sistema (tablas, detalle, filtros y exportaciones). */
+export type ServiceKind = 'RECOJO' | 'RECOJO_CLIENTE' | 'ENTREGA_OT' | 'PUNTO_A_PUNTO' | 'ENTREGA'
+export const SERVICE_KINDS: Record<ServiceKind, { short: string; label: string }> = {
+  ENTREGA_OT: { short: 'Entrega OT', label: 'Entrega de contrato u OT' },
+  RECOJO: { short: 'Recojo', label: 'Recojo hacia planta' },
+  PUNTO_A_PUNTO: { short: 'Punto a punto', label: 'Entrega de punto a punto' },
+  RECOJO_CLIENTE: { short: 'Recojo cliente', label: 'Recojo por el cliente en planta' },
+  ENTREGA: { short: 'Entrega', label: 'Entrega sin OT vinculada' },
+}
+export function serviceKind(request: Partial<RequestService> | null | undefined): ServiceKind | null {
+  if (!request) return null
+  if (request.attention_mode === 'RECOJO_CLIENTE') return 'RECOJO_CLIENTE'
+  if (request.request_type === 'RECOJO') return 'RECOJO'
+  if (request.request_type === 'TRASLADO') return 'PUNTO_A_PUNTO'
+  if (request.request_type === 'DESPACHO') return request.contract_id ? 'ENTREGA_OT' : 'ENTREGA'
+  return null
+}
+export function serviceLabel(request: Partial<RequestService> | null | undefined) {
+  const kind = serviceKind(request)
+  return kind ? SERVICE_KINDS[kind].label : 'Tipo sin identificar'
+}
+
+/** Completa filas que solo traen request_id (Torre, Documentos) con el tipo de servicio de la solicitud.
+ *  Usa la RPC autorizada por permiso y sede: los perfiles de la bandeja no siempre leen transport_requests. */
+export async function fetchServiceTypes(db: SupabaseClient, ids: string[]) {
+  const map = new Map<string, Pick<RequestService, 'request_type' | 'attention_mode' | 'contract_id'>>()
+  const unique = [...new Set(ids.filter(Boolean))]
+  for (let i = 0; i < unique.length; i += 500) {
+    const { data, error } = await db.rpc('request_service_types', { p_requests: unique.slice(i, i + 500) })
+    if (error) break
+    for (const r of (data || []) as { id: string; request_type: string; attention_mode: string | null; contract_id: string | null }[])
+      map.set(r.id, { request_type: r.request_type, attention_mode: r.attention_mode, contract_id: r.contract_id })
+  }
+  return map
 }
 
 export function serviceAddresses(request: RequestService) {
