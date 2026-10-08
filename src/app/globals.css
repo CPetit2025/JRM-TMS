@@ -2,6 +2,18 @@
 @source "../app";
 @source "../components";
 
+/* JRM Enterprise Design System: tokens centrales (utilidades bg-jrm-navy, text-jrm-navy, etc.) */
+@theme {
+  --color-jrm-navy: #002855;
+  --color-jrm-navy-dark: #001d3d;
+  --color-jrm-red: #cf152d;
+  --color-jrm-surface: #ffffff;
+  --color-jrm-canvas: #f8fafc;
+  --color-jrm-line: #e2e8f0;
+  --radius-jrm: 0.75rem;
+  --shadow-jrm-card: 0 1px 2px rgb(15 23 42 / 0.05), 0 1px 3px rgb(15 23 42 / 0.04);
+}
+
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
