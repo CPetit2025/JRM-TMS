@@ -3,8 +3,9 @@
 Desde la migración `20261009070000_dispatch_simple_number.sql` el número de despacho es un correlativo simple:
 **10001, 10002, 10003…** (antes: `DESP-AAAAMMDD-XXXXXXXX`).
 
-- **Despachos nuevos**: el número lo asigna la base de datos al registrar el despacho (secuencia
-  `dispatch_number_seq`), sea flota propia, tercero o ruta mixta. La descripción del flete en el Registro de
+- **Despachos nuevos**: el número lo asigna la base de datos al registrar el despacho (mayor número existente + 1,
+  con un bloqueo para registros simultáneos), sea flota propia, tercero o ruta mixta. Un registro que se revierte
+  no consume número, así que la numeración no tiene huecos (migración `20261009090000`). La descripción del flete en el Registro de
   servicios usa el mismo número ("Flete del despacho 10025").
 - **Despachos existentes**: se renumeraron en orden de creación a partir de 10001. El código anterior queda en
   `dispatches.legacy_dispatch_number` y se puede buscar en Despacho (aparece al pasar el mouse sobre el número)

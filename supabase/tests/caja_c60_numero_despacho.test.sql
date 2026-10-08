@@ -1,7 +1,7 @@
 -- Pruebas C60 — Número de despacho simple y correlativo (10001, 10002, …).
 -- T1 secuencia y disparadores instalados; T2 no quedan despachos con el código DESP-AAAAMMDD-XXXXXXXX y el código
 -- anterior se conserva en legacy_dispatch_number; T3 un despacho nuevo con el código automático recibe el siguiente
--- correlativo y uno con número escrito a mano lo conserva; T4 los textos con el código automático muestran el número
+-- correlativo sin huecos (mayor + 1) y uno con número escrito a mano lo conserva; T4 los textos con el código automático muestran el número
 -- definitivo del despacho; T5 la descripción del flete se corrige al registrarse.
 -- Termina en error para forzar ROLLBACK: "CAJA C60 PASS/FAIL".
 --   npx supabase db query --linked -f supabase/tests/caja_c60_numero_despacho.test.sql
@@ -27,9 +27,8 @@ DECLARE
   v_has_cs_trigger boolean;
 BEGIN
   -- T1
-  IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'dispatch_number_seq' AND relkind = 'S')
-     AND EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'dispatch_assign_number' AND tgrelid = 'public.dispatches'::regclass)
-  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T1 secuencia o disparador ausente'::text; END IF;
+  IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'dispatch_assign_number' AND tgrelid = 'public.dispatches'::regclass AND tgenabled <> 'D')
+  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T1 disparador ausente o deshabilitado'::text; END IF;
 
   -- T2
   SELECT count(*) INTO v_left FROM public.dispatches WHERE dispatch_number ~ '^DESP-[0-9]{8}-[0-9A-Fa-f]{8}$';
@@ -45,7 +44,8 @@ BEGIN
     'status', 'CANCELADO', 'site_id', v_site, 'scheduled_date', now(), 'scheduled_departure', now()));
   SELECT dispatch_number INTO v_n1 FROM public.dispatches WHERE id = v_d1;
   SELECT dispatch_number INTO v_n2 FROM public.dispatches WHERE id = v_d2;
-  IF v_n1 ~ '^[0-9]+$' AND v_n1::bigint > v_max AND v_n1::bigint >= 10001 AND v_n2 = 'ZZ-C60-MANUAL'
+  -- Sin huecos: el número asignado es exactamente el mayor existente + 1
+  IF v_n1 ~ '^[0-9]+$' AND v_n1::bigint = GREATEST(v_max, 10000) + 1 AND v_n2 = 'ZZ-C60-MANUAL'
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T3 número asignado ' || COALESCE(v_n1, 'NULL') || ' / manual ' || COALESCE(v_n2, 'NULL') || ' (máximo previo ' || v_max || ')'); END IF;
 
   -- T4
@@ -61,8 +61,8 @@ BEGIN
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T5 disparador de contract_services ausente'::text; END IF;
 
   IF array_length(v_fail, 1) IS NULL THEN
-    RAISE EXCEPTION 'CAJA C60 PASS (%/5) siguiente número %, despachos renumerados %', v_pass,
-      (SELECT last_value + 1 FROM public.dispatch_number_seq),
+    RAISE EXCEPTION 'CAJA C60 PASS (%/5) siguiente número real %, despachos renumerados %', v_pass,
+      v_max + 1,
       (SELECT count(*) FROM public.dispatches WHERE legacy_dispatch_number IS NOT NULL);
   ELSE
     RAISE EXCEPTION 'CAJA C60 FAIL (%/5): %', v_pass, array_to_string(v_fail, ' || ');
