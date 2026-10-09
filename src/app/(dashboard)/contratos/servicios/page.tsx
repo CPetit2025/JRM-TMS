@@ -152,7 +152,7 @@ export default function ContractServicesPage() {
     let current = contracts.find(c => c.id === contractId)
     for (let depth = 0; current && depth < 16; depth++) {
       const budget = current.contract_budgets?.find(b => (b.concept || 'PARTIDA_TRANSPORTE') === 'PARTIDA_TRANSPORTE')
-      if (budget) return { balance: Number(budget.balance_pen || 0), owner: current }
+      if (budget && !current.parent_contract_id) return { balance: Number(budget.balance_pen || 0), owner: current }
       const parentId = current.parent_contract_id
       current = parentId ? contracts.find(c => c.id === parentId) : undefined
     }

@@ -70,7 +70,7 @@ export function BulkUploadModal({ isOpen, onClose, onSuccess }: BulkUploadModalP
               .from('contract_budgets')
               .update({ 
                 allocated_usd: budgetUsd,
-                allocated_pen: budgetPen,
+                own_allocated_pen: budgetPen,
                 updated_at: new Date().toISOString()
               })
               .eq('contract_id', existingContract.id)
