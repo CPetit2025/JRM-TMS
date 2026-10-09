@@ -241,6 +241,7 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
               {link && code ? <div className="space-y-3">
                 <div className="grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2"><div><p className="text-xs text-slate-500">Placa del servicio</p><p className="mt-1 text-lg font-bold text-[#002855]">{d.placa}</p></div><div><p className="text-xs text-slate-500">Código de acceso</p><p className="mt-1 break-all font-mono text-lg font-bold tracking-wider text-[#002855]">{code.toUpperCase()}</p></div></div>
                 <p className="text-sm">Portal: <a href={portal} target="_blank" rel="noreferrer" className="break-all text-blue-700 underline">{portal}</a></p>
+                {code.length !== 4 && <p className="text-xs text-slate-500">Usa «Renovar acceso» para generar un código de 4 caracteres y compartirlo nuevamente.</p>}
                 <p className="text-xs text-slate-500">Vence {fmtDate(data.enlace!.expires_at, true)} · Solo para este servicio y las entregas habilitadas.</p>
                 {!enabled && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">No quedan entregas habilitadas para subir guías. Una observación o rechazo del Supervisor de Transporte vuelve a abrir únicamente la entrega afectada.</p>}
                 <textarea readOnly value={mensaje} aria-label="Instrucciones para compartir con el proveedor" className="min-h-36 w-full rounded-xl border border-slate-200 bg-white p-3 text-xs leading-5 text-slate-600" onFocus={e => e.currentTarget.select()} />
