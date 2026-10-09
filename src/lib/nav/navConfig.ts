@@ -112,8 +112,8 @@ export const NAV_SECTIONS: NavSection[] = [
 ]
 
 // Sección e ítem visibles para el usuario (sin grupos ni secciones vacías)
-export function visibleSections(has: Has): NavSection[] {
-  return NAV_SECTIONS.map(s => ({ ...s, groups: s.groups.map(g => ({ ...g, items: g.items.filter(i => i.show(has)) })).filter(g => g.items.length) }))
+export function visibleSections(has: Has, denied: (href: string) => boolean = () => false): NavSection[] {
+  return NAV_SECTIONS.map(s => ({ ...s, groups: s.groups.map(g => ({ ...g, items: g.items.filter(i => i.show(has) && !denied(i.href)) })).filter(g => g.items.length) }))
     .filter(s => s.groups.length)
 }
 

@@ -14,6 +14,7 @@ import { MiAvanceWidget } from '@/components/kpi/MiAvance'
 import Link from 'next/link'
 import { usePermissions } from '@/hooks/usePermissions'
 import { visibleSections } from '@/lib/nav/navConfig'
+import { roleDeniesPath } from '@/lib/roles'
 
 const COLORS = ['#002855', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#8b5cf6'];
 const STATUS_COLORS: Record<string, string> = {
@@ -402,10 +403,10 @@ function DashboardEjecutivo() {
 
 // Inicio: el Resumen Ejecutivo es para quien tiene "Dashboard Principal"; el resto entra directo a sus módulos.
 export default function Inicio() {
-  const { isLoaded, hasAccess } = usePermissions()
+  const { isLoaded, hasAccess, role } = usePermissions()
   if (!isLoaded) return <div className="grid min-h-[40vh] place-items-center"><Loader2 className="h-6 w-6 animate-spin text-[#002855]" /></div>
   if (hasAccess('dashboard')) return <DashboardEjecutivo />
-  const sections = visibleSections(hasAccess)
+  const sections = visibleSections(hasAccess, href => roleDeniesPath(role, href))
   return (
     <div className="space-y-3 pb-10">
       <PageHeader showTitle title="Inicio" description="Accede a los módulos habilitados para tu rol" />

@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { isDispatchAuditorRole, dispatchAuditorPathAllowed } from '@/lib/roles'
+import { isDispatchAuditorRole, dispatchAuditorPathAllowed, roleDeniesPath } from '@/lib/roles'
 import { hasWebAccess } from '@/lib/nav/web-access'
 
 export async function proxy(request: NextRequest) {
@@ -83,6 +83,9 @@ export async function proxy(request: NextRequest) {
     }
     if (!isDriverRoute && !isLoginPage && !hasDashboardAccess) {
       return redirect(new URL('/login', request.url))
+    }
+    if (!isDriverRoute && roleDeniesPath(role?.name, request.nextUrl.pathname)) {
+      return redirect(new URL('/', request.url))
     }
     if (isDriverRoute && !isDriverRegisterPage && profile.employee_type === 'CONDUCTOR') {
       const { data: driver } = await supabase.from('drivers').select('is_active')
