@@ -1,4 +1,4 @@
-import { isSystemAdminRole } from '@/lib/roles'
+import { isSystemAdminRole, roleDeniesPath } from '@/lib/roles'
 import { visibleSections } from '@/lib/nav/navConfig'
 
 // Acceso a la plataforma web: administrador o un rol con al menos una opción visible del menú, con la misma regla
@@ -8,5 +8,5 @@ export function hasWebAccess(roleName: string | null | undefined, permissions: u
   if (isSystemAdminRole(roleName)) return true
   if (!Array.isArray(permissions)) return false
   const list = permissions.filter((p): p is string => typeof p === 'string')
-  return visibleSections(module => list.some(p => p === module || p.startsWith(`${module}:`))).length > 0
+  return visibleSections(module => list.some(p => p === module || p.startsWith(`${module}:`)), href => roleDeniesPath(roleName, href)).length > 0
 }

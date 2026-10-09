@@ -85,3 +85,14 @@ test('web access accepts module permissions with level and rejects roles without
   assert.equal((await web(['despacho-aprobacion:write'])).location, '/login')
   assert.equal((await web(['dashboard:read'], 'CONDUCTOR')).location, '/login')
 })
+test('contract administrator reaches contracts, APT and control tower but never /reportes', async () => {
+  const profile = { is_active: true, employee_type: 'OPERARIO', roles: { name: 'Administrador de Contratos',
+    permissions: ['clientes:read', 'ot:write', 'contratos-servicios:read', 'solicitudes:write', 'torre-control:read', 'apt:read'] } }
+  for (const path of ['/', '/contratos', '/contratos/servicios', '/torre-control', '/apt']) {
+    assert.equal((await fixture({ profile }).request(path)).location, undefined, path)
+  }
+  assert.equal((await fixture({ profile }).request('/reportes')).location, '/')
+  assert.equal((await fixture({ profile }).request('/reportes/x')).location, '/')
+  const admin = { is_active: true, employee_type: 'OPERARIO', roles: { name: 'Administrador', permissions: [] } }
+  assert.equal((await fixture({ profile: admin }).request('/reportes')).location, undefined)
+})

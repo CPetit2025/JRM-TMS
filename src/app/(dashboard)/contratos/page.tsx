@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation'
 import { usePermissions } from '@/hooks/usePermissions'
 import { MAX_TONS, checkVolume, kgHint, tonsToKg } from '@/lib/contract-weight'
 import { ContractQuickView } from '@/components/contratos/ContractQuickView'
+import { ClaimContractsModal } from '@/components/contratos/ClaimContractsModal'
 
 interface Contract {
   id: string
@@ -115,6 +116,21 @@ export default function ContratosPage() {
   useEffect(() => {
     if (role === 'admin') void fetchAssignmentData()
   }, [role])
+
+  // Administrador de Contratos: elige sus OT como Responsable de OT; sin ninguna asignada se le pide al entrar.
+  const isContractAdmin = role === 'administrador de contratos'
+  const [claimOpen, setClaimOpen] = useState(false)
+  const [claimFirstTime, setClaimFirstTime] = useState(false)
+  useEffect(() => {
+    if (!isContractAdmin) return
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { count } = await supabase.from('contract_user_assignments').select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id).eq('role', 'ADMIN_CONTRATO').eq('active', true)
+      if ((count ?? 0) === 0) { setClaimFirstTime(true); setClaimOpen(true) }
+    })()
+  }, [isContractAdmin])
 
   const fetchAssignmentData = async () => {
     const [profilesResult, assignmentsResult] = await Promise.all([
@@ -499,6 +515,12 @@ export default function ContratosPage() {
     <div className="flex h-full min-h-0 w-full flex-col gap-3 mx-auto">
       <PageHeader showTitle title="Alta de Contratos" description="Gestión unificada de Contratos, Subcontratos y Errores (Partidas de Transporte)" actions={<>
 <div className="flex flex-wrap items-center gap-3">
+          {isContractAdmin && (
+            <button type="button" onClick={() => { setClaimFirstTime(false); setClaimOpen(true) }}
+              className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-[#002855] px-3 text-sm font-semibold text-[#002855] hover:bg-slate-50">
+              <UserCog className="h-4 w-4" /> Mis contratos
+            </button>
+          )}
           <input
             type="file"
             accept=".xlsx, .xls"
@@ -731,6 +753,8 @@ export default function ContratosPage() {
         onAssign={() => { const c = quickView; setQuickView(null); if (c) openAssignment(c) }}
         onOpen={() => { const c = quickView; setQuickView(null); if (c) router.push(`/contratos/${c.id}`) }}
       />
+
+      {claimOpen && <ClaimContractsModal open firstTime={claimFirstTime} onClose={() => setClaimOpen(false)} onClaimed={() => { void fetchContracts() }} />}
 
       <Modal isOpen={!!assignmentTarget} onClose={() => setAssignmentTarget(null)}
         title={`Responsable de OT ${assignmentTarget?.code || ''}`} maxWidth="max-w-xl">

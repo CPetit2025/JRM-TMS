@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { ChevronDown, History, LogOut, Moon, Pin, PinOff, Search, Star, Sun, X } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
+import { roleDeniesPath } from '@/lib/roles'
 import { HOME_ITEM, activeEntry, flatEntries, normalize, visibleSections, type NavEntry, type NavItem } from '@/lib/nav/navConfig'
 import { setSidebar, useSidebar, type SidebarTheme } from '@/lib/nav/sidebarStore'
 import { COUNT_STYLE, countLabel, useMenuCounts, type MenuCount } from '@/lib/nav/useMenuCounts'
@@ -71,7 +72,7 @@ export function Sidebar() {
   const counts = useMenuCounts(pathname)
 
   const home = useMemo(() => HOME_ITEM(role === 'admin'), [role])
-  const sections = useMemo(() => visibleSections(hasPermission), [hasPermission])
+  const sections = useMemo(() => visibleSections(hasPermission, href => roleDeniesPath(role, href)), [hasPermission, role])
   const entries = useMemo(() => flatEntries(sections, home), [sections, home])
   const current = activeEntry(entries, pathname)
   const activeSection = current?.section?.id || null
@@ -81,7 +82,7 @@ export function Sidebar() {
   const lastPath = useRef<string | null>(null)
   useEffect(() => {
     if (lastPath.current === pathname) return
-    const e = activeEntry(flatEntries(visibleSections(hasPermission), HOME_ITEM(role === 'admin')), pathname)
+    const e = activeEntry(flatEntries(visibleSections(hasPermission, href => roleDeniesPath(role, href)), HOME_ITEM(role === 'admin')), pathname)
     if (e) lastPath.current = pathname   // sin permisos cargados aún: se registra cuando lleguen
     setSidebar(s => ({
       overlay: false,
