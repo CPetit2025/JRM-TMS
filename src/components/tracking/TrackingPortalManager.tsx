@@ -101,7 +101,8 @@ export function TrackingPortalManager({ open, onClose }: { open: boolean; onClos
   const resetForm = () => { setCredential(null); setLabel(''); setSelectedClients([]); setSelected([]); setSearch('') }
 
   const scopeCount = scope === 'client' ? selectedClients.length : scope === 'contracts' ? selected.length : 1
-  const ready = !!site && label.trim().length >= 3 && scopeCount > 0 && selected.length <= 100 && selectedClients.length <= 20
+  const overLimit = scope === 'client' ? selectedClients.length > 20 : scope === 'contracts' ? selected.length > 100 : false
+  const ready = !!site && label.trim().length >= 3 && scopeCount > 0 && !overLimit
   const generate = async () => {
     if (!ready) return
     setBusy(true)
@@ -237,7 +238,7 @@ export function TrackingPortalManager({ open, onClose }: { open: boolean; onClos
             <button disabled={busy || loading || !ready} onClick={() => void generate()} className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white disabled:opacity-50">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}Crear acceso
             </button>
-            {!ready && <p className="mt-2 text-xs text-slate-500">{label.trim().length < 3 ? 'Indica el destinatario.' : 'Elige qué podrá consultar.'}</p>}
+            {!ready && <p className="mt-2 text-xs text-slate-500">{label.trim().length < 3 ? 'Indica el destinatario.' : overLimit ? (scope === 'client' ? 'Máximo 20 clientes por acceso.' : 'Máximo 100 OT por acceso.') : 'Elige qué podrá consultar.'}</p>}
           </div>
         </aside>
       </div>}
