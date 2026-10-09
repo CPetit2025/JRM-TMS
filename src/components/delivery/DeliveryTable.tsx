@@ -2,7 +2,7 @@
 import { DataTable } from '@/components/ui/data-table'
 
 import { useMemo, useState } from 'react'
-import { ChevronRight, Download, Eye, FileCheck2, RefreshCw, Search, Truck } from 'lucide-react'
+import { ChevronRight, Download, Eye, FileCheck2, Link2, RefreshCw, Search, Truck } from 'lucide-react'
 import { districtOf } from '@/lib/address'
 import { cellDateTime } from '@/lib/table-format'
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
@@ -95,6 +95,7 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
             <td><button type="button" onClick={() => onEvidence ? onEvidence(row) : setHistory(row)} title={doc.title} className="inline-flex items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-jrm-navy"><StatusBadge tone={doc.tone}>{doc.label}</StatusBadge><ChevronRight aria-hidden className="h-3.5 w-3.5 text-slate-400" /></button></td>
             <td className="whitespace-nowrap" title={`Actualizado ${deliveryTime(row.last_event_at)}`}><DeliverySignal compact state={row.state} onClick={() => setHistory(row)} /></td>
             <td><div className="flex justify-end gap-1.5">
+              {onProvider && row.modalidad === 'TERCERO' && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'EN_RUTA'].includes(row.state) && <button type="button" onClick={() => onProvider(row)} title="Ver portal, placa y código para compartir con el tercero" className="flex min-h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-violet-200 bg-violet-50 px-2.5 font-semibold text-violet-800 hover:bg-violet-100"><Link2 className="h-4 w-4" />Compartir acceso GR</button>}
               <button type="button" onClick={() => setHistory(row)} title="Ver detalle" aria-label="Ver detalle" className="flex min-h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-2.5 font-semibold text-jrm-navy hover:bg-slate-50"><Eye className="h-4 w-4" /><span className="hidden 2xl:inline">Ver detalle</span></button>
             </div></td>
           </tr> })}
@@ -104,7 +105,7 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
     <div className="flex items-center justify-between gap-2 text-xs text-slate-500"><span>{filtered.length} entregas · Página {current + 1} de {pages}</span><div className="flex gap-2"><button type="button" disabled={current === 0} onClick={() => setPage(current - 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Anterior</button><button type="button" disabled={current + 1 >= pages} onClick={() => setPage(current + 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Siguiente</button></div></div>
     <Modal isOpen={!!history} onClose={() => setHistory(null)} title={history ? `Detalle · ${history.ot_code ? `OT ${history.ot_code}` : 'Sin OT'} · ${history.request_number}` : 'Detalle'} maxWidth="max-w-3xl"
       footer={history && <div className="flex flex-wrap justify-end gap-2">
-        {onProvider && history.modalidad === 'TERCERO' && <button type="button" onClick={() => { const r = history; setHistory(null); onProvider(r) }} className="min-h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-blue-700">Acceso tercero</button>}
+        {onProvider && history.modalidad === 'TERCERO' && <button type="button" onClick={() => { const r = history; setHistory(null); onProvider(r) }} className="min-h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-blue-700">Compartir acceso GR · tercero</button>}
         {onDispatch && <button type="button" onClick={() => { const r = history; setHistory(null); onDispatch(r) }} className="flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-jrm-navy"><Truck className="h-4 w-4" />Ver despacho {history.dispatch_number}</button>}
         {onEvidence && <button type="button" onClick={() => { const r = history; setHistory(null); onEvidence(r) }} className="flex min-h-10 items-center gap-1.5 rounded-lg bg-jrm-navy px-3 text-sm font-semibold text-white"><FileCheck2 className="h-4 w-4" />Guía y conformidad</button>}
       </div>}>
