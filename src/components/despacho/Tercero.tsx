@@ -93,7 +93,9 @@ function whatsappUrl(telefono: string | null, text: string) {
 // Ventana "Registrar avance" de un despacho tercerizado
 export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatchId: string | null; onClose: () => void; onChanged: () => void }) {
   const supabase = useMemo(() => createClient(), [])
-  const [data, setData] = useState<Avance | null>(null)
+  const [loadedData, setData] = useState<Avance | null>(null)
+  const data = loadedData?.despacho.id === dispatchId ? loadedData : null
+  const [loadError, setLoadError] = useState<{ id: string; message: string } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [salidaAt, setSalidaAt] = useState(nowLocal())
   const [review, setReview] = useState<DeliveryReviewTarget | null>(null)
@@ -106,7 +108,8 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
     void (async () => {
       const { data: r, error } = await supabase.rpc('tercero_avance', { p_dispatch_id: dispatchId })
       if (cancel) return
-      if (error || !r?.success) { toast.error(error?.message || r?.error || 'No se pudo cargar el avance'); return }
+      if (error || !r?.success) { setLoadError({ id: dispatchId, message: error?.message || r?.error || 'No se pudo cargar el avance' }); return }
+      setLoadError(null)
       if (!cancel) setData(r as Avance)
     })()
     return () => { cancel = true }
@@ -167,8 +170,8 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
 
   return (
     <>
-    <Modal isOpen={!!dispatchId} onClose={onClose} title={`Avance del tercero${d ? ` · ${d.numero}` : ''}`} maxWidth="max-w-3xl">
-      {!data || !d ? <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : (
+    <Modal isOpen={!!dispatchId} onClose={() => { setData(null); setLoadError(null); onClose() }} title={`Acceso GR y avance del tercero${d ? ` · ${d.numero}` : ''}`} maxWidth="max-w-3xl">
+      {loadError?.id === dispatchId ? <div role="alert" className="rounded-lg bg-red-50 p-4 text-sm text-red-800">{loadError.message}<button type="button" onClick={() => { setLoadError(null); load() }} className="ml-3 min-h-11 font-semibold underline">Reintentar</button></div> : !data || !d ? <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : (
         <div className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
             <div className="bg-slate-50 border rounded-xl p-3">

@@ -139,7 +139,7 @@ export default function TorreControlPage() {
       if (requestedDispatch.current) {
         const selected = list.find(item => item.id === requestedDispatch.current)
         if (selected) {
-          if (requestedProvider.current && selected.modalidad === 'TERCERO' && canWrite('despacho')) setThirdId(selected.id)
+          if (requestedProvider.current && (selected.modalidad === 'TERCERO' || ((deliveries || []) as DeliveryRow[]).some(row => row.dispatch_id === selected.id && row.modalidad === 'TERCERO')) && canWrite('despacho')) setThirdId(selected.id)
           else setSelectedDispatch(selected)
           requestedDispatch.current = null
         }
@@ -396,7 +396,7 @@ export default function TorreControlPage() {
 
             <div className="flex flex-wrap gap-2">
               <DispatchExecutionActions dispatch={{ ...selectedDispatch, modalidad: rows.find(row => row.dispatch_id === selectedDispatch.id)?.modalidad || selectedDispatch.modalidad }} onChanged={async () => { setSelectedDispatch(null); await fetchDispatches() }} />
-              {canWrite('despacho') && (selectedDispatch.modalidad === 'TERCERO' || rows.some(row => row.dispatch_id === selectedDispatch.id && row.modalidad === 'TERCERO')) && <button onClick={() => { setThirdId(selectedDispatch.id); setSelectedDispatch(null) }} className="min-h-11 rounded-lg border border-violet-200 px-4 text-sm font-semibold text-violet-700">Acceso y avance del transportista</button>}
+              {canWrite('despacho') && (selectedDispatch.modalidad === 'TERCERO' || rows.some(row => row.dispatch_id === selectedDispatch.id && row.modalidad === 'TERCERO')) && <button onClick={() => { setThirdId(selectedDispatch.id); setSelectedDispatch(null) }} className="min-h-11 rounded-lg border border-violet-200 px-4 text-sm font-semibold text-violet-700">Compartir acceso GR · tercero</button>}
               {['documentario', 'packing-list', 'planificacion'].some(module => canRead(module)) && <Link href={`/despacho/documentos?despacho=${selectedDispatch.id}&vista=${selectedDispatch.status === 'PROGRAMADO' ? 'salida' : 'historial'}&desde=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(selectedDispatch.scheduled_departure))}`} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855]">Documentos del servicio</Link>}
               {canWrite('despacho') && selectedDispatch.status === 'PROGRAMADO' && <button type="button" onClick={() => void cancelDispatch(selectedDispatch)} className="min-h-11 rounded-lg border border-red-200 px-4 text-sm font-semibold text-red-700 hover:bg-red-50">Cancelar despacho</button>}
             </div>
