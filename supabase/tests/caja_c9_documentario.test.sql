@@ -212,7 +212,11 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN v_err := SQLERRM; d3 := NULL;
   END;
   PERFORM pg_temp.as_user(NULL);
+  -- Con la programación vigente (sin exigencia de documentos) la ruta creada no queda sujeta a documentos de salida.
+  -- Los arneses que instalan versiones anteriores de schedule_dispatch omiten esta verificación.
   IF v_err IS NULL AND d3 IS NOT NULL
+     AND (position('docs_required=false' IN COALESCE(pg_get_functiondef(to_regprocedure('public.schedule_dispatch(uuid,text,timestamptz,numeric,numeric,uuid,text,jsonb)')),'')) = 0
+          OR (SELECT NOT docs_required FROM public.dispatches WHERE id = d3))
      AND (SELECT reserved_pen = 950 FROM public.contract_budgets WHERE contract_id = v_ct)
      AND (SELECT status = 'ASIGNADA' AND reserved_pen = 0 FROM public.transport_requests WHERE id = r4)
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T7 programar: ' || COALESCE(v_err, '∅') || ' ' ||
