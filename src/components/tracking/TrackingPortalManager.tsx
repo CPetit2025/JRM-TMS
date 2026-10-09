@@ -1,15 +1,16 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Building2, CalendarDays, Check, Copy, ExternalLink, KeyRound, Link2, Loader2, MapPinned, MessageCircle, Plus, RefreshCw, Route, Search, ShieldCheck, Users, XCircle } from 'lucide-react'
+import { Building2, CalendarDays, Check, Copy, ExternalLink, KeyRound, Link2, Loader2, Mail, MessageCircle, Plus, RefreshCw, Route, Search, ShieldCheck, Users, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/modal'
 import { DataTable } from '@/components/ui/data-table'
+import { TrackingEmailComposer } from './TrackingEmailComposer'
 import { otKind } from '@/lib/tracking-portal'
 
 // Accesos de seguimiento para clientes: quién recibe el enlace, qué puede consultar (un cliente completo, OT
-// específicas o toda la sede) y qué verá (calendario, ruta del día con guías y Packing List, GPS). Solo lectura.
+// específicas o toda la sede) y qué verá (calendario, ruta del día con guías y Packing List). Solo lectura.
 
 type Site = { id: string; name: string }
 type Client = { id: string; name: string }
@@ -28,7 +29,6 @@ const SCOPES: { key: Scope; title: string; text: string; icon: typeof Users }[] 
 const VIEWS = [
   { icon: CalendarDays, title: 'Calendario', text: 'OT, subcontratos, errores y órdenes OS / OC / RQ por fecha, y el registro de solicitudes con su hora de creación.' },
   { icon: Route, title: 'Ruta del día', text: 'Unidad, conductor y paradas, con Packing List y la guía de remisión cuando el conductor la sube.' },
-  { icon: MapPinned, title: 'Monitoreo GPS', text: 'Posición de las rutas cuyas paradas están todas dentro del acceso.' },
 ]
 const fmt = (value: string) => new Date(value).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short' })
 
@@ -93,7 +93,7 @@ export function TrackingPortalManager({ open, onClose }: { open: boolean; onClos
   }, [open, refresh])
 
   const url = (token: string) => `${window.location.origin}/tracking/${token}`
-  const message = (value: Credential) => `JRM · Seguimiento de transporte${value.label ? ` para ${value.label}` : ''}\nEnlace: ${url(value.token)}\nCódigo de acceso: ${value.pin}\nIncluye el calendario de servicios, la ruta del día con guías y Packing List, y el monitoreo GPS. El acceso permanece activo hasta que JRM lo revoque.`
+  const message = (value: Credential) => `JRM · Seguimiento de transporte${value.label ? ` para ${value.label}` : ''}\nEnlace: ${url(value.token)}\nCódigo de acceso: ${value.pin}\nIncluye el calendario de servicios, la ruta del día con guías y Packing List. El acceso permanece activo hasta que JRM lo revoque.`
   const copy = async (text: string, done = 'Copiado') => {
     try { await navigator.clipboard.writeText(text); toast.success(done) }
     catch { toast.error('No se pudo copiar. Selecciona el texto y cópialo manualmente.') }
@@ -158,6 +158,7 @@ export function TrackingPortalManager({ open, onClose }: { open: boolean; onClos
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => void copy(message(credential), 'Enlace, código e instrucciones copiados')} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white"><Copy className="h-4 w-4" />Copiar mensaje</button>
+          <TrackingEmailShare key={`${credential.token}:${credential.pin}`} label={credential.label || "Operaciones de distribución"} link={url(credential.token)} pin={credential.pin} />
           <a href={`https://wa.me/?text=${encodeURIComponent(message(credential))}`} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"><MessageCircle className="h-4 w-4" />Compartir por WhatsApp</a>
           <a href={url(credential.token)} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-[#002855]"><ExternalLink className="h-4 w-4" />Ver como el cliente</a>
           <button onClick={resetForm} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700"><Plus className="h-4 w-4" />Crear otro acceso</button>
@@ -261,4 +262,12 @@ export function TrackingPortalManager({ open, onClose }: { open: boolean; onClos
       </section>}
     </div>
   </Modal>
+}
+
+function TrackingEmailShare(props: { label: string; link: string; pin: string }) {
+  const [expanded, setExpanded] = useState(false)
+  return <>
+    <button type="button" onClick={() => setExpanded(p => !p)} aria-expanded={expanded} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-[#002855]"><Mail className="h-4 w-4" />Compartir por correo</button>
+    {expanded && <div className="order-last w-full rounded-xl border border-slate-200 bg-white p-4 sm:p-5"><TrackingEmailComposer {...props} onBack={() => setExpanded(false)} /></div>}
+  </>
 }
