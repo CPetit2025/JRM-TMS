@@ -108,6 +108,9 @@ try {
     INSERT INTO user_site_access VALUES('${id(16)}','${id(21)}');`)
   sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,scheduled_departure,modalidad) VALUES('${id(95)}','D-REVOKED','PROGRAMADO','${id(21)}','REV-123',now(),'TERCERO'); INSERT INTO dispatch_tercero_enlaces(token,dispatch_id,expires_at,revoked_at,access_code) VALUES('${'9'.repeat(64)}','${id(95)}',now()+interval '1 day',now(),'revoked-code');`)
   sql(read('supabase/migrations/20261007160000_provider_access_document_roles.sql'))
+  const legacyCode=sql(`SELECT access_code FROM dispatch_tercero_enlaces WHERE dispatch_id='${id(51)}' AND revoked_at IS NULL;`)
+  sql(read('supabase/migrations/20261009230000_provider_short_access_code.sql'))
+  assert.equal(sql(`SELECT access_code FROM dispatch_tercero_enlaces WHERE dispatch_id='${id(51)}' AND revoked_at IS NULL;`),legacyCode)
   assert.equal(sql(`SELECT count(*) FROM dispatch_tercero_enlaces WHERE dispatch_id='${id(95)}' AND revoked_at IS NULL`),'0')
   sql(`CREATE TRIGGER dispatch_docs_detect_changes BEFORE UPDATE ON dispatches FOR EACH ROW EXECUTE FUNCTION dispatch_docs_detect_changes();`)
   denied(user(12)+`SELECT delivery_issue_access_core('${id(51)}');`,/permission denied/)
@@ -139,8 +142,18 @@ try {
   denied(user(11)+`SELECT delivery_get('${id(54)}','${id(66)}');`, /Sin acceso/)
   denied(user(13)+`SELECT delivery_get('${id(51)}','${id(61)}');`, /Sin acceso/)
   console.log('PASS: only active Supervisor of the site reviews; private helpers, evidence and other drivers stay inaccessible.')
+  sql(`UPDATE dispatch_tercero_enlaces SET access_code='zzzz' WHERE dispatch_id='${id(95)}';
+    CREATE SEQUENCE code_collision_attempt;
+    CREATE FUNCTION force_code_collision() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF nextval('code_collision_attempt')=1 THEN NEW.access_code:='zzzz'; END IF; RETURN NEW;
+    END $$;
+    CREATE TRIGGER force_code_collision BEFORE INSERT ON dispatch_tercero_enlaces FOR EACH ROW EXECUTE FUNCTION force_code_collision();`)
   const access = rpc(12,`tercero_generar_enlace('${id(51)}')`), token=access.token, code=access.codigo
-  assert.equal(pub(`delivery_portal_login('abc 123','${code}','${'a'.repeat(64)}')`).token,token)
+  assert.match(code,/^[a-z0-9]{4}$/)
+  assert.notEqual(code,'zzzz')
+  assert.ok(Number(sql('SELECT last_value FROM code_collision_attempt;'))>=2)
+  sql('DROP TRIGGER force_code_collision ON dispatch_tercero_enlaces; DROP FUNCTION force_code_collision();')
+  assert.equal(pub(`delivery_portal_login('abc 123','${code.toUpperCase()}','${'a'.repeat(64)}')`).token,token)
   assert.equal(pub(`delivery_portal_login('XYZ-123','${code}','${'b'.repeat(64)}')`).success,false)
   for(let n=0;n<11;n++) { const r=pub(`delivery_portal_login('ABC-123','invalid','${'b'.repeat(64)}')`); if(n===10)assert.equal(r.limited,true) }
   const path1=`tercero/${id(51)}/g1.jpg`, path2=`tercero/${id(51)}/g2.jpg`
@@ -239,7 +252,7 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
     INSERT INTO transport_requests VALUES('${id(97)}','RT-97','ASIGNADA','Planta','Destino','${id(42)}'),('${id(98)}','RT-98','ASIGNADA','Planta','Destino','${id(42)}');
     INSERT INTO dispatch_requests(dispatch_id,transport_request_id,status,sequence_order,document_number) VALUES('${id(96)}','${id(97)}','PROGRAMADO',1,'G97'),('${id(96)}','${id(98)}','PROGRAMADO',2,'G98');`)
   const issued=JSON.parse(sql(`SELECT jsonb_build_object('token',token,'code',access_code) FROM dispatch_tercero_enlaces WHERE dispatch_id='${id(96)}' AND revoked_at IS NULL;`))
-  assert.match(issued.code,/^[a-f0-9]{12}$/)
+  assert.match(issued.code,/^[a-z0-9]{4}$/)
   assert.equal(pub(`delivery_portal_login('AUTO-123','${issued.code}','${'d'.repeat(64)}')`).token,issued.token)
   sql(`UPDATE dispatches SET vehicle_plate='AUTO-456' WHERE id='${id(96)}';`)
   assert.equal(pub(`delivery_portal_login('AUTO-456','${issued.code}','${'d'.repeat(64)}')`).success,false)
@@ -534,4 +547,6 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   console.error(error.message)
   console.error('::error title=Delivery conformity validation::' + error.message.replaceAll('%','%25').replaceAll('\n','%0A'))
   process.exitCode=1
+  const shortCodeBox=query(read('supabase/tests/caja_c71_provider_short_code.test.sql'))
+  assert.match(shortCodeBox.stderr,/CAJA C71 PASS/)
 } finally { spawnSync('docker',['rm','-f',name],{encoding:'utf8'}) }
