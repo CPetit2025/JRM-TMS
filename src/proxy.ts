@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { isSystemAdminRole, isDispatchAuditorRole, dispatchAuditorPathAllowed } from '@/lib/roles'
+import { hasWebAccess, isDispatchAuditorRole, dispatchAuditorPathAllowed } from '@/lib/roles'
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -76,7 +76,7 @@ export async function proxy(request: NextRequest) {
     const permissions = Array.isArray(role?.permissions) ? role.permissions : []
     const auditor = profile.employee_type !== 'CONDUCTOR' && isDispatchAuditorRole(role?.name)
     hasDashboardAccess = profile.employee_type !== 'CONDUCTOR' &&
-      (isSystemAdminRole(role?.name) || permissions.includes('dashboard') || auditor)
+      (hasWebAccess(role?.name, permissions) || auditor)
     if (auditor && !dispatchAuditorPathAllowed(request.nextUrl.pathname)) {
       return redirect(new URL('/despacho/documentos?vista=salida', request.url))
     }
