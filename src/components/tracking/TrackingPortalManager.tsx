@@ -27,7 +27,7 @@ const SCOPES: { key: Scope; title: string; text: string; icon: typeof Users }[] 
 ]
 const VIEWS = [
   { icon: CalendarDays, title: 'Calendario', text: 'OT, subcontratos, errores y órdenes OS / OC / RQ por fecha, y el registro de solicitudes con su hora de creación.' },
-  { icon: Route, title: 'Ruta del día', text: 'Unidad, conductor y paradas, con guía de remisión, Packing List y guía firmada.' },
+  { icon: Route, title: 'Ruta del día', text: 'Unidad, conductor y paradas, con Packing List y la guía de remisión cuando el conductor la sube.' },
   { icon: MapPinned, title: 'Monitoreo GPS', text: 'Posición de las rutas cuyas paradas están todas dentro del acceso.' },
 ]
 const fmt = (value: string) => new Date(value).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short' })
