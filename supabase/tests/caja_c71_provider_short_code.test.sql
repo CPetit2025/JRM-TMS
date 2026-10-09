@@ -17,7 +17,7 @@ DO $$ DECLARE d uuid; site uuid; actor uuid; code text; r jsonb; i integer; BEGI
  PERFORM set_config('request.jwt.claims',json_build_object('sub',actor,'role','authenticated')::text,true);
  d:=pg_temp.c71_ins(jsonb_build_object('id',gen_random_uuid(),'dispatch_number','ZZ-C71-'||gen_random_uuid()::text,
    'vehicle_plate','ZZ71'||substr(gen_random_uuid()::text,1,6),'status','PROGRAMADO','site_id',site,
-   'scheduled_departure',now(),'modalidad','TERCERO','docs_required',false));
+   'scheduled_departure',now(),'modalidad','TERCERO','tercero_doc','C71'||replace(gen_random_uuid()::text,'-',''),'docs_required',false));
  SELECT access_code INTO code FROM public.dispatch_tercero_enlaces WHERE dispatch_id=d AND revoked_at IS NULL;
  IF code IS NULL OR code !~ '^[a-z0-9]{4}$' THEN RAISE EXCEPTION 'CAJA C71 FAIL: generación automática'; END IF;
  FOR i IN 1..20 LOOP

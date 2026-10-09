@@ -543,10 +543,11 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   assert.match(c54.stderr,/CAJA C54 PASS/,c54.stderr)
   console.log('PASS: C54 request OT, mixed delivery/pickup/point-to-point, actual leg km, approved APT weight, incomplete/shared guides, cancelled trips and site/portfolio privacy.')
 
+  const shortCodeBox=query(read('supabase/tests/caja_c71_provider_short_code.test.sql'))
+  assert.match(shortCodeBox.stderr,/CAJA C71 PASS/)
+  console.log('PASS: C71 executes the real issuer, 20 renewals, four-character codes, uniqueness and private permissions, rolled back.')
 } catch(error) {
   console.error(error.message)
   console.error('::error title=Delivery conformity validation::' + error.message.replaceAll('%','%25').replaceAll('\n','%0A'))
   process.exitCode=1
-  const shortCodeBox=query(read('supabase/tests/caja_c71_provider_short_code.test.sql'))
-  assert.match(shortCodeBox.stderr,/CAJA C71 PASS/)
 } finally { spawnSync('docker',['rm','-f',name],{encoding:'utf8'}) }
