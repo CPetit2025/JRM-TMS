@@ -1,11 +1,9 @@
 'use client'
-import { useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, FileCheck2, FileSpreadsheet, FileText, Loader2, RefreshCw, Truck } from 'lucide-react'
-import { toast } from 'sonner'
-import { deliveryStatus } from '@/lib/delivery'
+import { useMemo } from 'react'
+import { ChevronLeft, ChevronRight, RefreshCw, Truck } from 'lucide-react'
 import { limaDay } from '@/lib/tracking-calendar'
-import { DOC_LABEL, openPortalDocument, portalExtraRefs, portalOrigin, portalReference, type PortalDocument, type PortalRow } from '@/lib/tracking-portal'
-import { OriginBadge } from '@/components/tracking/TrackingCalendar'
+import { portalExtraRefs, portalOrigin, portalReference, portalStatus, type PortalRow } from '@/lib/tracking-portal'
+import { OriginBadge, PortalDocButtons, StatusPill } from '@/components/tracking/PortalBits'
 
 // Ruta establecida del día en el portal público: cada ruta con su unidad, conductor y paradas autorizadas, y por
 // parada la guía de remisión, el Packing List y (una vez validada) la guía firmada en destino.
@@ -19,7 +17,6 @@ const time = (value: string) => new Date(value).toLocaleTimeString('es-PE', { ti
 const shift = (day: string, n: number) => { const d = new Date(`${day}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
 
 export function RouteDay({ rows, day, onDay, access, refreshedAt, error, onRefresh }: Props) {
-  const [busy, setBusy] = useState('')
   const routes = useMemo(() => {
     const map = new Map<string, PortalRow[]>()
     rows.filter(r => limaDay(r.scheduled_departure) === day).forEach(r => map.set(r.dispatch_id, [...(map.get(r.dispatch_id) || []), r]))
@@ -27,21 +24,8 @@ export function RouteDay({ rows, day, onDay, access, refreshedAt, error, onRefre
       .sort((a, b) => new Date(a[0].scheduled_departure).getTime() - new Date(b[0].scheduled_departure).getTime())
   }, [rows, day])
   const stops = routes.flat()
-  const docs = stops.reduce((n, s) => n + (s.documents?.length || 0), 0)
+  const docs = stops.reduce((n, s) => n + (s.documents || []).filter(d => d.type === 'PACKING_LIST').length + Math.min(s.signed_photos || 0, 5), 0)
   const delivered = stops.filter(s => ['ENTREGADO', 'LIQUIDADO', 'CERRADO'].includes(s.state)).length
-
-  const open = async (key: string, target: Parameters<typeof openPortalDocument>[1]) => {
-    setBusy(key)
-    try { await openPortalDocument(access, target) } catch (e) { toast.error(e instanceof Error ? e.message : 'Documento no disponible') } finally { setBusy('') }
-  }
-  const docButton = (d: PortalDocument) => {
-    const Icon = d.type === 'PACKING_LIST' ? FileSpreadsheet : FileText
-    return <button key={d.id} type="button" disabled={busy === d.id} onClick={() => void open(d.id, { kind: 'DOC', id: d.id })}
-      className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-[#002855] hover:bg-slate-50 disabled:opacity-60"
-      title={d.name || DOC_LABEL[d.type]}>
-      {busy === d.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}{DOC_LABEL[d.type]}{d.number ? ` ${d.number}` : ''}
-    </button>
-  }
 
   return <div className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
@@ -81,7 +65,7 @@ export function RouteDay({ rows, day, onDay, access, refreshedAt, error, onRefre
         </header>
         <ol className="divide-y">
           {route.map((s, i) => {
-            const st = deliveryStatus(s.state), origin = portalOrigin(s), extra = portalExtraRefs(s)
+            const origin = portalOrigin(s), extra = portalExtraRefs(s)
             return <li key={s.request_id} className="grid gap-3 px-4 py-3 lg:grid-cols-[2rem_minmax(0,1.3fr)_minmax(0,1.6fr)_10rem_minmax(0,1.4fr)] lg:items-center">
               <span className="grid h-7 w-7 place-items-center rounded-full bg-slate-100 text-xs font-bold text-slate-700">{s.sequence_order ?? i + 1}</span>
               <div className="min-w-0">
@@ -89,23 +73,13 @@ export function RouteDay({ rows, day, onDay, access, refreshedAt, error, onRefre
                 <p className="text-xs text-slate-500">{s.request_number}{extra.length ? ` · ${extra.join(' · ')}` : ''}{s.client_name ? ` · ${s.client_name}` : ''}</p>
               </div>
               <p className="min-w-0 text-sm text-slate-700"><span className="block truncate" title={s.delivery_address}>{s.delivery_address}</span>{s.guide_number && <span className="text-xs text-slate-500">Guía {s.guide_number}</span>}</p>
-              <span className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${st.color}`}><span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />{st.label}</span>
-              <div className="flex flex-wrap gap-1.5">
-                {(s.documents || []).map(docButton)}
-                {Array.from({ length: Math.min(s.signed_photos || 0, 5) }, (_, n) => {
-                  const key = `${s.dispatch_id}-${s.request_id}-${n}`
-                  return <button key={key} type="button" disabled={busy === key} onClick={() => void open(key, { kind: 'FIRMA', dispatchId: s.dispatch_id, requestId: s.request_id, index: n + 1 })}
-                    className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-60">
-                    {busy === key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileCheck2 className="h-3.5 w-3.5" />}Guía firmada{(s.signed_photos || 0) > 1 ? ` ${n + 1}` : ''}
-                  </button>
-                })}
-                {!(s.documents || []).length && !s.signed_photos && <span className="text-xs text-slate-400">{s.documents_state === 'NO_REQUERIDO' ? 'Sin documentos requeridos' : 'Documentos en preparación'}</span>}
-              </div>
+              <span className="w-fit"><StatusPill tone={portalStatus(s)} /></span>
+              <PortalDocButtons row={s} access={access} emptyText={s.documents_state === 'NO_REQUERIDO' ? 'Sin documentos requeridos' : 'Documentos en preparación'} />
             </li>
           })}
         </ol>
       </section>
     })}
-    <p className="text-xs text-slate-500">Los documentos se abren en una pestaña nueva con un enlace temporal. La guía firmada aparece cuando Transporte de JRM valida la entrega.</p>
+    <p className="text-xs text-slate-500">Los documentos se abren en una pestaña nueva con un enlace temporal. La guía de remisión aparece cuando el conductor la sube desde el app o el enlace.</p>
   </div>
 }
