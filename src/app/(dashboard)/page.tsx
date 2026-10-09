@@ -11,6 +11,9 @@ import {
 } from 'recharts'
 import { Truck, Route, Activity, TrendingUp, Filter, Loader2, ChevronRight } from 'lucide-react'
 import { MiAvanceWidget } from '@/components/kpi/MiAvance'
+import Link from 'next/link'
+import { usePermissions } from '@/hooks/usePermissions'
+import { visibleSections } from '@/lib/nav/navConfig'
 
 const COLORS = ['#002855', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#8b5cf6'];
 const STATUS_COLORS: Record<string, string> = {
@@ -24,7 +27,7 @@ const STATUS_COLORS: Record<string, string> = {
   'ENTREGADO': '#10b981'
 }
 
-export default function DashboardEjecutivo() {
+function DashboardEjecutivo() {
   const supabase = createClient()
   const [loading, setLoading] = useState(true)
   const [dateRange, setDateRange] = useState('7days') // 7days, 30days, all
@@ -393,6 +396,38 @@ export default function DashboardEjecutivo() {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Inicio: el Resumen Ejecutivo es para quien tiene "Dashboard Principal"; el resto entra directo a sus módulos.
+export default function Inicio() {
+  const { isLoaded, hasAccess } = usePermissions()
+  if (!isLoaded) return <div className="grid min-h-[40vh] place-items-center"><Loader2 className="h-6 w-6 animate-spin text-[#002855]" /></div>
+  if (hasAccess('dashboard')) return <DashboardEjecutivo />
+  const sections = visibleSections(hasAccess)
+  return (
+    <div className="space-y-3 pb-10">
+      <PageHeader showTitle title="Inicio" description="Accede a los módulos habilitados para tu rol" />
+      <MiAvanceWidget />
+      {sections.length === 0
+        ? <p className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">Tu rol todavía no tiene módulos asignados. Pide al administrador que los habilite en Roles y Permisos.</p>
+        : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {sections.map(section => (
+            <section key={section.id} className="rounded-xl border border-slate-200 bg-white p-4">
+              <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-[#002855]"><section.icon className="h-4 w-4" />{section.title}</h2>
+              <ul className="space-y-1">
+                {section.groups.flatMap(group => group.items).map(item => (
+                  <li key={item.href}>
+                    <Link href={item.href} className="flex min-h-10 items-center gap-2 rounded-lg px-2 text-sm text-slate-700 hover:bg-slate-50">
+                      <item.icon className="h-4 w-4 text-slate-400" /><span className="flex-1">{item.label}</span><ChevronRight className="h-4 w-4 text-slate-300" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>}
     </div>
   )
 }

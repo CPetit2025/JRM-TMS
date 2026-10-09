@@ -7,9 +7,12 @@ const load=(file,requireModule)=>{
  vm.runInNewContext(source,context);return context.exports
 }
 const roles=load('src/lib/roles.ts'),packing=load('src/lib/packing-list.ts')
+const nav=load('src/lib/nav/navConfig.ts',name=>{if(name==='lucide-react')return new Proxy({},{get:()=>()=>null});throw Error(name)})
+const webAccess=load('src/lib/nav/web-access.ts',name=>{if(name==='@/lib/roles')return roles;if(name==='@/lib/nav/navConfig')return nav;throw Error(name)})
 function fixture(profile={is_active:true,employee_type:'ADMINISTRATIVO',roles:{name:'Auditor de Despacho',permissions:['planificacion:read','packing-list:write']}}){
  return load('src/proxy.ts',name=>{
   if(name==='@/lib/roles')return roles
+  if(name==='@/lib/nav/web-access')return webAccess
   if(name==='next/server')return{NextResponse:{next:()=>({kind:'next',cookies:{getAll:()=>[],set(){}}}),redirect:url=>({kind:'redirect',pathname:url.pathname,cookies:{set(){}}})}}
   if(name==='@supabase/ssr')return{createServerClient:()=>({
    auth:{getUser:async()=>({data:{user:{id:'fixture'}}})},

@@ -8,7 +8,8 @@ import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { PublicRegistrationModal } from '@/components/forms/PublicRegistrationModal'
 import { Download } from 'lucide-react'
-import { isSystemAdminRole, normalizeRoleName } from '@/lib/roles'
+import { isDispatchAuditorRole, normalizeRoleName } from '@/lib/roles'
+import { hasWebAccess } from '@/lib/nav/web-access'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -64,7 +65,7 @@ export default function LoginPage() {
       if (data.user) {
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('roles(name, permissions), is_active')
+          .select('roles(name, permissions), is_active, employee_type')
           .eq('id', data.user.id)
           .single()
 
@@ -82,7 +83,7 @@ export default function LoginPage() {
            permissions = roleObj?.permissions || []
         }
 
-        if (!isSystemAdminRole(roleName) && !permissions.includes('dashboard')) {
+        if (profileData?.employee_type === 'CONDUCTOR' || (!hasWebAccess(roleName, permissions) && !isDispatchAuditorRole(roleName))) {
           await supabase.auth.signOut()
           throw new Error('Esta cuenta pertenece al Portal Operativo. Ingresa desde /app/login.')
         }
