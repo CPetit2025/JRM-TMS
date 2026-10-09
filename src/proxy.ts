@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { hasWebAccess, isDispatchAuditorRole, dispatchAuditorPathAllowed } from '@/lib/roles'
+import { isDispatchAuditorRole, dispatchAuditorPathAllowed } from '@/lib/roles'
+import { hasWebAccess } from '@/lib/nav/web-access'
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({

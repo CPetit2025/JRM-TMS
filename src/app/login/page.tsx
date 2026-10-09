@@ -8,7 +8,8 @@ import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { PublicRegistrationModal } from '@/components/forms/PublicRegistrationModal'
 import { Download } from 'lucide-react'
-import { hasWebAccess, isDispatchAuditorRole, normalizeRoleName } from '@/lib/roles'
+import { isDispatchAuditorRole, normalizeRoleName } from '@/lib/roles'
+import { hasWebAccess } from '@/lib/nav/web-access'
 
 export default function LoginPage() {
   const router = useRouter()
