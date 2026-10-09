@@ -28,7 +28,8 @@ try {
  GRANT SELECT ON public.profiles,public.roles TO authenticated;`)
  sql(read('supabase/migrations/20261004120000_notificaciones_por_rol.sql'))
  sql(read('supabase/migrations/20261009140000_responsible_notifications.sql'))
- for(const file of ['caja_c29_notificaciones_por_rol.test.sql','caja_c64_responsible_notifications.test.sql']){
+ sql(read('supabase/migrations/20261010030000_despacho_atrasado_responsable.sql'))
+ for(const file of ['caja_c29_notificaciones_por_rol.test.sql','caja_c64_responsible_notifications.test.sql','caja_c73_despacho_atrasado_responsable.test.sql']){
   const r=query(read('supabase/tests/'+file)), number=file.match(/caja_c(\d+)/)[1]
   assert.match(r.stderr,new RegExp('CAJA C'+number+' PASS'),r.stderr||r.stdout)
   console.log('PASS: '+file)
