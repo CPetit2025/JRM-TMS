@@ -29,8 +29,15 @@ const hasOt = (s: Source) => !!s.ot_code && s.ot_code !== 'Sin OT vinculada'
 // «RQ-7781» ya trae el prefijo: no repetirlo («RQ RQ-7781»)
 const ref = (type: string, number: string) => number.toUpperCase().startsWith(type) ? number : `${type} ${number}`
 
+/** Tipo de OT: el sufijo del código manda (15304-E001 es error, 15304-S001 subcontrato) aunque el registro diga otra cosa. */
+export function otKind(code: string | null | undefined, type: string | null | undefined): 'CONTRATO' | 'SUBCONTRATO' | 'ERROR' {
+  if (/-E\d+$/i.test(code || '')) return 'ERROR'
+  if (/-S\d+$/i.test(code || '')) return 'SUBCONTRATO'
+  return type === 'ERROR' || type === 'SUBCONTRATO' ? type : 'CONTRATO'
+}
+
 export function portalOrigin(s: Source): PortalOrigin {
-  if (hasOt(s)) return s.ot_type === 'SUBCONTRATO' ? 'SUB' : s.ot_type === 'ERROR' ? 'ERR' : 'OT'
+  if (hasOt(s)) { const kind = otKind(s.ot_code, s.ot_type); return kind === 'SUBCONTRATO' ? 'SUB' : kind === 'ERROR' ? 'ERR' : 'OT' }
   if (s.reference_type === 'OS' || s.reference_type === 'OC' || s.reference_type === 'RQ') return s.reference_type
   return s.purchase_order ? 'OC' : 'SIN'
 }

@@ -38,7 +38,7 @@ export default function TrackingPage() {
   const [pin, setPin] = useState('')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [trackingData, setTrackingData] = useState<{ mode: 'permanent' | 'legacy'; planning_date?: string; rows: PortalRow[]; requests: PortalRequest[]; locations: {dispatch_id:string;dispatch_number?:string;vehicle_plate?:string;driver_name?:string;lat:number;lng:number;last_gps_at:string}[]; error?:string; limited?:boolean } | null>(null)
+  const [trackingData, setTrackingData] = useState<{ mode: 'permanent' | 'legacy'; planning_date?: string; rows: PortalRow[]; requests: PortalRequest[]; locations: {dispatch_id:string;dispatch_number?:string;vehicle_plate?:string;driver_name?:string;lat:number;lng:number;last_gps_at:string}[]; error?:string; limited?:boolean; label?:string|null } | null>(null)
   const [month, setMonth] = useState(() => limaDay(new Date().toISOString()).slice(0,7))
   const range = useMemo(() => { const days=monthDays(month); return {p_from:days[0],p_to:days[41]} },[month])
   const [activeTab, setActiveTab] = useState<'calendar' | 'route' | 'map'>('calendar')
@@ -174,7 +174,7 @@ export default function TrackingPage() {
               <span className="font-bold text-base leading-snug sm:text-lg text-slate-800">Planificación y Seguimiento de Transporte</span>
             </div>
             <div className="flex items-center justify-between gap-2 sm:justify-end"><button className="rounded-lg border px-3 py-2 text-xs text-slate-600" onClick={() => {setIsAuthenticated(false);setPin('');setTrackingData(null);setVehicles([])}}>Salir</button><div className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-medium border border-blue-200">
-              {trackingData?.planning_date ? new Date(`${trackingData?.planning_date}T00:00:00`).toLocaleDateString('es-PE') : 'Portal de seguimiento'}
+              {trackingData?.planning_date ? new Date(`${trackingData?.planning_date}T00:00:00`).toLocaleDateString('es-PE') : trackingData?.label || 'Portal de seguimiento'}
             </div></div>
           </div>
           
