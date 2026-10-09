@@ -38,12 +38,12 @@ test('committed upload survives a lost response without a second replacement', a
   assert.equal((await f.api.uploadApply('upload')).warning,null)
   assert.deepEqual(f.calls,['aplicar','estadia','flujo'])
 })
-test('FIFO timeout reports applied upload with pending recalculation', async () => {
-  const f=fixture([{success:true,summary:{entrada:{validas:154}}},{status:500,error:'statement timeout'}])
+test('FIFO timeout still rebuilds the independent flow and reports its pending step', async () => {
+  const f=fixture([{success:true,summary:{entrada:{validas:154}}},{status:500,error:'statement timeout'},{success:true,flow:2}])
   const result=await f.api.uploadApply('upload')
   assert.equal(result.summary.entrada.validas,154)
   assert.match(result.warning,/carga está aplicada/)
-  assert.deepEqual(f.calls,['aplicar','estadia'])
+  assert.deepEqual(f.calls,['aplicar','estadia','flujo'])
 })
 test('flow failure never implies that committed movements were discarded', async () => {
   const f=fixture([{success:true,summary:{}},{success:true},{status:504}])
@@ -53,6 +53,13 @@ test('flow failure never implies that committed movements were discarded', async
 test('retry only recalculates and cannot apply, send or discard movements', async () => {
   const f=fixture([{success:true,model:1},{success:true,flow:2}])
   await f.api.rebuildModels()
+  assert.deepEqual(f.calls,['estadia','flujo'])
+  assert.deepEqual(f.rpc,[])
+})
+
+test('failed retry attempts both independent steps, reports both failures and never reapplies', async () => {
+  const f=fixture([{status:500,error:'estadia pendiente'},{status:500,error:'flujo pendiente'}])
+  await assert.rejects(f.api.rebuildModels(), /estadia pendiente.*flujo pendiente/)
   assert.deepEqual(f.calls,['estadia','flujo'])
   assert.deepEqual(f.rpc,[])
 })

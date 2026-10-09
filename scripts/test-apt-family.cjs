@@ -52,5 +52,27 @@ try{
  IF (SELECT proacl FROM pg_proc WHERE oid='apt_kardex(jsonb,text,boolean,integer,integer)'::regprocedure) IS DISTINCT FROM (SELECT proacl FROM expected_kardex_acl) THEN RAISE EXCEPTION 'Kardex ACL changed'; END IF;
  END $$;`)
  console.log('PASS: real FIFO and kardex agree for paired transfers with different ERP weights; unpaired weights, source rows, permissions and repeatable migration preserved.')
+ // A successful upload followed by a failed legacy model leaves the flow on old movement IDs/weights.
+ sql(`UPDATE apt_movements SET peso_kg=2100 WHERE kind='ENTRADA';
+ UPDATE apt_uploads SET status='APLICADA',applied_at=now();
+ UPDATE apt_flow_state SET rebuilt_at=now()-interval '1 day';
+ REVOKE ALL ON FUNCTION apt_flow_rebuild_core() FROM PUBLIC,anon,authenticated;
+ GRANT EXECUTE ON FUNCTION apt_flow_rebuild_core() TO service_role;
+ CREATE TABLE expected_flow_acl AS SELECT proacl FROM pg_proc WHERE oid='apt_flow_rebuild_core()'::regprocedure;`)
+ assert.equal(json("SELECT jsonb_build_object('kg',sum(kg_saldo)) FROM apt_flow_layers WHERE almacen='647'").kg,1000)
+ const refresh=read('supabase/migrations/20261010080000_apt_refresh_stale_flow.sql');sql(refresh)
+ assert.equal(json("SELECT jsonb_build_object('kg',sum(kg_saldo)) FROM apt_flow_layers WHERE almacen='647'").kg,1100)
+ const refreshed=json("SELECT apt_kardex('{\"lote_exacto\":\"16339\"}','total',true,100,0)")
+ assert.equal(refreshed.almacenes.find(a=>a.almacen==='647').saldo_tn,1.1)
+ sql(`DO $$ BEGIN
+ IF (SELECT rebuilt_at FROM apt_flow_state WHERE id=1)<(SELECT max(applied_at) FROM apt_uploads) THEN RAISE EXCEPTION 'Flow remains stale'; END IF;
+ IF strpos(pg_get_functiondef('apt_flow_rebuild_core()'::regprocedure),'apt_rebuild')=0 THEN RAISE EXCEPTION 'Replacement and rebuild locks are separate'; END IF;
+ IF (SELECT proacl FROM pg_proc WHERE oid='apt_flow_rebuild_core()'::regprocedure) IS DISTINCT FROM (SELECT proacl FROM expected_flow_acl) THEN RAISE EXCEPTION 'Flow ACL changed'; END IF;
+ END $$;
+ CREATE TABLE expected_rebuild_time AS SELECT rebuilt_at FROM apt_flow_state WHERE id=1;`)
+ sql(refresh)
+ sql(`DO $$ BEGIN IF (SELECT rebuilt_at FROM apt_flow_state WHERE id=1) IS DISTINCT FROM (SELECT rebuilt_at FROM expected_rebuild_time) THEN RAISE EXCEPTION 'Rebuild unnecessarily repeats'; END IF; END $$;`)
+ console.log('PASS: stale derived stock repairs from current movements, agrees with kardex, locks against replacement, preserves private permissions and skips an already current rebuild.')
+
 
 }catch(error){console.error('::error title=APT family validation::'+error.message.replaceAll('%','%25').replaceAll('\n','%0A'));process.exitCode=1}finally{spawnSync('docker',['rm','-f',name],{stdio:'ignore'})}

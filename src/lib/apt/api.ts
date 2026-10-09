@@ -121,9 +121,22 @@ async function procesar(body: { accion: 'aplicar' | 'estadia' | 'flujo'; upload_
 
 async function rebuildModels() {
   try {
-    const model = await procesar({ accion: 'estadia' })
-    const flow = await procesar({ accion: 'flujo' })
-    return { model: model.model, flow: flow.flow }
+    // Son modelos independientes: un fallo de estadía no debe dejar el flujo con cargas anteriores.
+    // Mantiene una petición por paso para no competir por recursos ni sumar sus tiempos de consulta.
+    let model: unknown
+    let flow: unknown
+    const failures: string[] = []
+    for (const accion of ['estadia', 'flujo'] as const) {
+      try {
+        const result = await procesar({ accion })
+        if (accion === 'estadia') model = result.model
+        else flow = result.flow
+      } catch (error) {
+        failures.push(error instanceof Error ? error.message : `No se pudo ${PASO[accion]}`)
+      }
+    }
+    if (failures.length) throw new Error(failures.join(' · '))
+    return { model, flow }
   } finally { clearAptCache() }
 }
 
