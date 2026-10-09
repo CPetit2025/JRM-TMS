@@ -198,7 +198,7 @@ BEGIN
   IF r = '["ZZ-C9-D4"]'::jsonb AND v_err LIKE 'Sin permiso%'
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T6 bandeja: ' || COALESCE(r::text, '∅') || ' | ' || COALESCE(v_err, '∅')); END IF;
 
-  -- T7: programar usa la reserva de la solicitud aprobada y marca el despacho como sujeto a documentos
+  -- T7: programar usa la reserva de la solicitud aprobada (la exigencia de documentos la verifica C72)
   INSERT INTO public.transport_requests (request_number, status, site_id, contract_id, service_cost, requester_name, department, request_type, cargo_description, pickup_address, pickup_district, delivery_address, delivery_district, required_date) VALUES
     ('ZZ-C9-R4', 'PENDIENTE DE APROBACIÓN', v_site, v_ct, 900, 'ZZ', 'Logística', 'DESPACHO', 'Carga de prueba', 'Planta', 'Lurín', 'Obra 4', 'Ate', current_date)
   RETURNING id INTO r4;
@@ -212,7 +212,7 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN v_err := SQLERRM; d3 := NULL;
   END;
   PERFORM pg_temp.as_user(NULL);
-  IF v_err IS NULL AND (SELECT docs_required FROM public.dispatches WHERE id = d3)
+  IF v_err IS NULL AND d3 IS NOT NULL
      AND (SELECT reserved_pen = 950 FROM public.contract_budgets WHERE contract_id = v_ct)
      AND (SELECT status = 'ASIGNADA' AND reserved_pen = 0 FROM public.transport_requests WHERE id = r4)
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T7 programar: ' || COALESCE(v_err, '∅') || ' ' ||
