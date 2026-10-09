@@ -69,6 +69,17 @@ BEGIN
     RAISE EXCEPTION 'CAJA C74 FAIL: asumió una OT de otra sede (T3): %', r; END IF;
   PERFORM pg_temp.c74_user(NULL);
 
+  -- T3b: una OT cerrada no se puede asumir aunque se llame a la función directamente
+  PERFORM pg_temp.c74_user(v_admin);
+  r := public.create_contract(jsonb_build_object('code', 'ZZ-C74-CERRADA-' || suffix, 'type', 'CONTRATO', 'site_id', v_site), 0);
+  PERFORM pg_temp.c74_user(NULL);
+  UPDATE public.contracts SET status = 'CERRADO' WHERE id = (r->>'id')::uuid;
+  PERFORM pg_temp.c74_user(v_ca);
+  r := public.claim_contract_responsibility(ARRAY[(r->>'id')::uuid]);
+  IF (r->>'asignadas')::int <> 0 OR (r->>'omitidas')::int <> 1 THEN
+    RAISE EXCEPTION 'CAJA C74 FAIL: asumió una OT cerrada (T3): %', r; END IF;
+  PERFORM pg_temp.c74_user(NULL);
+
   -- T4: un usuario sin el rol no puede listar ni asumir OT
   PERFORM pg_temp.c74_user(v_other);
   BEGIN PERFORM public.claim_contract_responsibility(ARRAY[v_root]); v_err := NULL;

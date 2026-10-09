@@ -10,6 +10,7 @@ import { TableActions } from '@/components/ui/table-actions'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plus, Check, Ban, Loader2, Upload, Download, AlertCircle, Search, X, ArrowUp, ArrowDown, ArrowUpDown, RefreshCw, Scale, Info, Layers, Clock, CheckCircle2, FileEdit } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { usePermissions } from '@/hooks/usePermissions'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { GuiaDetalleModal } from '@/components/guias/GuiaDetalleModal'
@@ -90,6 +91,9 @@ const tonInfo = (srv: { description?: string }, p?: PesoApt): { ton: number | nu
 
 export default function ContractServicesPage() {
   const supabase = createClient()
+  // Con solo lectura (p. ej. Administrador de Contratos) se ocultan registrar, cargar, regularizar, editar y anular
+  const { canWrite, isLoaded: permsLoaded } = usePermissions()
+  const canEdit = permsLoaded && canWrite('contratos-servicios')
   const [services, setServices] = useState<ContractService[]>([])
   const [registryContext, setRegistryContext] = useState<Record<string, RegistryContext>>({})
   const [budgetContract, setBudgetContract] = useState('')
@@ -511,6 +515,7 @@ export default function ContractServicesPage() {
   return (
     <div className="w-full mx-auto space-y-2.5">
       <PageHeader showTitle title="Registro de Servicios" description="Compromisos de transporte, servicios realizados y gastos adicionales vinculados a la OT. El cierre operativo no significa pago." actions={<>
+        {canEdit && <>
           <button
             onClick={() => setIsOrphanModalOpen(true)}
             className={`flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors ${orphanDispatches.length ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
@@ -541,6 +546,7 @@ export default function ContractServicesPage() {
             { id: 'peso', label: syncingPeso ? 'Actualizando peso (APT)…' : 'Actualizar peso (APT)', icon: syncingPeso ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />, disabled: syncingPeso, onSelect: actualizarPesoApt },
             { id: 'plantilla', label: 'Descargar plantilla Excel', icon: <Download className="h-4 w-4" />, onSelect: downloadTemplate },
           ]} />
+        </>}
         <TorreControlButton />
       </>} />
       <div className="flex flex-wrap items-center gap-2">
@@ -1106,7 +1112,7 @@ export default function ContractServicesPage() {
               ) : (
                 <div className="flex items-center gap-3">
                   <span className={`font-bold text-lg ${viewingService.status === 'ANULADO' ? 'text-slate-400 line-through' : 'text-emerald-700'}`}>S/ {Number(viewingService.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
-                  {viewingService.status !== 'ANULADO' && <button 
+                  {canEdit && viewingService.status !== 'ANULADO' && <button 
                     onClick={() => {
                       setEditAmountValue(viewingService.amount_pen.toString());
                       setIsEditingAmount(true);
@@ -1123,7 +1129,7 @@ export default function ContractServicesPage() {
               <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
                 <span className="font-semibold">Anulado.</span> {viewingService.void_reason || ''} El monto volvió a la partida.
               </div>
-            ) : !viewingService.dispatch_id && (
+            ) : canEdit && !viewingService.dispatch_id && (
               <div className="rounded border border-slate-200 p-3">
                 <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Anular gasto (devuelve el monto a la partida)</span>
                 {!canVoidDirect && (

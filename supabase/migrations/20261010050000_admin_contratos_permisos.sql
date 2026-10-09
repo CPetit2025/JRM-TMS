@@ -57,6 +57,7 @@ BEGIN
   FOREACH v_id IN ARRAY (SELECT array_agg(DISTINCT x) FROM unnest(p_contract_ids) x WHERE x IS NOT NULL) LOOP
     PERFORM 1 FROM public.contracts c
      WHERE c.id = v_id AND c.parent_contract_id IS NULL AND c.type::text IN ('CONTRATO', 'OT_INDEPENDIENTE')
+       AND upper(COALESCE(c.status::text, '')) NOT IN ('CANCELADO', 'ANULADO', 'CERRADO')
        AND EXISTS (SELECT 1 FROM public.user_site_access usa WHERE usa.user_id = auth.uid() AND usa.site_id = c.site_id)
      FOR UPDATE;
     IF NOT FOUND OR EXISTS (SELECT 1 FROM public.contract_user_assignments a
