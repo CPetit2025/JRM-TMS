@@ -40,7 +40,31 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   const packingFiles = form.getAll('packing')
   if (packingFiles.length > 5 || packingFiles.some(photo => !(photo instanceof File) || photo.size === 0 || !TYPES.has(photo.type))) return json({ success: false, error: 'Adjunte hasta cinco fotos JPG, PNG o WEBP del Packing List' }, 400)
   const packing = packingFiles as File[]
-  if (access.data.duplicate) return json({ success: true, pending_review: true, duplicate: true, submission_id: access.data.submission_id })
+  const clean = async (file: File) => sharp(Buffer.from(await file.arrayBuffer()), { limitInputPixels: 24_000_000, animated: false }).rotate().resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer()
+  // Sube el Packing List con rutas fijas por operación (un reintento reutiliza las mismas) y lo adjunta a la guía.
+  // Devuelve un mensaje si no se pudo adjuntar: el formulario sigue abierto y el reintento lo completa.
+  const attachPacking = async (dispatchId: string, buffers: Buffer[]) => {
+    if (!buffers.length) return null
+    const packingPaths: string[] = []
+    for (let index = 0; index < buffers.length; index++) {
+      const path = `tercero/${dispatchId}/${operation}-p${index}.jpg`
+      const { error } = await db.storage.from('driver_evidence').upload(path, buffers[index], { contentType: 'image/jpeg', upsert: false })
+      if (error && String(error.statusCode) !== '409') return 'No se pudo subir el Packing List. Reintente el envío.'
+      packingPaths.push(path)
+    }
+    const attached = await db.rpc('delivery_public_set_packing', { p_token: token, p_request: id, p_operation: operation, p_photos: packingPaths })
+    return attached.error || !attached.data?.success ? 'La guía se recibió, pero no se pudo adjuntar el Packing List. Reintente el envío.' : null
+  }
+  if (access.data.duplicate) {
+    // Reintento de una guía ya recibida: completa el Packing List pendiente de esa misma operación.
+    if (packing.length) {
+      let packingBuffers: Buffer[]
+      try { packingBuffers = await Promise.all(packing.map(clean)) } catch { return json({ success: false, error: 'Una foto del Packing List no es una imagen válida.' }, 400) }
+      const failure = await attachPacking(access.data.dispatch_id, packingBuffers)
+      if (failure) return json({ success: false, error: failure }, 503)
+    }
+    return json({ success: true, pending_review: true, duplicate: true, submission_id: access.data.submission_id })
+  }
   const photos = form.getAll('foto')
   if (!photos.length || photos.length > 5 || photos.some(photo => !(photo instanceof File) || photo.size === 0 || !TYPES.has(photo.type))) return json({ success: false, error: 'Adjunte de una a cinco fotos JPG, PNG o WEBP de la guía firmada' }, 400)
   const files = photos as File[]
@@ -50,7 +74,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   let buffers: Buffer[], packingBuffers: Buffer[]
   try {
     // Decodifica la imagen, limita píxeles y elimina metadatos privados.
-    const clean = async (file: File) => sharp(Buffer.from(await file.arrayBuffer()), { limitInputPixels: 24_000_000, animated: false }).rotate().resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer()
     buffers = await Promise.all(files.map(clean))
     packingBuffers = await Promise.all(packing.map(clean))
   } catch { return json({ success: false, error: 'Una foto no es una imagen válida. Adjunte JPG, PNG o WEBP.' }, 400) }
@@ -61,13 +84,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     if (error && String(error.statusCode) !== '409') return json({ success: false, error: 'No se pudo subir la foto. Reintente el envío.' }, 503)
     paths.push(path)
   }
-  const packingPaths: string[] = []
-  for (let index = 0; index < packingBuffers.length; index++) {
-    const path = `tercero/${access.data.dispatch_id}/${operation}-p${index}.jpg`
-    const { error } = await db.storage.from('driver_evidence').upload(path, packingBuffers[index], { contentType: 'image/jpeg', upsert: false })
-    if (error && String(error.statusCode) !== '409') return json({ success: false, error: 'No se pudo subir el Packing List. Reintente el envío.' }, 503)
-    packingPaths.push(path)
-  }
   const { data, error } = await db.rpc('delivery_public_submit', { p_token: token, p_request: id, p_operation: operation, p_photos: paths, p_received: receiver, p_note: String(form.get('nota') || '').slice(0, 1000), p_guide: String(form.get('guia') || '').slice(0, 80) })
   // No se borran fotos ante un fallo de red: la transacción podría haberse confirmado.
   if (error) {
@@ -75,10 +91,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     if (!receipt.error && receipt.data?.duplicate) return json({ success: true, pending_review: true, duplicate: true, submission_id: receipt.data.submission_id })
     return json({ success: false, error: error.message || 'No se pudo confirmar el envío. Reintente.' }, 400)
   }
-  // El Packing List se adjunta a la misma versión de la guía; un fallo aquí no anula la guía ya recibida.
-  if (packingPaths.length && data?.success) {
-    const attached = await db.rpc('delivery_public_set_packing', { p_token: token, p_request: id, p_operation: operation, p_photos: packingPaths })
-    if (attached.error || !attached.data?.success) return json({ ...data, packing_error: 'La guía se recibió, pero no se pudo adjuntar el Packing List. Envíelo al Supervisor de Transporte.' })
+  // El Packing List se adjunta a la misma versión de la guía. Si falla, se informa como reintentable: la guía queda
+  // recibida y el reintento de la misma operación (ruta de duplicado) completa el Packing List.
+  if (data?.success) {
+    const failure = await attachPacking(access.data.dispatch_id, packingBuffers)
+    if (failure) return json({ success: false, error: failure, guide_received: true }, 503)
   }
   return json(data)
 }
