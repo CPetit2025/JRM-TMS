@@ -1,7 +1,8 @@
 -- "Despacho atrasado" solo para el responsable del despacho (quien lo programó).
 -- Antes se enviaba a todos los usuarios con permiso de Despacho, Torre de Control o Solicitudes.
 -- * notif_dispatch_owner(): responsable = primer usuario del historial de estados (kpi_dispatch_log), luego el
---   autor del primer evento del despacho (dispatch_events.created_by o user_id) y, si existe, dispatches.created_by. Solo perfiles activos.
+--   autor del primer evento del despacho (dispatch_events.created_by_user / user_id) y, si existe, dispatches.created_by.
+--   Si ese responsable ya no está activo no se elige a otro: el aviso vuelve al reparto por permiso.
 -- * Disparador BEFORE INSERT en notifications: el aviso nace asignado al responsable (no depende del texto de
 --   notif_refresh, que en producción puede diferir del repositorio).
 -- * notif_can_see_event(): con responsable, solo él lo ve (ni el administrador ni otros usuarios de Despacho).
@@ -13,21 +14,27 @@ RETURNS uuid LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, 
 DECLARE v uuid;
 BEGIN
   IF p_dispatch IS NULL THEN RETURN NULL; END IF;
+  -- Primero se elige a quien programó (el primer autor registrado) y después se valida que siga activo: si fue
+  -- desactivado no se pasa el aviso al siguiente que tocó el despacho, se vuelve al reparto por permiso.
   IF to_regclass('public.kpi_dispatch_log') IS NOT NULL THEN
-    EXECUTE $q$SELECT l.by FROM public.kpi_dispatch_log l JOIN public.profiles p ON p.id = l.by AND p.is_active
-      WHERE l.dispatch_id = $1 ORDER BY l.at, l.id LIMIT 1$q$ INTO v USING p_dispatch;
-    IF v IS NOT NULL THEN RETURN v; END IF;
+    EXECUTE $q$SELECT l.by FROM public.kpi_dispatch_log l
+      WHERE l.dispatch_id = $1 AND l.by IS NOT NULL ORDER BY l.at, l.id LIMIT 1$q$ INTO v USING p_dispatch;
   END IF;
-  IF to_regclass('public.dispatch_events') IS NOT NULL THEN
+  IF v IS NULL AND to_regclass('public.dispatch_events') IS NOT NULL THEN
     BEGIN
-      EXECUTE $q$SELECT p.id FROM public.dispatch_events e JOIN public.profiles p ON p.id::text = COALESCE(to_jsonb(e) ->> 'created_by', to_jsonb(e) ->> 'user_id') AND p.is_active
-        WHERE e.dispatch_id = $1 ORDER BY e.created_at LIMIT 1$q$ INTO v USING p_dispatch;
-      IF v IS NOT NULL THEN RETURN v; END IF;
-    EXCEPTION WHEN OTHERS THEN NULL;
+      -- dispatch_event_author guarda el usuario en created_by_user (created_by queda con el nombre visible)
+      EXECUTE $q$SELECT public.notif_uuid(COALESCE(to_jsonb(e) ->> 'created_by_user', to_jsonb(e) ->> 'user_id', to_jsonb(e) ->> 'created_by'))
+        FROM public.dispatch_events e
+        WHERE e.dispatch_id = $1
+          AND public.notif_uuid(COALESCE(to_jsonb(e) ->> 'created_by_user', to_jsonb(e) ->> 'user_id', to_jsonb(e) ->> 'created_by')) IS NOT NULL
+        ORDER BY e.created_at LIMIT 1$q$ INTO v USING p_dispatch;
+    EXCEPTION WHEN OTHERS THEN v := NULL;
     END;
   END IF;
-  SELECT p.id INTO v FROM public.dispatches d JOIN public.profiles p ON p.id::text = to_jsonb(d) ->> 'created_by' AND p.is_active
-  WHERE d.id = p_dispatch;
+  IF v IS NULL THEN
+    SELECT public.notif_uuid(to_jsonb(d) ->> 'created_by') INTO v FROM public.dispatches d WHERE d.id = p_dispatch;
+  END IF;
+  IF v IS NULL OR NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = v AND is_active) THEN RETURN NULL; END IF;
   RETURN v;
 EXCEPTION WHEN OTHERS THEN RETURN NULL;
 END $$;

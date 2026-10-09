@@ -8,7 +8,7 @@ END $$;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
 DO $test$
 DECLARE users uuid[]; admin_user uuid; owner_user uuid; observer uuid; admin_role uuid; desp_role uuid;
- d_owned uuid:=gen_random_uuid(); d_orphan uuid:=gen_random_uuid(); owned bigint; orphan bigint; q jsonb; t uuid;
+ d_owned uuid:=gen_random_uuid(); d_orphan uuid:=gen_random_uuid(); d_inactive uuid:=gen_random_uuid(); owned bigint; orphan bigint; q jsonb; t uuid;
  suffix text:=substr(gen_random_uuid()::text,1,8);
 BEGIN
  SELECT array_agg(id) INTO users FROM (SELECT id FROM public.profiles WHERE id IN(SELECT id FROM auth.users)
@@ -33,6 +33,15 @@ BEGIN
  VALUES('DESPACHO_ATRASADO','DESPACHO','crit','ZZ C73 sin responsable '||suffix,ARRAY['despacho','torre-control','solicitudes'],
   'desp-late-'||d_orphan||'-'||CURRENT_DATE) RETURNING id,target_user INTO orphan,t;
  IF t IS NOT NULL THEN RAISE EXCEPTION 'CAJA C73 FAIL: responsable inventado (T2)'; END IF;
+ -- Quien programó fue desactivado: no se pasa el aviso a quien cambió el estado después
+ INSERT INTO public.kpi_dispatch_log(id,dispatch_id,estado_nuevo,by,at,origen) OVERRIDING SYSTEM VALUE
+ VALUES((SELECT COALESCE(max(id),0)+1 FROM public.kpi_dispatch_log),d_inactive,'PROGRAMADO',owner_user,now()-interval '1 hour','SISTEMA');
+ INSERT INTO public.kpi_dispatch_log(id,dispatch_id,estado_anterior,estado_nuevo,by,at,origen) OVERRIDING SYSTEM VALUE
+ VALUES((SELECT COALESCE(max(id),0)+1 FROM public.kpi_dispatch_log),d_inactive,'PROGRAMADO','EN_CURSO',observer,now(),'SISTEMA');
+ UPDATE public.profiles SET is_active=false WHERE id=owner_user;
+ IF public.notif_dispatch_owner(d_inactive) IS NOT NULL THEN RAISE EXCEPTION 'CAJA C73 FAIL: se reasigna a quien no programó (T2)'; END IF;
+ UPDATE public.profiles SET is_active=true WHERE id=owner_user;
+ IF public.notif_dispatch_owner(d_inactive) IS DISTINCT FROM owner_user THEN RAISE EXCEPTION 'CAJA C73 FAIL: primer autor (T2)'; END IF;
 
  PERFORM pg_temp.c73_user(owner_user);
  q:=public.notif_list(NULL,200);
