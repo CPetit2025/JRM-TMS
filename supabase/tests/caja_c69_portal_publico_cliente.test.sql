@@ -7,8 +7,17 @@ DO $test$
 DECLARE actor uuid; site uuid; cli uuid; other uuid; ca uuid:=gen_random_uuid(); cs uuid:=gen_random_uuid(); cn uuid:=gen_random_uuid(); cx uuid:=gen_random_uuid();
  ra uuid; rs uuid; rn uuid; rx uuid; payload jsonb; result jsonb; tok uuid; pin text; denied boolean;
  tag text:=substr(replace(gen_random_uuid()::text,'-',''),1,6);
- ruc1 text:='20'||lpad((floor(random()*1e9))::bigint::text,9,'0'); ruc2 text:='20'||lpad((floor(random()*1e9))::bigint::text,9,'0');
+ ruc1 text; ruc2 text; base text; d int;
 BEGIN
+ -- RUC de prueba con dígito verificador válido (lo exige clients_tax_id_guard) y sin duplicar uno existente.
+ WHILE ruc1 IS NULL OR ruc2 IS NULL LOOP
+  base:='20'||lpad((floor(random()*1e8))::bigint::text,8,'0');
+  FOR d IN 0..9 LOOP
+   IF public.is_valid_ruc(base||d) AND NOT EXISTS(SELECT 1 FROM public.clients WHERE tax_id=base||d) AND (ruc1 IS NULL OR ruc1<>base||d) THEN
+    IF ruc1 IS NULL THEN ruc1:=base||d; ELSE ruc2:=base||d; END IF; EXIT;
+   END IF;
+  END LOOP;
+ END LOOP;
  IF has_function_privilege('anon','public.generate_tracking_portal_link(jsonb)','EXECUTE') OR has_function_privilege('anon','public.tracking_portal_scope_ids(uuid[],uuid[])','EXECUTE') THEN
   RAISE EXCEPTION 'CAJA C69 FAIL (T3): permisos de creación expuestos';
  END IF;
