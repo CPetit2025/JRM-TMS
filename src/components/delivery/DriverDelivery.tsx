@@ -31,7 +31,8 @@ export function DriverDelivery({ dispatchId, requestId, driverId, userId, guide,
       localStorage.setItem(routeQueueKey, JSON.stringify(points))
       // Primero guarda todas las fotos y la operación; nunca adelanta el estado local.
       const photos = await Promise.all(draft.files.map(asBase64))
-      saveOfflineAction('delivery_submit_driver', { dispatch_id: dispatchId, request_id: requestId, user_id: userId, photos_base64: photos, received_by: draft.receiver, guide: draft.guide, note: draft.note, captured_at: capturedAt }, draft.operation)
+      const packing = await Promise.all(draft.packingFiles.map(asBase64))
+      saveOfflineAction('delivery_submit_driver', { dispatch_id: dispatchId, request_id: requestId, user_id: userId, photos_base64: photos, packing_base64: packing, received_by: draft.receiver, guide: draft.guide, note: draft.note, captured_at: capturedAt }, draft.operation)
       setQueued(true)
       if (navigator.onLine) { await syncRoutePoints(); await syncOfflineActions() }
       await load(); await onChanged()
@@ -46,8 +47,8 @@ export function DriverDelivery({ dispatchId, requestId, driverId, userId, guide,
   }
   const correction = detail?.submissions[0]?.review?.reason
   return <div className="space-y-3">
-    <p className="text-sm font-semibold text-[#002855]">Guía de entrega obligatoria</p>
-    <p className="text-xs leading-5 text-slate-600">Adjunta la guía firmada por el cliente. El Supervisor de Transporte debe aprobarla para habilitar la siguiente etapa.</p>
+    <p className="text-sm font-semibold text-[#002855]">Guía de remisión y Packing List</p>
+    <p className="text-xs leading-5 text-slate-600">Adjunta la guía firmada por el cliente y, si el servicio lo tiene, el Packing List. El Supervisor de Transporte aprueba la guía para habilitar la siguiente etapa.</p>
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
     {!detail && !queued ? <p className="text-sm text-slate-500">Verificando conformidad… <button onClick={() => void load()} className="min-h-10 text-blue-700">Actualizar</button></p> : queued ? <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900"><p>Guía guardada en este dispositivo. Envío pendiente; el servicio continúa bloqueado.</p><p className="mt-1 text-xs">{readActionQueue().find(action => action.type === 'delivery_submit_driver' && action.payload.request_id === requestId)?.last_error || 'Se requiere conexión para confirmar la recepción.'}</p><button disabled={busy} onClick={() => void retry()} className="mt-2 min-h-11 rounded-lg border border-amber-300 px-3 font-semibold">Reintentar envío</button></div> : detail?.state === 'RECIBIDA' ? <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Guía recibida. Pendiente de validación del Supervisor de Transporte. La siguiente etapa se habilita al aprobarla.</p> : detail?.state === 'VALIDADA' ? <p className="text-sm text-emerald-700">Conformidad aprobada.</p> : <>
       {correction && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{conformityLabels[detail?.state || 'PENDIENTE']}: {correction}</p>}

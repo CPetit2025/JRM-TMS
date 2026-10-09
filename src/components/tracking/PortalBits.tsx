@@ -17,7 +17,7 @@ export function StatusPill({ tone }: { tone: PortalTone }) {
   </span>
 }
 
-/** Packing List (Documentario) y guía de remisión subida por el conductor (app o enlace). */
+/** Packing List y guía de remisión que sube el conductor (app o enlace); se conservan los Packing List históricos de Documentario. */
 export function PortalDocButtons({ row, access, emptyText = 'La guía aparece cuando el conductor la sube.' }: { row: PortalRow; access: { token: string; pin: string }; emptyText?: string }) {
   const [busy, setBusy] = useState('')
   const open = async (key: string, target: Parameters<typeof openPortalDocument>[1]) => {
@@ -25,12 +25,20 @@ export function PortalDocButtons({ row, access, emptyText = 'La guía aparece cu
     try { await openPortalDocument(access, target) } catch (e) { toast.error(e instanceof Error ? e.message : 'Documento no disponible') } finally { setBusy('') }
   }
   const packing = (row.documents || []).filter(d => d.type === 'PACKING_LIST')
+  const driverPacking = Math.min(row.packing_photos || 0, 5)
   const guides = Math.min(row.signed_photos || 0, 5)
   return <div className="flex flex-wrap items-center gap-1.5">
     {packing.map(d => <button key={d.id} type="button" disabled={busy === d.id} onClick={() => void open(d.id, { kind: 'DOC', id: d.id })} title={d.name || 'Packing List'}
       className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-[#002855] hover:bg-slate-50 disabled:opacity-60">
       {busy === d.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}Packing List
     </button>)}
+    {Array.from({ length: driverPacking }, (_, n) => {
+      const key = `${row.dispatch_id}-${row.request_id}-pk${n}`
+      return <button key={key} type="button" disabled={busy === key} onClick={() => void open(key, { kind: 'PACKING', dispatchId: row.dispatch_id, requestId: row.request_id, index: n + 1 })}
+        className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-[#002855] hover:bg-slate-50 disabled:opacity-60">
+        {busy === key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}Packing List{driverPacking > 1 ? ` ${n + 1}` : ''}
+      </button>
+    })}
     {Array.from({ length: guides }, (_, n) => {
       const key = `${row.dispatch_id}-${row.request_id}-${n}`
       return <button key={key} type="button" disabled={busy === key} onClick={() => void open(key, { kind: 'FIRMA', dispatchId: row.dispatch_id, requestId: row.request_id, index: n + 1 })}
@@ -38,6 +46,6 @@ export function PortalDocButtons({ row, access, emptyText = 'La guía aparece cu
         {busy === key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileCheck2 className="h-3.5 w-3.5" />}Guía de remisión{guides > 1 ? ` ${n + 1}` : ''}{row.guide_number && n === 0 ? ` ${row.guide_number}` : ''}
       </button>
     })}
-    {!packing.length && !guides && <span className="text-xs text-slate-400">{emptyText}</span>}
+    {!packing.length && !driverPacking && !guides && <span className="text-xs text-slate-400">{emptyText}</span>}
   </div>
 }

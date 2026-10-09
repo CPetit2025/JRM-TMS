@@ -302,6 +302,8 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   assert.equal(sql(user(16)+`SELECT delivery_can_read('${id(54)}')`),'f')
   assert.equal(pub(`delivery_portal_login('AUTO-456','${issued.code}','${'d'.repeat(64)}')`).success,false)
   console.log('PASS: scheduling auto-issues scoped access; plate changes rotate credentials; signed packing requires documentary role, auditor/file/signature and covers all stops before departure.')
+  // Proceso vigente: el conductor carga Packing List y guía; la salida ya no se bloquea por documentos.
+  sql(installed('supabase/migrations/20261010010000_documentos_conductor_salida_libre.sql','dispatch_docs_detect_changes'))
   console.log('PASS: assistant cannot upload a guide or note-only cargo; drivers/providers must submit guide number, receiver and real photos; only the supervisor approves; all-stop receipt is recorded once.')
   // Run the exact production documentary regression with real scheduling/budget functions and active fleet indices.
   sql(`CREATE TABLE auth.users(id uuid PRIMARY KEY); INSERT INTO auth.users SELECT id FROM profiles;

@@ -1,5 +1,5 @@
 -- Partida bruta: 1250 deja 1000 operativos (80%); se conserva el escenario de saldo de esta regresión.
--- Pruebas C9 — Responsabilidad documentaria: Packing List firmado por el auditor, Nota de Despacho, bloqueo de salida,
+-- Pruebas C9 — Responsabilidad documentaria: Packing List firmado por el auditor, Nota de Despacho, salida libre de documentos,
 -- reemisión, anulación, bandeja) y validación de saldo de schedule_dispatch con la reserva de F2.
 -- Termina en error para forzar ROLLBACK: "CAJA C9 PASS/FAIL".
 --   npx supabase db query --linked -f supabase/tests/caja_c9_documentario.test.sql
@@ -25,6 +25,14 @@ BEGIN
   UPDATE public.dispatches SET status = p_status WHERE id = p_id;
   RETURN NULL;
 EXCEPTION WHEN OTHERS THEN RETURN SQLERRM;
+END $$;
+
+-- Prueba la salida y la revierte siempre: devuelve el error o NULL si la salida está permitida.
+CREATE FUNCTION pg_temp.can_depart(p_id uuid, p_status text) RETURNS text LANGUAGE plpgsql AS $$
+BEGIN
+  UPDATE public.dispatches SET status = p_status WHERE id = p_id;
+  RAISE EXCEPTION 'C9_SALIDA_PERMITIDA';
+EXCEPTION WHEN OTHERS THEN RETURN NULLIF(SQLERRM, 'C9_SALIDA_PERMITIDA');
 END $$;
 
 -- Temporary fixture stores a real object record; signed packing is registered through the actual role-checked RPC.
@@ -114,28 +122,29 @@ BEGIN
   THEN v_pass:=v_pass+1; ELSE v_fail:=v_fail||('T1 responsabilidades: '||concat_ws(' | ',v_err,v_err2,v_err3,v_err4,v_err5)); END IF;
   PERFORM pg_temp.as_user(NULL);
 
-  -- T2: signed packing must cover every stop; other spreadsheets never replace the signed evidence.
-  v_err:=pg_temp.try_depart(d1,'EN RUTA');
+  -- T2: la salida ya no espera documentos; el Packing List firmado, si se usa, debe cubrir cada parada.
+  v_err:=pg_temp.can_depart(d1,'EN RUTA');
   PERFORM pg_temp.as_user(v_doc);
   v_err2:=public.confirm_dispatch_documents(d1)->>'error';
   v_err3:=concat_ws(' | ',pg_temp.doc(d1,r2,'PACKING_LIST',NULL,NULL),
     pg_temp.doc(d1,NULL,'OTRO',NULL,NULL,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
   r:=public.confirm_dispatch_documents(d1);
   PERFORM pg_temp.as_user(NULL);
-  IF v_err LIKE 'Documentos pendientes%' AND v_err2 LIKE '%ZZ-C9-R2%' AND NULLIF(v_err3,'') IS NULL AND (r->>'success')::boolean
+  IF v_err IS NULL AND v_err2 LIKE '%ZZ-C9-R2%' AND NULLIF(v_err3,'') IS NULL AND (r->>'success')::boolean
     AND (SELECT docs_ready_at IS NOT NULL AND docs_ready_by=v_doc FROM public.dispatches WHERE id=d1)
     AND (SELECT count(*)=3 FROM public.dispatch_documents WHERE dispatch_id=d1 AND voided_at IS NULL)
   THEN v_pass:=v_pass+1; ELSE v_fail:=v_fail||('T2 salida: '||concat_ws(' | ',v_err,v_err2,v_err3,r::text)); END IF;
 
-  -- T3: cambio de placa o de paradas después de confirmar → reemisión y bloqueo hasta reconfirmar
+  -- T3: cambio de placa o de paradas después de confirmar → aviso de reemisión, sin bloquear la salida
   UPDATE public.dispatches SET vehicle_plate = 'ZZC9B' WHERE id = d1;
-  v_err := pg_temp.try_depart(d1, 'EN RUTA');
+  v_err := pg_temp.can_depart(d1, 'EN RUTA');
+  v_err2 := (SELECT docs_reissue_reason FROM public.dispatches WHERE id = d1 AND docs_reissue);
   PERFORM pg_temp.as_user(v_doc);
   r := public.confirm_dispatch_documents(d1);
   PERFORM pg_temp.as_user(NULL);
   v_n := (SELECT count(*) FROM public.dispatches WHERE id = d1 AND NOT docs_reissue);
   DELETE FROM public.dispatch_requests WHERE dispatch_id = d1 AND transport_request_id = r2;
-  IF v_err LIKE 'Documentos por reemitir%Cambió la placa ZZC9A → ZZC9B%' AND (r->>'success')::boolean AND v_n = 1
+  IF v_err IS NULL AND v_err2 LIKE 'Cambió la placa ZZC9A → ZZC9B%' AND (r->>'success')::boolean AND v_n = 1
      AND (SELECT docs_reissue AND docs_reissue_reason = 'Se retiró una parada' FROM public.dispatches WHERE id = d1)
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T3 reemisión: ' || COALESCE(v_err, '∅') || ' | ' || COALESCE(r::text, '∅') || ' n=' || v_n); END IF;
   INSERT INTO public.dispatch_requests (dispatch_id, transport_request_id, status) VALUES (d1, r2, 'PROGRAMADO');

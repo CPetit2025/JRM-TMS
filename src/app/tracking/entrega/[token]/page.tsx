@@ -39,6 +39,7 @@ export default function EntregaTerceroPage() {
     const body = new FormData(); body.set('accion', 'entrega'); body.set('request_id', id); body.set('operation_id', draft.operation)
     body.set('recibido_por', draft.receiver); body.set('guia', draft.guide); body.set('nota', draft.note)
     draft.files.forEach(file => body.append('foto', file))
+    draft.packingFiles.forEach(file => body.append('packing', file))
     await send(body); setSelected(null)
     setReceipt('Guía recibida. Pendiente de validación del Supervisor de Transporte. El acceso a esta entrega queda bloqueado; solo una observación o rechazo habilita corregirla.')
   }
@@ -46,7 +47,7 @@ export default function EntregaTerceroPage() {
   return <div className="min-h-screen bg-slate-50 pb-10">
     <ProviderBrand />
     <main className="mx-auto max-w-3xl space-y-5 px-5 py-8 sm:px-8">
-      <div><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Conformidad de entrega</p><h1 className="mt-2 text-2xl font-bold text-[#002855] sm:text-3xl">{d?.numero || 'Tu servicio de transporte'}</h1><p className="mt-2 text-sm leading-6 text-slate-600">Este enlace es exclusivo para adjuntar la guía de remisión firmada que acredita la recepción en destino de cada entrega. El Supervisor de Transporte de JRM revisará tu sustento.</p></div>
+      <div><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Conformidad de entrega</p><h1 className="mt-2 text-2xl font-bold text-[#002855] sm:text-3xl">{d?.numero || 'Tu servicio de transporte'}</h1><p className="mt-2 text-sm leading-6 text-slate-600">Este enlace es exclusivo para adjuntar la guía de remisión firmada que acredita la recepción en destino de cada entrega y, si el servicio lo tiene, el Packing List. El Supervisor de Transporte de JRM revisará tu sustento.</p></div>
       {receipt && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{receipt}</p>}
       {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {!info ? <Loader2 className="mx-auto h-7 w-7 animate-spin" /> : !info.success || !d ? <div className="rounded-xl border bg-white p-5 text-sm text-slate-600"><p>{info.error || 'Acceso no disponible.'}</p><button className="mt-3 min-h-10 text-blue-700" onClick={() => setVersion(v => v + 1)}>Actualizar</button><Link href="/tracking/entregas" className="ml-4 text-blue-700">Consultar por placa</Link></div> : <>

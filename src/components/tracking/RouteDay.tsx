@@ -24,7 +24,7 @@ export function RouteDay({ rows, day, onDay, access, refreshedAt, error, onRefre
       .sort((a, b) => new Date(a[0].scheduled_departure).getTime() - new Date(b[0].scheduled_departure).getTime())
   }, [rows, day])
   const stops = routes.flat()
-  const docs = stops.reduce((n, s) => n + (s.documents || []).filter(d => d.type === 'PACKING_LIST').length + Math.min(s.signed_photos || 0, 5), 0)
+  const docs = stops.reduce((n, s) => n + (s.documents || []).filter(d => d.type === 'PACKING_LIST').length + Math.min(s.packing_photos || 0, 5) + Math.min(s.signed_photos || 0, 5), 0)
   const delivered = stops.filter(s => ['ENTREGADO', 'LIQUIDADO', 'CERRADO'].includes(s.state)).length
 
   return <div className="space-y-4">
@@ -74,12 +74,12 @@ export function RouteDay({ rows, day, onDay, access, refreshedAt, error, onRefre
               </div>
               <p className="min-w-0 text-sm text-slate-700"><span className="block truncate" title={s.delivery_address}>{s.delivery_address}</span>{s.guide_number && <span className="text-xs text-slate-500">Guía {s.guide_number}</span>}</p>
               <span className="w-fit"><StatusPill tone={portalStatus(s)} /></span>
-              <PortalDocButtons row={s} access={access} emptyText={s.documents_state === 'NO_REQUERIDO' ? 'Sin documentos requeridos' : 'Documentos en preparación'} />
+              <PortalDocButtons row={s} access={access} emptyText="El conductor sube la guía y el Packing List al entregar." />
             </li>
           })}
         </ol>
       </section>
     })}
-    <p className="text-xs text-slate-500">Los documentos se abren en una pestaña nueva con un enlace temporal. La guía de remisión aparece cuando el conductor la sube desde el app o el enlace.</p>
+    <p className="text-xs text-slate-500">Los documentos se abren en una pestaña nueva con un enlace temporal. La guía de remisión y el Packing List aparecen cuando el conductor los sube desde el app o el enlace.</p>
   </div>
 }

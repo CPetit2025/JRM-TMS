@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
-// Portal público de seguimiento: entrega guías de remisión, Packing List y fotos de la guía firmada validada.
+// Portal público de seguimiento: entrega el Packing List y la guía de remisión que sube el conductor (app o enlace).
 // La base valida el enlace, el código (con límite de intentos) y que el archivo pertenezca al alcance autorizado
 // (get_public_tracking_document, solo rol de servicio); aquí se firma una URL de corta duración.
 export const maxDuration = 15
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   const requestId = body.request_id ?? null
   const index = body.index ?? 1
   if (typeof token !== 'string' || !UUID.test(token) || typeof pin !== 'string' || !/^\d{8}$/.test(pin)
-    || (kind !== 'DOC' && kind !== 'FIRMA') || typeof id !== 'string' || !UUID.test(id)
+    || (kind !== 'DOC' && kind !== 'FIRMA' && kind !== 'PACKING') || typeof id !== 'string' || !UUID.test(id)
     || (requestId !== null && (typeof requestId !== 'string' || !UUID.test(requestId)))
     || typeof index !== 'number' || !Number.isInteger(index) || index < 1 || index > 5) {
     return json({ success: false, error: 'Solicitud no válida' }, 400)

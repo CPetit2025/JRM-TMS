@@ -25,7 +25,7 @@ export function DeliveryReview({ row, onClose, onChanged }: { row: DeliveryRevie
       const value = data as DeliveryDetail
       setDetail(value)
       const signed: Record<string, string> = {}
-      for (const submission of value.submissions) for (const path of submission.photos) {
+      for (const submission of value.submissions) for (const path of [...submission.photos, ...(submission.packing_photos || [])]) {
         const { data } = await supabase.storage.from('driver_evidence').createSignedUrl(path, 300)
         if (data?.signedUrl) signed[path] = data.signedUrl
       }
@@ -63,6 +63,10 @@ export function DeliveryReview({ row, onClose, onChanged }: { row: DeliveryRevie
         <div className="flex flex-wrap gap-2">{submission.photos.map(photo => urls[photo] ? <a key={photo} href={urls[photo]} target="_blank" rel="noreferrer" className="block h-28 w-40 overflow-hidden rounded-lg border">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={urls[photo]} alt="Guía de entrega; abrir imagen completa" className="h-full w-full object-contain" /></a> : <span key={photo} className="rounded border p-3 text-sm text-slate-500">Fotografía no disponible</span>)}</div>
+        {(submission.packing_photos || []).length > 0 && <><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Packing List</p>
+        <div className="flex flex-wrap gap-2">{(submission.packing_photos || []).map(photo => urls[photo] ? <a key={photo} href={urls[photo]} target="_blank" rel="noreferrer" className="block h-28 w-40 overflow-hidden rounded-lg border">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={urls[photo]} alt="Packing List; abrir imagen completa" className="h-full w-full object-contain" /></a> : <span key={photo} className="rounded border p-3 text-sm text-slate-500">Fotografía no disponible</span>)}</div></>}
         {submission.review && <p className="rounded-lg bg-slate-50 p-2 text-sm">{submission.review.decision} · {deliveryTime(submission.review.reviewed_at)}{submission.review.reason && ` · ${submission.review.reason}`}</p>}
       </article>)}
       {detail.can_review && detail.state === 'RECIBIDA' && <div className="space-y-3 border-t pt-4">
