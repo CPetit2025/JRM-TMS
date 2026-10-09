@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Building2, CalendarDays, Check, Copy, ExternalLink, KeyRound, Link2, Loader2, Mail, MapPinned, MessageCircle, Plus, RefreshCw, Route, Search, ShieldCheck, Users, XCircle } from 'lucide-react'
+import { Building2, CalendarDays, Check, Copy, ExternalLink, KeyRound, Link2, Loader2, Mail, MessageCircle, Plus, RefreshCw, Route, Search, ShieldCheck, Users, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/modal'
@@ -10,7 +10,7 @@ import { TrackingEmailComposer } from './TrackingEmailComposer'
 import { otKind } from '@/lib/tracking-portal'
 
 // Accesos de seguimiento para clientes: quién recibe el enlace, qué puede consultar (un cliente completo, OT
-// específicas o toda la sede) y qué verá (calendario, ruta del día con guías y Packing List, GPS). Solo lectura.
+// específicas o toda la sede) y qué verá (calendario, ruta del día con guías y Packing List). Solo lectura.
 
 type Site = { id: string; name: string }
 type Client = { id: string; name: string }
@@ -29,7 +29,6 @@ const SCOPES: { key: Scope; title: string; text: string; icon: typeof Users }[] 
 const VIEWS = [
   { icon: CalendarDays, title: 'Calendario', text: 'OT, subcontratos, errores y órdenes OS / OC / RQ por fecha, y el registro de solicitudes con su hora de creación.' },
   { icon: Route, title: 'Ruta del día', text: 'Unidad, conductor y paradas, con Packing List y la guía de remisión cuando el conductor la sube.' },
-  { icon: MapPinned, title: 'Monitoreo GPS', text: 'Posición de las rutas cuyas paradas están todas dentro del acceso.' },
 ]
 const fmt = (value: string) => new Date(value).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short' })
 
@@ -94,7 +93,7 @@ export function TrackingPortalManager({ open, onClose }: { open: boolean; onClos
   }, [open, refresh])
 
   const url = (token: string) => `${window.location.origin}/tracking/${token}`
-  const message = (value: Credential) => `JRM · Seguimiento de transporte${value.label ? ` para ${value.label}` : ''}\nEnlace: ${url(value.token)}\nCódigo de acceso: ${value.pin}\nIncluye el calendario de servicios, la ruta del día con guías y Packing List, y el monitoreo GPS. El acceso permanece activo hasta que JRM lo revoque.`
+  const message = (value: Credential) => `JRM · Seguimiento de transporte${value.label ? ` para ${value.label}` : ''}\nEnlace: ${url(value.token)}\nCódigo de acceso: ${value.pin}\nIncluye el calendario de servicios, la ruta del día con guías y Packing List. El acceso permanece activo hasta que JRM lo revoque.`
   const copy = async (text: string, done = 'Copiado') => {
     try { await navigator.clipboard.writeText(text); toast.success(done) }
     catch { toast.error('No se pudo copiar. Selecciona el texto y cópialo manualmente.') }
