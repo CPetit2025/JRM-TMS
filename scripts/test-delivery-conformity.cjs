@@ -548,6 +548,34 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   const shortCodeBox=query(read('supabase/tests/caja_c71_provider_short_code.test.sql'))
   assert.match(shortCodeBox.stderr,/CAJA C71 PASS/)
   console.log('PASS: C71 executes the real issuer, 20 renewals, four-character codes, uniqueness and private permissions, rolled back.')
+  // Install the real contract creation and family funding engines against the production-shaped fixture.
+  sql(`CREATE TYPE public.contract_type AS ENUM ('CONTRATO','OT_INDEPENDIENTE','SUBCONTRATO','ERROR');
+    ALTER TABLE contract_budgets ADD COLUMN allocated_usd numeric DEFAULT 0;
+    CREATE FUNCTION primary_site_id() RETURNS uuid LANGUAGE sql AS $$ SELECT site_id FROM vehicles WHERE site_id IS NOT NULL LIMIT 1 $$;
+    CREATE VIEW public.vw_contracts_dashboard AS SELECT c.*, b.allocated_pen,b.reserved_pen,b.consumed_pen,b.balance_pen FROM contracts c LEFT JOIN contract_budgets b ON b.contract_id=c.id AND b.concept='PARTIDA_TRANSPORTE' WHERE c.parent_contract_id IS NULL;`)
+  const ensureSource=read('supabase/migrations/20260923201000_audit_priority_two_business.sql'), ensureStart=ensureSource.indexOf('CREATE OR REPLACE FUNCTION public.ensure_transport_budget(')
+  sql(ensureSource.slice(ensureStart,ensureSource.indexOf('$$ LANGUAGE plpgsql;',ensureStart)+20)+`
+    CREATE TRIGGER ensure_transport_budget AFTER INSERT ON contracts FOR EACH ROW EXECUTE FUNCTION ensure_transport_budget();`)
+  sql(read('supabase/migrations/20260930120000_alta_contrato.sql'))
+  sql(`ALTER TABLE contract_services ADD COLUMN hours numeric,ADD COLUMN referral_guide text;`)
+  sql(installed('supabase/migrations/20260930130000_gastos_ot_regularizacion.sql','register_contract_service'))
+  // Historical family exists before applying the migration: allocations and expenses must survive.
+  sql(`INSERT INTO contracts(id,code,type,status,site_id,parent_contract_id) VALUES
+    ('${id(721)}','ZZ-C75-BACKFILL','CONTRATO','ACTIVO','${id(21)}',NULL),
+    ('${id(722)}','ZZ-C75-BACKFILL-S01','SUBCONTRATO','ACTIVO','${id(21)}','${id(721)}'),
+    ('${id(723)}','ZZ-C75-BACKFILL-E014','ERROR','ACTIVO','${id(21)}','${id(721)}');
+    UPDATE contract_budgets SET allocated_pen=1000,reserved_pen=60 WHERE contract_id='${id(721)}';
+    INSERT INTO contract_budgets(contract_id,concept,allocated_pen,reserved_pen,consumed_pen) VALUES
+    ('${id(722)}','PARTIDA_TRANSPORTE',200,30,0),('${id(723)}','PARTIDA_TRANSPORTE',300,0,25);`)
+  sql(read('supabase/migrations/20261010060000_transport_family_budget.sql'))
+  assert.equal(sql(`SELECT allocated_pen||':'||own_allocated_pen||':'||balance_pen FROM contract_budgets WHERE contract_id='${id(721)}' AND concept='PARTIDA_TRANSPORTE'`),'1500:1000:1085.00')
+  assert.equal(sql(`SELECT family_reserved_pen||':'||family_consumed_pen FROM vw_contracts_dashboard WHERE id='${id(721)}'`),'90:25')
+
+  const familyBox=query(read('supabase/tests/caja_c75_transport_family_budget.test.sql'))
+  assert.match(familyBox.stderr,/CAJA C75 PASS/,familyBox.stderr)
+  const familyRegression=query(read('supabase/tests/caja_c50_ruta_mixta_partida_flota.test.sql'))
+  assert.match(familyRegression.stderr,/CAJA C50 PASS/,familyRegression.stderr)
+  console.log('PASS: C75 real contract creation, family allocation, 80% limit, historical child spend, nested errors, edits and no duplicate allocations; C50 mixed-route regression.')
 } catch(error) {
   console.error(error.message)
   console.error('::error title=Delivery conformity validation::' + error.message.replaceAll('%','%25').replaceAll('\n','%0A'))

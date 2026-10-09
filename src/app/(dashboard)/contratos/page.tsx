@@ -40,6 +40,7 @@ interface Contract {
   budget?: {
     allocated_usd: number
     allocated_pen: number
+    own_allocated_pen: number
     balance_pen: number
   }
 }
@@ -204,6 +205,7 @@ export default function ContratosPage() {
         budget: {
           allocated_usd: c.allocated_usd,
           allocated_pen: c.allocated_pen,
+          own_allocated_pen: c.own_allocated_pen,
           balance_pen: c.balance_pen
         }
       }))
@@ -271,7 +273,7 @@ export default function ContratosPage() {
     window.dispatchEvent(new CustomEvent('jrm:context', { detail: { contractId: contract.id } }))
     setEditingContract(contract)
     setEditFormData({
-      budget_pen: contract.budget?.allocated_pen?.toString() || '',
+      budget_pen: contract.budget?.own_allocated_pen?.toString() || '',
       total_weight_kg: contract.total_weight_kg ? (Number(contract.total_weight_kg) / 1000).toString() : '',
       total_volume_m3: contract.total_volume_m3?.toString() || '',
       destination_department: contract.destination_department || '',
@@ -310,7 +312,7 @@ export default function ContratosPage() {
           // Update existing
           const { error: budgetError } = await supabase
             .from('contract_budgets')
-            .update({ allocated_pen: newBudget })
+            .update({ own_allocated_pen: newBudget })
             .eq('contract_id', editingContract.id)
             .eq('concept', 'PARTIDA_TRANSPORTE')
           if (budgetError) throw budgetError
@@ -631,7 +633,7 @@ export default function ContratosPage() {
                 <th className="px-4 py-3 font-semibold">Cliente y destino</th>
                 <th className="hidden px-4 py-3 text-right font-semibold lg:table-cell">Carga</th>
                 <th className="hidden px-4 py-3 font-semibold md:table-cell">Alta</th>
-                <th className="px-4 py-3 font-semibold">Partida de transporte</th>
+                <th className="px-4 py-3 font-semibold">Partida consolidada</th>
                 <th className="px-4 py-3 font-semibold">Estado</th>
                 {role === 'admin' && <th className="hidden px-4 py-3 font-semibold xl:table-cell">Responsable</th>}
                 <th className="sticky right-0 z-40 bg-slate-50 px-2 py-3"><span className="sr-only">Acciones</span></th>
@@ -866,7 +868,7 @@ export default function ContratosPage() {
               <h3 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Presupuesto y Carga</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Partida de transporte bruta (S/) · 80% para operación</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Partida propia de este registro (S/) · 80% para operación</label>
                   <input
                     type="number"
                     step="0.01"
@@ -992,7 +994,7 @@ export default function ContratosPage() {
               <h3 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Presupuesto y Carga</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Partida de transporte bruta (S/) · 80% para operación</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Partida propia de este registro (S/) · 80% para operación</label>
                   <input
                     type="number"
                     step="0.01"

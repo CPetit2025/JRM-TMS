@@ -46,14 +46,14 @@ export function ContractQuickView({ contract, responsible, isAdmin, onClose, onE
     const run = async () => {
       setData(null)
       const [b, c, r] = await Promise.all([
-        supabase.from('contract_budgets').select('allocated_pen, reserved_pen, consumed_pen, balance_pen')
-          .eq('contract_id', contractId).eq('concept', 'PARTIDA_TRANSPORTE').maybeSingle(),
+        supabase.from('vw_contracts_dashboard').select('allocated_pen, family_reserved_pen, family_consumed_pen, balance_pen')
+          .eq('id', contractId).maybeSingle(),
         supabase.from('contracts').select('id, code, type, status').eq('parent_contract_id', contractId).order('code'),
         supabase.from('transport_requests').select('id, request_number, status, required_date, delivery_district')
           .eq('contract_id', contractId).order('created_at', { ascending: false }).limit(5),
       ])
       if (cancel) return
-      setData({ budget: (b.data as Budget) || null, children: (c.data || []) as Child[], requests: (r.data || []) as Req[] })
+      setData({ budget: b.data ? { allocated_pen: b.data.allocated_pen, reserved_pen: b.data.family_reserved_pen, consumed_pen: b.data.family_consumed_pen, balance_pen: b.data.balance_pen } as Budget : null, children: (c.data || []) as Child[], requests: (r.data || []) as Req[] })
     }
     void run()
     return () => { cancel = true }
@@ -97,7 +97,7 @@ export function ContractQuickView({ contract, responsible, isAdmin, onClose, onE
                 <div className="bg-amber-400" style={{ width: `${pct(budget.reserved_pen)}%` }} title="Reservado" />
               </div>
               <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
-                <div><span className="text-slate-500">Asignado</span><div className="font-semibold tabular-nums text-slate-800">{money(budget.allocated_pen)}</div></div>
+                <div><span className="text-slate-500">Partida consolidada</span><div className="font-semibold tabular-nums text-slate-800">{money(budget.allocated_pen)}</div></div>
                 <div><span className="inline-flex items-center gap-1 text-slate-500"><span className="h-2 w-2 rounded-full bg-amber-400" />Reservado</span><div className="font-semibold tabular-nums text-slate-800">{money(budget.reserved_pen)}</div></div>
                 <div><span className="inline-flex items-center gap-1 text-slate-500"><span className="h-2 w-2 rounded-full bg-slate-500" />Consumido</span><div className="font-semibold tabular-nums text-slate-800">{money(budget.consumed_pen)}</div></div>
               </div>

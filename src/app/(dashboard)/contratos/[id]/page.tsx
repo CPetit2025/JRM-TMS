@@ -361,7 +361,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
                   <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
                     <tr>
                       <th className="px-4 py-3 font-semibold">Código</th>
-                      <th className="px-4 py-3 font-semibold text-right">Penalidad (S/)</th>
+                      <th className="px-4 py-3 font-semibold text-right">Partida de transporte (S/)</th>
                       <th className="px-4 py-3 font-semibold">Estado</th>
                     </tr>
                   </thead>
@@ -370,7 +370,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
                       <tr key={child.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3 font-semibold text-slate-900">{child.code}</td>
                         <td className="px-4 py-3 font-medium text-red-600 text-right">
-                          - S/ {child.allocated_pen?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}
+                          S/ {child.allocated_pen?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}
                         </td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-1 rounded-full text-[10px] font-semibold ${child.status === 'ACTIVO' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-700'}`}>
@@ -391,10 +391,11 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
             <h3 className="text-sm font-semibold text-slate-800 mb-4">Resumen Presupuestal</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                <span className="block text-xs font-medium text-slate-500 mb-1">Partida bruta (100%)</span>
+                <span className="block text-xs font-medium text-slate-500 mb-1">Partida consolidada bruta (100%)</span>
                 <span className="text-xl font-bold text-slate-800">
                   S/ {contract.allocated_pen?.toLocaleString('en-US', {minimumFractionDigits: 2}) || '0.00'}
                 </span>
+                <p className="mt-1 text-xs text-slate-500">OT madre: S/ {Number(contract.own_allocated_pen || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })} · Subcontratos y errores: S/ {Math.max(Number(contract.allocated_pen || 0) - Number(contract.own_allocated_pen || 0), 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</p>
               </div>
               <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                 <span className="block text-xs text-blue-700">Disponible para operación (80%)</span>
@@ -404,7 +405,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
               <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
                 <span className="block text-xs font-medium text-orange-600 mb-1">Monto Reservado (En tránsito)</span>
                 <span className="text-xl font-bold text-orange-700">
-                  S/ {contract.reserved_pen?.toLocaleString('en-US', {minimumFractionDigits: 2}) || '0.00'}
+                  S/ {(contract.family_reserved_pen ?? contract.reserved_pen)?.toLocaleString('en-US', {minimumFractionDigits: 2}) || '0.00'}
                 </span>
               </div>
               <div className="bg-emerald-50 p-4 rounded-lg border border-emerald-200">
@@ -564,7 +565,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  {modalType === 'SUBCONTRATO' ? 'Partida de Transporte Inicial (S/)' : 'Monto de Penalidad (S/)'}
+                  Partida de transporte bruta (S/) · se suma a la OT madre
                 </label>
                 <input
                   type="number"
