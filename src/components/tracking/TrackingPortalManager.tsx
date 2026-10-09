@@ -1,11 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Building2, CalendarDays, Check, Copy, ExternalLink, KeyRound, Link2, Loader2, MapPinned, MessageCircle, Plus, RefreshCw, Route, Search, ShieldCheck, Users, XCircle } from 'lucide-react'
+import { Building2, CalendarDays, Check, Copy, ExternalLink, KeyRound, Link2, Loader2, Mail, MapPinned, MessageCircle, Plus, RefreshCw, Route, Search, ShieldCheck, Users, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/modal'
 import { DataTable } from '@/components/ui/data-table'
+import { TrackingEmailComposer } from './TrackingEmailComposer'
 import { otKind } from '@/lib/tracking-portal'
 
 // Accesos de seguimiento para clientes: quién recibe el enlace, qué puede consultar (un cliente completo, OT
@@ -158,6 +159,7 @@ export function TrackingPortalManager({ open, onClose }: { open: boolean; onClos
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => void copy(message(credential), 'Enlace, código e instrucciones copiados')} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white"><Copy className="h-4 w-4" />Copiar mensaje</button>
+          <TrackingEmailShare key={`${credential.token}:${credential.pin}`} label={credential.label || "Operaciones de distribución"} link={url(credential.token)} pin={credential.pin} />
           <a href={`https://wa.me/?text=${encodeURIComponent(message(credential))}`} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"><MessageCircle className="h-4 w-4" />Compartir por WhatsApp</a>
           <a href={url(credential.token)} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-[#002855]"><ExternalLink className="h-4 w-4" />Ver como el cliente</a>
           <button onClick={resetForm} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700"><Plus className="h-4 w-4" />Crear otro acceso</button>
@@ -261,4 +263,12 @@ export function TrackingPortalManager({ open, onClose }: { open: boolean; onClos
       </section>}
     </div>
   </Modal>
+}
+
+function TrackingEmailShare(props: { label: string; link: string; pin: string }) {
+  const [expanded, setExpanded] = useState(false)
+  return <>
+    <button type="button" onClick={() => setExpanded(p => !p)} aria-expanded={expanded} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-[#002855]"><Mail className="h-4 w-4" />Compartir por correo</button>
+    {expanded && <div className="order-last w-full rounded-xl border border-slate-200 bg-white p-4 sm:p-5"><TrackingEmailComposer {...props} onBack={() => setExpanded(false)} /></div>}
+  </>
 }
