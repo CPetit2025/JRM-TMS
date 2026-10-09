@@ -8,7 +8,7 @@ END $legacy_policy$;
 -- CAJA C41 — Despacho tercerizado (unidad de un transportista que no usa el app).
 --   T1 sin permiso no se programa; T2 Despacho programa con un tercero: sin conductor propio, placa escrita, flete
 --   reservado en la partida a nombre del proveedor y solicitudes asignadas; T3 la misma placa no toma dos viajes
---   activos y la empresa propia no se programa como tercero; T4 la salida exige la guía confirmada y guarda la hora
+--   activos y la empresa propia no se programa como tercero; T4 la salida no depende de documentos y guarda la hora
 --   real; T5 la entrega exige foto y deja la constancia en la galería del despacho; T6 el enlace del chofer muestra
 --   el viaje sin costos, rechaza fotos ajenas y exige aprobación antes de pasar a ENTREGADO; T7 "Cerrar ruta" consume la
 --   partida y el enlace deja de valer; T8 el desempeño por proveedor cuenta el viaje y sus entregas.
@@ -119,18 +119,13 @@ BEGIN
   PERFORM pg_temp.as_user(NULL);
   IF v_err IS NULL THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T3 ' || v_err); END IF;
 
-  -- T4 salida: primero exige Packing List firmado confirmado; luego guarda la hora real
+  -- T4 salida: no depende de documentos (el conductor carga Packing List y guía); guarda la hora real
   PERFORM pg_temp.as_user(v_desp);
   BEGIN r := public.tercero_registrar_salida(d, v_at); v_err := r ->> 'error';
   EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
   END;
   PERFORM pg_temp.as_user(NULL);
-  INSERT INTO storage.objects(bucket_id,name,metadata) VALUES('dispatch_documents',d::text||'/packing.pdf','{"mimetype":"application/pdf"}');
-  INSERT INTO public.dispatch_documents(dispatch_id,doc_type,file_path,file_name,mime_type,size_bytes,auditor_name,auditor_signed_date,auditor_signature_confirmed)
-  VALUES(d,'PACKING_LIST',d::text||'/packing.pdf','packing.pdf','application/pdf',1000,'Auditor C41',current_date,true);
-  UPDATE public.dispatches SET docs_ready_at=now() WHERE id=d; -- fixture: signed packing confirmed before departure
-  PERFORM pg_temp.as_user(v_desp); r := public.tercero_registrar_salida(d, v_at); PERFORM pg_temp.as_user(NULL);
-  IF v_err LIKE 'Documentos pendientes%' AND (r ->> 'success')::boolean
+  IF v_err IS NULL AND (r ->> 'success')::boolean
      AND EXISTS (SELECT 1 FROM public.dispatches x WHERE x.id = d AND x.status = 'EN_CURSO' AND x.tercero_salida_at = v_at)
      AND (to_regclass('public.kpi_dispatch_log') IS NULL
           OR EXISTS (SELECT 1 FROM public.kpi_dispatch_log l WHERE l.dispatch_id = d AND l.estado_nuevo = 'EN_CURSO' AND l.at = v_at))

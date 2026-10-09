@@ -65,7 +65,7 @@ export function TerceroFields({ value, onChange }: { value: TerceroForm; onChang
       </div>
       <p className="text-[11px] text-slate-500 leading-snug">
         Sin checklist pre-ruta ni GPS: el avance se registra desde Despacho o con el enlace para el chofer. La guía de remisión
-        firmada la sube el proveedor desde su portal después de entregar. El Asistente Documentario confirma el Packing List firmado por el auditor antes de salir. El acceso se genera al programar y se comparte desde «Acceso tercero».
+        firmada y el Packing List los sube el proveedor desde su portal al entregar; la salida no depende de documentos. El acceso se genera al programar y se comparte desde «Acceso tercero».
       </p>
     </div>
   )
@@ -192,7 +192,6 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
           {d.estado === 'PROGRAMADO' && (
             <div className="border rounded-xl p-4 space-y-2">
               <h4 className="font-semibold text-slate-800 flex items-center gap-2"><PlayCircle className="w-4 h-4 text-blue-600" />Registrar salida</h4>
-              {!d.docs_listos && <p className="text-xs text-amber-700">El Packing List firmado por el auditor aún no está confirmado. El Auditor de Despacho debe cargarlo y el Asistente Documentario confirmarlo antes de la salida.</p>}
               <div className="flex flex-wrap items-end gap-2">
                 <div>
                   <label className="block text-xs text-slate-600 mb-1">Hora real de salida</label>

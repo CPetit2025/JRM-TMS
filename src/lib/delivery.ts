@@ -17,7 +17,7 @@ export function deliveryServiceKind(row: DeliveryRow): ServiceKind | null {
   return row.request_type ? serviceKind(row) : row.modalidad === 'RECOJO_CLIENTE' ? 'RECOJO_CLIENTE' : null
 }
 export type DeliverySubmission = {
-  id: string; operation_id: string; photos: string[]; guide_number: string | null; received_by: string | null
+  id: string; operation_id: string; photos: string[]; packing_photos?: string[]; guide_number: string | null; received_by: string | null
   note: string | null; source: string; captured_at: string; submitted_at: string
   review: { decision: string; reason: string | null; reviewed_at: string } | null
 }

@@ -103,9 +103,21 @@ export function syncOfflineActions(): Promise<number> {
             if (error && String(error.statusCode) !== '409') throw error
             paths.push(path)
           }
+          // Packing List del servicio (opcional): mismas reglas de formato y carpeta que la guía.
+          const packing = Array.isArray(action.payload.packing_base64) ? action.payload.packing_base64 : []
+          if (packing.length > 5) throw new Error('Fotos del Packing List no válidas')
+          const packingPaths: string[] = []
+          for (let index = 0; index < packing.length; index++) {
+            if (typeof packing[index] !== 'string' || !packing[index].startsWith('data:image/jpeg;base64,')) throw new Error('Fotografía del Packing List no válida')
+            const blob = await (await fetch(packing[index])).blob()
+            const path = `${auth.user.id}/${action.payload.dispatch_id}/${action.payload.request_id}/${action.id}-p${index}.jpg`
+            const { error } = await supabase.storage.from('driver_evidence').upload(path, blob, { upsert: false, contentType: 'image/jpeg' })
+            if (error && String(error.statusCode) !== '409') throw error
+            packingPaths.push(path)
+          }
           const { data, error } = await supabase.rpc('execute_driver_offline_action', {
             p_operation_id: action.id, p_action_type: action.type,
-            p_payload: { dispatch_id: action.payload.dispatch_id, request_id: action.payload.request_id, photos: paths,
+            p_payload: { dispatch_id: action.payload.dispatch_id, request_id: action.payload.request_id, photos: paths, packing_photos: packingPaths,
               received_by: action.payload.received_by, guide: action.payload.guide, note: action.payload.note, captured_at: action.payload.captured_at },
           })
           if (error) throw error

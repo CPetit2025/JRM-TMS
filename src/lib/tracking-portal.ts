@@ -6,7 +6,7 @@ import type { DeliveryRow } from '@/lib/delivery'
 export type PortalDocument = { id: string; type: 'GUIA_REMISION' | 'PACKING_LIST'; number: string | null; name: string | null }
 export type PortalRow = DeliveryRow & {
   dispatch_status?: string; ot_type?: string | null; sequence_order?: number | null
-  documents?: PortalDocument[]; signed_photos?: number
+  documents?: PortalDocument[]; signed_photos?: number; packing_photos?: number
 }
 export type PortalOrigin = 'OT' | 'SUB' | 'ERR' | 'OS' | 'OC' | 'RQ' | 'SIN'
 type Source = {
@@ -61,14 +61,14 @@ export function portalExtraRefs(s: Source): string[] {
 export const DOC_LABEL: Record<PortalDocument['type'], string> = { GUIA_REMISION: 'Guía', PACKING_LIST: 'Packing List' }
 
 /** Abre un documento del portal. La ventana se abre antes de la consulta para que el navegador no la bloquee. */
-export async function openPortalDocument(access: { token: string; pin: string }, target: { kind: 'DOC'; id: string } | { kind: 'FIRMA'; dispatchId: string; requestId: string; index: number }) {
+export async function openPortalDocument(access: { token: string; pin: string }, target: { kind: 'DOC'; id: string } | { kind: 'FIRMA' | 'PACKING'; dispatchId: string; requestId: string; index: number }) {
   const win = window.open('', '_blank')
   try {
     const res = await fetch('/api/tracking/documento', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(target.kind === 'DOC'
         ? { token: access.token, pin: access.pin, kind: 'DOC', id: target.id }
-        : { token: access.token, pin: access.pin, kind: 'FIRMA', id: target.dispatchId, request_id: target.requestId, index: target.index }),
+        : { token: access.token, pin: access.pin, kind: target.kind, id: target.dispatchId, request_id: target.requestId, index: target.index }),
     })
     const data = await res.json().catch(() => null) as { success?: boolean; url?: string; error?: string } | null
     if (!res.ok || !data?.url) throw new Error(data?.error || 'Documento no disponible')
