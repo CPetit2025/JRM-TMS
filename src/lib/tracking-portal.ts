@@ -78,3 +78,36 @@ export async function openPortalDocument(access: { token: string; pin: string },
     throw error
   }
 }
+
+// Estado visible en el portal: el de la parada si ya tiene ruta; si no, el de la solicitud.
+export type PortalTone = { label: string; bg: string; text: string }
+const TONE = {
+  slate: { bg: 'bg-slate-200', text: 'text-slate-800' }, sky: { bg: 'bg-sky-200', text: 'text-sky-900' },
+  blue: { bg: 'bg-blue-300', text: 'text-blue-950' }, amber: { bg: 'bg-amber-200', text: 'text-amber-950' },
+  emerald: { bg: 'bg-emerald-200', text: 'text-emerald-900' }, violet: { bg: 'bg-violet-200', text: 'text-violet-900' },
+  red: { bg: 'bg-red-200', text: 'text-red-900' }, orange: { bg: 'bg-orange-200', text: 'text-orange-900' },
+}
+const tone = (label: string, t: keyof typeof TONE): PortalTone => ({ label, ...TONE[t] })
+export function portalStatus(row: { state: string } | null | undefined, requestStatus?: string): PortalTone {
+  if (row) switch (row.state) {
+    case 'PROGRAMADO': return tone('Programado', 'sky')
+    case 'EN RUTA': case 'EN_CURSO': return tone('En ruta', 'blue')
+    case 'EN_DESTINO': return tone('En destino', 'amber')
+    case 'ENTREGADO': case 'LIQUIDADO': case 'CERRADO': return tone('Entregado', 'emerald')
+    case 'PENDIENTE_VALIDACION': return tone('Guía recibida', 'violet')
+    case 'OBSERVADA': case 'RECHAZADA': return tone('Guía observada', 'red')
+    case 'INCIDENCIA': return tone('Incidencia', 'red')
+    case 'CANCELADO': return tone('Cancelado', 'red')
+    case 'RECOJO_CLIENTE': return tone('Recojo por cliente', 'slate')
+  }
+  switch (requestStatus || '') {
+    case 'PENDIENTE': case 'PENDIENTE DE APROBACIÓN': case 'APROBADA': return tone('Solicitado', 'slate')
+    case 'OBSERVADA': return tone('Observada', 'orange')
+    case 'REPROGRAMADA': return tone('Reprogramado', 'orange')
+    case 'ASIGNADA': return tone('Programado', 'sky')
+    case 'EN_TRANSITO': case 'EN TRANSITO': return tone('En ruta', 'blue')
+    case 'ENTREGADA': return tone('Entregado', 'emerald')
+    case 'CANCELADA': case 'ANULADA': case 'RECHAZADA': return tone('Cancelado', 'red')
+  }
+  return tone((row?.state || requestStatus || '—').replaceAll('_', ' ').toLowerCase().replace(/^./, c => c.toUpperCase()), 'slate')
+}
