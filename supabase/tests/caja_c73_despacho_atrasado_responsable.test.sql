@@ -23,6 +23,10 @@ BEGIN
  -- En producción kpi_dispatch_log exige un despacho existente: se usan dos despachos reales con registros
  -- fechados en 1900 (quedan como los primeros) y todo se revierte al final; sin despachos se usan ids libres.
  SELECT array_agg(id) INTO real_ids FROM (SELECT id FROM public.dispatches ORDER BY id LIMIT 2) d;
+ IF COALESCE(cardinality(real_ids),0)<2 AND EXISTS(SELECT 1 FROM pg_constraint
+   WHERE conrelid='public.kpi_dispatch_log'::regclass AND confrelid='public.dispatches'::regclass AND contype='f') THEN
+  RAISE EXCEPTION 'CAJA C73 FAIL: se requieren dos despachos existentes para la prueba';
+ END IF;
  d_owned:=COALESCE(real_ids[1],gen_random_uuid()); d_inactive:=COALESCE(real_ids[2],gen_random_uuid());
  DELETE FROM public.notif_prefs WHERE user_id=ANY(users);
 
