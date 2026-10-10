@@ -136,9 +136,20 @@ BEGIN
                       WHERE p.oid = 'public.set_contract_transport_budget(uuid,numeric,text)'::regprocedure AND a.grantee = 0)
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T7 permisos de ejecución'::text; END IF;
 
+  -- T8: la OT raíz cerrada bloquea la partida de la familia (aunque el subcontrato siga activo) y la OT cerrada también
+  UPDATE public.contracts SET status = 'CERRADO' WHERE id = v_mother;
+  PERFORM pg_temp.as_user(v_admin);
+  BEGIN PERFORM public.set_contract_transport_budget(v_sub, 900, NULL); v_err := NULL;
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM; END;
+  BEGIN PERFORM public.set_contract_transport_budget(v_mother, 900, NULL); v_err2 := NULL;
+  EXCEPTION WHEN OTHERS THEN v_err2 := SQLERRM; END;
+  PERFORM pg_temp.as_user(NULL);
+  IF v_err LIKE '%raíz%' AND v_err2 LIKE '%cerrado%' AND pg_temp.own(v_sub) = 500
+  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T8 OT raíz cerrada: ' || COALESCE(v_err, '∅') || ' | ' || COALESCE(v_err2, '∅')); END IF;
+
   IF array_length(v_fail, 1) IS NULL THEN
-    RAISE EXCEPTION 'CAJA C76 PASS (%/7) partida de transporte: OT sin partida, actualización, OT raíz, permisos, cartera y reducción', v_pass;
+    RAISE EXCEPTION 'CAJA C76 PASS (%/8) partida de transporte: OT sin partida, actualización, OT raíz, permisos, cartera, reducción y OT cerrada', v_pass;
   ELSE
-    RAISE EXCEPTION 'CAJA C76 FAIL (%/7): %', v_pass, array_to_string(v_fail, ' || ');
+    RAISE EXCEPTION 'CAJA C76 FAIL (%/8): %', v_pass, array_to_string(v_fail, ' || ');
   END IF;
 END $test$;

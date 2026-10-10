@@ -43,14 +43,18 @@ BEGIN
   IF public.is_contract_administrator() AND NOT public.has_assigned_contract(v_contract.id, true) THEN
     RAISE EXCEPTION 'La OT % no está asignada a usted', v_contract.code;
   END IF;
-  IF upper(COALESCE(v_contract.status, '')) IN ('ANULADO', 'CANCELADO') THEN
+  IF upper(COALESCE(v_contract.status, '')) IN ('ANULADO', 'CANCELADO', 'CERRADO') THEN
     RAISE EXCEPTION 'La OT % está %; no se puede modificar su partida', v_contract.code, lower(v_contract.status);
   END IF;
 
   -- La partida de la familia vive en la OT raíz: se bloquea su contrato para serializar la creación de la fila
-  SELECT c.id, c.code::text AS code, c.site_id INTO v_root
+  SELECT c.id, c.code::text AS code, c.site_id, c.status::text AS status INTO v_root
     FROM public.contracts c WHERE c.id = COALESCE(public.contract_root_id(v_contract.id), v_contract.id) FOR UPDATE;
   IF NOT public.can_access_site(v_root.site_id) THEN RAISE EXCEPTION 'No tiene acceso a la sede de la OT %', v_root.code; END IF;
+  -- La partida es de la familia: si la OT raíz está cerrada, cancelada o anulada no se toca, aunque el hijo siga activo
+  IF upper(COALESCE(v_root.status, '')) IN ('ANULADO', 'CANCELADO', 'CERRADO') THEN
+    RAISE EXCEPTION 'La OT raíz % está %; no se puede modificar la partida de su familia', v_root.code, lower(v_root.status);
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM public.contract_budgets WHERE contract_id = v_root.id AND concept = 'PARTIDA_TRANSPORTE') THEN
     INSERT INTO public.contract_budgets (contract_id, concept, allocated_pen) VALUES (v_root.id, 'PARTIDA_TRANSPORTE', 0);
   END IF;
