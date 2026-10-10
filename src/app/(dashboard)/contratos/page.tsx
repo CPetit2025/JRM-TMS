@@ -290,8 +290,9 @@ export default function ContratosPage() {
     setIsSubmitting(true)
 
     try {
-      // 1. Update contract basic fields
-      const { error: contractError } = await supabase
+      // 1. Datos de la OT. Si la RLS no permite editarla (p. ej. OT fuera de la cartera) no se actualiza ninguna fila:
+      //    se informa en lugar de mostrar un "actualizado" falso.
+      const { data: updated, error: contractError } = await supabase
         .from('contracts')
         .update({
           total_weight_kg: tonsToKg(editFormData.total_weight_kg),
@@ -302,26 +303,25 @@ export default function ContratosPage() {
           destination_address: editFormData.destination_address
         })
         .eq('id', editingContract.id)
+        .select('id')
 
       if (contractError) throw contractError
+      if (!updated?.length) throw new Error('No tiene permiso para editar esta OT o ya no existe')
 
-      // 2. Update or insert budget
-      const newBudget = Number(editFormData.budget_pen)
-      if (newBudget >= 0) {
-        if (editingContract.budget) {
-          // Update existing
-          const { error: budgetError } = await supabase
-            .from('contract_budgets')
-            .update({ own_allocated_pen: newBudget })
-            .eq('contract_id', editingContract.id)
-            .eq('concept', 'PARTIDA_TRANSPORTE')
-          if (budgetError) throw budgetError
-        } else if (newBudget > 0) {
-          // Insert new budget if it didn't exist
-          const { error: insertError } = await supabase
-            .from('contract_budgets')
-            .insert([{ contract_id: editingContract.id, allocated_pen: newBudget }])
-          if (insertError) throw insertError
+      // 2. Partida de transporte: en el servidor (permisos, cartera, sede, OT raíz) y se crea si la OT no la tenía.
+      //    Antes se hacía un UPDATE directo que, sin fila de partida, no guardaba nada y aun así mostraba "actualizado".
+      const rawBudget = editFormData.budget_pen.trim()
+      if (rawBudget !== '') {
+        const newBudget = Number(rawBudget)
+        if (!Number.isFinite(newBudget) || newBudget < 0) throw new Error('La partida debe ser un monto válido (cero o mayor)')
+        const current = editingContract.budget?.own_allocated_pen
+        if (current == null || Number(current) !== newBudget) {
+          const { error: budgetError } = await supabase.rpc('set_contract_transport_budget', {
+            p_contract_id: editingContract.id,
+            p_amount: newBudget,
+            p_reason: 'Edición de OT en Contratos',
+          })
+          if (budgetError) throw new Error('Los datos de la OT se guardaron, pero la partida no: ' + budgetError.message)
         }
       }
 

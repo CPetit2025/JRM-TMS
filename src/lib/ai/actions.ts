@@ -5,7 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 // La ejecución usa las mismas funciones de la base que las pantallas, con la sesión del usuario, así que aplican
 // exactamente sus permisos (partida, OT asignada, rol).
 
-export const OFFICE_ACTIONS = ['REGISTER_CONTRACT_EXPENSE', 'UPDATE_EXPENSE_AMOUNT', 'CREATE_CONTRACT', 'CHANGE_REQUEST_STATUS'] as const
+export const OFFICE_ACTIONS = ['REGISTER_CONTRACT_EXPENSE', 'UPDATE_EXPENSE_AMOUNT', 'CREATE_CONTRACT', 'SET_TRANSPORT_BUDGET', 'CHANGE_REQUEST_STATUS'] as const
 export type OfficeActionKind = (typeof OFFICE_ACTIONS)[number]
 export type OfficeProposal = { kind: OfficeActionKind; title: string; lines: Array<{ label: string; value: string }>; params: Record<string, unknown> }
 
@@ -22,6 +22,9 @@ const literal = (value: string) => value.replace(/[%_\\]/g, char => `\\${char}`)
 const money = (n: number) => `S/ ${n.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' })
 const isDate = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v)
+// "Partida de transporte para la OT…": es el presupuesto de la OT, no un gasto
+const looksLikePartida = (v: string) => /\b(partida|presupuesto)\b/i.test(v) && !/\b(gasto|pago|factura|servicio|descontar|descuento|cargo)\b/i.test(v)
+const budgetHint = (code: string) => `Puede asignarla aquí: "asignar partida de transporte a la OT ${code} por S/ …"`
 
 async function findContract(supabase: SupabaseClient, code: string) {
   if (!code) return null
@@ -54,6 +57,9 @@ export async function prepareOfficeAction(args: Record<string, unknown>, supabas
     if (type === 'MONTACARGA' && (hours == null || hours <= 0)) return { error: 'Para montacargas indique las horas.' }
     const date = text(args.service_date, 10) || today()
     if (!isDate(date)) return { error: 'La fecha debe tener el formato AAAA-MM-DD.' }
+    if (type === 'OTROS' && looksLikePartida(text(args.description))) {
+      return { error: `Esto parece la partida de transporte (presupuesto) de la OT ${contract.code}, no un gasto. Use SET_TRANSPORT_BUDGET con contract_code y budget.` }
+    }
     const partida = await partidaOf(supabase, contract.id)
     const category = contract.type === 'SUBCONTRATO' ? 'Subcontrato' : contract.type === 'ERROR' ? 'Error' : 'Contrato'
     const params = {
@@ -68,7 +74,7 @@ export async function prepareOfficeAction(args: Record<string, unknown>, supabas
       ...(params.provider_name ? [{ label: 'Proveedor', value: `${params.provider_name}${params.provider_ruc ? ` · RUC ${params.provider_ruc}` : ''}` }] : []),
       ...(params.referral_guide ? [{ label: 'Guía', value: params.referral_guide }] : []),
       ...(params.description ? [{ label: 'Detalle', value: params.description }] : []),
-      { label: 'Partida', value: partida ? `${partida.contracts?.code || ''} · saldo ${money(Number(partida.balance_pen || 0))}` : 'Sin partida (no se podrá registrar)' },
+      { label: 'Partida', value: partida ? `${partida.contracts?.code || ''} · saldo ${money(Number(partida.balance_pen || 0))}` : `Sin partida: no se podrá registrar. ${budgetHint(contract.code)}` },
     ] } }
   }
 
@@ -127,6 +133,34 @@ export async function prepareOfficeAction(args: Record<string, unknown>, supabas
     ] } }
   }
 
+  if (kind === 'SET_TRANSPORT_BUDGET') {
+    const contract = await findContract(supabase, text(args.contract_code, 80))
+    if (!contract) return { error: 'Indique una OT existente (código).' }
+    const amount = num(args.budget) ?? num(args.amount)
+    if (amount == null || amount < 0) return { error: 'Indique el monto de la partida de transporte (S/).' }
+    const { data: rows } = await supabase.from('contract_budgets').select('*').eq('contract_id', contract.id).eq('concept', 'PARTIDA_TRANSPORTE').limit(1)
+    const own = (rows as Row[] | null)?.[0]
+    const current = own ? Number(own.own_allocated_pen ?? own.allocated_pen ?? 0) : null
+    let root: Row | null = null
+    if (contract.parent_contract_id) {
+      const { data: rootId } = await supabase.rpc('contract_root_id', { p_contract_id: contract.id })
+      if (rootId) {
+        const { data } = await supabase.from('contracts').select('id, code').eq('id', rootId as string).maybeSingle()
+        root = data as Row | null
+      }
+    }
+    const category = contract.type === 'SUBCONTRATO' ? 'Subcontrato' : contract.type === 'ERROR' ? 'Error' : 'OT'
+    return { proposal: { kind, title: 'Asignar partida de transporte', params: {
+      contract_id: contract.id, amount: Math.round(amount * 100) / 100, reason: text(args.description, 200) || null,
+    }, lines: [
+      { label: category, value: `${contract.code}${contract.clients?.business_name ? ` · ${contract.clients.business_name}` : ''}` },
+      ...(root ? [{ label: 'Partida consolidada en', value: `OT raíz ${root.code} (aporte de este ${category.toLowerCase()})` }] : []),
+      { label: 'Partida actual', value: current == null ? 'Sin partida' : money(current) },
+      { label: 'Nueva partida', value: `${money(amount)} · 80% para operación` },
+      ...(text(args.description) ? [{ label: 'Motivo', value: text(args.description, 200) }] : []),
+    ] } }
+  }
+
   // CHANGE_REQUEST_STATUS
   const number = text(args.request_number, 40)
   const status = text(args.new_status, 20).toUpperCase()
@@ -173,6 +207,16 @@ export async function executeOfficeAction(payload: unknown, supabase: SupabaseCl
     const result = data as { success?: boolean; error?: string; code?: string } | null
     if (!result?.success) throw new Error(result?.error || 'No se pudo registrar el contrato.')
     return { status: `Contrato ${result.code || ''} registrado` }
+  }
+  if (p.kind === 'SET_TRANSPORT_BUDGET') {
+    if (!UUID.test(String(params.contract_id)) || !(Number(params.amount) >= 0)) throw new Error('Datos de la partida inválidos.')
+    const { data, error } = await supabase.rpc('set_contract_transport_budget', {
+      p_contract_id: params.contract_id, p_amount: Number(params.amount), p_reason: params.reason ? `JRM IA: ${String(params.reason)}` : 'JRM IA',
+    })
+    if (error) throw new Error(error.message)
+    const result = data as { code?: string; budget_code?: string; changed?: boolean; balance_pen?: number } | null
+    if (result && result.changed === false) return { status: `La partida de ${result.code || 'la OT'} ya tenía ese monto` }
+    return { status: `Partida de transporte de ${result?.code || 'la OT'} actualizada${result?.balance_pen != null ? `; saldo disponible ${money(Number(result.balance_pen))}` : ''}` }
   }
   if (!UUID.test(String(params.request_id))) throw new Error('Solicitud inválida.')
   const { error } = await supabase.rpc('set_transport_request_status', {
