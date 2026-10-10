@@ -101,6 +101,14 @@ interface DispatchRequest {
   }
 }
 
+// Fecha de atención para ordenar (más reciente primero): hora exacta si existe; si no, el día en Lima. Sin fecha va al final.
+function attentionTime(request: { required_at?: string | null; required_date?: string | null }) {
+  const t = request.required_at ? Date.parse(request.required_at) : request.required_date ? Date.parse(`${request.required_date.slice(0, 10)}T00:00:00-05:00`) : NaN
+  return Number.isFinite(t) ? t : -Infinity
+}
+const newestFirst = <T extends { required_at?: string | null; required_date?: string | null; created_at?: string | null }>(rows: T[]) =>
+  [...rows].sort((a, b) => attentionTime(b) - attentionTime(a) || (Date.parse(b.created_at || '') || 0) - (Date.parse(a.created_at || '') || 0))
+
 function requestedAttention(request: { required_at?: string | null; required_date?: string | null; time_window?: string | null }) {
   if (request.required_at) return new Date(request.required_at).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short', hour12: false })
   return `${serviceDate(request.required_date)}${request.time_window ? ` · ${request.time_window}` : ''}`
@@ -289,13 +297,13 @@ export default function DespachoPage() {
           )
         `)
         .in('status', ['APROBADA', 'REPROGRAMADA'])
-        .order('required_date', { ascending: true })
+        .order('required_date', { ascending: false })
         .order('created_at', { ascending: false })
 
       if (reqError) throw reqError
       const { data: history, error: historyError } = reqData?.length ? await supabase.rpc('get_transport_request_rescheduling', { p_request_ids: reqData.map(r => r.id) }) : { data: [], error: null }
       if (historyError) throw historyError
-      setPendingRequests(withRescheduling(reqData || [], history || []))
+      setPendingRequests(newestFirst(withRescheduling(reqData || [], history || [])))
 
       // 2. Despachos asignados: solo para los contadores y el aviso de retorno (se gestionan en Torre de Control)
       const { data: dispatchData, error: dispatchError } = await supabase
