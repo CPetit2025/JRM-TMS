@@ -101,13 +101,14 @@ interface DispatchRequest {
   }
 }
 
-// Fecha de atención para ordenar (más reciente primero): hora exacta si existe; si no, el día en Lima. Sin fecha va al final.
+// Orden de la bandeja: la solicitud registrada más recientemente primero; a igual registro, la atención más reciente.
+// Fecha de atención: hora exacta si existe; si no, el día en Lima. Sin fecha va al final.
 function attentionTime(request: { required_at?: string | null; required_date?: string | null }) {
   const t = request.required_at ? Date.parse(request.required_at) : request.required_date ? Date.parse(`${request.required_date.slice(0, 10)}T00:00:00-05:00`) : NaN
   return Number.isFinite(t) ? t : -Infinity
 }
 const newestFirst = <T extends { required_at?: string | null; required_date?: string | null; created_at?: string | null }>(rows: T[]) =>
-  [...rows].sort((a, b) => attentionTime(b) - attentionTime(a) || (Date.parse(b.created_at || '') || 0) - (Date.parse(a.created_at || '') || 0))
+  [...rows].sort((a, b) => (Date.parse(b.created_at || '') || 0) - (Date.parse(a.created_at || '') || 0) || attentionTime(b) - attentionTime(a))
 
 function requestedAttention(request: { required_at?: string | null; required_date?: string | null; time_window?: string | null }) {
   if (request.required_at) return new Date(request.required_at).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short', hour12: false })
@@ -297,7 +298,6 @@ export default function DespachoPage() {
           )
         `)
         .in('status', ['APROBADA', 'REPROGRAMADA'])
-        .order('required_date', { ascending: false })
         .order('created_at', { ascending: false })
 
       if (reqError) throw reqError
@@ -625,19 +625,20 @@ export default function DespachoPage() {
             <DataTable dense className="w-full border-collapse text-left">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  {['Atención', 'Servicio', 'OT', 'Empresa', 'Origen → Destino', 'Partida', 'Acciones'].map((title, i) => <th key={title} className={`whitespace-nowrap font-semibold ${i === 6 ? 'text-right' : ''}`}>{title}</th>)}
+                  {['Registro', 'Atención', 'Servicio', 'OT', 'Empresa', 'Origen → Destino', 'Partida', 'Acciones'].map((title, i) => <th key={title} className={`whitespace-nowrap font-semibold ${i === 7 ? 'text-right' : ''}`}>{title}</th>)}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  <tr><td colSpan={7} className="p-8 text-center text-slate-500"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Cargando solicitudes…</td></tr>
+                  <tr><td colSpan={8} className="p-8 text-center text-slate-500"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Cargando solicitudes…</td></tr>
                 ) : visiblePending.length === 0 ? (
-                  <tr><td colSpan={7} className="p-8 text-center text-slate-500">{pendingRequests.length ? 'No hay solicitudes con estos filtros.' : 'No hay solicitudes pendientes de asignación.'}</td></tr>
+                  <tr><td colSpan={8} className="p-8 text-center text-slate-500">{pendingRequests.length ? 'No hay solicitudes con estos filtros.' : 'No hay solicitudes pendientes de asignación.'}</td></tr>
                 ) : visiblePending.map(req => {
                   const selected = newDispatch.selected_requests.some(r => r.id === req.id)
                   const balance = req.contracts?.contract_budgets?.[0]?.balance_pen
                   return (
                     <tr key={req.id} className={selected ? 'bg-blue-50/50' : 'hover:bg-slate-50'}>
+                      <td className="whitespace-nowrap text-sm text-slate-500" title="Fecha y hora en que se registró la solicitud">{req.created_at ? cellDateTime(req.created_at) : '—'}</td>
                       <td className="whitespace-nowrap">
                         <span className={`text-sm ${wasRescheduled(req) ? 'font-semibold text-orange-700' : 'text-slate-700'}`} title={wasRescheduled(req) ? 'Reprogramado' : undefined}>{req.required_at ? cellDateTime(req.required_at) : `${serviceDate(req.required_date).slice(0, 5)}${req.time_window ? ` ${req.time_window}` : ''}`}</span>
                       </td>
