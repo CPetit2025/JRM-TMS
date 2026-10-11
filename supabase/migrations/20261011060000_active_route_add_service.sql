@@ -15,6 +15,8 @@ CREATE TABLE public.dispatch_service_additions (
  UNIQUE(dispatch_id,request_id)
 );
 ALTER TABLE public.dispatch_service_additions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY security_active_account ON public.dispatch_service_additions AS RESTRICTIVE FOR ALL TO authenticated
+ USING((SELECT public.is_active_tms_user())) WITH CHECK((SELECT public.is_active_tms_user()));
 REVOKE ALL ON public.dispatch_service_additions FROM PUBLIC,anon,authenticated;
 
 CREATE FUNCTION public.active_route_context(p_dispatch uuid) RETURNS jsonb
@@ -22,7 +24,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE d public.dispatches%ROWTYPE; frontier int; revision text; stops jsonb; requests jsonb;
 BEGIN
  SELECT * INTO d FROM public.dispatches WHERE id=p_dispatch;
- IF d.id IS NULL OR NOT public.can_access_site(d.site_id) OR NOT public.has_tms_permission('despacho')
+ IF NOT public.is_active_tms_user() OR d.id IS NULL OR NOT public.can_access_site(d.site_id) OR NOT public.has_tms_permission('despacho')
  OR NOT (public.is_tms_admin() OR public.delivery_can_review(p_dispatch)) THEN
    RAISE EXCEPTION 'Solo el Supervisor de Transporte puede agregar servicios de su sede'; END IF;
  IF d.status NOT IN ('PROGRAMADO','EN_CURSO','EN RUTA') OR d.vehicle_plate='EXTERNO' THEN
@@ -43,7 +45,7 @@ BEGIN
  'weight_kg',to_jsonb(t)->>'estimated_weight') ORDER BY t.required_date,t.id),'[]') INTO requests
  FROM public.transport_requests t LEFT JOIN public.contracts ct ON ct.id=t.contract_id
  WHERE t.status IN ('APROBADA','REPROGRAMADA') AND t.approved_at IS NOT NULL AND t.site_id IS NOT DISTINCT FROM d.site_id
- AND t.attention_mode='TRANSPORTE_JRM' AND NOT EXISTS(SELECT 1 FROM public.dispatch_requests x JOIN public.dispatches y ON y.id=x.dispatch_id
+ AND t.attention_mode='TRANSPORTE_JRM' AND public.request_party_missing(t.id) IS NULL AND NOT EXISTS(SELECT 1 FROM public.dispatch_requests x JOIN public.dispatches y ON y.id=x.dispatch_id
  WHERE x.transport_request_id=t.id AND y.status<>'CANCELADO');
  RETURN jsonb_build_object('revision',revision,'frontier',frontier,'stops',stops,'requests',requests,
  'capacity_kg',(SELECT NULLIF(to_jsonb(v)->>'weight_capacity','')::numeric FROM public.vehicles v WHERE v.plate=d.vehicle_plate),
@@ -58,11 +60,11 @@ DECLARE d public.dispatches%ROWTYPE; t public.transport_requests%ROWTYPE; contex
  due_at timestamptz; capacity numeric; profile uuid;
 BEGIN
  SELECT * INTO d FROM public.dispatches WHERE id=p_dispatch FOR UPDATE;
- IF d.id IS NULL OR NOT public.can_access_site(d.site_id) OR NOT public.has_tms_permission('despacho')
+ IF NOT public.is_active_tms_user() OR d.id IS NULL OR NOT public.can_access_site(d.site_id) OR NOT public.has_tms_permission('despacho')
  OR NOT (public.is_tms_admin() OR public.delivery_can_review(p_dispatch)) THEN RAISE EXCEPTION 'Solo el Supervisor de Transporte puede agregar servicios de su sede'; END IF;
  SELECT * INTO receipt FROM public.dispatch_service_additions WHERE operation_id=p_operation;
  IF FOUND THEN
-   IF receipt.dispatch_id<>p_dispatch OR receipt.request_id<>p_request OR receipt.created_by<>auth.uid() THEN RAISE EXCEPTION 'Operación de otro usuario o servicio'; END IF;
+   IF receipt.dispatch_id IS DISTINCT FROM p_dispatch OR receipt.request_id IS DISTINCT FROM p_request OR receipt.created_by IS DISTINCT FROM auth.uid() THEN RAISE EXCEPTION 'Operación de otro usuario o servicio'; END IF;
    RETURN receipt.result;
  END IF;
  context:=public.active_route_context(p_dispatch);
@@ -78,6 +80,7 @@ BEGIN
  IF t.id IS NULL OR t.status NOT IN ('APROBADA','REPROGRAMADA') OR t.approved_at IS NULL OR t.attention_mode<>'TRANSPORTE_JRM'
  OR t.site_id IS DISTINCT FROM d.site_id OR EXISTS(SELECT 1 FROM public.dispatch_requests x JOIN public.dispatches y ON y.id=x.dispatch_id
  WHERE x.transport_request_id=p_request AND y.status<>'CANCELADO') THEN RAISE EXCEPTION 'Solicitud no disponible para esta ruta'; END IF;
+ IF public.request_party_missing(p_request) IS NOT NULL THEN RAISE EXCEPTION 'Vincule el cliente o proveedor de la solicitud antes de asignarla'; END IF;
  IF COALESCE(NULLIF(to_jsonb(t)->>'estimated_weight','')::numeric,0)>p_cargo_kg THEN RAISE EXCEPTION 'El peso no puede ser menor que el registrado en la solicitud'; END IF;
  capacity:=NULLIF(context->>'capacity_kg','')::numeric;
  IF capacity>0 AND p_available_kg>capacity THEN RAISE EXCEPTION 'La capacidad disponible supera la capacidad de la unidad'; END IF;
