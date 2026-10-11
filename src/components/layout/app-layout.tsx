@@ -7,6 +7,7 @@ import { NotificationBanner } from './NotificationBanner'
 import { NotificationBell } from './NotificationBell'
 import { usePathname } from 'next/navigation'
 import { AppUpdateNotice } from '@/components/AppUpdateNotice'
+import { AccessDeniedNotice } from '@/components/layout/AccessDeniedNotice'
 import { JrmAiAssistant } from '@/components/JrmAiAssistant'
 import { NAV_SECTIONS, activeEntry, flatEntries } from '@/lib/nav/navConfig'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -99,6 +100,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </header>
         <div id="app-update-slot" />
         <NotificationBanner />
+        <AccessDeniedNotice />
         <main className="relative z-0 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-auto p-3 sm:p-4 lg:p-5">
           {children}
         </main>
