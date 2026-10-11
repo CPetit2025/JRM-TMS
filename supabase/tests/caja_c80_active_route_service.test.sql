@@ -46,7 +46,10 @@ BEGIN
  ct:=pg_temp.ins('contracts',jsonb_build_object('code','ZZ-C80-A','type','CONTRATO','status','ACTIVO','site_id',site,'client_id',client));
  ct2:=pg_temp.ins('contracts',jsonb_build_object('code','ZZ-C80-B','type','CONTRATO','status','ACTIVO','site_id',site,'client_id',client));
  sub:=pg_temp.ins('contracts',jsonb_build_object('code','ZZ-C80-B-E014','type','ERROR','status','ACTIVO','site_id',site,'client_id',client,'parent_contract_id',ct2));
- UPDATE public.contract_budgets SET own_allocated_pen=1000 WHERE contract_id IN(ct,ct2) AND concept='PARTIDA_TRANSPORTE';
+ INSERT INTO public.contract_budgets(contract_id,concept,allocated_pen) VALUES(ct,'PARTIDA_TRANSPORTE',1000),(ct2,'PARTIDA_TRANSPORTE',1000)
+ ON CONFLICT(contract_id,concept) DO UPDATE SET own_allocated_pen=1000;
+ IF (SELECT balance_pen FROM public.contract_budgets WHERE contract_id=ct AND concept='PARTIDA_TRANSPORTE') IS DISTINCT FROM 800::numeric
+ OR (SELECT balance_pen FROM public.contract_budgets WHERE contract_id=ct2 AND concept='PARTIDA_TRANSPORTE') IS DISTINCT FROM 800::numeric THEN RAISE EXCEPTION 'CAJA C80 FAIL: preparación de partidas'; END IF;
  req:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C80-R1','request_type','DESPACHO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',ct,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Planta','delivery_address','Obra','required_date',current_date+2));
  req2:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C80-R2','request_type','RECOJO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',ct,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Obra','delivery_address','Planta','required_date',current_date+2));
  added:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C80-R3','request_type','TRASLADO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',sub,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Proveedor','delivery_address','Otra obra','required_date',current_date+2,'estimated_weight',100));
