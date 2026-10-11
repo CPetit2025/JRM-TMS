@@ -8,7 +8,7 @@ type SortState = { column: number; direction: SortDirection }
 /** Shared presentation only: each module owns its columns, permissions and data.
  *  `dense`: 38–42 px header and 40–48 px rows for list screens where many records must be visible.
  *  Every column header sorts by click or keyboard (ascending → descending → original order):
- *  - tables with their own sorting (a header with aria-sort), grouped/expandable rows (colspan/rowspan)
+ *  - tables with their own sorting (a header with aria-sort or buttons), grouped/expandable rows (colspan/rowspan)
  *    or `sortable={false}` keep their order;
  *  - `onSortChange` lets a paginated table sort all its data instead of the visible page;
  *  - a cell may set `data-sort-value` when its visible text is not the right sort key. */
@@ -65,7 +65,8 @@ export function DataTable({ className = '', dense = false, sortable = true, onSo
       headerSignature = headers
       // Native sorting already present (aria-sort set by the module) or merged header cells: leave the table untouched.
       // A header that is already clickable (its own sort or action) is treated the same way.
-      if (!headers.length || headers.some(th => ((th.hasAttribute('aria-sort') || th.classList.contains('cursor-pointer')) && !th.hasAttribute('data-auto-sort')) || th.colSpan > 1)) return
+      // Header buttons are a module's own sort controls: the whole table keeps that single sort state.
+      if (!headers.length || headers.some(th => ((th.hasAttribute('aria-sort') || th.classList.contains('cursor-pointer') || th.querySelector('button')) && !th.hasAttribute('data-auto-sort')) || th.colSpan > 1)) return
       const bodies = () => Array.from(table.tBodies)
       bodies().forEach(seed)
       // Group headers, detail rows and empty states use colspan/rowspan: sorting them would break the layout
@@ -77,7 +78,8 @@ export function DataTable({ className = '', dense = false, sortable = true, onSo
         for (const body of bodies()) {
           seed(body)
           const rows = Array.from(body.rows)
-          const value = (row: HTMLTableRowElement) => { const c = row.cells[sort?.column ?? 0]; return c ? c.dataset.sortValue ?? c.textContent : '' }
+          // Visible text only: responsive labels hidden on desktop (lg:hidden) must not prefix the value
+          const value = (row: HTMLTableRowElement) => { const c = row.cells[sort?.column ?? 0]; return c ? c.dataset.sortValue ?? c.innerText ?? c.textContent : '' }
           const sorted = [...rows].sort((a, b) => (sort ? compareCells(value(a), value(b), sort.direction) : 0) || (base.get(a) ?? 0) - (base.get(b) ?? 0))
           if (sorted.some((row, index) => row !== rows[index])) sorted.forEach(row => body.appendChild(row))
         }
