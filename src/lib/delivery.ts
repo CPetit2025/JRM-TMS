@@ -60,16 +60,18 @@ export function documentNumberLabel(guide: string | null | undefined, note: stri
     : { text: 'Pendiente', title: 'Aún sin número de guía ni Nota de Despacho', pending: true }
 }
 /** Números de GR y Nota de Despacho registrados por Documentos (vigentes), por servicio. */
-export function documentNumbersByStop(docs: { dispatch_id: string; transport_request_id: string | null; doc_type: string; document_number: string | null }[]) {
-  const map = new Map<string, { guide?: string; note?: string }>()
+/** Números de GR y Nota de Despacho por servicio: archivos vigentes de Documentos y números vinculados (varios por servicio). */
+export function documentNumbersByStop(docs: { dispatch_id: string; transport_request_id?: string | null; request_id?: string | null; doc_type: string; document_number: string | null }[]) {
+  const lists = new Map<string, { guides: string[]; notes: string[] }>()
   for (const d of docs) {
-    if (!d.document_number || !d.transport_request_id) continue
-    const key = `${d.dispatch_id}/${d.transport_request_id}`, entry = map.get(key) || {}
-    if (d.doc_type === 'GUIA_REMISION') entry.guide ??= d.document_number
-    if (d.doc_type === 'NOTA_DESPACHO') entry.note ??= d.document_number
-    map.set(key, entry)
+    const request = d.transport_request_id || d.request_id
+    if (!d.document_number || !request) continue
+    const key = `${d.dispatch_id}/${request}`, entry = lists.get(key) || { guides: [], notes: [] }
+    const list = d.doc_type === 'GUIA_REMISION' ? entry.guides : d.doc_type === 'NOTA_DESPACHO' ? entry.notes : null
+    if (list && !list.includes(d.document_number)) list.push(d.document_number)
+    lists.set(key, entry)
   }
-  return map
+  return new Map([...lists].map(([key, entry]) => [key, { guide: entry.guides.join(' · ') || undefined, note: entry.notes.join(' · ') || undefined }]))
 }
 // Camera photos are reduced before upload/queuing; server independently decodes them.
 export async function deliveryPhoto(file: File): Promise<File> {

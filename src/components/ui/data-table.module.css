@@ -44,3 +44,22 @@
     padding: 0.375rem 0.75rem;
   }
 }
+
+/* Orden por columna (DataTable): flecha discreta en el encabezado; la del orden activo se resalta. */
+@media screen {
+  .table[data-sortable] > thead > tr > th[data-auto-sort] {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .table[data-sortable] > thead > tr > th[data-auto-sort]:hover { color: #002855; }
+  .table[data-sortable] > thead > tr > th[data-auto-sort]:focus-visible { outline: 2px solid #002855; outline-offset: -2px; }
+  .table[data-sortable] > thead > tr > th[data-auto-sort]::after {
+    content: '↕';
+    margin-left: 0.3em;
+    font-size: 0.85em;
+    opacity: 0.3;
+  }
+  .table[data-sortable] > thead > tr > th[aria-sort='ascending']::after { content: '↑'; opacity: 0.9; }
+  .table[data-sortable] > thead > tr > th[aria-sort='descending']::after { content: '↓'; opacity: 0.9; }
+}
