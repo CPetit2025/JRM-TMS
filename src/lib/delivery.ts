@@ -28,6 +28,7 @@ export const conformityLabels: Record<Conformity, string> = {
 }
 export function deliveryStatus(state: string) {
   switch (state) {
+    case 'CIERRE_OPERATIVO': return { label: 'Cierre operativo · pendiente documental', color: 'bg-amber-50 text-amber-900', dot: 'bg-amber-500', pulse: false }
     case 'RECOJO_CLIENTE': return { label: 'Recojo por cliente', color: 'bg-slate-100 text-slate-700', dot: 'bg-slate-500', pulse: false }
     case 'PROGRAMADO': return { label: 'Programado', color: 'bg-slate-100 text-slate-700', dot: 'bg-slate-500', pulse: false }
     case 'EN RUTA': case 'EN_CURSO': return { label: 'En ruta', color: 'bg-blue-50 text-blue-800', dot: 'bg-blue-500', pulse: true }

@@ -345,7 +345,7 @@ export default function TorreControlPage() {
             <option value="TODOS">Todos los Estados</option>
             <option value="PROGRAMADO">Solo Programados</option>
             <option value="RUTA">En ruta</option>
-            <option value="POR_CERRAR">Por cerrar</option>
+            <option value="POR_CERRAR">Cierre documental y financiero pendiente</option>
           </select>
           
           <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-100 transition-colors">
@@ -399,6 +399,7 @@ export default function TorreControlPage() {
             </div>
 
             <div className="flex flex-wrap gap-2">
+              {selectedDispatch.status === 'CIERRE_OPERATIVO' && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Unidad y conductor liberados por corte diario a las 00:00 de Lima. Las guías y el cierre financiero permanecen pendientes; no se confirma entrega ni retorno.</p>}
               {canAddService && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA'].includes(selectedDispatch.status) && selectedDispatch.vehicle_plate !== 'EXTERNO' && <button type="button" onClick={() => { setAddServiceId(selectedDispatch.id); setSelectedDispatch(null) }} className="min-h-11 rounded-lg bg-jrm-navy px-4 text-sm font-semibold text-white">Agregar servicio a la ruta</button>}
               <DispatchExecutionActions dispatch={{ ...selectedDispatch, modalidad: rows.find(row => row.dispatch_id === selectedDispatch.id)?.modalidad || selectedDispatch.modalidad }} onChanged={async () => { setSelectedDispatch(null); await fetchDispatches() }} />
               {canWrite('despacho') && (selectedDispatch.modalidad === 'TERCERO' || rows.some(row => row.dispatch_id === selectedDispatch.id && row.modalidad === 'TERCERO')) && <button onClick={() => { setThirdId(selectedDispatch.id); setSelectedDispatch(null) }} className="min-h-11 rounded-lg border border-violet-200 px-4 text-sm font-semibold text-violet-700">Compartir acceso GR · tercero</button>}

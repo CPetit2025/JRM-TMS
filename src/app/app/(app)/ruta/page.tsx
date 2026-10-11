@@ -313,7 +313,7 @@ export default function RutaActivaPage() {
                   <h3 className={`font-bold ${isActive ? 'text-blue-900' : 'text-slate-700'}`}>{ot.request_number}</h3>
                   <p className="text-xs text-slate-500 mt-1 line-clamp-2">{ot.delivery_address || ot.pickup_address}</p>
 
-                  {(isActive || (isPast && ['EN RUTA','EN_CURSO','ESPERANDO_AUTORIZACION','RETORNO','RETORNO_COMPLETADO','ENTREGADO'].includes(dispatch.status))) && user && driver && <div className="mt-4 border-t pt-4"><DriverDelivery dispatchId={dispatch.id} requestId={req.transport_request_id} driverId={driver.id} userId={user.id} guide={req.document_number || ''} onChanged={refresh} /></div>}
+                  {(dispatch.status === 'CIERRE_OPERATIVO' || isActive || (isPast && ['EN RUTA','EN_CURSO','ESPERANDO_AUTORIZACION','RETORNO','RETORNO_COMPLETADO','ENTREGADO','CIERRE_OPERATIVO'].includes(dispatch.status))) && user && driver && <div className="mt-4 border-t pt-4"><DriverDelivery dispatchId={dispatch.id} requestId={req.transport_request_id} driverId={driver.id} userId={user.id} guide={req.document_number || ''} documentaryOnly={dispatch.status === 'CIERRE_OPERATIVO'} onChanged={refresh} /></div>}
                 </div>
               </div>
             )
@@ -374,6 +374,8 @@ export default function RutaActivaPage() {
           </a>
         </div>
       )}
+
+      {dispatch.status === 'CIERRE_OPERATIVO' && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>Cierre operativo a las 00:00 de Lima</strong><p className="mt-1">Unidad y conductor liberados. Las guías pendientes se cargan en los servicios de esta ruta y siguen sujetas a validación del Supervisor de Transporte. Este corte no confirma entrega ni retorno.</p></div>}
 
       {dispatch.status === 'RETORNO_COMPLETADO' && (
         <div className="mt-8 bg-green-50 border border-green-200 p-6 rounded-xl text-center">

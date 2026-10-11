@@ -146,7 +146,7 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
 
   const d = data?.despacho
   const enRuta = d && ['EN_CURSO', 'EN RUTA'].includes(d.estado)
-  const abierto = d && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA'].includes(d.estado)
+  const abierto = d && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'CIERRE_OPERATIVO'].includes(d.estado)
   const link = data?.enlace ? enlaceTercero(data.enlace.token) : null
   const portal = typeof window === 'undefined' ? '/tracking/entregas' : `${window.location.origin}/tracking/entregas`
   const code = data?.enlace?.codigo || ''

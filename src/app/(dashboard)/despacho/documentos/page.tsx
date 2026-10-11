@@ -20,6 +20,7 @@ import { conformityLabels, type DeliveryRow } from '@/lib/delivery'
 import { PACKING_ACCEPT, packingMime } from '@/lib/packing-list'
 import { DOCS_BUCKET, errorMessage, fmtDate, receiptUrl } from '@/lib/caja'
 import { districtOf } from '@/lib/address'
+import { DocumentNumberLinks } from '@/components/despacho/DocumentNumberLinks'
 import { referenceLabel } from '@/lib/suppliers'
 import { cellDateTime, fullDateTime } from '@/lib/table-format'
 import { fetchServiceTypes, serviceKind, type ServiceKind } from '@/lib/request-service'
@@ -67,9 +68,11 @@ export default function DocumentosDespachoPage() {
 
 function DocumentaryQueue() {
   const supabase = useMemo(() => createClient(), [])
-  const { canWrite, canRead, isLoaded } = usePermissions()
-  const canEdit = canWrite('documentario')
-  const canPacking = canWrite('packing-list')
+  const { canWrite, canRead, isLoaded, role } = usePermissions()
+  const canNumbers = canWrite('documentario')
+  const assistantOnly = role === 'asistente documentario'
+  const canEdit = canNumbers && !assistantOnly
+  const canPacking = canWrite('packing-list') && !assistantOnly
   const packingOnly = !canRead('documentario') && (canRead('packing-list') || canRead('planificacion'))
   const [items, setItems] = useState<QueueItem[] | null>(null)
   const [filter, setFilter] = useState<'TODOS' | 'PENDIENTE' | 'REEMISION' | 'LISTO'>('TODOS')
@@ -195,7 +198,7 @@ function DocumentaryQueue() {
           <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-jrm-navy hover:bg-blue-50 [&::-webkit-details-marker]:hidden"><Info className="h-4 w-4" aria-hidden="true" />Cómo funciona</summary>
           <div className="absolute right-0 z-30 mt-1 w-[min(36rem,calc(100vw-2rem))] rounded-jrm border border-jrm-line bg-white p-4 shadow-xl">
             <ol aria-label="Secuencia documentaria" className="space-y-3 text-sm">
-              {[['Packing List firmado', 'Auditor de Despacho', 'Carga el Packing List en PDF, foto o Excel con su firma. El asistente confirma los documentos y, en recojos, registra la Nota de Despacho.'], ['Guía de entrega', 'Conductor / proveedor JRM', 'Adjunta la guía firmada desde el app o el portal del proveedor al realizar la entrega.'], ['Conformidad', 'Supervisor de Transporte', 'Aprueba, observa o rechaza el sustento. Sin aprobación, el servicio no puede avanzar.']].map(([title, role, detail], index) => <li key={title} className="flex items-start gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-jrm-navy text-xs font-bold text-white">{index + 1}</span><div><p className="font-semibold text-jrm-navy">{title} <span className="font-medium text-slate-500">· {role}</span></p><p className="mt-0.5 text-xs leading-5 text-slate-500">{detail}</p></div></li>)}
+              {[['Packing List firmado', 'Auditor de Despacho', 'Carga el Packing List en PDF, foto o Excel con su firma. El Asistente Documentario solo vincula los números de Guía de Remisión y Nota de Despacho; puede registrar varios por servicio.'], ['Guía de entrega', 'Conductor / proveedor JRM', 'Adjunta la guía firmada desde el app o el portal del proveedor al realizar la entrega.'], ['Conformidad', 'Supervisor de Transporte', 'Aprueba, observa o rechaza el sustento. Sin aprobación, el servicio no puede avanzar.']].map(([title, role, detail], index) => <li key={title} className="flex items-start gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-jrm-navy text-xs font-bold text-white">{index + 1}</span><div><p className="font-semibold text-jrm-navy">{title} <span className="font-medium text-slate-500">· {role}</span></p><p className="mt-0.5 text-xs leading-5 text-slate-500">{detail}</p></div></li>)}
             </ol>
             <p className="mt-3 border-t border-slate-100 pt-3 text-xs leading-5 text-slate-500">Una fila corresponde a un servicio; el despacho puede reunir varias OT. {showDeparted ? `Consulta por período de hasta 366 días. ${packingOnly ? 'Historial de Packing List por despacho, unidad y OT.' : 'Historial incluye despachos cancelados y sus documentos vigentes; las evidencias y revisiones conservan su historial.'}` : 'Ordenadas por salida del despacho.'}</p>
           </div>
@@ -203,7 +206,7 @@ function DocumentaryQueue() {
         <span className="ml-auto whitespace-nowrap text-xs text-slate-500" aria-live="polite">{items === null ? '' : `${visible.length} servicio(s)`}</span>
       </FilterToolbar>
 
-      {isLoaded && !canEdit && !canPacking && (
+      {isLoaded && !canNumbers && !canPacking && (
         <p className="text-sm text-slate-500 bg-slate-50 border rounded-lg p-3">Vista de consulta: el Auditor de Despacho carga el Packing List; el Asistente Documentario confirma los documentos. La validación de guías corresponde al Supervisor de Transporte.</p>
       )}
 
@@ -211,15 +214,16 @@ function DocumentaryQueue() {
       {items === null && !queueError ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
         : !visible.length ? <p className="text-slate-500 text-sm p-6 text-center border border-slate-200 rounded-xl bg-white">{queueError && !items ? 'La bandeja no está disponible.' : 'No hay solicitudes para estos filtros.'}</p>
         : <section aria-label="Control documentario por OT" className="overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
-          <div className="overflow-x-auto"><DataTable dense className="block w-full text-left text-sm lg:table"><caption className="sr-only">Solicitudes y OT asociadas, Packing List, guía de entrega y conformidad</caption><thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['Salida', 'Servicio', 'OT', 'Placa', 'Empresa', 'Destino', 'Estado', 'Acciones'].map((label, i) => <th key={label} scope="col" className={`whitespace-nowrap px-3 py-2.5 font-semibold ${i === 7 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead><tbody className="block divide-y divide-slate-200 lg:table-row-group">{visible.map(({ item, stop }) => <DocumentRow key={`${item.id}/${stop?.request_id || 'empty'}`} item={item} stop={stop} kind={stop && serviceTypes.has(stop.request_id) ? serviceKind(serviceTypes.get(stop.request_id)) : item.is_pickup ? 'RECOJO_CLIENTE' : null} info={stop ? serviceTypes.get(stop.request_id) : undefined} delivery={deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)} canEdit={canEdit || canPacking} packingOnly={packingOnly} onManage={() => setSelectedId(item.id)} onStatus={() => setStatusOf({ item, stop, delivery: deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id) })} />)}</tbody></DataTable></div>
+          <div className="overflow-x-auto"><DataTable dense className="block w-full text-left text-sm lg:table"><caption className="sr-only">Solicitudes y OT asociadas, Packing List, guía de entrega y conformidad</caption><thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['Salida', 'Servicio', 'OT', 'Placa', 'Empresa', 'Destino', 'Estado', 'Acciones'].map((label, i) => <th key={label} scope="col" className={`whitespace-nowrap px-3 py-2.5 font-semibold ${i === 7 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead><tbody className="block divide-y divide-slate-200 lg:table-row-group">{visible.map(({ item, stop }) => <DocumentRow key={`${item.id}/${stop?.request_id || 'empty'}`} item={item} stop={stop} kind={stop && serviceTypes.has(stop.request_id) ? serviceKind(serviceTypes.get(stop.request_id)) : item.is_pickup ? 'RECOJO_CLIENTE' : null} info={stop ? serviceTypes.get(stop.request_id) : undefined} delivery={deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)} canEdit={canNumbers || canPacking} packingOnly={packingOnly} onManage={() => setSelectedId(item.id)} onStatus={() => setStatusOf({ item, stop, delivery: deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id) })} />)}</tbody></DataTable></div>
         </section>}
       <Modal isOpen={!!selected} onClose={() => setSelectedId(null)} title={`Documentos · ${selected?.dispatch_number || ''}`} maxWidth="max-w-[1440px]"
-        footer={<div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-600">{selected?.missing ? 'Completa los documentos pendientes para autorizar la salida.' : selected?.docs_ready_at ? 'Documentos confirmados para salida.' : 'Documentos y archivos asociados al servicio.'}</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setSelectedId(null)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Cerrar</button>{selected && canEdit && selected.status === 'PROGRAMADO' && ['PENDIENTE', 'REEMISION'].includes(selected.doc_status) && <button type="button" onClick={() => void confirmDocs(selected)} disabled={busy === selected.id || !!selected.missing} className="flex min-h-11 items-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-500">{busy === selected.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar documentos para salida</button>}</div></div>}>
+        footer={<div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-600">{assistantOnly ? 'Vincula los números por servicio. La guía firmada y su aprobación se gestionan por separado.' : selected?.missing ? 'Completa los documentos pendientes para autorizar la salida.' : selected?.docs_ready_at ? 'Documentos confirmados para salida.' : 'Documentos y archivos asociados al servicio.'}</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setSelectedId(null)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Cerrar</button>{selected && canEdit && selected.status === 'PROGRAMADO' && ['PENDIENTE', 'REEMISION'].includes(selected.doc_status) && <button type="button" onClick={() => void confirmDocs(selected)} disabled={busy === selected.id || !!selected.missing} className="flex min-h-11 items-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-500">{busy === selected.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar documentos para salida</button>}</div></div>}>
+        {selected && !packingOnly && <DocumentNumberLinks dispatchId={selected.id} services={selected.stops} canEdit={canNumbers && selected.status !== 'CANCELADO'} onChanged={load} />}
         {selected && <DispatchCard key={selected.id} item={selected} canEdit={canEdit && selected.status === 'PROGRAMADO'} canPacking={canPacking && selected.status === 'PROGRAMADO'} packingOnly={packingOnly}
           onVoid={voidDoc} onOpen={openDoc} onUploaded={load}
           deliveries={deliveries.filter(row => row.dispatch_id === selected.id)} onEvidence={row => { setSelectedId(null); setReview(row) }} />}
       </Modal>
-      <DocumentStatusModal target={statusOf} packingOnly={packingOnly} canEdit={canEdit || canPacking} onClose={() => setStatusOf(null)} onManage={setSelectedId} onEvidence={setReview} />
+      <DocumentStatusModal target={statusOf} packingOnly={packingOnly} canEdit={canNumbers || canPacking} onClose={() => setStatusOf(null)} onManage={setSelectedId} onEvidence={setReview} />
       {!packingOnly && <DeliveryReview row={review} onClose={() => setReview(null)} onChanged={() => void load()} />}
       {anulando && <AnularModal doc={anulando} onClose={() => setAnulando(null)} onDone={() => { setAnulando(null); void load() }} />}
     </div>
@@ -281,7 +285,7 @@ function DocumentRow({ item, stop, kind, info, delivery, canEdit, packingOnly, o
     <td className={cell}>{label('Empresa')}{(() => { const supplierRow = kind === 'RECOJO' || kind === 'PUNTO_A_PUNTO', party = supplierRow ? info?.supplier_name || stop?.client : stop?.client; return <p className="truncate font-medium text-slate-800 lg:max-w-40 xl:max-w-48 2xl:max-w-64" title={party ? `${supplierRow ? 'Proveedor' : 'Cliente'}: ${party}` : undefined}>{party || (supplierRow ? 'Proveedor sin vincular' : 'Sin cliente registrado')}</p> })()}</td>
     <td className={cell}>{label(kind === 'RECOJO' ? 'Origen' : 'Destino')}<p className="truncate text-slate-700 lg:max-w-32 xl:max-w-40" title={point || undefined}>{point ? districtOf(point) : 'Sin dirección'}</p></td>
     <td className={cell}>{label('Estado')}<button type="button" onClick={onStatus} title="Ver Packing List, guía y conformidad" className="inline-flex items-center gap-1 rounded-full focus-visible:outline-2 focus-visible:outline-jrm-navy"><StatusBadge tone={state.tone}>{state.label}</StatusBadge><ChevronRight aria-hidden className="h-3.5 w-3.5 text-slate-400" /></button></td>
-    <td className={`${cell} lg:text-right`}>{label('Acciones')}<button type="button" onClick={onManage} className="min-h-11 whitespace-nowrap rounded-lg bg-jrm-navy px-3 text-xs font-semibold text-white hover:bg-jrm-navy-dark lg:min-h-8">{canEdit && item.status === 'PROGRAMADO' ? packingOnly ? 'Cargar Packing List' : 'Gestionar' : 'Ver documentos'}</button></td>
+    <td className={`${cell} lg:text-right`}>{label('Acciones')}<button type="button" onClick={onManage} className="min-h-11 whitespace-nowrap rounded-lg bg-jrm-navy px-3 text-xs font-semibold text-white hover:bg-jrm-navy-dark lg:min-h-8">{canEdit ? packingOnly ? 'Cargar Packing List' : 'Vincular / ver documentos' : 'Ver documentos'}</button></td>
   </tr>
 }
 
