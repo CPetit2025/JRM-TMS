@@ -8,26 +8,42 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', COALESCE(p_user::text, ''), true);
   PERFORM set_config('role', CASE WHEN p_user IS NULL THEN 'none' ELSE 'authenticated' END, true);
 END $$;
+-- RUC de prueba que cumple el dígito verificador de SUNAT (lo exige clients_tax_id_guard)
+CREATE FUNCTION pg_temp.c77_ruc(p_prefix text) RETURNS text LANGUAGE plpgsql AS $$
+DECLARE v_base text; d int;
+BEGIN
+  LOOP
+    v_base := p_prefix || lpad((random() * 99999999)::int::text, 10 - length(p_prefix), '0');
+    FOR d IN 0..9 LOOP
+      IF public.is_valid_ruc(v_base || d) AND NOT EXISTS (SELECT 1 FROM public.clients c
+           WHERE COALESCE(to_jsonb(c)->>'tax_id', to_jsonb(c)->>'ruc') = v_base || d)
+         AND NOT EXISTS (SELECT 1 FROM public.suppliers s WHERE s.tax_id = v_base || d) THEN
+        RETURN v_base || d;
+      END IF;
+    END LOOP;
+  END LOOP;
+END $$;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
 
 DO $test$
 DECLARE
   v_admin uuid; v_ot_user uuid; v_role uuid; v_site uuid; v_c1 uuid; v_c2 uuid; v_sup uuid;
-  i int; v_root uuid; v_child uuid; v_child2 uuid; v_legacy uuid; v_req uuid; v_free uuid; v_pick uuid; v_disp uuid; r jsonb; v_err text;
+  i int; v_ruc text; v_root uuid; v_child uuid; v_child2 uuid; v_legacy uuid; v_req uuid; v_free uuid; v_pick uuid; v_disp uuid; r jsonb; v_err text;
   suffix text := upper(substr(gen_random_uuid()::text, 1, 6));
 BEGIN
   SELECT id INTO v_site FROM public.sites LIMIT 1;
   -- Clientes y proveedor propios de la prueba (la tabla de clientes difiere entre entornos: solo columnas existentes)
   FOR i IN 1..2 LOOP
+    v_ruc := pg_temp.c77_ruc('209' || i);
     EXECUTE (SELECT format('INSERT INTO public.clients (%s) VALUES (%s) RETURNING id',
                string_agg(quote_ident(k.key), ', '), string_agg(quote_nullable(k.value #>> '{}'), ', '))
                FROM jsonb_each(jsonb_build_object('business_name', 'ZZ C77 Cliente ' || i || ' ' || suffix,
-                 'tax_id', '2099' || i || lpad((random() * 999999)::int::text, 6, '0'), 'ruc', '2099' || i || lpad((random() * 999999)::int::text, 6, '0'), 'is_active', true, 'status', 'ACTIVO')) k
+                 'tax_id', v_ruc, 'ruc', v_ruc, 'is_active', true, 'status', 'ACTIVO')) k
               WHERE EXISTS (SELECT 1 FROM information_schema.columns c WHERE c.table_schema = 'public' AND c.table_name = 'clients' AND c.column_name = k.key))
       INTO v_sup;
     IF i = 1 THEN v_c1 := v_sup; ELSE v_c2 := v_sup; END IF;
   END LOOP;
-  INSERT INTO public.suppliers (tax_id, business_name) VALUES ('2098' || lpad((random() * 9999999)::int::text, 7, '0'), 'ZZ C77 Proveedor ' || suffix) RETURNING id INTO v_sup;
+  INSERT INTO public.suppliers (tax_id, business_name) VALUES (pg_temp.c77_ruc('2098'), 'ZZ C77 Proveedor ' || suffix) RETURNING id INTO v_sup;
   IF v_site IS NULL OR NOT public.client_is_active(v_c2) THEN RAISE EXCEPTION 'CAJA C77 FAIL: faltan sede o clientes de prueba'; END IF;
   FOR v_admin IN SELECT id FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u) LOOP
     PERFORM set_config('request.jwt.claim.sub', v_admin::text, true);
@@ -199,6 +215,16 @@ BEGIN
      OR has_function_privilege('authenticated', 'public.enforce_contract_client()', 'EXECUTE') THEN
     RAISE EXCEPTION 'CAJA C77 FAIL: funciones expuestas (T10)'; END IF;
 
-  RAISE EXCEPTION 'CAJA C77 PASS (12/12) nada sin cliente o proveedor: OT, familia, entregas, recojos y programación';
+  -- Estado real (informativo): OT 16533 y pendientes antiguos por regularizar
+  SELECT COALESCE(max(cl.business_name::text), 'SIN CLIENTE') INTO v_err FROM public.contracts c
+    LEFT JOIN public.clients cl ON cl.id = c.client_id WHERE btrim(c.code::text) = '16533';
+  RAISE EXCEPTION 'CAJA C77 PASS (12/12) nada sin cliente o proveedor | OT 16533: % | pendientes: OT sin cliente %, solicitudes sin cliente %, sin proveedor %',
+    v_err,
+    (SELECT count(*) FROM public.contracts WHERE parent_contract_id IS NULL AND client_id IS NULL
+       AND upper(COALESCE(status::text, '')) NOT IN ('CANCELADO', 'ANULADO', 'CERRADO') AND code::text NOT LIKE 'ZZ-C77-%'),
+    (SELECT count(*) FROM public.transport_requests WHERE public.request_party_missing(id) = 'CLIENTE'
+       AND upper(COALESCE(status, '')) NOT IN ('CANCELADA', 'RECHAZADA', 'CERRADA', 'LIQUIDADA')),
+    (SELECT count(*) FROM public.transport_requests WHERE public.request_party_missing(id) = 'PROVEEDOR'
+       AND upper(COALESCE(status, '')) NOT IN ('CANCELADA', 'RECHAZADA', 'CERRADA', 'LIQUIDADA'));
 END $test$;
 ROLLBACK;
