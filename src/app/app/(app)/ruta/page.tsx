@@ -44,6 +44,12 @@ export default function RutaActivaPage() {
     return () => window.clearTimeout(timer)
   }, [contextDriver, contextLoading, router, trip])
 
+  // Cierre operativo (último punto o 00:00): la ruta ya no registra GPS
+  const closedStatus = dispatch?.status
+  useEffect(() => {
+    if (closedStatus === 'RETORNO_COMPLETADO' && nativeRouteTracker) void nativeRouteTracker.stop().catch(() => {})
+  }, [closedStatus])
+
   const handleIniciarRuta = async () => {
     if (!dispatch || !driver) return
     setProcessing(true)
@@ -313,7 +319,7 @@ export default function RutaActivaPage() {
                   <h3 className={`font-bold ${isActive ? 'text-blue-900' : 'text-slate-700'}`}>{ot.request_number}</h3>
                   <p className="text-xs text-slate-500 mt-1 line-clamp-2">{ot.delivery_address || ot.pickup_address}</p>
 
-                  {(isActive || (isPast && ['EN RUTA','EN_CURSO','ESPERANDO_AUTORIZACION','RETORNO','RETORNO_COMPLETADO','ENTREGADO'].includes(dispatch.status))) && user && driver && <div className="mt-4 border-t pt-4"><DriverDelivery dispatchId={dispatch.id} requestId={req.transport_request_id} driverId={driver.id} userId={user.id} guide={req.document_number || ''} onChanged={refresh} /></div>}
+                  {(isActive || (isPast && ['EN RUTA','EN_CURSO','ESPERANDO_AUTORIZACION','RETORNO','RETORNO_COMPLETADO','ENTREGADO'].includes(dispatch.status)) || (dispatch.status === 'RETORNO_COMPLETADO' && !['VALIDADA', 'NO_APLICA'].includes(req.conformity || ''))) && user && driver && <div className="mt-4 border-t pt-4"><DriverDelivery dispatchId={dispatch.id} requestId={req.transport_request_id} driverId={driver.id} userId={user.id} guide={req.document_number || ''} closed={dispatch.status === 'RETORNO_COMPLETADO'} onChanged={refresh} /></div>}
                 </div>
               </div>
             )
@@ -375,13 +381,15 @@ export default function RutaActivaPage() {
         </div>
       )}
 
-      {dispatch.status === 'RETORNO_COMPLETADO' && (
-        <div className="mt-8 bg-green-50 border border-green-200 p-6 rounded-xl text-center">
+      {dispatch.status === 'RETORNO_COMPLETADO' && (() => {
+        const pendingGuides = (dispatch.dispatch_requests || []).filter(stop => !['RECIBIDA', 'VALIDADA', 'NO_APLICA'].includes(stop.conformity || '')).length
+        return <div className="mt-8 bg-green-50 border border-green-200 p-6 rounded-xl text-center">
           <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-green-600" />
-          <h2 className="text-xl font-bold text-green-900">Llegada a base registrada</h2>
-          <p className="text-sm text-green-700 mt-2">Retorno: {Number(dispatch.return_actual_km || 0).toFixed(3)} km · Total: {Number(dispatch.actual_distance_km || 0).toFixed(3)} km GPS. El supervisor puede cerrar la ruta.</p>
+          <h2 className="text-xl font-bold text-green-900">Ruta cerrada · unidad liberada</h2>
+          {dispatch.return_actual_km ? <p className="text-sm text-green-700 mt-2">Retorno: {Number(dispatch.return_actual_km).toFixed(3)} km · Total: {Number(dispatch.actual_distance_km || 0).toFixed(3)} km GPS.</p> : null}
+          <p className={`text-sm mt-2 ${pendingGuides ? 'font-semibold text-amber-800' : 'text-green-700'}`}>{pendingGuides ? `Falta subir ${pendingGuides === 1 ? 'la guía de 1 punto' : `las guías de ${pendingGuides} puntos`}: adjúntalas en cada punto de arriba.` : 'Solo queda la liquidación documentaria en oficina.'}</p>
         </div>
-      )}
+      })()}
 
     </div>
   )

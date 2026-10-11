@@ -112,7 +112,9 @@ BEGIN
   INSERT INTO public.delivery_conformities(dispatch_id,request_id,state) SELECT dispatch_id,transport_request_id,'VALIDADA' FROM public.dispatch_requests WHERE dispatch_id=d2 ON CONFLICT(dispatch_id,request_id) DO UPDATE SET state='VALIDADA';
   UPDATE public.dispatch_requests SET status = 'ENTREGADO' WHERE dispatch_id = d2;
   PERFORM pg_temp.as_user(v_desp);
-  r := public.transition_dispatch_status(d2, 'ENTREGADO', 'fin de ruta');
+  -- Con todas sus guías, la ruta propia ya tuvo su cierre operativo (C82); si no, se marca entregada.
+  r := CASE WHEN (SELECT status FROM public.dispatches WHERE id = d2) = 'RETORNO_COMPLETADO' THEN jsonb_build_object('success', true)
+            ELSE public.transition_dispatch_status(d2, 'ENTREGADO', 'fin de ruta') END;
   PERFORM public.close_dispatch_route(d2);
   PERFORM pg_temp.as_user(NULL);
   IF (r->>'success')::boolean AND (SELECT status = 'LIQUIDADO' FROM public.dispatches WHERE id = d2)

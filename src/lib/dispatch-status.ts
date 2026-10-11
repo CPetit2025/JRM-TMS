@@ -3,6 +3,8 @@
 export function dispatchStatusLabel(status: string | null | undefined): string {
   if (!status) return 'Desconocido'
   if (status === 'LIQUIDADO' || status === 'CERRADO') return 'CERRADO'
+  // Cierre operativo: unidad y conductor libres; falta la liquidación documentaria
+  if (status === 'RETORNO_COMPLETADO') return 'UNIDAD LIBERADA'
   return status.replace(/_/g, ' ')
 }
 

@@ -11,6 +11,8 @@ export type DeliveryRow = {
   /** Tipo de la solicitud (se completa en la pantalla con fetchServiceTypes) */
   request_type?: string; attention_mode?: string | null; contract_id?: string | null
   supplier_name?: string | null; reference_type?: string | null; reference_number?: string | null; purchase_order?: string | null
+  /** Número de la Nota de Despacho del recojo (se completa en la pantalla con los documentos del servicio) */
+  note_number?: string | null
 }
 /** Tipo de servicio de una entrega: usa los datos de la solicitud; sin ellos, solo reconoce el recojo por el cliente. */
 export function deliveryServiceKind(row: DeliveryRow): ServiceKind | null {
@@ -36,7 +38,7 @@ export function deliveryStatus(state: string) {
     case 'OBSERVADA': case 'RECHAZADA': case 'INCIDENCIA': return { label: state === 'INCIDENCIA' ? 'Incidencia' : state === 'OBSERVADA' ? 'Observada' : 'Rechazada', color: 'bg-red-50 text-red-800', dot: 'bg-red-500', pulse: true }
     case 'ENTREGADO': return { label: 'Entregado', color: 'bg-emerald-50 text-emerald-800', dot: 'bg-emerald-500', pulse: false }
     case 'LIQUIDADO': case 'CERRADO': return { label: 'Viaje cerrado', color: 'bg-emerald-50 text-emerald-900', dot: 'bg-emerald-700', pulse: false }
-    case 'RETORNO': case 'RETORNO_COMPLETADO': case 'ESPERANDO_AUTORIZACION': return { label: state === 'RETORNO' ? 'En retorno' : state === 'RETORNO_COMPLETADO' ? 'En base' : 'Espera autorización', color: 'bg-blue-50 text-blue-800', dot: 'bg-blue-500', pulse: state === 'RETORNO' }
+    case 'RETORNO': case 'RETORNO_COMPLETADO': case 'ESPERANDO_AUTORIZACION': return { label: state === 'RETORNO' ? 'En retorno' : state === 'RETORNO_COMPLETADO' ? 'Unidad liberada' : 'Espera autorización', color: 'bg-blue-50 text-blue-800', dot: 'bg-blue-500', pulse: state === 'RETORNO' }
     case 'CANCELADO': return { label: 'Cancelado', color: 'bg-slate-100 text-slate-600', dot: 'bg-slate-400', pulse: false }
     default: return { label: state.replaceAll('_', ' ') || 'Sin estado', color: 'bg-slate-100 text-slate-700', dot: 'bg-slate-500', pulse: false }
   }
@@ -47,8 +49,26 @@ export const deliveryTime = (value: string | null) => value ? new Date(value).to
 export function filterDeliveries(rows: DeliveryRow[], search: string, state: string, conformity: string) {
   const needle = search.trim().toLocaleLowerCase('es-PE')
   return rows.filter(row => (!state || row.state === state) && (!conformity || row.conformity === conformity) &&
-    (!needle || [row.ot_code, row.request_number, row.dispatch_number, row.guide_number, row.client_name,
+    (!needle || [row.ot_code, row.request_number, row.dispatch_number, row.guide_number, row.note_number, row.client_name,
       row.plate, row.driver_name, row.carrier_name, row.pickup_address, row.delivery_address].join(' ').toLocaleLowerCase('es-PE').includes(needle)))
+}
+/** Número visible de la GR (o de la Nota de Despacho en un recojo) para las tablas de Torre y Documentos. */
+export function documentNumberLabel(guide: string | null | undefined, note: string | null | undefined): { text: string; title: string; pending: boolean } {
+  const parts = [guide && `GR ${guide}`, note && `ND ${note}`].filter(Boolean) as string[]
+  return parts.length ? { text: parts.join(' · '), title: [guide && `Guía de remisión ${guide}`, note && `Nota de Despacho ${note}`].filter(Boolean).join(' · '), pending: false }
+    : { text: 'Pendiente', title: 'Aún sin número de guía ni Nota de Despacho', pending: true }
+}
+/** Números de GR y Nota de Despacho registrados por Documentos (vigentes), por servicio. */
+export function documentNumbersByStop(docs: { dispatch_id: string; transport_request_id: string | null; doc_type: string; document_number: string | null }[]) {
+  const map = new Map<string, { guide?: string; note?: string }>()
+  for (const d of docs) {
+    if (!d.document_number || !d.transport_request_id) continue
+    const key = `${d.dispatch_id}/${d.transport_request_id}`, entry = map.get(key) || {}
+    if (d.doc_type === 'GUIA_REMISION') entry.guide ??= d.document_number
+    if (d.doc_type === 'NOTA_DESPACHO') entry.note ??= d.document_number
+    map.set(key, entry)
+  }
+  return map
 }
 // Camera photos are reduced before upload/queuing; server independently decodes them.
 export async function deliveryPhoto(file: File): Promise<File> {
