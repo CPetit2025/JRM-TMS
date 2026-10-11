@@ -589,6 +589,11 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   sql(read('supabase/migrations/20261011060000_active_route_add_service.sql'))
   sql(read('supabase/migrations/20261011070000_active_route_fk_index.sql'))
   sql(`UPDATE carriers SET type='PROPIO' WHERE id='${id(43)}'; DROP TRIGGER ensure_transport_budget ON contracts;`)
+  sql(`ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email text;
+    ALTER TABLE profiles ADD COLUMN IF NOT EXISTS document_number text,ADD COLUMN IF NOT EXISTS username text,
+      ADD COLUMN IF NOT EXISTS license_type text,ADD COLUMN IF NOT EXISTS license_expiration date,ADD COLUMN IF NOT EXISTS updated_at timestamptz;`)
+  sql(installed('supabase/migrations/20260923150000_driver_context_and_geofence.sql','sync_driver_to_profile')+
+    `CREATE TRIGGER fixture_driver_profile_sync AFTER INSERT OR UPDATE ON drivers FOR EACH ROW EXECUTE FUNCTION sync_driver_to_profile();`)
   const additionBox=query(read('supabase/tests/caja_c80_active_route_service.test.sql'))
   assert.match(additionBox.stderr,/CAJA C80 PASS/,additionBox.stderr)
   console.log('PASS: C80 active route additions preserve old freight and current leg, mixed OT root budget, deadlines/capacity, atomic retries, permissions, retained third-party access and settlement.')
