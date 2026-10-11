@@ -37,9 +37,11 @@ import { serviceDate, wasRescheduled, withRescheduling, type RequestRescheduling
 import { checkDispatchEligibility } from '@/lib/eligibility'
 import { ReportarFallaButton } from '@/components/mantenimiento/ReportarFalla'
 import { TerceroFields, TERCERO_VACIO, type TerceroForm } from '@/components/despacho/Tercero'
+import { AddRouteService } from '@/components/despacho/AddRouteService'
+import { OCCUPIED_DISPATCH_STATUSES, routeAssignment } from '@/lib/route-assignment'
 
 type PlanningCarrier = { business_name: string | null }
-type PlanningVehicle = { plate: string; type: string | null; brand: string | null; model: string | null; assigned_driver_id: string | null; carriers: PlanningCarrier | null }
+type PlanningVehicle = { plate: string; status: string; type: string | null; brand: string | null; model: string | null; assigned_driver_id: string | null; carriers: PlanningCarrier | null }
 type PlanningDriver = { id: string; first_name: string; last_name: string; document_number: string; profile_id: string | null; carriers: PlanningCarrier | null }
 
 interface TransportRequest {
@@ -130,6 +132,7 @@ interface Dispatch {
   dispatch_number: string
   legacy_dispatch_number?: string | null
   driver_name: string
+  driver_id?: string | null
   vehicle_plate: string
   scheduled_departure: string
   status: string
@@ -147,7 +150,9 @@ const STATUS_GROUPS = { ruta: DISPATCH_STATUS_GROUPS.RUTA as readonly string[], 
 
 export default function DespachoPage() {
   const router = useRouter()
-  const { canWrite } = usePermissions()
+  const { canWrite, role } = usePermissions()
+  const canAddService = canWrite('despacho') && ['admin', 'supervisor de transporte'].includes(role)
+  const [addServiceId, setAddServiceId] = useState<string | null>(null)
   const supabase = useMemo(() => createClient(), [])
   const [pendingRequests, setPendingRequests] = useState<TransportRequest[]>([])
   const [linkRequest, setLinkRequest] = useState<TransportRequest | null>(null)
@@ -203,6 +208,10 @@ export default function DespachoPage() {
   const mixedOT = new Set(selectedServices.map(r => r.contract_id || 'SIN_OT')).size > 1
   const selectedDates = [...new Set(selectedServices.map(r => r.required_date?.slice(0,10)).filter((date): date is string => !!date))]
   const customerPickup = selectedServices[0]?.attention_mode === 'RECOJO_CLIENTE'
+  const selectedDriver = drivers.find(d => `${d.first_name} ${d.last_name}`.trim() === newDispatch.driver_name.trim())
+  const occupiedAssignment = newDispatch.document_type === 'GR' && modalidad === 'PROPIA'
+    ? routeAssignment(dispatches, newDispatch.vehicle_plate, selectedDriver?.id) : null
+  const openRouteAddition = (id: string) => { setIsModalOpen(false); setAddServiceId(id) }
   const routeFreight = customerPickup ? 0 : modalidad === 'TERCERO'
     ? (Number(manualFreightCost) > 0 ? Number(manualFreightCost) : detectedFreightRate?.rate || 0)
     : (detectedFreightRate?.rate || Number(manualFreightCost) || 0)
@@ -320,8 +329,8 @@ export default function DespachoPage() {
       // 2. Despachos asignados: solo para los contadores y el aviso de retorno (se gestionan en Torre de Control)
       const { data: dispatchData, error: dispatchError } = await supabase
         .from('dispatches')
-        .select('id, dispatch_number, status')
-        .in('status', ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'RETORNO', 'RETORNO_COMPLETADO', 'ESPERANDO_AUTORIZACION', 'ENTREGADO'])
+        .select('id, dispatch_number, status, vehicle_plate, driver_id, driver_name, scheduled_departure')
+        .in('status', [...OCCUPIED_DISPATCH_STATUSES])
 
       if (dispatchError) throw dispatchError
       if (!dispatchData) {
@@ -350,13 +359,13 @@ export default function DespachoPage() {
       }
 
       // 3. Obtener vehículos y conductores para el select
-      const { data: vData } = await supabase.from('vehicles').select('plate, type, brand, model, assigned_driver_id, carriers(business_name)')
-        .eq('status', 'DISPONIBLE').eq('is_active', true).in('type', [...TRANSPORT_VEHICLE_TYPES])
+      const { data: vData } = await supabase.from('vehicles').select('plate, status, type, brand, model, assigned_driver_id, carriers(business_name)')
+        .in('status', ['DISPONIBLE', 'ASIGNADA', 'EN_RUTA', 'EN_OPERACION']).eq('is_active', true).in('type', [...TRANSPORT_VEHICLE_TYPES])
       const { data: dData } = await supabase.from('drivers')
         .select('id, first_name, last_name, document_number, profile_id, carriers(business_name)')
         .eq('is_active', true).not('profile_id', 'is', null)
       
-      setVehicles((vData || []).filter(vehicle => isTransportUnit(vehicle.type)).map(vehicle => ({ ...vehicle, carriers: Array.isArray(vehicle.carriers) ? vehicle.carriers[0] || null : vehicle.carriers })))
+      setVehicles((vData || []).filter(vehicle => isTransportUnit(vehicle.type) && (vehicle.status === 'DISPONIBLE' || dispatchData?.some(route => route.vehicle_plate === vehicle.plate))).map(vehicle => ({ ...vehicle, carriers: Array.isArray(vehicle.carriers) ? vehicle.carriers[0] || null : vehicle.carriers })))
       setDrivers((dData || []).map(driver => ({ ...driver, carriers: Array.isArray(driver.carriers) ? driver.carriers[0] || null : driver.carriers })))
 
     } catch (error) {
@@ -410,11 +419,11 @@ export default function DespachoPage() {
     if (selectedReqsFull.some(r => !r.attention_mode || (r.attention_mode === 'RECOJO_CLIENTE') !== isPickup)) {
       toast.error('Defina la modalidad en Solicitudes; no mezcle recojos por cliente y transporte JRM.'); return
     }
-    if (mixedOT && !allocationMatches) { toast.error('La suma del flete por servicio debe coincidir con el total de la ruta.'); return }
     // El servidor valida la reserva vigente y el gasto autorizado; saldo cero puede ser una reserva propia.
     setIsSubmitting(true)
     if (modalidad === 'TERCERO' && newDispatch.document_type === 'GR') {
       try {
+        if (mixedOT && !allocationMatches) throw new Error('La suma del flete por servicio debe coincidir con el total de la ruta.')
         if (!tercero.carrier_id || !tercero.placa.trim() || !tercero.conductor.trim() || !tercero.telefono.trim() || !tercero.doc.trim()) {
           throw new Error('Complete transportista, placa, chofer, documento de identidad y celular del tercero.')
         }
@@ -452,6 +461,21 @@ export default function DespachoPage() {
       if (newDispatch.document_type !== 'NOTA_SALIDA' && matches.length !== 1) {
         throw new Error('Selecciona un conductor activo y vinculado a una sola cuenta.')
       }
+      if (!isPickup && modalidad === 'PROPIA') {
+        // Refresh before submitting: another supervisor may have programmed this pair since the page loaded.
+        const results = await Promise.all([
+          supabase.from('dispatches').select('id, dispatch_number, status, vehicle_plate, driver_id').eq('vehicle_plate', newDispatch.vehicle_plate).in('status', [...OCCUPIED_DISPATCH_STATUSES]),
+          supabase.from('dispatches').select('id, dispatch_number, status, vehicle_plate, driver_id').eq('driver_id', matches[0].id).in('status', [...OCCUPIED_DISPATCH_STATUSES]),
+        ])
+        for (const result of results) if (result.error) throw result.error
+        const assignment = routeAssignment(results.flatMap(result => result.data || []), newDispatch.vehicle_plate, matches[0].id)
+        if (assignment) {
+          if (assignment.kind === 'ADD_SERVICE' && canAddService) openRouteAddition(assignment.route.id)
+          else toast.error(assignment.kind === 'CLOSING' ? 'La ruta está en retorno o pendiente de cierre. Complete su cierre antes de programar otra.' : assignment.kind === 'CONFLICT' ? 'La unidad o el conductor ya está asignado a otro despacho. Mantenga la pareja de la ruta existente o elija recursos disponibles.' : 'El Supervisor de Transporte debe incorporar el servicio a la ruta existente.')
+          return
+        }
+      }
+      if (mixedOT && !allocationMatches) { toast.error('La suma del flete por servicio debe coincidir con el total de la ruta.'); return }
 
       // NOTA_SALIDA = recojo por cliente: no requiere vehículo ni conductor propio (bypass legítimo)
       // GR = despacho con vehículo propio: validación de elegibilidad obligatoria
@@ -464,8 +488,9 @@ export default function DespachoPage() {
         }
         const eligibility = await checkDispatchEligibility(newDispatch.vehicle_plate, matches[0].id)
         if (eligibility.status === 'BLOQUEADO') {
-          const reasons = [...eligibility.blocking_reasons, ...eligibility.observation_reasons].join('; ')
-          toast.error(`Despacho bloqueado: ${reasons}`)
+          toast.error(`Despacho bloqueado: ${eligibility.blocking_reasons.join('; ')}`, {
+            description: eligibility.observation_reasons.length ? `Observaciones documentarias: ${eligibility.observation_reasons.join('; ')}` : undefined,
+          })
           setIsSubmitting(false)
           return
         }
@@ -793,14 +818,21 @@ export default function DespachoPage() {
                         value={newDispatch.vehicle_plate}
                         onChange={(val) => {
                           const plate = val
-                          const assigned = drivers.find(d => d.id === vehicles.find(v => v.plate === plate)?.assigned_driver_id)
+                          const active = dispatches.find(d => d.vehicle_plate === plate)
+                          const assigned = drivers.find(d => d.id === (active?.driver_id || vehicles.find(v => v.plate === plate)?.assigned_driver_id))
                           setNewDispatch({...newDispatch, vehicle_plate: plate, driver_name: assigned ? `${assigned.first_name} ${assigned.last_name}` : newDispatch.driver_name})
                           lookupFreightRate(plate, newDispatch.selected_requests.map(r => r.id))
                         }}
-                        options={vehicles.map(v => ({ value: v.plate, label: `${v.plate} - ${v.brand} ${v.model} (${v.carriers?.business_name})` }))}
+                        options={vehicles.map(v => ({ value: v.plate, label: `${v.plate} - ${v.brand} ${v.model} (${v.carriers?.business_name})${dispatches.some(d => d.vehicle_plate === v.plate) ? ' · Despacho activo' : ''}` }))}
                         placeholder="Seleccione vehículo..."
                       />
-                      <p className="mt-1 text-xs text-slate-500">Solo unidades de transporte disponibles.</p>
+                      <p className="mt-1 text-xs text-slate-500">Unidades de transporte disponibles o con despacho activo para incorporar servicios.</p>
+                      {occupiedAssignment && <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                        <p className="font-semibold">{occupiedAssignment.route.dispatch_number} · {occupiedAssignment.route.status.replace(/_/g, ' ')}</p>
+                        <p className="mt-1">{occupiedAssignment.kind === 'ADD_SERVICE' ? 'Esta unidad y conductor ya tienen una ruta. Incorpore los nuevos servicios uno a uno al despacho existente.' : occupiedAssignment.kind === 'CLOSING' ? 'La ruta está en retorno o pendiente de cierre. Complete su cierre antes de programar otra.' : 'La unidad o el conductor tiene otro despacho. Seleccione la misma pareja de la ruta existente o recursos disponibles.'}</p>
+                        {occupiedAssignment.kind === 'ADD_SERVICE' && canAddService && <button type="button" onClick={() => openRouteAddition(occupiedAssignment.route.id)} className="mt-3 min-h-11 rounded-lg bg-jrm-navy px-4 font-semibold text-white">Agregar servicio a esta ruta</button>}
+                        <Link href={`/torre-control?despacho=${occupiedAssignment.route.id}&fecha=${occupiedAssignment.route.scheduled_departure ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(occupiedAssignment.route.scheduled_departure)) : ''}`} className="mt-2 block font-semibold underline">Ver despacho en Torre de Control</Link>
+                      </div>}
                       {/* Tarifa detectada */}
                       {loadingRate && (
                         <p className="text-xs text-slate-400 flex items-center gap-1 mt-1"><Loader2 className="w-3 h-3 animate-spin" /> Buscando tarifa...</p>
@@ -930,6 +962,7 @@ export default function DespachoPage() {
         </form>
       </Modal>
       {linkRequest && <LinkPartyModal request={linkRequest} onClose={() => setLinkRequest(null)} onLinked={() => void fetchData()} />}
+      <AddRouteService dispatchId={addServiceId} initialRequestId={newDispatch.selected_requests[0]?.id} onClose={() => { setAddServiceId(null); setIsModalOpen(true) }} onChanged={requestId => { setNewDispatch(previous => ({ ...previous, selected_requests: previous.selected_requests.filter(request => request.id !== requestId) })); void fetchData() }} />
     </div>
   )
 }

@@ -11,7 +11,7 @@ type Context = { revision: string; frontier: number; capacity_kg: number | null;
 const field = 'mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm'
 const attention = (r: Request) => r.required_at ? new Date(r.required_at).toLocaleString('es-PE', { timeZone: 'America/Lima' }) : r.required_date || 'Sin fecha'
 
-export function AddRouteService({ dispatchId, onClose, onChanged }: { dispatchId: string | null; onClose: () => void; onChanged: () => void }) {
+export function AddRouteService({ dispatchId, initialRequestId, onClose, onChanged }: { dispatchId: string | null; initialRequestId?: string; onClose: () => void; onChanged: (requestId: string) => void }) {
  const supabase = useMemo(() => createClient(), [])
  const [context, setContext] = useState<Context | null>(null)
  const [error, setError] = useState('')
@@ -34,10 +34,15 @@ export function AddRouteService({ dispatchId, onClose, onChanged }: { dispatchId
      setContext(null); setError(''); setRequestId(''); setBefore(''); setSearch(''); setFreight(''); setKm(''); setCargo(''); setAvailable(''); setExpected(''); setReason(''); setConfirmed(false)
      operation.current = crypto.randomUUID()
      const { data, error: failure } = await supabase.rpc('active_route_context', { p_dispatch: dispatchId })
-     if (!cancelled) { if (failure) setError(failure.message); else setContext(data as Context) }
+     if (!cancelled) { if (failure) setError(failure.message); else {
+       const next = data as Context
+       setContext(next)
+       const initial = next.requests.find(r => r.id === initialRequestId)
+       if (initial) { setRequestId(initial.id); setCargo(initial.weight_kg && Number(initial.weight_kg) > 0 ? initial.weight_kg : '') }
+     } }
    }, 0)
    return () => { cancelled = true; window.clearTimeout(timer) }
- }, [dispatchId, supabase])
+ }, [dispatchId, initialRequestId, supabase])
  const selected = context?.requests.find(r => r.id === requestId)
  const filtered = context?.requests.filter(r => `${r.number} ${r.ot || ''} ${r.origin} ${r.destination}`.toLowerCase().includes(search.toLowerCase())) || []
  const preview = context ? [...context.stops] : []
@@ -57,7 +62,7 @@ export function AddRouteService({ dispatchId, onClose, onChanged }: { dispatchId
      })
      if (failure) throw failure
      toast.success('Servicio agregado. El conductor verá la ruta actualizada; el tercero conserva su enlace de acceso.')
-     onChanged(); onClose()
+     onChanged(requestId); onClose()
    } catch (failure) { setError(failure instanceof Error ? failure.message : (failure as { message?: string }).message || 'No se pudo agregar el servicio. Puede reintentar sin duplicarlo.') }
    finally { setBusy(false) }
  }
