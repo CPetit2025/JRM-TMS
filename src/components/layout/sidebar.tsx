@@ -10,7 +10,7 @@ import { HOME_ITEM, activeEntry, flatEntries, normalize, visibleSections, type N
 import { setSidebar, useSidebar, type SidebarTheme } from '@/lib/nav/sidebarStore'
 import { COUNT_STYLE, countLabel, useMenuCounts, type MenuCount } from '@/lib/nav/useMenuCounts'
 
-// Menú lateral: secciones plegables (varias abiertas), buscador (Ctrl + K), favoritos, recientes y dos paletas.
+// Menú lateral: secciones plegables (una abierta), buscador (Ctrl + K), favoritos, recientes y dos paletas.
 // Fijado: siempre visible. Sin fijar: oculto; aparece al acercar el mouse al borde izquierdo, con ☰ o con Ctrl + B.
 // En celular y tablet es un panel deslizable. Contadores de pendientes por pantalla (menu_pending_counts).
 // Identidad del login: azul #002855 con franja roja; la sección donde está la página actual va en un bloque resaltado
@@ -87,7 +87,7 @@ export function Sidebar() {
     setSidebar(s => ({
       overlay: false,
       recents: e ? [e.item.href, ...s.recents.filter(h => h !== e.item.href)].slice(0, 4) : s.recents,
-      open: s.open && e?.section && !s.open.includes(e.section.id) ? [...s.open, e.section.id] : s.open,
+      open: e?.section ? [e.section.id] : [],
     }))
   }, [pathname, hasPermission, role, permissions])
 
@@ -112,9 +112,7 @@ export function Sidebar() {
   }, [])
 
   const toggleSection = (id: string) => {
-    const next = new Set(openSet)
-    if (next.has(id)) next.delete(id); else next.add(id)
-    setSidebar({ open: [...next] })
+    setSidebar({ open: openSet.has(id) ? [] : [id] })
   }
   const toggleFav = (href: string) => setSidebar(s => ({
     favs: s.favs.includes(href) ? s.favs.filter(h => h !== href) : [...s.favs, href].slice(-5),

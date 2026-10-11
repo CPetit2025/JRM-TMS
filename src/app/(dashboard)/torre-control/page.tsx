@@ -10,6 +10,7 @@ import { Modal } from '@/components/ui/modal'
 import { usePermissions } from '@/hooks/usePermissions'
 import { DeliveryTable } from '@/components/delivery/DeliveryTable'
 import { DeliveryReview } from '@/components/delivery/DeliveryReview'
+import { AddRouteService } from '@/components/despacho/AddRouteService'
 import { TerceroAvanceModal } from '@/components/despacho/Tercero'
 import { filterDeliveries, type DeliveryRow } from '@/lib/delivery'
 import { ReportarFallaButton } from '@/components/mantenimiento/ReportarFalla'
@@ -73,10 +74,12 @@ const STATUS_BADGE = {
 
 export default function TorreControlPage() {
   const supabase = useMemo(() => createClient(), [])
-  const { isLoaded, canRead, canWrite } = usePermissions()
+  const { role, isLoaded, canRead, canWrite } = usePermissions()
   const [rows, setRows] = useState<DeliveryRow[]>([])
   const [review, setReview] = useState<DeliveryRow | null>(null)
   const [thirdId, setThirdId] = useState<string | null>(null)
+  const [addServiceId, setAddServiceId] = useState<string | null>(null)
+  const canAddService = canWrite('despacho') && ['admin', 'supervisor de transporte'].includes(role)
   const [refreshedAt, setRefreshedAt] = useState<string | null>(null)
   const [loadError, setLoadError] = useState('')
   const fetchVersion = useRef(0)
@@ -357,7 +360,8 @@ export default function TorreControlPage() {
         </div>
       </div>
 
-      <DeliveryTable rows={rows.filter(row => filteredDispatches.some(d => d.id === row.dispatch_id))} loading={loading} error={loadError} refreshedAt={refreshedAt} onRefresh={() => void fetchDispatches()} onEvidence={setReview} onDispatch={row => setSelectedDispatch(dispatches.find(d => d.id === row.dispatch_id) || null)} onProvider={canWrite('despacho') ? row => setThirdId(row.dispatch_id) : undefined} />
+      <DeliveryTable rows={rows.filter(row => filteredDispatches.some(d => d.id === row.dispatch_id))} loading={loading} error={loadError} refreshedAt={refreshedAt} onRefresh={() => void fetchDispatches()} onEvidence={setReview} onDispatch={row => setSelectedDispatch(dispatches.find(d => d.id === row.dispatch_id) || null)} onAddService={canAddService ? row => setAddServiceId(row.dispatch_id) : undefined} onProvider={canWrite('despacho') ? row => setThirdId(row.dispatch_id) : undefined} />
+      <AddRouteService dispatchId={addServiceId} onClose={() => setAddServiceId(null)} onChanged={() => { setSelectedDispatch(null); void fetchDispatches() }} />
       <DeliveryReview row={review} onClose={() => setReview(null)} onChanged={() => void fetchDispatches()} />
       <TerceroAvanceModal dispatchId={thirdId} onClose={() => setThirdId(null)} onChanged={() => void fetchDispatches()} />
 
@@ -395,6 +399,7 @@ export default function TorreControlPage() {
             </div>
 
             <div className="flex flex-wrap gap-2">
+              {canAddService && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA'].includes(selectedDispatch.status) && selectedDispatch.vehicle_plate !== 'EXTERNO' && <button type="button" onClick={() => { setAddServiceId(selectedDispatch.id); setSelectedDispatch(null) }} className="min-h-11 rounded-lg bg-jrm-navy px-4 text-sm font-semibold text-white">Agregar servicio a la ruta</button>}
               <DispatchExecutionActions dispatch={{ ...selectedDispatch, modalidad: rows.find(row => row.dispatch_id === selectedDispatch.id)?.modalidad || selectedDispatch.modalidad }} onChanged={async () => { setSelectedDispatch(null); await fetchDispatches() }} />
               {canWrite('despacho') && (selectedDispatch.modalidad === 'TERCERO' || rows.some(row => row.dispatch_id === selectedDispatch.id && row.modalidad === 'TERCERO')) && <button onClick={() => { setThirdId(selectedDispatch.id); setSelectedDispatch(null) }} className="min-h-11 rounded-lg border border-violet-200 px-4 text-sm font-semibold text-violet-700">Compartir acceso GR · tercero</button>}
               {['documentario', 'packing-list', 'planificacion'].some(module => canRead(module)) && <Link href={`/despacho/documentos?despacho=${selectedDispatch.id}&vista=${selectedDispatch.status === 'PROGRAMADO' ? 'salida' : 'historial'}&desde=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(selectedDispatch.scheduled_departure))}`} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855]">Documentos del servicio</Link>}
