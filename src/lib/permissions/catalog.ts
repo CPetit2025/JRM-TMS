@@ -70,6 +70,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     { id: 'permisos', label: 'Roles y permisos' },
     { id: 'configuracion', label: 'Configuración general y geocercas' },
   ] },
+  { title: 'Permisos especiales', hint: 'Reemplazan reglas que dependían del nombre del rol. Su rol base las conserva siempre; márquelas para dárselas a otro rol.', modules: [
+    { id: 'cartera-propia', label: 'Solo su cartera de OT (Responsable de OT)', mode: 'toggle', hint: 'Ve y edita solo las OT que tiene asignadas; puede asumir OT sin responsable. Sin Centro de Analítica.' },
+    { id: 'entregas-validacion', label: 'Validar conformidad de entregas', mode: 'toggle', hint: 'Revisa y valida las guías firmadas que sube el conductor.' },
+    { id: 'solo-documentos', label: 'Solo documentos de despacho (auditor)', mode: 'toggle', hint: 'Entra únicamente a Documentos de Despacho y su perfil.' },
+  ] },
   { title: 'JRM IA', modules: [
     { id: 'ia:read:distribucion', label: 'IA: distribución, despachos y documentos', mode: 'toggle' },
     { id: 'ia:read:inventarios', label: 'IA: inventarios', mode: 'toggle' },

@@ -13,6 +13,7 @@ import {
   type PermissionLevel,
 } from '@/lib/permissions/catalog'
 import { visibleSections } from '@/lib/nav/navConfig'
+import { RoleMatrix } from '@/components/permisos/RoleMatrix'
 import { isBaseRole, isSystemAdminRole, roleDeniesPath } from '@/lib/roles'
 
 interface Role {
@@ -73,6 +74,7 @@ export default function PermisosPage() {
   const [history, setHistory] = useState<{ title: string; items: Change[] } | null>(null)
   const [names, setNames] = useState<Record<string, string>>({})
 
+  const [view, setView] = useState<'lista' | 'matriz'>('lista')
   const [searchTerm, setSearchTerm] = useState('')
   const filteredList = roles.filter(item => {
     const query = searchTerm.trim().toLowerCase()
@@ -101,7 +103,7 @@ export default function PermisosPage() {
   const preview = useMemo(() => {
     if (isSystemAdminRole(newRole.name)) return null
     const has = (module: string) => newRole.permissions.some(p => p === module || p.startsWith(`${module}:`))
-    return visibleSections(has, href => roleDeniesPath(newRole.name, href))
+    return visibleSections(has, href => roleDeniesPath(newRole.name, href, newRole.permissions))
   }, [newRole.name, newRole.permissions])
   const pending = useMemo(() => editingId ? diffPermissions(original, newRole.permissions) : [], [editingId, original, newRole.permissions])
 
@@ -199,6 +201,15 @@ export default function PermisosPage() {
           </div>
         </div>
       </div>
+      <div role="tablist" aria-label="Vista" className="inline-flex overflow-hidden rounded-lg border border-slate-300 bg-white">
+        {(['lista', 'matriz'] as const).map(v => (
+          <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
+            className={`min-h-9 px-4 text-sm font-semibold ${view === v ? 'bg-[#002855] text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+            {v === 'lista' ? 'Lista de roles' : 'Matriz de permisos'}
+          </button>
+        ))}
+      </div>
+      {view === 'matriz' ? <RoleMatrix roles={filteredList} onEdit={writable ? id => { const r = roles.find(x => x.id === id); if (r) openEditor(r) } : undefined} /> : (
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-auto max-h-[calc(100vh-220px)]">
           <DataTable className="w-full text-left border-collapse relative">
@@ -258,6 +269,7 @@ export default function PermisosPage() {
           </DataTable>
         </div>
       </div>
+      )}
 
       {isModalOpen && <Modal isOpen onClose={() => setIsModalOpen(false)} title={editingId ? 'Editar Rol' : 'Crear Nuevo Rol'} maxWidth="max-w-6xl">
         <form onSubmit={handleSaveRole} className="space-y-5">

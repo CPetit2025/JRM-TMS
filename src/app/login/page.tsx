@@ -83,7 +83,7 @@ export default function LoginPage() {
            permissions = roleObj?.permissions || []
         }
 
-        if (profileData?.employee_type === 'CONDUCTOR' || (!hasWebAccess(roleName, permissions) && !isDispatchAuditorRole(roleName))) {
+        if (profileData?.employee_type === 'CONDUCTOR' || (!hasWebAccess(roleName, permissions) && !isDispatchAuditorRole(roleName, permissions))) {
           await supabase.auth.signOut()
           throw new Error('Esta cuenta pertenece al Portal Operativo. Ingresa desde /app/login.')
         }

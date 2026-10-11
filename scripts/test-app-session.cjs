@@ -113,3 +113,16 @@ test('typed URL respects the module permission like the menu', async () => {
   const admin = { is_active: true, employee_type: 'OPERARIO', roles: { name: 'Administrador', permissions: [] } }
   assert.equal((await fixture({ profile: admin }).request('/usuarios')).location, undefined)
 })
+test('special permissions replace the role-name rules', async () => {
+  const profile = (name, permissions) => ({ is_active: true, employee_type: 'OPERARIO', roles: { name, permissions } })
+  // «Solo documentos de despacho» en un rol cualquiera: igual que el Auditor de Despacho
+  const auditorLike = profile('Auditor Planta Norte', ['planificacion:read', 'packing-list:write', 'solo-documentos'])
+  assert.equal((await fixture({ profile: auditorLike }).request('/despacho/documentos')).location, undefined)
+  assert.equal((await fixture({ profile: auditorLike }).request('/solicitudes')).location, '/despacho/documentos')
+  // «Solo su cartera de OT» en otro rol: sin Centro de Analítica, igual que el Administrador de Contratos
+  const portfolio = profile('Coordinador de Proyectos', ['ot:write', 'apt:read', 'cartera-propia'])
+  assert.equal((await fixture({ profile: portfolio }).request('/contratos')).location, undefined)
+  assert.equal((await fixture({ profile: portfolio }).request('/reportes')).location, '/')
+  // Sin el permiso especial, el mismo rol sí abre /reportes
+  assert.equal((await fixture({ profile: profile('Coordinador de Proyectos', ['ot:write', 'apt:read']) }).request('/reportes')).location, undefined)
+})

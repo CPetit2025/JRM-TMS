@@ -16,7 +16,7 @@ import { setSidebar, useSidebar } from '@/lib/nav/sidebarStore'
 import { usePageOwnsTitle } from '@/lib/nav/pageChromeStore'
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const { role, isLoaded } = usePermissions()
+  const { role, permissions, isLoaded } = usePermissions()
   const [email, setEmail] = useState('')
   const pathname = usePathname()
 
@@ -66,7 +66,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-dvh min-w-0 bg-slate-50">
-      {isLoaded && !isDispatchAuditorRole(role) && <JrmAiAssistant />}
+      {isLoaded && !isDispatchAuditorRole(role, permissions) && <JrmAiAssistant />}
       <Sidebar />
       <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
         <header className="h-14 shrink-0 bg-white border-b border-slate-200 border-t-[3px] border-t-[#cf152d] flex items-center justify-between gap-2 px-3 sm:gap-3 sm:px-4 lg:px-6 z-20 relative">

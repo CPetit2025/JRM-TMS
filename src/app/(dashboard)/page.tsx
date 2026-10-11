@@ -403,10 +403,10 @@ function DashboardEjecutivo() {
 
 // Inicio: el Resumen Ejecutivo es para quien tiene "Dashboard Principal"; el resto entra directo a sus módulos.
 export default function Inicio() {
-  const { isLoaded, hasAccess, role } = usePermissions()
+  const { isLoaded, hasAccess, role, permissions } = usePermissions()
   if (!isLoaded) return <div className="grid min-h-[40vh] place-items-center"><Loader2 className="h-6 w-6 animate-spin text-[#002855]" /></div>
   if (hasAccess('dashboard')) return <DashboardEjecutivo />
-  const sections = visibleSections(hasAccess, href => roleDeniesPath(role, href))
+  const sections = visibleSections(hasAccess, href => roleDeniesPath(role, href, permissions))
   return (
     <div className="space-y-3 pb-10">
       <PageHeader showTitle title="Inicio" description="Accede a los módulos habilitados para tu rol" />
