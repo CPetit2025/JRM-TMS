@@ -57,7 +57,7 @@ BEGIN
  IF EXISTS(SELECT 1 FROM public.dispatch_documents WHERE dispatch_id=route) OR (SELECT status FROM public.dispatches WHERE id=route) IS DISTINCT FROM 'PROGRAMADO'
   OR EXISTS(SELECT 1 FROM public.delivery_conformities WHERE dispatch_id=route AND (state<>'PENDIENTE' OR current_submission_id IS NOT NULL)) THEN RAISE EXCEPTION 'CAJA C85 FAIL: número falsea archivo, conformidad o salida'; END IF;
  -- Pickup note identifiers satisfy only the note requirement, never the signed Packing List.
- UPDATE public.dispatches SET vehicle_plate='EXTERNO',modalidad='RECOJO_CLIENTE' WHERE id=route;
+ UPDATE public.dispatches SET vehicle_plate='EXTERNO',modalidad='PROPIA' WHERE id=route;
  IF public.dispatch_documents_missing(route) LIKE '%Nota de Despacho%' OR public.dispatch_documents_missing(route) NOT LIKE '%Packing List%' THEN
   RAISE EXCEPTION 'CAJA C85 FAIL: la nota exige archivo o falsea Packing List firmado'; END IF;
  -- Every rejected batch must leave all original links untouched.
