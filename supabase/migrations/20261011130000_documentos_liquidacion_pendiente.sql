@@ -5,12 +5,15 @@ BEGIN;
 DO $migration$
 DECLARE source text; definition text;
  anchor constant text:='(p_include_departed AND d.scheduled_departure >= p_from AND d.scheduled_departure <= p_until)';
+ programmed constant text:='(NOT p_include_departed AND d.status = ''PROGRAMADO'')';
 BEGIN
  source:=pg_get_functiondef('public.get_documentary_queue_period(boolean,timestamptz,timestamptz)'::regprocedure);
- IF position(anchor IN source)=0 OR position('can_access_site' IN source)=0 OR position('number_references' IN source)=0 THEN
+ IF position(anchor IN source)=0 OR position(programmed IN source)=0 OR position('can_access_site' IN source)=0 OR position('number_references' IN source)=0 THEN
   RAISE EXCEPTION 'Bandeja documentaria por período no reconocida: revisar antes de migrar';
  END IF;
  definition:=replace(source,'FUNCTION public.get_documentary_queue_period(','FUNCTION public.get_documentary_pending_settlement(');
+ -- La rama de despachos programados no aplica: esta bandeja solo devuelve rutas cerradas pendientes.
+ definition:=replace(definition,programmed,'(false)');
  definition:=replace(definition,anchor,$pending$(p_include_departed
   AND COALESCE(d.scheduled_departure, d.created_at) >= p_from AND COALESCE(d.scheduled_departure, d.created_at) <= p_until
   AND d.status IN ('CIERRE_OPERATIVO','RETORNO_COMPLETADO','ENTREGADO')
@@ -22,7 +25,7 @@ BEGIN
            AND pn.doc_type = 'NOTA_DESPACHO' AND pn.voided_at IS NULL)
      AND NOT EXISTS (SELECT 1 FROM public.dispatch_document_references pr WHERE pr.dispatch_id = d.id AND pr.request_id = pdr.transport_request_id
            AND pr.doc_type = 'NOTA_DESPACHO') END))$pending$);
- IF position('get_documentary_pending_settlement' IN definition)=0 OR position(anchor IN definition)>0 THEN
+ IF position('get_documentary_pending_settlement' IN definition)=0 OR position(anchor IN definition)>0 OR position(programmed IN definition)>0 THEN
   RAISE EXCEPTION 'No se pudo derivar la bandeja de liquidación pendiente';
  END IF;
  EXECUTE definition;

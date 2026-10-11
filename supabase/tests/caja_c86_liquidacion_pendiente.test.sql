@@ -80,11 +80,18 @@ BEGIN
   PERFORM pg_temp.c86_user(NULL);
   IF cut::text = ANY (COALESCE(ids, '{}')) THEN RAISE EXCEPTION 'CAJA C86 FAIL: ruta validada sigue pendiente (T2)'; END IF;
 
-  -- T3: no expuesta a anónimos
-  IF has_function_privilege('anon', 'public.get_documentary_pending_settlement(boolean,timestamptz,timestamptz)', 'EXECUTE') THEN
-    RAISE EXCEPTION 'CAJA C86 FAIL: bandeja expuesta a anónimos (T3)'; END IF;
+  -- T3: sin el indicador de despachos salidos tampoco devuelve rutas programadas ni en curso
+  PERFORM pg_temp.c86_user(actor);
+  IF jsonb_array_length(COALESCE(public.get_documentary_pending_settlement(false, NULL, NULL), '[]')) <> 0 THEN
+    PERFORM pg_temp.c86_user(NULL);
+    RAISE EXCEPTION 'CAJA C86 FAIL: devolvió rutas sin cierre operativo (T3)'; END IF;
+  PERFORM pg_temp.c86_user(NULL);
 
-  RAISE EXCEPTION 'CAJA C86 PASS (3/3) liquidación pendiente: solo rutas con cierre operativo y guías sin validar%',
+  -- T4: no expuesta a anónimos
+  IF has_function_privilege('anon', 'public.get_documentary_pending_settlement(boolean,timestamptz,timestamptz)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'CAJA C86 FAIL: bandeja expuesta a anónimos (T4)'; END IF;
+
+  RAISE EXCEPTION 'CAJA C86 PASS (4/4) liquidación pendiente: solo rutas con cierre operativo y guías sin validar%',
     CASE WHEN undated IS NULL THEN ' (salida programada obligatoria en este esquema)' ELSE ', también sin salida programada' END;
 END $test$;
 ROLLBACK;
