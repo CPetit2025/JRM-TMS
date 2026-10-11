@@ -50,8 +50,11 @@ BEGIN
   END IF;
   DELETE FROM public.roles WHERE id = v_role AND NOT EXISTS (SELECT 1 FROM public.profiles WHERE role_id = v_role);
 
-  -- T6: el historial no es visible para anónimos
-  IF has_table_privilege('anon', 'public.role_permission_changes', 'SELECT') THEN
+  -- T6: el historial no es visible para anónimos ni editable por usuarios (solo lo escribe el disparador)
+  IF has_table_privilege('anon', 'public.role_permission_changes', 'SELECT')
+     OR has_table_privilege('authenticated', 'public.role_permission_changes', 'INSERT')
+     OR has_table_privilege('authenticated', 'public.role_permission_changes', 'TRUNCATE')
+     OR has_table_privilege('authenticated', 'public.role_permission_changes', 'TRIGGER') THEN
     RAISE EXCEPTION 'CAJA C79 FAIL: historial expuesto a anónimos (T6)'; END IF;
 
   RAISE EXCEPTION 'CAJA C79 PASS (6/6) roles y permisos: formato único, acceso intacto, historial y roles base protegidos';
