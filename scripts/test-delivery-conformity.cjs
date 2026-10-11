@@ -617,6 +617,7 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   console.log('PASS: C84 daily Lima cutoff releases resources without false return/guide/financial completion, late evidence and review, protected new assignment, private jobs, documentary KPI and same-day additions; C80 regression.')
   sql(read('supabase/migrations/20261009040000_documents_flow.sql'))
   sql(read('supabase/migrations/20261011112000_dispatch_document_references.sql'))
+  sql(`ALTER TABLE dispatches ADD CONSTRAINT fixture_dispatch_modalidad_check CHECK(modalidad IN ('PROPIA','TERCERO'));`)
   const referencesBox=query(read('supabase/tests/caja_c85_dispatch_document_references.test.sql'))
   assert.match(referencesBox.stderr,/CAJA C85 PASS/,referencesBox.stderr)
   const legacyCutoffBox=query(read('supabase/tests/caja_c82_cierre_operativo.test.sql'))

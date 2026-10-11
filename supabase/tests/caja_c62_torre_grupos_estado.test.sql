@@ -32,7 +32,7 @@ BEGIN
     SELECT count(*) FILTER (WHERE status NOT IN ('EN_CURSO','EN RUTA','ESPERANDO_AUTORIZACION','RETORNO')), count(*)
       INTO v_bad, v_rows FROM public.get_tower_dispatches(NULL, NULL, 'RUTA');
     IF v_bad = 0 THEN
-      SELECT count(*) FILTER (WHERE status NOT IN ('ENTREGADO','RETORNO_COMPLETADO')) INTO v_bad
+      SELECT count(*) FILTER (WHERE status NOT IN ('ENTREGADO','RETORNO_COMPLETADO','CIERRE_OPERATIVO')) INTO v_bad
         FROM public.get_tower_dispatches(NULL, NULL, 'POR_CERRAR');
     END IF;
     IF v_bad = 0 THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T3 ' || v_bad || ' despachos fuera del grupo'); END IF;
