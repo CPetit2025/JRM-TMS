@@ -587,6 +587,8 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   const activeSource=read('supabase/migrations/20261008020000_production_security_boundaries.sql')
   sql(activeSource.slice(activeSource.indexOf('CREATE OR REPLACE FUNCTION public.is_active_tms_user()'),activeSource.indexOf('REVOKE ALL ON FUNCTION public.is_active_tms_user')))
   sql(read('supabase/migrations/20261011060000_active_route_add_service.sql'))
+  sql(read('supabase/migrations/20261011070000_active_route_fk_index.sql'))
+  sql(`UPDATE carriers SET type='PROPIO' WHERE id='${id(43)}';`)
   const additionBox=query(read('supabase/tests/caja_c80_active_route_service.test.sql'))
   assert.match(additionBox.stderr,/CAJA C80 PASS/,additionBox.stderr)
   console.log('PASS: C80 active route additions preserve old freight and current leg, mixed OT root budget, deadlines/capacity, atomic retries, permissions, retained third-party access and settlement.')
