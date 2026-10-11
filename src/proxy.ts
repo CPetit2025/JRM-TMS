@@ -75,7 +75,7 @@ export async function proxy(request: NextRequest) {
     operativeDestination = profile.employee_type === 'CONDUCTOR' ? '/app' : '/app/actividades'
     const role = Array.isArray(profile.roles) ? profile.roles[0] : profile.roles
     const permissions = Array.isArray(role?.permissions) ? role.permissions : []
-    const auditor = profile.employee_type !== 'CONDUCTOR' && isDispatchAuditorRole(role?.name)
+    const auditor = profile.employee_type !== 'CONDUCTOR' && isDispatchAuditorRole(role?.name, permissions)
     hasDashboardAccess = profile.employee_type !== 'CONDUCTOR' &&
       (hasWebAccess(role?.name, permissions) || auditor)
     if (auditor && !dispatchAuditorPathAllowed(request.nextUrl.pathname)) {
@@ -84,7 +84,7 @@ export async function proxy(request: NextRequest) {
     if (!isDriverRoute && !isLoginPage && !hasDashboardAccess) {
       return redirect(new URL('/login', request.url))
     }
-    if (!isDriverRoute && roleDeniesPath(role?.name, request.nextUrl.pathname)) {
+    if (!isDriverRoute && roleDeniesPath(role?.name, request.nextUrl.pathname, permissions)) {
       return redirect(new URL('/', request.url))
     }
     // Cada página exige el permiso de su opción del menú: la dirección escrita a mano no abre un módulo ajeno.
