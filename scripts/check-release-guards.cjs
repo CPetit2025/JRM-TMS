@@ -2,6 +2,7 @@
 // 1. El APK carga la web en vivo desde server.url; si falta, el APK no se puede compilar o queda sin pantallas.
 // 2. Toda pantalla del app del conductor debe tener un acceso visible (la solicitud de anticipo quedó escondida).
 // 3-4. Permisos en el catálogo único y toda página web con regla de acceso (menú = dirección escrita a mano).
+// 5. Tablas nuevas con barrera de cuenta activa y sin privilegios por defecto (C55).
 const { existsSync, readdirSync, readFileSync, statSync } = require('node:fs')
 const path = require('node:path')
 
@@ -61,6 +62,20 @@ for (const file of walk(dashDir).filter(f => f.endsWith(`${path.sep}page.tsx`)))
   const covered = openPaths.some(p => route === p || (p !== '/' && route.startsWith(p + '/'))) || aliases.includes(route) ||
     menuHrefs.some(h => h !== '/' && (route === h || route.startsWith(h + '/')))
   if (!covered) errors.push(`La página ${route} no tiene regla de acceso: agréguela al menú (navConfig) o a OPEN_PATHS en web-access.ts.`)
+}
+
+// 5. Tablas nuevas con las barreras que exige C55 (incidente: role_permission_changes falló en producción dos veces):
+//    barrera restrictiva de cuenta activa y sin privilegios por defecto de Supabase para authenticated.
+const allMigrations = readdirSync(migDir).sort().map(name => ({ name, text: readFileSync(path.join(migDir, name), 'utf8') }))
+const allSql = allMigrations.map(m => m.text).join('\n')
+for (const { name, text } of allMigrations.filter(m => m.name >= '20261011050000')) {
+  for (const m of text.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?public\.([a-z0-9_]+)/gi)) {
+    const table = m[1]
+    if (!new RegExp(`security_active_account ON public\\.${table}\\b`).test(allSql))
+      errors.push(`La tabla ${table} (${name}) no tiene la política restrictiva security_active_account (C55).`)
+    if (!new RegExp(`REVOKE ALL ON (?:TABLE )?public\\.${table} FROM[^;]*authenticated`, 'i').test(allSql))
+      errors.push(`La tabla ${table} (${name}) conserva los privilegios por defecto de authenticated: REVOKE ALL y GRANT solo lo necesario (C55).`)
+  }
 }
 
 if (errors.length) {
