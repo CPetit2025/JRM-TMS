@@ -239,17 +239,17 @@ export default function ClientesPage() {
           <DataTable className="w-full text-left border-collapse relative">
             <thead className="sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider ">
-                <th className="p-4 font-semibold cursor-pointer" onClick={() => handleSort('business_name')}>
+                <th className="p-4 font-semibold cursor-pointer" aria-sort={sortField === 'business_name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'} onClick={() => handleSort('business_name')}>
                   <span className="flex items-center">Razon Social <SortIcon field="business_name" /></span>
                 </th>
-                <th className="p-4 font-semibold cursor-pointer" onClick={() => handleSort('tax_id')}>
+                <th className="p-4 font-semibold cursor-pointer" aria-sort={sortField === 'tax_id' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'} onClick={() => handleSort('tax_id')}>
                   <span className="flex items-center">RUC (Tax ID) <SortIcon field="tax_id" /></span>
                 </th>
-                <th className="p-4 font-semibold cursor-pointer" onClick={() => handleSort('contact_name')}>
+                <th className="p-4 font-semibold cursor-pointer" aria-sort={sortField === 'contact_name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'} onClick={() => handleSort('contact_name')}>
                   <span className="flex items-center">Contacto <SortIcon field="contact_name" /></span>
                 </th>
                 <th className="p-4 font-semibold">Telefono / Email</th>
-                <th className="p-4 font-semibold cursor-pointer" onClick={() => handleSort('is_active')}>
+                <th className="p-4 font-semibold cursor-pointer" aria-sort={sortField === 'is_active' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'} onClick={() => handleSort('is_active')}>
                   <span className="flex items-center">Estado <SortIcon field="is_active" /></span>
                 </th>
                 <th className="p-4 font-semibold text-right">Acciones</th>

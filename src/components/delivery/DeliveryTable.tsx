@@ -13,6 +13,7 @@ import { conformityLabels, deliveryServiceKind, deliveryStatus, deliveryTime, do
 import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 import { SERVICE_KINDS, type ServiceKind } from '@/lib/request-service'
 import { canAddRouteService } from '@/lib/route-assignment'
+import { compareCells, type SortDirection } from '@/components/ui/table-sort'
 
 export function DeliverySignal({ state, onClick, compact = false }: { state: string; onClick?: () => void; compact?: boolean }) {
   const style = deliveryStatus(state)
@@ -46,10 +47,30 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
   const [search, setSearch] = useState(''), [state, setState] = useState(''), [conformity, setConformity] = useState(''), [service, setService] = useState('')
   const [page, setPage] = useState(0), [history, setHistory] = useState<DeliveryRow | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [sort, setSort] = useState<{ column: number; direction: SortDirection } | null>(null)
   const filtered = useMemo(() => filterDeliveries(rows, search, state, conformity).filter(row => !service || deliveryServiceKind(row) === service), [rows, search, state, conformity, service])
   const services = (Object.keys(SERVICE_KINDS) as ServiceKind[]).filter(kind => kind === service || rows.some(row => deliveryServiceKind(row) === kind))
   const pages = Math.max(1, Math.ceil(filtered.length / 25)), current = Math.min(page, pages - 1)
-  const visible = filtered.slice(current * 25, (current + 1) * 25)
+  // Orden sobre todas las entregas filtradas (no solo la página visible); mismas columnas de la tabla
+  const sortedRows = useMemo(() => {
+    if (!sort) return filtered
+    const value = (row: DeliveryRow): string => {
+      switch (sort.column) {
+        case 0: return row.scheduled_departure ? new Date(row.scheduled_departure).toISOString() : ''
+        case 1: return (k => k ? SERVICE_KINDS[k].label : '')(deliveryServiceKind(row))
+        case 2: return hasOt(row) ? row.ot_code : referenceLabel(row) || ''
+        case 3: return row.plate || ''
+        case 4: return partyName(row, row.client_name, row.supplier_name) || ''
+        case 5: return districtOf(deliveryServiceKind(row) === 'RECOJO' ? row.pickup_address : row.delivery_address)
+        case 6: return documentNumberLabel(row.guide_number, row.note_number).pending ? '' : documentNumberLabel(row.guide_number, row.note_number).text
+        case 7: return guideStatus(row).label
+        case 8: return row.last_event_at ? new Date(row.last_event_at).toISOString() : ''
+        default: return ''
+      }
+    }
+    return [...filtered].sort((a, b) => compareCells(value(a), value(b), sort.direction))
+  }, [filtered, sort])
+  const visible = sortedRows.slice(current * 25, (current + 1) * 25)
   const states = Array.from(new Set(rows.map(row => row.state)))
   const exportRows = async () => {
     setExporting(true)
@@ -82,7 +103,7 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
     </div>
     {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error} La información anterior puede estar desactualizada.</p>}
     <div className="overflow-x-auto rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
-      <DataTable dense className="w-full min-w-[900px] text-left text-xs">
+      <DataTable dense className="w-full min-w-[900px] text-left text-xs" onSortChange={next => { setSort(next); setPage(0) }}>
         <thead className="bg-slate-50 text-slate-600"><tr>{['Fecha', 'Servicio', 'OT', 'Unidad', 'Empresa', 'Destino', 'GR / Nota', 'Conformidad', 'Último evento', 'Acciones'].map((label, i) => <th key={label} className={`whitespace-nowrap font-semibold ${i === 9 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead>
         <tbody className="divide-y">
           {!visible.length && <tr><td colSpan={10} className="p-8 text-center text-slate-500">{loading ? 'Cargando entregas…' : 'No hay entregas con los filtros seleccionados.'}</td></tr>}

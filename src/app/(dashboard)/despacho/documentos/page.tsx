@@ -20,7 +20,7 @@ import { conformityLabels, documentNumberLabel, type DeliveryRow } from '@/lib/d
 import { PACKING_ACCEPT, packingMime } from '@/lib/packing-list'
 import { DOCS_BUCKET, errorMessage, fmtDate, receiptUrl } from '@/lib/caja'
 import { districtOf } from '@/lib/address'
-import { DocumentNumberLinks } from '@/components/despacho/DocumentNumberLinks'
+import { DocumentNumberLinks, type KnownNumber } from '@/components/despacho/DocumentNumberLinks'
 import { referenceLabel } from '@/lib/suppliers'
 import { cellDateTime, fullDateTime } from '@/lib/table-format'
 import { fetchServiceTypes, serviceKind, type ServiceKind } from '@/lib/request-service'
@@ -228,7 +228,7 @@ function DocumentaryQueue() {
         </section>}
       <Modal isOpen={!!selected} onClose={() => setSelectedId(null)} title={`Documentos · ${selected?.dispatch_number || ''}`} maxWidth="max-w-[1440px]"
         footer={<div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-600">{assistantOnly ? 'Vincula los números por servicio. La guía firmada y su aprobación se gestionan por separado.' : selected?.missing ? 'Completa los documentos pendientes para autorizar la salida.' : selected?.docs_ready_at ? 'Documentos confirmados para salida.' : 'Documentos y archivos asociados al servicio.'}</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setSelectedId(null)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Cerrar</button>{selected && canEdit && selected.status === 'PROGRAMADO' && ['PENDIENTE', 'REEMISION'].includes(selected.doc_status) && <button type="button" onClick={() => void confirmDocs(selected)} disabled={busy === selected.id || !!selected.missing} className="flex min-h-11 items-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-500">{busy === selected.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar documentos para salida</button>}</div></div>}>
-        {selected && !packingOnly && <DocumentNumberLinks key={selected.id} dispatchId={selected.id} services={selected.stops} canEdit={canNumbers && selected.status !== 'CANCELADO'} onChanged={load} />}
+        {selected && !packingOnly && <DocumentNumberLinks key={selected.id} dispatchId={selected.id} services={selected.stops} known={knownNumbers(selected, deliveries)} canEdit={canNumbers && selected.status !== 'CANCELADO'} onChanged={load} />}
         {selected && <DispatchCard key={selected.id} item={selected} canEdit={canEdit && selected.status === 'PROGRAMADO'} canPacking={canPacking && selected.status === 'PROGRAMADO'} packingOnly={packingOnly}
           onVoid={voidDoc} onOpen={openDoc} onUploaded={load}
           deliveries={deliveries.filter(row => row.dispatch_id === selected.id)} onEvidence={row => { setSelectedId(null); setReview(row) }} />}
@@ -238,6 +238,15 @@ function DocumentaryQueue() {
       {anulando && <AnularModal doc={anulando} onClose={() => setAnulando(null)} onDone={() => { setAnulando(null); void load() }} />}
     </div>
   )
+}
+
+/** Números que el servicio ya tiene por otra vía, para que el modal muestre lo mismo que la columna «GR / Nota». */
+function knownNumbers(item: QueueItem, deliveries: DeliveryRow[]): KnownNumber[] {
+  const fromDelivery = deliveries.filter(row => row.dispatch_id === item.id && row.guide_number)
+    .map(row => ({ request_id: row.request_id, doc_type: 'GUIA_REMISION' as const, document_number: row.guide_number!, source: row.submission_id ? 'guía de entrega' : 'despacho' }))
+  const fromFiles = item.documents.filter(doc => doc.request_id && doc.document_number && (doc.doc_type === 'GUIA_REMISION' || doc.doc_type === 'NOTA_DESPACHO'))
+    .map(doc => ({ request_id: doc.request_id!, doc_type: doc.doc_type as KnownNumber['doc_type'], document_number: doc.document_number!, source: 'archivo cargado' }))
+  return [...fromDelivery, ...fromFiles]
 }
 
 /** El recojo del cliente tiene su Nota de Despacho (archivo o número vinculado). */
