@@ -158,7 +158,7 @@ function DocumentaryQueue() {
     (item.stops.length ? item.stops : [null]).filter(stop => !needle || [item.dispatch_number, item.vehicle_plate,
       item.driver_name, stop?.ot_code, stop?.request_number, stop?.client, stop?.delivery,
       searchableNumbers(item, stop)].join(' ').toLocaleLowerCase('es-PE').includes(needle))
-      .map(stop => ({ item, stop }))).filter(({ item, stop }) => documentPhaseMatches(phase, item, deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)))
+      .map(stop => ({ item, stop }))).filter(({ item, stop }) => documentPhaseMatches(phase, item, deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id), noteLinked(item, stop)))
   const selected = items?.find(item => item.id === selectedId)
 
   const openDoc = async (path: string) => {
@@ -237,6 +237,12 @@ function DocumentaryQueue() {
       {anulando && <AnularModal doc={anulando} onClose={() => setAnulando(null)} onDone={() => { setAnulando(null); void load() }} />}
     </div>
   )
+}
+
+/** El recojo del cliente tiene su Nota de Despacho (archivo o número vinculado). */
+function noteLinked(item: QueueItem, stop: Stop | null) {
+  return item.documents.some(doc => doc.doc_type === 'NOTA_DESPACHO' && doc.request_id === stop?.request_id)
+    || !!item.number_references?.some(ref => ref.doc_type === 'NOTA_DESPACHO' && ref.request_id === stop?.request_id)
 }
 
 /** GR (guía de entrega o registrada por Documentos) y Nota de Despacho del servicio. */

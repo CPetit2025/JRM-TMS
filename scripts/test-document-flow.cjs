@@ -31,4 +31,8 @@ test('closed routes with incomplete documentation stay pending for documentary s
   assert.equal(documentPhaseMatches('liquidacion', closed, { conformity: 'VALIDADA' }), false)
   assert.equal(documentPhaseMatches('liquidacion', { ...closed, status: 'LIQUIDADO' }, { conformity: 'PENDIENTE' }), false)
   assert.equal(documentPhaseMatches('liquidacion', route, { conformity: 'PENDIENTE' }), false)
+  const cutoff = { ...route, status: 'CIERRE_OPERATIVO' }
+  assert.equal(documentPhaseMatches('liquidacion', cutoff, { conformity: 'PENDIENTE' }), true)
+  assert.equal(documentPhaseMatches('liquidacion', { ...cutoff, is_pickup: true }, undefined, false), true)
+  assert.equal(documentPhaseMatches('liquidacion', { ...cutoff, is_pickup: true }, undefined, true), false)
 })
