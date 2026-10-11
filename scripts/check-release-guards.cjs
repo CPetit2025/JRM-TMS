@@ -45,7 +45,8 @@ for (const { file, text } of sources) for (const m of text.matchAll(/\b(?:canRea
 const migDir = path.join(root, 'supabase', 'migrations')
 for (const name of readdirSync(migDir).filter(n => n >= '20261011030000')) {
   const text = readFileSync(path.join(migDir, name), 'utf8')
-  for (const m of text.matchAll(/has_tms_(?:read_)?permission\(\s*'([a-z0-9:-]+)'/g)) note(m[1], name)
+  for (const m of text.matchAll(/(?:has_tms_(?:read_)?permission|menu_has_permission)\(\s*'([a-z0-9:-]+)'/g)) note(m[1], name)
+  for (const m of text.matchAll(/has_cmms_(?:read_)?permission\(\s*'([a-z0-9-]+)'/g)) note(`mantenimiento-${m[1]}`, name)
 }
 for (const [key, where] of used) if (!catalog.has(key)) errors.push(`El permiso '${key}' (${where}) no está en src/lib/permissions/catalog.ts.`)
 
