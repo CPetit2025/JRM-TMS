@@ -1,4 +1,5 @@
 import type { DeliveryRow } from '@/lib/delivery'
+import { requiresSupplier } from '@/lib/suppliers'
 
 // Portal público de seguimiento: clasificación de cada servicio por su origen (OT madre, subcontrato, error u
 // orden sin OT: OS, OC, RQ) y apertura de guías / Packing List con URL firmada (/api/tracking/documento).
@@ -6,6 +7,7 @@ import type { DeliveryRow } from '@/lib/delivery'
 export type PortalDocument = { id: string; type: 'GUIA_REMISION' | 'PACKING_LIST'; number: string | null; name: string | null }
 export type PortalRow = DeliveryRow & {
   dispatch_status?: string; ot_type?: string | null; sequence_order?: number | null
+  supplier_name?: string | null; request_type?: string | null; attention_mode?: string | null
   documents?: PortalDocument[]; signed_photos?: number; packing_photos?: number
 }
 export type PortalOrigin = 'OT' | 'SUB' | 'ERR' | 'OS' | 'OC' | 'RQ' | 'SIN'
@@ -110,4 +112,10 @@ export function portalStatus(row: { state: string } | null | undefined, requestS
     case 'CANCELADA': case 'ANULADA': case 'RECHAZADA': return tone('Cancelado', 'red')
   }
   return tone((row?.state || requestStatus || '—').replaceAll('_', ' ').toLowerCase().replace(/^./, c => c.toUpperCase()), 'slate')
+}
+
+/** Empresa del servicio: proveedor en recojos y traslados, cliente en entregas (y recojo por el cliente). */
+export function portalParty(r: { request_type?: string | null; attention_mode?: string | null; client_name?: string | null; supplier_name?: string | null }) {
+  const supplier = requiresSupplier({ request_type: r.request_type ?? undefined, attention_mode: r.attention_mode ?? undefined })
+  return { label: supplier ? 'Proveedor' : 'Cliente', name: (supplier ? r.supplier_name : r.client_name) || null }
 }
