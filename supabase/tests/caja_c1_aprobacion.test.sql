@@ -66,7 +66,7 @@ BEGIN
   VALUES ('ZZ-C1-001', 'ZZC1A', v_driver, 'EN_CURSO', v_site) RETURNING id INTO v_disp;
 
   -- T1: rol Jefe de Distribución con el permiso de aprobación; RUC con dígito verificador
-  IF (SELECT permissions ? 'caja-aprobacion' AND permissions ? 'dashboard' FROM public.roles WHERE name = 'Jefe de Distribución')
+  IF (SELECT permissions ? 'caja-aprobacion' AND permissions ?| ARRAY['dashboard', 'dashboard:read', 'dashboard:write'] FROM public.roles WHERE name = 'Jefe de Distribución')
      AND public.is_valid_ruc('20100070970') AND NOT public.is_valid_ruc('20100070971') AND NOT public.is_valid_ruc('2010007097')
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || text 'T1 rol/RUC'; END IF;
 

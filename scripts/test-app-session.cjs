@@ -96,3 +96,20 @@ test('contract administrator reaches contracts, APT and control tower but never 
   const admin = { is_active: true, employee_type: 'OPERARIO', roles: { name: 'Administrador', permissions: [] } }
   assert.equal((await fixture({ profile: admin }).request('/reportes')).location, undefined)
 })
+test('typed URL respects the module permission like the menu', async () => {
+  const profile = permissions => ({ is_active: true, employee_type: 'OPERARIO', roles: { name: 'Analista', permissions } })
+  const go = async (permissions, path) => (await fixture({ profile: profile(permissions) }).request(path)).location
+  // Solo Solicitudes: abre su módulo, Inicio, perfil y Mi avance; no Caja, Usuarios ni Contratos
+  for (const path of ['/', '/solicitudes', '/perfil', '/reportes', '/desempeno', '/evidencia']) assert.equal(await go(['solicitudes:write'], path), undefined, path)
+  for (const path of ['/caja', '/caja/gastos', '/usuarios', '/contratos', '/contratos/123', '/permisos']) assert.equal(await go(['solicitudes:write'], path), '/', path)
+  // La regla más específica gana: Registro de Servicios con su permiso, sin Contratos
+  assert.equal(await go(['contratos-servicios:read'], '/contratos/servicios'), undefined)
+  assert.equal(await go(['contratos-servicios:read'], '/contratos'), '/')
+  // Lectura basta para abrir; direcciones antiguas se revisan como su destino
+  assert.equal(await go(['caja-fondos:read'], '/caja/fondos'), undefined)
+  assert.equal(await go(['documentario:read'], '/despacho/planificacion'), undefined)
+  assert.equal(await go(['despacho:read'], '/despacho/planificacion'), '/')
+  // Administrador abre todo
+  const admin = { is_active: true, employee_type: 'OPERARIO', roles: { name: 'Administrador', permissions: [] } }
+  assert.equal((await fixture({ profile: admin }).request('/usuarios')).location, undefined)
+})

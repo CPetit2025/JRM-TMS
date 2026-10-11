@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { isDispatchAuditorRole, dispatchAuditorPathAllowed, roleDeniesPath } from '@/lib/roles'
-import { hasWebAccess } from '@/lib/nav/web-access'
+import { canOpenPath, hasWebAccess } from '@/lib/nav/web-access'
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -86,6 +86,12 @@ export async function proxy(request: NextRequest) {
     }
     if (!isDriverRoute && roleDeniesPath(role?.name, request.nextUrl.pathname)) {
       return redirect(new URL('/', request.url))
+    }
+    // Cada página exige el permiso de su opción del menú: la dirección escrita a mano no abre un módulo ajeno.
+    if (!isDriverRoute && !isLoginPage && !auditor && !canOpenPath(role?.name, permissions, request.nextUrl.pathname)) {
+      const home = new URL('/', request.url)
+      home.searchParams.set('sin_acceso', request.nextUrl.pathname)
+      return redirect(home)
     }
     if (isDriverRoute && !isDriverRegisterPage && profile.employee_type === 'CONDUCTOR') {
       const { data: driver } = await supabase.from('drivers').select('is_active')

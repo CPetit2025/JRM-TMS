@@ -37,7 +37,7 @@ BEGIN
   SELECT plate INTO v_plate2 FROM public.vehicles WHERE plate <> v_plate ORDER BY plate LIMIT 1;
 
   -- T1
-  IF r_tec IS NOT NULL AND (SELECT permissions ? 'mantenimiento-soporte' AND permissions ? 'mantenimiento-fallas' AND permissions ? 'mantenimiento-ot'
+  IF r_tec IS NOT NULL AND (SELECT permissions ?| ARRAY['mantenimiento-soporte', 'mantenimiento-soporte:write'] AND permissions ?| ARRAY['mantenimiento-fallas', 'mantenimiento-fallas:write'] AND permissions ?| ARRAY['mantenimiento-ot', 'mantenimiento-ot:write']
                             FROM public.roles WHERE id = r_tec) THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T1 rol'::text; END IF;
 
   -- T2 (reporte del Jefe de Distribución desde la web)
