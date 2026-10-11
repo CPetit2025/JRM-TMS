@@ -2,6 +2,7 @@
 // (close_dispatch_route): se muestra como "CERRADO" para no confundirlo con la liquidación de Caja.
 export function dispatchStatusLabel(status: string | null | undefined): string {
   if (!status) return 'Desconocido'
+  if (status === 'CIERRE_OPERATIVO') return 'Cierre operativo · documentación y cierre financiero pendientes'
   if (status === 'LIQUIDADO' || status === 'CERRADO') return 'CERRADO'
   // Cierre operativo: unidad y conductor libres; falta la liquidación documentaria
   if (status === 'RETORNO_COMPLETADO') return 'UNIDAD LIBERADA'
@@ -12,7 +13,7 @@ export function dispatchStatusLabel(status: string | null | undefined): string {
  *  get_tower_dispatches acepta RUTA y POR_CERRAR con los mismos estados). */
 export const DISPATCH_STATUS_GROUPS = {
   RUTA: ['EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO'],
-  POR_CERRAR: ['ENTREGADO', 'RETORNO_COMPLETADO'],
+  POR_CERRAR: ['ENTREGADO', 'RETORNO_COMPLETADO', 'CIERRE_OPERATIVO'],
 } as const satisfies Record<string, readonly string[]>
 export type DispatchStatusGroup = keyof typeof DISPATCH_STATUS_GROUPS
 export const isDispatchStatusGroup = (value: string): value is DispatchStatusGroup => Object.hasOwn(DISPATCH_STATUS_GROUPS, value)

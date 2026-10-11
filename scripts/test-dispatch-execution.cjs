@@ -83,3 +83,9 @@ test('customer pickup preparation and closure never announce GPS operation or re
   assert.doesNotMatch(f.success[0], /GPS comenzará/)
   assert.doesNotMatch(rules.dispatchClosureMessage({ actual_distance_km: 0 }, 'RECOJO_CLIENTE'), /pendiente de conciliación/)
 })
+
+test('administrative cutoff retains documentary and financial closure action', async () => {
+  const f = fixture({ status: 'CIERRE_OPERATIVO' })
+  await click(f)
+  assert.equal(f.calls[0].rpc, 'close_dispatch_route')
+})

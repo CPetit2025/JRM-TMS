@@ -51,10 +51,10 @@ BEGIN
  ON CONFLICT(contract_id,concept) DO UPDATE SET own_allocated_pen=1000;
  IF (SELECT balance_pen FROM public.contract_budgets WHERE contract_id=ct AND concept='PARTIDA_TRANSPORTE') IS DISTINCT FROM 800::numeric
  OR (SELECT balance_pen FROM public.contract_budgets WHERE contract_id=ct2 AND concept='PARTIDA_TRANSPORTE') IS DISTINCT FROM 800::numeric THEN RAISE EXCEPTION 'CAJA C80 FAIL: preparación de partidas'; END IF;
- req:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C80-R1','request_type','DESPACHO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',ct,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Planta','delivery_address','Obra','required_date',current_date+2));
- req2:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C80-R2','request_type','RECOJO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',ct,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Obra','delivery_address','Planta','required_date',current_date+2));
- added:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C80-R3','request_type','TRASLADO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',sub,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Proveedor','delivery_address','Otra obra','required_date',current_date+2,'estimated_weight',100));
- rejected:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C80-R4','request_type','DESPACHO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',ct2,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Planta','delivery_address','Obra','required_date',current_date+2));
+ req:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C80-R1','request_type','DESPACHO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',ct,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Planta','delivery_address','Obra','required_date',(now() AT TIME ZONE 'America/Lima')::date));
+ req2:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C80-R2','request_type','RECOJO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',ct,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Obra','delivery_address','Planta','required_date',(now() AT TIME ZONE 'America/Lima')::date));
+ added:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C80-R3','request_type','TRASLADO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',sub,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Proveedor','delivery_address','Otra obra','required_date',(now() AT TIME ZONE 'America/Lima')::date,'estimated_weight',100));
+ rejected:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C80-R4','request_type','DESPACHO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',ct2,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Planta','delivery_address','Obra','required_date',(now() AT TIME ZONE 'America/Lima')::date));
  UPDATE public.transport_requests SET client_id=client,supplier_id=supplier WHERE id IN(req,req2,added,rejected);
  provider:=pg_temp.ins('carriers',jsonb_build_object('type','PROVEEDOR','business_name','ZZ C80 tercero '||plate,'ruc','20'||lpad((floor(random()*1e9))::bigint::text,9,'0'),'tax_id','20'||lpad((floor(random()*1e9))::bigint::text,9,'0'),'is_active',true));
  PERFORM set_config('request.jwt.claim.sub',actor::text,true);
@@ -64,21 +64,21 @@ BEGIN
  context:=public.active_route_context(route);
  IF (context->>'frontier')::int<>1 THEN RAISE EXCEPTION 'CAJA C80 FAIL: tramo iniciado no protegido'; END IF;
  bad:=false;
- BEGIN PERFORM public.add_active_route_service(route,added,req,context->>'revision',operation,150,5,100,500,now()+interval '1 hour','Carga adicional coordinada'); EXCEPTION WHEN raise_exception THEN bad:=true; END;
+ BEGIN PERFORM public.add_active_route_service(route,added,req,context->>'revision',operation,150,5,100,500,now(),'Carga adicional coordinada'); EXCEPTION WHEN raise_exception THEN bad:=true; END;
  IF NOT bad THEN RAISE EXCEPTION 'CAJA C80 FAIL: permite insertar antes de tramo actual'; END IF;
  bad:=false;
- BEGIN PERFORM public.add_active_route_service(route,added,req2,context->>'revision',operation,900,5,100,500,now()+interval '1 hour','Carga adicional coordinada'); EXCEPTION WHEN raise_exception THEN bad:=true; END;
+ BEGIN PERFORM public.add_active_route_service(route,added,req2,context->>'revision',operation,900,5,100,500,now(),'Carga adicional coordinada'); EXCEPTION WHEN raise_exception THEN bad:=true; END;
  IF NOT bad OR (SELECT status FROM public.transport_requests WHERE id=added)<>'APROBADA' THEN RAISE EXCEPTION 'CAJA C80 FAIL: presupuesto o rollback'; END IF;
  bad:=false;
- BEGIN PERFORM public.add_active_route_service(route,added,req2,context->>'revision',operation,150,5,100,50,now()+interval '1 hour','Carga adicional coordinada'); EXCEPTION WHEN raise_exception THEN bad:=true; END;
+ BEGIN PERFORM public.add_active_route_service(route,added,req2,context->>'revision',operation,150,5,100,50,now(),'Carga adicional coordinada'); EXCEPTION WHEN raise_exception THEN bad:=true; END;
  IF NOT bad THEN RAISE EXCEPTION 'CAJA C80 FAIL: sobrecarga'; END IF;
  bad:=false;
  BEGIN PERFORM public.add_active_route_service(route,added,req2,context->>'revision',operation,150,5,100,500,now()+interval '10 days','Carga adicional coordinada'); EXCEPTION WHEN raise_exception THEN bad:=true; END;
  IF NOT bad THEN RAISE EXCEPTION 'CAJA C80 FAIL: fuera de plazo'; END IF;
  bad:=false;
- BEGIN PERFORM public.add_active_route_service(route,added,req2,'desactualizada',operation,150,5,100,500,now()+interval '1 hour','Carga adicional coordinada'); EXCEPTION WHEN raise_exception THEN bad:=true; END;
+ BEGIN PERFORM public.add_active_route_service(route,added,req2,'desactualizada',operation,150,5,100,500,now(),'Carga adicional coordinada'); EXCEPTION WHEN raise_exception THEN bad:=true; END;
  IF NOT bad THEN RAISE EXCEPTION 'CAJA C80 FAIL: revisión obsoleta'; END IF;
- result:=public.add_active_route_service(route,added,req2,context->>'revision',operation,150,5,100,500,now()+interval '1 hour','Carga adicional coordinada');
+ result:=public.add_active_route_service(route,added,req2,context->>'revision',operation,150,5,100,500,now(),'Carga adicional coordinada');
  IF (SELECT sequence_order FROM public.dispatch_requests WHERE dispatch_id=route AND transport_request_id=req)<>1
  OR (SELECT sequence_order FROM public.dispatch_requests WHERE dispatch_id=route AND transport_request_id=added)<>2
  OR (SELECT sequence_order FROM public.dispatch_requests WHERE dispatch_id=route AND transport_request_id=req2)<>3 THEN RAISE EXCEPTION 'CAJA C80 FAIL: secuencia incorrecta'; END IF;
@@ -89,17 +89,17 @@ BEGIN
  IF (SELECT count(*) FROM public.contract_services WHERE dispatch_id=route AND service_type='FLETE')<>2
  OR NOT EXISTS(SELECT 1 FROM public.contract_services WHERE dispatch_id=route AND contract_id=sub AND budget_contract_id=ct2 AND amount_pen=150) THEN RAISE EXCEPTION 'CAJA C80 FAIL: pierde imputación del error'; END IF;
  IF NOT EXISTS(SELECT 1 FROM public.dispatch_tercero_enlaces WHERE dispatch_id=route AND access_code=original_code AND token=original_token AND revoked_at IS NULL) THEN RAISE EXCEPTION 'CAJA C80 FAIL: cambia enlace tercero'; END IF;
- IF public.add_active_route_service(route,added,req2,context->>'revision',operation,150,5,100,500,now()+interval '1 hour','Carga adicional coordinada')<>result THEN RAISE EXCEPTION 'CAJA C80 FAIL: reintento no idempotente'; END IF;
+ IF public.add_active_route_service(route,added,req2,context->>'revision',operation,150,5,100,500,now(),'Carga adicional coordinada')<>result THEN RAISE EXCEPTION 'CAJA C80 FAIL: reintento no idempotente'; END IF;
  IF (SELECT count(*) FROM public.dispatch_service_additions WHERE dispatch_id=route)<>1 THEN RAISE EXCEPTION 'CAJA C80 FAIL: duplica operación'; END IF;
  context:=public.active_route_context(route);
  bad:=false;
- BEGIN PERFORM public.add_active_route_service(route,added,NULL,context->>'revision',gen_random_uuid(),150,5,100,500,now()+interval '1 hour','Duplicación indebida'); EXCEPTION WHEN raise_exception THEN bad:=true; END;
+ BEGIN PERFORM public.add_active_route_service(route,added,NULL,context->>'revision',gen_random_uuid(),150,5,100,500,now(),'Duplicación indebida'); EXCEPTION WHEN raise_exception THEN bad:=true; END;
  IF NOT bad THEN RAISE EXCEPTION 'CAJA C80 FAIL: solicitud duplicada'; END IF;
  -- Complete history stays untouched, and amendments to an already mixed route remain per-OT.
  INSERT INTO public.delivery_conformities(dispatch_id,request_id,state) VALUES(route,req,'VALIDADA') ON CONFLICT(dispatch_id,request_id) DO UPDATE SET state='VALIDADA';
  UPDATE public.dispatch_requests SET status='ENTREGADO' WHERE dispatch_id=route AND transport_request_id=req;
  context:=public.active_route_context(route);
- result:=public.add_active_route_service(route,rejected,NULL,context->>'revision',gen_random_uuid(),50,3,10,500,now()+interval '1 hour','Entrega adicional al final');
+ result:=public.add_active_route_service(route,rejected,NULL,context->>'revision',gen_random_uuid(),50,3,10,500,now(),'Entrega adicional al final');
  IF (SELECT status FROM public.dispatch_requests WHERE dispatch_id=route AND transport_request_id=req)<>'ENTREGADO' THEN RAISE EXCEPTION 'CAJA C80 FAIL: altera parada terminada'; END IF;
  -- A read-only role cannot mutate or inspect the amendment queue.
  INSERT INTO public.roles(name,permissions) VALUES('Consulta ZZ80','["despacho:read"]') RETURNING id INTO readonly_role;
@@ -118,15 +118,15 @@ BEGIN
  UPDATE public.dispatch_requests SET status='ENTREGADO' WHERE dispatch_id=route;
  UPDATE public.dispatches SET docs_required=false,status='ENTREGADO' WHERE id=route;
  PERFORM public.close_dispatch_route(route); PERFORM public.close_dispatch_route(route);
- IF public.add_active_route_service(route,added,req2,'old',operation,150,5,100,500,now()+interval '1 hour','Carga adicional coordinada')->>'success'<>'true' THEN RAISE EXCEPTION 'CAJA C80 FAIL: reintento tras cierre'; END IF;
+ IF public.add_active_route_service(route,added,req2,'old',operation,150,5,100,500,now(),'Carga adicional coordinada')->>'success'<>'true' THEN RAISE EXCEPTION 'CAJA C80 FAIL: reintento tras cierre'; END IF;
  IF (SELECT consumed_pen FROM public.contract_budgets WHERE contract_id=ct AND concept='PARTIDA_TRANSPORTE')<>300
  OR (SELECT consumed_pen FROM public.contract_budgets WHERE contract_id=ct2 AND concept='PARTIDA_TRANSPORTE')<>200
  OR EXISTS(SELECT 1 FROM public.dispatch_request_freight WHERE dispatch_id=route AND status='RESERVADO') THEN RAISE EXCEPTION 'CAJA C80 FAIL: liquidación duplicada'; END IF;
  -- Own unit: start through the real daily checklist and driver route APIs.
  driver:=pg_temp.ins('drivers',jsonb_build_object('carrier_id',carrier,'profile_id',driver_actor,'first_name','Conductor','last_name','C80','document_number',plate||'DNI','license_number',plate||'LIC','is_active',true));
  PERFORM pg_temp.ins('vehicles',jsonb_build_object('plate',plate||'P','carrier_id',carrier,'site_id',site,'type','CAMION','status','DISPONIBLE','assigned_driver_id',driver,'weight_capacity',1000,'current_odometer',1000,'soat_expiration',current_date+365,'technical_review_expiration',current_date+365));
- own1:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C80-P1','request_type','DESPACHO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',ct,'client_id',client,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Planta','delivery_address','Obra','required_date',current_date+2));
- own2:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C80-P2','request_type','DESPACHO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',ct2,'client_id',client,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Planta','delivery_address','Obra','required_date',current_date+2));
+ own1:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C80-P1','request_type','DESPACHO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',ct,'client_id',client,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Planta','delivery_address','Obra','required_date',(now() AT TIME ZONE 'America/Lima')::date));
+ own2:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C80-P2','request_type','DESPACHO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',ct2,'client_id',client,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Planta','delivery_address','Obra','required_date',(now() AT TIME ZONE 'America/Lima')::date));
  INSERT INTO public.user_site_access(user_id,site_id) VALUES(driver_actor,site) ON CONFLICT DO NOTHING;
  PERFORM set_config('request.jwt.claim.sub',driver_actor::text,true);
  unit:=public.select_driver_preuse_unit(plate||'P');
@@ -143,10 +143,10 @@ BEGIN
  PERFORM set_config('request.jwt.claim.sub',actor::text,true);
  context:=public.active_route_context(route);
  bad:=false;
- BEGIN PERFORM public.add_active_route_service(route,own2,NULL,context->>'revision',gen_random_uuid(),60,3,10,2000,now()+interval '1 hour','Entrega adicional propia'); EXCEPTION WHEN raise_exception THEN bad:=true; END;
+ BEGIN PERFORM public.add_active_route_service(route,own2,NULL,context->>'revision',gen_random_uuid(),60,3,10,2000,now(),'Entrega adicional propia'); EXCEPTION WHEN raise_exception THEN bad:=true; END;
  IF NOT bad THEN RAISE EXCEPTION 'CAJA C80 FAIL: capacidad excede unidad'; END IF;
  operation:=gen_random_uuid();
- PERFORM public.add_active_route_service(route,own2,NULL,context->>'revision',operation,60,3,10,500,now()+interval '1 hour','Entrega adicional propia');
+ PERFORM public.add_active_route_service(route,own2,NULL,context->>'revision',operation,60,3,10,500,now(),'Entrega adicional propia');
  PERFORM set_config('request.jwt.claim.sub',driver_actor::text,true);
  result:=public.get_active_trip_context();
  IF result->'trip'->>'id' IS DISTINCT FROM route::text OR jsonb_array_length(result->'trip'->'stops')<>2

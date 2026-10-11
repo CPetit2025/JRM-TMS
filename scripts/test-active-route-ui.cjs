@@ -12,7 +12,7 @@ function load(file, mock, extra = {}) {
  vm.runInNewContext(ts.transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText, context)
  return context.exports
 }
-const context = { revision: 'revision-1', frontier: 1, capacity_kg: 1000, dispatch: { number: 'D-1', plate: 'AAA-111', driver: 'Conductor', status: 'EN RUTA' },
+const context = { revision: 'revision-1', frontier: 1, capacity_kg: 1000, dispatch: { number: 'D-1', plate: 'AAA-111', driver: 'Conductor', status: 'EN RUTA', operating_day: '2029-12-31', cutoff_at: '2030-01-01T05:00:00Z' },
  stops: [{ id: 'current', order: 1, number: 'RT-1', ot: 'OT-1', locked: true }, { id: 'future', order: 2, number: 'RT-2', ot: 'OT-1', locked: false }],
  requests: [{ id: 'new', number: 'RT-3', type: 'RECOJO', ot: 'OT-2', origin: 'Proveedor', destination: 'Planta', required_date: '2030-01-01', weight_kg: '100' }] }
 function labelText(node) { if (typeof node === 'string') return node; return (node?.children || []).map(labelText).join('') }
@@ -56,6 +56,9 @@ test('route form protects current leg, previews inserted service and reuses oper
  assert.ok(tree.root.findAllByType('button').some(b => labelText(b) === 'Seleccionada'), 'planning request is preselected only after the server confirms availability')
  assert.equal(tree.root.findAllByType('input').filter(i => i.props.type === 'number')[2].props.value, '100')
  const select = tree.root.findByType('select')
+ const eta = tree.root.findAllByType('input').find(i => i.props.type === 'datetime-local')
+ assert.equal(eta.props.min, '2029-12-31T00:00')
+ assert.equal(eta.props.max, '2029-12-31T23:59')
  assert.equal(select.findAllByType('option').length, 2, 'only future stop can be moved')
  assert.equal(select.findAllByType('option')[1].props.value, 'future')
  await act(async () => { select.props.onChange({ target: { value: 'future' } }) })
