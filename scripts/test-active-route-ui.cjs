@@ -16,6 +16,19 @@ const context = { revision: 'revision-1', frontier: 1, capacity_kg: 1000, dispat
  stops: [{ id: 'current', order: 1, number: 'RT-1', ot: 'OT-1', locked: true }, { id: 'future', order: 2, number: 'RT-2', ot: 'OT-1', locked: false }],
  requests: [{ id: 'new', number: 'RT-3', type: 'RECOJO', ot: 'OT-2', origin: 'Proveedor', destination: 'Planta', required_date: '2030-01-01', weight_kg: '100' }] }
 function labelText(node) { if (typeof node === 'string') return node; return (node?.children || []).map(labelText).join('') }
+test('planning adds only to the existing pair and keeps return, closure and resource conflicts blocked', () => {
+ const { routeAssignment } = load('src/lib/route-assignment.ts', require)
+ const route = { id: 'route', dispatch_number: 'D-1', vehicle_plate: 'AAA-111', driver_id: 'driver', status: 'EN RUTA' }
+ assert.equal(routeAssignment([route], 'AAA-111', 'driver').kind, 'ADD_SERVICE')
+ assert.equal(routeAssignment([route], 'AAA-111', 'other-driver').kind, 'CONFLICT')
+ assert.equal(routeAssignment([route], 'BBB-222', 'driver').kind, 'CONFLICT')
+ assert.equal(routeAssignment([route], '', ''), null)
+ for (const status of ['RETORNO', 'ESPERANDO_AUTORIZACION', 'ENTREGADO', 'RETORNO_COMPLETADO']) {
+   assert.equal(routeAssignment([{ ...route, status }], 'AAA-111', 'driver').kind, 'CLOSING')
+ }
+ assert.equal(routeAssignment([{ ...route, status: 'LIQUIDADO' }], 'AAA-111', 'driver'), null)
+ assert.equal(routeAssignment([route, { ...route, id: 'another', vehicle_plate: 'BBB-222' }], 'BBB-222', 'driver').kind, 'CONFLICT')
+})
 test('route form protects current leg, previews inserted service and reuses operation after failure', async () => {
  const calls = [], successes = []; let changes = 0, closes = 0, tree
  const { AddRouteService } = load('src/components/despacho/AddRouteService.tsx', name => {
@@ -27,9 +40,10 @@ test('route form protects current leg, previews inserted service and reuses oper
    if (name === 'sonner') return { toast: { success: text => successes.push(text) } }
    return require(name)
  })
- await act(async () => { tree = create(React.createElement(AddRouteService, { dispatchId: 'dispatch', onClose: () => closes++, onChanged: () => changes++ })) })
+ await act(async () => { tree = create(React.createElement(AddRouteService, { dispatchId: 'dispatch', initialRequestId: 'new', onClose: () => closes++, onChanged: () => changes++ })) })
  await act(async () => { await new Promise(resolve => setTimeout(resolve, 25)) })
- await act(async () => { tree.root.findAllByType('button').find(b => labelText(b) === 'Seleccionar').props.onClick() })
+ assert.ok(tree.root.findAllByType('button').some(b => labelText(b) === 'Seleccionada'), 'planning request is preselected only after the server confirms availability')
+ assert.equal(tree.root.findAllByType('input').filter(i => i.props.type === 'number')[2].props.value, '100')
  const select = tree.root.findByType('select')
  assert.equal(select.findAllByType('option').length, 2, 'only future stop can be moved')
  assert.equal(select.findAllByType('option')[1].props.value, 'future')
