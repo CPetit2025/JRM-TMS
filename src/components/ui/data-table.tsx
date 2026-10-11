@@ -25,32 +25,63 @@ export function DataTable({ className = '', dense = false, sortable = true, onSo
     let teardown: (() => void) | null = null
     let headerSignature: HTMLTableCellElement[] = []
     let sort: SortState | null = null
-    let applying = false
-    const original = new WeakMap<HTMLTableRowElement, number>()
-    let counter = 0
+    let refresh = () => {}
+    // Position of each row in the order React rendered it. Rows React inserts later are placed right before the
+    // row React put them in front of (the mutation's nextSibling), so «original order» always matches the screen data.
+    const base = new WeakMap<HTMLTableRowElement, number>()
+    const isRow = (node: Node | null): node is HTMLTableRowElement => node instanceof HTMLTableRowElement
+    const seed = (body: HTMLTableSectionElement) => {
+      let last = 0
+      for (const row of Array.from(body.rows)) { if (base.has(row)) last = Math.max(last, base.get(row)!); else base.set(row, last += 1) }
+    }
+    const ingest = (records: MutationRecord[]) => {
+      for (const record of records) {
+        if (record.type !== 'childList' || !(record.target instanceof HTMLTableSectionElement) || record.target.tagName !== 'TBODY') continue
+        const body = record.target
+        let next = record.nextSibling
+        while (next && !isRow(next)) next = next.nextSibling
+        for (const node of Array.from(record.addedNodes).reverse()) {
+          if (!isRow(node)) continue
+          const others = Array.from(body.rows).filter(row => row !== node && base.has(row)).map(row => base.get(row)!)
+          const upper = isRow(next) && base.has(next) ? base.get(next)! : Infinity
+          const lower = Math.max(0, ...others.filter(value => value < upper))
+          base.set(node, upper === Infinity ? lower + 1 : (lower + upper) / 2)
+          next = node
+        }
+      }
+    }
+    const observer = new MutationObserver(records => {
+      ingest(records)
+      const headerRow = table.tHead?.rows.length === 1 ? table.tHead.rows[0] : null
+      const headers = headerRow ? Array.from(headerRow.cells) : []
+      if (headers.length !== headerSignature.length || headers.some((th, index) => th !== headerSignature[index])) { refresh = () => {}; setup() }
+      else refresh()
+    })
 
     const setup = () => {
       teardown?.(); teardown = null; sort = null
       const headerRow = table.tHead?.rows.length === 1 ? table.tHead.rows[0] : null
       const headers = headerRow ? Array.from(headerRow.cells) : []
       headerSignature = headers
-      // Native sorting already present (aria-sort set by the module) or merged header cells: leave the table untouched
-      if (!headers.length || headers.some(th => (th.hasAttribute('aria-sort') && !th.hasAttribute('data-auto-sort')) || th.colSpan > 1)) return
+      // Native sorting already present (aria-sort set by the module) or merged header cells: leave the table untouched.
+      // A header that is already clickable (its own sort or action) is treated the same way.
+      if (!headers.length || headers.some(th => ((th.hasAttribute('aria-sort') || th.classList.contains('cursor-pointer')) && !th.hasAttribute('data-auto-sort')) || th.colSpan > 1)) return
       const bodies = () => Array.from(table.tBodies)
+      bodies().forEach(seed)
       // Group headers, detail rows and empty states use colspan/rowspan: sorting them would break the layout
       const orderable = () => bodies().every(body => Array.from(body.rows).every(row => row.cells.length === headers.length
         && Array.from(row.cells).every(cell => cell.colSpan === 1 && cell.rowSpan === 1))) && bodies().some(body => body.rows.length > 1)
       const apply = () => {
         if (onSortRef.current || !orderable()) return
-        applying = true
+        ingest(observer.takeRecords())
         for (const body of bodies()) {
+          seed(body)
           const rows = Array.from(body.rows)
-          rows.forEach(row => { if (!original.has(row)) original.set(row, counter++) })
           const value = (row: HTMLTableRowElement) => { const c = row.cells[sort?.column ?? 0]; return c ? c.dataset.sortValue ?? c.textContent : '' }
-          const sorted = [...rows].sort((a, b) => (sort ? compareCells(value(a), value(b), sort.direction) : 0) || (original.get(a) ?? 0) - (original.get(b) ?? 0))
+          const sorted = [...rows].sort((a, b) => (sort ? compareCells(value(a), value(b), sort.direction) : 0) || (base.get(a) ?? 0) - (base.get(b) ?? 0))
           if (sorted.some((row, index) => row !== rows[index])) sorted.forEach(row => body.appendChild(row))
         }
-        applying = false
+        observer.takeRecords() // our own moves are not React changes
       }
       const paint = () => {
         const enabled = !!onSortRef.current || orderable()
@@ -64,10 +95,11 @@ export function DataTable({ className = '', dense = false, sortable = true, onSo
       const sortBy = (index: number) => {
         if (!onSortRef.current && !orderable()) return
         const direction = nextDirection(sort?.column === index ? sort.direction : null)
+        const wasSorted = !!sort
         sort = direction ? { column: index, direction } : null
         paint()
         if (onSortRef.current) onSortRef.current(sort)
-        else apply()
+        else if (sort || wasSorted) apply()
       }
       const cleanups: (() => void)[] = []
       headers.forEach((th, index) => {
@@ -84,16 +116,8 @@ export function DataTable({ className = '', dense = false, sortable = true, onSo
       teardown = () => { cleanups.forEach(fn => fn()); table.removeAttribute('data-sortable') }
       refresh = () => { paint(); if (sort) apply() }
     }
-    let refresh = () => {}
     setup()
     // React keeps updating rows and sometimes columns (refresh, filters): rebuild headers or re-apply the order
-    const observer = new MutationObserver(() => {
-      if (applying) return
-      const headerRow = table.tHead?.rows.length === 1 ? table.tHead.rows[0] : null
-      const headers = headerRow ? Array.from(headerRow.cells) : []
-      if (headers.length !== headerSignature.length || headers.some((th, index) => th !== headerSignature[index])) { refresh = () => {}; setup() }
-      else refresh()
-    })
     observer.observe(table, { childList: true, subtree: true, characterData: true })
     return () => { observer.disconnect(); teardown?.() }
   }, [sortable])

@@ -140,10 +140,9 @@ export default function TorreControlPage() {
       // GR y Nota de Despacho registradas por Documentos; sin acceso a esos documentos, la columna usa la guía de entrega
       const { data: docs } = list.length ? await supabase.from('dispatch_documents').select('dispatch_id, transport_request_id, doc_type, document_number')
         .in('dispatch_id', list.map(d => d.id)).in('doc_type', ['GUIA_REMISION', 'NOTA_DESPACHO']).is('voided_at', null) : { data: [] }
-      // Números que vincula el Asistente Documentario (varios por servicio); un despacho sin acceso se omite
-      const refs = await Promise.all(list.map(d => supabase.rpc('get_dispatch_document_references', { p_dispatch: d.id })
-        .then(({ data }) => ((data || []) as { request_id: string; doc_type: string; document_number: string }[]).map(ref => ({ ...ref, dispatch_id: d.id })))))
-      const numbers = documentNumbersByStop([...(docs || []), ...refs.flat()])
+      // Números que vincula el Asistente Documentario (varios por servicio), en una sola consulta; sin acceso, se omiten
+      const { data: refs } = list.length ? await supabase.rpc('get_dispatch_document_references_batch', { p_dispatches: list.map(d => d.id) }) : { data: [] }
+      const numbers = documentNumbersByStop([...(docs || []), ...((refs || []) as { dispatch_id: string; request_id: string; doc_type: string; document_number: string }[])])
       if (version !== fetchVersion.current) return
       setDispatches(list); setRows(((deliveries || []) as DeliveryRow[]).map(r => { const n = numbers.get(`${r.dispatch_id}/${r.request_id}`); return { ...r, ...types.get(r.request_id), guide_number: [...new Set([r.guide_number, ...(n?.guide || '').split(' · ')].filter(Boolean))].join(' · ') || null, note_number: n?.note || null } })); setRefreshedAt(new Date().toISOString()); setLoadError('')
       if (requestedDispatch.current) {
