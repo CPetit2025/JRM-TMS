@@ -23,3 +23,16 @@ test('predeparture queue never mixes departed routes; reissue remains visible', 
   assert.equal(documentPhaseMatches('salida', { ...route, status: 'PROGRAMADO' }), true)
   assert.equal(documentPhaseMatches('observados', { ...route, status: 'PROGRAMADO', docs_reissue: true }), true)
 })
+test('closed routes with incomplete documentation stay pending for documentary settlement', () => {
+  const closed = { ...route, status: 'RETORNO_COMPLETADO' }
+  assert.equal(documentPhaseMatches('liquidacion', closed, { conformity: 'PENDIENTE' }), true)
+  assert.equal(documentPhaseMatches('liquidacion', closed, { conformity: 'RECIBIDA' }), true)
+  assert.equal(documentPhaseMatches('liquidacion', closed), true)
+  assert.equal(documentPhaseMatches('liquidacion', closed, { conformity: 'VALIDADA' }), false)
+  assert.equal(documentPhaseMatches('liquidacion', { ...closed, status: 'LIQUIDADO' }, { conformity: 'PENDIENTE' }), false)
+  assert.equal(documentPhaseMatches('liquidacion', route, { conformity: 'PENDIENTE' }), false)
+  const cutoff = { ...route, status: 'CIERRE_OPERATIVO' }
+  assert.equal(documentPhaseMatches('liquidacion', cutoff, { conformity: 'PENDIENTE' }), true)
+  assert.equal(documentPhaseMatches('liquidacion', { ...cutoff, is_pickup: true }, undefined, false), true)
+  assert.equal(documentPhaseMatches('liquidacion', { ...cutoff, is_pickup: true }, undefined, true), false)
+})
