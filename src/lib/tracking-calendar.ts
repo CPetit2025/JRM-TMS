@@ -3,7 +3,7 @@ export type PortalRequest = {
  required_at: string | null; request_type: string; attention_mode: string | null; delivery_zone: string | null;
  lead_time_policy: {enabled?: boolean; zones?: Record<string,{enabled?: boolean;hours?:number}>} | null;
  pickup_address: string; delivery_address: string; status: string
- ot_type?: string | null; parent_ot?: string | null; client_name?: string | null
+ ot_type?: string | null; parent_ot?: string | null; client_name?: string | null; supplier_name?: string | null
  reference_type?: string | null; reference_number?: string | null; purchase_order?: string | null
  pickup_district?: string | null; delivery_district?: string | null
 }

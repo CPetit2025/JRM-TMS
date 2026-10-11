@@ -4,7 +4,7 @@ import { Eye } from 'lucide-react'
 import { DataTable } from '@/components/ui/data-table'
 import { Modal } from '@/components/ui/modal'
 import { limaDay, monthDays, portalTime, portalAllowedTime, requestAnticipation, type PortalRequest } from '@/lib/tracking-calendar'
-import { PORTAL_ORIGINS, originStyle, portalExtraRefs, portalOrigin, portalReference, portalStatus, type PortalOrigin, type PortalRow } from '@/lib/tracking-portal'
+import { PORTAL_ORIGINS, originStyle, portalExtraRefs, portalOrigin, portalParty, portalReference, portalStatus, type PortalOrigin, type PortalRow } from '@/lib/tracking-portal'
 import { OriginBadge, PortalDocButtons, StatusPill } from '@/components/tracking/PortalBits'
 
 // Calendario del portal público: cada servicio se marca por su origen (OT, subcontrato, error, OS, OC, RQ) en su
@@ -57,7 +57,7 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
   const filtered = requests.filter(r => !hidden.includes(portalOrigin(r))
     && (!activeDays || (basis === 'registered' ? activeDays.includes(limaDay(r.created_at))
       : activeDays.includes(attentionDay(r) || '') || rows.some(d => d.request_id === r.id && activeDays.includes(limaDay(d.scheduled_departure)))))
-    && [r.request_number, r.ot_code, r.parent_ot, r.reference_number, r.purchase_order, r.client_name, r.delivery_address, district(r), stopOf.get(r.id)?.plate].join(' ').toLowerCase().includes(search.toLowerCase()))
+    && [r.request_number, r.ot_code, r.parent_ot, r.reference_number, r.purchase_order, r.client_name, r.supplier_name, r.delivery_address, district(r), stopOf.get(r.id)?.plate].join(' ').toLowerCase().includes(search.toLowerCase()))
   const navigate = (direction: number) => {
     const day = addDays(anchor, direction * (view === 'week' ? 7 : 1))
     if (!day.startsWith(month)) onMonth(day.slice(0, 7)); setSelected(day)
@@ -138,17 +138,20 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
         <div className="flex flex-wrap gap-2">
           <select aria-label="Fecha para filtrar solicitudes" value={basis} onChange={e => setBasis(e.target.value as typeof basis)} className="h-9 rounded-lg border px-2 text-sm"><option value="registered">Fecha de registro</option><option value="attention">Fecha de atención</option></select>
           {selected && <button onClick={() => setSelected('')} className="text-xs text-blue-700">Ver todo</button>}
-          <input aria-label="Buscar solicitud" value={search} onChange={e => setSearch(e.target.value)} placeholder="OT, OS/OC/RQ, distrito o placa" className="h-9 w-56 rounded-lg border px-2 text-sm" />
+          <input aria-label="Buscar solicitud" value={search} onChange={e => setSearch(e.target.value)} placeholder="OT, OS/OC/RQ, cliente, distrito o placa" className="h-9 w-56 rounded-lg border px-2 text-sm" />
         </div>
       </div>
-      <div className="overflow-x-auto"><DataTable className="w-full min-w-[820px] text-left text-sm">
-        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['Registro', 'OT / Referencia', 'Servicio', 'Distrito', 'Placa', 'Estado', ''].map(h => <th key={h} className="px-3 py-2">{h}</th>)}</tr></thead>
+      <div className="overflow-x-auto"><DataTable className="w-full min-w-[980px] text-left text-sm">
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['Registro', 'OT / Referencia', 'Cliente / Proveedor', 'Servicio', 'Distrito', 'Placa', 'Estado', ''].map(h => <th key={h} className="px-3 py-2">{h}</th>)}</tr></thead>
         <tbody className="divide-y">
           {filtered.map(r => {
             const stop = stopOf.get(r.id)
             return <tr key={r.id} className="hover:bg-slate-50">
               <td className="whitespace-nowrap px-3 py-2">{portalTime(r.created_at)}</td>
               <td className="px-3 py-2"><span className="flex items-center gap-1.5"><OriginBadge origin={portalOrigin(r)} /><span className="font-semibold text-slate-800">{portalReference(r)}</span></span></td>
+              <td className="max-w-56 px-3 py-2">{(() => { const p = portalParty(r); return p.name
+                ? <span className="block truncate" title={`${p.label}: ${p.name}`}>{p.name}<span className="block text-[11px] text-slate-500">{p.label}</span></span>
+                : <span className="text-slate-400">—</span> })()}</td>
               <td className="px-3 py-2">{serviceLabel(r)}</td>
               <td className="px-3 py-2">{district(r)}</td>
               <td className="whitespace-nowrap px-3 py-2 font-medium">{stop?.plate && stop.plate !== 'EXTERNO' ? stop.plate : <span className="text-slate-400">—</span>}</td>
@@ -156,7 +159,7 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
               <td className="px-3 py-2 text-right"><button onClick={() => setDetail(r)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-300 px-2.5 text-xs font-semibold text-[#002855] hover:bg-white"><Eye className="h-3.5 w-3.5" />Ver detalle</button></td>
             </tr>
           })}
-          {!filtered.length && <tr><td colSpan={7} className="p-8 text-center text-slate-500">No hay solicitudes para los filtros seleccionados.</td></tr>}
+          {!filtered.length && <tr><td colSpan={8} className="p-8 text-center text-slate-500">No hay solicitudes para los filtros seleccionados.</td></tr>}
         </tbody>
       </DataTable></div>
     </section>
@@ -166,7 +169,7 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
         <div className="flex flex-wrap items-center gap-2"><OriginBadge origin={portalOrigin(detail)} /><strong className="text-base text-[#002855]">{portalReference(detail)}</strong><StatusPill tone={portalStatus(detailStop, detail.status)} /></div>
         <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
           {[
-            ['Solicitud', detail.request_number], ['Cliente', detail.client_name || '—'],
+            ['Solicitud', detail.request_number], [portalParty(detail).label, portalParty(detail).name || '—'],
             ...(detail.parent_ot ? [['OT madre', detail.parent_ot]] : []),
             ...(portalExtraRefs(detail).length ? [['Otras referencias', portalExtraRefs(detail).join(' · ')]] : []),
             ['Servicio', `${serviceLabel(detail)} · ${detail.delivery_zone || 'Sin zona'}`], ['Registro', portalTime(detail.created_at)],

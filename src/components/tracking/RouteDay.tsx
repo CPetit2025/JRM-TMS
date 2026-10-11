@@ -2,7 +2,7 @@
 import { useMemo } from 'react'
 import { ChevronLeft, ChevronRight, RefreshCw, Truck } from 'lucide-react'
 import { limaDay } from '@/lib/tracking-calendar'
-import { portalExtraRefs, portalOrigin, portalReference, portalStatus, type PortalRow } from '@/lib/tracking-portal'
+import { portalExtraRefs, portalOrigin, portalParty, portalReference, portalStatus, type PortalRow } from '@/lib/tracking-portal'
 import { OriginBadge, PortalDocButtons, StatusPill } from '@/components/tracking/PortalBits'
 
 // Ruta establecida del día en el portal público: cada ruta con su unidad, conductor y paradas autorizadas, y por
@@ -66,12 +66,13 @@ export function RouteDay({ rows, day, onDay, access, refreshedAt, error, onRefre
         <ol className="divide-y">
           {route.map((s, i) => {
             const origin = portalOrigin(s), extra = portalExtraRefs(s)
-            return <li key={s.request_id} className="grid gap-3 px-4 py-3 lg:grid-cols-[2rem_minmax(0,1.3fr)_minmax(0,1.6fr)_10rem_minmax(0,1.4fr)] lg:items-center">
+            return <li key={s.request_id} className="grid gap-3 px-4 py-3 lg:grid-cols-[2rem_minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_10rem_minmax(0,1.4fr)] lg:items-center">
               <span className="grid h-7 w-7 place-items-center rounded-full bg-slate-100 text-xs font-bold text-slate-700">{s.sequence_order ?? i + 1}</span>
               <div className="min-w-0">
                 <p className="flex flex-wrap items-center gap-1.5"><OriginBadge origin={origin} /><span className="font-semibold text-slate-900">{portalReference(s)}</span></p>
-                <p className="text-xs text-slate-500">{s.request_number}{extra.length ? ` · ${extra.join(' · ')}` : ''}{s.client_name ? ` · ${s.client_name}` : ''}</p>
+                <p className="text-xs text-slate-500">{s.request_number}{extra.length ? ` · ${extra.join(' · ')}` : ''}</p>
               </div>
+              {(() => { const p = portalParty(s); return <p className="min-w-0 text-sm"><span className="block text-[11px] text-slate-500">{p.label}</span><span className="block truncate font-medium text-slate-800" title={p.name || undefined}>{p.name || '—'}</span></p> })()}
               <p className="min-w-0 text-sm text-slate-700"><span className="block truncate" title={s.delivery_address}>{s.delivery_address}</span>{s.guide_number && <span className="text-xs text-slate-500">Guía {s.guide_number}</span>}</p>
               <span className="w-fit"><StatusPill tone={portalStatus(s)} /></span>
               <PortalDocButtons row={s} access={access} emptyText="El conductor sube la guía y el Packing List al entregar." />
