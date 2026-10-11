@@ -29,7 +29,7 @@ BEGIN
  denied:=false;BEGIN PERFORM public.generate_tracking_portal_link(jsonb_build_object('site_id',site,'contract_ids',jsonb_build_array(gen_random_uuid()))); EXCEPTION WHEN OTHERS THEN denied:=true;END;
  IF NOT denied THEN RAISE EXCEPTION 'CAJA C57 FAIL: OT ajena aceptada'; END IF;
  payload:=public.generate_tracking_portal_link(jsonb_build_object('site_id',site));tok:=(payload->>'token')::uuid;pin:=payload->>'pin';
- IF length(pin)<>8 OR EXISTS(SELECT 1 FROM public.tracking_portal_links WHERE token=tok AND pin_hash=pin) THEN RAISE EXCEPTION 'CAJA C57 FAIL: PIN sin hash'; END IF;
+ IF pin !~ '^[A-HJKMNP-Z2-9]{4}$' OR EXISTS(SELECT 1 FROM public.tracking_portal_links WHERE token=tok AND pin_hash=pin) THEN RAISE EXCEPTION 'CAJA C57 FAIL: PIN sin hash'; END IF;
  UPDATE public.tracking_portal_links SET created_at=now()-interval '365 days' WHERE token=tok;
  result:=public.get_public_tracking_portal_info(tok,pin,current_date,current_date+30);
  IF result->>'mode' IS DISTINCT FROM 'permanent' OR result ? 'error' THEN RAISE EXCEPTION 'CAJA C57 FAIL: enlace permanente vencido'; END IF;
