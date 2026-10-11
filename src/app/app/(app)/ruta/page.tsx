@@ -383,8 +383,6 @@ export default function RutaActivaPage() {
 
       {dispatch.status === 'CIERRE_OPERATIVO' && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>Cierre operativo a las 00:00 de Lima</strong><p className="mt-1">Unidad y conductor liberados. Las guías pendientes se cargan en los servicios de esta ruta y siguen sujetas a validación del Supervisor de Transporte. Este corte no confirma entrega ni retorno.</p></div>}
 
-      {dispatch.status === 'RETORNO_COMPLETADO' && (
-        <div className="mt-8 bg-green-50 border border-green-200 p-6 rounded-xl text-center">
       {dispatch.status === 'RETORNO_COMPLETADO' && (() => {
         const pendingGuides = (dispatch.dispatch_requests || []).filter(stop => !['RECIBIDA', 'VALIDADA', 'NO_APLICA'].includes(stop.conformity || '')).length
         return <div className="mt-8 bg-green-50 border border-green-200 p-6 rounded-xl text-center">

@@ -79,6 +79,26 @@ DO $$ DECLARE f record; body text; BEGIN
   EXECUTE body;
  END LOOP;
 END $$;
+-- Customer pickup requires the dispatch-note identifier, while Packing List
+-- still requires the auditor's signed file. Guide conformity keeps its own gate.
+DO $note$ DECLARE source text; changed text; BEGIN
+ source:=pg_get_functiondef('public.dispatch_documents_missing(uuid)'::regprocedure);
+ changed:=replace(source,'IF NOT public.delivery_required(p_dispatch_id,s.transport_request_id) AND NOT EXISTS(',
+  'IF NOT public.delivery_required(p_dispatch_id,s.transport_request_id) AND NOT EXISTS(SELECT 1 FROM public.dispatch_document_references refs WHERE refs.dispatch_id=p_dispatch_id AND refs.request_id=s.transport_request_id AND refs.doc_type=''NOTA_DESPACHO'') AND NOT EXISTS(');
+ IF changed=source THEN RAISE EXCEPTION 'Requisito de Nota de Despacho incompatible'; END IF;
+ EXECUTE changed;
+END $note$;
+-- Project linked numbers in the existing authorized, bounded queue without per-row requests.
+DO $queue$ DECLARE signature text; source text; changed text; BEGIN
+ FOREACH signature IN ARRAY ARRAY['public.get_documentary_queue(boolean)','public.get_documentary_queue_period(boolean,timestamptz,timestamptz)'] LOOP
+  IF to_regprocedure(signature) IS NULL THEN CONTINUE; END IF;
+  source:=pg_get_functiondef(to_regprocedure(signature));
+  changed:=replace(source,'AS documents',
+    'AS documents, (SELECT COALESCE(jsonb_agg(jsonb_build_object(''request_id'',refs.request_id,''doc_type'',refs.doc_type,''document_number'',refs.document_number) ORDER BY refs.created_at,refs.id),''[]''::jsonb) FROM public.dispatch_document_references refs WHERE refs.dispatch_id=d.id) AS number_references');
+  IF changed=source THEN RAISE EXCEPTION 'Proyección documentaria incompatible: %',signature; END IF;
+  EXECUTE changed;
+ END LOOP;
+END $queue$;
 -- Reject assistant file mutations even from stale clients or direct table calls.
 CREATE POLICY document_refs_only_insert ON public.dispatch_documents AS RESTRICTIVE FOR INSERT TO authenticated
  WITH CHECK(NOT EXISTS(SELECT 1 FROM public.profiles p JOIN public.roles r ON r.id=p.role_id WHERE p.id=auth.uid() AND r.name='Asistente Documentario'));

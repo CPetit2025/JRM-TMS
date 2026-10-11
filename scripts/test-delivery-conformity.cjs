@@ -602,6 +602,8 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   sql(installed('supabase/migrations/20260923103000_driver_portal_summary.sql','get_driver_portal_summary'))
   sql(`ALTER TABLE dispatches ADD COLUMN IF NOT EXISTS created_by uuid;`)
   // Platform extension installation is tested in Supabase. The isolated container executes the real cutoff job directly.
+  const historySchema=read('supabase/migrations/20260924133100_cmms_core_fleet_360.sql')
+  sql(historySchema.slice(historySchema.indexOf('CREATE TABLE IF NOT EXISTS public.vehicle_history_logs'),historySchema.indexOf('-- RLS for vehicle_history_logs')))
   sql(read('supabase/migrations/20261011090000_cierre_operativo_rutas.sql'))
   sql(read('supabase/migrations/20261011110000_daily_route_cutoff.sql').replace(/-- PLATFORM_CRON_BEGIN[\s\S]*?-- PLATFORM_CRON_END/,''))
   sql(`CREATE TABLE kpi_roles(rol text PRIMARY KEY,informe boolean);
@@ -613,9 +615,12 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   const dailyAdditionBox=query(read('supabase/tests/caja_c80_active_route_service.test.sql'))
   assert.match(dailyAdditionBox.stderr,/CAJA C80 PASS/,dailyAdditionBox.stderr)
   console.log('PASS: C84 daily Lima cutoff releases resources without false return/guide/financial completion, late evidence and review, protected new assignment, private jobs, documentary KPI and same-day additions; C80 regression.')
+  sql(read('supabase/migrations/20261009040000_documents_flow.sql'))
   sql(read('supabase/migrations/20261011112000_dispatch_document_references.sql'))
   const referencesBox=query(read('supabase/tests/caja_c85_dispatch_document_references.test.sql'))
   assert.match(referencesBox.stderr,/CAJA C85 PASS/,referencesBox.stderr)
+  const legacyCutoffBox=query(read('supabase/tests/caja_c82_cierre_operativo.test.sql'))
+  assert.match(legacyCutoffBox.stderr,/CAJA C82 PASS/,legacyCutoffBox.stderr)
   console.log('PASS: C85 multiple guide and dispatch-note numbers without files, preserved numbering, atomic duplicate rejection, separated evidence/departure responsibilities, role/site/inactive account isolation.')
 } catch(error) {
   console.error(error.message)

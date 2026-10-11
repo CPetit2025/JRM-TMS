@@ -39,6 +39,7 @@ type QueueItem = {
   id: string; dispatch_number: string; status: string; vehicle_plate: string | null; driver_name: string | null
   scheduled_departure: string | null; docs_required: boolean; docs_ready_at: string | null; docs_ready_by_name: string | null
   docs_reissue: boolean; docs_reissue_reason: string | null; is_pickup: boolean; doc_status: 'PENDIENTE' | 'LISTO' | 'REEMISION' | 'SALIO'
+  number_references?: { request_id: string; doc_type: string; document_number: string }[]
   modalidad?: string; missing: string | null; stops: Stop[]; documents: Doc[]
 }
 
@@ -223,7 +224,7 @@ function DocumentaryQueue() {
         </section>}
       <Modal isOpen={!!selected} onClose={() => setSelectedId(null)} title={`Documentos · ${selected?.dispatch_number || ''}`} maxWidth="max-w-[1440px]"
         footer={<div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-600">{assistantOnly ? 'Vincula los números por servicio. La guía firmada y su aprobación se gestionan por separado.' : selected?.missing ? 'Completa los documentos pendientes para autorizar la salida.' : selected?.docs_ready_at ? 'Documentos confirmados para salida.' : 'Documentos y archivos asociados al servicio.'}</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setSelectedId(null)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Cerrar</button>{selected && canEdit && selected.status === 'PROGRAMADO' && ['PENDIENTE', 'REEMISION'].includes(selected.doc_status) && <button type="button" onClick={() => void confirmDocs(selected)} disabled={busy === selected.id || !!selected.missing} className="flex min-h-11 items-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-500">{busy === selected.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar documentos para salida</button>}</div></div>}>
-        {selected && !packingOnly && <DocumentNumberLinks dispatchId={selected.id} services={selected.stops} canEdit={canNumbers && selected.status !== 'CANCELADO'} onChanged={load} />}
+        {selected && !packingOnly && <DocumentNumberLinks key={selected.id} dispatchId={selected.id} services={selected.stops} canEdit={canNumbers && selected.status !== 'CANCELADO'} onChanged={load} />}
         {selected && <DispatchCard key={selected.id} item={selected} canEdit={canEdit && selected.status === 'PROGRAMADO'} canPacking={canPacking && selected.status === 'PROGRAMADO'} packingOnly={packingOnly}
           onVoid={voidDoc} onOpen={openDoc} onUploaded={load}
           deliveries={deliveries.filter(row => row.dispatch_id === selected.id)} onEvidence={row => { setSelectedId(null); setReview(row) }} />}
@@ -238,8 +239,10 @@ function DocumentaryQueue() {
 /** GR (guía de entrega o registrada por Documentos) y Nota de Despacho del servicio. */
 function stopNumbers(item: QueueItem, stop: Stop | null, delivery: DeliveryRow | undefined) {
   const own = item.documents.filter(doc => doc.request_id === stop?.request_id && doc.document_number)
-  return documentNumberLabel(delivery?.guide_number || own.find(doc => doc.doc_type === 'GUIA_REMISION')?.document_number,
-    own.find(doc => doc.doc_type === 'NOTA_DESPACHO')?.document_number)
+  const refs = (item.number_references || []).filter(ref => ref.request_id === stop?.request_id)
+  const guides = [...new Set([delivery?.guide_number, ...own.filter(doc => doc.doc_type === 'GUIA_REMISION').map(doc => doc.document_number), ...refs.filter(ref => ref.doc_type === 'GUIA_REMISION').map(ref => ref.document_number)].filter(Boolean))]
+  const notes = [...new Set([...own.filter(doc => doc.doc_type === 'NOTA_DESPACHO').map(doc => doc.document_number), ...refs.filter(ref => ref.doc_type === 'NOTA_DESPACHO').map(ref => ref.document_number)].filter(Boolean))]
+  return documentNumberLabel(guides.join(' · '), notes.join(' · '))
 }
 
 type DocStep = { label: string; detail: string; done: boolean; tone: 'ok' | 'pending' | 'danger' | 'na' }
@@ -249,12 +252,12 @@ type DocState = { label: string; tone: StatusTone; steps: DocStep[] }
 function documentState(item: QueueItem, stop: Stop | null, delivery: DeliveryRow | undefined, packingOnly: boolean): DocState {
   const docs = item.documents.filter(doc => !doc.request_id || doc.request_id === stop?.request_id)
   const packing = docs.find(doc => doc.doc_type === 'PACKING_LIST' && doc.signed && doc.auditor_name && doc.auditor_signed_date)
-  const note = docs.find(doc => doc.doc_type === 'NOTA_DESPACHO' && doc.request_id === stop?.request_id)
+  const note = docs.find(doc => doc.doc_type === 'NOTA_DESPACHO' && doc.request_id === stop?.request_id) || item.number_references?.find(ref => ref.doc_type === 'NOTA_DESPACHO' && ref.request_id === stop?.request_id)
   const conformity = delivery?.conformity
   const steps: DocStep[] = [
     { label: '1. Packing List', detail: packing ? `Firmado${packing.request_id ? '' : ' · consolidado'}${packing.auditor_name ? ` · ${packing.auditor_name}` : ''}` : 'Firma pendiente del Auditor de Despacho', done: !!packing, tone: packing ? 'ok' : 'pending' },
     item.is_pickup
-      ? { label: '2. Nota de Despacho', detail: note ? 'Adjunta' : 'Pendiente', done: !!note, tone: note ? 'ok' : 'pending' }
+      ? { label: '2. Nota de Despacho', detail: note ? 'Número vinculado' : 'Número pendiente', done: !!note, tone: note ? 'ok' : 'pending' }
       : { label: '2. Guía de entrega', detail: delivery?.guide_number ? `${delivery.guide_number}${delivery.photos_count ? ` · ${delivery.photos_count} foto(s)` : ''}` : item.status === 'PROGRAMADO' ? 'Se recibe del conductor o proveedor al entregar' : 'Aún no recibida', done: !!delivery?.guide_number, tone: delivery?.guide_number ? 'ok' : 'pending' },
     item.is_pickup
       ? { label: '3. Conformidad', detail: 'No aplica · recojo del cliente', done: true, tone: 'na' }

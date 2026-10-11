@@ -52,9 +52,14 @@ BEGIN
  result:=public.link_dispatch_document_numbers(route,req,'NOTA_DESPACHO',ARRAY['ND001-0009']);
  IF result->>'success' IS DISTINCT FROM 'true' THEN RAISE EXCEPTION 'CAJA C85 FAIL: no registra nota'; END IF;
  result:=public.get_dispatch_document_references(route);
+ IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(public.get_documentary_queue_period(false,NULL,NULL)) q WHERE q->>'id'=route::text AND jsonb_array_length(q->'number_references')=3) THEN RAISE EXCEPTION 'CAJA C85 FAIL: la tabla no muestra números vinculados'; END IF;
  IF jsonb_array_length(result)<>3 OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(result) r WHERE r->>'document_number'='E001-00006592' AND r->>'created_by'=actor::text) THEN RAISE EXCEPTION 'CAJA C85 FAIL: consulta pierde nomenclatura o autoría'; END IF;
  IF EXISTS(SELECT 1 FROM public.dispatch_documents WHERE dispatch_id=route) OR (SELECT status FROM public.dispatches WHERE id=route) IS DISTINCT FROM 'PROGRAMADO'
   OR EXISTS(SELECT 1 FROM public.delivery_conformities WHERE dispatch_id=route AND (state<>'PENDIENTE' OR current_submission_id IS NOT NULL)) THEN RAISE EXCEPTION 'CAJA C85 FAIL: número falsea archivo, conformidad o salida'; END IF;
+ -- Pickup note identifiers satisfy only the note requirement, never the signed Packing List.
+ UPDATE public.dispatches SET vehicle_plate='EXTERNO',modalidad='RECOJO_CLIENTE' WHERE id=route;
+ IF public.dispatch_documents_missing(route) LIKE '%Nota de Despacho%' OR public.dispatch_documents_missing(route) NOT LIKE '%Packing List%' THEN
+  RAISE EXCEPTION 'CAJA C85 FAIL: la nota exige archivo o falsea Packing List firmado'; END IF;
  -- Every rejected batch must leave all original links untouched.
  bad:=false; BEGIN PERFORM public.link_dispatch_document_numbers(route,req,'GUIA_REMISION',ARRAY['T001-6591','T001-7000']); EXCEPTION WHEN raise_exception THEN bad:=true; END;
  IF NOT bad OR EXISTS(SELECT 1 FROM public.dispatch_document_references WHERE dispatch_id=route AND document_number='T001-7000') THEN RAISE EXCEPTION 'CAJA C85 FAIL: duplicado no atómico'; END IF;

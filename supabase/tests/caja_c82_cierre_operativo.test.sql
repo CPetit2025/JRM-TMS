@@ -75,7 +75,7 @@ BEGIN
     RAISE EXCEPTION 'CAJA C82 FAIL: cierre al completar los puntos (T4)'; END IF;
 
   -- T5: «Agregar servicio» rechaza rutas de días anteriores; el conductor puede subir guías pendientes de la ruta cerrada
-  IF position('día anterior' IN pg_get_functiondef('public.active_route_context(uuid)'::regprocedure)) = 0
+  IF position('dispatch_operating_day' IN pg_get_functiondef('public.active_route_context(uuid)'::regprocedure)) = 0
      OR position('Ruta cerrada: guía pendiente' IN pg_get_functiondef('public.delivery_submit_driver(uuid,uuid,text[],text,text,text,uuid,timestamptz)'::regprocedure)) = 0 THEN
     RAISE EXCEPTION 'CAJA C82 FAIL: regla de rutas vigentes o guías pendientes (T5)'; END IF;
 
@@ -85,7 +85,7 @@ BEGIN
      OR has_function_privilege('anon', 'public.dispatch_operational_close(uuid,text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'CAJA C82 FAIL: cierre expuesto a usuarios (T6)'; END IF;
   IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
-    EXECUTE 'SELECT count(*) FROM cron.job WHERE jobname = ''cierre-operativo-rutas'' AND schedule = ''0 5 * * *''' INTO closed;
+    EXECUTE 'SELECT count(*) FROM cron.job WHERE jobname = ''dispatch-midnight-lima'' AND schedule = ''* * * * *''' INTO closed;
     IF closed <> 1 THEN RAISE EXCEPTION 'CAJA C82 FAIL: falta la tarea de las 00:00 (T6)'; END IF;
   END IF;
 

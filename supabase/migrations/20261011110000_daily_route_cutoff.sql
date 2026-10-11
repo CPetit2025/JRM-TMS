@@ -8,7 +8,8 @@ CREATE FUNCTION public.dispatch_operating_day(p_row jsonb) RETURNS date
 LANGUAGE sql IMMUTABLE SET search_path=public,pg_temp AS $$
  SELECT (COALESCE(NULLIF(p_row->>'departure_time','')::timestamptz,
    NULLIF(p_row->>'tercero_salida_at','')::timestamptz,
-   NULLIF(p_row->>'scheduled_departure','')::timestamptz) AT TIME ZONE 'America/Lima')::date;
+   NULLIF(p_row->>'scheduled_departure','')::timestamptz,
+   NULLIF(p_row->>'created_at','')::timestamptz) AT TIME ZONE 'America/Lima')::date;
 $$;
 CREATE FUNCTION public.dispatch_cutoff_at(p_row jsonb) RETURNS timestamptz
 LANGUAGE sql IMMUTABLE SET search_path=public,pg_temp AS $$
