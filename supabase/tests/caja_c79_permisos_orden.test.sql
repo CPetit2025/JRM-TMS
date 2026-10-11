@@ -55,8 +55,12 @@ BEGIN
      OR has_table_privilege('authenticated', 'public.role_permission_changes', 'INSERT')
      OR has_table_privilege('authenticated', 'public.role_permission_changes', 'TRUNCATE')
      OR has_table_privilege('authenticated', 'public.role_permission_changes', 'TRIGGER')
+     OR NOT (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.role_permission_changes'::regclass)
      OR NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = 'public.role_permission_changes'::regclass
-                    AND p.polname = 'security_active_account' AND NOT p.polpermissive) THEN
+                    AND p.polname = 'security_active_account' AND NOT p.polpermissive AND p.polcmd = '*'
+                    AND p.polroles = ARRAY['authenticated'::regrole]::oid[]
+                    AND pg_get_expr(p.polqual, p.polrelid) LIKE '%is_active_tms_user()%'
+                    AND pg_get_expr(p.polwithcheck, p.polrelid) LIKE '%is_active_tms_user()%') THEN
     RAISE EXCEPTION 'CAJA C79 FAIL: historial expuesto a anónimos (T6)'; END IF;
 
   RAISE EXCEPTION 'CAJA C79 PASS (6/6) roles y permisos: formato único, acceso intacto, historial y roles base protegidos';

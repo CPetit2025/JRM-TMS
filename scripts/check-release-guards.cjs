@@ -71,8 +71,13 @@ const allSql = allMigrations.map(m => m.text).join('\n')
 for (const { name, text } of allMigrations.filter(m => m.name >= '20261011050000')) {
   for (const m of text.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?public\.([a-z0-9_]+)/gi)) {
     const table = m[1]
-    if (!new RegExp(`security_active_account ON public\\.${table}\\b`).test(allSql))
-      errors.push(`La tabla ${table} (${name}) no tiene la política restrictiva security_active_account (C55).`)
+    // La política debe ser restrictiva, para authenticated y exigir la cuenta activa al leer y al escribir
+    const policy = new RegExp(`CREATE POLICY security_active_account ON public\\.${table}\\s+AS RESTRICTIVE\\s+FOR ALL\\s+TO authenticated\\s+` +
+      `USING\\s*\\(\\s*\\(\\s*SELECT public\\.is_active_tms_user\\(\\)\\s*\\)\\s*\\)\\s*WITH CHECK\\s*\\(\\s*\\(\\s*SELECT public\\.is_active_tms_user\\(\\)\\s*\\)\\s*\\)`, 'i')
+    if (!policy.test(allSql))
+      errors.push(`La tabla ${table} (${name}) no tiene la política security_active_account AS RESTRICTIVE FOR ALL TO authenticated con is_active_tms_user() en USING y WITH CHECK (C55).`)
+    if (!new RegExp(`ALTER TABLE (?:IF EXISTS )?public\\.${table}\\s+ENABLE ROW LEVEL SECURITY`, 'i').test(allSql))
+      errors.push(`La tabla ${table} (${name}) no activa RLS (ALTER TABLE ... ENABLE ROW LEVEL SECURITY): sin RLS sus políticas no rigen (C55).`)
     if (!new RegExp(`REVOKE ALL ON (?:TABLE )?public\\.${table} FROM[^;]*authenticated`, 'i').test(allSql))
       errors.push(`La tabla ${table} (${name}) conserva los privilegios por defecto de authenticated: REVOKE ALL y GRANT solo lo necesario (C55).`)
   }
