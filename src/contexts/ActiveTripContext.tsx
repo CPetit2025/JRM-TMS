@@ -1,6 +1,7 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 
 export type TripStop = {
@@ -81,6 +82,7 @@ const ActiveTripContext = createContext<ActiveTripContextValue>(empty)
 
 export function ActiveTripProvider({ children }: { children: React.ReactNode }) {
   const supabase = useMemo(() => createClient(), [])
+  const lastStops = useRef<{ trip: string; ids: string[] } | null>(null)
   const [state, setState] = useState<Omit<ActiveTripContextValue, 'refresh'>>({ ...empty })
 
   const refresh = useCallback(async () => {
@@ -104,6 +106,13 @@ export function ActiveTripProvider({ children }: { children: React.ReactNode }) 
     }
     const next = data as Omit<ActiveTripContextValue, 'summary' | 'loading' | 'error' | 'refresh'>
     const summary = summaryResult.error ? empty.summary : summaryResult.data as DriverPortalSummary
+    if (next.trip) {
+      const ids = next.trip.stops.map(stop => stop.transport_request_id)
+      if (lastStops.current?.trip === next.trip.id && ids.some(id => !lastStops.current!.ids.includes(id))) {
+        toast.info('Se agregó un servicio a tu ruta. Revisa el orden actualizado en Ruta.', { duration: 10_000 })
+      }
+      lastStops.current = { trip: next.trip.id, ids }
+    } else lastStops.current = null
     setState({ ...next, summary, loading: false, error: summaryResult.error?.message || null })
   }, [supabase])
 
