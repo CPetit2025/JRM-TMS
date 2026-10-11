@@ -18,6 +18,8 @@ import { Modal } from '@/components/ui/modal'
 import { usePermissions } from '@/hooks/usePermissions'
 import { normalizeRoleName } from '@/lib/roles'
 import { OtPicker, type OtNode } from '@/components/solicitudes/OtPicker'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
+import { LinkPartyModal } from '@/components/solicitudes/LinkPartyModal'
 import { QuoteBreakdown } from '@/components/tarifas/TransportTariffManager'
 import { serviceAddresses, serviceLabel, serviceKind, SERVICE_KINDS, executionWeightLabels, type RequestExecution, type ServiceKind } from '@/lib/request-service'
 import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
@@ -73,6 +75,8 @@ interface TransportRequest {
   reference_type?: string | null
   reference_number?: string | null
   suppliers?: { business_name: string } | null
+  client_id?: string | null
+  request_client?: { business_name: string } | null
   budget_shortfall?: number | null
   budget_observation?: string | null
   unloading_required?: boolean | null
@@ -182,13 +186,13 @@ export default function SolicitudesPage() {
   const matchesStatus = (status: string, filter: string) => filter === 'TODOS' || status === filter
     || (filter === 'PENDIENTE' && status === 'PENDIENTE DE APROBACIÓN') || (filter === 'APROBADA' && status === 'APROBADO')
   const filteredRequests = requests.filter(r => {
-    const matchesSearch = [r.request_number, r.requester_name, r.contracts?.code, r.contracts?.clients?.business_name, r.suppliers?.business_name, referenceLabel(r), r.cargo_description, r.pickup_address, r.delivery_address].join(' ').toLocaleLowerCase('es-PE').includes(searchTerm.trim().toLocaleLowerCase('es-PE'))
+    const matchesSearch = [r.request_number, r.requester_name, r.contracts?.code, (r.request_client?.business_name || r.contracts?.clients?.business_name), r.suppliers?.business_name, referenceLabel(r), r.cargo_description, r.pickup_address, r.delivery_address].join(' ').toLocaleLowerCase('es-PE').includes(searchTerm.trim().toLocaleLowerCase('es-PE'))
     const matchesDateFrom = filterDateFrom === '' || r.required_date >= filterDateFrom
     const matchesDateTo = filterDateTo === '' || r.required_date <= filterDateTo
     const matchesService = filterService === 'TODOS' || serviceKind(r) === filterService
     return matchesSearch && matchesStatus(r.status, filterStatus) && matchesDateFrom && matchesDateTo && matchesService
   }).sort((a, b) => {
-    const value = (r: TransportRequest) => sort.key === 'service' ? compactService(r) : sort.key === 'ot' ? r.contracts?.code || '' : sort.key === 'client' ? partyName(r, r.contracts?.clients?.business_name, r.suppliers?.business_name) || '' : sort.key === 'requester' ? r.requester_name || ''
+    const value = (r: TransportRequest) => sort.key === 'service' ? compactService(r) : sort.key === 'ot' ? r.contracts?.code || '' : sort.key === 'client' ? partyName(r, (r.request_client?.business_name || r.contracts?.clients?.business_name), r.suppliers?.business_name) || '' : sort.key === 'requester' ? r.requester_name || ''
       : sort.key === 'address' ? serviceAddresses(r).map(place => place.address).join(' → ') : sort.key === 'status' ? statusLabels[r.status] || r.status : r[sort.key]
     const comparison = value(a).localeCompare(value(b), 'es-PE', { numeric: true, sensitivity: 'base' })
     return (sort.direction === 'asc' ? comparison : -comparison) || a.id.localeCompare(b.id)
@@ -212,7 +216,15 @@ export default function SolicitudesPage() {
   useEffect(() => {
     if (isModalOpen && !suppliers.length) void fetchSuppliers().then(setSuppliers)
   }, [isModalOpen, suppliers.length, fetchSuppliers])
+  // Clientes para la entrega sin OT (con OT el cliente es el de la OT)
+  const [clientOptions, setClientOptions] = useState<{ id: string; business_name: string; tax_id: string | null }[]>([])
+  useEffect(() => {
+    if (!isModalOpen || clientOptions.length) return
+    void supabase.from('clients').select('id, business_name, tax_id').eq('is_active', true).order('business_name')
+      .then(({ data }) => setClientOptions((data || []) as { id: string; business_name: string; tax_id: string | null }[]))
+  }, [isModalOpen, clientOptions.length, supabase])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [linkRequest, setLinkRequest] = useState<TransportRequest | null>(null)
   const [userRole, setUserRole] = useState<string>('')
   const [userId, setUserId] = useState('')
   const [currentRequester, setCurrentRequester] = useState('')
@@ -260,7 +272,7 @@ export default function SolicitudesPage() {
     estimated_weight: '',
     estimated_volume: '',
     service_cost: '',
-    purchase_order: '', supplier_id: '', supplier_location_id: '', reference_type: '', reference_number: ''
+    purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: ''
   })
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
   // Costos de descarga estimados (montacargas, grúa, estiba, otros): suman al costo que se valida con la partida
@@ -340,6 +352,7 @@ export default function SolicitudesPage() {
         .select(`
           *,
           suppliers(business_name),
+          request_client:clients!client_id(business_name),
           transport_request_components(id, component_contract_id, requested_weight_kg, requested_volume_m3),
           contracts(
             code,
@@ -592,6 +605,7 @@ export default function SolicitudesPage() {
       estimated_volume: request.estimated_volume ? request.estimated_volume.toString() : '',
       service_cost: request.service_cost?.toString() || '',
       purchase_order: duplicate ? '' : request.purchase_order || '', supplier_id: request.supplier_id || '', supplier_location_id: request.supplier_location_id || '',
+      client_id: request.contract_id ? '' : request.client_id || '',
       reference_type: request.reference_type || '', reference_number: duplicate ? '' : request.reference_number || ''
     })
 
@@ -693,6 +707,10 @@ export default function SolicitudesPage() {
       toast.error('Seleccione el proveedor del recojo o traslado. Si no existe, use «Nuevo proveedor» en la misma solicitud.')
       return
     }
+    if (!requiresSupplier({ request_type: newRequest.request_type, attention_mode: newRequest.attention_mode }) && !newRequest.contract_id && !newRequest.client_id) {
+      toast.error('Seleccione el cliente de la entrega o vincule la OT.')
+      return
+    }
     if (newRequest.reference_type && !newRequest.reference_number.trim()) {
       toast.error(`Ingrese el número de ${newRequest.reference_type}.`)
       return
@@ -739,7 +757,7 @@ export default function SolicitudesPage() {
         estimated_weight: '',
         estimated_volume: '',
         service_cost: '',
-        purchase_order: '', supplier_id: '', supplier_location_id: '', reference_type: '', reference_number: ''
+        purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: ''
       }))
       setContractSearch('')
       setComponentOptions([])
@@ -856,6 +874,10 @@ export default function SolicitudesPage() {
       setNewRequest({ ...newRequest, request_type: type, pickup_address: '', pickup_department: '', pickup_province: '', pickup_district: '', delivery_address: '', delivery_department: '', delivery_province: '', delivery_district: '' })
     }
   }
+  const otClientName = (() => {
+    const cl = contracts.find(c => c.id === newRequest.contract_id)?.clients
+    return (Array.isArray(cl) ? cl[0]?.business_name : cl?.business_name) || null
+  })()
   // Lo que falta para enviar, en el orden del formulario; cada ítem lleva a su sección.
   const pendingItems = ([
     !newRequest.requester_name.trim() && { label: 'Solicitante', target: 'req-servicio' },
@@ -864,6 +886,8 @@ export default function SolicitudesPage() {
     Boolean(newRequest.contract_id) && !componentsLoading && selectedOptions.length === 0 && { label: 'Componentes de la OT', target: 'req-ot' },
     mixedDestinations && !destinationAcknowledged && { label: 'Confirmar destino principal', target: 'req-ot' },
     needsSupplier && !newRequest.supplier_id && { label: 'Proveedor de origen', target: 'req-proveedor' },
+    !needsSupplier && !newRequest.contract_id && !newRequest.client_id && { label: 'Cliente (o la OT)', target: 'req-ot' },
+    !needsSupplier && Boolean(newRequest.contract_id) && !otClientName && { label: 'Cliente de la OT (asignar en Contratos y OTs)', target: 'req-ot' },
     (!newRequest.pickup_address.trim() || !newRequest.pickup_district.trim()) && { label: 'Origen: dirección y distrito', target: 'req-ruta' },
     (!newRequest.delivery_address.trim() || !newRequest.delivery_district.trim()) && { label: 'Destino: dirección y distrito', target: 'req-ruta' },
     !requiredAt && { label: 'Fecha y hora de atención', target: 'req-fecha' },
@@ -912,7 +936,7 @@ export default function SolicitudesPage() {
                 estimated_weight: '',
                 estimated_volume: '',
                 service_cost: '',
-                purchase_order: '', supplier_id: '', supplier_location_id: '', reference_type: '', reference_number: ''
+                purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: ''
               })
               setDraftFound(readDraft()); setDraftMode(true)
               setIsModalOpen(true)
@@ -986,7 +1010,7 @@ export default function SolicitudesPage() {
                   <td className={cell}>{label('Servicio')}<ServiceTypeBadge request={req} /></td>
                   <td className={cell}>{label('OT')}<span className="whitespace-nowrap font-semibold text-[#002855]" title={[`Solicitud ${req.request_number}`, req.contracts?.code && referenceLabel(req)].filter(Boolean).join(' · ')}>{req.contracts?.code || (req.contract_id ? 'OT vinculada' : referenceLabel(req) || 'Sin OT')}</span></td>
                   <td className={cell}>{label('Solicitante')}<p className="truncate text-slate-700" title={[req.requester_name, req.department].filter(Boolean).join(' · ') || undefined}>{req.requester_name || 'Sin solicitante'}</p></td>
-                  <td className={cell}>{label('Empresa')}{(() => { const party = partyName(req, req.contracts?.clients?.business_name, req.suppliers?.business_name); return <p className="truncate text-slate-700" title={party ? `${requiresSupplier(req) ? 'Proveedor' : 'Cliente'}: ${party}` : undefined}>{party || (requiresSupplier(req) ? 'Proveedor sin vincular' : 'Sin cliente')}</p> })()}</td>
+                  <td className={cell}>{label('Empresa')}{(() => { const party = partyName(req, (req.request_client?.business_name || req.contracts?.clients?.business_name), req.suppliers?.business_name); return <p className="truncate text-slate-700" title={party ? `${requiresSupplier(req) ? 'Proveedor' : 'Cliente'}: ${party}` : undefined}>{party || <button type="button" onClick={e => { e.stopPropagation(); setLinkRequest(req) }} className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-100" title="Sin esto no se puede programar">{requiresSupplier(req) ? 'Proveedor sin vincular' : 'Sin cliente'} · vincular</button>}</p> })()}</td>
                   <td className={`${cell} col-span-2`}>{label('Punto de atención')}<div title={addresses.map(place => `${place.label}: ${place.address}`).join(' → ')} className="text-slate-700">
                     <p className="truncate leading-5">{addresses.map((place, index) => <span key={place.label}>{index > 0 && <span className="text-slate-400"> → </span>}{districtOf(place.address, place.label === 'Entrega' ? req.delivery_district : req.pickup_district)}</span>)}</p>
                   </div></td>
@@ -1085,6 +1109,16 @@ export default function SolicitudesPage() {
                   componentLoadId.current++
                 }}
               />
+              {!needsSupplier && !newRequest.contract_id && <div className="mt-3">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Cliente de la entrega <span className="text-red-500">*</span></label>
+                <SearchableSelect
+                  value={newRequest.client_id}
+                  onChange={(val) => setNewRequest(prev => ({ ...prev, client_id: val }))}
+                  options={clientOptions.map(c => ({ value: c.id, label: `${c.business_name}${c.tax_id ? ` (${c.tax_id})` : ''}` }))}
+                  placeholder="-- Buscar por RUC o razón social --"
+                />
+                <p className="mt-1 text-xs text-slate-500">Sin OT, indique el cliente. Con OT se toma el cliente de la OT.</p>
+              </div>}
               {newRequest.contract_id && componentOptions.length > 0 && (() => {
                 const root = componentOptions.find(c => c.contract_id === newRequest.contract_id)
                 return root && <p className="mt-1 text-xs text-slate-600">
@@ -1317,6 +1351,7 @@ export default function SolicitudesPage() {
               <dl className="space-y-2">
                 <div><dt className="text-xs text-slate-500">Servicio</dt><dd className="mt-0.5"><ServiceTypeBadge full request={{ request_type: newRequest.request_type, attention_mode: newRequest.attention_mode, contract_id: newRequest.contract_id || null }} /></dd></div>
                 <div><dt className="text-xs text-slate-500">OT</dt><dd className="font-semibold text-slate-900">{contracts.find(c => c.id === newRequest.contract_id)?.code || 'Sin OT'}{selectedOptions.length > 0 && <span className="font-normal text-slate-500"> · {selectedOptions.length} comp.</span>}</dd></div>
+                {!needsSupplier && <div><dt className="text-xs text-slate-500">Cliente</dt><dd className="truncate font-semibold text-slate-900">{(newRequest.contract_id ? otClientName || 'OT sin cliente' : clientOptions.find(c => c.id === newRequest.client_id)?.business_name) || '—'}</dd></div>}
                 {needsSupplier && <div><dt className="text-xs text-slate-500">Proveedor</dt><dd className="truncate font-semibold text-slate-900">{suppliers.find(s => s.id === newRequest.supplier_id)?.business_name || '—'}</dd></div>}
                 <div><dt className="text-xs text-slate-500">Ruta</dt><dd className="font-semibold text-slate-900">{newRequest.pickup_district || '—'} → {newRequest.delivery_district || '—'}</dd></div>
                 <div><dt className="text-xs text-slate-500">Atención</dt><dd className="font-semibold text-slate-900">{requiredAt ? fullDateTime(requiredAt) : '—'}</dd></div>
@@ -1339,7 +1374,7 @@ export default function SolicitudesPage() {
           <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-4">
             <div><span className="block text-xs text-slate-500">OT madre</span><strong>{detailExecution?.ot_code || selectedRequestDetails.contracts?.code || (selectedRequestDetails.contract_id ? 'OT vinculada sin código disponible' : 'Sin OT')}</strong></div>
             <div><span className="block text-xs text-slate-500">Estado</span>{getStatusBadge(selectedRequestDetails.status)}</div>
-            <div><span className="block text-xs text-slate-500">Código / Emisión</span><strong>{selectedRequestDetails.request_number}</strong><p className="mt-1">{requestDate(selectedRequestDetails.created_at, true)}</p></div><div><span className="block text-xs text-slate-500">Tipo de servicio</span>{serviceLabel(selectedRequestDetails)}</div><div><span className="block text-xs text-slate-500">Cliente</span>{selectedRequestDetails.contracts?.clients?.business_name || 'Sin cliente registrado'}</div><div><span className="block text-xs text-slate-500">Proveedor de origen</span>{selectedRequestDetails.suppliers?.business_name || (requiresSupplier(selectedRequestDetails) ? 'Proveedor sin vincular' : 'No aplica')}</div><div><span className="block text-xs text-slate-500">Documento de referencia</span>{referenceLabel(selectedRequestDetails) || 'Sin documento'}</div><div><span className="block text-xs text-slate-500">Área / Departamento</span>{selectedRequestDetails.department}</div><div><span className="block text-xs text-slate-500">Solicitante</span>{selectedRequestDetails.requester_name}</div>
+            <div><span className="block text-xs text-slate-500">Código / Emisión</span><strong>{selectedRequestDetails.request_number}</strong><p className="mt-1">{requestDate(selectedRequestDetails.created_at, true)}</p></div><div><span className="block text-xs text-slate-500">Tipo de servicio</span>{serviceLabel(selectedRequestDetails)}</div><div><span className="block text-xs text-slate-500">Cliente</span>{(selectedRequestDetails.request_client?.business_name || selectedRequestDetails.contracts?.clients?.business_name) || 'Sin cliente registrado'}</div><div><span className="block text-xs text-slate-500">Proveedor de origen</span>{selectedRequestDetails.suppliers?.business_name || (requiresSupplier(selectedRequestDetails) ? 'Proveedor sin vincular' : 'No aplica')}</div><div><span className="block text-xs text-slate-500">Documento de referencia</span>{referenceLabel(selectedRequestDetails) || 'Sin documento'}</div><div><span className="block text-xs text-slate-500">Área / Departamento</span>{selectedRequestDetails.department}</div><div><span className="block text-xs text-slate-500">Solicitante</span>{selectedRequestDetails.requester_name}</div>
             <div><span className="block text-xs text-slate-500">Fecha requerida</span>{selectedRequestDetails.required_at ? requestDate(selectedRequestDetails.required_at, true) : serviceDate(selectedRequestDetails.required_date)}{selectedRequestDetails.time_window && <p className="mt-1 flex items-center gap-1 text-xs"><Clock className="h-3 w-3" />{selectedRequestDetails.time_window}</p>}</div>
             <div><span className="block text-xs text-slate-500">Origen</span>{selectedRequestDetails.pickup_address || 'Sin origen'}</div>
             <div><span className="block text-xs text-slate-500">Destino</span>{selectedRequestDetails.delivery_address || 'Sin destino'}</div>
@@ -1439,6 +1474,7 @@ export default function SolicitudesPage() {
           </div>
         </form>
       </Modal>
+      {linkRequest && <LinkPartyModal request={linkRequest} onClose={() => setLinkRequest(null)} onLinked={() => void fetchRequests()} />}
     </div>
   )
 }

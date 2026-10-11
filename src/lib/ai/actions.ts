@@ -106,12 +106,18 @@ export async function prepareOfficeAction(args: Record<string, unknown>, supabas
     const code = parent ? `${parent.code}-${correlative}` : correlative
     let client: Row | null = null
     const clientRef = text(args.client, 150)
-    if (clientRef && !parent) {
-      const byRuc = /^\d{11}$/.test(clientRef)
+    // La OT madre necesita cliente (los subcontratos y errores heredan el de su madre). Se identifica sin ambigüedad:
+    // RUC exacto o una sola coincidencia de razón social.
+    if (!parent) {
+      if (!clientRef) return { error: 'Indique el cliente de la OT (RUC o razón social).' }
+      const ruc = clientRef.replace(/\D/g, '')
+      const byRuc = /^\d{11}$/.test(ruc)
       const { data } = await supabase.from('clients').select('id, business_name, tax_id')
-        [byRuc ? 'eq' : 'ilike'](byRuc ? 'tax_id' : 'business_name', byRuc ? clientRef : `%${literal(clientRef)}%`).limit(1).maybeSingle()
-      client = data as Row | null
-      if (!client) return { error: `No encontré el cliente "${clientRef}".` }
+        [byRuc ? 'eq' : 'ilike'](byRuc ? 'tax_id' : 'business_name', byRuc ? ruc : `%${literal(clientRef)}%`).limit(2)
+      const found = (data || []) as Row[]
+      if (found.length === 0) return { error: `No encontré el cliente "${clientRef}". Regístrelo primero en Clientes.` }
+      if (found.length > 1) return { error: `Hay varios clientes que coinciden con "${clientRef}". Indique el RUC.` }
+      client = found[0]
     }
     const tons = num(args.weight_tons) ?? 0
     if (tons < 0 || tons > MAX_TONS) return { error: 'El peso va en toneladas (máx. 99,999.99 t).' }

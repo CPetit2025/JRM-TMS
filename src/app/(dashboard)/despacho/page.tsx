@@ -9,6 +9,13 @@ import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filte
 import { districtOf } from '@/lib/address'
 import { cellDateTime } from '@/lib/table-format'
 import { partyName, referenceLabel, requiresSupplier } from '@/lib/suppliers'
+import { LinkPartyModal } from '@/components/solicitudes/LinkPartyModal'
+
+// Sin proveedor (recojo / traslado) o sin cliente (entregas) una solicitud no se programa: la base también lo impide.
+function partyMissing(req: { request_type?: string; attention_mode?: string | null; supplier_id?: string | null; client_id?: string | null; contract_id?: string | null }): 'proveedor' | 'cliente' | null {
+  if (requiresSupplier(req)) return req.supplier_id ? null : 'proveedor'
+  return req.client_id ? null : 'cliente'
+}
 import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 import { serviceLabel, serviceKind, SERVICE_KINDS, type ServiceKind } from '@/lib/request-service'
 
@@ -59,6 +66,9 @@ interface TransportRequest {
   reference_number?: string | null
   purchase_order?: string | null
   suppliers?: { business_name: string } | null
+  supplier_id?: string | null
+  client_id?: string | null
+  request_client?: { business_name: string } | null
   estimated_weight?: number | null
   service_cost?: number | null
   contracts?: {
@@ -140,6 +150,7 @@ export default function DespachoPage() {
   const { canWrite } = usePermissions()
   const supabase = useMemo(() => createClient(), [])
   const [pendingRequests, setPendingRequests] = useState<TransportRequest[]>([])
+  const [linkRequest, setLinkRequest] = useState<TransportRequest | null>(null)
   const [dispatches, setDispatches] = useState<Dispatch[]>([])
   const [vehicles, setVehicles] = useState<PlanningVehicle[]>([])
   const [drivers, setDrivers] = useState<PlanningDriver[]>([])
@@ -280,6 +291,7 @@ export default function DespachoPage() {
         .select(`
           *,
           suppliers(business_name),
+          request_client:clients!client_id(business_name),
           transport_request_items (
             weight,
             volume_m3,
@@ -501,6 +513,8 @@ export default function DespachoPage() {
     const isSelected = newDispatch.selected_requests.some(r => r.id === reqId)
     const request = pendingRequests.find(r => r.id === reqId)
     if (!isSelected && !request?.attention_mode) { toast.error('Defina la modalidad en Solicitudes antes de programar este requerimiento histórico.'); return }
+    const missingParty = !isSelected && request ? partyMissing(request) : null
+    if (missingParty) { toast.error(`${request?.request_number} no tiene ${missingParty}: vincúlelo antes de programarla.`); setLinkRequest(request ?? null); return }
     const existing = pendingRequests.find(r => newDispatch.selected_requests.some(x => x.id === r.id))
     if (!isSelected && existing && (existing.attention_mode !== request?.attention_mode || existing.site_id !== request?.site_id)) {
       toast.error('Agrupe solicitudes de la misma modalidad y sede. Puede combinar OT, entregas, recojos y traslados.'); return
@@ -644,7 +658,7 @@ export default function DespachoPage() {
                       </td>
                       <td><ServiceTypeBadge request={req} /></td>
                       <td className="whitespace-nowrap text-sm font-bold text-jrm-navy" title={`Solicitud ${req.request_number} · ${req.requester_name}`}>{req.contracts?.code ? `OT ${req.contracts.code}` : referenceLabel(req) || 'Sin OT'}</td>
-                      <td className="max-w-40">{(() => { const party = partyName(req, req.contracts?.clients?.business_name, req.suppliers?.business_name); return <p className="truncate text-sm text-slate-700" title={party ? `${requiresSupplier(req) ? 'Proveedor' : 'Cliente'}: ${party}` : undefined}>{party || (requiresSupplier(req) ? 'Proveedor sin vincular' : 'Sin cliente')}</p> })()}</td>
+                      <td className="max-w-40">{(() => { const party = partyName(req, (req.request_client?.business_name || req.contracts?.clients?.business_name), req.suppliers?.business_name); return <p className="truncate text-sm text-slate-700" title={party ? `${requiresSupplier(req) ? 'Proveedor' : 'Cliente'}: ${party}` : undefined}>{party || <button type="button" onClick={e => { e.stopPropagation(); setLinkRequest(req) }} className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-100" title="Sin esto no se puede programar">{requiresSupplier(req) ? 'Proveedor sin vincular' : 'Sin cliente'} · vincular</button>}</p> })()}</td>
                       <td className="max-w-48">
                         <p className="flex items-center gap-1 truncate text-sm text-slate-700" title={`Origen: ${req.pickup_address}\nDestino: ${req.delivery_address}`}>
                           <MapPin className="h-3.5 w-3.5 shrink-0 text-blue-500" aria-hidden="true" />
@@ -708,9 +722,11 @@ export default function DespachoPage() {
                   : routeCandidates.length === 0 ? <p className="p-6 text-center text-sm text-slate-500">Ningún servicio coincide con la búsqueda.</p>
                   : <ul className="divide-y divide-slate-100">{routeCandidates.map(req => {
                     const stop = newDispatch.selected_requests.findIndex(r => r.id === req.id)
+                    const missing = partyMissing(req)
                     return <li key={req.id}>
                       <label className={`flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors ${stop >= 0 ? 'bg-blue-50/70' : 'hover:bg-slate-50'}`}>
-                        <input type="checkbox" className="h-4 w-4 shrink-0 rounded border-slate-300 text-[#002855] focus:ring-[#002855]" checked={stop >= 0}
+                        <input type="checkbox" className="h-4 w-4 shrink-0 rounded border-slate-300 text-[#002855] focus:ring-[#002855] disabled:opacity-40" checked={stop >= 0}
+                          disabled={Boolean(missing) && stop < 0} title={missing ? `Sin ${missing}: vincúlelo antes de programar` : undefined}
                           onChange={() => toggleRequestSelection(req.id, req.pickup_address, req.delivery_address)} />
                         <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold ${stop >= 0 ? 'bg-[#002855] text-white' : 'border border-dashed border-slate-300 text-slate-300'}`} title={stop >= 0 ? `Parada ${stop + 1}` : 'Sin seleccionar'}>{stop >= 0 ? stop + 1 : ''}</span>
                         <span className="min-w-0 flex-1">
@@ -718,7 +734,8 @@ export default function DespachoPage() {
                             <span className="text-sm font-bold text-[#002855]">{req.request_number}</span>
                             <ServiceTypeBadge request={req} />
                             <span className="text-xs font-semibold text-slate-700">{req.contracts?.code ? `OT ${req.contracts.code}` : referenceLabel(req) || 'Sin OT'}</span>
-                            <span className="truncate text-xs text-slate-500">{partyName(req, req.contracts?.clients?.business_name, req.suppliers?.business_name)}</span>
+                            <span className="truncate text-xs text-slate-500">{partyName(req, (req.request_client?.business_name || req.contracts?.clients?.business_name), req.suppliers?.business_name)}</span>
+                            {missing && <button type="button" onClick={e => { e.preventDefault(); e.stopPropagation(); setLinkRequest(req) }} className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-100">Sin {missing} · vincular</button>}
                             {req.attention_mode === 'RECOJO_CLIENTE' && <span className="text-xs font-medium text-teal-700">Recojo por cliente</span>}
                             {!req.attention_mode && <span className="text-xs font-medium text-red-700">Modalidad pendiente</span>}
                             {wasRescheduled(req) && <span className="rounded-full border border-orange-200 bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-800" title={req.rescheduling?.fecha_anterior ? `Fecha anterior: ${serviceDate(req.rescheduling.fecha_anterior)}` : undefined}>Reprogramado</span>}
@@ -912,8 +929,7 @@ export default function DespachoPage() {
           </aside>
         </form>
       </Modal>
-
-
+      {linkRequest && <LinkPartyModal request={linkRequest} onClose={() => setLinkRequest(null)} onLinked={() => void fetchData()} />}
     </div>
   )
 }
