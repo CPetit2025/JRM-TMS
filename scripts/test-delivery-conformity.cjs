@@ -576,6 +576,20 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   const familyRegression=query(read('supabase/tests/caja_c50_ruta_mixta_partida_flota.test.sql'))
   assert.match(familyRegression.stderr,/CAJA C50 PASS/,familyRegression.stderr)
   console.log('PASS: C75 real contract creation, family allocation, 80% limit, historical child spend, nested errors, edits and no duplicate allocations; C50 mixed-route regression.')
+  sql(`CREATE TABLE notifications(id bigint GENERATED ALWAYS AS IDENTITY,evento text,categoria text,severidad text,titulo text,cuerpo text,link text,permisos text[],target_user uuid,dedupe_key text);`)
+  sql(`ALTER TABLE transport_requests ADD COLUMN IF NOT EXISTS client_id uuid,ADD COLUMN IF NOT EXISTS supplier_id uuid;
+    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS weight_capacity numeric;
+    CREATE TABLE suppliers(id uuid PRIMARY KEY); INSERT INTO suppliers VALUES('${id(900)}');`)
+  sql(installed('supabase/migrations/20261011010000_cliente_proveedor_obligatorio.sql','request_party_missing')+
+    installed('supabase/migrations/20261011010000_cliente_proveedor_obligatorio.sql','enforce_dispatch_request_party')+
+    `CREATE CONSTRAINT TRIGGER dispatch_requests_party AFTER INSERT OR UPDATE OF transport_request_id ON dispatch_requests DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION enforce_dispatch_request_party();`)
+  sql(read('supabase/migrations/20261011030000_permisos_orden.sql'))
+  const activeSource=read('supabase/migrations/20261008020000_production_security_boundaries.sql')
+  sql(activeSource.slice(activeSource.indexOf('CREATE OR REPLACE FUNCTION public.is_active_tms_user()'),activeSource.indexOf('REVOKE ALL ON FUNCTION public.is_active_tms_user')))
+  sql(read('supabase/migrations/20261011060000_active_route_add_service.sql'))
+  const additionBox=query(read('supabase/tests/caja_c80_active_route_service.test.sql'))
+  assert.match(additionBox.stderr,/CAJA C80 PASS/,additionBox.stderr)
+  console.log('PASS: C80 active route additions preserve old freight and current leg, mixed OT root budget, deadlines/capacity, atomic retries, permissions, retained third-party access and settlement.')
 } catch(error) {
   console.error(error.message)
   console.error('::error title=Delivery conformity validation::' + error.message.replaceAll('%','%25').replaceAll('\n','%0A'))
