@@ -47,7 +47,7 @@ export default function TrackingPage() {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
     if (pin.length !== 4 && pin.length !== 8) {
-      toast.error('El PIN debe ser de 8 dígitos (o 4 para enlaces anteriores)')
+      toast.error('El código tiene 4 caracteres (letras y números); los enlaces anteriores usan 8 dígitos')
       return
     }
 
@@ -96,11 +96,16 @@ export default function TrackingPage() {
                 type="text"
                 maxLength={8}
                 value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                onChange={(e) => setPin(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                autoCapitalize="characters"
+                autoComplete="off"
+                spellCheck={false}
+                aria-describedby="pin-help"
                 className="w-full text-center text-3xl tracking-widest p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 placeholder="••••"
                 required
               />
+              <p id="pin-help" className="mt-2 text-center text-xs text-slate-500">4 letras o números (no distingue mayúsculas). Los enlaces anteriores usan 8 dígitos.</p>
             </div>
             
             <button

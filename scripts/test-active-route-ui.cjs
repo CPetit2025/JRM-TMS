@@ -23,11 +23,22 @@ test('planning adds only to the existing pair and keeps return, closure and reso
  assert.equal(routeAssignment([route], 'AAA-111', 'other-driver').kind, 'CONFLICT')
  assert.equal(routeAssignment([route], 'BBB-222', 'driver').kind, 'CONFLICT')
  assert.equal(routeAssignment([route], '', ''), null)
- for (const status of ['RETORNO', 'ESPERANDO_AUTORIZACION', 'ENTREGADO', 'RETORNO_COMPLETADO']) {
+ for (const status of ['RETORNO', 'ESPERANDO_AUTORIZACION', 'ENTREGADO']) {
    assert.equal(routeAssignment([{ ...route, status }], 'AAA-111', 'driver').kind, 'CLOSING')
  }
  assert.equal(routeAssignment([{ ...route, status: 'LIQUIDADO' }], 'AAA-111', 'driver'), null)
+ // Cierre operativo (00:00 o último punto): la unidad queda libre aunque falte la liquidación documentaria
+ assert.equal(routeAssignment([{ ...route, status: 'RETORNO_COMPLETADO' }], 'AAA-111', 'driver'), null)
  assert.equal(routeAssignment([route, { ...route, id: 'another', vehicle_plate: 'BBB-222' }], 'BBB-222', 'driver').kind, 'CONFLICT')
+})
+test('add service only on current or future routes', () => {
+ const { canAddRouteService } = load('src/lib/route-assignment.ts', require, { Intl, Date })
+ const now = new Date('2030-01-02T15:00:00Z')
+ assert.equal(canAddRouteService({ status: 'EN RUTA', plate: 'AAA-111', scheduled_departure: '2030-01-02T13:00:00Z' }, now), true)
+ assert.equal(canAddRouteService({ status: 'PROGRAMADO', plate: 'AAA-111', scheduled_departure: '2030-01-03T13:00:00Z' }, now), true)
+ assert.equal(canAddRouteService({ status: 'EN RUTA', plate: 'AAA-111', scheduled_departure: '2030-01-01T13:00:00Z' }, now), false)
+ assert.equal(canAddRouteService({ status: 'RETORNO_COMPLETADO', plate: 'AAA-111', scheduled_departure: '2030-01-02T13:00:00Z' }, now), false)
+ assert.equal(canAddRouteService({ status: 'EN RUTA', plate: 'EXTERNO', scheduled_departure: '2030-01-02T13:00:00Z' }, now), false)
 })
 test('route form protects current leg, previews inserted service and reuses operation after failure', async () => {
  const calls = [], successes = []; let changes = 0, closes = 0, tree

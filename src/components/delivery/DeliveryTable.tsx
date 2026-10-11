@@ -9,9 +9,10 @@ import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 import { partyName, referenceLabel, requiresSupplier } from '@/lib/suppliers'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
-import { conformityLabels, deliveryServiceKind, deliveryStatus, deliveryTime, filterDeliveries, type DeliveryRow } from '@/lib/delivery'
+import { conformityLabels, deliveryServiceKind, deliveryStatus, deliveryTime, documentNumberLabel, filterDeliveries, type DeliveryRow } from '@/lib/delivery'
 import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 import { SERVICE_KINDS, type ServiceKind } from '@/lib/request-service'
+import { canAddRouteService } from '@/lib/route-assignment'
 
 export function DeliverySignal({ state, onClick, compact = false }: { state: string; onClick?: () => void; compact?: boolean }) {
   const style = deliveryStatus(state)
@@ -56,7 +57,7 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
       const XLSX = await import('xlsx')
       const book = XLSX.utils.book_new()
       const sheet = XLSX.utils.json_to_sheet(filtered.map(r => ({ Servicio: (k => k ? SERVICE_KINDS[k].label : '')(deliveryServiceKind(r)), OT: r.ot_code, Solicitud: r.request_number, Despacho: r.dispatch_number,
-        Guía: r.guide_number || '', Cliente: r.client_name || '', Origen: r.pickup_address, Destino: r.delivery_address,
+        Guía: r.guide_number || '', 'Nota de Despacho': r.note_number || '', Cliente: r.client_name || '', Origen: r.pickup_address, Destino: r.delivery_address,
         Placa: r.plate, Conductor: r.driver_name || '', Transportista: r.carrier_name || '',
         Programado: deliveryTime(r.scheduled_departure), Estado: deliveryStatus(r.state).label,
         Conformidad: conformityLabels[r.conformity], Fotos: r.photos_count, Actualización: deliveryTime(r.last_event_at) })))
@@ -82,9 +83,9 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
     {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error} La información anterior puede estar desactualizada.</p>}
     <div className="overflow-x-auto rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
       <DataTable dense className="w-full min-w-[900px] text-left text-xs">
-        <thead className="bg-slate-50 text-slate-600"><tr>{['Fecha', 'Servicio', 'OT', 'Unidad', 'Empresa', 'Destino', 'Guía y conformidad', 'Último evento', 'Acciones'].map((label, i) => <th key={label} className={`whitespace-nowrap font-semibold ${i === 8 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead>
+        <thead className="bg-slate-50 text-slate-600"><tr>{['Fecha', 'Servicio', 'OT', 'Unidad', 'Empresa', 'Destino', 'GR / Nota', 'Conformidad', 'Último evento', 'Acciones'].map((label, i) => <th key={label} className={`whitespace-nowrap font-semibold ${i === 9 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead>
         <tbody className="divide-y">
-          {!visible.length && <tr><td colSpan={9} className="p-8 text-center text-slate-500">{loading ? 'Cargando entregas…' : 'No hay entregas con los filtros seleccionados.'}</td></tr>}
+          {!visible.length && <tr><td colSpan={10} className="p-8 text-center text-slate-500">{loading ? 'Cargando entregas…' : 'No hay entregas con los filtros seleccionados.'}</td></tr>}
           {visible.map(row => { const pickup = deliveryServiceKind(row) === 'RECOJO', point = pickup ? row.pickup_address : row.delivery_address, doc = guideStatus(row); return <tr key={`${row.dispatch_id}/${row.request_id}`} className="align-middle hover:bg-slate-50">
             <td className="whitespace-nowrap text-slate-700" title={deliveryTime(row.scheduled_departure)}>{cellDateTime(row.scheduled_departure)}</td>
             <td><ServiceTypeBadge kind={deliveryServiceKind(row)} /></td>
@@ -92,10 +93,11 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
             <td className="whitespace-nowrap font-bold" title={`${row.driver_name || (row.modalidad === 'RECOJO_CLIENTE' ? 'Unidad del cliente' : 'Sin conductor')}${row.modalidad === 'TERCERO' ? ` · Tercero${row.carrier_name ? ` (${row.carrier_name})` : ''}` : ''}`}>{row.plate || 'Sin placa'}{row.modalidad === 'TERCERO' && <span className="ml-1 text-[11px] font-semibold text-violet-700">T</span>}</td>
             <td className="max-w-36">{(() => { const party = partyName(row, row.client_name, row.supplier_name); return <p className="truncate font-semibold text-slate-800" title={party ? `${requiresSupplier(row) ? 'Proveedor' : 'Cliente'}: ${party}` : undefined}>{party || (requiresSupplier(row) ? 'Proveedor sin vincular' : 'Cliente sin vincular')}</p> })()}</td>
             <td className="max-w-32"><p className="truncate text-slate-700" title={`${pickup ? 'Origen' : 'Destino'}: ${point}`}>{districtOf(point)}</p></td>
+            <td className="whitespace-nowrap">{(n => <span title={n.title} className={n.pending ? 'text-xs font-semibold text-amber-700' : 'font-semibold text-slate-800'}>{n.text}</span>)(documentNumberLabel(row.guide_number, row.note_number))}</td>
             <td><button type="button" onClick={() => onEvidence ? onEvidence(row) : setHistory(row)} title={doc.title} className="inline-flex items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-jrm-navy"><StatusBadge tone={doc.tone}>{doc.label}</StatusBadge><ChevronRight aria-hidden className="h-3.5 w-3.5 text-slate-400" /></button></td>
             <td className="whitespace-nowrap" title={`Actualizado ${deliveryTime(row.last_event_at)}`}><DeliverySignal compact state={row.state} onClick={() => setHistory(row)} /></td>
             <td><div className="flex justify-end gap-1.5">
-              {onAddService && row.plate !== 'EXTERNO' && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA'].includes(row.state) && <button type="button" onClick={() => onAddService(row)} className="min-h-9 whitespace-nowrap rounded-lg border border-blue-200 bg-blue-50 px-2.5 font-semibold text-jrm-navy">Agregar servicio</button>}
+              {onAddService && canAddRouteService({ status: row.state, plate: row.plate, scheduled_departure: row.scheduled_departure }) && <button type="button" onClick={() => onAddService(row)} className="min-h-9 whitespace-nowrap rounded-lg border border-blue-200 bg-blue-50 px-2.5 font-semibold text-jrm-navy">Agregar servicio</button>}
               {onProvider && row.modalidad === 'TERCERO' && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'EN_RUTA'].includes(row.state) && <button type="button" onClick={() => onProvider(row)} title="Ver portal, placa y código para compartir con el tercero" className="flex min-h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-violet-200 bg-violet-50 px-2.5 font-semibold text-violet-800 hover:bg-violet-100"><Link2 className="h-4 w-4" />Compartir acceso GR</button>}
               <button type="button" onClick={() => setHistory(row)} title="Ver detalle" aria-label="Ver detalle" className="flex min-h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-2.5 font-semibold text-jrm-navy hover:bg-slate-50"><Eye className="h-4 w-4" /><span className="hidden 2xl:inline">Ver detalle</span></button>
             </div></td>
@@ -106,7 +108,7 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
     <div className="flex items-center justify-between gap-2 text-xs text-slate-500"><span>{filtered.length} entregas · Página {current + 1} de {pages}</span><div className="flex gap-2"><button type="button" disabled={current === 0} onClick={() => setPage(current - 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Anterior</button><button type="button" disabled={current + 1 >= pages} onClick={() => setPage(current + 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Siguiente</button></div></div>
     <Modal isOpen={!!history} onClose={() => setHistory(null)} title={history ? `Detalle · ${history.ot_code ? `OT ${history.ot_code}` : 'Sin OT'} · ${history.request_number}` : 'Detalle'} maxWidth="max-w-3xl"
       footer={history && <div className="flex flex-wrap justify-end gap-2">
-        {onAddService && history.plate !== 'EXTERNO' && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA'].includes(history.state) && <button type="button" onClick={() => { const r = history; setHistory(null); onAddService(r) }} className="min-h-10 rounded-lg bg-jrm-navy px-3 text-sm font-semibold text-white">Agregar servicio a la ruta</button>}
+        {onAddService && canAddRouteService({ status: history.state, plate: history.plate, scheduled_departure: history.scheduled_departure }) && <button type="button" onClick={() => { const r = history; setHistory(null); onAddService(r) }} className="min-h-10 rounded-lg bg-jrm-navy px-3 text-sm font-semibold text-white">Agregar servicio a la ruta</button>}
         {onProvider && history.modalidad === 'TERCERO' && <button type="button" onClick={() => { const r = history; setHistory(null); onProvider(r) }} className="min-h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-blue-700">Compartir acceso GR · tercero</button>}
         {onDispatch && <button type="button" onClick={() => { const r = history; setHistory(null); onDispatch(r) }} className="flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-jrm-navy"><Truck className="h-4 w-4" />Ver despacho {history.dispatch_number}</button>}
         {onEvidence && <button type="button" onClick={() => { const r = history; setHistory(null); onEvidence(r) }} className="flex min-h-10 items-center gap-1.5 rounded-lg bg-jrm-navy px-3 text-sm font-semibold text-white"><FileCheck2 className="h-4 w-4" />Guía y conformidad</button>}

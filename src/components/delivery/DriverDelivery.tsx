@@ -7,8 +7,10 @@ import { EvidenceForm, type EvidenceDraft } from './EvidenceForm'
 import { readActionQueue, readRouteQueue, routeQueueKey, saveOfflineAction, syncOfflineActions, syncRoutePoints } from '@/lib/route-point-sync'
 
 const asBase64 = (file: File) => new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error('No se pudo guardar la foto en el dispositivo')); reader.readAsDataURL(file) })
-export function DriverDelivery({ dispatchId, requestId, driverId, userId, guide, onChanged }: {
-  dispatchId: string; requestId: string; driverId: string; userId: string; guide?: string; onChanged: () => Promise<void>
+export function DriverDelivery({ dispatchId, requestId, driverId, userId, guide, closed, onChanged }: {
+  dispatchId: string; requestId: string; driverId: string; userId: string; guide?: string
+  /** Ruta con cierre operativo: solo falta subir la guía, sin registrar llegada */
+  closed?: boolean; onChanged: () => Promise<void>
 }) {
   const db = useMemo(() => createClient(), [])
   const [detail, setDetail] = useState<DeliveryDetail | null>(null)
@@ -52,7 +54,7 @@ export function DriverDelivery({ dispatchId, requestId, driverId, userId, guide,
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
     {!detail && !queued ? <p className="text-sm text-slate-500">Verificando conformidad… <button onClick={() => void load()} className="min-h-10 text-blue-700">Actualizar</button></p> : queued ? <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900"><p>Guía guardada en este dispositivo. Envío pendiente; el servicio continúa bloqueado.</p><p className="mt-1 text-xs">{readActionQueue().find(action => action.type === 'delivery_submit_driver' && action.payload.request_id === requestId)?.last_error || 'Se requiere conexión para confirmar la recepción.'}</p><button disabled={busy} onClick={() => void retry()} className="mt-2 min-h-11 rounded-lg border border-amber-300 px-3 font-semibold">Reintentar envío</button></div> : detail?.state === 'RECIBIDA' ? <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Guía recibida. Pendiente de validación del Supervisor de Transporte. La siguiente etapa se habilita al aprobarla.</p> : detail?.state === 'VALIDADA' ? <p className="text-sm text-emerald-700">Conformidad aprobada.</p> : <>
       {correction && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{conformityLabels[detail?.state || 'PENDIENTE']}: {correction}</p>}
-      {!detail?.arrived_at && <button disabled={busy || !navigator.onLine} className="min-h-11 rounded-lg border border-amber-300 px-3 text-sm" onClick={async () => { setBusy(true); const { error } = await db.rpc('delivery_arrive', { p_dispatch: dispatchId, p_request: requestId }); if (error) setError(error.message); else await load(); setBusy(false) }}>Confirmar llegada al destino</button>}
+      {!detail?.arrived_at && !closed && <button disabled={busy || !navigator.onLine} className="min-h-11 rounded-lg border border-amber-300 px-3 text-sm" onClick={async () => { setBusy(true); const { error } = await db.rpc('delivery_arrive', { p_dispatch: dispatchId, p_request: requestId }); if (error) setError(error.message); else await load(); setBusy(false) }}>Confirmar llegada al destino</button>}
       <EvidenceForm key={detail?.submissions[0]?.id || requestId} busy={busy} guide={guide} onSubmit={submit} />
     </>}
   </div>

@@ -27,6 +27,7 @@ interface Contract {
   }
   contract_budgets?: Array<{
     balance_pen: number
+    allocated_pen?: number | null
     concept?: string
   }>
 }
@@ -76,7 +77,7 @@ interface RegistryContext { service_id: string; dispatch_number: string | null; 
 const stageLabels: Record<RegistryContext['stage'], string> = { COMPROMETIDO: 'Comprometido', REALIZADO: 'Realizado', ANULADO: 'Anulado', REGISTRO_MANUAL: 'Registro manual' }
 const stageTone: Record<RegistryContext['stage'], StatusTone> = { COMPROMETIDO: 'warning', REALIZADO: 'success', ANULADO: 'danger', REGISTRO_MANUAL: 'neutral' }
 
-type SortKey = 'fecha' | 'contrato' | 'cliente' | 'servicio' | 'placa' | 'guia' | 'ton' | 'monto' | 'traza' | 'estado'
+type SortKey = 'fecha' | 'contrato' | 'cliente' | 'servicio' | 'placa' | 'guia' | 'ton' | 'monto' | 'saldo' | 'traza' | 'estado'
 
 // Peso de las guías según la SALIDA cargada en Almacén APT (tabla contract_service_peso_apt, migración 20261006130000)
 interface PesoApt { service_id: string; guias: string; kg: number | null; encontradas: number; faltan: string | null; calculado_at: string }
@@ -152,7 +153,7 @@ export default function ContractServicesPage() {
     let current = contracts.find(c => c.id === contractId)
     for (let depth = 0; current && depth < 16; depth++) {
       const budget = current.contract_budgets?.find(b => (b.concept || 'PARTIDA_TRANSPORTE') === 'PARTIDA_TRANSPORTE')
-      if (budget && !current.parent_contract_id) return { balance: Number(budget.balance_pen || 0), owner: current }
+      if (budget && !current.parent_contract_id) return { balance: Number(budget.balance_pen || 0), operating: Number(budget.allocated_pen || 0) * 0.8, owner: current }
       const parentId = current.parent_contract_id
       current = parentId ? contracts.find(c => c.id === parentId) : undefined
     }
@@ -236,7 +237,7 @@ export default function ContractServicesPage() {
         .select(`
           id, code, type, parent_contract_id,
           clients(business_name),
-          contract_budgets(balance_pen, concept)
+          contract_budgets(balance_pen, allocated_pen, concept)
         `)
         .eq('status', 'ACTIVO')
         .order('code')
@@ -492,6 +493,7 @@ export default function ContractServicesPage() {
       case 'guia': return srv.referral_guide || ''
       case 'ton': return tonInfo(srv, pesoApt[srv.id]).ton ?? -1
       case 'monto': return Number(srv.amount_pen || 0)
+      case 'saldo': return partidaOf(srv.contract_id)?.balance ?? Number.NEGATIVE_INFINITY
       case 'traza': return registryContext[srv.id]?.dispatch_number || ''
       case 'estado': return stageLabels[stageOf(srv)]
     }
@@ -597,6 +599,7 @@ export default function ContractServicesPage() {
                 {sortHeader('Guía', 'guia')}
                 {sortHeader('TON', 'ton', 'text-right')}
                 {sortHeader('Monto S/', 'monto', 'text-right')}
+                {sortHeader('Saldo OT S/', 'saldo', 'text-right')}
                 {sortHeader('Despacho', 'traza')}
                 {sortHeader('Estado', 'estado', 'text-center')}
               </tr>
@@ -604,14 +607,14 @@ export default function ContractServicesPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="p-8 text-center text-slate-500">
+                  <td colSpan={12} className="p-8 text-center text-slate-500">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                     Cargando servicios...
                   </td>
                 </tr>
               ) : filteredServices.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="p-8 text-center text-slate-500">
+                  <td colSpan={12} className="p-8 text-center text-slate-500">
                     No hay servicios registrados o que coincidan con los filtros.
                   </td>
                 </tr>
@@ -668,6 +671,18 @@ export default function ContractServicesPage() {
                     </td>
                     <td className={`whitespace-nowrap text-sm font-bold text-right ${srv.status === 'ANULADO' ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
                       {Number(srv.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="whitespace-nowrap text-right text-sm">
+                      {(() => {
+                        // Saldo actual de la partida que paga el servicio (OT madre): 80 % operativo menos reservas y consumos
+                        const partida = partidaOf(srv.contract_id)
+                        if (!partida) return <span className="text-xs text-slate-400" title="La OT no tiene partida de transporte activa">Sin partida</span>
+                        const tone = partida.balance <= 0 ? 'text-red-700' : partida.operating > 0 && partida.balance < partida.operating * 0.1 ? 'text-amber-700' : 'text-emerald-700'
+                        return <span title={`Disponible actual de la OT ${partida.owner.code}: 80 % operativo menos reservas y consumos. No es el saldo histórico del servicio.`}>
+                          <span className={`font-bold ${tone}`}>{partida.balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
+                          {partida.owner.id !== srv.contract_id && <span className="block text-[11px] text-slate-500">vía OT madre {partida.owner.code}</span>}
+                        </span>
+                      })()}
                     </td>
                     <td className="text-sm">
                       {context?.dispatch_number ? <a href={`/torre-control?despacho=${srv.dispatch_id}`} onClick={e => e.stopPropagation()} title={context.request_numbers?.length ? `Solicitudes: ${context.request_numbers.join(' · ')}` : undefined} className="whitespace-nowrap font-semibold text-[#002855] underline">{context.dispatch_number}</a> : <span className="whitespace-nowrap text-slate-400">Sin despacho</span>}

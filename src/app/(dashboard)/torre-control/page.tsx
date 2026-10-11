@@ -12,7 +12,7 @@ import { DeliveryTable } from '@/components/delivery/DeliveryTable'
 import { DeliveryReview } from '@/components/delivery/DeliveryReview'
 import { AddRouteService } from '@/components/despacho/AddRouteService'
 import { TerceroAvanceModal } from '@/components/despacho/Tercero'
-import { filterDeliveries, type DeliveryRow } from '@/lib/delivery'
+import { documentNumbersByStop, filterDeliveries, type DeliveryRow } from '@/lib/delivery'
 import { ReportarFallaButton } from '@/components/mantenimiento/ReportarFalla'
 import { TrackingPortalManager } from '@/components/tracking/TrackingPortalManager'
 import { TransportWorkflow } from '@/components/transport/TransportWorkflow'
@@ -137,8 +137,12 @@ export default function TorreControlPage() {
       const { data: deliveries, error: rowError } = await supabase.rpc('delivery_tracking_rows', { p_dispatches: list.map(d => d.id) })
       if (rowError) throw rowError
       const types = await fetchServiceTypes(supabase, ((deliveries || []) as DeliveryRow[]).map(r => r.request_id))
+      // GR y Nota de Despacho registradas por Documentos; sin acceso a esos documentos, la columna usa la guía de entrega
+      const { data: docs } = list.length ? await supabase.from('dispatch_documents').select('dispatch_id, transport_request_id, doc_type, document_number')
+        .in('dispatch_id', list.map(d => d.id)).in('doc_type', ['GUIA_REMISION', 'NOTA_DESPACHO']).is('voided_at', null) : { data: [] }
+      const numbers = documentNumbersByStop(docs || [])
       if (version !== fetchVersion.current) return
-      setDispatches(list); setRows(((deliveries || []) as DeliveryRow[]).map(r => ({ ...r, ...types.get(r.request_id) }))); setRefreshedAt(new Date().toISOString()); setLoadError('')
+      setDispatches(list); setRows(((deliveries || []) as DeliveryRow[]).map(r => { const n = numbers.get(`${r.dispatch_id}/${r.request_id}`); return { ...r, ...types.get(r.request_id), guide_number: r.guide_number || n?.guide || null, note_number: n?.note || null } })); setRefreshedAt(new Date().toISOString()); setLoadError('')
       if (requestedDispatch.current) {
         const selected = list.find(item => item.id === requestedDispatch.current)
         if (selected) {
