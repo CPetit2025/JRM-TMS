@@ -114,7 +114,8 @@ function DocumentaryQueue() {
         setQueueError('Selecciona un período válido de hasta 366 días.'); return
       }
       const pending = phase === 'liquidacion'
-      const { data, error } = await supabase.rpc('get_documentary_queue_period', {
+      // Liquidación pendiente: la base filtra rutas con cierre operativo y documentación incompleta
+      const { data, error } = await supabase.rpc(pending ? 'get_documentary_pending_settlement' : 'get_documentary_queue_period', {
         p_include_departed: showDeparted,
         p_from: showDeparted ? `${pending ? yearAgo() : dateFrom}T00:00:00-05:00` : null,
         p_until: showDeparted ? `${pending ? limaDay() : dateUntil}T23:59:59.999-05:00` : null,
