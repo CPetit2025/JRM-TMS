@@ -139,7 +139,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        section: [catalog, rpc-a, rpc-b, integrity]
+        section: [catalog, rpc-a, rpc-b, integrity, apt]
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
@@ -161,6 +161,7 @@ jobs:
             rpc-a) audit_file=scripts/security/details-a.sql ;;
             rpc-b) audit_file=scripts/security/details-b.sql ;;
             integrity) audit_file=scripts/security/integrity.sql ;;
+            apt) audit_file=scripts/security/apt-reconciliation.sql ;;
           esac
           if ! supabase db query --linked -f "$audit_file" -o json > security-catalog.json 2> security-error.txt; then
             detail=$(tail -c 3000 security-error.txt)
@@ -180,3 +181,9 @@ jobs:
         run: node scripts/security/annotate-audit.cjs security-catalog.json 4
       - name: Publish metadata 6
         run: node scripts/security/annotate-audit.cjs security-catalog.json 5
+      - name: Save aggregate audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: read-only-audit-${{ matrix.section }}
+          path: security-catalog.json
+          retention-days: 7
