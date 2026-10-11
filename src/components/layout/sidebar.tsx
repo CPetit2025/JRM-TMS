@@ -63,7 +63,7 @@ function Row({ entry, active, fav, onFav, showSection, count }: {
 }
 
 export function Sidebar() {
-  const { role, hasAccess: hasPermission } = usePermissions()
+  const { role, permissions, hasAccess: hasPermission } = usePermissions()
   const pathname = usePathname() || '/'
   const router = useRouter()
   const sb = useSidebar()
@@ -72,7 +72,7 @@ export function Sidebar() {
   const counts = useMenuCounts(pathname)
 
   const home = useMemo(() => HOME_ITEM(role === 'admin'), [role])
-  const sections = useMemo(() => visibleSections(hasPermission, href => roleDeniesPath(role, href)), [hasPermission, role])
+  const sections = useMemo(() => visibleSections(hasPermission, href => roleDeniesPath(role, href, permissions)), [hasPermission, role, permissions])
   const entries = useMemo(() => flatEntries(sections, home), [sections, home])
   const current = activeEntry(entries, pathname)
   const activeSection = current?.section?.id || null
@@ -82,14 +82,14 @@ export function Sidebar() {
   const lastPath = useRef<string | null>(null)
   useEffect(() => {
     if (lastPath.current === pathname) return
-    const e = activeEntry(flatEntries(visibleSections(hasPermission, href => roleDeniesPath(role, href)), HOME_ITEM(role === 'admin')), pathname)
+    const e = activeEntry(flatEntries(visibleSections(hasPermission, href => roleDeniesPath(role, href, permissions)), HOME_ITEM(role === 'admin')), pathname)
     if (e) lastPath.current = pathname   // sin permisos cargados aún: se registra cuando lleguen
     setSidebar(s => ({
       overlay: false,
       recents: e ? [e.item.href, ...s.recents.filter(h => h !== e.item.href)].slice(0, 4) : s.recents,
       open: e?.section ? [e.section.id] : [],
     }))
-  }, [pathname, hasPermission, role])
+  }, [pathname, hasPermission, role, permissions])
 
   // Atajos: Ctrl + K busca, Ctrl + B fija o suelta el menú, Esc cierra
   useEffect(() => {

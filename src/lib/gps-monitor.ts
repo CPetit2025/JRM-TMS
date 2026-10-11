@@ -15,7 +15,7 @@ export const monitorStates: Record<string, { label: string; color: string }> = {
   GUIA_OBSERVADA: { label: 'Guía observada / rechazada', color: 'red' },
   ESPERANDO_RETORNO: { label: 'Esperando autorización de retorno', color: 'amber' },
   RETORNO: { label: 'En retorno', color: 'green' },
-  EN_BASE: { label: 'En base · pendiente de cierre', color: 'blue' },
+  EN_BASE: { label: 'Unidad liberada · documentación pendiente', color: 'blue' },
   ENTREGADO: { label: 'Entregado · pendiente de cierre', color: 'blue' },
 }
 export const stateFor = (row: DriverMonitorRow) => monitorStates[row.operational_status] || { label: row.route_status || 'Sin ruta', color: 'blue' }

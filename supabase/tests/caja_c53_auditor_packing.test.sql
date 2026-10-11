@@ -28,8 +28,9 @@ DO $test$
 DECLARE actor uuid; assistant uuid; audit_role uuid; doc_role uuid; site uuid; foreign_site uuid; d uuid; other_d uuid; req uuid;
  path text; pending_path text; doc_id uuid; r jsonb; q jsonb; mime text; ext text; denied boolean; removed integer; n integer:=0;
 BEGIN
+ -- «solo-documentos» (C81) es la marca que limita al auditor a Documentos; no amplía su acceso.
  SELECT id INTO audit_role FROM public.roles WHERE lower(trim(name))='auditor de despacho';
- IF audit_role IS NULL OR (SELECT permissions FROM public.roles WHERE id=audit_role) IS DISTINCT FROM '["planificacion:read","packing-list:write"]'::jsonb THEN
+ IF audit_role IS NULL OR ((SELECT permissions FROM public.roles WHERE id=audit_role) - 'solo-documentos') IS DISTINCT FROM '["planificacion:read","packing-list:write"]'::jsonb THEN
    RAISE EXCEPTION 'CAJA C53 FAIL: perfil del auditor no limitado'; END IF;
  SELECT id INTO actor FROM public.profiles WHERE id IN(SELECT id FROM auth.users)
    AND id NOT IN(SELECT profile_id FROM public.drivers WHERE profile_id IS NOT NULL) ORDER BY id LIMIT 1;

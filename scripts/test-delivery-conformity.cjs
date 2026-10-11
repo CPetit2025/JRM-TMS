@@ -602,6 +602,7 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   sql(installed('supabase/migrations/20260923103000_driver_portal_summary.sql','get_driver_portal_summary'))
   sql(`ALTER TABLE dispatches ADD COLUMN IF NOT EXISTS created_by uuid;`)
   // Platform extension installation is tested in Supabase. The isolated container executes the real cutoff job directly.
+  sql(read('supabase/migrations/20261011090000_cierre_operativo_rutas.sql'))
   sql(read('supabase/migrations/20261011110000_daily_route_cutoff.sql').replace(/-- PLATFORM_CRON_BEGIN[\s\S]*?-- PLATFORM_CRON_END/,''))
   sql(`CREATE TABLE kpi_roles(rol text PRIMARY KEY,informe boolean);
     INSERT INTO kpi_roles VALUES('CONDUCTOR',false),('TRANSPORTE',true);

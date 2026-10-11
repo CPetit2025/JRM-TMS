@@ -7,8 +7,11 @@ export function isSystemAdminRole(name: string | null | undefined): boolean {
   return normalizeRoleName(name) === 'admin'
 }
 
-export function isDispatchAuditorRole(name: string | null | undefined): boolean {
-  return normalizeRoleName(name) === 'auditor de despacho'
+const hasFlag = (permissions: unknown, flag: string) => Array.isArray(permissions) && permissions.includes(flag)
+
+// «Solo documentos de despacho»: el Auditor de Despacho (rol base) o cualquier rol con el permiso especial.
+export function isDispatchAuditorRole(name: string | null | undefined, permissions?: unknown): boolean {
+  return normalizeRoleName(name) === 'auditor de despacho' || hasFlag(permissions, 'solo-documentos')
 }
 
 export function dispatchAuditorPathAllowed(path: string): boolean {
@@ -16,11 +19,11 @@ export function dispatchAuditorPathAllowed(path: string): boolean {
 }
 
 // Rutas que un rol no ve aunque algún permiso las habilite (p. ej. /reportes se abre con APT o Torre de Control).
-const ROLE_DENIED_PATHS: Record<string, string[]> = {
-  'administrador de contratos': ['/reportes'],
-}
-export function roleDeniesPath(roleName: string | null | undefined, path: string): boolean {
-  return (ROLE_DENIED_PATHS[normalizeRoleName(roleName)] || []).some(p => path === p || path.startsWith(p + '/'))
+// «Solo su cartera de OT» (Administrador de Contratos o el permiso especial cartera-propia) no abre /reportes.
+const PORTFOLIO_DENIED_PATHS = ['/reportes']
+export function roleDeniesPath(roleName: string | null | undefined, path: string, permissions?: unknown): boolean {
+  const portfolio = normalizeRoleName(roleName) === 'administrador de contratos' || hasFlag(permissions, 'cartera-propia')
+  return portfolio && PORTFOLIO_DENIED_PATHS.some(p => path === p || path.startsWith(p + '/'))
 }
 
 // Roles base: el sistema tiene reglas que dependen de su nombre, por eso no se renombran ni se eliminan

@@ -136,7 +136,7 @@ export default function ContratosPage() {
 
   const fetchAssignmentData = async () => {
     const [profilesResult, assignmentsResult] = await Promise.all([
-      supabase.from('profiles').select('id, first_name, last_name, is_active, roles(name)'),
+      supabase.from('profiles').select('id, first_name, last_name, is_active, roles(name, permissions)'),
       supabase.from('contract_user_assignments').select('id, contract_id, user_id, role, active, assigned_at, ended_at, assigned_by').order('assigned_at', { ascending: false }),
     ])
     if (profilesResult.error || assignmentsResult.error) {
@@ -148,7 +148,8 @@ export default function ContratosPage() {
     ])))
     setContractAdmins((profilesResult.data || []).filter(profile => {
       const linkedRole = Array.isArray(profile.roles) ? profile.roles[0] : profile.roles
-      return profile.is_active && linkedRole?.name === 'Administrador de Contratos'
+      return profile.is_active && (linkedRole?.name === 'Administrador de Contratos' ||
+        (Array.isArray(linkedRole?.permissions) && linkedRole.permissions.includes('cartera-propia')))
     }).map(profile => ({ id: profile.id, name: `${profile.first_name || ''} ${profile.last_name || ''}`.trim() })))
     setAssignments(assignmentsResult.data || [])
   }

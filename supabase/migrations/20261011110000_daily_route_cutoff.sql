@@ -191,6 +191,7 @@ END $addition$;
 
 -- PLATFORM_CRON_BEGIN: pg_cron is provisioned by Supabase; the local PostgreSQL harness tests the job directly.
 CREATE EXTENSION IF NOT EXISTS pg_cron;
+DO $$ BEGIN IF EXISTS(SELECT 1 FROM cron.job WHERE jobname='cierre-operativo-rutas') THEN PERFORM cron.unschedule('cierre-operativo-rutas'); END IF; END $$;
 SELECT cron.schedule('dispatch-midnight-lima','* * * * *',$job$SELECT public.close_daily_dispatch_operations();$job$);
 -- PLATFORM_CRON_END
 NOTIFY pgrst,'reload schema';

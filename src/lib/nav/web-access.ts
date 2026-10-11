@@ -13,7 +13,7 @@ export function hasWebAccess(roleName: string | null | undefined, permissions: u
   if (isSystemAdminRole(roleName)) return true
   const list = permissionList(permissions)
   if (!list.length) return false
-  return visibleSections(hasModule(list), href => roleDeniesPath(roleName, href)).length > 0
+  return visibleSections(hasModule(list), href => roleDeniesPath(roleName, href, list)).length > 0
 }
 
 // Páginas de cualquier usuario de la web: Inicio, su perfil, «Mi avance» (dentro de /reportes) y la evidencia, que

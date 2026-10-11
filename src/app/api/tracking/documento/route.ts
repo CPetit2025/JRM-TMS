@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const { token, pin, kind, id } = body
   const requestId = body.request_id ?? null
   const index = body.index ?? 1
-  if (typeof token !== 'string' || !UUID.test(token) || typeof pin !== 'string' || !/^\d{8}$/.test(pin)
+  if (typeof token !== 'string' || !UUID.test(token) || typeof pin !== 'string' || !/^([A-Za-z0-9]{4}|\d{8})$/.test(pin)
     || (kind !== 'DOC' && kind !== 'FIRMA' && kind !== 'PACKING') || typeof id !== 'string' || !UUID.test(id)
     || (requestId !== null && (typeof requestId !== 'string' || !UUID.test(requestId)))
     || typeof index !== 'number' || !Number.isInteger(index) || index < 1 || index > 5) {
