@@ -29,7 +29,7 @@ END $$;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
 
 DO $test$
-DECLARE actor uuid; site uuid; carrier uuid; client uuid; supplier uuid; readonly_role uuid; test_role uuid; ct uuid; ct2 uuid; sub uuid;
+DECLARE actor uuid; site uuid; carrier uuid; provider uuid; client uuid; supplier uuid; readonly_role uuid; test_role uuid; ct uuid; ct2 uuid; sub uuid;
  req uuid; req2 uuid; added uuid; rejected uuid; route uuid; context jsonb; result jsonb; operation uuid:=gen_random_uuid();
  bad boolean; driver uuid; own1 uuid; own2 uuid; unit jsonb; inspection jsonb; original_code text; original_token text; balance numeric; plate text:='ZZ80'||upper(substr(replace(gen_random_uuid()::text,'-',''),1,6));
 BEGIN
@@ -52,8 +52,9 @@ BEGIN
  added:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C80-R3','request_type','TRASLADO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',sub,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Proveedor','delivery_address','Otra obra','required_date',current_date+2,'estimated_weight',100));
  rejected:=pg_temp.ins('transport_requests',jsonb_build_object('request_number','ZZ-C80-R4','request_type','DESPACHO','attention_mode','TRANSPORTE_JRM','status','APROBADA','approved_at',now(),'site_id',site,'contract_id',ct2,'requester_name','ZZ','department','Logística','cargo_description','Prueba','pickup_address','Planta','delivery_address','Obra','required_date',current_date+2));
  UPDATE public.transport_requests SET client_id=client,supplier_id=supplier WHERE id IN(req,req2,added,rejected);
+ provider:=pg_temp.ins('carriers',jsonb_build_object('type','PROVEEDOR','business_name','ZZ C80 tercero '||plate,'ruc','20'||lpad((floor(random()*1e9))::bigint::text,9,'0'),'tax_id','20'||lpad((floor(random()*1e9))::bigint::text,9,'0'),'is_active',true));
  PERFORM set_config('request.jwt.claim.sub',actor::text,true);
- route:=public.schedule_dispatch_tercero(carrier,plate,'Chofer ZZ','999888777',plate||'DOC',now(),20,300,ct,jsonb_build_array(jsonb_build_object('id',req),jsonb_build_object('id',req2)));
+ route:=public.schedule_dispatch_tercero(provider,plate,'Chofer ZZ','999888777',plate||'DOC',now(),20,300,ct,jsonb_build_array(jsonb_build_object('id',req),jsonb_build_object('id',req2)));
  SELECT access_code,token INTO original_code,original_token FROM public.dispatch_tercero_enlaces WHERE dispatch_id=route AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1;
  UPDATE public.dispatches SET status='EN_CURSO',tercero_salida_at=now() WHERE id=route;
  context:=public.active_route_context(route);
@@ -153,6 +154,9 @@ BEGIN
  BEGIN PERFORM public.active_route_context(route); EXCEPTION WHEN raise_exception THEN bad:=true; END;
  IF NOT bad THEN RAISE EXCEPTION 'CAJA C80 FAIL: sede ajena'; END IF;
  INSERT INTO public.user_site_access(user_id,site_id) VALUES(actor,site);
+ IF EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid='public.dispatch_service_additions'::regclass AND c.contype='f'
+ AND (NOT c.convalidated OR NOT EXISTS(SELECT 1 FROM pg_index i WHERE i.indrelid=c.conrelid AND i.indisvalid AND i.indpred IS NULL
+ AND (i.indkey::smallint[])[0:cardinality(c.conkey)-1] @> c.conkey))) THEN RAISE EXCEPTION 'CAJA C80 FAIL: índice de relación faltante'; END IF;
  IF has_function_privilege('anon','public.active_route_context(uuid)','EXECUTE')
  OR has_function_privilege('anon','public.add_active_route_service(uuid,uuid,uuid,text,uuid,numeric,numeric,numeric,numeric,timestamptz,text)','EXECUTE')
  OR has_table_privilege('authenticated','public.dispatch_service_additions','INSERT') THEN RAISE EXCEPTION 'CAJA C80 FAIL: acceso público o escritura directa'; END IF;
