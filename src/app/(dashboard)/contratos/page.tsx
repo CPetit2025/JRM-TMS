@@ -4,7 +4,7 @@ import { DataTable } from '@/components/ui/data-table'
 
 import { operatingBudget } from '@/lib/transport-budget'
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Search, Layers, FileWarning, Briefcase, CheckCircle2, Upload, Download, Edit2, Filter, MapPin, UserCog, ChevronRight } from 'lucide-react'
+import { Plus, Search, Layers, FileWarning, Briefcase, CheckCircle2, Upload, Download, Edit2, Filter, MapPin, UserCog, ChevronRight, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -69,6 +69,7 @@ export default function ContratosPage() {
   const [editingContract, setEditingContract] = useState<Contract | null>(null)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [editFormData, setEditFormData] = useState({
+    client_id: '',
     budget_pen: '',
     total_weight_kg: '',
     total_volume_m3: '',
@@ -224,6 +225,8 @@ export default function ContratosPage() {
 
     try {
       let finalCode = newContract.correlative.trim()
+      const isChild = newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR'
+      if (!isChild && !newContract.client_id) throw new Error('Seleccione el cliente de la OT (por RUC o razón social)')
       
       // Si es Subcontrato o Error, prefijamos con el código del contrato madre
       if (newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR') {
@@ -240,7 +243,8 @@ export default function ContratosPage() {
           code: finalCode,
           type: newContract.type,
           parent_contract_id: newContract.parent_contract_id || null,
-          client_id: newContract.client_id || null,
+          // Subcontratos y errores heredan el cliente de su OT madre en la base
+          client_id: isChild ? null : newContract.client_id || null,
           status: 'ACTIVO',
           total_weight_kg: tonsToKg(newContract.total_weight_kg),
           total_volume_m3: checkVolume(newContract.total_volume_m3),
@@ -273,6 +277,7 @@ export default function ContratosPage() {
     window.dispatchEvent(new CustomEvent('jrm:context', { detail: { contractId: contract.id } }))
     setEditingContract(contract)
     setEditFormData({
+      client_id: contract.client_id || '',
       budget_pen: contract.budget?.own_allocated_pen?.toString() || '',
       total_weight_kg: contract.total_weight_kg ? (Number(contract.total_weight_kg) / 1000).toString() : '',
       total_volume_m3: contract.total_volume_m3?.toString() || '',
@@ -290,6 +295,17 @@ export default function ContratosPage() {
     setIsSubmitting(true)
 
     try {
+      // 0. Cliente: obligatorio. Completar uno que faltaba lo hace quien edita la OT; cambiar uno ya asignado, solo el
+      //    Administrador (lo valida set_contract_client, que lo aplica a toda la familia y a sus solicitudes).
+      if (!editFormData.client_id) throw new Error('Seleccione el cliente de la OT')
+      if (editFormData.client_id !== (editingContract.client_id || '')) {
+        const { error: clientError } = await supabase.rpc('set_contract_client', {
+          p_contract_id: editingContract.id,
+          p_client_id: editFormData.client_id,
+        })
+        if (clientError) throw new Error(clientError.message)
+      }
+
       // 1. Datos de la OT. Si la RLS no permite editarla (p. ej. OT fuera de la cartera) no se actualiza ninguna fila:
       //    se informa en lugar de mostrar un "actualizado" falso.
       const { data: updated, error: contractError } = await supabase
@@ -361,12 +377,12 @@ export default function ContratosPage() {
         const { data: dbContracts } = await supabase.from('contracts').select('id, code, destination_department, destination_province, destination_district, destination_address')
         const contractMap = new Map(dbContracts?.map(c => [c.code, c]))
 
-        // Traemos clientes para mapear por RUC o por nombre
+        // Clientes por RUC (solo dígitos, coincidencia exacta) y por razón social exacta: nunca por parecido,
+        // así una fila no queda con un cliente equivocado ni sin cliente.
         const { data: dbClients } = await supabase.from('clients').select('id, tax_id, business_name')
-        // Mapa por RUC (exacto)
-        const clientMapByRuc = new Map(dbClients?.map(c => [c.tax_id?.trim(), c.id]))
-        // Mapa por nombre (normalizado a mayúsculas para comparación flexible)
-        const clientMapByName = new Map(dbClients?.map(c => [c.business_name?.trim().toUpperCase(), c.id]))
+        const rucDigits = (v: unknown) => String(v ?? '').replace(/\D/g, '')
+        const clientMapByRuc = new Map(dbClients?.filter(c => rucDigits(c.tax_id)).map(c => [rucDigits(c.tax_id), c.id]))
+        const clientMapByName = new Map(dbClients?.filter(c => c.business_name).map(c => [String(c.business_name).trim().toUpperCase().replace(/\s+/g, ' '), c.id]))
 
         for (const row of data) {
           try {
@@ -393,27 +409,17 @@ export default function ContratosPage() {
             let dir = String(row.Destino_Direccion || '').trim()
             
             const clienteRaw = String(row.Cliente_RUC || row.RUC || row.Cliente || '').trim()
-            let clientId = null
+            let clientId: string | null = null
             if (clienteRaw) {
-              // Intentar primero por RUC (solo dígitos)
-              const esRuc = /^\d{8,11}$/.test(clienteRaw)
-              if (esRuc && clientMapByRuc.has(clienteRaw)) {
-                clientId = clientMapByRuc.get(clienteRaw)
-              } else {
-                // Buscar por nombre (case-insensitive)
-                const nombreNorm = clienteRaw.toUpperCase()
-                if (clientMapByName.has(nombreNorm)) {
-                  clientId = clientMapByName.get(nombreNorm)
-                } else {
-                  // Búsqueda parcial: ver si algún nombre del DB está contenido en el valor del Excel o viceversa
-                  for (const [nombre, id] of clientMapByName.entries()) {
-                    if (nombreNorm.includes(nombre) || nombre.includes(nombreNorm)) {
-                      clientId = id
-                      break
-                    }
-                  }
-                }
-              }
+              const ruc = rucDigits(clienteRaw)
+              clientId = (/^\d{8,11}$/.test(ruc) ? clientMapByRuc.get(ruc) : undefined)
+                ?? clientMapByName.get(clienteRaw.toUpperCase().replace(/\s+/g, ' ')) ?? null
+            }
+            // La OT madre necesita su cliente; subcontratos y errores lo heredan de la madre
+            if (tipo === 'CONTRATO' && !clientId) {
+              throw new Error(clienteRaw
+                ? `Cliente "${clienteRaw}" no registrado. Regístrelo en Clientes (RUC) y vuelva a cargar "${codigo}".`
+                : `Falta Cliente_RUC para el CONTRATO "${codigo}".`)
             }
 
             if (!codigo) continue
@@ -680,7 +686,13 @@ export default function ContratosPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="truncate font-medium text-[#002855]" title={contract.clients?.business_name || ''}>
-                        {contract.clients?.business_name || <span className="text-xs font-normal text-slate-400">Sin cliente</span>}
+                        {contract.clients?.business_name || (
+                          <button type="button" onClick={e => { e.preventDefault(); e.stopPropagation(); handleEditClick(contract) }}
+                            className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-100"
+                            title="Esta OT no tiene cliente: asígnelo">
+                            <AlertTriangle className="h-3 w-3" /> Sin cliente · asignar
+                          </button>
+                        )}
                       </div>
                       {destination && (
                         <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-500" title={destination}>
@@ -808,15 +820,26 @@ export default function ContratosPage() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Cliente</label>
-                <SearchableSelect
-                  value={newContract.client_id}
-                  onChange={(val) => setNewContract({...newContract, client_id: val})}
-                  options={clients.map(c => ({ value: c.id, label: `${c.business_name} (${c.tax_id})` }))}
-                  placeholder="-- Seleccionar Cliente (Opcional) --"
-                />
-              </div>
+              {newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR' ? (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Cliente</label>
+                  <p className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-sm text-slate-600">
+                    {clients.find(c => c.id === contracts.find(x => x.id === newContract.parent_contract_id)?.client_id)?.business_name
+                      || 'Se toma el cliente del Contrato Madre'}
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Cliente <span className="text-red-500">*</span></label>
+                  <SearchableSelect
+                    value={newContract.client_id}
+                    onChange={(val) => setNewContract({...newContract, client_id: val})}
+                    options={clients.map(c => ({ value: c.id, label: `${c.business_name} (${c.tax_id})` }))}
+                    placeholder="-- Buscar por RUC o razón social --"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">Obligatorio. Si no aparece, regístrelo primero en Clientes.</p>
+                </div>
+              )}
 
               {(newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR') && (
                 <div>
@@ -989,6 +1012,27 @@ export default function ContratosPage() {
       {/* Edit Modal */}
       <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={`Editar Contrato: ${editingContract?.code}`} maxWidth="max-w-4xl">
         <form onSubmit={handleUpdateContract} className="space-y-6">
+          <div className={`rounded-lg border p-4 shadow-sm ${editingContract && !editingContract.client_id ? 'border-red-200 bg-red-50/50' : 'border-slate-200 bg-white'}`}>
+            <label className="block text-sm font-semibold text-slate-800 mb-1">Cliente <span className="text-red-500">*</span></label>
+            {editingContract?.client_id && role !== 'admin' ? (
+              <>
+                <p className="text-sm text-slate-700">{editingContract.clients?.business_name || 'Cliente asignado'}</p>
+                <p className="mt-1 text-xs text-slate-500">Solo el Administrador puede cambiar el cliente ya asignado.</p>
+              </>
+            ) : (
+              <>
+                <SearchableSelect
+                  value={editFormData.client_id}
+                  onChange={(val) => setEditFormData({ ...editFormData, client_id: val })}
+                  options={clients.map(c => ({ value: c.id, label: `${c.business_name} (${c.tax_id})` }))}
+                  placeholder="-- Buscar por RUC o razón social --"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  {editingContract?.client_id ? 'Cambiarlo actualiza también sus subcontratos, errores y solicitudes.' : 'Esta OT no tiene cliente: asígnelo para guardar. Se aplica también a sus subcontratos, errores y solicitudes.'}
+                </p>
+              </>
+            )}
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
               <h3 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Presupuesto y Carga</h3>
