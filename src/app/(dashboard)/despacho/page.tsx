@@ -513,6 +513,8 @@ export default function DespachoPage() {
     const isSelected = newDispatch.selected_requests.some(r => r.id === reqId)
     const request = pendingRequests.find(r => r.id === reqId)
     if (!isSelected && !request?.attention_mode) { toast.error('Defina la modalidad en Solicitudes antes de programar este requerimiento histórico.'); return }
+    const missingParty = !isSelected && request ? partyMissing(request) : null
+    if (missingParty) { toast.error(`${request?.request_number} no tiene ${missingParty}: vincúlelo antes de programarla.`); setLinkRequest(request ?? null); return }
     const existing = pendingRequests.find(r => newDispatch.selected_requests.some(x => x.id === r.id))
     if (!isSelected && existing && (existing.attention_mode !== request?.attention_mode || existing.site_id !== request?.site_id)) {
       toast.error('Agrupe solicitudes de la misma modalidad y sede. Puede combinar OT, entregas, recojos y traslados.'); return

@@ -59,9 +59,10 @@ CREATE OR REPLACE FUNCTION public.contracts_inherit_client() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE v uuid;
 BEGIN
+  -- Siempre el de la raíz: si la raíz aún no tiene cliente, el hijo tampoco (y el control diferido lo rechaza)
   IF NEW.parent_contract_id IS NOT NULL THEN
     v := public.contract_root_client(NEW.parent_contract_id);
-    IF v IS NOT NULL THEN NEW.client_id := v; END IF;
+    NEW.client_id := v;
   END IF;
   RETURN NEW;
 END $$;
@@ -127,9 +128,10 @@ CREATE OR REPLACE FUNCTION public.transport_requests_inherit_client() RETURNS tr
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE v uuid;
 BEGIN
+  -- Con OT, siempre el cliente de la OT raíz (nunca uno distinto elegido aparte)
   IF NEW.contract_id IS NOT NULL THEN
     v := public.contract_root_client(NEW.contract_id);
-    IF v IS NOT NULL THEN NEW.client_id := v; END IF;
+    NEW.client_id := v;
   END IF;
   RETURN NEW;
 END $$;
@@ -218,7 +220,7 @@ CREATE CONSTRAINT TRIGGER transport_requests_client_update AFTER UPDATE ON publi
   EXECUTE FUNCTION public.enforce_request_client();
 
 DROP TRIGGER IF EXISTS dispatch_requests_party ON public.dispatch_requests;
-CREATE CONSTRAINT TRIGGER dispatch_requests_party AFTER INSERT ON public.dispatch_requests
+CREATE CONSTRAINT TRIGGER dispatch_requests_party AFTER INSERT OR UPDATE OF transport_request_id ON public.dispatch_requests
   DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.enforce_dispatch_request_party();
 
 -- ------------------------------------------------------------

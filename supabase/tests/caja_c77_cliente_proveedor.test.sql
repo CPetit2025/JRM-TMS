@@ -13,7 +13,7 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
 DO $test$
 DECLARE
   v_admin uuid; v_ot_user uuid; v_role uuid; v_site uuid; v_c1 uuid; v_c2 uuid; v_sup uuid;
-  i int; v_root uuid; v_child uuid; v_legacy uuid; v_req uuid; v_free uuid; v_pick uuid; v_disp uuid; r jsonb; v_err text;
+  i int; v_root uuid; v_child uuid; v_child2 uuid; v_legacy uuid; v_req uuid; v_free uuid; v_pick uuid; v_disp uuid; r jsonb; v_err text;
   suffix text := upper(substr(gen_random_uuid()::text, 1, 6));
 BEGIN
   SELECT id INTO v_site FROM public.sites LIMIT 1;
@@ -78,6 +78,19 @@ BEGIN
   UPDATE public.contracts SET client_id = v_c2 WHERE id = v_child;
   IF (SELECT client_id FROM public.contracts WHERE id = v_child) IS DISTINCT FROM v_c1 THEN
     RAISE EXCEPTION 'CAJA C77 FAIL: subcontrato no hereda el cliente (T3)'; END IF;
+
+  -- T3b: bajo una OT madre sin cliente, el hijo no se queda con un cliente propio (queda sin cliente y el control
+  -- diferido lo rechazaría); al asignar el cliente a la madre, el hijo lo recibe
+  SET CONSTRAINTS ALL DEFERRED;
+  INSERT INTO public.contracts (code, type, status, site_id) VALUES ('ZZ-C77-SC-' || suffix, 'CONTRATO', 'ACTIVO', v_site) RETURNING id INTO v_legacy;
+  INSERT INTO public.contracts (code, type, status, site_id, parent_contract_id, client_id)
+  VALUES ('ZZ-C77-SC-' || suffix || '-S1', 'SUBCONTRATO', 'ACTIVO', v_site, v_legacy, v_c2) RETURNING id INTO v_child2;
+  IF (SELECT client_id FROM public.contracts WHERE id = v_child2) IS NOT NULL THEN
+    RAISE EXCEPTION 'CAJA C77 FAIL: hijo con cliente propio bajo madre sin cliente (T3b)'; END IF;
+  UPDATE public.contracts SET client_id = v_c1 WHERE id = v_legacy;
+  SET CONSTRAINTS ALL IMMEDIATE;
+  IF (SELECT client_id FROM public.contracts WHERE id = v_child2) IS DISTINCT FROM v_c1 THEN
+    RAISE EXCEPTION 'CAJA C77 FAIL: el hijo no recibe el cliente de la madre (T3b)'; END IF;
 
   -- T4: la entrega con OT toma el cliente de la OT; el cliente de la OT no se puede quitar
   INSERT INTO public.transport_requests (request_number, status, site_id, contract_id, requester_name, department, request_type, cargo_description,
@@ -152,6 +165,26 @@ BEGIN
   INSERT INTO public.dispatch_requests (dispatch_id, transport_request_id, status) VALUES (v_disp, v_pick, 'PROGRAMADO');
   SET CONSTRAINTS ALL IMMEDIATE;
   IF public.request_party_missing(v_pick) IS NOT NULL THEN RAISE EXCEPTION 'CAJA C77 FAIL: proveedor vinculado (T8)'; END IF;
+  -- T8b: tampoco se cambia una parada existente hacia una solicitud incompleta
+  INSERT INTO public.transport_requests (request_number, status, site_id, requester_name, department, request_type, cargo_description,
+    pickup_address, pickup_district, delivery_address, delivery_district, required_date, supplier_id)
+  VALUES ('ZZ-C77-P2-' || suffix, 'PENDIENTE', v_site, 'Prueba C77', 'Logística', 'TRASLADO', 'Carga', 'Proveedor', 'LURIN', 'Obra', 'ATE', current_date, v_sup)
+  RETURNING id INTO v_free;
+  BEGIN
+    UPDATE public.transport_requests SET supplier_id = NULL WHERE id = v_free;
+    v_err := NULL;
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM; END;
+  IF v_err IS NULL THEN RAISE EXCEPTION 'CAJA C77 FAIL: se quitó el proveedor del traslado (T8b)'; END IF;
+  SET CONSTRAINTS ALL DEFERRED;
+  UPDATE public.transport_requests SET supplier_id = NULL WHERE id = v_free;
+  SET CONSTRAINTS dispatch_requests_party IMMEDIATE;
+  BEGIN
+    UPDATE public.dispatch_requests SET transport_request_id = v_free WHERE dispatch_id = v_disp AND transport_request_id = v_pick;
+    v_err := NULL;
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM; END;
+  IF v_err IS NULL OR v_err NOT LIKE '%no tiene proveedor%' THEN RAISE EXCEPTION 'CAJA C77 FAIL: parada cambiada a solicitud sin proveedor (T8b): %', v_err; END IF;
+  UPDATE public.transport_requests SET supplier_id = v_sup WHERE id = v_free;
+  SET CONSTRAINTS ALL IMMEDIATE;
 
   -- T9: una solicitud con OT no se vincula a otro cliente desde Solicitudes
   PERFORM pg_temp.c77_user(v_ot_user);
@@ -166,6 +199,6 @@ BEGIN
      OR has_function_privilege('authenticated', 'public.enforce_contract_client()', 'EXECUTE') THEN
     RAISE EXCEPTION 'CAJA C77 FAIL: funciones expuestas (T10)'; END IF;
 
-  RAISE EXCEPTION 'CAJA C77 PASS (10/10) nada sin cliente o proveedor: OT, familia, entregas, recojos y programación';
+  RAISE EXCEPTION 'CAJA C77 PASS (12/12) nada sin cliente o proveedor: OT, familia, entregas, recojos y programación';
 END $test$;
 ROLLBACK;
