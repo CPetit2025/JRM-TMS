@@ -60,6 +60,8 @@ const sheetMime = (n: string) => /\.csv$/i.test(n) ? 'text/csv' : /\.xls$/i.test
 // Horas que faltan para la salida (negativo = atrasado)
 const limaDay = (date = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
 const thirtyDaysAgo = () => limaDay(new Date(Date.now() - 30 * 864e5))
+// La liquidación pendiente no depende del período elegido: revisa el último año
+const yearAgo = () => limaDay(new Date(Date.now() - 365 * 864e5))
 
 const hoursLeft = (d: string | null) => (d ? (new Date(d).getTime() - Date.now()) / 36e5 : null)
 
@@ -80,7 +82,7 @@ function DocumentaryQueue() {
   const params = useSearchParams()
   const requestedPhase = params.get('vista')
   const [phaseChoice, setPhaseChoice] = useState<DocumentPhase | null>(null)
-  const chosenPhase = phaseChoice || (['salida', 'conformidad', 'observados', 'historial'].includes(requestedPhase || '') ? requestedPhase as DocumentPhase : 'salida')
+  const chosenPhase = phaseChoice || (['salida', 'liquidacion', 'conformidad', 'observados', 'historial'].includes(requestedPhase || '') ? requestedPhase as DocumentPhase : 'salida')
   const phase: DocumentPhase = packingOnly && !['salida', 'historial'].includes(chosenPhase) ? 'salida' : chosenPhase
   const showDeparted = phase !== 'salida'
   const [dateFrom, setDateFrom] = useState(() => /^\d{4}-\d{2}-\d{2}$/.test(params.get('desde') || '') ? params.get('desde')! : thirtyDaysAgo())
@@ -108,13 +110,14 @@ function DocumentaryQueue() {
       if (fetching) return
       fetching = true
       try {
-      if (showDeparted && (!dateFrom || !dateUntil || dateUntil < dateFrom || (Date.parse(dateUntil) - Date.parse(dateFrom)) / 864e5 > 365)) {
+      if (showDeparted && phase !== 'liquidacion' && (!dateFrom || !dateUntil || dateUntil < dateFrom || (Date.parse(dateUntil) - Date.parse(dateFrom)) / 864e5 > 365)) {
         setQueueError('Selecciona un período válido de hasta 366 días.'); return
       }
+      const pending = phase === 'liquidacion'
       const { data, error } = await supabase.rpc('get_documentary_queue_period', {
         p_include_departed: showDeparted,
-        p_from: showDeparted ? `${dateFrom}T00:00:00-05:00` : null,
-        p_until: showDeparted ? `${dateUntil}T23:59:59.999-05:00` : null,
+        p_from: showDeparted ? `${pending ? yearAgo() : dateFrom}T00:00:00-05:00` : null,
+        p_until: showDeparted ? `${pending ? limaDay() : dateUntil}T23:59:59.999-05:00` : null,
       })
       if (cancel) return
       if (error) { setQueueError(errorMessage(error)); return }
@@ -139,7 +142,7 @@ function DocumentaryQueue() {
     void run()
     const timer = window.setInterval(() => void run(), 30000)
     return () => { cancel = true; window.clearInterval(timer) }
-  }, [supabase, showDeparted, dateFrom, dateUntil, reload, packingOnly, isLoaded])
+  }, [supabase, showDeparted, phase, dateFrom, dateUntil, reload, packingOnly, isLoaded])
 
   const counts = useMemo(() => {
     const c = { PENDIENTE: 0, REEMISION: 0, LISTO: 0 }
@@ -192,10 +195,10 @@ function DocumentaryQueue() {
 
       <FilterToolbar compact label="Etapa, búsqueda y período">
         <div role="tablist" aria-label="Etapas documentarias" className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">
-          {([['salida', packingOnly ? 'Planificación · Packing List' : 'Previos a salida'], ...(!packingOnly ? [['conformidad', 'Conformidad'], ['observados', 'Observados / reemisión'], ['historial', 'Historial']] : [['historial', 'Historial de Packing List']])] as [DocumentPhase, string][]).map(([value, title]) => <button key={value} type="button" role="tab" aria-selected={phase === value} onClick={() => { setPhaseChoice(value); setFilter('TODOS') }} className={`min-h-11 rounded-md px-3 text-sm font-semibold lg:min-h-9 ${phase === value ? 'bg-white text-jrm-navy shadow-sm' : 'text-slate-600 hover:text-jrm-navy'}`}>{title}</button>)}
+          {([['salida', packingOnly ? 'Planificación · Packing List' : 'Previos a salida'], ...(!packingOnly ? [['liquidacion', 'Liquidación pendiente'], ['conformidad', 'Conformidad'], ['observados', 'Observados / reemisión'], ['historial', 'Historial']] : [['historial', 'Historial de Packing List']])] as [DocumentPhase, string][]).map(([value, title]) => <button key={value} type="button" role="tab" aria-selected={phase === value} onClick={() => { setPhaseChoice(value); setFilter('TODOS') }} className={`min-h-11 rounded-md px-3 text-sm font-semibold lg:min-h-9 ${phase === value ? 'bg-white text-jrm-navy shadow-sm' : 'text-slate-600 hover:text-jrm-navy'}`}>{title}</button>)}
         </div>
         <label className="relative min-w-0 flex-1 basis-56"><span className="sr-only">Buscar OT, solicitud, cliente, GR o despacho</span><Search aria-hidden className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="OT, solicitud, cliente, GR o despacho" className={`${filterControl} pl-9`} /></label>
-        {showDeparted && <>
+        {showDeparted && phase !== 'liquidacion' && <>
           <label className="flex items-center gap-2 text-xs font-medium text-slate-500">Desde<input type="date" aria-label="Desde · salida programada" value={dateFrom} max={dateUntil} onChange={e => setDateFrom(e.target.value)} className={`${filterControl} w-40`} /></label>
           <label className="flex items-center gap-2 text-xs font-medium text-slate-500">Hasta<input type="date" aria-label="Hasta · Lima" value={dateUntil} min={dateFrom} onChange={e => setDateUntil(e.target.value)} className={`${filterControl} w-40`} /></label>
         </>}
@@ -218,7 +221,7 @@ function DocumentaryQueue() {
 
       {queueError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">No se pudo actualizar la bandeja: {queueError}. {items ? 'Se conserva la última consulta.' : 'Pulsa Actualizar para reintentar.'}</p>}
       {items === null && !queueError ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
-        : !visible.length ? <p className="text-slate-500 text-sm p-6 text-center border border-slate-200 rounded-xl bg-white">{queueError && !items ? 'La bandeja no está disponible.' : 'No hay solicitudes para estos filtros.'}</p>
+        : !visible.length ? <p className="text-slate-500 text-sm p-6 text-center border border-slate-200 rounded-xl bg-white">{queueError && !items ? 'La bandeja no está disponible.' : phase === 'salida' && !packingOnly ? 'No hay servicios por salir. Los servicios ya cerrados con documentación pendiente están en «Liquidación pendiente».' : phase === 'liquidacion' ? 'No hay servicios cerrados con documentación pendiente.' : 'No hay solicitudes para estos filtros.'}</p>
         : <section aria-label="Control documentario por OT" className="overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
           <div className="overflow-x-auto"><DataTable dense className="block w-full text-left text-sm lg:table"><caption className="sr-only">Solicitudes y OT asociadas, Packing List, guía de entrega y conformidad</caption><thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['Salida', 'Servicio', 'OT', 'Placa', 'Empresa', 'Destino', 'GR / Nota', 'Estado', 'Acciones'].map((label, i) => <th key={label} scope="col" className={`whitespace-nowrap px-3 py-2.5 font-semibold ${i === 8 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead><tbody className="block divide-y divide-slate-200 lg:table-row-group">{visible.map(({ item, stop }) => <DocumentRow key={`${item.id}/${stop?.request_id || 'empty'}`} item={item} stop={stop} kind={stop && serviceTypes.has(stop.request_id) ? serviceKind(serviceTypes.get(stop.request_id)) : item.is_pickup ? 'RECOJO_CLIENTE' : null} info={stop ? serviceTypes.get(stop.request_id) : undefined} delivery={deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)} canEdit={canNumbers || canPacking} packingOnly={packingOnly} onManage={() => setSelectedId(item.id)} onStatus={() => setStatusOf({ item, stop, delivery: deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id) })} />)}</tbody></DataTable></div>
         </section>}
