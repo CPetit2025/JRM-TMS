@@ -1,4 +1,6 @@
-BEGIN READ ONLY;
+-- The reader creates/drops session-temporary tables, which PostgreSQL rejects in
+-- READ ONLY mode. It performs no permanent-table writes; rollback is mandatory.
+BEGIN;
 SET LOCAL statement_timeout='45s';
 SET LOCAL lock_timeout='2s';
 -- Exercise the actual reader with an existing authorized account. Only session-local
