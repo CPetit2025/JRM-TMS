@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { AlertTriangle, Info, Loader2, PackageOpen } from 'lucide-react'
 import { ESTADO_STYLE, TIPO_LABEL, TONE_CLASS, diasTone, fmtDias } from '@/lib/apt/format'
 import type { AptEstado, AptTipoLote } from '@/lib/apt/types'
+import { isTransientAptReadError } from '@/lib/apt/readRecovery'
 
 // Piezas visuales comunes del módulo APT (tarjetas KPI, contenedor de gráficos, insignias y estados vacíos)
 
@@ -87,11 +88,19 @@ export function LoadingBlock({ label = 'Calculando…', className = 'h-64' }: { 
 }
 
 export function ErrorBlock({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  const temporary = isTransientAptReadError(message)
+  const explanation = temporary
+    ? 'La consulta está tardando más de lo habitual. Puedes volver a actualizar en unos momentos.'
+    : /permission denied|unauthorized|forbidden|JWT|42501|PGRST30/i.test(message)
+      ? 'No tienes acceso a esta información. Revisa tu sesión o solicita el permiso correspondiente.'
+    : /statement|sql|PGRST|syntax|relation|column|constraint|violates/i.test(message)
+      ? 'No pudimos cargar esta información. Vuelve a consultar; si continúa, comunica la ventana al administrador.'
+      : message
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 p-6 text-center text-sm text-red-700">
+    <div role="status" className={`flex flex-col items-center justify-center gap-2 rounded-xl border p-6 text-center text-sm ${temporary ? 'border-slate-200 bg-slate-50 text-slate-600' : 'border-red-200 bg-red-50 text-red-700'}`}>
       <AlertTriangle className="h-5 w-5" />
-      <p>{message}</p>
-      {onRetry && <button onClick={onRetry} className="rounded-lg border border-red-300 bg-white px-3 py-1 text-xs font-semibold hover:bg-red-100">Reintentar</button>}
+      <p>{explanation}</p>
+      {onRetry && <button onClick={onRetry} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold hover:bg-slate-100">Actualizar consulta</button>}
     </div>
   )
 }
