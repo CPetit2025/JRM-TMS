@@ -1,18 +1,29 @@
 -- APT · caché de lecturas pesadas: apt_operational_summary (9,3 s) y apt_dashboard (7,3 s) superaban o rozaban el
 -- statement_timeout de authenticated (8 s) y la web recibía 500. Ambos resultados dependen solo de los datos APT
 -- (cargas aplicadas, recálculo de estadía y flujo, parámetros), no del usuario ni de la hora: se guardan por filtro y
--- versión de datos y se reutilizan hasta que esa versión cambie. Un cron precalienta las vistas iniciales.
+-- versión de datos y se reutilizan hasta que esa versión cambie. Un cron precalienta las vistas iniciales y calcula, con
+-- el tiempo de los procesos internos, los filtros que la web no pudo calcular dentro de su límite (apt_read_cache_request).
 -- El cálculo original se conserva como *_live (solo service_role); los RPC públicos mantienen nombre, firma y acceso.
 BEGIN;
+-- La clave indexada es un resumen de tamaño fijo del filtro (listas largas de clientes no superan el límite del índice);
+-- params se conserva y se compara en cada lectura.
 CREATE TABLE IF NOT EXISTS public.apt_read_cache (
-  fn text NOT NULL, params jsonb NOT NULL, version text NOT NULL, result jsonb NOT NULL,
-  built_at timestamptz NOT NULL DEFAULT clock_timestamp(), PRIMARY KEY (fn, params)
+  fn text NOT NULL, key_hash text NOT NULL, params jsonb NOT NULL, version text NOT NULL, result jsonb NOT NULL,
+  built_at timestamptz NOT NULL DEFAULT clock_timestamp(), PRIMARY KEY (fn, key_hash)
 );
-ALTER TABLE public.apt_read_cache ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.apt_read_cache FROM PUBLIC, anon, authenticated;
-DROP POLICY IF EXISTS security_active_account ON public.apt_read_cache;
-CREATE POLICY security_active_account ON public.apt_read_cache AS RESTRICTIVE FOR ALL TO authenticated
-  USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()));
+-- Filtros pedidos por la web cuyo cálculo superó el límite de la petición: el cron los calcula y los guarda.
+CREATE TABLE IF NOT EXISTS public.apt_read_cache_requests (
+  fn text NOT NULL, key_hash text NOT NULL, params jsonb NOT NULL,
+  requested_at timestamptz NOT NULL DEFAULT clock_timestamp(), attempts integer NOT NULL DEFAULT 0, PRIMARY KEY (fn, key_hash)
+);
+DO $$ DECLARE t text; BEGIN
+  FOREACH t IN ARRAY ARRAY['apt_read_cache','apt_read_cache_requests'] LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format('REVOKE ALL ON public.%I FROM PUBLIC, anon, authenticated', t);
+    EXECUTE format('DROP POLICY IF EXISTS security_active_account ON public.%I', t);
+    EXECUTE format('CREATE POLICY security_active_account ON public.%I AS RESTRICTIVE FOR ALL TO authenticated USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()))', t);
+  END LOOP;
+END $$;
 
 -- Cálculo en vivo: mismo código, otro nombre. El de resumen admite una página completa para que la caché guarde todas
 -- las filas una sola vez y pagine sin recalcular (el RPC público sigue limitando cada página a 100).
@@ -49,12 +60,22 @@ RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_t
     (SELECT string_agg(to_jsonb(r)::text, ',' ORDER BY r.desde) FROM public.apt_aging_ranges r)));
 $$;
 
+-- Clave de caché única para el RPC y para las solicitudes de cálculo: el resumen se guarda sin paginación.
+CREATE OR REPLACE FUNCTION public.apt_read_cache_key(p_fn text, p jsonb, p_grain text DEFAULT NULL)
+RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path = public, pg_temp AS $$
+  SELECT CASE p_fn
+    WHEN 'apt_dashboard' THEN jsonb_build_object('p', COALESCE(p, '{}'::jsonb), 'grain', COALESCE(p_grain, 'semana'))
+    WHEN 'apt_operational_summary' THEN jsonb_build_object('p', COALESCE(p, '{}'::jsonb) - 'limit' - 'offset')
+  END;
+$$;
+
 -- Lee o calcula y guarda. Solo se guardan resultados correctos; los errores de validación se devuelven tal cual.
 CREATE OR REPLACE FUNCTION public.apt_read_cached(p_fn text, p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE v_version text := public.apt_read_cache_version(); v_result jsonb;
 BEGIN
-  SELECT c.result INTO v_result FROM public.apt_read_cache c WHERE c.fn = p_fn AND c.params = p_params AND c.version = v_version;
+  SELECT c.result INTO v_result FROM public.apt_read_cache c
+  WHERE c.fn = p_fn AND c.key_hash = md5(p_params::text) AND c.params = p_params AND c.version = v_version;
   IF FOUND THEN RETURN v_result; END IF;
   v_result := CASE p_fn
     WHEN 'apt_dashboard' THEN public.apt_dashboard_live(p_params -> 'p', p_params ->> 'grain')
@@ -62,11 +83,14 @@ BEGIN
   END;
   IF v_result IS NULL THEN RAISE EXCEPTION 'Lectura APT no reconocida: %', p_fn; END IF;
   IF (v_result ->> 'success') = 'true' THEN
-    INSERT INTO public.apt_read_cache (fn, params, version, result) VALUES (p_fn, p_params, v_version, v_result)
-    ON CONFLICT (fn, params) DO UPDATE SET version = EXCLUDED.version, result = EXCLUDED.result, built_at = clock_timestamp();
+    INSERT INTO public.apt_read_cache (fn, key_hash, params, version, result) VALUES (p_fn, md5(p_params::text), p_params, v_version, v_result)
+    ON CONFLICT (fn, key_hash) DO UPDATE SET params = EXCLUDED.params, version = EXCLUDED.version, result = EXCLUDED.result, built_at = clock_timestamp();
+    DELETE FROM public.apt_read_cache_requests r WHERE r.fn = p_fn AND r.key_hash = md5(p_params::text);
   END IF;
   RETURN v_result;
 END $$;
+REVOKE ALL ON FUNCTION public.apt_read_cache_key(text, jsonb, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.apt_read_cache_key(text, jsonb, text) TO service_role;
 REVOKE ALL ON FUNCTION public.apt_read_cache_version() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.apt_read_cached(text, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.apt_read_cache_version() TO service_role;
@@ -77,12 +101,12 @@ CREATE OR REPLACE FUNCTION public.apt_dashboard(p jsonb DEFAULT '{}'::jsonb, p_g
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
   IF NOT public.apt_can_view() THEN RETURN jsonb_build_object('success', false, 'error', 'Sin acceso al módulo APT'); END IF;
-  RETURN public.apt_read_cached('apt_dashboard', jsonb_build_object('p', COALESCE(p, '{}'::jsonb), 'grain', p_grain));
+  RETURN public.apt_read_cached('apt_dashboard', public.apt_read_cache_key('apt_dashboard', p, p_grain));
 END $$;
 
 CREATE OR REPLACE FUNCTION public.apt_operational_summary(p jsonb DEFAULT '{}'::jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
-DECLARE v_full jsonb; v_limit integer; v_offset integer; v_filters jsonb;
+DECLARE v_full jsonb; v_limit integer; v_offset integer;
 BEGIN
   IF NOT public.apt_can_view() THEN RETURN jsonb_build_object('success', false, 'error', 'Sin acceso al módulo APT'); END IF;
   p := COALESCE(p, '{}'::jsonb);
@@ -92,8 +116,7 @@ BEGIN
   END IF;
   v_limit := LEAST(GREATEST(COALESCE((p ->> 'limit')::integer, 25), 1), 100);
   v_offset := GREATEST(COALESCE((p ->> 'offset')::integer, 0), 0);
-  v_filters := p - 'limit' - 'offset';
-  v_full := public.apt_read_cached('apt_operational_summary', jsonb_build_object('p', v_filters));
+  v_full := public.apt_read_cached('apt_operational_summary', public.apt_read_cache_key('apt_operational_summary', p));
   IF (v_full ->> 'success') IS DISTINCT FROM 'true' OR jsonb_typeof(v_full -> 'rows') <> 'array' THEN RETURN v_full; END IF;
   RETURN v_full || jsonb_build_object(
     'rows', COALESCE((SELECT jsonb_agg(r.value ORDER BY r.ordinality) FROM jsonb_array_elements(v_full -> 'rows') WITH ORDINALITY r
@@ -104,6 +127,29 @@ REVOKE ALL ON FUNCTION public.apt_dashboard(jsonb, text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.apt_operational_summary(jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.apt_dashboard(jsonb, text) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.apt_operational_summary(jsonb) TO authenticated, service_role;
+
+-- La web registra aquí un filtro cuyo cálculo superó el límite de su petición (la petición se revierte, esta no).
+-- Solo filtros con forma válida y tamaño acotado; el cron los calcula en orden de llegada.
+CREATE OR REPLACE FUNCTION public.apt_read_cache_request(p_fn text, p_args jsonb)
+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE v_key jsonb;
+BEGIN
+  IF NOT public.is_active_tms_user() OR NOT public.apt_can_view() THEN RETURN jsonb_build_object('success', false, 'error', 'Sin acceso al módulo APT'); END IF;
+  IF p_fn NOT IN ('apt_dashboard', 'apt_operational_summary') OR jsonb_typeof(p_args) <> 'object'
+     OR jsonb_typeof(COALESCE(p_args -> 'p', '{}'::jsonb)) <> 'object' OR length(p_args::text) > 20000
+     OR (p_fn = 'apt_dashboard' AND COALESCE(p_args ->> 'p_grain', 'semana') NOT IN ('dia', 'semana', 'mes')) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Solicitud de cálculo APT inválida');
+  END IF;
+  v_key := public.apt_read_cache_key(p_fn, p_args -> 'p', p_args ->> 'p_grain');
+  INSERT INTO public.apt_read_cache_requests (fn, key_hash, params) VALUES (p_fn, md5(v_key::text), v_key)
+  ON CONFLICT (fn, key_hash) DO UPDATE SET requested_at = clock_timestamp();
+  -- Acota la cola: conserva las 50 solicitudes más recientes.
+  DELETE FROM public.apt_read_cache_requests r WHERE (r.fn, r.key_hash) NOT IN
+    (SELECT q.fn, q.key_hash FROM public.apt_read_cache_requests q ORDER BY q.requested_at DESC LIMIT 50);
+  RETURN jsonb_build_object('success', true);
+END $$;
+REVOKE ALL ON FUNCTION public.apt_read_cache_request(text, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.apt_read_cache_request(text, jsonb) TO authenticated, service_role;
 
 -- Precalentado: las vistas que abren /apt, /apt/operacion, /apt/estadia y Analítica sin filtros. Corre con la
 -- identidad de una cuenta APT activa (solo en esta transacción) porque el cálculo verifica el acceso.
@@ -116,21 +162,39 @@ BEGIN
   DELETE FROM public.apt_read_cache WHERE version <> v_version OR built_at < now() - interval '2 days';
   IF NOT EXISTS (SELECT 1 FROM public.apt_state WHERE cutoff IS NOT NULL)
      AND NOT EXISTS (SELECT 1 FROM public.apt_flow_state WHERE cutoff IS NOT NULL) THEN RETURN 0; END IF;
-  FOR v_actor IN SELECT p.id FROM public.profiles p WHERE p.is_active AND p.role_id IS NOT NULL ORDER BY p.id LIMIT 200 LOOP
+  -- Primero las cuentas cuyo rol declara acceso APT; apt_can_view decide con la regla vigente.
+  FOR v_actor IN SELECT p.id FROM public.profiles p JOIN public.roles r ON r.id = p.role_id
+      WHERE p.is_active
+      ORDER BY (r.name IN ('Administrador', 'Jefe de Distribución') OR COALESCE(r.permissions, '[]'::jsonb)::text ILIKE '%apt%') DESC, p.id LOOP
     PERFORM set_config('request.jwt.claim.sub', v_actor::text, true);
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_actor, 'role', 'authenticated')::text, true);
     EXIT WHEN public.apt_can_view();
     v_actor := NULL;
   END LOOP;
   IF v_actor IS NULL THEN RETURN 0; END IF;
-  FOR v_key IN SELECT * FROM (VALUES
+  DELETE FROM public.apt_read_cache_requests WHERE requested_at < now() - interval '1 day' OR attempts >= 3;
+  FOR v_key IN SELECT k.fn, k.params, false AS requested, 0 AS ord, NULL::timestamptz AS at FROM (VALUES
       ('apt_operational_summary', '{"p":{}}'::jsonb),
       ('apt_dashboard', '{"p":{},"grain":"semana"}'::jsonb),
       ('apt_dashboard', '{"p":{},"grain":"dia"}'::jsonb)) k(fn, params)
-    WHERE NOT EXISTS (SELECT 1 FROM public.apt_read_cache c WHERE c.fn = k.fn AND c.params = k.params AND c.version = v_version)
+    UNION ALL
+    SELECT * FROM (SELECT r.fn, r.params, true, 1, r.requested_at FROM public.apt_read_cache_requests r ORDER BY r.requested_at LIMIT 10) q
+    ORDER BY ord, at
   LOOP
-    PERFORM public.apt_read_cached(v_key.fn, v_key.params);
-    v_built := v_built + 1;
+    CONTINUE WHEN EXISTS (SELECT 1 FROM public.apt_read_cache c WHERE c.fn = v_key.fn AND c.key_hash = md5(v_key.params::text)
+                          AND c.params = v_key.params AND c.version = v_version);
+    IF v_key.requested THEN
+      UPDATE public.apt_read_cache_requests SET attempts = attempts + 1 WHERE fn = v_key.fn AND key_hash = md5(v_key.params::text);
+    END IF;
+    -- Un filtro que falla no detiene el resto; los errores de validación no se guardan y se descartan de la cola.
+    BEGIN
+      IF (public.apt_read_cached(v_key.fn, v_key.params) ->> 'success') IS DISTINCT FROM 'true' THEN
+        DELETE FROM public.apt_read_cache_requests WHERE fn = v_key.fn AND key_hash = md5(v_key.params::text);
+      END IF;
+      v_built := v_built + 1;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'Caché APT % no calculada: %', v_key.fn, SQLERRM;
+    END;
   END LOOP;
   PERFORM set_config('request.jwt.claim.sub', '', true);
   PERFORM set_config('request.jwt.claims', '', true);

@@ -57,7 +57,7 @@ BEGIN
  IF (q->>'success') IS DISTINCT FROM 'true' OR q->'rows' IS DISTINCT FROM live->'rows' OR q->'kpis' IS DISTINCT FROM live->'kpis'
   OR (q->>'total')::integer<>3 OR (q->>'limit')::integer<>1 OR (q->>'offset')::integer<>1 OR q#>>'{rows,0,lote}'<>lot||'-B' THEN
   RAISE EXCEPTION 'CAJA C91 FAIL: página desde caché (T3) % vs %',q->'rows',live->'rows'; END IF;
- SELECT count(*) INTO n FROM public.apt_read_cache WHERE fn='apt_operational_summary' AND params=jsonb_build_object('p',f);
+ SELECT count(*) INTO n FROM public.apt_read_cache WHERE fn='apt_operational_summary' AND key_hash=md5(jsonb_build_object('p',f)::text);
  IF n<>1 THEN RAISE EXCEPTION 'CAJA C91 FAIL: resumen no guardado una sola vez (T3)'; END IF;
 
  -- T4: el tablero desde la caché es idéntico al cálculo en vivo y la segunda lectura no recalcula
@@ -94,6 +94,21 @@ BEGIN
   OR EXISTS(SELECT 1 FROM public.apt_read_cache WHERE params->'p' ? 'cliente') THEN
   RAISE EXCEPTION 'CAJA C91 FAIL: validación de filtros (T6)'; END IF;
 
- RAISE EXCEPTION 'CAJA C91 PASS (6/6) caché APT: mismo resultado que el cálculo en vivo, paginación, invalidación por versión y acceso';
+ -- T7: un filtro que superó el límite de la petición queda en cola, el precalentado lo calcula y una clave
+ -- larga (100 clientes de 200 caracteres) se guarda sin superar el límite del índice
+ PERFORM pg_temp.c91_user(actor);
+ q:=public.apt_read_cache_request('apt_operational_summary',jsonb_build_object('p',f||jsonb_build_object('clientes',
+   (SELECT jsonb_agg(repeat('Z',190)||g) FROM generate_series(1,100) g),'limit',25,'offset',0)));
+ PERFORM pg_temp.c91_user(NULL);
+ IF (q->>'success') IS DISTINCT FROM 'true' OR NOT EXISTS(SELECT 1 FROM public.apt_read_cache_requests WHERE fn='apt_operational_summary') THEN
+  RAISE EXCEPTION 'CAJA C91 FAIL: solicitud de cálculo (T7) %',q; END IF;
+ PERFORM public.apt_read_cache_warm();
+ IF EXISTS(SELECT 1 FROM public.apt_read_cache_requests WHERE params->'p' ? 'clientes')
+  OR NOT EXISTS(SELECT 1 FROM public.apt_read_cache WHERE fn='apt_operational_summary' AND params->'p' ? 'clientes') THEN
+  RAISE EXCEPTION 'CAJA C91 FAIL: precalentado de la solicitud (T7)'; END IF;
+ IF has_function_privilege('anon','public.apt_read_cache_request(text,jsonb)','EXECUTE') THEN
+  RAISE EXCEPTION 'CAJA C91 FAIL: solicitud expuesta a anónimos (T7)'; END IF;
+
+ RAISE EXCEPTION 'CAJA C91 PASS (7/7) caché APT: mismo resultado que el cálculo en vivo, paginación, invalidación por versión, cola de cálculo, claves largas y acceso';
 END $test$;
 ROLLBACK;
