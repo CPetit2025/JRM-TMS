@@ -137,8 +137,46 @@ try {
  console.log('PASS: invalid unloading rolls back the complete save; legacy scheduling cannot bypass the new gateway.')
  // Execute the exact production regression against the same realistic schema, always rolled back.
  sql(`CREATE TABLE auth.users(id uuid PRIMARY KEY); INSERT INTO auth.users VALUES('${id(2)}'); CREATE TABLE vehicles(site_id uuid); INSERT INTO vehicles VALUES('${id(1)}'); ALTER TABLE contracts ALTER COLUMN id SET DEFAULT gen_random_uuid(); CREATE OR REPLACE FUNCTION is_tms_admin() RETURNS boolean LANGUAGE sql AS $$ SELECT true $$;`)
+ // Current request policy supersedes generic no-OT registrations above, while retaining historical coverage.
+ sql(`ALTER TABLE contracts ADD COLUMN client_id uuid; ALTER TABLE contracts ADD COLUMN created_by uuid; ALTER TABLE contracts ADD COLUMN destination_department text; ALTER TABLE contracts ADD COLUMN destination_province text; ALTER TABLE contracts ADD COLUMN destination_district text;
+ CREATE FUNCTION is_active_tms_user() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$ SELECT EXISTS(SELECT 1 FROM profiles WHERE id=auth.uid() AND is_active) $$;`)
+ sql(read('supabase/migrations/20261012020000_request_inline_components.sql'))
+ sql(read('supabase/migrations/20261012040000_request_component_native_type.sql'))
+ deny(staff+`SELECT save_transport_request_attention(NULL,${lit(payload({department:'Logística',contract_id:null}))},'[]','[]');`,/Seleccione una OT madre/)
+ deny(staff+`INSERT INTO transport_requests(request_number,site_id) VALUES('ZZ-UNLINKED','${id(1)}');`,/Seleccione una OT madre/)
+ const sub=json(`create_transport_request_component('${id(3)}','SUBCONTRATO','s001')`)
+ assert.equal(sub.success,true);assert.equal(sub.code,'16523-S001')
+ const errorComponent=json(`create_transport_request_component('${id(3)}','ERROR','e014')`)
+ assert.equal(errorComponent.success,true);assert.equal(errorComponent.code,'16523-E014')
+ assert.equal(sql(`SELECT count(*) FROM contract_budgets WHERE contract_id IN('${sub.id}','${errorComponent.id}')`),'0')
+ assert.equal(json(`create_transport_request_component('${id(3)}','ERROR','E014')`).success,false)
+ assert.equal(json(`create_transport_request_component('${id(3)}','ERROR','S014')`).success,false)
+ deny(staff+`SELECT create_transport_request_component('${sub.id}','ERROR','E001');`,/OT madre/)
+ const family=save(payload({department:'Logística'}),[{contract_id:sub.id},{contract_id:errorComponent.id}])
+ assert.equal(sql(`SELECT contract_id FROM transport_requests WHERE id='${family.id}'`),id(3))
+ assert.equal(sql(`SELECT count(*) FROM transport_request_components WHERE request_id='${family.id}'`),'2')
+ sql(`UPDATE profiles SET is_active=false WHERE id='${id(2)}';`)
+ deny(staff+`SELECT create_transport_request_component('${id(3)}','ERROR','E099');`,/Sin permiso/)
+ sql(`UPDATE profiles SET is_active=true WHERE id='${id(2)}';`)
+ console.log('PASS: all new requests require mother OT; inline variants need no budget, retain mother association and reject duplicates, invalid codes, child parents and inactive profiles.')
  const c45=query(read('supabase/tests/caja_c45_solicitud_recojo_cliente.test.sql'))
  assert.notEqual(c45.status,0); assert.match(c45.stderr,/CAJA C45 PASS \(3\/3\)/)
  console.log('PASS: exact production C45 proves registration without pickup details or site/CC inputs and rolls back intentionally.')
+ sql(`UPDATE contracts SET client_id='${id(9)}' WHERE id='${id(3)}';`)
+ const c91=query(read('supabase/tests/caja_c91_request_inline_components.test.sql'))
+ assert.notEqual(c91.status,0); assert.match(c91.stderr,/CAJA C91 PASS/)
+ console.log('PASS: exact production C91 verifies family creation and mandatory mother with rollback.')
+ // The real production column is an enum; test the same function with both native shapes.
+ sql(`CREATE TYPE public.contract_type AS ENUM('CONTRATO','OT_INDEPENDIENTE','SUBCONTRATO','ERROR');
+ ALTER TABLE contracts ALTER COLUMN type TYPE public.contract_type USING type::public.contract_type;`)
+ sql(read('supabase/migrations/20261012040000_request_component_native_type.sql'))
+ const enumSub=json(`create_transport_request_component('${id(3)}','SUBCONTRATO','S002')`)
+ const enumError=json(`create_transport_request_component('${id(3)}','ERROR','E002')`)
+ assert.equal(enumSub.success,true);assert.equal(enumError.success,true)
+ assert.equal(sql(`SELECT count(*) FROM contracts WHERE id IN('${enumSub.id}','${enumError.id}') AND type IN('SUBCONTRATO','ERROR')`),'2')
+ const enumC91=query(read('supabase/tests/caja_c91_request_inline_components.test.sql'))
+ assert.notEqual(enumC91.status,0);assert.match(enumC91.stderr,/CAJA C91 PASS/)
+ console.log('PASS: inline Subcontrato/Error creation and exact production C91 work with native contract_type enum as well as text.')
+
 
 } finally {spawnSync('docker',['rm','-f',name],{stdio:'ignore'})}

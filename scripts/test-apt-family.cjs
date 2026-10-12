@@ -74,5 +74,30 @@ try{
  sql(`DO $$ BEGIN IF (SELECT rebuilt_at FROM apt_flow_state WHERE id=1) IS DISTINCT FROM (SELECT rebuilt_at FROM expected_rebuild_time) THEN RAISE EXCEPTION 'Rebuild unnecessarily repeats'; END IF; END $$;`)
  console.log('PASS: stale derived stock repairs from current movements, agrees with kardex, locks against replacement, preserves private permissions and skips an already current rebuild.')
 
+ // A replaced upload can leave obsolete IDs even if a misleading completion timestamp looks current.
+ sql(`INSERT INTO apt_uploads(id,file_name) VALUES('22222222-2222-2222-2222-222222222222','replacement-fixture');
+ WITH replaced AS (UPDATE apt_movements SET active=false WHERE active RETURNING *)
+ INSERT INTO apt_movements(upload_id,kind,row_no,raw,active,valid,fecha,almacen,lote,producto,peso_kg,documento,tipodocto,cantidad)
+ SELECT '22222222-2222-2222-2222-222222222222',kind,row_no,raw,true,valid,fecha,almacen,lote,producto,peso_kg,documento,tipodocto,cantidad FROM replaced;
+ UPDATE apt_flow_state SET rebuilt_at=clock_timestamp();
+ CREATE TABLE expected_movements AS SELECT * FROM apt_movements;`)
+ const missingBefore=json(`SELECT jsonb_build_object('n',count(*)) FROM apt_movements m WHERE active AND kind='ENTRADA'
+ AND NOT EXISTS(SELECT 1 FROM apt_flow_layers l WHERE l.id=m.id)`)
+ assert.equal(missingBefore.n,1)
+ const ensure=read('supabase/migrations/20261012050000_apt_refresh_replaced_movements.sql');sql(ensure)
+ sql(`DO $$ BEGIN
+ IF EXISTS(SELECT 1 FROM apt_movements m WHERE active AND kind IN ('ENTRADA','TRASPASO_ENT') AND NOT EXISTS(SELECT 1 FROM apt_flow_layers l WHERE l.id=m.id)) THEN RAISE EXCEPTION 'Replaced movement IDs remain missing'; END IF;
+ IF EXISTS((SELECT * FROM apt_movements EXCEPT SELECT * FROM expected_movements) UNION ALL (SELECT * FROM expected_movements EXCEPT SELECT * FROM apt_movements)) THEN RAISE EXCEPTION 'Source data changed during cache reconciliation'; END IF;
+ IF has_function_privilege('anon','apt_flow_ensure_current_core()','EXECUTE') OR has_function_privilege('authenticated','apt_flow_ensure_current_core()','EXECUTE') THEN RAISE EXCEPTION 'Cache repair is accessible without service privileges'; END IF;
+ IF NOT has_function_privilege('service_role','apt_flow_ensure_current_core()','EXECUTE') THEN RAISE EXCEPTION 'Service repair unavailable'; END IF;
+ END $$;`)
+ assert.equal(json('SELECT apt_flow_ensure_current_core()').rebuilt,false)
+ const reconciled=json("SELECT apt_kardex('{\"lote_exacto\":\"16339\"}','total',true,100,0)")
+ assert.equal(reconciled.almacenes.find(a=>a.almacen==='647').saldo_tn,1.1)
+ assert.equal(reconciled.almacenes.find(a=>a.almacen==='540').saldo_tn,1.05)
+ sql(ensure)
+ sql(read('scripts/security/apt-reconciliation.sql'))
+ console.log('PASS: replaced ERP IDs repair even with current-looking timestamp, untouched source data, private service permissions, strict FIFO/kardex agreement, idempotent preflight and complete audit SQL.')
+
 
 }catch(error){console.error('::error title=APT family validation::'+error.message.replaceAll('%','%25').replaceAll('\n','%0A'));process.exitCode=1}finally{spawnSync('docker',['rm','-f',name],{stdio:'ignore'})}

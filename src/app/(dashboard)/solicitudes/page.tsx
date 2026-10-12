@@ -18,7 +18,7 @@ import { Modal } from '@/components/ui/modal'
 import { usePermissions } from '@/hooks/usePermissions'
 import { normalizeRoleName } from '@/lib/roles'
 import { OtPicker, type OtNode } from '@/components/solicitudes/OtPicker'
-import { SearchableSelect } from '@/components/ui/SearchableSelect'
+import { InlineComponentCreator } from '@/components/solicitudes/InlineComponentCreator'
 import { LinkPartyModal } from '@/components/solicitudes/LinkPartyModal'
 import { QuoteBreakdown } from '@/components/tarifas/TransportTariffManager'
 import { serviceAddresses, serviceLabel, serviceKind, SERVICE_KINDS, executionWeightLabels, type RequestExecution, type ServiceKind } from '@/lib/request-service'
@@ -36,7 +36,6 @@ const requestDate = (value: string, withTime = false) => value ? new Date(value)
 }) : 'Sin fecha'
 
 type AttentionMode = 'TRANSPORTE_JRM' | 'RECOJO_CLIENTE'
-const requiresOt = (area: string) => /^(OT(?:\s*[-(]|$)|administraci[oó]n de contratos$)/i.test(area.trim())
 
 interface TransportRequest {
   id: string
@@ -216,14 +215,9 @@ export default function SolicitudesPage() {
   useEffect(() => {
     if (isModalOpen && !suppliers.length) void fetchSuppliers().then(setSuppliers)
   }, [isModalOpen, suppliers.length, fetchSuppliers])
-  // Clientes para la entrega sin OT (con OT el cliente es el de la OT)
-  const [clientOptions, setClientOptions] = useState<{ id: string; business_name: string; tax_id: string | null }[]>([])
-  useEffect(() => {
-    if (!isModalOpen || clientOptions.length) return
-    void supabase.from('clients').select('id, business_name, tax_id').eq('is_active', true).order('business_name')
-      .then(({ data }) => setClientOptions((data || []) as { id: string; business_name: string; tax_id: string | null }[]))
-  }, [isModalOpen, clientOptions.length, supabase])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isCreatingComponent, setIsCreatingComponent] = useState(false)
+  const activeRequestRoot = useRef('')
   const [linkRequest, setLinkRequest] = useState<TransportRequest | null>(null)
   const [userRole, setUserRole] = useState<string>('')
   const [userId, setUserId] = useState('')
@@ -274,6 +268,7 @@ export default function SolicitudesPage() {
     service_cost: '',
     purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: ''
   })
+  useEffect(() => { activeRequestRoot.current = newRequest.contract_id }, [newRequest.contract_id])
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
   // Costos de descarga estimados (montacargas, grúa, estiba, otros): suman al costo que se valida con la partida
   const [unloading, setUnloading] = useState<{ concept: string; estimated_pen: string; description: string }[]>([])
@@ -286,14 +281,11 @@ export default function SolicitudesPage() {
   const selectedOptions = componentOptions.filter(option => selectedComponents[option.contract_id])
   const requestedWeight = selectedOptions.reduce((sum, option) =>
     sum + Number(selectedComponents[option.contract_id].weight_kg || 0), 0)
-  const requestedVolume = selectedOptions.reduce((sum, option) =>
-    sum + Number(selectedComponents[option.contract_id].volume_m3 || 0), 0)
   const mixedDestinations = new Set(selectedOptions.map(option =>
     option.destination_address?.trim().toLowerCase()).filter(Boolean)).size > 1
   const rootBudget = componentOptions.find(option => option.contract_id === newRequest.contract_id)
   const unloadingTotal = unloading.reduce((sum, u) => sum + (Number(u.estimated_pen) || 0), 0)
   const isCustomerPickup = newRequest.attention_mode === 'RECOJO_CLIENTE'
-  const otRequired = requiresOt(newRequest.department) || userRole === 'administrador de contratos'
   const estimatedCost = (isCustomerPickup ? 0 : Number(newRequest.service_cost || 0)) + unloadingTotal
 
 
@@ -648,6 +640,7 @@ export default function SolicitudesPage() {
 
   const handleCreateRequest = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isCreatingComponent || isSubmitting) return
     if (requiresDeliveryLeadTime && !leadTimeLoaded) { toast.error('No se pudieron consultar los plazos. Reintenta antes de guardar.'); return }
     if (!requiredAt) { toast.error('Selecciona fecha y hora de atención válidas.'); return }
     if (requiresDeliveryLeadTime && leadTimeEvaluation.enough === false) {
@@ -658,7 +651,7 @@ export default function SolicitudesPage() {
       return
     }
 
-    if ((otRequired && !newRequest.contract_id) || (newRequest.contract_id && !contracts.some(c => c.id === newRequest.contract_id))) {
+    if ((!newRequest.contract_id) || (newRequest.contract_id && !contracts.some(c => c.id === newRequest.contract_id))) {
       toast.error('Selecciona una OT madre activa.')
       return
     }
@@ -687,28 +680,8 @@ export default function SolicitudesPage() {
       `(S/ ${Number(rootBalance || 0).toLocaleString('es-PE')}). La solicitud quedará OBSERVADA y no se atenderá hasta ampliar la partida. ¿Registrar de todos modos?`)) {
       return
     }
-    for (const component of selected) {
-      const values = selectedComponents[component.contract_id]
-      const weight = values.weight_kg === '' ? null : Number(values.weight_kg)
-      const volume = values.volume_m3 === '' ? null : Number(values.volume_m3)
-      if ((weight !== null && (!Number.isFinite(weight) || weight < 0)) ||
-          (volume !== null && (!Number.isFinite(volume) || volume < 0))) {
-        toast.error(`Peso o volumen inválido para ${component.code}.`)
-        return
-      }
-      if (weight !== null && Number(component.total_weight_kg) > 0 &&
-          weight + Number(component.already_requested_kg) > Number(component.total_weight_kg) + 0.01) {
-        toast.error(`El peso de ${component.code} supera su saldo pendiente.`)
-        return
-      }
-    }
-
     if (requiresSupplier({ request_type: newRequest.request_type, attention_mode: newRequest.attention_mode }) && !newRequest.supplier_id) {
       toast.error('Seleccione el proveedor del recojo o traslado. Si no existe, use «Nuevo proveedor» en la misma solicitud.')
-      return
-    }
-    if (!requiresSupplier({ request_type: newRequest.request_type, attention_mode: newRequest.attention_mode }) && !newRequest.contract_id && !newRequest.client_id) {
-      toast.error('Seleccione el cliente de la entrega o vincule la OT.')
       return
     }
     if (newRequest.reference_type && !newRequest.reference_number.trim()) {
@@ -882,11 +855,10 @@ export default function SolicitudesPage() {
   const pendingItems = ([
     !newRequest.requester_name.trim() && { label: 'Solicitante', target: 'req-servicio' },
     !newRequest.department && { label: 'Área / departamento', target: 'req-servicio' },
-    otRequired && !newRequest.contract_id && { label: 'OT madre', target: 'req-ot' },
+    !newRequest.contract_id && { label: 'OT madre', target: 'req-ot' },
     Boolean(newRequest.contract_id) && !componentsLoading && selectedOptions.length === 0 && { label: 'Componentes de la OT', target: 'req-ot' },
     mixedDestinations && !destinationAcknowledged && { label: 'Confirmar destino principal', target: 'req-ot' },
     needsSupplier && !newRequest.supplier_id && { label: 'Proveedor de origen', target: 'req-proveedor' },
-    !needsSupplier && !newRequest.contract_id && !newRequest.client_id && { label: 'Cliente (o la OT)', target: 'req-ot' },
     !needsSupplier && Boolean(newRequest.contract_id) && !otClientName && { label: 'Cliente de la OT (asignar en Contratos y OTs)', target: 'req-ot' },
     (!newRequest.pickup_address.trim() || !newRequest.pickup_district.trim()) && { label: 'Origen: dirección y distrito', target: 'req-ruta' },
     (!newRequest.delivery_address.trim() || !newRequest.delivery_district.trim()) && { label: 'Destino: dirección y distrito', target: 'req-ruta' },
@@ -1029,7 +1001,7 @@ export default function SolicitudesPage() {
 
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => { if (!isCreatingComponent) setIsModalOpen(false) }}
         title={editingRequestId ? 'Editar solicitud de transporte' : 'Nueva solicitud de transporte'}
         maxWidth="max-w-7xl"
         footer={<div className="flex flex-wrap items-center justify-between gap-3">
@@ -1038,9 +1010,9 @@ export default function SolicitudesPage() {
             {draftMode && !editingRequestId && <span className="text-xs text-slate-500">Se guarda como borrador en este equipo mientras la llena.</span>}
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={() => setIsModalOpen(false)} className="rounded-lg px-4 py-2 font-medium text-slate-600 transition-colors hover:bg-slate-100">Cancelar</button>
+            <button type="button" disabled={isCreatingComponent} onClick={() => setIsModalOpen(false)} className="rounded-lg px-4 py-2 font-medium text-slate-600 transition-colors hover:bg-slate-100">Cancelar</button>
             <button type="submit" form="request-form"
-              disabled={isSubmitting || (requiresDeliveryLeadTime && !leadTimeLoaded) || !requiredAt || (requiresDeliveryLeadTime && leadTimeEvaluation.enough === false) || componentsLoading || (otRequired && !newRequest.contract_id) || (Boolean(newRequest.contract_id) && selectedOptions.length === 0)}
+              disabled={isSubmitting || isCreatingComponent || (requiresDeliveryLeadTime && !leadTimeLoaded) || !requiredAt || (requiresDeliveryLeadTime && leadTimeEvaluation.enough === false) || componentsLoading || (!newRequest.contract_id) || (Boolean(newRequest.contract_id) && selectedOptions.length === 0)}
               className="flex items-center gap-2 rounded-lg bg-[#002855] px-4 py-2 font-medium text-white transition-colors hover:bg-[#001d3d] disabled:opacity-50">
               {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               {editingRequestId ? 'Actualizar solicitud' : 'Enviar solicitud'}
@@ -1088,15 +1060,16 @@ export default function SolicitudesPage() {
             </div>}
             </FormSection>
 
-            <FormSection id="req-ot" step={2} title="OT / proyecto" hint={otRequired ? 'Obligatoria para el área seleccionada' : 'Opcional: vincula la carga a una OT y sus componentes'}>
+            <FormSection id="req-ot" step={2} title="OT madre y componentes" hint="Toda solicitud se vincula a una OT madre; sus componentes pueden tener o no partida de transporte.">
               <OtPicker
                 nodes={otNodes}
+                disabled={isSubmitting || isCreatingComponent}
                 value={newRequest.contract_id}
                 onSelect={(rootId, childId) => {
                   if (rootId !== newRequest.contract_id) handleContractChange(rootId)
                   if (childId) {
                     setSelectedComponents(prev => ({ ...prev, [childId]: prev[childId] || { weight_kg: '', volume_m3: '' } }))
-                    toast.info('Se marcó el componente seleccionado; indica su peso.')
+                    toast.info('Se incluyó el componente seleccionado en la solicitud.')
                   }
                 }}
                 onClear={() => {
@@ -1109,34 +1082,48 @@ export default function SolicitudesPage() {
                   componentLoadId.current++
                 }}
               />
-              {!needsSupplier && !newRequest.contract_id && <div className="mt-3">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Cliente de la entrega <span className="text-red-500">*</span></label>
-                <SearchableSelect
-                  value={newRequest.client_id}
-                  onChange={(val) => setNewRequest(prev => ({ ...prev, client_id: val }))}
-                  options={clientOptions.map(c => ({ value: c.id, label: `${c.business_name}${c.tax_id ? ` (${c.tax_id})` : ''}` }))}
-                  placeholder="-- Buscar por RUC o razón social --"
-                />
-                <p className="mt-1 text-xs text-slate-500">Sin OT, indique el cliente. Con OT se toma el cliente de la OT.</p>
-              </div>}
+              {newRequest.contract_id && <InlineComponentCreator key={newRequest.contract_id}
+                rootId={newRequest.contract_id} rootCode={contracts.find(c => c.id === newRequest.contract_id)?.code || ''}
+                disabled={isSubmitting} create={async (kind, suffix) => {
+                  const rootId = newRequest.contract_id
+                  setIsCreatingComponent(true)
+                  try {
+                    const { data, error } = await supabase.rpc('create_transport_request_component', {
+                      p_root_id: rootId, p_component_type: kind, p_suffix: suffix,
+                    })
+                    if (error) throw new Error(error.message)
+                    const result = data as { success?: boolean; id?: string; code?: string; error?: string } | null
+                    if (!result?.success || !result.id) throw new Error(result?.error || 'No se pudo registrar el componente.')
+                    await fetchContracts()
+                    if (activeRequestRoot.current !== rootId) return
+                    const options = await loadComponentOptions(rootId, editingRequestId)
+                    if (activeRequestRoot.current !== rootId) return
+                    if (!options?.some(option => option.contract_id === result.id)) {
+                      toast.warning(`${result.code || 'Componente'} registrado. Vuelve a seleccionar la OT para actualizar los componentes.`)
+                      return
+                    }
+                    setSelectedComponents(prev => ({ ...prev, [result.id!]: { weight_kg: '', volume_m3: '' } }))
+                    setDestinationAcknowledged(false)
+                    toast.success(`${result.code || 'Componente'} registrado e incluido en la solicitud.`)
+                  } finally { setIsCreatingComponent(false) }
+                }} />}
               {newRequest.contract_id && componentOptions.length > 0 && (() => {
                 const root = componentOptions.find(c => c.contract_id === newRequest.contract_id)
                 return root && <p className="mt-1 text-xs text-slate-600">
                   Partida bruta OT raíz: S/ {Number(root.allocated_pen || 0).toLocaleString('es-PE')} ·
                   Operación 80%: S/ {operatingBudget(Number(root.allocated_pen || 0)).toLocaleString('es-PE')} · Saldo operativo: S/ {Number(root.balance_pen || 0).toLocaleString('es-PE')}
-                  <span className="block text-amber-700">Presupuestos de hijos pendientes de clasificación; no se suman.</span>
+                  <span className="block text-amber-700">La vinculación de componentes no exige partida propia. El presupuesto disponible se valida al aprobar el servicio.</span>
                 </p>
               })()}
               {newRequest.contract_id && <div className="mt-3">
             <div className="rounded-lg border border-slate-200 p-4 space-y-3">
               <div>
                 <h3 className="font-semibold text-slate-800">Componentes incluidos en la solicitud</h3>
-                <p className="text-xs text-slate-500">Indica únicamente la carga de este requerimiento. El peso contractual de la OT madre puede incluir a sus hijos.</p>
+                <p className="text-xs text-slate-500">Selecciona la OT madre, los subcontratos y los errores incluidos en este servicio. No requieren partida propia para vincularlos.</p>
               </div>
               {componentsLoading ? <p className="text-sm text-slate-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Cargando componentes...</p> :
                 componentOptions.map(option => {
                   const checked = Boolean(selectedComponents[option.contract_id])
-                  const pending = Math.max(0, Number(option.total_weight_kg || 0) - Number(option.already_requested_kg || 0))
                   return <div key={option.contract_id} className={`rounded-md border p-3 ${checked ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200'}`}>
                     <label className="flex items-start gap-3 cursor-pointer">
                       <input type="checkbox" className="mt-1" checked={checked} onChange={e => {
@@ -1151,25 +1138,11 @@ export default function SolicitudesPage() {
                       <span className="flex-1 text-sm">
                         <strong>{option.code}</strong> · {option.component_type === 'SUBCONTRATO' ? 'Subcontrato' : option.component_type === 'ERROR' ? 'Error' : 'OT Madre'} · {option.status === 'ACTIVO' ? 'Activo' : option.status}
                         <span className="block text-xs text-slate-500">
-                          Peso contractual: {Number(option.total_weight_kg || 0).toLocaleString('es-PE')} kg ·
-                          {Number(option.total_weight_kg || 0) > 0 ? ` pendiente estimado: ${pending.toLocaleString('es-PE')} kg` : ' peso pendiente no verificable'}
-                          {option.destination_address ? ` · Destino: ${option.destination_address}` : ''}
+                          {option.destination_address || 'Destino heredado de la OT madre'}
                         </span>
-                        {Number(option.allocated_pen || 0) > 0 && <span className="block text-xs text-amber-700">Partida propia: S/ {Number(option.allocated_pen).toLocaleString('es-PE')} · Saldo: S/ {Number(option.balance_pen || 0).toLocaleString('es-PE')} (naturaleza sin clasificar)</span>}
+                        {Number(option.allocated_pen || 0) > 0 && <span className="block text-xs text-amber-700">Partida propia: S/ {Number(option.allocated_pen).toLocaleString('es-PE')} · Saldo: S/ {Number(option.balance_pen || 0).toLocaleString('es-PE')} </span>}
                       </span>
                     </label>
-                    {checked && <div className="grid grid-cols-2 gap-3 mt-3 ml-7">
-                      <label className="text-xs text-slate-600">Peso a transportar (kg)
-                        <input type="number" min="0" step="0.01" className="block w-full mt-1 p-2 border rounded bg-white text-slate-900"
-                          value={selectedComponents[option.contract_id].weight_kg}
-                          onChange={e => setSelectedComponents(prev => ({ ...prev, [option.contract_id]: { ...prev[option.contract_id], weight_kg: e.target.value } }))} />
-                      </label>
-                      <label className="text-xs text-slate-600">Volumen a transportar (m³)
-                        <input type="number" min="0" step="0.01" className="block w-full mt-1 p-2 border rounded bg-white text-slate-900"
-                          value={selectedComponents[option.contract_id].volume_m3}
-                          onChange={e => setSelectedComponents(prev => ({ ...prev, [option.contract_id]: { ...prev[option.contract_id], volume_m3: e.target.value } }))} />
-                      </label>
-                    </div>}
                   </div>
                 })}
               {mixedDestinations && <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900">
@@ -1177,7 +1150,7 @@ export default function SolicitudesPage() {
                 <label className="flex items-center gap-2 mt-2 font-medium"><input type="checkbox" checked={destinationAcknowledged} onChange={e => setDestinationAcknowledged(e.target.checked)} />Confirmo el destino principal</label>
               </div>}
               <div className="bg-slate-50 rounded p-3 text-sm text-slate-700">
-                <strong>Resumen:</strong> {selectedOptions.length} componentes · {requestedWeight.toLocaleString('es-PE')} kg solicitados · {requestedVolume.toLocaleString('es-PE')} m³
+                <strong>Resumen:</strong> {selectedOptions.length} componentes vinculados a la OT madre
                 {rootBudget && <span className="block mt-1">Saldo OT raíz: S/ {Number(rootBudget.balance_pen || 0).toLocaleString('es-PE')} · Costo estimado: S/ {estimatedCost.toLocaleString('es-PE')} · Saldo proyectado: S/ {(Number(rootBudget.balance_pen || 0) - estimatedCost).toLocaleString('es-PE')}</span>}
               </div>
             </div>
@@ -1351,7 +1324,7 @@ export default function SolicitudesPage() {
               <dl className="space-y-2">
                 <div><dt className="text-xs text-slate-500">Servicio</dt><dd className="mt-0.5"><ServiceTypeBadge full request={{ request_type: newRequest.request_type, attention_mode: newRequest.attention_mode, contract_id: newRequest.contract_id || null }} /></dd></div>
                 <div><dt className="text-xs text-slate-500">OT</dt><dd className="font-semibold text-slate-900">{contracts.find(c => c.id === newRequest.contract_id)?.code || 'Sin OT'}{selectedOptions.length > 0 && <span className="font-normal text-slate-500"> · {selectedOptions.length} comp.</span>}</dd></div>
-                {!needsSupplier && <div><dt className="text-xs text-slate-500">Cliente</dt><dd className="truncate font-semibold text-slate-900">{(newRequest.contract_id ? otClientName || 'OT sin cliente' : clientOptions.find(c => c.id === newRequest.client_id)?.business_name) || '—'}</dd></div>}
+                {!needsSupplier && <div><dt className="text-xs text-slate-500">Cliente</dt><dd className="truncate font-semibold text-slate-900">{otClientName || 'OT sin cliente'}</dd></div>}
                 {needsSupplier && <div><dt className="text-xs text-slate-500">Proveedor</dt><dd className="truncate font-semibold text-slate-900">{suppliers.find(s => s.id === newRequest.supplier_id)?.business_name || '—'}</dd></div>}
                 <div><dt className="text-xs text-slate-500">Ruta</dt><dd className="font-semibold text-slate-900">{newRequest.pickup_district || '—'} → {newRequest.delivery_district || '—'}</dd></div>
                 <div><dt className="text-xs text-slate-500">Atención</dt><dd className="font-semibold text-slate-900">{requiredAt ? fullDateTime(requiredAt) : '—'}</dd></div>

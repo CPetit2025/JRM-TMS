@@ -6,6 +6,18 @@ export type PortalRequest = {
  ot_type?: string | null; parent_ot?: string | null; client_name?: string | null; supplier_name?: string | null
  reference_type?: string | null; reference_number?: string | null; purchase_order?: string | null
  pickup_district?: string | null; delivery_district?: string | null
+ components?: { id: string; code: string; type: string | null }[]
+}
+/** Counts only distinct variants included in this request, never the whole OT family. */
+export function requestFamily(request: Partial<Pick<PortalRequest, 'ot_code' | 'parent_ot' | 'ot_type' | 'components'>>) {
+ const mother = request.parent_ot || (request.ot_code === 'Sin OT vinculada' ? null : request.ot_code?.replace(/-[SE]\d+$/i, '')) || null
+ const variants = new Map<string, {code:string;type:string|null}>()
+ for (const item of request.components || []) variants.set(item.id || item.code, item)
+ if (!variants.size && request.ot_code) variants.set(request.ot_code,{code:request.ot_code,type:request.ot_type || null})
+ const values=[...variants.values()]
+ const subs=values.filter(v=>/-S\d+$/i.test(v.code) || v.type==='SUBCONTRATO').length
+ const errors=values.filter(v=>/-E\d+$/i.test(v.code) || v.type==='ERROR').length
+ return {mother,subs,errors,summary:`S(${subs}) · E(${errors})`,codes:values.map(v=>v.code)}
 }
 export const limaDay = (value: string) => new Intl.DateTimeFormat('en-CA',{timeZone:'America/Lima',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value))
 export function monthDays(month: string) {
