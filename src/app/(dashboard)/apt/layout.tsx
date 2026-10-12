@@ -19,7 +19,7 @@ import { LoadingBlock } from '@/components/apt/ui'
 // entre almacenes (647 → ST VENTAS → cliente, con 540) y los datos (calidad y cargas).
 const SECTIONS = [
   {
-    key: 'estadia', label: 'Estadía APT', icon: Warehouse, desc: 'Permanencia consolidada del producto terminado (FIFO)',
+    key: 'estadia', label: 'Control APT', icon: Warehouse, desc: 'Analítica operativa, revisión de OT y estadía de producción',
     tabs: [
       { href: '/apt', label: 'Dashboard operativo' },
       { href: '/apt/operacion', label: 'Control de OT y lotes' },

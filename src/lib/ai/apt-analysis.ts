@@ -104,7 +104,7 @@ async function operationalEvidence(supabase: SupabaseClient, summary: Summary) {
     reason: successful.length === responses.length ? null : 'ALGUNAS_CONSULTAS_NO_DISPONIBLES',
     keysRequested: selected.length, keysExcludedByLimit: keys.length - selected.length,
     sampleTruncated: keys.length > selected.length || successful.some(item => item.sampled),
-    rows: successful.flatMap(item => item.rows), consultations: successful.map(({ rows: _rows, ...meta }) => meta),
+    rows: successful.flatMap(item => item.rows), consultations: successful.map(item => ({ key: item.key, model_fresh: item.model_fresh, documentary_available: item.documentary_available, sampled: item.sampled })),
     source: 'apt_stock_reconciliation', note: 'Comparación de observaciones registradas por producto; no certifica el inventario completo ni extiende la conciliación a otras OT o clientes.' } }
 }
 
