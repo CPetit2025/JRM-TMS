@@ -1,5 +1,6 @@
 import { getAptOperationalAnalysis } from './apt-analysis'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { APT_BACKGROUND_MESSAGE, requestAptBackgroundRead } from '../apt/cacheRequest'
 
 type Row = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -445,6 +446,7 @@ export async function executeAiTool(
     if (minDays !== null) filters.dias_min = minDays
     if (cliente) filters.cliente = cliente
     const { data, error } = await supabase.rpc('apt_dashboard', { p: filters, p_grain: 'semana' })
+    if (await requestAptBackgroundRead(supabase, 'apt_dashboard', { p: filters, p_grain: 'semana' }, error)) return { asOf, error: APT_BACKGROUND_MESSAGE }
     if (error || !data?.success) return { asOf, error: data?.error || error?.message || 'No disponible' }
     const ots = cliente ? await supabase.rpc('apt_detail', { p: { cliente }, p_level: 'contrato', p_sort: 'kg_saldo', p_desc: true, p_limit: 25, p_offset: 0 }) : null
     const pick = (l: Row) => ({ lote: l.lote, glosa: l.glosa, tn_saldo: l.tn_saldo, dias: l.dias, tn_dias: l.tn_dias, estado: l.estado })

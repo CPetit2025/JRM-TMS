@@ -8,7 +8,8 @@ function load(file, mocks = {}) {
   const mod = new Module(file, module)
   mod.paths = module.paths
   const normal = mod.require.bind(mod)
-  mod.require = name => Object.prototype.hasOwnProperty.call(mocks, name) ? mocks[name] : normal(name)
+  const local = name => name.startsWith('.') && fs.existsSync(path.resolve(path.dirname(file), name) + '.ts') ? path.resolve(path.dirname(file), name) + '.ts' : null
+  mod.require = name => Object.prototype.hasOwnProperty.call(mocks, name) ? mocks[name] : local(name) ? load(local(name)) : normal(name)
   mod._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, file)
   return mod.exports
 }
@@ -26,6 +27,12 @@ test('controlled RPC preserves filters, full totals and unknown metrics without 
   assert.equal(result.sampleTruncated, true)
   assert.match(analysis.formatAptAnalysisReport(result), /Antigüedad ponderada: No evaluable/)
   assert.match(analysis.formatAptAnalysisReport(result), /no constituye conciliación física/)
+})
+test('a statement timeout queues the background calculation and reports it instead of a generic failure', async () => {
+  const calls = []
+  const rpc = async (name, args) => { calls.push({ name, args }); return name === 'apt_operational_summary' ? { data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } } : { data: { success: true } } }
+  await assert.rejects(analysis.getAptOperationalAnalysis({ rpc }, { ot: '16339' }), /segundo plano/)
+  assert.deepEqual(calls[1], { name: 'apt_read_cache_request', args: { p_fn: 'apt_operational_summary', p_args: { p: { ot: '16339' } } } })
 })
 test('comparison conserves entity scope and calculates deltas, with zero denominators remaining unknown', async () => {
   let index = 0; const calls = []

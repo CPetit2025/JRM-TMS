@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { APT_BACKGROUND_MESSAGE, requestAptBackgroundRead } from './cacheRequest'
 import type { GanttFilters, GanttResult } from './ganttTypes'
 import type { FlowAdelantos, FlowFilters, Kardex, KardexFilters, KardexNivel, OtFamilia, FlowLeadDim, FlowLeadtime, FlowQuality, FlowSt, FlowStock, FlowSummary, FlowTrace } from './flowTypes'
 import type {
@@ -9,17 +10,9 @@ import type {
 // Acceso a las funciones public.apt_*. Todas devuelven { success, error?, ... }; aquí se convierte un error en excepción.
 const supabase = createClient()
 
-// Lecturas que la base guarda por versión de datos: si un filtro nuevo supera el límite de la petición, se pide su
-// cálculo en segundo plano (queda listo en uno o dos minutos) en lugar de reintentar algo que volverá a vencer.
-const CACHED_READS = new Set(['apt_dashboard', 'apt_operational_summary'])
-export const APT_BACKGROUND_MESSAGE = 'El análisis APT con estos filtros se está calculando en segundo plano. Vuelva a consultar en uno o dos minutos.'
-
 async function call<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
   const { data, error } = await supabase.rpc(fn, args)
-  if (error && CACHED_READS.has(fn) && /statement timeout|57014/i.test(`${error.code ?? ''} ${error.message}`)) {
-    await supabase.rpc('apt_read_cache_request', { p_fn: fn, p_args: args }).then(() => undefined, () => undefined)
-    throw new Error(APT_BACKGROUND_MESSAGE)
-  }
+  if (await requestAptBackgroundRead(supabase, fn, args, error)) throw new Error(APT_BACKGROUND_MESSAGE)
   if (error) throw new Error(error.message)
   const out = data as { success?: boolean; error?: string } | null
   if (!out || out.success === false) throw new Error(out?.error || 'No se pudo obtener la información de APT')

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { APT_BACKGROUND_MESSAGE, requestAptBackgroundRead } from '../apt/cacheRequest'
 
 export type AptAnalysisFilters = {
   desde?: string; hasta?: string; cutoff?: string; almacen?: string; lote?: string; ot?: string
@@ -46,6 +47,7 @@ type Summary = Record<string, unknown> & {
 
 async function readSummary(supabase: SupabaseClient, filters: AptAnalysisFilters): Promise<Summary> {
   const { data, error } = await supabase.rpc('apt_operational_summary', { p: filters })
+  if (await requestAptBackgroundRead(supabase, 'apt_operational_summary', { p: filters }, error)) throw new Error(APT_BACKGROUND_MESSAGE)
   if (error || !data || data.success === false || data.error) throw new Error('El resumen operativo APT no está disponible. Revisa el acceso o la actualización de datos en /apt/operacion.')
   return data as Summary
 }
