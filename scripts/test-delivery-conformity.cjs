@@ -588,6 +588,7 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   sql(activeSource.slice(activeSource.indexOf('CREATE OR REPLACE FUNCTION public.is_active_tms_user()'),activeSource.indexOf('REVOKE ALL ON FUNCTION public.is_active_tms_user')))
   sql(read('supabase/migrations/20261011060000_active_route_add_service.sql'))
   sql(read('supabase/migrations/20261011070000_active_route_fk_index.sql'))
+  sql(read('supabase/migrations/20261012150000_route_service_peso_hora.sql'))
   sql(`UPDATE carriers SET type='PROPIO' WHERE id='${id(43)}'; DROP TRIGGER ensure_transport_budget ON contracts;`)
   sql(`ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email text;
     ALTER TABLE profiles ADD COLUMN IF NOT EXISTS document_number text,ADD COLUMN IF NOT EXISTS username text,
