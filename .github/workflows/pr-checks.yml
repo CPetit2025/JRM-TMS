@@ -44,6 +44,9 @@ jobs:
       - run: node scripts/test-apt-operational-report.cjs
       - run: node scripts/test-request-attention.cjs
       - run: node scripts/test-request-inline-components.cjs
+      - run: node scripts/test-request-reference.mjs
+      - run: node scripts/test-reference-service-registry.cjs
+      - run: node scripts/test-reference-finance.cjs
       - run: node scripts/test-delivery-conformity.cjs
       - name: PDF verification tools
         run: sudo apt-get update -qq && sudo apt-get install -y poppler-utils

@@ -1,5 +1,6 @@
 "use client"
 import { TransportWorkflow, TorreControlButton } from '@/components/transport/TransportWorkflow'
+import { ReferenceServiceRegistry } from '@/components/transport/ReferenceServiceRegistry'
 import { DataTable } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
 import { InlineStatusBar } from '@/components/ui/inline-status-bar'
@@ -96,6 +97,7 @@ export default function ContractServicesPage() {
   const { canWrite, isLoaded: permsLoaded } = usePermissions()
   const canEdit = permsLoaded && canWrite('contratos-servicios')
   const [services, setServices] = useState<ContractService[]>([])
+  const [registryView, setRegistryView] = useState<'OT' | 'REFERENCIA'>('OT')
   const [registryContext, setRegistryContext] = useState<Record<string, RegistryContext>>({})
   const [budgetContract, setBudgetContract] = useState('')
   const [reconcilingDispatch, setReconcilingDispatch] = useState<string | null>(null)
@@ -516,8 +518,8 @@ export default function ContractServicesPage() {
 
   return (
     <div className="w-full mx-auto space-y-2.5">
-      <PageHeader showTitle title="Registro de Servicios" description="Compromisos de transporte, servicios realizados y gastos adicionales vinculados a la OT. El cierre operativo no significa pago." actions={<>
-        {canEdit && <>
+      <PageHeader showTitle title="Registro de Servicios" description="Compromisos de transporte y servicios realizados vinculados a una OT o autorizados con OC, OS o RQ. El cierre operativo no significa pago." actions={<>
+        {canEdit && registryView === 'OT' && <>
           <button
             onClick={() => setIsOrphanModalOpen(true)}
             className={`flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors ${orphanDispatches.length ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
@@ -553,12 +555,18 @@ export default function ContractServicesPage() {
       </>} />
       <div className="flex flex-wrap items-center gap-2">
         <TransportWorkflow current="registro" torre={false} />
-        <div className="ml-auto min-w-0">
+        {registryView === 'OT' && <div className="ml-auto min-w-0">
           <InlineStatusBar label="Resumen por etapa (filtra la tabla)" active={filterStatus} loading={loading} onChange={setFilterStatus}
             items={([['TODOS', 'Todos', Layers, 'navy'], ['COMPROMETIDO', 'Comprometidos', Clock, 'amber'], ['REALIZADO', 'Realizados', CheckCircle2, 'emerald'], ['REGISTRO_MANUAL', 'Manuales', FileEdit, 'slate'], ['ANULADO', 'Anulados', Ban, 'rose']] as const)
               .map(([key, label, Icon, tone]) => ({ key, label, icon: <Icon />, tone, count: key === 'TODOS' ? services.length : services.filter(srv => stageOf(srv) === key).length }))} />
-        </div>
+        </div>}
       </div>
+
+      <div className="flex gap-2 border-b border-jrm-line" aria-label="Tipo de registro">
+        {([['OT', 'Servicios por OT'], ['REFERENCIA', 'Servicios con OC / OS / RQ']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={registryView === value} onClick={() => setRegistryView(value)} className={`border-b-2 px-3 py-3 text-sm font-semibold ${registryView === value ? 'border-jrm-navy text-jrm-navy' : 'border-transparent text-slate-500 hover:text-jrm-navy'}`}>{label}</button>)}
+      </div>
+
+      {registryView === 'REFERENCIA' ? <ReferenceServiceRegistry /> : <>
 
       {/* Filtros, búsqueda y saldo de partida en una fila */}
       <FilterToolbar compact label="Búsqueda y filtros de servicios" onClear={() => { setSearchTerm(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterStatus('TODOS') }}>
@@ -697,6 +705,8 @@ export default function ContractServicesPage() {
           </DataTable>
         </div>
       </div>
+
+      </>}
 
       <Modal
         isOpen={isOrphanModalOpen}

@@ -40,8 +40,8 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
     return m
   }, [rows])
   const events = useMemo<CalEvent[]>(() => [
-    ...rows.map(r => { const family = requestFamily(requestOf.get(r.request_id) || r); return { id: `${r.dispatch_id}-${r.request_id}`, day: limaDay(r.scheduled_departure), origin: portalOrigin(r), ref: family.mother ? `OT ${family.mother}` : portalReference(r), family: family.summary, code: r.request_number, ...portalStatus(r) } }),
-    ...requests.filter(r => !stopOf.has(r.id)).map(r => ({ id: r.id, day: attentionDay(r) || '', origin: portalOrigin(r), ref: requestFamily(r).mother ? `OT ${requestFamily(r).mother}` : portalReference(r), family: requestFamily(r).summary, code: r.request_number, ...portalStatus(null, r.status) })),
+    ...rows.map(r => { const family = requestFamily(requestOf.get(r.request_id) || r); return { id: `${r.dispatch_id}-${r.request_id}`, day: limaDay(r.scheduled_departure), origin: portalOrigin(r), ref: family.mother ? `OT ${family.mother}` : portalReference(r), family: family.mother ? family.summary : '', code: r.request_number, ...portalStatus(r) } }),
+    ...requests.filter(r => !stopOf.has(r.id)).map(r => ({ id: r.id, day: attentionDay(r) || '', origin: portalOrigin(r), ref: requestFamily(r).mother ? `OT ${requestFamily(r).mother}` : portalReference(r), family: requestFamily(r).mother ? requestFamily(r).summary : '', code: r.request_number, ...portalStatus(null, r.status) })),
   ], [requests, rows, stopOf, requestOf])
   const counts = useMemo(() => {
     const c = new Map<PortalOrigin, number>()
@@ -143,13 +143,13 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
         </div>
       </div>
       <div className="overflow-x-auto"><DataTable className="w-full min-w-[1250px] text-left text-sm">
-        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['Registro / Solicitud', 'OT madre / Componentes', 'Cliente / Proveedor', 'Servicio / Recorrido', 'Atención solicitada', 'Programación / Unidad', 'Estado', 'Acciones'].map(h => <th key={h} className="px-3 py-2">{h}</th>)}</tr></thead>
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['Registro / Solicitud', 'OT / OC / OS / RQ', 'Cliente / Proveedor', 'Servicio / Recorrido', 'Atención solicitada', 'Programación / Unidad', 'Estado', 'Acciones'].map(h => <th key={h} className="px-3 py-2">{h}</th>)}</tr></thead>
         <tbody className="divide-y">
           {filtered.map(r => {
             const stop = stopOf.get(r.id), family = requestFamily(r)
             return <tr key={r.id} className="hover:bg-slate-50">
               <td className="whitespace-nowrap px-3 py-2"><span className="block">{portalTime(r.created_at)}</span><span className="text-xs text-slate-500">{r.request_number}</span></td>
-              <td className="px-3 py-2"><span className="flex items-center gap-1.5"><OriginBadge origin={portalOrigin(r)} /><span className="font-semibold text-slate-800">{family.mother ? `OT ${family.mother}` : portalReference(r)}</span></span><span className="mt-1 block text-xs text-slate-500" title={family.codes.join(' · ')}>{family.summary}</span></td>
+              <td className="px-3 py-2"><span className="flex items-center gap-1.5"><OriginBadge origin={portalOrigin(r)} /><span className="font-semibold text-slate-800">{family.mother ? `OT ${family.mother}` : portalReference(r)}</span></span>{family.mother && <span className="mt-1 block text-xs text-slate-500" title={family.codes.join(' · ')}>{family.summary}</span>}</td>
               <td className="max-w-56 px-3 py-2">{(() => { const p = portalParty(r); return p.name
                 ? <span className="block truncate" title={`${p.label}: ${p.name}`}>{p.name}<span className="block text-[11px] text-slate-500">{p.label}</span></span>
                 : <span className="text-slate-400">—</span> })()}</td>

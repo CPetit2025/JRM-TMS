@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
+import { fetchServiceTypes } from '@/lib/request-service'
+import { referenceLabel } from '@/lib/suppliers'
 
 type Request = { id: string; number: string; type: string; ot: string | null; origin: string; destination: string; required_at: string | null; required_date: string | null; weight_kg: string | null }
 type Stop = { id: string; order: number; number: string; ot: string | null; status: string; origin: string; destination: string; locked: boolean }
@@ -14,6 +16,7 @@ const attention = (r: Request) => r.required_at ? new Date(r.required_at).toLoca
 export function AddRouteService({ dispatchId, initialRequestId, onClose, onChanged }: { dispatchId: string | null; initialRequestId?: string; onClose: () => void; onChanged: (requestId: string) => void }) {
  const supabase = useMemo(() => createClient(), [])
  const [context, setContext] = useState<Context | null>(null)
+ const [references, setReferences] = useState<Map<string, string>>(new Map())
  const [error, setError] = useState('')
  const [busy, setBusy] = useState(false)
  const [requestId, setRequestId] = useState('')
@@ -34,7 +37,9 @@ export function AddRouteService({ dispatchId, initialRequestId, onClose, onChang
      setContext(null); setError(''); setRequestId(''); setBefore(''); setSearch(''); setFreight(''); setKm(''); setCargo(''); setAvailable(''); setExpected(''); setReason(''); setConfirmed(false)
      operation.current = crypto.randomUUID()
      const { data, error: failure } = await supabase.rpc('active_route_context', { p_dispatch: dispatchId })
-     if (!cancelled) { if (failure) setError(failure.message); else {
+     const nextContext = !failure ? data as Context : null
+     const types = nextContext ? await fetchServiceTypes(supabase, [...nextContext.requests.map(r => r.id), ...nextContext.stops.map(s => s.id)]) : new Map()
+     if (!cancelled) { setReferences(new Map([...types].map(([id, info]) => [id, referenceLabel(info) || 'Sin referencia']))); if (failure) setError(failure.message); else {
        const next = data as Context
        setContext(next)
        const initial = next.requests.find(r => r.id === initialRequestId)
@@ -44,7 +49,7 @@ export function AddRouteService({ dispatchId, initialRequestId, onClose, onChang
    return () => { cancelled = true; window.clearTimeout(timer) }
  }, [dispatchId, initialRequestId, supabase])
  const selected = context?.requests.find(r => r.id === requestId)
- const filtered = context?.requests.filter(r => `${r.number} ${r.ot || ''} ${r.origin} ${r.destination}`.toLowerCase().includes(search.toLowerCase())) || []
+ const filtered = context?.requests.filter(r => `${r.number} ${r.ot || references.get(r.id) || ''} ${r.origin} ${r.destination}`.toLowerCase().includes(search.toLowerCase())) || []
  const preview = context ? [...context.stops] : []
  if (selected) {
    const index = before ? preview.findIndex(s => s.id === before) : preview.length
@@ -72,16 +77,16 @@ export function AddRouteService({ dispatchId, initialRequestId, onClose, onChang
      <div className="rounded-xl bg-slate-50 p-4"><p className="font-bold text-jrm-navy">{context.dispatch.number} · {context.dispatch.plate}</p><p className="text-sm text-slate-600">{context.dispatch.driver} · {context.dispatch.status}</p><p className="mt-2 text-xs text-slate-600">Las paradas atendidas y el tramo iniciado conservan su posición, kilometraje y evidencias.</p><p className="mt-2 text-sm font-semibold text-amber-800">Adicionales solo para el día {context.dispatch.operating_day || 'operativo de esta ruta'}. Corte a las 00:00 de Lima; la documentación pendiente se conserva.</p></div>
      <div className="grid gap-5 lg:grid-cols-2">
        <section className="space-y-3"><h3 className="font-bold text-jrm-navy">1. Seleccionar solicitud aprobada</h3>
-         <input aria-label="Buscar solicitud u OT" className={field} placeholder="Buscar solicitud, OT o dirección…" value={search} onChange={e => setSearch(e.target.value)} />
-         <div className="max-h-72 overflow-auto rounded-lg border"><table className="w-full text-left text-xs"><thead className="sticky top-0 bg-slate-50"><tr><th className="p-3">Solicitud / OT</th><th className="p-3">Servicio / Atención</th><th className="p-3">Seleccionar</th></tr></thead><tbody>
+         <input aria-label="Buscar solicitud, OT u orden" className={field} placeholder="Buscar solicitud, OT, OC, OS, RQ o dirección…" value={search} onChange={e => setSearch(e.target.value)} />
+         <div className="max-h-72 overflow-auto rounded-lg border"><table className="w-full text-left text-xs"><thead className="sticky top-0 bg-slate-50"><tr><th className="p-3">Solicitud / OT / Orden</th><th className="p-3">Servicio / Atención</th><th className="p-3">Seleccionar</th></tr></thead><tbody>
            {!filtered.length && <tr><td colSpan={3} className="p-4 text-slate-500">No hay solicitudes aprobadas disponibles con este filtro.</td></tr>}
-           {filtered.map(r => <tr key={r.id} className={`border-t ${requestId === r.id ? 'bg-blue-50' : ''}`}><td className="p-3 font-semibold">{r.number}<span className="block font-normal">{r.ot ? `OT ${r.ot}` : 'Sin OT'}</span></td><td className="p-3">{r.type === 'RECOJO' ? 'Recojo' : r.type === 'TRASLADO' ? 'Punto a punto' : 'Entrega'}<span className="block">{attention(r)}</span></td><td className="p-3"><button type="button" className="min-h-10 rounded-lg border px-3 font-semibold text-jrm-navy" onClick={() => { setRequestId(r.id); setCargo(r.weight_kg && Number(r.weight_kg) > 0 ? r.weight_kg : ''); setConfirmed(false) }}>{requestId === r.id ? 'Seleccionada' : 'Seleccionar'}</button></td></tr>)}
+           {filtered.map(r => <tr key={r.id} className={`border-t ${requestId === r.id ? 'bg-blue-50' : ''}`}><td className="p-3 font-semibold">{r.number}<span className="block font-normal">{r.ot ? `OT ${r.ot}` : references.get(r.id) || 'Sin referencia'}</span></td><td className="p-3">{r.type === 'RECOJO' ? 'Recojo' : r.type === 'TRASLADO' ? 'Punto a punto' : 'Entrega'}<span className="block">{attention(r)}</span></td><td className="p-3"><button type="button" className="min-h-10 rounded-lg border px-3 font-semibold text-jrm-navy" onClick={() => { setRequestId(r.id); setCargo(r.weight_kg && Number(r.weight_kg) > 0 ? r.weight_kg : ''); setConfirmed(false) }}>{requestId === r.id ? 'Seleccionada' : 'Seleccionar'}</button></td></tr>)}
          </tbody></table></div>
          {selected && <div className="rounded-lg border bg-blue-50 p-3 text-sm"><p><strong>Punto de carga / recojo:</strong> {selected.origin}</p><p className="mt-1"><strong>Destino:</strong> {selected.destination}</p></div>}
        </section>
        <section className="space-y-3"><h3 className="font-bold text-jrm-navy">2. Revisar secuencia</h3>
          <label className="block text-sm">Ubicación del nuevo servicio<select className={field} value={before} onChange={e => { setBefore(e.target.value); setConfirmed(false) }}><option value="">Al final de la ruta</option>{context.stops.filter(s => !s.locked).map(s => <option key={s.id} value={s.id}>Antes de {s.number} · {s.destination}</option>)}</select></label>
-         <ol className="max-h-72 space-y-2 overflow-auto">{preview.map((s, index) => <li key={s.id} className={`rounded-lg border p-3 text-sm ${s.status === 'NUEVO' ? 'border-blue-300 bg-blue-50' : 'bg-white'}`}><p className="font-semibold">{index + 1}. {s.number} · {s.ot ? `OT ${s.ot}` : 'Sin OT'} <span className="text-xs text-slate-500">{s.status === 'NUEVO' ? 'Nuevo servicio' : s.locked ? 'Posición protegida' : 'Pendiente'}</span></p><p className="mt-1 text-xs text-slate-600">{s.origin} → {s.destination}</p></li>)}</ol>
+         <ol className="max-h-72 space-y-2 overflow-auto">{preview.map((s, index) => <li key={s.id} className={`rounded-lg border p-3 text-sm ${s.status === 'NUEVO' ? 'border-blue-300 bg-blue-50' : 'bg-white'}`}><p className="font-semibold">{index + 1}. {s.number} · {s.ot ? `OT ${s.ot}` : references.get(s.id) || 'Sin referencia'} <span className="text-xs text-slate-500">{s.status === 'NUEVO' ? 'Nuevo servicio' : s.locked ? 'Posición protegida' : 'Pendiente'}</span></p><p className="mt-1 text-xs text-slate-600">{s.origin} → {s.destination}</p></li>)}</ol>
        </section>
      </div>
      <section><h3 className="font-bold text-jrm-navy">3. Validar operación y costo adicional</h3><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
