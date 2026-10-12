@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { Eye } from 'lucide-react'
 import { DataTable } from '@/components/ui/data-table'
 import { Modal } from '@/components/ui/modal'
-import { limaDay, monthDays, portalTime, portalAllowedTime, requestAnticipation, type PortalRequest } from '@/lib/tracking-calendar'
+import { limaDay, monthDays, portalTime, portalAllowedTime, requestAnticipation, requestFamily, type PortalRequest } from '@/lib/tracking-calendar'
 import { PORTAL_ORIGINS, originStyle, portalExtraRefs, portalOrigin, portalParty, portalReference, portalStatus, type PortalOrigin, type PortalRow } from '@/lib/tracking-portal'
 import { OriginBadge, PortalDocButtons, StatusPill } from '@/components/tracking/PortalBits'
 
@@ -12,11 +12,11 @@ import { OriginBadge, PortalDocButtons, StatusPill } from '@/components/tracking
 // mañana (despacho del día siguiente) se resaltan. Debajo, el registro de solicitudes desde la más reciente.
 
 type Props = { month: string; onMonth: (month: string) => void; requests: PortalRequest[]; rows: PortalRow[]; access: { token: string; pin: string } }
-type CalEvent = { id: string; day: string; origin: PortalOrigin; ref: string; code: string; label: string; bg: string; text: string }
+type CalEvent = { id: string; day: string; origin: PortalOrigin; ref: string; family: string; code: string; label: string; bg: string; text: string }
 
 const attentionDay = (r: PortalRequest) => r.required_at ? limaDay(r.required_at) : r.required_date?.slice(0, 10)
 const addDays = (day: string, n: number) => { const d = new Date(`${day}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
-const serviceLabel = (r: PortalRequest) => r.request_type === 'RECOJO' ? 'Recojo' : r.request_type === 'TRASLADO' ? 'Punto a punto' : 'Entrega'
+const serviceLabel = (r: PortalRequest) => r.attention_mode === 'RECOJO_CLIENTE' ? 'Recojo por cliente' : r.request_type === 'RECOJO' ? 'Recojo' : r.request_type === 'TRASLADO' ? 'Punto a punto' : 'Entrega'
 const district = (r: PortalRequest) => (r.request_type === 'RECOJO' ? r.pickup_district : r.delivery_district) || r.delivery_zone || '—'
 const routeTime = (value: string) => new Date(value).toLocaleString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
 
@@ -33,15 +33,16 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
   const today = limaDay(new Date().toISOString()), tomorrow = addDays(today, 1)
 
   // Última parada de cada solicitud (las filas vienen de la salida más reciente a la más antigua).
+  const requestOf = useMemo(() => new Map(requests.map(r => [r.id, r])), [requests])
   const stopOf = useMemo(() => {
     const m = new Map<string, PortalRow>()
     rows.forEach(r => { if (!m.has(r.request_id)) m.set(r.request_id, r) })
     return m
   }, [rows])
   const events = useMemo<CalEvent[]>(() => [
-    ...rows.map(r => ({ id: `${r.dispatch_id}-${r.request_id}`, day: limaDay(r.scheduled_departure), origin: portalOrigin(r), ref: portalReference(r), code: r.request_number, ...portalStatus(r) })),
-    ...requests.filter(r => !stopOf.has(r.id)).map(r => ({ id: r.id, day: attentionDay(r) || '', origin: portalOrigin(r), ref: portalReference(r), code: r.request_number, ...portalStatus(null, r.status) })),
-  ], [requests, rows, stopOf])
+    ...rows.map(r => { const family = requestFamily(requestOf.get(r.request_id) || r); return { id: `${r.dispatch_id}-${r.request_id}`, day: limaDay(r.scheduled_departure), origin: portalOrigin(r), ref: family.mother ? `OT ${family.mother}` : portalReference(r), family: family.summary, code: r.request_number, ...portalStatus(r) } }),
+    ...requests.filter(r => !stopOf.has(r.id)).map(r => ({ id: r.id, day: attentionDay(r) || '', origin: portalOrigin(r), ref: requestFamily(r).mother ? `OT ${requestFamily(r).mother}` : portalReference(r), family: requestFamily(r).summary, code: r.request_number, ...portalStatus(null, r.status) })),
+  ], [requests, rows, stopOf, requestOf])
   const counts = useMemo(() => {
     const c = new Map<PortalOrigin, number>()
     events.filter(e => e.day.startsWith(month)).forEach(e => c.set(e.origin, (c.get(e.origin) || 0) + 1))
@@ -57,7 +58,7 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
   const filtered = requests.filter(r => !hidden.includes(portalOrigin(r))
     && (!activeDays || (basis === 'registered' ? activeDays.includes(limaDay(r.created_at))
       : activeDays.includes(attentionDay(r) || '') || rows.some(d => d.request_id === r.id && activeDays.includes(limaDay(d.scheduled_departure)))))
-    && [r.request_number, r.ot_code, r.parent_ot, r.reference_number, r.purchase_order, r.client_name, r.supplier_name, r.delivery_address, district(r), stopOf.get(r.id)?.plate].join(' ').toLowerCase().includes(search.toLowerCase()))
+    && [r.request_number, r.ot_code, r.parent_ot, r.reference_number, r.purchase_order, r.client_name, r.supplier_name, r.delivery_address, district(r), stopOf.get(r.id)?.plate, stopOf.get(r.id)?.driver_name, stopOf.get(r.id)?.dispatch_number, requestFamily(r).codes.join(' ')].join(' ').toLowerCase().includes(search.toLowerCase()))
   const navigate = (direction: number) => {
     const day = addDays(anchor, direction * (view === 'week' ? 7 : 1))
     if (!day.startsWith(month)) onMonth(day.slice(0, 7)); setSelected(day)
@@ -78,7 +79,7 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
 
     <section className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div><h2 className="font-bold text-[#002855]">Calendario de transporte</h2><p className="text-xs text-slate-500">Fecha de salida o de atención · horario de Lima</p></div>
+        <div><h2 className="font-bold text-[#002855]">Calendario de transporte</h2><p className="text-xs text-slate-500">OT madre · S: subcontratos incluidos · E: errores incluidos · horario de Lima</p></div>
         <div className="flex flex-wrap gap-1.5 text-sm">
           <input aria-label="Mes consultado" type="month" value={month} onChange={e => { if (e.target.value) { onMonth(e.target.value); setSelected('') } }} className="h-9 rounded-lg border px-2" />
           <select aria-label="Vista del calendario" value={view} onChange={e => setView(e.target.value as typeof view)} className="h-9 rounded-lg border px-2"><option value="month">Mes</option><option value="week">Semana</option><option value="day">Día</option></select>
@@ -112,8 +113,8 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
             className={`flex min-h-[4.75rem] flex-col rounded-md border p-1 text-left ${day === selected ? 'border-[#002855] bg-slate-100' : mark ? mark.ring : 'border-slate-200'} ${day.startsWith(month) ? '' : 'opacity-45'}`}>
             <span className="flex items-center justify-between gap-1"><span className="text-xs font-semibold">{Number(day.slice(-2))}</span>{mark && <span className={`truncate rounded px-1 text-[9px] font-bold uppercase ${mark.tagCls}`}>{mark.tag}</span>}</span>
             <span className="mt-0.5 space-y-0.5">
-              {list.slice(0, perCell).map(e => <span key={e.id} title={`${e.ref} · ${e.code} · ${e.label}`} className={`block truncate rounded border-l-[3px] px-1 py-px text-[10px] leading-4 ${originStyle(e.origin).bar} ${e.bg} ${e.text}`}>
-                <b>{e.ref.replace(/^OT /, '')}</b> · {e.label}
+              {list.slice(0, perCell).map(e => <span key={e.id} title={`${e.ref} · ${e.family} · ${e.code} · ${e.label}`} className={`block rounded border-l-[3px] px-1 py-px text-[10px] leading-4 ${originStyle(e.origin).bar} ${e.bg} ${e.text}`}>
+                <b className="block text-[11px]">{e.ref.replace(/^OT /, '')}</b><span className="block">{e.family}</span><span className="block font-medium">{e.label}</span>
               </span>)}
               {list.length > perCell && <span className="block text-[10px] font-semibold text-blue-700">+{list.length - perCell} más</span>}
             </span>
@@ -125,7 +126,7 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
           const mark = dayMark(day)
           return <div key={day} className={`rounded-lg border p-2 ${mark ? mark.ring : ''}`}>
             <button onClick={() => setSelected(day === selected ? '' : day)} className="mb-1 flex items-center gap-2 text-sm font-semibold text-[#002855]">{new Date(`${day}T12:00:00-05:00`).toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' })}{mark && <span className={`rounded px-1 text-[10px] uppercase ${mark.tagCls}`}>{mark.tag}</span>}</button>
-            {dayEvents(day).map(e => <div key={e.id} className={`mb-1 rounded border-l-4 px-2 py-1 text-xs ${originStyle(e.origin).bar} ${e.bg} ${e.text}`}>{e.ref} · {e.code} · {e.label}</div>)}
+            {dayEvents(day).map(e => <div key={e.id} className={`mb-1 rounded border-l-4 px-2 py-1 text-xs ${originStyle(e.origin).bar} ${e.bg} ${e.text}`}>{e.ref} · {e.family} · {e.code} · {e.label}</div>)}
           </div>
         })}
         {!visibleDays.some(day => dayEvents(day).length) && <p className="text-sm text-slate-500">No hay servicios en este período.</p>}
@@ -134,27 +135,27 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
 
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-        <div><h2 className="font-bold text-[#002855]">Registro de solicitudes</h2><p className="text-xs text-slate-500">Desde la registrada más recientemente{selected ? ` · ${selected}` : ''}</p></div>
+        <div><h2 className="font-bold text-[#002855]">Registro de solicitudes</h2><p className="text-xs text-slate-500">Registro, atención solicitada y salida programada · horario de Lima{selected ? ` · ${selected}` : ''}</p></div>
         <div className="flex flex-wrap gap-2">
           <select aria-label="Fecha para filtrar solicitudes" value={basis} onChange={e => setBasis(e.target.value as typeof basis)} className="h-9 rounded-lg border px-2 text-sm"><option value="registered">Fecha de registro</option><option value="attention">Fecha de atención</option></select>
           {selected && <button onClick={() => setSelected('')} className="text-xs text-blue-700">Ver todo</button>}
-          <input aria-label="Buscar solicitud" value={search} onChange={e => setSearch(e.target.value)} placeholder="OT, OS/OC/RQ, cliente, distrito o placa" className="h-9 w-56 rounded-lg border px-2 text-sm" />
+          <input aria-label="Buscar solicitud" value={search} onChange={e => setSearch(e.target.value)} placeholder="OT, solicitud, ruta, cliente o placa" className="h-9 w-56 rounded-lg border px-2 text-sm" />
         </div>
       </div>
-      <div className="overflow-x-auto"><DataTable className="w-full min-w-[980px] text-left text-sm">
-        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['Registro', 'OT / Referencia', 'Cliente / Proveedor', 'Servicio', 'Distrito', 'Placa', 'Estado', ''].map(h => <th key={h} className="px-3 py-2">{h}</th>)}</tr></thead>
+      <div className="overflow-x-auto"><DataTable className="w-full min-w-[1250px] text-left text-sm">
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['Registro / Solicitud', 'OT madre / Componentes', 'Cliente / Proveedor', 'Servicio / Recorrido', 'Atención solicitada', 'Programación / Unidad', 'Estado', 'Acciones'].map(h => <th key={h} className="px-3 py-2">{h}</th>)}</tr></thead>
         <tbody className="divide-y">
           {filtered.map(r => {
-            const stop = stopOf.get(r.id)
+            const stop = stopOf.get(r.id), family = requestFamily(r)
             return <tr key={r.id} className="hover:bg-slate-50">
-              <td className="whitespace-nowrap px-3 py-2">{portalTime(r.created_at)}</td>
-              <td className="px-3 py-2"><span className="flex items-center gap-1.5"><OriginBadge origin={portalOrigin(r)} /><span className="font-semibold text-slate-800">{portalReference(r)}</span></span></td>
+              <td className="whitespace-nowrap px-3 py-2"><span className="block">{portalTime(r.created_at)}</span><span className="text-xs text-slate-500">{r.request_number}</span></td>
+              <td className="px-3 py-2"><span className="flex items-center gap-1.5"><OriginBadge origin={portalOrigin(r)} /><span className="font-semibold text-slate-800">{family.mother ? `OT ${family.mother}` : portalReference(r)}</span></span><span className="mt-1 block text-xs text-slate-500" title={family.codes.join(' · ')}>{family.summary}</span></td>
               <td className="max-w-56 px-3 py-2">{(() => { const p = portalParty(r); return p.name
                 ? <span className="block truncate" title={`${p.label}: ${p.name}`}>{p.name}<span className="block text-[11px] text-slate-500">{p.label}</span></span>
                 : <span className="text-slate-400">—</span> })()}</td>
-              <td className="px-3 py-2">{serviceLabel(r)}</td>
-              <td className="px-3 py-2">{district(r)}</td>
-              <td className="whitespace-nowrap px-3 py-2 font-medium">{stop?.plate && stop.plate !== 'EXTERNO' ? stop.plate : <span className="text-slate-400">—</span>}</td>
+              <td className="max-w-64 px-3 py-2"><span className="block font-medium">{serviceLabel(r)}</span><span className="block truncate text-xs text-slate-500" title={r.pickup_address}>Origen: {r.pickup_address || '—'}</span><span className="block truncate text-xs text-slate-500" title={r.delivery_address}>Destino: {r.delivery_address || '—'}</span><span className="text-xs text-slate-500">{district(r)}</span></td>
+              <td className="whitespace-nowrap px-3 py-2">{r.required_at ? portalTime(r.required_at) : `${r.required_date?.slice(0,10) || '—'} · sin hora`}</td>
+              <td className="px-3 py-2">{stop ? <><span className="block whitespace-nowrap font-medium">{portalTime(stop.scheduled_departure)}</span><span className="block text-xs text-slate-500">{stop.dispatch_number}</span><span className="block text-xs text-slate-600">{stop.plate === 'EXTERNO' ? 'Unidad por asignar' : stop.plate || 'Unidad por asignar'} · {stop.driver_name || 'Conductor por asignar'}</span></> : <span className="text-xs text-slate-500">Pendiente de programación</span>}</td>
               <td className="px-3 py-2"><StatusPill tone={portalStatus(stop, r.status)} /></td>
               <td className="px-3 py-2 text-right"><button onClick={() => setDetail(r)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-300 px-2.5 text-xs font-semibold text-[#002855] hover:bg-white"><Eye className="h-3.5 w-3.5" />Ver detalle</button></td>
             </tr>
@@ -166,10 +167,10 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
 
     <Modal isOpen={Boolean(detail)} onClose={() => setDetail(null)} title={`Detalle · ${detail?.request_number || ''}`} maxWidth="max-w-3xl">
       {detail && <div className="space-y-4 text-sm">
-        <div className="flex flex-wrap items-center gap-2"><OriginBadge origin={portalOrigin(detail)} /><strong className="text-base text-[#002855]">{portalReference(detail)}</strong><StatusPill tone={portalStatus(detailStop, detail.status)} /></div>
+        <div className="flex flex-wrap items-center gap-2"><OriginBadge origin={portalOrigin(detail)} /><strong className="text-base text-[#002855]">{requestFamily(detail).mother ? `OT ${requestFamily(detail).mother}` : portalReference(detail)}</strong><span className="text-xs text-slate-500">{requestFamily(detail).summary}</span><StatusPill tone={portalStatus(detailStop, detail.status)} /></div>
         <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
           {[
-            ['Solicitud', detail.request_number], [portalParty(detail).label, portalParty(detail).name || '—'],
+            ['Solicitud', detail.request_number], ['Componentes incluidos', requestFamily(detail).codes.join(' · ') || 'OT madre'], [portalParty(detail).label, portalParty(detail).name || '—'],
             ...(detail.parent_ot ? [['OT madre', detail.parent_ot]] : []),
             ...(portalExtraRefs(detail).length ? [['Otras referencias', portalExtraRefs(detail).join(' · ')]] : []),
             ['Servicio', `${serviceLabel(detail)} · ${detail.delivery_zone || 'Sin zona'}`], ['Registro', portalTime(detail.created_at)],

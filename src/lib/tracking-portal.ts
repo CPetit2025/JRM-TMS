@@ -6,7 +6,8 @@ import { requiresSupplier } from '@/lib/suppliers'
 
 export type PortalDocument = { id: string; type: 'GUIA_REMISION' | 'PACKING_LIST'; number: string | null; name: string | null }
 export type PortalRow = DeliveryRow & {
-  dispatch_status?: string; ot_type?: string | null; sequence_order?: number | null
+  dispatch_status?: string; ot_type?: string | null; parent_ot?: string | null; sequence_order?: number | null
+  components?: { id: string; code: string; type: string | null }[]
   supplier_name?: string | null; request_type?: string | null; attention_mode?: string | null
   documents?: PortalDocument[]; signed_photos?: number; packing_photos?: number
 }
