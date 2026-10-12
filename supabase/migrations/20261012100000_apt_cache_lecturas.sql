@@ -1,0 +1,149 @@
+-- APT · caché de lecturas pesadas: apt_operational_summary (9,3 s) y apt_dashboard (7,3 s) superaban o rozaban el
+-- statement_timeout de authenticated (8 s) y la web recibía 500. Ambos resultados dependen solo de los datos APT
+-- (cargas aplicadas, recálculo de estadía y flujo, parámetros), no del usuario ni de la hora: se guardan por filtro y
+-- versión de datos y se reutilizan hasta que esa versión cambie. Un cron precalienta las vistas iniciales.
+-- El cálculo original se conserva como *_live (solo service_role); los RPC públicos mantienen nombre, firma y acceso.
+BEGIN;
+CREATE TABLE IF NOT EXISTS public.apt_read_cache (
+  fn text NOT NULL, params jsonb NOT NULL, version text NOT NULL, result jsonb NOT NULL,
+  built_at timestamptz NOT NULL DEFAULT clock_timestamp(), PRIMARY KEY (fn, params)
+);
+ALTER TABLE public.apt_read_cache ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.apt_read_cache FROM PUBLIC, anon, authenticated;
+DROP POLICY IF EXISTS security_active_account ON public.apt_read_cache;
+CREATE POLICY security_active_account ON public.apt_read_cache AS RESTRICTIVE FOR ALL TO authenticated
+  USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()));
+
+-- Cálculo en vivo: mismo código, otro nombre. El de resumen admite una página completa para que la caché guarde todas
+-- las filas una sola vez y pagine sin recalcular (el RPC público sigue limitando cada página a 100).
+DO $migration$
+DECLARE source text; cap constant text := '(p->>''limit'')::integer,25),1),100);';
+BEGIN
+  IF to_regprocedure('public.apt_dashboard_live(jsonb,text)') IS NULL THEN
+    ALTER FUNCTION public.apt_dashboard(jsonb, text) RENAME TO apt_dashboard_live;
+  END IF;
+  IF to_regprocedure('public.apt_operational_summary_live(jsonb)') IS NULL THEN
+    ALTER FUNCTION public.apt_operational_summary(jsonb) RENAME TO apt_operational_summary_live;
+  END IF;
+  source := pg_get_functiondef('public.apt_operational_summary_live(jsonb)'::regprocedure);
+  IF position(cap IN source) > 0 THEN
+    EXECUTE replace(source, cap, '(p->>''limit'')::integer,25),1),1000000);');
+  ELSIF position('(p->>''limit'')::integer,25),1),1000000);' IN source) = 0 THEN
+    RAISE EXCEPTION 'apt_operational_summary no coincide con la definición esperada: revisar antes de migrar';
+  END IF;
+END $migration$;
+REVOKE ALL ON FUNCTION public.apt_dashboard_live(jsonb, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.apt_operational_summary_live(jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.apt_dashboard_live(jsonb, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.apt_operational_summary_live(jsonb) TO service_role;
+
+-- Versión de los datos que alimentan ambos cálculos: cambia con cada carga aplicada o descartada, recálculo de
+-- estadía o flujo y cambio de parámetros o rangos de antigüedad.
+CREATE OR REPLACE FUNCTION public.apt_read_cache_version()
+RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+  SELECT md5(concat_ws('|',
+    (SELECT count(*) || ':' || COALESCE(max(applied_at)::text, '-') FROM public.apt_uploads WHERE status = 'APLICADA'),
+    (SELECT string_agg(to_jsonb(s)::text, ',') FROM public.apt_state s),
+    (SELECT string_agg(to_jsonb(s)::text, ',') FROM public.apt_flow_state s),
+    (SELECT string_agg(to_jsonb(s)::text, ',') FROM public.apt_settings s),
+    (SELECT string_agg(to_jsonb(r)::text, ',' ORDER BY r.desde) FROM public.apt_aging_ranges r)));
+$$;
+
+-- Lee o calcula y guarda. Solo se guardan resultados correctos; los errores de validación se devuelven tal cual.
+CREATE OR REPLACE FUNCTION public.apt_read_cached(p_fn text, p_params jsonb)
+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE v_version text := public.apt_read_cache_version(); v_result jsonb;
+BEGIN
+  SELECT c.result INTO v_result FROM public.apt_read_cache c WHERE c.fn = p_fn AND c.params = p_params AND c.version = v_version;
+  IF FOUND THEN RETURN v_result; END IF;
+  v_result := CASE p_fn
+    WHEN 'apt_dashboard' THEN public.apt_dashboard_live(p_params -> 'p', p_params ->> 'grain')
+    WHEN 'apt_operational_summary' THEN public.apt_operational_summary_live((p_params -> 'p') || '{"limit":999999,"offset":0}')
+  END;
+  IF v_result IS NULL THEN RAISE EXCEPTION 'Lectura APT no reconocida: %', p_fn; END IF;
+  IF (v_result ->> 'success') = 'true' THEN
+    INSERT INTO public.apt_read_cache (fn, params, version, result) VALUES (p_fn, p_params, v_version, v_result)
+    ON CONFLICT (fn, params) DO UPDATE SET version = EXCLUDED.version, result = EXCLUDED.result, built_at = clock_timestamp();
+  END IF;
+  RETURN v_result;
+END $$;
+REVOKE ALL ON FUNCTION public.apt_read_cache_version() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.apt_read_cached(text, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.apt_read_cache_version() TO service_role;
+GRANT EXECUTE ON FUNCTION public.apt_read_cached(text, jsonb) TO service_role;
+
+-- RPC públicos: misma firma, mismo control de acceso y misma respuesta.
+CREATE OR REPLACE FUNCTION public.apt_dashboard(p jsonb DEFAULT '{}'::jsonb, p_grain text DEFAULT 'semana')
+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  IF NOT public.apt_can_view() THEN RETURN jsonb_build_object('success', false, 'error', 'Sin acceso al módulo APT'); END IF;
+  RETURN public.apt_read_cached('apt_dashboard', jsonb_build_object('p', COALESCE(p, '{}'::jsonb), 'grain', p_grain));
+END $$;
+
+CREATE OR REPLACE FUNCTION public.apt_operational_summary(p jsonb DEFAULT '{}'::jsonb)
+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE v_full jsonb; v_limit integer; v_offset integer; v_filters jsonb;
+BEGIN
+  IF NOT public.apt_can_view() THEN RETURN jsonb_build_object('success', false, 'error', 'Sin acceso al módulo APT'); END IF;
+  p := COALESCE(p, '{}'::jsonb);
+  -- Filtros y paginación inválidos: el cálculo en vivo responde de inmediato con su mensaje de validación.
+  IF jsonb_typeof(p) <> 'object' OR COALESCE(p ->> 'limit', '25') !~ '^[0-9]{1,6}$' OR COALESCE(p ->> 'offset', '0') !~ '^[0-9]{1,9}$' THEN
+    RETURN public.apt_operational_summary_live(p);
+  END IF;
+  v_limit := LEAST(GREATEST(COALESCE((p ->> 'limit')::integer, 25), 1), 100);
+  v_offset := GREATEST(COALESCE((p ->> 'offset')::integer, 0), 0);
+  v_filters := p - 'limit' - 'offset';
+  v_full := public.apt_read_cached('apt_operational_summary', jsonb_build_object('p', v_filters));
+  IF (v_full ->> 'success') IS DISTINCT FROM 'true' OR jsonb_typeof(v_full -> 'rows') <> 'array' THEN RETURN v_full; END IF;
+  RETURN v_full || jsonb_build_object(
+    'rows', COALESCE((SELECT jsonb_agg(r.value ORDER BY r.ordinality) FROM jsonb_array_elements(v_full -> 'rows') WITH ORDINALITY r
+                      WHERE r.ordinality > v_offset AND r.ordinality <= v_offset + v_limit), '[]'::jsonb),
+    'limit', v_limit, 'offset', v_offset);
+END $$;
+REVOKE ALL ON FUNCTION public.apt_dashboard(jsonb, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.apt_operational_summary(jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.apt_dashboard(jsonb, text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.apt_operational_summary(jsonb) TO authenticated, service_role;
+
+-- Precalentado: las vistas que abren /apt, /apt/operacion, /apt/estadia y Analítica sin filtros. Corre con la
+-- identidad de una cuenta APT activa (solo en esta transacción) porque el cálculo verifica el acceso.
+CREATE OR REPLACE FUNCTION public.apt_read_cache_warm()
+RETURNS integer LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE v_version text; v_actor uuid; v_key record; v_built integer := 0;
+BEGIN
+  IF NOT pg_try_advisory_xact_lock(hashtext('apt_read_cache_warm')) THEN RETURN 0; END IF;
+  v_version := public.apt_read_cache_version();
+  DELETE FROM public.apt_read_cache WHERE version <> v_version OR built_at < now() - interval '2 days';
+  IF NOT EXISTS (SELECT 1 FROM public.apt_state WHERE cutoff IS NOT NULL)
+     AND NOT EXISTS (SELECT 1 FROM public.apt_flow_state WHERE cutoff IS NOT NULL) THEN RETURN 0; END IF;
+  FOR v_actor IN SELECT p.id FROM public.profiles p WHERE p.is_active AND p.role_id IS NOT NULL ORDER BY p.id LIMIT 200 LOOP
+    PERFORM set_config('request.jwt.claim.sub', v_actor::text, true);
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', v_actor, 'role', 'authenticated')::text, true);
+    EXIT WHEN public.apt_can_view();
+    v_actor := NULL;
+  END LOOP;
+  IF v_actor IS NULL THEN RETURN 0; END IF;
+  FOR v_key IN SELECT * FROM (VALUES
+      ('apt_operational_summary', '{"p":{}}'::jsonb),
+      ('apt_dashboard', '{"p":{},"grain":"semana"}'::jsonb),
+      ('apt_dashboard', '{"p":{},"grain":"dia"}'::jsonb)) k(fn, params)
+    WHERE NOT EXISTS (SELECT 1 FROM public.apt_read_cache c WHERE c.fn = k.fn AND c.params = k.params AND c.version = v_version)
+  LOOP
+    PERFORM public.apt_read_cached(v_key.fn, v_key.params);
+    v_built := v_built + 1;
+  END LOOP;
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claims', '', true);
+  RETURN v_built;
+END $$;
+REVOKE ALL ON FUNCTION public.apt_read_cache_warm() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.apt_read_cache_warm() TO service_role;
+COMMENT ON TABLE public.apt_read_cache IS 'Resultados de apt_dashboard y apt_operational_summary por filtro y versión de datos APT; se invalidan solos al cambiar la versión.';
+
+-- PLATFORM_CRON_BEGIN: pg_cron is provisioned by Supabase; the local PostgreSQL harness tests the job directly.
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+DO $$ BEGIN IF EXISTS(SELECT 1 FROM cron.job WHERE jobname='apt-cache-lecturas') THEN PERFORM cron.unschedule('apt-cache-lecturas'); END IF; END $$;
+SELECT cron.schedule('apt-cache-lecturas','* * * * *',$job$SET statement_timeout='5min'; SELECT public.apt_read_cache_warm();$job$);
+-- PLATFORM_CRON_END
+NOTIFY pgrst,'reload schema';
+COMMIT;
