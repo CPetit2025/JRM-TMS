@@ -156,63 +156,116 @@ END $$;
 REVOKE ALL ON FUNCTION public.apt_read_cache_request(text, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.apt_read_cache_request(text, jsonb) TO authenticated, service_role;
 
--- Precalentado: las vistas que abren /apt, /apt/operacion, /apt/estadia y Analítica sin filtros. Corre con la
--- identidad de una cuenta APT activa (solo en esta transacción) porque el cálculo verifica el acceso.
-CREATE OR REPLACE FUNCTION public.apt_read_cache_warm()
-RETURNS integer LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
-DECLARE v_version text; v_actor uuid; v_key record; v_built integer := 0;
+-- Precalentado: las vistas que abren /apt, /apt/operacion, /apt/estadia y Analítica sin filtros, y luego los filtros
+-- pedidos por la web. Cada cálculo corre con la identidad de una cuenta APT activa (solo en su transacción) porque
+-- el cálculo verifica el acceso.
+CREATE OR REPLACE FUNCTION public.apt_read_cache_actor()
+RETURNS uuid LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE v_actor uuid;
 BEGIN
-  IF NOT pg_try_advisory_xact_lock(hashtext('apt_read_cache_warm')) THEN RETURN 0; END IF;
-  v_version := public.apt_read_cache_version();
-  DELETE FROM public.apt_read_cache WHERE version <> v_version OR built_at < now() - interval '2 days';
-  IF NOT EXISTS (SELECT 1 FROM public.apt_state WHERE cutoff IS NOT NULL)
-     AND NOT EXISTS (SELECT 1 FROM public.apt_flow_state WHERE cutoff IS NOT NULL) THEN RETURN 0; END IF;
   -- Primero las cuentas cuyo rol declara acceso APT; apt_can_view decide con la regla vigente.
   FOR v_actor IN SELECT p.id FROM public.profiles p JOIN public.roles r ON r.id = p.role_id
       WHERE p.is_active
       ORDER BY (r.name IN ('Administrador', 'Jefe de Distribución') OR COALESCE(r.permissions, '[]'::jsonb)::text ILIKE '%apt%') DESC, p.id LOOP
     PERFORM set_config('request.jwt.claim.sub', v_actor::text, true);
     PERFORM set_config('request.jwt.claims', json_build_object('sub', v_actor, 'role', 'authenticated')::text, true);
-    EXIT WHEN public.apt_can_view();
-    v_actor := NULL;
-  END LOOP;
-  IF v_actor IS NULL THEN RETURN 0; END IF;
-  DELETE FROM public.apt_read_cache_requests WHERE requested_at < now() - interval '1 day' OR attempts >= 3;
-  FOR v_key IN SELECT k.fn, k.params, false AS requested, 0 AS ord, NULL::timestamptz AS at FROM (VALUES
-      ('apt_operational_summary', '{"p":{}}'::jsonb),
-      ('apt_dashboard', '{"p":{},"grain":"semana"}'::jsonb),
-      ('apt_dashboard', '{"p":{},"grain":"dia"}'::jsonb)) k(fn, params)
-    UNION ALL
-    SELECT * FROM (SELECT r.fn, r.params, true, 1, r.requested_at FROM public.apt_read_cache_requests r ORDER BY r.requested_at LIMIT 10) q
-    ORDER BY ord, at
-  LOOP
-    CONTINUE WHEN EXISTS (SELECT 1 FROM public.apt_read_cache c WHERE c.fn = v_key.fn AND c.key_hash = md5(v_key.params::text)
-                          AND c.params = v_key.params AND c.version = v_version);
-    IF v_key.requested THEN
-      UPDATE public.apt_read_cache_requests SET attempts = attempts + 1 WHERE fn = v_key.fn AND key_hash = md5(v_key.params::text);
-    END IF;
-    -- Un filtro que falla no detiene el resto; los errores de validación no se guardan y se descartan de la cola.
-    BEGIN
-      IF (public.apt_read_cached(v_key.fn, v_key.params) ->> 'success') IS DISTINCT FROM 'true' THEN
-        DELETE FROM public.apt_read_cache_requests WHERE fn = v_key.fn AND key_hash = md5(v_key.params::text);
-      END IF;
-      v_built := v_built + 1;
-    EXCEPTION WHEN OTHERS THEN
-      RAISE WARNING 'Caché APT % no calculada: %', v_key.fn, SQLERRM;
-    END;
+    IF public.apt_can_view() THEN RETURN v_actor; END IF;
   END LOOP;
   PERFORM set_config('request.jwt.claim.sub', '', true);
   PERFORM set_config('request.jwt.claims', '', true);
+  RETURN NULL;
+END $$;
+
+-- Siguiente cálculo pendiente (vistas iniciales primero; después la cola, menos intentos y más antigua primero).
+-- Un filtro de la cola suma su intento aquí, en una transacción propia, para que una cancelación no lo deshaga.
+CREATE OR REPLACE FUNCTION public.apt_read_cache_next(p_skip text[] DEFAULT '{}')
+RETURNS TABLE (fn text, params jsonb) LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE v_version text := public.apt_read_cache_version(); v_fn text; v_params jsonb; v_requested boolean;
+BEGIN
+  DELETE FROM public.apt_read_cache c WHERE c.version <> v_version OR c.built_at < now() - interval '2 days';
+  DELETE FROM public.apt_read_cache_requests r WHERE r.requested_at < now() - interval '1 day' OR r.attempts >= 3;
+  IF NOT EXISTS (SELECT 1 FROM public.apt_state WHERE cutoff IS NOT NULL)
+     AND NOT EXISTS (SELECT 1 FROM public.apt_flow_state WHERE cutoff IS NOT NULL) THEN RETURN; END IF;
+  SELECT k.fn, k.params, k.requested INTO v_fn, v_params, v_requested FROM (
+      SELECT d.fn, d.params, false AS requested, 0 AS ord, 0 AS tries, NULL::timestamptz AS at FROM (VALUES
+        ('apt_operational_summary', '{"p":{}}'::jsonb),
+        ('apt_dashboard', '{"p":{},"grain":"semana"}'::jsonb),
+        ('apt_dashboard', '{"p":{},"grain":"dia"}'::jsonb)) d(fn, params)
+      UNION ALL
+      SELECT r.fn, r.params, true, 1, r.attempts, r.requested_at FROM public.apt_read_cache_requests r) k
+    WHERE NOT (k.fn || ':' || md5(k.params::text)) = ANY (p_skip)
+      AND NOT EXISTS (SELECT 1 FROM public.apt_read_cache c WHERE c.fn = k.fn AND c.key_hash = md5(k.params::text)
+                      AND c.params = k.params AND c.version = v_version)
+    ORDER BY k.ord, k.tries, k.at LIMIT 1;
+  IF v_fn IS NULL THEN RETURN; END IF;
+  IF v_requested THEN
+    UPDATE public.apt_read_cache_requests r SET attempts = r.attempts + 1 WHERE r.fn = v_fn AND r.key_hash = md5(v_params::text);
+  END IF;
+  fn := v_fn; params := v_params; RETURN NEXT;
+END $$;
+
+-- Calcula y guarda un filtro. Un resultado no válido (validación) se descarta de la cola.
+CREATE OR REPLACE FUNCTION public.apt_read_cache_build(p_fn text, p_params jsonb)
+RETURNS boolean LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE v_ok boolean;
+BEGIN
+  IF public.apt_read_cache_actor() IS NULL THEN RETURN false; END IF;
+  v_ok := (public.apt_read_cached(p_fn, p_params) ->> 'success') = 'true';
+  IF NOT v_ok THEN DELETE FROM public.apt_read_cache_requests r WHERE r.fn = p_fn AND r.key_hash = md5(p_params::text); END IF;
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claims', '', true);
+  RETURN v_ok;
+END $$;
+
+-- Todo en una transacción (pruebas y ejecución manual).
+CREATE OR REPLACE FUNCTION public.apt_read_cache_warm()
+RETURNS integer LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE v_key record; v_skip text[] := '{}'; v_built integer := 0;
+BEGIN
+  IF NOT pg_try_advisory_xact_lock(hashtext('apt_read_cache_warm')) THEN RETURN 0; END IF;
+  FOR i IN 1..13 LOOP
+    SELECT * INTO v_key FROM public.apt_read_cache_next(v_skip);
+    EXIT WHEN v_key.fn IS NULL;
+    v_skip := v_skip || (v_key.fn || ':' || md5(v_key.params::text));
+    IF public.apt_read_cache_build(v_key.fn, v_key.params) THEN v_built := v_built + 1; END IF;
+  END LOOP;
   RETURN v_built;
 END $$;
+
+-- Cron: cada paso confirma por separado. El intento queda registrado antes de calcular y cada resultado se guarda al
+-- terminar, así una cancelación (query_canceled no se captura con WHEN OTHERS) no deshace el avance ni bloquea la cola.
+-- Sin SET ni SECURITY DEFINER: es lo que permite COMMIT dentro del procedimiento; corre como el dueño del cron.
+CREATE OR REPLACE PROCEDURE public.apt_read_cache_warm_run()
+LANGUAGE plpgsql AS $$
+DECLARE v_key record; v_skip text[] := '{}';
+BEGIN
+  IF NOT pg_try_advisory_lock(hashtext('apt_read_cache_warm')) THEN RETURN; END IF;
+  FOR i IN 1..13 LOOP
+    SELECT * INTO v_key FROM public.apt_read_cache_next(v_skip);
+    COMMIT;
+    EXIT WHEN v_key.fn IS NULL;
+    v_skip := v_skip || (v_key.fn || ':' || md5(v_key.params::text));
+    PERFORM public.apt_read_cache_build(v_key.fn, v_key.params);
+    COMMIT;
+  END LOOP;
+  PERFORM pg_advisory_unlock(hashtext('apt_read_cache_warm'));
+END $$;
+REVOKE ALL ON FUNCTION public.apt_read_cache_actor() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.apt_read_cache_next(text[]) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.apt_read_cache_build(text, jsonb) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.apt_read_cache_warm() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON PROCEDURE public.apt_read_cache_warm_run() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.apt_read_cache_actor() TO service_role;
+GRANT EXECUTE ON FUNCTION public.apt_read_cache_next(text[]) TO service_role;
+GRANT EXECUTE ON FUNCTION public.apt_read_cache_build(text, jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.apt_read_cache_warm() TO service_role;
+GRANT EXECUTE ON PROCEDURE public.apt_read_cache_warm_run() TO service_role;
 COMMENT ON TABLE public.apt_read_cache IS 'Resultados de apt_dashboard y apt_operational_summary por filtro y versión de datos APT; se invalidan solos al cambiar la versión.';
 
 -- PLATFORM_CRON_BEGIN: pg_cron is provisioned by Supabase; the local PostgreSQL harness tests the job directly.
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 DO $$ BEGIN IF EXISTS(SELECT 1 FROM cron.job WHERE jobname='apt-cache-lecturas') THEN PERFORM cron.unschedule('apt-cache-lecturas'); END IF; END $$;
-SELECT cron.schedule('apt-cache-lecturas','* * * * *',$job$SET statement_timeout='5min'; SELECT public.apt_read_cache_warm();$job$);
+SELECT cron.schedule('apt-cache-lecturas','* * * * *',$job$CALL public.apt_read_cache_warm_run()$job$);
 -- PLATFORM_CRON_END
 NOTIFY pgrst,'reload schema';
 COMMIT;
