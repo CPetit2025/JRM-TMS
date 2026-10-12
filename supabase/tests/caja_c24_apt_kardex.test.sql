@@ -1,6 +1,6 @@
 -- CAJA C24 — APT: kardex de trazabilidad. Con los datos cargados, el saldo final del kardex por almacén cuadra con el
 -- saldo del flujo multi-almacén (FIFO encadenado) a la misma fecha de corte, y un filtro por lote devuelve solo ese
--- lote con su saldo acumulado. Solo lectura (se revierte).
+-- lote con su saldo acumulado. No modifica los datos fuente; todos los cambios del test se revierten.
 CREATE FUNCTION pg_temp.as_user(p_user uuid) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
   PERFORM set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true);
@@ -14,6 +14,10 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
 DO $test$
 DECLARE v_user uuid; v_role uuid; v_cut date; r jsonb; r2 jsonb; v_lote text; v_diff numeric; v_fail text[] := '{}'; v_pass int := 0;
 BEGIN
+  -- Compara una sola versión: evita que una carga ERP sustituya movimientos
+  -- entre el preflight del despliegue y este cuadre. El preflight ya persiste
+  -- la reparación del caché; aquí los bloqueos duran hasta el ROLLBACK final.
+  PERFORM public.apt_flow_ensure_current_core();
   SELECT id INTO v_user FROM public.profiles WHERE id IN (SELECT u.id FROM auth.users u)
     AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) ORDER BY id LIMIT 1;
   INSERT INTO public.roles (name, permissions) VALUES ('ZZ C24 ver', '["apt:read"]') RETURNING id INTO v_role;

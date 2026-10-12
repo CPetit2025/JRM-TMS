@@ -141,6 +141,7 @@ try {
  sql(`ALTER TABLE contracts ADD COLUMN client_id uuid; ALTER TABLE contracts ADD COLUMN created_by uuid; ALTER TABLE contracts ADD COLUMN destination_department text; ALTER TABLE contracts ADD COLUMN destination_province text; ALTER TABLE contracts ADD COLUMN destination_district text;
  CREATE FUNCTION is_active_tms_user() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$ SELECT EXISTS(SELECT 1 FROM profiles WHERE id=auth.uid() AND is_active) $$;`)
  sql(read('supabase/migrations/20261012020000_request_inline_components.sql'))
+ sql(read('supabase/migrations/20261012040000_request_component_native_type.sql'))
  deny(staff+`SELECT save_transport_request_attention(NULL,${lit(payload({department:'Logística',contract_id:null}))},'[]','[]');`,/Seleccione una OT madre/)
  deny(staff+`INSERT INTO transport_requests(request_number,site_id) VALUES('ZZ-UNLINKED','${id(1)}');`,/Seleccione una OT madre/)
  const sub=json(`create_transport_request_component('${id(3)}','SUBCONTRATO','s001')`)
@@ -165,5 +166,17 @@ try {
  const c91=query(read('supabase/tests/caja_c91_request_inline_components.test.sql'))
  assert.notEqual(c91.status,0); assert.match(c91.stderr,/CAJA C91 PASS/)
  console.log('PASS: exact production C91 verifies family creation and mandatory mother with rollback.')
+ // The real production column is an enum; test the same function with both native shapes.
+ sql(`CREATE TYPE public.contract_type AS ENUM('CONTRATO','OT_INDEPENDIENTE','SUBCONTRATO','ERROR');
+ ALTER TABLE contracts ALTER COLUMN type TYPE public.contract_type USING type::public.contract_type;`)
+ sql(read('supabase/migrations/20261012040000_request_component_native_type.sql'))
+ const enumSub=json(`create_transport_request_component('${id(3)}','SUBCONTRATO','S002')`)
+ const enumError=json(`create_transport_request_component('${id(3)}','ERROR','E002')`)
+ assert.equal(enumSub.success,true);assert.equal(enumError.success,true)
+ assert.equal(sql(`SELECT count(*) FROM contracts WHERE id IN('${enumSub.id}','${enumError.id}') AND type IN('SUBCONTRATO','ERROR')`),'2')
+ const enumC91=query(read('supabase/tests/caja_c91_request_inline_components.test.sql'))
+ assert.notEqual(enumC91.status,0);assert.match(enumC91.stderr,/CAJA C91 PASS/)
+ console.log('PASS: inline Subcontrato/Error creation and exact production C91 work with native contract_type enum as well as text.')
+
 
 } finally {spawnSync('docker',['rm','-f',name],{stdio:'ignore'})}

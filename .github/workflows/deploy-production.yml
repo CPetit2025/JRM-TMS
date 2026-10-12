@@ -99,6 +99,17 @@ jobs:
       - name: Apply migrations
         run: supabase db push --password "$SUPABASE_DB_PASSWORD"
 
+      - name: Reconcile APT derived cache
+        run: |
+          if ! out=$(supabase db query --linked -f scripts/security/apt-refresh-derived.sql 2>&1); then
+            detail=${out//%/%25}
+            detail=${detail//$'\r'/%0D}
+            detail=${detail//$'\n'/%0A}
+            echo "::error title=APT derived cache::${detail}"
+            exit 1
+          fi
+          echo "$out"
+
       # Pruebas de caja contra la base real; cada archivo termina en error a propósito para forzar ROLLBACK.
       - name: Caja SQL tests
         run: |
