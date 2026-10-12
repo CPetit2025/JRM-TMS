@@ -16,14 +16,19 @@ CREATE TABLE IF NOT EXISTS public.apt_read_cache_requests (
   fn text NOT NULL, key_hash text NOT NULL, params jsonb NOT NULL,
   requested_at timestamptz NOT NULL DEFAULT clock_timestamp(), attempts integer NOT NULL DEFAULT 0, PRIMARY KEY (fn, key_hash)
 );
-DO $$ DECLARE t text; BEGIN
-  FOREACH t IN ARRAY ARRAY['apt_read_cache','apt_read_cache_requests'] LOOP
-    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
-    EXECUTE format('REVOKE ALL ON public.%I FROM PUBLIC, anon, authenticated', t);
-    EXECUTE format('DROP POLICY IF EXISTS security_active_account ON public.%I', t);
-    EXECUTE format('CREATE POLICY security_active_account ON public.%I AS RESTRICTIVE FOR ALL TO authenticated USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()))', t);
-  END LOOP;
-END $$;
+-- Solo las funciones SECURITY DEFINER leen y escriben estas tablas.
+ALTER TABLE public.apt_read_cache ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.apt_read_cache_requests ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.apt_read_cache FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON public.apt_read_cache_requests FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.apt_read_cache TO service_role;
+GRANT ALL ON public.apt_read_cache_requests TO service_role;
+DROP POLICY IF EXISTS security_active_account ON public.apt_read_cache;
+CREATE POLICY security_active_account ON public.apt_read_cache AS RESTRICTIVE FOR ALL TO authenticated
+  USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()));
+DROP POLICY IF EXISTS security_active_account ON public.apt_read_cache_requests;
+CREATE POLICY security_active_account ON public.apt_read_cache_requests AS RESTRICTIVE FOR ALL TO authenticated
+  USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()));
 
 -- Cálculo en vivo: mismo código, otro nombre. El de resumen admite una página completa para que la caché guarde todas
 -- las filas una sola vez y pagine sin recalcular (el RPC público sigue limitando cada página a 100).
