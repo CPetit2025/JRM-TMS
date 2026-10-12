@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { APT_BACKGROUND_MESSAGE, requestAptBackgroundRead } from './cacheRequest'
 import type { GanttFilters, GanttResult } from './ganttTypes'
 import type { FlowAdelantos, FlowFilters, Kardex, KardexFilters, KardexNivel, OtFamilia, FlowLeadDim, FlowLeadtime, FlowQuality, FlowSt, FlowStock, FlowSummary, FlowTrace } from './flowTypes'
 import type {
@@ -11,6 +12,7 @@ const supabase = createClient()
 
 async function call<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
   const { data, error } = await supabase.rpc(fn, args)
+  if (await requestAptBackgroundRead(supabase, fn, args, error)) throw new Error(APT_BACKGROUND_MESSAGE)
   if (error) throw new Error(error.message)
   const out = data as { success?: boolean; error?: string } | null
   if (!out || out.success === false) throw new Error(out?.error || 'No se pudo obtener la información de APT')
