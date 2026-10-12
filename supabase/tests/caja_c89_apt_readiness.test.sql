@@ -45,6 +45,6 @@ BEGIN
  q:=public.apt_readiness_save(jsonb_build_object('almacen','ST','lote',lot,'status','NO_EVALUADO'));
  IF (q->>'success')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'CAJA C89 FAIL: inactivo escribe'; END IF;
  PERFORM pg_temp.c89_user(NULL);
- RAISE NOTICE 'CAJA C89 PASS: permisos, estado no evaluado, evidencia explícita, concurrencia, historial inmutable e inactividad';
+ RAISE EXCEPTION 'CAJA C89 PASS: permisos, estado no evaluado, evidencia explícita, concurrencia, historial inmutable e inactividad';
 END $test$;
 ROLLBACK;

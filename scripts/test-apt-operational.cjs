@@ -120,6 +120,14 @@ try {
     CREATE FUNCTION apt_can_load() RETURNS boolean LANGUAGE sql AS $$ SELECT COALESCE(current_setting('test.can_load',true),'false')='true' $$;
     CREATE FUNCTION is_active_tms_user() RETURNS boolean LANGUAGE sql AS $$ SELECT COALESCE(current_setting('test.active',true),'true')='true' $$;`)
   sql(read('supabase/migrations/20261011220000_apt_stock_reconciliation.sql'))
+  sql(read('supabase/migrations/20261011230000_apt_observation_author_index.sql'))
+  sql(`DO $$ BEGIN
+    IF EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid='apt_stock_observations'::regclass AND c.contype='f'
+      AND NOT EXISTS(SELECT 1 FROM pg_index i WHERE i.indrelid=c.conrelid AND i.indisvalid AND i.indpred IS NULL
+        AND (i.indkey::smallint[])[0:cardinality(c.conkey)-1] @> c.conkey)) THEN
+      RAISE EXCEPTION 'Observation author FK has no covering index';
+    END IF;
+  END $$;`)
   const observe = data => json(`SELECT apt_stock_observation_save('${JSON.stringify(data).replaceAll("'", "''")}'::jsonb)`)
   const observation = {cutoff:'2026-01-10',almacen:'ST',lote:'16544',producto:'P',peso_kg:12000,source:'ERP',reference:'Synthetic ERP snapshot'}
   assert.equal(observe(observation).success, false, 'No permission to save snapshot')

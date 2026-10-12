@@ -47,6 +47,9 @@ try {
   const start = initial.indexOf(`CREATE OR REPLACE FUNCTION public.${name}()`)
   sql(initial.slice(start, initial.indexOf('$$;',start)+3))
  }
- sql(fs.readFileSync('supabase/tests/caja_c89_apt_readiness.test.sql','utf8'))
+ const caja = spawnSync('docker', ['exec', '-i', name, 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1'], { input: fs.readFileSync('supabase/tests/caja_c89_apt_readiness.test.sql','utf8'), encoding: 'utf8' })
+ assert.notEqual(caja.status, 0, 'Caja must terminate with the rollback exception')
+ assert.match(caja.stderr, /CAJA C89 PASS:/)
+ assert.doesNotMatch(caja.stderr, /CAJA C89 FAIL:/)
  console.log('APT readiness SQL: permissions, RLS, explicit evidence, audit trail, optimistic concurrency passed.')
 } finally { spawnSync('docker', ['rm', '-f', name], { encoding: 'utf8' }) }
