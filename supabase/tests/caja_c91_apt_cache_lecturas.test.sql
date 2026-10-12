@@ -102,6 +102,9 @@ BEGIN
  PERFORM pg_temp.c91_user(NULL);
  IF (q->>'success') IS DISTINCT FROM 'true' OR NOT EXISTS(SELECT 1 FROM public.apt_read_cache_requests WHERE fn='apt_operational_summary') THEN
   RAISE EXCEPTION 'CAJA C91 FAIL: solicitud de cálculo (T7) %',q; END IF;
+ n:=public.apt_read_cache_claim();
+ IF n<>1 OR NOT EXISTS(SELECT 1 FROM public.apt_read_cache_requests WHERE attempts=1 AND claimed_at IS NOT NULL) THEN
+  RAISE EXCEPTION 'CAJA C91 FAIL: turno de la cola (T7)'; END IF;
  PERFORM public.apt_read_cache_warm();
  IF EXISTS(SELECT 1 FROM public.apt_read_cache_requests WHERE params->'p' ? 'clientes')
   OR NOT EXISTS(SELECT 1 FROM public.apt_read_cache WHERE fn='apt_operational_summary' AND params->'p' ? 'clientes') THEN
