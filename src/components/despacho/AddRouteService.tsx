@@ -22,8 +22,6 @@ export function AddRouteService({ dispatchId, initialRequestId, onClose, onChang
  const [requestId, setRequestId] = useState('')
  const [before, setBefore] = useState('')
  const [search, setSearch] = useState('')
- const [freight, setFreight] = useState('')
- const [km, setKm] = useState('')
  const [cargo, setCargo] = useState('')
  const [available, setAvailable] = useState('')
  const [expected, setExpected] = useState('')
@@ -34,7 +32,7 @@ export function AddRouteService({ dispatchId, initialRequestId, onClose, onChang
    if (!dispatchId) return
    let cancelled = false
    const timer = window.setTimeout(async () => {
-     setContext(null); setError(''); setRequestId(''); setBefore(''); setSearch(''); setFreight(''); setKm(''); setCargo(''); setAvailable(''); setExpected(''); setReason(''); setConfirmed(false)
+     setContext(null); setError(''); setRequestId(''); setBefore(''); setSearch(''); setCargo(''); setAvailable(''); setExpected(''); setReason(''); setConfirmed(false)
      operation.current = crypto.randomUUID()
      const { data, error: failure } = await supabase.rpc('active_route_context', { p_dispatch: dispatchId })
      const nextContext = !failure ? data as Context : null
@@ -62,7 +60,9 @@ export function AddRouteService({ dispatchId, initialRequestId, onClose, onChang
    try {
      const { error: failure } = await supabase.rpc('add_active_route_service', {
        p_dispatch: dispatchId, p_request: requestId, p_before: before || null, p_revision: context.revision, p_operation: operation.current,
-       p_freight: Number(freight), p_extra_km: Number(km), p_cargo_kg: Number(cargo), p_available_kg: Number(available),
+       // Los servicios agregados a la ruta no se valorizan aquí (flota propia: se documentan, no se cobra flete
+       // adicional); el recorrido real lo registra el GPS.
+       p_freight: 0, p_extra_km: 0, p_cargo_kg: Number(cargo), p_available_kg: Number(available),
        p_expected_at: new Date(`${expected}:00-05:00`).toISOString(), p_reason: reason.trim(),
      })
      if (failure) throw failure
@@ -89,14 +89,12 @@ export function AddRouteService({ dispatchId, initialRequestId, onClose, onChang
          <ol className="max-h-72 space-y-2 overflow-auto">{preview.map((s, index) => <li key={s.id} className={`rounded-lg border p-3 text-sm ${s.status === 'NUEVO' ? 'border-blue-300 bg-blue-50' : 'bg-white'}`}><p className="font-semibold">{index + 1}. {s.number} · {s.ot ? `OT ${s.ot}` : references.get(s.id) || 'Sin referencia'} <span className="text-xs text-slate-500">{s.status === 'NUEVO' ? 'Nuevo servicio' : s.locked ? 'Posición protegida' : 'Pendiente'}</span></p><p className="mt-1 text-xs text-slate-600">{s.origin} → {s.destination}</p></li>)}</ol>
        </section>
      </div>
-     <section><h3 className="font-bold text-jrm-navy">3. Validar operación y costo adicional</h3><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-       <label className="text-sm">Flete adicional (S/)<input required type="number" min="0" step="0.01" value={freight} onChange={e => setFreight(e.target.value)} className={field} /></label>
-       <label className="text-sm">Kilómetros adicionales estimados<input required type="number" min="0" step="0.001" value={km} onChange={e => setKm(e.target.value)} className={field} /></label>
+     <section><h3 className="font-bold text-jrm-navy">3. Validar operación</h3><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
        <label className="text-sm">Peso del nuevo servicio (kg)<input required type="number" min={Math.max(Number(selected?.weight_kg || 0), 0.01)} step="0.01" value={cargo} onChange={e => setCargo(e.target.value)} className={field} /></label>
        <label className="text-sm">Capacidad disponible al cargar (kg)<input required type="number" min={Number(cargo) || 0.01} max={context.capacity_kg && context.capacity_kg > 0 ? context.capacity_kg : undefined} step="0.01" value={available} onChange={e => setAvailable(e.target.value)} className={field} /><span className="text-xs text-slate-500">{context.capacity_kg && context.capacity_kg > 0 ? `Capacidad de la unidad: ${context.capacity_kg} kg.` : 'Capacidad sin registrar: confirme la disponibilidad con el conductor o proveedor.'}</span></label>
        <label className="text-sm">Atención prevista (hora de Lima)<input required type="datetime-local" min={context.dispatch.operating_day ? `${context.dispatch.operating_day}T00:00` : undefined} max={context.dispatch.operating_day ? `${context.dispatch.operating_day}T23:59` : undefined} value={expected} onChange={e => setExpected(e.target.value)} className={field} /></label>
        <label className="text-sm">Motivo de incorporación<input required minLength={10} maxLength={500} value={reason} onChange={e => setReason(e.target.value)} className={field} /></label>
-     </div><p className="mt-3 text-xs text-slate-600">El flete se reserva en la partida de la OT del nuevo servicio, respetando el 80 % operativo. Los kilómetros ingresados son estimados; el GPS conserva el recorrido real.</p></section>
+     </div><p className="mt-3 text-xs text-slate-600">El servicio agregado no se valoriza en la ruta: se documenta (guía, Nota de Despacho, Packing List) y el GPS registra el recorrido real.</p></section>
      <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm"><input required type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} className="mt-1" /><span>Confirmo con el conductor o proveedor la capacidad disponible, el punto de carga y los tiempos de atención de todos los servicios pendientes.</span></label>
      <div className="flex flex-wrap justify-end gap-3"><button type="button" disabled={busy} onClick={onClose} className="min-h-11 rounded-lg border px-4 text-sm font-semibold">Cancelar</button><button disabled={busy || !selected || !confirmed} className="min-h-11 rounded-lg bg-jrm-navy px-4 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Agregando servicio…' : 'Confirmar incorporación'}</button></div>
    </form>}
