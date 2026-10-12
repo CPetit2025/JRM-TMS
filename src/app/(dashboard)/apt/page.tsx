@@ -2,216 +2,49 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { AlertTriangle, CalendarClock, Clock, FileSpreadsheet, Flame, Layers, Package, Scale, Timer } from 'lucide-react'
-import { aptApi, cleanFilters } from '@/lib/apt/api'
-import { exportAptXlsx } from '@/lib/apt/export'
-import { fmtDate, fmtDec1, fmtDias, fmtKg, fmtPct, fmtTn } from '@/lib/apt/format'
-import { loteHref, useAptFilters } from '@/lib/apt/useAptFilters'
-import type { AptDashboard, AptEstado, AptGrain } from '@/lib/apt/types'
+import { AlertTriangle, Bot, CalendarClock, RefreshCw, Scale } from 'lucide-react'
+import { aptApi, clearAptCache } from '@/lib/apt/api'
+import { fmtDate, fmtDec1, fmtTn } from '@/lib/apt/format'
+import { useOperationalFilters } from '@/lib/apt/useOperationalFilters'
+import type { AptOperationalSummary } from '@/lib/apt/types'
+import { OperationalReportButton } from '@/components/apt/reports/OperationalReportButton'
+import { OperationalFilterBar } from '@/components/apt/OperationalFilterBar'
+import { OperationalTrend, WarehouseStock } from '@/components/apt/OperationalCharts'
 import { ChartCard, EmptyState, ErrorBlock, KpiCard, LoadingBlock } from '@/components/apt/ui'
-import { AgingColumns, AgingDonut, EstadosBar, FamiliaBars, FlowChart, LoteBars, ProductoBars, StockChart, fmtAxis } from '@/components/apt/dashCharts'
-import { LiberarTable, MiniKpi, RespuestasClave } from '@/components/apt/dashParts'
-
-// Dashboard principal del módulo APT: cuánto material hay, cuánto tiempo lleva y qué liberar primero.
-
-const GRAINS: Array<{ v: AptGrain; label: string }> = [{ v: 'dia', label: 'Día' }, { v: 'semana', label: 'Semana' }, { v: 'mes', label: 'Mes' }]
-const SIN_SALIDA: AptEstado[] = ['En APT', 'Sin salida identificada']
 
 export default function AptDashboardPage() {
-  const { filters, patchFilters, setFilters, filterKey } = useAptFilters()
-  const router = useRouter()
-  const [grain, setGrain] = useState<AptGrain>('semana')
+  const { filters, setFilters, hrefWith, filterKey, legacyFilterKey } = useOperationalFilters()
   const [nonce, setNonce] = useState(0)
-  const reqKey = `${filterKey}|${grain}|${nonce}`
-  const [res, setRes] = useState<{ key: string; data: AptDashboard | null; error: string | null } | null>(null)
-
+  const [response, setResponse] = useState<{ key: string; data: AptOperationalSummary | null; error: string | null } | null>(null)
+  const key = `${filterKey}|${nonce}`
   useEffect(() => {
     let alive = true
-    aptApi.dashboard(filters, grain)
-      .then(data => { if (alive) setRes({ key: reqKey, data, error: null }) })
-      .catch((e: Error) => { if (alive) setRes(prev => ({ key: reqKey, data: prev?.data ?? null, error: e.message })) })
+    aptApi.operationalSummary(filters, 10, 0).then(data => { if (alive) setResponse({ key, data, error: null }) }).catch((error: Error) => { if (alive) setResponse({ key, data: null, error: error.message }) })
     return () => { alive = false }
-  }, [filters, grain, reqKey])
-
-  const loading = res?.key !== reqKey
-  const d = res?.data
-  if (!res && loading) return <LoadingBlock label="Calculando el inventario en APT…" className="h-96" />
-  if (res?.error && !loading) return <ErrorBlock message={res.error} onRetry={() => setNonce(n => n + 1)} />
-  if (!d) return <LoadingBlock className="h-96" />
-
-  const k = d.kpis
-  const hasFilters = Object.keys(cleanFilters(filters)).length > 0
-  if (k.tn_ingresadas === 0) {
-    return hasFilters ? (
-      <EmptyState title="Sin movimientos con los filtros aplicados">
-        <button onClick={() => setFilters({})} className="mt-1 font-semibold text-[#002855] underline">Quitar filtros</button>
-      </EmptyState>
-    ) : (
-      <EmptyState title="Aún no hay movimientos: cargue ENTRADA y SALIDA">
-        Las cifras del dashboard se calculan desde las hojas ENTRADA (P/E Producción) y SALIDA (Despacho Ventas).{' '}
-        <Link href="/apt/cargas" className="font-semibold text-[#002855] underline">Ir a Cargas y parámetros</Link>
-      </EmptyState>
-    )
+  }, [filters, key])
+  useEffect(() => { const update = () => setNonce(n => n + 1); window.addEventListener('apt:updated', update); return () => window.removeEventListener('apt:updated', update) }, [])
+  const current = response?.key === key
+  const d = current ? response.data : null
+  const askAi = () => {
+    window.dispatchEvent(new CustomEvent('jrm:context', { detail: { aptFilters: d ? { ...filters, desde: d.meta.desde || undefined, hasta: d.meta.hasta || undefined, cutoff: d.meta.cutoff || undefined } : filters, aptContext: 'APT operativo; inventario documental reconstruido' } }))
+    window.dispatchEvent(new CustomEvent('jrm:open-ai'))
   }
-
-  const alert = d.alert_days
-  const toLote = (lote: string) => router.push(loteHref(lote, filters))
-  const filterRango = (rango: string) => patchFilters({ rangos: [rango], solo_saldo: true })
-  const isDmin = (n: number) => filters.dias_min === n && !!filters.solo_saldo
-  const sameEstados = (e: AptEstado[]) => (filters.estados || []).length === e.length && e.every(x => filters.estados?.includes(x))
-  const hasAlerta = (a: 'problema_info' | 'posible_cruce') => !!filters.alertas?.includes(a)
-  const toggle = (active: boolean, patch: Parameters<typeof patchFilters>[0], clear: Parameters<typeof patchFilters>[0]) =>
-    patchFilters(active ? clear : patch)
-  const grainButtons = (
-    <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label="Agrupar por">
-      {GRAINS.map(g => (
-        <button key={g.v} onClick={() => setGrain(g.v)}
-          className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${grain === g.v ? 'bg-white text-[#002855] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-          {g.label}
-        </button>
-      ))}
-    </div>
-  )
-  const exportLiberar = () => exportAptXlsx(`APT_liberar_primero_${d.cutoff || ''}`, {
-    'Qué liberar primero': [...d.top_lotes_txd].sort((a, b) => b.tn_dias - a.tn_dias).map((r, i) => ({
-      Prioridad: i + 1, Lote: r.lote, Tipo: r.tipo, 'Glosa principal': r.glosa, Productos: r.productos, 'Saldo TN': r.tn_saldo,
-      'Días del saldo': r.dias, 'Aging ponderado': r.aging_pond, 'TN×Días': r.tn_dias, Estado: r.estado, Rango: r.rango,
-      'Ingreso más antiguo con saldo': r.fecha_saldo, FechaEntrega: r.fecha_entrega,
-    })),
-  })
-
-  return (
-    <div className={`space-y-4 transition-opacity ${loading ? 'opacity-60' : ''}`} aria-busy={loading}>
-      {/* KPI principales */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
-        <KpiCard label="TN en APT" value={fmtTn(k.tn_saldo)} tone="navy" icon={<Scale className="h-4 w-4" />} hint={`${fmtKg(k.kg_saldo)} kg`} />
-        <KpiCard label="NumRel activos" value={fmtDias(k.lotes_activos)} icon={<Layers className="h-4 w-4" />}
-          hint={`con saldo de ${fmtDias(k.lotes_total)} lotes`} onClick={() => patchFilters({ solo_saldo: !filters.solo_saldo })}
-          active={!!filters.solo_saldo} />
-        <KpiCard label="Productos" value={fmtDias(k.productos_apt)} icon={<Package className="h-4 w-4" />} hint={`${fmtDias(k.capas_abiertas)} capas abiertas`} />
-        <KpiCard label="Días promedio" value={fmtDec1(k.dias_prom)} unit="d" icon={<Clock className="h-4 w-4" />} hint={`Mediana ${fmtDias(k.dias_mediana)} d · máx. ${fmtDias(k.dias_max)} d`} />
-        <KpiCard label="Aging ponderado" value={fmtDec1(k.aging_pond)} unit="d" tone={k.aging_pond !== null && k.aging_pond > 30 ? 'warn' : 'default'}
-          icon={<Timer className="h-4 w-4" />} hint="Σ(TN×días) / Σ TN" />
-        <KpiCard label="TN > 15 días" value={fmtTn(k.tn_gt15)} tone="warn" hint={`${fmtPct(k.pct_gt15)} del saldo`}
-          onClick={() => toggle(isDmin(16), { dias_min: 16, solo_saldo: true }, { dias_min: undefined })} active={isDmin(16)} />
-        <KpiCard label="TN > 30 días" value={fmtTn(k.tn_gt30)} tone="crit" icon={<AlertTriangle className="h-4 w-4" />} hint={`${fmtPct(k.pct_gt30)} del saldo`}
-          onClick={() => toggle(isDmin(31), { dias_min: 31, solo_saldo: true }, { dias_min: undefined })} active={isDmin(31)} />
-        <KpiCard label="TN×Días" value={fmtAxis(k.tn_dias)} tone="crit" icon={<Flame className="h-4 w-4" />} hint={`${fmtTn(k.tn_dias)} · impacto acumulado`} />
+  return <div className="space-y-4">
+    {legacyFilterKey && <p className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-[#002855]">Este enlace contiene filtros de cohortes FIFO. <Link href={`/apt/estadia?f=${encodeURIComponent(legacyFilterKey)}`} className="font-bold underline">Abrir la estadía con esos filtros</Link>. El panorama operativo utiliza su propio alcance.</p>}
+    <OperationalFilterBar filters={filters} onApply={setFilters} cutoffLabel={d?.meta.cutoff} />
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-bold text-[#002855]">Panorama operativo APT</h2><p className="text-xs text-slate-500">Existencias reconstruidas, movimientos y calidad de información.</p></div><div className="flex flex-wrap gap-2">{d && <OperationalReportButton summary={d} filters={filters} disabled={!d.meta.model_fresh} />}<button type="button" onClick={() => { clearAptCache(); setNonce(n => n + 1) }} aria-label="Actualizar análisis APT" className="rounded-lg border border-slate-200 bg-white p-2.5 text-slate-600"><RefreshCw className="h-4 w-4" /></button><button type="button" onClick={askAi} className="flex items-center gap-2 rounded-lg bg-[#002855] px-3 py-2 text-xs font-semibold text-white"><Bot className="h-4 w-4" /> Analizar con IA</button><Link href={hrefWith('/apt/operacion')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-[#002855]">Ver OT y lotes</Link></div></div>
+    {!current ? <LoadingBlock label="Calculando el panorama operativo…" className="h-96" /> : response.error ? <ErrorBlock message={response.error} onRetry={() => setNonce(n => n + 1)} /> : !d || d.vacio ? <EmptyState title="Sin información operativa para este alcance"><Link href="/apt/cargas" className="font-semibold text-[#002855] underline">Revisar cargas y cobertura</Link></EmptyState> : <>
+      <div className={`rounded-xl border p-4 text-xs leading-relaxed ${d.meta.model_fresh ? 'border-blue-100 bg-blue-50 text-[#002855]' : 'border-amber-200 bg-amber-50 text-amber-900'}`}><p className="font-bold">{d.meta.model_fresh ? 'Inventario documental reconstruido' : 'Recálculo pendiente: las cifras pueden estar desactualizadas'}</p><p className="mt-1">Corte {fmtDate(d.meta.cutoff)} · Movimientos {fmtDate(d.meta.desde)} – {fmtDate(d.meta.hasta)}. El saldo incluye aperturas inferidas y requiere conciliación con ERP y existencia física.</p>{!d.meta.composition_available && <p className="mt-1">En este corte histórico no está disponible la composición del origen; la antigüedad se muestra como no evaluable.</p>}</div>
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <KpiCard label="Saldo reconstruido" value={fmtTn(d.kpis.stock_tn)} unit="TN" tone="navy" icon={<Scale className="h-4 w-4" />} hint="Existencia documental al corte" />
+        <KpiCard label="Origen desconocido" value={d.kpis.unknown_origin_stock_tn === null ? 'No evaluable' : fmtTn(d.kpis.unknown_origin_stock_tn)} unit={d.kpis.unknown_origin_stock_tn === null ? undefined : 'TN'} tone="warn" hint="Saldo sin fecha de origen; no inventario confirmado" />
+        <KpiCard label="Antigüedad ponderada" value={d.kpis.weighted_age_days === null ? 'No evaluable' : fmtDec1(d.kpis.weighted_age_days)} unit={d.kpis.weighted_age_days === null ? undefined : 'd'} icon={<CalendarClock className="h-4 w-4" />} hint="Σ(TN con origen × días) / TN con origen" />
+        <KpiCard label="Rotación del período" value={d.kpis.turnover === null ? 'No evaluable' : fmtDec1(d.kpis.turnover)} unit={d.kpis.turnover === null ? undefined : '×'} hint="Salidas ERP / saldo promedio diario reconstruido" />
       </div>
-
-      {/* Indicadores complementarios */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
-        <MiniKpi label="TN ingresadas" value={fmtTn(k.tn_ingresadas)} hint="Entradas del periodo cargado" />
-        <MiniKpi label="TN despachadas" value={fmtTn(k.tn_despachadas)} tone="ok" hint={`${fmtPct(k.pct_despachado)} despachado`} />
-        <MiniKpi label={`Lotes críticos > ${alert} d`} value={fmtDias(k.lotes_criticos)} tone="crit" hint={`${fmtTn(k.tn_gt_alerta)} TN`}
-          onClick={() => toggle(isDmin(alert + 1), { dias_min: alert + 1, solo_saldo: true }, { dias_min: undefined })} active={isDmin(alert + 1)} />
-        <MiniKpi label="Lotes sin salida" value={fmtDias(k.lotes_sin_salida)} tone="warn" hint="Con saldo y ningún despacho"
-          onClick={() => toggle(sameEstados(SIN_SALIDA), { estados: SIN_SALIDA, solo_saldo: true }, { estados: undefined })} active={sameEstados(SIN_SALIDA)} />
-        <MiniKpi label="Salida parcial" value={fmtDias(k.lotes_parciales)} hint="Lotes con despacho incompleto"
-          onClick={() => toggle(sameEstados(['Salida parcial']), { estados: ['Salida parcial'] }, { estados: undefined })} active={sameEstados(['Salida parcial'])} />
-        <MiniKpi label="Estadía despachado" value={`${fmtDec1(k.dias_despacho_pond)} d`} hint="Días ponderados hasta la salida" />
-        <MiniKpi label="Ingreso más antiguo" value={fmtDate(k.fecha_mas_antigua)} hint="Con saldo en APT" />
-      </div>
-
-      {/* Flujo y calidad del inventario */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-        <MiniKpi label="Despacho diario (30 d)" value={`${fmtTn(k.despacho_diario_30d)} TN`} hint="Promedio de lo despachado en los últimos 30 días" />
-        <MiniKpi label="Cobertura del saldo" value={k.cobertura_dias === null ? '—' : `${fmtDec1(k.cobertura_dias)} d`}
-          tone={(k.cobertura_dias ?? 0) > alert ? 'crit' : (k.cobertura_dias ?? 0) > 30 ? 'warn' : 'default'}
-          hint="Días para despachar el saldo al ritmo de los últimos 30 días" />
-        <MiniKpi label="Rotación (30 d)" value={k.rotacion_30d === null ? '—' : `${fmtDec1(k.rotacion_30d)}×`} hint="TN despachadas en 30 días / saldo actual" />
-        <MiniKpi label="FechaEntrega vencida" value={`${fmtTn(k.tn_fe_vencida)} TN`} tone="warn"
-          hint={`Saldo con FechaEntrega anterior al corte · ${fmtDec1(k.dias_fe_vencida_pond)} d prom.`} />
-        <MiniKpi label="Posible despacho con otro NumRel" value={`${fmtTn(k.tn_posible_cruce)} TN`} tone="warn"
-          hint="Saldo cuyo producto salió por otro NumRel sin ingreso: revisar"
-          onClick={() => toggle(hasAlerta('posible_cruce'), { alertas: ['posible_cruce'] }, { alertas: undefined })} active={hasAlerta('posible_cruce')} />
-        <MiniKpi label="Problemas de información" value={fmtDias(k.capas_problema)} hint="Capas sin peso o con salida antes del ingreso"
-          onClick={() => toggle(hasAlerta('problema_info'), { alertas: ['problema_info'] }, { alertas: undefined })} active={hasAlerta('problema_info')} />
-      </div>
-
-      {/* Respuestas clave + aging */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <ChartCard className="lg:col-span-5" title="Respuestas clave" subtitle="Lectura automática del inventario con los filtros actuales" bodyClassName="py-1">
-          <RespuestasClave d={d} filters={filters} grain={grain} onProducto={p => patchFilters({ productos: [p] })} />
-        </ChartCard>
-        <ChartCard className="lg:col-span-7" title="TN por rango de aging" subtitle="Saldo en APT según los días que lleva almacenado · clic en una barra para filtrar"
-          info="Antigüedad de cada capa (FIFO) con saldo a la fecha de corte. Los rangos se configuran en Cargas y parámetros.">
-          <AgingColumns data={d.aging} onSelect={filterRango} active={filters.rangos} />
-        </ChartCard>
-      </div>
-
-      {/* Prioridad de liberación (bloque destacado) */}
-      <section className="rounded-2xl border-2 border-[#cf152d]/25 bg-gradient-to-br from-red-50/60 to-white p-3 shadow-sm">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 px-1">
-          <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#cf152d] text-white"><Flame className="h-4 w-4" /></span>
-            <div>
-              <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">¿Qué liberar primero?</h2>
-              <p className="text-xs text-slate-500">Ranking por TN×Días: cuánto material y cuánto tiempo lleva retenido. El color indica la antigüedad del saldo.</p>
-            </div>
-          </div>
-          <button onClick={exportLiberar} className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-            <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" /> Exportar Excel
-          </button>
-        </div>
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
-          <ChartCard className="lg:col-span-5" title="TOP 10 NumRel por TN×Días" subtitle="Clic en una barra para abrir la ficha del lote"
-            info="TN×Días = saldo TN × días del saldo. Prioriza lotes grandes y antiguos.">
-            <LoteBars data={d.top_lotes_txd} metric="tn_dias" aging={d.aging} onSelect={toLote} />
-          </ChartCard>
-          <ChartCard className="lg:col-span-7" title="Lotes a liberar" subtitle={`Saldo, días y estado de los ${d.top_lotes_txd.length} lotes de mayor impacto`} bodyClassName="p-0 sm:p-2">
-            <LiberarTable rows={d.top_lotes_txd} aging={d.aging} alert={alert} filters={filters} />
-          </ChartCard>
-        </div>
-      </section>
-
-      {/* Volumen por lote y producto */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <ChartCard className="lg:col-span-6" title="TOP 10 NumRel por TN almacenadas" subtitle="Clic en una barra para abrir la ficha del lote">
-          <LoteBars data={d.top_lotes_tn} metric="tn_saldo" aging={d.aging} onSelect={toLote} />
-        </ChartCard>
-        <ChartCard className="lg:col-span-6" title="TOP productos por TN almacenadas" subtitle="Clic para filtrar el producto en todo el módulo">
-          <ProductoBars data={d.top_productos} onSelect={p => patchFilters({ productos: [p] })} />
-        </ChartCard>
-      </div>
-
-      {/* Evolución */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <ChartCard className="lg:col-span-6" title="Entradas vs salidas" actions={grainButtons}
-          subtitle={<span className="flex items-center gap-3">
-            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-[#2563eb]" />TN entrada</span>
-            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-[#0d9488]" />TN salida</span>
-          </span>}>
-          <FlowChart data={d.trend} grain={grain} />
-        </ChartCard>
-        <ChartCard className="lg:col-span-6" title="Inventario acumulado y aging" actions={grainButtons}
-          subtitle={<span className="flex items-center gap-3">
-            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-[#002855]" />Saldo TN</span>
-            <span className="flex items-center gap-1"><span className="h-0.5 w-3 bg-[#cf152d]" />Aging ponderado (días, eje der.)</span>
-          </span>}>
-          <StockChart data={d.trend} grain={grain} />
-          <p className="mt-2 flex items-start gap-1.5 text-[11px] text-slate-400">
-            <CalendarClock className="mt-0.5 h-3 w-3 shrink-0" />
-            Inventario reconstruido desde las entradas del periodo; no incluye stock anterior al primer ingreso cargado.
-          </p>
-        </ChartCard>
-      </div>
-
-      {/* Distribución, estados y familias */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <ChartCard className="lg:col-span-4" title="Distribución por aging" subtitle="% de las TN en APT por rango">
-          <AgingDonut data={d.aging} total={k.tn_saldo} onSelect={filterRango} />
-        </ChartCard>
-        <ChartCard className="lg:col-span-4" title="Estados del inventario" subtitle="TN ingresadas por estado de la capa · clic para filtrar"
-          info="En APT: sin salidas dentro del plazo · Salida parcial: queda saldo · Despachado: dentro de la tolerancia · Sin salida identificada: supera la alerta · Problema de información: sin peso o salida antes del ingreso.">
-          <EstadosBar data={d.estados} active={filters.estados}
-            onSelect={e => toggle(sameEstados([e]), { estados: [e] }, { estados: undefined })} />
-        </ChartCard>
-        <ChartCard className="lg:col-span-4" title="Familias por TN" subtitle="Saldo y aging ponderado · clic para filtrar">
-          <FamiliaBars data={d.top_familias} onSelect={f => patchFilters({ familias: [f] })} />
-        </ChartCard>
-      </div>
-    </div>
-  )
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><KpiCard label="Ingreso de producción" value={fmtTn(d.kpis.production_tn)} unit="TN" hint="Durante el período seleccionado" /><KpiCard label="Salidas ERP" value={fmtTn(d.kpis.dispatch_tn)} unit="TN" hint="No acredita entrega conforme" /><KpiCard label="Consumo interno" value={fmtTn(d.kpis.consumption_tn)} unit="TN" hint="Separado del despacho a clientes" /><KpiCard label="Devoluciones" value={fmtTn(d.kpis.returns_tn)} unit="TN" hint="Reingresos durante el período" /></div>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2"><ChartCard title="Saldo diario reconstruido" subtitle="Arrastra los extremos inferiores para acercar el período" info="El saldo considera la historia previa al período, incluidos consumos, devoluciones y traspasos. No acredita inventario físico conciliado."><OperationalTrend data={d.series} mode="stock" /></ChartCard><ChartCard title="Producción y salidas ERP" subtitle="Gráficos sincronizados · TN por fecha de movimiento" info="Los traspasos internos no son producción nueva ni entrega al cliente."><OperationalTrend data={d.series} mode="movements" /></ChartCard></div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2"><ChartCard title="Ubicación del saldo" subtitle="Selecciona un almacén para aplicar el filtro a todo el análisis"><WarehouseStock data={d.warehouses} selected={filters.almacen} onSelect={almacen => setFilters({ ...filters, almacen: filters.almacen === almacen ? undefined : almacen })} /></ChartCard><ChartCard title="Calidad de la información" subtitle="Revisar antes de interpretar el resultado"><ul className="space-y-3 text-sm"><li className="flex justify-between gap-4"><span>Registros sin peso</span><b className="text-amber-700">{d.quality.missing_weight_rows}</b></li><li className="flex justify-between gap-4"><span>Anomalías temporales</span><b className="text-amber-700">{d.quality.temporal_anomaly_rows}</b></li><li className="flex justify-between gap-4"><span>Saldos negativos</span><b className="text-red-700">{d.quality.negative_balance_rows}</b></li><li className="flex justify-between gap-4"><span>Apertura inferida del modelo</span><b>{d.kpis.inferred_opening_tn === null ? 'No evaluable' : `${fmtTn(d.kpis.inferred_opening_tn)} TN`}</b></li></ul><p className="mt-4 flex gap-2 rounded-lg bg-amber-50 p-3 text-xs leading-relaxed text-amber-900"><AlertTriangle className="h-4 w-4 shrink-0" /> Un cuadre matemático no certifica la existencia física. Las aperturas inferidas pueden representar movimientos históricos faltantes.</p><Link href="/apt/calidad" className="mt-4 inline-flex text-xs font-bold text-[#002855] underline">Consultar calidad documental</Link></ChartCard></div>
+      <ChartCard title="Cobertura de movimientos" subtitle="Las fuentes pueden tener fechas diferentes; ausencia de filas no demuestra ausencia de operación"><div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b text-slate-500"><th className="py-2">Fuente</th><th>Desde</th><th>Hasta</th><th className="text-right">Registros</th><th className="text-right">Sin peso</th></tr></thead><tbody>{d.coverage.map(row => <tr key={row.kind} className="border-b border-slate-100"><td className="py-2 font-semibold">{row.kind}</td><td>{fmtDate(row.desde)}</td><td>{fmtDate(row.hasta)}</td><td className="text-right tabular-nums">{row.rows}</td><td className="text-right tabular-nums">{row.missing_weight_rows}</td></tr>)}</tbody></table></div></ChartCard>
+    </>}
+  </div>
 }

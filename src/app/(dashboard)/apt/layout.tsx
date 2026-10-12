@@ -21,7 +21,9 @@ const SECTIONS = [
   {
     key: 'estadia', label: 'Estadía APT', icon: Warehouse, desc: 'Permanencia consolidada del producto terminado (FIFO)',
     tabs: [
-      { href: '/apt', label: 'Dashboard' },
+      { href: '/apt', label: 'Dashboard operativo' },
+      { href: '/apt/operacion', label: 'Control de OT y lotes' },
+      { href: '/apt/estadia', label: 'Estadía · cohortes FIFO' },
       { href: '/apt/gantt', label: 'Gantt · OT y lotes' },
       { href: '/apt/clientes', label: 'Cliente · OT · Lote' },
       { href: '/apt/detalle', label: 'Detalle APT' },
@@ -52,7 +54,7 @@ const SECTIONS = [
     ],
   },
 ] as const
-const NO_FILTERS = ['/apt/calidad', '/apt/cargas', '/apt/gantt', '/apt/flujo/trazabilidad', '/apt/flujo/kardex']
+const NO_FILTERS = ['/apt', '/apt/operacion', '/apt/calidad', '/apt/cargas', '/apt/gantt', '/apt/flujo/trazabilidad', '/apt/flujo/kardex']
 
 function tabActive(href: string, pathname: string) {
   if (href === '/apt' || href === '/apt/flujo') return pathname === href
@@ -69,9 +71,9 @@ function Tabs() {
   const current = sectionOf(pathname)
   // Cada sección conserva sus propios filtros: ?f= en la estadía, ?ff= en el flujo
   const withQs = (href: string, key: string) => {
-    const param = key === 'flujo' ? 'ff' : key === 'estadia' ? 'f' : null
+    const param = ['/apt', '/apt/operacion'].includes(href) ? 'of' : key === 'flujo' ? 'ff' : key === 'estadia' ? 'f' : null
     const v = param ? searchParams.get(param) : null
-    return v && !NO_FILTERS.includes(href) ? `${href}?${param}=${encodeURIComponent(v)}` : href
+    return v && (param === 'of' || !NO_FILTERS.includes(href)) ? `${href}?${param}=${encodeURIComponent(v)}` : href
   }
   return (
     <div>
@@ -133,7 +135,7 @@ export default function AptLayout({ children }: { children: React.ReactNode }) {
     )
   }
 
-  const showFilters = !NO_FILTERS.some(p => pathname.startsWith(p))
+  const showFilters = !NO_FILTERS.some(p => p === '/apt' ? pathname === p : pathname.startsWith(p))
   const isGantt = pathname === '/apt/gantt'
   const isFlow = pathname.startsWith('/apt/flujo')
   const st = info?.state
@@ -146,13 +148,13 @@ export default function AptLayout({ children }: { children: React.ReactNode }) {
               <Warehouse className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-lg font-black tracking-tight text-slate-900">Control y estadía — Almacén de Producto Terminado</h1>
+              <h1 className="text-lg font-black tracking-tight text-slate-900">APT — Control operativo y analítica</h1>
               <p className="text-xs text-slate-500">647 ALM PT · 540 APT LB · ST VENTAS → cliente · Permanencia y trazabilidad por NumRel, producto y guía</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="flex items-center gap-1.5 rounded-lg border border-[#002855]/20 bg-[#002855]/5 px-3 py-1.5 font-semibold text-[#002855]">
-              <CalendarClock className="h-3.5 w-3.5" /> Corte: {fmtDate(st?.cutoff)}
+              <CalendarClock className="h-3.5 w-3.5" /> Corte del modelo: {fmtDate(st?.cutoff)}
               {info?.settings.cutoff_date ? <span className="rounded bg-amber-100 px-1 text-[10px] text-amber-700">manual</span> : null}
             </span>
             <span className="hidden rounded-lg border border-slate-200 px-3 py-1.5 text-slate-500 md:inline">

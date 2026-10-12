@@ -37,7 +37,7 @@ export function FlowFilterBar() {
   const active = Object.keys(filters).filter(k => k !== 'almacen').length > 0
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+    <div className="sticky top-0 z-30 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
       <div className="flex flex-wrap items-center gap-2">
         <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-slate-400">
           <CalendarRange className="h-3.5 w-3.5" /> Periodo

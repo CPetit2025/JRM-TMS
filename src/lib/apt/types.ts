@@ -247,3 +247,68 @@ export interface AptCoverage {
   alertas: Array<{ nivel: AptAlertaNivel; hoja: AptUploadKind | null; mensaje: string }>
   secuencia_ok: boolean
 }
+/** Un mismo alcance para operaciones, gráficos, reportes e IA. No certifica existencias físicas. */
+export interface AptOperationalFilters {
+  desde?: string
+  hasta?: string
+  cutoff?: string
+  almacen?: '647' | '540' | 'ST'
+  lote?: string
+  ot?: string
+  clientes?: string[]
+}
+
+export interface AptOperationalRow {
+  almacen: string
+  lote: string
+  cliente: string | null
+  stock_tn: number
+  inferred_opening_tn: number | null
+  age_days: number | null
+  stock_tn_days: number | null
+}
+
+export interface AptOperationalSummary {
+  schema_version: 1
+  vacio?: boolean
+  filters: AptOperationalFilters
+  meta: {
+    cutoff: string | null
+    desde: string | null
+    hasta: string | null
+    data_min: string | null
+    data_max: string | null
+    flow_rebuilt_at: string | null
+    latest_applied_at: string | null
+    model_fresh: boolean
+    calculation_basis: 'DOCUMENTAL_RECONSTRUIDO'
+    composition_available: boolean
+    physical_reconciliation: 'NO_VERIFICADA'
+    age_basis: 'ORIGEN' | 'NO_DISPONIBLE'
+    alert_days: number
+    version: string
+  }
+  kpis: {
+    stock_tn: number
+    inferred_opening_tn: number | null
+    known_origin_stock_tn: number | null
+    unknown_origin_stock_tn: number | null
+    weighted_age_days: number | null
+    stock_tn_days: number | null
+    production_tn: number
+    dispatch_tn: number
+    consumption_tn: number
+    returns_tn: number
+    average_stock_tn: number | null
+    turnover: number | null
+    observed_days: number
+  }
+  quality: { missing_weight_rows: number; temporal_anomaly_rows: number; negative_balance_rows: number }
+  coverage: Array<{ kind: string; desde: string | null; hasta: string | null; rows: number; missing_weight_rows: number }>
+  series: Array<{ fecha: string; stock_tn: number; production_tn: number; dispatch_tn: number }>
+  warehouses: Array<{ almacen: string; stock_tn: number; inferred_opening_tn: number | null }>
+  rows: AptOperationalRow[]
+  total: number
+  limit: number
+  offset: number
+}

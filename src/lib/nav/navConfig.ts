@@ -55,7 +55,9 @@ export const NAV_SECTIONS: NavSection[] = [
     { href: '/contratos/servicios', label: 'Registro de Servicios', icon: Receipt, show: any('contratos-servicios', 'clientes'), keywords: 'servicio realizado comprometido gasto montacarga grua estiba' },
   ] }] },
   { id: 'apt', title: 'Almacén APT', icon: Warehouse, groups: [{ items: [
-    { href: '/apt', label: 'Estadía de Inventario', icon: Hourglass, show: any('apt', 'apt-carga'), keywords: 'apt estadia inventario fifo aging' },
+    { href: '/apt', label: 'Analítica Operativa APT', icon: ChartColumn, show: any('apt', 'apt-carga'), keywords: 'apt analitica inventario saldo stock calidad rotacion' },
+    { href: '/apt/operacion', label: 'Control de OT y Lotes', icon: ClipboardCheck, show: any('apt', 'apt-carga'), keywords: 'apt ot lote pendientes permanencia acciones' },
+    { href: '/apt/estadia', label: 'Estadía de Producción', icon: Hourglass, show: any('apt', 'apt-carga'), keywords: 'apt estadia cohorte fifo aging' },
     { href: '/apt/gantt', label: 'Trazabilidad SCM · Gantt', icon: CalendarRange, show: any('apt', 'apt-carga'), keywords: 'apt gantt ot lote trazabilidad toneladas tn permanencia' },
     { href: '/apt/flujo', label: 'Flujo multi‑almacén', icon: Workflow, show: any('apt'), keywords: '647 540 st ventas flujo almacen' },
     { href: '/apt/flujo/trazabilidad', label: 'Trazabilidad', icon: Route, show: any('apt'), keywords: 'trazabilidad guia lote ot familia' },
