@@ -10,7 +10,7 @@
 BEGIN;
 DO $test$
 DECLARE v_pass int := 0; v_fail text[] := '{}'; v_sup uuid; v_other uuid; v_loc uuid; v_other_loc uuid; v_req uuid;
-  denied boolean; actor uuid; v_new uuid; q jsonb; v_row public.transport_requests;
+  denied boolean; actor uuid; v_site uuid; v_new uuid; q jsonb; v_row public.transport_requests;
 BEGIN
   -- T1
   IF (SELECT bool_and(c.relrowsecurity) FROM pg_class c WHERE c.oid IN ('public.suppliers'::regclass, 'public.supplier_locations'::regclass))
@@ -33,10 +33,23 @@ BEGIN
   INSERT INTO public.supplier_locations(supplier_id, name, address, district) VALUES (v_other, 'Almacén ZZ', 'Av. ZZ 456, Lurín', 'LURIN') RETURNING id INTO v_other_loc;
 
   -- T3
-  SELECT id INTO v_req FROM public.transport_requests
-   WHERE request_type IN ('RECOJO', 'TRASLADO') AND COALESCE(to_jsonb(transport_requests)->>'attention_mode', '') <> 'RECOJO_CLIENTE'
-   ORDER BY created_at DESC LIMIT 1;
-  IF v_req IS NULL THEN RAISE EXCEPTION 'CAJA C63 FAIL (%/7): no hay recojos o traslados para ejecutar T3', v_pass; END IF;
+  -- La validación de proveedor no debe editar solicitudes reales ni depender
+  -- de que la última carga todavía sea editable. El fixture está pendiente,
+  -- sin ruta ni autorización de gastos; se revierte al terminar la prueba.
+  FOR actor IN SELECT id FROM public.profiles WHERE is_active AND id IN (SELECT id FROM auth.users) LOOP
+    PERFORM set_config('request.jwt.claim.sub', actor::text, true);
+    EXIT WHEN public.is_tms_admin(); actor := NULL;
+  END LOOP;
+  IF actor IS NULL THEN RAISE EXCEPTION 'CAJA C63 FAIL (%/7): falta administrador activo para ejecutar T3', v_pass; END IF;
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', actor, 'role', 'authenticated')::text, true);
+  SELECT id INTO v_site FROM public.sites WHERE public.can_access_site(id) ORDER BY id LIMIT 1;
+  IF v_site IS NULL THEN RAISE EXCEPTION 'CAJA C63 FAIL (%/7): falta sede autorizada', v_pass; END IF;
+  INSERT INTO public.transport_requests(request_number,status,site_id,created_by,requester_name,department,
+    request_type,attention_mode,cargo_description,pickup_address,pickup_district,delivery_address,delivery_district,
+    required_date,supplier_id,reference_type,reference_number)
+  VALUES('ZZ-C63-'||substr(gen_random_uuid()::text,1,8),'PENDIENTE',v_site,actor,'Prueba C63','Logística',
+    'RECOJO','TRANSPORTE_JRM','Carga sintética','Proveedor prueba','LURIN','Planta prueba','ATE',
+    current_date+1,v_sup,'RQ','ZZ-C63-INICIAL') RETURNING id INTO v_req;
   denied := false; BEGIN PERFORM public.apply_request_supplier(v_req, '{}'::jsonb); EXCEPTION WHEN OTHERS THEN denied := SQLERRM LIKE '%proveedor%'; END;
   IF denied THEN
     denied := false; BEGIN PERFORM public.apply_request_supplier(v_req, jsonb_build_object('supplier_id', v_sup, 'supplier_location_id', v_other_loc)); EXCEPTION WHEN OTHERS THEN denied := true; END;

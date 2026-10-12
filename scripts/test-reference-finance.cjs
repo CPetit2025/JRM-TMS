@@ -300,4 +300,32 @@ try {
  console.log('PASS: exact C94 runs approval, immutable reference, combined and cross-dispatch cap plus contract ledger isolation.');
  console.log('PASS: paid OC request approves, schedules and consumes freight + unloading within a supervisor cap; native enums, immutable reference, no fake OT and registry visibility.')
 
+ // C63 must exercise a synthetic pending request, never mutate a real assigned service.
+ // Expand the minimal supplier fixtures to the deployed schema, then install its exact RLS,
+ // private supplier RPC and deferred invariants before running the production regression.
+ sql(`ALTER TABLE suppliers ADD COLUMN category text NOT NULL DEFAULT 'MATERIA_PRIMA';
+ ALTER TABLE suppliers ADD COLUMN contact_name text; ALTER TABLE suppliers ADD COLUMN contact_phone text;
+ ALTER TABLE suppliers ADD COLUMN contact_email text; ALTER TABLE suppliers ADD COLUMN notes text;
+ ALTER TABLE suppliers ADD COLUMN created_by uuid DEFAULT auth.uid();
+ ALTER TABLE suppliers ADD COLUMN created_at timestamptz DEFAULT now(); ALTER TABLE suppliers ADD COLUMN updated_at timestamptz DEFAULT now();
+ UPDATE suppliers SET tax_id='20999999999',business_name='Proveedor financiero de prueba' WHERE tax_id IS NULL;
+ ALTER TABLE suppliers ALTER COLUMN tax_id SET NOT NULL; ALTER TABLE suppliers ALTER COLUMN business_name SET NOT NULL;
+ ALTER TABLE suppliers ADD CONSTRAINT suppliers_tax_id_format CHECK (tax_id ~ '^[0-9]{11}$');
+ ALTER TABLE suppliers ADD CONSTRAINT suppliers_name_present CHECK (btrim(business_name)<>'');
+ ALTER TABLE supplier_locations ALTER COLUMN id SET DEFAULT gen_random_uuid();
+ ALTER TABLE supplier_locations ADD COLUMN name text NOT NULL; ALTER TABLE supplier_locations ADD COLUMN address text NOT NULL;
+ ALTER TABLE supplier_locations ADD COLUMN department text; ALTER TABLE supplier_locations ADD COLUMN province text;
+ ALTER TABLE supplier_locations ADD COLUMN district text; ALTER TABLE supplier_locations ADD COLUMN contact_name text;
+ ALTER TABLE supplier_locations ADD COLUMN contact_phone text; ALTER TABLE supplier_locations ADD COLUMN is_active boolean DEFAULT true;
+ ALTER TABLE supplier_locations ADD COLUMN created_at timestamptz DEFAULT now();
+ ALTER TABLE supplier_locations ADD CONSTRAINT supplier_locations_present CHECK (btrim(name)<>'' AND btrim(address)<>'');
+ CREATE FUNCTION can_view_driver_evidence() RETURNS boolean LANGUAGE sql AS $$ SELECT false $$;`)
+ sql(read('supabase/migrations/20261009120000_suppliers.sql'))
+ const c63=query(read('supabase/tests/caja_c63_proveedores.test.sql'))
+ assert.notEqual(c63.status,0);assert.match(c63.stderr,/CAJA C63 PASS \(7\/7\)/)
+ assert.equal(sql(`SELECT reference_number FROM transport_requests WHERE id='${pay.id}'`),'0042')
+ deny(staff+`UPDATE transport_requests SET reference_number='0043' WHERE id='${pay.id}'`,/Retire la solicitud/)
+ console.log('PASS: exact production C63 (7/7) uses a pending synthetic supplier fixture and leaves assigned references immutable after finance changes.')
+
+
 } finally {spawnSync('docker',['rm','-f',name],{stdio:'ignore'})}
