@@ -33,14 +33,16 @@ function loteRow(r: FlowLoteSaldo): Row {
   return { key: `${r.almacen}|${r.lote}`, almacen: r.almacen, nombre: r.lote, detalle: `${fmtInt(r.productos)} prod. · desde ${fmtDate(r.fecha_llegada_min)}`,
     cliente: r.cliente, lotes: 1, tn: r.tn, edad_pond: r.edad_pond, dias_almacen_pond: r.dias_almacen_pond, tn_dias: r.tn_dias,
     inicial_tn: r.inicial_tn, alerta: r.alerta,
-    excel: { Lote: r.lote, Cliente: r.cliente ?? '', TN: r.tn, Productos: r.productos, Capas: r.capas } }
+    excel: { Lote: r.lote, Cliente: r.cliente ?? '', TN: r.tn, Productos: r.productos, Capas: r.capas,
+      'Fecha origen más antigua': r.fecha_origen_min ?? '', 'Llegada más antigua': r.fecha_llegada_min ?? '' } }
 }
 function glosaRow(r: FlowGlosaSaldo): Row {
   return { key: `${r.almacen}|${r.glosa}`, almacen: r.almacen, nombre: r.glosa,
     detalle: `${fmtInt(r.productos)} prod. · ${fmtInt(r.clientes)} cliente${r.clientes === 1 ? '' : 's'} · desde ${fmtDate(r.fecha_llegada_min)}`,
     cliente: null, lotes: r.lotes, tn: r.tn, edad_pond: r.edad_pond, dias_almacen_pond: r.dias_almacen_pond, tn_dias: r.tn_dias,
     inicial_tn: r.inicial_tn, alerta: r.alerta,
-    excel: { Glosa: r.glosa, Lotes: r.lotes, Productos: r.productos, Clientes: r.clientes, TN: r.tn } }
+    excel: { Glosa: r.glosa, Lotes: r.lotes, Productos: r.productos, Clientes: r.clientes, TN: r.tn,
+      'Fecha origen más antigua': r.fecha_origen_min ?? '', 'Llegada más antigua': r.fecha_llegada_min ?? '' } }
 }
 
 export function AlmacenLotesTable({ rows: source, view = 'lote', alertDays, cutoff }:
