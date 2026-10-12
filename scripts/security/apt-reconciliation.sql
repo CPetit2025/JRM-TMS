@@ -62,8 +62,8 @@ UNION ALL
 SELECT 'apt_internal_transfer_totals', jsonb_build_object(
   'transfer_ingress_tn', (SELECT round(COALESCE(sum(kg_in),0)/1000,3) FROM public.apt_flow_layers WHERE tipo='TRASPASO'),
   'transfer_egress_tn', (SELECT round(COALESCE(sum(kg),0)/1000,3) FROM public.apt_flow_exits WHERE tipo='TRASPASO'),
-  'not_external_production_or_dispatch', true);
-
+  'not_external_production_or_dispatch', true)
+UNION ALL
 SELECT 'apt_query_cardinality' AS section,jsonb_build_object(
  'layers',(SELECT count(*) FROM public.apt_flow_layers),
  'exits',(SELECT count(*) FROM public.apt_flow_exits),
@@ -72,7 +72,8 @@ SELECT 'apt_query_cardinality' AS section,jsonb_build_object(
  'allocations',(SELECT count(*) FROM public.apt_allocations),
  'distinct_inventory_keys',(SELECT count(*) FROM (SELECT DISTINCT almacen,lote,producto FROM public.apt_flow_layers UNION SELECT DISTINCT almacen,lote,producto FROM public.apt_flow_exits) k),
  'table_statistics',(SELECT jsonb_agg(jsonb_build_object('table',relname,'estimated_rows',n_live_tup,'last_analyze',last_analyze,'last_autoanalyze',last_autoanalyze)) FROM pg_stat_user_tables WHERE schemaname='public' AND relname LIKE 'apt_%')
-) AS finding;
+) AS finding
+UNION ALL
 SELECT 'apt_kardex_source_scope' AS section,jsonb_build_object(
  'almacen',COALESCE(m.almacen,'647'),
  'excluded_rows',count(*),
@@ -86,7 +87,8 @@ FROM public.apt_movements m CROSS JOIN public.apt_flow_state s
 WHERE s.id=1 AND m.active AND m.valid AND m.fecha<=s.cutoff AND m.lote IS NOT NULL
  AND (m.almacen IS NOT NULL OR m.kind='ENTRADA')
  AND (m.producto IS NULL OR m.peso_kg<=0 OR m.peso_kg IS NULL OR m.kind NOT IN ('ENTRADA','SALIDA','TRASPASO_ENT','TRASPASO_SAL','CONSUMO','DEVOLUCION'))
-GROUP BY COALESCE(m.almacen,'647');
+GROUP BY COALESCE(m.almacen,'647')
+UNION ALL
 SELECT 'apt_kardex_model_membership' AS section,jsonb_build_object(
  'kind',m.kind,'source_rows',count(*),
  'missing_model_rows',count(*) FILTER(WHERE CASE WHEN m.kind IN ('ENTRADA','TRASPASO_ENT','DEVOLUCION') THEN l.id IS NULL ELSE x.id IS NULL END),
@@ -98,5 +100,10 @@ LEFT JOIN public.apt_flow_layers l ON l.id=m.id AND m.kind IN ('ENTRADA','TRASPA
 LEFT JOIN public.apt_flow_exits x ON x.id=m.id AND m.kind IN ('SALIDA','TRASPASO_SAL','CONSUMO')
 WHERE s.id=1 AND m.active AND m.valid AND m.fecha<=s.cutoff AND m.lote IS NOT NULL AND m.producto IS NOT NULL AND m.peso_kg>0
  AND (m.almacen IS NOT NULL OR m.kind='ENTRADA')
-GROUP BY m.kind;
+GROUP BY m.kind
+UNION ALL
+SELECT 'apt_kardex_obsolete_model' AS section,jsonb_build_object(
+ 'inactive_or_missing_layer_rows',(SELECT count(*) FROM public.apt_flow_layers l LEFT JOIN public.apt_movements m ON m.id=l.id WHERE l.tipo<>'INICIAL' AND (m.id IS NULL OR NOT m.active OR NOT m.valid)),
+ 'inactive_or_missing_exit_rows',(SELECT count(*) FROM public.apt_flow_exits x LEFT JOIN public.apt_movements m ON m.id=x.id WHERE m.id IS NULL OR NOT m.active OR NOT m.valid)
+) AS finding;
 ROLLBACK;
