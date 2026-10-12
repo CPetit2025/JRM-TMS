@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import Link from 'next/link'
 import { CalendarClock, Info } from 'lucide-react'
 import { flowApi } from '@/lib/apt/api'
@@ -11,9 +11,9 @@ import { useFlowFilters } from '@/lib/apt/useFlowFilters'
 import { ChartCard, EmptyState, ErrorBlock, LoadingBlock } from '@/components/apt/ui'
 import { ResumenAlmacenCard, useFlowQuery } from '@/components/apt/flow/ResumenShared'
 import { AlmacenAging, AlmacenMovimientos, AlmacenSerie } from '@/components/apt/flow/AlmacenCharts'
-import { AlmacenLotesTable } from '@/components/apt/flow/AlmacenLotesTable'
+import { AlmacenLotesTable, type StockView } from '@/components/apt/flow/AlmacenLotesTable'
 
-// Stock por almacén: dónde está el saldo (647 · 540 · ST VENTAS), cómo evolucionó, qué antigüedad tiene y qué lotes lo forman.
+// Stock por almacén: dónde está el saldo (647 · 540 · ST VENTAS), cómo evolucionó, qué antigüedad tiene y qué lotes o glosas lo forman.
 
 export default function FlujoAlmacenesPage() {
   const { filters, patchFilters, setFilters, filterKey } = useFlowFilters()
@@ -21,6 +21,7 @@ export default function FlujoAlmacenesPage() {
   const { data: d, error, loading, retry } = useFlowQuery(filterKey, fetcher)
   const sel = filters.almacen
   const pick = (a?: FlowAlmacen) => patchFilters({ almacen: a })
+  const [view, setView] = useState<StockView>('lote')
 
   const tabs = (
     <div className="inline-flex flex-wrap rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm" role="tablist" aria-label="Almacén">
@@ -55,6 +56,8 @@ export default function FlujoAlmacenesPage() {
   const total = d.resumen.reduce((s, r) => s + Number(r.saldo_tn || 0), 0)
   const cards = FLOW_ALMACENES.map(a => d.resumen.find(r => r.almacen === a)).filter((x): x is NonNullable<typeof x> => !!x)
   const lotes = sel ? d.lotes.filter(l => l.almacen === sel) : d.lotes
+  const glosas = (d.glosas ?? []).filter(g => !sel || g.almacen === sel)
+  const stockRows = view === 'glosa' ? glosas : lotes
   const movAlm = sel ? [sel] : FLOW_ALMACENES.filter(a => d.movimientos.some(m => m.almacen === a))
   const hasFilters = Object.keys(filters).some(k => k !== 'almacen')
 
@@ -102,13 +105,26 @@ export default function FlujoAlmacenesPage() {
         </div>
       </ChartCard>
 
-      <ChartCard title={`Lotes con saldo${sel ? ` · ${ALMACEN_LABEL[sel]}` : ''}`}
-        subtitle="Ordenados por TN×Días (los 300 de mayor impacto) · clic en un lote para ver su trazabilidad" bodyClassName="p-0 sm:p-2">
-        {lotes.length ? (
-          <AlmacenLotesTable key={filterKey} rows={lotes} alertDays={d.alert_days} cutoff={d.cutoff} />
+      <ChartCard title={`${view === 'glosa' ? 'Saldo por glosa' : 'Lotes con saldo'}${sel ? ` · ${ALMACEN_LABEL[sel]}` : ''}`}
+        subtitle={view === 'glosa'
+          ? 'Saldo de cada glosa (descripción del producto) en cada almacén, ordenado por TN×Días'
+          : 'Ordenados por TN×Días (los 300 de mayor impacto) · clic en un lote para ver su trazabilidad'}
+        actions={
+          <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5" role="tablist" aria-label="Ver saldo por">
+            {(['lote', 'glosa'] as const).map(v => (
+              <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)}
+                className={`rounded-md px-3 py-1 text-xs font-bold ${view === v ? 'bg-[#002855] text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+                {v === 'glosa' ? 'Por glosa' : 'Por lote'}
+              </button>
+            ))}
+          </div>
+        }
+        bodyClassName="p-0 sm:p-2">
+        {stockRows.length ? (
+          <AlmacenLotesTable key={`${filterKey}|${view}`} rows={stockRows} view={view} alertDays={d.alert_days} cutoff={d.cutoff} />
         ) : (
           <div className="p-4">
-            <EmptyState title="Sin lotes con saldo">
+            <EmptyState title={view === 'glosa' ? 'Sin glosas con saldo' : 'Sin lotes con saldo'}>
               {hasFilters && <button onClick={() => setFilters(sel ? { almacen: sel } : {})} className="font-semibold text-[#002855] underline">Quitar filtros</button>}
             </EmptyState>
           </div>
