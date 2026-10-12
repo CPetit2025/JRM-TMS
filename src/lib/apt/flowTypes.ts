@@ -56,6 +56,12 @@ export interface FlowLoteSaldo {
   inicial_tn: number | null; tn_dias: number | null; alerta: boolean | null
 }
 
+export interface FlowGlosaSaldo {
+  almacen: FlowAlmacen; glosa: string; tn: number; lotes: number; productos: number; clientes: number
+  fecha_origen_min: string | null; fecha_llegada_min: string | null; edad_pond: number | null; dias_almacen_pond: number | null
+  inicial_tn: number | null; tn_dias: number | null; alerta: boolean | null
+}
+
 export interface FlowStock {
   vacio?: boolean
   cutoff: string; desde: string; hasta: string; alert_days: number
@@ -66,6 +72,7 @@ export interface FlowStock {
   // tipo INGRESO: PRODUCCION | DEVOLUCION | OTRO_ALMACEN | DESDE_647 | DESDE_540 | DESDE_ST
   // tipo SALIDA: DESPACHO | CONSUMO | OTRO_ALMACEN | HACIA_647 | HACIA_540 | HACIA_ST
   lotes: FlowLoteSaldo[]   // top 300 por TN×días
+  glosas?: FlowGlosaSaldo[] // saldo por almacén y glosa (completo, por TN×días)
 }
 
 export interface FlowLeadtime {
