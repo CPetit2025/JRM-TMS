@@ -33,6 +33,9 @@ test('a statement timeout queues the background calculation and reports it inste
   const rpc = async (name, args) => { calls.push({ name, args }); return name === 'apt_operational_summary' ? { data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } } : { data: { success: true } } }
   await assert.rejects(analysis.getAptOperationalAnalysis({ rpc }, { ot: '16339' }), /segundo plano/)
   assert.deepEqual(calls[1], { name: 'apt_read_cache_request', args: { p_fn: 'apt_operational_summary', p_args: { p: { ot: '16339' } } } })
+  // Si la cola rechaza la solicitud no se promete un cálculo en segundo plano
+  const rejected = async name => name === 'apt_operational_summary' ? { data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } } : { data: { success: false, error: 'Solicitud de cálculo APT inválida' } }
+  await assert.rejects(analysis.getAptOperationalAnalysis({ rpc: rejected }, { ot: '16339' }), error => !/segundo plano/.test(error.message))
 })
 test('comparison conserves entity scope and calculates deltas, with zero denominators remaining unknown', async () => {
   let index = 0; const calls = []

@@ -137,14 +137,15 @@ GRANT EXECUTE ON FUNCTION public.apt_dashboard(jsonb, text) TO authenticated, se
 GRANT EXECUTE ON FUNCTION public.apt_operational_summary(jsonb) TO authenticated, service_role;
 
 -- La web registra aquí un filtro cuyo cálculo superó el límite de su petición (la petición se revierte, esta no).
--- Solo filtros con forma válida y tamaño acotado; el cron los calcula en orden de llegada.
+-- Solo filtros con forma válida; el tope de 1 MB evita abusos sin rechazar selecciones válidas (el tablero no limita
+-- sus listas). La cola guarda como máximo 50 solicitudes.
 CREATE OR REPLACE FUNCTION public.apt_read_cache_request(p_fn text, p_args jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE v_key jsonb;
 BEGIN
   IF NOT public.is_active_tms_user() OR NOT public.apt_can_view() THEN RETURN jsonb_build_object('success', false, 'error', 'Sin acceso al módulo APT'); END IF;
   IF p_fn NOT IN ('apt_dashboard', 'apt_operational_summary') OR jsonb_typeof(p_args) <> 'object'
-     OR jsonb_typeof(COALESCE(p_args -> 'p', '{}'::jsonb)) <> 'object' OR length(p_args::text) > 64000
+     OR jsonb_typeof(COALESCE(p_args -> 'p', '{}'::jsonb)) <> 'object' OR length(p_args::text) > 1000000
      OR (p_fn = 'apt_dashboard' AND COALESCE(p_args ->> 'p_grain', 'semana') NOT IN ('dia', 'semana', 'mes')) THEN
     RETURN jsonb_build_object('success', false, 'error', 'Solicitud de cálculo APT inválida');
   END IF;

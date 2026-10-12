@@ -7,9 +7,11 @@ export const APT_BACKGROUND_MESSAGE = 'El análisis APT con estos filtros se est
 
 type RpcError = { code?: string | null; message?: string | null } | null | undefined
 
-/** Registra el cálculo en segundo plano si la lectura venció por tiempo; devuelve true cuando lo hizo. */
+/** Registra el cálculo en segundo plano si la lectura venció por tiempo; devuelve true solo si quedó en la cola. */
 export async function requestAptBackgroundRead(supabase: Pick<SupabaseClient, 'rpc'>, fn: string, args: Record<string, unknown>, error: RpcError): Promise<boolean> {
   if (!error || !CACHED_READS.has(fn) || !/statement timeout|57014/i.test(`${error.code ?? ''} ${error.message ?? ''}`)) return false
-  try { await supabase.rpc('apt_read_cache_request', { p_fn: fn, p_args: args }) } catch { /* el aviso se muestra igual */ }
-  return true
+  try {
+    const queued = await supabase.rpc('apt_read_cache_request', { p_fn: fn, p_args: args })
+    return !queued.error && (queued.data as { success?: boolean } | null)?.success === true
+  } catch { return false }
 }
