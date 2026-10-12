@@ -7,7 +7,7 @@ import { FilterToolbar, filterControl } from '@/components/ui/filter-toolbar'
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, CheckCircle2, ChevronRight, Clock, Info, Layers, FileCheck2, FileSpreadsheet, FileText, ListTree, Loader2, RefreshCw, Search, Trash2, Truck, Upload } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronRight, Clock, Info, Layers, FileCheck2, FileImage, FileSpreadsheet, FileText, ListTree, Loader2, RefreshCw, Search, Trash2, Truck, Upload } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { Modal } from '@/components/ui/modal'
 import { GuiaDetalleModal } from '@/components/guias/GuiaDetalleModal'
@@ -56,6 +56,18 @@ const STATUS_BADGE: Record<QueueItem['doc_status'], { label: string; tone: Statu
 const SHEET_TYPES = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'text/csv']
 const isSheetName = (n: string) => /\.(xlsx|xls|csv)$/i.test(n)
 const sheetMime = (n: string) => /\.csv$/i.test(n) ? 'text/csv' : /\.xls$/i.test(n) ? 'application/vnd.ms-excel' : SHEET_TYPES[0]
+// Otro documento: PDF, imágenes y Excel, varios a la vez; cada archivo se identifica por su tipo.
+const OTHER_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.xls,.xlsx,.csv'
+type FileKind = 'pdf' | 'excel' | 'imagen'
+const fileKind = (name: string, mime?: string | null): FileKind =>
+  isSheetName(name) || /sheet|excel|csv/i.test(mime || '') ? 'excel' : /\.(jpe?g|png|webp)$/i.test(name) || (mime || '').startsWith('image/') ? 'imagen' : 'pdf'
+const KIND_ICON = { pdf: FileText, excel: FileSpreadsheet, imagen: FileImage } as const
+const KIND_LABEL: Record<FileKind, string> = { pdf: 'PDF', excel: 'Excel', imagen: 'Imagen' }
+const KIND_STYLE: Record<FileKind, string> = { pdf: 'bg-red-50 text-red-700', excel: 'bg-emerald-50 text-emerald-700', imagen: 'bg-violet-50 text-violet-700' }
+function KindTag({ kind }: { kind: FileKind }) {
+  const Icon = KIND_ICON[kind]
+  return <span className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${KIND_STYLE[kind]}`}><Icon className="h-3 w-3" />{KIND_LABEL[kind]}</span>
+}
 
 // Horas que faltan para la salida (negativo = atrasado)
 const limaDay = (date = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
@@ -440,7 +452,7 @@ function DocList({ docs, canEdit, onVoid, onOpen }: { docs: Doc[]; canEdit: bool
       {docs.map(d => (
         <li key={d.id} className="min-w-0 space-y-1 text-xs">
           <button type="button" onClick={() => onOpen(d.file_path)} className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-left font-semibold text-blue-800 hover:bg-blue-100">
-            {isSheetName(d.file_name || d.file_path) ? <FileSpreadsheet className="h-4 w-4 shrink-0" /> : <FileText className="h-4 w-4 shrink-0" />}
+            {(() => { const Icon = KIND_ICON[fileKind(d.file_name || d.file_path, d.mime_type)]; return <Icon className="h-4 w-4 shrink-0" /> })()}
             <span className="break-words">Ver {DOC_LABEL[d.doc_type] || 'documento'}{d.document_number ? ` ${d.document_number}` : ''}</span>
           </button>
           {d.doc_type === 'GUIA_REMISION' && d.document_number && (
@@ -449,7 +461,7 @@ function DocList({ docs, canEdit, onVoid, onOpen }: { docs: Doc[]; canEdit: bool
               <ListTree className="w-3 h-3" /> SKUs
             </button>
           )}
-          <p className="break-all text-slate-500">{d.file_name || 'Archivo adjunto'}</p>
+          <p className="flex min-w-0 items-center gap-1.5 break-all text-slate-500"><KindTag kind={fileKind(d.file_name || d.file_path, d.mime_type)} />{d.file_name || 'Archivo adjunto'}</p>
           {d.doc_type === 'PACKING_LIST' && <p className={`${d.signed ? 'text-emerald-700' : 'text-amber-700'}`}>{d.signed ? `Firmado por ${d.auditor_name} · ${fmtDate(d.auditor_signed_date || null)}` : 'Firma del auditor pendiente de registrar'}</p>}
           {d.cargo_type && <span className="text-xs text-slate-500">({CARGO_LABEL[d.cargo_type] || d.cargo_type})</span>}
           {canEdit && <button type="button" onClick={() => onVoid(d)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 font-semibold text-red-700 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" />Anular documento</button>}
@@ -471,49 +483,60 @@ function UploadForm({ dispatchId, requestId, isPickup, canPacking, canDocuments,
   const [signedDate, setSignedDate] = useState(today)
   const [signature, setSignature] = useState(false)
   const [number, setNumber] = useState('')
-  const [file, setFile] = useState<File | null>(null)
+  const [files, setFiles] = useState<File[]>([])
   const [saving, setSaving] = useState(false)
   const [inputKey, setInputKey] = useState(0)
   const needsNumber = docType === 'GUIA_REMISION' || docType === 'NOTA_DESPACHO'
   const allowSheet = docType === 'OTRO'
   const packing = docType === 'PACKING_LIST'
 
+  const multiple = allowSheet
+  const mimeOf = (file: File) => packing ? packingMime(file) : allowSheet ? (isSheetName(file.name) ? sheetMime(file.name) : packingMime(file)) : 'application/pdf'
+
+  const uploadOne = async (file: File, userId: string) => {
+    const mime = mimeOf(file) as string
+    const path = `${dispatchId}/${packing ? `packing/${userId}/` : ''}${crypto.randomUUID()}-${file.name.replace(/[^\w.-]+/g, '_').slice(-80)}`
+    const { error: upErr } = await supabase.storage.from(DOCS_BUCKET).upload(path, file, { contentType: mime })
+    if (upErr) throw new Error('No se pudo subir el archivo: ' + errorMessage(upErr))
+    const { data, error } = packing ? await supabase.rpc('register_signed_packing_list', {
+      p_dispatch_id: dispatchId, p_request_id: requestId, p_file_path: path, p_file_name: file.name,
+      p_mime_type: mime, p_size_bytes: file.size, p_auditor: auditor.trim(), p_signed_date: signedDate, p_signature_confirmed: signature,
+    }) : await supabase.rpc('register_dispatch_document', {
+      p_dispatch_id: dispatchId, p_request_id: requestId, p_doc_type: docType, p_cargo_type: null,
+      p_document_number: number.trim() || null, p_file_path: path, p_file_name: file.name,
+      p_mime_type: mime, p_size_bytes: file.size, p_notes: null,
+    })
+    if (error) throw new Error('No se pudo confirmar el registro: ' + errorMessage(error) + '. Actualiza la bandeja antes de reintentar.')
+    if (!data?.success) {
+      // El archivo sin registro no sirve: se retira para no dejar huérfanos
+      await supabase.storage.from(DOCS_BUCKET).remove([path])
+      throw new Error(data?.error || 'No se pudo registrar el documento')
+    }
+  }
+
   const submit = async () => {
     if (saving) return
-    if (!file || !file.size) { toast.error('Seleccione un archivo que no esté vacío'); return }
-    if (file.size > 15 * 1024 * 1024) { toast.error('El archivo supera 15 MB'); return }
+    if (!files.length || files.some(f => !f.size)) { toast.error('Seleccione archivos que no estén vacíos'); return }
+    const big = files.find(f => f.size > 15 * 1024 * 1024)
+    if (big) { toast.error(`${big.name} supera 15 MB`); return }
     if (packing && (!auditor.trim() || !signedDate || !signature)) { toast.error('Indique auditor, fecha y confirme que el Packing List contiene su firma'); return }
     if (needsNumber && !number.trim()) { toast.error('Indique la serie y número'); return }
-    const sheet = isSheetName(file.name)
-    if (!packing && !(file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) && !(allowSheet && sheet)) {
-      toast.error(allowSheet ? 'Cargue un PDF o un Excel' : 'La Nota de Despacho se carga en PDF'); return
-    }
-    const mime = packing ? packingMime(file) : sheet ? sheetMime(file.name) : 'application/pdf'
-    if (!mime) { toast.error('Seleccione PDF, foto JPG/PNG/WEBP o Excel XLS/XLSX'); return }
+    const invalid = files.find(f => !packing && !allowSheet && !(f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) || !mimeOf(f))
+    if (invalid) { toast.error(allowSheet ? `${invalid.name}: cargue PDF, imagen JPG/PNG/WEBP o Excel` : packing ? 'Seleccione PDF, foto JPG/PNG/WEBP o Excel XLS/XLSX' : 'La Nota de Despacho se carga en PDF'); return }
     setSaving(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Tu sesión venció. Ingresa nuevamente para cargar el documento.')
-      const path = `${dispatchId}/${packing ? `packing/${user.id}/` : ''}${crypto.randomUUID()}-${file.name.replace(/[^\w.-]+/g, '_').slice(-80)}`
-      const { error: upErr } = await supabase.storage.from(DOCS_BUCKET).upload(path, file, { contentType: mime })
-      if (upErr) throw new Error('No se pudo subir el archivo: ' + errorMessage(upErr))
-      const { data, error } = packing ? await supabase.rpc('register_signed_packing_list', {
-        p_dispatch_id: dispatchId, p_request_id: requestId, p_file_path: path, p_file_name: file.name,
-        p_mime_type: mime, p_size_bytes: file.size, p_auditor: auditor.trim(), p_signed_date: signedDate, p_signature_confirmed: signature,
-      }) : await supabase.rpc('register_dispatch_document', {
-        p_dispatch_id: dispatchId, p_request_id: requestId, p_doc_type: docType, p_cargo_type: null,
-        p_document_number: number.trim() || null, p_file_path: path, p_file_name: file.name,
-        p_mime_type: mime, p_size_bytes: file.size, p_notes: null,
-      })
-      if (error) throw new Error('No se pudo confirmar el registro: ' + errorMessage(error) + '. Actualiza la bandeja antes de reintentar.')
-      if (!data?.success) {
-        // El archivo sin registro no sirve: se retira para no dejar huérfanos
-        await supabase.storage.from(DOCS_BUCKET).remove([path])
-        throw new Error(data?.error || 'No se pudo registrar el documento')
+      const failed: File[] = []
+      for (const file of files) {
+        try { await uploadOne(file, user.id) } catch (e) { failed.push(file); toast.error(`${file.name}: ${errorMessage(e)}`) }
       }
-      toast.success(`${DOC_LABEL[docType]} cargado`)
-      setNumber(''); setFile(null); setSignature(false); setInputKey(k => k + 1)
-      await onUploaded()
+      const done = files.length - failed.length
+      if (done) toast.success(files.length > 1 ? `${done} de ${files.length} archivos cargados` : `${DOC_LABEL[docType]} cargado`)
+      // Los archivos que fallaron quedan seleccionados para reintentar
+      setFiles(failed); setInputKey(k => k + 1)
+      if (!failed.length) { setNumber(''); setSignature(false) }
+      if (done) await onUploaded()
     } catch (e) { toast.error(errorMessage(e)) } finally { setSaving(false) }
   }
 
@@ -522,12 +545,26 @@ function UploadForm({ dispatchId, requestId, isPickup, canPacking, canDocuments,
       {packing && <div className="grid w-full gap-3 sm:grid-cols-2"><label className="text-xs text-slate-600">Auditor firmante *<input value={auditor} maxLength={120} onChange={e => setAuditor(e.target.value)} placeholder="Nombre y apellido del Auditor de Despacho" className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" /></label><label className="text-xs text-slate-600">Fecha de firma *<input type="date" value={signedDate} max={today} onChange={e => setSignedDate(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" /></label><label className="flex items-start gap-2 text-xs leading-5 text-slate-600 sm:col-span-2"><input type="checkbox" checked={signature} onChange={e => setSignature(e.target.checked)} className="mt-1" />Confirmo que el archivo adjunto es legible y contiene la firma del auditor de despacho. Se acepta PDF, foto o Excel (XLS/XLSX) del Packing List firmado.</label></div>}
       {!packing && <label className="text-xs text-slate-600">Número {needsNumber ? '*' : '(opcional)'}<input value={number} onChange={e => setNumber(e.target.value)} placeholder={needsNumber ? 'T001-000123' : 'Número del documento'}
         className="mt-1 min-h-11 w-full max-w-48 border border-slate-300 rounded-lg px-3 text-sm" /></label>}
-      <label className="block w-full min-w-0 text-xs text-slate-600 sm:flex-1">Archivo · máximo 15 MB<input disabled={saving} key={inputKey} type="file" accept={packing ? PACKING_ACCEPT : allowSheet ? '.pdf,.xlsx,.xls,.csv' : '.pdf'} onChange={e => setFile(e.target.files?.[0] || null)}
+      <label className="block w-full min-w-0 text-xs text-slate-600 sm:flex-1">{multiple ? 'Archivos · PDF, imagen o Excel · máximo 15 MB cada uno' : 'Archivo · máximo 15 MB'}<input disabled={saving} key={inputKey} type="file" multiple={multiple} accept={packing ? PACKING_ACCEPT : allowSheet ? OTHER_ACCEPT : '.pdf'}
+        onChange={e => { const picked = Array.from(e.target.files || []); setFiles(multiple ? prev => [...prev, ...picked.filter(p => !prev.some(f => f.name === p.name && f.size === p.size))] : picked.slice(0, 1)); setInputKey(k => k + 1) }}
         className="mt-2 block min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-slate-50 text-xs file:mr-3 file:min-h-11 file:border-0 file:bg-slate-200 file:px-3 file:font-semibold file:text-[#002855]" /></label>
       <button onClick={submit} disabled={saving}
         className="min-h-11 px-3 rounded-lg bg-[#002855] text-white font-semibold disabled:opacity-50 flex items-center gap-1.5">
-        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}{saving ? 'Cargando…' : 'Subir archivo'}
+        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}{saving ? 'Cargando…' : files.length > 1 ? `Subir ${files.length} archivos` : 'Subir archivo'}
       </button>
+      {!!files.length && (
+        <ul className="w-full space-y-1.5" aria-label="Archivos seleccionados">
+          {files.map((f, i) => (
+            <li key={`${f.name}|${f.size}|${i}`} className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs">
+              <KindTag kind={fileKind(f.name, f.type)} />
+              <span className="min-w-0 flex-1 truncate text-slate-700" title={f.name}>{f.name}</span>
+              <span className="shrink-0 tabular-nums text-slate-400">{(f.size / 1024 / 1024).toFixed(2)} MB</span>
+              <button type="button" disabled={saving} onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))} aria-label={`Quitar ${f.name}`}
+                className="inline-flex min-h-8 items-center rounded px-1.5 text-slate-500 hover:bg-slate-200 hover:text-red-700 disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" /></button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
