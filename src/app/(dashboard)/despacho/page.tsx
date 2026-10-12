@@ -205,7 +205,7 @@ export default function DespachoPage() {
 
   const [freightShares, setFreightShares] = useState<Record<string, string>>({})
   const selectedServices = newDispatch.selected_requests.map(selected => pendingRequests.find(r => r.id === selected.id)).filter((r): r is TransportRequest => !!r)
-  const mixedOT = new Set(selectedServices.map(r => r.contract_id || 'SIN_OT')).size > 1
+  const mixedOT = new Set(selectedServices.map(r => r.contract_id || `ORDEN:${r.reference_type || ''}:${r.reference_number || r.id}`)).size > 1
   const selectedDates = [...new Set(selectedServices.map(r => r.required_date?.slice(0,10)).filter((date): date is string => !!date))]
   const customerPickup = selectedServices[0]?.attention_mode === 'RECOJO_CLIENTE'
   const selectedDriver = drivers.find(d => `${d.first_name} ${d.last_name}`.trim() === newDispatch.driver_name.trim())
@@ -234,7 +234,7 @@ export default function DespachoPage() {
     newDispatch.selected_requests.length > 0 && newDispatch.document_type === 'GR' && modalidad === 'PROPIA' && !newDispatch.driver_name && { label: 'Conductor', target: 'ruta-unidad' },
     newDispatch.selected_requests.length > 0 && newDispatch.document_type === 'GR' && modalidad === 'TERCERO' && (!tercero.carrier_id || !tercero.placa.trim() || !tercero.conductor.trim() || !tercero.telefono.trim() || !tercero.doc.trim()) && { label: 'Datos del transportista tercero', target: 'ruta-unidad' },
     !newDispatch.scheduled_departure && { label: 'Fecha y hora de salida', target: 'ruta-salida' },
-    mixedOT && !allocationMatches && { label: 'Distribución del flete por OT', target: 'ruta-flete' },
+    mixedOT && !allocationMatches && { label: 'Distribución del flete por servicio', target: 'ruta-flete' },
   ].filter(Boolean) as PendingItem[])
   const programmingRequests = () => newDispatch.selected_requests.map(req => ({ ...req,
     leg_planned_km: reqDistances.current[req.id] ?? null, freight_share_pen: serviceShare(req.id) }))
@@ -664,7 +664,7 @@ export default function DespachoPage() {
             <DataTable dense className="w-full border-collapse text-left">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
-                  {['Registro', 'Atención', 'Servicio', 'OT', 'Empresa', 'Origen → Destino', 'Partida', 'Acciones'].map((title, i) => <th key={title} className={`whitespace-nowrap font-semibold ${i === 7 ? 'text-right' : ''}`}>{title}</th>)}
+                  {['Registro', 'Atención', 'Servicio', 'OT / OC / OS / RQ', 'Empresa', 'Origen → Destino', 'Partida / costo', 'Acciones'].map((title, i) => <th key={title} className={`whitespace-nowrap font-semibold ${i === 7 ? 'text-right' : ''}`}>{title}</th>)}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -693,7 +693,9 @@ export default function DespachoPage() {
                       <td className="whitespace-nowrap text-sm">
                         {req.contracts?.code && balance !== undefined && balance !== null
                           ? <span className={`font-semibold ${(balance || 0) < 500 ? 'text-red-700' : 'text-slate-700'}`}>S/ {(balance || 0).toLocaleString('es-PE')}</span>
-                          : <span className="text-slate-400">—</span>}
+                          : !req.contract_id && referenceLabel(req)
+                            ? <span className="text-slate-700" title="Costo de la solicitud aprobada, sin consumo de partida OT">S/ {Number(req.service_cost || 0).toLocaleString('es-PE')}<span className="block text-[11px] font-normal text-slate-500">Costo aprobado</span></span>
+                            : <span className="text-slate-400">—</span>}
                       </td>
                       <td className="text-right">
                         {canWrite('despacho') && (
@@ -732,7 +734,7 @@ export default function DespachoPage() {
       >
         <form id="route-form" onSubmit={handleProgramar} className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="min-w-0 space-y-4">
-            <FormSection id="ruta-servicios" step={1} title="Servicios de la ruta" hint="Combine entregas, recojos y traslados de varias OT con la misma modalidad y sede. El orden de selección es el orden de las paradas."
+            <FormSection id="ruta-servicios" step={1} title="Servicios de la ruta" hint="Combine entregas, recojos y traslados con OT u OC, OS o RQ, con la misma modalidad y sede. El orden de selección es el orden de las paradas."
               aside={<span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800">{newDispatch.selected_requests.length} seleccionadas</span>}>
               <div className="mb-2 flex flex-wrap gap-2">
                 <label className="relative min-w-0 flex-1 basis-56"><span className="sr-only">Buscar servicios</span><Search aria-hidden className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -806,7 +808,7 @@ export default function DespachoPage() {
                       {loadingRate && <p className="text-xs text-slate-400 flex items-center gap-1 mt-1"><Loader2 className="w-3 h-3 animate-spin" /> Buscando tarifa...</p>}
                       <p className="text-[11px] text-slate-500 mt-1">
                         {Number(manualFreightCost) > 0 ? 'Se usará el monto pactado.' : detectedFreightRate ? `Vacío = se toma el tarifario (S/ ${detectedFreightRate.rate.toLocaleString('es-PE')}).` : 'Sin tarifa en el tarifario para esta ruta: indique el monto.'}
-                        {' '}Se reserva en la partida de la OT a nombre del proveedor.
+                        {' '}Con OT, se reserva en su partida a nombre del proveedor. Sin OT, el costo requiere aprobación del supervisor y se vincula a la OC, OS o RQ.
                       </p>
                     </div>
                   </>
@@ -916,16 +918,16 @@ export default function DespachoPage() {
               </div>
             </FormSection>
 
-            {mixedOT && <FormSection id="ruta-flete" step={4} title="Flete distribuido por OT" hint="Cada OT financia su parte sobre el 80% operativo; el 20% de utilidad queda protegido.">
+            {mixedOT && <FormSection id="ruta-flete" step={4} title="Flete distribuido por servicio" hint="Con OT se utiliza el 80% operativo de la partida. Los servicios sin OT conservan el costo aprobado y su OC, OS o RQ.">
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-xs text-slate-600">Total de ruta S/ {routeFreight.toFixed(2)}</span>
                   <button type="button" onClick={() => setFreightShares({})} className="text-xs text-blue-700 underline">Distribuir según los estimados</button>
                 </div>
-                <p className="text-xs text-slate-600">La propuesta usa los costos estimados de las solicitudes; puede ajustar cada monto antes de confirmar. Cada OT financia su parte sobre el 80% operativo. El 20% de utilidad queda protegido.</p>
+                <p className="text-xs text-slate-600">La propuesta usa los costos estimados de las solicitudes; puede ajustar cada monto antes de confirmar. En los servicios con OT, el 20% de utilidad queda protegido. En los servicios sin OT, el supervisor autoriza el costo sobre la OC, OS o RQ.</p>
                 {selectedServices.map(req => (
                   <label key={req.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <span><strong>{req.request_number}</strong> · OT {req.contracts?.code || 'Sin OT'} · {serviceLabel(req)}</span>
+                    <span><strong>{req.request_number}</strong> · {req.contracts?.code ? `OT ${req.contracts.code}` : referenceLabel(req) || 'Sin referencia'} · {serviceLabel(req)}</span>
                     <span className="flex items-center gap-1">S/
                       <input type="number" min="0" step="0.01" aria-label={`Flete ${req.request_number}`} value={freightShares[req.id] ?? serviceShare(req.id).toFixed(2)} onChange={e => setFreightShares(prev => ({ ...prev, [req.id]: e.target.value }))} className="w-28 rounded border border-blue-200 bg-white px-2 py-1 text-right" />
                     </span>

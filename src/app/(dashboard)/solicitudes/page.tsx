@@ -29,6 +29,7 @@ import { SupplierOriginPicker } from '@/components/solicitudes/SupplierOriginPic
 import { FormSection, PendingPanel, PendingStatus } from '@/components/ui/form-section'
 import { partyName, referenceLabel, REFERENCE_TYPES, requiresSupplier, type ReferenceType, type Supplier } from '@/lib/suppliers'
 import { serviceDate } from '@/lib/request-schedule'
+import { requiresOrderReference, orderReferenceComplete } from '@/lib/request-reference'
 
 const requestDate = (value: string, withTime = false) => value ? new Date(value).toLocaleString('es-PE', {
   timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: 'numeric',
@@ -81,6 +82,8 @@ interface TransportRequest {
   unloading_required?: boolean | null
   cost_source?: string | null
   cost_override_reason?: string | null
+  operational_approved_pen?: number | null
+  unloading_estimate_pen?: number | null
   reserved_pen?: number | null
   approved_at?: string | null
   transport_request_components?: Array<{
@@ -191,7 +194,7 @@ export default function SolicitudesPage() {
     const matchesService = filterService === 'TODOS' || serviceKind(r) === filterService
     return matchesSearch && matchesStatus(r.status, filterStatus) && matchesDateFrom && matchesDateTo && matchesService
   }).sort((a, b) => {
-    const value = (r: TransportRequest) => sort.key === 'service' ? compactService(r) : sort.key === 'ot' ? r.contracts?.code || '' : sort.key === 'client' ? partyName(r, (r.request_client?.business_name || r.contracts?.clients?.business_name), r.suppliers?.business_name) || '' : sort.key === 'requester' ? r.requester_name || ''
+    const value = (r: TransportRequest) => sort.key === 'service' ? compactService(r) : sort.key === 'ot' ? r.contracts?.code || referenceLabel(r) || '' : sort.key === 'client' ? partyName(r, (r.request_client?.business_name || r.contracts?.clients?.business_name), r.suppliers?.business_name) || '' : sort.key === 'requester' ? r.requester_name || ''
       : sort.key === 'address' ? serviceAddresses(r).map(place => place.address).join(' → ') : sort.key === 'status' ? statusLabels[r.status] || r.status : r[sort.key]
     const comparison = value(a).localeCompare(value(b), 'es-PE', { numeric: true, sensitivity: 'base' })
     return (sort.direction === 'asc' ? comparison : -comparison) || a.id.localeCompare(b.id)
@@ -285,6 +288,8 @@ export default function SolicitudesPage() {
     option.destination_address?.trim().toLowerCase()).filter(Boolean)).size > 1
   const rootBudget = componentOptions.find(option => option.contract_id === newRequest.contract_id)
   const unloadingTotal = unloading.reduce((sum, u) => sum + (Number(u.estimated_pen) || 0), 0)
+  const referenceRequired = requiresOrderReference(newRequest.request_type)
+  const referenceComplete = orderReferenceComplete(newRequest.reference_type, newRequest.reference_number)
   const isCustomerPickup = newRequest.attention_mode === 'RECOJO_CLIENTE'
   const estimatedCost = (isCustomerPickup ? 0 : Number(newRequest.service_cost || 0)) + unloadingTotal
 
@@ -651,7 +656,7 @@ export default function SolicitudesPage() {
       return
     }
 
-    if ((!newRequest.contract_id) || (newRequest.contract_id && !contracts.some(c => c.id === newRequest.contract_id))) {
+    if ((!referenceRequired && !newRequest.contract_id) || (newRequest.contract_id && !contracts.some(c => c.id === newRequest.contract_id))) {
       toast.error('Selecciona una OT madre activa.')
       return
     }
@@ -684,6 +689,10 @@ export default function SolicitudesPage() {
       toast.error('Seleccione el proveedor del recojo o traslado. Si no existe, use «Nuevo proveedor» en la misma solicitud.')
       return
     }
+    if (referenceRequired && !referenceComplete) {
+      toast.error('El recojo o traslado requiere una OC, OS o RQ con su número. La OT es opcional.')
+      return
+    }
     if (newRequest.reference_type && !newRequest.reference_number.trim()) {
       toast.error(`Ingrese el número de ${newRequest.reference_type}.`)
       return
@@ -702,7 +711,7 @@ export default function SolicitudesPage() {
         }))
       })
       if (error) throw error
-      if (saved?.status === 'OBSERVADA') toast.warning(newRequest.contract_id ? 'Solicitud observada: la partida no cubre los costos a cargo de JRM.' : 'Solicitud registrada y observada: vincule una OT para financiar los gastos JRM antes de aprobar y programar.')
+      if (saved?.status === 'OBSERVADA') toast.warning(newRequest.contract_id ? 'Solicitud observada: la partida no cubre los costos a cargo de JRM.' : 'Solicitud registrada con observaciones; revise los costos y la referencia antes de su aprobación.')
 
       toast.success('Solicitud enviada correctamente')
       if (!editingRequestId && draftMode) clearDraft()
@@ -746,9 +755,23 @@ export default function SolicitudesPage() {
 
   const updateStatus = async (id: string, newStatus: string) => {
     try {
-      const { error } = await supabase.rpc('set_transport_request_status', {
-        p_request_id: id, p_new_status: newStatus, p_required_date: null
-      })
+      const request = requests.find(item => item.id === id)
+      const referenceApproval = newStatus === 'APROBADA' && request && !request.contract_id && requiresOrderReference(request.request_type)
+      let error
+      if (referenceApproval) {
+        const approvedCost = Math.round((Number(request.service_cost || 0) + Number(request.unloading_estimate_pen || 0)) * 100) / 100
+        if (!window.confirm(`Aprobar ${request.request_number} · ${referenceLabel(request)} por S/ ${approvedCost.toLocaleString('es-PE', { minimumFractionDigits: 2 })} (flete y descarga). La programación debe respetar este monto autorizado.`)) return
+        const result = await supabase.rpc('approve_reference_transport_request', {
+          p_request_id: id, p_expected_cost: approvedCost,
+          p_reference_type: request.reference_type, p_reference_number: request.reference_number,
+        })
+        error = result.error
+      } else {
+        const result = await supabase.rpc('set_transport_request_status', {
+          p_request_id: id, p_new_status: newStatus, p_required_date: null
+        })
+        error = result.error
+      }
 
       if (error) throw error
 
@@ -855,7 +878,8 @@ export default function SolicitudesPage() {
   const pendingItems = ([
     !newRequest.requester_name.trim() && { label: 'Solicitante', target: 'req-servicio' },
     !newRequest.department && { label: 'Área / departamento', target: 'req-servicio' },
-    !newRequest.contract_id && { label: 'OT madre', target: 'req-ot' },
+    !referenceRequired && !newRequest.contract_id && { label: 'OT madre', target: 'req-ot' },
+    referenceRequired && !referenceComplete && { label: 'OC, OS o RQ y número', target: 'req-carga' },
     Boolean(newRequest.contract_id) && !componentsLoading && selectedOptions.length === 0 && { label: 'Componentes de la OT', target: 'req-ot' },
     mixedDestinations && !destinationAcknowledged && { label: 'Confirmar destino principal', target: 'req-ot' },
     needsSupplier && !newRequest.supplier_id && { label: 'Proveedor de origen', target: 'req-proveedor' },
@@ -952,7 +976,7 @@ export default function SolicitudesPage() {
         <div role="region" aria-label="Tabla de solicitudes de transporte" tabIndex={0} className="min-h-0 overflow-auto lg:flex-1">
           <DataTable dense className="block w-full table-fixed text-left lg:min-w-[940px] lg:table"><caption className="sr-only">Solicitud de Transporte: fechas, tipo de servicio, OT, punto de atención, estado y acciones</caption>
             <thead className="sticky top-0 z-10 hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>
-              {[{ title: 'Solicitada', key: 'created_at', width: 'w-[10%]' }, { title: 'Atención', key: 'required_date', width: 'w-[10%]' }, { title: 'Servicio', key: 'service', width: 'w-[11%]' }, { title: 'OT', key: 'ot', width: 'w-[7%]' }, { title: 'Solicitante', key: 'requester', width: 'w-[13%]' }, { title: 'Empresa', key: 'client', width: 'w-[14%] 2xl:w-[12%]' }, { title: 'Punto de atención', key: 'address', width: 'w-[13%] 2xl:w-[11%]' }, { title: 'Estado', key: 'status', width: 'w-[12%]' }, { title: 'Acciones', width: 'w-[10%] 2xl:w-[14%]' }].map(column => <th key={column.title} scope="col" className={column.width} aria-sort={column.key && sort.key === column.key ? sort.direction === 'asc' ? 'ascending' : 'descending' : undefined}>
+              {[{ title: 'Solicitada', key: 'created_at', width: 'w-[10%]' }, { title: 'Atención', key: 'required_date', width: 'w-[10%]' }, { title: 'Servicio', key: 'service', width: 'w-[11%]' }, { title: 'OT / Ref.', key: 'ot', width: 'w-[7%]' }, { title: 'Solicitante', key: 'requester', width: 'w-[13%]' }, { title: 'Empresa', key: 'client', width: 'w-[14%] 2xl:w-[12%]' }, { title: 'Punto de atención', key: 'address', width: 'w-[13%] 2xl:w-[11%]' }, { title: 'Estado', key: 'status', width: 'w-[12%]' }, { title: 'Acciones', width: 'w-[10%] 2xl:w-[14%]' }].map(column => <th key={column.title} scope="col" className={column.width} aria-sort={column.key && sort.key === column.key ? sort.direction === 'asc' ? 'ascending' : 'descending' : undefined}>
                 {column.key ? <button type="button" onClick={() => changeSort(column.key as typeof sort.key)} aria-label={`Ordenar por ${column.title.toLowerCase()}`} className="flex min-h-8 items-center gap-1.5 text-left hover:text-[#002855]">{column.title}{sort.key === column.key ? sort.direction === 'asc' ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" /> : <ArrowUpDown className="h-3 w-3 shrink-0 text-slate-400" />}</button> : column.title}
               </th>)}
             </tr></thead>
@@ -980,7 +1004,7 @@ export default function SolicitudesPage() {
                     return <span title={note || undefined} className={`whitespace-nowrap ${lead?.enough === false ? 'font-semibold text-red-700' : req.status === 'REPROGRAMADA' ? 'font-semibold text-amber-700' : 'text-slate-700'}`}>{req.required_at ? cellDateTime(req.required_at) : serviceDate(req.required_date)}</span>
                   })()}</td>
                   <td className={cell}>{label('Servicio')}<ServiceTypeBadge request={req} /></td>
-                  <td className={cell}>{label('OT')}<span className="whitespace-nowrap font-semibold text-[#002855]" title={[`Solicitud ${req.request_number}`, req.contracts?.code && referenceLabel(req)].filter(Boolean).join(' · ')}>{req.contracts?.code || (req.contract_id ? 'OT vinculada' : referenceLabel(req) || 'Sin OT')}</span></td>
+                  <td className={cell}>{label('OT / Ref.')}<span className="whitespace-nowrap font-semibold text-[#002855]" title={[`Solicitud ${req.request_number}`, req.contracts?.code && referenceLabel(req)].filter(Boolean).join(' · ')}>{req.contracts?.code || (req.contract_id ? 'OT vinculada' : referenceLabel(req) || 'Sin OT')}</span></td>
                   <td className={cell}>{label('Solicitante')}<p className="truncate text-slate-700" title={[req.requester_name, req.department].filter(Boolean).join(' · ') || undefined}>{req.requester_name || 'Sin solicitante'}</p></td>
                   <td className={cell}>{label('Empresa')}{(() => { const party = partyName(req, (req.request_client?.business_name || req.contracts?.clients?.business_name), req.suppliers?.business_name); return <p className="truncate text-slate-700" title={party ? `${requiresSupplier(req) ? 'Proveedor' : 'Cliente'}: ${party}` : undefined}>{party || <button type="button" onClick={e => { e.stopPropagation(); setLinkRequest(req) }} className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-100" title="Sin esto no se puede programar">{requiresSupplier(req) ? 'Proveedor sin vincular' : 'Sin cliente'} · vincular</button>}</p> })()}</td>
                   <td className={`${cell} col-span-2`}>{label('Punto de atención')}<div title={addresses.map(place => `${place.label}: ${place.address}`).join(' → ')} className="text-slate-700">
@@ -1012,7 +1036,7 @@ export default function SolicitudesPage() {
           <div className="flex gap-2">
             <button type="button" disabled={isCreatingComponent} onClick={() => setIsModalOpen(false)} className="rounded-lg px-4 py-2 font-medium text-slate-600 transition-colors hover:bg-slate-100">Cancelar</button>
             <button type="submit" form="request-form"
-              disabled={isSubmitting || isCreatingComponent || (requiresDeliveryLeadTime && !leadTimeLoaded) || !requiredAt || (requiresDeliveryLeadTime && leadTimeEvaluation.enough === false) || componentsLoading || (!newRequest.contract_id) || (Boolean(newRequest.contract_id) && selectedOptions.length === 0)}
+              disabled={isSubmitting || isCreatingComponent || (requiresDeliveryLeadTime && !leadTimeLoaded) || !requiredAt || (requiresDeliveryLeadTime && leadTimeEvaluation.enough === false) || componentsLoading || (!referenceRequired && !newRequest.contract_id) || (referenceRequired && !referenceComplete) || (Boolean(newRequest.contract_id) && selectedOptions.length === 0)}
               className="flex items-center gap-2 rounded-lg bg-[#002855] px-4 py-2 font-medium text-white transition-colors hover:bg-[#001d3d] disabled:opacity-50">
               {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               {editingRequestId ? 'Actualizar solicitud' : 'Enviar solicitud'}
@@ -1060,7 +1084,7 @@ export default function SolicitudesPage() {
             </div>}
             </FormSection>
 
-            <FormSection id="req-ot" step={2} title="OT madre y componentes" hint="Toda solicitud se vincula a una OT madre; sus componentes pueden tener o no partida de transporte.">
+            <FormSection id="req-ot" step={2} title={referenceRequired ? "OT madre y componentes (opcional)" : "OT madre y componentes"} hint={referenceRequired ? "El recojo o traslado se identifica con OC, OS o RQ. Vincula una OT solo cuando corresponda." : "La entrega se vincula a una OT madre; sus componentes pueden tener o no partida de transporte."}>
               <OtPicker
                 nodes={otNodes}
                 disabled={isSubmitting || isCreatingComponent}
@@ -1225,14 +1249,14 @@ export default function SolicitudesPage() {
                   <textarea required rows={3} placeholder="Ej. 20 bobinas de acero para el proyecto Sur..." className={`${field} resize-none`}
                     value={newRequest.cargo_description} onChange={e => setNewRequest({ ...newRequest, cargo_description: e.target.value })} /></label>
                 <div>
-                  <span className="mb-1 block text-sm font-medium text-slate-700">Documento de referencia (opcional)</span>
+                  <span className="mb-1 block text-sm font-medium text-slate-700">Documento de referencia {referenceRequired ? '(obligatorio: OC, OS o RQ)' : '(opcional)'}</span>
                   <div className="flex gap-2">
-                    <select aria-label="Tipo de documento" value={newRequest.reference_type} onChange={e => setNewRequest({ ...newRequest, reference_type: e.target.value, reference_number: e.target.value ? newRequest.reference_number : '' })}
+                    <select required={referenceRequired} aria-label="Tipo de documento" value={newRequest.reference_type} onChange={e => setNewRequest({ ...newRequest, reference_type: e.target.value, reference_number: e.target.value ? newRequest.reference_number : '' })}
                       className="w-36 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:ring-2 focus:ring-[#002855]">
-                      <option value="">Sin documento</option>
+                      <option value="">{referenceRequired ? "Seleccione OC, OS o RQ" : "Sin documento"}</option>
                       {(Object.keys(REFERENCE_TYPES) as ReferenceType[]).map(k => <option key={k} value={k}>{k} · {REFERENCE_TYPES[k]}</option>)}
                     </select>
-                    <input type="text" aria-label="Número de documento" disabled={!newRequest.reference_type} placeholder={newRequest.reference_type ? `Número de ${newRequest.reference_type}` : newRequest.purchase_order ? `Registrado antes: ${newRequest.purchase_order}` : 'Elija el tipo'}
+                    <input type="text" required={referenceRequired || Boolean(newRequest.reference_type)} aria-label="Número de documento" maxLength={100} disabled={!newRequest.reference_type} placeholder={newRequest.reference_type ? `Número de ${newRequest.reference_type}` : newRequest.purchase_order ? `Registrado antes: ${newRequest.purchase_order}` : 'Elija el tipo'}
                       className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:ring-2 focus:ring-[#002855] disabled:bg-slate-100"
                       value={newRequest.reference_number} onChange={e => setNewRequest({ ...newRequest, reference_number: e.target.value })} />
                   </div>
@@ -1245,7 +1269,7 @@ export default function SolicitudesPage() {
                   S/ {quoteFreight.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  {isCustomerPickup ? 'El cliente gestiona el transporte: no se cotiza ni reserva flete JRM.' : 'Costo referencial según tarifario. Los gastos JRM se imputan a la partida de una OT antes de aprobar y programar; el armado de ruta valida el importe.'}
+                  {isCustomerPickup ? 'El cliente gestiona el transporte: no se cotiza ni reserva flete JRM.' : referenceRequired && !newRequest.contract_id ? 'Costo referencial según tarifario. El supervisor aprueba los costos contra la OC, OS o RQ; la ruta debe respetar el monto autorizado.' : 'Costo referencial según tarifario. Los gastos JRM se imputan a la partida de la OT; el armado de ruta valida el importe.'}
                 </p>
                 {quote ? <QuoteBreakdown quote={quote} compact />
                   : <p className="text-xs text-slate-400 mt-1">Elige la OT y el distrito de destino para calcularlo.</p>}
@@ -1323,8 +1347,9 @@ export default function SolicitudesPage() {
               <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">Resumen</p>
               <dl className="space-y-2">
                 <div><dt className="text-xs text-slate-500">Servicio</dt><dd className="mt-0.5"><ServiceTypeBadge full request={{ request_type: newRequest.request_type, attention_mode: newRequest.attention_mode, contract_id: newRequest.contract_id || null }} /></dd></div>
-                <div><dt className="text-xs text-slate-500">OT</dt><dd className="font-semibold text-slate-900">{contracts.find(c => c.id === newRequest.contract_id)?.code || 'Sin OT'}{selectedOptions.length > 0 && <span className="font-normal text-slate-500"> · {selectedOptions.length} comp.</span>}</dd></div>
+                <div><dt className="text-xs text-slate-500">OT</dt><dd className="font-semibold text-slate-900">{contracts.find(c => c.id === newRequest.contract_id)?.code || (referenceRequired ? 'Opcional · sin OT vinculada' : 'Sin OT')}{selectedOptions.length > 0 && <span className="font-normal text-slate-500"> · {selectedOptions.length} comp.</span>}</dd></div>
                 {!needsSupplier && <div><dt className="text-xs text-slate-500">Cliente</dt><dd className="truncate font-semibold text-slate-900">{otClientName || 'OT sin cliente'}</dd></div>}
+                {referenceRequired && <div><dt className="text-xs text-slate-500">Referencia del servicio</dt><dd className="font-semibold text-slate-900">{referenceLabel(newRequest) || 'Seleccione OC, OS o RQ e indique el número'}</dd></div>}
                 {needsSupplier && <div><dt className="text-xs text-slate-500">Proveedor</dt><dd className="truncate font-semibold text-slate-900">{suppliers.find(s => s.id === newRequest.supplier_id)?.business_name || '—'}</dd></div>}
                 <div><dt className="text-xs text-slate-500">Ruta</dt><dd className="font-semibold text-slate-900">{newRequest.pickup_district || '—'} → {newRequest.delivery_district || '—'}</dd></div>
                 <div><dt className="text-xs text-slate-500">Atención</dt><dd className="font-semibold text-slate-900">{requiredAt ? fullDateTime(requiredAt) : '—'}</dd></div>
@@ -1345,7 +1370,7 @@ export default function SolicitudesPage() {
       >
         {selectedRequestDetails && <div className="space-y-5 text-sm text-slate-700">
           <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-4">
-            <div><span className="block text-xs text-slate-500">OT madre</span><strong>{detailExecution?.ot_code || selectedRequestDetails.contracts?.code || (selectedRequestDetails.contract_id ? 'OT vinculada sin código disponible' : 'Sin OT')}</strong></div>
+            <div><span className="block text-xs text-slate-500">{selectedRequestDetails.contract_id ? 'OT madre' : 'Referencia del servicio'}</span><strong>{selectedRequestDetails.contract_id ? detailExecution?.ot_code || selectedRequestDetails.contracts?.code || 'OT vinculada sin código disponible' : referenceLabel(selectedRequestDetails) || 'Sin referencia'}</strong></div>
             <div><span className="block text-xs text-slate-500">Estado</span>{getStatusBadge(selectedRequestDetails.status)}</div>
             <div><span className="block text-xs text-slate-500">Código / Emisión</span><strong>{selectedRequestDetails.request_number}</strong><p className="mt-1">{requestDate(selectedRequestDetails.created_at, true)}</p></div><div><span className="block text-xs text-slate-500">Tipo de servicio</span>{serviceLabel(selectedRequestDetails)}</div><div><span className="block text-xs text-slate-500">Cliente</span>{(selectedRequestDetails.request_client?.business_name || selectedRequestDetails.contracts?.clients?.business_name) || 'Sin cliente registrado'}</div><div><span className="block text-xs text-slate-500">Proveedor de origen</span>{selectedRequestDetails.suppliers?.business_name || (requiresSupplier(selectedRequestDetails) ? 'Proveedor sin vincular' : 'No aplica')}</div><div><span className="block text-xs text-slate-500">Documento de referencia</span>{referenceLabel(selectedRequestDetails) || 'Sin documento'}</div><div><span className="block text-xs text-slate-500">Área / Departamento</span>{selectedRequestDetails.department}</div><div><span className="block text-xs text-slate-500">Solicitante</span>{selectedRequestDetails.requester_name}</div>
             <div><span className="block text-xs text-slate-500">Fecha requerida</span>{selectedRequestDetails.required_at ? requestDate(selectedRequestDetails.required_at, true) : serviceDate(selectedRequestDetails.required_date)}{selectedRequestDetails.time_window && <p className="mt-1 flex items-center gap-1 text-xs"><Clock className="h-3 w-3" />{selectedRequestDetails.time_window}</p>}</div>
@@ -1365,15 +1390,15 @@ export default function SolicitudesPage() {
                     <span className="text-right">{item.requested_weight_kg === null ? 'Peso sin registrar' : `${Number(item.requested_weight_kg).toLocaleString('es-PE')} kg`}
                       <span className="block text-xs text-slate-500">{item.requested_volume_m3 === null ? 'Volumen sin registrar' : `${Number(item.requested_volume_m3).toLocaleString('es-PE')} m³`}</span></span>
                   </div>)}
-                </div> : <p className="text-slate-500">La solicitud histórica no tiene componentes identificados con certeza.</p>}
+                </div> : <p className="text-slate-500">{selectedRequestDetails.contract_id ? 'La solicitud histórica no tiene componentes identificados con certeza.' : 'Servicio sustentado por OC, OS o RQ; no requiere componentes de una OT.'}</p>}
           </div>
           <div className="grid grid-cols-2 gap-3 rounded-lg bg-blue-50 p-4">
             <div><span className="block text-xs text-slate-500">Peso solicitado (estimado)</span><strong>{selectedRequestDetails.estimated_weight > 0 ? `${Number(selectedRequestDetails.estimated_weight).toLocaleString('es-PE')} kg` : 'Sin peso solicitado registrado'}</strong></div>
             <div><span className="block text-xs text-slate-500">Volumen de cabecera</span><strong>{Number(selectedRequestDetails.estimated_volume || 0).toLocaleString('es-PE')} m³</strong></div>
             <div><span className="block text-xs text-slate-500">Modalidad de atención</span><strong>{selectedRequestDetails.attention_mode === 'RECOJO_CLIENTE' ? 'Recojo por el cliente' : selectedRequestDetails.attention_mode === 'TRANSPORTE_JRM' ? 'Transporte JRM' : 'Pendiente de confirmar'}</strong><p className="text-xs text-slate-600">{selectedRequestDetails.pickup_customer} {selectedRequestDetails.pickup_contact} {selectedRequestDetails.pickup_phone}</p></div>
             <div><span className="block text-xs text-slate-500">Costo estimado, una vez por solicitud</span><strong>S/ {Number(selectedRequestDetails.service_cost || 0).toLocaleString('es-PE')}</strong></div>
-            <div><span className="block text-xs text-slate-500">Partida OT raíz</span><strong>{requestSummaries[selectedRequestDetails.id]?.root_allocated_pen == null ? 'Sin registrar' : `S/ ${Number(requestSummaries[selectedRequestDetails.id].root_allocated_pen).toLocaleString('es-PE')}`}</strong></div>
-            <div><span className="block text-xs text-slate-500">Saldo actual OT raíz</span><strong>{requestSummaries[selectedRequestDetails.id]?.root_balance_pen == null ? 'Sin registrar' : `S/ ${Number(requestSummaries[selectedRequestDetails.id].root_balance_pen).toLocaleString('es-PE')}`}</strong></div>
+            {!selectedRequestDetails.contract_id && requiresOrderReference(selectedRequestDetails.request_type) ? <div><span className="block text-xs text-slate-500">Costos autorizados por el supervisor</span><strong>S/ {Number(selectedRequestDetails.operational_approved_pen || 0).toLocaleString('es-PE')}</strong><p className="text-xs text-slate-600">{referenceLabel(selectedRequestDetails)} · flete y descarga</p></div> : <div><span className="block text-xs text-slate-500">Partida OT raíz</span><strong>{requestSummaries[selectedRequestDetails.id]?.root_allocated_pen == null ? 'Sin registrar' : `S/ ${Number(requestSummaries[selectedRequestDetails.id].root_allocated_pen).toLocaleString('es-PE')}`}</strong></div>}
+            {selectedRequestDetails.contract_id && <div><span className="block text-xs text-slate-500">Saldo actual OT raíz</span><strong>{requestSummaries[selectedRequestDetails.id]?.root_balance_pen == null ? 'Sin registrar' : `S/ ${Number(requestSummaries[selectedRequestDetails.id].root_balance_pen).toLocaleString('es-PE')}`}</strong></div>}
           </div>
           <section className="space-y-3"><h3 className="font-semibold text-slate-900">Ejecución del servicio · kilómetros y peso sustentado</h3><p className="text-xs leading-5 text-slate-500">Los kilómetros pertenecen al tramo de esta solicitud; el retorno y el total de la ruta no se reparten entre sus OT. El peso real requiere guía validada y peso completo de SALIDA APT. Recojos y guías compartidas quedan pendientes de sustento específico.</p>
             {detailsLoading ? <p className="text-slate-500">Consultando viajes y mediciones…</p> : executionError ? <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-800">No se pudo consultar la ejecución: {executionError}</p> : !detailExecution?.legs.length ? <p className="rounded-lg bg-slate-50 p-3 text-slate-500">Sin viajes vinculados; aún no hay kilómetros ni peso transportado registrados.</p> : <div className="overflow-hidden rounded-lg border border-slate-200"><DataTable className="block w-full text-left md:table"><thead className="hidden bg-slate-50 text-xs text-slate-500 md:table-header-group"><tr>{['Viaje / Unidad','Estado / Guía','KM del tramo','Peso real transportado'].map(t => <th key={t} className="p-3" scope="col">{t}</th>)}</tr></thead><tbody className="block divide-y md:table-row-group">{detailExecution.legs.map(leg => <tr key={leg.dispatch_id} className="grid grid-cols-1 sm:grid-cols-2 md:table-row"><td className="p-3 align-top"><p className="break-words text-xs font-bold text-[#002855]">{leg.dispatch_number}</p><p className="mt-1 text-xs">{leg.vehicle_plate || 'Sin unidad'} · {leg.driver_name || 'Sin conductor'}</p><p className="mt-1 text-xs text-slate-500">Parada {leg.sequence ?? 'sin orden'}</p></td><td className="p-3 align-top"><p className="text-xs font-semibold">{leg.dispatch_status} · {leg.conformity}</p><p className="mt-1 text-xs text-slate-500">Guía: {leg.guide_number || 'Sin guía registrada'}</p></td><td className="p-3 align-top"><p className="mb-1 text-xs text-slate-500 md:hidden">KM del tramo</p><p className="font-semibold">{leg.actual_km == null ? 'Sin medición' : `${Number(leg.actual_km).toLocaleString('es-PE',{maximumFractionDigits:3})} km`}</p><p className="mt-1 text-xs text-slate-500">{leg.actual_km == null ? leg.modalidad === 'TERCERO' ? 'Proveedor sin trazado GPS registrado' : 'Sin trazado GPS registrado' : leg.gps_complete === true ? 'GPS completo' : 'GPS parcial · no es el recorrido completo'}</p></td><td className="p-3 align-top"><p className="mb-1 text-xs text-slate-500 md:hidden">Peso real transportado</p><p className="font-semibold">{leg.actual_weight_kg == null ? 'Sin peso real sustentado' : `${Number(leg.actual_weight_kg).toLocaleString('es-PE')} kg`}</p><p className="mt-1 max-w-64 text-xs leading-5 text-slate-500">{executionWeightLabels[leg.weight_status] || 'Origen del peso no identificado'}</p></td></tr>)}</tbody></DataTable></div>}

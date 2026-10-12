@@ -30,8 +30,8 @@ try {
  CREATE FUNCTION can_access_site(site uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT site='${id(1)}' $$;
  CREATE FUNCTION is_tms_admin() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT false $$;
  CREATE FUNCTION is_contract_administrator() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$ SELECT COALESCE((SELECT contract_admin FROM profiles WHERE id=auth.uid()),false) $$;
- CREATE FUNCTION has_assigned_contract(c uuid,w boolean) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT c IN('${id(3)}','${id(4)}') $$;
- CREATE FUNCTION has_assigned_request(r uuid,w boolean) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
+ CREATE FUNCTION has_assigned_contract(c uuid,w boolean DEFAULT false) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT c IN('${id(3)}','${id(4)}') $$;
+ CREATE FUNCTION has_assigned_request(p_request_id uuid,p_write boolean) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
  CREATE TABLE cost_centers(id uuid PRIMARY KEY,code text,name text,is_active boolean); INSERT INTO cost_centers VALUES('${id(5)}','CC-DIST','Logística',true);
  CREATE TABLE contracts(id uuid PRIMARY KEY,code text,type text,status text,parent_contract_id uuid,subcontract_id uuid,site_id uuid,total_weight_kg numeric,total_volume_m3 numeric,destination_address text);
  INSERT INTO contracts VALUES('${id(3)}','16523','CONTRATO','ACTIVO',NULL,NULL,'${id(1)}',10000,10000,'Destino'),('${id(4)}','OT-P','CONTRATO','ACTIVO',NULL,NULL,'${id(1)}',10000,10000,'Destino');
@@ -177,6 +177,52 @@ try {
  const enumC91=query(read('supabase/tests/caja_c91_request_inline_components.test.sql'))
  assert.notEqual(enumC91.status,0);assert.match(enumC91.stderr,/CAJA C91 PASS/)
  console.log('PASS: inline Subcontrato/Error creation and exact production C91 work with native contract_type enum as well as text.')
+ // Corrected service rules: recojo/punto a punto use purchasing references, not mandatory OT.
+ sql(`ALTER TABLE transport_requests ADD COLUMN reference_type text; ALTER TABLE transport_requests ADD COLUMN reference_number text;
+ ALTER TABLE transport_requests ADD COLUMN supplier_id uuid; ALTER TABLE transport_requests ADD COLUMN supplier_location_id uuid;
+ CREATE TABLE suppliers(id uuid PRIMARY KEY,is_active boolean); INSERT INTO suppliers VALUES('${id(11)}',true);
+ CREATE TABLE supplier_locations(id uuid PRIMARY KEY,supplier_id uuid);`)
+ sql(fn('supabase/migrations/20261009120000_suppliers.sql','apply_request_supplier'))
+ sql(fn('supabase/migrations/20261009120000_suppliers.sql','save_transport_request_full'))
+ sql('REVOKE ALL ON FUNCTION save_transport_request_full(uuid,jsonb,jsonb,jsonb) FROM PUBLIC,anon; GRANT EXECUTE ON FUNCTION save_transport_request_full(uuid,jsonb,jsonb,jsonb) TO authenticated; REVOKE ALL ON FUNCTION apply_request_supplier(uuid,jsonb) FROM PUBLIC,anon,authenticated;')
+ sql(read('supabase/migrations/20261012130000_request_reference_without_ot.sql'))
+ const full=(p,c=[])=>json(`save_transport_request_full(NULL,${lit(p)},${lit(c)},'[]')`)
+ for(const kind of ['RECOJO','TRASLADO']) {
+   for(const ref of ['OC','OS','RQ']) {
+     const operational=full(payload({department:'OT (Administración de Contratos)',contract_id:null,request_type:kind,attention_mode:'TRANSPORTE_JRM',supplier_id:id(11),reference_type:ref,reference_number:'  000123  '}))
+     assert.equal(sql(`SELECT contract_id IS NULL AND reference_type='${ref}' AND reference_number='000123' AND supplier_id='${id(11)}' FROM transport_requests WHERE id='${operational.id}'`),'t')
+     assert.equal(operational.status,'OBSERVADA') // Payment controls remain authoritative.
+   }
+   deny(staff+`SELECT save_transport_request_full(NULL,${lit(payload({contract_id:null,request_type:kind,supplier_id:id(11)}))},'[]','[]');`,/Seleccione OC/)
+   deny(staff+`SELECT save_transport_request_full(NULL,${lit(payload({contract_id:null,request_type:kind,supplier_id:id(11),reference_type:'OC',reference_number:'  '}))},'[]','[]');`,/Seleccione OC/)
+   deny(staff+`SELECT save_transport_request_full(NULL,${lit(payload({contract_id:null,request_type:kind,attention_mode:'TRANSPORTE_JRM',reference_type:'RQ',reference_number:'1'}))},'[]','[]');`,/Seleccione el proveedor/)
+ }
+ sql(`UPDATE profiles SET contract_admin=true WHERE id='${id(2)}';`)
+ const adminRecojo=full(payload({contract_id:null,request_type:'RECOJO',attention_mode:'TRANSPORTE_JRM',supplier_id:id(11),reference_type:'OS',reference_number:'000456'}))
+ assert.equal(sql(`SELECT contract_id IS NULL FROM transport_requests WHERE id='${adminRecojo.id}'`),'t')
+ assert.equal(sql(staff+`SELECT has_assigned_request('${adminRecojo.id}',true)`),'t')
+ sql(`ALTER TABLE transport_requests ENABLE ROW LEVEL SECURITY; CREATE POLICY test_read ON transport_requests FOR SELECT TO authenticated USING(true);`)
+ assert.equal(sql(staff+`SELECT count(*) FROM transport_requests WHERE id='${adminRecojo.id}'`),'1')
+ sql(`UPDATE transport_requests SET created_by='${id(99)}' WHERE id='${adminRecojo.id}';`)
+ assert.equal(sql(staff+`SELECT has_assigned_request('${adminRecojo.id}',false)`),'f')
+ assert.equal(sql(staff+`SELECT count(*) FROM transport_requests WHERE id='${adminRecojo.id}'`),'0')
+ sql(`UPDATE transport_requests SET created_by='${id(2)}' WHERE id='${adminRecojo.id}'; ALTER TABLE transport_requests DISABLE ROW LEVEL SECURITY;`)
+
+ sql(`UPDATE profiles SET contract_admin=false WHERE id='${id(2)}';`)
+ deny(staff+`SELECT save_transport_request_full(NULL,${lit(payload({contract_id:null,request_type:'DESPACHO',reference_type:'OC',reference_number:'1'}))},'[]','[]');`,/Seleccione una OT madre/)
+ deny(staff+`INSERT INTO transport_requests(request_number,site_id,request_type,reference_type,reference_number) VALUES('ZZ-BADREF','${id(1)}','RECOJO','OC',' ');`,/Seleccione OC/)
+ deny(staff+`UPDATE transport_requests SET reference_number=NULL WHERE id='${adminRecojo.id}'`,/Seleccione OC/)
+ deny(staff+`UPDATE transport_requests SET request_type='DESPACHO' WHERE id='${adminRecojo.id}'`,/Seleccione una OT madre/)
+ sql(staff+`UPDATE transport_requests SET status='APROBADA' WHERE id='${adminRecojo.id}'`)
+ assert.equal(sql(`SELECT status FROM transport_requests WHERE id='${adminRecojo.id}'`),'OBSERVADA')
+ console.log('PASS: recojo/punto a punto register without OT using OC/OS/RQ; references, supplier and delivery mother are enforced and paid-approval controls preserved.')
+ sql(`ALTER TABLE suppliers ALTER COLUMN id SET DEFAULT gen_random_uuid(); ALTER TABLE suppliers ALTER COLUMN is_active SET DEFAULT true;
+ ALTER TABLE suppliers ADD COLUMN tax_id text; ALTER TABLE suppliers ADD COLUMN business_name text;`)
+ const c93=query(read('supabase/tests/caja_c93_request_purchasing_reference.test.sql'))
+ assert.notEqual(c93.status,0);assert.match(c93.stderr,/CAJA C93 PASS/)
+ console.log('PASS: exact C93 verifies OC/OS/RQ no-OT registration, purchasing references, supplier and rollback.')
+
+
 
 
 } finally {spawnSync('docker',['rm','-f',name],{stdio:'ignore'})}
