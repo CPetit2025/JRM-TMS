@@ -45,6 +45,9 @@ try {
   const migration = read('supabase/migrations/20261011200000_apt_operational_analytics.sql')
   sql(migration)
   sql(migration) // Idempotencia.
+  const optimization = read('supabase/migrations/20261012010000_apt_operational_query_plan.sql')
+  sql(optimization)
+  sql(optimization) // Optimización idempotente y sin cambios al límite del servicio.
   // Saldo 17 TN: producción 25 − despacho 7 − consumo 6 + apertura inferida 3 + retorno 2.
   // Traspaso de 20 a ST se cuenta en la ubicación, pero no como producción/despacho adicional.
   sql(`INSERT INTO apt_settings(id,alert_days,tolerance) VALUES(1,7,0.02);
@@ -202,6 +205,58 @@ try {
   near(scopedPerf.kpis.stock_tn,12800,'Scoped large ledger balance')
   near(scopedPerf.kpis.dispatch_tn,3200,'Customer filter preserves exits missing raw customer')
   console.log(`PERF: actual summary RPC, 64k layers/exits/pieces, 366 days, ${elapsed.toFixed(0)} ms including psql; full and scoped queries below 8s scratch timeout.`)
+  // Production-shaped documentary history: repeated cohort keys, missing weights and
+  // anomalous allocations were absent from the old performance fixture. These rows
+  // exercise coverage and quality queries instead of timing only inventory aggregates.
+  sql(`INSERT INTO apt_movements(id,kind,active,valid,fecha,lote,peso_kg,almacen,producto)
+    SELECT 200000+n,'ENTRADA',true,true,'2025-01-10'::date+(n%366),
+      'PERF-'||(1+(n%100)),CASE WHEN n%7=0 THEN 0 ELSE 1000 END,
+      CASE WHEN (1+(n%100))%4=0 THEN 'ST' ELSE '647' END,'P'
+    FROM generate_series(1,71000) n;
+    -- Import replacement retains inactive historical documents in production. They must
+    -- neither affect coverage nor cause repeated per-row filtering of the active ledger.
+    INSERT INTO apt_movements(id,kind,active,valid,fecha,lote,peso_kg,almacen,producto)
+    SELECT 700000+n,'ENTRADA',false,true,'2025-01-10'::date+(n%366),
+      'INACTIVE-'||(1+(n%27250)),0,'647','P' FROM generate_series(1,190000) n;
+    INSERT INTO apt_layers(movement_id,lote,producto)
+    SELECT id,lote,producto FROM apt_movements WHERE id>200000 AND active;
+    INSERT INTO apt_allocations(layer_id,exit_id,kg,fecha_ingreso,fecha_salida,dias)
+    SELECT id,id,1,fecha,fecha-1,0 FROM apt_movements WHERE id>200000 AND active;
+    ANALYZE apt_movements; ANALYZE apt_layers; ANALYZE apt_allocations;`)
+  const documentaryStarted = performance.now()
+  const documentary = perfQuery(perfFilters)
+  assert.equal(documentary.quality.missing_weight_rows,Math.floor(71000/7))
+  assert.equal(documentary.quality.temporal_anomaly_rows,71000)
+  const documentaryElapsed = performance.now()-documentaryStarted
+  const documentaryScoped = perfQuery({...perfFilters,clientes:['Perf A'],almacen:'ST'})
+  assert.equal(documentaryScoped.quality.temporal_anomaly_rows,17750)
+  const optimizedAll = documentary
+  const optimizedScope = documentaryScoped
+  // Compare the full JSON contract to the installed predecessor, not just selected KPI fields.
+  sql(migration)
+  const predecessorStarted = performance.now()
+  const predecessorAll = query(perfFilters)
+  const predecessorElapsed = performance.now()-predecessorStarted
+  const predecessorScope = query({...perfFilters,clientes:['Perf A'],almacen:'ST'})
+  assert.deepEqual(optimizedAll,predecessorAll,'Optimization preserves full unfiltered documentary contract')
+  assert.deepEqual(optimizedScope,predecessorScope,'Optimization preserves full customer/warehouse contract')
+  sql(optimization)
+  console.log(`PERF: 71k active documentary movements/layers/anomalous allocations, 190k inactive documents, plus 64k inventory keys; full and customer-scoped queries below 8s scratch timeout, ${Math.round(performance.now()-documentaryStarted)} ms including contract comparisons.`)
+  console.log(`PERF comparison: full documentary ledger optimized ${Math.round(documentaryElapsed)} ms; predecessor ${Math.round(predecessorElapsed)} ms; identical JSON.`)
+  // ERP exports often contain many repeated lot/product keys, rather than independent lots.
+  // This skew changes join estimates; ANALYZE must also protect a single hot cohort.
+  sql(`INSERT INTO apt_flow_layers(id,almacen,lote,producto,tipo,fecha,kg_in,kg_out,kg_saldo,cliente)
+    SELECT 400000+n,'647','HOT-1','HOT-P','PRODUCCION','2026-01-10',1,0.25,0.75,'Hot' FROM generate_series(1,71000) n;
+    INSERT INTO apt_flow_exits(id,almacen,lote,producto,tipo,fecha,kg,documento)
+    SELECT 400000+n,'647','HOT-1','HOT-P','DESPACHO','2026-01-10',0.25,'HOT-G-'||n FROM generate_series(1,71000) n;
+    INSERT INTO apt_flow_pieces(id,es_saldo,layer_id,root_id,almacen,lote,producto,fecha_origen,kg,origen)
+    SELECT 400000+n,true,400000+n,400000+n,'647','HOT-1','HOT-P','2026-01-10',0.75,'PRODUCCION' FROM generate_series(1,71000) n;
+    ANALYZE apt_flow_layers; ANALYZE apt_flow_exits; ANALYZE apt_flow_pieces;`)
+  const hot = perfQuery({lote:'HOT-1',clientes:['Hot'],desde:'2026-01-10',hasta:'2026-01-10'})
+  assert.equal(hot.total,1,'Repeated movements consolidate one inventory cohort')
+  near(hot.kpis.stock_tn,53.25,'Repeated-key balance stays exact')
+  near(hot.kpis.production_tn,71,'Repeated-key production stays exact')
+  near(hot.kpis.dispatch_tn,17.75,'Repeated-key dispatched weight stays exact')
   // Run the deployment Caja tests with real APT permission functions and production-shaped identities.
   sql(`CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$
       SELECT NULLIF(current_setting('request.jwt.claim.sub',true),'')::uuid $$;

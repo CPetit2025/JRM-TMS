@@ -64,4 +64,13 @@ SELECT 'apt_internal_transfer_totals', jsonb_build_object(
   'transfer_egress_tn', (SELECT round(COALESCE(sum(kg),0)/1000,3) FROM public.apt_flow_exits WHERE tipo='TRASPASO'),
   'not_external_production_or_dispatch', true);
 
+SELECT 'apt_query_cardinality' AS section,jsonb_build_object(
+ 'layers',(SELECT count(*) FROM public.apt_flow_layers),
+ 'exits',(SELECT count(*) FROM public.apt_flow_exits),
+ 'pieces',(SELECT count(*) FROM public.apt_flow_pieces),
+ 'movements',(SELECT count(*) FROM public.apt_movements),
+ 'allocations',(SELECT count(*) FROM public.apt_allocations),
+ 'distinct_inventory_keys',(SELECT count(*) FROM (SELECT DISTINCT almacen,lote,producto FROM public.apt_flow_layers UNION SELECT DISTINCT almacen,lote,producto FROM public.apt_flow_exits) k),
+ 'table_statistics',(SELECT jsonb_agg(jsonb_build_object('table',relname,'estimated_rows',n_live_tup,'last_analyze',last_analyze,'last_autoanalyze',last_autoanalyze)) FROM pg_stat_user_tables WHERE schemaname='public' AND relname LIKE 'apt_%')
+) AS finding;
 ROLLBACK;
