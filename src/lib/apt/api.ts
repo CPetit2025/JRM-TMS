@@ -3,7 +3,7 @@ import type { GanttFilters, GanttResult } from './ganttTypes'
 import type { FlowAdelantos, FlowFilters, Kardex, KardexFilters, KardexNivel, OtFamilia, FlowLeadDim, FlowLeadtime, FlowQuality, FlowSt, FlowStock, FlowSummary, FlowTrace } from './flowTypes'
 import type {
   AptDashboard, AptDetail, AptDim, AptFechaEntrega, AptFilterOptions, AptFilters, AptGrain, AptHeatmap, AptLevel, AptLoteFicha,
-  AptCoverage, AptPareto, AptQuality, AptSettings, AptTrendPoint, AptUpload,
+  AptCoverage, AptOperationalFilters, AptOperationalSummary, AptPareto, AptQuality, AptSettings, AptTrendPoint, AptUpload,
 } from './types'
 
 // Acceso a las funciones public.apt_*. Todas devuelven { success, error?, ... }; aquí se convierte un error en excepción.
@@ -155,6 +155,8 @@ export function cleanFilters<T extends object = AptFilters>(f: T): T {
 }
 
 export const aptApi = {
+  operationalSummary: (f: AptOperationalFilters = {}, limit = 25, offset = 0) =>
+    read<AptOperationalSummary>('apt_operational_summary', { p: { ...cleanFilters(f), limit, offset } }),
   gantt: (f: GanttFilters, limit = 25, offset = 0) =>
     read<GanttResult>('apt_gantt', { p: cleanFilters(f), p_limit: limit, p_offset: offset }),
   dashboard: (f: AptFilters, grain: AptGrain = 'semana') => read<AptDashboard>('apt_dashboard', { p: cleanFilters(f), p_grain: grain }),

@@ -11,9 +11,10 @@ import { toWav16k } from '@/lib/audio-wav'
 
 type Context = {
   contractId?: string; vehiclePlate?: string; dispatchId?: string; status?: string; activeStep?: number
+  aptFilters?: Record<string, unknown>; aptLegacyFilters?: Record<string, unknown>; aptContext?: string
   userName?: string; driverName?: string; pending?: { checklist?: boolean; stops?: number; expenses?: number; failures?: number }
 }
-type Message = { from: 'user' | 'ai'; text: string }
+type Message = { from: 'user' | 'ai'; text: string; evidence?: { filters?: Record<string, unknown>; summary?: { meta?: { cutoff?: string; model_fresh?: boolean }; quality?: unknown }; sampleTruncated?: boolean }; mode?: string }
 type Site = { id: string; name: string }
 type Proposal = { id: string; action_type?: string; payload: Record<string, unknown>; status?: string }
 type OfficeLine = { label: string; value: string }
@@ -228,7 +229,7 @@ export function JrmAiAssistant() {
     if (path.includes('/contratos')) return ['Analiza este contrato', '¿Qué contratos tienen mayor riesgo?', '¿Cuánto costaría un flete de esta OT a Ate?']
     if (path.includes('/contratos/servicios')) return ['Registra un gasto de montacargas para una OT', '¿Qué gastos tiene la OT…?', 'Corrige el monto de un gasto']
     if (path.includes('/solicitudes')) return ['¿Qué solicitudes están observadas y por qué?', '¿Cuáles vencen en los próximos 3 días?', 'Reprograma una solicitud']
-    if (path.startsWith('/apt')) return ['¿Cuántas TN hay en APT y cuál es el aging ponderado?', '¿Qué lotes debería liberar primero?', '¿Qué material lleva más de 30 días en APT?']
+    if (path.startsWith('/apt')) return ['Analiza profundamente el inventario con estos filtros y explica las limitaciones de los datos', 'Prepara un informe ejecutivo APT con evidencia, hallazgos y acciones', 'Compara producción y despachos del período y explica qué diferencias están comprobadas']
     if (path.includes('/caja')) return ['¿Qué gastos esperan aprobación?', '¿Qué anticipos están vencidos sin rendir?', '¿Alguna caja está bajo el mínimo?']
     if (path.includes('/maestros/tarifas')) return ['Cotiza un flete para una OT a un distrito', '¿Qué tarifas faltan para esta OT?']
     if (path.includes('/despacho/documentos')) return ['¿Qué despachos salen sin guía de remisión?', '¿Qué documentos de unidades o conductores vencen?']
@@ -274,12 +275,19 @@ export function JrmAiAssistant() {
     setQuestion('')
     setBusy(true)
     try {
+      let aptUrlFilters: unknown = undefined
+      if (path.startsWith('/apt')) {
+        const raw = new URLSearchParams(window.location.search).get('f')
+        if (raw) {
+          try { aptUrlFilters = JSON.parse(raw) } catch { aptUrlFilters = { invalid_filter: true } }
+        }
+      }
       const response = await fetch('/api/jrm-ai', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history, context: { path, ...selected, siteId: siteId || undefined, origin } }),
+        body: JSON.stringify({ message: text, history, context: { path, ...selected, ...(selected.aptFilters === undefined && aptUrlFilters !== undefined ? { aptFilters: aptUrlFilters } : {}), siteId: siteId || undefined, origin } }),
       })
       const data = await response.json()
-      setMessages(prev => [...prev, { from: 'ai', text: response.ok ? data.answer : data.error || 'No pude completar la consulta.' }])
+      setMessages(prev => [...prev, { from: 'ai', text: response.ok ? data.answer : data.error || 'No pude completar la consulta.', evidence: response.ok ? data.evidence : undefined, mode: data.mode }])
       if (response.ok && Array.isArray(data.proposals)) setProposals(prev => [...prev, ...data.proposals])
       setInputOrigin('ai_chat')
     } catch {
@@ -395,6 +403,7 @@ export function JrmAiAssistant() {
             </header>
         <div className="bg-slate-50 border-b border-slate-200 px-5 py-2.5 text-xs text-slate-600 shadow-inner">
           <div className="flex flex-wrap gap-2 items-center">
+            {path.startsWith('/apt') && <span className="rounded-md bg-blue-100 px-2 py-0.5 text-blue-800">APT · filtros de la pantalla · inventario documental</span>}
             {selected.contractId && <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-md font-bold">Contrato {selected.contractId.substring(0, 4)}...</span>}
             {selected.vehiclePlate && <span className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md font-bold">Unidad {selected.vehiclePlate}</span>}
             {selected.dispatchId && <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded-md font-bold">Despacho Activo</span>}
@@ -424,6 +433,11 @@ export function JrmAiAssistant() {
           {messages.map((item, index) => <div key={index}
             className={`whitespace-pre-wrap rounded-xl p-3 text-sm ${item.from === 'user' ? 'ml-8 bg-blue-50' : 'mr-5 bg-slate-100'}`}>
             {item.text}
+            {item.evidence && <div className="mt-3 border-t border-slate-300 pt-2 text-xs text-slate-600">
+              <p>Fuente: resumen operativo APT · corte {item.evidence.summary?.meta?.cutoff || 'no informado'}{item.evidence.summary?.meta?.model_fresh === false ? ' · recálculo pendiente' : ''}</p>
+              {item.evidence.sampleTruncated && <p>El detalle consultado es una muestra; los indicadores corresponden al alcance filtrado.</p>}
+              <button type="button" className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 font-semibold text-[#002855]" onClick={() => router.push(`/apt/operacion?of=${encodeURIComponent(JSON.stringify(item.evidence?.filters || {}))}`)}>Ver evidencia y generar reporte</button>
+            </div>}
           </div>)}
           {proposals.map(item => {
             const data = item.payload.data && typeof item.payload.data === 'object' ? item.payload.data as Record<string, unknown> : item.payload

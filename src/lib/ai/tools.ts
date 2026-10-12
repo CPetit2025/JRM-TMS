@@ -1,3 +1,4 @@
+import { getAptOperationalAnalysis } from './apt-analysis'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 type Row = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -22,13 +23,14 @@ export const toolAccess = {
   get_cash_status: { scope: 'caja', modules: ['caja', 'caja-aprobacion', 'caja-anticipos', 'caja-liquidaciones', 'caja-fondos'] },
   get_contract_expenses: { scope: 'contratos', modules: ['contratos-servicios', 'ot', 'clientes'] },
   prepare_office_action: { scope: 'contratos', modules: ['contratos-servicios', 'ot', 'clientes', 'solicitudes', 'despacho-aprobacion'] },
+  get_apt_operational_analysis: { scope: 'inventarios', modules: ['apt', 'apt-carga'] },
   get_apt_status: { scope: 'inventarios', modules: ['apt', 'apt-carga'] },
   get_apt_flow: { scope: 'inventarios', modules: ['apt', 'apt-carga'] },
   get_fleet_efficiency: { scope: 'mantenimiento', modules: ['flota-eficiencia', 'flota-eficiencia-carga'] },
 } as const
 
 export type AiToolName = keyof typeof toolAccess
-type ToolContext = { contractId?: string; dispatchId?: string; vehiclePlate?: string }
+type ToolContext = { contractId?: string; dispatchId?: string; vehiclePlate?: string; aptFilters?: unknown }
 const UUID = /^[0-9a-f-]{36}$/i
 // Código de OT sin comodines de ILIKE: búsqueda exacta sin distinguir mayúsculas
 const literal = (value: string) => value.replace(/[%_\\]/g, char => `\\${char}`)
@@ -71,6 +73,12 @@ export const toolDefinitions = [
     parameters: { type: 'object', properties: { reference: { type: ['string', 'null'] } }, required: ['reference'], additionalProperties: false } },
   { type: 'function', name: 'get_compliance_alerts', description: 'Cumplimiento documentario: documentos de unidades vencidos o por vencer (SOAT, revisión técnica, etc.), licencias y documentos de conductores que vencen en 30 días y despachos abiertos sin guía de remisión cargada.', strict: true, parameters: emptySchema },
   { type: 'function', name: 'get_cash_status', description: 'Situación de Caja: saldos de cajas y fondos (bajo mínimo), gastos pendientes u observados por aprobar, anticipos esperando aprobación o vencidos sin rendir y viajes con liquidación atrasada.', strict: true, parameters: emptySchema },
+  { type: 'function', name: 'get_apt_operational_analysis', description: 'Análisis APT profundo con el saldo documental reconstruido, origen conocido/desconocido, calidad, fórmula de rotación sobre stock promedio y evidencia de corte/frescura. Conserva filtros de pantalla. Cambia lote u OT solo si el usuario lo solicita explícitamente. Compara períodos con la misma entidad; causas y conciliación física no se presumen. Los números y diferencias los calcula el sistema.', strict: true,
+    parameters: { type: 'object', properties: {
+      lote: { type: ['string', 'null'] }, ot: { type: ['string', 'null'] }, almacen: { type: ['string', 'null'] },
+      desde: { type: ['string', 'null'] }, hasta: { type: ['string', 'null'] }, cutoff: { type: ['string', 'null'] },
+      compare_desde: { type: ['string', 'null'] }, compare_hasta: { type: ['string', 'null'] }, compare_cutoff: { type: ['string', 'null'] },
+    }, required: ['lote', 'ot', 'almacen', 'desde', 'hasta', 'cutoff', 'compare_desde', 'compare_hasta', 'compare_cutoff'], additionalProperties: false } },
   { type: 'function', name: 'get_apt_status', description: 'Almacén de Producto Terminado (APT): permanencia del inventario con FIFO. Sin lote devuelve TN en APT, aging ponderado, TN con más de 7/15/30 días, lotes críticos, distribución por rango, lotes que conviene liberar primero (mayor TN×días), lotes y productos con más TN y la tendencia del saldo. Con lote (NumRel padre, p. ej. 16188 o 16325-S002) devuelve su saldo, días, productos y despachos. min_days filtra material con al menos esos días en APT; cliente filtra por cliente (razón social) y devuelve sus OT con primer ingreso, último despacho y saldo.', strict: true,
     parameters: { type: 'object', properties: { lote: { type: ['string', 'null'] }, producto: { type: ['string', 'null'] }, min_days: { type: ['integer', 'null'] }, cliente: { type: ['string', 'null'] } },
       required: ['lote', 'producto', 'min_days', 'cliente'], additionalProperties: false } },
@@ -412,6 +420,12 @@ export async function executeAiTool(
       advancesNeedingAttention: advances.error ? 'no disponible' : advances.data,
       tripsWithOverdueSettlement: trips.error ? 'no disponible' : trips.data,
       url: '/caja' }
+  }
+  if (name === 'get_apt_operational_analysis') {
+    const overrides = Object.fromEntries(['lote', 'ot', 'almacen', 'desde', 'hasta', 'cutoff'].filter(key => args[key] != null).map(key => [key, args[key]]))
+    const comparison = Object.fromEntries(['desde', 'hasta', 'cutoff'].filter(key => args[`compare_${key}`] != null).map(key => [key, args[`compare_${key}`]]))
+    const base = context.aptFilters && typeof context.aptFilters === 'object' && !Array.isArray(context.aptFilters) ? context.aptFilters : {}
+    return getAptOperationalAnalysis(supabase, { ...base, ...overrides }, Object.keys(comparison).length ? comparison : null)
   }
   if (name === 'get_apt_status') {
     const lote = typeof args.lote === 'string' ? args.lote.trim().toUpperCase().slice(0, 60) : ''

@@ -3,7 +3,7 @@ import { DataTable } from '@/components/ui/data-table'
 
 import type { ReactNode } from 'react'
 import {
-  Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Line, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, Bar, BarChart, Brush, CartesianGrid, Cell, ComposedChart, LabelList, Line, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { APT_COLORS, ESTADO_STYLE, agingColor, fmtDec1, fmtDias, fmtPct, fmtTn } from '@/lib/apt/format'
 import type {
@@ -159,7 +159,7 @@ export function FlowChart({ data, grain }: { data: AptTrendPoint[]; grain: AptGr
   const lines = grain === 'dia'
   return (
     <ResponsiveContainer width="100%" height={280}>
-      <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={2}>
+      <ComposedChart data={data} syncId="apt-cohort-trend" margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={2}>
         <CartesianGrid stroke={APT_COLORS.grid} strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey="periodo" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={v => periodoLabel(String(v), grain)} minTickGap={16} />
         <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={fmtAxis} width={44} />
@@ -182,6 +182,7 @@ export function FlowChart({ data, grain }: { data: AptTrendPoint[]; grain: AptGr
             <Bar dataKey="tn_out" name="Salida" fill={APT_COLORS.out} radius={[4, 4, 0, 0]} maxBarSize={28} animationDuration={600} />
           </>
         )}
+        {data.length > 2 && <Brush dataKey="periodo" height={22} travellerWidth={10} stroke="#94a3b8" tickFormatter={v => periodoLabel(String(v), grain)} />}
       </ComposedChart>
     </ResponsiveContainer>
   )
@@ -191,7 +192,7 @@ export function FlowChart({ data, grain }: { data: AptTrendPoint[]; grain: AptGr
 export function StockChart({ data, grain }: { data: AptTrendPoint[]; grain: AptGrain }) {
   return (
     <ResponsiveContainer width="100%" height={280}>
-      <ComposedChart data={data} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+      <ComposedChart data={data} syncId="apt-cohort-trend" margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id="aptStock" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={APT_COLORS.stock} stopOpacity={0.28} />
@@ -212,6 +213,7 @@ export function StockChart({ data, grain }: { data: AptTrendPoint[]; grain: AptG
         }} />
         <Area yAxisId="tn" type="monotone" dataKey="saldo_tn" stroke={APT_COLORS.stock} strokeWidth={2} fill="url(#aptStock)" animationDuration={600} />
         <Line yAxisId="d" type="monotone" dataKey="aging_pond" stroke={APT_COLORS.red} strokeWidth={1.8} strokeDasharray="5 3" dot={false} animationDuration={600} />
+        {data.length > 2 && <Brush dataKey="periodo" height={22} travellerWidth={10} stroke="#94a3b8" tickFormatter={v => periodoLabel(String(v), grain)} />}
       </ComposedChart>
     </ResponsiveContainer>
   )

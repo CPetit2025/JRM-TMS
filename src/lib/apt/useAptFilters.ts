@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { cleanFilters } from './api'
 import type { AptFilters } from './types'
@@ -23,6 +23,11 @@ export function useAptFilters() {
   const pathname = usePathname()
   const raw = searchParams.get('f')
   const filters = useMemo(() => parse(raw), [raw])
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('jrm:context', { detail: { aptLegacyFilters: filters, aptContext: 'Estadía de cohortes FIFO de entradas de producción, no saldo físico conciliado' } }))
+    return () => { window.dispatchEvent(new CustomEvent('jrm:context', { detail: { aptLegacyFilters: undefined, aptContext: undefined } })) }
+  }, [filters])
 
   const setFilters = useCallback((next: AptFilters) => {
     const clean = cleanFilters(next)
