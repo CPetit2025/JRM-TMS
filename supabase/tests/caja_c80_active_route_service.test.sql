@@ -146,7 +146,11 @@ BEGIN
  BEGIN PERFORM public.add_active_route_service(route,own2,NULL,context->>'revision',gen_random_uuid(),60,3,10,2000,now(),'Entrega adicional propia'); EXCEPTION WHEN raise_exception THEN bad:=true; END;
  IF NOT bad THEN RAISE EXCEPTION 'CAJA C80 FAIL: capacidad excede unidad'; END IF;
  operation:=gen_random_uuid();
- PERFORM public.add_active_route_service(route,own2,NULL,context->>'revision',operation,60,3,10,500,now(),'Entrega adicional propia');
+ -- Como lo envía la pantalla: sin flete ni km, sin capacidad ni motivo, hora ya pasada del mismo día.
+ PERFORM public.add_active_route_service(route,own2,NULL,context->>'revision',operation,0,0,10,NULL,
+   greatest(now()-interval '1 minute',(((now() AT TIME ZONE 'America/Lima')::date)::timestamp AT TIME ZONE 'America/Lima')),'');
+ IF NOT EXISTS(SELECT 1 FROM public.dispatch_service_additions WHERE operation_id=operation AND available_kg=10 AND reason='Servicio agregado a la ruta') THEN
+ RAISE EXCEPTION 'CAJA C80 FAIL: servicio solo con peso y hora'; END IF;
  PERFORM set_config('request.jwt.claim.sub',driver_actor::text,true);
  result:=public.get_active_trip_context();
  IF result->'trip'->>'id' IS DISTINCT FROM route::text OR jsonb_array_length(result->'trip'->'stops')<>2
