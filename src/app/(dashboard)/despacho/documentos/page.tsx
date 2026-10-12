@@ -240,10 +240,11 @@ function DocumentaryQueue() {
         </section>}
       <Modal isOpen={!!selected} onClose={() => setSelectedId(null)} title={`Documentos · ${selected?.dispatch_number || ''}`} maxWidth="max-w-[1440px]"
         footer={<div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-600">{assistantOnly ? 'Vincula los números por servicio. La guía firmada y su aprobación se gestionan por separado.' : selected?.missing ? 'Completa los documentos pendientes para autorizar la salida.' : selected?.docs_ready_at ? 'Documentos confirmados para salida.' : 'Documentos y archivos asociados al servicio.'}</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setSelectedId(null)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Cerrar</button>{selected && canEdit && selected.status === 'PROGRAMADO' && ['PENDIENTE', 'REEMISION'].includes(selected.doc_status) && <button type="button" onClick={() => void confirmDocs(selected)} disabled={busy === selected.id || !!selected.missing} className="flex min-h-11 items-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-500">{busy === selected.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar documentos para salida</button>}</div></div>}>
-        {selected && !packingOnly && <DocumentNumberLinks key={selected.id} dispatchId={selected.id} services={selected.stops.map(stop => ({ ...stop, order_reference: referenceLabel(serviceTypes.get(stop.request_id)) }))} known={knownNumbers(selected, deliveries)} canEdit={canNumbers && selected.status !== 'CANCELADO'} onChanged={load} />}
         {selected && <DispatchCard key={selected.id} item={selected} canEdit={canEdit && selected.status === 'PROGRAMADO'} canPacking={canPacking && selected.status === 'PROGRAMADO'} packingOnly={packingOnly} serviceTypes={serviceTypes}
           onVoid={voidDoc} onOpen={openDoc} onUploaded={load}
-          deliveries={deliveries.filter(row => row.dispatch_id === selected.id)} onEvidence={row => { setSelectedId(null); setReview(row) }} />}
+          deliveries={deliveries.filter(row => row.dispatch_id === selected.id)} onEvidence={row => { setSelectedId(null); setReview(row) }}>
+          {!packingOnly && <DocumentNumberLinks key={selected.id} dispatchId={selected.id} services={selected.stops.map(stop => ({ ...stop, order_reference: referenceLabel(serviceTypes.get(stop.request_id)) }))} known={knownNumbers(selected, deliveries)} canEdit={canNumbers && selected.status !== 'CANCELADO'} onChanged={load} />}
+        </DispatchCard>}
       </Modal>
       <DocumentStatusModal reference={statusOf?.stop ? referenceLabel(serviceTypes.get(statusOf.stop.request_id)) : null} target={statusOf} packingOnly={packingOnly} canEdit={canNumbers || canPacking} onClose={() => setStatusOf(null)} onManage={setSelectedId} onEvidence={setReview} />
       {!packingOnly && <DeliveryReview row={review} onClose={() => setReview(null)} onChanged={() => void load()} />}
@@ -361,9 +362,9 @@ function DocumentStatusModal({ target, reference, packingOnly, canEdit, onClose,
   </Modal>
 }
 
-function DispatchCard({ item, canEdit, canPacking, packingOnly, serviceTypes, onVoid, onOpen, onUploaded, deliveries, onEvidence }: {
+function DispatchCard({ item, canEdit, canPacking, packingOnly, serviceTypes, onVoid, onOpen, onUploaded, deliveries, onEvidence, children }: {
   item: QueueItem; canEdit: boolean; canPacking: boolean; packingOnly: boolean; serviceTypes: Awaited<ReturnType<typeof fetchServiceTypes>>; onVoid: (d: Doc) => void
-  onOpen: (p: string) => void; onUploaded: () => Promise<void>; deliveries: DeliveryRow[]; onEvidence: (row: DeliveryReviewTarget) => void
+  onOpen: (p: string) => void; onUploaded: () => Promise<void>; deliveries: DeliveryRow[]; onEvidence: (row: DeliveryReviewTarget) => void; children?: React.ReactNode
 }) {
   const [upload, setUpload] = useState<{ requestId: string | null; type: string; label: string } | null>(null)
   const uploadPanel = useRef<HTMLDivElement>(null)
@@ -373,41 +374,74 @@ function DispatchCard({ item, canEdit, canPacking, packingOnly, serviceTypes, on
   const consolidated = generalDocs.find(d => d.doc_type === 'PACKING_LIST' && d.signed && d.auditor_name && d.auditor_signed_date)
   const h = hoursLeft(item.scheduled_departure)
   const urgent = !['LISTO', 'SALIO'].includes(item.doc_status) && h !== null && h < 2
-  const action = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold'
-  const cell = 'min-w-0 px-4 py-4 align-top'
-  const label = (text: string) => <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">{text}</p>
-  const status = (title: string, ready: boolean, detail: string) => <div className="space-y-1"><p className="flex items-center gap-2 text-sm font-semibold text-slate-800">{ready ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : <Clock className="h-4 w-4 shrink-0 text-amber-600" />}{title}</p><p className={`text-xs leading-5 ${ready ? 'text-emerald-700' : 'text-amber-800'}`}>{detail}</p></div>
+  const action = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold lg:min-h-9'
+  const secondary = `${action} border border-slate-300 bg-white text-[#002855] hover:bg-slate-50`
+  // Estado de cada documento requerido en una sola línea: verde listo, ámbar pendiente
+  const chip = (title: string, ready: boolean, detail: string) => <li className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs ring-1 ring-inset ${ready ? 'bg-emerald-50 text-emerald-800 ring-emerald-200' : 'bg-amber-50 text-amber-800 ring-amber-200'}`}>{ready ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <Clock className="h-3.5 w-3.5 shrink-0" />}<span className="font-semibold">{title}</span><span>· {detail}</span></li>
   const beginUpload = (requestId: string | null, type: string, title: string) => setUpload({ requestId, type, label: title })
+  const uploadForm = (requestId: string | null) => upload && upload.requestId === requestId && (canPacking || canEdit) && <div ref={uploadPanel} className="scroll-m-4 border-t border-blue-200 bg-blue-50/40 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h4 className="text-sm font-bold text-[#002855]">{DOC_LABEL[upload.type]} · {upload.label}</h4><p className="mt-0.5 text-xs text-slate-500">{upload.requestId ? 'El archivo se vincula únicamente a esta solicitud.' : 'Este archivo cubre todas las solicitudes y OT del despacho.'}</p></div><button type="button" onClick={() => setUpload(null)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 lg:min-h-9">Cancelar</button></div><UploadForm key={`${upload.requestId}/${upload.type}`} dispatchId={item.id} requestId={upload.requestId} isPickup={item.is_pickup} canPacking={canPacking} canDocuments={canEdit} documentType={upload.type} onUploaded={async () => { await onUploaded(); setUpload(null) }} /></div>
 
   return <div className="min-w-0 space-y-4">
-    <div className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-4">
-      <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Unidad</p><p className="mt-2 flex items-center gap-2 text-lg font-bold text-[#002855]"><Truck className="h-5 w-5" />{item.is_pickup ? 'Unidad del cliente' : item.vehicle_plate || 'Sin unidad'}</p><p className="mt-1 text-xs text-slate-600">{item.is_pickup ? 'Recojo por el cliente' : item.modalidad === 'TERCERO' ? 'Transporte contratado por JRM' : 'Transporte JRM'}</p></div>
-      <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Conductor</p><p className="mt-2 break-words text-sm font-semibold text-slate-800">{item.is_pickup ? 'No aplica' : item.driver_name || 'Sin conductor registrado'}</p></div>
-      <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Salida programada</p><p className={`mt-2 text-sm font-semibold ${urgent ? 'text-red-700' : 'text-slate-800'}`}>{fmtDate(item.scheduled_departure, true)}</p>{urgent && <p className="mt-1 text-xs text-red-700">{h !== null && h < 0 ? 'Salida atrasada' : 'Salida próxima'}</p>}</div>
-      <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Estado documentario</p><span className="mt-2 inline-flex"><StatusBadge tone={badge.tone}>{badge.label}</StatusBadge></span>{item.docs_ready_at && !item.docs_reissue && <p className="mt-1 text-xs text-emerald-700">Confirmado · {fmtDate(item.docs_ready_at, true)}</p>}</div>
-    </div>
+    <dl className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+      <div className="flex items-center gap-2"><Truck aria-hidden className="h-4 w-4 text-[#002855]" /><dt className="sr-only">Unidad</dt><dd><span className="font-bold text-[#002855]">{item.is_pickup ? 'Unidad del cliente' : item.vehicle_plate || 'Sin unidad'}</span> <span className="text-xs text-slate-500">· {item.is_pickup ? 'Recojo por el cliente' : item.modalidad === 'TERCERO' ? 'Transporte contratado por JRM' : 'Transporte JRM'}</span></dd></div>
+      <div className="flex items-center gap-1.5"><dt className="text-xs text-slate-500">Conductor</dt><dd className="font-semibold text-slate-800">{item.is_pickup ? 'No aplica' : item.driver_name || 'Sin conductor registrado'}</dd></div>
+      <div className="flex items-center gap-1.5"><dt className="text-xs text-slate-500">Salida</dt><dd className={`font-semibold ${urgent ? 'text-red-700' : 'text-slate-800'}`}>{fmtDate(item.scheduled_departure, true)}{urgent && <span className="ml-1 text-xs font-medium">· {h !== null && h < 0 ? 'atrasada' : 'próxima'}</span>}</dd></div>
+      <div className="flex items-center gap-1.5 sm:ml-auto"><dt className="sr-only">Estado documentario</dt><dd className="flex items-center gap-2"><StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>{item.docs_ready_at && !item.docs_reissue && <span className="text-xs text-emerald-700">Confirmado · {fmtDate(item.docs_ready_at, true)}</span>}</dd></div>
+    </dl>
     {item.docs_reissue && <p className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Reemisión: {item.docs_reissue_reason || 'Actualizar los documentos del servicio.'}</p>}
-    <section className="overflow-hidden rounded-xl border border-slate-200" aria-label="Documentos por servicio">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white p-4"><div><h3 className="font-bold text-[#002855]">Servicios y documentos</h3><p className="mt-1 text-xs text-slate-500">{item.stops.length} servicio(s) asociados{item.is_pickup ? ' · Recojo por el cliente' : ''}</p></div>{canPacking && <button type="button" onClick={() => beginUpload(null, 'PACKING_LIST', 'Todas las solicitudes del despacho')} className={`${action} border border-[#002855] bg-white text-[#002855] hover:bg-blue-50`}><Upload className="h-4 w-4" />{consolidated ? 'Reemplazar Packing List consolidado' : 'Cargar Packing List consolidado'}</button>}</div>
-      <DataTable className="block w-full table-fixed text-left lg:table"><caption className="sr-only">OT, detalles del servicio, documentos requeridos y botones para cargar o consultar</caption><thead className="hidden bg-slate-50 text-xs font-semibold text-slate-500 lg:table-header-group"><tr><th scope="col" className="w-[16%] px-4 py-3">OT / Orden / Solicitud</th><th scope="col" className="w-[32%] px-4 py-3">Detalle del servicio</th><th scope="col" className="w-[27%] px-4 py-3">Documentos requeridos</th><th scope="col" className="w-[25%] px-4 py-3">Archivos y acciones</th></tr></thead>
-        <tbody className="block divide-y divide-slate-200 lg:table-row-group">{item.stops.map((s, i) => {
-          const docs = item.documents.filter(d => d.request_id === s.request_id)
-          const packing = docs.find(d => d.doc_type === 'PACKING_LIST' && d.signed && d.auditor_name && d.auditor_signed_date) || consolidated
-          const note = docs.find(d => d.doc_type === 'NOTA_DESPACHO')
-          const delivery = deliveries.find(d => d.request_id === s.request_id)
-          const reference = s.ot_code ? `OT ${s.ot_code}` : referenceLabel(serviceTypes.get(s.request_id)) || 'Sin referencia'
-          const title = `${reference} · ${s.request_number}`
-          return <tr key={s.request_id} className="grid grid-cols-1 bg-white sm:grid-cols-2 lg:table-row">
-            <td className={cell}>{label('OT / Orden / Solicitud')}<p className="break-words text-base font-bold text-[#002855]">{reference}</p><p className="mt-2 text-sm font-semibold text-slate-700">{s.request_number}</p><p className="mt-1 text-xs text-slate-500">Parada {s.sequence || i + 1}</p></td>
-            <td className={cell}>{label('Detalle del servicio')}<p className="break-words text-sm font-semibold text-slate-800">{s.client || 'Sin cliente registrado'}</p><dl className="mt-2 space-y-2 text-xs leading-5"><div><dt className="font-semibold text-slate-500">Origen</dt><dd className="break-words text-slate-700">{s.origin || 'Sin origen registrado'}</dd></div><div><dt className="font-semibold text-slate-500">Destino</dt><dd className="break-words text-slate-700">{s.delivery || 'Sin destino registrado'}</dd></div><div><dt className="font-semibold text-slate-500">Carga / Servicio</dt><dd className="break-words text-slate-700">{s.cargo || 'Sin detalle registrado'}</dd></div></dl></td>
-            <td className={cell}>{label('Documentos requeridos')}<div className="space-y-3">{status('Packing List firmado', !!packing, packing ? `${packing.request_id ? 'Cargado' : 'Consolidado'} · ${packing.auditor_name}` : 'Pendiente · Auditor de Despacho')}{item.is_pickup && status('Nota de Despacho', !!note, note ? 'Cargada' : 'Pendiente · Asistente Documentario')}{!packingOnly && !item.is_pickup && <div className="space-y-1"><p className="text-sm font-semibold text-slate-800">Guía firmada en destino</p><p className="text-xs leading-5 text-slate-600">{delivery ? conformityLabels[delivery.conformity] : 'Aún no disponible'}{delivery?.guide_number ? ` · ${delivery.guide_number}` : ''}</p><p className="text-xs text-slate-500">{item.modalidad === 'TERCERO' ? 'Proveedor JRM · enlace de entrega' : 'Conductor · app'}</p></div>}</div></td>
-            <td className={cell}>{label('Archivos y acciones')}<div className="flex flex-col items-start gap-2">{canPacking && <button type="button" onClick={() => beginUpload(s.request_id, 'PACKING_LIST', title)} className={`${action} bg-[#002855] text-white hover:bg-[#003b7a]`}><Upload className="h-4 w-4" />{packing ? 'Actualizar Packing List' : 'Cargar Packing List'}</button>}{canEdit && item.is_pickup && <button type="button" onClick={() => beginUpload(s.request_id, 'NOTA_DESPACHO', title)} className={`${action} border border-slate-300 text-[#002855] hover:bg-slate-50`}><Upload className="h-4 w-4" />{note ? 'Cargar nueva Nota de Despacho' : 'Cargar Nota de Despacho'}</button>}{canEdit && <button type="button" onClick={() => beginUpload(s.request_id, 'OTRO', title)} className={`${action} border border-slate-300 text-[#002855] hover:bg-slate-50`}><Upload className="h-4 w-4" />Cargar otro documento</button>}{consolidated && <button type="button" onClick={() => onOpen(consolidated.file_path)} className={`${action} border border-blue-200 bg-blue-50 text-blue-800`}><FileText className="h-4 w-4" />Ver Packing List consolidado</button>}</div><DocList docs={docs} canEdit={canEdit} onVoid={onVoid} onOpen={onOpen} />{!packingOnly && !item.is_pickup && delivery && <button type="button" onClick={() => onEvidence(delivery)} className={`${action} mt-2 border border-slate-300 text-[#002855] hover:bg-slate-50`}><FileCheck2 className="h-4 w-4" />Ver guía y conformidad</button>}</td>
-          </tr>
-        })}{!item.stops.length && <tr className="block lg:table-row"><td colSpan={4} className="p-4 text-sm text-slate-500">Este despacho no tiene solicitudes asociadas.</td></tr>}</tbody>
-      </DataTable>
+
+    <section aria-label="Documentos por servicio" className="space-y-3">
+      <h3 className="text-sm font-bold text-[#002855]">Servicios <span className="font-normal text-slate-500">· {item.stops.length}{item.is_pickup ? ' · Recojo por el cliente' : ''}</span></h3>
+      {!item.stops.length && <p className="rounded-xl border border-slate-200 p-4 text-sm text-slate-500">Este despacho no tiene solicitudes asociadas.</p>}
+      {item.stops.map((s, i) => {
+        const docs = item.documents.filter(d => d.request_id === s.request_id)
+        const packing = docs.find(d => d.doc_type === 'PACKING_LIST' && d.signed && d.auditor_name && d.auditor_signed_date) || consolidated
+        const note = docs.find(d => d.doc_type === 'NOTA_DESPACHO')
+        const delivery = deliveries.find(d => d.request_id === s.request_id)
+        const reference = s.ot_code ? `OT ${s.ot_code}` : referenceLabel(serviceTypes.get(s.request_id)) || 'Sin referencia'
+        const title = `${reference} · ${s.request_number}`
+        return <article key={s.request_id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
+            <div className="min-w-0"><p className="break-words font-bold text-[#002855]">{reference} <span className="text-sm font-semibold text-slate-600">· {s.request_number}</span> <span className="text-xs font-normal text-slate-500">· Parada {s.sequence || i + 1}</span></p><p className="mt-0.5 break-words text-sm text-slate-700">{s.client || 'Sin cliente registrado'}</p></div>
+            <ul aria-label="Documentos requeridos" className="flex flex-wrap gap-1.5">
+              {chip('Packing List', !!packing, packing ? `${packing.request_id ? 'Cargado' : 'Consolidado'} · ${packing.auditor_name}` : 'Pendiente (Auditor)')}
+              {item.is_pickup && chip('Nota de Despacho', !!note, note ? 'Cargada' : 'Pendiente (Asistente)')}
+              {!packingOnly && !item.is_pickup && chip('Guía firmada', delivery?.conformity === 'VALIDADA', `${delivery ? conformityLabels[delivery.conformity] : 'Aún no disponible'}${delivery?.guide_number ? ` · ${delivery.guide_number}` : ''} (${item.modalidad === 'TERCERO' ? 'proveedor' : 'conductor'})`)}
+            </ul>
+          </header>
+          <div className="grid gap-4 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <dl className="min-w-0 space-y-1.5 text-xs leading-5">
+              <div className="flex gap-2"><dt className="w-16 shrink-0 font-semibold text-slate-500">Origen</dt><dd className="min-w-0 break-words text-slate-700">{s.origin || 'Sin origen registrado'}</dd></div>
+              <div className="flex gap-2"><dt className="w-16 shrink-0 font-semibold text-slate-500">Destino</dt><dd className="min-w-0 break-words text-slate-700">{s.delivery || 'Sin destino registrado'}</dd></div>
+              <div className="flex gap-2"><dt className="w-16 shrink-0 font-semibold text-slate-500">Carga</dt><dd className="min-w-0 text-slate-700">{s.cargo && s.cargo.length > 90 ? <details><summary className="cursor-pointer break-words">{s.cargo.slice(0, 90).trim()}… <span className="font-semibold text-blue-700">Ver todo</span></summary><p className="mt-1 whitespace-pre-line break-words">{s.cargo}</p></details> : <span className="whitespace-pre-line break-words">{s.cargo || 'Sin detalle registrado'}</span>}</dd></div>
+            </dl>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-slate-500">Archivos {docs.length ? `(${docs.length})` : ''}</p>
+              {docs.length ? <DocList docs={docs} canEdit={canEdit} onVoid={onVoid} onOpen={onOpen} /> : <p className="mt-1 text-xs text-slate-400">Sin archivos cargados.</p>}
+            </div>
+          </div>
+          {(canPacking || canEdit || consolidated || (!packingOnly && !item.is_pickup && delivery)) && <div className="flex flex-wrap gap-2 border-t border-slate-100 bg-slate-50/60 px-4 py-2.5">
+            {canPacking && <button type="button" onClick={() => beginUpload(s.request_id, 'PACKING_LIST', title)} className={`${action} bg-[#002855] text-white hover:bg-[#003b7a]`}><Upload className="h-4 w-4" />{packing ? 'Actualizar Packing List' : 'Cargar Packing List'}</button>}
+            {canEdit && item.is_pickup && <button type="button" onClick={() => beginUpload(s.request_id, 'NOTA_DESPACHO', title)} className={secondary}><Upload className="h-4 w-4" />{note ? 'Nueva Nota de Despacho' : 'Cargar Nota de Despacho'}</button>}
+            {canEdit && <button type="button" onClick={() => beginUpload(s.request_id, 'OTRO', title)} className={secondary}><Upload className="h-4 w-4" />Otro documento</button>}
+            {consolidated && <button type="button" onClick={() => onOpen(consolidated.file_path)} className={secondary}><FileText className="h-4 w-4" />Packing List consolidado</button>}
+            {!packingOnly && !item.is_pickup && delivery && <button type="button" onClick={() => onEvidence(delivery)} className={`${secondary} sm:ml-auto`}><FileCheck2 className="h-4 w-4" />Ver guía y conformidad</button>}
+          </div>}
+          {uploadForm(s.request_id)}
+        </article>
+      })}
     </section>
-    {(!!generalDocs.length || canEdit) && <section className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-semibold text-[#002855]">Archivos consolidados · todas las OT del despacho</h3>{canEdit && <button type="button" onClick={() => beginUpload(null, 'OTRO', 'Todas las solicitudes del despacho')} className={`${action} border border-slate-300 bg-white text-[#002855] hover:bg-slate-50`}><Upload className="h-4 w-4" />Cargar otro archivo consolidado</button>}</div><DocList docs={generalDocs} canEdit={canEdit} onVoid={onVoid} onOpen={onOpen} /></section>}
-    {upload && (canPacking || canEdit) && <div ref={uploadPanel} className="scroll-m-4 rounded-xl border-2 border-blue-200 bg-blue-50/40 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-bold text-[#002855]">{DOC_LABEL[upload.type]}</h3><p className="mt-1 text-sm font-semibold text-slate-700">{upload.label}</p><p className="mt-1 text-xs text-slate-500">{upload.requestId ? 'El archivo se vincula únicamente a esta solicitud.' : 'Este archivo cubre todas las solicitudes y OT del despacho.'}</p></div><button type="button" onClick={() => setUpload(null)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700">Cerrar formulario</button></div><UploadForm key={`${upload.requestId}/${upload.type}`} dispatchId={item.id} requestId={upload.requestId} isPickup={item.is_pickup} canPacking={canPacking} canDocuments={canEdit} documentType={upload.type} onUploaded={async () => { await onUploaded(); setUpload(null) }} /></div>}
+
+    {children}
+
+    {(!!generalDocs.length || canEdit || canPacking) && <section aria-label="Archivos de todo el despacho" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"><div><h3 className="text-sm font-bold text-[#002855]">Archivos de todo el despacho</h3><p className="text-xs text-slate-500">Cubren todas las OT del despacho{generalDocs.length ? ` · ${generalDocs.length} archivo(s)` : ''}.</p></div><div className="flex flex-wrap gap-2">
+        {canPacking && <button type="button" onClick={() => beginUpload(null, 'PACKING_LIST', 'Todas las solicitudes del despacho')} className={secondary}><Upload className="h-4 w-4" />{consolidated ? 'Reemplazar Packing List consolidado' : 'Packing List consolidado'}</button>}
+        {canEdit && <button type="button" onClick={() => beginUpload(null, 'OTRO', 'Todas las solicitudes del despacho')} className={secondary}><Upload className="h-4 w-4" />Otro archivo</button>}
+      </div></div>
+      {!!generalDocs.length && <div className="border-t border-slate-100 px-4 pb-3"><DocList docs={generalDocs} canEdit={canEdit} onVoid={onVoid} onOpen={onOpen} /></div>}
+      {uploadForm(null)}
+    </section>}
   </div>
 }
 
@@ -445,26 +479,27 @@ function AnularModal({ doc, onClose, onDone }: { doc: Doc; onClose: () => void; 
 function DocList({ docs, canEdit, onVoid, onOpen }: { docs: Doc[]; canEdit: boolean; onVoid: (d: Doc) => void; onOpen: (p: string) => void }) {
   const [guia, setGuia] = useState<string | null>(null)
   if (docs.length === 0) return null
+  // Una fila por archivo: tipo, nombre (abre el archivo), detalle y anular
   return (
     <>
     <GuiaDetalleModal key={guia || 'none'} guias={guia} onClose={() => setGuia(null)} />
-    <ul className="mt-3 space-y-3">
+    <ul className="mt-1 divide-y divide-slate-100">
       {docs.map(d => (
-        <li key={d.id} className="min-w-0 space-y-1 text-xs">
-          <button type="button" onClick={() => onOpen(d.file_path)} className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-left font-semibold text-blue-800 hover:bg-blue-100">
-            {(() => { const Icon = KIND_ICON[fileKind(d.file_name || d.file_path, d.mime_type)]; return <Icon className="h-4 w-4 shrink-0" /> })()}
-            <span className="break-words">Ver {DOC_LABEL[d.doc_type] || 'documento'}{d.document_number ? ` ${d.document_number}` : ''}</span>
-          </button>
+        <li key={d.id} className="flex min-w-0 items-center gap-2 py-1 text-xs">
+          <KindTag kind={fileKind(d.file_name || d.file_path, d.mime_type)} />
+          <div className="min-w-0 flex-1">
+            <button type="button" onClick={() => onOpen(d.file_path)} title="Abrir archivo" className="flex min-h-11 w-full min-w-0 flex-col justify-center text-left lg:min-h-9">
+              <span className="truncate font-semibold text-blue-800 hover:underline">{d.file_name || 'Archivo adjunto'}</span>
+              <span className="truncate text-[11px] text-slate-500">{DOC_LABEL[d.doc_type] || 'Documento'}{d.document_number ? ` ${d.document_number}` : ''}{d.cargo_type ? ` · ${CARGO_LABEL[d.cargo_type] || d.cargo_type}` : ''}{d.doc_type === 'PACKING_LIST' ? d.signed ? ` · Firmado por ${d.auditor_name} · ${fmtDate(d.auditor_signed_date || null)}` : ' · Firma pendiente' : ''}</span>
+            </button>
+          </div>
           {d.doc_type === 'GUIA_REMISION' && d.document_number && (
             <button type="button" onClick={() => setGuia(d.document_number)} title="Ver los SKUs de la guía (SALIDA del ERP)"
-              className="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">
-              <ListTree className="w-3 h-3" /> SKUs
+              className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-blue-700 hover:bg-blue-50 lg:min-h-9">
+              <ListTree className="h-3.5 w-3.5" /> SKUs
             </button>
           )}
-          <p className="flex min-w-0 items-center gap-1.5 break-all text-slate-500"><KindTag kind={fileKind(d.file_name || d.file_path, d.mime_type)} />{d.file_name || 'Archivo adjunto'}</p>
-          {d.doc_type === 'PACKING_LIST' && <p className={`${d.signed ? 'text-emerald-700' : 'text-amber-700'}`}>{d.signed ? `Firmado por ${d.auditor_name} · ${fmtDate(d.auditor_signed_date || null)}` : 'Firma del auditor pendiente de registrar'}</p>}
-          {d.cargo_type && <span className="text-xs text-slate-500">({CARGO_LABEL[d.cargo_type] || d.cargo_type})</span>}
-          {canEdit && <button type="button" onClick={() => onVoid(d)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 font-semibold text-red-700 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" />Anular documento</button>}
+          {canEdit && <button type="button" onClick={() => onVoid(d)} aria-label={`Anular ${d.file_name || DOC_LABEL[d.doc_type] || 'documento'}`} title="Anular documento" className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-red-700 hover:bg-red-50 lg:h-9 lg:w-9"><Trash2 className="h-4 w-4" /></button>}
         </li>
       ))}
     </ul>
