@@ -122,6 +122,8 @@ BEGIN
   END IF;
   v_limit := LEAST(GREATEST(COALESCE((p ->> 'limit')::integer, 25), 1), 100);
   v_offset := GREATEST(COALESCE((p ->> 'offset')::integer, 0), 0);
+  -- La caché guarda hasta 999 999 filas; una página más allá se calcula en vivo como antes.
+  IF v_offset + v_limit > 999999 THEN RETURN public.apt_operational_summary_live(p); END IF;
   v_full := public.apt_read_cached('apt_operational_summary', public.apt_read_cache_key('apt_operational_summary', p));
   IF (v_full ->> 'success') IS DISTINCT FROM 'true' OR jsonb_typeof(v_full -> 'rows') <> 'array' THEN RETURN v_full; END IF;
   RETURN v_full || jsonb_build_object(
@@ -177,8 +179,8 @@ BEGIN
   RETURN NULL;
 END $$;
 
--- Turno de la cola (cron rápido, transacción propia): cada minuto asigna una solicitud, la de menos intentos y más
--- antigua, y le suma el intento antes de calcularla. Así una cancelación del cálculo no deshace el intento y, al
+-- Turno de la cola (cron rápido, transacción propia): asigna una solicitud, la de menos intentos y más antigua, solo
+-- cuando no hay otra asignada en curso, y le suma el intento antes de calcularla. Así una cancelación del cálculo no deshace el intento y, al
 -- tercero, la solicitud se descarta sin bloquear las demás.
 CREATE OR REPLACE FUNCTION public.apt_read_cache_claim()
 RETURNS integer LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -186,6 +188,8 @@ DECLARE v_claimed integer;
 BEGIN
   DELETE FROM public.apt_read_cache_requests r WHERE r.requested_at < now() - interval '1 day'
     OR (r.attempts >= 3 AND r.claimed_at < now() - interval '6 minutes');
+  -- Una sola solicitud asignada a la vez: el cálculo la atiende antes de que se asigne otra.
+  IF EXISTS (SELECT 1 FROM public.apt_read_cache_requests q WHERE q.claimed_at >= now() - interval '6 minutes') THEN RETURN 0; END IF;
   UPDATE public.apt_read_cache_requests r SET attempts = r.attempts + 1, claimed_at = clock_timestamp()
   WHERE (r.fn, r.key_hash) = (SELECT q.fn, q.key_hash FROM public.apt_read_cache_requests q
     WHERE q.attempts < 3 AND (q.claimed_at IS NULL OR q.claimed_at < now() - interval '6 minutes')
@@ -194,7 +198,7 @@ BEGIN
   RETURN v_claimed;
 END $$;
 
--- Siguiente cálculo pendiente: vistas iniciales primero; de la cola, solo la solicitud asignada más reciente.
+-- Siguiente cálculo pendiente: vistas iniciales primero; de la cola, la solicitud asignada en curso.
 CREATE OR REPLACE FUNCTION public.apt_read_cache_next(p_skip text[] DEFAULT '{}')
 RETURNS TABLE (fn text, params jsonb) LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE v_version text := public.apt_read_cache_version();
@@ -209,7 +213,7 @@ BEGIN
         ('apt_dashboard', '{"p":{},"grain":"dia"}'::jsonb)) d(fn, params)
       UNION ALL
       SELECT x.fn, x.params, 1, x.claimed_at FROM (SELECT r.fn, r.params, r.claimed_at FROM public.apt_read_cache_requests r
-        WHERE r.claimed_at IS NOT NULL ORDER BY r.claimed_at DESC LIMIT 1) x) k
+        WHERE r.claimed_at >= now() - interval '6 minutes' ORDER BY r.claimed_at LIMIT 1) x) k
     WHERE NOT (k.fn || ':' || md5(k.params::text)) = ANY (p_skip)
       AND NOT EXISTS (SELECT 1 FROM public.apt_read_cache c WHERE c.fn = k.fn AND c.key_hash = md5(k.params::text)
                       AND c.params = k.params AND c.version = v_version)
