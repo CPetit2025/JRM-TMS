@@ -89,6 +89,8 @@ function DocumentaryQueue() {
   const canEdit = canNumbers && !assistantOnly
   const canPacking = canWrite('packing-list') && !assistantOnly
   const packingOnly = !canRead('documentario') && (canRead('packing-list') || canRead('planificacion'))
+  // «Dar por liquidado» manual: Administrador, Jefe de Distribución, Supervisor de Transporte y Despacho (la BD lo vuelve a validar)
+  const canManual = ['admin', 'jefe de distribución', 'supervisor de transporte'].includes(role) || (role.includes('despach') && role !== 'auditor de despacho')
   const [items, setItems] = useState<QueueItem[] | null>(null)
   const [filter, setFilter] = useState<'TODOS' | 'PENDIENTE' | 'REEMISION' | 'LISTO'>('TODOS')
   const params = useSearchParams()
@@ -276,7 +278,7 @@ function DocumentaryQueue() {
           <span>{focused ? <>Liquidación por servicio: se muestra <b>1 de {selectedRoute.stops.length}</b> servicios de la ruta {selectedRoute.dispatch_number}.</> : <>Ruta {selectedRoute.dispatch_number} completa · {selectedRoute.stops.length} servicios.</>}</span>
           <button type="button" onClick={() => setShowAllStops(v => !v)} className="min-h-9 rounded-lg border border-blue-300 bg-white px-3 font-semibold hover:bg-blue-100">{focused ? `Ver los ${selectedRoute.stops.length} servicios` : 'Ver solo este servicio'}</button>
         </p>}
-        {selected && <DispatchCard key={selected.id} item={selected} canEdit={canEdit && selected.status === 'PROGRAMADO'} canPacking={canPacking && selected.status === 'PROGRAMADO'} canSettle={canNumbers && !packingOnly && !NOT_SETTLEABLE.includes(selected.status)} checklists={checklists} packingOnly={packingOnly} serviceTypes={serviceTypes}
+        {selected && <DispatchCard key={selected.id} item={selected} canEdit={canEdit && selected.status === 'PROGRAMADO'} canPacking={canPacking && selected.status === 'PROGRAMADO'} canSettle={(canNumbers || canManual) && !packingOnly && !NOT_SETTLEABLE.includes(selected.status)} canUpload={canNumbers} canManual={canManual} checklists={checklists} packingOnly={packingOnly} serviceTypes={serviceTypes}
           onVoid={voidDoc} onOpen={openDoc} onUploaded={load}
           deliveries={deliveries.filter(row => row.dispatch_id === selected.id)} onEvidence={row => { setSelectedId(null); setReview(row) }}>
           {!packingOnly && <DocumentNumberLinks key={selected.id} dispatchId={selected.id} services={selected.stops.map(stop => ({ ...stop, order_reference: referenceLabel(serviceTypes.get(stop.request_id)) }))} known={knownNumbers(selected, deliveries)} canEdit={canNumbers && selected.status !== 'CANCELADO'} onChanged={load} />}
@@ -398,8 +400,8 @@ function DocumentStatusModal({ target, reference, packingOnly, canEdit, onClose,
   </Modal>
 }
 
-function DispatchCard({ item, canEdit, canPacking, canSettle = false, checklists, packingOnly, serviceTypes, onVoid, onOpen, onUploaded, deliveries, onEvidence, children }: {
-  item: QueueItem; canEdit: boolean; canPacking: boolean; canSettle?: boolean; checklists?: Map<string, SettlementChecklist>; packingOnly: boolean; serviceTypes: Awaited<ReturnType<typeof fetchServiceTypes>>; onVoid: (d: Doc) => void
+function DispatchCard({ item, canEdit, canPacking, canSettle = false, canUpload = false, canManual = false, checklists, packingOnly, serviceTypes, onVoid, onOpen, onUploaded, deliveries, onEvidence, children }: {
+  item: QueueItem; canEdit: boolean; canPacking: boolean; canSettle?: boolean; canUpload?: boolean; canManual?: boolean; checklists?: Map<string, SettlementChecklist>; packingOnly: boolean; serviceTypes: Awaited<ReturnType<typeof fetchServiceTypes>>; onVoid: (d: Doc) => void
   onOpen: (p: string) => void; onUploaded: () => Promise<void>; deliveries: DeliveryRow[]; onEvidence: (row: DeliveryReviewTarget) => void; children?: React.ReactNode
 }) {
   const [upload, setUpload] = useState<{ requestId: string | null; type: string; label: string } | null>(null)
@@ -470,7 +472,7 @@ function DispatchCard({ item, canEdit, canPacking, canSettle = false, checklists
             {!packingOnly && !item.is_pickup && delivery && <button type="button" onClick={() => onEvidence(delivery)} className={`${secondary} sm:ml-auto`}><FileCheck2 className="h-4 w-4" />Ver guía y conformidad</button>}
           </div>}
           {uploadForm(s.request_id)}
-          {canSettle && <SettlementUpload key={`${s.request_id}/${checklists?.get(`${item.id}/${s.request_id}`)?.kind || ''}`} dispatchId={item.id} requestId={s.request_id} checklist={checklists?.get(`${item.id}/${s.request_id}`)} onUploaded={onUploaded} />}
+          {canSettle && <SettlementUpload key={`${s.request_id}/${checklists?.get(`${item.id}/${s.request_id}`)?.kind || ''}`} dispatchId={item.id} requestId={s.request_id} checklist={checklists?.get(`${item.id}/${s.request_id}`)} canUpload={canUpload} canManual={canManual} onUploaded={onUploaded} />}
         </article>
       })}
     </section>
@@ -504,6 +506,7 @@ function settlementKind(info: Parameters<typeof serviceKind>[0], pickup: boolean
 type SettlementChecklist = {
   dispatch_id: string; request_id: string; kind: 'ENTREGA' | 'RECOJO' | 'TRASLADO' | 'RECOJO_CLIENTE'; complete: boolean
   missing: string[]; guide_state: string; note: boolean; packing: boolean; references: string[]
+  manual?: { reason: string; missing: string[]; closed_at: string; closed_by: string | null }
 }
 type NumberedKind = 'GUIA' | 'NOTA' | 'OC' | 'OS' | 'RQ'
 const NUMBERED: Record<NumberedKind, { label: string; pattern: RegExp; example: string; hint: string }> = {
@@ -527,8 +530,8 @@ const GUIDE_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp'
 const guideMime = (file: File) => /\.pdf$/i.test(file.name) ? 'application/pdf' : /\.png$/i.test(file.name) ? 'image/png' : /\.webp$/i.test(file.name) ? 'image/webp' : /\.jpe?g$/i.test(file.name) ? 'image/jpeg' : null
 const safeName = (name: string) => name.replace(/[^\w.-]+/g, '_').slice(-80)
 
-function SettlementUpload({ dispatchId, requestId, checklist, onUploaded }: {
-  dispatchId: string; requestId: string; checklist: SettlementChecklist | undefined; onUploaded: () => Promise<void>
+function SettlementUpload({ dispatchId, requestId, checklist, canUpload, canManual, onUploaded }: {
+  dispatchId: string; requestId: string; checklist: SettlementChecklist | undefined; canUpload: boolean; canManual: boolean; onUploaded: () => Promise<void>
 }) {
   const supabase = useMemo(() => createClient(), [])
   const rule = SETTLEMENT_RULES[checklist?.kind || 'ENTREGA']
@@ -539,7 +542,9 @@ function SettlementUpload({ dispatchId, requestId, checklist, onUploaded }: {
   const [number, setNumber] = useState('')
   const [docFiles, setDocFiles] = useState<File[]>([])
   const [packingFiles, setPackingFiles] = useState<File[]>([])
-  const [busy, setBusy] = useState<'' | 'doc' | 'packing'>('')
+  const [busy, setBusy] = useState<'' | 'doc' | 'packing' | 'manual'>('')
+  const [manualOpen, setManualOpen] = useState(false)
+  const [manualReason, setManualReason] = useState('')
   const operation = useRef(crypto.randomUUID())
   const active = options.includes(kind) ? kind : options[0]
   const spec = active ? NUMBERED[active] : null
@@ -594,6 +599,27 @@ function SettlementUpload({ dispatchId, requestId, checklist, onUploaded }: {
       await onUploaded()
     } catch (error) { toast.error(errorMessage(error)) } finally { setBusy('') }
   }
+  const settleManually = async () => {
+    if (manualReason.trim().length < 10 || busy) return
+    setBusy('manual')
+    try {
+      const { error } = await supabase.rpc('settlement_mark_settled', { p_dispatch: dispatchId, p_request: requestId, p_reason: manualReason.trim() })
+      if (error) throw error
+      toast.success('Servicio dado por liquidado')
+      setManualOpen(false); setManualReason('')
+      await onUploaded()
+    } catch (error) { toast.error(errorMessage(error)) } finally { setBusy('') }
+  }
+  const undoManual = async () => {
+    if (busy) return
+    setBusy('manual')
+    try {
+      const { error } = await supabase.rpc('settlement_undo_manual', { p_dispatch: dispatchId, p_request: requestId })
+      if (error) throw error
+      toast.success('Liquidación manual revertida: vuelve a la regla automática')
+      await onUploaded()
+    } catch (error) { toast.error(errorMessage(error)) } finally { setBusy('') }
+  }
   const pick = (setter: (files: File[]) => void) => (event: React.ChangeEvent<HTMLInputElement>) => { setter(Array.from(event.target.files || []).slice(0, 5)); event.target.value = '' }
   const fileButton = 'inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-[#002855] hover:bg-slate-50 lg:min-h-9'
   const primary = 'inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002855] px-3 text-xs font-semibold text-white disabled:opacity-40 lg:min-h-9'
@@ -608,7 +634,7 @@ function SettlementUpload({ dispatchId, requestId, checklist, onUploaded }: {
         <p className="text-xs text-slate-600">Obligatorio: {rule.required}.</p>
       </div>
       {checklist && (checklist.complete
-        ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800"><CheckCircle2 className="h-3.5 w-3.5" />Liquidado automáticamente</span>
+        ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800"><CheckCircle2 className="h-3.5 w-3.5" />{checklist.manual ? 'Liquidado manualmente' : 'Liquidado automáticamente'}</span>
         : <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900"><Clock className="h-3.5 w-3.5" />Falta: {checklist.missing.map(m => MISSING_LABEL[m] || m).join(' · ')}</span>)}
     </div>
     {(guideNote || checklist?.note || checklist?.packing || !!checklist?.references.length) && <p className="flex flex-wrap gap-1.5 text-xs">
@@ -617,7 +643,23 @@ function SettlementUpload({ dispatchId, requestId, checklist, onUploaded }: {
       {checklist?.packing && <span className="rounded bg-white px-2 py-0.5 ring-1 ring-slate-200">Packing List cargado</span>}
       {checklist?.references.map(ref => <span key={ref} className="rounded bg-white px-2 py-0.5 ring-1 ring-slate-200">{ref}</span>)}
     </p>}
-    <div className={`grid gap-3 ${rule.packingAllowed ? 'lg:grid-cols-2' : ''}`}>
+    {checklist?.manual && <div className="flex flex-wrap items-start justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs ring-1 ring-emerald-200">
+      <p className="min-w-0 text-slate-700"><strong>Dado por liquidado</strong>{checklist.manual.closed_by ? ` por ${checklist.manual.closed_by}` : ''} · {new Date(checklist.manual.closed_at).toLocaleString('es-PE', { timeZone: 'America/Lima' })}<span className="block text-slate-600">Motivo: {checklist.manual.reason}</span>{!!checklist.manual.missing?.length && <span className="block text-slate-500">Faltaba: {checklist.manual.missing.map(m => MISSING_LABEL[m] || m).join(' · ')}</span>}</p>
+      {canManual && <button type="button" onClick={() => void undoManual()} disabled={!!busy} className="min-h-9 rounded-lg border border-slate-300 bg-white px-3 font-semibold text-slate-700 disabled:opacity-40">Revertir</button>}
+    </div>}
+    {canManual && checklist && !checklist.complete && (manualOpen
+      ? <div className="space-y-2 rounded-lg bg-white p-3 ring-1 ring-slate-200">
+          <label className="block text-xs text-slate-600">Motivo para dar por liquidado (queda registrado)
+            <textarea value={manualReason} onChange={e => setManualReason(e.target.value)} maxLength={500} rows={2} placeholder="Ej.: el cliente confirmó la recepción por correo; la guía física llega el lunes" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <span className="mt-1 block text-slate-500">Mínimo 10 caracteres. Falta: {checklist.missing.map(m => MISSING_LABEL[m] || m).join(' · ')}.</span>
+          </label>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" onClick={() => { setManualOpen(false); setManualReason('') }} className="min-h-9 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700">Cancelar</button>
+            <button type="button" onClick={() => void settleManually()} disabled={manualReason.trim().length < 10 || !!busy} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-700 px-3 text-xs font-semibold text-white disabled:opacity-40">{busy === 'manual' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar liquidación</button>
+          </div>
+        </div>
+      : <div className="flex justify-end"><button type="button" onClick={() => setManualOpen(true)} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-emerald-600 bg-white px-3 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"><CheckCircle2 className="h-4 w-4" />Dar por liquidado</button></div>)}
+    {canUpload && <div className={`grid gap-3 ${rule.packingAllowed ? 'lg:grid-cols-2' : ''}`}>
       {spec && active ? <div className="min-w-0 space-y-2">
         <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="Documento con número">
           {options.map(k => <button key={k} type="button" role="radio" aria-checked={active === k} onClick={() => { setKind(k); setNumber(''); setDocFiles([]) }}
@@ -643,8 +685,8 @@ function SettlementUpload({ dispatchId, requestId, checklist, onUploaded }: {
         </div>
         {chosen(packingFiles, () => setPackingFiles([]))}
       </div>}
-    </div>
-    <p className="text-[11px] text-slate-500">La liquidación es automática: el servicio sale de «Liquidación pendiente» al completar los obligatorios. La GR cuenta cuando el Supervisor de Transporte la aprueba en Conformidad.</p>
+    </div>}
+    <p className="text-[11px] text-slate-500">La liquidación es automática: el servicio sale de «Liquidación pendiente» al completar los obligatorios. La GR cuenta cuando el Supervisor de Transporte la aprueba en Conformidad.{canManual ? ' También puedes darlo por liquidado con un motivo.' : ''}</p>
   </div>
 }
 
