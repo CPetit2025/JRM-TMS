@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Truck, ShieldCheck, Loader2, CalendarDays, Route } from 'lucide-react'
@@ -11,14 +11,32 @@ import { RouteDay } from '@/components/tracking/RouteDay'
 import type { PortalRow } from '@/lib/tracking-portal'
 import { limaDay, monthDays, type PortalRequest } from '@/lib/tracking-calendar'
 
+const sessionKey = (token: string) => `jrm:tracking-access:${token}`
+const invalidAccess = (message: string) => /acceso revocado|código de acceso incorrecto|PIN incorrecto|(?:enlace|acceso).*(?:vencido|expirado|inválido|no válido)|tracking link is invalid, expired, or incorrect PIN/i.test(message)
+function saveAccess(token: string, pin: string | null) {
+  try {
+    if (pin) window.sessionStorage.setItem(sessionKey(token), pin)
+    else window.sessionStorage.removeItem(sessionKey(token))
+  } catch { /* Browsers may disable storage; server validation still works. */ }
+}
+
 export default function TrackingPage() {
-  const { token } = useParams()
+  const { token: routeToken } = useParams()
+  const token = String(routeToken || '')
+  const currentToken = useRef(token)
+  const authAttempt = useRef(0)
+  const invalidateAuth = useCallback(() => { authAttempt.current++ }, [])
+  const [restoring, setRestoring] = useState(true)
+  const [restoreRetry, setRestoreRetry] = useState(false)
   const [pin, setPin] = useState('')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [verifiedToken, setVerifiedToken] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [trackingData, setTrackingData] = useState<{ mode: 'permanent' | 'legacy'; planning_date?: string; rows: PortalRow[]; requests: PortalRequest[]; error?:string; limited?:boolean; label?:string|null } | null>(null)
   const [month, setMonth] = useState(() => limaDay(new Date().toISOString()).slice(0,7))
   const range = useMemo(() => { const days=monthDays(month); return {p_from:days[0],p_to:days[41]} },[month])
+  const rangeRef = useRef(range)
+  useEffect(() => { rangeRef.current = range }, [range])
   const [activeTab, setActiveTab] = useState<'calendar' | 'route'>('calendar')
   const [routeDay, setRouteDay] = useState(() => limaDay(new Date().toISOString()))
   const changeRouteDay = (day: string) => { setRouteDay(day); if (day < range.p_from || day > range.p_to) setMonth(day.slice(0, 7)) }
@@ -27,22 +45,65 @@ export default function TrackingPage() {
   const [updatedAt, setUpdatedAt] = useState<string | null>(null)
   const [refreshError, setRefreshError] = useState('')
   const [version, setVersion] = useState(0)
+  // Each link has its own tab-scoped credential. Never show cached operational data
+  // before the server confirms the access is still valid.
   useEffect(() => {
-    if (!isAuthenticated) return
+    let cancelled = false
+    currentToken.current = token
+    const invalidateAttempt = () => { authAttempt.current++ }
+    invalidateAttempt()
+    const restore = async () => {
+      await Promise.resolve()
+      if (cancelled) return
+      setIsAuthenticated(false); setTrackingData(null); setRefreshError('')
+      setRestoring(true); setRestoreRetry(false); setPin(''); setIsLoading(false)
+      let saved = ''
+      try { saved = window.sessionStorage.getItem(sessionKey(token)) || '' } catch { /* Storage unavailable. */ }
+      if (!/^(?:[A-Z0-9]{4}|[0-9]{8})$/.test(saved)) {
+        saveAccess(token, null); setRestoring(false); return
+      }
+      setPin(saved)
+      try {
+        const { data, error } = await supabase.rpc('get_public_tracking_portal_info', { p_token: token, p_pin: saved, ...rangeRef.current })
+        if (cancelled) return
+        if (error || data?.error) throw new Error(data?.error || error?.message || 'No se pudo validar el acceso.')
+        if (!data || (data.mode !== 'permanent' && data.mode !== 'legacy')) throw new Error('No se pudo verificar la respuesta del seguimiento.')
+        setTrackingData(data); setUpdatedAt(new Date().toISOString())
+        setActiveTab(data?.mode === 'permanent' ? 'calendar' : 'route')
+        setVerifiedToken(token); setIsAuthenticated(true); setRestoreRetry(false); setRefreshError('')
+      } catch (err) {
+        if (cancelled) return
+        const message = err instanceof Error ? err.message : ''
+        if (invalidAccess(message)) { saveAccess(token, null); setPin(''); setRefreshError('El acceso cambió o ya no está disponible. Ingresa un código vigente.') }
+        else { setRestoreRetry(true); setRefreshError('No se pudo verificar tu acceso. Puedes reintentar sin volver a ingresar el código.') }
+      } finally { if (!cancelled) setRestoring(false) }
+    }
+    void restore()
+    return () => { cancelled = true; invalidateAttempt() }
+    // Range changes are handled by the authenticated refresh, not a new sign-in.
+  }, [token, supabase, invalidateAuth])
+
+  useEffect(() => {
+    if (!isAuthenticated || verifiedToken !== token) return
     let cancelled = false
     const load = async () => {
-      const { data, error } = await supabase.rpc('get_public_tracking_portal_info', { p_token: token, p_pin: pin, ...range })
-      if (cancelled) return
-      if (error || data?.error) {
-        if (data?.error || /PIN|vencido|no válido/i.test(error?.message || '')) { setIsAuthenticated(false); setTrackingData(null) }
-        else setRefreshError('No se pudo actualizar el seguimiento.')
-        return
+      try {
+        const { data, error } = await supabase.rpc('get_public_tracking_portal_info', { p_token: token, p_pin: pin, ...range })
+        if (cancelled) return
+        if (error || data?.error) throw new Error(data?.error || error?.message || 'No se pudo actualizar el seguimiento.')
+        if (!data || (data.mode !== 'permanent' && data.mode !== 'legacy')) throw new Error('No se pudo verificar la respuesta del seguimiento.')
+        setTrackingData(data); setUpdatedAt(new Date().toISOString()); setRefreshError('')
+      } catch (err) {
+        if (cancelled) return
+        if (invalidAccess(err instanceof Error ? err.message : '')) {
+          saveAccess(token, null); setIsAuthenticated(false); setTrackingData(null); setPin('')
+          setRefreshError('El acceso cambió o ya no está disponible. Ingresa un código vigente.')
+        } else setRefreshError('No se pudo actualizar el seguimiento. Conservamos la última información verificada.')
       }
-      setTrackingData(data); setUpdatedAt(new Date().toISOString()); setRefreshError('')
     }
     void load(); const timer = window.setInterval(load, 15000)
     return () => { cancelled = true; window.clearInterval(timer) }
-  }, [isAuthenticated, token, pin, supabase, version, range])
+  }, [isAuthenticated, verifiedToken, token, pin, supabase, version, range])
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -51,26 +112,33 @@ export default function TrackingPage() {
       return
     }
 
+    const attempt = ++authAttempt.current
     setIsLoading(true)
     try {
       const { data, error } = await supabase.rpc('get_public_tracking_portal_info', {
         p_token: token, p_pin: pin, ...range
       })
 
-      if (error) throw error
-      if (data?.error) throw new Error(data.error)
+      if (currentToken.current !== token || attempt !== authAttempt.current) return
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'No se pudo validar el acceso.')
+      if (!data || (data.mode !== 'permanent' && data.mode !== 'legacy')) throw new Error('No se pudo verificar la respuesta del seguimiento.')
+      saveAccess(token, pin)
+      setRestoreRetry(false)
 
       setTrackingData(data); setUpdatedAt(new Date().toISOString()); setRefreshError('')
       setActiveTab(data?.mode === 'permanent' ? 'calendar' : 'route')
-      setIsAuthenticated(true)
+      setVerifiedToken(token); setIsAuthenticated(true)
       toast.success('Acceso autorizado')
     } catch (err) {
+      if (currentToken.current !== token || attempt !== authAttempt.current) return
+      if (invalidAccess(err instanceof Error ? err.message : '')) { saveAccess(token, null); setRestoreRetry(false) }
       toast.error(err instanceof Error ? err.message : 'PIN incorrecto, enlace expirado o inválido.')
-      console.error(err)
     } finally {
-      setIsLoading(false)
+      if (currentToken.current === token && attempt === authAttempt.current) setIsLoading(false)
     }
   }
+
+  if (restoring || (isAuthenticated && verifiedToken !== token)) return <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-slate-50" role="status"><Loader2 className="h-6 w-6 animate-spin text-blue-600" /><p className="text-sm text-slate-600">Verificando tu acceso…</p></div>
 
   if (!isAuthenticated) {
     return (
@@ -88,6 +156,7 @@ export default function TrackingPage() {
           </p>
           
           <form onSubmit={handleAuth} className="space-y-6">
+            {refreshError && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{refreshError}</p>}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2 text-center">
                 Código de Acceso
@@ -113,7 +182,7 @@ export default function TrackingPage() {
               disabled={isLoading || (pin.length !== 4 && pin.length !== 8)}
               className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white p-4 rounded-xl font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
-              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Ver Planificación'}
+              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : restoreRetry ? 'Reintentar acceso' : 'Ver Planificación'}
             </button>
           </form>
           
@@ -137,7 +206,7 @@ export default function TrackingPage() {
               <Truck className="hidden w-5 h-5 text-blue-600 sm:block" />
               <span className="font-bold text-base leading-snug sm:text-lg text-slate-800">Planificación y Seguimiento de Transporte</span>
             </div>
-            <div className="flex items-center justify-between gap-2 sm:justify-end"><button className="rounded-lg border px-3 py-2 text-xs text-slate-600" onClick={() => {setIsAuthenticated(false);setPin('');setTrackingData(null)}}>Salir</button><div className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-medium border border-blue-200">
+            <div className="flex items-center justify-between gap-2 sm:justify-end"><button className="rounded-lg border px-3 py-2 text-xs text-slate-600" onClick={() => {authAttempt.current++;saveAccess(token, null);setIsAuthenticated(false);setPin('');setTrackingData(null);setRefreshError('');setRestoreRetry(false)}}>Salir</button><div className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-medium border border-blue-200">
               {trackingData?.planning_date ? new Date(`${trackingData?.planning_date}T00:00:00`).toLocaleDateString('es-PE') : trackingData?.label || 'Portal de seguimiento'}
             </div></div>
           </div>

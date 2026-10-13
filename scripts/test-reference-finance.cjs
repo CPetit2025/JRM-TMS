@@ -328,4 +328,54 @@ try {
  console.log('PASS: exact production C63 (7/7) uses a pending synthetic supplier fixture and leaves assigned references immutable after finance changes.')
 
 
+ // Own-fleet pickup regression: actual active-route context and daily-cutoff gateway.
+ sql(`ALTER TABLE transport_requests ADD COLUMN client_id uuid;
+ ALTER TABLE dispatches ALTER COLUMN modalidad SET DEFAULT 'PROPIA'; UPDATE dispatches SET modalidad='PROPIA' WHERE modalidad IS NULL;
+ ALTER TABLE delivery_conformities ADD COLUMN arrived_at timestamptz; ALTER TABLE delivery_conformities ADD PRIMARY KEY(dispatch_id,request_id);
+ ALTER TABLE vehicles ADD COLUMN id uuid PRIMARY KEY DEFAULT gen_random_uuid(); ALTER TABLE vehicles ADD COLUMN plate text; ALTER TABLE vehicles ADD COLUMN weight_capacity numeric;
+ CREATE TABLE route_track_points(dispatch_id uuid,leg_order int);
+ CREATE TABLE notifications(evento text,categoria text,severidad text,titulo text,cuerpo text,link text,permisos text[],target_user uuid,dedupe_key text);
+ CREATE TABLE dispatch_service_additions(operation_id uuid PRIMARY KEY,dispatch_id uuid,request_id uuid,created_by uuid,created_at timestamptz,reason text,expected_at timestamptz,available_kg numeric,cargo_kg numeric,extra_km numeric,result jsonb);
+ CREATE FUNCTION delivery_can_review(uuid) RETURNS boolean LANGUAGE sql AS $$ SELECT true $$;`)
+ sql(native('supabase/migrations/20261011010000_cliente_proveedor_obligatorio.sql','request_party_missing'))
+ for(const [file,name] of [['supabase/migrations/20260922100000_contract_portfolio_security.sql','contract_root_id'],['supabase/migrations/20261010060000_transport_family_budget.sql','contract_budget_owner']]) {
+   const source=read(file), start=source.indexOf('CREATE OR REPLACE FUNCTION public.'+name+'('); assert(start>=0,name);sql(source.slice(start,source.indexOf('$$;',start)+3))
+ }
+ sql(native('supabase/migrations/20261011060000_active_route_add_service.sql','active_route_context'))
+ sql('ALTER FUNCTION active_route_context(uuid) RENAME TO active_route_context_before_daily_cutoff;')
+ const daily=read('supabase/migrations/20261011110000_daily_route_cutoff.sql');
+ for(const name of ['dispatch_operating_day','dispatch_cutoff_at']) {const at=daily.indexOf('CREATE FUNCTION public.'+name+'(');sql(daily.slice(at,daily.indexOf('$$;',at)+3))}
+ sql(native('supabase/migrations/20261011110000_daily_route_cutoff.sql','active_route_context'))
+ const additionAt=daily.indexOf('DO $addition$');sql(daily.slice(additionAt,daily.indexOf('END $addition$;',additionAt)+15))
+ sql(read('supabase/migrations/20261012150000_route_service_peso_hora.sql'))
+ const pendingAutoPickup=full(payload({contract_id:null,request_type:'RECOJO',attention_mode:'TRANSPORTE_JRM',supplier_id:id(11),reference_type:'OC',reference_number:'HIST-AUTO'}))
+ const pendingManualPickup=full(payload({contract_id:null,request_type:'RECOJO',attention_mode:'TRANSPORTE_JRM',supplier_id:id(11),reference_type:'OS',reference_number:'HIST-MANUAL'}))
+ sql(staff+`SET tms.tariff_apply='on'; UPDATE transport_requests SET service_cost=77,cost_source='MANUAL',cost_override_reason='Costo real registrado' WHERE id='${pendingManualPickup.id}';`)
+ sql(read('supabase/migrations/20261013180000_own_fleet_pickup_documentation.sql'))
+ assert.equal(sql(`SELECT service_cost||'/'||status FROM transport_requests WHERE id='${pendingAutoPickup.id}'`),'0/PENDIENTE DE APROBACIÓN')
+ assert.equal(sql(`SELECT service_cost||'/'||cost_source FROM transport_requests WHERE id='${pendingManualPickup.id}'`),'77/MANUAL')
+ assert.equal(sql(`SELECT service_cost FROM transport_requests WHERE id='${pay.id}'`),'308')
+ console.log('PASS: pending automatic pickup quote is repaired; manual pickup cost and already-assigned financial history remain untouched.')
+ const c99=query(read('supabase/tests/caja_c99_own_fleet_pickup.test.sql')); assert.notEqual(c99.status,0); assert.match(c99.stderr,/CAJA C99 PASS/)
+ console.log('PASS: exact production C99 documents own pickups without freight/km; capacity, day, retry and explicit third-party quote remain enforced.')
+ const updatedC94=query(read('supabase/tests/caja_c94_reference_transport_finance.test.sql')); assert.notEqual(updatedC94.status,0); assert.match(updatedC94.stderr,/CAJA C94 PASS/)
+ console.log('PASS: exact C94 financial lifecycle remains valid after own-pickup tariff normalization.')
+ const ownPickup=full(payload({contract_id:null,request_type:'RECOJO',attention_mode:'TRANSPORTE_JRM',supplier_id:id(11),reference_type:'OC',reference_number:'OWN-001'}))
+ assert.equal(ownPickup.service_cost,0);assert.equal(ownPickup.quote.freight_total,0)
+ sql(staff+`SELECT approve_reference_transport_request('${ownPickup.id}',0,'OC','OWN-001'); UPDATE dispatches SET status='CANCELADO';`)
+ const ownRoute=sql(staff+`SELECT schedule_dispatch('${id(6)}','OWN-001','2099-01-01T10:00:00-05:00',99,308,NULL,'GR',${lit([{id:ownPickup.id,freight_share_pen:308}])});`)
+ assert.equal(sql(`SELECT freight_cost||'/'||estimated_distance_km FROM dispatches WHERE id='${ownRoute}'`),'0/0')
+ assert.equal(sql(`SELECT amount_pen FROM dispatch_request_freight WHERE dispatch_id='${ownRoute}'`),'0')
+ // Same-OT pickup + delivery must create a ledger per stop without lending pickup cost to the delivery.
+ const ownOtPickup=full(payload({contract_id:id(4),request_type:'RECOJO',attention_mode:'TRANSPORTE_JRM',supplier_id:id(11),reference_type:'OS',reference_number:'OWN-OT'}),comp(id(4)))
+ const ownDelivery=full(payload({contract_id:id(4),request_type:'DESPACHO',attention_mode:'TRANSPORTE_JRM'}),comp(id(4)))
+ sql(staff+`UPDATE transport_requests SET status='APROBADA' WHERE id IN('${ownOtPickup.id}','${ownDelivery.id}'); UPDATE dispatches SET status='CANCELADO';`)
+ const mix=[{id:ownOtPickup.id,freight_share_pen:308},{id:ownDelivery.id,freight_share_pen:308}]
+ const mixRoute=sql(staff+`SELECT schedule_dispatch('${id(6)}','OWN-MIX','2099-01-01T10:00:00-05:00',20,616,'${id(4)}','GR',${lit(mix)});`)
+ assert.equal(sql(`SELECT freight_cost||'/'||estimated_distance_km FROM dispatches WHERE id='${mixRoute}'`),'308/20')
+ assert.equal(sql(`SELECT amount_pen FROM dispatch_request_freight WHERE dispatch_id='${mixRoute}' AND request_id='${ownOtPickup.id}'`),'0')
+ assert.equal(sql(`SELECT amount_pen FROM dispatch_request_freight WHERE dispatch_id='${mixRoute}' AND request_id='${ownDelivery.id}'`),'308')
+ console.log('PASS: own pickup schedule ignores stale freight/km; same-OT mixed route retains delivery freight and independent zero-cost pickup ledger.')
+
+
 } finally {spawnSync('docker',['rm','-f',name],{stdio:'ignore'})}

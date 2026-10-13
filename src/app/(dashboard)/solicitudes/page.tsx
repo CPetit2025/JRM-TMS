@@ -291,7 +291,8 @@ export default function SolicitudesPage() {
   const referenceRequired = requiresOrderReference(newRequest.request_type)
   const referenceComplete = orderReferenceComplete(newRequest.reference_type, newRequest.reference_number)
   const isCustomerPickup = newRequest.attention_mode === 'RECOJO_CLIENTE'
-  const estimatedCost = (isCustomerPickup ? 0 : Number(newRequest.service_cost || 0)) + unloadingTotal
+  const isPickupRequest = newRequest.request_type === 'RECOJO'
+  const estimatedCost = ((isCustomerPickup || isPickupRequest) ? 0 : Number(newRequest.service_cost || 0)) + unloadingTotal
 
 
   const editingRequest = requests.find(request => request.id === editingRequestId)
@@ -458,7 +459,7 @@ export default function SolicitudesPage() {
       setQuoting(false)
       if (error) { setQuote(null); return }
       const q = data as Record<string, unknown>
-      if (isCustomerPickup) {
+      if (isCustomerPickup || isPickupRequest) {
         q.freight_total = 0
         q.total = Number(q.unloading_total || 0); q.client_total = null; q.vehicle_class = null
         q.missing = ((q.missing || []) as string[]).filter(m => !/flete|parada adicional/i.test(m))
@@ -474,9 +475,9 @@ export default function SolicitudesPage() {
       }))
     }, 500)
     return () => { cancel = true; window.clearTimeout(t) }
-  }, [supabase, isModalOpen, newRequest.contract_id, newRequest.delivery_district, newRequest.delivery_province, newRequest.delivery_department, requestedWeight, newRequest.estimated_weight, isCustomerPickup, unloadingKey, setNewRequest])
+  }, [supabase, isModalOpen, newRequest.contract_id, newRequest.delivery_district, newRequest.delivery_province, newRequest.delivery_department, requestedWeight, newRequest.estimated_weight, isCustomerPickup, isPickupRequest, unloadingKey, setNewRequest])
 
-  const quoteFreight = isCustomerPickup ? 0 : Number(quote?.freight_total || 0)
+  const quoteFreight = (isCustomerPickup || isPickupRequest) ? 0 : Number(quote?.freight_total || 0)
 
   const applyUnloadingReference = (h: UnloadingHistory) => {
     const lines = (h.lines || []).map(l => ({
@@ -702,7 +703,7 @@ export default function SolicitudesPage() {
     try {
       const { data: saved, error } = await supabase.rpc('save_transport_request_full', {
         p_request_id: editingRequestId,
-        p_payload: { ...newRequest, purchase_order: newRequest.reference_type === 'OC' ? newRequest.reference_number : newRequest.reference_type ? '' : newRequest.purchase_order, required_at: requiredAt, delivery_zone: requiresDeliveryLeadTime ? newRequest.delivery_zone : null, contract_id: newRequest.contract_id || null, service_cost: isCustomerPickup ? 0 : newRequest.service_cost, destination_acknowledged: destinationAcknowledged },
+        p_payload: { ...newRequest, purchase_order: newRequest.reference_type === 'OC' ? newRequest.reference_number : newRequest.reference_type ? '' : newRequest.purchase_order, required_at: requiredAt, delivery_zone: requiresDeliveryLeadTime ? newRequest.delivery_zone : null, contract_id: newRequest.contract_id || null, service_cost: (isCustomerPickup || isPickupRequest) ? 0 : newRequest.service_cost, destination_acknowledged: destinationAcknowledged },
         p_unloading: unloadingAnswer === 'SI' ? unloading.map(x => ({ concept: x.concept, estimated_pen: Number(x.estimated_pen) || 0, description: x.description || null })) : [],
         p_components: selected.map(c => ({
           contract_id: c.contract_id,
@@ -1243,7 +1244,7 @@ export default function SolicitudesPage() {
               </div>
             </FormSection>
 
-            <FormSection id="req-carga" step={needsSupplier ? 6 : 5} title="Carga y documento" hint="Glosa, documento de referencia y costo referencial">
+            <FormSection id="req-carga" step={needsSupplier ? 6 : 5} title="Carga y documento" hint="Glosa y documento de referencia">
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="block text-sm font-medium text-slate-700 md:col-span-2">Descripción general / glosa *
                   <textarea required rows={3} placeholder="Ej. 20 bobinas de acero para el proyecto Sur..." className={`${field} resize-none`}
@@ -1261,7 +1262,7 @@ export default function SolicitudesPage() {
                       value={newRequest.reference_number} onChange={e => setNewRequest({ ...newRequest, reference_number: e.target.value })} />
                   </div>
                 </div>
-              <div>
+              {!isPickupRequest && <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Costo referencial del flete {quoting && <Loader2 className="ml-1 inline h-3 w-3 animate-spin" />}
                 </label>
@@ -1273,7 +1274,8 @@ export default function SolicitudesPage() {
                 </p>
                 {quote ? <QuoteBreakdown quote={quote} compact />
                   : <p className="text-xs text-slate-400 mt-1">Elige la OT y el distrito de destino para calcularlo.</p>}
-              </div>
+              </div>}
+              {isPickupRequest && <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">El recojo con flota propia se documenta sin valorizar flete. Si se contrata un tercero, el supervisor valida su costo al programar la ruta. Los gastos de descarga se registran por separado.</p>}
               </div>
             </FormSection>
 

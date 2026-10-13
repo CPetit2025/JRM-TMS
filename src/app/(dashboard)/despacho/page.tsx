@@ -73,6 +73,8 @@ interface TransportRequest {
   request_client?: { business_name: string } | null
   estimated_weight?: number | null
   service_cost?: number | null
+  unloading_estimate_pen?: number | null
+  operational_approved_pen?: number | null
   contracts?: {
     id: string
     code: string
@@ -212,11 +214,13 @@ export default function DespachoPage() {
   const occupiedAssignment = newDispatch.document_type === 'GR' && modalidad === 'PROPIA'
     ? routeAssignment(dispatches, newDispatch.vehicle_plate, selectedDriver?.id) : null
   const openRouteAddition = (id: string) => { setIsModalOpen(false); setAddServiceId(id) }
-  const routeFreight = customerPickup ? 0 : modalidad === 'TERCERO'
+  const ownPickupOnly = modalidad === 'PROPIA' && selectedServices.length > 0 && selectedServices.every(r => r.request_type === 'RECOJO')
+  const valuedServices = selectedServices.filter(r => modalidad === 'TERCERO' || r.request_type !== 'RECOJO')
+  const routeFreight = customerPickup || ownPickupOnly ? 0 : modalidad === 'TERCERO'
     ? (Number(manualFreightCost) > 0 ? Number(manualFreightCost) : detectedFreightRate?.rate || 0)
     : (detectedFreightRate?.rate || Number(manualFreightCost) || 0)
-  const defaultShares = splitFreight(routeFreight, selectedServices)
-  const serviceShare = (id: string) => Number(freightShares[id] ?? defaultShares.find(r => r.id === id)?.amount ?? 0)
+  const defaultShares = splitFreight(routeFreight, valuedServices)
+  const serviceShare = (id: string) => modalidad === 'PROPIA' && selectedServices.some(r => r.id === id && r.request_type === 'RECOJO') ? 0 : Number(freightShares[id] ?? defaultShares.find(r => r.id === id)?.amount ?? 0)
   const allocationMatches = Math.round(selectedServices.reduce((sum, r) => sum + serviceShare(r.id), 0) * 100) === Math.round(routeFreight * 100)
   const [routeSearch, setRouteSearch] = useState('')
   const [routeService, setRouteService] = useState<ServiceKind | ''>('')
@@ -266,7 +270,8 @@ export default function DespachoPage() {
     if (!plate || selectedReqIds.length === 0) { setDetectedFreightRate(null); setFreightQuote(null); setLoadingRate(false); return }
     setLoadingRate(true)
     try {
-      const selectedReqs = pendingRequests.filter(r => selectedReqIds.includes(r.id))
+      const selectedReqs = pendingRequests.filter(r => selectedReqIds.includes(r.id) && (plate === 'EXTERNO' || r.request_type !== 'RECOJO'))
+      if (!selectedReqs.length) { setDetectedFreightRate(null); setFreightQuote(null); return }
       const contractId = new Set(selectedReqs.map(r => r.contract_id)).size === 1 ? selectedReqs[0]?.contract_id : null
 
       const stops = selectedReqs
@@ -429,6 +434,20 @@ export default function DespachoPage() {
         }
         const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
         const freightCost = Number(manualFreightCost) > 0 ? Number(manualFreightCost) : (detectedFreightRate?.rate || 0)
+        const pickupFunding = selectedServices.filter(r => r.request_type === 'RECOJO' && !r.contract_id && serviceShare(r.id) > 0 && serviceShare(r.id) + Number(r.unloading_estimate_pen || 0) > Number(r.operational_approved_pen || 0))
+        if (pickupFunding.length && !window.confirm(`Autorizar el flete contratado de los recojos: ${pickupFunding.map(r => `${r.request_number} · ${referenceLabel(r)} · S/ ${serviceShare(r.id).toFixed(2)}`).join('; ')}. La descarga se añade al importe autorizado. Esta aprobación queda registrada aunque la programación deba reintentarse.`)) return
+        if (pickupFunding.length) setFreightShares(Object.fromEntries(selectedServices.map(r => [r.id, serviceShare(r.id).toFixed(2)])))
+        for (const request of pickupFunding) {
+          const authorization = await supabase.rpc('authorize_pickup_reference_freight', {
+            p_request_id: request.id,
+            p_expected_cost: Math.round((Number(request.service_cost || 0) + Number(request.unloading_estimate_pen || 0)) * 100) / 100,
+            p_reference_type: request.reference_type, p_reference_number: request.reference_number,
+            p_freight: serviceShare(request.id), p_reason: 'Flete contratado a tercero al programar la ruta',
+          })
+          if (authorization.error) throw authorization.error
+          const authorizedFreight = serviceShare(request.id)
+          setPendingRequests(current => current.map(r => r.id === request.id ? { ...r, service_cost: authorizedFreight, operational_approved_pen: Math.round((authorizedFreight + Number(r.unloading_estimate_pen || 0)) * 100) / 100 } : r))
+        }
         const { data: newDispatchId, error } = await supabase.rpc('schedule_dispatch_tercero', {
           p_carrier_id: tercero.carrier_id, p_plate: tercero.placa, p_conductor: tercero.conductor, p_telefono: tercero.telefono,
           p_doc: tercero.doc || null, p_departure: new Date(newDispatch.scheduled_departure).toISOString(),
@@ -505,8 +524,7 @@ export default function DespachoPage() {
       }
 
       const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
-      const freightCost = isPickup ? 0 : detectedFreightRate?.rate && detectedFreightRate.rate > 0
-        ? detectedFreightRate.rate : (Number(manualFreightCost) || 0)
+      const freightCost = routeFreight
       const { data: newDispatchId, error } = await supabase.rpc('schedule_dispatch', {
         p_driver_id: isPickup ? null : matches[0]?.id || null,
         p_vehicle_plate: isPickup ? 'EXTERNO' : newDispatch.vehicle_plate,
@@ -860,7 +878,8 @@ export default function DespachoPage() {
                       )}
                       
                       {!loadingRate && freightQuote && <QuoteBreakdown quote={freightQuote} compact />}
-                      {!loadingRate && !detectedFreightRate && newDispatch.vehicle_plate && newDispatch.selected_requests.length > 0 && !freightQuote && (
+                      {ownPickupOnly && <p className="mt-2 rounded-lg bg-blue-50 p-3 text-xs text-blue-900">Recojo con flota propia: sin valorización de flete. Se conserva el seguimiento y la documentación.</p>}
+                      {!ownPickupOnly && !loadingRate && !detectedFreightRate && newDispatch.vehicle_plate && newDispatch.selected_requests.length > 0 && !freightQuote && (
                         <p className="text-xs text-slate-400 mt-1">Sin tarifa registrada para esta ruta.</p>
                       )}
                     </div>
@@ -899,9 +918,9 @@ export default function DespachoPage() {
                   {selectedDates.length > 1 && <p className="mt-2 text-xs text-amber-800">Las solicitudes tienen fechas distintas: {selectedDates.map(serviceDate).join(', ')}. Confirme la salida según el orden de atención.</p>}
                   <p className="mt-1 text-[11px] text-slate-500">La fecha de salida se confirma por separado de la fecha requerida de cada servicio.</p>
                 </div>
-                {newDispatch.document_type === 'GR' && <div>
+                {newDispatch.document_type === 'GR' && !ownPickupOnly && <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1 flex justify-between items-center">
-                    Distancia KM (Sugerido Automático)
+                    Distancia estimada (opcional, cálculo automático)
                     {calculatingDistance && <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />}
                   </label>
                   <input 
@@ -918,18 +937,19 @@ export default function DespachoPage() {
               </div>
             </FormSection>
 
-            {mixedOT && <FormSection id="ruta-flete" step={4} title="Flete distribuido por servicio" hint="Con OT se utiliza el 80% operativo de la partida. Los servicios sin OT conservan el costo aprobado y su OC, OS o RQ.">
+            {mixedOT && !ownPickupOnly && <FormSection id="ruta-flete" step={4} title="Flete distribuido por servicio" hint="Con OT se utiliza el 80% operativo de la partida. Los servicios sin OT conservan el costo aprobado y su OC, OS o RQ.">
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-xs text-slate-600">Total de ruta S/ {routeFreight.toFixed(2)}</span>
                   <button type="button" onClick={() => setFreightShares({})} className="text-xs text-blue-700 underline">Distribuir según los estimados</button>
                 </div>
                 <p className="text-xs text-slate-600">La propuesta usa los costos estimados de las solicitudes; puede ajustar cada monto antes de confirmar. En los servicios con OT, el 20% de utilidad queda protegido. En los servicios sin OT, el supervisor autoriza el costo sobre la OC, OS o RQ.</p>
+                {modalidad === 'PROPIA' && selectedServices.some(r => r.request_type === 'RECOJO') && <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-900">Los recojos de esta ruta no se valorizan. El flete se distribuye solo entre los demás servicios.</p>}
                 {selectedServices.map(req => (
                   <label key={req.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
                     <span><strong>{req.request_number}</strong> · {req.contracts?.code ? `OT ${req.contracts.code}` : referenceLabel(req) || 'Sin referencia'} · {serviceLabel(req)}</span>
                     <span className="flex items-center gap-1">S/
-                      <input type="number" min="0" step="0.01" aria-label={`Flete ${req.request_number}`} value={freightShares[req.id] ?? serviceShare(req.id).toFixed(2)} onChange={e => setFreightShares(prev => ({ ...prev, [req.id]: e.target.value }))} className="w-28 rounded border border-blue-200 bg-white px-2 py-1 text-right" />
+                      <input disabled={modalidad === 'PROPIA' && req.request_type === 'RECOJO'} type="number" min="0" step="0.01" aria-label={`Flete ${req.request_number}`} value={modalidad === 'PROPIA' && req.request_type === 'RECOJO' ? '0.00' : freightShares[req.id] ?? serviceShare(req.id).toFixed(2)} onChange={e => setFreightShares(prev => ({ ...prev, [req.id]: e.target.value }))} className="w-28 rounded border border-blue-200 bg-white px-2 py-1 text-right" />
                     </span>
                   </label>
                 ))}

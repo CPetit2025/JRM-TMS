@@ -40,13 +40,15 @@ test('add service only on current or future routes', () => {
  assert.equal(canAddRouteService({ status: 'RETORNO_COMPLETADO', plate: 'AAA-111', scheduled_departure: '2030-01-02T13:00:00Z' }, now), false)
  assert.equal(canAddRouteService({ status: 'EN RUTA', plate: 'EXTERNO', scheduled_departure: '2030-01-02T13:00:00Z' }, now), false)
 })
-test('route form protects current leg, previews inserted service and reuses operation after failure', async () => {
+for (const ownPickup of [false, true]) test(`route form protects stops and retry (${ownPickup ? 'own pickup' : 'third-party service'})`, async () => {
  const calls = [], successes = []; let changes = 0, closes = 0, tree
  const { AddRouteService } = load('src/components/despacho/AddRouteService.tsx', name => {
    if (name === '@/lib/supabase/client') return { createClient: () => ({ rpc: async (name, args) => {
-     if (name === 'active_route_context') return { data: context, error: null }
+     if (name === 'active_route_context') return { data: { ...context, dispatch: { ...context.dispatch, modalidad: ownPickup ? 'PROPIA' : 'TERCERO' } }, error: null }
      calls.push(args); return calls.length === 1 ? { error: { message: 'Saldo insuficiente' } } : { error: null }
    } }) }
+   if (name === '@/lib/request-service') return { fetchServiceTypes: async () => new Map() }
+   if (name === '@/lib/suppliers') return { referenceLabel: () => '' }
    if (name === '@/components/ui/modal') return { Modal: ({ children }) => React.createElement('div', null, children) }
    if (name === 'sonner') return { toast: { success: text => successes.push(text) } }
    return require(name)
@@ -54,21 +56,18 @@ test('route form protects current leg, previews inserted service and reuses oper
  await act(async () => { tree = create(React.createElement(AddRouteService, { dispatchId: 'dispatch', initialRequestId: 'new', onClose: () => closes++, onChanged: () => changes++ })) })
  await act(async () => { await new Promise(resolve => setTimeout(resolve, 25)) })
  assert.ok(tree.root.findAllByType('button').some(b => labelText(b) === 'Seleccionada'), 'planning request is preselected only after the server confirms availability')
- assert.equal(tree.root.findAllByType('input').filter(i => i.props.type === 'number')[2].props.value, '100')
+ assert.equal(tree.root.findAllByType('input').filter(i => i.props.type === 'number')[0].props.value, '100')
  const select = tree.root.findByType('select')
- const eta = tree.root.findAllByType('input').find(i => i.props.type === 'datetime-local')
- assert.equal(eta.props.min, '2029-12-31T00:00')
- assert.equal(eta.props.max, '2029-12-31T23:59')
+ assert.equal(tree.root.findAllByType('input').filter(i => i.props.type === 'time').length, 1, 'only time is entered; route defines the date')
  assert.equal(select.findAllByType('option').length, 2, 'only future stop can be moved')
  assert.equal(select.findAllByType('option')[1].props.value, 'future')
  await act(async () => { select.props.onChange({ target: { value: 'future' } }) })
  assert.match(labelText(tree.root.findByType('ol')), /RT-1.*RT-3.*RT-2/)
  const numbers = tree.root.findAllByType('input').filter(i => i.props.type === 'number')
- for (const [i, value] of ['150', '5', '100', '500'].entries()) await act(async () => { numbers[i].props.onChange({ target: { value } }) })
+ assert.equal(numbers.length, 1, 'only weight, no freight/mileage/capacity or reason inputs')
  await act(async () => {
-   tree.root.findAllByType('input').find(i => i.props.type === 'datetime-local').props.onChange({ target: { value: '2029-12-31T17:45' } })
-   tree.root.findAllByType('input').find(i => i.props.minLength === 10).props.onChange({ target: { value: 'Recojo adicional coordinado' } })
-   tree.root.findAllByType('input').find(i => i.props.type === 'checkbox').props.onChange({ target: { checked: true } })
+   numbers[0].props.onChange({ target: { value: '100' } })
+   tree.root.findAllByType('input').find(i => i.props.type === 'time').props.onChange({ target: { value: '17:45' } })
  })
  const submit = () => tree.root.findByType('form').props.onSubmit({ preventDefault() {} })
  await act(async () => { await submit() })
@@ -78,6 +77,10 @@ test('route form protects current leg, previews inserted service and reuses oper
  assert.equal(calls.length, 2)
  assert.equal(calls[0].p_operation, calls[1].p_operation)
  assert.equal(calls[0].p_before, 'future')
+ assert.equal(calls[0].p_freight, 0)
+ assert.equal(calls[0].p_extra_km, 0)
+ assert.equal(calls[0].p_cargo_kg, 100)
+ assert.equal(calls[0].p_available_kg, null)
  assert.equal(calls[0].p_expected_at, '2029-12-31T22:45:00.000Z', 'explicit Lima time')
  assert.equal(changes, 1); assert.equal(closes, 1); assert.equal(successes.length, 1)
  await act(async () => tree.unmount())
