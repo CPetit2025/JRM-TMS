@@ -40,7 +40,7 @@ END $$;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
 
 DO $test$
-DECLARE site uuid; carrier uuid; client uuid; actor uuid; v_role uuid; ent uuid[]; rec uuid[]; tra uuid[]; c jsonb; r jsonb; bad text;
+DECLARE site uuid; carrier uuid; client uuid; actor uuid; v_role uuid; ent uuid[]; rec uuid[]; tra uuid[]; live uuid[]; c jsonb; r jsonb; bad text;
   suffix text := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 5));
 BEGIN
   SELECT carrier_id, site_id INTO carrier, site FROM public.vehicles WHERE carrier_id IS NOT NULL AND site_id IS NOT NULL LIMIT 1;
@@ -54,12 +54,14 @@ BEGIN
   ent := pg_temp.c97_route('ZC97E' || suffix, site, client, 'EN RUTA', 'DESPACHO');
   rec := pg_temp.c97_route('ZC97R' || suffix, site, client, 'EN RUTA', 'RECOJO');
   tra := pg_temp.c97_route('ZC97T' || suffix, site, client, 'EN RUTA', 'TRASLADO');
+  live := pg_temp.c97_route('ZC97L' || suffix, site, client, 'EN RUTA', 'DESPACHO');
   UPDATE public.dispatches SET status = 'CIERRE_OPERATIVO' WHERE id IN (ent[1], rec[1], tra[1]);
   INSERT INTO storage.objects(bucket_id, name, metadata) VALUES
     ('dispatch_documents', ent[1] || '/nd.pdf', '{"mimetype":"application/pdf","size":1000}'),
     ('dispatch_documents', ent[1] || '/pl.pdf', '{"mimetype":"application/pdf","size":1000}'),
     ('dispatch_documents', rec[1] || '/nd.pdf', '{"mimetype":"application/pdf","size":1000}'),
-    ('dispatch_documents', rec[1] || '/oc.pdf', '{"mimetype":"application/pdf","size":1000}');
+    ('dispatch_documents', rec[1] || '/oc.pdf', '{"mimetype":"application/pdf","size":1000}'),
+    ('dispatch_documents', live[1] || '/pl.pdf', '{"mimetype":"application/pdf","size":1000}');
 
   -- T1: entrega sin documentos pide GR o Nota y Packing List; punto a punto no exige nada
   c := public.settlement_checklist(ent[1], ent[2]);
@@ -93,9 +95,14 @@ BEGIN
   r := public.get_settlement_checklists(ARRAY[ent[1], rec[1], tra[1]]);
   PERFORM pg_temp.c97_user(NULL);
   IF jsonb_array_length(r) <> 3 OR EXISTS(SELECT 1 FROM jsonb_array_elements(r) e WHERE NOT (e->>'complete')::boolean) THEN RAISE EXCEPTION 'CAJA C97 FAIL: lista por servicio (T4) %', r; END IF;
-  -- T5: anónimos no ven la lista y la regla interna no es pública
+  -- T5: una ruta en curso ya puede liquidar el servicio atendido (liquidación por servicio, no por unidad)
+  PERFORM pg_temp.c97_user(actor);
+  r := public.settlement_upload_document(live[1], live[2], 'PACKING', NULL, ARRAY[live[1] || '/pl.pdf']);
+  PERFORM pg_temp.c97_user(NULL);
+  IF NOT (public.settlement_checklist(live[1], live[2])->>'packing')::boolean THEN RAISE EXCEPTION 'CAJA C97 FAIL: ruta en curso (T5) %', r; END IF;
+  -- T6: anónimos no ven la lista y la regla interna no es pública
   IF has_function_privilege('anon', 'public.get_settlement_checklists(uuid[])', 'EXECUTE')
-    OR has_function_privilege('authenticated', 'public.settlement_checklist(uuid,uuid)', 'EXECUTE') THEN RAISE EXCEPTION 'CAJA C97 FAIL: permisos (T5)'; END IF;
-  RAISE EXCEPTION 'CAJA C97 PASS (5/5) liquidación por tipo de servicio: entrega GR/Nota + Packing List, recojo GR con OC/OS/RQ opcionales, punto a punto opcional y liquidación automática';
+    OR has_function_privilege('authenticated', 'public.settlement_checklist(uuid,uuid)', 'EXECUTE') THEN RAISE EXCEPTION 'CAJA C97 FAIL: permisos (T6)'; END IF;
+  RAISE EXCEPTION 'CAJA C97 PASS (6/6) liquidación por tipo de servicio: entrega GR/Nota + Packing List, recojo GR con OC/OS/RQ opcionales, punto a punto opcional, ruta en curso y liquidación automática';
 END $test$;
 ROLLBACK;
