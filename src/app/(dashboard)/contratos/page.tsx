@@ -15,6 +15,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { MAX_TONS, checkVolume, kgHint, tonsToKg } from '@/lib/contract-weight'
 import { ContractQuickView } from '@/components/contratos/ContractQuickView'
 import { ClaimContractsModal } from '@/components/contratos/ClaimContractsModal'
+import { InlineClientCreator } from '@/components/contratos/InlineClientCreator'
 
 interface Contract {
   id: string
@@ -62,6 +63,8 @@ export default function ContratosPage() {
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // Alta de OT: registro del cliente dentro del mismo modal
+  const [addingClient, setAddingClient] = useState(false)
   
   // Bulk upload
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -519,6 +522,7 @@ export default function ContratosPage() {
     const p = contracts.find(c => c.id === newContract.parent_contract_id)
     return p ? p.code + '-' : ''
   }
+  const isChildType = newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR'
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col gap-3 mx-auto">
@@ -803,210 +807,117 @@ export default function ContratosPage() {
         </div>
       </Modal>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Alta de Contrato / OT" maxWidth="max-w-4xl">
-        <form onSubmit={handleCreateContract} className="space-y-6">
-          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-            <h3 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-200 pb-2">Información Básica</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setAddingClient(false) }} title="Alta de Contrato / OT" maxWidth="max-w-4xl"
+        footer={<div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-slate-500"><span className="text-red-500">*</span> Obligatorio. La partida se reserva y consume al planificar rutas.</p>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => { setIsModalOpen(false); setAddingClient(false) }} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancelar</button>
+            <button type="submit" form="contract-create-form" disabled={isSubmitting || addingClient} title={addingClient ? 'Termine o cierre el registro del cliente' : undefined} className="min-h-11 rounded-lg bg-[#002855] px-6 text-sm font-semibold text-white shadow-md hover:bg-[#001d3d] disabled:opacity-50">{isSubmitting ? 'Guardando…' : 'Guardar registro'}</button>
+          </div>
+        </div>}>
+        <form id="contract-create-form" onSubmit={handleCreateContract} className="space-y-5">
+          {/* 1. Tipo, código y cliente */}
+          <section className="space-y-4">
+            <h3 className="flex items-center gap-2 text-sm font-bold text-[#002855]"><span className="grid h-6 w-6 place-items-center rounded-full bg-[#002855] text-xs text-white">1</span>Registro y cliente</h3>
+            <div role="radiogroup" aria-label="Tipo de registro" className="grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1">
+              {([['CONTRATO', 'OT Madre', 'Contrato principal'], ['SUBCONTRATO', 'Subcontrato', 'Hereda cliente y destino'], ['ERROR', 'Error / Reproceso', 'Hereda cliente y destino']] as const).map(([value, label, hint]) =>
+                <button key={value} type="button" role="radio" aria-checked={newContract.type === value} onClick={() => { setNewContract({ ...newContract, type: value }); setAddingClient(false) }}
+                  className={`min-h-11 rounded-md px-2 py-1.5 text-left text-sm ${newContract.type === value ? 'bg-white font-semibold text-[#002855] shadow-sm' : 'text-slate-600 hover:text-[#002855]'}`}>
+                  <span className="block">{label}</span><span className="hidden text-[11px] font-normal text-slate-500 sm:block">{hint}</span>
+                </button>)}
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {isChildType ? <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Contrato Madre <span className="text-red-500">*</span></label>
+                <SearchableSelect
+                  value={newContract.parent_contract_id}
+                  onChange={(val) => {
+                    const parent = contracts.find(c => c.id === val)
+                    setNewContract({
+                      ...newContract,
+                      parent_contract_id: val,
+                      ...(parent ? {
+                        destination_department: parent.destination_department || '',
+                        destination_province: parent.destination_province || '',
+                        destination_district: parent.destination_district || '',
+                        destination_address: parent.destination_address || ''
+                      } : {})
+                    })
+                  }}
+                  options={contracts.filter(c => c.type === 'CONTRATO').map(c => ({ value: c.id, label: c.code }))}
+                  placeholder="-- Seleccionar Contrato Padre --"
+                />
+              </div> : null}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Registro</label>
-                <select
-                  value={newContract.type}
-                  onChange={(e) => setNewContract({...newContract, type: e.target.value as any})}
-                  className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-white"
-                >
-                  <option value="CONTRATO">Contrato Principal / OT Madre</option>
-                  <option value="SUBCONTRATO">Subcontrato</option>
-                  <option value="ERROR">Error / Reproceso</option>
-                </select>
-              </div>
-
-              {newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR' ? (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Cliente</label>
-                  <p className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-sm text-slate-600">
-                    {clients.find(c => c.id === contracts.find(x => x.id === newContract.parent_contract_id)?.client_id)?.business_name
-                      || 'Se toma el cliente del Contrato Madre'}
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Cliente <span className="text-red-500">*</span></label>
-                  <SearchableSelect
-                    value={newContract.client_id}
-                    onChange={(val) => setNewContract({...newContract, client_id: val})}
-                    options={clients.map(c => ({ value: c.id, label: `${c.business_name} (${c.tax_id})` }))}
-                    placeholder="-- Buscar por RUC o razón social --"
-                  />
-                  <p className="mt-1 text-xs text-slate-500">Obligatorio. Si no aparece, regístrelo primero en Clientes.</p>
-                </div>
-              )}
-
-              {(newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR') && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Contrato Madre <span className="text-red-500">*</span></label>
-                  <SearchableSelect
-                    value={newContract.parent_contract_id}
-                    onChange={(val) => {
-                      const parentId = val
-                      const parent = contracts.find(c => c.id === parentId)
-                      setNewContract({
-                        ...newContract,
-                        parent_contract_id: parentId,
-                        ...(parent && (newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR') ? {
-                          destination_department: parent.destination_department || '',
-                          destination_province: parent.destination_province || '',
-                          destination_district: parent.destination_district || '',
-                          destination_address: parent.destination_address || ''
-                        } : {})
-                      })
-                    }}
-                    options={contracts.filter(c => c.type === 'CONTRATO').map(c => ({ value: c.id, label: c.code }))}
-                    placeholder="-- Seleccionar Contrato Padre --"
-                  />
-                </div>
-              )}
-
-              <div className={(newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR') ? "md:col-span-2" : ""}>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Código o Correlativo</label>
-                <div className="flex border border-slate-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-[#002855] focus-within:border-[#002855] transition-all bg-white">
-                  {getSelectedParentCode() && (
-                    <div className="bg-slate-100 px-3 py-2.5 text-slate-600 font-medium border-r border-slate-300 text-sm flex items-center">
-                      {getSelectedParentCode()}
-                    </div>
-                  )}
-                  <input
-                    type="text"
-                    required
-                    value={newContract.correlative}
-                    onChange={(e) => setNewContract({...newContract, correlative: e.target.value})}
-                    className="w-full p-2.5 outline-none text-sm"
-                    placeholder={newContract.type === 'SUBCONTRATO' ? 'S001' : newContract.type === 'ERROR' ? 'E001' : '16584'}
-                  />
+                <label className="mb-1 block text-sm font-medium text-slate-700">{isChildType ? 'Correlativo' : 'Código de la OT'} <span className="text-red-500">*</span></label>
+                <div className="flex overflow-hidden rounded-lg border border-slate-300 bg-white transition-all focus-within:border-[#002855] focus-within:ring-2 focus-within:ring-[#002855]">
+                  {getSelectedParentCode() && <div className="flex items-center border-r border-slate-300 bg-slate-100 px-3 text-sm font-medium text-slate-600">{getSelectedParentCode()}</div>}
+                  <input type="text" required value={newContract.correlative} onChange={(e) => setNewContract({...newContract, correlative: e.target.value})}
+                    className="w-full p-2.5 text-sm outline-none" placeholder={newContract.type === 'SUBCONTRATO' ? 'S001' : newContract.type === 'ERROR' ? 'E001' : '16584'} />
                 </div>
               </div>
+              {isChildType ? <div className="md:col-span-2">
+                <p className="text-sm font-medium text-slate-700">Cliente</p>
+                <p className="mt-1 rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-sm text-slate-600">
+                  {clients.find(c => c.id === contracts.find(x => x.id === newContract.parent_contract_id)?.client_id)?.business_name || 'Se toma el cliente del Contrato Madre'}
+                </p>
+              </div> : <div>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <label className="block text-sm font-medium text-slate-700">Cliente <span className="text-red-500">*</span></label>
+                  {!addingClient && <button type="button" onClick={() => setAddingClient(true)} className="flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline"><Plus className="h-3.5 w-3.5" />Nuevo cliente</button>}
+                </div>
+                {!addingClient && <SearchableSelect
+                  value={newContract.client_id}
+                  onChange={(val) => setNewContract({...newContract, client_id: val})}
+                  options={clients.map(c => ({ value: c.id, label: `${c.business_name} (${c.tax_id})` }))}
+                  placeholder="-- Buscar por RUC o razón social --"
+                />}
+                {!addingClient && <p className="mt-1 text-xs text-slate-500">¿No aparece? Use <b>Nuevo cliente</b>: se registra con el RUC de SUNAT sin salir de esta ventana.</p>}
+              </div>}
             </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
-              <h3 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Presupuesto y Carga</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Partida propia de este registro (S/) · 80% para operación</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={newContract.budget_pen}
-                    onChange={(e) => setNewContract({...newContract, budget_pen: e.target.value})}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm"
-                    placeholder="0.00 (Opcional)"
-                  />
-                  <p className="text-[10px] text-slate-500 mt-1 leading-tight">
-                    Esta partida se reservará y consumirá automáticamente al planificar rutas.
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Peso (toneladas)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max={MAX_TONS}
-                      value={newContract.total_weight_kg}
-                      onChange={(e) => setNewContract({...newContract, total_weight_kg: e.target.value})}
-                      className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm"
-                      placeholder="Ej. 15"
-                    />
-                    <p className="mt-1 text-xs text-slate-500">{kgHint(newContract.total_weight_kg)}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Volumen (M3)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={newContract.total_volume_m3}
-                      onChange={(e) => setNewContract({...newContract, total_volume_m3: e.target.value})}
-                      className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm"
-                      placeholder="Ej. 35.5"
-                    />
-                  </div>
-                </div>
-              </div>
+            {!isChildType && addingClient && <InlineClientCreator onCancel={() => setAddingClient(false)} onCreated={client => {
+              setClients(list => list.some(c => c.id === client.id) ? list : [...list, client].sort((a, b) => a.business_name.localeCompare(b.business_name)))
+              setNewContract(current => ({ ...current, client_id: client.id }))
+              setAddingClient(false)
+            }} />}
+          </section>
+
+          {/* 2. Destino */}
+          <section className="space-y-3 border-t border-slate-100 pt-4">
+            <h3 className="flex items-center gap-2 text-sm font-bold text-[#002855]"><span className="grid h-6 w-6 place-items-center rounded-full bg-[#002855] text-xs text-white">2</span>Destino / proyecto{isChildType && newContract.parent_contract_id ? <span className="text-xs font-normal text-slate-500">· copiado del Contrato Madre, puede ajustarlo</span> : null}</h3>
+            <label className="block text-sm font-medium text-slate-700">Dirección exacta <span className="text-red-500">*</span>
+              <input type="text" required value={newContract.destination_address} onChange={(e) => setNewContract({...newContract, destination_address: e.target.value})}
+                className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 text-sm outline-none focus:border-[#002855] focus:ring-2 focus:ring-[#002855]" placeholder="Ej. Av. Industrial 123" />
+            </label>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {([['destination_department', 'Departamento', 'LIMA'], ['destination_province', 'Provincia', 'LIMA'], ['destination_district', 'Distrito', 'ATE']] as const).map(([key, label, example]) =>
+                <label key={key} className="block text-sm font-medium text-slate-700">{label} <span className="text-red-500">*</span>
+                  <input type="text" required value={newContract[key]} onChange={(e) => setNewContract({...newContract, [key]: e.target.value.toUpperCase()})}
+                    className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 text-sm uppercase outline-none focus:border-[#002855] focus:ring-2 focus:ring-[#002855]" placeholder={`Ej. ${example}`} />
+                </label>)}
             </div>
+          </section>
 
-            <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
-              <h3 className="text-sm font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2">Destino / Proyecto</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Dirección Exacta <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    required
-                    value={newContract.destination_address}
-                    onChange={(e) => setNewContract({...newContract, destination_address: e.target.value})}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-slate-50"
-                    placeholder="Ej. Av. Industrial 123"
-                  />
-                </div>
-                <div className="grid grid-cols-1 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Departamento <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    required
-                    value={newContract.destination_department}
-                    onChange={(e) => setNewContract({...newContract, destination_department: e.target.value.toUpperCase()})}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-slate-50"
-                    placeholder="Ej. LIMA"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Provincia <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    required
-                    value={newContract.destination_province}
-                    onChange={(e) => setNewContract({...newContract, destination_province: e.target.value.toUpperCase()})}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-slate-50"
-                    placeholder="Ej. LIMA"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Distrito <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    required
-                    value={newContract.destination_district}
-                    onChange={(e) => setNewContract({...newContract, destination_district: e.target.value.toUpperCase()})}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] focus:border-[#002855] transition-all text-sm bg-slate-50"
-                    placeholder="Ej. ATE"
-                  />
-                </div>
-                </div>
-              </div>
+          {/* 3. Partida y carga */}
+          <section className="space-y-3 border-t border-slate-100 pt-4">
+            <h3 className="flex items-center gap-2 text-sm font-bold text-[#002855]"><span className="grid h-6 w-6 place-items-center rounded-full bg-[#002855] text-xs text-white">3</span>Partida y carga <span className="text-xs font-normal text-slate-500">· opcional</span></h3>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <label className="block text-sm font-medium text-slate-700">Partida propia (S/)
+                <input type="number" step="0.01" min="0" value={newContract.budget_pen} onChange={(e) => setNewContract({...newContract, budget_pen: e.target.value})}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 text-sm outline-none focus:border-[#002855] focus:ring-2 focus:ring-[#002855]" placeholder="0.00" />
+                <span className="mt-1 block text-xs font-normal text-slate-500">{Number(newContract.budget_pen) > 0 ? `Operación (80%): S/ ${(Number(newContract.budget_pen) * 0.8).toFixed(2)}` : '80% disponible para operación'}</span>
+              </label>
+              <label className="block text-sm font-medium text-slate-700">Peso (toneladas)
+                <input type="number" step="0.01" min="0" max={MAX_TONS} value={newContract.total_weight_kg} onChange={(e) => setNewContract({...newContract, total_weight_kg: e.target.value})}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 text-sm outline-none focus:border-[#002855] focus:ring-2 focus:ring-[#002855]" placeholder="Ej. 15" />
+                <span className="mt-1 block text-xs font-normal text-slate-500">{kgHint(newContract.total_weight_kg)}</span>
+              </label>
+              <label className="block text-sm font-medium text-slate-700">Volumen (m³)
+                <input type="number" step="0.01" min="0" value={newContract.total_volume_m3} onChange={(e) => setNewContract({...newContract, total_volume_m3: e.target.value})}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 text-sm outline-none focus:border-[#002855] focus:ring-2 focus:ring-[#002855]" placeholder="Ej. 35.5" />
+              </label>
             </div>
-          </div>
-
-
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={() => setIsModalOpen(false)}
-              className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-6 py-2 bg-[#002855] text-white font-medium rounded-lg hover:bg-[#001d3d] transition-colors disabled:opacity-50 shadow-md"
-            >
-              {isSubmitting ? 'Guardando...' : 'Guardar Registro'}
-            </button>
-          </div>
+          </section>
         </form>
       </Modal>
 
