@@ -9,7 +9,7 @@ import { referenceLabel } from '@/lib/suppliers'
 
 type Request = { id: string; number: string; type: string; ot: string | null; origin: string; destination: string; required_at: string | null; required_date: string | null; weight_kg: string | null }
 type Stop = { id: string; order: number; number: string; ot: string | null; status: string; origin: string; destination: string; locked: boolean }
-type Context = { revision: string; frontier: number; capacity_kg: number | null; stops: Stop[]; requests: Request[]; dispatch: { number: string; plate: string; driver: string; status: string; operating_day?: string; cutoff_at?: string } }
+type Context = { revision: string; frontier: number; capacity_kg: number | null; stops: Stop[]; requests: Request[]; dispatch: { number: string; plate: string; driver: string; status: string; operating_day?: string; cutoff_at?: string; modalidad?: string | null } }
 const field = 'mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm'
 const limaToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date())
 const attention = (r: Request) => r.required_at ? new Date(r.required_at).toLocaleString('es-PE', { timeZone: 'America/Lima' }) : r.required_date || 'Sin fecha'
@@ -25,12 +25,14 @@ export function AddRouteService({ dispatchId, initialRequestId, onClose, onChang
  const [search, setSearch] = useState('')
  const [cargo, setCargo] = useState('')
  const [expected, setExpected] = useState('')
+ const [freight, setFreight] = useState('')
+ const [reason, setReason] = useState('')
  const operation = useRef('')
  useEffect(() => {
    if (!dispatchId) return
    let cancelled = false
    const timer = window.setTimeout(async () => {
-     setContext(null); setError(''); setRequestId(''); setBefore(''); setSearch(''); setCargo(''); setExpected('')
+     setContext(null); setError(''); setRequestId(''); setBefore(''); setSearch(''); setCargo(''); setExpected(''); setFreight(''); setReason('')
      operation.current = crypto.randomUUID()
      const { data, error: failure } = await supabase.rpc('active_route_context', { p_dispatch: dispatchId })
      const nextContext = !failure ? data as Context : null
@@ -47,6 +49,10 @@ export function AddRouteService({ dispatchId, initialRequestId, onClose, onChang
  const selected = context?.requests.find(r => r.id === requestId)
  // La fecha es siempre el día operativo de la ruta; solo se pide la hora.
  const day = context?.dispatch.operating_day || limaToday()
+ // Ruta tercerizada (JRM contrata al tercero): el servicio agregado puede llevar flete adicional cuando lo amerite.
+ const thirdParty = context?.dispatch.modalidad === 'TERCERO'
+ const freightValue = thirdParty && freight ? Number(freight) : 0
+ const freightInvalid = !Number.isFinite(freightValue) || freightValue < 0 || (freightValue > 0 && reason.trim().length < 10)
  const filtered = context?.requests.filter(r => `${r.number} ${r.ot || references.get(r.id) || ''} ${r.origin} ${r.destination}`.toLowerCase().includes(search.toLowerCase())) || []
  const preview = context ? [...context.stops] : []
  if (selected) {
@@ -55,15 +61,15 @@ export function AddRouteService({ dispatchId, initialRequestId, onClose, onChang
  }
  const submit = async (event: React.FormEvent) => {
    event.preventDefault()
-   if (!context || !selected || busy || !expected) return
+   if (!context || !selected || busy || !expected || freightInvalid) return
    setBusy(true); setError('')
    try {
      const { error: failure } = await supabase.rpc('add_active_route_service', {
        p_dispatch: dispatchId, p_request: requestId, p_before: before || null, p_revision: context.revision, p_operation: operation.current,
-       // Los servicios agregados a la ruta no se valorizan aquí (flota propia: se documentan, no se cobra flete
-       // adicional); el recorrido real lo registra el GPS. Solo se confirman peso y hora: la fecha es el día de la ruta.
-       p_freight: 0, p_extra_km: 0, p_cargo_kg: Number(cargo), p_available_kg: null,
-       p_expected_at: new Date(`${day}T${expected}:00-05:00`).toISOString(), p_reason: '',
+       // Flota propia: el servicio agregado no se valoriza (se documenta y el GPS registra el recorrido). Ruta
+       // tercerizada: flete adicional opcional, con motivo, que se reserva de la partida de la OT.
+       p_freight: Math.round(freightValue * 100) / 100, p_extra_km: 0, p_cargo_kg: Number(cargo), p_available_kg: null,
+       p_expected_at: new Date(`${day}T${expected}:00-05:00`).toISOString(), p_reason: freightValue > 0 ? reason.trim() : '',
      })
      if (failure) throw failure
      toast.success('Servicio agregado. El conductor verá la ruta actualizada; el tercero conserva su enlace de acceso.')
@@ -92,8 +98,12 @@ export function AddRouteService({ dispatchId, initialRequestId, onClose, onChang
      <section><h3 className="font-bold text-jrm-navy">3. Validar operación</h3><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:max-w-xl">
        <label className="text-sm">Peso del nuevo servicio (kg)<input required type="number" min={Math.max(Number(selected?.weight_kg || 0), 0.01)} step="0.01" value={cargo} onChange={e => setCargo(e.target.value)} className={field} /></label>
        <label className="text-sm">Hora de atención (Lima)<input required type="time" value={expected} onChange={e => setExpected(e.target.value)} className={field} /><span className="text-xs text-slate-500">Día de la ruta: {day}</span></label>
-     </div><p className="mt-3 text-xs text-slate-600">El servicio agregado no se valoriza en la ruta: se documenta (guía, Nota de Despacho, Packing List) y el GPS registra el recorrido real.</p></section>
-     <div className="flex flex-wrap justify-end gap-3"><button type="button" disabled={busy} onClick={onClose} className="min-h-11 rounded-lg border px-4 text-sm font-semibold">Cancelar</button><button disabled={busy || !selected || !cargo || !expected} className="min-h-11 rounded-lg bg-jrm-navy px-4 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Agregando servicio…' : 'Confirmar incorporación'}</button></div>
+       {thirdParty && <>
+         <label className="text-sm">Flete adicional del tercero (S/) <span className="text-xs text-slate-500">· opcional</span><input type="number" min={0} step="0.01" value={freight} onChange={e => setFreight(e.target.value)} placeholder="0.00" className={field} /><span className="text-xs text-slate-500">Solo si el servicio lo amerita; se reserva de la partida de la OT.</span></label>
+         {freightValue > 0 && <label className="text-sm">Motivo del flete adicional<input required minLength={10} maxLength={500} value={reason} onChange={e => setReason(e.target.value)} placeholder="Ej.: desvío de 25 km a otro distrito" className={field} /><span className="text-xs text-slate-500">Mínimo 10 caracteres.</span></label>}
+       </>}
+     </div><p className="mt-3 text-xs text-slate-600">{thirdParty ? 'Ruta tercerizada: indique flete adicional solo cuando el servicio lo amerite. La documentación (guía, Nota de Despacho, Packing List) se exige igual.' : 'El servicio agregado no se valoriza en la ruta: se documenta (guía, Nota de Despacho, Packing List) y el GPS registra el recorrido real.'}</p></section>
+     <div className="flex flex-wrap justify-end gap-3"><button type="button" disabled={busy} onClick={onClose} className="min-h-11 rounded-lg border px-4 text-sm font-semibold">Cancelar</button><button disabled={busy || !selected || !cargo || !expected || freightInvalid} className="min-h-11 rounded-lg bg-jrm-navy px-4 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Agregando servicio…' : 'Confirmar incorporación'}</button></div>
    </form>}
  </Modal>
 }

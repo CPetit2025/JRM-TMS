@@ -84,7 +84,8 @@ export async function openPortalDocument(access: { token: string; pin: string },
 
 // Estado visible en el portal (5 estados de negocio):
 // Solicitado: solo registro · Programado: ruta con placa y conductor · En ruta: el conductor inició en el app
-// Completado: ruta terminada con documentos conformes · Cierre operativo: ruta terminada con documentos pendientes.
+// Completado: ruta terminada con documentos conformes (guía validada) · En revisión documental: la guía ya se cargó
+// pero aún no se valida (cargar no es liquidar) · Cierre operativo: flota liberada sin haber cargado la documentación.
 // Cancelado y Observada se conservan como excepciones. «live» enciende la luz intermitente.
 export type PortalTone = { label: string; bg: string; text: string; dot: string; live: boolean }
 const TONE = {
@@ -95,6 +96,7 @@ const TONE = {
   emerald: { bg: 'bg-emerald-100 ring-emerald-300', text: 'text-emerald-900', dot: 'bg-emerald-600' },
   red: { bg: 'bg-red-100 ring-red-300', text: 'text-red-900', dot: 'bg-red-600' },
   orange: { bg: 'bg-orange-100 ring-orange-300', text: 'text-orange-900', dot: 'bg-orange-500' },
+  violet: { bg: 'bg-violet-100 ring-violet-300', text: 'text-violet-900', dot: 'bg-violet-600' },
 }
 const tone = (label: string, t: keyof typeof TONE, live = false): PortalTone => ({ label, ...TONE[t], live })
 const STATUS = {
@@ -102,11 +104,14 @@ const STATUS = {
   programado: () => tone('Programado', 'sky', true),
   enRuta: () => tone('En ruta', 'blue', true),
   completado: () => tone('Completado', 'emerald'),
+  revision: () => tone('En revisión documental', 'violet', true),
   cierre: () => tone('Cierre operativo', 'amber', true),
   cancelado: () => tone('Cancelado', 'red'),
 }
 // Documentos conformes: guía validada, histórica o no requerida (recojo por el cliente).
 const DOCS_OK = ['VALIDADA', 'HISTORICA', 'NO_APLICA']
+// Guía ya cargada (por el conductor, el tercero o en Documentos) a la espera de validación o corrección.
+const DOCS_LOADED = ['RECIBIDA', 'PENDIENTE_VALIDACION', 'OBSERVADA', 'RECHAZADA']
 const FINISHED = ['ENTREGADO', 'COMPLETADO', 'LIQUIDADO', 'CERRADO', 'CIERRE_OPERATIVO']
 const MOVING = ['EN RUTA', 'EN_RUTA', 'EN_CURSO', 'EN_DESTINO', 'EN_TRANSITO', 'EN TRANSITO']
 
@@ -114,9 +119,11 @@ export function portalStatus(row: { state: string; dispatch_status?: string; con
   if (row) {
     const route = row.dispatch_status || row.state
     if (route === 'CANCELADO' || row.state === 'CANCELADO') return STATUS.cancelado()
-    const finished = FINISHED.includes(route) || ['ENTREGADO', 'LIQUIDADO', 'CERRADO', 'PENDIENTE_VALIDACION', 'OBSERVADA', 'RECHAZADA'].includes(row.state)
-    if (route === 'CIERRE_OPERATIVO' || (finished && !DOCS_OK.includes(row.conformity || ''))) return STATUS.cierre()
-    if (finished) return STATUS.completado()
+    const finished = FINISHED.includes(route) || ['ENTREGADO', 'LIQUIDADO', 'CERRADO', 'RECIBIDA', 'PENDIENTE_VALIDACION', 'OBSERVADA', 'RECHAZADA'].includes(row.state)
+    if (finished || route === 'CIERRE_OPERATIVO') {
+      if (DOCS_OK.includes(row.conformity || '')) return STATUS.completado()
+      return DOCS_LOADED.includes(row.conformity || '') ? STATUS.revision() : STATUS.cierre()
+    }
     if (MOVING.includes(route) || ['EN_DESTINO', 'INCIDENCIA'].includes(row.state)) return STATUS.enRuta()
     return STATUS.programado()
   }
