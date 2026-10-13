@@ -11,9 +11,13 @@ export function OriginBadge({ origin }: { origin: PortalOrigin }) {
 
 /** Estado con fondo de color que sube y baja de intensidad (se detiene si el usuario pide reducir movimiento). */
 export function StatusPill({ tone }: { tone: PortalTone }) {
-  return <span className="relative inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold">
-    <span aria-hidden className={`absolute inset-0 rounded-full ${tone.bg} motion-safe:animate-pulse`} />
-    <span className={`relative ${tone.text}`}>{tone.label}</span>
+  // Luz de estado: punto sólido con halo intermitente en los estados activos (programado, en ruta, cierre operativo).
+  return <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${tone.bg} ${tone.text}`}>
+    <span aria-hidden className="relative flex h-2.5 w-2.5">
+      {tone.live && <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 motion-safe:animate-ping ${tone.dot}`} />}
+      <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${tone.dot}`} />
+    </span>
+    {tone.label}
   </span>
 }
 

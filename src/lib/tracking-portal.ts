@@ -82,37 +82,52 @@ export async function openPortalDocument(access: { token: string; pin: string },
   }
 }
 
-// Estado visible en el portal: el de la parada si ya tiene ruta; si no, el de la solicitud.
-export type PortalTone = { label: string; bg: string; text: string }
+// Estado visible en el portal (5 estados de negocio):
+// Solicitado: solo registro · Programado: ruta con placa y conductor · En ruta: el conductor inició en el app
+// Completado: ruta terminada con documentos conformes · Cierre operativo: ruta terminada con documentos pendientes.
+// Cancelado y Observada se conservan como excepciones. «live» enciende la luz intermitente.
+export type PortalTone = { label: string; bg: string; text: string; dot: string; live: boolean }
 const TONE = {
-  slate: { bg: 'bg-slate-200', text: 'text-slate-800' }, sky: { bg: 'bg-sky-200', text: 'text-sky-900' },
-  blue: { bg: 'bg-blue-300', text: 'text-blue-950' }, amber: { bg: 'bg-amber-200', text: 'text-amber-950' },
-  emerald: { bg: 'bg-emerald-200', text: 'text-emerald-900' }, violet: { bg: 'bg-violet-200', text: 'text-violet-900' },
-  red: { bg: 'bg-red-200', text: 'text-red-900' }, orange: { bg: 'bg-orange-200', text: 'text-orange-900' },
+  slate: { bg: 'bg-slate-100 ring-slate-300', text: 'text-slate-700', dot: 'bg-slate-400' },
+  sky: { bg: 'bg-sky-100 ring-sky-300', text: 'text-sky-900', dot: 'bg-sky-500' },
+  blue: { bg: 'bg-blue-100 ring-blue-400', text: 'text-blue-900', dot: 'bg-blue-600' },
+  amber: { bg: 'bg-amber-100 ring-amber-400', text: 'text-amber-950', dot: 'bg-amber-500' },
+  emerald: { bg: 'bg-emerald-100 ring-emerald-300', text: 'text-emerald-900', dot: 'bg-emerald-600' },
+  red: { bg: 'bg-red-100 ring-red-300', text: 'text-red-900', dot: 'bg-red-600' },
+  orange: { bg: 'bg-orange-100 ring-orange-300', text: 'text-orange-900', dot: 'bg-orange-500' },
 }
-const tone = (label: string, t: keyof typeof TONE): PortalTone => ({ label, ...TONE[t] })
-export function portalStatus(row: { state: string } | null | undefined, requestStatus?: string): PortalTone {
-  if (row) switch (row.state) {
-    case 'PROGRAMADO': return tone('Programado', 'sky')
-    case 'EN RUTA': case 'EN_CURSO': return tone('En ruta', 'blue')
-    case 'EN_DESTINO': return tone('En destino', 'amber')
-    case 'ENTREGADO': case 'LIQUIDADO': case 'CERRADO': return tone('Entregado', 'emerald')
-    case 'PENDIENTE_VALIDACION': return tone('Guía recibida', 'violet')
-    case 'OBSERVADA': case 'RECHAZADA': return tone('Guía observada', 'red')
-    case 'INCIDENCIA': return tone('Incidencia', 'red')
-    case 'CANCELADO': return tone('Cancelado', 'red')
-    case 'RECOJO_CLIENTE': return tone('Recojo por cliente', 'slate')
+const tone = (label: string, t: keyof typeof TONE, live = false): PortalTone => ({ label, ...TONE[t], live })
+const STATUS = {
+  solicitado: () => tone('Solicitado', 'slate'),
+  programado: () => tone('Programado', 'sky', true),
+  enRuta: () => tone('En ruta', 'blue', true),
+  completado: () => tone('Completado', 'emerald'),
+  cierre: () => tone('Cierre operativo', 'amber', true),
+  cancelado: () => tone('Cancelado', 'red'),
+}
+// Documentos conformes: guía validada, histórica o no requerida (recojo por el cliente).
+const DOCS_OK = ['VALIDADA', 'HISTORICA', 'NO_APLICA']
+const FINISHED = ['ENTREGADO', 'COMPLETADO', 'LIQUIDADO', 'CERRADO', 'CIERRE_OPERATIVO']
+const MOVING = ['EN RUTA', 'EN_RUTA', 'EN_CURSO', 'EN_DESTINO', 'EN_TRANSITO', 'EN TRANSITO']
+
+export function portalStatus(row: { state: string; dispatch_status?: string; conformity?: string | null } | null | undefined, requestStatus?: string): PortalTone {
+  if (row) {
+    const route = row.dispatch_status || row.state
+    if (route === 'CANCELADO' || row.state === 'CANCELADO') return STATUS.cancelado()
+    const finished = FINISHED.includes(route) || ['ENTREGADO', 'LIQUIDADO', 'CERRADO', 'PENDIENTE_VALIDACION', 'OBSERVADA', 'RECHAZADA'].includes(row.state)
+    if (route === 'CIERRE_OPERATIVO' || (finished && !DOCS_OK.includes(row.conformity || ''))) return STATUS.cierre()
+    if (finished) return STATUS.completado()
+    if (MOVING.includes(route) || ['EN_DESTINO', 'INCIDENCIA'].includes(row.state)) return STATUS.enRuta()
+    return STATUS.programado()
   }
   switch (requestStatus || '') {
-    case 'PENDIENTE': case 'PENDIENTE DE APROBACIÓN': case 'APROBADA': return tone('Solicitado', 'slate')
     case 'OBSERVADA': return tone('Observada', 'orange')
-    case 'REPROGRAMADA': return tone('Reprogramado', 'orange')
-    case 'ASIGNADA': return tone('Programado', 'sky')
-    case 'EN_TRANSITO': case 'EN TRANSITO': return tone('En ruta', 'blue')
-    case 'ENTREGADA': return tone('Entregado', 'emerald')
-    case 'CANCELADA': case 'ANULADA': case 'RECHAZADA': return tone('Cancelado', 'red')
+    case 'ASIGNADA': return STATUS.programado()
+    case 'EN_TRANSITO': case 'EN TRANSITO': return STATUS.enRuta()
+    case 'ENTREGADA': return STATUS.completado()
+    case 'CANCELADA': case 'ANULADA': case 'RECHAZADA': return STATUS.cancelado()
   }
-  return tone((row?.state || requestStatus || '—').replaceAll('_', ' ').toLowerCase().replace(/^./, c => c.toUpperCase()), 'slate')
+  return STATUS.solicitado()
 }
 
 /** Empresa del servicio: proveedor en recojos y traslados, cliente en entregas (y recojo por el cliente). */

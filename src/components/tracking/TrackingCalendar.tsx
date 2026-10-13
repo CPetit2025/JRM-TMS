@@ -18,6 +18,7 @@ const attentionDay = (r: PortalRequest) => r.required_at ? limaDay(r.required_at
 const addDays = (day: string, n: number) => { const d = new Date(`${day}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
 const serviceLabel = (r: PortalRequest) => r.attention_mode === 'RECOJO_CLIENTE' ? 'Recojo por cliente' : r.request_type === 'RECOJO' ? 'Recojo' : r.request_type === 'TRASLADO' ? 'Punto a punto' : 'Entrega'
 const district = (r: PortalRequest) => (r.request_type === 'RECOJO' ? r.pickup_district : r.delivery_district) || r.delivery_zone || '—'
+const dayLabel = (day: string) => `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}`
 const routeTime = (value: string) => new Date(value).toLocaleString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
 
 export { OriginBadge }
@@ -25,7 +26,7 @@ export { OriginBadge }
 export function TrackingCalendar({ month, onMonth, requests, rows, access }: Props) {
   const [detail, setDetail] = useState<PortalRequest | null>(null)
   const [selected, setSelected] = useState('')
-  const [basis, setBasis] = useState<'registered' | 'attention'>('registered')
+  const [basis, setBasis] = useState<'scheduled' | 'registered' | 'attention'>('scheduled')
   const [view, setView] = useState<'month' | 'week' | 'day'>('month')
   const [search, setSearch] = useState('')
   const [hidden, setHidden] = useState<PortalOrigin[]>([])
@@ -54,10 +55,12 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
   const anchor = selected || (today.startsWith(month) ? today : `${month}-01`)
   const index = Math.max(0, days.indexOf(anchor))
   const visibleDays = view === 'day' ? [anchor] : view === 'week' ? days.slice(Math.floor(index / 7) * 7, Math.floor(index / 7) * 7 + 7) : days
-  const activeDays = selected ? (view === 'week' ? visibleDays : [selected]) : view === 'month' ? null : visibleDays
+  // El día elegido en el calendario filtra la tabla; sin día elegido, la semana o el día visibles (el mes muestra todo).
+  const activeDays = selected ? [selected] : view === 'month' ? null : visibleDays
+  // Fecha programada = la misma del calendario: salida de la ruta o, sin ruta, la atención solicitada.
+  const scheduledDay = (r: PortalRequest) => { const stop = stopOf.get(r.id); return stop ? limaDay(stop.scheduled_departure) : attentionDay(r) || '' }
   const filtered = requests.filter(r => !hidden.includes(portalOrigin(r))
-    && (!activeDays || (basis === 'registered' ? activeDays.includes(limaDay(r.created_at))
-      : activeDays.includes(attentionDay(r) || '') || rows.some(d => d.request_id === r.id && activeDays.includes(limaDay(d.scheduled_departure)))))
+    && (!activeDays || activeDays.includes(basis === 'registered' ? limaDay(r.created_at) : basis === 'attention' ? attentionDay(r) || '' : scheduledDay(r)))
     && [r.request_number, r.ot_code, r.parent_ot, r.reference_number, r.purchase_order, r.client_name, r.supplier_name, r.delivery_address, district(r), stopOf.get(r.id)?.plate, stopOf.get(r.id)?.driver_name, stopOf.get(r.id)?.dispatch_number, requestFamily(r).codes.join(' ')].join(' ').toLowerCase().includes(search.toLowerCase()))
   const navigate = (direction: number) => {
     const day = addDays(anchor, direction * (view === 'week' ? 7 : 1))
@@ -135,15 +138,15 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
 
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-        <div><h2 className="font-bold text-[#002855]">Registro de solicitudes</h2><p className="text-xs text-slate-500">Registro, atención solicitada y salida programada · horario de Lima{selected ? ` · ${selected}` : ''}</p></div>
+        <div><h2 className="font-bold text-[#002855]">Registro de solicitudes</h2><p className="text-xs text-slate-500">Registro, atención solicitada y fecha programada · horario de Lima{selected ? ` · filtrado al ${dayLabel(selected)}` : ''}</p></div>
         <div className="flex flex-wrap gap-2">
-          <select aria-label="Fecha para filtrar solicitudes" value={basis} onChange={e => setBasis(e.target.value as typeof basis)} className="h-9 rounded-lg border px-2 text-sm"><option value="registered">Fecha de registro</option><option value="attention">Fecha de atención</option></select>
+          <select aria-label="Fecha para filtrar solicitudes" value={basis} onChange={e => setBasis(e.target.value as typeof basis)} className="h-9 rounded-lg border px-2 text-sm"><option value="scheduled">Fecha programada</option><option value="registered">Fecha de registro</option><option value="attention">Fecha de atención</option></select>
           {selected && <button onClick={() => setSelected('')} className="text-xs text-blue-700">Ver todo</button>}
           <input aria-label="Buscar solicitud" value={search} onChange={e => setSearch(e.target.value)} placeholder="OT, solicitud, ruta, cliente o placa" className="h-9 w-56 rounded-lg border px-2 text-sm" />
         </div>
       </div>
-      <div className="overflow-x-auto"><DataTable className="w-full min-w-[1250px] text-left text-sm">
-        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['Registro / Solicitud', 'OT / OC / OS / RQ', 'Cliente / Proveedor', 'Servicio / Recorrido', 'Atención solicitada', 'Programación / Unidad', 'Estado', 'Acciones'].map(h => <th key={h} className="px-3 py-2">{h}</th>)}</tr></thead>
+      <div className="overflow-x-auto"><DataTable className="w-full min-w-[1320px] text-left text-sm">
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['Registro / Solicitud', 'OT / OC / OS / RQ', 'Cliente / Proveedor', 'Servicio / Recorrido', 'Atención solicitada', 'Fecha programada', 'Ruta / Unidad', 'Estado', 'Acciones'].map(h => <th key={h} className="px-3 py-2">{h}</th>)}</tr></thead>
         <tbody className="divide-y">
           {filtered.map(r => {
             const stop = stopOf.get(r.id), family = requestFamily(r)
@@ -155,12 +158,13 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
                 : <span className="text-slate-400">—</span> })()}</td>
               <td className="max-w-64 px-3 py-2"><span className="block font-medium">{serviceLabel(r)}</span><span className="block truncate text-xs text-slate-500" title={r.pickup_address}>Origen: {r.pickup_address || '—'}</span><span className="block truncate text-xs text-slate-500" title={r.delivery_address}>Destino: {r.delivery_address || '—'}</span><span className="text-xs text-slate-500">{district(r)}</span></td>
               <td className="whitespace-nowrap px-3 py-2">{r.required_at ? portalTime(r.required_at) : `${r.required_date?.slice(0,10) || '—'} · sin hora`}</td>
-              <td className="px-3 py-2">{stop ? <><span className="block whitespace-nowrap font-medium">{portalTime(stop.scheduled_departure)}</span><span className="block text-xs text-slate-500">{stop.dispatch_number}</span><span className="block text-xs text-slate-600">{stop.plate === 'EXTERNO' ? 'Unidad por asignar' : stop.plate || 'Unidad por asignar'} · {stop.driver_name || 'Conductor por asignar'}</span></> : <span className="text-xs text-slate-500">Pendiente de programación</span>}</td>
+              <td className="whitespace-nowrap px-3 py-2 font-semibold text-slate-800">{stop ? dayLabel(limaDay(stop.scheduled_departure)) : <span className="text-xs font-normal text-slate-500">Por programar</span>}</td>
+              <td className="px-3 py-2">{stop ? <><span className="block text-xs font-medium text-slate-700">{stop.dispatch_number}</span><span className="block text-xs text-slate-600">{stop.plate === 'EXTERNO' ? 'Unidad por asignar' : stop.plate || 'Unidad por asignar'} · {stop.driver_name || 'Conductor por asignar'}</span></> : <span className="text-xs text-slate-500">Pendiente de programación</span>}</td>
               <td className="px-3 py-2"><StatusPill tone={portalStatus(stop, r.status)} /></td>
               <td className="px-3 py-2 text-right"><button onClick={() => setDetail(r)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-300 px-2.5 text-xs font-semibold text-[#002855] hover:bg-white"><Eye className="h-3.5 w-3.5" />Ver detalle</button></td>
             </tr>
           })}
-          {!filtered.length && <tr><td colSpan={8} className="p-8 text-center text-slate-500">No hay solicitudes para los filtros seleccionados.</td></tr>}
+          {!filtered.length && <tr><td colSpan={9} className="p-8 text-center text-slate-500">No hay solicitudes para los filtros seleccionados.</td></tr>}
         </tbody>
       </DataTable></div>
     </section>
