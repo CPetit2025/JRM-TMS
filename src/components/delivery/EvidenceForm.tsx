@@ -54,10 +54,12 @@ export function EvidenceForm({ busy, guide: initialGuide = '', onSubmit, onCance
       if (!files.length) throw new Error('Adjunte la foto de la guía firmada.')
       if (!receiver.trim()) throw new Error('Indique quién recibió la entrega.')
       if (!guide.trim()) throw new Error('Indique el número de la guía de remisión.')
+      // Mismo formato que Documentos: serie y correlativo (T001-6591), para conciliar la liquidación sin retipeo
+      if (!/^[A-Z0-9]{3,4}-[0-9]{1,10}$/.test(guide.trim().toUpperCase())) throw new Error('Escriba la guía con serie y correlativo, por ejemplo T001-6591 (sin espacios).')
       const photos = await Promise.all(files.map(deliveryPhoto))
       const packingPhotos = await Promise.all(packing.map(deliveryPhoto))
       if ([...photos, ...packingPhotos].reduce((sum, photo) => sum + photo.size, 0) > 4 * 1024 * 1024) throw new Error('Las fotos superan 4 MB. Reduzca la cantidad o resolución.')
-      await onSubmit({ operation, capturedAt: new Date().toISOString(), files: photos, packingFiles: packingPhotos, receiver, guide, note })
+      await onSubmit({ operation, capturedAt: new Date().toISOString(), files: photos, packingFiles: packingPhotos, receiver, guide: guide.trim().toUpperCase(), note })
     } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo enviar la guía.') }
     finally { setPreparing(false) }
   }}>
@@ -70,7 +72,7 @@ export function EvidenceForm({ busy, guide: initialGuide = '', onSubmit, onCance
       {thumbs(packingPreviews, 'Packing List', index => setPacking(packing.filter((_, i) => i !== index)))}
     </div>
     <label className="block text-sm">Nombre de quien recibió<input required maxLength={120} value={receiver} onChange={e => { setReceiver(e.target.value); setOperation(crypto.randomUUID()) }} className="mt-1 w-full rounded-lg border bg-white p-3" /></label>
-    <label className="block text-sm">Número de guía *<input required maxLength={80} value={guide} onChange={e => { setGuide(e.target.value); setOperation(crypto.randomUUID()) }} className="mt-1 w-full rounded-lg border bg-white p-3" /></label>
+    <label className="block text-sm">Número de guía * <span className="text-xs text-slate-500">serie-correlativo</span><input required maxLength={19} value={guide} placeholder="T001-6591" autoCapitalize="characters" spellCheck={false} onChange={e => { setGuide(e.target.value.toUpperCase().replace(/\s+/g, '')); setOperation(crypto.randomUUID()) }} className="mt-1 w-full rounded-lg border bg-white p-3 font-mono" /></label>
     <label className="block text-sm">Observación<textarea maxLength={1000} value={note} onChange={e => { setNote(e.target.value); setOperation(crypto.randomUUID()) }} className="mt-1 w-full rounded-lg border bg-white p-3" rows={2} /></label>
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
     <div className="flex gap-2">{onCancel && <button type="button" disabled={busy || preparing} onClick={onCancel} className="rounded-lg border p-3 text-sm">Cancelar</button>}
