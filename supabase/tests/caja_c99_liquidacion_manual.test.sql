@@ -40,7 +40,7 @@ END $$;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
 
 DO $test$
-DECLARE site uuid; client uuid; actor uuid; doc_role uuid; boss_role uuid; ent uuid[]; c jsonb; bad text;
+DECLARE site uuid; client uuid; actor uuid; doc_role uuid; boss_role uuid; ent uuid[]; prog uuid[]; c jsonb; bad text;
   suffix text := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 5));
 BEGIN
   SELECT site_id INTO site FROM public.vehicles WHERE site_id IS NOT NULL LIMIT 1;
@@ -79,10 +79,11 @@ BEGIN
   PERFORM pg_temp.c99_user(NULL);
   IF (c->>'complete')::boolean OR c ? 'manual' THEN RAISE EXCEPTION 'CAJA C99 FAIL: reversión (T3) %', c; END IF;
   -- T4: una ruta programada no se liquida y los anónimos no tienen acceso
-  UPDATE public.dispatches SET status = 'PROGRAMADO' WHERE id = ent[1];
+  -- (ruta propia aún programada: producción no deja volver una ruta cerrada a PROGRAMADO)
+  prog := pg_temp.c99_route('ZC99P' || suffix, site, client, 'PROGRAMADO', 'DESPACHO');
   PERFORM pg_temp.c99_user(actor);
   bad := NULL;
-  BEGIN PERFORM public.settlement_mark_settled(ent[1], ent[2], 'Cliente confirmó recepción por correo');
+  BEGIN PERFORM public.settlement_mark_settled(prog[1], prog[2], 'Cliente confirmó recepción por correo');
   EXCEPTION WHEN raise_exception THEN bad := SQLERRM; END;
   PERFORM pg_temp.c99_user(NULL);
   IF bad IS NULL OR bad NOT LIKE '%ya salió%' THEN RAISE EXCEPTION 'CAJA C99 FAIL: ruta programada (T4) %', bad; END IF;
