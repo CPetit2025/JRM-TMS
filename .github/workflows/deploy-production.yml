@@ -19,8 +19,12 @@ on:
       audit_scope:
         description: Alcance de la inspección de solo lectura
         type: choice
-        options: [all, apt, apt-performance]
+        options: [all, apt, apt-performance, driver-assignment]
         default: all
+      audit_dispatch:
+        description: Correlativo numérico para diagnóstico de asignación (solo lectura)
+        type: string
+        default: ''
       apply_all_pending:
         description: Aplicar todas las migraciones pendientes aunque no vengan en este push
         type: boolean
@@ -155,7 +159,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        section: ${{ inputs.audit_scope == 'apt' && fromJSON('["apt"]') || inputs.audit_scope == 'apt-performance' && fromJSON('["apt-performance"]') || fromJSON('["catalog", "rpc-a", "rpc-b", "integrity", "apt"]') }}
+        section: ${{ inputs.audit_scope == 'apt' && fromJSON('["apt"]') || inputs.audit_scope == 'apt-performance' && fromJSON('["apt-performance"]') || inputs.audit_scope == 'driver-assignment' && fromJSON('["driver-assignment"]') || fromJSON('["catalog", "rpc-a", "rpc-b", "integrity", "apt"]') }}
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
@@ -171,6 +175,8 @@ jobs:
       - name: Link project
         run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
       - name: Read-only catalog and aggregate audit
+        env:
+          AUDIT_DISPATCH: ${{ inputs.audit_dispatch }}
         run: |
           case "${{ matrix.section }}" in
             catalog) audit_file=scripts/security/audit.sql ;;
@@ -179,6 +185,15 @@ jobs:
             integrity) audit_file=scripts/security/integrity.sql ;;
             apt) audit_file=scripts/security/apt-reconciliation.sql ;;
             apt-performance) audit_file=scripts/security/apt-query-performance.sql ;;
+            driver-assignment)
+              python3 - <<'PY'
+          import os,re,pathlib
+          target=os.environ['AUDIT_DISPATCH']
+          if not re.fullmatch(r'[0-9]{1,15}',target): raise SystemExit('Indique un correlativo numérico válido')
+          source=pathlib.Path('scripts/security/driver-assignment.sql').read_text()
+          pathlib.Path('/tmp/driver-assignment.sql').write_text(source.replace('__DISPATCH__',target))
+          PY
+              audit_file=/tmp/driver-assignment.sql ;;
           esac
           if ! supabase db query --linked -f "$audit_file" -o json > security-catalog.json 2> security-error.txt; then
             detail=$(tail -c 3000 security-error.txt)
