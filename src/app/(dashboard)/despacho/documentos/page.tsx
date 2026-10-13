@@ -110,6 +110,8 @@ function DocumentaryQueue() {
   const [reload, setReload] = useState(0)
   const [anulando, setAnulando] = useState<Doc | null>(null)
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([])
+  // Liquidación pendiente: estado documentario por servicio según su tipo (regla de la base)
+  const [checklists, setChecklists] = useState<Map<string, SettlementChecklist>>(new Map())
   const [serviceTypes, setServiceTypes] = useState<Awaited<ReturnType<typeof fetchServiceTypes>>>(new Map())
   const [review, setReview] = useState<DeliveryReviewTarget | null>(null)
   const [statusOf, setStatusOf] = useState<{ item: QueueItem; stop: Stop | null; delivery?: DeliveryRow } | null>(null)
@@ -149,6 +151,16 @@ function DocumentaryQueue() {
         rows.push(...((result || []) as DeliveryRow[]))
       }
       if (!cancel) setDeliveries(rows)
+      if (phase === 'liquidacion') {
+        const found = new Map<string, SettlementChecklist>()
+        for (let offset = 0; offset < list.length; offset += 200) {
+          const { data: result, error } = await supabase.rpc('get_settlement_checklists', { p_dispatches: list.slice(offset, offset + 200).map(i => i.id) })
+          if (cancel) return
+          if (error) { toast.error('No se pudo consultar los documentos de liquidación: ' + errorMessage(error)); break }
+          ;((result || []) as SettlementChecklist[]).forEach(c => found.set(`${c.dispatch_id}/${c.request_id}`, c))
+        }
+        if (!cancel) setChecklists(found)
+      }
       } catch (e) { if (!cancel) setQueueError(errorMessage(e)) }
       finally { fetching = false }
     }
@@ -171,7 +183,7 @@ function DocumentaryQueue() {
     (item.stops.length ? item.stops : [null]).filter(stop => !needle || [item.dispatch_number, item.vehicle_plate,
       item.driver_name, stop?.ot_code, stop?.request_number, stop?.client, stop?.delivery,
       searchableNumbers(item, stop)].join(' ').toLocaleLowerCase('es-PE').includes(needle))
-      .map(stop => ({ item, stop }))).filter(({ item, stop }) => documentPhaseMatches(phase, item, deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id), noteLinked(item, stop)))
+      .map(stop => ({ item, stop }))).filter(({ item, stop }) => documentPhaseMatches(phase, item, deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id), noteLinked(item, stop), checklists.get(`${item.id}/${stop?.request_id}`)?.complete))
   const selected = items?.find(item => item.id === selectedId)
 
   const openDoc = async (path: string) => {
@@ -240,7 +252,7 @@ function DocumentaryQueue() {
         </section>}
       <Modal isOpen={!!selected} onClose={() => setSelectedId(null)} title={`Documentos · ${selected?.dispatch_number || ''}`} maxWidth="max-w-[1440px]"
         footer={<div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-600">{assistantOnly ? 'Vincula los números por servicio. La guía firmada y su aprobación se gestionan por separado.' : selected?.missing ? 'Completa los documentos pendientes para autorizar la salida.' : selected?.docs_ready_at ? 'Documentos confirmados para salida.' : 'Documentos y archivos asociados al servicio.'}</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setSelectedId(null)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Cerrar</button>{selected && canEdit && selected.status === 'PROGRAMADO' && ['PENDIENTE', 'REEMISION'].includes(selected.doc_status) && <button type="button" onClick={() => void confirmDocs(selected)} disabled={busy === selected.id || !!selected.missing} className="flex min-h-11 items-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-500">{busy === selected.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar documentos para salida</button>}</div></div>}>
-        {selected && <DispatchCard key={selected.id} item={selected} canEdit={canEdit && selected.status === 'PROGRAMADO'} canPacking={canPacking && selected.status === 'PROGRAMADO'} canSettle={canNumbers && !packingOnly && SETTLEMENT_STATUSES.includes(selected.status)} packingOnly={packingOnly} serviceTypes={serviceTypes}
+        {selected && <DispatchCard key={selected.id} item={selected} canEdit={canEdit && selected.status === 'PROGRAMADO'} canPacking={canPacking && selected.status === 'PROGRAMADO'} canSettle={canNumbers && !packingOnly && SETTLEMENT_STATUSES.includes(selected.status)} checklists={checklists} packingOnly={packingOnly} serviceTypes={serviceTypes}
           onVoid={voidDoc} onOpen={openDoc} onUploaded={load}
           deliveries={deliveries.filter(row => row.dispatch_id === selected.id)} onEvidence={row => { setSelectedId(null); setReview(row) }}>
           {!packingOnly && <DocumentNumberLinks key={selected.id} dispatchId={selected.id} services={selected.stops.map(stop => ({ ...stop, order_reference: referenceLabel(serviceTypes.get(stop.request_id)) }))} known={knownNumbers(selected, deliveries)} canEdit={canNumbers && selected.status !== 'CANCELADO'} onChanged={load} />}
@@ -362,8 +374,8 @@ function DocumentStatusModal({ target, reference, packingOnly, canEdit, onClose,
   </Modal>
 }
 
-function DispatchCard({ item, canEdit, canPacking, canSettle = false, packingOnly, serviceTypes, onVoid, onOpen, onUploaded, deliveries, onEvidence, children }: {
-  item: QueueItem; canEdit: boolean; canPacking: boolean; canSettle?: boolean; packingOnly: boolean; serviceTypes: Awaited<ReturnType<typeof fetchServiceTypes>>; onVoid: (d: Doc) => void
+function DispatchCard({ item, canEdit, canPacking, canSettle = false, checklists, packingOnly, serviceTypes, onVoid, onOpen, onUploaded, deliveries, onEvidence, children }: {
+  item: QueueItem; canEdit: boolean; canPacking: boolean; canSettle?: boolean; checklists?: Map<string, SettlementChecklist>; packingOnly: boolean; serviceTypes: Awaited<ReturnType<typeof fetchServiceTypes>>; onVoid: (d: Doc) => void
   onOpen: (p: string) => void; onUploaded: () => Promise<void>; deliveries: DeliveryRow[]; onEvidence: (row: DeliveryReviewTarget) => void; children?: React.ReactNode
 }) {
   const [upload, setUpload] = useState<{ requestId: string | null; type: string; label: string } | null>(null)
@@ -428,7 +440,7 @@ function DispatchCard({ item, canEdit, canPacking, canSettle = false, packingOnl
             {!packingOnly && !item.is_pickup && delivery && <button type="button" onClick={() => onEvidence(delivery)} className={`${secondary} sm:ml-auto`}><FileCheck2 className="h-4 w-4" />Ver guía y conformidad</button>}
           </div>}
           {uploadForm(s.request_id)}
-          {canSettle && <SettlementUpload dispatchId={item.id} requestId={s.request_id} pickup={item.is_pickup} conformity={delivery?.conformity || null} noteDone={noteLinked(item, s)} onUploaded={onUploaded} />}
+          {canSettle && <SettlementUpload key={`${s.request_id}/${checklists?.get(`${item.id}/${s.request_id}`)?.kind || ''}`} dispatchId={item.id} requestId={s.request_id} checklist={checklists?.get(`${item.id}/${s.request_id}`)} onUploaded={onUploaded} />}
         </article>
       })}
     </section>
@@ -448,34 +460,59 @@ function DispatchCard({ item, canEdit, canPacking, canSettle = false, packingOnl
 
 const SETTLEMENT_STATUSES = ['CIERRE_OPERATIVO', 'RETORNO_COMPLETADO', 'ENTREGADO']
 
-// Liquidación pendiente: la oficina completa los documentos de un servicio cerrado.
-// GR / Nota de Despacho: primero el número (serie-correlativo); con el número válido se activa la carga del archivo.
-// Packing List: sin correlativo, la carga está activa de inmediato. El app del conductor no cambia.
-const GR_PATTERN = /^[A-Z0-9]{3,4}-[0-9]{1,10}$/
-const ND_PATTERN = /^[A-Z0-9]{1,8}-[0-9]{1,10}$/
+// Liquidación pendiente: la oficina completa los documentos de un servicio cerrado según su tipo (misma regla que la
+// base, settlement_checklist). Documentos con número: primero el número (serie-correlativo); con el número válido se
+// activa la carga. Packing List sin correlativo: carga directa. La liquidación es automática al completar los
+// obligatorios; la GR cuenta cuando el Supervisor de Transporte la valida. El app del conductor no cambia.
+type SettlementChecklist = {
+  dispatch_id: string; request_id: string; kind: 'ENTREGA' | 'RECOJO' | 'TRASLADO' | 'RECOJO_CLIENTE'; complete: boolean
+  missing: string[]; guide_state: string; note: boolean; packing: boolean; references: string[]
+}
+type NumberedKind = 'GUIA' | 'NOTA' | 'OC' | 'OS' | 'RQ'
+const NUMBERED: Record<NumberedKind, { label: string; pattern: RegExp; example: string; hint: string }> = {
+  GUIA: { label: 'Guía de Remisión', pattern: /^[A-Z0-9]{3,4}-[0-9]{1,10}$/, example: 'T001-6591', hint: 'Serie y correlativo separados por guion, sin espacios ni ceros omitidos.' },
+  NOTA: { label: 'Nota de Despacho', pattern: /^[A-Z0-9]{1,8}-[0-9]{1,10}$/, example: 'ND01-1234', hint: 'Serie y correlativo separados por guion.' },
+  OC: { label: 'Orden de Compra (OC)', pattern: /^[A-Z0-9][A-Z0-9/-]{0,29}$/, example: '57724', hint: 'Número de la orden: letras, números, guion o barra.' },
+  OS: { label: 'Orden de Servicio (OS)', pattern: /^[A-Z0-9][A-Z0-9/-]{0,29}$/, example: '12045', hint: 'Número de la orden: letras, números, guion o barra.' },
+  RQ: { label: 'Requerimiento (RQ)', pattern: /^[A-Z0-9][A-Z0-9/-]{0,29}$/, example: '3381', hint: 'Número del requerimiento: letras, números, guion o barra.' },
+}
+// Documentos por tipo de servicio: obligatorios (uno de cada grupo) y opcionales
+const SETTLEMENT_RULES: Record<SettlementChecklist['kind'], { label: string; required: string; numbered: NumberedKind[]; packingRequired: boolean; packingAllowed: boolean }> = {
+  ENTREGA: { label: 'Entrega', required: 'Guía de Remisión (validada) o Nota de Despacho, y Packing List', numbered: ['GUIA', 'NOTA'], packingRequired: true, packingAllowed: true },
+  RECOJO: { label: 'Recojo hacia planta', required: 'Guía de Remisión (validada). OC, OS o RQ opcionales', numbered: ['GUIA', 'OC', 'OS', 'RQ'], packingRequired: false, packingAllowed: false },
+  TRASLADO: { label: 'Punto a punto', required: 'Ninguno: todos los documentos son opcionales', numbered: ['GUIA', 'NOTA', 'OC', 'OS', 'RQ'], packingRequired: false, packingAllowed: true },
+  RECOJO_CLIENTE: { label: 'Recojo por el cliente', required: 'Nota de Despacho', numbered: ['NOTA'], packingRequired: false, packingAllowed: true },
+}
+const MISSING_LABEL: Record<string, string> = { GUIA_O_NOTA: 'GR validada o Nota de Despacho', PACKING_LIST: 'Packing List', GUIA_REMISION: 'GR validada', NOTA_DESPACHO: 'Nota de Despacho' }
+// Uno de los documentos con número es obligatorio según el tipo de servicio (en entrega: GR o Nota, uno de los dos)
+const requiredFor = (service: SettlementChecklist['kind'], doc: NumberedKind) => service === 'ENTREGA' ? doc === 'GUIA' || doc === 'NOTA' : service === 'RECOJO' ? doc === 'GUIA' : service === 'RECOJO_CLIENTE' ? doc === 'NOTA' : false
 const GUIDE_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp'
 const guideMime = (file: File) => /\.pdf$/i.test(file.name) ? 'application/pdf' : /\.png$/i.test(file.name) ? 'image/png' : /\.webp$/i.test(file.name) ? 'image/webp' : /\.jpe?g$/i.test(file.name) ? 'image/jpeg' : null
 const safeName = (name: string) => name.replace(/[^\w.-]+/g, '_').slice(-80)
 
-function SettlementUpload({ dispatchId, requestId, pickup, conformity, noteDone, onUploaded }: {
-  dispatchId: string; requestId: string; pickup: boolean; conformity: string | null; noteDone: boolean; onUploaded: () => Promise<void>
+function SettlementUpload({ dispatchId, requestId, checklist, onUploaded }: {
+  dispatchId: string; requestId: string; checklist: SettlementChecklist | undefined; onUploaded: () => Promise<void>
 }) {
   const supabase = useMemo(() => createClient(), [])
+  const rule = SETTLEMENT_RULES[checklist?.kind || 'ENTREGA']
+  // La GR ya enviada (en revisión o aprobada) no se vuelve a cargar aquí; observada o rechazada sí.
+  const guideOpen = !checklist || ['PENDIENTE', 'OBSERVADA', 'RECHAZADA'].includes(checklist.guide_state)
+  const options = rule.numbered.filter(k => k !== 'GUIA' || guideOpen)
+  const [kind, setKind] = useState<NumberedKind>(options[0] || 'NOTA')
   const [number, setNumber] = useState('')
-  const [guideFiles, setGuideFiles] = useState<File[]>([])
+  const [docFiles, setDocFiles] = useState<File[]>([])
   const [packingFiles, setPackingFiles] = useState<File[]>([])
-  const [busy, setBusy] = useState<'' | 'guide' | 'packing'>('')
+  const [busy, setBusy] = useState<'' | 'doc' | 'packing'>('')
   const operation = useRef(crypto.randomUUID())
+  const active = options.includes(kind) ? kind : options[0]
+  const spec = active ? NUMBERED[active] : null
   const normalized = number.trim().toUpperCase()
-  const valid = (pickup ? ND_PATTERN : GR_PATTERN).test(normalized)
-  // La guía ya enviada (en revisión o aprobada) no se vuelve a cargar aquí; observada o rechazada sí.
-  const guideOpen = pickup ? !noteDone : !conformity || ['PENDIENTE', 'OBSERVADA', 'RECHAZADA'].includes(conformity)
-  const label = pickup ? 'Nota de Despacho' : 'Guía de remisión'
+  const valid = !!spec && spec.pattern.test(normalized)
 
-  const send = async (kind: 'GUIA' | 'NOTA' | 'PACKING', files: File[]) => {
+  const send = async (docKind: NumberedKind | 'PACKING', files: File[]) => {
     const { data: auth } = await supabase.auth.getUser()
     if (!auth.user) throw new Error('Sesión vencida: vuelva a ingresar')
-    const evidence = kind === 'GUIA'
+    const evidence = docKind === 'GUIA'
     const bucket = evidence ? 'driver_evidence' : DOCS_BUCKET
     const paths: string[] = []
     try {
@@ -489,8 +526,8 @@ function SettlementUpload({ dispatchId, requestId, pickup, conformity, noteDone,
         paths.push(path)
       }
       const { data, error } = await supabase.rpc('settlement_upload_document', {
-        p_dispatch: dispatchId, p_request: requestId, p_kind: kind, p_number: kind === 'PACKING' ? null : normalized,
-        p_files: paths, p_file_names: files.map(f => f.name), p_operation: kind === 'GUIA' ? operation.current : null,
+        p_dispatch: dispatchId, p_request: requestId, p_kind: docKind, p_number: docKind === 'PACKING' ? null : normalized,
+        p_files: paths, p_file_names: files.map(f => f.name), p_operation: docKind === 'GUIA' ? operation.current : null,
       })
       if (error) throw error
       if (!(data as { success?: boolean } | null)?.success) throw new Error('No se pudo registrar el documento')
@@ -500,13 +537,13 @@ function SettlementUpload({ dispatchId, requestId, pickup, conformity, noteDone,
       throw error
     }
   }
-  const submitGuide = async () => {
-    if (!valid || !guideFiles.length || busy) return
-    setBusy('guide')
+  const submitDoc = async () => {
+    if (!valid || !active || !docFiles.length || busy) return
+    setBusy('doc')
     try {
-      await send(pickup ? 'NOTA' : 'GUIA', guideFiles)
-      toast.success(pickup ? `Nota de Despacho ${normalized} cargada` : `Guía ${normalized} cargada: pasa a validación del Supervisor de Transporte`)
-      setNumber(''); setGuideFiles([]); operation.current = crypto.randomUUID()
+      await send(active, docFiles)
+      toast.success(active === 'GUIA' ? `Guía ${normalized} cargada: pasa a validación del Supervisor de Transporte` : `${NUMBERED[active].label} ${normalized} cargada`)
+      setNumber(''); setDocFiles([]); operation.current = crypto.randomUUID()
       await onUploaded()
     } catch (error) { toast.error(errorMessage(error)) } finally { setBusy('') }
   }
@@ -522,33 +559,55 @@ function SettlementUpload({ dispatchId, requestId, pickup, conformity, noteDone,
   }
   const pick = (setter: (files: File[]) => void) => (event: React.ChangeEvent<HTMLInputElement>) => { setter(Array.from(event.target.files || []).slice(0, 5)); event.target.value = '' }
   const fileButton = 'inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-[#002855] hover:bg-slate-50 lg:min-h-9'
+  const primary = 'inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002855] px-3 text-xs font-semibold text-white disabled:opacity-40 lg:min-h-9'
   const chosen = (files: File[], clear: () => void) => files.length > 0 && <p className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600">{files.map(f => <span key={f.name + f.size} className="inline-flex items-center gap-1"><KindTag kind={fileKind(f.name, f.type)} />{f.name}</span>)}<button type="button" onClick={clear} className="font-semibold text-red-700">Quitar</button></p>
+  const tag = (required: boolean) => <span className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${required ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-600'}`}>{required ? 'Obligatorio' : 'Opcional'}</span>
+  const guideNote = checklist && !guideOpen ? `GR ${checklist.guide_state === 'RECIBIDA' ? 'enviada · en validación del Supervisor de Transporte' : conformityLabels[checklist.guide_state as keyof typeof conformityLabels] || checklist.guide_state}` : null
 
-  return <div className="grid gap-3 border-t border-amber-200 bg-amber-50/40 px-4 py-3 lg:grid-cols-2">
-    <div className="min-w-0 space-y-2">
-      <p className="text-xs font-bold uppercase tracking-wide text-amber-900">{label}</p>
-      {!guideOpen ? <p className="text-xs text-slate-600">{pickup ? 'Nota de Despacho vinculada.' : `Guía enviada · ${conformityLabels[conformity as keyof typeof conformityLabels] || conformity}.`}</p> : <>
-        <label className="block text-xs text-slate-600">1. Número (serie-correlativo)
-          <input value={number} onChange={e => setNumber(e.target.value.toUpperCase().replace(/\s+/g, ''))} maxLength={19} placeholder={pickup ? 'ND01-1234' : 'T001-6591'} autoCapitalize="characters" spellCheck={false}
+  return <div className={`space-y-3 border-t px-4 py-3 ${checklist?.complete ? 'border-emerald-200 bg-emerald-50/40' : 'border-amber-200 bg-amber-50/40'}`}>
+    <div className="flex flex-wrap items-start justify-between gap-2">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wide text-[#002855]">Liquidación · {rule.label}</p>
+        <p className="text-xs text-slate-600">Obligatorio: {rule.required}.</p>
+      </div>
+      {checklist && (checklist.complete
+        ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800"><CheckCircle2 className="h-3.5 w-3.5" />Liquidado automáticamente</span>
+        : <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900"><Clock className="h-3.5 w-3.5" />Falta: {checklist.missing.map(m => MISSING_LABEL[m] || m).join(' · ')}</span>)}
+    </div>
+    {(guideNote || checklist?.note || checklist?.packing || !!checklist?.references.length) && <p className="flex flex-wrap gap-1.5 text-xs">
+      {guideNote && <span className="rounded bg-white px-2 py-0.5 ring-1 ring-slate-200">{guideNote}</span>}
+      {checklist?.note && <span className="rounded bg-white px-2 py-0.5 ring-1 ring-slate-200">Nota de Despacho vinculada</span>}
+      {checklist?.packing && <span className="rounded bg-white px-2 py-0.5 ring-1 ring-slate-200">Packing List cargado</span>}
+      {checklist?.references.map(ref => <span key={ref} className="rounded bg-white px-2 py-0.5 ring-1 ring-slate-200">{ref}</span>)}
+    </p>}
+    <div className={`grid gap-3 ${rule.packingAllowed ? 'lg:grid-cols-2' : ''}`}>
+      {spec && active ? <div className="min-w-0 space-y-2">
+        <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="Documento con número">
+          {options.map(k => <button key={k} type="button" role="radio" aria-checked={active === k} onClick={() => { setKind(k); setNumber(''); setDocFiles([]) }}
+            className={`min-h-9 rounded-md px-2.5 text-xs font-semibold ${active === k ? 'bg-[#002855] text-white' : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50'}`}>{NUMBERED[k].label}</button>)}
+        </div>
+        <label className="block text-xs text-slate-600">1. Número de {spec.label}{tag(requiredFor(checklist?.kind || 'ENTREGA', active))}
+          <input value={number} onChange={e => setNumber(e.target.value.toUpperCase().replace(/\s+/g, ''))} maxLength={30} placeholder={spec.example} autoCapitalize="characters" spellCheck={false}
             aria-invalid={!!number && !valid} className={`mt-1 min-h-11 w-full rounded-lg border bg-white px-3 font-mono text-sm lg:min-h-9 ${number && !valid ? 'border-red-400' : valid ? 'border-emerald-500' : 'border-slate-300'}`} />
-          <span className={`mt-1 block ${number && !valid ? 'text-red-700' : 'text-slate-500'}`}>{number && !valid ? 'Serie y correlativo separados por guion, sin espacios ni ceros omitidos.' : valid ? 'Número válido: ya puede cargar el archivo.' : 'Ingrese el número para activar la carga.'}</span>
+          <span className={`mt-1 block ${number && !valid ? 'text-red-700' : 'text-slate-500'}`}>{number && !valid ? spec.hint : valid ? 'Número válido: ya puede cargar el archivo.' : 'Ingrese el número para activar la carga.'}</span>
         </label>
         <div className="flex flex-wrap items-center gap-2">
-          <label aria-disabled={!valid} className={`${fileButton} ${!valid ? 'pointer-events-none opacity-40' : ''}`}><Upload className="h-4 w-4" />2. Elegir {pickup ? 'nota' : 'guía'} (foto o PDF)<input type="file" multiple disabled={!valid || !!busy} accept={pickup ? PACKING_ACCEPT : GUIDE_ACCEPT} className="sr-only" onChange={pick(setGuideFiles)} /></label>
-          <button type="button" onClick={() => void submitGuide()} disabled={!valid || !guideFiles.length || !!busy} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002855] px-3 text-xs font-semibold text-white disabled:opacity-40 lg:min-h-9">{busy === 'guide' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Cargar {pickup ? 'Nota de Despacho' : 'GR'}</button>
+          <label aria-disabled={!valid} className={`${fileButton} ${!valid ? 'pointer-events-none opacity-40' : ''}`}><Upload className="h-4 w-4" />2. Elegir archivo{active === 'GUIA' ? ' (foto o PDF)' : ''}<input type="file" multiple disabled={!valid || !!busy} accept={active === 'GUIA' ? GUIDE_ACCEPT : PACKING_ACCEPT} className="sr-only" onChange={pick(setDocFiles)} /></label>
+          <button type="button" onClick={() => void submitDoc()} disabled={!valid || !docFiles.length || !!busy} className={primary}>{busy === 'doc' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Cargar {active === 'GUIA' ? 'GR' : spec.label}</button>
         </div>
-        {chosen(guideFiles, () => setGuideFiles([]))}
-      </>}
+        {chosen(docFiles, () => setDocFiles([]))}
+      </div> : <p className="text-xs text-slate-600">{guideNote || 'Sin documentos con número pendientes.'}</p>}
+      {rule.packingAllowed && <div className="min-w-0 space-y-2">
+        <p className="text-xs font-semibold text-slate-700">Packing List{tag(rule.packingRequired)}</p>
+        <p className="text-xs text-slate-500">Sin correlativo: PDF, foto o Excel, hasta 5 archivos.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className={fileButton}><Upload className="h-4 w-4" />Elegir Packing List<input type="file" multiple disabled={!!busy} accept={PACKING_ACCEPT} className="sr-only" onChange={pick(setPackingFiles)} /></label>
+          <button type="button" onClick={() => void submitPacking()} disabled={!packingFiles.length || !!busy} className={primary}>{busy === 'packing' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Cargar Packing List</button>
+        </div>
+        {chosen(packingFiles, () => setPackingFiles([]))}
+      </div>}
     </div>
-    <div className="min-w-0 space-y-2">
-      <p className="text-xs font-bold uppercase tracking-wide text-amber-900">Packing List</p>
-      <p className="text-xs text-slate-500">Sin correlativo: PDF, foto o Excel, hasta 5 archivos.</p>
-      <div className="flex flex-wrap items-center gap-2">
-        <label className={fileButton}><Upload className="h-4 w-4" />Elegir Packing List<input type="file" multiple disabled={!!busy} accept={PACKING_ACCEPT} className="sr-only" onChange={pick(setPackingFiles)} /></label>
-        <button type="button" onClick={() => void submitPacking()} disabled={!packingFiles.length || !!busy} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002855] px-3 text-xs font-semibold text-white disabled:opacity-40 lg:min-h-9">{busy === 'packing' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Cargar Packing List</button>
-      </div>
-      {chosen(packingFiles, () => setPackingFiles([]))}
-    </div>
+    <p className="text-[11px] text-slate-500">La liquidación es automática: el servicio sale de «Liquidación pendiente» al completar los obligatorios. La GR cuenta cuando el Supervisor de Transporte la aprueba en Conformidad.</p>
   </div>
 }
 
