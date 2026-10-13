@@ -34,6 +34,9 @@ SELECT 'app_rpc',jsonb_build_object('name',p.oid::regprocedure::text,'volatility
 SELECT set_config('request.jwt.claim.sub',dr.profile_id::text,true) AS simulated_session
  FROM public.dispatches d JOIN public.drivers dr ON dr.id=d.driver_id
  WHERE d.dispatch_number='__DISPATCH__';
-SELECT 'app_read_only_probe' AS section,jsonb_build_object('number',
- public.get_active_trip_context()#>>'{trip,dispatch_number}') AS detail;
+SELECT 'app_read_only_probe' AS section,CASE WHEN
+ (SELECT provolatile FROM pg_proc WHERE oid='public.get_active_trip_context()'::regprocedure)='s'
+ AND EXISTS(SELECT 1 FROM public.dispatches d JOIN public.drivers dr ON dr.id=d.driver_id WHERE d.dispatch_number='__DISPATCH__' AND dr.profile_id IS NOT NULL)
+ THEN jsonb_build_object('number',public.get_active_trip_context()#>>'{trip,dispatch_number}')
+ ELSE jsonb_build_object('skipped','RPC requiere transacción de lectura y escritura; no se ejecuta en auditoría READ ONLY') END AS detail;
 COMMIT;
