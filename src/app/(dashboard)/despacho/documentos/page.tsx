@@ -240,7 +240,7 @@ function DocumentaryQueue() {
         </section>}
       <Modal isOpen={!!selected} onClose={() => setSelectedId(null)} title={`Documentos · ${selected?.dispatch_number || ''}`} maxWidth="max-w-[1440px]"
         footer={<div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-600">{assistantOnly ? 'Vincula los números por servicio. La guía firmada y su aprobación se gestionan por separado.' : selected?.missing ? 'Completa los documentos pendientes para autorizar la salida.' : selected?.docs_ready_at ? 'Documentos confirmados para salida.' : 'Documentos y archivos asociados al servicio.'}</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setSelectedId(null)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Cerrar</button>{selected && canEdit && selected.status === 'PROGRAMADO' && ['PENDIENTE', 'REEMISION'].includes(selected.doc_status) && <button type="button" onClick={() => void confirmDocs(selected)} disabled={busy === selected.id || !!selected.missing} className="flex min-h-11 items-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-500">{busy === selected.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar documentos para salida</button>}</div></div>}>
-        {selected && <DispatchCard key={selected.id} item={selected} canEdit={canEdit && selected.status === 'PROGRAMADO'} canPacking={canPacking && selected.status === 'PROGRAMADO'} packingOnly={packingOnly} serviceTypes={serviceTypes}
+        {selected && <DispatchCard key={selected.id} item={selected} canEdit={canEdit && selected.status === 'PROGRAMADO'} canPacking={canPacking && selected.status === 'PROGRAMADO'} canSettle={canNumbers && !packingOnly && SETTLEMENT_STATUSES.includes(selected.status)} packingOnly={packingOnly} serviceTypes={serviceTypes}
           onVoid={voidDoc} onOpen={openDoc} onUploaded={load}
           deliveries={deliveries.filter(row => row.dispatch_id === selected.id)} onEvidence={row => { setSelectedId(null); setReview(row) }}>
           {!packingOnly && <DocumentNumberLinks key={selected.id} dispatchId={selected.id} services={selected.stops.map(stop => ({ ...stop, order_reference: referenceLabel(serviceTypes.get(stop.request_id)) }))} known={knownNumbers(selected, deliveries)} canEdit={canNumbers && selected.status !== 'CANCELADO'} onChanged={load} />}
@@ -362,8 +362,8 @@ function DocumentStatusModal({ target, reference, packingOnly, canEdit, onClose,
   </Modal>
 }
 
-function DispatchCard({ item, canEdit, canPacking, packingOnly, serviceTypes, onVoid, onOpen, onUploaded, deliveries, onEvidence, children }: {
-  item: QueueItem; canEdit: boolean; canPacking: boolean; packingOnly: boolean; serviceTypes: Awaited<ReturnType<typeof fetchServiceTypes>>; onVoid: (d: Doc) => void
+function DispatchCard({ item, canEdit, canPacking, canSettle = false, packingOnly, serviceTypes, onVoid, onOpen, onUploaded, deliveries, onEvidence, children }: {
+  item: QueueItem; canEdit: boolean; canPacking: boolean; canSettle?: boolean; packingOnly: boolean; serviceTypes: Awaited<ReturnType<typeof fetchServiceTypes>>; onVoid: (d: Doc) => void
   onOpen: (p: string) => void; onUploaded: () => Promise<void>; deliveries: DeliveryRow[]; onEvidence: (row: DeliveryReviewTarget) => void; children?: React.ReactNode
 }) {
   const [upload, setUpload] = useState<{ requestId: string | null; type: string; label: string } | null>(null)
@@ -428,6 +428,7 @@ function DispatchCard({ item, canEdit, canPacking, packingOnly, serviceTypes, on
             {!packingOnly && !item.is_pickup && delivery && <button type="button" onClick={() => onEvidence(delivery)} className={`${secondary} sm:ml-auto`}><FileCheck2 className="h-4 w-4" />Ver guía y conformidad</button>}
           </div>}
           {uploadForm(s.request_id)}
+          {canSettle && <SettlementUpload dispatchId={item.id} requestId={s.request_id} pickup={item.is_pickup} conformity={delivery?.conformity || null} noteDone={noteLinked(item, s)} onUploaded={onUploaded} />}
         </article>
       })}
     </section>
@@ -442,6 +443,112 @@ function DispatchCard({ item, canEdit, canPacking, packingOnly, serviceTypes, on
       {!!generalDocs.length && <div className="border-t border-slate-100 px-4 pb-3"><DocList docs={generalDocs} canEdit={canEdit} onVoid={onVoid} onOpen={onOpen} /></div>}
       {uploadForm(null)}
     </section>}
+  </div>
+}
+
+const SETTLEMENT_STATUSES = ['CIERRE_OPERATIVO', 'RETORNO_COMPLETADO', 'ENTREGADO']
+
+// Liquidación pendiente: la oficina completa los documentos de un servicio cerrado.
+// GR / Nota de Despacho: primero el número (serie-correlativo); con el número válido se activa la carga del archivo.
+// Packing List: sin correlativo, la carga está activa de inmediato. El app del conductor no cambia.
+const GR_PATTERN = /^[A-Z0-9]{3,4}-[0-9]{1,10}$/
+const ND_PATTERN = /^[A-Z0-9]{1,8}-[0-9]{1,10}$/
+const GUIDE_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp'
+const guideMime = (file: File) => /\.pdf$/i.test(file.name) ? 'application/pdf' : /\.png$/i.test(file.name) ? 'image/png' : /\.webp$/i.test(file.name) ? 'image/webp' : /\.jpe?g$/i.test(file.name) ? 'image/jpeg' : null
+const safeName = (name: string) => name.replace(/[^\w.-]+/g, '_').slice(-80)
+
+function SettlementUpload({ dispatchId, requestId, pickup, conformity, noteDone, onUploaded }: {
+  dispatchId: string; requestId: string; pickup: boolean; conformity: string | null; noteDone: boolean; onUploaded: () => Promise<void>
+}) {
+  const supabase = useMemo(() => createClient(), [])
+  const [number, setNumber] = useState('')
+  const [guideFiles, setGuideFiles] = useState<File[]>([])
+  const [packingFiles, setPackingFiles] = useState<File[]>([])
+  const [busy, setBusy] = useState<'' | 'guide' | 'packing'>('')
+  const operation = useRef(crypto.randomUUID())
+  const normalized = number.trim().toUpperCase()
+  const valid = (pickup ? ND_PATTERN : GR_PATTERN).test(normalized)
+  // La guía ya enviada (en revisión o aprobada) no se vuelve a cargar aquí; observada o rechazada sí.
+  const guideOpen = pickup ? !noteDone : !conformity || ['PENDIENTE', 'OBSERVADA', 'RECHAZADA'].includes(conformity)
+  const label = pickup ? 'Nota de Despacho' : 'Guía de remisión'
+
+  const send = async (kind: 'GUIA' | 'NOTA' | 'PACKING', files: File[]) => {
+    const { data: auth } = await supabase.auth.getUser()
+    if (!auth.user) throw new Error('Sesión vencida: vuelva a ingresar')
+    const evidence = kind === 'GUIA'
+    const bucket = evidence ? 'driver_evidence' : DOCS_BUCKET
+    const paths: string[] = []
+    try {
+      for (const file of files) {
+        const mime = evidence ? guideMime(file) : packingMime(file)
+        if (!mime) throw new Error(`${file.name}: formato no permitido`)
+        if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name}: supera 10 MB`)
+        const path = evidence ? `${auth.user.id}/tercero/${dispatchId}/${crypto.randomUUID()}-${safeName(file.name)}` : `${dispatchId}/${crypto.randomUUID()}-${safeName(file.name)}`
+        const { error } = await supabase.storage.from(bucket).upload(path, file, { contentType: mime })
+        if (error) throw new Error(`No se pudo subir ${file.name}: ${errorMessage(error)}`)
+        paths.push(path)
+      }
+      const { data, error } = await supabase.rpc('settlement_upload_document', {
+        p_dispatch: dispatchId, p_request: requestId, p_kind: kind, p_number: kind === 'PACKING' ? null : normalized,
+        p_files: paths, p_file_names: files.map(f => f.name), p_operation: kind === 'GUIA' ? operation.current : null,
+      })
+      if (error) throw error
+      if (!(data as { success?: boolean } | null)?.success) throw new Error('No se pudo registrar el documento')
+    } catch (error) {
+      // Archivos sin registro no sirven: se retiran para no dejar huérfanos
+      if (paths.length) await supabase.storage.from(bucket).remove(paths)
+      throw error
+    }
+  }
+  const submitGuide = async () => {
+    if (!valid || !guideFiles.length || busy) return
+    setBusy('guide')
+    try {
+      await send(pickup ? 'NOTA' : 'GUIA', guideFiles)
+      toast.success(pickup ? `Nota de Despacho ${normalized} cargada` : `Guía ${normalized} cargada: pasa a validación del Supervisor de Transporte`)
+      setNumber(''); setGuideFiles([]); operation.current = crypto.randomUUID()
+      await onUploaded()
+    } catch (error) { toast.error(errorMessage(error)) } finally { setBusy('') }
+  }
+  const submitPacking = async () => {
+    if (!packingFiles.length || busy) return
+    setBusy('packing')
+    try {
+      await send('PACKING', packingFiles)
+      toast.success(packingFiles.length > 1 ? `${packingFiles.length} archivos de Packing List cargados` : 'Packing List cargado')
+      setPackingFiles([])
+      await onUploaded()
+    } catch (error) { toast.error(errorMessage(error)) } finally { setBusy('') }
+  }
+  const pick = (setter: (files: File[]) => void) => (event: React.ChangeEvent<HTMLInputElement>) => { setter(Array.from(event.target.files || []).slice(0, 5)); event.target.value = '' }
+  const fileButton = 'inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-[#002855] hover:bg-slate-50 lg:min-h-9'
+  const chosen = (files: File[], clear: () => void) => files.length > 0 && <p className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600">{files.map(f => <span key={f.name + f.size} className="inline-flex items-center gap-1"><KindTag kind={fileKind(f.name, f.type)} />{f.name}</span>)}<button type="button" onClick={clear} className="font-semibold text-red-700">Quitar</button></p>
+
+  return <div className="grid gap-3 border-t border-amber-200 bg-amber-50/40 px-4 py-3 lg:grid-cols-2">
+    <div className="min-w-0 space-y-2">
+      <p className="text-xs font-bold uppercase tracking-wide text-amber-900">{label}</p>
+      {!guideOpen ? <p className="text-xs text-slate-600">{pickup ? 'Nota de Despacho vinculada.' : `Guía enviada · ${conformityLabels[conformity as keyof typeof conformityLabels] || conformity}.`}</p> : <>
+        <label className="block text-xs text-slate-600">1. Número (serie-correlativo)
+          <input value={number} onChange={e => setNumber(e.target.value.toUpperCase().replace(/\s+/g, ''))} maxLength={19} placeholder={pickup ? 'ND01-1234' : 'T001-6591'} autoCapitalize="characters" spellCheck={false}
+            aria-invalid={!!number && !valid} className={`mt-1 min-h-11 w-full rounded-lg border bg-white px-3 font-mono text-sm lg:min-h-9 ${number && !valid ? 'border-red-400' : valid ? 'border-emerald-500' : 'border-slate-300'}`} />
+          <span className={`mt-1 block ${number && !valid ? 'text-red-700' : 'text-slate-500'}`}>{number && !valid ? 'Serie y correlativo separados por guion, sin espacios ni ceros omitidos.' : valid ? 'Número válido: ya puede cargar el archivo.' : 'Ingrese el número para activar la carga.'}</span>
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <label aria-disabled={!valid} className={`${fileButton} ${!valid ? 'pointer-events-none opacity-40' : ''}`}><Upload className="h-4 w-4" />2. Elegir {pickup ? 'nota' : 'guía'} (foto o PDF)<input type="file" multiple disabled={!valid || !!busy} accept={pickup ? PACKING_ACCEPT : GUIDE_ACCEPT} className="sr-only" onChange={pick(setGuideFiles)} /></label>
+          <button type="button" onClick={() => void submitGuide()} disabled={!valid || !guideFiles.length || !!busy} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002855] px-3 text-xs font-semibold text-white disabled:opacity-40 lg:min-h-9">{busy === 'guide' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Cargar {pickup ? 'Nota de Despacho' : 'GR'}</button>
+        </div>
+        {chosen(guideFiles, () => setGuideFiles([]))}
+      </>}
+    </div>
+    <div className="min-w-0 space-y-2">
+      <p className="text-xs font-bold uppercase tracking-wide text-amber-900">Packing List</p>
+      <p className="text-xs text-slate-500">Sin correlativo: PDF, foto o Excel, hasta 5 archivos.</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className={fileButton}><Upload className="h-4 w-4" />Elegir Packing List<input type="file" multiple disabled={!!busy} accept={PACKING_ACCEPT} className="sr-only" onChange={pick(setPackingFiles)} /></label>
+        <button type="button" onClick={() => void submitPacking()} disabled={!packingFiles.length || !!busy} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002855] px-3 text-xs font-semibold text-white disabled:opacity-40 lg:min-h-9">{busy === 'packing' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Cargar Packing List</button>
+      </div>
+      {chosen(packingFiles, () => setPackingFiles([]))}
+    </div>
   </div>
 }
 
