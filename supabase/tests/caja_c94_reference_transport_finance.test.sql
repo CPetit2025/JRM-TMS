@@ -17,7 +17,8 @@ BEGIN
  IF actor IS NULL THEN RAISE EXCEPTION 'CAJA C94 FAIL: falta administrador activo'; END IF;
  SELECT s.id INTO site FROM public.sites s WHERE public.can_access_site(s.id) ORDER BY s.id LIMIT 1;
  INSERT INTO public.suppliers(tax_id,business_name) VALUES((floor(random()*90000000000)+10000000000)::bigint::text,'ZZ C94') RETURNING id INTO supplier;
- req:=public.save_transport_request(NULL,jsonb_build_object('department','Logística','request_type','RECOJO',
+ -- Use a valued transfer: own-fleet pickups are documented without automatic freight.
+ req:=public.save_transport_request(NULL,jsonb_build_object('department','Logística','request_type','TRASLADO',
   'attention_mode','TRANSPORTE_JRM','site_id',site,'required_date',current_date+7,'cargo_description','ZZ C94',
   'pickup_address','Origen prueba','pickup_district','CHILCA','delivery_address','Destino prueba','delivery_district','CALLAO',
   'service_cost',100,'reference_type','OC','reference_number','ZZ-C94-OC','supplier_id',supplier),'[]');
