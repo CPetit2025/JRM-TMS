@@ -25,8 +25,15 @@ SELECT 'driver_routes',COALESCE((SELECT jsonb_agg(to_jsonb(r)) FROM (
  FROM public.dispatches d WHERE d.driver_id IN(SELECT driver_id FROM target)
  ORDER BY d.created_at DESC LIMIT 12)r),'[]'::jsonb)
 UNION ALL
-SELECT 'app_rpc',jsonb_build_object('name',p.oid::regprocedure::text,'body',p.prosrc)
+SELECT 'app_rpc',jsonb_build_object('name',p.oid::regprocedure::text,'volatility',p.provolatile,'body',p.prosrc)
  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
  WHERE n.nspname='public' AND p.proname IN ('get_active_trip_context','get_active_trip_context_before_stop_info',
  'get_active_trip_context_before_preuse','get_driver_preuse_context','get_driver_preuse_context_before_fleet');
+-- Reproduce the transaction mode PostgREST uses for STABLE RPCs. This cannot
+-- change operational records: the transaction is explicitly READ ONLY.
+SELECT set_config('request.jwt.claim.sub',dr.profile_id::text,true) AS simulated_session
+ FROM public.dispatches d JOIN public.drivers dr ON dr.id=d.driver_id
+ WHERE d.dispatch_number='__DISPATCH__';
+SELECT 'app_read_only_probe' AS section,jsonb_build_object('number',
+ public.get_active_trip_context()#>>'{trip,dispatch_number}') AS detail;
 COMMIT;
