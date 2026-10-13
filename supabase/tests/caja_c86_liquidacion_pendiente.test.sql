@@ -71,10 +71,12 @@ BEGIN
       open_route::text = ANY (COALESCE(ids, '{}')), CASE WHEN undated IS NULL THEN 'n/a' ELSE (undated::text = ANY (COALESCE(ids, '{}')))::text END; END IF;
   PERFORM pg_temp.c86_user(NULL);
 
-  -- T2: con la guía validada, la ruta sale de la liquidación pendiente
+  -- T2: entrega con la guía validada y el Packing List cargado sale de la liquidación pendiente (regla C97)
   SELECT transport_request_id INTO req FROM public.dispatch_requests WHERE dispatch_id = cut;
   INSERT INTO public.delivery_conformities(dispatch_id, request_id, state) VALUES (cut, req, 'VALIDADA')
     ON CONFLICT (dispatch_id, request_id) DO UPDATE SET state = 'VALIDADA';
+  PERFORM pg_temp.c86_ins('dispatch_documents', jsonb_build_object('id', gen_random_uuid(), 'dispatch_id', cut, 'transport_request_id', req,
+    'doc_type', 'PACKING_LIST', 'file_path', cut || '/c86-packing.pdf', 'file_name', 'packing.pdf'));
   PERFORM pg_temp.c86_user(actor);
   SELECT array_agg(x->>'id') INTO ids FROM jsonb_array_elements(public.get_documentary_pending_settlement(true, v_from, v_until)) x;
   PERFORM pg_temp.c86_user(NULL);
