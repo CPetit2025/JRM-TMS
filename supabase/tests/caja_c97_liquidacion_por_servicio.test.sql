@@ -28,7 +28,10 @@ BEGIN
   d := pg_temp.c97_ins('dispatches', jsonb_build_object('id', gen_random_uuid(), 'dispatch_number', 'ZZ-C97-' || p_plate, 'vehicle_plate', p_plate,
     'status', p_status, 'site_id', p_site, 'scheduled_departure', now() - interval '1 day', 'scheduled_date', current_date - 1, 'modalidad', 'PROPIA', 'docs_required', false));
   r := pg_temp.c97_ins('transport_requests', jsonb_build_object('request_number', 'ZZ-C97-' || p_plate, 'request_type', p_type,
-    'attention_mode', 'TRANSPORTE_JRM', 'status', 'ASIGNADA', 'site_id', p_site, 'client_id', p_client, 'requester_name', 'ZZ',
+    'attention_mode', 'TRANSPORTE_JRM',
+    -- Recojo y punto a punto sin OT: producción no admite insertarlos ya programados (request_ot_funding_guard)
+    'status', CASE WHEN p_type = 'DESPACHO' THEN 'ASIGNADA' ELSE 'PENDIENTE' END,
+    'reference_type', CASE WHEN p_type <> 'DESPACHO' THEN 'OC' END, 'reference_number', CASE WHEN p_type <> 'DESPACHO' THEN 'C97-' || p_plate END, 'site_id', p_site, 'client_id', p_client, 'requester_name', 'ZZ',
     'department', 'Logística', 'cargo_description', 'Prueba C97', 'pickup_address', 'Planta', 'delivery_address', 'Obra',
     'delivery_district', 'LURIN', 'required_date', (now() AT TIME ZONE 'America/Lima')::date - 1));
   INSERT INTO public.dispatch_requests(dispatch_id, transport_request_id, status, document_type, sequence_order) VALUES (d, r, 'PROGRAMADO', 'GR', 1);
