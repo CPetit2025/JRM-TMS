@@ -316,7 +316,9 @@ export default function RutaActivaPage() {
                     </div>
                   )}
 
-                  <h3 className={`font-bold ${isActive ? 'text-blue-900' : 'text-slate-700'}`}>{ot.request_number}</h3>
+                  <p className={`text-lg font-black leading-tight ${isActive ? 'text-blue-900' : 'text-[#002855]'}`}>{req.ot_code ? `OT ${req.ot_code}` : req.reference || 'Sin OT'}</p>
+                  <p className="mt-0.5 text-sm font-semibold text-slate-800">{req.party_name || `${req.party_label || 'Cliente'} sin registrar`}<span className="ml-1 text-xs font-normal text-slate-500">· {req.party_label || 'Cliente'}</span></p>
+                  <h3 className={`mt-1 text-xs font-semibold ${isActive ? 'text-blue-800' : 'text-slate-500'}`}>Solicitud {ot.request_number}</h3>
                   <p className="text-xs text-slate-500 mt-1 line-clamp-2">{ot.delivery_address || ot.pickup_address}</p>
 
                   {(['CIERRE_OPERATIVO','RETORNO_COMPLETADO'].includes(dispatch.status) || isActive || (isPast && ['EN RUTA','EN_CURSO','ESPERANDO_AUTORIZACION','RETORNO','RETORNO_COMPLETADO','ENTREGADO','CIERRE_OPERATIVO'].includes(dispatch.status))) && user && driver && <div className="mt-4 border-t pt-4"><DriverDelivery dispatchId={dispatch.id} requestId={req.transport_request_id} driverId={driver.id} userId={user.id} guide={req.document_number || ''} documentaryOnly={['CIERRE_OPERATIVO','RETORNO_COMPLETADO'].includes(dispatch.status)} onChanged={refresh} /></div>}

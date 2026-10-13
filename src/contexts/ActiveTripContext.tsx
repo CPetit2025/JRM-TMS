@@ -18,6 +18,11 @@ export type TripStop = {
   document_type: string | null
   leg_actual_km: number | null
   leg_gps_complete: boolean | null
+  // Por parada: OT (u OC/OS/RQ sin OT) y cliente o proveedor
+  ot_code?: string | null
+  reference?: string | null
+  party_name?: string | null
+  party_label?: string | null
 }
 
 export type ActiveTrip = {
