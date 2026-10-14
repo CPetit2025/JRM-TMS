@@ -23,6 +23,7 @@ const SECTIONS = [
     tabs: [
       { href: '/apt', label: 'Dashboard operativo' },
       { href: '/apt/operacion', label: 'Control de OT y lotes' },
+      { href: '/apt/ingresos', label: 'Ingresos' },
       { href: '/apt/estadia', label: 'Estadía · cohortes FIFO' },
       { href: '/apt/gantt', label: 'Gantt · OT y lotes' },
       { href: '/apt/clientes', label: 'Cliente · OT · Lote' },
@@ -54,7 +55,7 @@ const SECTIONS = [
     ],
   },
 ] as const
-const NO_FILTERS = ['/apt', '/apt/operacion', '/apt/calidad', '/apt/cargas', '/apt/gantt', '/apt/flujo/trazabilidad', '/apt/flujo/kardex']
+const NO_FILTERS = ['/apt', '/apt/operacion', '/apt/ingresos', '/apt/calidad', '/apt/cargas', '/apt/gantt', '/apt/flujo/trazabilidad', '/apt/flujo/kardex']
 
 function tabActive(href: string, pathname: string) {
   if (href === '/apt' || href === '/apt/flujo') return pathname === href

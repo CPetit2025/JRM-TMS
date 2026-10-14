@@ -156,7 +156,21 @@ export function cleanFilters<T extends object = AptFilters>(f: T): T {
   return out as T
 }
 
+export type AptIngresoFilters = { desde?: string; hasta?: string; ot?: string; cliente?: string; glosa?: string }
+export type AptIngresoRow = {
+  ot: string; lote: string; cliente: string; producto: string | null; glosa: string | null; unidad: string | null; cantidad: number | null; kg: number
+  fecha?: string; documento?: string | null; ingresos?: number; primera?: string; ultima?: string
+}
+export type AptIngresos = {
+  desde: string; hasta: string; min: string | null; max: string | null; vista: 'resumen' | 'detalle'
+  totales: { ingresos: number; cantidad: number; tn: number; ots: number; lotes: number; clientes: number; sin_cliente_tn: number; filas: number }
+  clientes: { cliente: string; ots: number; lotes: number; cantidad: number; tn: number }[]
+  rows: AptIngresoRow[]
+}
+
 export const aptApi = {
+  ingresos: (f: AptIngresoFilters, vista: 'resumen' | 'detalle', limit = 200, offset = 0) =>
+    read<AptIngresos>('apt_ingresos', { p: cleanFilters(f), p_vista: vista, p_limit: limit, p_offset: offset }),
   operationalSummary: (f: AptOperationalFilters = {}, limit = 25, offset = 0) =>
     read<AptOperationalSummary>('apt_operational_summary', { p: { ...cleanFilters(f), limit, offset } }),
   gantt: (f: GanttFilters, limit = 25, offset = 0) =>
