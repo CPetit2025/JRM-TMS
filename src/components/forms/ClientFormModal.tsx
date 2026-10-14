@@ -4,6 +4,7 @@ import { Building2, Loader2, CheckCircle2, User, Phone, Mail, MapPin, Hash, Sear
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { FOREIGN_COUNTRIES, foreignCountry, isForeignCountry, normalizeForeignTaxId } from '@/lib/countries'
 
 export interface ClientData {
   id?: string
@@ -14,6 +15,8 @@ export interface ClientData {
   phone: string
   email: string
   is_active?: boolean
+  country_code?: string | null
+  country_name?: string | null
 }
 
 interface ClientFormModalProps {
@@ -38,6 +41,9 @@ export function ClientFormModal({ isOpen, onClose, onSuccess, editingClient }: C
   }
   
   const [newClient, setNewClient] = useState(initialClient)
+  // Perú (RUC + SUNAT) o extranjero (país + documento tributario de su país, sin SUNAT)
+  const [foreign, setForeign] = useState(false)
+  const [country, setCountry] = useState('')
   // RUC verificado en SUNAT en esta edición (obligatorio para clientes nuevos o cuando cambia el RUC)
   const [sunat, setSunat] = useState<{ ruc: string; status: string } | null>(null)
   const [sunatDown, setSunatDown] = useState(false)
@@ -52,8 +58,12 @@ export function ClientFormModal({ isOpen, onClose, onSuccess, editingClient }: C
         phone: editingClient.phone || '',
         email: editingClient.email || ''
       })
+      setForeign(isForeignCountry(editingClient.country_code))
+      setCountry(isForeignCountry(editingClient.country_code) ? (editingClient.country_code || '').toUpperCase() : '')
     } else {
       setNewClient(initialClient)
+      setForeign(false)
+      setCountry('')
     }
     setSunat(null)
     setSunatDown(false)
@@ -63,11 +73,16 @@ export function ClientFormModal({ isOpen, onClose, onSuccess, editingClient }: C
     e.preventDefault()
     const rucChanged = !editingClient?.id || newClient.tax_id !== (editingClient.tax_id || '')
     const verified = sunat?.ruc === newClient.tax_id
-    if (rucChanged && !verified) {
+    if (foreign) {
+      if (!country) { toast.error('Elija el país del cliente'); return }
+      if (newClient.tax_id.length < 4) { toast.error('Ingrese el documento tributario del cliente (mínimo 4 caracteres)'); return }
+    } else if (rucChanged && !verified) {
       if (!sunatDown) { toast.error('Consulte el RUC en SUNAT antes de guardar (botón SUNAT).'); return }
       if (!window.confirm('SUNAT no responde en este momento. ¿Guardar el cliente sin verificar el RUC?')) return
     }
-    const sunatFields = rucChanged && verified ? { sunat_verified_at: new Date().toISOString(), sunat_status: sunat?.status || null } : {}
+    const sunatFields = foreign
+      ? { country_code: country, country_name: foreignCountry(country)?.name || null }
+      : { ...(rucChanged && verified ? { sunat_verified_at: new Date().toISOString(), sunat_status: sunat?.status || null } : {}), ...(isForeignCountry(editingClient?.country_code) ? { country_code: null, country_name: null } : {}) }
     setIsSubmitting(true)
 
     try {
@@ -174,6 +189,11 @@ export function ClientFormModal({ isOpen, onClose, onSuccess, editingClient }: C
             <Building2 className="w-4 h-4 text-[#002855]" />
             Datos de la Empresa
           </h3>
+          <div className="mb-4 inline-flex rounded-lg bg-slate-100 p-1" role="radiogroup" aria-label="Origen del cliente">
+            {([[false, 'Perú (RUC · SUNAT)'], [true, 'Cliente extranjero']] as const).map(([value, label]) => <button key={label} type="button" role="radio" aria-checked={foreign === value}
+              onClick={() => { if (foreign !== value) { setForeign(value); setNewClient(prev => ({ ...prev, tax_id: '' })); setSunat(null); setSunatDown(false) } }}
+              className={`min-h-9 rounded-md px-3 text-sm font-semibold ${foreign === value ? 'bg-white text-[#002855] shadow-sm' : 'text-slate-600'}`}>{label}</button>)}
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Razón Social</label>
@@ -189,6 +209,27 @@ export function ClientFormModal({ isOpen, onClose, onSuccess, editingClient }: C
               </div>
             </div>
             
+            {foreign ? <>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">País</label>
+                <select required value={country} onChange={(e) => setCountry(e.target.value)}
+                  className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none">
+                  <option value="">Seleccione…</option>
+                  {FOREIGN_COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{foreignCountry(country)?.doc || 'Documento tributario'} <span className="font-normal text-slate-500">(de su país)</span></label>
+                <div className="relative">
+                  <Hash className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                  <input type="text" required minLength={4} maxLength={20} placeholder="Ej.: 1023456027"
+                    className="w-full pl-9 pr-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none font-mono"
+                    value={newClient.tax_id}
+                    onChange={(e) => setNewClient({...newClient, tax_id: normalizeForeignTaxId(e.target.value)})} />
+                </div>
+                <p className="text-xs text-slate-500 mt-1">Letras y números, sin espacios ni guiones. No se consulta SUNAT.</p>
+              </div>
+            </> : <>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">RUC</label>
               <div className="flex gap-2">
@@ -220,6 +261,7 @@ export function ClientFormModal({ isOpen, onClose, onSuccess, editingClient }: C
                 ? <p className="text-xs text-emerald-700 mt-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Verificado en SUNAT{sunat.status ? ` · ${sunat.status}` : ''}</p>
                 : (!editingClient?.id || newClient.tax_id !== (editingClient.tax_id || '')) && <p className="text-xs text-amber-700 mt-1">Consulte SUNAT para verificar el RUC antes de guardar.</p>}
             </div>
+            </>}
 
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Dirección Fiscal / Principal</label>

@@ -3,16 +3,22 @@ import { useState } from 'react'
 import { CheckCircle2, Loader2, Search, UserPlus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
+import { FOREIGN_COUNTRIES, foreignCountry, normalizeForeignTaxId } from '@/lib/countries'
 
-export type CreatedClient = { id: string; business_name: string; tax_id: string }
+export type CreatedClient = { id: string; business_name: string; tax_id: string; country_code?: string | null }
 
 const field = 'w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm outline-none focus:border-[#002855] focus:ring-2 focus:ring-[#002855]'
 
-/** Registro del cliente dentro del Alta de OT: RUC → SUNAT → razón social y dirección, sin salir del modal.
+/** Registro del cliente dentro del Alta de OT: RUC → SUNAT → razón social y dirección, sin salir del modal; o cliente
+ *  extranjero (país + documento tributario de su país, sin SUNAT).
  *  Si el RUC ya existe, el servidor devuelve ese cliente (no se duplica). */
 export function InlineClientCreator({ onCreated, onCancel }: { onCreated: (client: CreatedClient) => void; onCancel: () => void }) {
   const supabase = createClient()
   const [ruc, setRuc] = useState('')
+  // Cliente extranjero: país + documento tributario de su país, sin SUNAT
+  const [foreign, setForeign] = useState(false)
+  const [country, setCountry] = useState('')
+  const [foreignDoc, setForeignDoc] = useState('')
   const [name, setName] = useState('')
   const [address, setAddress] = useState('')
   const [contact, setContact] = useState('')
@@ -44,7 +50,27 @@ export function InlineClientCreator({ onCreated, onCancel }: { onCreated: (clien
     finally { setSearching(false) }
   }
 
+  const saveForeign = async () => {
+    if (!country) { toast.error('Elija el país del cliente'); return }
+    if (foreignDoc.length < 4) { toast.error('Ingrese el documento tributario (mínimo 4 caracteres)'); return }
+    if (!name.trim()) { toast.error('Ingrese la razón social'); return }
+    setSaving(true)
+    try {
+      const { data, error } = await supabase.rpc('register_foreign_client', {
+        p_country_code: country, p_country_name: foreignCountry(country)?.name || null, p_tax_id: foreignDoc, p_business_name: name.trim(),
+        p_address: address.trim() || null, p_contact_name: contact.trim() || null, p_phone: phone.trim() || null, p_email: email.trim() || null,
+      })
+      if (error) throw error
+      const result = data as { success?: boolean; error?: string; existing?: boolean; id?: string; business_name?: string; tax_id?: string } | null
+      if (!result?.success || !result.id) throw new Error(result?.error || 'No se pudo registrar el cliente')
+      toast.success(result.existing ? `El documento ya estaba registrado: se seleccionó ${result.business_name}` : 'Cliente extranjero registrado y seleccionado')
+      onCreated({ id: result.id, business_name: result.business_name || name.trim(), tax_id: result.tax_id || foreignDoc, country_code: country })
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo registrar el cliente') }
+    finally { setSaving(false) }
+  }
+
   const save = async () => {
+    if (foreign) return saveForeign()
     if (!verified && !sunatDown) { toast.error('Consulte el RUC en SUNAT antes de registrar el cliente'); return }
     if (!name.trim()) { toast.error('Ingrese la razón social'); return }
     setSaving(true)
@@ -67,7 +93,17 @@ export function InlineClientCreator({ onCreated, onCancel }: { onCreated: (clien
       <p className="flex items-center gap-2 text-sm font-semibold text-[#002855]"><UserPlus className="h-4 w-4" />Nuevo cliente</p>
       <button type="button" onClick={onCancel} aria-label="Cerrar registro de cliente" className="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-white"><X className="h-4 w-4" /></button>
     </div>
-    <div>
+    <div className="inline-flex rounded-lg bg-white p-1 ring-1 ring-slate-200" role="radiogroup" aria-label="Origen del cliente">
+      {([[false, 'Perú (RUC)'], [true, 'Extranjero']] as const).map(([value, label]) => <button key={label} type="button" role="radio" aria-checked={foreign === value}
+        onClick={() => setForeign(value)} className={`min-h-8 rounded-md px-3 text-xs font-semibold ${foreign === value ? 'bg-[#002855] text-white' : 'text-slate-600'}`}>{label}</button>)}
+    </div>
+    {foreign ? <div className="grid gap-3 sm:grid-cols-2">
+      <label className="block text-xs font-medium text-slate-700">País <span className="text-red-500">*</span>
+        <select value={country} onChange={e => setCountry(e.target.value)} className={`${field} mt-1`}><option value="">Seleccione…</option>{FOREIGN_COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</select></label>
+      <label className="block text-xs font-medium text-slate-700">{foreignCountry(country)?.doc || 'Documento tributario'} <span className="text-red-500">*</span>
+        <input value={foreignDoc} onChange={e => setForeignDoc(normalizeForeignTaxId(e.target.value))} placeholder="Ej.: 1023456027" className={`${field} mt-1 font-mono`} />
+        <span className="mt-1 block font-normal text-slate-500">Letras y números, sin espacios. No se consulta SUNAT.</span></label>
+    </div> : <div>
       <label className="mb-1 block text-xs font-medium text-slate-700">RUC <span className="text-red-500">*</span></label>
       <div className="flex gap-2">
         <input inputMode="numeric" value={ruc} onChange={e => setRuc(e.target.value.replace(/\D/g, '').slice(0, 11))} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void lookup() } }} placeholder="20XXXXXXXXX" className={`${field} font-mono`} />
@@ -75,11 +111,11 @@ export function InlineClientCreator({ onCreated, onCancel }: { onCreated: (clien
       </div>
       {verified ? <p className="mt-1 flex items-center gap-1 text-xs text-emerald-700"><CheckCircle2 className="h-3 w-3" />Verificado en SUNAT{sunat?.status ? ` · ${sunat.status}` : ''}</p>
         : <p className="mt-1 text-xs text-slate-500">{sunatDown ? 'SUNAT no responde: complete la razón social manualmente.' : 'Consulte SUNAT para completar la razón social y la dirección.'}</p>}
-    </div>
-    {(verified || sunatDown) && <>
+    </div>}
+    {(foreign || verified || sunatDown) && <>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block text-xs font-medium text-slate-700 sm:col-span-2">Razón social <span className="text-red-500">*</span><input value={name} onChange={e => setName(e.target.value)} className={`${field} mt-1`} /></label>
-        <label className="block text-xs font-medium text-slate-700 sm:col-span-2">Dirección fiscal<input value={address} onChange={e => setAddress(e.target.value)} className={`${field} mt-1`} /></label>
+        <label className="block text-xs font-medium text-slate-700 sm:col-span-2">{foreign ? 'Dirección' : 'Dirección fiscal'}<input value={address} onChange={e => setAddress(e.target.value)} className={`${field} mt-1`} /></label>
       </div>
       <details className="text-xs">
         <summary className="cursor-pointer font-semibold text-blue-700">Contacto (opcional)</summary>
