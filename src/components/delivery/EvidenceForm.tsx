@@ -60,7 +60,7 @@ export function EvidenceForm({ busy, guide: initialGuide = '', onSubmit, onCance
       const packingPhotos = await Promise.all(packing.map(deliveryPhoto))
       if ([...photos, ...packingPhotos].reduce((sum, photo) => sum + photo.size, 0) > 4 * 1024 * 1024) throw new Error('Las fotos superan 4 MB. Reduzca la cantidad o resolución.')
       await onSubmit({ operation, capturedAt: new Date().toISOString(), files: photos, packingFiles: packingPhotos, receiver, guide: guide.trim().toUpperCase(), note })
-    } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo enviar la guía.') }
+    } catch (err) { setError(err instanceof Error ? err.message : (err as { message?: string } | null)?.message || 'No se pudo enviar la guía. Revise la conexión e intente de nuevo.') }
     finally { setPreparing(false) }
   }}>
     <p className="text-sm font-semibold text-[#002855]">Guía de remisión firmada · obligatoria</p>

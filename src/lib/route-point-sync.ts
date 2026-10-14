@@ -1,6 +1,14 @@
 import { createClient } from '@/lib/supabase/client'
 import { nativeRouteTracker } from '@/lib/native-route-tracker'
 
+// Fotos guardadas en el dispositivo: normalmente JPG reducido; el original (PNG, WEBP o HEIC) si el teléfono no pudo reducirla.
+const PHOTO_KINDS: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic' }
+function photoKind(value: unknown): { type: string; ext: string } | null {
+  if (typeof value !== 'string') return null
+  const type = /^data:([^;,]+);base64,/.exec(value)?.[1]
+  return type && PHOTO_KINDS[type] ? { type, ext: PHOTO_KINDS[type] } : null
+}
+
 export type RoutePoint = {
   id: string; dispatch_id: string; driver_id: string; recorded_at: string
   latitude: number; longitude: number; accuracy_m: number; speed_mps?: number | null
@@ -96,10 +104,11 @@ export function syncOfflineActions(): Promise<number> {
           if (!Array.isArray(photos) || photos.length < 1 || photos.length > 5) throw new Error('Fotos pendientes no válidas')
           const paths: string[] = []
           for (let index = 0; index < photos.length; index++) {
-            if (typeof photos[index] !== 'string' || !photos[index].startsWith('data:image/jpeg;base64,')) throw new Error('Fotografía no válida')
+            const kind = photoKind(photos[index])
+            if (!kind) throw new Error('Fotografía no válida: use JPG, PNG, WEBP o HEIC')
             const blob = await (await fetch(photos[index])).blob()
-            const path = `${auth.user.id}/${action.payload.dispatch_id}/${action.payload.request_id}/${action.id}-${index}.jpg`
-            const { error } = await supabase.storage.from('driver_evidence').upload(path, blob, { upsert: false, contentType: 'image/jpeg' })
+            const path = `${auth.user.id}/${action.payload.dispatch_id}/${action.payload.request_id}/${action.id}-${index}.${kind.ext}`
+            const { error } = await supabase.storage.from('driver_evidence').upload(path, blob, { upsert: false, contentType: kind.type })
             if (error && String(error.statusCode) !== '409') throw error
             paths.push(path)
           }
@@ -108,10 +117,11 @@ export function syncOfflineActions(): Promise<number> {
           if (packing.length > 5) throw new Error('Fotos del Packing List no válidas')
           const packingPaths: string[] = []
           for (let index = 0; index < packing.length; index++) {
-            if (typeof packing[index] !== 'string' || !packing[index].startsWith('data:image/jpeg;base64,')) throw new Error('Fotografía del Packing List no válida')
+            const kind = photoKind(packing[index])
+            if (!kind) throw new Error('Fotografía del Packing List no válida: use JPG, PNG, WEBP o HEIC')
             const blob = await (await fetch(packing[index])).blob()
-            const path = `${auth.user.id}/${action.payload.dispatch_id}/${action.payload.request_id}/${action.id}-p${index}.jpg`
-            const { error } = await supabase.storage.from('driver_evidence').upload(path, blob, { upsert: false, contentType: 'image/jpeg' })
+            const path = `${auth.user.id}/${action.payload.dispatch_id}/${action.payload.request_id}/${action.id}-p${index}.${kind.ext}`
+            const { error } = await supabase.storage.from('driver_evidence').upload(path, blob, { upsert: false, contentType: kind.type })
             if (error && String(error.statusCode) !== '409') throw error
             packingPaths.push(path)
           }
