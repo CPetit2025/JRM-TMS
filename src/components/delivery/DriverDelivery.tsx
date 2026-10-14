@@ -6,6 +6,27 @@ import { conformityLabels, type DeliveryDetail } from '@/lib/delivery'
 import { EvidenceForm, type EvidenceDraft } from './EvidenceForm'
 import { readActionQueue, readRouteQueue, routeQueueKey, saveOfflineAction, syncOfflineActions, syncRoutePoints } from '@/lib/route-point-sync'
 
+// Errores que no son Error (GPS del navegador, Supabase): se muestran con su motivo y en español.
+const GPS_MESSAGES: Record<number, string> = { 1: 'el permiso de ubicación del app está desactivado', 2: 'el GPS está apagado o sin señal', 3: 'no hubo señal GPS a tiempo' }
+export function readableError(err: unknown, fallback: string) {
+  if (err instanceof Error && err.message) return err.message
+  if (err && typeof err === 'object') {
+    const code = (err as { code?: unknown }).code
+    if (typeof GeolocationPositionError !== 'undefined' && err instanceof GeolocationPositionError) return `Ubicación no disponible: ${GPS_MESSAGES[err.code] || err.message}.`
+    const message = (err as { message?: unknown }).message
+    if (typeof message === 'string' && message) return typeof code === 'string' && code ? `${message} (${code})` : message
+  }
+  return fallback
+}
+const gpsPosition = (options: PositionOptions) => new Promise<GeolocationPosition>((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, options))
+// Ubicación de la entrega: alta precisión y, si no llega, la última lectura aproximada. Si no hay GPS, la guía se envía igual
+// (el servidor no la exige); solo se registra el punto en el recorrido cuando la precisión es de 30 m o mejor.
+async function deliveryPosition(): Promise<GeolocationPosition | null> {
+  if (!('geolocation' in navigator)) return null
+  try { return await gpsPosition({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }) }
+  catch { try { return await gpsPosition({ enableHighAccuracy: false, maximumAge: 120000, timeout: 8000 }) } catch { return null } }
+}
+
 const asBase64 = (file: File) => new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error('No se pudo guardar la foto en el dispositivo')); reader.readAsDataURL(file) })
 export function DriverDelivery({ dispatchId, requestId, driverId, userId, guide, documentaryOnly = false, onChanged }: {
   dispatchId: string; requestId: string; driverId: string; userId: string; guide?: string; documentaryOnly?: boolean; onChanged: () => Promise<void>
@@ -24,9 +45,8 @@ export function DriverDelivery({ dispatchId, requestId, driverId, userId, guide,
     setBusy(true); setError('')
     try {
       let capturedAt = new Date().toISOString()
-      if (!documentaryOnly) {
-        const position = await new Promise<GeolocationPosition>((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }))
-        if (position.coords.accuracy > 30) throw new Error('Espere una señal GPS de 30 m o mejor.')
+      const position = documentaryOnly ? null : await deliveryPosition()
+      if (position && position.coords.accuracy <= 30) {
         const points = readRouteQueue()
         capturedAt = new Date(position.timestamp).toISOString()
         points.push({ id: crypto.randomUUID(), dispatch_id: dispatchId, driver_id: driverId, recorded_at: capturedAt, latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy_m: position.coords.accuracy, speed_mps: position.coords.speed })
@@ -39,13 +59,13 @@ export function DriverDelivery({ dispatchId, requestId, driverId, userId, guide,
       setQueued(true)
       if (navigator.onLine) { await syncRoutePoints(); await syncOfflineActions() }
       await load(); await onChanged()
-    } catch (err) { const message = err instanceof Error ? err.message : 'No se pudo enviar la guía'; setError(message); throw new Error(message) }
+    } catch (err) { const message = readableError(err, 'No se pudo enviar la guía. Revise la conexión e intente de nuevo.'); setError(message); throw new Error(message) }
     finally { setBusy(false) }
   }
   const retry = async () => {
     setBusy(true)
     try { await syncRoutePoints(); await syncOfflineActions(); await load(); await onChanged() }
-    catch (err) { setError(err instanceof Error ? err.message : 'No se pudo sincronizar') }
+    catch (err) { setError(readableError(err, 'No se pudo sincronizar. Revise la conexión e intente de nuevo.')) }
     finally { setBusy(false) }
   }
   const correction = detail?.submissions[0]?.review?.reason
