@@ -19,8 +19,8 @@ export function readableError(err: unknown, fallback: string) {
   return fallback
 }
 const gpsPosition = (options: PositionOptions) => new Promise<GeolocationPosition>((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, options))
-// Ubicación de la entrega: alta precisión y, si no llega, la última lectura aproximada. Si no hay GPS, la guía se envía igual
-// (el servidor no la exige); solo se registra el punto en el recorrido cuando la precisión es de 30 m o mejor.
+// Ubicación de la entrega: alta precisión y, si no llega, la última lectura aproximada. Si no hay GPS, la guía se envía igual:
+// el servidor usa el último punto del despacho y marca el tramo como «GPS incompleto».
 async function deliveryPosition(): Promise<GeolocationPosition | null> {
   if (!('geolocation' in navigator)) return null
   try { return await gpsPosition({ enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }) }
@@ -46,7 +46,8 @@ export function DriverDelivery({ dispatchId, requestId, driverId, userId, guide,
     try {
       let capturedAt = new Date().toISOString()
       const position = documentaryOnly ? null : await deliveryPosition()
-      if (position && position.coords.accuracy <= 30) {
+      // El punto de la entrega solo se registra si es preciso y reciente (una lectura vieja llegaría fuera de orden)
+      if (position && position.coords.accuracy <= 30 && Date.now() - position.timestamp <= 15000) {
         const points = readRouteQueue()
         capturedAt = new Date(position.timestamp).toISOString()
         points.push({ id: crypto.randomUUID(), dispatch_id: dispatchId, driver_id: driverId, recorded_at: capturedAt, latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy_m: position.coords.accuracy, speed_mps: position.coords.speed })

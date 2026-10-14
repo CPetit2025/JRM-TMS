@@ -56,6 +56,12 @@ export function saveOfflineAction(type: string, payload: Record<string, unknown>
   localStorage.setItem(actionQueueKey, JSON.stringify(actions))
 }
 
+// P0001: regla del servidor (orden, ruta cerrada, plazo); 42501: RLS; 23505/23502/23514/22P02: datos inválidos o repetidos
+const PERMANENT_POINT_CODES = new Set(['P0001', '42501', '23505', '23502', '23514', '22P02'])
+function permanentPointError(error: { code?: string; message?: string }) {
+  return PERMANENT_POINT_CODES.has(error.code || '') || /deben llegar en orden|sin conductor activo|fuera de rango|no autorizado|row-level security/i.test(error.message || '')
+}
+
 let running: Promise<number> | null = null
 
 export function syncRoutePoints(): Promise<number> {
@@ -72,7 +78,10 @@ export function syncRoutePoints(): Promise<number> {
       ].sort((a, b) => Date.parse(a.point.recorded_at) - Date.parse(b.point.recorded_at))[0]
       if (!next) return 0
       const { error } = await supabase.from('route_track_points').insert(next.point)
-      if (error) throw new Error(`Punto GPS ${next.point.recorded_at}: ${error.message}`)
+      // Un rechazo permanente (fuera de orden, ruta ya cerrada, fuera de plazo, permiso) no debe trabar la cola:
+      // ese punto se descarta y se sigue con el resto. Los errores de red sí detienen la sincronización.
+      if (error && !permanentPointError(error)) throw new Error(`Punto GPS ${next.point.recorded_at}: ${error.message}`)
+      if (error) console.warn('Punto GPS descartado', next.point.recorded_at, error.message)
       if (next.source === 'browser') {
         localStorage.setItem(routeQueueKey,
           JSON.stringify(readRouteQueue().filter(point => point.id !== next.point.id)))
