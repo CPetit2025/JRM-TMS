@@ -28,6 +28,10 @@ BEGIN
     RAISE EXCEPTION 'CAJA C101 FAIL: columnas (T3)'; END IF;
   d := public.apt_ingresos(jsonb_build_object('desde', v_desde, 'hasta', v_hasta), 'detalle', 1, 0);
   IF d->'totales'->>'ingresos' <> r->'totales'->>'ingresos' THEN RAISE EXCEPTION 'CAJA C101 FAIL: detalle (T3)'; END IF;
+  -- T3b: los filtros de las tablas cuadran: «solo sin cliente» suma lo que el total marca sin cliente
+  d := public.apt_ingresos(jsonb_build_object('desde', v_desde, 'hasta', v_hasta, 'sin_cliente', true), 'resumen', 1, 0);
+  IF (d->'totales'->>'tn')::numeric <> (r->'totales'->>'sin_cliente_tn')::numeric THEN
+    RAISE EXCEPTION 'CAJA C101 FAIL: filtro sin cliente (T3) % vs %', d->'totales'->>'tn', r->'totales'->>'sin_cliente_tn'; END IF;
   -- T4: vista no válida y fechas invertidas se rechazan
   IF (public.apt_ingresos('{}'::jsonb, 'otra', 1, 0)->>'success')::boolean
      OR (public.apt_ingresos('{"desde":"2026-02-01","hasta":"2026-01-01"}'::jsonb, 'resumen', 1, 0)->>'success')::boolean THEN
