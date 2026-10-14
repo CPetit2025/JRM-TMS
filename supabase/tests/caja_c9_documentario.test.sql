@@ -198,11 +198,11 @@ BEGIN
   IF r = '["ZZ-C9-D4"]'::jsonb AND v_err LIKE 'Sin permiso%'
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T6 bandeja: ' || COALESCE(r::text, '∅') || ' | ' || COALESCE(v_err, '∅')); END IF;
 
-  -- T7: programar usa la reserva de la solicitud aprobada (la exigencia de documentos la verifica C72)
+  -- T7: programar reserva el flete real con la solicitud aprobada (la exigencia de documentos la verifica C72)
   INSERT INTO public.transport_requests (request_number, status, site_id, contract_id, service_cost, requester_name, department, request_type, cargo_description, pickup_address, pickup_district, delivery_address, delivery_district, required_date) VALUES
     ('ZZ-C9-R4', 'PENDIENTE DE APROBACIÓN', v_site, v_ct, 900, 'ZZ', 'Logística', 'DESPACHO', 'Carga de prueba', 'Planta', 'Lurín', 'Obra 4', 'Ate', current_date)
   RETURNING id INTO r4;
-  UPDATE public.transport_requests SET status = 'APROBADA', approved_at = now() WHERE id = r4;  -- reserva 900
+  UPDATE public.transport_requests SET status = 'APROBADA', approved_at = now() WHERE id = r4;  -- referencial: no reserva
   UPDATE public.dispatches SET driver_id = NULL WHERE id = d1;  -- libera al conductor (índice de despacho activo)
   PERFORM pg_temp.as_user(v_desp);
   v_err := NULL;

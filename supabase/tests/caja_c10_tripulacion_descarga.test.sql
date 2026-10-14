@@ -73,7 +73,8 @@ BEGIN
   SELECT id INTO rb FROM public.transport_requests WHERE request_number = 'ZZ-C10-RB';
   UPDATE public.transport_requests SET approved_at = now() WHERE id = rb;
 
-  -- T1: Contratos estima la descarga; flete + descarga sobre el saldo deja la solicitud observada y se levanta al corregir
+  -- T1: Contratos estima la descarga; flete + descarga sobre el saldo no observa la solicitud (costo referencial:
+  --     la partida se valida al armar la ruta) y aprobar no reserva
   PERFORM pg_temp.as_user(v_contr);
   r := public.save_request_unloading_costs(ra, '[{"concept":"MONTACARGAS","estimated_pen":200},{"concept":"ESTIBA","estimated_pen":100}]');
   v_err := (SELECT status FROM public.transport_requests WHERE id = ra);
@@ -84,10 +85,10 @@ BEGIN
   v_err3 := public.save_request_unloading_costs(ra, '[]')->>'error';
   PERFORM pg_temp.as_user(NULL);
   UPDATE public.transport_requests SET status = 'APROBADA' WHERE id = ra;  -- el Supervisor de Despacho aprueba
-  IF v_err = 'PENDIENTE DE APROBACIÓN' AND v_err2 LIKE 'OBSERVADA%flete + descarga%' AND (r->>'success')::boolean
+  IF v_err = 'PENDIENTE DE APROBACIÓN' AND v_err2 LIKE 'PENDIENTE DE APROBACIÓN%' AND (r->>'success')::boolean
      AND v_err3 LIKE 'Sin permiso%'
-     AND (SELECT status = 'APROBADA' AND reserved_pen = 600 AND unloading_estimate_pen = 300 FROM public.transport_requests WHERE id = ra)
-     AND (SELECT reserved_pen = 600 FROM public.contract_budgets WHERE contract_id = v_ct)
+     AND (SELECT status = 'APROBADA' AND COALESCE(reserved_pen, 0) = 0 AND unloading_estimate_pen = 300 FROM public.transport_requests WHERE id = ra)
+     AND (SELECT reserved_pen = 0 FROM public.contract_budgets WHERE contract_id = v_ct)
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T1 estimación: ' || concat_ws(' | ', COALESCE(v_err, '∅'), COALESCE(v_err2, '∅'), COALESCE(v_err3, '∅'), COALESCE(r::text, '∅'))
        || ' reserva=' || (SELECT reserved_pen FROM public.contract_budgets WHERE contract_id = v_ct)); END IF;
 
@@ -109,7 +110,7 @@ BEGIN
   PERFORM pg_temp.as_user(NULL);
   IF (r->>'success')::boolean AND v_err LIKE '%es el conductor del despacho' AND v_err2 LIKE 'Solo el Supervisor de Transporte%'
      AND v_err3 LIKE '%ya está asignado al despacho%' AND v_n = 2
-     -- al programar, la reserva de la solicitud (flete + descarga) cede su lugar al flete del despacho
+     -- al programar se reserva el flete real del despacho
      AND (SELECT reserved_pen = 300 FROM public.contract_budgets WHERE contract_id = v_ct)
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T2 tripulación: ' || concat_ws(' | ', COALESCE(r::text, '∅'), COALESCE(v_err, '∅'), COALESCE(v_err2, '∅'), COALESCE(v_err3, '∅')) || ' n=' || v_n
        || ' reserva=' || (SELECT reserved_pen FROM public.contract_budgets WHERE contract_id = v_ct)); END IF;
