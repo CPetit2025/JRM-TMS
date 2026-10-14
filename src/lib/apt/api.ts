@@ -156,7 +156,7 @@ export function cleanFilters<T extends object = AptFilters>(f: T): T {
   return out as T
 }
 
-export type AptIngresoFilters = { desde?: string; hasta?: string; ot?: string; cliente?: string; glosa?: string }
+export type AptIngresoFilters = { desde?: string; hasta?: string; ot?: string; lote?: string; cliente?: string; glosa?: string; documento?: string; sin_cliente?: boolean }
 export type AptIngresoRow = {
   ot: string; lote: string; cliente: string; producto: string | null; glosa: string | null; unidad: string | null; cantidad: number | null; kg: number
   fecha?: string; documento?: string | null; ingresos?: number; primera?: string; ultima?: string
