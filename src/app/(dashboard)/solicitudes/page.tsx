@@ -681,11 +681,8 @@ export default function SolicitudesPage() {
       toast.error('Revise los costos estimados.')
       return
     }
-    if (newRequest.contract_id && estimatedCost > 0 && estimatedCost > Number(rootBalance || 0) && !window.confirm(
-      `El costo estimado (flete + descarga S/ ${estimatedCost.toLocaleString('es-PE')}) supera el saldo de la partida ` +
-      `(S/ ${Number(rootBalance || 0).toLocaleString('es-PE')}). La solicitud quedará OBSERVADA y no se atenderá hasta ampliar la partida. ¿Registrar de todos modos?`)) {
-      return
-    }
+    // El costo de la solicitud es referencial: no bloquea; el saldo se valida al armar la ruta con la unidad asignada
+    const referentialOverBalance = Boolean(newRequest.contract_id) && estimatedCost > 0 && rootBalance != null && estimatedCost > Number(rootBalance)
     if (requiresSupplier({ request_type: newRequest.request_type, attention_mode: newRequest.attention_mode }) && !newRequest.supplier_id) {
       toast.error('Seleccione el proveedor del recojo o traslado. Si no existe, use «Nuevo proveedor» en la misma solicitud.')
       return
@@ -712,9 +709,10 @@ export default function SolicitudesPage() {
         }))
       })
       if (error) throw error
-      if (saved?.status === 'OBSERVADA') toast.warning(newRequest.contract_id ? 'Solicitud observada: la partida no cubre los costos a cargo de JRM.' : 'Solicitud registrada con observaciones; revise los costos y la referencia antes de su aprobación.')
+      if (saved?.status === 'OBSERVADA') toast.warning('Solicitud registrada con observaciones; revise los costos y la referencia antes de su aprobación.')
 
       toast.success('Solicitud enviada correctamente')
+      if (referentialOverBalance) toast.info(`El costo referencial (S/ ${estimatedCost.toLocaleString('es-PE')}) supera hoy el saldo de la partida (S/ ${Number(rootBalance).toLocaleString('es-PE')}). Es solo referencial: el saldo se valida al armar la ruta con la unidad asignada.`)
       if (!editingRequestId && draftMode) clearDraft()
       setUnloading([]); setUnloadingAnswer(''); setUnloadingHistory([])
       setQuote(null)
@@ -777,10 +775,10 @@ export default function SolicitudesPage() {
       if (error) throw error
 
       if (newStatus === 'APROBADA') {
-        // Sin saldo en la partida la aprobación deja la solicitud OBSERVADA (no se reserva)
+        // La aprobación no reserva ni observa por partida; se conserva el aviso por otras observaciones
         const { data: after } = await supabase.from('transport_requests').select('status, budget_observation').eq('id', id).maybeSingle()
         if (after?.status === 'OBSERVADA') {
-          toast.warning(`No se aprobó: ${after.budget_observation || 'partida insuficiente'}.`)
+          toast.warning(`No se aprobó: ${after.budget_observation || 'solicitud observada'}.`)
           fetchRequests()
           return
         }
@@ -1137,7 +1135,7 @@ export default function SolicitudesPage() {
                 return root && <p className="mt-1 text-xs text-slate-600">
                   Partida bruta OT raíz: S/ {Number(root.allocated_pen || 0).toLocaleString('es-PE')} ·
                   Operación 80%: S/ {operatingBudget(Number(root.allocated_pen || 0)).toLocaleString('es-PE')} · Saldo operativo: S/ {Number(root.balance_pen || 0).toLocaleString('es-PE')}
-                  <span className="block text-amber-700">La vinculación de componentes no exige partida propia. El presupuesto disponible se valida al aprobar el servicio.</span>
+                  <span className="block text-amber-700">La vinculación de componentes no exige partida propia. El saldo disponible se valida al armar la ruta, con la unidad asignada.</span>
                 </p>
               })()}
               {newRequest.contract_id && <div className="mt-3">
@@ -1270,8 +1268,14 @@ export default function SolicitudesPage() {
                   S/ {quoteFreight.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  {isCustomerPickup ? 'El cliente gestiona el transporte: no se cotiza ni reserva flete JRM.' : referenceRequired && !newRequest.contract_id ? 'Costo referencial según tarifario. El supervisor aprueba los costos contra la OC, OS o RQ; la ruta debe respetar el monto autorizado.' : 'Costo referencial según tarifario. Los gastos JRM se imputan a la partida de la OT; el armado de ruta valida el importe.'}
+                  {isCustomerPickup ? 'El cliente gestiona el transporte: no se cotiza ni reserva flete JRM.' : referenceRequired && !newRequest.contract_id ? 'Costo referencial según tarifario. El supervisor aprueba los costos contra la OC, OS o RQ; la ruta debe respetar el monto autorizado.' : 'Costo referencial según tarifario: no condiciona la solicitud ni su aprobación. El tipo de unidad y el flete real se definen al armar la ruta, donde se valida el saldo de la partida.'}
                 </p>
+                {!isCustomerPickup && (() => {
+                  const range = quote?.freight_range as { min?: number; max?: number } | null | undefined
+                  if (!range || range.max == null || Number(range.max) <= Number(range.min)) return null
+                  const fmt = (n: number) => Number(n).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                  return <p className="mt-1 text-xs text-slate-600">Sin unidad definida (indique el peso para afinarlo): rango S/ {fmt(Number(range.min))} – S/ {fmt(Number(range.max))} según la unidad que se asigne en el armado de ruta.</p>
+                })()}
                 {quote ? <QuoteBreakdown quote={quote} compact />
                   : <p className="text-xs text-slate-400 mt-1">Elige la OT y el distrito de destino para calcularlo.</p>}
               </div>}

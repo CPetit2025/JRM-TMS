@@ -67,48 +67,42 @@ BEGIN
   SELECT id INTO rb FROM public.transport_requests WHERE request_number = 'ZZ-C8-RB';
   SELECT id INTO rc FROM public.transport_requests WHERE request_number = 'ZZ-C8-RC';
 
-  -- T1: aprueba solo el Supervisor de Despacho; aprobar reserva el costo estimado
+  -- T1: aprueba solo el Supervisor de Despacho; el costo de la solicitud es referencial: aprobar no reserva partida
+  --     (el saldo se valida y reserva al armar la ruta con el flete real)
   PERFORM pg_temp.as_user(v_contr);
   v_err := pg_temp.try_status(ra, 'APROBADA');
   PERFORM pg_temp.as_user(v_sup);
   v_err2 := pg_temp.try_status(ra, 'APROBADA');
   PERFORM pg_temp.as_user(NULL);
   IF v_err LIKE 'Solo el Supervisor de Despacho%' AND v_err2 IS NULL
-     AND (SELECT status = 'APROBADA' AND reserved_pen = 400 AND approved_by = v_sup FROM public.transport_requests WHERE id = ra)
-     AND (SELECT reserved_pen = 400 AND balance_pen = 600 FROM public.contract_budgets WHERE contract_id = v_ct)
+     AND (SELECT status = 'APROBADA' AND COALESCE(reserved_pen, 0) = 0 AND approved_by = v_sup FROM public.transport_requests WHERE id = ra)
+     AND (SELECT reserved_pen = 0 AND balance_pen = 1000 FROM public.contract_budgets WHERE contract_id = v_ct)
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T1 aprobar: ' || COALESCE(v_err, '∅') || ' | ' || COALESCE(v_err2, '∅')); END IF;
 
-  -- T2: sin saldo la aprobación deja la solicitud OBSERVADA con el faltante; observada no se aprueba
-  PERFORM pg_temp.as_user(v_sup);
-  v_err := pg_temp.try_status(rb, 'APROBADA');
-  v_err2 := pg_temp.try_status(rb, 'APROBADA');
-  PERFORM pg_temp.as_user(NULL);
-  IF v_err IS NULL AND v_err2 LIKE 'Solicitud observada%'
-     AND (SELECT status = 'OBSERVADA' AND budget_shortfall = 200 AND reserved_pen = 0 FROM public.transport_requests WHERE id = rb)
-     AND (SELECT reserved_pen = 400 FROM public.contract_budgets WHERE contract_id = v_ct)
-  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T2 observada: ' || COALESCE(v_err, '∅') || ' | ' || COALESCE(v_err2, '∅')); END IF;
-
-  -- T3: ampliar la partida levanta la observación; luego se aprueba y reserva
-  UPDATE public.contract_budgets SET allocated_pen = 1500 WHERE contract_id = v_ct;
+  -- T2: un referencial mayor al saldo no observa la solicitud: se aprueba (la partida se valida al armar la ruta)
   PERFORM pg_temp.as_user(v_sup);
   v_err := pg_temp.try_status(rb, 'APROBADA');
   PERFORM pg_temp.as_user(NULL);
-  IF v_err IS NULL AND (SELECT status = 'APROBADA' AND reserved_pen = 800 AND budget_observation IS NULL FROM public.transport_requests WHERE id = rb)
-     AND (SELECT reserved_pen = 1200 AND balance_pen = 0 FROM public.contract_budgets WHERE contract_id = v_ct)
-  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T3 levantar: ' || COALESCE(v_err, '∅')); END IF;
+  IF v_err IS NULL
+     AND (SELECT status = 'APROBADA' AND COALESCE(budget_shortfall, 0) = 0 AND budget_observation IS NULL AND COALESCE(reserved_pen, 0) = 0 FROM public.transport_requests WHERE id = rb)
+  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T2 sin observación: ' || COALESCE(v_err, '∅')); END IF;
 
-  -- T4: reprogramar una aprobada (Supervisor) conserva su reserva; Contratos sin rol de administrador no reprograma
+  -- T3: la partida queda intacta tras aprobar (sin reservas por el referencial)
+  IF (SELECT reserved_pen = 0 AND balance_pen = 1000 FROM public.contract_budgets WHERE contract_id = v_ct)
+  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T3 partida intacta'; END IF;
+
+  -- T4: reprogramar una aprobada (Supervisor) conserva su aprobación; Contratos sin rol de administrador no reprograma
   PERFORM pg_temp.as_user(v_sup);
   v_err := pg_temp.try_status(ra, 'REPROGRAMADA', current_date + 3);
   PERFORM pg_temp.as_user(v_contr);
   v_err2 := pg_temp.try_status(rb, 'REPROGRAMADA', current_date + 3);
   PERFORM pg_temp.as_user(NULL);
   IF v_err IS NULL AND v_err2 LIKE 'Reprograman el Supervisor%'
-     AND (SELECT status = 'REPROGRAMADA' AND reserved_pen = 400 AND approved_at IS NOT NULL FROM public.transport_requests WHERE id = ra)
-     AND (SELECT reserved_pen = 1200 FROM public.contract_budgets WHERE contract_id = v_ct)
+     AND (SELECT status = 'REPROGRAMADA' AND COALESCE(reserved_pen, 0) = 0 AND approved_at IS NOT NULL FROM public.transport_requests WHERE id = ra)
+     AND (SELECT reserved_pen = 0 FROM public.contract_budgets WHERE contract_id = v_ct)
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T4 reprogramar: ' || COALESCE(v_err, '∅') || ' | ' || COALESCE(v_err2, '∅')); END IF;
 
-  -- T5: al programarse se libera su reserva; si se cancela estando en un despacho PROGRAMADO sale del despacho
+  -- T5: al programarse el despacho reserva su flete; si se cancela estando en un despacho PROGRAMADO sale del despacho
   --     (sin paradas el despacho se cancela y libera su flete)
   UPDATE public.transport_requests SET status = 'ASIGNADA' WHERE id = ra;
   INSERT INTO public.dispatches (dispatch_number, vehicle_plate, status, site_id, contract_id, freight_cost)
@@ -120,7 +114,7 @@ BEGIN
   PERFORM pg_temp.as_user(NULL);
   IF v_err IS NULL AND (SELECT status = 'CANCELADA' FROM public.transport_requests WHERE id = ra)
      AND (SELECT status = 'CANCELADO' FROM public.dispatches WHERE id = d1)
-     AND (SELECT reserved_pen = 800 FROM public.contract_budgets WHERE contract_id = v_ct)
+     AND (SELECT reserved_pen = 0 FROM public.contract_budgets WHERE contract_id = v_ct)
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T5 retirar: ' || COALESCE(v_err, '∅') || ' ' ||
        (SELECT reserved_pen::text FROM public.contract_budgets WHERE contract_id = v_ct)); END IF;
 
