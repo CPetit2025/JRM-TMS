@@ -1,4 +1,5 @@
 import {
+  PackagePlus,
   ArchiveRestore, BadgeCheck, BadgeDollarSign, Banknote, BarChart3, BookOpenCheck, Briefcase, Building2, Calculator, CalendarClock, CalendarRange,
   ChartColumn, CircleCheckBig, CircleDot, ClipboardCheck, ClipboardList, Container, Database, Factory, FileSignature,
   FileText, FileUp, Fuel, Gauge, HardHat, Home, Hourglass, KeyRound, Map as MapIcon, MapPin, PackageCheck,
@@ -57,6 +58,7 @@ export const NAV_SECTIONS: NavSection[] = [
   { id: 'apt', title: 'Almacén APT', icon: Warehouse, groups: [{ items: [
     { href: '/apt', label: 'Analítica Operativa APT', icon: ChartColumn, show: any('apt', 'apt-carga'), keywords: 'apt analitica inventario saldo stock calidad rotacion' },
     { href: '/apt/operacion', label: 'Control de OT y Lotes', icon: ClipboardCheck, show: any('apt', 'apt-carga'), keywords: 'apt ot lote pendientes permanencia acciones' },
+    { href: '/apt/ingresos', label: 'Ingresos APT', icon: PackagePlus, show: any('apt', 'apt-carga'), keywords: 'apt ingreso entrada produccion ot lote cliente glosa cantidad reporte' },
     { href: '/apt/estadia', label: 'Estadía de Producción', icon: Hourglass, show: any('apt', 'apt-carga'), keywords: 'apt estadia cohorte fifo aging' },
     { href: '/apt/gantt', label: 'Trazabilidad SCM · Gantt', icon: CalendarRange, show: any('apt', 'apt-carga'), keywords: 'apt gantt ot lote trazabilidad toneladas tn permanencia' },
     { href: '/apt/flujo', label: 'Flujo multi‑almacén', icon: Workflow, show: any('apt'), keywords: '647 540 st ventas flujo almacen' },
