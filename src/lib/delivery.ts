@@ -74,17 +74,48 @@ export function documentNumbersByStop(docs: { dispatch_id: string; transport_req
   return new Map([...lists].map(([key, entry]) => [key, { guide: entry.guides.join(' · ') || undefined, note: entry.notes.join(' · ') || undefined }]))
 }
 // Camera photos are reduced before upload/queuing; server independently decodes them.
-export async function deliveryPhoto(file: File): Promise<File> {
-  const bitmap = await createImageBitmap(file)
+// Algunos WebView de Android no decodifican ciertas fotos con createImageBitmap («The source image could not be
+// decoded»): fotos muy grandes de la cámara, HEIC o archivos de galería en la nube. Se intenta con <img> y, si el
+// teléfono tampoco puede, se envía el original cuando el formato y el tamaño lo permiten.
+const PHOTO_TYPES: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', heic: 'image/heic', heif: 'image/heic' }
+const ORIGINAL_MAX = 3.5 * 1024 * 1024
+const photoType = (file: File) => file.type || PHOTO_TYPES[file.name.split('.').pop()?.toLowerCase() || ''] || ''
+
+async function decodePhoto(file: File): Promise<{ source: CanvasImageSource; width: number; height: number; close: () => void }> {
   try {
-    const ratio = Math.min(1, 1280 / Math.max(bitmap.width, bitmap.height))
+    const bitmap = await createImageBitmap(file)
+    return { source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close() }
+  } catch { /* se intenta con <img> */ }
+  const url = URL.createObjectURL(file)
+  try {
+    const image = new Image()
+    await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error('decode')); image.src = url })
+    if (!image.naturalWidth || !image.naturalHeight) throw new Error('decode')
+    return { source: image, width: image.naturalWidth, height: image.naturalHeight, close: () => URL.revokeObjectURL(url) }
+  } catch (error) { URL.revokeObjectURL(url); throw error }
+}
+
+export async function deliveryPhoto(file: File): Promise<File> {
+  if (!file.size) throw Error('La foto llegó vacía. Vuelva a tomarla o elíjala nuevamente de la galería.')
+  const type = photoType(file)
+  // Sin poder reducirla en el teléfono, se envía tal cual (JPG, PNG, WEBP o HEIC de hasta 3,5 MB)
+  const original = () => {
+    if (type && Object.values(PHOTO_TYPES).includes(type) && file.size <= ORIGINAL_MAX) return new File([file], file.name || 'guia.jpg', { type })
+    throw Error(file.size > ORIGINAL_MAX
+      ? 'El teléfono no pudo procesar la foto y es muy pesada para enviarla así. Tómela de nuevo con «Tomar foto» o elija una foto JPG.'
+      : 'No se pudo leer la foto (formato no compatible). Tómela de nuevo con «Tomar foto» o elija una foto JPG.')
+  }
+  let decoded: Awaited<ReturnType<typeof decodePhoto>>
+  try { decoded = await decodePhoto(file) } catch { return original() }
+  try {
+    const ratio = Math.min(1, 1280 / Math.max(decoded.width, decoded.height))
     const canvas = document.createElement('canvas')
-    canvas.width = Math.round(bitmap.width * ratio); canvas.height = Math.round(bitmap.height * ratio)
+    canvas.width = Math.round(decoded.width * ratio); canvas.height = Math.round(decoded.height * ratio)
     const context = canvas.getContext('2d')
-    if (!context) throw Error('No se pudo preparar la fotografía')
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    if (!context) return original()
+    context.drawImage(decoded.source, 0, 0, canvas.width, canvas.height)
     const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8))
-    if (!blob) throw Error('No se pudo preparar la fotografía')
+    if (!blob || !blob.size) return original()
     return new File([blob], 'guia.jpg', { type: 'image/jpeg' })
-  } finally { bitmap.close() }
+  } catch { return original() } finally { decoded.close() }
 }
