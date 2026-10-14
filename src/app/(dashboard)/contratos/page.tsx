@@ -15,6 +15,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { MAX_TONS, checkVolume, kgHint, tonsToKg } from '@/lib/contract-weight'
 import { ContractQuickView } from '@/components/contratos/ContractQuickView'
 import { ClaimContractsModal } from '@/components/contratos/ClaimContractsModal'
+import { clientDocLabel } from '@/lib/countries'
 import { InlineClientCreator } from '@/components/contratos/InlineClientCreator'
 
 interface Contract {
@@ -186,7 +187,7 @@ export default function ContratosPage() {
 
   const fetchClients = async () => {
     try {
-      const { data, error } = await supabase.from('clients').select('id, business_name, tax_id').eq('is_active', true)
+      const { data, error } = await supabase.from('clients').select('id, business_name, tax_id, country_code, country_name').eq('is_active', true)
       if (!error && data) setClients(data)
     } catch (e) {
       console.error('Error fetching clients', e)
@@ -869,7 +870,7 @@ export default function ContratosPage() {
                 {!addingClient && <SearchableSelect
                   value={newContract.client_id}
                   onChange={(val) => setNewContract({...newContract, client_id: val})}
-                  options={clients.map(c => ({ value: c.id, label: `${c.business_name} (${c.tax_id})` }))}
+                  options={clients.map(c => ({ value: c.id, label: `${c.business_name} (${clientDocLabel(c)})` }))}
                   placeholder="-- Buscar por RUC o razón social --"
                 />}
                 {!addingClient && <p className="mt-1 text-xs text-slate-500">¿No aparece? Use <b>Nuevo cliente</b>: se registra con el RUC de SUNAT sin salir de esta ventana.</p>}
@@ -936,7 +937,7 @@ export default function ContratosPage() {
                 <SearchableSelect
                   value={editFormData.client_id}
                   onChange={(val) => setEditFormData({ ...editFormData, client_id: val })}
-                  options={clients.map(c => ({ value: c.id, label: `${c.business_name} (${c.tax_id})` }))}
+                  options={clients.map(c => ({ value: c.id, label: `${c.business_name} (${clientDocLabel(c)})` }))}
                   placeholder="-- Buscar por RUC o razón social --"
                 />
                 <p className="mt-1 text-xs text-slate-500">

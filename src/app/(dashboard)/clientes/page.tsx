@@ -9,6 +9,7 @@ import ExcelJS from 'exceljs'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { ClientFormModal, ClientData } from '@/components/forms/ClientFormModal'
+import { foreignCountry, isForeignCountry } from '@/lib/countries'
 
 interface Client extends ClientData {}
 
@@ -243,7 +244,7 @@ export default function ClientesPage() {
                   <span className="flex items-center">Razon Social <SortIcon field="business_name" /></span>
                 </th>
                 <th className="p-4 font-semibold cursor-pointer" aria-sort={sortField === 'tax_id' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'} onClick={() => handleSort('tax_id')}>
-                  <span className="flex items-center">RUC (Tax ID) <SortIcon field="tax_id" /></span>
+                  <span className="flex items-center">RUC / Documento <SortIcon field="tax_id" /></span>
                 </th>
                 <th className="p-4 font-semibold cursor-pointer" aria-sort={sortField === 'contact_name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'} onClick={() => handleSort('contact_name')}>
                   <span className="flex items-center">Contacto <SortIcon field="contact_name" /></span>
@@ -271,7 +272,7 @@ export default function ClientesPage() {
                         <span className="font-semibold text-slate-800">{client.business_name}</span>
                       </div>
                     </td>
-                    <td className="p-4 text-sm text-slate-600 font-medium">{client.tax_id}</td>
+                    <td className="p-4 text-sm text-slate-600 font-medium">{client.tax_id}{isForeignCountry(client.country_code) && <span className="mt-1 block w-fit rounded bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-800 ring-1 ring-violet-200">Extranjero · {foreignCountry(client.country_code)?.name || client.country_name || client.country_code}</span>}</td>
                     <td className="p-4 text-sm text-slate-600">{client.contact_name || '-'}</td>
                     <td className="p-4 text-sm text-slate-600">
                       <div className="flex flex-col"><span>{client.phone || '-'}</span><span className="text-xs text-slate-400">{client.email || '-'}</span></div>
