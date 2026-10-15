@@ -9,7 +9,6 @@ import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filte
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 
 import { DEFAULT_LEAD_TIME_SETTINGS, evaluateLeadTime, settingsForRequest, limaDateTimeToIso, limaInputParts, formatLeadTimeStatus, type DeliveryZone, type TransportLeadTimeSettings } from '@/lib/transport-lead-time'
-import { operatingBudget } from '@/lib/transport-budget'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Plus, Send, Check, X, Search, Loader2, Clock, CalendarClock, Ban, Edit2, ArrowUpDown, ArrowUp, ArrowDown, Eye, Layers, CheckCircle2, Truck, Copy, FilePen, History } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -1134,7 +1133,7 @@ export default function SolicitudesPage() {
                 const root = componentOptions.find(c => c.contract_id === newRequest.contract_id)
                 return root && <p className="mt-1 text-xs text-slate-600">
                   Partida bruta OT raíz: S/ {Number(root.allocated_pen || 0).toLocaleString('es-PE')} ·
-                  Operación 80%: S/ {operatingBudget(Number(root.allocated_pen || 0)).toLocaleString('es-PE')} · Saldo operativo: S/ {Number(root.balance_pen || 0).toLocaleString('es-PE')}
+                  Saldo operativo: S/ {Number(root.balance_pen || 0).toLocaleString('es-PE')}
                   <span className="block text-amber-700">La vinculación de componentes no exige partida propia. El saldo disponible se valida al armar la ruta, con la unidad asignada.</span>
                 </p>
               })()}
