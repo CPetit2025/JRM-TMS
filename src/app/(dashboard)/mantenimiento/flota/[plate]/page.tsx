@@ -183,6 +183,7 @@ export default function Flota360Page() {
       )}
       {tab === 'operacion' && (
         <div className="grid md:grid-cols-2 gap-4">
+          <a href={`/flota/reporte-unidad?plate=${encodeURIComponent(plate)}`} className="md:col-span-2 inline-flex w-fit items-center gap-1.5 rounded-lg bg-[#002855] px-3 py-2 text-sm font-semibold text-white">Ver reporte diario de la unidad (km, OT, peso)</a>
           <Table empty="Sin viajes" rows={data.dispatches}
             cols={[['Despacho', r => txt(r.dispatch_number)], ['Estado', r => txt(r.status)], ['Conductor', r => txt(r.driver_name)], ['Salida', r => date(r.scheduled_departure)]]} />
           <Table empty="Sin lecturas de odómetro" rows={data.readings}

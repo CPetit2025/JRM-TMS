@@ -93,6 +93,7 @@ function appFixture({registered=true,authorized=false,queued=false}={}) { let cu
    if(name==='@/lib/offline/preuse-runtime')return{syncOwnPreuse:async()=>{}}
    if(name==='@/components/driver/PreuseSignature')return{PreuseSignature:()=>null}
    if(name==='@/lib/caja')return{errorMessage:e=>e?.message||String(e)}
+   if(name==='@/lib/odometer')return{fileToDataUrl:async()=>'data:image/jpeg;base64,',formatKm:v=>`${v} km`,odometerPhotoPath:(p,o)=>`${p}/odometro/${o}.jpg`,prepareOdometerPhoto:async f=>f,uploadOdometerPhoto:async(_,path)=>path}
    if(name==='next/link')return({children})=>React.createElement('a',null,children)
    if(name==='sonner')return{toast:{success(){},warning(){},error(){}}}
    return require(name)

@@ -21,6 +21,14 @@ END $$;
 -- Test-only temporary helpers: public execution defaults are intentionally revoked.
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
 
+-- Odómetro con foto del tablero (obligatorio en el checklist diario desde 2026-10)
+CREATE FUNCTION pg_temp.odo(p_user uuid, p_km numeric) RETURNS jsonb LANGUAGE plpgsql AS $odo$
+DECLARE v_path text := p_user::text || '/odometro/' || gen_random_uuid()::text || '.jpg';
+BEGIN
+ INSERT INTO storage.objects(bucket_id, name) VALUES ('driver_evidence', v_path);
+ RETURN jsonb_build_object('odometer', p_km::text, 'odometer_photo', v_path);
+END $odo$;
+GRANT EXECUTE ON FUNCTION pg_temp.odo(uuid, numeric) TO authenticated;
 DO $test$
 DECLARE actor uuid; other_actor uuid; site uuid; carrier uuid; driver uuid; driver2 uuid; vehicle uuid; vehicle2 uuid;
  plate text:='ZZ51'||upper(substr(replace(gen_random_uuid()::text,'-',''),1,5)); unit jsonb; next_unit jsonb; r jsonb; data jsonb; bad boolean; operation uuid:=gen_random_uuid();
@@ -49,6 +57,7 @@ BEGIN
  'technical_review_expiration',current_date+365,'vehicle_operational',true,'observation','Prueba C51','inspector_name','Victor C51',
  'signature','[[{"x":0.1,"y":0.3},{"x":0.2,"y":0.5},{"x":0.4,"y":0.4},{"x":0.7,"y":0.6}]]'::jsonb,
  'answers',jsonb_agg(jsonb_build_object('code',i.code,'response','B','comment',''))) INTO data FROM public.checklist_items i JOIN public.checklist_templates t ON t.id=i.template_id WHERE t.code='FR_DT007';
+ data:=data||pg_temp.odo(actor,1500);
  r:=public.submit_driver_preuse(operation,(unit->>'revision')::uuid,now(),data);
  IF r->>'can_operate' IS DISTINCT FROM 'true' THEN RAISE EXCEPTION 'CAJA C51 FAIL: inspección correcta no habilita unidad'; END IF;
  -- Guardar otros datos o leer el contexto no invalida la inspección de la misma unidad/día.

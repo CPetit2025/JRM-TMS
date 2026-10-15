@@ -1,4 +1,12 @@
 BEGIN;
+-- Odómetro con foto del tablero (obligatorio en el checklist diario desde 2026-10)
+CREATE FUNCTION pg_temp.odo(p_user uuid, p_km numeric) RETURNS jsonb LANGUAGE plpgsql AS $odo$
+DECLARE v_path text := p_user::text || '/odometro/' || gen_random_uuid()::text || '.jpg';
+BEGIN
+ INSERT INTO storage.objects(bucket_id, name) VALUES ('driver_evidence', v_path);
+ RETURN jsonb_build_object('odometer', p_km::text, 'odometer_photo', v_path);
+END $odo$;
+GRANT EXECUTE ON FUNCTION pg_temp.odo(uuid, numeric) TO authenticated;
 DO $test$
 DECLARE admin_id uuid; actor uuid; driver uuid; site uuid; carrier uuid; unit jsonb; other_unit jsonb;
  data jsonb; r jsonb; operation uuid:=gen_random_uuid(); dispatch uuid; bad boolean; daily_guard boolean:=to_regprocedure('public.get_driver_preuse_daily_status(text)') IS NOT NULL; last_operation uuid; first_operation uuid; grant_id uuid; total_before bigint; previous_claims text;
@@ -36,6 +44,7 @@ BEGIN
    JOIN public.checklist_templates t ON t.id=i.template_id WHERE t.code='FR_DT007';
 
  SELECT count(*) INTO total_before FROM public.driver_preuse_inspections;
+ data:=data||pg_temp.odo(actor,1500);
  r:=public.submit_driver_preuse(operation,(unit->>'revision')::uuid,now(),data);
  first_operation:=(r->>'operation_id')::uuid;
  r:=public.submit_driver_preuse(gen_random_uuid(),(unit->>'revision')::uuid,now(),data);

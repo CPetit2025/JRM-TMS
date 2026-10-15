@@ -28,6 +28,14 @@ END $$;
 -- Test-only temporary helpers: public execution defaults are intentionally revoked.
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
 
+-- Odómetro con foto del tablero (obligatorio en el checklist diario desde 2026-10)
+CREATE FUNCTION pg_temp.odo(p_user uuid, p_km numeric) RETURNS jsonb LANGUAGE plpgsql AS $odo$
+DECLARE v_path text := p_user::text || '/odometro/' || gen_random_uuid()::text || '.jpg';
+BEGIN
+ INSERT INTO storage.objects(bucket_id, name) VALUES ('driver_evidence', v_path);
+ RETURN jsonb_build_object('odometer', p_km::text, 'odometer_photo', v_path);
+END $odo$;
+GRANT EXECUTE ON FUNCTION pg_temp.odo(uuid, numeric) TO authenticated;
 DO $test$
 DECLARE actor uuid; driver_actor uuid; site uuid; carrier uuid; provider uuid; client uuid; supplier uuid; readonly_role uuid; test_role uuid; ct uuid; ct2 uuid; sub uuid;
  req uuid; req2 uuid; added uuid; rejected uuid; route uuid; context jsonb; result jsonb; operation uuid:=gen_random_uuid();
@@ -135,6 +143,7 @@ BEGIN
    'observation','Prueba C80','inspector_name','Conductor C80','signature','[[{"x":0.1,"y":0.3},{"x":0.2,"y":0.5},{"x":0.4,"y":0.4},{"x":0.7,"y":0.6}]]'::jsonb,
    'answers',jsonb_agg(jsonb_build_object('code',i.code,'response','B','comment',''))) INTO inspection FROM public.checklist_items i
  JOIN public.checklist_templates tpl ON tpl.id=i.template_id WHERE tpl.code='FR_DT007';
+ inspection:=inspection||pg_temp.odo(driver_actor,1500);
  PERFORM public.submit_driver_preuse(gen_random_uuid(),(unit->>'revision')::uuid,now(),inspection);
  PERFORM set_config('request.jwt.claim.sub',actor::text,true);
  route:=public.schedule_dispatch(driver,plate||'P',now(),10,100,ct,'GR',jsonb_build_array(jsonb_build_object('id',own1)));
