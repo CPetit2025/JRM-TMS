@@ -34,7 +34,7 @@ export default function RutaActivaPage() {
       const requests = (trip?.stops || []).map(stop => ({ ...stop,
         transport_requests: { request_number: stop.request_number, request_type: stop.request_type,
           pickup_address: stop.pickup_address, delivery_address: stop.delivery_address } }))
-      const firstPending = requests.findIndex(stop => stop.conformity ? !['VALIDADA', 'NO_APLICA'].includes(stop.conformity) : stop.status !== 'ENTREGADO')
+      const firstPending = requests.findIndex(stop => stop.conformity ? !['VALIDADA', 'NO_APLICA', 'RECHAZO_DESTINO'].includes(stop.conformity) : stop.status !== 'ENTREGADO')
       setActiveStep(firstPending >= 0 ? firstPending : requests.length)
       setDispatch(trip ? { ...trip, contract_id: trip.contract?.id, dispatch_requests: requests } : null)
       setLoading(false)
@@ -286,7 +286,11 @@ export default function RutaActivaPage() {
 
                 {/* Icono de estado */}
                 <div className="mt-1 z-10">
-                  {isPast ? (
+                  {isPast && req.conformity === 'RECHAZO_DESTINO' ? (
+                    <div className="w-10 h-10 rounded-full bg-red-600 flex items-center justify-center" title="Rechazada en destino">
+                      <AlertCircle className="w-6 h-6 text-white" />
+                    </div>
+                  ) : isPast ? (
                     <div className="w-10 h-10 rounded-full bg-[#002855] flex items-center justify-center">
                       <CheckCircle2 className="w-6 h-6 text-white" />
                     </div>
@@ -307,7 +311,8 @@ export default function RutaActivaPage() {
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${typeLabel === 'RECOJO' ? 'bg-orange-100 text-orange-700' : 'bg-purple-100 text-purple-700'}`}>
                       {typeLabel}
                     </span>
-                    {isPast && <span className="text-xs font-bold text-green-600">{Number(req.leg_actual_km || 0).toFixed(3)} km GPS{req.leg_gps_complete === false ? ' · parcial' : ''}</span>}
+                    {isPast && req.conformity === 'RECHAZO_DESTINO' ? <span className="text-xs font-bold text-red-700">Rechazada en destino</span>
+                      : isPast && <span className="text-xs font-bold text-green-600">{Number(req.leg_actual_km || 0).toFixed(3)} km GPS{req.leg_gps_complete === false ? ' · parcial' : ''}</span>}
                   </div>
 
                   {req.document_number && (
@@ -386,7 +391,7 @@ export default function RutaActivaPage() {
       {dispatch.status === 'CIERRE_OPERATIVO' && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>Cierre operativo a las 00:00 de Lima</strong><p className="mt-1">Unidad y conductor liberados. Las guías pendientes se cargan en los servicios de esta ruta y siguen sujetas a validación del Supervisor de Transporte. Este corte no confirma entrega ni retorno.</p></div>}
 
       {dispatch.status === 'RETORNO_COMPLETADO' && (() => {
-        const pendingGuides = (dispatch.dispatch_requests || []).filter(stop => !['RECIBIDA', 'VALIDADA', 'NO_APLICA'].includes(stop.conformity || '')).length
+        const pendingGuides = (dispatch.dispatch_requests || []).filter(stop => !['RECIBIDA', 'VALIDADA', 'NO_APLICA', 'RECHAZO_DESTINO'].includes(stop.conformity || '')).length
         return <div className="mt-8 bg-green-50 border border-green-200 p-6 rounded-xl text-center">
           <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-green-600" />
           <h2 className="text-xl font-bold text-green-900">Ruta cerrada · unidad liberada</h2>

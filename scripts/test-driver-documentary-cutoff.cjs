@@ -14,8 +14,9 @@ function fixture(documentaryOnly) {
     FileReader: class { readAsDataURL() { this.result = 'data:image/jpeg;base64,AAAA'; this.onload() } },
     require(name) {
       if (name === '@/lib/supabase/client') return { createClient: () => ({ rpc: async () => ({ data: { state: 'PENDIENTE', submissions: [] }, error: null }) }) }
-      if (name === '@/lib/delivery') return { conformityLabels: {} }
+      if (name === '@/lib/delivery') return { conformityLabels: {}, arrivalSourceLabel: () => '', deliveryTime: () => '' }
       if (name === './EvidenceForm') return { EvidenceForm: props => React.createElement('form', props) }
+      if (name === './RejectionForm') return { RejectionForm: () => null }
       if (name === '@/lib/route-point-sync') return { readActionQueue: () => [], readRouteQueue: () => [], routeQueueKey: 'gps', saveOfflineAction: (type, payload) => queued.push({ type, payload }), syncOfflineActions: async () => {}, syncRoutePoints: async () => {} }
       return require(name)
     } }
@@ -27,7 +28,10 @@ test('late guide upload does not require GPS or offer arrival; live route still 
     const f = fixture(documentaryOnly); let tree
     await act(async () => { tree = create(React.createElement(f.Component, f.props)); await new Promise(r => setTimeout(r, 10)) })
     await act(async () => { await new Promise(r => setTimeout(r, 15)) })
-    assert.equal(tree.root.findAllByType('button').length, documentaryOnly ? 0 : 1)
+    // Ruta en curso: «Confirmar llegada» y «¿No se pudo entregar?»; la carga documentaria tardía no ofrece ninguno
+    const buttons = tree.root.findAllByType('button')
+    assert.equal(buttons.length, documentaryOnly ? 0 : 2)
+    if (!documentaryOnly) assert.ok(buttons.some(b => JSON.stringify(b.props.children).includes('No se pudo entregar')))
     await act(async () => { await tree.root.findByType('form').props.onSubmit({ files: [{}], packingFiles: [], receiver: 'Cliente', guide: 'T001-6591', note: '', operation: 'op' }) })
     assert.equal(f.gpsCalls(), documentaryOnly ? 0 : 1)
     assert.equal(f.points.length, documentaryOnly ? 0 : 1)

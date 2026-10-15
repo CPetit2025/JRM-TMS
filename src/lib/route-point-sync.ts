@@ -141,6 +141,30 @@ export function syncOfflineActions(): Promise<number> {
           })
           if (error) throw error
           if (!data?.success) throw new Error(data?.error || 'El servidor no confirmó la guía')
+        } else if (action.type === 'delivery_reject_driver') {
+          // Rechazo en destino guardado en el teléfono: sube las fotos a la carpeta de la entrega y lo registra
+          const { data: auth } = await supabase.auth.getUser()
+          if (!auth.user || auth.user.id !== action.payload.user_id) throw new Error('La sesión no corresponde a este rechazo')
+          const photos = action.payload.photos_base64
+          if (!Array.isArray(photos) || photos.length < 1 || photos.length > 5) throw new Error('Fotos del rechazo no válidas')
+          const paths: string[] = []
+          for (let index = 0; index < photos.length; index++) {
+            const kind = photoKind(photos[index])
+            if (!kind) throw new Error('Fotografía no válida: use JPG, PNG, WEBP o HEIC')
+            const blob = await (await fetch(photos[index])).blob()
+            const path = `${auth.user.id}/${action.payload.dispatch_id}/${action.payload.request_id}/${action.id}-r${index}.${kind.ext}`
+            const { error } = await supabase.storage.from('driver_evidence').upload(path, blob, { upsert: false, contentType: kind.type })
+            if (error && String(error.statusCode) !== '409') throw error
+            paths.push(path)
+          }
+          const { data, error } = await supabase.rpc('execute_driver_offline_action', {
+            p_operation_id: action.id, p_action_type: action.type,
+            p_payload: { dispatch_id: action.payload.dispatch_id, request_id: action.payload.request_id, kind: action.payload.kind,
+              reason: action.payload.reason, note: action.payload.note, photos: paths, latitude: action.payload.latitude,
+              longitude: action.payload.longitude, accuracy_m: action.payload.accuracy_m, captured_at: action.payload.captured_at },
+          })
+          if (error) throw error
+          if (!data?.success) throw new Error(data?.error || 'El servidor no confirmó el rechazo')
         } else if (action.type === 'complete_dispatch_stop') {
           // If the payload contains a base64 photo, we must upload it first.
           const dispatchId = String(action.payload.p_dispatch_id || '')

@@ -23,6 +23,11 @@ export type TripStop = {
   reference?: string | null
   party_name?: string | null
   party_label?: string | null
+  // Rechazo en destino, llegada registrada y punto del destino aprendido de entregas anteriores (geocerca del Copiloto)
+  rejection?: { kind: 'TOTAL' | 'PARCIAL'; reason: string; note: string | null; captured_at: string; decision: string | null } | null
+  arrived_at?: string | null
+  arrival_source?: 'MANUAL' | 'COPILOTO' | 'AUTO_GEOCERCA' | null
+  destination?: { lat: number; lon: number; samples: number; radius_m: number } | null
 }
 
 export type ActiveTrip = {

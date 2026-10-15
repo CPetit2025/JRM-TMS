@@ -86,7 +86,7 @@ export async function openPortalDocument(access: { token: string; pin: string },
 // Solicitado: solo registro · Programado: ruta con placa y conductor · En ruta: el conductor inició en el app
 // Completado: ruta terminada con documentos conformes (guía validada) · En revisión documental: la guía ya se cargó
 // pero aún no se valida (cargar no es liquidar) · Cierre operativo: flota liberada sin haber cargado la documentación.
-// Cancelado y Observada se conservan como excepciones. «live» enciende la luz intermitente.
+// Cancelado, Observada y Rechazada en destino se conservan como excepciones. «live» enciende la luz intermitente.
 export type PortalTone = { label: string; bg: string; text: string; dot: string; live: boolean }
 const TONE = {
   slate: { bg: 'bg-slate-100 ring-slate-300', text: 'text-slate-700', dot: 'bg-slate-400' },
@@ -107,6 +107,7 @@ const STATUS = {
   revision: () => tone('En revisión documental', 'violet', true),
   cierre: () => tone('Cierre operativo', 'amber', true),
   cancelado: () => tone('Cancelado', 'red'),
+  rechazada: () => tone('Rechazada en destino', 'red', true),
 }
 // Documentos conformes: guía validada, histórica o no requerida (recojo por el cliente).
 const DOCS_OK = ['VALIDADA', 'HISTORICA', 'NO_APLICA']
@@ -119,6 +120,8 @@ export function portalStatus(row: { state: string; dispatch_status?: string; con
   if (row) {
     const route = row.dispatch_status || row.state
     if (route === 'CANCELADO' || row.state === 'CANCELADO') return STATUS.cancelado()
+    // El cliente no recibió la carga: queda visible hasta que Despacho reprograme o anule el servicio
+    if (row.state === 'RECHAZADO_DESTINO') return STATUS.rechazada()
     const finished = FINISHED.includes(route) || ['ENTREGADO', 'LIQUIDADO', 'CERRADO', 'RECIBIDA', 'PENDIENTE_VALIDACION', 'OBSERVADA', 'RECHAZADA'].includes(row.state)
     if (finished || route === 'CIERRE_OPERATIVO') {
       if (DOCS_OK.includes(row.conformity || '')) return STATUS.completado()

@@ -1,5 +1,5 @@
 import { serviceKind, type ServiceKind } from '@/lib/request-service'
-export type Conformity = 'PENDIENTE' | 'RECIBIDA' | 'OBSERVADA' | 'RECHAZADA' | 'VALIDADA' | 'HISTORICA' | 'NO_APLICA'
+export type Conformity = 'PENDIENTE' | 'RECIBIDA' | 'OBSERVADA' | 'RECHAZADA' | 'VALIDADA' | 'HISTORICA' | 'NO_APLICA' | 'RECHAZO_DESTINO'
 export type DeliveryRow = {
   dispatch_id: string; request_id: string; dispatch_number: string; request_number: string
   ot_code: string; client_name: string | null; pickup_address: string; delivery_address: string
@@ -23,10 +23,32 @@ export type DeliverySubmission = {
   note: string | null; source: string; captured_at: string; submitted_at: string
   review: { decision: string; reason: string | null; reviewed_at: string } | null
 }
-export type DeliveryDetail = { state: Conformity; arrived_at: string | null; can_review: boolean; submissions: DeliverySubmission[] }
+export type ArrivalSource = 'MANUAL' | 'COPILOTO' | 'AUTO_GEOCERCA'
+/** Rechazo del cliente en el destino: TOTAL cierra la parada sin guía; PARCIAL acompaña a la guía. */
+export type DeliveryRejection = {
+  id: string; kind: 'TOTAL' | 'PARCIAL'; reason_code: string; reason: string; note: string | null; photos: string[]
+  latitude: number | null; longitude: number | null; accuracy_m: number | null; captured_at: string
+  decision: 'REPROGRAMADA' | 'ANULADA' | null; decision_reason: string | null; decided_at: string | null; decided_by: string | null; required_date: string | null
+}
+export type DeliveryDetail = {
+  state: Conformity; arrived_at: string | null; arrival_source?: ArrivalSource | null; arrival_accuracy_m?: number | null
+  can_review: boolean; can_decide?: boolean; rejection?: DeliveryRejection | null; submissions: DeliverySubmission[]
+}
+export const REJECTION_REASONS: { code: string; label: string }[] = [
+  { code: 'CLIENTE_AUSENTE', label: 'Cliente ausente o local cerrado' },
+  { code: 'FUERA_DE_HORARIO', label: 'Fuera del horario de recepción' },
+  { code: 'MERCADERIA_DANADA', label: 'Mercadería dañada' },
+  { code: 'PEDIDO_INCORRECTO', label: 'Pedido o cantidad incorrecta' },
+  { code: 'NO_RECONOCE_PEDIDO', label: 'El cliente no reconoce el pedido' },
+  { code: 'DOCUMENTOS', label: 'Falta o error en documentos' },
+  { code: 'DIRECCION_ERRADA', label: 'Dirección errada' },
+  { code: 'OTRO', label: 'Otro motivo' },
+]
+export const arrivalSourceLabel = (source: ArrivalSource | null | undefined) =>
+  source === 'AUTO_GEOCERCA' ? 'registrada por el Copiloto (geocerca)' : source === 'COPILOTO' ? 'confirmada desde el Copiloto' : 'confirmada por el conductor'
 export const conformityLabels: Record<Conformity, string> = {
   PENDIENTE: 'Guía pendiente', RECIBIDA: 'Pendiente de validación', OBSERVADA: 'Observada', RECHAZADA: 'Rechazada',
-  VALIDADA: 'Aprobada', HISTORICA: 'Histórica', NO_APLICA: 'Recojo por cliente · nota de salida',
+  VALIDADA: 'Aprobada', HISTORICA: 'Histórica', NO_APLICA: 'Recojo por cliente · nota de salida', RECHAZO_DESTINO: 'Rechazada en destino',
 }
 export function deliveryStatus(state: string) {
   switch (state) {
@@ -37,6 +59,7 @@ export function deliveryStatus(state: string) {
     case 'EN_DESTINO': return { label: 'En destino', color: 'bg-amber-50 text-amber-900', dot: 'bg-amber-500', pulse: true }
     case 'RECIBIDA': case 'PENDIENTE_VALIDACION': return { label: 'Validación pendiente', color: 'bg-amber-50 text-amber-900', dot: 'bg-amber-500', pulse: true }
     case 'OBSERVADA': case 'RECHAZADA': case 'INCIDENCIA': return { label: state === 'INCIDENCIA' ? 'Incidencia' : state === 'OBSERVADA' ? 'Observada' : 'Rechazada', color: 'bg-red-50 text-red-800', dot: 'bg-red-500', pulse: true }
+    case 'RECHAZADO_DESTINO': return { label: 'Rechazada en destino', color: 'bg-red-50 text-red-800', dot: 'bg-red-600', pulse: false }
     case 'ENTREGADO': return { label: 'Entregado', color: 'bg-emerald-50 text-emerald-800', dot: 'bg-emerald-500', pulse: false }
     case 'LIQUIDADO': case 'CERRADO': return { label: 'Viaje cerrado', color: 'bg-emerald-50 text-emerald-900', dot: 'bg-emerald-700', pulse: false }
     case 'RETORNO': case 'RETORNO_COMPLETADO': case 'ESPERANDO_AUTORIZACION': return { label: state === 'RETORNO' ? 'En retorno' : state === 'RETORNO_COMPLETADO' ? 'Unidad liberada' : 'Espera autorización', color: 'bg-blue-50 text-blue-800', dot: 'bg-blue-500', pulse: state === 'RETORNO' }

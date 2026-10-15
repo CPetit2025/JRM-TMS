@@ -328,6 +328,7 @@ export function JrmAiAssistant() {
   const bubble = !open ? (nudge ? { text: nudge.text, actions: nudge.actions, key: nudge.key } : tip ? { text: tip, actions: [{ label: 'Preguntar', ask: tip }] as NudgeAction[], key: 'tip' } : null) : null
   const runAction = (action: NudgeAction, key: string) => {
     if (key === 'tip') setTip(null); else dismiss(key)
+    if (action.run) { void Promise.resolve(action.run()).then(next => { if (next) router.push(next) }); return }
     if (action.href) { router.push(action.href); return }
     if (action.ask) { setOpen(true); void ask(action.ask) }
   }
