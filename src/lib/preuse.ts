@@ -5,6 +5,7 @@ export type PreuseResponse = 'B' | 'M' | 'R' | 'N/A'
 export type PreuseAnswer = { code: string; response: PreuseResponse | ''; comment: string }
 export type SignaturePoint = { x: number; y: number }
 export type PreuseInspection = {
+  record_sequence?: number; can_authorize_repeat?: boolean; repeat_authorized?: boolean; authorized_repeat?: boolean; same_day_records?: number; reinspection_reason?: string | null
   operation_id: string; inspection_id: string | null; driver_id: string; vehicle_plate: string
   unit_revision: string; operation_date: string; captured_at: string; created_at: string
   driver_name: string; license: string; soat_expiration: string; technical_review_expiration: string
@@ -13,6 +14,7 @@ export type PreuseInspection = {
 }
 export type PreuseUnit = { plate: string; soat_expiration: string | null; technical_review_expiration: string | null }
 export type PreuseContext = {
+  daily_record?: PreuseInspection | null; already_registered?: boolean; repeat_authorized?: boolean
   operation_date: string; driver: { id: string; profile_id: string; name: string; license: string } | null
   vehicles: PreuseUnit[]; unit: { vehicle_plate: string; revision: string; operation_date: string } | null
   assigned_unit?: PreuseUnit | null

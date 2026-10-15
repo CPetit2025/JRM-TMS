@@ -68,11 +68,11 @@ export default function ChecklistsPage() {
 <button onClick={refresh} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
 </>} />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {tab !== 'preuso' && <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[['Inspecciones', inspections.length], ['Aprobadas', inspections.filter(i => i.global_result === 'PASSED').length],
           ['Con observaciones', inspections.filter(i => i.global_result === 'WARNING').length], ['Falla crítica', inspections.filter(i => i.global_result === 'FAILED').length]]
           .map(([l, v]) => <div key={l as string} className="bg-white border rounded-xl p-3"><div className="text-xs text-slate-500">{l}</div><div className="text-2xl font-bold">{v}</div></div>)}
-      </div>
+      </div>}
 
       <div className="flex flex-wrap gap-1 border-b">
         {([['preuso', 'FR-DT 007 · Pre uso'], ['inspecciones', 'Inspecciones'], ['nueva', 'Nueva inspección'], ['plantillas', 'Plantillas']] as const).map(([k, l]) => (

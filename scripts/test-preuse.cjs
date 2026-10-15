@@ -4,6 +4,7 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path')
 const {spawnSync}=require('node:child_process')
 const ts=require('typescript'),{test}=require('node:test')
 const root=path.resolve(__dirname,'..')
+require('./test-preuse-reports.cjs')
 function module(file,imports={}) {
  const context={exports:{},require:name=>imports[name]||require(name),console,Date,Set,Promise,Number}
  vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(root,file),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true,resolveJsonModule:true}}).outputText,context)

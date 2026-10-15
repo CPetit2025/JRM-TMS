@@ -11,6 +11,7 @@ export async function syncOwnPreuse(supabase: SupabaseClient) {
   update: (id, changes) => db.preuse.update(id, changes),
  })
  if (result.synced) { toast.success(`${result.synced} inspección(es) sincronizada(s).`); window.dispatchEvent(new Event('jrm:trip-changed')) }
+ if (result.duplicates) toast.warning(`${result.duplicates} envío(s) correspondían a checklists ya registrados. No se crearon duplicados.`)
  if (result.pending) toast.warning(`${result.pending} inspección(es) pendientes de confirmar. Revisa Checklist.`)
  window.dispatchEvent(new Event('jrm:preuse-queue-changed'))
  return result
