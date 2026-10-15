@@ -1,4 +1,12 @@
 BEGIN;
+-- Odómetro con foto del tablero (obligatorio en el checklist diario desde 2026-10)
+CREATE FUNCTION pg_temp.odo(p_user uuid, p_km numeric) RETURNS jsonb LANGUAGE plpgsql AS $odo$
+DECLARE v_path text := p_user::text || '/odometro/' || gen_random_uuid()::text || '.jpg';
+BEGIN
+ INSERT INTO storage.objects(bucket_id, name) VALUES ('driver_evidence', v_path);
+ RETURN jsonb_build_object('odometer', p_km::text, 'odometer_photo', v_path);
+END $odo$;
+GRANT EXECUTE ON FUNCTION pg_temp.odo(uuid, numeric) TO authenticated;
 DO $test$
 DECLARE admin_id uuid; actor uuid; driver uuid; site uuid; carrier uuid; unit jsonb; other_unit jsonb;
  data jsonb; r jsonb; operation uuid:=gen_random_uuid(); dispatch uuid; bad boolean; daily_guard boolean:=to_regprocedure('public.get_driver_preuse_daily_status(text)') IS NOT NULL; last_operation uuid;
@@ -30,6 +38,7 @@ BEGIN
    'observation','Prueba diaria C49','inspector_name','Conductor C49','signature','[[{"x":0.1,"y":0.3},{"x":0.2,"y":0.5},{"x":0.4,"y":0.4},{"x":0.7,"y":0.6}]]'::jsonb,
    'answers',jsonb_agg(jsonb_build_object('code',i.code,'response','B','comment',''))) INTO data FROM public.checklist_items i
    JOIN public.checklist_templates t ON t.id=i.template_id WHERE t.code='FR_DT007';
+ data:=data||pg_temp.odo(actor,1500);
  bad:=false;
  BEGIN PERFORM public.submit_driver_preuse(gen_random_uuid(),(unit->>'revision')::uuid,now(),jsonb_set(data,'{answers}',(data->'answers')-0)); EXCEPTION WHEN OTHERS THEN bad:=true; END;
  IF NOT bad THEN RAISE EXCEPTION 'CAJA C49 FAIL: aceptó formato incompleto'; END IF;

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, CalendarClock, History, Clock } from 'lucide-react'
 import Link from 'next/link'
-import { Banknote, Camera, ClipboardCheck, DollarSign, Forklift, Wrench } from 'lucide-react'
+import { Banknote, Camera, ClipboardCheck, DollarSign, Forklift, Gauge, Wrench } from 'lucide-react'
 import { useActiveTrip } from '@/contexts/ActiveTripContext'
 
 export default function ActividadesPage() {
@@ -73,6 +73,7 @@ export default function ActividadesPage() {
     <div className="grid grid-cols-2 gap-3">
       {[
         { href: '/app/checklist', label: 'Checklist', icon: ClipboardCheck },
+        { href: '/app/jornada', label: 'Cerrar jornada', icon: Gauge },
         { href: '/app/ruta', label: 'Evidencias de viaje', icon: Camera },
         { href: '/app/gastos', label: 'Gastos', icon: DollarSign },
         { href: '/app/anticipos', label: 'Anticipos', icon: Banknote },
