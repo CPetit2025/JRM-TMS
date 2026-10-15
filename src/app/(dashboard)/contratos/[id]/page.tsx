@@ -1,7 +1,8 @@
 "use client"
 import { DataTable } from '@/components/ui/data-table'
 
-import { operatingBudget } from '@/lib/transport-budget'
+import { operatingFromBalance } from '@/lib/transport-budget'
+import { TransportMarginPanel } from '@/components/contratos/TransportMarginPanel'
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Briefcase, Layers, FileWarning, DollarSign, MapPin, Send, Receipt } from 'lucide-react'
@@ -398,9 +399,10 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
                 <p className="mt-1 text-xs text-slate-500">OT madre: S/ {Number(contract.own_allocated_pen || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })} · Subcontratos y errores: S/ {Math.max(Number(contract.allocated_pen || 0) - Number(contract.own_allocated_pen || 0), 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</p>
               </div>
               <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <span className="block text-xs text-blue-700">Disponible para operación (80%)</span>
-                <strong className="text-xl text-[#002855]">S/ {operatingBudget(Number(contract.allocated_pen || 0)).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</strong>
-                <p className="text-xs text-slate-600">20% reservado para utilidad</p>
+                {(() => { const op = operatingFromBalance(contract.allocated_pen, contract.balance_pen, contract.family_reserved_pen ?? contract.reserved_pen, contract.family_consumed_pen ?? contract.consumed_pen); return <>
+                <span className="block text-xs text-blue-700">Disponible para operación ({op.pct}%)</span>
+                <strong className="text-xl text-[#002855]">S/ {op.operating.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</strong>
+                <p className="text-xs text-slate-600">{Math.round((100 - op.pct) * 100) / 100}% reservado para utilidad</p></> })()}
               </div>
               <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
                 <span className="block text-xs font-medium text-orange-600 mb-1">Monto Reservado (En tránsito)</span>
@@ -415,6 +417,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
                 </span>
               </div>
             </div>
+            <TransportMarginPanel contractId={contract.id} onChanged={fetchContractDetails} />
           </div>
         )}
 

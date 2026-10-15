@@ -2,7 +2,7 @@
 import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
-import { operatingBudget } from '@/lib/transport-budget'
+import { operatingFromBalance } from '@/lib/transport-budget'
 import { useState, useEffect, useRef } from 'react'
 import { Plus, Search, Layers, FileWarning, Briefcase, CheckCircle2, Upload, Download, Edit2, Filter, MapPin, UserCog, ChevronRight, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -44,6 +44,8 @@ interface Contract {
     allocated_pen: number
     own_allocated_pen: number
     balance_pen: number
+    family_reserved_pen?: number | null
+    family_consumed_pen?: number | null
   }
 }
 
@@ -212,7 +214,9 @@ export default function ContratosPage() {
           allocated_usd: c.allocated_usd,
           allocated_pen: c.allocated_pen,
           own_allocated_pen: c.own_allocated_pen,
-          balance_pen: c.balance_pen
+          balance_pen: c.balance_pen,
+          family_reserved_pen: c.family_reserved_pen ?? c.reserved_pen,
+          family_consumed_pen: c.family_consumed_pen ?? c.consumed_pen
         }
       }))
 
@@ -666,7 +670,7 @@ export default function ContratosPage() {
                 filteredContracts.map((contract) => {
                   const allocated = Number(contract.budget?.allocated_pen || 0)
                   const balance = Number(contract.budget?.balance_pen || 0)
-                  const operating = operatingBudget(allocated)
+                  const { operating, pct: operatingPct } = operatingFromBalance(allocated, contract.budget?.balance_pen, contract.budget?.family_reserved_pen, contract.budget?.family_consumed_pen)
                   const used = Math.max(operating - balance, 0)
                   const usedPct = operating > 0 ? Math.min(100, (used / operating) * 100) : (balance < 0 ? 100 : 0)
                   const tone = balance < 0 ? 'red' : operating > 0 && balance / operating < 0.15 ? 'amber' : allocated > 0 ? 'emerald' : 'slate'
@@ -722,7 +726,7 @@ export default function ContratosPage() {
                         <div className={`h-full rounded-full ${toneBar}`} style={{ width: `${usedPct}%` }} />
                       </div>
                       <div className="mt-1 text-[11px] text-slate-500 tabular-nums">
-                        {allocated > 0 ? `Bruto S/ ${money(allocated)} · Operación 80% S/ ${money(operatingBudget(allocated))}` : 'Sin partida asignada'}
+                        {allocated > 0 ? `Bruto S/ ${money(allocated)} · Operación ${operatingPct}% S/ ${money(operating)}` : 'Sin partida asignada'}
                       </div>
                     </td>
                     <td className="px-4 py-3">

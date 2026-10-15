@@ -587,9 +587,9 @@ export default function ContractServicesPage() {
         </select>
         {budgetContract ? (() => {
           const budget = partidaOf(budgetContract)
-          return <p className="text-sm text-slate-600" title="El saldo actual considera el 80 % operativo menos reservas y consumos. No es un saldo histórico por servicio.">{budget ? <>OT que financia: <strong>{budget.owner.code}</strong> · Disponible actual: <strong>S/ {budget.balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</strong></> : 'Sin partida de transporte disponible'}</p>
+          return <p className="text-sm text-slate-600" title="El saldo actual considera el margen operativo (80 % salvo ampliación) menos reservas y consumos. No es un saldo histórico por servicio.">{budget ? <>OT que financia: <strong>{budget.owner.code}</strong> · Disponible actual: <strong>S/ {budget.balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</strong></> : 'Sin partida de transporte disponible'}</p>
         })() : null}
-        <span className="inline-flex items-center gap-1 text-xs text-slate-500" title="El saldo actual considera el 80 % operativo menos reservas y consumos. No es un saldo histórico por servicio."><Info className="h-3.5 w-3.5" aria-hidden="true" />80 % operativo menos reservas y consumos</span>
+        <span className="inline-flex items-center gap-1 text-xs text-slate-500" title="El saldo actual considera el margen operativo (80 % salvo ampliación) menos reservas y consumos. No es un saldo histórico por servicio."><Info className="h-3.5 w-3.5" aria-hidden="true" />Margen operativo menos reservas y consumos</span>
       </div>
 
       {/* Lista de Servicios */}
@@ -682,11 +682,11 @@ export default function ContractServicesPage() {
                     </td>
                     <td className="whitespace-nowrap text-right text-sm">
                       {(() => {
-                        // Saldo actual de la partida que paga el servicio (OT madre): 80 % operativo menos reservas y consumos
+                        // Saldo actual de la partida que paga el servicio (OT madre): margen operativo menos reservas y consumos
                         const partida = partidaOf(srv.contract_id)
                         if (!partida) return <span className="text-xs text-slate-400" title="La OT no tiene partida de transporte activa">Sin partida</span>
                         const tone = partida.balance <= 0 ? 'text-red-700' : partida.operating > 0 && partida.balance < partida.operating * 0.1 ? 'text-amber-700' : 'text-emerald-700'
-                        return <span title={`Disponible actual de la OT ${partida.owner.code}: 80 % operativo menos reservas y consumos. No es el saldo histórico del servicio.`}>
+                        return <span title={`Disponible actual de la OT ${partida.owner.code}: margen operativo menos reservas y consumos. No es el saldo histórico del servicio.`}>
                           <span className={`font-bold ${tone}`}>{partida.balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
                           {partida.owner.id !== srv.contract_id && <span className="block text-[11px] text-slate-500">vía OT madre {partida.owner.code}</span>}
                         </span>

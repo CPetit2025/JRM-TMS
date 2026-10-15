@@ -4,6 +4,17 @@ export function operatingBudget(gross: number): number {
   return (cents - Math.round(cents * 0.2)) / 100
 }
 
+/** Operating budget actually in force: the server's balance already applies the margin (80 % by default, or the
+ *  extension granted to the OT or its client), so operating = balance + family reserved + family consumed. */
+export function operatingFromBalance(gross: unknown, balance: unknown, reserved: unknown, consumed: unknown): { operating: number; pct: number } {
+  const g = Number(gross) || 0
+  if (balance == null || g <= 0) return { operating: operatingBudget(g), pct: 80 }
+  const operating = Math.round(((Number(balance) || 0) + (Number(reserved) || 0) + (Number(consumed) || 0)) * 100) / 100
+  const pct = Math.round((operating / g) * 1000) / 10
+  // Fuera de rango (datos antiguos o partidas excedidas) se muestra el margen estándar
+  return pct >= 80 && pct <= 100 ? { operating, pct } : { operating: operatingBudget(g), pct: 80 }
+}
+
 /** Default route split follows approved service estimates; any remainder stays in the last service. */
 export function splitFreight(total: number, services: { id: string; service_cost?: number | null }[]) {
   const cents = Math.round(total * 100)

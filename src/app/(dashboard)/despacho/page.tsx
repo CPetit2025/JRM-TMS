@@ -937,7 +937,7 @@ export default function DespachoPage() {
               </div>
             </FormSection>
 
-            {mixedOT && !ownPickupOnly && <FormSection id="ruta-flete" step={4} title="Flete distribuido por servicio" hint="Con OT se utiliza el 80% operativo de la partida. Los servicios sin OT conservan el costo aprobado y su OC, OS o RQ.">
+            {mixedOT && !ownPickupOnly && <FormSection id="ruta-flete" step={4} title="Flete distribuido por servicio" hint="Con OT se utiliza el margen operativo de la partida (80 % salvo ampliación autorizada). Los servicios sin OT conservan el costo aprobado y su OC, OS o RQ.">
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-xs text-slate-600">Total de ruta S/ {routeFreight.toFixed(2)}</span>
