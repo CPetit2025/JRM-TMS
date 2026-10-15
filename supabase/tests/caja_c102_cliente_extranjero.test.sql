@@ -26,9 +26,10 @@ BEGIN
  -- T3: validaciones: sin país, Perú por esta vía, documento corto
  IF (public.register_foreign_client(NULL,NULL,doc,'X')->>'success')='true' OR (public.register_foreign_client('PE','Perú',doc,'X')->>'success')='true'
     OR (public.register_foreign_client('CL','Chile','12','X')->>'success')='true' THEN RAISE EXCEPTION 'CAJA C102 FAIL: validaciones (T3)'; END IF;
- -- T4: un cliente peruano sigue exigiendo RUC válido (no se cuela un documento extranjero)
+ -- T4: un cliente peruano sigue exigiendo RUC válido (no se cuela un documento extranjero; 5 dígitos fijos para que nunca
+ -- normalice a un DNI de 8)
  bad:=NULL;
- BEGIN EXECUTE format('INSERT INTO public.clients(business_name, %I) VALUES (%L, %L)', CASE WHEN EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='clients' AND column_name='tax_id') THEN 'tax_id' ELSE 'ruc' END, 'ZZ C102 SIN PAIS', doc||'99');
+ BEGIN EXECUTE format('INSERT INTO public.clients(business_name, %I) VALUES (%L, %L)', CASE WHEN EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='clients' AND column_name='tax_id') THEN 'tax_id' ELSE 'ruc' END, 'ZZ C102 SIN PAIS', 'NIT-BO-12345');
  EXCEPTION WHEN raise_exception THEN bad:=SQLERRM; END;
  IF bad IS NULL OR bad NOT LIKE '%extranjero%' THEN RAISE EXCEPTION 'CAJA C102 FAIL: peruano sin RUC (T4) %',bad; END IF;
  IF has_function_privilege('anon','public.register_foreign_client(text,text,text,text,text,text,text,text)','EXECUTE') THEN
