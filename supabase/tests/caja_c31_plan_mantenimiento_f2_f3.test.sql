@@ -1,5 +1,5 @@
 -- CAJA C31 — Plan de mantenimiento, Fases 2 y 3:
---   T1 planes creados desde las plantillas, inactivos y con línea base del historial; T2 validar activa el plan con la
+--   T1 planes creados desde las plantillas, inactivos (o ya validados/activados por Mantenimiento) y con línea base del historial; T2 validar activa el plan con la
 --   fecha indicada (con permiso) y sin permiso se rechaza; T3 OT correctiva sobre el umbral sin cotización se bloquea
 --   (tabla temporal con el mismo disparador) y con cotización pasa; T4 el disparador está en maintenance_work_orders;
 --   T5 plan anual con servicios, presupuesto e indicadores; T6 sin permiso no hay plan anual; T7 Eficiencia de Flota
@@ -34,7 +34,8 @@ BEGIN
   WHERE t.familia = 'MONTACARGA_IC' ORDER BY p.vehicle_plate LIMIT 1;
   SELECT count(*), count(*) FILTER (WHERE NOT is_active), count(*) FILTER (WHERE mant_base_origen LIKE 'Historial%')
   INTO n, n2, v_pass FROM public.maintenance_plans WHERE vehicle_plate = v_plate AND mant_template_id IS NOT NULL;
-  IF v_plate IS NOT NULL AND n = 4 AND (n2 = 4 OR EXISTS (SELECT 1 FROM public.maintenance_plans WHERE vehicle_plate = v_plate AND mant_base_origen LIKE 'Validado%')) AND v_pass >= 1
+  IF v_plate IS NOT NULL AND n = 4 AND (n2 = 4 OR EXISTS (SELECT 1 FROM public.maintenance_plans WHERE vehicle_plate = v_plate
+    AND (mant_base_origen LIKE 'Validado%' OR mant_base_origen LIKE '%Activado con el historial%'))) AND v_pass >= 1
   THEN v_pass := 1; ELSE v_pass := 0; v_fail := v_fail || ('T1 planes: ' || COALESCE(v_plate, 'sin montacargas') || ' ' || n || '/' || n2); END IF;
 
   -- T2
