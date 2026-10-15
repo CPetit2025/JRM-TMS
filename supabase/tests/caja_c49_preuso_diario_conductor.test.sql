@@ -1,7 +1,7 @@
 BEGIN;
 DO $test$
 DECLARE admin_id uuid; actor uuid; driver uuid; site uuid; carrier uuid; unit jsonb; other_unit jsonb;
- data jsonb; r jsonb; operation uuid:=gen_random_uuid(); dispatch uuid; bad boolean;
+ data jsonb; r jsonb; operation uuid:=gen_random_uuid(); dispatch uuid; bad boolean; daily_guard boolean:=to_regprocedure('public.get_driver_preuse_daily_status(text)') IS NOT NULL; last_operation uuid;
 BEGIN
  IF has_function_privilege('anon','public.submit_driver_preuse(uuid,uuid,timestamptz,jsonb)','EXECUTE')
    OR has_function_privilege('authenticated','public.driver_preuse_select_core(uuid,text)','EXECUTE')
@@ -54,7 +54,7 @@ BEGIN
  other_unit:=public.select_driver_preuse_unit('ZZC49B');
  IF public.driver_preuse_can_operate(driver,'ZZC49A') THEN RAISE EXCEPTION 'CAJA C49 FAIL: cambio de unidad conserva habilitación anterior'; END IF;
  unit:=public.select_driver_preuse_unit('ZZC49A');
- IF public.driver_preuse_can_operate(driver,'ZZC49A') THEN RAISE EXCEPTION 'CAJA C49 FAIL: A-B-A reutiliza inspección anterior'; END IF;
+ IF public.driver_preuse_can_operate(driver,'ZZC49A') IS DISTINCT FROM daily_guard THEN RAISE EXCEPTION 'CAJA C49 FAIL: regla diaria A-B-A incorrecta'; END IF;
  r:=public.submit_driver_preuse(gen_random_uuid(),(unit->>'revision')::uuid,now(),data);
  -- Yesterday's otherwise valid inspections do not enable today's operations.
  UPDATE public.driver_preuse_inspections SET operation_date=operation_date-1 WHERE driver_id=driver;
@@ -78,8 +78,20 @@ BEGIN
  bad:=false;
  BEGIN UPDATE public.dispatches SET status='EN_CURSO' WHERE id=dispatch; EXCEPTION WHEN OTHERS THEN bad:=true; END;
  IF NOT bad THEN RAISE EXCEPTION 'CAJA C49 FAIL: cambio directo de estado omite checklist'; END IF;
+ IF daily_guard THEN
+   last_operation:=(r->>'operation_id')::uuid;
+   PERFORM set_config('request.jwt.claim.sub',admin_id::text,true);
+   PERFORM public.authorize_driver_preuse_repeat(last_operation,'Reinspección de prueba por corrección documental');
+   PERFORM set_config('request.jwt.claim.sub',actor::text,true);
+ END IF;
  r:=public.submit_driver_preuse(gen_random_uuid(),(unit->>'revision')::uuid,now(),jsonb_set(data,'{soat_expiration}',to_jsonb(((now() AT TIME ZONE 'America/Lima')::date-1)::text)));
  IF r->>'can_operate' IS DISTINCT FROM 'false' THEN RAISE EXCEPTION 'CAJA C49 FAIL: SOAT declarado vencido habilita ruta'; END IF;
+ IF daily_guard THEN
+   last_operation:=(r->>'operation_id')::uuid;
+   PERFORM set_config('request.jwt.claim.sub',admin_id::text,true);
+   PERFORM public.authorize_driver_preuse_repeat(last_operation,'Reinspección de prueba por revisión de frenos');
+   PERFORM set_config('request.jwt.claim.sub',actor::text,true);
+ END IF;
  -- M en frenos conserva el dato original y crea la falla por el motor canónico de inspecciones.
  SELECT jsonb_set(data,'{answers}',jsonb_agg(CASE WHEN a->>'code'='i01' THEN jsonb_set(a,'{response}','"M"') ELSE a END)) INTO data FROM jsonb_array_elements(data->'answers') a;
  r:=public.submit_driver_preuse(gen_random_uuid(),(unit->>'revision')::uuid,now(),data);
@@ -98,7 +110,7 @@ BEGIN
  IF NOT bad THEN RAISE EXCEPTION 'CAJA C49 FAIL: conductor exporta la flota'; END IF;
  PERFORM set_config('request.jwt.claim.sub',admin_id::text,true);
  r:=public.list_driver_preuse((now() AT TIME ZONE 'America/Lima')::date,(now() AT TIME ZONE 'America/Lima')::date,'ZZC49');
- IF jsonb_array_length(r)<>5 OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(r) d WHERE d->>'vehicle_plate'='ZZC49A') OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(r) d WHERE d->>'vehicle_plate'='ZZC49B') THEN RAISE EXCEPTION 'CAJA C49 FAIL: exportación fusiona u omite inspecciones/unidades'; END IF;
+ IF jsonb_array_length(r)<>(CASE WHEN daily_guard THEN 4 ELSE 5 END) OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(r) d WHERE d->>'vehicle_plate'='ZZC49A') OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(r) d WHERE d->>'vehicle_plate'='ZZC49B') THEN RAISE EXCEPTION 'CAJA C49 FAIL: exportación fusiona u omite inspecciones/unidades'; END IF;
  bad:=false;
  BEGIN UPDATE public.checklist_items SET text='Alterado' WHERE template_id IN(SELECT id FROM public.checklist_templates WHERE code='FR_DT007'); EXCEPTION WHEN OTHERS THEN bad:=true; END;
  IF NOT bad THEN RAISE EXCEPTION 'CAJA C49 FAIL: formato modificable'; END IF;

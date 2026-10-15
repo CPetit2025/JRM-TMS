@@ -62,7 +62,7 @@ BEGIN
  UPDATE public.vehicles SET assigned_driver_id=NULL WHERE id=vehicle2;
  UPDATE public.vehicles SET assigned_driver_id=driver WHERE id=vehicle;
  r:=public.get_driver_preuse_context();
- IF r->>'pending' IS DISTINCT FROM 'true' OR r->'unit'->>'revision'=unit->>'revision' THEN RAISE EXCEPTION 'CAJA C51 FAIL: A-B-A reutiliza checklist'; END IF;
+ IF r->>'pending' IS DISTINCT FROM (CASE WHEN to_regprocedure('public.get_driver_preuse_daily_status(text)') IS NULL THEN 'true' ELSE 'false' END) OR r->'unit'->>'revision'=unit->>'revision' THEN RAISE EXCEPTION 'CAJA C51 FAIL: regla diaria de retorno A-B-A'; END IF;
  UPDATE public.vehicles SET assigned_driver_id=driver2 WHERE id=vehicle;
  r:=public.get_driver_preuse_context();
  IF r->'assigned_unit' IS DISTINCT FROM 'null'::jsonb OR r->'unit' IS DISTINCT FROM 'null'::jsonb OR EXISTS(SELECT 1 FROM jsonb_array_elements(r->'vehicles') v WHERE v->>'plate'=plate) THEN RAISE EXCEPTION 'CAJA C51 FAIL: antiguo conductor conserva unidad'; END IF;

@@ -624,6 +624,42 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   const legacyCutoffBox=query(read('supabase/tests/caja_c82_cierre_operativo.test.sql'))
   assert.match(legacyCutoffBox.stderr,/CAJA C82 PASS/,legacyCutoffBox.stderr)
   console.log('PASS: C85 multiple guide and dispatch-note numbers without files, preserved numbering, atomic duplicate rejection, separated evidence/departure responsibilities, role/site/inactive account isolation.')
+  // FR-DT 007 daily registration only; verify the actual production-shaped chain.
+  sql(read('supabase/migrations/20261015110000_preuse_daily_registration.sql'))
+  for (const test of ['caja_c106_preuse_daily_guard','caja_c49_preuso_diario_conductor','caja_c51_flota_app_asignacion']) {
+    const result=query(read('supabase/tests/'+test+'.test.sql'))
+    assert.match(result.stderr,/CAJA C(?:106|49|51) PASS/,result.stderr)
+  }
+  console.log('PASS: C106, C49 and C51 preserve formats, faults and history while enforcing one daily inspection, authorized repeats and same-day unit reuse.')
+
+  // Two independent PostgreSQL sessions submit fresh operation IDs concurrently.
+  sql('CREATE TABLE fixture_preuse_race(profile_id uuid,driver_id uuid,unit_revision uuid,payload jsonb); GRANT SELECT ON fixture_preuse_race TO authenticated;')
+  const dailyCase=read('supabase/tests/caja_c106_preuse_daily_guard.test.sql')
+  const setup=dailyCase.slice(dailyCase.indexOf('DO $test$'),dailyCase.indexOf(' SELECT count(*) INTO total_before'))
+  sql(setup+" INSERT INTO fixture_preuse_race VALUES(actor,driver,(unit->>'revision')::uuid,data); END $test$;")
+  const raceSql=`BEGIN; SET ROLE authenticated;
+    SELECT set_config('request.jwt.claim.sub',(SELECT profile_id::text FROM fixture_preuse_race),true);
+    SELECT set_config('request.jwt.claims',(SELECT json_build_object('sub',profile_id,'role','authenticated')::text FROM fixture_preuse_race),true);
+    SELECT submit_driver_preuse(gen_random_uuid(),(SELECT unit_revision FROM fixture_preuse_race),now(),(SELECT payload FROM fixture_preuse_race));
+    SELECT pg_sleep(0.2); COMMIT;`
+  const race=spawnSync('python3',['-c',`import sys,subprocess,json
+payload=sys.stdin.read(); command=['docker','exec','-i',sys.argv[1],'psql','-U','postgres','-At','-v','ON_ERROR_STOP=1']
+processes=[subprocess.Popen(command,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True) for _ in range(2)]
+for process in processes:
+ process.stdin.write(payload);process.stdin.close();process.stdin=None
+results=[]
+for process in processes:
+ output,error=process.communicate();results.append({'status':process.returncode,'output':output,'error':error})
+print(json.dumps(results))`,name],{input:raceSql,encoding:'utf8'})
+  assert.equal(race.status,0,race.stderr)
+  const concurrent=JSON.parse(race.stdout)
+  for(const result of concurrent)assert.equal(result.status,0,result.error)
+  const receipts=concurrent.map(result=>JSON.parse(result.output.split('\n').find(line=>line.startsWith('{')&&line.includes('"success"'))))
+  assert.equal(receipts.filter(result=>result.already_registered).length,1)
+  assert.equal(sql('SELECT count(*) FROM driver_preuse_inspections WHERE driver_id=(SELECT driver_id FROM fixture_preuse_race)'),'1')
+  assert.equal(sql('SELECT count(*) FROM inspections WHERE driver_id=(SELECT driver_id FROM fixture_preuse_race)'),'1')
+  console.log('PASS: two concurrent device submissions create exactly one signed inspection and one header; the second receives the existing daily record.')
+
 } catch(error) {
   console.error(error.message)
   console.error('::error title=Delivery conformity validation::' + error.message.replaceAll('%','%25').replaceAll('\n','%0A'))

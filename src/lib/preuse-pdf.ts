@@ -45,7 +45,7 @@ export function drawPreusePage(doc: jsPDF, row: PreuseInspection, logo?: string)
   doc.setFont('helvetica','normal'); textBox(doc,'Nombre: '+row.inspector_name,16,284,174,6,8)
   doc.line(10,291,200,291); textBox(doc,'OHSAS 18001',165,292,35,4,7,'center')
 }
-export async function exportPreusePdf(rows: PreuseInspection[], from: string, to: string) {
+export async function exportPreusePdf(rows: PreuseInspection[], from: string, to: string, filename?: string) {
   if (!rows.length) throw new Error('No hay inspecciones en el rango seleccionado')
   const { jsPDF } = await import('jspdf')
   const response = await fetch('/logo-jrm.png'); if (!response.ok) throw new Error('No se pudo cargar el logo del formato')
@@ -53,5 +53,5 @@ export async function exportPreusePdf(rows: PreuseInspection[], from: string, to
   const doc = new jsPDF({ orientation:'portrait',unit:'mm',format:'a4',compress:true })
   doc.setProperties({ title: `${PREUSE_FORMAT.code} · ${from} a ${to}`, subject:'Inspección de pre uso de vehículos livianos y pesados', creator:'JRM TMS' })
   rows.forEach((row,i) => { if (i) doc.addPage(); drawPreusePage(doc,row,logo) })
-  doc.save(`FR-DT007_${from}_${to}.pdf`)
+  doc.save(filename || `FR-DT007_${from}_${to}.pdf`)
 }
