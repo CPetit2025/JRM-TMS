@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS public.unit_odometer_readings (
 );
 CREATE INDEX IF NOT EXISTS unit_odometer_readings_plate_idx ON public.unit_odometer_readings(vehicle_plate, captured_at DESC);
 CREATE INDEX IF NOT EXISTS unit_odometer_readings_driver_idx ON public.unit_odometer_readings(driver_id, operation_date);
-CREATE UNIQUE INDEX IF NOT EXISTS unit_odometer_one_close ON public.unit_odometer_readings(driver_id, unit_revision) WHERE kind = 'CIERRE';
+-- Un checklist por conductor, unidad y día (#248): la jornada se identifica igual
+CREATE UNIQUE INDEX IF NOT EXISTS unit_odometer_one_close ON public.unit_odometer_readings(driver_id, vehicle_plate, operation_date) WHERE kind = 'CIERRE';
 ALTER TABLE public.unit_odometer_readings ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS security_active_account ON public.unit_odometer_readings;
 CREATE POLICY security_active_account ON public.unit_odometer_readings AS RESTRICTIVE FOR ALL TO authenticated
@@ -115,9 +116,9 @@ BEGIN
   IF dr.id IS NULL THEN RETURN jsonb_build_object('success', false, 'error', 'Sin conductor activo'); END IF;
   SELECT * INTO u FROM public.driver_preuse_units WHERE driver_id = dr.id AND operation_date = today;
   IF u.driver_id IS NULL THEN RETURN jsonb_build_object('success', true, 'unit', NULL, 'operation_date', today); END IF;
-  SELECT * INTO ini FROM public.unit_odometer_readings WHERE driver_id = dr.id AND unit_revision = u.revision AND kind = 'INICIO'
-   ORDER BY captured_at LIMIT 1;
-  SELECT * INTO fin FROM public.unit_odometer_readings WHERE driver_id = dr.id AND unit_revision = u.revision AND kind = 'CIERRE';
+  SELECT * INTO ini FROM public.unit_odometer_readings WHERE driver_id = dr.id AND vehicle_plate = u.vehicle_plate AND operation_date = today
+   AND kind = 'INICIO' ORDER BY captured_at LIMIT 1;
+  SELECT * INTO fin FROM public.unit_odometer_readings WHERE driver_id = dr.id AND vehicle_plate = u.vehicle_plate AND operation_date = today AND kind = 'CIERRE';
   RETURN jsonb_build_object('success', true, 'operation_date', today, 'unit', u.vehicle_plate, 'revision', u.revision,
     'start', CASE WHEN ini.operation_id IS NOT NULL THEN jsonb_build_object('odometer', ini.odometer, 'captured_at', ini.captured_at) END,
     'close', CASE WHEN fin.operation_id IS NOT NULL THEN jsonb_build_object('odometer', fin.odometer, 'captured_at', fin.captured_at) END,
@@ -139,10 +140,10 @@ BEGIN
   IF rec.operation_id IS NOT NULL THEN RETURN jsonb_build_object('success', true, 'duplicate', true, 'km', NULL); END IF;
   SELECT * INTO u FROM public.driver_preuse_units WHERE driver_id = dr.id AND operation_date = (v_captured AT TIME ZONE 'America/Lima')::date;
   IF u.driver_id IS NULL THEN RETURN jsonb_build_object('success', false, 'error', 'No hay una unidad confirmada hoy: realice primero el checklist del día'); END IF;
-  IF EXISTS (SELECT 1 FROM public.unit_odometer_readings WHERE driver_id = dr.id AND unit_revision = u.revision AND kind = 'CIERRE') THEN
+  IF EXISTS (SELECT 1 FROM public.unit_odometer_readings WHERE driver_id = dr.id AND vehicle_plate = u.vehicle_plate AND operation_date = u.operation_date AND kind = 'CIERRE') THEN
     RETURN jsonb_build_object('success', false, 'error', 'La jornada de esta unidad ya fue cerrada'); END IF;
-  SELECT * INTO ini FROM public.unit_odometer_readings WHERE driver_id = dr.id AND unit_revision = u.revision AND kind = 'INICIO'
-   ORDER BY captured_at LIMIT 1;
+  SELECT * INTO ini FROM public.unit_odometer_readings WHERE driver_id = dr.id AND vehicle_plate = u.vehicle_plate AND operation_date = u.operation_date
+   AND kind = 'INICIO' ORDER BY captured_at LIMIT 1;
   rec := public.unit_odometer_record(p_operation, u.vehicle_plate, dr.id, u.operation_date, 'CIERRE', p_odometer, p_photo, v_captured, auth.uid(), u.revision);
   RETURN jsonb_build_object('success', true, 'plate', u.vehicle_plate, 'odometer', rec.odometer, 'flag', rec.flag,
     'km', CASE WHEN ini.operation_id IS NOT NULL AND rec.odometer >= ini.odometer THEN rec.odometer - ini.odometer END);
