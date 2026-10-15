@@ -33,7 +33,9 @@ function guideStatus(row: DeliveryRow): { label: string; tone: StatusTone; title
   const map: Record<DeliveryRow['conformity'], [string, StatusTone]> = {
     PENDIENTE: ['Guía pendiente', 'warning'], RECIBIDA: ['Por validar', 'info'], VALIDADA: ['Conforme', 'success'],
     OBSERVADA: ['Observada', 'danger'], RECHAZADA: ['Rechazada', 'danger'], HISTORICA: ['Histórica', 'neutral'], NO_APLICA: ['No aplica', 'neutral'],
+    RECHAZO_DESTINO: ['Rechazo en destino', 'danger'],
   }
+  if (row.state === 'RECHAZADO_DESTINO') return { label: 'Rechazo en destino', tone: 'danger', title: 'El cliente rechazó la entrega: se liquida con la evidencia del rechazo' }
   const [label, tone] = map[row.conformity]
   return { label, tone, title: `${guide}${photos} · ${conformityLabels[row.conformity]}` }
 }

@@ -504,8 +504,9 @@ function settlementKind(info: Parameters<typeof serviceKind>[0], pickup: boolean
   return kind === 'RECOJO' ? 'RECOJO' : kind === 'PUNTO_A_PUNTO' ? 'TRASLADO' : 'ENTREGA'
 }
 type SettlementChecklist = {
-  dispatch_id: string; request_id: string; kind: 'ENTREGA' | 'RECOJO' | 'TRASLADO' | 'RECOJO_CLIENTE'; complete: boolean
+  dispatch_id: string; request_id: string; kind: 'ENTREGA' | 'RECOJO' | 'TRASLADO' | 'RECOJO_CLIENTE' | 'RECHAZO'; complete: boolean
   missing: string[]; guide_state: string; note: boolean; packing: boolean; references: string[]
+  rejection?: { reason: string; note: string | null; photos: number; captured_at: string; decision: string | null; decision_reason: string | null; decided_at: string | null }
   manual?: { reason: string; missing: string[]; closed_at: string; closed_by: string | null }
 }
 type NumberedKind = 'GUIA' | 'NOTA' | 'OC' | 'OS' | 'RQ'
@@ -522,8 +523,9 @@ const SETTLEMENT_RULES: Record<SettlementChecklist['kind'], { label: string; req
   RECOJO: { label: 'Recojo hacia planta', required: 'Guía de Remisión (validada). OC, OS o RQ opcionales', numbered: ['GUIA', 'OC', 'OS', 'RQ'], packingRequired: false, packingAllowed: false },
   TRASLADO: { label: 'Punto a punto', required: 'Ninguno: todos los documentos son opcionales', numbered: ['GUIA', 'NOTA', 'OC', 'OS', 'RQ'], packingRequired: false, packingAllowed: true },
   RECOJO_CLIENTE: { label: 'Recojo por el cliente', required: 'Nota de Despacho', numbered: ['NOTA'], packingRequired: false, packingAllowed: true },
+  RECHAZO: { label: 'Rechazada en destino', required: 'evidencia del rechazo (fotos del conductor) y decisión de Despacho: reprogramar o anular', numbered: [], packingRequired: false, packingAllowed: false },
 }
-const MISSING_LABEL: Record<string, string> = { GUIA_O_NOTA: 'GR validada o Nota de Despacho', PACKING_LIST: 'Packing List', GUIA_REMISION: 'GR validada', NOTA_DESPACHO: 'Nota de Despacho' }
+const MISSING_LABEL: Record<string, string> = { GUIA_O_NOTA: 'GR validada o Nota de Despacho', PACKING_LIST: 'Packing List', GUIA_REMISION: 'GR validada', NOTA_DESPACHO: 'Nota de Despacho', DECISION_RECHAZO: 'Decisión de Despacho (reprogramar o anular)' }
 // Uno de los documentos con número es obligatorio según el tipo de servicio (en entrega: GR o Nota, uno de los dos)
 const requiredFor = (service: SettlementChecklist['kind'], doc: NumberedKind) => service === 'ENTREGA' ? doc === 'GUIA' || doc === 'NOTA' : service === 'RECOJO' ? doc === 'GUIA' : service === 'RECOJO_CLIENTE' ? doc === 'NOTA' : false
 const GUIDE_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp'
@@ -625,7 +627,8 @@ function SettlementUpload({ dispatchId, requestId, checklist, canUpload, canManu
   const primary = 'inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002855] px-3 text-xs font-semibold text-white disabled:opacity-40 lg:min-h-9'
   const chosen = (files: File[], clear: () => void) => files.length > 0 && <p className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600">{files.map(f => <span key={f.name + f.size} className="inline-flex items-center gap-1"><KindTag kind={fileKind(f.name, f.type)} />{f.name}</span>)}<button type="button" onClick={clear} className="font-semibold text-red-700">Quitar</button></p>
   const tag = (required: boolean) => <span className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${required ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-600'}`}>{required ? 'Obligatorio' : 'Opcional'}</span>
-  const guideNote = checklist && !guideOpen ? `GR ${checklist.guide_state === 'RECIBIDA' ? 'enviada · en validación del Supervisor de Transporte' : conformityLabels[checklist.guide_state as keyof typeof conformityLabels] || checklist.guide_state}` : null
+  const guideNote = checklist?.rejection ? `Rechazo en destino: ${checklist.rejection.reason}${checklist.rejection.note ? ` · ${checklist.rejection.note}` : ''} · ${checklist.rejection.photos} foto(s)${checklist.rejection.decision ? ` · ${checklist.rejection.decision === 'REPROGRAMADA' ? 'reprogramada' : 'anulada'}: ${checklist.rejection.decision_reason || ''}` : ''}`
+    : checklist && !guideOpen ? `GR ${checklist.guide_state === 'RECIBIDA' ? 'enviada · en validación del Supervisor de Transporte' : conformityLabels[checklist.guide_state as keyof typeof conformityLabels] || checklist.guide_state}` : null
 
   return <div className={`space-y-3 border-t px-4 py-3 ${checklist?.complete ? 'border-emerald-200 bg-emerald-50/40' : 'border-amber-200 bg-amber-50/40'}`}>
     <div className="flex flex-wrap items-start justify-between gap-2">
@@ -659,7 +662,7 @@ function SettlementUpload({ dispatchId, requestId, checklist, canUpload, canManu
           </div>
         </div>
       : <div className="flex justify-end"><button type="button" onClick={() => setManualOpen(true)} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-emerald-600 bg-white px-3 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"><CheckCircle2 className="h-4 w-4" />Dar por liquidado</button></div>)}
-    {canUpload && <div className={`grid gap-3 ${rule.packingAllowed ? 'lg:grid-cols-2' : ''}`}>
+    {canUpload && checklist?.kind !== 'RECHAZO' && <div className={`grid gap-3 ${rule.packingAllowed ? 'lg:grid-cols-2' : ''}`}>
       {spec && active ? <div className="min-w-0 space-y-2">
         <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="Documento con número">
           {options.map(k => <button key={k} type="button" role="radio" aria-checked={active === k} onClick={() => { setKind(k); setNumber(''); setDocFiles([]) }}

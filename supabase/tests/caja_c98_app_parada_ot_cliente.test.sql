@@ -12,7 +12,9 @@ BEGIN
    RAISE EXCEPTION 'CAJA C98 FAIL: OT y cliente de la parada (T1) %',info; END IF;
  END IF;
  IF to_regprocedure('public.get_active_trip_context_before_stop_info()') IS NULL
-  OR position('trip_stop_info' IN pg_get_functiondef('public.get_active_trip_context()'::regprocedure))=0 THEN
+  -- El contexto se compone por capas (paradas, preuso, estado de la entrega): los datos por parada están en alguna de ellas
+  OR position('trip_stop_info' IN pg_get_functiondef('public.get_active_trip_context()'::regprocedure)
+     ||COALESCE(pg_get_functiondef(to_regprocedure('public.get_active_trip_context_before_delivery_status()')),''))=0 THEN
   RAISE EXCEPTION 'CAJA C98 FAIL: viaje del app sin datos por parada (T2)'; END IF;
  IF has_function_privilege('authenticated','public.trip_stop_info(uuid)','EXECUTE')
   OR has_function_privilege('authenticated','public.get_active_trip_context_before_stop_info()','EXECUTE')
