@@ -626,6 +626,7 @@ sql(`INSERT INTO dispatches(id,dispatch_number,status,site_id,vehicle_plate,sche
   console.log('PASS: C85 multiple guide and dispatch-note numbers without files, preserved numbering, atomic duplicate rejection, separated evidence/departure responsibilities, role/site/inactive account isolation.')
   // FR-DT 007 daily registration only; verify the actual production-shaped chain.
   sql(read('supabase/migrations/20261015110000_preuse_daily_registration.sql'))
+  sql(read('supabase/migrations/20261015120000_preuse_repeat_indexes.sql'))
   for (const test of ['caja_c106_preuse_daily_guard','caja_c49_preuso_diario_conductor','caja_c51_flota_app_asignacion']) {
     const result=query(read('supabase/tests/'+test+'.test.sql'))
     assert.match(result.stderr,/CAJA C(?:106|49|51) PASS/,result.stderr)
