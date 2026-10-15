@@ -3,6 +3,10 @@ DO $test$
 DECLARE admin_id uuid; actor uuid; driver uuid; site uuid; carrier uuid; unit jsonb; other_unit jsonb;
  data jsonb; r jsonb; operation uuid:=gen_random_uuid(); dispatch uuid; bad boolean; daily_guard boolean:=to_regprocedure('public.get_driver_preuse_daily_status(text)') IS NOT NULL; last_operation uuid; first_operation uuid; grant_id uuid; total_before bigint; previous_claims text;
 BEGIN
+ IF EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid='public.driver_preuse_repeat_authorizations'::regclass AND c.contype='f'
+ AND (NOT c.convalidated OR NOT EXISTS(SELECT 1 FROM pg_index i WHERE i.indrelid=c.conrelid AND i.indisvalid AND i.indpred IS NULL
+ AND (i.indkey::smallint[])[0:cardinality(c.conkey)-1] @> c.conkey))) THEN
+   RAISE EXCEPTION 'CAJA C106 FAIL: autorizaciones sin cobertura de índices para sus relaciones'; END IF;
  IF has_function_privilege('anon','public.submit_driver_preuse(uuid,uuid,timestamptz,jsonb)','EXECUTE')
    OR has_function_privilege('authenticated','public.driver_preuse_select_core(uuid,text)','EXECUTE')
    OR has_function_privilege('authenticated','public.get_active_trip_context_before_preuse()','EXECUTE')
