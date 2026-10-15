@@ -16,6 +16,9 @@ BEGIN
   OR has_table_privilege('authenticated','public.delivery_rejections','SELECT')
   OR NOT has_function_privilege('authenticated','public.delivery_reject_driver(uuid,uuid,text,text,text,text[],numeric,numeric,numeric,uuid,timestamptz)','EXECUTE')
   OR NOT has_function_privilege('authenticated','public.get_active_trip_context()','EXECUTE')
+  -- Las fotos de guía, Packing List y rechazo quedan protegidas contra borrado
+  OR position('packing_photos' IN pg_get_functiondef('public.delivery_photo_mutable(text)'::regprocedure))=0
+  OR position('delivery_rejections' IN pg_get_functiondef('public.delivery_photo_mutable(text)'::regprocedure))=0
  THEN fails := fails || 'T1 permisos'::text; ELSE pass := pass + 1; END IF;
 
  -- Datos: OT, tres solicitudes (dos en la ruta, una de otra fecha a la misma dirección), conductor y ruta en curso
