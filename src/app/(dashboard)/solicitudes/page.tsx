@@ -25,6 +25,7 @@ import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 import { districtOf } from '@/lib/address'
 import { cellDateTime, fullDateTime } from '@/lib/table-format'
 import { SupplierOriginPicker } from '@/components/solicitudes/SupplierOriginPicker'
+import { InlineOtCreator, type CreatedOt } from '@/components/solicitudes/InlineOtCreator'
 import { FormSection, PendingPanel, PendingStatus } from '@/components/ui/form-section'
 import { partyName, referenceLabel, REFERENCE_TYPES, requiresSupplier, type ReferenceType, type Supplier } from '@/lib/suppliers'
 import { serviceDate } from '@/lib/request-schedule'
@@ -156,6 +157,11 @@ export default function SolicitudesPage() {
   // F2: aprueba/rechaza el Supervisor de Despacho; reprograman él y el Administrador de Contratos
   const canApprove = canWrite('despacho-aprobacion')
   const canReschedule = canApprove || canWrite('despacho') || role === 'administrador de contratos'
+  // Alta de OT madre (y su cliente) dentro de la solicitud: mismos permisos que el alta en Contratos; la partida, solo
+  // quien puede asignarla (Contratos y OTs con escritura)
+  const canCreateOt = role === 'admin' || role === 'administrador de contratos' || canWrite('ot') || canWrite('clientes')
+  const canSetOtBudget = role === 'admin' || canWrite('ot')
+  const [creatingOt, setCreatingOt] = useState(false)
   const supabase = useMemo(() => createClient(), [])
   
   const [requests, setRequests] = useState<TransportRequest[]>([])
@@ -503,8 +509,8 @@ export default function SolicitudesPage() {
     return options
   }
 
-  const handleContractChange = (contractId: string) => {
-    const selectedContract = contracts.find(c => c.id === contractId)
+  const handleContractChange = (contractId: string, known?: Pick<Contract, 'code' | 'destination_address' | 'destination_department' | 'destination_province' | 'destination_district'>) => {
+    const selectedContract = known || contracts.find(c => c.id === contractId)
     if (newRequest.contract_id && newRequest.contract_id !== contractId && Object.keys(selectedComponents).length) {
       toast.info('Se limpiaron los componentes al cambiar de OT.')
     }
@@ -1104,6 +1110,18 @@ export default function SolicitudesPage() {
                   componentLoadId.current++
                 }}
               />
+              {canCreateOt && !newRequest.contract_id && (creatingOt
+                ? <InlineOtCreator canSetBudget={canSetOtBudget}
+                    initialDestination={newRequest.request_type === 'DESPACHO' ? { destination_address: newRequest.delivery_address, destination_department: newRequest.delivery_department,
+                      destination_province: newRequest.delivery_province, destination_district: newRequest.delivery_district } : undefined}
+                    onCancel={() => setCreatingOt(false)}
+                    onCreated={async (ot: CreatedOt) => {
+                      await fetchContracts()
+                      handleContractChange(ot.id, ot)
+                      setCreatingOt(false)
+                    }} />
+                : <button type="button" disabled={isSubmitting} onClick={() => setCreatingOt(true)} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline">
+                    <Plus className="h-3.5 w-3.5" />¿No existe la OT? Regístrala aquí (con su cliente)</button>)}
               {newRequest.contract_id && <InlineComponentCreator key={newRequest.contract_id}
                 rootId={newRequest.contract_id} rootCode={contracts.find(c => c.id === newRequest.contract_id)?.code || ''}
                 disabled={isSubmitting} create={async (kind, suffix) => {
