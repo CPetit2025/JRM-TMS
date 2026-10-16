@@ -10,7 +10,7 @@ import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 
 import { DEFAULT_LEAD_TIME_SETTINGS, evaluateLeadTime, settingsForRequest, limaDateTimeToIso, limaInputParts, formatLeadTimeStatus, type DeliveryZone, type TransportLeadTimeSettings } from '@/lib/transport-lead-time'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Plus, Send, Check, X, Search, Loader2, Clock, CalendarClock, Ban, Edit2, ArrowUpDown, ArrowUp, ArrowDown, Eye, Layers, CheckCircle2, Truck, Copy, FilePen, History } from 'lucide-react'
+import { Plus, Send, Check, X, Search, Loader2, Clock, CalendarClock, Ban, Edit2, ArrowUpDown, ArrowUp, ArrowDown, Eye, Layers, CheckCircle2, Truck, Copy, FilePen, History, FileDown } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -900,6 +900,8 @@ export default function SolicitudesPage() {
   return (
     <div className="flex min-h-0 w-full flex-col gap-2.5 mx-auto lg:h-full">
       <PageHeader showTitle title="Solicitud de Transporte" description="Control de servicios programados" actions={<>
+        <a href="/manuales/manual-solicitud-transporte.pdf" download className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-[#002855] hover:bg-slate-50">
+          <FileDown className="h-4 w-4" />Manual de uso</a>
         {canWrite('solicitudes') && (
           <button 
             onClick={() => {
