@@ -19,7 +19,7 @@ on:
       audit_scope:
         description: Alcance de la inspección de solo lectura
         type: choice
-        options: [all, apt, apt-performance, driver-assignment]
+        options: [all, apt, apt-performance, driver-assignment, requester-rls]
         default: all
       audit_dispatch:
         description: Correlativo numérico para diagnóstico de asignación (solo lectura)
@@ -159,7 +159,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        section: ${{ inputs.audit_scope == 'apt' && fromJSON('["apt"]') || inputs.audit_scope == 'apt-performance' && fromJSON('["apt-performance"]') || inputs.audit_scope == 'driver-assignment' && fromJSON('["driver-assignment"]') || fromJSON('["catalog", "rpc-a", "rpc-b", "integrity", "apt"]') }}
+        section: ${{ inputs.audit_scope == 'apt' && fromJSON('["apt"]') || inputs.audit_scope == 'apt-performance' && fromJSON('["apt-performance"]') || inputs.audit_scope == 'driver-assignment' && fromJSON('["driver-assignment"]') || inputs.audit_scope == 'requester-rls' && fromJSON('["requester-rls"]') || fromJSON('["catalog", "rpc-a", "rpc-b", "integrity", "apt"]') }}
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
@@ -185,6 +185,8 @@ jobs:
             integrity) audit_file=scripts/security/integrity.sql ;;
             apt) audit_file=scripts/security/apt-reconciliation.sql ;;
             apt-performance) audit_file=scripts/security/apt-query-performance.sql ;;
+            # RLS de una cuenta «Solicitante de Transporte»: la prueba C111 se revierte siempre (termina en excepción)
+            requester-rls) audit_file=supabase/tests/caja_c111_rls_solicitante.test.sql ;;
             driver-assignment)
               python3 - <<'PY'
           import os,re,pathlib
