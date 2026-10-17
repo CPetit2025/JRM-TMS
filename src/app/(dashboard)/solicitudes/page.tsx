@@ -170,6 +170,7 @@ export default function SolicitudesPage() {
   const [requestSummaries, setRequestSummaries] = useState<Record<string, RequestSummary>>({})
   const [contracts, setContracts] = useState<Contract[]>([])
   const [contractsLoaded, setContractsLoaded] = useState(false)
+  const [autoApproval, setAutoApproval] = useState(false)
   const [, setContractSearch] = useState('')
   const [otNodes, setOtNodes] = useState<OtNode[]>([])  // OT madre/independientes con sus subcontratos y errores
   const [componentOptions, setComponentOptions] = useState<ComponentOption[]>([])
@@ -434,10 +435,11 @@ export default function SolicitudesPage() {
       void fetchRequests()
       void fetchContracts()
       void checkUser()
+      void supabase.rpc('get_request_auto_approval').then(({ data }) => setAutoApproval(Boolean(data?.success && data.enabled)))
       void fetchLeadTimeSettings()
     }, 0)
     return () => window.clearTimeout(task)
-  }, [fetchRequests, fetchContracts, checkUser, fetchLeadTimeSettings])
+  }, [fetchRequests, fetchContracts, checkUser, fetchLeadTimeSettings, supabase])
 
   // Memoria: solicitudes anteriores al mismo destino / cliente / OT y la descarga que necesitaron
   useEffect(() => {
@@ -728,7 +730,7 @@ export default function SolicitudesPage() {
       if (error) throw error
       if (saved?.status === 'OBSERVADA') toast.warning('Solicitud registrada con observaciones; revise los costos y la referencia antes de su aprobación.')
 
-      toast.success('Solicitud enviada correctamente')
+      toast.success(saved?.auto_approved ? 'Solicitud registrada y aprobada automáticamente' : 'Solicitud enviada correctamente')
       if (referentialOverBalance) toast.info(`El costo referencial (S/ ${estimatedCost.toLocaleString('es-PE')}) supera hoy el saldo de la partida (S/ ${Number(rootBalance).toLocaleString('es-PE')}). Es solo referencial: el saldo se valida al armar la ruta con la unidad asignada.`)
       if (!editingRequestId && draftMode) clearDraft()
       setUnloading([]); setUnloadingAnswer(''); setUnloadingHistory([])
@@ -963,6 +965,12 @@ export default function SolicitudesPage() {
         )}
         <TorreControlButton />
       </>} />
+      {autoApproval && (
+        <p role="status" className="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span><b>Aprobación automática activa:</b> las solicitudes con OT registradas sin observaciones quedan aprobadas al enviarse.</span>
+        </p>
+      )}
       {userRole === 'administrador de contratos' && contractsLoaded && contracts.length === 0 && (
         <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           <Briefcase className="h-5 w-5 shrink-0" aria-hidden="true" />
