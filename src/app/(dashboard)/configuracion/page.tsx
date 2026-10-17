@@ -1,6 +1,7 @@
 "use client"
 import { PageHeader } from '@/components/ui/page-header'
 import { TransportLeadTimeSettings } from '@/components/configuracion/TransportLeadTimeSettings'
+import { RequestAutoApprovalSettings } from '@/components/configuracion/RequestAutoApprovalSettings'
 import { protectedFileHref } from '@/lib/protected-files'
 import { useState, useEffect } from 'react'
 import { Save, Building2, Truck, CreditCard, Loader2, Bot, Lock, FileSignature, Upload, FileImage, Trash2, CheckCircle2 } from 'lucide-react'
@@ -127,6 +128,7 @@ export default function ConfiguracionPage() {
       return <div className="space-y-6 max-w-4xl mx-auto">
         <PageHeader showTitle title="Planificación y plazos" description="Configura la anticipación mínima de las nuevas solicitudes de transporte." />
         <TransportLeadTimeSettings />
+        <div className="rounded-xl border border-slate-200 bg-white p-5"><RequestAutoApprovalSettings /></div>
       </div>
     }
     return (
@@ -149,6 +151,7 @@ export default function ConfiguracionPage() {
         {/* Tabs */}
         <div className="flex overflow-x-auto border-b border-slate-200 bg-slate-50">
           <button onClick={() => setActiveTab('plazos')} className={`shrink-0 px-6 py-4 text-sm font-medium ${activeTab === 'plazos' ? 'border-b-2 border-[#002855] bg-white text-[#002855]' : 'text-slate-500 hover:bg-slate-100'}`}>Planificación y plazos</button>
+          <button onClick={() => setActiveTab('aprobacion')} className={`shrink-0 px-6 py-4 text-sm font-medium ${activeTab === 'aprobacion' ? 'border-b-2 border-[#002855] bg-white text-[#002855]' : 'text-slate-500 hover:bg-slate-100'}`}>Aprobación de solicitudes</button>
           <button 
             onClick={() => setActiveTab('empresa')}
             className={`px-6 py-4 text-sm font-medium flex items-center gap-2 transition-colors ${
@@ -209,6 +212,7 @@ export default function ConfiguracionPage() {
         {/* Tab Content */}
         <div className="p-6">
           {activeTab === 'plazos' && <TransportLeadTimeSettings />}
+          {activeTab === 'aprobacion' && <RequestAutoApprovalSettings />}
           {activeTab === 'empresa' && (
             <div className="space-y-6 animate-in fade-in duration-300">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
