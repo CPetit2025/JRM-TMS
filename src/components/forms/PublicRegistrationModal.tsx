@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { REQUEST_AREAS } from '@/lib/request-areas'
 
 interface PublicRegistrationModalProps {
   isOpen: boolean
@@ -18,6 +19,7 @@ export function PublicRegistrationModal({ isOpen, onClose }: PublicRegistrationM
     username: '',
     document_number: '',
     phone: '',
+    area: '',
     role_id: '',
     password: ''
   })
@@ -45,7 +47,7 @@ export function PublicRegistrationModal({ isOpen, onClose }: PublicRegistrationM
       
       // Reset form
       setNewUser({
-        first_name: '', last_name: '', username: '', document_number: '', phone: '', role_id: '', password: ''
+        first_name: '', last_name: '', username: '', document_number: '', phone: '', area: '', role_id: '', password: ''
       })
     } catch (error: any) {
       toast.error(error.message)
@@ -84,7 +86,14 @@ export function PublicRegistrationModal({ isOpen, onClose }: PublicRegistrationM
             </div>
           </div>
 
-          <p className="text-xs text-slate-500">Un administrador asignará tu rol al aprobar la cuenta.</p>
+          <div>
+            <label htmlFor="registro-area" className="block text-sm font-medium text-slate-700 mb-1">Área</label>
+            <select id="registro-area" required value={newUser.area} onChange={e => setNewUser({...newUser, area: e.target.value})} className="w-full px-3 py-2 border border-slate-300 bg-white text-slate-900 rounded-md focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none">
+              <option value="">Seleccione su área…</option>
+              {REQUEST_AREAS.map(area => <option key={area} value={area}>{area}</option>)}
+            </select>
+            <p className="text-xs text-slate-500 mt-1">Se usará como área solicitante en tus solicitudes de transporte. Un administrador asignará tu rol al aprobar la cuenta.</p>
+          </div>
 
           <div className="grid grid-cols-1 gap-4 pt-4 border-t sm:grid-cols-2">
             <div>

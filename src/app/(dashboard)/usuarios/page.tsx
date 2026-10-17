@@ -3,7 +3,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, User, Edit2, Search, Filter, Loader2, UserCheck, UserX } from 'lucide-react'
+import { Plus, User, Edit2, Search, Filter, Loader2, UserCheck, UserX, UserPlus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { UserFormModal, UserData } from '@/components/forms/UserFormModal'
@@ -22,6 +22,9 @@ interface Role {
   name: string
 }
 
+// Registro público esperando aprobación: inactivo y sin rol (el administrador asigna el rol y luego activa)
+const isPending = (user: Profile) => user.is_active === false && !user.roles?.id
+
 export default function UsuariosPage() {
   const [supabase] = useState(() => createClient())
   const [users, setUsers] = useState<Profile[]>([])
@@ -39,9 +42,10 @@ export default function UsuariosPage() {
     const matchesSearch = !query || `${item.first_name} ${item.last_name}`.toLowerCase().includes(query) ||
       (item.username || '').toLowerCase().includes(query) || (item.document_number || '').includes(query)
     const matchesStatus = filterStatus === 'TODOS' ||
-      (filterStatus === 'ACTIVO' ? item.is_active === true : item.is_active === false)
+      (filterStatus === 'PENDIENTE' ? isPending(item) : filterStatus === 'ACTIVO' ? item.is_active === true : item.is_active === false)
     return matchesSearch && matchesStatus;
   });
+  const pendingCount = users.filter(isPending).length
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -84,6 +88,7 @@ export default function UsuariosPage() {
       username: user.username || '',
       document_number: user.document_number,
       phone: user.phone,
+      area: user.area || '',
       role_id: user.roles?.id || '',
     })
     setIsModalOpen(true)
@@ -95,6 +100,12 @@ export default function UsuariosPage() {
   }
 
   const toggleStatus = async (user: Profile) => {
+    // Sin rol la cuenta entraría sin ningún módulo: primero se asigna el rol (p. ej. Solicitante de Transporte)
+    if (!user.is_active && !user.roles?.id) {
+      toast.error('Asigna un rol antes de activar la cuenta. Elige el rol y guarda; luego actívala.')
+      handleEdit(user)
+      return
+    }
     try {
       const { error } = await supabase
         .from('profiles')
@@ -121,6 +132,14 @@ export default function UsuariosPage() {
           Nuevo Usuario
         </button>
 </>} />
+
+      {pendingCount > 0 && (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <UserPlus className="h-5 w-5 shrink-0" aria-hidden="true" />
+          <p className="min-w-0 flex-1"><b>{pendingCount === 1 ? '1 registro espera aprobación.' : `${pendingCount} registros esperan aprobación.`}</b> Revisa sus datos y su área, asígnales un rol (las áreas que piden transporte usan «Solicitante de Transporte»; Administración de Contratos, «Administrador de Contratos») y actívalos.</p>
+          <button type="button" onClick={() => { setFilterStatus('PENDIENTE'); setShowFilters(true) }} className="inline-flex min-h-10 items-center rounded-lg bg-[#002855] px-3 font-semibold text-white hover:bg-[#001d3d]">Ver pendientes</button>
+        </div>
+      )}
 
             {/* Filtros y Búsqueda */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
@@ -155,6 +174,7 @@ export default function UsuariosPage() {
                 onChange={(e) => setFilterStatus(e.target.value)}
               >
                 <option value="TODOS">Todos</option>
+                <option value="PENDIENTE">Pendiente de aprobación</option>
                 <option value="ACTIVO">Activo</option>
                 <option value="INACTIVO">Inactivo</option>
               </select>
@@ -170,6 +190,7 @@ export default function UsuariosPage() {
                 <th className="p-4 font-semibold">Usuario</th>
                 <th className="p-4 font-semibold">Documento</th>
                 <th className="p-4 font-semibold">Teléfono</th>
+                <th className="p-4 font-semibold">Área</th>
                 <th className="p-4 font-semibold">Rol</th>
                 <th className="p-4 font-semibold">Estado</th>
                 <th className="p-4 font-semibold text-right">Acciones</th>
@@ -178,14 +199,14 @@ export default function UsuariosPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-500">
+                  <td colSpan={7} className="p-8 text-center text-slate-500">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                     Cargando usuarios...
                   </td>
                 </tr>
               ) : filteredList.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-500">
+                  <td colSpan={7} className="p-8 text-center text-slate-500">
                     {users.length === 0 ? 'No hay usuarios registrados.' : 'No hay usuarios que coincidan con los filtros.'}
                   </td>
                 </tr>
@@ -205,6 +226,7 @@ export default function UsuariosPage() {
                     </td>
                     <td className="p-4 text-sm text-slate-600">{user.document_number}</td>
                     <td className="p-4 text-sm text-slate-600">{user.phone}</td>
+                    <td className="p-4 text-sm text-slate-600">{user.area || '—'}</td>
                     <td className="p-4">
                       <div className="flex flex-col gap-1">
                         <span className="text-sm font-medium text-slate-700 bg-slate-100 px-2 py-1 rounded w-max">
@@ -223,9 +245,9 @@ export default function UsuariosPage() {
                     </td>
                     <td className="p-4">
                       <span className={`px-2 py-1 text-xs font-semibold rounded-md ${
-                        user.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        user.is_active ? 'bg-green-100 text-green-700' : isPending(user) ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'
                       }`}>
-                        {user.is_active ? 'Activo' : 'Inactivo'}
+                        {user.is_active ? 'Activo' : isPending(user) ? 'Pendiente de aprobación' : 'Inactivo'}
                       </span>
                     </td>
                     <td className="p-4 text-right">
@@ -239,7 +261,7 @@ export default function UsuariosPage() {
                         </button>
                         <button 
                           onClick={() => toggleStatus(user)}
-                          title={user.is_active ? 'Desactivar' : 'Activar'}
+                          title={user.is_active ? 'Desactivar' : isPending(user) ? 'Asignar rol y activar' : 'Activar'}
                           className={`p-2 transition-colors rounded ${user.is_active ? 'text-slate-400 hover:text-red-600 hover:bg-red-50' : 'text-slate-400 hover:text-green-600 hover:bg-green-50'}`}
                         >
                           {user.is_active ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}

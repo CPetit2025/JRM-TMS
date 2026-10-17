@@ -45,6 +45,8 @@ export async function proxy(request: NextRequest) {
   const isDriverRoute = request.nextUrl.pathname.startsWith('/app')
   const isApiRoute = request.nextUrl.pathname.startsWith('/api')
   const isPublicTracking = request.nextUrl.pathname.startsWith('/tracking/')
+  // Enlace de «¿Olvidaste tu contraseña?»: abre aunque haya otra sesión iniciada en el navegador
+  const isPasswordReset = request.nextUrl.pathname === '/login/restablecer'
   let hasDashboardAccess = false
   let operativeDestination: string | null = null
   
@@ -62,7 +64,7 @@ export async function proxy(request: NextRequest) {
     return redirect(url)
   }
 
-  if (user && !isApiRoute && !isPublicTracking) {
+  if (user && !isApiRoute && !isPublicTracking && !isPasswordReset) {
     const { data: profile } = await supabase.from('profiles')
       .select('is_active, employee_type, roles(name, permissions)')
       .eq('id', user.id).maybeSingle()

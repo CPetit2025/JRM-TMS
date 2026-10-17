@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSystemAdminContext } from '@/lib/server/system-admin'
+import { isRequestArea } from '@/lib/request-areas'
 
 type UpdateUserBody = {
   id?: string
@@ -8,6 +9,7 @@ type UpdateUserBody = {
   username?: string
   document_number?: string
   phone?: string
+  area?: string | null
   role_id?: string
   password?: string
 }
@@ -24,6 +26,9 @@ export async function POST(request: Request) {
     const password = body.password?.trim()
     if (!id || !email || !documentNumber || !body.role_id) {
       return NextResponse.json({ error: 'Usuario, documento y rol son obligatorios' }, { status: 400 })
+    }
+    if (body.area != null && body.area !== '' && !isRequestArea(body.area)) {
+      return NextResponse.json({ error: 'Área inválida' }, { status: 400 })
     }
     if (password && password.length < 8) {
       return NextResponse.json({ error: 'La contraseña debe tener al menos 8 caracteres' }, { status: 400 })
@@ -73,6 +78,8 @@ export async function POST(request: Request) {
       phone: body.phone?.trim() || null,
       role_id: body.role_id,
     }
+    // Solo si el formulario la envía: una versión anterior de la pantalla no borra el área
+    if (body.area !== undefined) profileChanges.area = isRequestArea(body.area) ? body.area : null
     if (isDriver) profileChanges.employee_type = 'CONDUCTOR'
     const { data: profile, error: profileError } = await adminClient
       .from('profiles').update(profileChanges).eq('id', id).select().single()

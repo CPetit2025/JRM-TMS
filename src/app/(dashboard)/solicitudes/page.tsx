@@ -10,7 +10,8 @@ import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 
 import { DEFAULT_LEAD_TIME_SETTINGS, evaluateLeadTime, settingsForRequest, limaDateTimeToIso, limaInputParts, formatLeadTimeStatus, type DeliveryZone, type TransportLeadTimeSettings } from '@/lib/transport-lead-time'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Plus, Send, Check, X, Search, Loader2, Clock, CalendarClock, Ban, Edit2, ArrowUpDown, ArrowUp, ArrowDown, Eye, Layers, CheckCircle2, Truck, Copy, FilePen, History, FileDown } from 'lucide-react'
+import { Plus, Send, Check, X, Search, Loader2, Clock, CalendarClock, Ban, Edit2, ArrowUpDown, ArrowUp, ArrowDown, Eye, Layers, CheckCircle2, Truck, Copy, FilePen, History, FileDown, Briefcase } from 'lucide-react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -30,6 +31,7 @@ import { FormSection, PendingPanel, PendingStatus } from '@/components/ui/form-s
 import { partyName, referenceLabel, REFERENCE_TYPES, requiresSupplier, type ReferenceType, type Supplier } from '@/lib/suppliers'
 import { serviceDate } from '@/lib/request-schedule'
 import { requiresOrderReference, orderReferenceComplete } from '@/lib/request-reference'
+import { REQUEST_AREAS, isRequestArea } from '@/lib/request-areas'
 
 const requestDate = (value: string, withTime = false) => value ? new Date(value).toLocaleString('es-PE', {
   timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: 'numeric',
@@ -167,6 +169,7 @@ export default function SolicitudesPage() {
   const [requests, setRequests] = useState<TransportRequest[]>([])
   const [requestSummaries, setRequestSummaries] = useState<Record<string, RequestSummary>>({})
   const [contracts, setContracts] = useState<Contract[]>([])
+  const [contractsLoaded, setContractsLoaded] = useState(false)
   const [, setContractSearch] = useState('')
   const [otNodes, setOtNodes] = useState<OtNode[]>([])  // OT madre/independientes con sus subcontratos y errores
   const [componentOptions, setComponentOptions] = useState<ComponentOption[]>([])
@@ -228,6 +231,9 @@ export default function SolicitudesPage() {
   const activeRequestRoot = useRef('')
   const [linkRequest, setLinkRequest] = useState<TransportRequest | null>(null)
   const [userRole, setUserRole] = useState<string>('')
+  // Área solicitante por defecto: la cartera de OT para Administración de Contratos; para las demás, el área del perfil
+  const [profileArea, setProfileArea] = useState('')
+  const defaultArea = userRole === 'administrador de contratos' ? 'OT (Administración de Contratos)' : profileArea
   const [userId, setUserId] = useState('')
   const [currentRequester, setCurrentRequester] = useState('')
   
@@ -329,7 +335,7 @@ export default function SolicitudesPage() {
     if (user) {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('first_name, last_name, roles(name)')
+        .select('first_name, last_name, area, roles(name)')
         .eq('id', user.id)
         .single()
       
@@ -342,6 +348,11 @@ export default function SolicitudesPage() {
           const normalized = normalizeRoleName(roleName)
           setUserRole(normalized)
           if (normalized === 'administrador de contratos') setNewRequest(prev => ({ ...prev, department: 'OT (Administración de Contratos)' }))
+        }
+        const area = (profile as { area?: string | null }).area
+        if (isRequestArea(area) && normalizeRoleName(roleName || '') !== 'administrador de contratos') {
+          setProfileArea(area)
+          setNewRequest(prev => prev.department ? prev : { ...prev, department: area })
         }
       }
     }
@@ -403,6 +414,7 @@ export default function SolicitudesPage() {
       type Row = Contract & { parent_contract_id: string | null; contract_budgets?: { concept: string; allocated_pen: number | null; balance_pen: number | null }[] }
       const rows = (data || []) as unknown as Row[]
       setContracts(rows.filter(c => !c.parent_contract_id && ['CONTRATO', 'OT_INDEPENDIENTE'].includes(c.type)))
+      setContractsLoaded(true)
       setOtNodes(rows.filter(c => !c.parent_contract_id ? ['CONTRATO', 'OT_INDEPENDIENTE'].includes(c.type) : true).map(c => {
         const budget = (c.contract_budgets || []).find(b => b.concept === 'PARTIDA_TRANSPORTE')
         return {
@@ -725,7 +737,7 @@ export default function SolicitudesPage() {
       setNewRequest(prev => ({
         ...prev, 
         attention_mode: 'TRANSPORTE_JRM', pickup_customer: '', pickup_contact: '', pickup_phone: '',
-        department: userRole === 'administrador de contratos' ? 'OT (Administración de Contratos)' : '',
+        department: defaultArea,
         pickup_address: 'Planta Chilca',
         pickup_department: 'LIMA',
         pickup_province: 'CAÑETE',
@@ -919,7 +931,7 @@ export default function SolicitudesPage() {
               setNewRequest({
                 requester_name: newRequest.requester_name,
                 attention_mode: 'TRANSPORTE_JRM', pickup_customer: '', pickup_contact: '', pickup_phone: '',
-        department: userRole === 'administrador de contratos' ? 'OT (Administración de Contratos)' : '',
+        department: defaultArea,
                 request_type: 'DESPACHO',
                 pickup_address: 'Planta Chilca',
                 pickup_department: 'LIMA',
@@ -951,6 +963,13 @@ export default function SolicitudesPage() {
         )}
         <TorreControlButton />
       </>} />
+      {userRole === 'administrador de contratos' && contractsLoaded && contracts.length === 0 && (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <Briefcase className="h-5 w-5 shrink-0" aria-hidden="true" />
+          <p className="min-w-0 flex-1"><b>Aún no tienes OT asignadas.</b> Elige tus OT como Responsable de OT en Contratos y OTs para solicitar transporte con ellas, o registra una nueva desde «Nueva solicitud».</p>
+          <Link href="/contratos" className="inline-flex min-h-10 items-center rounded-lg bg-[#002855] px-3 font-semibold text-white hover:bg-[#001d3d]">Ir a Contratos y OTs</Link>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
       <TransportWorkflow current="solicitud" torre={false} />
       <div className="ml-auto min-w-0"><InlineStatusBar label="Resumen por estado (filtra la tabla)" active={filterStatus} loading={loading} onChange={key => { setFilterStatus(key); setPage(1) }}
@@ -1502,7 +1521,6 @@ export default function SolicitudesPage() {
   )
 }
 
-const REQUEST_AREAS = ['OT (Administración de Contratos)', 'Recursos Humanos', 'Logística', 'Gerencia', 'Producción', 'Almacén', 'Otros']
 const REQUEST_TYPE_OPTIONS: { value: string; kind: ServiceKind; title: string; hint: string }[] = [
   { value: 'DESPACHO', kind: 'ENTREGA_OT', title: 'Despacho', hint: 'Salida de planta hacia el cliente' },
   { value: 'RECOJO', kind: 'RECOJO', title: 'Recojo', hint: 'Del proveedor hacia planta' },
