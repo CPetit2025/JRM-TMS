@@ -30,6 +30,24 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
 
   const supabase = createClient()
+  const [resetOpen, setResetOpen] = useState(false)
+  const [resetSending, setResetSending] = useState(false)
+  const [resetSent, setResetSent] = useState(false)
+
+  // «¿Olvidaste tu contraseña?»: Supabase envía al correo un enlace que abre /login/restablecer para crear una nueva
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const rawUser = username.toLowerCase().trim()
+    if (!rawUser) { toast.error('Escribe tu usuario o correo corporativo'); return }
+    const email = rawUser.includes('@') ? rawUser : `${rawUser}@jrmsac.com.pe`
+    setResetSending(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/login/restablecer` })
+    setResetSending(false)
+    if (error && /rate|seconds|too many/i.test(error.message)) { toast.error('Ya se envió un enlace hace poco. Espera unos minutos e inténtalo de nuevo.'); return }
+    if (error) { toast.error('No se pudo enviar el enlace. Inténtalo más tarde o pide al administrador que restablezca tu contraseña.'); return }
+    // Mismo mensaje exista o no la cuenta: no revela qué correos están registrados
+    setResetSent(true)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -65,13 +83,19 @@ export default function LoginPage() {
       if (data.user) {
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('roles(name, permissions), is_active, employee_type')
+          .select('role_id, roles(name, permissions), is_active, employee_type')
           .eq('id', data.user.id)
           .single()
 
         if (!profileData || profileData.is_active !== true) {
           await supabase.auth.signOut()
           throw new Error('Tu cuenta está pendiente de aprobación por un Administrador.')
+        }
+
+        // Aprobada pero sin rol: no es una cuenta del Portal Operativo, falta que el administrador le asigne su rol
+        if (!profileData.role_id && profileData.employee_type !== 'CONDUCTOR') {
+          await supabase.auth.signOut()
+          throw new Error('Tu cuenta está activa pero aún no tiene un rol asignado. Comunícate con el Administrador del sistema.')
         }
 
         let roleName = 'operador'
@@ -141,11 +165,29 @@ export default function LoginPage() {
 
         <div className="w-full max-w-md">
           <div className="mb-6 text-center lg:mb-10">
-            <h2 className="text-2xl font-bold text-slate-800 sm:text-3xl">Iniciar Sesión</h2>
-            <p className="mt-2 text-sm text-slate-500 sm:text-base">Ingresa tus credenciales para acceder a la plataforma</p>
+            <h2 className="text-2xl font-bold text-slate-800 sm:text-3xl">{resetOpen ? 'Recuperar contraseña' : 'Iniciar Sesión'}</h2>
+            <p className="mt-2 text-sm text-slate-500 sm:text-base">{resetOpen ? 'Te enviamos un enlace a tu correo corporativo' : 'Ingresa tus credenciales para acceder a la plataforma'}</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+          {resetOpen ? <form onSubmit={handleReset} className="space-y-4 sm:space-y-6">
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-slate-700">
+              {resetSent
+                ? <>Si <b>{username.includes('@') ? username.trim().toLowerCase() : `${username.trim().toLowerCase()}@jrmsac.com.pe`}</b> tiene una cuenta, te enviamos un enlace para crear una nueva contraseña. Revisa tu bandeja de entrada y el correo no deseado, y ábrelo en este mismo navegador.</>
+                : 'Escribe tu usuario o correo corporativo y te enviaremos un enlace para crear una nueva contraseña.'}
+            </div>
+            <div>
+              <label htmlFor="reset-username" className="block text-sm font-medium text-slate-700 mb-2">Usuario o correo</label>
+              <input type="text" id="reset-username" autoComplete="username" autoCapitalize="none" spellCheck={false} value={username}
+                onChange={(e) => { setUsername(e.target.value); setResetSent(false) }} placeholder="nombre.apellido@jrmsac.com.pe"
+                className="min-w-0 w-full px-4 py-3 text-base bg-white text-slate-900 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#002855] focus:border-[#002855] outline-none transition-all" required />
+            </div>
+            <button type="submit" disabled={resetSending}
+              className="w-full py-3 px-4 bg-[#002855] hover:bg-[#001d3d] text-white font-medium rounded-lg shadow-md transition-all flex items-center justify-center disabled:opacity-70">
+              {resetSending && <Loader2 className="w-5 h-5 mr-2 animate-spin" />}{resetSent ? 'Enviar de nuevo' : 'Enviar enlace'}
+            </button>
+            <p className="text-xs text-slate-500">¿No llega el correo? El Administrador del sistema puede asignarte una contraseña nueva desde Usuarios.</p>
+            <button type="button" onClick={() => { setResetOpen(false); setResetSent(false) }} className="min-h-11 w-full text-sm font-medium text-[#002855] hover:text-[#cf152d]">Volver a iniciar sesión</button>
+          </form> : <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
             <div>
               <label htmlFor="login-username" className="block text-sm font-medium text-slate-700 mb-2">Usuario</label>
               <input 
@@ -179,7 +221,7 @@ export default function LoginPage() {
                 <input type="checkbox" className="w-4 h-4 text-[#002855] rounded border-slate-300 focus:ring-[#002855]" />
                 <span className="ml-2 text-sm text-slate-600">Recordarme</span>
               </label>
-              <a href="#" className="inline-flex min-h-11 items-center text-sm text-[#002855] hover:text-[#cf152d] font-medium transition-colors">¿Olvidaste tu contraseña?</a>
+              <button type="button" onClick={() => setResetOpen(true)} className="inline-flex min-h-11 items-center text-sm text-[#002855] hover:text-[#cf152d] font-medium transition-colors">¿Olvidaste tu contraseña?</button>
             </div>
 
             <button 
@@ -196,7 +238,7 @@ export default function LoginPage() {
                 'Ingresar'
               )}
             </button>
-          </form>
+          </form>}
 
           <div className="mt-5 text-center text-sm text-slate-600 sm:mt-8">
             ¿No tienes cuenta?{' '}

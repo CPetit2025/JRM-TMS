@@ -2,17 +2,22 @@ import { reserveRegistration } from '@/lib/server/registration-limit'
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { isSystemAdminRole } from '@/lib/roles'
+import { isRequestArea } from '@/lib/request-areas'
 
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { first_name, last_name, username, document_number, phone, role_id, password } = body
+    const { first_name, last_name, username, document_number, phone, role_id, password, area } = body
 
     if (typeof username !== 'string' || typeof password !== 'string' || password.length < 8 || password.length > 200 || typeof document_number !== 'string' || !document_number || document_number.length > 20 || [first_name, last_name, phone].some(value => value != null && (typeof value !== 'string' || value.length > 120))) {
       return NextResponse.json(
         { error: 'Usuario, documento y contraseña de al menos 8 caracteres son obligatorios' },
         { status: 400 }
       )
+    }
+
+    if (area != null && area !== '' && !isRequestArea(area)) {
+      return NextResponse.json({ error: 'Área inválida' }, { status: 400 })
     }
 
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -79,6 +84,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Solo un administrador puede crear usuarios' }, { status: 403 })
       }
     }
+    // El registro público declara su área: se muestra al aprobar y completa sus solicitudes
+    if (!isAdmin && !isRequestArea(area)) {
+      return NextResponse.json({ error: 'Seleccione su área' }, { status: 400 })
+    }
     if (!isAdmin) {
       const quota = await reserveRegistration(request, supabaseAdmin, 'staff')
       if (quota !== 'allowed') return NextResponse.json({ error: quota === 'limited' ? 'Demasiados intentos. Intente nuevamente en 15 minutos.' : 'Registro temporalmente no disponible' }, { status: quota === 'limited' ? 429 : 503 })
@@ -121,6 +130,7 @@ export async function POST(request: Request) {
           username,
           document_number,
           phone,
+          area: isRequestArea(area) ? area : null,
           role_id: isAdmin ? role_id : null,
           is_active: is_active
         }

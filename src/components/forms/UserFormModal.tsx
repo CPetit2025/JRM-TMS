@@ -4,6 +4,7 @@ import { Loader2, User, Share2, Mail, CheckCircle2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { REQUEST_AREAS } from '@/lib/request-areas'
 
 export interface UserData {
   id?: string
@@ -12,6 +13,7 @@ export interface UserData {
   username: string
   document_number: string
   phone: string
+  area?: string | null
   role_id: string
   password?: string
   is_active?: boolean
@@ -36,6 +38,7 @@ const EMPTY_USER = {
   username: '',
   document_number: '',
   phone: '',
+  area: '',
   role_id: '',
   password: '',
 }
@@ -59,6 +62,7 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
         username: editingUser.username || '',
         document_number: editingUser.document_number || '',
         phone: editingUser.phone || '',
+        area: editingUser.area || '',
         role_id: editingUser.role_id || '',
         password: ''
       })
@@ -301,6 +305,18 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
                 <option key={r.id} value={r.id}>{r.name}</option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Área</label>
+            <select
+              className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none"
+              value={newUser.area}
+              onChange={(e) => setNewUser({...newUser, area: e.target.value})}
+            >
+              <option value="">Sin área</option>
+              {REQUEST_AREAS.map(area => <option key={area} value={area}>{area}</option>)}
+            </select>
+            <p className="text-xs text-slate-500 mt-1">Área solicitante por defecto en sus solicitudes de transporte.</p>
           </div>
         </div>
 
