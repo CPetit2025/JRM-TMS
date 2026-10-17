@@ -8,6 +8,7 @@ function load(file, require, extra={}) {
 }
 const response={NextResponse:{json:(body,options)=>({body,...options}),redirect:(url,options)=>({url,...options})}}
 const roles=load('src/lib/roles.ts',()=>{throw Error('unexpected dependency')})
+const areas=load('src/lib/request-areas.ts',()=>{throw Error('unexpected dependency')})
 function fixture(options={}) {
  const calls=[], user=options.public?null:{id:'actor'}
  const profile=options.profile||{is_active:true,roles:{name:'Administrador',permissions:[]}}
@@ -21,6 +22,7 @@ function fixture(options={}) {
   if(name==='node:crypto')return crypto
   if(name==='next/server')return response
   if(name==='@/lib/roles')return roles
+  if(name==='@/lib/request-areas')return areas
   if(name==='@supabase/supabase-js')return{createClient:()=>admin}
   if(name==='@supabase/ssr')return{createServerClient:()=>session}
   if(name==='next/headers')return{cookies:async()=>({getAll:()=>[]})}
@@ -31,13 +33,14 @@ function fixture(options={}) {
  limit=load('src/lib/server/registration-limit.ts',imports)
  return {calls,admin,limit,load:file=>load(file,imports)}
 }
-const body={username:'test@jrmsac.com.pe',password:'long-synthetic-password',document_number:'87654321',first_name:'Prueba',last_name:'Seguridad',role_id:'admin-role'}
+const body={username:'test@jrmsac.com.pe',password:'long-synthetic-password',document_number:'87654321',first_name:'Prueba',last_name:'Seguridad',role_id:'admin-role',area:'Logística'}
 const request=(data,headers={})=>({json:async()=>data,headers:new Headers(headers),url:'https://jrm.example/api/users/create'})
 test('registro público no asigna roles ni activa cuentas; una cuota denegada no crea autenticación',async()=>{
  const f=fixture({public:true}), api=f.load('src/app/api/users/create/route.ts')
  assert.equal((await api.POST(request(body))).body.success,true)
  assert.equal(f.calls.find(c=>c[0]==='create')[1].user_metadata.role_id,null)
- const profile=f.calls.find(c=>c[0]==='profile')[1][0];assert.equal(profile.is_active,false);assert.equal(profile.role_id,null)
+ const profile=f.calls.find(c=>c[0]==='profile')[1][0];assert.equal(profile.is_active,false);assert.equal(profile.role_id,null);assert.equal(profile.area,'Logística')
+ for(const area of [undefined,'Área inventada']){const a=fixture({public:true});assert.equal((await a.load('src/app/api/users/create/route.ts').POST(request({...body,area}))).status,400);assert.equal(a.calls.length,0)}
  for(const quota of [false,'error']){const q=fixture({public:true,quota});assert.equal((await q.load('src/app/api/users/create/route.ts').POST(request(body))).status,quota===false?429:503);assert.equal(q.calls.some(c=>c[0]==='create'),false)}
 })
 test('usuarios: una cuenta inactiva o con permiso usuarios sin rol administrador no puede crear privilegios',async()=>{
