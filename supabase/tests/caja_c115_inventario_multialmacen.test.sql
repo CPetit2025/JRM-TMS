@@ -12,6 +12,9 @@ BEGIN
   IF adm IS NULL THEN RAISE EXCEPTION 'CAJA C115 FAIL: falta un Administrador activo'; END IF;
   PERFORM set_config('request.jwt.claim.sub', adm::text, true);
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', adm, 'role', 'authenticated')::text, true);
+  -- Isolate the functional fixtures: three rebuild scenarios must not each reprocess the live ERP history.
+  -- The terminal exception rolls this change back. C117 exercises the unmodified real history separately.
+  UPDATE public.inv_movements SET active=false WHERE active;
   -- Que ninguna foto de stock real cambie el inicio del modelo durante la prueba
   UPDATE public.inv_uploads SET status = 'DESCARTADA' WHERE side = 'STOCK' AND status = 'APLICADA';
 

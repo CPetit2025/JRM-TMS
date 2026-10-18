@@ -61,3 +61,7 @@ Las pantallas APT anteriores siguen disponibles mientras se migran.
 
 Regresiones de reintentos: `scripts/test-inventario-upload.cjs` y C116. Prueba local con PostgreSQL aislado y
 201.573 movimientos (130.116 salidas + 71.457 entradas): `node scripts/test-inventario-sql.cjs` (requiere Docker).
+
+C115 aísla sus escenarios funcionales dentro de una transacción que siempre se revierte. C117 ejecuta una sola
+reconstrucción del historial real, con presupuesto independiente de 110 s, y comprueba cobertura y conservación
+de cantidades. Así las tres reconstrucciones de C115 no comparten el presupuesto de una carga real.
