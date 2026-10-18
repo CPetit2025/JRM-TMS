@@ -113,7 +113,7 @@ public class RouteTrackingService extends Service implements LocationListener {
             };
             fused.requestLocationUpdates(request, fusedCallback, Looper.getMainLooper())
                 .addOnFailureListener(error -> { fused = null; startPlatformLocation(); });
-        } catch (SecurityException | RuntimeException | LinkageError error) {
+        } catch (RuntimeException | LinkageError error) {
             fused = null;
             startPlatformLocation();
         }
