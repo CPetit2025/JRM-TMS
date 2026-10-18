@@ -1,5 +1,5 @@
 import {
-  PackagePlus,
+  PackagePlus, Boxes,
   ArchiveRestore, BadgeCheck, BadgeDollarSign, Banknote, BarChart3, BookOpenCheck, Briefcase, Building2, Calculator, CalendarClock, CalendarRange,
   ChartColumn, CircleCheckBig, CircleDot, ClipboardCheck, ClipboardList, Container, Database, Factory, FileSignature,
   FileText, FileUp, Fuel, Gauge, HardHat, Home, Hourglass, KeyRound, Map as MapIcon, MapPin, PackageCheck,
@@ -56,6 +56,7 @@ export const NAV_SECTIONS: NavSection[] = [
     { href: '/contratos/servicios', label: 'Registro de Servicios', icon: Receipt, show: any('contratos-servicios', 'clientes'), keywords: 'servicio realizado comprometido gasto montacarga grua estiba' },
   ] }] },
   { id: 'apt', title: 'Almacén APT', icon: Warehouse, groups: [{ items: [
+    { href: '/apt/inventario', label: 'Inventario multi‑almacén', icon: Boxes, show: any('apt', 'apt-carga'), keywords: 'inventario stock disponible estadia trazabilidad flujo bodegas almacenes lote materia prima perneria mro traspaso' },
     { href: '/apt', label: 'Analítica Operativa APT', icon: ChartColumn, show: any('apt', 'apt-carga'), keywords: 'apt analitica inventario saldo stock calidad rotacion' },
     { href: '/apt/operacion', label: 'Control de OT y Lotes', icon: ClipboardCheck, show: any('apt', 'apt-carga'), keywords: 'apt ot lote pendientes permanencia acciones' },
     { href: '/apt/ingresos', label: 'Ingresos APT', icon: PackagePlus, show: any('apt', 'apt-carga'), keywords: 'apt ingreso entrada produccion ot lote cliente glosa cantidad reporte' },

@@ -1,0 +1,179 @@
+import * as XLSX from 'xlsx'
+
+// Lectura de los reportes del ERP para el inventario multi-almacén. Sin DOM: se usa en el navegador (worker) y en
+// pruebas con node.
+//  * Movimientos: hojas con TIPODOCTO, BODEGA, Fecha, Producto y Cantidad (reportes "Entradas" y "Salidas"). Cada fila
+//    va al lado que indica el signo de Cantidad: positiva = Entradas, negativa = Salidas (un libro puede traer ambos).
+//  * Foto de stock: hojas con BODEGA, Producto y una columna de saldo (Cantidad, Saldo, Stock, Existencia), sin TIPODOCTO.
+
+export type InvSide = 'E' | 'S' | 'STOCK'
+export const INV_SIDE_LABEL: Record<InvSide, string> = { E: 'Entradas', S: 'Salidas', STOCK: 'Foto de stock' }
+
+export const INV_COLUMNS = ['TIPODOCTO', 'BODEGA', 'Numero', 'Fecha', 'CodLegal', 'RazonSocial', 'Producto', 'GLOSA', 'Cantidad', 'UNIDAD',
+  'DocRel', 'NumRel', 'FechaEntrega', 'Contrato', 'RefTipoDocto', 'RefCorrelativo', 'RefNumero', 'RefFecha', 'Lote', 'Comentario',
+  'PesoUnitario', 'PesoTotalProduccido', 'CCostoJRM'] as const
+const DATE_COLS = new Set(['Fecha', 'FechaEntrega', 'RefFecha'])
+const NUM_COLS = new Set(['Cantidad', 'PesoUnitario', 'PesoTotalProduccido', 'Peso'])
+// Sinónimos de la foto de stock
+const STOCK_ALIASES: Record<string, string> = {
+  bodega: 'BODEGA', almacen: 'BODEGA', producto: 'Producto', codigo: 'Producto', codproducto: 'Producto', lote: 'Lote',
+  glosa: 'GLOSA', descripcion: 'GLOSA', unidad: 'UNIDAD', um: 'UNIDAD',
+  cantidad: 'Cantidad', saldo: 'Cantidad', stock: 'Cantidad', existencia: 'Cantidad', stockactual: 'Cantidad', saldofinal: 'Cantidad',
+  peso: 'Peso', pesokg: 'Peso', pesototal: 'Peso', kg: 'Peso', pesototalproduccido: 'Peso',
+}
+
+export type InvRow = Record<string, string | number> & { __row: number }
+
+export interface InvParsedPart {
+  side: InvSide
+  fileName: string
+  sheetName: string
+  rows: InvRow[]
+  desde: string | null
+  hasta: string | null
+  kg: number
+  bodegas: string[]
+  tipos: Record<string, number>
+  sinFecha: number
+}
+
+export interface InvParseResult {
+  parts: InvParsedPart[]
+  ignored: Array<{ fileName: string; sheetName: string; reason: string }>
+  warnings: string[]
+}
+
+export interface InvInputFile { name: string; data: ArrayBuffer | Uint8Array }
+
+export const normKey = (s: unknown) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[\s_./-]+/g, '').toLowerCase()
+const CANON = new Map<string, string>(INV_COLUMNS.map(c => [normKey(c), c]))
+const pad = (n: number) => String(n).padStart(2, '0')
+
+export function isoDate(v: unknown): string | null {
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}`
+  if (typeof v === 'string') {
+    const t = v.trim()
+    if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10)
+    const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+    if (m) return `${m[3]}-${pad(+m[2])}-${pad(+m[1])}`
+  }
+  if (typeof v === 'number' && v > 0) {
+    const p = XLSX.SSF.parse_date_code(v)
+    if (p?.y) return `${p.y}-${pad(p.m)}-${pad(p.d)}`
+  }
+  return null
+}
+
+function numberOf(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
+  if (typeof v === 'string') {
+    const t = v.trim().replace(/,/g, '')
+    return /^-?\d+(\.\d+)?$/.test(t) ? Number(t) : null
+  }
+  return null
+}
+
+// Texto: los números enteros de Excel pierden el ".0" (Numero 47727, Lote 2870)
+function textOf(v: unknown): string | null {
+  if (v === null || v === undefined) return null
+  if (v instanceof Date) return isoDate(v)
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : null
+  const t = String(v).trim()
+  return t === '' ? null : t
+}
+
+function findHeader(aoa: unknown[][]): { row: number; kind: 'MOV' | 'STOCK' } | null {
+  for (let i = 0; i < Math.min(15, aoa.length); i++) {
+    const cells = new Set((aoa[i] || []).map(normKey))
+    if (!['producto', 'codigo', 'codproducto'].some(k => cells.has(k)) || !(cells.has('bodega') || cells.has('almacen'))) continue
+    if (cells.has('tipodocto') && cells.has('fecha') && cells.has('cantidad')) return { row: i, kind: 'MOV' }
+    if (['cantidad', 'saldo', 'stock', 'existencia', 'stockactual', 'saldofinal'].some(k => cells.has(k))) return { row: i, kind: 'STOCK' }
+  }
+  return null
+}
+
+function emptyPart(side: InvSide, fileName: string, sheetName: string): InvParsedPart {
+  return { side, fileName, sheetName, rows: [], desde: null, hasta: null, kg: 0, bodegas: [], tipos: {}, sinFecha: 0 }
+}
+
+export function parseInventorySheet(aoa: unknown[][], fileName: string, sheetName: string): { parts: InvParsedPart[] } | { skip: string } {
+  const h = findHeader(aoa)
+  if (!h) return { skip: 'No tiene las columnas BODEGA, Producto y (TIPODOCTO, Fecha, Cantidad) o un saldo de stock' }
+  const headers = (aoa[h.row] || []).map(c => {
+    const k = normKey(c)
+    if (!k) return null
+    return h.kind === 'STOCK' ? (STOCK_ALIASES[k] ?? null) : (CANON.get(k) ?? null)
+  })
+  const parts = new Map<InvSide, InvParsedPart>()
+  const bodegas = new Map<InvSide, Set<string>>()
+  const part = (side: InvSide) => {
+    if (!parts.has(side)) { parts.set(side, emptyPart(side, fileName, sheetName)); bodegas.set(side, new Set()) }
+    return parts.get(side)!
+  }
+  for (let i = h.row + 1; i < aoa.length; i++) {
+    const raw = aoa[i] || []
+    const row: InvRow = { __row: i + 1 }
+    headers.forEach((col, j) => {
+      if (!col || col in row) return
+      const v = raw[j]
+      if (DATE_COLS.has(col)) { const d = isoDate(v); if (d) row[col] = d; else { const t = textOf(v); if (t) row[col] = t } }
+      else if (NUM_COLS.has(col)) { const n = numberOf(v); if (n !== null) row[col] = n }
+      else { const t = textOf(v); if (t) row[col] = t }
+    })
+    // Fila totalizadora o vacía: sin producto ni tipo de documento
+    if (!row.Producto && !row.TIPODOCTO) continue
+    const cant = typeof row.Cantidad === 'number' ? row.Cantidad : 0
+    const side: InvSide = h.kind === 'STOCK' ? 'STOCK' : cant < 0 ? 'S' : 'E'
+    const p = part(side)
+    p.rows.push(row)
+    if (row.BODEGA) bodegas.get(side)!.add(String(row.BODEGA).replace(/\s+/g, ' ').trim())
+    if (h.kind === 'MOV') {
+      const f = typeof row.Fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.Fecha) ? row.Fecha : null
+      if (!f) p.sinFecha++
+      else {
+        if (!p.desde || f < p.desde) p.desde = f
+        if (!p.hasta || f > p.hasta) p.hasta = f
+      }
+      const t = String(row.TIPODOCTO ?? '(sin tipo)')
+      p.tipos[t] = (p.tipos[t] ?? 0) + 1
+      const pt = typeof row.PesoTotalProduccido === 'number' ? Math.abs(row.PesoTotalProduccido) : 0
+      p.kg += pt
+    } else {
+      p.kg += typeof row.Peso === 'number' ? Math.abs(row.Peso) : 0
+    }
+  }
+  for (const [side, p] of parts) p.bodegas = [...bodegas.get(side)!].sort()
+  return { parts: [...parts.values()].filter(p => p.rows.length > 0) }
+}
+
+export function parseInventoryWorkbooks(files: InvInputFile[], onProgress?: (m: string) => void): InvParseResult {
+  const out: InvParseResult = { parts: [], ignored: [], warnings: [] }
+  for (const f of files) {
+    onProgress?.(`Leyendo ${f.name}…`)
+    const wb = XLSX.read(f.data, { type: 'array', cellDates: true, dense: true })
+    for (const name of wb.SheetNames) {
+      const ws = wb.Sheets[name]
+      if (!ws) continue
+      onProgress?.(`Procesando ${f.name} · ${name}…`)
+      const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: null, blankrows: false })
+      const res = parseInventorySheet(aoa, f.name, name)
+      if ('skip' in res) { out.ignored.push({ fileName: f.name, sheetName: name, reason: res.skip }); continue }
+      out.parts.push(...res.parts)
+    }
+  }
+  if (!out.parts.length) throw new Error('No se encontraron movimientos ni una foto de stock. Suba los reportes de Entradas y Salidas del ERP (columnas TIPODOCTO, BODEGA, Numero, Fecha, Producto, Cantidad, Lote…).')
+  for (const p of out.parts) {
+    if (p.sinFecha) out.warnings.push(`${p.fileName} · ${p.sheetName}: ${p.sinFecha} fila(s) sin fecha válida no se cargarán.`)
+  }
+  const sides = new Set(out.parts.map(p => p.side))
+  if (sides.has('E') && !sides.has('S')) out.warnings.push('Solo se cargan Entradas. Suba también las Salidas del mismo rango para que los traspasos queden con origen y destino.')
+  if (sides.has('S') && !sides.has('E')) out.warnings.push('Solo se cargan Salidas. Suba también las Entradas del mismo rango para que los traspasos queden con origen y destino.')
+  const ranges = out.parts.filter(p => p.side !== 'STOCK')
+  if (ranges.length > 1) {
+    const e = ranges.filter(p => p.side === 'E'), s = ranges.filter(p => p.side === 'S')
+    const span = (xs: InvParsedPart[]) => [xs.map(p => p.desde).filter(Boolean).sort()[0], xs.map(p => p.hasta).filter(Boolean).sort().at(-1)]
+    const [ed, eh] = span(e), [sd, sh] = span(s)
+    if (e.length && s.length && (ed !== sd || eh !== sh)) out.warnings.push(`Las Entradas (${ed} a ${eh}) y las Salidas (${sd} a ${sh}) cubren fechas distintas.`)
+  }
+  return out
+}
