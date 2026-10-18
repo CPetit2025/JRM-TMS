@@ -55,8 +55,14 @@ export const NAV_SECTIONS: NavSection[] = [
     { href: '/monitoreo', label: 'Monitoreo GPS', icon: MapIcon, show: any('monitoreo'), keywords: 'gps mapa seguimiento' },
     { href: '/contratos/servicios', label: 'Registro de Servicios', icon: Receipt, show: any('contratos-servicios', 'clientes'), keywords: 'servicio realizado comprometido gasto montacarga grua estiba' },
   ] }] },
-  { id: 'apt', title: 'Almacén APT', icon: Warehouse, groups: [{ items: [
-    { href: '/apt/inventario', label: 'Inventario multi‑almacén', icon: Boxes, show: any('apt', 'apt-carga'), keywords: 'inventario stock disponible estadia trazabilidad flujo bodegas almacenes lote materia prima perneria mro traspaso' },
+  { id: 'apt', title: 'Almacén APT', icon: Warehouse, groups: [{ title: 'Inventario multi‑almacén', items: [
+    { href: '/apt/inventario', label: 'Panorama de inventario', icon: Boxes, show: any('apt', 'apt-carga'), keywords: 'inventario multi almacen panorama bodegas stock herramientas terceros' },
+    { href: '/apt/inventario/stock', label: 'Stock disponible', icon: PackageSearch, show: any('apt', 'apt-carga'), keywords: 'stock disponible libre comprometido saldo bodega lote materia prima perneria mro' },
+    { href: '/apt/inventario/estadia', label: 'Estadía por bodega', icon: Hourglass, show: any('apt', 'apt-carga'), keywords: 'estadia permanencia dias bodega antiguedad aging fifo' },
+    { href: '/apt/inventario/trazabilidad', label: 'Trazabilidad de lotes', icon: Route, show: any('apt', 'apt-carga'), keywords: 'trazabilidad lote ot guia op recorrido reasignacion' },
+    { href: '/apt/inventario/flujo', label: 'Flujo entre almacenes', icon: Workflow, show: any('apt', 'apt-carga'), keywords: 'flujo traspaso almacen bodega sankey reasignacion' },
+    { href: '/apt/inventario/datos', label: 'Cargas y catálogos', icon: FileUp, show: any('apt-carga'), keywords: 'carga entradas salidas erp foto stock catalogo bodegas tipos documento' },
+  ] }, { title: 'APT anterior (en retiro)', items: [
     { href: '/apt', label: 'Analítica Operativa APT', icon: ChartColumn, show: any('apt', 'apt-carga'), keywords: 'apt analitica inventario saldo stock calidad rotacion' },
     { href: '/apt/operacion', label: 'Control de OT y Lotes', icon: ClipboardCheck, show: any('apt', 'apt-carga'), keywords: 'apt ot lote pendientes permanencia acciones' },
     { href: '/apt/ingresos', label: 'Ingresos APT', icon: PackagePlus, show: any('apt', 'apt-carga'), keywords: 'apt ingreso entrada produccion ot lote cliente glosa cantidad reporte' },
