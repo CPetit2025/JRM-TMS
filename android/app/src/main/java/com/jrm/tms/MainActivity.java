@@ -141,6 +141,7 @@ public class MainActivity extends BridgeActivity {
                 android.webkit.CookieManager.getInstance().flush();
                 android.webkit.WebStorage.getInstance().deleteAllData();
                 stopService(new android.content.Intent(this, RouteTrackingService.class));
+                TrackingConfig.clearAll(this);
                 getSharedPreferences("jrm_security", MODE_PRIVATE).edit().remove("biometric").commit();
                 recreate();
             });

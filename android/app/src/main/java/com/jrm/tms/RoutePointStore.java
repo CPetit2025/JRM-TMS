@@ -40,10 +40,13 @@ class RoutePointStore extends SQLiteOpenHelper {
         getWritableDatabase().insert("points", null, row);
     }
 
-    JSArray pending() {
+    JSArray pending() { return pendingBatch(100); }
+
+    // Puntos más antiguos primero: el servidor exige que lleguen en orden por ruta
+    JSArray pendingBatch(int limit) {
         JSArray result = new JSArray();
         try (Cursor rows = getReadableDatabase().rawQuery(
-            "SELECT id,dispatch_id,driver_id,recorded_at,latitude,longitude,accuracy_m,speed_mps FROM points ORDER BY recorded_at,id LIMIT 100", null)) {
+            "SELECT id,dispatch_id,driver_id,recorded_at,latitude,longitude,accuracy_m,speed_mps FROM points ORDER BY recorded_at,id LIMIT " + Math.max(1, limit), null)) {
             while (rows.moveToNext()) {
                 JSObject point = new JSObject();
                 point.put("id", rows.getString(0));
@@ -58,6 +61,12 @@ class RoutePointStore extends SQLiteOpenHelper {
             }
         }
         return result;
+    }
+
+    int count() {
+        try (Cursor rows = getReadableDatabase().rawQuery("SELECT count(*) FROM points", null)) {
+            return rows.moveToFirst() ? rows.getInt(0) : 0;
+        }
     }
 
     void acknowledge(JSONArray ids) {

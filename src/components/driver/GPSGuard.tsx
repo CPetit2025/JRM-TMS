@@ -3,7 +3,7 @@
 import { useEffect, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { createDriverPresenceReporter } from '@/lib/driver-presence'
-import { nativeRouteTracker } from '@/lib/native-route-tracker'
+import { nativeRouteTracker, trackingDeviceToken } from '@/lib/native-route-tracker'
 import { activeRouteKey, pendingRouteSummary, readRouteQueue, routeQueueKey, syncRoutePoints } from '@/lib/route-point-sync'
 
 type BatteryInfo = { level: number; charging: boolean; addEventListener(type: string, listener: () => void): void }
@@ -68,7 +68,10 @@ export default function GPSGuard({ children }: { children: ReactNode }) {
         localStorage.setItem(activeRouteKey, active.id)
         if (nativeRouteTracker) {
           try {
-            await nativeRouteTracker.start({ dispatchId: active.id, driverId: driver.id })
+            // Credencial del dispositivo: el servicio nativo sube los puntos aunque el app esté en segundo plano
+            const deviceToken = await trackingDeviceToken(supabase, userData.user.id)
+            await nativeRouteTracker.start({ dispatchId: active.id, driverId: driver.id,
+              ...(deviceToken ? { supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL, anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, deviceToken } : {}) })
             nativeStarted = true
           } catch (nativeError) { console.error('No se pudo iniciar GPS nativo:', nativeError) }
         }
