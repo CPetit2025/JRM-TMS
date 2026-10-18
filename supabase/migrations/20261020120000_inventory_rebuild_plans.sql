@@ -231,6 +231,7 @@ BEGIN
     FROM public.inv_layers f
     WHERE f.bodega = o.bodega AND f.producto = o.producto AND f.lk = o.lk
       AND f.lseq BETWEEN a.lseq AND b.lseq
+    ORDER BY f.lseq
     OFFSET 0
   ) l
   CROSS JOIN LATERAL (SELECT least(l.q_end, o.oe) - greatest(l.q_start, o.oe - o.q) AS q) x
