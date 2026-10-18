@@ -132,7 +132,14 @@ BEGIN
      AND NOT has_table_privilege('anon', 'public.inv_layers', 'SELECT')
   THEN pass := pass + 1; ELSE fails := fails || 'T10 lecturas y permisos'::text; END IF;
 
-  IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C115 FAIL (%/10): %', pass, array_to_string(fails, ' | '); END IF;
-  RAISE EXCEPTION 'CAJA C115 PASS (10/10) inventario multi-almacén: carga, traspasos con reasignación, FIFO y estadía, saldo inicial, foto de stock, trazabilidad y permisos';
+  -- T11: across the entire modeled history, layer balances must equal the detailed FIFO ledger.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.inv_layers l LEFT JOIN
+      (SELECT layer_id, sum(qty) AS q FROM public.inv_allocations GROUP BY layer_id) a ON a.layer_id=l.id
+    WHERE l.consumed IS DISTINCT FROM COALESCE(a.q, 0)
+  ) THEN pass := pass + 1; ELSE fails := fails || 'T11 consumo por capa no coincide con FIFO detallado'::text; END IF;
+
+  IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C115 FAIL (%/11): %', pass, array_to_string(fails, ' | '); END IF;
+  RAISE EXCEPTION 'CAJA C115 PASS (11/11) inventario multi-almacén: carga, traspasos con reasignación, FIFO y estadía, saldo inicial, foto de stock, trazabilidad y permisos';
 END $test$;
 ROLLBACK;

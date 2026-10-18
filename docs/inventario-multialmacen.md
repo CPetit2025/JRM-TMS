@@ -27,6 +27,9 @@ con la siguiente carga, como antes.
 
 Los catálogos cuentan movimientos mediante agregaciones por dimensión, evitando una lectura completa por cada
 bodega o tipo de documento. La normalización de lotes conserva las reglas originales, con una sola evaluación.
+El recálculo consulta solo las capas dentro de los límites FIFO mediante índices y actualiza las estadísticas
+de las tablas de trabajo. Los movimientos toman su clase del catálogo al enviarse, evitando una reclasificación
+masiva después de importar. Se conservan las fórmulas de cantidad, peso, consumo y origen.
 
 ## Modelo (`supabase/migrations/20261020100000_inventario_multialmacen.sql`)
 | Concepto | Regla |
