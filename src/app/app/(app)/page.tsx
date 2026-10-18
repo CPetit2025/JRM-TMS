@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { AlertTriangle, Banknote, Bot, CalendarClock, Camera, CheckCircle2, ChevronRight, ClipboardCheck, DollarSign, Forklift, Gauge, Loader2, MapPin, RefreshCw, ShieldCheck, Truck, Wrench } from 'lucide-react'
 import { useActiveTrip } from '@/contexts/ActiveTripContext'
 import { DesempenoConductorCard } from '@/components/driver/DesempenoConductorCard'
+import { BatteryOptimizationCard } from '@/components/driver/BatteryOptimizationCard'
 
 function greeting() {
   const hour = new Date().getHours()
@@ -35,6 +36,8 @@ export default function OperationalHome() {
     </section>
 
     {error && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><b>Información parcialmente disponible.</b> Pulsa actualizar. Si continúa, informa a soporte.</section>}
+
+    <BatteryOptimizationCard />
 
     {trip ? <section className="overflow-hidden rounded-3xl bg-[#002855] text-white shadow-lg"><div className="p-5">
       <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-blue-200">Ruta actual</p><h2 className="mt-1 text-xl font-black">{trip.dispatch_number}</h2></div><span className="rounded-full bg-white/15 px-3 py-1 text-xs font-bold">{trip.status}</span></div>
