@@ -70,3 +70,6 @@ test('solo Entradas avisa que faltan las Salidas; hoja sin columnas se ignora; s
   assert.throws(() => parseInventoryWorkbooks([{name: 'x.xlsx', data: book({A: [['hola']]})}]), /No se encontraron movimientos/)
   assert.ok('skip' in parseInventorySheet([['a', 'b']], 'f', 's'))
 })
+
+// Import transport regressions run alongside the existing parser check in PR CI.
+require('./test-inventario-upload.cjs')

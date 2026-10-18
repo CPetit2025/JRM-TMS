@@ -57,9 +57,9 @@ export default function InventarioDatosPage() {
     try { setParsed(await readFiles([...files], m => setBusy(m))) } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo leer el archivo') } finally { setBusy(null) }
   }
   const upload = async (force = false) => {
-    if (!parsed) return
+    if (!parsed || busy) return
     if (parsed.parts.some(p => p.side === 'STOCK') && !cutoff) { setError('Indique la fecha de corte de la foto de stock.'); return }
-    setError(null); setPartial(false)
+    setError(null); setPartial(false); setDone(null)
     try {
       for (const p of parsed.parts) {
         setBusy(`${INV_SIDE_LABEL[p.side]} · ${p.fileName}…`)
@@ -70,7 +70,9 @@ export default function InventarioDatosPage() {
       setParsed(null)
       if (input.current) input.current.value = ''
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo cargar')
+      setError(e instanceof Error && /statement timeout|canceling statement|timeout|fetch|network/i.test(e.message)
+        ? 'La conexión o el procesamiento se interrumpió. Pulse «Reanudar carga» para continuar desde el último bloque confirmado, sin duplicar movimientos. Mantenga esta ventana abierta.'
+        : e instanceof Error ? e.message : 'No se pudo cargar')
       setPartial(!!(e as { partial?: boolean }).partial)
       notifyInvUpdated()
     } finally { setBusy(null) }
@@ -101,7 +103,7 @@ export default function InventarioDatosPage() {
             {parsed.warnings.map((w, i) => <p key={i} className="flex items-start gap-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{w}</p>)}
             {parsed.ignored.length > 0 && <p className="text-xs text-slate-500">Hojas no usadas: {parsed.ignored.map(g => `${g.sheetName} (${g.reason})`).join(' · ')}</p>}
             <p className="text-xs text-slate-500">Al aplicar, cada tipo reemplaza los movimientos que ya existen en su rango de fechas (no se duplican).</p>
-            <button type="button" onClick={() => upload(false)} disabled={!!busy} className="flex min-h-11 items-center gap-2 rounded-lg bg-[#cf152d] px-5 text-sm font-bold text-white disabled:opacity-60"><Upload className="h-4 w-4" /> Aplicar carga y recalcular</button>
+            <button type="button" onClick={() => upload(false)} disabled={!!busy} className="flex min-h-11 items-center gap-2 rounded-lg bg-[#cf152d] px-5 text-sm font-bold text-white disabled:opacity-60"><Upload className="h-4 w-4" /> {error ? 'Reanudar carga' : 'Aplicar carga y recalcular'}</button>
           </div>}
           {busy && <p className="flex items-center gap-2 text-sm text-slate-600"><Loader2 className="h-4 w-4 animate-spin" />{busy}</p>}
           {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}
@@ -127,6 +129,7 @@ export default function InventarioDatosPage() {
           </Table>
         </ChartCard>
       </>}
+      {cats.error && <ErrorBlock message="No se pudieron consultar los catálogos del inventario." onRetry={cats.reload} />}
       {cats.data && <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <ChartCard title="Bodegas" subtitle="El tipo define la etapa en el flujo y qué se considera libre o comprometido" info="Las bodegas nuevas se clasifican solas por su nombre; corrija aquí si alguna quedó mal.">
           <Table head={<tr><th className={th}>Bodega</th><th className={`${th} text-right`}>Movimientos</th><th className={th}>Tipo</th></tr>}>
