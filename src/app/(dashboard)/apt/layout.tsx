@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { AlertTriangle, CalendarClock, Database, FileUp, GitBranch, Lock, Warehouse } from 'lucide-react'
+import { AlertTriangle, Boxes, CalendarClock, Database, FileUp, GitBranch, Lock, Warehouse } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
 import { aptApi } from '@/lib/apt/api'
 import { fmtDate, fmtDateTime } from '@/lib/apt/format'
@@ -11,6 +11,7 @@ import type { AptSettings } from '@/lib/apt/types'
 import { AptFilterBar } from '@/components/apt/AptFilterBar'
 import { FlowFilterBar } from '@/components/apt/FlowFilterBar'
 import { LoadingBlock } from '@/components/apt/ui'
+import { InvHeader } from '@/components/inventario/InvHeader'
 
 // Módulo APT — Control y estadía del inventario en el Almacén de Producto Terminado.
 // Todo nace de ENTRADA y SALIDA (carga diaria); las pestañas comparten los filtros de la URL.
@@ -18,6 +19,17 @@ import { LoadingBlock } from '@/components/apt/ui'
 // Tres secciones para no concentrar todo en una sola vista: la estadía consolidada (FIFO de ENTRADA/SALIDA), el flujo
 // entre almacenes (647 → ST VENTAS → cliente, con 540) y los datos (calidad y cargas).
 const SECTIONS = [
+  {
+    key: 'inventario', label: 'Inventario multi‑almacén', icon: Boxes, desc: 'Todas las bodegas: stock disponible, estadía, trazabilidad y flujo',
+    tabs: [
+      { href: '/apt/inventario', label: 'Panorama' },
+      { href: '/apt/inventario/stock', label: 'Stock disponible' },
+      { href: '/apt/inventario/estadia', label: 'Estadía' },
+      { href: '/apt/inventario/trazabilidad', label: 'Trazabilidad' },
+      { href: '/apt/inventario/flujo', label: 'Flujo entre almacenes' },
+      { href: '/apt/inventario/datos', label: 'Cargas y catálogos' },
+    ],
+  },
   {
     key: 'estadia', label: 'Control APT', icon: Warehouse, desc: 'Analítica operativa, revisión de OT y estadía de producción',
     tabs: [
@@ -55,15 +67,15 @@ const SECTIONS = [
     ],
   },
 ] as const
-const NO_FILTERS = ['/apt', '/apt/operacion', '/apt/ingresos', '/apt/calidad', '/apt/cargas', '/apt/gantt', '/apt/flujo/trazabilidad', '/apt/flujo/kardex']
+const NO_FILTERS = ['/apt/inventario', '/apt', '/apt/operacion', '/apt/ingresos', '/apt/calidad', '/apt/cargas', '/apt/gantt', '/apt/flujo/trazabilidad', '/apt/flujo/kardex']
 
 function tabActive(href: string, pathname: string) {
-  if (href === '/apt' || href === '/apt/flujo') return pathname === href
+  if (href === '/apt' || href === '/apt/flujo' || href === '/apt/inventario') return pathname === href
   return pathname.startsWith(href)
 }
 
 function sectionOf(pathname: string) {
-  return SECTIONS.find(s => s.tabs.some(t => tabActive(t.href, pathname))) ?? SECTIONS[0]
+  return SECTIONS.find(s => s.tabs.some(t => tabActive(t.href, pathname))) ?? SECTIONS[1]
 }
 
 function Tabs() {
@@ -139,11 +151,12 @@ export default function AptLayout({ children }: { children: React.ReactNode }) {
   const showFilters = !NO_FILTERS.some(p => p === '/apt' ? pathname === p : pathname.startsWith(p))
   const isGantt = pathname === '/apt/gantt'
   const isFlow = pathname.startsWith('/apt/flujo')
+  const isInv = pathname.startsWith('/apt/inventario')
   const st = info?.state
   return (
     <div className="space-y-4 pb-10">
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className={isGantt ? 'hidden' : 'flex flex-wrap items-center justify-between gap-3 px-5 pt-4'}>
+        {isInv ? <InvHeader /> : <div className={isGantt ? 'hidden' : 'flex flex-wrap items-center justify-between gap-3 px-5 pt-4'}>
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#002855] to-[#0b3d7a] text-white shadow">
               <Warehouse className="h-5 w-5" />
@@ -177,7 +190,7 @@ export default function AptLayout({ children }: { children: React.ReactNode }) {
               </Link>
             )}
           </div>
-        </div>
+        </div>}
         <div className={isGantt ? '' : 'mt-3 border-t border-slate-100'}>
           <Suspense fallback={null}><Tabs /></Suspense>
         </div>

@@ -1,0 +1,102 @@
+// Tipos de las lecturas public.inv_* (inventario multi-almacén)
+
+export type InvKind = 'MATERIA_PRIMA' | 'PRODUCCION' | 'PRODUCTO_TERMINADO' | 'DESPACHO' | 'PERNERIA' | 'MRO' | 'MANTENIMIENTO'
+  | 'HERRAMIENTAS' | 'ACTIVOS' | 'TERCERO' | 'OBRA' | 'OTRO'
+export type InvClase = 'PRODUCCION' | 'COMPRA' | 'TRASPASO' | 'DESPACHO' | 'CONSUMO' | 'SERVICIO_TERCERO' | 'PRESTAMO' | 'DEVOLUCION'
+  | 'AJUSTE' | 'OTRO'
+
+export interface InvStateInfo {
+  dirty: boolean
+  rebuilt_at: string | null
+  data_min: string | null
+  data_max: string | null
+  model_from: string | null
+  snapshot_cutoff: string | null
+  stats: { movimientos?: number; capas?: number; consumos?: number; traspasos_enlazados?: number; traspasos_sin_destino?: number
+    traspasos_sin_origen?: number; segundos?: number }
+  desde?: string
+  hasta?: string
+}
+
+export interface InvOverview {
+  state: InvStateInfo
+  bodegas: Array<{ bodega: string; kind: InvKind; stage: number; claves: number; kg: number; kg_libre: number; kg_comprometido: number
+    claves_sin_peso: number; claves_inferidas: number; edad_max: number | null }>
+  movimientos: Array<{ clase: InvClase; side: 'E' | 'S'; lineas: number; docs: number; kg: number }>
+  serie: Array<{ fecha: string; produccion: number; compras: number; despachos: number; consumos: number; traspasos: number }>
+  calidad: { sin_peso: number; lineas: number; error_contrato: number; lote_minusculas: number; traspasos_sin_destino: number | null
+    traspasos_sin_origen: number | null; claves_inferidas: number; qty_inferida_consumida: number }
+  herramientas: { salidas: number; pendientes: number; unidades_pendientes: number
+    detalle: Array<{ numero: string; fecha: string; cliente: string | null; producto: string; glosa: string | null; salida: number; devuelto: number; pendiente: number }> }
+  terceros: { guias: number; sin_retorno: number; kg_enviado: number; kg_retornado: number
+    detalle: Array<{ numero: string; fecha: string; proveedor: string | null; bodega: string; lotes: string | null; kg: number; kg_retorno: number
+      ultima: string | null; lotes_retorno: string | null }> }
+}
+
+export interface InvStockRow {
+  bodega: string; kind: InvKind; producto: string; glosa: string | null; lote: string | null; ot: string | null; cliente: string | null
+  unidad: string | null; qty: number; kg: number; kg_conocido: boolean; fecha_ingreso: string | null; fecha_origen: string | null
+  dias_bodega: number | null; dias_origen: number | null; inferido: number; foto: number; capas: number
+}
+export interface InvStock {
+  corte: string | null; dirty: boolean; snapshot_cutoff: string | null; total: number
+  totales: { kg: number; kg_libre: number; kg_comprometido: number; claves: number; claves_inferidas: number; claves_sin_peso: number }
+  filas: InvStockRow[]
+}
+export interface InvStockFilters { bodegas?: string[]; kinds?: InvKind[]; q?: string; estado?: '' | 'libre' | 'comprometido'; min_dias?: number
+  orden?: 'kg' | 'edad' | 'qty'; limit?: number; offset?: number }
+
+export interface InvDwell {
+  desde: string; hasta: string; corte: string; model_from: string | null
+  por_bodega: Array<{ bodega: string; kind: InvKind; stage: number; consumos: number; kg: number; prom_dias: number | null; prom_dias_kg: number | null
+    p50: number | null; p90: number | null; max: number | null; pct_sin_fecha: number | null; prom_origen: number | null }>
+  por_destino: Array<{ bodega: string; destino: InvClase; consumos: number; kg: number; prom_dias: number | null; prom_origen: number | null }>
+  distribucion: Array<{ bodega: string; rango: string; consumos: number; kg: number }>
+  antiguedad_stock: Array<{ bodega: string; rango: string; claves: number; kg: number }>
+  mas_antiguos: Array<{ bodega: string; producto: string; lote: string | null; qty: number; kg: number; fecha_ingreso: string; dias: number; fecha_origen: string | null }>
+  etapas: Array<{ origen: InvClase | null; origen_bodega: string | null; bodega: string; destino: InvClase; consumos: number; kg: number
+    prom_bodega: number | null; prom_origen: number | null }>
+}
+
+export interface InvFlow {
+  desde: string; hasta: string
+  bodegas: Array<{ code: string; kind: InvKind; stage: number }>
+  traspasos: Array<{ origen: string; destino: string; docs: number; lineas: number; kg: number; reasignadas: number; dias_en_origen: number | null }>
+  ingresos: Array<{ clase: InvClase; bodega: string; lineas: number; kg: number }>
+  salidas: Array<{ clase: InvClase; bodega: string; lineas: number; kg: number }>
+  reasignaciones: Array<{ origen: string; destino: string; numero: string; fecha: string; producto: string; lote_origen: string | null
+    lote_destino: string | null; qty: number; kg: number }>
+}
+
+export interface InvTraceMove {
+  id: number; fecha: string; side: 'E' | 'S'; clase: InvClase; tipodocto: string; bodega: string; kind: InvKind; stage: number; numero: string
+  producto: string; glosa: string | null; cantidad: number; unidad: string | null; kg: number | null; lote: string | null; num_rel: string | null
+  razon_social: string | null; doc_rel: string | null; ref_numero: string | null; comentario: string | null
+}
+export interface InvTrace {
+  q: string; encontrado: boolean; lotes?: string[]; lotes_buscados?: string[]; lotes_origen?: string[]; lotes_derivados?: string[]
+  ops?: string[]; truncado?: boolean
+  movimientos?: InvTraceMove[]
+  enlaces?: Array<{ out_id: number; in_id: number; qty: number; origen: string; destino: string; lote_origen: string | null; lote_destino: string | null
+    numero: string; fecha: string }>
+  etapas?: Array<{ bodega: string; kind: InvKind; stage: number; primera: string; ultima: string; entradas_kg: number; salidas_kg: number
+    entradas: number; salidas: number }>
+  saldo?: Array<{ bodega: string; producto: string; lote: string | null; qty: number; kg: number; fecha_ingreso: string | null; inferido: number }>
+  estadia?: Array<{ bodega: string; consumos: number; prom_dias: number | null; max_dias: number | null }>
+}
+
+export interface InvStatus {
+  can_load: boolean
+  state: InvStateInfo
+  cobertura: Array<{ side: 'E' | 'S'; desde: string; hasta: string; filas: number; dias: number }>
+  huecos: Array<{ side: 'E' | 'S'; desde: string; hasta: string }>
+  cargas: Array<{ id: string; side: 'E' | 'S' | 'STOCK'; file_name: string; status: string; desde: string | null; hasta: string | null
+    cutoff: string | null; filas: number; total: number; excluidas: Record<string, number>; reemplazadas: number | null
+    applied_at: string | null; created_at: string }>
+}
+
+export interface InvCatalogs {
+  can_load: boolean
+  bodegas: Array<{ code: string; name: string; kind: InvKind; stage: number; auto: boolean; movimientos: number }>
+  tipos: Array<{ tipodocto: string; clase: InvClase; auto: boolean; movimientos: number }>
+}
