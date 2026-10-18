@@ -137,7 +137,13 @@ BEGIN
     SELECT 1 FROM public.inv_layers l LEFT JOIN
       (SELECT layer_id, sum(qty) AS q FROM public.inv_allocations GROUP BY layer_id) a ON a.layer_id=l.id
     WHERE l.consumed IS DISTINCT FROM COALESCE(a.q, 0)
-  ) THEN pass := pass + 1; ELSE fails := fails || 'T11 consumo por capa no coincide con FIFO detallado'::text; END IF;
+  ) AND NOT EXISTS (
+    SELECT 1 FROM public.inv_movements m LEFT JOIN
+      (SELECT out_id, sum(qty) AS q FROM public.inv_allocations GROUP BY out_id) a ON a.out_id=m.id
+    WHERE m.active AND m.cantidad < 0
+      AND m.fecha >= COALESCE((SELECT model_from FROM public.inv_state WHERE id=1), '-infinity'::date)
+      AND abs(m.cantidad) IS DISTINCT FROM COALESCE(a.q, 0)
+  ) THEN pass := pass + 1; ELSE fails := fails || 'T11 consumo por capa o cantidad de salida no coincide con FIFO detallado'::text; END IF;
 
   IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C115 FAIL (%/11): %', pass, array_to_string(fails, ' | '); END IF;
   RAISE EXCEPTION 'CAJA C115 PASS (11/11) inventario multi-almacén: carga, traspasos con reasignación, FIFO y estadía, saldo inicial, foto de stock, trazabilidad y permisos';
