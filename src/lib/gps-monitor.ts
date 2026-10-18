@@ -4,6 +4,31 @@ export type DriverMonitorRow = {
   route_status: string | null; operational_status: string; connected: boolean
   last_seen_at: string | null; gps_state: string; lat: number | null; lng: number | null
   gps_at: string | null; gps_fresh: boolean; accuracy_m: number | null; speed: number | null
+  client?: DriverClientState | null; pending_points?: number | null; oldest_pending_at?: string | null
+}
+// Estado del teléfono enviado por el app con cada aviso de conexión
+export type DriverClientState = {
+  battery?: number; charging?: boolean; network?: string; online?: boolean; visibility?: 'visible' | 'hidden'
+  platform?: string; native_tracking?: boolean; device?: string; app_version?: string; reported_at?: string
+}
+
+// Conexión del app en tres niveles: conectado (aviso en 90 s), intermitente (aviso en 5 min: pantalla bloqueada,
+// app en segundo plano o señal débil; los puntos pueden llegar después) y sin conexión.
+export type ConnectionLevel = 'connected' | 'intermittent' | 'offline'
+export function connectionLevel(row: Pick<DriverMonitorRow, 'connected' | 'last_seen_at'>, serverNow: number): ConnectionLevel {
+  if (row.connected) return 'connected'
+  return row.last_seen_at && Date.parse(row.last_seen_at) >= serverNow - 300000 ? 'intermittent' : 'offline'
+}
+
+// Pistas del teléfono para entender un corte (batería baja, app en segundo plano, sin datos, puntos por enviar)
+export function clientHints(row: Pick<DriverMonitorRow, 'client' | 'pending_points'>): string[] {
+  const c = row.client || {}, hints: string[] = []
+  if (typeof c.battery === 'number') hints.push(`Batería ${Math.round(c.battery * 100)} %${c.charging ? ' (cargando)' : c.battery <= 0.15 ? ' · baja' : ''}`)
+  if (c.visibility === 'hidden') hints.push('App en segundo plano')
+  if (c.online === false) hints.push('Teléfono sin datos')
+  else if (c.network) hints.push(`Red ${c.network.toUpperCase()}`)
+  if (row.pending_points) hints.push(`${row.pending_points} punto(s) GPS por enviar`)
+  return hints
 }
 export const monitorStates: Record<string, { label: string; color: string }> = {
   SIN_RUTA: { label: 'Sin ruta', color: 'blue' },

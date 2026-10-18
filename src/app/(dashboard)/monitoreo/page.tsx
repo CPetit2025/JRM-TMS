@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { Search, Radio, Loader2, RefreshCw, MapPin, Plus, Info, X, Wifi, Coffee, Route, FileClock } from 'lucide-react'
+import { Search, Radio, Loader2, RefreshCw, MapPin, Plus, Info, X, Wifi, Coffee, Route, FileClock, Activity } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { InlineStatusBar } from '@/components/ui/inline-status-bar'
 import { FilterToolbar, filterControl } from '@/components/ui/filter-toolbar'
@@ -12,7 +12,8 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { errorMessage } from '@/lib/caja'
-import { gpsTime, monitorMarker, monitorStates, stateFor, type DriverMonitorRow } from '@/lib/gps-monitor'
+import { clientHints, connectionLevel, gpsTime, monitorMarker, monitorStates, stateFor, type DriverMonitorRow } from '@/lib/gps-monitor'
+import { ConnectivityReport } from '@/components/monitoreo/ConnectivityReport'
 
 const MapComponent = dynamic(() => import('@/components/map/MapComponent'), { ssr: false,
   loading: () => <div className="flex h-full items-center justify-center bg-slate-100 text-slate-500"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Cargando mapa…</div> })
@@ -39,6 +40,7 @@ export default function MonitoreoPage() {
   const [description, setDescription] = useState('')
   const [busy, setBusy] = useState(false)
   const [version, setVersion] = useState(0)
+  const [reportOpen, setReportOpen] = useState(false)
   useEffect(() => {
     let stopped = false, fetching = false
     const load = async () => {
@@ -58,10 +60,11 @@ export default function MonitoreoPage() {
   }, [supabase, version])
   // Expire snapshot flags even if the next poll fails; use server time to tolerate device clock skew.
   const serverNow = asOf ? Date.parse(asOf) + Math.max(0, now - loadedAt) : 0
-  const drivers = rows.map(row => ({ ...row,
-    connected: !!row.connected && !!row.last_seen_at && Date.parse(row.last_seen_at) >= serverNow - 90000,
-    gps_fresh: !!row.gps_fresh && !!row.gps_at && Date.parse(row.gps_at) >= serverNow - 120000,
-  }))
+  const drivers = rows.map(row => {
+    const connected = !!row.connected && !!row.last_seen_at && Date.parse(row.last_seen_at) >= serverNow - 90000
+    return { ...row, connected, level: connectionLevel({ connected, last_seen_at: row.last_seen_at }, serverNow),
+      gps_fresh: !!row.gps_fresh && !!row.gps_at && Date.parse(row.gps_at) >= serverNow - 120000 }
+  })
   const quickMatch: Record<Exclude<typeof quick, ''>, (row: DriverMonitorRow) => boolean> = {
     conectados: row => row.connected,
     sin_ruta: row => row.connected && row.operational_status === 'SIN_RUTA',
@@ -71,7 +74,7 @@ export default function MonitoreoPage() {
   const filtered = drivers.filter(row => {
     const text = `${row.driver} ${row.plate || ''} ${row.dispatch_number || ''}`.toLowerCase()
     return text.includes(search.trim().toLowerCase()) && (state === 'all' || row.operational_status === state) &&
-      (connection === 'all' || (connection === 'connected' ? row.connected : !row.connected)) && (!quick || quickMatch[quick](row))
+      (connection === 'all' || (connection === 'connected' ? row.connected : connection === 'intermittent' ? row.level === 'intermittent' : row.level === 'offline')) && (!quick || quickMatch[quick](row))
   })
   const markers = filtered.map(monitorMarker).filter((row): row is NonNullable<typeof row> => !!row)
   const selected = filtered.find(row => row.id === selectedId)
@@ -90,7 +93,7 @@ export default function MonitoreoPage() {
   }
   return <div className="flex min-w-0 flex-col gap-2.5">
     <PageHeader showTitle title="Monitoreo GPS" description="Conductores del app, con y sin ruta · actualización cada 15 segundos"
-      actions={<><span className="whitespace-nowrap text-xs text-slate-500" aria-live="polite">Consulta: {gpsTime(asOf)}</span><button onClick={() => setVersion(v => v + 1)} className="flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50"><RefreshCw className="h-4 w-4" />Actualizar</button></>} />
+      actions={<><button type="button" onClick={() => setReportOpen(true)} className="flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50"><Activity className="h-4 w-4" />Diagnóstico de conexión</button><span className="whitespace-nowrap text-xs text-slate-500" aria-live="polite">Consulta: {gpsTime(asOf)}</span><button onClick={() => setVersion(v => v + 1)} className="flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50"><RefreshCw className="h-4 w-4" />Actualizar</button></>} />
     <InlineStatusBar label="Resumen de conductores (filtra la lista y el mapa)" active={quick || undefined} loading={!asOf && !error}
       onChange={key => setQuick(prev => prev === key ? '' : key as typeof quick)}
       items={[
@@ -103,12 +106,12 @@ export default function MonitoreoPage() {
     <FilterToolbar compact label="Búsqueda y filtros del monitor" onClear={() => { setSearch(''); setState('all'); setConnection('all'); setQuick('') }}>
       <label className="relative min-w-0 flex-1 basis-48"><span className="sr-only">Buscar conductor, placa o despacho</span><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" aria-hidden="true" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Conductor, placa o despacho" className={`${filterControl} pl-9`} /></label>
       <label className="w-full sm:w-52"><span className="sr-only">Estado operativo</span><select value={state} onChange={e => setState(e.target.value)} className={filterControl}><option value="all">Todos los estados</option>{Object.entries(monitorStates).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</select></label>
-      <label className="w-full sm:w-44"><span className="sr-only">Conexión del app</span><select value={connection} onChange={e => setConnection(e.target.value)} className={filterControl}><option value="all">Todas las conexiones</option><option value="connected">App conectada</option><option value="disconnected">Sin conexión reciente</option></select></label>
+      <label className="w-full sm:w-44"><span className="sr-only">Conexión del app</span><select value={connection} onChange={e => setConnection(e.target.value)} className={filterControl}><option value="all">Todas las conexiones</option><option value="connected">App conectada</option><option value="intermittent">Señal intermitente</option><option value="disconnected">Sin conexión reciente</option></select></label>
       <label className="flex min-h-11 items-center gap-2 whitespace-nowrap text-sm text-slate-700"><input type="checkbox" checked={geofences} onChange={e => setGeofences(e.target.checked)} />Geocercas</label>
       <details className="relative">
         <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-jrm-navy hover:bg-blue-50 [&::-webkit-details-marker]:hidden"><Info className="h-4 w-4" aria-hidden="true" />Cómo leer</summary>
         <div className="absolute right-0 z-[1000] mt-1 w-[min(28rem,calc(100vw-2rem))] space-y-2 rounded-jrm border border-jrm-line bg-white p-4 text-xs leading-5 text-slate-600 shadow-xl">
-          <p>«App conectada» indica una señal recibida en los últimos 90 segundos. La sesión guardada no implica conexión. Las ubicaciones con más de 2 minutos se muestran en gris como última posición conocida.</p>
+          <p>«App conectada» indica una señal recibida en los últimos 90 segundos; «Señal intermitente», en los últimos 5 minutos (pantalla bloqueada, app en segundo plano o señal débil: los puntos GPS pueden llegar después). La sesión guardada no implica conexión. Las ubicaciones con más de 2 minutos se muestran en gris como última posición conocida.</p>
           <p>Sin GPS o con permiso denegado, el conductor permanece en la lista. Se muestran conexiones de las últimas 24 horas y servicios abiertos de tu sede.</p>
         </div>
       </details>
@@ -120,9 +123,10 @@ export default function MonitoreoPage() {
           <span className="block truncate text-sm font-bold text-jrm-navy" title={row.driver}>{row.driver}</span>
           <span className="mt-1 flex min-w-0 items-center gap-2"><Status row={row} compact /><span className="min-w-0 truncate text-xs text-slate-600">{row.plate || 'Sin unidad asignada'}{row.dispatch_number && ` · ${row.dispatch_number}`}</span></span>
           <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px]">
-            <span className={row.connected ? 'font-semibold text-emerald-700' : 'text-slate-500'} title={`Conexión: ${gpsTime(row.last_seen_at)}`}>{row.driver_id ? (row.connected ? '● App conectada' : '○ Sin conexión reciente') : 'Sin app vinculada'}</span>
+            <span className={row.level === 'connected' ? 'font-semibold text-emerald-700' : row.level === 'intermittent' ? 'font-semibold text-amber-800' : 'text-slate-500'} title={`Conexión: ${gpsTime(row.last_seen_at)}`}>{row.driver_id ? (row.level === 'connected' ? '● App conectada' : row.level === 'intermittent' ? '◐ Señal intermitente' : '○ Sin conexión reciente') : 'Sin app vinculada'}</span>
             <span className={`inline-flex items-center gap-1 ${row.gps_fresh ? 'text-slate-500' : 'text-amber-800'}`}><MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />{row.gps_state === 'denied' ? 'GPS denegado · ' : !row.gps_fresh ? 'Sin señal · ' : ''}{gpsTime(row.gps_at)}</span>
           </span>
+          {row.level !== 'connected' && clientHints(row).length > 0 && <span className="mt-0.5 block truncate text-[11px] text-slate-500">{clientHints(row).join(' · ')}</span>}
         </button></li>)}</ul>}
       </section>
       <section aria-label="Mapa GPS" className="relative h-[52dvh] min-h-[330px] min-w-0 overflow-hidden rounded-jrm border border-jrm-line shadow-jrm-card lg:h-[calc(100dvh-250px)] lg:min-h-[420px]">
@@ -130,11 +134,13 @@ export default function MonitoreoPage() {
         {!markers.length && <p className="pointer-events-none absolute left-3 right-3 top-3 z-[500] rounded-xl border border-slate-200 bg-white/95 p-3 text-xs text-slate-600 shadow">Los conductores sin ubicación disponible se muestran en la lista. No hay puntos GPS para estos filtros.</p>}
         {selected && <div className="absolute bottom-3 left-3 right-3 z-[500] space-y-2 rounded-jrm border border-jrm-line bg-white/95 p-3 shadow-xl backdrop-blur sm:right-auto sm:w-[26rem]" role="region" aria-label={`Detalle de ${selected.driver}`}>
           <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h2 className="truncate font-bold text-jrm-navy">{selected.driver}</h2><p className="truncate text-sm text-slate-600">{selected.plate || 'Sin unidad asignada'} · {selected.dispatch_number || 'Sin ruta asignada'}</p></div><div className="flex shrink-0 items-center gap-1"><Status row={selected} /><button type="button" onClick={() => setSelectedId(null)} aria-label="Cerrar detalle" className="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button></div></div>
+          {clientHints(selected).length > 0 && <p className="text-xs text-slate-600">Teléfono: {clientHints(selected).join(' · ')}{selected.client?.device && ` · ${selected.client.device}`}</p>}
           <p className="text-xs text-slate-600">GPS: {gpsTime(selected.gps_at)}{selected.accuracy_m !== null && ` · precisión ±${Math.round(selected.accuracy_m)} m`}{selected.gps_fresh && selected.speed !== null && ` · ${Math.round(selected.speed)} km/h`} · Conexión: {gpsTime(selected.last_seen_at)}</p>
           {selected.dispatch_id && <div className="flex flex-wrap gap-2">{canRegister && <button onClick={() => setEventOpen(true)} className="flex min-h-10 items-center gap-2 rounded-lg bg-jrm-navy px-3 text-sm font-semibold text-white hover:bg-jrm-navy-dark"><Plus className="h-4 w-4" />Registrar novedad</button>}<Link href="/torre-control" className="flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50">Revisar servicio y conformidad</Link></div>}
         </div>}
       </section>
     </div>
+    <Modal isOpen={reportOpen} onClose={() => setReportOpen(false)} title="Diagnóstico de conexión de conductores" maxWidth="max-w-5xl">{reportOpen && <ConnectivityReport />}</Modal>
     <Modal isOpen={eventOpen} onClose={() => setEventOpen(false)} title={`Registrar novedad · ${selected?.plate || selected?.driver || ''}`} maxWidth="max-w-md"><form onSubmit={register} className="space-y-4"><label className="block text-sm">Tipo de evento<select value={eventType} onChange={e => setEventType(e.target.value)} className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3">{[['CHECKPOINT','Punto de control'],['LLEGADA_CLIENTE','Llegada a cliente'],['SALIDA_CLIENTE','Salida de cliente'],['RETRASO','Retraso / tráfico'],['INCIDENCIA','Incidencia'],['FIN_RUTA','Finalizar ruta (exige conformidad aprobada)']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="block text-sm">Descripción<textarea required maxLength={1000} value={description} onChange={e => setDescription(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 p-3" rows={3} /></label><p className="text-xs text-slate-500">La novedad registra el reporte. El avance del servicio sigue sujeto a su flujo operativo y a la guía aprobada.</p><button disabled={busy || !description.trim()} className="min-h-11 w-full rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Guardando…' : 'Guardar novedad'}</button></form></Modal>
   </div>
 }
