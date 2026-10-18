@@ -9,12 +9,16 @@ BEGIN
  IF actor IS NULL THEN RAISE EXCEPTION 'CAJA C116 FAIL: no active administrator'; END IF;
  PERFORM set_config('request.jwt.claim.sub',actor::text,true);
  PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',actor,'role','authenticated')::text,true);
+ INSERT INTO public.inv_doc_types(tipodocto,clase,auto) VALUES('C116 CUSTOM','DEVOLUCION',false);
  u := (public.inv_upload_begin('E','C116 retries.xlsx')->>'upload_id')::uuid;
- SELECT jsonb_agg(jsonb_build_object('__row',i,'BODEGA','C116 APT','TIPODOCTO','P/E PRODUCCION ACT.',
+ SELECT jsonb_agg(jsonb_build_object('__row',i,'BODEGA','C116 APT','TIPODOCTO','C116 CUSTOM',
    'Fecha','1998-01-01','Producto','C116.'||i,'Numero',i,'Cantidad',1,'Lote','016339-S005','PesoUnitario',2))
  INTO payload FROM generate_series(1,500) i;
  payload := payload || jsonb_build_array(jsonb_build_object('__row',501,'Producto','invalid','Cantidad',0));
  r := public.inv_upload_rows(u,payload);
+ IF EXISTS(SELECT 1 FROM public.inv_movements WHERE upload_id=u AND clase<>'DEVOLUCION') THEN
+   RAISE EXCEPTION 'CAJA C116 FAIL: incoming movement ignores configured document class';
+ END IF;
  IF (r->>'inserted')::int <> 500 OR (r->'excluded'->>'Sin bodega')::int <> 1 THEN
    RAISE EXCEPTION 'CAJA C116 FAIL: first chunk %',r;
  END IF;
