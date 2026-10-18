@@ -7,7 +7,7 @@ const supabase = createClient()
 
 async function call<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
   const { data, error } = await supabase.rpc(fn, args)
-  if (error) throw new Error(error.message)
+  if (error) throw Object.assign(new Error(error.message), { code: error.code, retryable: error.code === '57014' || error.code === '55P03' || error.code?.startsWith('08') || /fetch|network|timeout/i.test(error.message) })
   const out = data as { success?: boolean; error?: string } | null
   if (!out || out.success === false) throw new Error(out?.error || 'No se pudo obtener la información del inventario')
   return out as T
@@ -27,7 +27,20 @@ export const invApi = {
   saveCatalog: (p: { bodega: string; kind: string } | { tipodocto: string; clase: string }) => call<{ success: true }>('inv_catalog_save', { p }),
 }
 
-const CHUNK = 2000
+// Keep each authenticated RPC well below the database statement timeout.
+const CHUNK = 500
+const uploads = new WeakMap<InvParsedPart, { id: string; next: number; cutoff: string | undefined; applied: ServerStep | null }>()
+
+async function retry<T>(work: () => Promise<T>, progress?: (m: string) => void): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try { return await work() } catch (e) {
+      const transient = e instanceof TypeError || (e as { retryable?: boolean }).retryable
+      if (!transient || attempt >= 2) throw e
+      progress?.(`Recuperando la conexión, intento ${attempt + 2} de 3…`)
+      await new Promise(resolve => setTimeout(resolve, 700 * (attempt + 1)))
+    }
+  }
+}
 
 type ServerStep = { success?: boolean; error?: string; partial?: boolean; fallback?: boolean } & Record<string, unknown>
 
@@ -40,25 +53,28 @@ async function server(body: Record<string, unknown>): Promise<ServerStep> {
 
 // Sube una parte (Entradas, Salidas o foto de stock): iniciar, enviar filas por bloques y aplicar en el servidor
 export async function uploadPart(part: InvParsedPart, opts: { cutoff?: string; force?: boolean; onProgress?: (m: string) => void }) {
-  const begin = await call<{ upload_id: string }>('inv_upload_begin', {
-    p_side: part.side, p_file_name: `${part.fileName} · ${part.sheetName}`, p_cutoff: part.side === 'STOCK' ? opts.cutoff || null : null,
-  })
-  const id = begin.upload_id
-  try {
-    for (let i = 0; i < part.rows.length; i += CHUNK) {
-      opts.onProgress?.(`Enviando filas ${i + 1}–${Math.min(i + CHUNK, part.rows.length)} de ${part.rows.length}…`)
-      await call('inv_upload_rows', { p_upload_id: id, p_rows: part.rows.slice(i, i + CHUNK) })
-    }
-    opts.onProgress?.('Aplicando la carga…')
-    let applied = await server({ accion: 'aplicar', upload_id: id, force: !!opts.force })
-    // Sin llave de servicio en el entorno: se aplica con el permiso del usuario (cargas chicas)
-    if (applied.fallback) applied = await call<ServerStep>('inv_upload_apply', { p_upload_id: id, p_force: !!opts.force })
-    if (!applied.success) throw Object.assign(new Error(applied.error || 'No se pudo aplicar la carga'), { partial: !!applied.partial })
-    return applied
-  } catch (e) {
-    await supabase.rpc('inv_upload_discard', { p_upload_id: id })
-    throw e
+  let state = uploads.get(part)
+  if (!state || (part.side === 'STOCK' && state.cutoff !== opts.cutoff)) {
+    const begin = await call<{ upload_id: string }>('inv_upload_begin', {
+      p_side: part.side, p_file_name: `${part.fileName} · ${part.sheetName}`, p_cutoff: part.side === 'STOCK' ? opts.cutoff || null : null,
+    })
+    state = { id: begin.upload_id, next: 0, cutoff: opts.cutoff, applied: null }
+    uploads.set(part, state)
   }
+  if (state.applied) return state.applied
+  // Advance only after acknowledgement. The SQL receipt makes an ambiguous retry safe.
+  for (let i = state.next; i < part.rows.length; i += CHUNK) {
+    const end = Math.min(i + CHUNK, part.rows.length)
+    opts.onProgress?.(`Enviando filas ${i + 1}–${end} de ${part.rows.length} (${Math.round(end * 100 / part.rows.length)} %)…`)
+    await retry(() => call('inv_upload_rows', { p_upload_id: state!.id, p_rows: part.rows.slice(i, end) }), opts.onProgress)
+    state.next = end
+  }
+  opts.onProgress?.('Aplicando la carga…')
+  let applied = await server({ accion: 'aplicar', upload_id: state.id, force: !!opts.force })
+  if (applied.fallback) applied = await call<ServerStep>('inv_upload_apply', { p_upload_id: state.id, p_force: !!opts.force })
+  if (!applied.success) throw Object.assign(new Error(applied.error || 'No se pudo aplicar la carga'), { partial: !!applied.partial })
+  state.applied = applied
+  return applied
 }
 
 export async function recalcular(onProgress?: (m: string) => void) {
