@@ -4,13 +4,30 @@ import { useEffect, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { createDriverPresenceReporter } from '@/lib/driver-presence'
 import { nativeRouteTracker } from '@/lib/native-route-tracker'
-import { activeRouteKey, readRouteQueue, routeQueueKey, syncRoutePoints } from '@/lib/route-point-sync'
+import { activeRouteKey, pendingRouteSummary, readRouteQueue, routeQueueKey, syncRoutePoints } from '@/lib/route-point-sync'
+
+type BatteryInfo = { level: number; charging: boolean; addEventListener(type: string, listener: () => void): void }
+// Modelo y versión de Android que expone el navegador del app (para el diagnóstico por marca de teléfono)
+const deviceLabel = () => /Android [^;)]+(?:; [^;)]+)?/.exec(navigator.userAgent || '')?.[0] || null
 
 export default function GPSGuard({ children }: { children: ReactNode }) {
   useEffect(() => {
     const supabase = createClient()
-    const presence = createDriverPresenceReporter(supabase)
+    let battery: BatteryInfo | null = null
+    let pending = { count: 0, oldest: null as string | null }
+    let nativeStarted = false
+    const clientInfo = () => ({
+      battery: battery ? Math.round(battery.level * 100) / 100 : null, charging: battery ? battery.charging : null,
+      network: (navigator as Navigator & { connection?: { effectiveType?: string } }).connection?.effectiveType || null,
+      online: navigator.onLine, visibility: typeof document !== 'undefined' ? document.visibilityState : null,
+      platform: nativeRouteTracker ? 'android' : 'web', native_tracking: nativeStarted,
+      pending_points: pending.count, oldest_pending_at: pending.oldest,
+      device: deviceLabel(), app_version: process.env.APP_VERSION || null,
+    })
+    const presence = createDriverPresenceReporter(supabase, clientInfo)
     const heartbeat = () => { void presence.send().catch(() => {}) }
+    const nav = navigator as Navigator & { getBattery?: () => Promise<BatteryInfo> }
+    void nav.getBattery?.().then(value => { battery = value }).catch(() => {})
     heartbeat()
     const presenceTimer = window.setInterval(heartbeat, 15000)
     window.addEventListener('online', heartbeat)
@@ -19,7 +36,6 @@ export default function GPSGuard({ children }: { children: ReactNode }) {
     let driverId: string | null = null
     let dispatchId: string | null = localStorage.getItem(activeRouteKey)
     let lastTimestamp = 0
-    let nativeStarted = false
 
     const refreshAssignment = async () => {
       const { data: userData } = await supabase.auth.getUser()
@@ -67,13 +83,21 @@ export default function GPSGuard({ children }: { children: ReactNode }) {
     }
 
     const flush = async () => {
-      if (stopped || !navigator.onLine) return
+      if (stopped) return
       try {
-        await syncRoutePoints()
+        if (navigator.onLine) await syncRoutePoints()
       } catch (syncError) {
         console.warn('GPS pendiente de sincronizar:', syncError)
       }
+      pending = await pendingRouteSummary().catch(() => pending)
     }
+    // Al volver al app (pantalla encendida, otra app cerrada): reportar y subir de inmediato, sin esperar los intervalos
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+      void presence.send(true).catch(() => {})
+      void refreshAssignment().then(flush).catch(() => {})
+    }
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible)
 
     void refreshAssignment().then(flush).catch(() => {})
     const assignmentTimer = window.setInterval(() => void refreshAssignment().then(flush).catch(() => {}), 15000)
@@ -117,6 +141,7 @@ export default function GPSGuard({ children }: { children: ReactNode }) {
       if (watchId !== undefined) navigator.geolocation.clearWatch(watchId)
       window.clearInterval(assignmentTimer); window.clearInterval(flushTimer)
       window.removeEventListener('online', flush)
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible)
     }
   }, [])
   return <>{children}</>

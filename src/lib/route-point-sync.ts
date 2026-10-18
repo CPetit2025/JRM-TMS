@@ -63,35 +63,56 @@ function permanentPointError(error: { code?: string; message?: string }) {
 }
 
 let running: Promise<number> | null = null
+// Puntos por petición: una hora de ruta son ~3.600 puntos; de uno en uno, con datos móviles débiles, la cola no se
+// pone al día. El servidor valida cada punto en orden dentro del mismo lote.
+const ROUTE_BATCH = 200
 
 export function syncRoutePoints(): Promise<number> {
   if (running) return running
   running = (async () => {
     if (!navigator.onLine) throw new Error('Sin conexión para sincronizar puntos GPS')
     const supabase = createClient()
+    type Item = { point: RoutePoint; source: 'browser' | 'native' }
+    const done = async (items: Item[]) => {
+      const browserIds = new Set(items.filter(item => item.source === 'browser').map(item => item.point.id))
+      if (browserIds.size) localStorage.setItem(routeQueueKey, JSON.stringify(readRouteQueue().filter(point => !browserIds.has(point.id))))
+      const nativeIds = items.filter(item => item.source === 'native').map(item => item.point.id)
+      if (nativeIds.length) await nativeRouteTracker!.acknowledge({ ids: nativeIds })
+    }
     for (let batch = 0; batch < 5000; batch++) {
       const browserPoints = readRouteQueue()
       const nativePoints = nativeRouteTracker ? (await nativeRouteTracker.pending()).points : []
-      const next = [
-        ...browserPoints.map(point => ({ point, source: 'browser' })),
-        ...nativePoints.map(point => ({ point, source: 'native' }))
-      ].sort((a, b) => Date.parse(a.point.recorded_at) - Date.parse(b.point.recorded_at))[0]
-      if (!next) return 0
-      const { error } = await supabase.from('route_track_points').insert(next.point)
-      // Un rechazo permanente (fuera de orden, ruta ya cerrada, fuera de plazo, permiso) no debe trabar la cola:
-      // ese punto se descarta y se sigue con el resto. Los errores de red sí detienen la sincronización.
-      if (error && !permanentPointError(error)) throw new Error(`Punto GPS ${next.point.recorded_at}: ${error.message}`)
-      if (error) console.warn('Punto GPS descartado', next.point.recorded_at, error.message)
-      if (next.source === 'browser') {
-        localStorage.setItem(routeQueueKey,
-          JSON.stringify(readRouteQueue().filter(point => point.id !== next.point.id)))
-      } else {
-        await nativeRouteTracker!.acknowledge({ ids: [next.point.id] })
+      const next: Item[] = [
+        ...browserPoints.map(point => ({ point, source: 'browser' as const })),
+        ...nativePoints.map(point => ({ point, source: 'native' as const }))
+      ].sort((a, b) => Date.parse(a.point.recorded_at) - Date.parse(b.point.recorded_at)).slice(0, ROUTE_BATCH)
+      if (!next.length) return 0
+      const { error } = await supabase.from('route_track_points').insert(next.map(item => item.point))
+      if (!error) { await done(next); continue }
+      if (!permanentPointError(error)) throw new Error(`Puntos GPS desde ${next[0].point.recorded_at}: ${error.message}`)
+      // Un punto rechazado (fuera de orden, ruta cerrada, plazo, permiso) no debe trabar el lote: se reintenta de
+      // uno en uno, se descartan solo los rechazados y los errores de red detienen la sincronización.
+      for (let index = 0; index < next.length; index++) {
+        const item = next[index]
+        const single = await supabase.from('route_track_points').insert(item.point)
+        if (single.error && !permanentPointError(single.error)) {
+          await done(next.slice(0, index))
+          throw new Error(`Punto GPS ${item.point.recorded_at}: ${single.error.message}`)
+        }
+        if (single.error) console.warn('Punto GPS descartado', item.point.recorded_at, single.error.message)
       }
+      await done(next)
     }
     return readRouteQueue().length + (nativeRouteTracker ? (await nativeRouteTracker.pending()).points.length : 0)
   })().finally(() => { running = null })
   return running
+}
+
+// Puntos que esperan subir (navegador + servicio nativo) y el más antiguo: los reporta el aviso de conexión
+export async function pendingRouteSummary(): Promise<{ count: number; oldest: string | null }> {
+  const points = [...readRouteQueue(), ...(nativeRouteTracker ? (await nativeRouteTracker.pending().catch(() => ({ points: [] as RoutePoint[] }))).points : [])]
+  const oldest = points.reduce<string | null>((min, point) => !min || point.recorded_at < min ? point.recorded_at : min, null)
+  return { count: points.length, oldest }
 }
 
 let runningActions: Promise<number> | null = null
