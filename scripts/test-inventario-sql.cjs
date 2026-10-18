@@ -58,6 +58,12 @@ try {
  assert.equal(Number(sql('SELECT count(*) FROM inv_layers l LEFT JOIN (SELECT layer_id,sum(qty) qty FROM inv_allocations GROUP BY layer_id) a ON a.layer_id=l.id WHERE l.consumed IS DISTINCT FROM coalesce(a.qty,0);')),0,'every layer balance equals the detailed FIFO consumptions');
  const catTime=Date.now(); assert.match(sql(`SET request.jwt.claim.sub='00000000-0000-4000-8000-000000000002'; SET statement_timeout='8s'; SELECT inv_catalogs()->>'success';`),/true/)
  const catalogMilliseconds=Date.now()-catTime;
- const regression = query("SET statement_timeout='120s';\n" + readFileSync('supabase/tests/caja_c115_inventario_multialmacen.test.sql','utf8')); assert.match(regression.stderr,/CAJA C115 PASS/); assert.doesNotMatch(regression.stderr,/FAIL/); assert.equal(Number(sql('SELECT count(*) FROM inv_movements WHERE active;')),201573); console.log('PASS: C115 also passes with the full history already present, within the production timeout, and rolls back.');
+ for (const file of ['caja_c115_inventario_multialmacen.test.sql','caja_c117_inventory_real_history.test.sql']) {
+  const regression=query("SET statement_timeout='120s';\n"+readFileSync('supabase/tests/'+file,'utf8'));
+  assert.match(regression.stderr,/CAJA C\d+ PASS/); assert.doesNotMatch(regression.stderr,/FAIL/);
+  assert.equal(Number(sql('SELECT count(*) FROM inv_movements WHERE active;')),201573,'each test restores the complete real history');
+  console.log(regression.stderr.split('\n').find(s=>s.includes('PASS')));
+ }
+ console.log('PASS: isolated scenarios and one complete history rebuild pass independently and restore every active movement.');
  console.log(JSON.stringify({rows:201573,largestChunkMilliseconds:worst,rebuildMilliseconds:catTime-t,catalogMilliseconds,totalMilliseconds:Date.now()-started,model}))
 } finally { docker(['rm','-f',name]) }
