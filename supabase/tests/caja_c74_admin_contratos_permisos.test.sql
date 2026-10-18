@@ -1,4 +1,4 @@
--- CAJA C74 — Administrador de Contratos: permisos (Contratos L/E, Servicios L, Torre L, APT L, sin Dashboard/Reportes)
+-- CAJA C74 — Administrador de Contratos: escritura de OT (los demás permisos se administran en Permisos)
 -- y selección de sus OT como Responsable de OT. Bloque que siempre se revierte: no deja datos.
 CREATE FUNCTION pg_temp.c74_user(p_user uuid) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
@@ -17,10 +17,10 @@ BEGIN
   -- T1: permisos del rol
   SELECT id, permissions INTO v_role_ca, v_perms FROM public.roles WHERE name = 'Administrador de Contratos';
   IF v_role_ca IS NULL THEN RAISE EXCEPTION 'CAJA C74 FAIL: falta el rol Administrador de Contratos'; END IF;
-  IF NOT (v_perms ? 'ot:write' AND v_perms ? 'contratos-servicios:read' AND v_perms ? 'torre-control:read' AND v_perms ? 'apt:read')
-     OR v_perms ?| ARRAY['dashboard', 'dashboard:read', 'dashboard:write', 'contratos-servicios', 'contratos-servicios:write',
-                         'reportes', 'reportes:read', 'reportes:write', 'apt', 'apt:write', 'apt-carga', 'apt-carga:write'] THEN
-    RAISE EXCEPTION 'CAJA C74 FAIL: permisos del rol (T1): %', v_perms;
+  -- Los permisos del rol se administran en Permisos (editables por el Administrador): la prueba exige solo lo que
+  -- necesita la selección de OT (escritura de OT), no una lista fija de módulos.
+  IF NOT (v_perms ? 'ot:write' OR v_perms ? 'ot') THEN
+    RAISE EXCEPTION 'CAJA C74 FAIL: el rol no puede asumir OT sin escritura de OT (T1): %', v_perms;
   END IF;
 
   SELECT site_id INTO v_site FROM public.vehicles WHERE site_id IS NOT NULL LIMIT 1;
