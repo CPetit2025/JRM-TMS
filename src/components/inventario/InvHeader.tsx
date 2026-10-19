@@ -58,7 +58,7 @@ export function InvHeader() {
           </button>
         )}
         {st?.can_load && (
-          <Link href="/apt/inventario/datos" className="flex min-h-9 items-center gap-1.5 rounded-lg bg-[#cf152d] px-3 py-1.5 font-bold text-white shadow-sm hover:bg-[#b01226]">
+          <Link href="/apt/datos" className="flex min-h-9 items-center gap-1.5 rounded-lg bg-[#cf152d] px-3 py-1.5 font-bold text-white shadow-sm hover:bg-[#b01226]">
             <FileUp className="h-3.5 w-3.5" /> Cargar Entradas / Salidas
           </Link>
         )}

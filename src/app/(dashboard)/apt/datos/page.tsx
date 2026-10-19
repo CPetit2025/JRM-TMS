@@ -5,6 +5,8 @@ import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Upload } from 'l
 import { ChartCard, ErrorBlock, LoadingBlock } from '@/components/apt/ui'
 import { Table, td, tdNum, th } from '@/components/inventario/parts'
 import { useInvQuery } from '@/components/inventario/useInvQuery'
+import { VerificationPanel } from '@/components/inventario/VerificationPanel'
+import { syncLegacyApt } from '@/lib/inventario/legacy'
 import { invApi, notifyInvUpdated, recalcular, uploadPart } from '@/lib/inventario/api'
 import { CLASES, CLASE_LABEL, KINDS, KIND_LABEL, fmtN, fmtPeso } from '@/lib/inventario/format'
 import { INV_SIDE_LABEL, parseInventoryWorkbooks, type InvParseResult } from '@/lib/inventario/parse'
@@ -22,7 +24,7 @@ function readFiles(files: File[], onProgress: (m: string) => void): Promise<InvP
       }, 50)
     }
     let worker: Worker
-    try { worker = new Worker(new URL('../../../../../lib/inventario/parse.worker.ts', import.meta.url), { type: 'module' }) } catch { fallback(); return }
+    try { worker = new Worker(new URL('../../../../lib/inventario/parse.worker.ts', import.meta.url), { type: 'module' }) } catch { fallback(); return }
     worker.onmessage = (e: MessageEvent<{ type: string; message?: string; result?: InvParseResult }>) => {
       if (e.data.type === 'progress') onProgress(e.data.message || 'Leyendo…')
       else {
@@ -41,6 +43,8 @@ function readFiles(files: File[], onProgress: (m: string) => void): Promise<InvP
 export default function InventarioDatosPage() {
   const status = useInvQuery('status', () => invApi.status())
   const cats = useInvQuery('cats', () => invApi.catalogs())
+  const ver = useInvQuery('verify', () => invApi.verify())
+  const [files, setFiles] = useState<File[]>([])
   const input = useRef<HTMLInputElement>(null)
   const [parsed, setParsed] = useState<InvParseResult | null>(null)
   const [cutoff, setCutoff] = useState('')
@@ -54,6 +58,7 @@ export default function InventarioDatosPage() {
     if (!files?.length) return
     setError(null); setDone(null); setParsed(null); setPartial(false)
     setBusy('Leyendo archivos…')
+    setFiles([...files])
     try { setParsed(await readFiles([...files], m => setBusy(m))) } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo leer el archivo') } finally { setBusy(null) }
   }
   const upload = async (force = false) => {
@@ -66,8 +71,11 @@ export default function InventarioDatosPage() {
         await uploadPart(p, { cutoff, force, onProgress: m => setBusy(`${INV_SIDE_LABEL[p.side]}: ${m}`) })
       }
       const rb = await recalcular(m => setBusy(m))
+      // Carga única: los mismos archivos actualizan el APT anterior (peso de servicios, guías, flota); no bloquea
+      const legacy = parsed.parts.some(p => p.side !== 'STOCK') && files.length ? await syncLegacyApt(files, m => setBusy(m)) : null
       setDone(`Carga aplicada: ${parsed.parts.map(p => `${INV_SIDE_LABEL[p.side]} ${fmtN(p.rows.length)} filas`).join(' · ')}.`
-        + (rb.pending ? ' El recálculo sigue en el servidor y termina solo en unos minutos (no vuelva a subir el archivo).' : ''))
+        + (rb.pending ? ' El recálculo sigue en el servidor y termina solo en unos minutos (no vuelva a subir el archivo).' : '')
+        + (legacy ? ` Aviso: servicios y guías no se actualizaron (${legacy}).` : ' Servicios, guías y flota también actualizados.'))
       setParsed(null)
       if (input.current) input.current.value = ''
     } catch (e) {
@@ -112,6 +120,7 @@ export default function InventarioDatosPage() {
           {done && <p className="flex items-center gap-2 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800"><CheckCircle2 className="h-4 w-4" />{done}</p>}
         </div>
       </ChartCard>}
+      {ver.data && <VerificationPanel v={ver.data} full />}
       {status.loading ? <LoadingBlock /> : status.error ? <ErrorBlock message={status.error} onRetry={status.reload} /> : status.data && <>
         <ChartCard title="Cobertura de datos" subtitle={status.data.state.stats.segundos !== undefined ? `Último recálculo: ${fmtN(status.data.state.stats.movimientos)} movimientos, ${fmtN(status.data.state.stats.traspasos_enlazados)} traspasos enlazados, ${status.data.state.stats.segundos} s` : undefined}>
           <Table empty={!status.data.cobertura.length} head={<tr><th className={th}>Lado</th><th className={th}>Desde</th><th className={th}>Hasta</th><th className={`${th} text-right`}>Filas</th><th className={`${th} text-right`}>Días con movimiento</th></tr>}>

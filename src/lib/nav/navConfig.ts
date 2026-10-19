@@ -1,10 +1,10 @@
 import {
-  PackagePlus, Boxes,
-  ArchiveRestore, BadgeCheck, BadgeDollarSign, Banknote, BarChart3, BookOpenCheck, Briefcase, Building2, Calculator, CalendarClock, CalendarRange,
+  Boxes,
+  ArchiveRestore, BadgeCheck, BadgeDollarSign, Banknote, BarChart3, Briefcase, Building2, Calculator, CalendarClock, CalendarRange,
   ChartColumn, CircleCheckBig, CircleDot, ClipboardCheck, ClipboardList, Container, Database, Factory, FileSignature,
-  FileText, FileUp, Fuel, Gauge, HardHat, Home, Hourglass, KeyRound, Map as MapIcon, MapPin, PackageCheck,
+  FileText, FileUp, Fuel, Gauge, HardHat, Home, KeyRound, Map as MapIcon, MapPin, PackageCheck,
   PackageSearch, Radar, Receipt, ReceiptText, Route, Scale, Settings, Settings2, ShieldAlert, ShieldCheck, Sparkles, TriangleAlert,
-  Timer, Truck, UserRound, Users, Wallet, Warehouse, Workflow, Wrench, Forklift, History, LayoutDashboard, type LucideIcon,
+  Timer, Truck, UserRound, Users, Wallet, Warehouse, Wrench, Forklift, History, LayoutDashboard, type LucideIcon,
 } from 'lucide-react'
 
 // Menú lateral: una sola lista para el sidebar, el buscador y el título de cada página.
@@ -55,23 +55,9 @@ export const NAV_SECTIONS: NavSection[] = [
     { href: '/monitoreo', label: 'Monitoreo GPS', icon: MapIcon, show: any('monitoreo'), keywords: 'gps mapa seguimiento' },
     { href: '/contratos/servicios', label: 'Registro de Servicios', icon: Receipt, show: any('contratos-servicios', 'clientes'), keywords: 'servicio realizado comprometido gasto montacarga grua estiba' },
   ] }] },
-  { id: 'apt', title: 'Almacén APT', icon: Warehouse, groups: [{ title: 'Inventario multi‑almacén', items: [
-    { href: '/apt/inventario', label: 'Panorama de inventario', icon: Boxes, show: any('apt', 'apt-carga'), keywords: 'inventario multi almacen panorama bodegas stock herramientas terceros' },
-    { href: '/apt/inventario/stock', label: 'Stock disponible', icon: PackageSearch, show: any('apt', 'apt-carga'), keywords: 'stock disponible libre comprometido saldo bodega lote materia prima perneria mro' },
-    { href: '/apt/inventario/estadia', label: 'Estadía por bodega', icon: Hourglass, show: any('apt', 'apt-carga'), keywords: 'estadia permanencia dias bodega antiguedad aging fifo' },
-    { href: '/apt/inventario/trazabilidad', label: 'Trazabilidad de lotes', icon: Route, show: any('apt', 'apt-carga'), keywords: 'trazabilidad lote ot guia op recorrido reasignacion' },
-    { href: '/apt/inventario/flujo', label: 'Flujo entre almacenes', icon: Workflow, show: any('apt', 'apt-carga'), keywords: 'flujo traspaso almacen bodega sankey reasignacion' },
-    { href: '/apt/inventario/datos', label: 'Cargas y catálogos', icon: FileUp, show: any('apt-carga'), keywords: 'carga entradas salidas erp foto stock catalogo bodegas tipos documento' },
-  ] }, { title: 'APT anterior (en retiro)', items: [
-    { href: '/apt', label: 'Analítica Operativa APT', icon: ChartColumn, show: any('apt', 'apt-carga'), keywords: 'apt analitica inventario saldo stock calidad rotacion' },
-    { href: '/apt/operacion', label: 'Control de OT y Lotes', icon: ClipboardCheck, show: any('apt', 'apt-carga'), keywords: 'apt ot lote pendientes permanencia acciones' },
-    { href: '/apt/ingresos', label: 'Ingresos APT', icon: PackagePlus, show: any('apt', 'apt-carga'), keywords: 'apt ingreso entrada produccion ot lote cliente glosa cantidad reporte' },
-    { href: '/apt/estadia', label: 'Estadía de Producción', icon: Hourglass, show: any('apt', 'apt-carga'), keywords: 'apt estadia cohorte fifo aging' },
-    { href: '/apt/gantt', label: 'Trazabilidad SCM · Gantt', icon: CalendarRange, show: any('apt', 'apt-carga'), keywords: 'apt gantt ot lote trazabilidad toneladas tn permanencia' },
-    { href: '/apt/flujo', label: 'Flujo multi‑almacén', icon: Workflow, show: any('apt'), keywords: '647 540 st ventas flujo almacen' },
-    { href: '/apt/flujo/trazabilidad', label: 'Trazabilidad', icon: Route, show: any('apt'), keywords: 'trazabilidad guia lote ot familia' },
-    { href: '/apt/flujo/kardex', label: 'Kardex', icon: BookOpenCheck, show: any('apt'), keywords: 'kardex movimientos saldo' },
-    { href: '/apt/cargas', label: 'Carga Diaria APT', icon: FileUp, show: any('apt-carga'), keywords: 'carga excel erp data' },
+  { id: 'apt', title: 'Almacén APT', icon: Warehouse, groups: [{ items: [
+    { href: '/apt', label: 'Inventario multi‑almacén', icon: Boxes, show: any('apt', 'apt-carga'), keywords: 'apt inventario stock disponible estadia trazabilidad flujo bodegas almacenes lote ot guia traspaso materia prima perneria mro kardex' },
+    { href: '/apt/datos', label: 'Cargar datos del ERP', icon: FileUp, show: any('apt-carga'), keywords: 'carga entradas salidas erp excel foto stock verificacion cuadre catalogo' },
   ] }] },
   { id: 'flota', title: 'Flota y Mantenimiento', icon: Wrench, groups: [
     { title: 'Taller', items: [

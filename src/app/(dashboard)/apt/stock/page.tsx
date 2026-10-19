@@ -89,7 +89,7 @@ export default function InventarioStockPage() {
             {d.filas.map(r => <tr key={`${r.bodega}|${r.producto}|${r.lote}`} className="hover:bg-slate-50">
               <td className={td}><p className="font-semibold text-slate-800">{r.bodega}</p><KindBadge kind={r.kind} /></td>
               <td className={td}><p className="font-mono text-[11px] text-slate-500">{r.producto}</p><p className="max-w-80 text-slate-800">{r.glosa ?? '—'}</p></td>
-              <td className={td}>{r.lote ? <Link href={`/apt/inventario/trazabilidad?q=${encodeURIComponent(r.lote)}`} className="font-semibold text-[#002855] underline">{r.lote}</Link> : <span className="text-slate-400">Sin lote</span>}
+              <td className={td}>{r.lote ? <Link href={`/apt/trazabilidad?q=${encodeURIComponent(r.lote)}`} className="font-semibold text-[#002855] underline">{r.lote}</Link> : <span className="text-slate-400">Sin lote</span>}
                 <p className="mt-0.5"><span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${r.ot ? 'bg-blue-50 text-blue-800' : 'bg-emerald-50 text-emerald-800'}`}>{r.ot ? `OT ${r.ot}` : 'Libre'}</span></p>
                 {r.cliente && <p className="mt-0.5 max-w-52 truncate text-[11px] text-slate-500" title={r.cliente}>{r.cliente}</p>}</td>
               <td className={tdNum}>{fmtQty(r.qty)} <span className="text-slate-400">{r.unidad ?? ''}</span>

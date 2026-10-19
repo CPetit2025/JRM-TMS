@@ -439,7 +439,7 @@ export async function executeAiTool(
       if (!data.resumen && !(data.salidas || []).length) return { asOf, error: `El lote ${lote} no tiene movimientos en APT.` }
       return { asOf, cutoff: data.cutoff, lote: data.lote, tipo: data.tipo, resumen: data.resumen, contrato: data.contrato?.code || null,
         productos: (data.productos || []).slice(0, 15).map((p: Row) => ({ producto: p.clave, glosa: p.etiqueta, tn_saldo: p.tn_saldo, dias: p.dias, estado: p.estado })),
-        salidas: (data.salidas || []).length, url: `/apt/lote/${encodeURIComponent(lote)}` }
+        salidas: (data.salidas || []).length, url: `/apt/trazabilidad?q=${encodeURIComponent(lote)}` }
     }
     const filters: Row = { solo_saldo: true }
     if (producto) filters.producto = producto
@@ -455,7 +455,7 @@ export async function executeAiTool(
       productosMayorTn: data.top_productos, pareto: data.pareto, tendenciaSaldo: (data.trend || []).slice(-6).map((t: Row) => ({ semana: t.periodo, saldo_tn: t.saldo_tn, aging_pond: t.aging_pond })),
       otsDelCliente: ots?.data?.success ? (ots.data.rows as Row[]).map(o => ({ ot: o.clave, cliente: o.cliente, lotes: o.lotes, primer_ingreso: o.primer_ingreso,
         ultimo_despacho: o.ultimo_despacho, tn_ingresada: o.tn_in, tn_despachada: o.tn_out, saldo_tn: o.tn_saldo, dias: o.dias, estado: o.estado })) : undefined,
-      note: 'TN×días = saldo TN × días en APT (prioridad para liberar). Días del saldo = fecha de corte − ingreso de la capa (FIFO).', url: cliente ? '/apt/clientes' : '/apt' }
+      note: 'TN×días = saldo TN × días en APT (prioridad para liberar). Días del saldo = fecha de corte − ingreso de la capa (FIFO).', url: '/apt/stock' }
   }
   if (name === 'get_fleet_efficiency') {
     const desde = typeof args.desde === 'string' && /^\d{4}-\d{2}/.test(args.desde) ? `${args.desde.slice(0, 7)}-01` : undefined
@@ -484,7 +484,7 @@ export async function executeAiTool(
         const { success: _ok, ...rest } = data  // eslint-disable-line @typescript-eslint/no-unused-vars
         return { asOf, ...rest, vinculados: Array.isArray(rest.vinculados) ? rest.vinculados.slice(0, 20) : undefined,
           note: 'SOSPECHOSO = lote con posible error de digitación (no se suma a la familia). Vinculados = lotes de otra numeración relacionados (no se suman).',
-          url: `/apt/flujo/trazabilidad?q=${encodeURIComponent(q)}` }
+          url: `/apt/trazabilidad?q=${encodeURIComponent(q)}` }
       }
     }
     if (q) {
@@ -493,7 +493,7 @@ export async function executeAiTool(
       if (data.modo === 'buscar') return { asOf, error: `No encontré la guía o el lote ${q}.`, parecidos: { guias: data.guias, lotes: data.lotes } }
       const { success: _ok, ...rest } = data  // eslint-disable-line @typescript-eslint/no-unused-vars
       return { asOf, ...rest, eventos: Array.isArray(rest.eventos) ? rest.eventos.slice(-40) : undefined,
-        lineas: Array.isArray(rest.lineas) ? rest.lineas.slice(0, 40) : undefined, url: `/apt/flujo/trazabilidad?q=${encodeURIComponent(q)}` }
+        lineas: Array.isArray(rest.lineas) ? rest.lineas.slice(0, 40) : undefined, url: `/apt/trazabilidad?q=${encodeURIComponent(q)}` }
     }
     const [sum, st, ad] = await Promise.all([supabase.rpc('apt_flow_summary', { p: {} }), supabase.rpc('apt_flow_st', { p: {} }),
       supabase.rpc('apt_flow_adelantos', { p: {} })])

@@ -17,7 +17,7 @@ function Chips({ label, items, tone }: { label: string; items?: string[]; tone: 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</span>
-      {items.slice(0, 40).map(l => <Link key={l} href={`/apt/inventario/trazabilidad?q=${encodeURIComponent(l)}`} className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${tone}`}>{l}</Link>)}
+      {items.slice(0, 40).map(l => <Link key={l} href={`/apt/trazabilidad?q=${encodeURIComponent(l)}`} className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${tone}`}>{l}</Link>)}
       {items.length > 40 && <span className="text-xs text-slate-400">+{items.length - 40}</span>}
     </div>
   )

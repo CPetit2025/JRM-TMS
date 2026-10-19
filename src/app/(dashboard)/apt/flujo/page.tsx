@@ -1,148 +1,127 @@
 'use client'
 
-import { useCallback } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { ArrowLeftRight, CalendarClock, Factory, GitMerge, PackageCheck, Recycle, Scale, Timer, Truck, Zap } from 'lucide-react'
-import { flowApi } from '@/lib/apt/api'
-import { fmtDate, fmtDateTime, fmtDec1, fmtInt, fmtPct, fmtTn } from '@/lib/apt/format'
-import { ALMACEN_COLOR } from '@/lib/apt/flowColors'
-import type { FlowAlmacen } from '@/lib/apt/flowTypes'
-import { useFlowFilters } from '@/lib/apt/useFlowFilters'
-import { ChartCard, EmptyState, ErrorBlock, KpiCard, LoadingBlock } from '@/components/apt/ui'
-import { ResumenAlmacenCard, useFlowQuery } from '@/components/apt/flow/ResumenShared'
-import { ResumenSankey, type SankeyKey } from '@/components/apt/flow/ResumenSankey'
-import { ResumenDespachoMensual, ResumenTraspasosMensual } from '@/components/apt/flow/ResumenCharts'
+import { useMemo, useState } from 'react'
+import { ResponsiveContainer, Sankey, Tooltip } from 'recharts'
+import { ChartCard, ErrorBlock, LoadingBlock } from '@/components/apt/ui'
+import { DiasPill, PeriodBar, Table, td, tdNum, th } from '@/components/inventario/parts'
+import { useInvQuery } from '@/components/inventario/useInvQuery'
+import { invApi } from '@/lib/inventario/api'
+import { CLASE_COLOR, CLASE_LABEL, KIND_COLOR, fmtN, fmtPeso, fmtQty } from '@/lib/inventario/format'
+import type { InvClase, InvFlow, InvKind } from '@/lib/inventario/types'
+import { fmtDate } from '@/lib/apt/format'
 
-// Resumen ejecutivo del flujo multi-almacén: de la producción (647) a la guía (ST VENTAS), cuánto se trazó,
-// cuánto tarda y dónde queda el saldo.
+type Metric = 'kg' | 'lineas'
+type Node = { name: string; color: string }
 
-const ORDEN: FlowAlmacen[] = ['647', '540', 'ST']
-const lastDay = (mes: string) => {
-  const [y, m] = mes.slice(0, 10).split('-').map(Number)
-  return `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
+// Grafo sin ciclos (requisito del diagrama): ingresos por clase → bodegas → salidas por clase. Los traspasos que
+// cerrarían un ciclo (A → B y B → A) se omiten del diagrama y se listan en la tabla.
+function buildSankey(d: InvFlow, metric: Metric) {
+  const nodes: Node[] = []
+  const index = new Map<string, number>()
+  const kindOf = new Map(d.bodegas.map(b => [b.code, b.kind]))
+  const node = (key: string, name: string, color: string) => {
+    if (!index.has(key)) { index.set(key, nodes.length); nodes.push({ name, color }) }
+    return index.get(key)!
+  }
+  const adj = new Map<number, Set<number>>()
+  const reaches = (from: number, to: number) => {
+    const seen = new Set<number>(), stack = [from]
+    while (stack.length) {
+      const n = stack.pop()!
+      if (n === to) return true
+      if (seen.has(n)) continue
+      seen.add(n)
+      adj.get(n)?.forEach(x => stack.push(x))
+    }
+    return false
+  }
+  const links: Array<{ source: number; target: number; value: number }> = []
+  let omitted = 0
+  const val = (x: { kg: number; lineas: number }) => (metric === 'kg' ? x.kg : x.lineas)
+  const cand: Array<{ s: number; t: number; v: number }> = []
+  const bodegaNode = (code: string) => node(`b:${code}`, code, KIND_COLOR[(kindOf.get(code) ?? 'OTRO') as InvKind])
+  d.ingresos.forEach(i => { if (val(i) > 0) cand.push({ s: node(`in:${i.clase}`, `${CLASE_LABEL[i.clase] ?? i.clase} →`, CLASE_COLOR[i.clase] ?? '#94a3b8'), t: bodegaNode(i.bodega), v: val(i) }) })
+  d.traspasos.forEach(t => { if (val(t) > 0 && t.origen !== t.destino) cand.push({ s: bodegaNode(t.origen), t: bodegaNode(t.destino), v: val(t) }) })
+  d.salidas.forEach(o => { if (val(o) > 0) cand.push({ s: bodegaNode(o.bodega), t: node(`out:${o.clase}`, `→ ${CLASE_LABEL[o.clase] ?? o.clase}`, CLASE_COLOR[o.clase] ?? '#94a3b8'), v: val(o) }) })
+  cand.sort((a, b) => b.v - a.v).forEach(c => {
+    if (reaches(c.t, c.s)) { omitted++; return }
+    if (!adj.has(c.s)) adj.set(c.s, new Set())
+    adj.get(c.s)!.add(c.t)
+    links.push({ source: c.s, target: c.t, value: c.v })
+  })
+  return { nodes, links, omitted }
 }
 
-export default function FlujoResumenPage() {
-  const { filters, patchFilters, setFilters, hrefWith, filterKey } = useFlowFilters()
-  const router = useRouter()
-  const fetcher = useCallback(() => flowApi.summary(filters), [filters])
-  const { data: d, error, loading, retry } = useFlowQuery(filterKey, fetcher)
-
-  if (!d && loading) return <LoadingBlock label="Calculando el flujo multi-almacén…" className="h-96" />
-  if (error) return <ErrorBlock message={error} onRetry={retry} />
-  if (!d) return <LoadingBlock className="h-96" />
-  if (d.vacio) {
-    return (
-      <EmptyState title="Aún no hay datos del flujo multi-almacén">
-        Cargue las hojas de producción, traspasos, despachos y consumos para reconstruir el flujo 647 → ST VENTAS → cliente.{' '}
-        <Link href="/apt/cargas" className="font-semibold text-[#002855] underline">Ir a Cargas y parámetros</Link>
-      </EmptyState>
-    )
-  }
-
-  const k = d.kpis
-  const alm = ORDEN.map(a => d.almacenes.find(x => x.almacen === a)).filter((x): x is NonNullable<typeof x> => !!x)
-  const saldoTotal = alm.reduce((s, a) => s + Number(a.saldo_tn || 0), 0)
-  const saldoBy = (a: FlowAlmacen) => alm.find(x => x.almacen === a)?.saldo_tn ?? 0
-  const inicialDesp = (k.origen_despacho.INICIAL_647 ?? 0) + (k.origen_despacho.INICIAL_540 ?? 0) + (k.origen_despacho.INICIAL_ST ?? 0)
-  const hasFilters = Object.keys(filters).some(x => x !== 'almacen')
-  const almHref = (a?: FlowAlmacen) => hrefWith('/apt/flujo/almacenes', { almacen: a })
-
-  const onNode = (key: SankeyKey) => {
-    if (key === '647' || key === '540') router.push(almHref(key))
-    else if (key === 'ST' || key === 'RETORNO') router.push(hrefWith('/apt/flujo/st-ventas'))
-    else if (key === 'CLIENTE') router.push(hrefWith('/apt/flujo/etapas'))
-    else if (key === 'SALDO') router.push(almHref(undefined))
-  }
-
-  if (k.produccion_tn === 0 && k.despacho_tn === 0 && saldoTotal === 0 && hasFilters) {
-    return (
-      <EmptyState title="Sin movimientos con los filtros aplicados">
-        <button onClick={() => setFilters({})} className="mt-1 font-semibold text-[#002855] underline">Quitar filtros</button>
-      </EmptyState>
-    )
-  }
-
+function SankeyNode(props: { x?: number; y?: number; width?: number; height?: number; payload?: Node & { value?: number }; containerWidth?: number }) {
+  const { x = 0, y = 0, width = 0, height = 0, payload, containerWidth = 0 } = props
+  if (!payload) return null
+  const right = x + width + 6 + 160 > containerWidth
   return (
-    <div className={`space-y-4 transition-opacity ${loading ? 'opacity-60' : ''}`} aria-busy={loading}>
-      {/* Encabezado */}
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Resumen del flujo · Producción → 647/540 → ST VENTAS → Cliente</h2>
-          <p className="text-xs text-slate-500">
-            Periodo {fmtDate(d.desde)} – {fmtDate(d.hasta)} · el periodo se aplica a la fecha de cada movimiento (producción, traspaso o guía).
-          </p>
-        </div>
-        <p className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-500">
-          <CalendarClock className="h-3.5 w-3.5 text-slate-400" />
-          Datos al corte <b className="text-slate-700">{fmtDate(d.cutoff)}</b>
-          <span className="text-slate-300">·</span> desde {fmtDate(d.data_min)}
-          <span className="text-slate-300">·</span> recalculado {fmtDateTime(d.rebuilt_at)}
-        </p>
-      </div>
+    <g>
+      <rect x={x} y={y} width={width} height={Math.max(height, 1)} fill={payload.color} rx={2} />
+      {height > 6 && <text x={right ? x - 6 : x + width + 6} y={y + height / 2} dy="0.35em" textAnchor={right ? 'end' : 'start'} fontSize={11} fill="#334155">{payload.name}</text>}
+    </g>
+  )
+}
 
-      {/* KPI */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
-        <KpiCard label="Producción ingresada" value={fmtTn(k.produccion_tn)} unit="TN" icon={<Factory className="h-4 w-4" />}
-          hint={k.devolucion_tn > 0 ? `+ ${fmtTn(k.devolucion_tn)} TN de devoluciones` : 'Ingresos P/E a 647 en el periodo'} />
-        <KpiCard label="Despachado" value={fmtTn(k.despacho_tn)} unit="TN" tone="navy" icon={<Truck className="h-4 w-4" />}
-          hint={`${fmtInt(k.guias)} guías desde ST VENTAS`} />
-        <KpiCard label="% trazado a producción" value={fmtPct(k.trazado_pct)} icon={<GitMerge className="h-4 w-4" />}
-          tone={k.trazado_pct === null ? 'default' : k.trazado_pct >= 85 ? 'ok' : k.trazado_pct >= 60 ? 'warn' : 'crit'}
-          hint={`Del despacho nace en producción del periodo; ${fmtTn(inicialDesp)} TN salió de stock previo`} />
-        <KpiCard label="Lead time prod.→guía" value={fmtDec1(k.dias_total)} unit="d" icon={<Timer className="h-4 w-4" />}
-          tone={(k.dias_total ?? 0) > 30 ? 'crit' : (k.dias_total ?? 0) > 15 ? 'warn' : 'default'}
-          hint={<span>Días ponderados por TN · <b style={{ color: ALMACEN_COLOR['647'] }}>{fmtDec1(k.dias_previo)} d</b> hasta ST (647/540) +{' '}
-            <b style={{ color: ALMACEN_COLOR.ST }}>{fmtDec1(k.dias_final)} d</b> en ST</span>} />
-        <KpiCard label="Guiado el mismo día en ST" value={fmtPct(k.st_mismo_dia_pct)} icon={<Zap className="h-4 w-4" />}
-          tone={k.st_mismo_dia_pct === null ? 'default' : k.st_mismo_dia_pct >= 90 ? 'ok' : 'warn'}
-          hint={`${fmtTn(k.st_detenido_tn)} TN en ST con más de 1 día`} onClick={() => router.push(hrefWith('/apt/flujo/st-ventas'))} />
-        <KpiCard label="Saldo total" value={fmtTn(saldoTotal)} unit="TN" icon={<Scale className="h-4 w-4" />}
-          onClick={() => router.push(almHref(undefined))}
-          hint={<span className="tabular-nums">
-            {ORDEN.map((a, i) => <span key={a}>{i > 0 && ' · '}<b style={{ color: ALMACEN_COLOR[a] }}>{a}</b> {fmtTn(saldoBy(a))}</span>)}
-          </span>} />
-        <KpiCard label="Consumo interno" value={fmtTn(k.consumo_tn)} unit="TN" icon={<PackageCheck className="h-4 w-4" />}
-          hint={`Vales V/C · ${fmtTn(k.otro_almacen_tn)} TN a otros almacenes`} />
-        <KpiCard label="Retornos ST→647" value={fmtTn(k.retorno_st_tn)} unit="TN" icon={<Recycle className="h-4 w-4" />}
-          tone={k.retorno_st_tn > 0 ? 'warn' : 'ok'} onClick={() => router.push(hrefWith('/apt/flujo/st-ventas'))}
-          hint="Pasó a ST y no se guió: doble manipuleo" />
-      </div>
-
-      {/* Sankey */}
-      <ChartCard title="Flujo del material (TN)" subtitle="Fuentes → 647/540 → ST VENTAS → destinos · pase el cursor para ver TN y % · clic en un nodo para ver el detalle"
-        info="Los retornos ST→647/540 y los traspasos entre 647 y 540 se muestran como destinos propios para que el diagrama no tenga ciclos. Los movimientos internos 540→540 no se dibujan.">
-        <ResumenSankey flujos={d.flujos} onNode={onNode} />
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
-          <span className="flex items-center gap-1"><ArrowLeftRight className="h-3 w-3" />Cambio de lote en el traspaso: <b className="tabular-nums text-slate-700">{fmtTn(k.cambio_lote_tn)} TN</b></span>
-          <span>Asignación de contrato (adelanto → contrato): <b className="tabular-nums text-slate-700">{fmtTn(k.asignacion_tn)} TN</b>{' '}
-            <Link href={hrefWith('/apt/flujo/adelantos')} className="font-semibold text-[#002855] underline">ver adelantos</Link></span>
+// Flujo entre almacenes: de dónde entra el material, cómo se mueve entre bodegas y cómo sale
+export default function InventarioFlujoPage() {
+  const [period, setPeriod] = useState({ desde: '', hasta: '' })
+  const [metric, setMetric] = useState<Metric>('kg')
+  const q = useInvQuery(`flow|${period.desde}|${period.hasta}`, () => invApi.flow({ desde: period.desde || undefined, hasta: period.hasta || undefined }))
+  const d = q.data
+  const sk = useMemo(() => (d ? buildSankey(d, metric) : null), [d, metric])
+  const clases = (rows: Array<{ clase: InvClase; kg: number; lineas: number }>) => {
+    const m = new Map<InvClase, { kg: number; lineas: number }>()
+    rows.forEach(r => { const o = m.get(r.clase) ?? { kg: 0, lineas: 0 }; o.kg += r.kg; o.lineas += r.lineas; m.set(r.clase, o) })
+    return [...m.entries()].sort((a, b) => b[1].kg - a[1].kg)
+  }
+  return (
+    <div className="space-y-4">
+      <PeriodBar desde={period.desde || d?.desde || ''} hasta={period.hasta || d?.hasta || ''} onChange={(a, b) => setPeriod({ desde: a, hasta: b })}>
+        <div role="group" aria-label="Medida" className="flex rounded-lg border border-slate-300 p-0.5 text-xs font-semibold">
+          {(['kg', 'lineas'] as Metric[]).map(m => <button key={m} type="button" aria-pressed={metric === m} onClick={() => setMetric(m)}
+            className={`min-h-9 rounded-md px-3 ${metric === m ? 'bg-[#002855] text-white' : 'text-slate-600'}`}>{m === 'kg' ? 'Peso (kg)' : 'Líneas'}</button>)}
         </div>
-      </ChartCard>
-
-      {/* Almacenes */}
-      <section>
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <h3 className="text-[11px] font-black uppercase tracking-wider text-slate-500">Dónde está el saldo hoy</h3>
-          <Link href={almHref(undefined)} className="text-xs font-semibold text-[#002855] hover:underline">Ver stock por almacén →</Link>
-        </div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          {alm.map(a => <ResumenAlmacenCard key={a.almacen} card={a} total={saldoTotal} href={almHref(a.almacen)} />)}
-        </div>
-      </section>
-
-      {/* Mensual */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ChartCard title="Despachado por origen y lead time" subtitle="TN guiadas por mes según su origen raíz · clic en un mes para filtrarlo"
-          info="Origen raíz: de dónde vino el material despachado. 'Stock previo' existía antes del primer día cargado y su antigüedad real es desconocida. La línea es el lead time producción→guía ponderado por TN.">
-          <ResumenDespachoMensual data={d.mensual} onMes={mes => patchFilters({ desde: mes.slice(0, 10), hasta: lastDay(mes) })} />
+        <p className="max-w-lg text-xs text-slate-500">MRO, herramientas y mantenimiento casi no traen peso: para verlos use «Líneas».</p>
+      </PeriodBar>
+      {q.loading ? <LoadingBlock label="Calculando el flujo…" /> : q.error ? <ErrorBlock message={q.error} onRetry={q.reload} /> : d && sk && <>
+        <ChartCard title="Mapa del flujo" subtitle={`${fmtDate(d.desde)} – ${fmtDate(d.hasta)} · ingresos → bodegas → salidas${sk.omitted ? ` · ${sk.omitted} traspaso(s) de retorno no dibujados` : ''}`}>
+          {sk.links.length ? <ResponsiveContainer width="100%" height={Math.max(420, sk.nodes.length * 26)}>
+            <Sankey data={sk} nodePadding={18} nodeWidth={10} margin={{ left: 8, right: 170, top: 8, bottom: 8 }} link={{ stroke: '#94a3b8', strokeOpacity: 0.35 }}
+              node={<SankeyNode />}>
+              <Tooltip formatter={v => (metric === 'kg' ? fmtPeso(Number(v)) : `${fmtN(Number(v))} líneas`)} />
+            </Sankey>
+          </ResponsiveContainer> : <p className="text-sm text-slate-400">Sin movimientos con {metric === 'kg' ? 'peso' : 'líneas'} en el período.</p>}
         </ChartCard>
-        <ChartCard title="Producción vs traspasos a ST" subtitle="Lo producido en 647 y lo que pasa a ST VENTAS para guiarse"
-          info="Barras apiladas 647→ST + 540→ST: lo que se llevó a ST para despachar. La línea roja es el sobrante devuelto de ST a 647/540.">
-          <ResumenTraspasosMensual data={d.mensual} />
+        <ChartCard title="Traspasos entre bodegas" info="Días en origen: cuánto estuvo en la bodega de origen lo que se traspasó (FIFO). Reasignadas: líneas en que el lote cambió (stock asignado a un contrato).">
+          <Table empty={!d.traspasos.length} head={<tr><th className={th}>Origen</th><th className={th}>Destino</th><th className={`${th} text-right`}>Documentos</th><th className={`${th} text-right`}>Líneas</th><th className={`${th} text-right`}>Peso</th><th className={`${th} text-right`}>Reasignadas</th><th className={th}>Días en origen</th></tr>}>
+            {d.traspasos.map(t => <tr key={`${t.origen}>${t.destino}`} className="hover:bg-slate-50">
+              <td className={td}>{t.origen}</td><td className={td}>{t.destino}</td><td className={tdNum}>{fmtN(t.docs)}</td><td className={tdNum}>{fmtN(t.lineas)}</td>
+              <td className={tdNum}>{fmtPeso(t.kg)}</td><td className={tdNum}>{t.reasignadas ? <span className="font-semibold text-violet-700">{fmtN(t.reasignadas)}</span> : '0'}</td>
+              <td className={td}><DiasPill dias={t.dias_en_origen} /></td>
+            </tr>)}
+          </Table>
         </ChartCard>
-      </div>
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <ChartCard title="Ingresos por origen">
+            <Table head={<tr><th className={th}>Clase</th><th className={`${th} text-right`}>Líneas</th><th className={`${th} text-right`}>Peso</th></tr>}>
+              {clases(d.ingresos).map(([c, v]) => <tr key={c}><td className={td}>{CLASE_LABEL[c] ?? c}</td><td className={tdNum}>{fmtN(v.lineas)}</td><td className={tdNum}>{fmtPeso(v.kg)}</td></tr>)}
+            </Table>
+          </ChartCard>
+          <ChartCard title="Salidas por destino">
+            <Table head={<tr><th className={th}>Clase</th><th className={`${th} text-right`}>Líneas</th><th className={`${th} text-right`}>Peso</th></tr>}>
+              {clases(d.salidas).map(([c, v]) => <tr key={c}><td className={td}>{CLASE_LABEL[c] ?? c}</td><td className={tdNum}>{fmtN(v.lineas)}</td><td className={tdNum}>{fmtPeso(v.kg)}</td></tr>)}
+            </Table>
+          </ChartCard>
+        </div>
+        <ChartCard title="Reasignaciones de lote" subtitle="Stock de una bodega que pasa a otra con el lote de un contrato (las 300 más recientes)">
+          <Table empty={!d.reasignaciones.length} head={<tr><th className={th}>Fecha</th><th className={th}>Documento</th><th className={th}>Origen → destino</th><th className={th}>Producto</th><th className={th}>Lote origen</th><th className={th}>Lote destino</th><th className={`${th} text-right`}>Cantidad</th></tr>}>
+            {d.reasignaciones.map((r, i) => <tr key={i}><td className={td}>{fmtDate(r.fecha)}</td><td className={td}>{r.numero}</td><td className={td}>{r.origen} → {r.destino}</td>
+              <td className={`${td} font-mono text-[11px]`}>{r.producto}</td><td className={td}>{r.lote_origen ?? 'Sin lote'}</td><td className={`${td} font-semibold`}>{r.lote_destino ?? 'Sin lote'}</td><td className={tdNum}>{fmtQty(r.qty)}</td></tr>)}
+          </Table>
+        </ChartCard>
+      </>}
     </div>
   )
 }
