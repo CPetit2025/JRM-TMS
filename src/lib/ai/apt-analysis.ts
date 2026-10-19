@@ -135,7 +135,7 @@ export async function getAptOperationalAnalysis(supabase: SupabaseClient, filter
     asOf: new Date().toISOString(), source: 'apt_operational_summary', filters: effectiveFilters, summary,
     comparison: comparison ? { filters: { ...filters, ...comparisonFilters }, summary: comparison, deltas, versionMatches } : null,
     sampleTruncated: typeof summary.total === 'number' && summary.total > (summary.rows?.length || 0),
-    url: '/apt/operacion',
+    url: '/apt',
     limitations: [
       'Inventario documental reconstruido; no constituye conciliación física.',
       'El origen y la apertura inferidos no equivalen a saldo inicial confirmado.',

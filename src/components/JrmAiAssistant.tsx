@@ -437,7 +437,7 @@ export function JrmAiAssistant() {
             {item.evidence && <div className="mt-3 border-t border-slate-300 pt-2 text-xs text-slate-600">
               <p>Fuente: resumen operativo APT · corte {item.evidence.summary?.meta?.cutoff || 'no informado'}{item.evidence.summary?.meta?.model_fresh === false ? ' · recálculo pendiente' : ''}</p>
               {item.evidence.sampleTruncated && <p>El detalle consultado es una muestra; los indicadores corresponden al alcance filtrado.</p>}
-              <button type="button" className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 font-semibold text-[#002855]" onClick={() => router.push(`/apt/operacion?of=${encodeURIComponent(JSON.stringify(item.evidence?.filters || {}))}`)}>Ver evidencia y generar reporte</button>
+              <button type="button" className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 font-semibold text-[#002855]" onClick={() => router.push('/apt')}>Ver evidencia y generar reporte</button>
             </div>}
           </div>)}
           {proposals.map(item => {

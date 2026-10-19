@@ -4,7 +4,7 @@ Un solo libro de movimientos para **todas las bodegas** del ERP. Cubre cuatro pr
 libre (**stock disponible**), cuánto tiempo pasa en cada bodega (**estadía**), de dónde viene y en qué terminó un lote
 (**trazabilidad**) y cómo se mueve el material entre almacenes (**flujo**).
 
-Menú: *Almacén APT → Inventario multi‑almacén* (`/apt/inventario`). Permisos: `apt` (ver) y `apt-carga` (cargar,
+Menú: *Almacén APT → Inventario multi‑almacén* (`/apt`) y *Cargar datos del ERP* (`/apt/datos`). Las pantallas APT anteriores se retiraron: sus direcciones redirigen al módulo nuevo. Permisos: `apt` (ver) y `apt-carga` (cargar,
 recalcular y editar catálogos). El Administrador y el Jefe de Distribución tienen ambos.
 
 ## Uso diario
@@ -65,3 +65,14 @@ Regresiones de reintentos: `scripts/test-inventario-upload.cjs` y C116. Prueba l
 C115 aísla sus escenarios funcionales dentro de una transacción que siempre se revierte. C117 ejecuta una sola
 reconstrucción del historial real, con presupuesto independiente de 110 s, y comprueba cobertura y conservación
 de cantidades. Así las tres reconstrucciones de C115 no comparten el presupuesto de una carga real.
+
+## Verificación (`inv_verify`, pestaña *Datos y verificación*)
+Seis controles medibles, con meta y estado (Cumple / Revisar / No cumple), y el cuadre por bodega exportable a Excel:
+cuadre de cantidades (saldo = inicial + entradas − salidas, diferencia 0), traspasos emparejados (≥ 99 %), salidas con
+origen conocido (≥ 95 %; sube con una foto de stock o más historia), líneas con peso (≥ 90 %), cobertura de fechas y
+modelo recalculado. Prueba: `caja_c117_inventario_verificacion.test.sql`.
+
+## Carga única
+Al aplicar Entradas/Salidas, los mismos archivos actualizan el modelo APT anterior (647 · 540 · ST), del que aún leen
+Registro de Servicios (peso APT), Eficiencia de flota, el detalle de guías, los contadores del menú y la IA. Si esa
+actualización falla, el inventario queda cargado y se muestra el aviso.

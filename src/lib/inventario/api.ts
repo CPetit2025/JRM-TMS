@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
 import type { InvParsedPart } from './parse'
-import type { InvCatalogs, InvDwell, InvFlow, InvOverview, InvStatus, InvStock, InvStockFilters, InvTrace } from './types'
+import type { InvVerify, InvCatalogs, InvDwell, InvFlow, InvOverview, InvStatus, InvStock, InvStockFilters, InvTrace } from './types'
 
 // Acceso a las funciones public.inv_* (inventario multi-almacén). Todas devuelven { success, error?, ... }.
 const supabase = createClient()
@@ -24,6 +24,7 @@ export const invApi = {
   flow: (f: { desde?: string; hasta?: string }) => call<InvFlow>('inv_flow', { p: f }),
   trace: (q: string) => call<InvTrace>('inv_trace', { p_q: q }),
   catalogs: () => call<InvCatalogs>('inv_catalogs'),
+  verify: () => call<InvVerify>('inv_verify'),
   saveCatalog: (p: { bodega: string; kind: string } | { tipodocto: string; clase: string }) => call<{ success: true }>('inv_catalog_save', { p }),
 }
 

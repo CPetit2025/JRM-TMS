@@ -100,3 +100,12 @@ export interface InvCatalogs {
   bodegas: Array<{ code: string; name: string; kind: InvKind; stage: number; auto: boolean; movimientos: number }>
   tipos: Array<{ tipodocto: string; clase: InvClase; auto: boolean; movimientos: number }>
 }
+
+export type InvCheckState = 'OK' | 'AVISO' | 'FALLA' | 'SIN_DATOS'
+export interface InvVerify {
+  ok: number; total: number; corte: string | null; desde: string | null; model_from: string | null; snapshot_cutoff: string | null
+  checks: Array<{ id: string; titulo: string; valor: number | null; meta: number | null; unidad: string | null; estado: InvCheckState; detalle: string }>
+  cuadre: Array<{ bodega: string; kind: InvKind; lineas: number; saldo_inicial_foto: number; saldo_inicial_inferido: number
+    entradas_archivo: number; entradas_modelo: number; salidas_archivo: number; salidas_modelo: number
+    saldo_calculado: number; saldo_modelo: number; diferencia: number; ok: boolean }>
+}

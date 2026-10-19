@@ -162,11 +162,11 @@ export function GuiaDetalleModal({ guias, onClose }: { guias: string | null; onC
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {(g.lotes || []).map(l => (
-                    <Link key={l} href={`/apt/flujo/trazabilidad?q=${encodeURIComponent(l)}`} title="Ver la línea de tiempo del lote"
+                    <Link key={l} href={`/apt/trazabilidad?q=${encodeURIComponent(l)}`} title="Ver la línea de tiempo del lote"
                       className="rounded-full border border-[#002855]/20 bg-[#002855]/5 px-2 py-1 font-mono text-[11px] font-bold text-[#002855] hover:bg-[#002855]/10">{l}</Link>
                   ))}
                 </div>
-                <Link href={`/apt/flujo/trazabilidad?q=${encodeURIComponent(g.documento)}`}
+                <Link href={`/apt/trazabilidad?q=${encodeURIComponent(g.documento)}`}
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-600 hover:bg-slate-50">
                   <Route className="h-3.5 w-3.5" /> Trazabilidad
                 </Link>
