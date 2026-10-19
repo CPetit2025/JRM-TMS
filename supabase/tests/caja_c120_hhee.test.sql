@@ -51,6 +51,8 @@ BEGIN
  PERFORM set_config('request.jwt.claim.sub',reviewer::text,true);
  res:=public.hhee_mutate(jsonb_build_object('operation_id',gen_random_uuid(),'action','decide','id',rid,'version',2,'decision','APROBADA','reason','Aprobación operativa de prueba','lines',jsonb_build_array(jsonb_build_object('id',lid,'approved_minutes',120))));
  IF NOT (res->>'success')::boolean THEN RAISE EXCEPTION 'CAJA C120 FAIL: jefe aprueba %',res; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.hhee_audit WHERE request_id=rid AND event='DECIDE' AND private_data#>>'{request,approval}'='PENDIENTE'
+ AND private_data#>>'{lines,0,planned_minutes}'='120') THEN RAISE EXCEPTION 'CAJA C120 FAIL: autorización sin imagen previa auditable'; END IF;
  -- HR import can preserve a real execution even with late authorization / missing cost.
  UPDATE public.profiles SET role_id=hr_role WHERE id=reviewer;
  SELECT sequence,version INTO seq,v FROM public.hhee_requests WHERE id=rid;

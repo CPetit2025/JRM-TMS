@@ -294,6 +294,7 @@ BEGIN
   IF FOUND AND (r.created_by<>auth.uid() OR r.state<>'BORRADOR' OR r.version IS DISTINCT FROM (p->>'version')::int OR r.area_id<>area) THEN
     RAISE EXCEPTION 'La solicitud cambió, no es propia o ya fue presentada. Actualice el detalle.';
   END IF;
+  prior:=jsonb_build_object('request',to_jsonb(r),'lines',COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM public.hhee_lines x WHERE x.request_id=rid),'[]'));
   IF jsonb_typeof(p->'lines') IS DISTINCT FROM 'array' OR jsonb_array_length(p->'lines') NOT BETWEEN 1 AND 100 THEN RAISE EXCEPTION 'Incluya entre 1 y 100 trabajadores.'; END IF;
   IF NOT EXISTS(SELECT 1 FROM public.hhee_causes WHERE id=(p->>'cause_id')::uuid AND active) THEN RAISE EXCEPTION 'Seleccione una causa vigente.'; END IF;
   IF NULLIF(p->>'origin_area_id','') IS NOT NULL AND NOT public.hhee_can((p->>'origin_area_id')::uuid) THEN RAISE EXCEPTION 'Área de origen fuera de su alcance.'; END IF;
@@ -323,7 +324,7 @@ BEGIN
    INSERT INTO public.hhee_lines(request_id,person_id,person_name,person_code,planned_start,planned_end,planned_break,planned_minutes,estimated_cost)
    VALUES(rid,person.id,person.name,person.code,start_at,end_at,COALESCE((item->>'planned_break')::int,0),n,round(n/60.0*person.estimated_hour_cost,2));
   END LOOP;
-  INSERT INTO public.hhee_audit(request_id,actor,event,reason) VALUES(rid,auth.uid(),'BORRADOR GUARDADO','Solicitud y personal previstos');
+  INSERT INTO public.hhee_audit(request_id,actor,event,reason,private_data) VALUES(rid,auth.uid(),'BORRADOR GUARDADO','Solicitud y personal previstos',prior);
  ELSE
   IF cmd IN('action_save','action_update') THEN
    aid:=NULLIF(p->>'id','')::uuid;
@@ -356,7 +357,7 @@ BEGIN
    SELECT * INTO r FROM public.hhee_requests WHERE id=rid FOR UPDATE;
    IF NOT FOUND OR NOT public.hhee_can(r.area_id) THEN RAISE EXCEPTION 'Solicitud no disponible en su alcance.'; END IF;
    IF r.version IS DISTINCT FROM (p->>'version')::int THEN RAISE EXCEPTION 'La solicitud fue actualizada. Recargue antes de continuar.'; END IF;
-   prior:=jsonb_build_object('state',r.state,'approval',r.approval,'version',r.version);
+   prior:=jsonb_build_object('request',to_jsonb(r),'lines',COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM public.hhee_lines x WHERE x.request_id=rid),'[]'));
    IF cmd='submit' THEN
     IF r.created_by<>auth.uid() OR NOT public.hhee_can(r.area_id,'request') OR r.state<>'BORRADOR' THEN RAISE EXCEPTION 'Solo el solicitante puede presentar su borrador.'; END IF;
     IF NOT EXISTS(SELECT 1 FROM public.hhee_lines WHERE request_id=rid) THEN RAISE EXCEPTION 'La solicitud no tiene personal.'; END IF;
