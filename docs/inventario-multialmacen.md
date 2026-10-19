@@ -21,7 +21,9 @@ recalcular y editar catálogos). El Administrador y el Jefe de Distribución tie
    (trae muchas menos filas que las que ya hay en su rango) se detiene y pide confirmación.
 4. Opcional: subir una **foto de stock** (bodega, producto, lote, saldo y peso) con su fecha de corte. El modelo arranca
    el día siguiente: el saldo inicial deja de ser inferido.
-5. Al aplicar se recalcula el modelo en el servidor (`/api/inventario/procesar`, llave de servicio; el tiempo depende del volumen de movimientos y traspasos).
+5. El recálculo programado (cada 2 min) no corre mientras hay una carga en preparación, y aplicar espera como máximo
+   20 s un recálculo en curso: si sigue ocupado, el navegador reintenta solo (C118).
+6. Al aplicar se recalcula el modelo en el servidor (`/api/inventario/procesar`, llave de servicio; el tiempo depende del volumen de movimientos y traspasos).
 
 Si se interrumpe el envío, mantenga abierta la ventana y pulse **Reanudar carga**. Se continúa desde el último bloque
 confirmado; las partes ya aplicadas se conservan y solo se vuelve a intentar lo pendiente. Esta reanudación está

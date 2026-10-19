@@ -46,7 +46,7 @@ async function retry<T>(work: () => Promise<T>, progress?: (m: string) => void):
   }
 }
 
-type ServerStep = { success?: boolean; error?: string; partial?: boolean; fallback?: boolean; timeout?: boolean } & Record<string, unknown>
+type ServerStep = { success?: boolean; error?: string; partial?: boolean; fallback?: boolean; timeout?: boolean; busy?: boolean } & Record<string, unknown>
 
 async function server(body: Record<string, unknown>): Promise<ServerStep> {
   const res = await fetch('/api/inventario/procesar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -75,8 +75,15 @@ export async function uploadPart(part: InvParsedPart, opts: { cutoff?: string; f
     state.next = end
   }
   opts.onProgress?.('Aplicando la carga…')
-  let applied = await server({ accion: 'aplicar', upload_id: state.id, force: !!opts.force })
-  if (applied.fallback) applied = await call<ServerStep>('inv_upload_apply', { p_upload_id: state.id, p_force: !!opts.force })
+  let applied: ServerStep = {}
+  // Un recálculo en curso toma el bloqueo del inventario: la base responde «busy» y se reintenta (hasta ~8 min)
+  for (let wait = 0; ; wait++) {
+    applied = await server({ accion: 'aplicar', upload_id: state.id, force: !!opts.force })
+    if (applied.fallback) applied = await call<ServerStep>('inv_upload_apply', { p_upload_id: state.id, p_force: !!opts.force })
+    if (!applied.busy || wait >= 24) break
+    opts.onProgress?.(`Esperando que termine el recálculo en curso para aplicar (${wait + 1})…`)
+    await new Promise(resolve => setTimeout(resolve, 15000))
+  }
   if (!applied.success) throw Object.assign(new Error(applied.error || 'No se pudo aplicar la carga'), { partial: !!applied.partial })
   state.applied = applied
   return applied
