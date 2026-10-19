@@ -93,3 +93,25 @@ modelo recalculado. Prueba: `caja_c117_inventario_verificacion.test.sql`.
 Al aplicar Entradas/Salidas, los mismos archivos actualizan el modelo APT anterior (647 · 540 · ST), del que aún leen
 Registro de Servicios (peso APT), Eficiencia de flota, el detalle de guías, los contadores del menú y la IA. Si esa
 actualización falla, el inventario queda cargado y se muestra el aviso.
+
+## APT en tres almacenes y contratos / OT (`20261020210000_inventario_apt_contratos.sql`)
+El módulo mira por defecto el APT con la regla del APT anterior (`apt_almacen`): **647** = 647-04 ALM PT,
+**540** = 540-04 (APT LB y APT.MAT.CONFO), **ST** = ST-VENTAS. El selector «APT 647 · 540 · ST / Todas las bodegas»
+(arriba a la derecha, se recuerda en el navegador) cambia Resumen, Stock, Estadía y Flujo; el modelo FIFO sigue
+calculándose con todas las bodegas, porque el origen de cada lote viene de producción, pernería o terceros.
+
+- **Contratos / OT** (`/apt/contratos`, `inv_contratos`): todas las OT con movimiento en el APT, con avance
+  (kg despachados / kg ingresados), stock por almacén, días en stock, entrega comprometida y % de guías a tiempo.
+  Exportable a Excel.
+- **Ficha de OT** (`/apt/contratos?ot=16339`, `inv_contrato`): la OT madre y sus subcontratos (`apt_ot_raiz`). Por
+  cada ID: glosa, lotes, ingresado, despachado, otras salidas, stock 647 / 540 / ST, último ingreso, última salida
+  y días en el APT. Incluye las guías con su viaje del TMS (`apt_flow_tms`), los lotes y las OT que difieren en un
+  dígito (posible error de digitación). Balance por ID: ingresado − despachado − otras salidas − stock = 0; el
+  traspaso 647 → ST de la misma OT es interno y no se cuenta dos veces.
+- **Resumen APT** (`inv_apt_resumen`): stock, comprometido, antigüedad (0–30, 31–60, 61–90, > 90 días), movimiento de
+  30 días por almacén y las OT con más stock.
+- **Glosa**: Stock, Estadía (stock más antiguo), Flujo (reasignaciones), Trazabilidad y la ficha muestran la
+  descripción junto al código.
+
+La lista de contratos, el resumen APT y la Estadía del APT se guardan con la caché de lecturas tras cada recálculo.
+La ficha se calcula al abrirla (≈ 0,4 s con el historial real). Prueba: `caja_c120_inventario_apt_contratos.test.sql`.

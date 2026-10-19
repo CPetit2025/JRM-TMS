@@ -65,7 +65,7 @@ export const NAV_SECTIONS: NavSection[] = [
     { href: '/contratos/servicios', label: 'Registro de Servicios', icon: Receipt, show: any('contratos-servicios', 'clientes'), keywords: 'servicio realizado comprometido gasto montacarga grua estiba' },
   ] }] },
   { id: 'apt', title: 'Almacén APT', icon: Warehouse, groups: [{ items: [
-    { href: '/apt', label: 'Inventario multi‑almacén', icon: Boxes, show: any('apt', 'apt-carga'), keywords: 'apt inventario stock disponible estadia trazabilidad flujo bodegas almacenes lote ot guia traspaso materia prima perneria mro kardex' },
+    { href: '/apt', label: 'Inventario multi‑almacén', icon: Boxes, show: any('apt', 'apt-carga'), keywords: 'apt inventario stock disponible estadia trazabilidad flujo bodegas almacenes 647 540 st contrato glosa lote ot guia traspaso materia prima perneria mro kardex' },
     { href: '/apt/datos', label: 'Cargar datos del ERP', icon: FileUp, show: any('apt-carga'), keywords: 'carga entradas salidas erp excel foto stock verificacion cuadre catalogo' },
   ] }] },
   { id: 'flota', title: 'Flota y Mantenimiento', icon: Wrench, groups: [

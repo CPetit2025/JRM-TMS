@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
 import type { InvParsedPart } from './parse'
-import type { InvVerify, InvCatalogs, InvDwell, InvFlow, InvOverview, InvStatus, InvStock, InvStockFilters, InvTrace } from './types'
+import type { InvAptResumen, InvContrato, InvContratos, InvVerify, InvCatalogs, InvDwell, InvFlow, InvOverview, InvStatus, InvStock, InvStockFilters, InvTrace } from './types'
 
 // Acceso a las funciones public.inv_* (inventario multi-almacén). Todas devuelven { success, error?, ... }.
 const supabase = createClient()
@@ -20,9 +20,12 @@ export const invApi = {
   status: () => call<InvStatus>('inv_status'),
   overview: (desde?: string, hasta?: string) => call<InvOverview>('inv_overview', { p_desde: desde || null, p_hasta: hasta || null }),
   stock: (f: InvStockFilters) => call<InvStock>('inv_stock', { p: f }),
-  dwell: (f: { desde?: string; hasta?: string; bodegas?: string[] }) => call<InvDwell>('inv_dwell', { p: f }),
+  dwell: (f: { desde?: string; hasta?: string; bodegas?: string[]; ambito?: 'apt' }) => call<InvDwell>('inv_dwell', { p: f }),
   flow: (f: { desde?: string; hasta?: string }) => call<InvFlow>('inv_flow', { p: f }),
   trace: (q: string) => call<InvTrace>('inv_trace', { p_q: q }),
+  contratos: () => call<InvContratos>('inv_contratos'),
+  contrato: (q: string) => call<InvContrato>('inv_contrato', { p_q: q }),
+  aptResumen: () => call<InvAptResumen>('inv_apt_resumen'),
   catalogs: () => call<InvCatalogs>('inv_catalogs'),
   verify: () => call<InvVerify>('inv_verify'),
   saveCatalog: (p: { bodega: string; kind: string } | { tipodocto: string; clase: string }) => call<{ success: true }>('inv_catalog_save', { p }),

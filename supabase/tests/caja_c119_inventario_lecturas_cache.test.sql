@@ -41,7 +41,8 @@ BEGIN
   IF (public.inv_overview(NULL, NULL) - 'cache') = public.inv_overview_live(NULL, NULL)
      AND (public.inv_verify() - 'cache') = public.inv_verify_live()
      AND (public.inv_catalogs() - 'cache') = public.inv_catalogs_live()
-     AND (public.inv_dwell('{}') - 'cache') = public.inv_dwell_live('{}')
+     -- Estadía agrega la glosa al stock más antiguo (C120)
+     AND (public.inv_dwell('{}') - 'cache') = jsonb_set(public.inv_dwell_live('{}'), '{mas_antiguos}', public.inv_con_glosa(public.inv_dwell_live('{}')->'mas_antiguos'))
      AND public.inv_verify() ? 'cache'
   THEN pass := pass + 1; ELSE fails := fails || 'T2 vistas distintas del cálculo en vivo'::text; END IF;
 

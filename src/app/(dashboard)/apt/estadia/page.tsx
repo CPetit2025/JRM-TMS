@@ -6,6 +6,7 @@ import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAx
 import { ChartCard, ErrorBlock, KpiCard, LoadingBlock } from '@/components/apt/ui'
 import { DiasPill, KindBadge, PeriodBar, Table, td, tdNum, th } from '@/components/inventario/parts'
 import { useInvQuery } from '@/components/inventario/useInvQuery'
+import { AlmacenTag, ProductoCell, aptAlmacen, useAmbito } from '@/components/inventario/ambito'
 import { invApi } from '@/lib/inventario/api'
 import { CLASE_LABEL, fmtDias, fmtN, fmtPeso, fmtQty } from '@/lib/inventario/format'
 import type { InvDwell } from '@/lib/inventario/types'
@@ -31,7 +32,9 @@ function pivot(rows: Array<{ bodega: string; rango: string; consumos?: number; c
 export default function InventarioEstadiaPage() {
   const [period, setPeriod] = useState({ desde: '', hasta: '' })
   const [bodega, setBodega] = useState('')
-  const q = useInvQuery(`dwell|${period.desde}|${period.hasta}|${bodega}`, () => invApi.dwell({ desde: period.desde || undefined, hasta: period.hasta || undefined, bodegas: bodega ? [bodega] : [] }))
+  const apt = useAmbito() === 'apt'
+  const sel = bodega && (!apt || aptAlmacen(bodega)) ? bodega : ''
+  const q = useInvQuery(`dwell|${period.desde}|${period.hasta}|${sel}|${apt}`, () => invApi.dwell({ desde: period.desde || undefined, hasta: period.hasta || undefined, bodegas: sel ? [sel] : [], ...(apt ? { ambito: 'apt' as const } : {}) }))
   const d: InvDwell | null = q.data
   const salidas = useMemo(() => (d ? pivot(d.distribucion, OUT_RANGES) : []), [d])
   const stock = useMemo(() => (d ? pivot(d.antiguedad_stock, STOCK_RANGES) : []), [d])
@@ -46,9 +49,9 @@ export default function InventarioEstadiaPage() {
     <div className="space-y-4">
       <PeriodBar desde={period.desde || d?.desde || ''} hasta={period.hasta || d?.hasta || ''} onChange={(a, b) => setPeriod({ desde: a, hasta: b })}>
         <label className="text-xs font-semibold text-slate-600">Bodega
-          <select value={bodega} onChange={e => setBodega(e.target.value)} className="mt-1 block min-h-10 max-w-64 rounded-lg border border-slate-300 px-2 text-sm">
+          <select value={sel} onChange={e => setBodega(e.target.value)} className="mt-1 block min-h-10 max-w-64 rounded-lg border border-slate-300 px-2 text-sm">
             <option value="">Todas</option>{d?.por_bodega.map(b => <option key={b.bodega} value={b.bodega}>{b.bodega}</option>)}
-            {bodega && !d?.por_bodega.some(b => b.bodega === bodega) && <option value={bodega}>{bodega}</option>}
+            {sel && !d?.por_bodega.some(b => b.bodega === sel) && <option value={sel}>{sel}</option>}
           </select>
         </label>
         <p className="max-w-xl text-xs text-slate-500">Salidas del período (despachos, consumos y traspasos). Cada salida se cruza con los ingresos más antiguos de la misma bodega, producto y lote.</p>
@@ -64,7 +67,7 @@ export default function InventarioEstadiaPage() {
           <Table empty={!d.por_bodega.length} head={<tr><th className={th}>Bodega</th><th className={th}>Tipo</th><th className={`${th} text-right`}>Salidas</th><th className={`${th} text-right`}>Peso</th><th className={th}>Promedio</th><th className={th}>Prom. por kg</th><th className={th}>p50</th><th className={th}>p90</th><th className={th}>Máx.</th><th className={`${th} text-right`}>Saldo inicial</th><th className={th}>Desde origen</th></tr>}>
             {d.por_bodega.map(b => <tr key={b.bodega} className="hover:bg-slate-50">
               <td className={`${td} font-semibold text-slate-800`}><button type="button" onClick={() => setBodega(b.bodega)} className="text-left underline decoration-dotted">{b.bodega}</button></td>
-              <td className={td}><KindBadge kind={b.kind} /></td><td className={tdNum}>{fmtN(b.consumos)}</td><td className={tdNum}>{fmtPeso(b.kg)}</td>
+              <td className={td}>{apt ? <AlmacenTag almacen={aptAlmacen(b.bodega)} /> : <KindBadge kind={b.kind} />}</td><td className={tdNum}>{fmtN(b.consumos)}</td><td className={tdNum}>{fmtPeso(b.kg)}</td>
               <td className={td}><DiasPill dias={b.prom_dias} /></td><td className={td}><DiasPill dias={b.prom_dias_kg} /></td>
               <td className={td}><DiasPill dias={b.p50} /></td><td className={td}><DiasPill dias={b.p90} /></td><td className={td}><DiasPill dias={b.max} /></td>
               <td className={tdNum}>{b.pct_sin_fecha === null ? '—' : `${fmtN(b.pct_sin_fecha)} %`}</td><td className={td}><DiasPill dias={b.prom_origen} /></td>
@@ -103,7 +106,7 @@ export default function InventarioEstadiaPage() {
         <ChartCard title="Stock más antiguo" subtitle="Productos·lote con más días en su bodega (prioridad para liberar)">
           <Table empty={!d.mas_antiguos.length} head={<tr><th className={th}>Bodega</th><th className={th}>Producto</th><th className={th}>Lote</th><th className={`${th} text-right`}>Cantidad</th><th className={`${th} text-right`}>Peso</th><th className={th}>Ingreso</th><th className={th}>Días</th></tr>}>
             {d.mas_antiguos.map((o, i) => <tr key={i} className="hover:bg-slate-50">
-              <td className={td}>{o.bodega}</td><td className={`${td} font-mono text-[11px]`}>{o.producto}</td>
+              <td className={td}>{o.bodega}</td><td className={td}><ProductoCell producto={o.producto} glosa={o.glosa} /></td>
               <td className={td}>{o.lote ? <Link href={`/apt/trazabilidad?q=${encodeURIComponent(o.lote)}`} className="text-[#002855] underline">{o.lote}</Link> : '—'}</td>
               <td className={tdNum}>{fmtQty(o.qty)}</td><td className={tdNum}>{fmtPeso(o.kg)}</td><td className={td}>{fmtDate(o.fecha_ingreso)}</td><td className={td}><DiasPill dias={o.dias} /></td>
             </tr>)}
