@@ -18,9 +18,8 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', adm::text, true);
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', adm, 'role', 'authenticated')::text, true);
   UPDATE public.inv_uploads SET status = 'DESCARTADA' WHERE side = 'STOCK' AND status = 'APLICADA';
-  -- Aislar la prueba: los controles son globales, así que los movimientos reales se desactivan dentro de esta
-  -- transacción (se revierte al final) y los porcentajes dependen solo de los datos de la prueba.
-  UPDATE public.inv_movements SET active = false WHERE active;
+  -- Aislar sin tocar los datos reales: el recálculo y las lecturas solo ven las bodegas de esta prueba
+  PERFORM set_config('inv.scope', 'C117 %', true);
 
   -- PT: produce 10 (día 1); traspasa 6 a ST (día 2); ST despacha 4 (día 3). MRO consume 5 sin ingreso previo (inferido).
   ue := (public.inv_upload_begin('E', 'C117 Entradas.xlsx')->>'upload_id')::uuid;
