@@ -1,6 +1,8 @@
 -- Bounded inventory import: a committed chunk/apply can be retried without duplication.
 -- Only synthetic staging rows; no model rebuild or production history changes. Always rolled back.
 BEGIN;
+-- Esperar a un recálculo real en curso (cron o carga) en vez de chocar con él a mitad de la prueba
+SELECT pg_advisory_xact_lock(hashtext('inv_rebuild'));
 DO $test$
 DECLARE actor uuid; u uuid; r jsonb; payload jsonb; n int;
 BEGIN

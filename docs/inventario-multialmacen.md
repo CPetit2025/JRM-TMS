@@ -68,6 +68,11 @@ Las pantallas APT anteriores siguen disponibles mientras se migran.
 Regresiones de reintentos: `scripts/test-inventario-upload.cjs` y C116. Prueba local con PostgreSQL aislado y
 201.573 movimientos (130.116 salidas + 71.457 entradas): `node scripts/test-inventario-sql.cjs` (requiere Docker).
 
+El recálculo (`20261020160000_inventario_recalculo_rapido.sql`) guarda lo consumido de cada capa al crearla, recalcula
+el origen raíz solo de los traspasos afectados en cada vuelta y no usa llaves foráneas en las tablas derivadas: con
+201.573 movimientos baja de 17,6 s a ≈ 10,5 s en local con resultados idénticos. Las pruebas de inventario esperan a
+un recálculo real en curso antes de empezar.
+
 C115 aísla sus escenarios funcionales dentro de una transacción que siempre se revierte. C117 ejecuta una sola
 reconstrucción del historial real, con presupuesto independiente de 110 s, y comprueba cobertura y conservación
 de cantidades. Así las tres reconstrucciones de C115 no comparten el presupuesto de una carga real.

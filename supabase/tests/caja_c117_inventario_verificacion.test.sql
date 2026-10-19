@@ -1,6 +1,8 @@
 -- CAJA C117 — Verificación del inventario: inv_verify cuadra por bodega (saldo = inicial + entradas − salidas, sin
 -- pérdidas del modelo), mide traspasos emparejados y salidas con origen inferido, y detecta un descuadre. Se revierte.
 BEGIN;
+-- Esperar a un recálculo real en curso (cron o carga) en vez de chocar con él a mitad de la prueba
+SELECT pg_advisory_xact_lock(hashtext('inv_rebuild'));
 DO $test$
 DECLARE adm uuid; ue uuid; us uuid; r jsonb; row jsonb; pass int := 0; fails text[] := '{}';
 BEGIN

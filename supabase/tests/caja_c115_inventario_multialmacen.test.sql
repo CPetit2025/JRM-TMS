@@ -3,6 +3,8 @@
 -- inferido y desde la foto de stock, trazabilidad hacia el origen, préstamos de herramientas y permisos.
 -- Usa bodegas y fechas propias (enero 2001) y siempre se revierte.
 BEGIN;
+-- Esperar a un recálculo real en curso (cron o carga) en vez de chocar con él a mitad de la prueba
+SELECT pg_advisory_xact_lock(hashtext('inv_rebuild'));
 DO $test$
 DECLARE adm uuid; ue uuid; us uuid; ust uuid; r jsonb; pass int := 0; fails text[] := '{}'; v numeric; v2 numeric; t text;
   rows_e jsonb; rows_s jsonb;
