@@ -11,7 +11,11 @@ recalcular y editar catálogos). El Administrador y el Jefe de Distribución tie
 1. *Cargas y catálogos* (`/apt/inventario/datos`): subir los reportes del ERP **Entradas** y **Salidas** (todas las
    bodegas, mismas columnas: TIPODOCTO, BODEGA, Numero, Fecha, Producto, GLOSA, Cantidad, UNIDAD, DocRel, NumRel, Lote,
    PesoUnitario, PesoTotalProduccido…). Un mismo libro puede traer ambos: cada fila va al lado que indica el signo de
-   Cantidad.
+   Cantidad (el formato del ERP trae dos hojas, ENTRADA con cantidades positivas y SALIDA con negativas). Si el nombre
+   de una hoja contradice el signo de sus filas, se avisa antes de aplicar.
+   Cada parte se aplica por separado y muestra su resultado; si una falla, las demás quedan cargadas y «Reanudar carga»
+   completa solo la pendiente. Al terminar se comprueba en la base que cada lado quedó con el rango completo del archivo,
+   y *Cobertura de datos* marca en rojo si faltan las Entradas o las Salidas.
 2. El envío se realiza por bloques de 500 filas, con porcentaje de avance y hasta tres intentos ante una interrupción transitoria. Los bloques confirmados no se vuelven a enviar y los reintentos del mismo bloque no duplican filas ni contadores.
 3. Cada lado **reemplaza** sus movimientos del rango de fechas del archivo (no duplica). Un archivo que parece filtrado
    (trae muchas menos filas que las que ya hay en su rango) se detiene y pide confirmación.
