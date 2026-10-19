@@ -3,6 +3,7 @@
 // 2. Toda pantalla del app del conductor debe tener un acceso visible (la solicitud de anticipo quedó escondida).
 // 3-4. Permisos en el catálogo único y toda página web con regla de acceso (menú = dirección escrita a mano).
 // 5. Tablas nuevas con barrera de cuenta activa y sin privilegios por defecto (C55).
+// 6. Dos migraciones con la misma versión: Supabase aplica solo una y el despliegue se detiene (incidente #282).
 const { existsSync, readdirSync, readFileSync, statSync } = require('node:fs')
 const path = require('node:path')
 
@@ -66,6 +67,14 @@ for (const file of walk(dashDir).filter(f => f.endsWith(`${path.sep}page.tsx`)))
 
 // 5. Tablas nuevas con las barreras que exige C55 (incidente: role_permission_changes falló en producción dos veces):
 //    barrera restrictiva de cuenta activa y sin privilegios por defecto de Supabase para authenticated.
+// 6. Versión única por migración (la parte numérica del nombre); se revisan las de esta etapa en adelante
+const versions = new Map()
+for (const name of readdirSync(migDir).filter(n => n.endsWith('.sql') && n >= '20261020000000')) {
+  const version = name.split('_')[0]
+  if (versions.has(version)) errors.push(`Las migraciones ${versions.get(version)} y ${name} tienen la misma versión ${version}: renombre la nueva con una versión posterior a la última.`)
+  else versions.set(version, name)
+}
+
 const allMigrations = readdirSync(migDir).sort().map(name => ({ name, text: readFileSync(path.join(migDir, name), 'utf8') }))
 const allSql = allMigrations.map(m => m.text).join('\n')
 for (const { name, text } of allMigrations.filter(m => m.name >= '20261011050000')) {
