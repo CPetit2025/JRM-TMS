@@ -4,14 +4,14 @@ import { Eye } from 'lucide-react'
 import { DataTable } from '@/components/ui/data-table'
 import { Modal } from '@/components/ui/modal'
 import { limaDay, monthDays, portalTime, portalAllowedTime, requestAnticipation, requestFamily, type PortalRequest } from '@/lib/tracking-calendar'
-import { PORTAL_ORIGINS, originStyle, portalExtraRefs, portalOrigin, portalParty, portalReference, portalStatus, type PortalOrigin, type PortalRow } from '@/lib/tracking-portal'
+import { PORTAL_ORIGINS, originStyle, portalExtraRefs, portalOrigin, portalParty, portalReference, portalStatus, type PortalAccess, type PortalOrigin, type PortalRow } from '@/lib/tracking-portal'
 import { OriginBadge, PortalDocButtons, StatusPill } from '@/components/tracking/PortalBits'
 
 // Calendario del portal público: cada servicio se marca por su origen (OT, subcontrato, error, OS, OC, RQ) en su
 // fecha de salida programada o, si aún no tiene ruta, en la fecha de atención solicitada. Hoy (despacho actual) y
 // mañana (despacho del día siguiente) se resaltan. Debajo, el registro de solicitudes desde la más reciente.
 
-type Props = { month: string; onMonth: (month: string) => void; requests: PortalRequest[]; rows: PortalRow[]; access: { token: string; pin: string } }
+type Props = { month: string; onMonth: (month: string) => void; requests: PortalRequest[]; rows: PortalRow[]; access: PortalAccess }
 type CalEvent = { id: string; day: string; origin: PortalOrigin; ref: string; family: string; code: string; label: string; bg: string; text: string }
 
 const attentionDay = (r: PortalRequest) => r.required_at ? limaDay(r.required_at) : r.required_date?.slice(0, 10)

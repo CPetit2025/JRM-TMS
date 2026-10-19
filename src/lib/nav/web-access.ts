@@ -18,7 +18,7 @@ export function hasWebAccess(roleName: string | null | undefined, permissions: u
 
 // Páginas de cualquier usuario de la web: Inicio, su perfil, «Mi avance» (dentro de /reportes) y la evidencia, que
 // la base de datos autoriza por documento. Las direcciones antiguas se revisan como la página a la que redirigen.
-const OPEN_PATHS = ['/', '/perfil', '/reportes', '/desempeno', '/evidencia']
+const OPEN_PATHS = ['/', '/perfil', '/reportes', '/desempeno', '/evidencia', '/seguimiento']
 const PATH_ALIASES: Record<string, string> = { '/despacho/planificacion': '/despacho/documentos', '/caja/fondos': '/caja/cajas' }
 const MENU_ENTRIES = flatEntries(NAV_SECTIONS)
 

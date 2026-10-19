@@ -9,7 +9,7 @@ import { usePathname } from 'next/navigation'
 import { AppUpdateNotice } from '@/components/AppUpdateNotice'
 import { AccessDeniedNotice } from '@/components/layout/AccessDeniedNotice'
 import { JrmAiAssistant } from '@/components/JrmAiAssistant'
-import { NAV_SECTIONS, activeEntry, flatEntries } from '@/lib/nav/navConfig'
+import { NAV_SECTIONS, SEGUIMIENTO_ITEM, activeEntry, flatEntries } from '@/lib/nav/navConfig'
 import { usePermissions } from '@/hooks/usePermissions'
 import { isDispatchAuditorRole } from '@/lib/roles'
 import { setSidebar, useSidebar } from '@/lib/nav/sidebarStore'
@@ -25,7 +25,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   const getPageTitle = (path: string) => {
     // Título desde el menú: nombre de la pantalla y su sección (Almacén APT › Kardex)
-    const nav = path && path !== '/' ? activeEntry(flatEntries(NAV_SECTIONS), path) : null
+    const nav = path && path !== '/' ? activeEntry(flatEntries(NAV_SECTIONS, undefined, [SEGUIMIENTO_ITEM]), path) : null
     if (nav?.section) return { title: nav.item.label, subtitle: `${nav.section.title}${nav.group ? ` › ${nav.group}` : ''}` }
     if (!path || path === '/') return { title: 'Dashboard Ejecutivo', subtitle: 'Resumen gerencial de operaciones' }
     if (path.includes('/contratos/servicios')) return { title: 'Registro de Servicios', subtitle: 'Compromisos, servicios realizados y control económico' }
