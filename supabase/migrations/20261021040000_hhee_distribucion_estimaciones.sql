@@ -15,6 +15,7 @@ LANGUAGE plpgsql IMMUTABLE SET search_path=public,pg_temp AS $$
 DECLARE v_item jsonb; v_total numeric:=0; v_any boolean:=false; v_names text[]:='{}'; v_name text; v_amount numeric;
 BEGIN
  IF p_hours IS NULL OR p_hours<=0 OR p_hours>744 OR p_hours::text IN('NaN','Infinity','-Infinity')
+  OR p_hours<>round(p_hours,2)
   OR jsonb_typeof(p_concepts) IS DISTINCT FROM 'array' OR jsonb_array_length(p_concepts)>20 THEN
   RAISE EXCEPTION 'Revise conceptos remunerativos (máximo 20) y las horas mensuales de referencia.';
  END IF;
@@ -135,7 +136,7 @@ BEGIN
      INSERT INTO public.hhee_audit(actor,event,reason,private_data) VALUES(auth.uid(),'FICHA REMUNERATIVA PREVIA','Actualización de trabajador HHEE',jsonb_build_object('person',to_jsonb(person)));
     END IF;
     INSERT INTO public.hhee_people(code,name,area_id,active,base_hour_cost,profile_id,remuneration_concepts,monthly_hours)
-    VALUES(v_code,btrim(item->>'name'),area,COALESCE((item->>'active')::boolean,true),public.hhee_base_rate(COALESCE(item->'remuneration_concepts',person.remuneration_concepts,'[]'::jsonb),COALESCE(NULLIF(item->>'monthly_hours','')::numeric,person.monthly_hours,240)),NULLIF(item->>'profile_id','')::uuid,
+    VALUES(v_code,btrim(item->>'name'),area,COALESCE((item->>'active')::boolean,true),public.hhee_base_rate(COALESCE(item->'remuneration_concepts',person.remuneration_concepts,'[]'::jsonb),COALESCE(NULLIF(item->>'monthly_hours','')::numeric,person.monthly_hours,240)),CASE WHEN item ? 'profile_id' THEN NULLIF(item->>'profile_id','')::uuid ELSE person.profile_id END,
      COALESCE(item->'remuneration_concepts',person.remuneration_concepts,'[]'::jsonb),COALESCE(NULLIF(item->>'monthly_hours','')::numeric,person.monthly_hours,240))
     ON CONFLICT ON CONSTRAINT hhee_people_code_key DO UPDATE SET name=EXCLUDED.name,area_id=EXCLUDED.area_id,active=EXCLUDED.active,
       base_hour_cost=EXCLUDED.base_hour_cost,profile_id=EXCLUDED.profile_id,remuneration_concepts=EXCLUDED.remuneration_concepts,monthly_hours=EXCLUDED.monthly_hours;

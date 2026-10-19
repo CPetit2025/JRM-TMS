@@ -15,7 +15,7 @@ BEGIN
  INSERT INTO public.sites(id,code,name) VALUES(v_site,'C124-'||v_site,'C124 sede');
  INSERT INTO public.user_site_access(user_id,site_id) VALUES(v_actor,v_site),(v_reviewer,v_site) ON CONFLICT DO NOTHING;
  INSERT INTO public.hhee_areas(id,site_id,name,module_enabled) VALUES(v_area,v_site,'C124 Distribución',true),(v_disabled,v_site,'C124 otra área',false);
- INSERT INTO public.hhee_people(id,code,name,area_id,estimated_hour_cost) VALUES(v_person,upper('C124-'||v_person::text),'C124 trabajador',v_area,99);
+ INSERT INTO public.hhee_people(id,code,name,area_id,estimated_hour_cost,profile_id) VALUES(v_person,upper('C124-'||v_person::text),'C124 trabajador',v_area,99,v_actor);
  SELECT id INTO v_cause FROM public.hhee_causes WHERE active LIMIT 1;
  UPDATE public.profiles SET role_id=v_admin,is_active=true WHERE id=v_actor;
  UPDATE public.profiles SET role_id=v_role,is_active=true WHERE id=v_reviewer;
@@ -34,7 +34,7 @@ BEGIN
  IF (SELECT base_hour_cost FROM public.hhee_people WHERE id=v_person) IS NOT NULL THEN RAISE EXCEPTION 'CAJA C124 FAIL: tarifa integral antigua reinterpretada'; END IF;
  v_concepts:='[{"name":"Básico","amount":2400,"computable":true},{"name":"Asignación","amount":240,"computable":true},{"name":"Movilidad","amount":360,"computable":false}]';
  v_res:=public.hhee_mutate(jsonb_build_object('operation_id',gen_random_uuid(),'action','person','code',upper('C124-'||v_person::text),'name','C124 trabajador','area_id',v_area,'monthly_hours',240,'remuneration_concepts',v_concepts));
- IF NOT (v_res->>'success')::boolean OR (SELECT base_hour_cost FROM public.hhee_people WHERE id=v_person)<>11 THEN RAISE EXCEPTION 'CAJA C124 FAIL: base remunerativa %',v_res; END IF;
+ IF NOT (v_res->>'success')::boolean OR (SELECT base_hour_cost FROM public.hhee_people WHERE id=v_person)<>11 OR (SELECT profile_id FROM public.hhee_people WHERE id=v_person) IS DISTINCT FROM v_actor THEN RAISE EXCEPTION 'CAJA C124 FAIL: base remunerativa %',v_res; END IF;
  v_res:=public.hhee_mutate(jsonb_build_object('operation_id',gen_random_uuid(),'action','person','code',upper('C124-'||v_person::text),'name','C124 trabajador','area_id',v_area,'monthly_hours',0,'remuneration_concepts',v_concepts));
  IF (v_res->>'success')::boolean THEN RAISE EXCEPTION 'CAJA C124 FAIL: divisor cero aceptado'; END IF;
  v_res:=public.hhee_mutate(jsonb_build_object('operation_id',gen_random_uuid(),'action','save_request','id',v_id,'area_id',v_area,'cause_id',v_cause,'work_date',v_date,'activity','C124 despacho programado','justification','Necesidad excepcional de distribución','alternatives','Coordinación de horarios evaluada','expected_result','Completar despacho de prueba','lines',jsonb_build_array(jsonb_build_object('person_id',v_person,'planned_start',v_date||'T18:00','planned_end',v_date||'T21:00','planned_break',0))));
