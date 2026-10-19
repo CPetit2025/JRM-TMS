@@ -1,8 +1,14 @@
 -- Bounded inventory import: a committed chunk/apply can be retried without duplication.
 -- Only synthetic staging rows; no model rebuild or production history changes. Always rolled back.
 BEGIN;
+-- Límites propios: una prueba cortada por la conexión no deja trabajo pesado corriendo en producción
+SET LOCAL statement_timeout = '100s';
+SET LOCAL lock_timeout = '60s';
 -- Esperar a un recálculo real en curso (cron o carga) en vez de chocar con él a mitad de la prueba
 SELECT pg_advisory_xact_lock(hashtext('inv_rebuild'));
+-- Sin vistas guardadas del modelo real: las lecturas se calculan en vivo sobre los datos de la prueba
+SET LOCAL inv.live = 'on';
+DELETE FROM public.inv_read_cache;
 DO $test$
 DECLARE actor uuid; u uuid; r jsonb; payload jsonb; n int;
 BEGIN
