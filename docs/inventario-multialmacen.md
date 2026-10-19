@@ -115,3 +115,16 @@ calculándose con todas las bodegas, porque el origen de cada lote viene de prod
 
 La lista de contratos, el resumen APT y la Estadía del APT se guardan con la caché de lecturas tras cada recálculo.
 La ficha se calcula al abrirla (≈ 0,4 s con el historial real). Prueba: `caja_c120_inventario_apt_contratos.test.sql`.
+
+## Estadía por contrato, ID y cliente · kardex del contrato (`20261021010000_inventario_estadia_contratos.sql`)
+- **Estadía → Ver por** (`/apt/estadia?ver=ot|producto|cliente|bodega`, `inv_dwell_dim`): además de por bodega, la
+  estadía se abre por **contrato / OT** (con su cliente), por **ID** (con su glosa) y por **cliente**. Para cada fila:
+  stock actual (kg, días ponderados por kg, máximo, kg con más de 60 días) y las salidas del período cruzadas FIFO
+  con su ingreso (kg despachado, líneas, días en bodega promedio, p50, p90 y días desde el origen). Búsqueda por
+  OT, ID, glosa o cliente; «Ver por ID» filtra una OT (`?ver=producto&ot=16339`); Excel con todas las filas. Sin
+  período ni OT se lee de la caché (las tres vistas del APT se guardan tras cada recálculo).
+- **Ficha de OT → Kardex** (`inv_contrato_kardex`): lo que ingresó, lo que salió y el saldo de la OT, en kg o de un
+  ID en su unidad, con la serie diaria (ingresos, salidas y saldo) y cada movimiento con su saldo acumulado.
+  El traspaso 647 → ST de la misma OT se muestra como interno y no cambia el saldo. Exportable a Excel.
+
+Prueba: `caja_c122_inventario_estadia_contratos.test.sql`.

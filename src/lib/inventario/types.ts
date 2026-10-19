@@ -150,3 +150,29 @@ export interface InvContrato {
     fecha_entrega: string | null; a_tiempo: boolean | null; tms: InvContratoTms | null }>
   sospechosos?: Array<{ ot: string; lotes: string[]; lineas: number }>
 }
+
+// Estadía por contrato / OT, ID (glosa) o cliente
+export type InvDwellDim = 'ot' | 'producto' | 'cliente'
+export interface InvDwellDimRow {
+  key: string; glosa: string | null; unidad: string | null; cliente: string | null; ots: number
+  salidas: number; kg_salidas: number; kg_despachado: number; prom_dias: number | null; prom_dias_kg: number | null
+  p50: number | null; p90: number | null; max: number | null; prom_origen: number | null
+  stock_kg: number; stock_qty: number; claves: number; stock_dias: number | null; stock_dias_max: number | null; stock_kg_60: number
+}
+export interface InvDwellDimResult {
+  dim: InvDwellDim; ambito: 'apt' | 'todas'; ot: string | null; desde: string; hasta: string; corte: string; total: number
+  cache?: InvCacheInfo; filas: InvDwellDimRow[]
+}
+
+// Kardex de una OT en el APT: ingresos, salidas y saldo acumulado
+export interface InvKardexMov {
+  fecha: string; tipo: string; clase: InvClase; numero: string; almacen: AptAlmacen; bodega: string; producto: string; glosa: string | null
+  unidad: string | null; lote: string | null; tercero: string | null; interno: boolean; entrada: number | null; salida: number | null
+  kg_entrada: number | null; kg_salida: number | null; saldo_kg: number; saldo_qty: number
+}
+export interface InvKardex {
+  ot: string; producto: string | null; lineas: number; truncado: boolean; corte: string | null
+  totales: { ingreso_kg: number; salida_kg: number; ingreso_qty: number | null; salida_qty: number | null; internos: number }
+  serie: Array<{ fecha: string; ingreso_kg: number; salida_kg: number; saldo_kg: number }>
+  movimientos: InvKardexMov[]
+}

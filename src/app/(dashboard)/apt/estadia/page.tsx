@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { EstadiaPor, VerPor } from '@/components/inventario/EstadiaPor'
 import Link from 'next/link'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ChartCard, ErrorBlock, KpiCard, LoadingBlock } from '@/components/apt/ui'
@@ -28,8 +29,8 @@ function pivot(rows: Array<{ bodega: string; rango: string; consumos?: number; c
   return [...by.values()].map(o => { ranges.forEach(k => { if (!(k in o)) o[k] = 0 }); return o })
 }
 
-// Estadía: cuántos días pasa el material en cada bodega (FIFO) y desde su origen hasta que sale
-export default function InventarioEstadiaPage() {
+// Estadía por bodega: cuántos días pasa el material en cada bodega (FIFO) y desde su origen hasta que sale
+function EstadiaBodegas() {
   const [period, setPeriod] = useState({ desde: '', hasta: '' })
   const [bodega, setBodega] = useState('')
   const apt = useAmbito() === 'apt'
@@ -115,4 +116,9 @@ export default function InventarioEstadiaPage() {
       </>}
     </div>
   )
+}
+
+// Estadía: por contrato / OT, ID (glosa) o cliente, o por bodega
+export default function InventarioEstadiaPage() {
+  return <VerPor bodegas={<EstadiaBodegas />} detalle={dim => <EstadiaPor key={dim} dim={dim} />} />
 }
