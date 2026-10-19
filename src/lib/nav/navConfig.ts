@@ -29,6 +29,15 @@ export const HOME_ITEM = (isAdmin: boolean): NavItem => ({
 })
 
 export const NAV_SECTIONS: NavSection[] = [
+  { id: 'hhee', title: 'Control de Horas Extras', icon: Timer, groups: [{ items: [
+    { href: '/hhee', label: 'Panel gerencial', icon: BarChart3, show: any('hhee','hhee-gerencia','hhee-solicitar','hhee-aprobar','hhee-validar','hhee-excepciones','hhee-costos','hhee-config') },
+    { href: '/hhee/solicitudes', label: 'Solicitudes y resultados', icon: ClipboardList, show: any('hhee','hhee-solicitar','hhee-aprobar','hhee-validar','hhee-gerencia','hhee-excepciones','hhee-costos','hhee-config') },
+    { href: '/hhee/aprobaciones', label: 'Aprobaciones y excepciones', icon: BadgeCheck, show: any('hhee-aprobar','hhee-excepciones') },
+    { href: '/hhee/validacion', label: 'Asistencia y validación RR. HH.', icon: FileUp, show: any('hhee-validar') },
+    { href: '/hhee/acciones', label: 'Acciones correctivas', icon: ClipboardCheck, show: any('hhee','hhee-aprobar','hhee-validar','hhee-gerencia','hhee-solicitar','hhee-excepciones','hhee-costos','hhee-config') },
+    { href: '/hhee/reportes', label: 'Informe para Gerencia', icon: FileText, show: any('hhee-gerencia','hhee-aprobar','hhee-validar','hhee-costos','hhee-config') },
+    { href: '/hhee/configuracion', label: 'Configuración del piloto', icon: Settings2, show: any('hhee-config') },
+  ] }] },
   { id: 'analitica', title: 'Reportes y Analítica', icon: BarChart3, groups: [{ items: [
     { href: '/reportes', label: 'Centro de Analítica SCM', icon: BarChart3, show: any('dashboard', 'desempeno', 'reportes', 'despacho', 'monitoreo', 'caja', 'apt', 'mantenimiento-dashboard', 'flota-eficiencia', 'mantenimiento-soporte'), keywords: 'reportes analitica scm kpi indicador desempeno informes costos transporte flota apt avance' },
   ] }, { title: 'Reportes especializados', items: [
