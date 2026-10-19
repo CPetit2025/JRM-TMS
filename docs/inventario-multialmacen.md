@@ -73,6 +73,12 @@ el origen raíz solo de los traspasos afectados en cada vuelta y no usa llaves f
 201.573 movimientos baja de 17,6 s a ≈ 10,5 s en local con resultados idénticos. Las pruebas de inventario esperan a
 un recálculo real en curso antes de empezar.
 
+Lecturas (`20261020170000_inventario_lecturas_rapidas.sql`): tras cada recálculo se guardan las vistas iniciales
+(Resumen, Estadía, Flujo, Verificación, Catálogos) y el stock por clave con glosa y cliente. Las pestañas sin filtro
+de fechas y todo Stock disponible leen esa caché (milisegundos) y no esperan a un recálculo en curso; con filtros de
+fecha se calcula en vivo. Una caché de un recálculo anterior no se usa. «Recalcular» no espera a otro recálculo en
+curso, y el recálculo programado corre con límite de 5 min y deja la caché al día (C119).
+
 C115 aísla sus escenarios funcionales dentro de una transacción que siempre se revierte. C117 ejecuta una sola
 reconstrucción del historial real, con presupuesto independiente de 110 s, y comprueba cobertura y conservación
 de cantidades. Así las tres reconstrucciones de C115 no comparten el presupuesto de una carga real.

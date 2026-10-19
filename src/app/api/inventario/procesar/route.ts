@@ -43,7 +43,12 @@ export async function POST(request: Request) {
     if (!applied.data?.success) return NextResponse.json({ ...(applied.data || {}), success: false }, { status: 400 })
     return NextResponse.json(applied.data)
   }
-  const model = await admin.rpc('inv_rebuild') as Paso
+  // Si ya hay un recálculo en curso no se espera (responde pendiente); después se dejan al día las vistas guardadas
+  const model = await admin.rpc('inv_rebuild_request') as Paso
   if (model.error) return NextResponse.json({ success: false, error: `Recalcular el inventario: ${model.error.message}` }, { status: 500 })
+  if (model.data?.success && !model.data.pending) {
+    const cache = await admin.rpc('inv_cache_refresh') as Paso
+    if (cache.error || !cache.data?.success) return NextResponse.json({ ...model.data, pending: true })
+  }
   return NextResponse.json(model.data ?? { success: false, error: 'Sin respuesta' })
 }

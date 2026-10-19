@@ -46,7 +46,7 @@ async function retry<T>(work: () => Promise<T>, progress?: (m: string) => void):
   }
 }
 
-type ServerStep = { success?: boolean; error?: string; partial?: boolean; fallback?: boolean; timeout?: boolean; busy?: boolean } & Record<string, unknown>
+type ServerStep = { success?: boolean; error?: string; partial?: boolean; fallback?: boolean; timeout?: boolean; busy?: boolean; pending?: boolean } & Record<string, unknown>
 
 async function server(body: Record<string, unknown>): Promise<ServerStep> {
   const res = await fetch('/api/inventario/procesar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -102,7 +102,9 @@ export async function recalcular(onProgress?: (m: string) => void): Promise<{ pe
   }
   if (out.fallback) out = await call<ServerStep>('inv_recalcular')
   notifyInvUpdated()
-  if (out.timeout) return { pending: true }
+  if (out.timeout || (out.success && out.pending)) return { pending: true }
+  // Un corte por tiempo del recálculo web no pierde nada: el recálculo programado lo completa
+  if (!out.success && /statement timeout|canceling statement/i.test(out.error || '')) return { pending: true }
   if (!out.success) throw new Error(out.error || 'No se pudo recalcular el inventario')
   return { pending: false }
 }
