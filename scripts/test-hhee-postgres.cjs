@@ -17,10 +17,10 @@ async function main(){
    await new Promise(resolve=>setTimeout(resolve,250))
   }
   if(!ready)throw Error('PostgreSQL no inició dentro del límite de la prueba.')
-  for(const file of ['scripts/fixtures/hhee-schema.sql','supabase/migrations/20261020210000_hhee_control.sql','supabase/migrations/20261020220000_hhee_production_scope.sql']){
+  for(const file of ['scripts/fixtures/hhee-schema.sql','supabase/migrations/20261020210000_hhee_control.sql','supabase/migrations/20261020220000_hhee_production_scope.sql','supabase/migrations/20261021040000_hhee_distribucion_estimaciones.sql']){
    const result=sql(file);if(result.status!==0)throw Error(file+'\n'+result.output)
   }
-  for(const [file,label] of [['supabase/tests/caja_c120_hhee.test.sql','C120'],['supabase/tests/caja_c121_hhee_operacion.test.sql','C121']]){
+  for(const [file,label] of [['supabase/tests/caja_c120_hhee.test.sql','C120'],['supabase/tests/caja_c121_hhee_operacion.test.sql','C121'],['supabase/tests/caja_c124_hhee_costos_alcance.test.sql','C124']]){
    const result=sql(file)
    // These suites deliberately throw PASS to force a rollback, including changes to test profiles and roles.
    if(!result.output.includes('CAJA '+label+' PASS')||result.output.includes('CAJA '+label+' FAIL'))throw Error(file+'\n'+result.output)

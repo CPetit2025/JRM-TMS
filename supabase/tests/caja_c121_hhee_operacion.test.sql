@@ -16,6 +16,7 @@ BEGIN
  INSERT INTO public.sites(id,code,name) VALUES(site,'C121-'||site,'C121 sede');
  INSERT INTO public.hhee_areas(id,site_id,name) VALUES(area,site,'C121 área');
  INSERT INTO public.hhee_people(id,code,name,area_id) VALUES(person,person_code,'C121 trabajador',area);
+ UPDATE public.hhee_areas SET module_enabled=true WHERE id=area;
  SELECT id INTO cause FROM public.hhee_causes WHERE active LIMIT 1;
  UPDATE public.hhee_settings SET recurrence_days=28,recurrence_events=2 WHERE id=1;
  FOR i IN 1..4 LOOP

@@ -4,18 +4,24 @@ export type Area = {
     site_id: string;
     site_name: string;
     active: boolean;
+    module_enabled: boolean;
+    can_read: boolean;
     can_request: boolean;
     can_approve: boolean;
     can_validate: boolean;
     can_exception: boolean;
 };
+export type RemunerationConcept = { name: string; amount: number; computable: boolean };
 export type Person = {
     id: string;
     code: string;
     name: string;
     area_id: string;
     active: boolean;
-    estimated_hour_cost: number | null;
+    estimated_hour_cost?: number | null;
+    base_hour_cost: number | null;
+    monthly_hours: number | null;
+    remuneration_concepts: RemunerationConcept[] | null;
 };
 export type Catalog = {
     id: string;
@@ -55,7 +61,7 @@ export type Filters = {
     state: string;
     search: string;
 };
-export type Request = {
+export type Request = HourBreakdown & {
     id: string;
     sequence: number;
     version: number;
@@ -103,9 +109,16 @@ export type Request = {
     estimated_cost: number | null;
     pending_cost: number;
     workers: number;
+    unclassified_minutes?: number;
     attendance_reference: string | null;
 };
-export type Line = {
+export type HourBreakdown = {
+    normal_minutes?: number | null;
+    minutes_25?: number | null;
+    minutes_35?: number | null;
+    minutes_100?: number | null;
+};
+export type Line = HourBreakdown & {
     id: string;
     person_id: string;
     person_name: string;
@@ -120,6 +133,9 @@ export type Line = {
     reported_cost?: number | null;
     validated_cost?: number | null;
     consent: boolean;
+    base_hour_cost?: number | null;
+    normal_estimated_cost?: number | null;
+    cost_source?: string | null;
 };
 export type Detail = {
     request: Request;
@@ -176,7 +192,9 @@ export type Data = {
     }[];
     causes: Series[];
     areas: Series[];
-    metrics: {
+    metrics: HourBreakdown & {
+        unclassified_minutes?: number;
+        normal_estimated_cost?: number | null;
         total_requests: number;
         validated_minutes: number;
         pending_minutes: number;
@@ -191,7 +209,7 @@ export type Data = {
         unassessed_minutes: number;
     };
 };
-export type AttendanceRow = {
+export type AttendanceRow = HourBreakdown & {
     request_code: string;
     person_code: string;
     start: string;
@@ -207,7 +225,10 @@ export type AttendanceRow = {
 export type AttendancePreview = {
     applied: boolean;
     changed?: number;
-    rows: {
+    rows: (HourBreakdown & {
+        cost_source?: string;
+        normal_cost?: number | null;
+        base_hour_cost?: number | null;
         row: number;
         request_code: string;
         person_code: string;
@@ -220,7 +241,7 @@ export type AttendancePreview = {
         cost: number | null;
         duplicate: boolean;
         warning: string | null;
-    }[];
+    })[];
     errors: {
         row: number;
         error: string;

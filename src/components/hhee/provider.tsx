@@ -29,6 +29,7 @@ export function HheeProvider({ children }: {
         setRevision(n => n + 1);
     }
     catch (e) {
+        setContext(null);
         setError(e instanceof Error ? e.message : 'No se pudo cargar HHEE.');
     } }, []);
     useEffect(() => {

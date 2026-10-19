@@ -17,9 +17,13 @@ Estimados:
 Presentamos el informe de horas extras correspondiente al período del ${dateLabel(d.from)} al ${dateLabel(d.to)}.
 
 Áreas con ejecuciones validadas: ${scope}.
-• Horas validadas por RR. HH.: ${hours(m.validated_minutes)}.
-${d.cost_visible ? '• Costo validado conocido: ' + money(m.validated_cost) + '.\n• Registros pendientes de valorización: ' + m.pending_cost + '.\n' : ''}• Horas ejecutadas pendientes de validación: ${hours(m.pending_minutes)}.
+• HHEE validadas por RR. HH.: ${hours(m.validated_minutes)}.
+• Desglose: 25% ${hours(m.minutes_25)}; 35% ${hours(m.minutes_35)}; 100% ${hours(m.minutes_100)}; sin clasificar ${hours(m.unclassified_minutes)}.
+• Horas normales de referencia (separadas de HHEE): ${hours(m.normal_minutes)}.
+${d.cost_visible ? '• Costo aproximado HHEE: ' + money(m.validated_cost) + '.\n• Registros pendientes de valorización: ' + m.pending_cost + '.\n' : ''}• Horas ejecutadas pendientes de validación: ${hours(m.pending_minutes)}.
 • Excepciones pendientes de revisión: ${m.pending_exceptions}.
+
+Los importes son aproximados y se calculan a partir de los conceptos remunerativos computables de la ficha de cada trabajador. No constituyen una liquidación de planilla.
 
 El informe permite evaluar las causas operativas, la aprobación previa y las acciones correctivas. Las horas ejecutadas sin aprobación se conservan y se presentan como excepciones para evaluación.
 

@@ -12,7 +12,7 @@ export type PermissionModule = { id: string; label: string; mode?: PermissionMod
 export type PermissionGroup = { title: string; hint?: string; modules: PermissionModule[] }
 
 export const PERMISSION_GROUPS: PermissionGroup[] = [
-  { title: 'Control de horas extras', hint: 'Además del permiso, asigne las áreas autorizadas en Configuración HHEE. Gerencia consulta agregados por sede.', modules: [
+  { title: 'Control de horas extras', hint: 'Módulo independiente. Piloto: Distribución. Además del rol, habilite el área y vincule a cada usuario (incluida Gerencia) en Configuración HHEE.', modules: [
     { id: 'hhee', label: 'Consulta de horas extras por área' },
     { id: 'hhee-solicitar', label: 'Solicitar HHEE y registrar resultados' },
     { id: 'hhee-aprobar', label: 'Aprobar HHEE como jefe del área' },
