@@ -13,17 +13,18 @@ export function Requests({ approval = false, validation = false, embedded = fals
     embedded?: boolean;
 }) {
     const { context: c } = useHhee(), [filters, setFilters] = useState(initialFilters), { data: d, error, loading } = useData(filters);
-    const [newOpen, setNewOpen] = useState(false), [id, setId] = useState(''), [queue, setQueue] = useState('pending'), [page, setPage] = useState(0), [sort, setSort] = useState<'date' | 'area' | 'hours' | 'code'>('date'), [asc, setAsc] = useState(false);
+    const [newOpen, setNewOpen] = useState(false), [id, setId] = useState(''), [queue, setQueue] = useState(''), [page, setPage] = useState(0), [sort, setSort] = useState<'date' | 'area' | 'hours' | 'code'>('date'), [asc, setAsc] = useState(false);
+    const activeQueue = queue || (c?.areas.some(a => a.can_approve) ? 'pending' : 'exceptions');
     const rows = useMemo(() => {
-        const v = (d?.rows || []).filter(r => !approval || queue === 'all' || (queue === 'exceptions' ? r.needs_exception && r.exception_status === 'PENDIENTE' : r.approval === 'PENDIENTE' && !['BORRADOR', 'CANCELADA'].includes(r.state)));
+        const v = (d?.rows || []).filter(r => !approval || activeQueue === 'all' || (activeQueue === 'exceptions' ? r.needs_exception && r.exception_status === 'PENDIENTE' : activeQueue === 'observed' ? r.needs_exception && r.exception_status === 'OBSERVADA' : r.approval === 'PENDIENTE' && !['BORRADOR', 'CANCELADA'].includes(r.state)));
         return [...v].sort((a, b) => { const x = sort === 'date' ? a.work_date : sort === 'area' ? a.area_name : sort === 'hours' ? a.planned_minutes : a.sequence, y = sort === 'date' ? b.work_date : sort === 'area' ? b.area_name : sort === 'hours' ? b.planned_minutes : b.sequence; return (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y))) * (asc ? 1 : -1); });
-    }, [d, approval, queue, sort, asc]);
+    }, [d, approval, activeQueue, sort, asc]);
     const Wrapper = embedded ? Embedded : Shell;
     return <Wrapper title={approval ? 'Aprobaciones y excepciones' : validation ? 'Ejecuciones por validar' : 'Solicitudes de horas extras'} description={approval ? 'El jefe del área autoriza la necesidad prevista. Gerencia revisa las excepciones con independencia.' : 'Solicitud, ejecución y validación: etapas separadas con trazabilidad.'}>
  <FilterBar value={filters} onChange={f => { setFilters(f); setPage(0); }}/>{error && <Notice error>{error}</Notice>}{loading && <p role="status">Actualizando solicitudes…</p>}
  <Panel title="Registro de HHEE"><div className="mb-4 flex flex-wrap items-center gap-3">
  {!approval && c?.areas.some(a => a.can_request) && <button className={btn} onClick={() => setNewOpen(true)}>+ Nueva solicitud</button>}
- {approval && <select aria-label="Cola de aprobación" className={secondary} value={queue} onChange={e => { setQueue(e.target.value); setPage(0); }}><option value="pending">Pendientes del jefe de área</option><option value="exceptions">Excepciones para Gerencia</option><option value="all">Todas</option></select>}
+ {approval && <select aria-label="Cola de aprobación" className={secondary} value={activeQueue} onChange={e => { setQueue(e.target.value); setPage(0); }}><option value="pending">Pendientes del jefe de área</option><option value="exceptions">Excepciones para Gerencia</option><option value="observed">Observadas por Gerencia</option><option value="all">Todas</option></select>}
  <label className="text-sm">Ordenar: <select className={secondary} value={sort} onChange={e => setSort(e.target.value as typeof sort)}><option value="date">Fecha operativa</option><option value="area">Área</option><option value="hours">Horas solicitadas</option><option value="code">Código</option></select></label><button className={secondary} onClick={() => setAsc(!asc)}>{asc ? 'Ascendente ↑' : 'Descendente ↓'}</button>
  <span className="ml-auto text-xs text-slate-500">{rows.length} solicitudes visibles</span></div>
  {d && d.total > d.row_limit && <Notice>Se muestran las {d.row_limit} solicitudes más recientes de {d.total}. Acote los filtros. Los indicadores gerenciales incluyen todo el alcance, no solo esta tabla.</Notice>}
