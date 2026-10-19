@@ -64,14 +64,16 @@ export function portalExtraRefs(s: Source): string[] {
 export const DOC_LABEL: Record<PortalDocument['type'], string> = { GUIA_REMISION: 'Guía', PACKING_LIST: 'Packing List' }
 
 /** Abre un documento del portal. La ventana se abre antes de la consulta para que el navegador no la bloquee. */
-export async function openPortalDocument(access: { token: string; pin: string }, target: { kind: 'DOC'; id: string } | { kind: 'FIRMA' | 'PACKING'; dispatchId: string; requestId: string; index: number }) {
+// Acceso al portal: enlace + código (clientes) o la sede desde el TMS (usuario con sesión, sin código)
+export type PortalAccess = { token: string; pin: string } | { site: string }
+export async function openPortalDocument(access: PortalAccess, target: { kind: 'DOC'; id: string } | { kind: 'FIRMA' | 'PACKING'; dispatchId: string; requestId: string; index: number }) {
   const win = window.open('', '_blank')
   try {
     const res = await fetch('/api/tracking/documento', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(target.kind === 'DOC'
-        ? { token: access.token, pin: access.pin, kind: 'DOC', id: target.id }
-        : { token: access.token, pin: access.pin, kind: target.kind, id: target.dispatchId, request_id: target.requestId, index: target.index }),
+      body: JSON.stringify({ ...access, ...(target.kind === 'DOC'
+        ? { kind: 'DOC', id: target.id }
+        : { kind: target.kind, id: target.dispatchId, request_id: target.requestId, index: target.index }) }),
     })
     const data = await res.json().catch(() => null) as { success?: boolean; url?: string; error?: string } | null
     if (!res.ok || !data?.url) throw new Error(data?.error || 'Documento no disponible')

@@ -2,7 +2,7 @@
 import { useMemo } from 'react'
 import { ChevronLeft, ChevronRight, RefreshCw, Truck } from 'lucide-react'
 import { limaDay } from '@/lib/tracking-calendar'
-import { portalExtraRefs, portalOrigin, portalParty, portalReference, portalStatus, type PortalRow } from '@/lib/tracking-portal'
+import { portalExtraRefs, portalOrigin, portalParty, portalReference, portalStatus, type PortalAccess, type PortalRow } from '@/lib/tracking-portal'
 import { OriginBadge, PortalDocButtons, StatusPill } from '@/components/tracking/PortalBits'
 
 // Ruta establecida del día en el portal público: cada ruta con su unidad, conductor y paradas autorizadas, y por
@@ -10,7 +10,7 @@ import { OriginBadge, PortalDocButtons, StatusPill } from '@/components/tracking
 
 type Props = {
   rows: PortalRow[]; day: string; onDay: (day: string) => void
-  access: { token: string; pin: string }; refreshedAt: string | null; error?: string; onRefresh: () => void
+  access: PortalAccess; refreshedAt: string | null; error?: string; onRefresh: () => void
 }
 const DISPATCH_LABEL: Record<string, string> = { PROGRAMADO: 'Programada', EN_CURSO: 'En ruta', 'EN RUTA': 'En ruta', ENTREGADO: 'Entregada', LIQUIDADO: 'Cerrada', CERRADO: 'Cerrada', CANCELADO: 'Cancelada' }
 const time = (value: string) => new Date(value).toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hour12: false })

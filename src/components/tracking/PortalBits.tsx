@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { FileCheck2, FileSpreadsheet, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { openPortalDocument, originStyle, type PortalOrigin, type PortalRow, type PortalTone } from '@/lib/tracking-portal'
+import { openPortalDocument, originStyle, type PortalAccess, type PortalOrigin, type PortalRow, type PortalTone } from '@/lib/tracking-portal'
 
 export function OriginBadge({ origin }: { origin: PortalOrigin }) {
   const s = originStyle(origin)
@@ -22,7 +22,7 @@ export function StatusPill({ tone }: { tone: PortalTone }) {
 }
 
 /** Packing List y guía de remisión que sube el conductor (app o enlace); se conservan los Packing List históricos de Documentario. */
-export function PortalDocButtons({ row, access, emptyText = 'La guía aparece cuando el conductor la sube.' }: { row: PortalRow; access: { token: string; pin: string }; emptyText?: string }) {
+export function PortalDocButtons({ row, access, emptyText = 'La guía aparece cuando el conductor la sube.' }: { row: PortalRow; access: PortalAccess; emptyText?: string }) {
   const [busy, setBusy] = useState('')
   const open = async (key: string, target: Parameters<typeof openPortalDocument>[1]) => {
     setBusy(key)

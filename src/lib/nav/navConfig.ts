@@ -28,6 +28,12 @@ export const HOME_ITEM = (isAdmin: boolean): NavItem => ({
   href: '/', label: isAdmin ? 'Dashboard Ejecutivo' : 'Inicio', icon: isAdmin ? BarChart3 : Home, show: () => true, keywords: 'inicio panel resumen',
 })
 
+// Acceso fijo debajo de Inicio para todos los usuarios: el portal de seguimiento de su sede, sin código
+export const SEGUIMIENTO_ITEM: NavItem = {
+  href: '/seguimiento', label: 'Planificación y Seguimiento', icon: CalendarRange, show: () => true,
+  keywords: 'seguimiento transporte portal publico link enlace cliente calendario ruta del dia planificacion',
+}
+
 export const NAV_SECTIONS: NavSection[] = [
   { id: 'hhee', title: 'Control de Horas Extras', icon: Timer, groups: [{ items: [
     { href: '/hhee', label: 'Panel gerencial', icon: BarChart3, show: any('hhee','hhee-gerencia','hhee-solicitar','hhee-aprobar','hhee-validar','hhee-excepciones','hhee-costos','hhee-config') },
@@ -125,8 +131,8 @@ export function visibleSections(has: Has, denied: (href: string) => boolean = ()
 }
 
 export interface NavEntry { item: NavItem; section: NavSection | null; group?: string }
-export function flatEntries(sections: NavSection[], home?: NavItem): NavEntry[] {
-  const out: NavEntry[] = home ? [{ item: home, section: null }] : []
+export function flatEntries(sections: NavSection[], home?: NavItem, fixed: NavItem[] = []): NavEntry[] {
+  const out: NavEntry[] = [...(home ? [home] : []), ...fixed].map(item => ({ item, section: null }))
   sections.forEach(s => s.groups.forEach(g => g.items.forEach(item => out.push({ item, section: s, group: g.title }))))
   return out
 }

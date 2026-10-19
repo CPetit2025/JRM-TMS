@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { ChevronDown, History, LogOut, Moon, Pin, PinOff, Search, Star, Sun, X } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
 import { roleDeniesPath } from '@/lib/roles'
-import { HOME_ITEM, activeEntry, flatEntries, normalize, visibleSections, type NavEntry, type NavItem } from '@/lib/nav/navConfig'
+import { HOME_ITEM, SEGUIMIENTO_ITEM, activeEntry, flatEntries, normalize, visibleSections, type NavEntry, type NavItem } from '@/lib/nav/navConfig'
 import { setSidebar, useSidebar, type SidebarTheme } from '@/lib/nav/sidebarStore'
 import { COUNT_STYLE, countLabel, useMenuCounts, type MenuCount } from '@/lib/nav/useMenuCounts'
 
@@ -73,7 +73,7 @@ export function Sidebar() {
 
   const home = useMemo(() => HOME_ITEM(role === 'admin'), [role])
   const sections = useMemo(() => visibleSections(hasPermission, href => roleDeniesPath(role, href, permissions)), [hasPermission, role, permissions])
-  const entries = useMemo(() => flatEntries(sections, home), [sections, home])
+  const entries = useMemo(() => flatEntries(sections, home, [SEGUIMIENTO_ITEM]), [sections, home])
   const current = activeEntry(entries, pathname)
   const activeSection = current?.section?.id || null
   const openSet = new Set(sb.open ?? (activeSection ? [activeSection] : []))
@@ -82,7 +82,7 @@ export function Sidebar() {
   const lastPath = useRef<string | null>(null)
   useEffect(() => {
     if (lastPath.current === pathname) return
-    const e = activeEntry(flatEntries(visibleSections(hasPermission, href => roleDeniesPath(role, href, permissions)), HOME_ITEM(role === 'admin')), pathname)
+    const e = activeEntry(flatEntries(visibleSections(hasPermission, href => roleDeniesPath(role, href, permissions)), HOME_ITEM(role === 'admin'), [SEGUIMIENTO_ITEM]), pathname)
     if (e) lastPath.current = pathname   // sin permisos cargados aún: se registra cuando lleguen
     setSidebar(s => ({
       overlay: false,
@@ -187,7 +187,7 @@ export function Sidebar() {
               : <p className="px-3 py-4 text-xs text-[var(--sb-muted)]">No hay pantallas con «{q.trim()}».</p>
           ) : (
             <>
-              <div className="pt-1">{row(entries[0])}</div>
+              <div className="space-y-0.5 pt-1">{row(entries[0])}{row(entries[1])}</div>
               {favEntries.length > 0 && (
                 <div>
                   <p className={`${label} flex items-center gap-1.5`}><Star className="h-3 w-3 fill-amber-400 text-amber-400" /> Favoritos</p>
