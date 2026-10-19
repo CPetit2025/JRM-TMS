@@ -19,6 +19,7 @@ BEGIN
  INSERT INTO public.hhee_areas(id,site_id,name) VALUES(area,site,'C120 area'),(outside,public.primary_site_id(),'C120 outside '||outside);
  INSERT INTO public.hhee_memberships VALUES(actor,area),(reviewer,area);
  INSERT INTO public.hhee_people(id,code,name,area_id,estimated_hour_cost) VALUES(person,upper('C120-'||person::text),'C120 trabajador',area,10);
+ UPDATE public.hhee_areas SET module_enabled=true WHERE id=area;
  SELECT id INTO cause FROM public.hhee_causes WHERE active LIMIT 1;
  IF has_function_privilege('anon','public.hhee_context()','EXECUTE') OR has_function_privilege('anon','public.hhee_attendance(jsonb,boolean)','EXECUTE')
  OR has_function_privilege('authenticated','public.hhee_needs_exception(uuid)','EXECUTE') OR has_table_privilege('authenticated','public.hhee_lines','SELECT') THEN

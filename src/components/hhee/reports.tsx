@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useHhee } from './provider';
 import { useData } from './data';
+import { HourBreakdown } from './breakdown';
 import { initialFilters, reportEmail, dateLabel, hours, money } from '@/lib/hhee/core';
 import { exportReport } from '@/lib/hhee/report';
 import { trackingEmailUrl, type EmailClient } from '@/lib/tracking-email';
@@ -23,10 +24,11 @@ export function Reports() {
  <FilterBar value={filters} onChange={setFilters}/>{error && <Notice error>{error}</Notice>}{msg && <Notice error>{msg}</Notice>}{loading && <p role="status">Preparando informe…</p>}
  {d && <><Panel title="Vista previa · Gerencia de Logística"><div className="flex flex-wrap justify-between gap-3"><p className="text-sm">Período: {dateLabel(d.from)} al {dateLabel(d.to)} · Corte: {dateLabel(d.generated_at)}</p><div className="flex gap-2"><button disabled={busy || loading} className={btn} onClick={() => void download('pdf')}>Descargar PDF gerencial</button><button disabled={busy || loading || (d.total > d.row_limit || d.actions_total > d.actions.length)} className={secondary} onClick={() => void download('excel')}>Exportar Excel</button></div></div>
  {(d.total > d.row_limit || d.actions_total > d.actions.length) && <Notice>Acote el período para exportar el detalle completo a Excel (máximo {d.row_limit} solicitudes). El PDF consolida todos los indicadores del alcance.</Notice>}
- <dl className="my-5 grid gap-4 sm:grid-cols-4">{[['Horas validadas', hours(d.metrics.validated_minutes)], ['Costo conocido', d.cost_visible ? money(d.metrics.validated_cost) : 'Acceso restringido'], ['Pendiente de validación', hours(d.metrics.pending_minutes)], ['Excepciones por revisar', d.metrics.pending_exceptions]].map(([k, v]) => <div key={k}><dt className="text-xs text-slate-500">{k}</dt><dd className="mt-1 text-xl font-bold text-[#002855]">{v}</dd></div>)}</dl>
- {d.cost_visible && d.metrics.pending_cost > 0 && <Notice>El costo conocido está incompleto: {d.metrics.pending_cost} filas aún no tienen valorización de RR. HH.</Notice>}
- <Table headers={['Causa confirmada', 'Horas validadas', ...(d.cost_visible ? ['Costo conocido'] : [])]}>{d.causes.map(a => <tr key={a.id}><td>{a.name}</td><td>{hours(a.hours * 60)}</td>{d.cost_visible && <td>{money(a.cost)}</td>}</tr>)}</Table><h3 className="mt-5 mb-2 font-semibold">Decisiones y acciones</h3>{d.actions.length ? <ul className="grid gap-2 text-sm">{d.actions.map(a => <li key={a.id}><b>{a.area_name}</b> · {a.title} · {a.assigned_name} · {dateLabel(a.due_date)} · {a.state}</li>)}</ul> : <p className="text-sm text-slate-500">Sin acciones registradas. Defina medidas sobre las causas que requieren intervención.</p>}
+ <dl className="my-5 grid gap-4 sm:grid-cols-4">{[['Horas validadas', hours(d.metrics.validated_minutes)], ['Costo aproximado HHEE', d.cost_visible ? money(d.metrics.validated_cost) : 'Acceso restringido'], ['Pendiente de validación', hours(d.metrics.pending_minutes)], ['Excepciones por revisar', d.metrics.pending_exceptions]].map(([k, v]) => <div key={k}><dt className="text-xs text-slate-500">{k}</dt><dd className="mt-1 text-xl font-bold text-[#002855]">{v}</dd></div>)}</dl>
+ {d.cost_visible && d.metrics.pending_cost > 0 && <Notice>El costo aproximado HHEE está incompleto: {d.metrics.pending_cost} filas aún no tienen valorización de RR. HH.</Notice>}
+ <Table headers={['Causa confirmada', 'Horas validadas', ...(d.cost_visible ? ['Costo aproximado HHEE'] : [])]}>{d.causes.map(a => <tr key={a.id}><td>{a.name}</td><td>{hours(a.hours * 60)}</td>{d.cost_visible && <td>{money(a.cost)}</td>}</tr>)}</Table><h3 className="mt-5 mb-2 font-semibold">Decisiones y acciones</h3>{d.actions.length ? <ul className="grid gap-2 text-sm">{d.actions.map(a => <li key={a.id}><b>{a.area_name}</b> · {a.title} · {a.assigned_name} · {dateLabel(a.due_date)} · {a.state}</li>)}</ul> : <p className="text-sm text-slate-500">Sin acciones registradas. Defina medidas sobre las causas que requieren intervención.</p>}
  </Panel>
+ <HourBreakdown data={d}/>
  <EmailComposer key={d.generated_at} data={d} loading={loading}/></>}
  </Shell>;
 }

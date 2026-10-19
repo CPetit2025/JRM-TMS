@@ -35,14 +35,28 @@ async function main(){
  const malformed=[...row];malformed[6]='12abc';await assert.rejects(()=>imp.parseAttendance(file([headers,malformed])),/Número inválido/)
  const missing=headers.filter(h=>h!=='INICIO');await assert.rejects(()=>imp.parseAttendance(file([missing,row])),/faltan columnas/)
  assert.throws(()=>imp.decimal('1,234.56'),/Número inválido/);assert.equal(imp.decimal('1,5'),1.5)
+ const categories=[...headers.filter(h=>h!=='COSTO_PEN'),'HORAS_NORMALES','HORAS_25','HORAS_35','HORAS_100']
+ const categorizedRow=[...row.slice(0,6),...row.slice(7),8,1,0.5,0.5]
+ let categorized=await imp.parseAttendance(file([categories,categorizedRow]));assert.equal(categorized.rows[0].minutes_25,60);assert.equal(categorized.rows[0].minutes_35,30);assert.equal(categorized.rows[0].minutes_100,30);assert.equal(categorized.rows[0].normal_minutes,480);assert.equal(categorized.rows[0].cost,null)
+ const badSum=[...categorizedRow];badSum[11]=1;await assert.rejects(()=>imp.parseAttendance(file([categories,badSum])),/debe sumar/)
+ const missingCat=[...categorizedRow];missingCat[11]='';await assert.rejects(()=>imp.parseAttendance(file([categories,missingCat])),/Complete cada/)
+ const derived=[...categorizedRow];derived[5]='';assert.equal((await imp.parseAttendance(file([categories,derived]))).rows[0].recognized_minutes,120)
+ assert.throws(()=>imp.hourMinutes('0.001'),/precisión/)
+ const areas=[{id:'a1',name:'Distribución',module_enabled:true},{id:'a2',name:'Otra área',module_enabled:false}]
+ const staffHeaders=['CODIGO','NOMBRE','AREA_ID','HORAS_MES','CONCEPTO','MONTO_MENSUAL','COMPUTABLE']
+ const staff=[['T01','Persona de prueba','a1',240,'Básico',2400,'SI'],['T01','Persona de prueba','a1',240,'Asignación',240,'SI'],['T01','Persona de prueba','a1',240,'Movilidad',360,'NO']]
+ const directory=await imp.parseDirectory(file([staffHeaders,...staff]),areas);assert.equal(directory.length,1);assert.equal(directory[0].remuneration_concepts.length,3);assert.equal(directory[0].remuneration_concepts[2].computable,false);assert.equal(directory[0].monthly_hours,240)
+ await assert.rejects(()=>imp.parseDirectory(file([staffHeaders,staff[0],staff[0]]),areas),/duplicado/)
+ const otherArea=[...staff[0]];otherArea[2]='a2';await assert.rejects(()=>imp.parseDirectory(file([staffHeaders,otherArea]),areas),/área habilitada/)
+ const inconsistent=[...staff[1]];inconsistent[3]=220;await assert.rejects(()=>imp.parseDirectory(file([staffHeaders,staff[0],inconsistent]),areas),/coincidir/)
  assert.equal(core.limaDate(new Date('2026-10-19T02:00:00Z')),'2026-10-18')
  assert.equal(core.money(null),'Pendiente');assert.match(core.money(0),/0[.,]00/)
- const data={from:'2026-10-01',to:'2026-10-19',generated_at:'2026-10-19T16:00:00Z',total:1,row_limit:500,cost_visible:true,metrics:{validated_minutes:120,pending_minutes:60,validated_cost:null,pending_cost:1,prior_requests:0,executed_requests:1,pending_exceptions:1,justified_minutes:60,improvable_minutes:60,unassessed_minutes:0},
+ const data={from:'2026-10-01',to:'2026-10-19',generated_at:'2026-10-19T16:00:00Z',total:1,row_limit:500,cost_visible:true,metrics:{normal_minutes:480,minutes_25:60,minutes_35:30,minutes_100:30,unclassified_minutes:0,validated_minutes:120,pending_minutes:60,validated_cost:null,pending_cost:1,prior_requests:0,executed_requests:1,pending_exceptions:1,justified_minutes:60,improvable_minutes:60,unassessed_minutes:0},
  areas:[{name:'Logística',hours:2,cost:null,pending_cost:1,targets_met:1,targets_defined:1}],causes:[{name:'Planificación',hours:2,cost:null}],rows:[{sequence:1,work_date:'2026-10-18',area_name:'Logística',state:'VALIDADA',approval:'APROBADA',activity:'Despacho',reference_code:'OT 12345',planned_minutes:120,approved_minutes:120,actual_minutes:120,validated_minutes:120,result_text:'Completado',assessment:'MEJORABLE',validated_cost:null,pending_cost:1}],actions:Array.from({length:30},(_,i)=>({area_name:'Logística',title:'Mejorar coordinación y disponibilidad de materiales '+i,assigned_name:'Responsable de prueba',due_date:'2026-10-25',state:'ABIERTA',conclusion:null,effective:null}))}
- const email=core.reportEmail(data);assert.match(email.body,/2 h/);assert.match(email.body,/Pendiente/);assert.doesNotMatch(email.body,/cpetit@|salario|remuneración/);assert.ok(email.body.endsWith('Atentamente,'))
- await report.exportReport(data,'excel');const wb=new ExcelJS.Workbook();await wb.xlsx.load(Buffer.from(await downloads.pop().arrayBuffer()));assert.equal(wb.getWorksheet('Solicitudes').getCell('A2').value,'HE-000001');assert.equal(wb.getWorksheet('Resumen').getCell('B10').value,null)
+ const email=core.reportEmail(data);assert.match(email.body,/2 h/);assert.match(email.body,/aproximados/);assert.match(email.body,/25% 1 h/);assert.match(email.body,/Pendiente/);assert.doesNotMatch(email.body,/cpetit@|salario|remuneración/);assert.ok(email.body.endsWith('Atentamente,'))
+ await report.exportReport(data,'excel');const wb=new ExcelJS.Workbook();await wb.xlsx.load(Buffer.from(await downloads.pop().arrayBuffer()));assert.equal(wb.getWorksheet('Solicitudes').getCell('A2').value,'HE-000001');assert.equal(wb.getWorksheet('Resumen').getCell('B10').value,null);assert.equal(wb.getWorksheet('Tipos de hora').getCell('B2').value,8);assert.equal(wb.getWorksheet('Tipos de hora').getCell('B3').value,1);assert.match(wb.getWorksheet('Criterios').getCell('B2').value,/aproximados/)
  await report.exportReport({...data,cost_visible:false},'excel');const privateBook=new ExcelJS.Workbook();await privateBook.xlsx.load(Buffer.from(await downloads.pop().arrayBuffer()));assert.ok(!privateBook.getWorksheet('Solicitudes').getRow(1).values.some(v=>String(v).includes('Costo')))
  await report.exportReport(data,'pdf');assert.ok(pdfs[0].byteLength>3000);assert.match(Buffer.from(pdfs[0]).toString('latin1'),/\/Count [2-9]/)
- console.log('PASS HHEE: Excel XLS/XLSX/1904, fechas Lima, costo pendiente vs cero, privacidad de exportación y PDF multipágina.')
+ console.log('PASS HHEE: Excel XLS/XLSX/1904, categorías, fichas remunerativas, fechas Lima, costos aproximados, privacidad de exportación y PDF multipágina.')
 }
 main().catch(e=>{console.error(e);process.exitCode=1})
