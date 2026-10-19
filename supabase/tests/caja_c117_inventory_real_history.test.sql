@@ -3,6 +3,7 @@
 -- All derived writes roll back at the terminal PASS/FAIL exception.
 BEGIN;
 -- Esperar a un recálculo real en curso (cron o carga) en vez de chocar con él a mitad de la prueba
+SET LOCAL lock_timeout = '60s';
 SELECT pg_advisory_xact_lock(hashtext('inv_rebuild'));
 SET LOCAL statement_timeout='110s';
 DO $test$

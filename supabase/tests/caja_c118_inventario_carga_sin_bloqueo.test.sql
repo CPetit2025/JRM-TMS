@@ -1,8 +1,14 @@
 -- CAJA C118 — El recálculo programado no compite con una carga en preparación: se salta mientras hay una carga reciente
 -- en estado CARGANDO, recalcula cuando ya no la hay, y aplicar sigue funcionando con el bloqueo propio. Se revierte.
 BEGIN;
+-- Límites propios: una prueba cortada por la conexión no deja trabajo pesado corriendo en producción
+SET LOCAL statement_timeout = '100s';
+SET LOCAL lock_timeout = '60s';
 -- Esperar a un recálculo real en curso (cron o carga) en vez de chocar con él a mitad de la prueba
 SELECT pg_advisory_xact_lock(hashtext('inv_rebuild'));
+-- Sin vistas guardadas del modelo real: las lecturas se calculan en vivo sobre los datos de la prueba
+SET LOCAL inv.live = 'on';
+DELETE FROM public.inv_read_cache;
 DO $test$
 DECLARE adm uuid; u uuid; r jsonb; pass int := 0; fails text[] := '{}';
 BEGIN

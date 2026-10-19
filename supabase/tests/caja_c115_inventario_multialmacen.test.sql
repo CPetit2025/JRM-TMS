@@ -3,8 +3,14 @@
 -- inferido y desde la foto de stock, trazabilidad hacia el origen, préstamos de herramientas y permisos.
 -- Usa bodegas y fechas propias (enero 2001) y siempre se revierte.
 BEGIN;
+-- Límites propios: una prueba cortada por la conexión no deja trabajo pesado corriendo en producción
+SET LOCAL statement_timeout = '100s';
+SET LOCAL lock_timeout = '60s';
 -- Esperar a un recálculo real en curso (cron o carga) en vez de chocar con él a mitad de la prueba
 SELECT pg_advisory_xact_lock(hashtext('inv_rebuild'));
+-- Sin vistas guardadas del modelo real: las lecturas se calculan en vivo sobre los datos de la prueba
+SET LOCAL inv.live = 'on';
+DELETE FROM public.inv_read_cache;
 DO $test$
 DECLARE adm uuid; ue uuid; us uuid; ust uuid; r jsonb; pass int := 0; fails text[] := '{}'; v numeric; v2 numeric; t text;
   rows_e jsonb; rows_s jsonb;

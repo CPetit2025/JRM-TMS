@@ -1,8 +1,14 @@
 -- CAJA C119 — Lecturas del inventario desde caché: tras recalcular y preparar la caché, Resumen, Verificación, Catálogos
--- y Stock devuelven lo mismo que el cálculo en vivo; una caché de un recálculo anterior no se usa; con cargas pendientes
--- el control «Modelo recalculado» avisa. Se revierte.
+-- y Stock devuelven lo mismo que el cálculo en vivo; una vista de un recálculo anterior se muestra como pendiente y,
+-- sin vista guardada, se responde «preparando» al instante; con cargas pendientes el control «Modelo recalculado»
+-- avisa. Se revierte.
 BEGIN;
+-- Límites propios: una prueba cortada por la conexión no deja trabajo pesado corriendo en producción
+SET LOCAL statement_timeout = '100s';
+SET LOCAL lock_timeout = '60s';
 SELECT pg_advisory_xact_lock(hashtext('inv_rebuild'));
+SELECT pg_advisory_xact_lock(hashtext('inv_cache'));
+SET LOCAL inv.live = 'on';
 DO $test$
 DECLARE adm uuid; ue uuid; us uuid; r jsonb; pass int := 0; fails text[] := '{}';
 BEGIN
@@ -50,10 +56,20 @@ BEGIN
   IF (SELECT x->>'estado' FROM jsonb_array_elements(r->'checks') x WHERE x->>'id' = 'al_dia') = 'AVISO' AND r ? 'cache'
   THEN pass := pass + 1; ELSE fails := fails || ('T4 pendiente ' || left(r::text, 200)); END IF;
 
-  -- T5: una caché de un recálculo anterior no se usa
+  -- T5: una vista de un recálculo anterior se sigue mostrando, marcada como pendiente (no se calcula en vivo);
+  --     sin vista guardada y sin permiso de cálculo en vivo, la respuesta es «se está preparando»
   UPDATE public.inv_state SET dirty = false, rebuilt_at = rebuilt_at + interval '1 second' WHERE id = 1;
-  IF NOT (public.inv_verify() ? 'cache') AND NOT (public.inv_overview(NULL, NULL) ? 'cache') THEN pass := pass + 1;
-  ELSE fails := fails || 'T5 caché vencida en uso'::text; END IF;
+  r := public.inv_verify();
+  IF r ? 'cache' AND NOT (r->'cache'->>'al_dia')::boolean
+     AND (SELECT x->>'estado' FROM jsonb_array_elements(r->'checks') x WHERE x->>'id' = 'al_dia') = 'AVISO'
+     AND public.inv_overview(NULL, NULL) ? 'cache' THEN
+    DELETE FROM public.inv_read_cache WHERE k = 'overview';
+    PERFORM set_config('inv.live', 'off', true);
+    r := public.inv_overview(NULL, NULL);
+    PERFORM set_config('inv.live', 'on', true);
+    IF (r->>'preparando')::boolean AND NOT (r->>'success')::boolean THEN pass := pass + 1;
+    ELSE fails := fails || ('T5 sin vista ' || r::text); END IF;
+  ELSE fails := fails || 'T5 vista anterior no mostrada'::text; END IF;
 
   -- T6: permisos (solo el servidor prepara la caché; las tablas no son legibles por la web)
   IF NOT has_function_privilege('authenticated', 'public.inv_cache_refresh()', 'EXECUTE')
