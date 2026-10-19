@@ -1,6 +1,8 @@
 -- CAJA C118 — El recálculo programado no compite con una carga en preparación: se salta mientras hay una carga reciente
 -- en estado CARGANDO, recalcula cuando ya no la hay, y aplicar sigue funcionando con el bloqueo propio. Se revierte.
 BEGIN;
+-- Esperar a un recálculo real en curso (cron o carga) en vez de chocar con él a mitad de la prueba
+SELECT pg_advisory_xact_lock(hashtext('inv_rebuild'));
 DO $test$
 DECLARE adm uuid; u uuid; r jsonb; pass int := 0; fails text[] := '{}';
 BEGIN
