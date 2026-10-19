@@ -94,7 +94,7 @@ Al aplicar Entradas/Salidas, los mismos archivos actualizan el modelo APT anteri
 Registro de Servicios (peso APT), Eficiencia de flota, el detalle de guías, los contadores del menú y la IA. Si esa
 actualización falla, el inventario queda cargado y se muestra el aviso.
 
-## APT en tres almacenes y contratos / OT (`20261020210000_inventario_apt_contratos.sql`)
+## APT en tres almacenes y contratos / OT (`20261020230000_inventario_apt_contratos.sql`)
 El módulo mira por defecto el APT con la regla del APT anterior (`apt_almacen`): **647** = 647-04 ALM PT,
 **540** = 540-04 (APT LB y APT.MAT.CONFO), **ST** = ST-VENTAS. El selector «APT 647 · 540 · ST / Todas las bodegas»
 (arriba a la derecha, se recuerda en el navegador) cambia Resumen, Stock, Estadía y Flujo; el modelo FIFO sigue
