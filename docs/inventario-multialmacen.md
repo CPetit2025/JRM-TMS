@@ -12,12 +12,24 @@ recalcular y editar catálogos). El Administrador y el Jefe de Distribución tie
    bodegas, mismas columnas: TIPODOCTO, BODEGA, Numero, Fecha, Producto, GLOSA, Cantidad, UNIDAD, DocRel, NumRel, Lote,
    PesoUnitario, PesoTotalProduccido…). Un mismo libro puede traer ambos: cada fila va al lado que indica el signo de
    Cantidad.
-2. Cada lado **reemplaza** sus movimientos del rango de fechas del archivo (no duplica). Un archivo que parece filtrado
+2. El envío se realiza por bloques de 500 filas, con porcentaje de avance y hasta tres intentos ante una interrupción transitoria. Los bloques confirmados no se vuelven a enviar y los reintentos del mismo bloque no duplican filas ni contadores.
+3. Cada lado **reemplaza** sus movimientos del rango de fechas del archivo (no duplica). Un archivo que parece filtrado
    (trae muchas menos filas que las que ya hay en su rango) se detiene y pide confirmación.
-3. Opcional: subir una **foto de stock** (bodega, producto, lote, saldo y peso) con su fecha de corte. El modelo arranca
+4. Opcional: subir una **foto de stock** (bodega, producto, lote, saldo y peso) con su fecha de corte. El modelo arranca
    el día siguiente: el saldo inicial deja de ser inferido.
-4. Al aplicar se recalcula el modelo en el servidor (`/api/inventario/procesar`, llave de servicio; un año de
-   movimientos ≈ 15 s).
+5. Al aplicar se recalcula el modelo en el servidor (`/api/inventario/procesar`, llave de servicio; el tiempo depende del volumen de movimientos y traspasos).
+
+Si se interrumpe el envío, mantenga abierta la ventana y pulse **Reanudar carga**. Se continúa desde el último bloque
+confirmado; las partes ya aplicadas se conservan y solo se vuelve a intentar lo pendiente. Esta reanudación está
+limitada a la misma ventana y los mismos archivos seleccionados. Si el recálculo falla tras aplicar, el reintento
+no vuelve a importar los movimientos aplicados. Una carga en preparación abandonada por más de un día se limpia
+con la siguiente carga, como antes.
+
+Los catálogos cuentan movimientos mediante agregaciones por dimensión, evitando una lectura completa por cada
+bodega o tipo de documento. La normalización de lotes conserva las reglas originales, con una sola evaluación.
+El recálculo consulta solo las capas dentro de los límites FIFO mediante índices y actualiza las estadísticas
+de las tablas de trabajo. Los movimientos toman su clase del catálogo al enviarse, evitando una reclasificación
+masiva después de importar. Se conservan las fórmulas de cantidad, peso, consumo y origen.
 
 ## Modelo (`supabase/migrations/20261020100000_inventario_multialmacen.sql`)
 | Concepto | Regla |
@@ -46,3 +58,10 @@ recalcular y editar catálogos). El Administrador y el Jefe de Distribución tie
 
 Prueba: `supabase/tests/caja_c115_inventario_multialmacen.test.sql` (C115) y `scripts/test-inventario-parse.cjs`.
 Las pantallas APT anteriores siguen disponibles mientras se migran.
+
+Regresiones de reintentos: `scripts/test-inventario-upload.cjs` y C116. Prueba local con PostgreSQL aislado y
+201.573 movimientos (130.116 salidas + 71.457 entradas): `node scripts/test-inventario-sql.cjs` (requiere Docker).
+
+C115 aísla sus escenarios funcionales dentro de una transacción que siempre se revierte. C117 ejecuta una sola
+reconstrucción del historial real, con presupuesto independiente de 110 s, y comprueba cobertura y conservación
+de cantidades. Así las tres reconstrucciones de C115 no comparten el presupuesto de una carga real.

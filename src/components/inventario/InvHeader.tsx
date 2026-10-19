@@ -24,7 +24,7 @@ export function InvHeader() {
     setBusy(true); setMsg(null)
     try {
       const r = await recalcular()
-      if (!r.ok) setMsg('El recálculo continúa en el servidor y termina solo en unos minutos.')
+      if (r.pending) setMsg('El recálculo continúa en el servidor y termina solo en unos minutos.')
     } catch (e) { setMsg(e instanceof Error ? e.message : 'No se pudo recalcular') } finally { setBusy(false) }
   }
   return (

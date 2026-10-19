@@ -84,3 +84,6 @@ test('hojas que se contienen (ENTRADA TOTAL con todo, SALIDA TOTAL con una parte
   assert.equal(s.sheetName, 'SALIDA TOTAL + ENTRADA TOTAL')
   assert.ok(res.warnings.some(w => /se omitieron 1 fila/.test(w)))
 })
+
+// Import transport regressions run alongside the existing parser check in PR CI.
+require('./test-inventario-upload.cjs')
