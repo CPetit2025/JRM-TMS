@@ -8,6 +8,7 @@ import { ChartCard, EmptyState, ErrorBlock, InlineBar, KpiCard, LoadingBlock } f
 import { DiasPill, Table, td, tdNum, th } from '@/components/inventario/parts'
 import { ALMACEN_LABEL, AlmacenTag, ProductoCell } from '@/components/inventario/ambito'
 import { useInvQuery } from '@/components/inventario/useInvQuery'
+import { Kardex } from '@/components/inventario/Kardex'
 import { invApi } from '@/lib/inventario/api'
 import { fmtN, fmtN1, fmtPeso, fmtQty } from '@/lib/inventario/format'
 import type { InvContrato, InvContratoFila } from '@/lib/inventario/types'
@@ -141,6 +142,8 @@ function exportFicha(d: InvContrato) {
 function Ficha({ q, onOpen }: { q: string; onOpen: (q: string) => void }) {
   const r = useInvQuery(`contrato|${q}`, () => invApi.contrato(q))
   const [soloStock, setSoloStock] = useState(false)
+  const [kardexId, setKardexId] = useState('')
+  const verKardex = (p: string) => { setKardexId(p); document.getElementById('kardex')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
   if (r.loading) return <LoadingBlock label={`Buscando la OT ${q}…`} />
   if (r.error) return <ErrorBlock message={r.error} onRetry={r.reload} />
   const d = r.data
@@ -160,7 +163,9 @@ function Ficha({ q, onOpen }: { q: string; onOpen: (q: string) => void }) {
         <p className="mt-1 text-xs text-slate-500">{fmtN(s.productos)} ID · {fmtN(s.lotes)} lotes · {fmtN(s.guias)} guías · corte {fmtDate(d.corte)}</p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Link href={`/apt/trazabilidad?q=${encodeURIComponent(d.ot)}`} className="flex min-h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-[#002855]">Kardex / trazabilidad</Link>
+        <button type="button" onClick={() => verKardex('')} className="flex min-h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-[#002855]">Ingresos, salidas y saldo</button>
+        <Link href={`/apt/estadia?ver=producto&ot=${encodeURIComponent(d.ot)}`} className="flex min-h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-[#002855]">Estadía por ID</Link>
+        <Link href={`/apt/trazabilidad?q=${encodeURIComponent(d.ot)}`} className="flex min-h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-[#002855]">Trazabilidad</Link>
         <button type="button" onClick={() => exportFicha(d)} className="flex min-h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-[#002855]"><Download className="h-4 w-4" /> Excel</button>
       </div>
     </div>
@@ -179,7 +184,8 @@ function Ficha({ q, onOpen }: { q: string; onOpen: (q: string) => void }) {
         <th className={`${th} text-right`}>Otras salidas</th><th className={`${th} text-right`}>647</th><th className={`${th} text-right`}>540</th><th className={`${th} text-right`}>ST</th><th className={`${th} text-right`}>Stock</th>
         <th className={th}>Último ingreso</th><th className={th}>Última salida</th><th className={th}>Días en APT</th></tr>}>
         {productos.map(p => <tr key={p.producto} className="hover:bg-slate-50">
-          <td className={td}><ProductoCell producto={p.producto} glosa={p.glosa} /></td>
+          <td className={td}><ProductoCell producto={p.producto} glosa={p.glosa} />
+            <button type="button" onClick={() => verKardex(p.producto)} className="text-[11px] font-semibold text-[#002855] underline decoration-dotted">Kardex del ID</button></td>
           <td className={td}><p className="max-w-40 text-[11px] text-slate-600">{p.lotes.join(', ')}</p></td>
           <td className={tdNum}>{fmtQty(p.ingresado)} <span className="text-slate-400">{p.unidad ?? ''}</span>{p.producido > 0 && p.producido !== p.ingresado && <p className="text-[10px] text-slate-500">{fmtQty(p.producido)} producido</p>}</td>
           <td className={tdNum}>{fmtQty(p.despachado)}<p className="text-[10px] text-slate-500">{fmtN(p.guias)} guías</p></td>
@@ -192,6 +198,7 @@ function Ficha({ q, onOpen }: { q: string; onOpen: (q: string) => void }) {
         </tr>)}
       </Table>
     </ChartCard>
+    <div id="kardex" className="scroll-mt-4"><Kardex ot={d.ot} productos={d.productos ?? []} producto={kardexId} onProducto={setKardexId} /></div>
     <ChartCard title="Guías de despacho" subtitle={`${fmtN(d.guias?.length ?? 0)} guías · viaje del TMS cuando la guía está registrada en Documentos`}>
       <Table empty={!d.guias?.length} head={<tr><th className={th}>Guía</th><th className={th}>Fecha</th><th className={th}>Almacén</th><th className={th}>Cliente</th><th className={`${th} text-right`}>Peso</th>
         <th className={th}>Entrega comprometida</th><th className={th}>Cumplimiento</th><th className={th}>Viaje TMS</th></tr>}>
