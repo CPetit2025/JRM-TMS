@@ -179,7 +179,7 @@ UPDATE public.hhee_settings SET approval_label='Jefe del área';
 
 CREATE FUNCTION public.hhee_needs_exception(p_request uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT EXISTS(SELECT 1 FROM public.hhee_requests r WHERE r.id=p_request AND (
+ SELECT EXISTS(SELECT 1 FROM public.hhee_requests r WHERE r.id=p_request AND r.state IN('SOLICITADA','EJECUTADA','VALIDADA') AND (
    r.emergency OR (r.approval='APROBADA' AND r.approved_by=r.created_by) OR
    (r.state IN('EJECUTADA','VALIDADA') AND EXISTS(SELECT 1 FROM public.hhee_lines z WHERE z.request_id=r.id AND z.actual_minutes>0) AND (r.approval<>'APROBADA' OR EXISTS(
     SELECT 1 FROM public.hhee_lines l WHERE l.request_id=r.id AND l.actual_minutes>0 AND
@@ -555,7 +555,7 @@ BEGIN
   b.approval='APROBADA' AND b.approved_at<=l.first_actual AND NOT EXISTS(SELECT 1 FROM public.hhee_lines z WHERE z.request_id=b.id AND z.actual_minutes>COALESCE(z.approved_minutes,0)) prior_approval
  FROM base b LEFT JOIN LATERAL(SELECT sum(planned_minutes) planned,sum(approved_minutes) approved,sum(actual_minutes) actual,
    sum(validated_minutes) validated,sum(validated_cost) cost,sum(estimated_cost) estimated,count(*) FILTER(WHERE validated_minutes IS NOT NULL AND validated_cost IS NULL) pending_cost,
-   count(*) workers,min(actual_start) first_actual FROM public.hhee_lines WHERE request_id=b.id) l ON true
+   count(*) workers,min(actual_start) FILTER(WHERE actual_minutes>0) first_actual FROM public.hhee_lines WHERE request_id=b.id) l ON true
  ), metrics AS (
  SELECT count(*) total_requests,COALESCE(sum(validated_minutes) FILTER(WHERE state='VALIDADA'),0) validated_minutes,
   COALESCE(sum(actual_minutes) FILTER(WHERE state='EJECUTADA'),0) pending_minutes,

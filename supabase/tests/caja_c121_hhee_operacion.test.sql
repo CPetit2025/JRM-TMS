@@ -3,7 +3,7 @@ BEGIN;
 SET LOCAL statement_timeout='45s';
 DO $test$
 DECLARE actor uuid; reviewer uuid; admin_role uuid; site uuid:=gen_random_uuid(); area uuid:=gen_random_uuid(); person uuid:=gen_random_uuid(); cause uuid;
- ids uuid[]:=ARRAY[gen_random_uuid(),gen_random_uuid(),gen_random_uuid()]; rid uuid; lid uuid; seq bigint; v int; i int; result jsonb; excel jsonb; row_data jsonb; aid uuid;
+ ids uuid[]:=ARRAY[gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),gen_random_uuid()]; rid uuid; lid uuid; seq bigint; v int; i int; result jsonb; excel jsonb; row_data jsonb; aid uuid;
  workdate text:=((now() AT TIME ZONE 'America/Lima')::date-1)::text; person_code text:=upper('C121-'||person::text);
 BEGIN
  SELECT id INTO admin_role FROM public.roles WHERE name='Administrador' LIMIT 1;
@@ -18,15 +18,17 @@ BEGIN
  INSERT INTO public.hhee_people(id,code,name,area_id) VALUES(person,person_code,'C121 trabajador',area);
  SELECT id INTO cause FROM public.hhee_causes WHERE active LIMIT 1;
  UPDATE public.hhee_settings SET recurrence_days=28,recurrence_events=2 WHERE id=1;
- FOR i IN 1..3 LOOP
+ FOR i IN 1..4 LOOP
   rid:=ids[i];
   result:=public.hhee_mutate(jsonb_build_object('action','save_request','operation_id',gen_random_uuid(),'id',rid,'area_id',area,'cause_id',cause,
-   'work_date',workdate,'activity','C121 trabajo previsto','justification','Necesidad operativa y justificación de prueba','alternatives','Alternativas de coordinación evaluadas','expected_result','Resultado esperado de prueba',
+   'work_date',workdate,'activity','C121 trabajo previsto','justification','Necesidad operativa y justificación de prueba','alternatives','Alternativas de coordinación evaluadas','expected_result','Resultado esperado de prueba','emergency',i=4,'emergency_reason',CASE WHEN i=4 THEN 'Necesidad excepcional que se cancelará' END,
    'lines',jsonb_build_array(jsonb_build_object('person_id',person,'planned_start',workdate||'T18:00','planned_end',workdate||'T20:00','planned_break',0))));
   IF NOT (result->>'success')::boolean THEN RAISE EXCEPTION 'CAJA C121 FAIL: creación %',result; END IF;
   result:=public.hhee_mutate(jsonb_build_object('action','submit','operation_id',gen_random_uuid(),'id',rid,'version',1));
   IF NOT (result->>'success')::boolean THEN RAISE EXCEPTION 'CAJA C121 FAIL: presentación %',result; END IF;
  END LOOP;
+ result:=public.hhee_mutate(jsonb_build_object('action','cancel','operation_id',gen_random_uuid(),'id',ids[4],'version',2,'reason','Se canceló el trabajo antes de ejecutar horas'));
+ IF NOT (result->>'success')::boolean OR public.hhee_needs_exception(ids[4]) THEN RAISE EXCEPTION 'CAJA C121 FAIL: cancelada genera revisión gerencial'; END IF;
  SELECT id INTO lid FROM public.hhee_lines WHERE request_id=ids[1];
  result:=public.hhee_mutate(jsonb_build_object('action','decide','operation_id',gen_random_uuid(),'id',ids[1],'version',2,'decision','APROBADA','reason','Aprobación propia no permitida','lines',jsonb_build_array(jsonb_build_object('id',lid,'approved_minutes',120))));
  IF (result->>'success')::boolean THEN RAISE EXCEPTION 'CAJA C121 FAIL: autoaprobación sin excepción'; END IF;
@@ -53,6 +55,12 @@ BEGIN
   END IF;
   result:=public.hhee_attendance(excel,true);
   IF NOT COALESCE((result->>'applied')::boolean,false) THEN RAISE EXCEPTION 'CAJA C121 FAIL: importación %: %',i,result; END IF;
+  IF i=1 THEN
+   INSERT INTO public.hhee_people(code,name,area_id) VALUES('C121-ABS-'||person::text,'C121 trabajador sin HHEE',area) RETURNING id INTO lid;
+   INSERT INTO public.hhee_lines(request_id,person_id,person_name,person_code,planned_start,planned_end,planned_minutes,approved_minutes,actual_start,actual_end,actual_minutes,reported_minutes,reported_cost)
+   VALUES(rid,lid,'C121 trabajador sin HHEE','C121-ABS-'||person::text,(workdate||'T18:00-05:00')::timestamptz,(workdate||'T19:00-05:00')::timestamptz,60,0,
+   (workdate||'T16:00-05:00')::timestamptz,(workdate||'T16:00-05:00')::timestamptz,0,0,0);
+  END IF;
   SELECT version INTO v FROM public.hhee_requests WHERE id=rid;
   result:=public.hhee_mutate(jsonb_build_object('action','validate','operation_id',gen_random_uuid(),'id',rid,'version',v,'reason','Asistencia y resultado contrastados con RRHH','confirmed_cause_id',cause,'assessment','JUSTIFICADA'));
   IF NOT (result->>'success')::boolean THEN RAISE EXCEPTION 'CAJA C121 FAIL: validación %: %',i,result; END IF;
