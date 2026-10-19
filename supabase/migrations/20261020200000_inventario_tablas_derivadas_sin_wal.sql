@@ -6,6 +6,7 @@
 -- registro de transacciones (WAL) duplicaba la escritura y el recálculo superaba su presupuesto de tiempo (C117).
 -- Como tablas UNLOGGED no pasan por el WAL. Son reconstruibles: si tras un reinicio de la base quedan vacías,
 -- el recálculo programado las rehace (abajo) y mientras tanto las lecturas responden «se está preparando».
+-- Además, el recálculo vuelve a actualizar las estadísticas de inv_movements (no de la vista).
 BEGIN;
 SET LOCAL lock_timeout = '60s';
 
@@ -14,6 +15,16 @@ ALTER TABLE public.inv_transfer_links SET UNLOGGED;
 ALTER TABLE public.inv_layers SET UNLOGGED;
 ALTER TABLE public.inv_stock_cache SET UNLOGGED;
 ALTER TABLE public.inv_read_cache SET UNLOGGED;
+
+-- El recálculo lee los movimientos por la vista inv_movements_v (20261020190000), pero sus estadísticas deben
+-- actualizarse sobre la tabla: ANALYZE de una vista no hace nada
+DO $migration$
+DECLARE src text := pg_get_functiondef('public.inv_rebuild()'::regprocedure);
+BEGIN
+  IF position('ANALYZE public.inv_movements_v;' IN src) > 0 THEN
+    EXECUTE replace(src, 'ANALYZE public.inv_movements_v;', 'ANALYZE public.inv_movements;');
+  END IF;
+END $migration$;
 
 -- Recálculo programado: también rehace el modelo si quedó vacío (p. ej. tras un reinicio) habiendo movimientos
 CREATE OR REPLACE FUNCTION public.inv_rebuild_if_dirty()
