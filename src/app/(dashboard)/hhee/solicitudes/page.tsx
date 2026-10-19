@@ -1,2 +1,2 @@
-import { Requests } from '@/components/hhee/requests';
-export default function Page() { return <Requests />; }
+import { Solicitudes } from '@/components/hhee/flujo/solicitudes';
+export default function Page() { return <Solicitudes />; }

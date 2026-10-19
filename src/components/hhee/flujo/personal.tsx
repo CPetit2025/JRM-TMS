@@ -1,0 +1,264 @@
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
+import { Download, FileUp, Plus, Search, Trash2 } from 'lucide-react'
+import * as XLSX from 'xlsx'
+import { Card, Field, Modal, btn2Cls, btnCls, inputCls, useFlow } from './context'
+import { RECARGOS, baseRate, call, fmtDate, fmtDateTime, fmtMoney, fmtNum, today, type Concept, type Person } from '@/lib/hhee/flujo'
+
+// Personal: ficha de cada trabajador con su jornada de referencia y remuneración; calcula la hora normal y las
+// tarifas de HHEE al 25 %, 35 % y 100 %. Sin divisor confirmado o sin conceptos computables: «costo pendiente».
+export function Personal() {
+  const { ctx, reload } = useFlow()
+  const [q, setQ] = useState('')
+  const [estado, setEstado] = useState<'activos' | 'todos' | 'pendientes'>('activos')
+  const [edit, setEdit] = useState<Person | 'new' | null>(null)
+  const [history, setHistory] = useState<Person | null>(null)
+  const [importing, setImporting] = useState(false)
+  const people = useMemo(() => ctx.people.filter(p => (estado === 'todos' || (estado === 'activos' ? p.active : p.active && !p.rate_ready))
+    && (!q.trim() || `${p.code} ${p.name} ${p.document_number ?? ''} ${p.position ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()))), [ctx.people, q, estado])
+  const pendientes = ctx.people.filter(p => p.active && !p.rate_ready).length
+  const showPay = ctx.caps.remuneration
+  return (
+    <div className="grid gap-4">
+      <Card title="Personal" subtitle={`${ctx.people.filter(p => p.active).length} trabajadores activos${pendientes ? ` · ${pendientes} con costo pendiente (completar ficha)` : ''}`}
+        actions={ctx.caps.people && <>
+          <button type="button" className={btn2Cls} onClick={() => setImporting(true)}><FileUp className="h-4 w-4" /> Importar Excel</button>
+          <button type="button" className={btnCls} onClick={() => setEdit('new')}><Plus className="h-4 w-4" /> Registrar trabajador</button>
+        </>}>
+        <div className="mb-3 flex flex-wrap items-end gap-3">
+          <Field label="Buscar" className="min-w-56 flex-1"><span className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-2"><Search className="h-4 w-4 text-slate-400" />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Código, nombre, documento o cargo" className="min-h-9 w-full text-sm outline-none" /></span></Field>
+          <Field label="Mostrar"><select className={inputCls} value={estado} onChange={e => setEstado(e.target.value as typeof estado)}>
+            <option value="activos">Activos</option><option value="pendientes">Con costo pendiente</option><option value="todos">Todos (incluye inactivos)</option></select></Field>
+        </div>
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full min-w-[760px] text-left text-sm">
+            <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr>
+              <th className="p-2.5">Código</th><th className="p-2.5">Trabajador</th><th className="p-2.5">Cargo / área</th><th className="p-2.5">Jornada</th>
+              {showPay && <><th className="p-2.5 text-right">Hora normal</th>{RECARGOS.map(r => <th key={r.key} className="p-2.5 text-right">HHEE {r.label}</th>)}</>}
+              <th className="p-2.5">Estado</th><th className="p-2.5" />
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {people.map(p => <tr key={p.id} className={p.active ? 'hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}>
+                <td className="p-2.5 font-mono text-xs">{p.code}</td>
+                <td className="p-2.5"><p className="font-semibold text-slate-800">{p.name}</p><p className="text-[11px] text-slate-500">{p.document_number ? `Doc. ${p.document_number}` : 'Sin documento'}</p></td>
+                <td className="p-2.5"><p>{p.position || '—'}</p><p className="text-[11px] text-slate-500">{p.area_name}</p></td>
+                <td className="p-2.5 text-xs">{fmtNum(p.daily_hours, 2)} h/día · divisor {fmtNum(p.monthly_hours, 2)} h<p className={p.divisor_confirmed ? 'text-emerald-700' : 'font-semibold text-amber-700'}>{p.divisor_confirmed ? 'Divisor confirmado' : 'Divisor sin confirmar'}</p></td>
+                {showPay && <><td className="p-2.5 text-right tabular-nums">{p.rate_ready ? fmtMoney(p.base_hour_cost) : '—'}</td>
+                  {RECARGOS.map(r => <td key={r.key} className="p-2.5 text-right tabular-nums">{p.rate_ready && p.base_hour_cost != null ? fmtMoney(p.base_hour_cost * r.factor) : '—'}</td>)}</>}
+                <td className="p-2.5">{!p.active ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold">Inactivo</span>
+                  : p.rate_ready ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">Ficha completa</span>
+                  : <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900">Costo pendiente: completar ficha</span>}</td>
+                <td className="p-2.5 text-right"><div className="flex justify-end gap-1">
+                  {ctx.caps.people && <button type="button" className="rounded-md px-2 py-1 text-xs font-semibold text-[#002855] underline" onClick={() => setEdit(p)}>Editar ficha</button>}
+                  {showPay && <button type="button" className="rounded-md px-2 py-1 text-xs font-semibold text-[#002855] underline" onClick={() => setHistory(p)}>Historial</button>}
+                </div></td>
+              </tr>)}
+            </tbody>
+          </table>
+          {!people.length && <p className="p-6 text-center text-sm text-slate-400">Sin trabajadores con ese filtro.</p>}
+        </div>
+        {!showPay && <p className="mt-3 text-xs text-slate-500">La remuneración y las tarifas solo las ve quien tiene el permiso de costos o administra el personal.</p>}
+      </Card>
+      {edit && <PersonForm person={edit === 'new' ? null : edit} onClose={() => setEdit(null)} onSaved={async () => { setEdit(null); await reload() }} />}
+      {history && <HistoryModal person={history} onClose={() => setHistory(null)} />}
+      {importing && <ImportModal onClose={() => setImporting(false)} onDone={reload} />}
+    </div>
+  )
+}
+
+const DEFAULT_CONCEPTS: Concept[] = [{ name: 'Básico', amount: 0, computable: true }, { name: 'Asignación familiar', amount: 0, computable: true }]
+
+function PersonForm({ person, onClose, onSaved }: { person: Person | null; onClose: () => void; onSaved: () => Promise<void> }) {
+  const { ctx } = useFlow()
+  const areas = ctx.areas
+  const [f, setF] = useState({
+    code: person?.code ?? '', name: person?.name ?? '', document_number: person?.document_number ?? '', position: person?.position ?? '',
+    area_id: person?.area_id ?? areas[0]?.id ?? '', active: person?.active ?? true, daily_hours: String(person?.daily_hours ?? 8),
+    monthly_hours: String(person?.monthly_hours ?? 240), divisor_confirmed: person?.divisor_confirmed ?? false,
+    effective_from: person?.effective_from ?? today(),
+  })
+  const [concepts, setConcepts] = useState<Array<{ name: string; amount: string; computable: boolean }>>(
+    (person?.remuneration_concepts?.length ? person.remuneration_concepts : DEFAULT_CONCEPTS).map(c => ({ name: c.name, amount: c.amount ? String(c.amount) : '', computable: c.computable })))
+  const [sim, setSim] = useState({ m25: '2', m35: '0', m100: '0' })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const parsed: Concept[] = concepts.filter(c => c.name.trim()).map(c => ({ name: c.name.trim(), amount: Math.round(Number(c.amount || 0) * 100) / 100, computable: c.computable }))
+  const divisor = Number(f.monthly_hours)
+  const base = parsed.filter(c => c.computable).reduce((t, c) => t + c.amount, 0)
+  const rate = baseRate(parsed, divisor)
+  const usable = rate != null && rate > 0 && f.divisor_confirmed
+  const simCost = usable ? rate * (Number(sim.m25 || 0) * 1.25 + Number(sim.m35 || 0) * 1.35 + Number(sim.m100 || 0) * 2) : null
+  const set = (k: keyof typeof f, v: string | boolean) => setF(x => ({ ...x, [k]: v }))
+  const save = async () => {
+    setBusy(true); setError('')
+    try {
+      await call('hhee_flow_person_save', { p: { id: person?.id, ...f, code: f.code.trim(), daily_hours: Number(f.daily_hours), monthly_hours: divisor, remuneration_concepts: parsed } })
+      await onSaved()
+    } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar la ficha') } finally { setBusy(false) }
+  }
+  return (
+    <Modal title={person ? `Ficha de ${person.name}` : 'Registrar trabajador'} onClose={onClose} wide>
+      <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
+        <div className="grid gap-4">
+          <Card title="Identificación">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Código *"><input className={inputCls} value={f.code} onChange={e => set('code', e.target.value.toUpperCase())} maxLength={50} /></Field>
+              <Field label="Documento de identidad"><input className={inputCls} value={f.document_number} onChange={e => set('document_number', e.target.value)} maxLength={20} inputMode="numeric" /></Field>
+              <Field label="Nombres y apellidos *" className="sm:col-span-2"><input className={inputCls} value={f.name} onChange={e => set('name', e.target.value)} maxLength={160} /></Field>
+              <Field label="Cargo"><input className={inputCls} value={f.position} onChange={e => set('position', e.target.value)} maxLength={100} placeholder="Ej. Operario de despacho" /></Field>
+              <Field label="Área *"><select className={inputCls} value={f.area_id} onChange={e => set('area_id', e.target.value)}>{areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></Field>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.active} onChange={e => set('active', e.target.checked)} className="h-4 w-4" /> Activo (aparece en las solicitudes)</label>
+            </div>
+          </Card>
+          <Card title="Jornada de referencia" subtitle="El divisor mensual convierte la remuneración mensual en tarifa por hora">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Horas diarias"><input className={inputCls} type="number" min={1} max={24} step={0.5} value={f.daily_hours} onChange={e => set('daily_hours', e.target.value)} /></Field>
+              <Field label="Divisor mensual (horas)" hint="Referencia usual: 240 (30 días × 8 h)"><input className={inputCls} type="number" min={1} max={744} step={0.5} value={f.monthly_hours} onChange={e => set('monthly_hours', e.target.value)} /></Field>
+              <label className="flex items-start gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={f.divisor_confirmed} onChange={e => set('divisor_confirmed', e.target.checked)} className="mt-0.5 h-4 w-4" />
+                <span>Confirmo el divisor mensual aplicable a este trabajador. <span className="text-slate-500">Sin confirmar no se calcula el costo.</span></span></label>
+            </div>
+          </Card>
+          <Card title="Remuneración mensual" subtitle="Marque como computables los conceptos que integran la base para las horas extras"
+            actions={<button type="button" className={btn2Cls} onClick={() => setConcepts(c => [...c, { name: '', amount: '', computable: true }])} disabled={concepts.length >= 20}><Plus className="h-4 w-4" /> Concepto</button>}>
+            <div className="grid gap-2">
+              {concepts.map((c, i) => <div key={i} className="grid grid-cols-[1fr_130px_auto_auto] items-center gap-2">
+                <input aria-label={`Concepto ${i + 1}`} className={inputCls} value={c.name} placeholder="Concepto" onChange={e => setConcepts(x => x.map((y, j) => j === i ? { ...y, name: e.target.value } : y))} />
+                <input aria-label={`Importe mensual ${i + 1}`} className={`${inputCls} text-right`} type="number" min={0} step={0.01} value={c.amount} placeholder="0.00" onChange={e => setConcepts(x => x.map((y, j) => j === i ? { ...y, amount: e.target.value } : y))} />
+                <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={c.computable} onChange={e => setConcepts(x => x.map((y, j) => j === i ? { ...y, computable: e.target.checked } : y))} className="h-4 w-4" /> Computable</label>
+                <button type="button" aria-label={`Quitar concepto ${i + 1}`} onClick={() => setConcepts(x => x.filter((_, j) => j !== i))} className="rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-red-700"><Trash2 className="h-4 w-4" /></button>
+              </div>)}
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <Field label="Vigente desde" hint="Los cambios posteriores no alteran las autorizaciones ya aprobadas"><input className={inputCls} type="date" value={f.effective_from} onChange={e => set('effective_from', e.target.value)} /></Field>
+            </div>
+          </Card>
+        </div>
+        <div className="grid content-start gap-4">
+          <Card title="Resultado automático">
+            <dl className="grid gap-2 text-sm">
+              <div className="flex justify-between"><dt className="text-slate-500">Base computable mensual</dt><dd className="font-semibold tabular-nums">{fmtMoney(base)}</dd></div>
+              <div className="flex justify-between"><dt className="text-slate-500">Divisor mensual</dt><dd className="tabular-nums">{fmtNum(divisor, 2)} h</dd></div>
+              <div className="flex justify-between border-t border-slate-100 pt-2"><dt className="font-semibold">Hora normal</dt><dd className="font-bold tabular-nums text-[#002855]">{rate != null ? fmtMoney(rate) : '—'}</dd></div>
+              {RECARGOS.map(r => <div key={r.key} className="flex justify-between"><dt className="text-slate-500">HHEE al {r.label}</dt><dd className="font-semibold tabular-nums">{rate != null ? fmtMoney(rate * r.factor) : '—'}</dd></div>)}
+            </dl>
+            {!usable && <p className="mt-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">{rate == null ? 'Ingrese al menos un concepto computable con importe.' : 'Confirme el divisor mensual para usar estas tarifas.'} Mientras tanto, las solicitudes mostrarán «Costo pendiente: completar ficha».</p>}
+          </Card>
+          <Card title="Simulador" subtitle="Costo aproximado de una jornada de horas extras">
+            <div className="grid grid-cols-3 gap-2">
+              {([['m25', '25 %'], ['m35', '35 %'], ['m100', '100 %']] as const).map(([k, l]) => <Field key={k} label={`Horas ${l}`}>
+                <input className={`${inputCls} text-right`} type="number" min={0} step={0.5} value={sim[k]} onChange={e => setSim(s => ({ ...s, [k]: e.target.value }))} /></Field>)}
+            </div>
+            <p className="mt-3 text-sm">Costo aproximado: <strong className="tabular-nums text-[#002855]">{simCost != null ? fmtMoney(Math.round(simCost * 100) / 100) : 'Costo pendiente'}</strong></p>
+          </Card>
+        </div>
+      </div>
+      {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      <div className="flex flex-wrap justify-end gap-2">
+        <button type="button" className={btn2Cls} onClick={onClose}>Cancelar</button>
+        <button type="button" className={btnCls} disabled={busy || !f.code.trim() || f.name.trim().length < 3 || !f.area_id} onClick={() => void save()}>{busy ? 'Guardando…' : 'Guardar ficha de personal'}</button>
+      </div>
+    </Modal>
+  )
+}
+
+function HistoryModal({ person, onClose }: { person: Person; onClose: () => void }) {
+  const [rows, setRows] = useState<Array<{ recorded_at: string; recorded_by: string; effective_from: string | null; monthly_hours: number; daily_hours: number
+    divisor_confirmed: boolean; remuneration_concepts: Concept[]; base_hour_cost: number | null }> | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let alive = true
+    call<{ rows: NonNullable<typeof rows> }>('hhee_flow_person_history', { p_person: person.id })
+      .then(r => { if (alive) setRows(r.rows) }).catch(e => { if (alive) setError(e instanceof Error ? e.message : 'No se pudo cargar') })
+    return () => { alive = false }
+  }, [person.id])
+  return (
+    <Modal title={`Historial remunerativo · ${person.name}`} onClose={onClose}>
+      {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : !rows ? <p className="text-sm text-slate-500">Cargando…</p> : !rows.length ? <p className="text-sm text-slate-500">Sin cambios registrados.</p>
+        : <div className="grid gap-2">{rows.map((h, i) => <div key={i} className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
+          <p className="font-semibold text-slate-800">{fmtDateTime(h.recorded_at)} · {h.recorded_by}</p>
+          <p className="text-xs text-slate-500">Vigente desde {fmtDate(h.effective_from)} · divisor {fmtNum(h.monthly_hours, 2)} h {h.divisor_confirmed ? '(confirmado)' : '(sin confirmar)'} · hora normal {fmtMoney(h.base_hour_cost)}</p>
+          <p className="mt-1 text-xs">{h.remuneration_concepts.map(c => `${c.name}: ${fmtMoney(c.amount)}${c.computable ? '' : ' (no computable)'}`).join(' · ') || 'Sin conceptos'}</p>
+        </div>)}</div>}
+    </Modal>
+  )
+}
+
+// Importación por Excel: una fila por trabajador; el código identifica a quien ya existe (se actualiza)
+const TEMPLATE_HEADERS = ['Código', 'Nombres y apellidos', 'Documento', 'Cargo', 'Área', 'Horas diarias', 'Divisor mensual', 'Divisor confirmado (SI/NO)',
+  'Vigente desde (AAAA-MM-DD)', 'Básico', 'Asignación familiar', 'Otros computables', 'No computables', 'Activo (SI/NO)']
+function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => Promise<void> }) {
+  const { ctx } = useFlow()
+  const [rows, setRows] = useState<Array<Record<string, unknown>>>([])
+  const [problems, setProblems] = useState<string[]>([])
+  const [result, setResult] = useState<{ saved: number; total: number; rows: Array<{ row: number; code: string; ok: boolean; updated: boolean; error: string | null }> } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const template = () => {
+    const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ['T001', 'Juan Pérez Rojas', '70123456', 'Operario de despacho', ctx.areas[0]?.name ?? 'Distribución', 8, 240, 'SI', today(), 1500, 113, 0, 0, 'SI']])
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Personal'); XLSX.writeFile(wb, 'plantilla-personal-hhee.xlsx')
+  }
+  const yes = (v: unknown, dflt: boolean) => (v == null || v === '' ? dflt : /^(si|sí|s|1|true|x)$/i.test(String(v).trim()))
+  const num = (v: unknown) => (v == null || v === '' ? 0 : Number(String(v).replace(',', '.')))
+  const read = async (file: File) => {
+    setResult(null); setError('')
+    const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true })
+    const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: '' })
+    const issues: string[] = []
+    const out = data.map((r, i) => {
+      const area = ctx.areas.find(a => a.name.toLowerCase() === String(r['Área'] ?? '').trim().toLowerCase()) ?? (ctx.areas.length === 1 ? ctx.areas[0] : undefined)
+      if (!area) issues.push(`Fila ${i + 2}: área «${r['Área']}» no encontrada`)
+      const vig = r['Vigente desde (AAAA-MM-DD)']
+      const concepts: Concept[] = [['Básico', true], ['Asignación familiar', true], ['Otros computables', true], ['No computables', false]]
+        .map(([k, comp]) => ({ name: String(k), amount: Math.round(num(r[String(k)]) * 100) / 100, computable: Boolean(comp) })).filter(c => c.amount > 0)
+      return { code: String(r['Código'] ?? '').trim(), name: String(r['Nombres y apellidos'] ?? '').trim(), document_number: String(r['Documento'] ?? '').trim(),
+        position: String(r['Cargo'] ?? '').trim(), area_id: area?.id, daily_hours: num(r['Horas diarias']) || 8, monthly_hours: num(r['Divisor mensual']) || 240,
+        divisor_confirmed: yes(r['Divisor confirmado (SI/NO)'], false), active: yes(r['Activo (SI/NO)'], true),
+        effective_from: vig instanceof Date ? vig.toISOString().slice(0, 10) : String(vig || '').slice(0, 10) || null, remuneration_concepts: concepts }
+    })
+    // Duplicados dentro del archivo
+    const seen = new Map<string, number>()
+    out.forEach((r, i) => { const k = r.code.toUpperCase(); if (k && seen.has(k)) issues.push(`Fila ${i + 2}: código ${r.code} repetido (fila ${seen.get(k)! + 2})`); seen.set(k, i) })
+    const docs = new Map<string, number>()
+    out.forEach((r, i) => { if (r.document_number && docs.has(r.document_number)) issues.push(`Fila ${i + 2}: documento ${r.document_number} repetido`); if (r.document_number) docs.set(r.document_number, i) })
+    if (out.length > 500) issues.push('Máximo 500 filas por archivo')
+    setRows(out); setProblems(issues)
+  }
+  const send = async () => {
+    setBusy(true); setError('')
+    try { const r = await call<NonNullable<typeof result>>('hhee_flow_people_import', { p_rows: rows }); setResult(r); await onDone() }
+    catch (e) { setError(e instanceof Error ? e.message : 'No se pudo importar') } finally { setBusy(false) }
+  }
+  const existing = new Set(ctx.people.map(p => p.code))
+  return (
+    <Modal title="Importar personal desde Excel" onClose={onClose} wide>
+      <Card title="1. Descargue la plantilla y complétela" subtitle="Una fila por trabajador. Si el código ya existe, se actualiza su ficha (y se guarda en el historial si cambia la remuneración).">
+        <button type="button" className={btn2Cls} onClick={template}><Download className="h-4 w-4" /> Plantilla Excel</button>
+      </Card>
+      <Card title="2. Suba el archivo">
+        <input type="file" accept=".xlsx,.xls,.csv" onChange={e => { const file = e.target.files?.[0]; if (file) void read(file) }} className="text-sm" />
+        {rows.length > 0 && <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full min-w-[640px] text-left text-xs">
+            <thead className="bg-slate-50 uppercase text-slate-500"><tr><th className="p-2">Fila</th><th className="p-2">Código</th><th className="p-2">Nombre</th><th className="p-2">Documento</th><th className="p-2">Divisor</th><th className="p-2 text-right">Base computable</th><th className="p-2">Acción</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{rows.slice(0, 200).map((r, i) => {
+              const res = result?.rows[i]
+              const concepts = r.remuneration_concepts as Concept[]
+              return <tr key={i}><td className="p-2">{i + 2}</td><td className="p-2 font-mono">{String(r.code)}</td><td className="p-2">{String(r.name)}</td><td className="p-2">{String(r.document_number || '—')}</td>
+                <td className="p-2">{String(r.monthly_hours)} h {r.divisor_confirmed ? '✓' : '(sin confirmar)'}</td><td className="p-2 text-right">{fmtMoney(concepts.filter(c => c.computable).reduce((t, c) => t + c.amount, 0))}</td>
+                <td className="p-2">{res ? (res.ok ? <span className="text-emerald-700">{res.updated ? 'Actualizado' : 'Registrado'}</span> : <span className="text-red-700">{res.error}</span>)
+                  : existing.has(String(r.code).toUpperCase()) ? 'Actualizará' : 'Nuevo'}</td></tr>
+            })}</tbody>
+          </table>
+        </div>}
+        {problems.length > 0 && <ul className="mt-3 list-disc space-y-1 rounded-lg bg-amber-50 p-3 pl-6 text-xs text-amber-900">{problems.slice(0, 20).map(p => <li key={p}>{p}</li>)}</ul>}
+        {result && <p role="status" className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">Importación terminada: {result.saved} de {result.total} filas guardadas.</p>}
+        {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
+      </Card>
+      <div className="flex justify-end gap-2">
+        <button type="button" className={btn2Cls} onClick={onClose}>Cerrar</button>
+        <button type="button" className={btnCls} disabled={busy || !rows.length || problems.length > 0 || !!result} onClick={() => void send()}>{busy ? 'Importando…' : `Importar ${rows.length} filas`}</button>
+      </div>
+    </Modal>
+  )
+}
