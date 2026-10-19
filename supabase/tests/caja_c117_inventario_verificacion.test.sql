@@ -10,6 +10,9 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', adm::text, true);
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', adm, 'role', 'authenticated')::text, true);
   UPDATE public.inv_uploads SET status = 'DESCARTADA' WHERE side = 'STOCK' AND status = 'APLICADA';
+  -- Aislar la prueba: los controles son globales, así que los movimientos reales se desactivan dentro de esta
+  -- transacción (se revierte al final) y los porcentajes dependen solo de los datos de la prueba.
+  UPDATE public.inv_movements SET active = false WHERE active;
 
   -- PT: produce 10 (día 1); traspasa 6 a ST (día 2); ST despacha 4 (día 3). MRO consume 5 sin ingreso previo (inferido).
   ue := (public.inv_upload_begin('E', 'C117 Entradas.xlsx')->>'upload_id')::uuid;
@@ -44,10 +47,16 @@ BEGIN
           FROM jsonb_array_elements(r->'cuadre') x WHERE x->>'bodega' = 'C117 MRO')
   THEN pass := pass + 1; ELSE fails := fails || ('T2 cuadre: ' || COALESCE(row::text, '∅')); END IF;
 
-  -- T3: los traspasos de la prueba están emparejados; las salidas de MRO cuentan como origen inferido
-  IF (SELECT (x->>'valor')::numeric > 0 FROM jsonb_array_elements(r->'checks') x WHERE x->>'id' = 'traspasos')
-     AND (SELECT (x->>'valor')::numeric < 100 FROM jsonb_array_elements(r->'checks') x WHERE x->>'id' = 'origen')
-  THEN pass := pass + 1; ELSE fails := fails || 'T3 traspasos y origen'::text; END IF;
+  -- T3: valores exactos: 2 de 2 líneas de traspaso emparejadas (100 %); 2 de 3 consumos con origen conocido
+  --     (el de MRO sale de saldo inferido) = 66,7 %; 3 de 3 bodegas cuadran
+  IF (SELECT (x->>'valor')::numeric FROM jsonb_array_elements(r->'checks') x WHERE x->>'id' = 'traspasos') = 100
+     AND (SELECT (x->>'valor')::numeric FROM jsonb_array_elements(r->'checks') x WHERE x->>'id' = 'origen') = 66.7
+     AND (SELECT x->>'estado' FROM jsonb_array_elements(r->'checks') x WHERE x->>'id' = 'origen') = 'FALLA'
+     AND (SELECT (x->>'valor')::int FROM jsonb_array_elements(r->'checks') x WHERE x->>'id' = 'cuadre') = 3
+  THEN pass := pass + 1;
+  ELSE fails := fails || ('T3 traspasos y origen: ' || COALESCE((SELECT string_agg((x->>'id') || '=' || COALESCE(x->>'valor', '∅') || '/' || (x->>'estado'), ', ')
+    FROM jsonb_array_elements(r->'checks') x), '∅'));
+  END IF;
 
   -- T4: un descuadre (consumo alterado en el modelo) se detecta como FALLA en esa bodega
   UPDATE public.inv_layers SET consumed = consumed + 1 WHERE bodega = 'C117 ST-VENTAS';
