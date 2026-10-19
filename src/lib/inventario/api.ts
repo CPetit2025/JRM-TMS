@@ -32,6 +32,9 @@ export const invApi = {
 const CHUNK = 500
 const uploads = new WeakMap<InvParsedPart, { id: string; next: number; cutoff: string | undefined; applied: ServerStep | null }>()
 
+// Olvida el avance de una parte para que el próximo intento la vuelva a subir completa
+export const resetUpload = (part: InvParsedPart) => { uploads.delete(part) }
+
 async function retry<T>(work: () => Promise<T>, progress?: (m: string) => void): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try { return await work() } catch (e) {

@@ -158,6 +158,11 @@ export function parseInventoryWorkbooks(files: InvInputFile[], onProgress?: (m: 
       const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: null, blankrows: false })
       const res = parseInventorySheet(aoa, f.name, name)
       if ('skip' in res) { out.ignored.push({ fileName: f.name, sheetName: name, reason: res.skip }); continue }
+      // El lado lo decide el signo de Cantidad; si contradice el nombre de la hoja, se avisa antes de aplicar
+      const hint: InvSide | null = /ENTRADA|INGRESO/i.test(name) ? 'E' : /SALIDA|EGRESO/i.test(name) ? 'S' : null
+      for (const p of res.parts) {
+        if (hint && p.side !== 'STOCK' && p.side !== hint) out.warnings.push(`${f.name} · ${name}: la hoja se llama «${name}», pero ${p.rows.length.toLocaleString('es-PE')} fila(s) tienen Cantidad ${p.side === 'S' ? 'negativa' : 'positiva'} y se cargan como ${INV_SIDE_LABEL[p.side]}. Si esperaba ${INV_SIDE_LABEL[hint]}, revise la hoja.`)
+      }
       out.parts.push(...res.parts)
     }
   }

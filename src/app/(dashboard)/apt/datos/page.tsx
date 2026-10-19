@@ -1,13 +1,13 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Upload } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Upload, XCircle } from 'lucide-react'
 import { ChartCard, ErrorBlock, LoadingBlock } from '@/components/apt/ui'
 import { Table, td, tdNum, th } from '@/components/inventario/parts'
 import { useInvQuery } from '@/components/inventario/useInvQuery'
 import { VerificationPanel } from '@/components/inventario/VerificationPanel'
 import { syncLegacyApt } from '@/lib/inventario/legacy'
-import { invApi, notifyInvUpdated, recalcular, uploadPart } from '@/lib/inventario/api'
+import { invApi, notifyInvUpdated, recalcular, resetUpload as uploadsReset, uploadPart } from '@/lib/inventario/api'
 import { CLASES, CLASE_LABEL, KINDS, KIND_LABEL, fmtN, fmtPeso } from '@/lib/inventario/format'
 import { INV_SIDE_LABEL, parseInventoryWorkbooks, type InvParseResult } from '@/lib/inventario/parse'
 import { fmtDate, fmtDateTime } from '@/lib/apt/format'
@@ -38,6 +38,14 @@ function readFiles(files: File[], onProgress: (m: string) => void): Promise<InvP
   })
 }
 
+type PartResult = { ok: boolean; text: string }
+
+function errorText(e: unknown) {
+  return e instanceof Error && /statement timeout|canceling statement|timeout|fetch|network/i.test(e.message)
+    ? 'la conexión o el procesamiento se interrumpió (se reanuda desde el último bloque confirmado, sin duplicar)'
+    : e instanceof Error ? e.message : 'no se pudo cargar'
+}
+
 // Cargas del inventario multi-almacén: reportes de Entradas y Salidas del ERP (todas las bodegas) y, opcional, una foto
 // de stock para el saldo inicial. Cada lado reemplaza sus movimientos del rango de fechas del archivo.
 export default function InventarioDatosPage() {
@@ -52,11 +60,12 @@ export default function InventarioDatosPage() {
   const [error, setError] = useState<string | null>(null)
   const [partial, setPartial] = useState(false)
   const [done, setDone] = useState<string | null>(null)
+  const [results, setResults] = useState<Record<number, PartResult>>({})
   const canLoad = status.data?.can_load ?? false
 
   const pick = async (files: FileList | null) => {
     if (!files?.length) return
-    setError(null); setDone(null); setParsed(null); setPartial(false)
+    setError(null); setDone(null); setParsed(null); setPartial(false); setResults({})
     setBusy('Leyendo archivos…')
     setFiles([...files])
     try { setParsed(await readFiles([...files], m => setBusy(m))) } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo leer el archivo') } finally { setBusy(null) }
@@ -65,26 +74,50 @@ export default function InventarioDatosPage() {
     if (!parsed || busy) return
     if (parsed.parts.some(p => p.side === 'STOCK') && !cutoff) { setError('Indique la fecha de corte de la foto de stock.'); return }
     setError(null); setPartial(false); setDone(null)
+    // Cada parte (Entradas, Salidas, foto) se aplica por separado: si una falla, las demás siguen y se informa cuál falta
+    const res: Record<number, PartResult> = { ...results }
+    const failed: string[] = []
+    let anyPartial = false
+    for (const [i, p] of parsed.parts.entries()) {
+      setBusy(`${INV_SIDE_LABEL[p.side]} · ${p.sheetName}…`)
+      try {
+        const r = await uploadPart(p, { cutoff, force, onProgress: m => setBusy(`${INV_SIDE_LABEL[p.side]} (${p.sheetName}): ${m}`) })
+        const replaced = Number(r.replaced ?? 0)
+        res[i] = { ok: true, text: `${fmtN(Number(r.rows ?? p.rows.length))} filas aplicadas${replaced ? ` · reemplazó ${fmtN(replaced)}` : ''}` }
+      } catch (e) {
+        anyPartial ||= !!(e as { partial?: boolean }).partial
+        res[i] = { ok: false, text: errorText(e) }
+        failed.push(`${INV_SIDE_LABEL[p.side]} (${p.sheetName}): ${errorText(e)}`)
+      }
+      setResults({ ...res })
+    }
     try {
-      for (const p of parsed.parts) {
-        setBusy(`${INV_SIDE_LABEL[p.side]} · ${p.fileName}…`)
-        await uploadPart(p, { cutoff, force, onProgress: m => setBusy(`${INV_SIDE_LABEL[p.side]}: ${m}`) })
+      if (failed.length) {
+        setPartial(anyPartial)
+        setError(`No se aplicó: ${failed.join(' · ')}. Lo demás quedó cargado; pulse «Reanudar carga» para completar solo lo pendiente.`)
+        return
+      }
+      // Comprobación: cada lado cargado debe quedar en la base con el rango completo del archivo
+      const st = await invApi.status()
+      const missing = parsed.parts.filter(p => p.side !== 'STOCK' && p.desde && p.hasta
+        && !st.cobertura.some(c => c.side === p.side && c.filas > 0 && c.desde <= p.desde! && c.hasta >= p.hasta!))
+      if (missing.length) {
+        setError(`La base no muestra ${missing.map(p => `${INV_SIDE_LABEL[p.side]} del ${fmtDate(p.desde)} al ${fmtDate(p.hasta)}`).join(' ni ')}. Vuelva a aplicar la carga.`)
+        missing.forEach(p => { uploadsReset(p) })
+        return
       }
       const rb = await recalcular(m => setBusy(m))
       // Carga única: los mismos archivos actualizan el APT anterior (peso de servicios, guías, flota); no bloquea
       const legacy = parsed.parts.some(p => p.side !== 'STOCK') && files.length ? await syncLegacyApt(files, m => setBusy(m)) : null
-      setDone(`Carga aplicada: ${parsed.parts.map(p => `${INV_SIDE_LABEL[p.side]} ${fmtN(p.rows.length)} filas`).join(' · ')}.`
+      setDone(`Carga aplicada y comprobada: ${parsed.parts.map(p => `${INV_SIDE_LABEL[p.side]} ${fmtN(p.rows.length)} filas`).join(' · ')}.`
         + (rb.pending ? ' El recálculo sigue en el servidor y termina solo en unos minutos (no vuelva a subir el archivo).' : '')
         + (legacy ? ` Aviso: servicios y guías no se actualizaron (${legacy}).` : ' Servicios, guías y flota también actualizados.'))
-      setParsed(null)
+      setParsed(null); setResults({})
       if (input.current) input.current.value = ''
     } catch (e) {
-      setError(e instanceof Error && /statement timeout|canceling statement|timeout|fetch|network/i.test(e.message)
-        ? 'La conexión o el procesamiento se interrumpió. Pulse «Reanudar carga» para continuar desde el último bloque confirmado, sin duplicar movimientos. Mantenga esta ventana abierta.'
-        : e instanceof Error ? e.message : 'No se pudo cargar')
+      setError(errorText(e))
       setPartial(!!(e as { partial?: boolean }).partial)
-      notifyInvUpdated()
-    } finally { setBusy(null) }
+    } finally { notifyInvUpdated(); setBusy(null) }
   }
   const save = async (p: { bodega: string; kind: string } | { tipodocto: string; clase: string }) => {
     setError(null)
@@ -102,11 +135,13 @@ export default function InventarioDatosPage() {
             <input ref={input} type="file" accept=".xlsx,.xls" multiple className="sr-only" disabled={!!busy} onChange={e => pick(e.target.files)} />
           </label>
           {parsed && <div className="space-y-3">
-            <Table head={<tr><th className={th}>Tipo</th><th className={th}>Archivo · hoja</th><th className={`${th} text-right`}>Filas</th><th className={th}>Rango</th><th className={`${th} text-right`}>Peso</th><th className={th}>Bodegas</th></tr>}>
+            <Table head={<tr><th className={th}>Tipo</th><th className={th}>Archivo · hoja</th><th className={`${th} text-right`}>Filas</th><th className={th}>Rango</th><th className={`${th} text-right`}>Peso</th><th className={th}>Bodegas</th><th className={th}>Resultado</th></tr>}>
               {parsed.parts.map((p, i) => <tr key={i}>
                 <td className={`${td} font-bold`}>{INV_SIDE_LABEL[p.side]}</td><td className={td}>{p.fileName} · {p.sheetName}</td><td className={tdNum}>{fmtN(p.rows.length)}</td>
                 <td className={td}>{p.side === 'STOCK' ? <label className="text-xs">Corte <input type="date" value={cutoff} onChange={e => setCutoff(e.target.value)} className="ml-1 min-h-9 rounded border border-slate-300 px-2" /></label> : `${fmtDate(p.desde)} – ${fmtDate(p.hasta)}`}</td>
                 <td className={tdNum}>{fmtPeso(p.kg)}</td><td className={`${td} max-w-96 text-[11px] text-slate-600`}>{p.bodegas.join(' · ')}</td>
+                <td className={`${td} text-xs`}>{results[i] ? <span className={`flex items-start gap-1 ${results[i].ok ? 'text-emerald-700' : 'text-red-700'}`}>
+                  {results[i].ok ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}{results[i].text}</span> : <span className="text-slate-400">Pendiente</span>}</td>
               </tr>)}
             </Table>
             {parsed.warnings.map((w, i) => <p key={i} className="flex items-start gap-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{w}</p>)}
@@ -126,6 +161,9 @@ export default function InventarioDatosPage() {
           <Table empty={!status.data.cobertura.length} head={<tr><th className={th}>Lado</th><th className={th}>Desde</th><th className={th}>Hasta</th><th className={`${th} text-right`}>Filas</th><th className={`${th} text-right`}>Días con movimiento</th></tr>}>
             {status.data.cobertura.map(c => <tr key={c.side}><td className={`${td} font-semibold`}>{INV_SIDE_LABEL[c.side]}</td><td className={td}>{fmtDate(c.desde)}</td><td className={td}>{fmtDate(c.hasta)}</td><td className={tdNum}>{fmtN(c.filas)}</td><td className={tdNum}>{fmtN(c.dias)}</td></tr>)}
           </Table>
+          {(['E', 'S'] as const).filter(side => !status.data!.cobertura.some(c => c.side === side && c.filas > 0)).map(side =>
+            <p key={side} role="alert" className="mt-2 flex items-center gap-2 rounded-lg bg-red-50 p-2 text-xs font-semibold text-red-800"><XCircle className="h-3.5 w-3.5 shrink-0" />
+              Faltan las {INV_SIDE_LABEL[side]}: el inventario no puede cuadrar sin ellas. Cargue el reporte (o la hoja) de {INV_SIDE_LABEL[side]} del mismo rango de fechas.</p>)}
           {status.data.huecos.map((h, i) => <p key={i} className="mt-2 flex items-center gap-2 text-xs text-amber-800"><AlertTriangle className="h-3.5 w-3.5" />{INV_SIDE_LABEL[h.side]}: sin movimientos del {fmtDate(h.desde)} al {fmtDate(h.hasta)} (¿falta cargar esas fechas?)</p>)}
         </ChartCard>
         <ChartCard title="Historial de cargas">

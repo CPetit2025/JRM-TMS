@@ -85,5 +85,23 @@ test('hojas que se contienen (ENTRADA TOTAL con todo, SALIDA TOTAL con una parte
   assert.ok(res.warnings.some(w => /se omitieron 1 fila/.test(w)))
 })
 
+test('libro con hojas SALIDA y ENTRADA (formato del ERP): ambas se reconocen; un nombre que contradice el signo avisa', () => {
+  const head = ['TipoDocto', 'Bodega', 'Numero', 'Fecha', 'CodLegal', 'RazonSocial', 'Producto', 'GLOSA', 'Cantidad', 'UNIDAD', 'DocRel', 'NumRel', 'Lote']
+  const sal = [head, ['DESPACHO VENTAS', '647-04  ALM PT', 'T001-00006471', 46258, null, null, 'E.PL', 'PLACA', -1, 'UND', null, '16373-S006', '16373-S006'],
+    ['TRASPASO DE ALMACEN', '647-04  ALM PT', '0000001', 46024, null, null, 'E.PL', 'PLACA', -2, 'UND', null, null, null]]
+  const ent = [head, ['DEV. HERRAMIENTAS', '647-11 HERRAMIENTAS', 'T003-00004302', 46024, null, null, '602.01.037', 'ARNES', 1, 'UND', null, null, null],
+    ['TRASPASO DE ALMACEN', 'ST-VENTAS', '0000001', 46024, null, null, 'E.PL', 'PLACA', 2, 'UND', null, null, null]]
+  const res = parseInventoryWorkbooks([{name: 'DATA.xlsx', data: book({SALIDA: sal, ENTRADA: ent})}])
+  const e = res.parts.find(p => p.side === 'E'), s = res.parts.find(p => p.side === 'S')
+  assert.equal(e.rows.length, 2)
+  assert.equal(e.sheetName, 'ENTRADA')
+  assert.equal(s.rows.length, 2)
+  assert.equal(e.desde, '2026-01-02')
+  assert.equal(s.hasta, '2026-08-24')
+  assert.deepEqual(res.warnings.filter(w => /se llama/.test(w)), [])
+  const mal = parseInventoryWorkbooks([{name: 'DATA.xlsx', data: book({'ENTRADA TOTAL': sal})}])
+  assert.ok(mal.warnings.some(w => /se llama «ENTRADA TOTAL».*negativa.*Salidas/.test(w)))
+})
+
 // Import transport regressions run alongside the existing parser check in PR CI.
 require('./test-inventario-upload.cjs')
