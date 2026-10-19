@@ -1,0 +1,201 @@
+'use client'
+
+import { useCallback, useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { CheckCircle2, Copy, FileDown, Mail, Pencil, Plus, Search, Send, XCircle } from 'lucide-react'
+import { toast } from 'sonner'
+import { Card, Field, Modal, btn2Cls, btnCls, inputCls, useFlow } from './context'
+import { RequestForm } from './request-form'
+import { downloadPdf, emailDraft, folio } from './informe'
+import { STATUS, call, fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtTime, statusOf, type Authorization, type Detail, type RequestRow } from '@/lib/hhee/flujo'
+import { trackingEmailUrl, type EmailClient } from '@/lib/tracking-email'
+
+// Solicitudes y aprobación: el supervisor registra y presenta; el Jefe de Distribución o el Administrador aprueba,
+// observa o rechaza. Cada aprobación guarda una versión del informe (PDF y correo).
+const FILTERS = [['pendientes', 'Por aprobar'], ['mias', 'Mis solicitudes'], ['borradores', 'Borradores'], ['observadas', 'Observadas'], ['aprobadas', 'Aprobadas'], ['rechazadas', 'Rechazadas'], ['', 'Todas']] as const
+
+export function Solicitudes() {
+  const { ctx } = useFlow()
+  const sp = useSearchParams()
+  const router = useRouter()
+  const [status, setStatus] = useState<string>(ctx.caps.approve ? 'pendientes' : 'mias')
+  const [q, setQ] = useState('')
+  const [rows, setRows] = useState<RequestRow[] | null>(null)
+  const [pending, setPending] = useState(0)
+  const [error, setError] = useState('')
+  const [nonce, setNonce] = useState(0)
+  const [form, setForm] = useState<Detail | 'new' | null>(null)
+  const open = sp.get('id')
+  const setOpen = (id: string | null) => router.replace(id ? `/hhee/solicitudes?id=${id}` : '/hhee/solicitudes')
+  useEffect(() => {
+    let alive = true
+    const t = setTimeout(() => {
+      call<{ rows: RequestRow[]; pending: number }>('hhee_flow_list', { p: { status, q } })
+        .then(r => { if (alive) { setRows(r.rows); setPending(r.pending); setError('') } })
+        .catch(e => { if (alive) setError(e instanceof Error ? e.message : 'No se pudo cargar') })
+    }, 200)
+    return () => { alive = false; clearTimeout(t) }
+  }, [status, q, nonce])
+  const refresh = () => setNonce(n => n + 1)
+  return (
+    <div className="grid gap-4">
+      <Card title="Solicitudes de horas extras" subtitle={ctx.caps.approve ? `${pending} pendiente(s) de su aprobación` : 'Registre la solicitud y preséntela para aprobación'}
+        actions={ctx.caps.request && <button type="button" className={btnCls} onClick={() => setForm('new')}><Plus className="h-4 w-4" /> Nueva solicitud</button>}>
+        <div className="mb-3 flex flex-wrap items-end gap-2">
+          <div role="group" aria-label="Estado" className="flex flex-wrap gap-1">
+            {FILTERS.filter(([v]) => v !== 'pendientes' || ctx.caps.approve).map(([v, l]) => <button key={v} type="button" aria-pressed={status === v} onClick={() => setStatus(v)}
+              className={`min-h-9 rounded-lg px-3 text-xs font-semibold ${status === v ? 'bg-[#002855] text-white' : 'border border-slate-300 bg-white text-slate-600'}`}>{l}{v === 'pendientes' && pending ? ` (${pending})` : ''}</button>)}
+          </div>
+          <Field label="Buscar" className="ml-auto min-w-56"><span className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-2"><Search className="h-4 w-4 text-slate-400" />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="N.°, actividad, trabajador o referencia" className="min-h-9 w-full text-sm outline-none" /></span></Field>
+        </div>
+        {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : !rows ? <p className="text-sm text-slate-500">Cargando…</p> : (
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="w-full min-w-[820px] text-left text-sm">
+              <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr>
+                <th className="p-2.5">N.°</th><th className="p-2.5">Fecha</th><th className="p-2.5">Actividad / causa</th><th className="p-2.5">Solicitante</th>
+                <th className="p-2.5 text-right">Trab.</th><th className="p-2.5 text-right">Horas</th>{ctx.caps.costs && <th className="p-2.5 text-right">Costo aprox.</th>}<th className="p-2.5">Estado</th>
+              </tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {rows.map(r => { const st = STATUS[statusOf(r)]; return <tr key={r.id} className="cursor-pointer hover:bg-slate-50" onClick={() => setOpen(r.id)}>
+                  <td className="p-2.5 font-mono text-xs font-semibold text-[#002855]">HE-{String(r.sequence).padStart(5, '0')}</td>
+                  <td className="p-2.5">{fmtDate(r.work_date)}</td>
+                  <td className="p-2.5"><p className="max-w-80 truncate font-medium text-slate-800">{r.activity}</p><p className="text-[11px] text-slate-500">{r.cause} · {r.area}</p></td>
+                  <td className="p-2.5 text-xs">{r.requester}</td>
+                  <td className="p-2.5 text-right tabular-nums">{r.workers}</td>
+                  <td className="p-2.5 text-right tabular-nums">{fmtHours(r.minutes)}</td>
+                  {ctx.caps.costs && <td className="p-2.5 text-right tabular-nums">{r.cost != null ? fmtMoney(r.cost) : '—'}{r.pending_cost ? <span className="block text-[10px] text-amber-700">{r.pending_cost} pendiente</span> : null}</td>}
+                  <td className="p-2.5"><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.tone}`}>{st.label}</span>{r.revisions > 1 && <span className="ml-1 text-[10px] text-slate-500">v{r.revisions}</span>}</td>
+                </tr> })}
+              </tbody>
+            </table>
+            {!rows.length && <p className="p-6 text-center text-sm text-slate-400">Sin solicitudes en este filtro.</p>}
+          </div>
+        )}
+      </Card>
+      {form && <RequestForm detail={form === 'new' ? null : form} onClose={() => setForm(null)} onSaved={async id => { setForm(null); refresh(); setOpen(id) }} />}
+      {open && !form && <RequestDetail id={open} onClose={() => setOpen(null)} onChanged={refresh} onEdit={d => setForm(d)} />}
+    </div>
+  )
+}
+
+function RequestDetail({ id, onClose, onChanged, onEdit }: { id: string; onClose: () => void; onChanged: () => void; onEdit: (d: Detail) => void }) {
+  const { ctx } = useFlow()
+  const [d, setD] = useState<Detail | null>(null)
+  const [error, setError] = useState('')
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState('')
+  const [mail, setMail] = useState<Authorization | null>(null)
+  const load = useCallback(async () => {
+    try { setD(await call<Detail>('hhee_flow_detail', { p_id: id })); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo cargar') }
+  }, [id])
+  useEffect(() => { let alive = true; call<Detail>('hhee_flow_detail', { p_id: id }).then(r => { if (alive) setD(r) }).catch(e => { if (alive) setError(e instanceof Error ? e.message : 'No se pudo cargar') }); return () => { alive = false } }, [id])
+  const act = async (fn: () => Promise<unknown>, done: string) => {
+    setBusy(true); setNotice('')
+    try { await fn(); toast.success(done); await load(); onChanged() } catch (e) {
+      const data = (e as { data?: { stale_cost?: boolean } }).data
+      if (data?.stale_cost) { await load(); setNotice(e instanceof Error ? e.message : '') } else toast.error(e instanceof Error ? e.message : 'No se pudo completar')
+    } finally { setBusy(false) }
+  }
+  if (error) return <Modal title="Solicitud" onClose={onClose}><p role="alert" className="text-sm text-red-700">{error}</p></Modal>
+  if (!d) return <Modal title="Solicitud" onClose={onClose}><p className="text-sm text-slate-500">Cargando…</p></Modal>
+  const r = d.request, st = STATUS[statusOf(r)], mine = r.created_by === ctx.user_id
+  const decide = (decision: 'APROBADA' | 'OBSERVADA' | 'RECHAZADA') => act(() => call('hhee_flow_decide', { p: { id: r.id, decision, reason, expected_version: r.version, ...(d.cost_visible ? { expected_cost: r.cost ?? 0 } : {}) } }),
+    decision === 'APROBADA' ? 'Aprobada: informe generado' : decision === 'OBSERVADA' ? 'Observada: devuelta al supervisor' : 'Rechazada')
+  const latest = d.authorizations[0]
+  return (
+    <Modal title={`HE-${String(r.sequence).padStart(5, '0')} · ${r.activity}`} onClose={onClose} wide>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`rounded-full px-3 py-1 text-xs font-bold ${st.tone}`}>{st.label}</span>
+        <span className="text-xs text-slate-500">Registrada por {r.requester} el {fmtDateTime(r.created_at)}{r.submitted_at ? ` · presentada ${fmtDateTime(r.submitted_at)}` : ''}</span>
+        <div className="ml-auto flex flex-wrap gap-2">
+          {r.can_edit && <button type="button" className={btn2Cls} onClick={() => onEdit(d)}><Pencil className="h-4 w-4" /> {r.approval === 'APROBADA' ? 'Modificar (requiere nueva aprobación)' : 'Editar'}</button>}
+          {r.can_edit && r.state === 'BORRADOR' && <button type="button" className={btnCls} disabled={busy} onClick={() => void act(() => call('hhee_flow_submit', { p_id: r.id, p_version: r.version }), 'Presentada para aprobación')}><Send className="h-4 w-4" /> Presentar para aprobación</button>}
+          {mine && (r.state === 'BORRADOR' || (r.state === 'SOLICITADA' && r.approval === 'PENDIENTE')) && <button type="button" className={btn2Cls} disabled={busy}
+            onClick={() => { if (window.confirm('¿Anular esta solicitud?')) void act(() => call('hhee_flow_cancel', { p_id: r.id, p_version: r.version, p_reason: null }), 'Solicitud anulada') }}>Anular</button>}
+        </div>
+      </div>
+      {r.approval_reason && r.approval !== 'PENDIENTE' && <p className={`rounded-lg p-3 text-sm ${r.approval === 'APROBADA' ? 'bg-emerald-50 text-emerald-900' : r.approval === 'OBSERVADA' ? 'bg-orange-50 text-orange-900' : 'bg-red-50 text-red-900'}`}>
+        <strong>{r.approval === 'APROBADA' ? `Aprobada por ${r.approver} (${fmtDateTime(r.approved_at)})` : r.approval === 'OBSERVADA' ? 'Observación' : `Rechazada por ${r.approver}`}:</strong> {r.approval_reason}</p>}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card title="Qué, por qué y para qué">
+          <dl className="grid gap-2 text-sm">
+            <div><dt className="text-xs font-semibold text-slate-500">Fecha · área · causa</dt><dd>{fmtDate(r.work_date)} · {r.area} · {r.cause}</dd></div>
+            {r.reference_type !== 'SIN_REFERENCIA' && <div><dt className="text-xs font-semibold text-slate-500">Referencia</dt><dd>{r.reference_type} {r.reference_code}</dd></div>}
+            <div><dt className="text-xs font-semibold text-slate-500">¿Por qué se necesitan?</dt><dd className="whitespace-pre-line">{r.justification}</dd></div>
+            <div><dt className="text-xs font-semibold text-slate-500">Alternativa evaluada</dt><dd className="whitespace-pre-line">{r.alternatives}</dd></div>
+            <div><dt className="text-xs font-semibold text-slate-500">Resultado esperado</dt><dd>{r.expected_result}</dd></div>
+          </dl>
+        </Card>
+        <Card title="Quiénes y cuántas horas" subtitle={`${r.workers} trabajador(es) · ${fmtHours(r.minutes)}${d.cost_visible ? ` · ${fmtMoney(r.cost)} aprox.` : ''}`}>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[520px] text-left text-xs">
+              <thead className="text-[10px] uppercase text-slate-500"><tr><th className="py-1.5">Trabajador</th><th>Horario</th><th className="text-right">25 %</th><th className="text-right">35 %</th><th className="text-right">100 %</th><th className="text-right">Total</th>{d.cost_visible && <th className="text-right">Costo</th>}</tr></thead>
+              <tbody className="divide-y divide-slate-100">{d.lines.map(l => <tr key={l.person_id}>
+                <td className="py-1.5"><p className="font-semibold">{l.name}</p><p className="text-[10px] text-slate-500">{l.code}{l.position ? ` · ${l.position}` : ''}</p></td>
+                <td>{fmtTime(l.start)}–{fmtTime(l.end)}{l.break_minutes ? ` (−${l.break_minutes}m)` : ''}</td>
+                <td className="text-right">{fmtHours(l.minutes_25)}</td><td className="text-right">{fmtHours(l.minutes_35)}</td><td className="text-right">{fmtHours(l.minutes_100)}</td>
+                <td className="text-right font-semibold">{fmtHours(l.minutes)}</td>
+                {d.cost_visible && <td className="text-right">{l.cost == null ? <span className="text-amber-700">Pendiente</span> : fmtMoney(l.cost)}</td>}
+              </tr>)}</tbody>
+            </table>
+          </div>
+          {r.pending_cost > 0 && d.cost_visible && <p className="mt-2 text-xs text-amber-800">{r.pending_cost} trabajador(es) con costo pendiente: completar su ficha en Personal.</p>}
+        </Card>
+      </div>
+      {r.can_decide && <Card title="Decisión del aprobador" subtitle="Sustento obligatorio. Al aprobar se genera el informe PDF y el correo.">
+        <Field label="Sustento de aprobación, observación o rechazo *"><textarea className={inputCls} rows={3} value={reason} onChange={e => setReason(e.target.value)} maxLength={2000} /></Field>
+        {notice && <p role="alert" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{notice}</p>}
+        <div className="mt-3 flex flex-wrap justify-end gap-2">
+          <button type="button" className={btn2Cls} disabled={busy || reason.trim().length < 5} onClick={() => void decide('RECHAZADA')}><XCircle className="h-4 w-4 text-red-600" /> Rechazar</button>
+          <button type="button" className={btn2Cls} disabled={busy || reason.trim().length < 5} onClick={() => void decide('OBSERVADA')}>Observar (devolver para corregir)</button>
+          <button type="button" className={btnCls} disabled={busy || reason.trim().length < 5} onClick={() => void decide('APROBADA')}><CheckCircle2 className="h-4 w-4" /> Aprobar y generar informe</button>
+        </div>
+      </Card>}
+      {d.authorizations.length > 0 && <Card title="Informe de autorización" subtitle={`${d.authorizations.length} versión(es). Cada nueva aprobación genera una nueva versión.`}>
+        <div className="grid gap-2">{d.authorizations.map(a => <div key={a.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-3 text-sm">
+          <span className="font-semibold text-[#002855]">{folio(a.snapshot)} · versión {a.revision}{a === latest ? ' (vigente)' : ''}</span>
+          <span className="text-xs text-slate-500">Aprobada por {a.approver} el {fmtDateTime(a.approved_at)} · {fmtHours(a.snapshot.totals.minutes)}{d.cost_visible && a.snapshot.totals.cost != null ? ` · ${fmtMoney(a.snapshot.totals.cost)}` : ''}</span>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <button type="button" className={btn2Cls} onClick={() => void downloadPdf(a.snapshot, d.cost_visible)}><FileDown className="h-4 w-4" /> Descargar PDF de autorización</button>
+            <button type="button" className={btn2Cls} onClick={() => setMail(a)}><Mail className="h-4 w-4" /> Preparar / volver a compartir por correo</button>
+          </div>
+        </div>)}</div>
+      </Card>}
+      <Card title="Historial">
+        <ul className="grid gap-1.5 text-xs">{d.events.map((e, i) => <li key={i} className="flex flex-wrap gap-2"><span className="text-slate-500">{fmtDateTime(e.at)}</span><strong>{e.event.replaceAll('_', ' ').toLowerCase()}</strong><span>{e.by}</span>{e.reason && <span className="text-slate-600">— {e.reason}</span>}</li>)}</ul>
+      </Card>
+      {mail && <EmailComposer auth={mail} withCost={d.cost_visible} onClose={() => setMail(null)} />}
+    </Modal>
+  )
+}
+
+function EmailComposer({ auth, withCost, onClose }: { auth: Authorization; withCost: boolean; onClose: () => void }) {
+  const { ctx } = useFlow()
+  const base = emailDraft(auth.snapshot, withCost)
+  const [draft, setDraft] = useState({ to: ctx.settings.report_to, cc: ctx.settings.report_cc, subject: base.subject, body: base.body })
+  const [error, setError] = useState('')
+  const open = (client: EmailClient) => {
+    try { setError(''); window.open(trackingEmailUrl(client, draft), client === 'default' ? '_self' : '_blank', 'noopener') } catch (e) { setError(e instanceof Error ? e.message : 'Revise el correo') }
+  }
+  return (
+    <Modal title={`Correo de autorización · ${folio(auth.snapshot)} v${auth.revision}`} onClose={onClose}>
+      <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-900">Descargue el PDF y adjúntelo al correo. El mensaje incluye el resumen: por qué, quiénes y cuántas horas; no incluye conceptos remunerativos.</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Para *"><input className={inputCls} value={draft.to} onChange={e => setDraft({ ...draft, to: e.target.value })} placeholder="correo@empresa.com; otro@empresa.com" /></Field>
+        <Field label="CC"><input className={inputCls} value={draft.cc} onChange={e => setDraft({ ...draft, cc: e.target.value })} /></Field>
+        <Field label="Asunto" className="sm:col-span-2"><input className={inputCls} value={draft.subject} onChange={e => setDraft({ ...draft, subject: e.target.value })} /></Field>
+        <Field label="Mensaje · vista previa editable" className="sm:col-span-2"><textarea className={`${inputCls} font-mono text-xs`} rows={14} value={draft.body} onChange={e => setDraft({ ...draft, body: e.target.value })} /></Field>
+      </div>
+      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      <div className="flex flex-wrap justify-end gap-2">
+        <button type="button" className={btn2Cls} onClick={() => void downloadPdf(auth.snapshot, withCost)}><FileDown className="h-4 w-4" /> PDF para adjuntar</button>
+        <button type="button" className={btn2Cls} onClick={() => { void navigator.clipboard.writeText(draft.body).then(() => toast.success('Mensaje copiado'), () => toast.error('No se pudo copiar')) }}><Copy className="h-4 w-4" /> Copiar mensaje</button>
+        <button type="button" className={btn2Cls} onClick={() => open('gmail')}>Gmail</button>
+        <button type="button" className={btn2Cls} onClick={() => open('outlook')}>Outlook</button>
+        <button type="button" className={btnCls} onClick={() => open('default')}><Mail className="h-4 w-4" /> Programa de correo</button>
+      </div>
+    </Modal>
+  )
+}

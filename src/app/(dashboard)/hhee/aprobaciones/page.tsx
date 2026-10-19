@@ -1,2 +1,3 @@
-import { Requests } from '@/components/hhee/requests';
-export default function Page() { return <Requests approval/>; }
+import { redirect } from 'next/navigation';
+// Ventana retirada del flujo simple: la aprobación vive en Solicitudes
+export default function Page() { redirect('/hhee/solicitudes'); }

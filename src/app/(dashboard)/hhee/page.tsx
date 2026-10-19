@@ -1,2 +1,2 @@
-import { Dashboard } from '@/components/hhee/dashboard';
-export default function Page() { return <Dashboard />; }
+import { Panel } from '@/components/hhee/flujo/panel';
+export default function Page() { return <Panel />; }

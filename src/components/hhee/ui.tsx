@@ -1,6 +1,4 @@
 'use client';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { cloneElement, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { useHhee } from './provider';
 import type { Filters } from '@/lib/hhee/types';
@@ -27,10 +25,9 @@ export function Shell({ title, description, children }: {
     description: string;
     children: ReactNode;
 }) {
-    const { context: c, error, refresh } = useHhee(), path = usePathname();
-    const links = [['/hhee', 'Resumen', true], ['/hhee/solicitudes', 'Solicitudes', true], ['/hhee/aprobaciones', 'Aprobaciones', c?.areas.some(a => a.can_approve || a.can_exception)], ['/hhee/validacion', 'RR. HH.', c?.areas.some(a => a.can_validate)], ['/hhee/acciones', 'Acciones', true], ['/hhee/reportes', 'Informe gerencial', c?.executive_costs || c?.areas.some(a => a.can_approve || a.can_validate)], ['/hhee/configuracion', 'Configuración', c?.config]] as const;
-    return <div className="mx-auto grid max-w-[1600px] gap-5 p-4 sm:p-6"><header><p className="text-xs font-semibold tracking-widest text-slate-500">JRM TMS · CONTROL DE HORAS EXTRAS · DISTRIBUCIÓN</p><h1 className="mt-1 text-2xl font-bold text-[#002855]">{title}</h1><p className="mt-1 text-sm text-slate-600">{description}</p></header>
- <nav aria-label="Control de horas extras" className="flex gap-1 overflow-x-auto border-b border-slate-200">{links.filter(l => l[2]).map(([href, label]) => <Link key={href} href={href} aria-current={path === href ? 'page' : undefined} className={'shrink-0 border-b-2 px-4 py-3 text-sm font-semibold ' + (path === href ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500')}>{label}</Link>)}</nav>
+    const { context: c, error, refresh } = useHhee();
+    // La cabecera y las pestañas del módulo las pone el layout de /hhee
+    return <div className="grid gap-5"><header><h2 className="text-xl font-bold text-[#002855]">{title}</h2><p className="mt-1 text-sm text-slate-600">{description}</p></header>
  {error ? <Notice error>{error} <button className="underline" onClick={() => void refresh()}>Reintentar</button></Notice> : !c ? <p role="status">Cargando permisos y áreas…</p> : children}
  </div>;
 }
