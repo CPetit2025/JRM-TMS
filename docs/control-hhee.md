@@ -80,3 +80,11 @@ Tablas privadas con RLS y barrera de cuenta activa; sin lectura o escritura dire
 Transacciones atómicas, recibos de idempotencia, control de versiones y bloqueo de escrituras HHEE protegen frente a reintentos, aprobaciones concurrentes y asistencia superpuesta. Índices cubren todas las referencias.
 
 El módulo registra y analiza hechos. **No calcula planillas, descuentos ni decisiones automáticas de pago**, y no reemplaza la revisión de RR. HH. ni la normativa laboral aplicable.
+
+## Verificación aislada
+
+Con Docker y las dependencias instaladas, ejecutar **node scripts/test-hhee-postgres.cjs**.
+Crea un PostgreSQL 16 sin red ni puertos publicados, aplica las migraciones HHEE y ejecuta C120/C121.
+Incluye la columna opcional profiles.area y el límite real de roles.name para detectar conflictos de nombres.
+El contenedor se elimina al terminar. No utiliza credenciales ni conexiones de producción.
+Este control también se ejecuta en los PR; la batería completa de SQL se mantiene en el despliegue.
