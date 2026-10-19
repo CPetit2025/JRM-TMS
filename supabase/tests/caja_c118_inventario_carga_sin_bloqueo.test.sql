@@ -17,8 +17,9 @@ BEGIN
   IF adm IS NULL THEN RAISE EXCEPTION 'CAJA C118 FAIL: falta un Administrador activo'; END IF;
   PERFORM set_config('request.jwt.claim.sub', adm::text, true);
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', adm, 'role', 'authenticated')::text, true);
-  -- Aislar: sin movimientos ni cargas reales en preparación (todo se revierte al final)
-  UPDATE public.inv_movements SET active = false WHERE active;
+  -- Sin cargas reales en preparación (todo se revierte al final)
+  -- Aislar sin tocar los datos reales: el recálculo y las lecturas solo ven las bodegas de esta prueba
+  PERFORM set_config('inv.scope', 'C118 %', true);
   UPDATE public.inv_uploads SET status = 'DESCARTADA' WHERE status = 'CARGANDO' OR (side = 'STOCK' AND status = 'APLICADA');
 
   u := (public.inv_upload_begin('E', 'C118 Entradas.xlsx')->>'upload_id')::uuid;

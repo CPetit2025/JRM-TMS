@@ -22,7 +22,8 @@ BEGIN
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', adm, 'role', 'authenticated')::text, true);
   -- Isolate the functional fixtures: three rebuild scenarios must not each reprocess the live ERP history.
   -- The terminal exception rolls this change back. C117 exercises the unmodified real history separately.
-  UPDATE public.inv_movements SET active=false WHERE active;
+  -- Aislar sin tocar los datos reales: el recálculo y las lecturas solo ven las bodegas de esta prueba
+  PERFORM set_config('inv.scope', 'C115 %', true);
   -- Que ninguna foto de stock real cambie el inicio del modelo durante la prueba
   UPDATE public.inv_uploads SET status = 'DESCARTADA' WHERE side = 'STOCK' AND status = 'APLICADA';
 
@@ -143,13 +144,13 @@ BEGIN
      AND NOT has_table_privilege('anon', 'public.inv_layers', 'SELECT')
   THEN pass := pass + 1; ELSE fails := fails || 'T10 lecturas y permisos'::text; END IF;
 
-  -- T11: across the entire modeled history, layer balances must equal the detailed FIFO ledger.
+  -- T11: across the entire modeled history (the scoped view), layer balances must equal the detailed FIFO ledger.
   IF NOT EXISTS (
     SELECT 1 FROM public.inv_layers l LEFT JOIN
       (SELECT layer_id, sum(qty) AS q FROM public.inv_allocations GROUP BY layer_id) a ON a.layer_id=l.id
     WHERE l.consumed IS DISTINCT FROM COALESCE(a.q, 0)
   ) AND NOT EXISTS (
-    SELECT 1 FROM public.inv_movements m LEFT JOIN
+    SELECT 1 FROM public.inv_movements_v m LEFT JOIN
       (SELECT out_id, sum(qty) AS q FROM public.inv_allocations GROUP BY out_id) a ON a.out_id=m.id
     WHERE m.active AND m.cantidad < 0
       AND m.fecha >= COALESCE((SELECT model_from FROM public.inv_state WHERE id=1), '-infinity'::date)
