@@ -44,7 +44,7 @@ export interface InvStock {
   filas: InvStockRow[]
 }
 export interface InvStockFilters { bodegas?: string[]; kinds?: InvKind[]; q?: string; estado?: '' | 'libre' | 'comprometido'; min_dias?: number
-  orden?: 'kg' | 'edad' | 'qty'; limit?: number; offset?: number }
+  orden?: 'kg' | 'edad' | 'qty'; limit?: number; offset?: number; ambito?: 'apt' }
 
 export interface InvDwell {
   desde: string; hasta: string; corte: string; model_from: string | null
@@ -53,7 +53,7 @@ export interface InvDwell {
   por_destino: Array<{ bodega: string; destino: InvClase; consumos: number; kg: number; prom_dias: number | null; prom_origen: number | null }>
   distribucion: Array<{ bodega: string; rango: string; consumos: number; kg: number }>
   antiguedad_stock: Array<{ bodega: string; rango: string; claves: number; kg: number }>
-  mas_antiguos: Array<{ bodega: string; producto: string; lote: string | null; qty: number; kg: number; fecha_ingreso: string; dias: number; fecha_origen: string | null }>
+  mas_antiguos: Array<{ bodega: string; producto: string; glosa?: string | null; lote: string | null; qty: number; kg: number; fecha_ingreso: string; dias: number; fecha_origen: string | null }>
   etapas: Array<{ origen: InvClase | null; origen_bodega: string | null; bodega: string; destino: InvClase; consumos: number; kg: number
     prom_bodega: number | null; prom_origen: number | null }>
 }
@@ -64,7 +64,7 @@ export interface InvFlow {
   traspasos: Array<{ origen: string; destino: string; docs: number; lineas: number; kg: number; reasignadas: number; dias_en_origen: number | null }>
   ingresos: Array<{ clase: InvClase; bodega: string; lineas: number; kg: number }>
   salidas: Array<{ clase: InvClase; bodega: string; lineas: number; kg: number }>
-  reasignaciones: Array<{ origen: string; destino: string; numero: string; fecha: string; producto: string; lote_origen: string | null
+  reasignaciones: Array<{ origen: string; destino: string; numero: string; fecha: string; producto: string; glosa?: string | null; lote_origen: string | null
     lote_destino: string | null; qty: number; kg: number }>
 }
 
@@ -108,4 +108,45 @@ export interface InvVerify {
   cuadre: Array<{ bodega: string; kind: InvKind; lineas: number; saldo_inicial_foto: number; saldo_inicial_inferido: number
     entradas_archivo: number; entradas_modelo: number; salidas_archivo: number; salidas_modelo: number
     saldo_calculado: number; saldo_modelo: number; diferencia: number; ok: boolean }>
+}
+
+// APT en tres almacenes (647 · 540 · ST): contratos / OT
+export type AptAlmacen = '647' | '540' | 'ST'
+export interface InvCacheInfo { al_dia: boolean; built_at: string }
+
+export interface InvContratoFila {
+  ot: string; cliente: string | null; productos: number; lotes: number; guias: number
+  ingresado_kg: number; despachado_kg: number; avance_pct: number | null; stock_kg: number; stock_qty: number
+  stock_647_kg: number; stock_540_kg: number; stock_st_kg: number; dias_stock: number | null; a_tiempo_pct: number | null
+  primer_ingreso: string | null; ultimo_ingreso: string | null; ultima_salida: string | null; fecha_entrega: string | null
+}
+export interface InvContratos { corte: string | null; cache?: InvCacheInfo; contratos: InvContratoFila[] }
+
+export interface InvAptResumen {
+  corte: string | null; cache?: InvCacheInfo
+  almacenes: Array<{ almacen: AptAlmacen; stock_kg: number; kg_libre: number; kg_comprometido: number; claves: number; ots: number
+    dias_pond: number | null; antiguedad: Record<'0-30' | '31-60' | '61-90' | '>90' | 'sin fecha', number>
+    ingresado_kg: number; despachado_kg: number; ingresado_kg_30: number; despachado_kg_30: number; guias_30: number }>
+  top_ot: InvContratoFila[]
+}
+
+export interface InvContratoProducto {
+  producto: string; glosa: string | null; unidad: string | null; lotes: string[]; guias: number
+  ingresado: number; producido: number; despachado: number; otras_salidas: number; diferencia: number
+  stock_647: number; stock_540: number; stock_st: number; stock: number; stock_kg: number; inferido: number
+  ingresado_kg: number; despachado_kg: number; ultimo_ingreso: string | null; ultima_salida: string | null; dias_apt: number | null
+}
+export interface InvContratoTms { dispatch_id: string; numero: string | null; estado: string | null; programado: string | null
+  salida: string | null; llegada: string | null; placa: string | null; conductor: string | null }
+export interface InvContrato {
+  ot: string; corte: string | null; encontrado: boolean; stock_al_dia?: boolean
+  resumen?: { cliente: string | null; ingresado_kg: number; despachado_kg: number; otras_salidas_kg: number; avance_pct: number | null
+    guias: number; productos: number; lotes: number; primer_ingreso: string | null; ultimo_ingreso: string | null; ultima_salida: string | null
+    fecha_entrega_min: string | null; fecha_entrega_max: string | null; a_tiempo_pct: number | null
+    stock_kg: number; stock_647_kg: number; stock_540_kg: number; stock_st_kg: number }
+  productos?: InvContratoProducto[]
+  lotes?: Array<{ lote: string; lineas: number; ingresado_kg: number; despachado_kg: number }>
+  guias?: Array<{ numero: string; fecha: string; almacen: AptAlmacen; cliente: string | null; lineas: number; cantidad: number; kg: number
+    fecha_entrega: string | null; a_tiempo: boolean | null; tms: InvContratoTms | null }>
+  sospechosos?: Array<{ ot: string; lotes: string[]; lineas: number }>
 }

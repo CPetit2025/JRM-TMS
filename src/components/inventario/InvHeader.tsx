@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { AlertTriangle, Boxes, CalendarClock, Camera, FileUp, Loader2, RefreshCw } from 'lucide-react'
 import { INV_UPDATED, invApi, recalcular } from '@/lib/inventario/api'
 import type { InvStatus } from '@/lib/inventario/types'
+import { useAmbito } from './ambito'
 import { fmtDate, fmtDateTime } from '@/lib/apt/format'
 
 // Cabecera de la sección Inventario multi-almacén: rango de datos, foto de stock, estado del recálculo y carga
@@ -12,6 +13,7 @@ export function InvHeader() {
   const [st, setSt] = useState<InvStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const apt = useAmbito() === 'apt'
   useEffect(() => {
     let alive = true
     const load = () => { invApi.status().then(s => { if (alive) setSt(s) }).catch(() => { if (alive) setSt(null) }) }
@@ -35,7 +37,7 @@ export function InvHeader() {
         </div>
         <div>
           <h1 className="text-lg font-black tracking-tight text-slate-900">Inventario multi‑almacén</h1>
-          <p className="text-xs text-slate-500">Todas las bodegas del ERP · Stock disponible, estadía, trazabilidad de lotes y flujo entre almacenes</p>
+          <p className="text-xs text-slate-500">{apt ? 'APT: almacenes 647 · 540 · ST' : 'Todas las bodegas del ERP'} · Stock disponible, contratos / OT, estadía, trazabilidad de lotes y flujo entre almacenes</p>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs">

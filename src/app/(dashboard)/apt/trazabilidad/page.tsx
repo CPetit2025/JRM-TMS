@@ -86,7 +86,7 @@ export default function InventarioTrazabilidadPage() {
           </ChartCard>}
           {(d.saldo?.length ?? 0) > 0 && <ChartCard title="Saldo actual de estos lotes" subtitle="Lo que todavía está en alguna bodega">
             <Table head={<tr><th className={th}>Bodega</th><th className={th}>Producto</th><th className={th}>Lote</th><th className={`${th} text-right`}>Cantidad</th><th className={`${th} text-right`}>Peso</th><th className={th}>Ingreso</th></tr>}>
-              {d.saldo!.map((s, i) => <tr key={i}><td className={td}>{s.bodega}</td><td className={`${td} font-mono text-[11px]`}>{s.producto}</td><td className={td}>{s.lote ?? '—'}</td>
+              {d.saldo!.map((s, i) => <tr key={i}><td className={td}>{s.bodega}</td><td className={td}><p className="font-mono text-[11px] text-slate-500">{s.producto}</p><p className="max-w-72 text-slate-700">{d.movimientos?.find(m => m.producto === s.producto && m.glosa)?.glosa ?? '—'}</p></td><td className={td}>{s.lote ?? '—'}</td>
                 <td className={tdNum}>{fmtQty(s.qty)}{s.inferido > 0 && <span className="ml-1 text-[10px] text-amber-700">({fmtQty(s.inferido)} inferido)</span>}</td>
                 <td className={tdNum}>{fmtPeso(s.kg)}</td><td className={td}>{s.fecha_ingreso ? fmtDate(s.fecha_ingreso) : 'Saldo inicial'}</td></tr>)}
             </Table>

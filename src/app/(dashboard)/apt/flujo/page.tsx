@@ -5,6 +5,7 @@ import { ResponsiveContainer, Sankey, Tooltip } from 'recharts'
 import { ChartCard, ErrorBlock, LoadingBlock } from '@/components/apt/ui'
 import { DiasPill, PeriodBar, Table, td, tdNum, th } from '@/components/inventario/parts'
 import { useInvQuery } from '@/components/inventario/useInvQuery'
+import { ProductoCell, aptAlmacen, useAmbito } from '@/components/inventario/ambito'
 import { invApi } from '@/lib/inventario/api'
 import { CLASE_COLOR, CLASE_LABEL, KIND_COLOR, fmtN, fmtPeso, fmtQty } from '@/lib/inventario/format'
 import type { InvClase, InvFlow, InvKind } from '@/lib/inventario/types'
@@ -64,12 +65,22 @@ function SankeyNode(props: { x?: number; y?: number; width?: number; height?: nu
   )
 }
 
+// Ámbito APT: ingresos y salidas de 647 · 540 · ST y los traspasos que entran o salen de ellos
+function soloApt(d: InvFlow): InvFlow {
+  const traspasos = d.traspasos.filter(t => aptAlmacen(t.origen) || aptAlmacen(t.destino))
+  const usadas = new Set(traspasos.flatMap(t => [t.origen, t.destino]))
+  return { ...d, traspasos, bodegas: d.bodegas.filter(b => aptAlmacen(b.code) || usadas.has(b.code)),
+    ingresos: d.ingresos.filter(i => aptAlmacen(i.bodega)), salidas: d.salidas.filter(o => aptAlmacen(o.bodega)),
+    reasignaciones: d.reasignaciones.filter(r => aptAlmacen(r.origen) || aptAlmacen(r.destino)) }
+}
+
 // Flujo entre almacenes: de dónde entra el material, cómo se mueve entre bodegas y cómo sale
 export default function InventarioFlujoPage() {
   const [period, setPeriod] = useState({ desde: '', hasta: '' })
   const [metric, setMetric] = useState<Metric>('kg')
   const q = useInvQuery(`flow|${period.desde}|${period.hasta}`, () => invApi.flow({ desde: period.desde || undefined, hasta: period.hasta || undefined }))
-  const d = q.data
+  const apt = useAmbito() === 'apt'
+  const d = useMemo(() => (q.data && apt ? soloApt(q.data) : q.data), [q.data, apt])
   const sk = useMemo(() => (d ? buildSankey(d, metric) : null), [d, metric])
   const clases = (rows: Array<{ clase: InvClase; kg: number; lineas: number }>) => {
     const m = new Map<InvClase, { kg: number; lineas: number }>()
@@ -118,7 +129,7 @@ export default function InventarioFlujoPage() {
         <ChartCard title="Reasignaciones de lote" subtitle="Stock de una bodega que pasa a otra con el lote de un contrato (las 300 más recientes)">
           <Table empty={!d.reasignaciones.length} head={<tr><th className={th}>Fecha</th><th className={th}>Documento</th><th className={th}>Origen → destino</th><th className={th}>Producto</th><th className={th}>Lote origen</th><th className={th}>Lote destino</th><th className={`${th} text-right`}>Cantidad</th></tr>}>
             {d.reasignaciones.map((r, i) => <tr key={i}><td className={td}>{fmtDate(r.fecha)}</td><td className={td}>{r.numero}</td><td className={td}>{r.origen} → {r.destino}</td>
-              <td className={`${td} font-mono text-[11px]`}>{r.producto}</td><td className={td}>{r.lote_origen ?? 'Sin lote'}</td><td className={`${td} font-semibold`}>{r.lote_destino ?? 'Sin lote'}</td><td className={tdNum}>{fmtQty(r.qty)}</td></tr>)}
+              <td className={td}><ProductoCell producto={r.producto} glosa={r.glosa} /></td><td className={td}>{r.lote_origen ?? 'Sin lote'}</td><td className={`${td} font-semibold`}>{r.lote_destino ?? 'Sin lote'}</td><td className={tdNum}>{fmtQty(r.qty)}</td></tr>)}
           </Table>
         </ChartCard>
       </>}

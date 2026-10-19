@@ -7,11 +7,14 @@ import { Lock } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
 import { LoadingBlock } from '@/components/apt/ui'
 import { InvHeader } from '@/components/inventario/InvHeader'
+import { AmbitoSwitch } from '@/components/inventario/ambito'
 
 // Almacén APT — inventario multi-almacén: un solo módulo con sus cuatro objetivos (stock disponible, estadía,
 // trazabilidad y flujo) sobre el libro único de movimientos del ERP. Todas las cifras salen del mismo modelo.
+// Por defecto se mira el APT (647 · 540 · ST); «Todas las bodegas» sirve para seguir un lote fuera del APT.
 const TABS = [
   { href: '/apt', label: 'Resumen' },
+  { href: '/apt/contratos', label: 'Contratos / OT' },
   { href: '/apt/stock', label: 'Stock disponible' },
   { href: '/apt/estadia', label: 'Estadía' },
   { href: '/apt/trazabilidad', label: 'Trazabilidad' },
@@ -38,7 +41,8 @@ export default function AptLayout({ children }: { children: React.ReactNode }) {
     <div className="space-y-4 pb-10">
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <InvHeader />
-        <nav aria-label="Secciones del inventario" className="mt-3 flex gap-1 overflow-x-auto border-t border-slate-100 px-2">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pr-3">
+        <nav aria-label="Secciones del inventario" className="flex gap-1 overflow-x-auto px-2">
           {TABS.map(t => {
             const active = t.href === '/apt' ? pathname === '/apt' : pathname.startsWith(t.href)
             return (
@@ -50,6 +54,8 @@ export default function AptLayout({ children }: { children: React.ReactNode }) {
             )
           })}
         </nav>
+        <div className="py-1.5 pl-2"><AmbitoSwitch /></div>
+        </div>
       </div>
       <Suspense fallback={<LoadingBlock />}>{children}</Suspense>
     </div>

@@ -8,6 +8,7 @@ import { ChartCard, EmptyState, ErrorBlock, KpiCard, LoadingBlock } from '@/comp
 import { KindBadge, PeriodBar, Table, td, tdNum, th } from '@/components/inventario/parts'
 import { useInvQuery } from '@/components/inventario/useInvQuery'
 import { VerificationPanel } from '@/components/inventario/VerificationPanel'
+import { ALMACEN_COLOR, ALMACEN_LABEL, setAmbito, useAmbito } from '@/components/inventario/ambito'
 import { invApi } from '@/lib/inventario/api'
 import { fmtN, fmtPeso, fmtQty } from '@/lib/inventario/format'
 import { fmtDate } from '@/lib/apt/format'
@@ -15,8 +16,87 @@ import { fmtDate } from '@/lib/apt/format'
 const tick = { fontSize: 11, fill: '#64748b' }
 const axisKg = (v: number) => (Math.abs(v) >= 1000 ? `${Math.round(v / 1000)} t` : String(Math.round(v)))
 
+export default function InventarioResumenPage() {
+  return useAmbito() === 'apt' ? <AptResumen /> : <PanoramaTodas />
+}
+
+const AGE = ['0-30', '31-60', '61-90', '>90', 'sin fecha'] as const
+const AGE_LABEL: Record<(typeof AGE)[number], string> = { '0-30': '0–30 d', '31-60': '31–60 d', '61-90': '61–90 d', '>90': '> 90 d', 'sin fecha': 'Sin fecha' }
+const AGE_COLOR: Record<(typeof AGE)[number], string> = { '0-30': '#10b981', '31-60': '#facc15', '61-90': '#f97316', '>90': '#dc2626', 'sin fecha': '#94a3b8' }
+
+// Resumen del APT en sus tres almacenes (647 · 540 · ST): saldo, antigüedad, movimiento de 30 días y OT con más stock
+function AptResumen() {
+  const q = useInvQuery('apt_resumen', () => invApi.aptResumen())
+  const ver = useInvQuery('verify', () => invApi.verify())
+  const d = q.data
+  if (q.loading) return <LoadingBlock label="Cargando el resumen del APT…" className="h-96" />
+  if (q.error) return <ErrorBlock message={q.error} onRetry={q.reload} />
+  if (!d || !d.corte) {
+    return <EmptyState title="Aún no hay movimientos cargados">Suba los reportes de Entradas y Salidas del ERP en <Link href="/apt/datos" className="font-semibold text-[#002855] underline">Datos y verificación</Link>.</EmptyState>
+  }
+  const sum = (k: 'stock_kg' | 'kg_libre' | 'kg_comprometido' | 'ingresado_kg_30' | 'despachado_kg_30') => d.almacenes.reduce((t, a) => t + a[k], 0)
+  const stock = sum('stock_kg')
+  const dias = stock ? d.almacenes.reduce((t, a) => t + (a.dias_pond ?? 0) * a.stock_kg, 0) / stock : null
+  const viejo = d.almacenes.reduce((t, a) => t + a.antiguedad['>90'], 0)
+  const aging = d.almacenes.map(a => ({ name: ALMACEN_LABEL[a.almacen], ...a.antiguedad }))
+  return (
+    <div className="space-y-4">
+      {ver.data && <VerificationPanel v={ver.data} />}
+      {d.cache && !d.cache.al_dia && <p className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><AlertTriangle className="h-4 w-4" /> Cifras del último recálculo: hay cargas pendientes de recalcular.</p>}
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <KpiCard label="Stock en el APT" value={fmtPeso(stock)} tone="navy" icon={<Boxes className="h-4 w-4" />} hint={`647 · 540 · ST al ${fmtDate(d.corte)}`} />
+        <KpiCard label="Comprometido (con OT)" value={fmtPeso(sum('kg_comprometido'))} tone="warn" hint={`Libre: ${fmtPeso(sum('kg_libre'))}`} />
+        <KpiCard label="Días en el APT (ponderado)" value={dias === null ? '—' : `${fmtN(dias)} d`} hint={`${fmtPeso(viejo)} con más de 90 días`} tone={viejo > 0 ? 'warn' : 'ok'} />
+        <KpiCard label="Últimos 30 días" value={fmtPeso(sum('despachado_kg_30'))} icon={<Truck className="h-4 w-4" />} hint={`despachado · ingresó ${fmtPeso(sum('ingresado_kg_30'))}`} />
+      </div>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        {d.almacenes.map(a => <section key={a.almacen} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <header className="flex items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800"><span className="h-2.5 w-2.5 rounded-full" style={{ background: ALMACEN_COLOR[a.almacen] }} />{ALMACEN_LABEL[a.almacen]}</h3>
+            <Link href={`/apt/stock?almacen=${a.almacen}`} className="text-xs font-semibold text-[#002855] underline">Ver stock</Link>
+          </header>
+          <p className="mt-2 text-2xl font-black tabular-nums text-[#002855]">{fmtPeso(a.stock_kg)}</p>
+          <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+            <dt className="text-slate-500">Productos·lote</dt><dd className="text-right font-semibold tabular-nums">{fmtN(a.claves)}</dd>
+            <dt className="text-slate-500">OT con stock</dt><dd className="text-right font-semibold tabular-nums">{fmtN(a.ots)}</dd>
+            <dt className="text-slate-500">Días (ponderado)</dt><dd className="text-right font-semibold tabular-nums">{a.dias_pond === null ? '—' : `${fmtN(a.dias_pond)} d`}</dd>
+            <dt className="text-slate-500">Ingresó 30 d</dt><dd className="text-right font-semibold tabular-nums">{fmtPeso(a.ingresado_kg_30)}</dd>
+            <dt className="text-slate-500">Despachó 30 d</dt><dd className="text-right font-semibold tabular-nums">{fmtPeso(a.despachado_kg_30)}{a.guias_30 ? ` · ${fmtN(a.guias_30)} guías` : ''}</dd>
+          </dl>
+        </section>)}
+      </div>
+      <ChartCard title="Antigüedad del stock por almacén" subtitle="kg con saldo según días desde su ingreso al almacén">
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={aging} layout="vertical" margin={{ left: 8, right: 16 }}>
+            <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" horizontal={false} />
+            <XAxis type="number" tick={tick} tickFormatter={axisKg} />
+            <YAxis type="category" dataKey="name" tick={tick} width={170} />
+            <Tooltip formatter={(v, n) => [fmtPeso(Number(v)), String(n)]} />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            {AGE.map((k, i) => <Bar key={k} dataKey={k} name={AGE_LABEL[k]} stackId="a" fill={AGE_COLOR[k]} radius={i === AGE.length - 1 ? [0, 4, 4, 0] : undefined} />)}
+          </BarChart>
+        </ResponsiveContainer>
+      </ChartCard>
+      <ChartCard title="OT con más stock en el APT" subtitle="Abra una OT para ver sus IDs, guías y lotes"
+        actions={<Link href="/apt/contratos" className="text-xs font-semibold text-[#002855] underline">Todas las OT</Link>}>
+        <Table empty={!d.top_ot.length} head={<tr><th className={th}>OT</th><th className={th}>Cliente</th><th className={`${th} text-right`}>Stock</th><th className={`${th} text-right`}>647</th><th className={`${th} text-right`}>540</th><th className={`${th} text-right`}>ST</th><th className={`${th} text-right`}>Avance</th><th className={`${th} text-right`}>Días</th><th className={th}>Entrega</th></tr>}>
+          {d.top_ot.map(c => <tr key={c.ot} className="hover:bg-slate-50">
+            <td className={td}><Link href={`/apt/contratos?ot=${encodeURIComponent(c.ot)}`} className="font-bold text-[#002855] underline">{c.ot}</Link></td>
+            <td className={td}><p className="max-w-60 truncate" title={c.cliente ?? ''}>{c.cliente ?? '—'}</p></td>
+            <td className={`${tdNum} font-semibold`}>{fmtPeso(c.stock_kg)}</td><td className={tdNum}>{c.stock_647_kg ? fmtPeso(c.stock_647_kg) : '—'}</td>
+            <td className={tdNum}>{c.stock_540_kg ? fmtPeso(c.stock_540_kg) : '—'}</td><td className={tdNum}>{c.stock_st_kg ? fmtPeso(c.stock_st_kg) : '—'}</td>
+            <td className={tdNum}>{c.avance_pct === null ? '—' : `${fmtN(c.avance_pct)} %`}</td><td className={tdNum}>{c.dias_stock === null ? '—' : `${fmtN(c.dias_stock)} d`}</td>
+            <td className={td}>{fmtDate(c.fecha_entrega)}</td>
+          </tr>)}
+        </Table>
+      </ChartCard>
+      <p className="text-xs text-slate-500">Para producción, pernería, MRO y las demás bodegas use <button type="button" onClick={() => setAmbito('todas')} className="font-semibold text-[#002855] underline">Todas las bodegas</button>.</p>
+    </div>
+  )
+}
+
 // Panorama del inventario multi-almacén: dónde está el stock, qué se movió en el período y qué revisar
-export default function InventarioPanoramaPage() {
+function PanoramaTodas() {
   const [period, setPeriod] = useState<{ desde: string; hasta: string }>({ desde: '', hasta: '' })
   const q = useInvQuery(`ov|${period.desde}|${period.hasta}`, () => invApi.overview(period.desde, period.hasta))
   const ver = useInvQuery('verify', () => invApi.verify())
