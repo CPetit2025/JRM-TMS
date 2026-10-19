@@ -70,3 +70,17 @@ test('solo Entradas avisa que faltan las Salidas; hoja sin columnas se ignora; s
   assert.throws(() => parseInventoryWorkbooks([{name: 'x.xlsx', data: book({A: [['hola']]})}]), /No se encontraron movimientos/)
   assert.ok('skip' in parseInventorySheet([['a', 'b']], 'f', 's'))
 })
+
+test('hojas que se contienen (ENTRADA TOTAL con todo, SALIDA TOTAL con una parte) no duplican filas', () => {
+  const d1 = ['DESPACHO VENTAS', 'ST-VENTAS-IMD', 'T001-1', '2026-09-01', null, null, 'P1', 'G', -5, 'UND']
+  const d2 = ['DESPACHO VENTAS', 'ST-VENTAS-IMD', 'T001-2', '2026-09-02', null, null, 'P2', 'G', -3, 'UND']
+  const e1 = ['P/E PRODUCCION ACT.', '647-04 ALM PT', '9001', '2026-09-01', null, null, 'P1', 'G', 5, 'UND']
+  // Línea repetida legítima del mismo documento: aparece dos veces en la hoja grande y debe quedar dos veces
+  const res = parseInventoryWorkbooks([{name: 'DATA.xlsx', data: book({'SALIDA TOTAL': [HEAD, d1], 'ENTRADA TOTAL': [HEAD, d1, d2, d2, e1]})}])
+  const s = res.parts.find(p => p.side === 'S'), e = res.parts.find(p => p.side === 'E')
+  assert.equal(res.parts.filter(p => p.side === 'S').length, 1)
+  assert.equal(s.rows.length, 3)
+  assert.equal(e.rows.length, 1)
+  assert.equal(s.sheetName, 'SALIDA TOTAL + ENTRADA TOTAL')
+  assert.ok(res.warnings.some(w => /se omitieron 1 fila/.test(w)))
+})

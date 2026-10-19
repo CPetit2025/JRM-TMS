@@ -60,17 +60,23 @@ export default function InventarioDatosPage() {
     if (!parsed) return
     if (parsed.parts.some(p => p.side === 'STOCK') && !cutoff) { setError('Indique la fecha de corte de la foto de stock.'); return }
     setError(null); setPartial(false)
+    const applied: string[] = []
+    let current = ''
     try {
       for (const p of parsed.parts) {
-        setBusy(`${INV_SIDE_LABEL[p.side]} · ${p.fileName}…`)
-        await uploadPart(p, { cutoff, force, onProgress: m => setBusy(`${INV_SIDE_LABEL[p.side]}: ${m}`) })
+        current = INV_SIDE_LABEL[p.side]
+        setBusy(`${current} · ${p.fileName}…`)
+        await uploadPart(p, { cutoff, force, onProgress: m => setBusy(`${current}: ${m}`) })
+        applied.push(`${current} ${fmtN(p.rows.length)} filas`)
       }
-      await recalcular(m => setBusy(m))
-      setDone(`Carga aplicada: ${parsed.parts.map(p => `${INV_SIDE_LABEL[p.side]} ${fmtN(p.rows.length)} filas`).join(' · ')}.`)
+      const rb = await recalcular(m => setBusy(m))
+      setDone(`Carga aplicada: ${applied.join(' · ')}.` + (rb.ok ? ' Stock, estadía y trazabilidad recalculados.'
+        : ' El recálculo sigue en el servidor y termina solo en unos minutos (no vuelva a subir el archivo).'))
       setParsed(null)
       if (input.current) input.current.value = ''
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo cargar')
+      const msg = e instanceof Error ? e.message : 'No se pudo cargar'
+      setError(`${current ? `${current}: ` : ''}${msg}${applied.length ? ` · Ya quedaron aplicadas: ${applied.join(', ')}.` : ''}`)
       setPartial(!!(e as { partial?: boolean }).partial)
       notifyInvUpdated()
     } finally { setBusy(null) }

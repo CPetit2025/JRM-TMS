@@ -162,6 +162,7 @@ export function parseInventoryWorkbooks(files: InvInputFile[], onProgress?: (m: 
     }
   }
   if (!out.parts.length) throw new Error('No se encontraron movimientos ni una foto de stock. Suba los reportes de Entradas y Salidas del ERP (columnas TIPODOCTO, BODEGA, Numero, Fecha, Producto, Cantidad, Lote…).')
+  out.parts = mergeBySide(out.parts, out.warnings)
   for (const p of out.parts) {
     if (p.sinFecha) out.warnings.push(`${p.fileName} · ${p.sheetName}: ${p.sinFecha} fila(s) sin fecha válida no se cargarán.`)
   }
@@ -176,4 +177,54 @@ export function parseInventoryWorkbooks(files: InvInputFile[], onProgress?: (m: 
     if (e.length && s.length && (ed !== sd || eh !== sh)) out.warnings.push(`Las Entradas (${ed} a ${eh}) y las Salidas (${sd} a ${sh}) cubren fechas distintas.`)
   }
   return out
+}
+
+// Una sola parte por lado. Los libros del ERP a veces traen hojas que se contienen (p. ej. «ENTRADA TOTAL» con todos los
+// movimientos y «SALIDA TOTAL» con una parte): cada fila idéntica cuenta las veces que más se repite en una misma hoja,
+// así no se duplica lo que aparece en dos hojas y se conservan las líneas repetidas legítimas de un documento.
+function rowKey(r: InvRow) {
+  return Object.keys(r).filter(k => k !== '__row').sort().map(k => `${k}=${r[k]}`).join('\u0001')
+}
+
+export function mergeBySide(parts: InvParsedPart[], warnings: string[]): InvParsedPart[] {
+  const out: InvParsedPart[] = []
+  for (const side of ['E', 'S', 'STOCK'] as InvSide[]) {
+    const group = parts.filter(p => p.side === side)
+    if (!group.length) continue
+    if (group.length === 1) { out.push(group[0]); continue }
+    const best = new Map<string, InvRow[]>()
+    for (const p of group) {
+      const local = new Map<string, InvRow[]>()
+      for (const r of p.rows) { const k = rowKey(r); const l = local.get(k); if (l) l.push(r); else local.set(k, [r]) }
+      for (const [k, rows] of local) if ((best.get(k)?.length ?? 0) < rows.length) best.set(k, rows)
+    }
+    const rows = [...best.values()].flat()
+    const total = group.reduce((t, p) => t + p.rows.length, 0)
+    if (rows.length < total) {
+      warnings.push(`${INV_SIDE_LABEL[side]}: se omitieron ${total - rows.length} fila(s) repetidas entre las hojas ${group.map(p => p.sheetName).join(', ')}.`)
+    }
+    out.push(summarize(side, [...new Set(group.map(p => p.fileName))].join(' + '), group.map(p => p.sheetName).join(' + '), rows))
+  }
+  return out
+}
+
+function summarize(side: InvSide, fileName: string, sheetName: string, rows: InvRow[]): InvParsedPart {
+  const p = emptyPart(side, fileName, sheetName)
+  const bodegas = new Set<string>()
+  p.rows = rows
+  for (const row of rows) {
+    if (row.BODEGA) bodegas.add(String(row.BODEGA).replace(/\s+/g, ' ').trim())
+    if (side === 'STOCK') { p.kg += typeof row.Peso === 'number' ? Math.abs(row.Peso) : 0; continue }
+    const f = typeof row.Fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.Fecha) ? row.Fecha : null
+    if (!f) p.sinFecha++
+    else {
+      if (!p.desde || f < p.desde) p.desde = f
+      if (!p.hasta || f > p.hasta) p.hasta = f
+    }
+    const t = String(row.TIPODOCTO ?? '(sin tipo)')
+    p.tipos[t] = (p.tipos[t] ?? 0) + 1
+    p.kg += typeof row.PesoTotalProduccido === 'number' ? Math.abs(row.PesoTotalProduccido) : 0
+  }
+  p.bodegas = [...bodegas].sort()
+  return p
 }
