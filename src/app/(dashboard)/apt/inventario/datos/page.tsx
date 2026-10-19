@@ -65,8 +65,9 @@ export default function InventarioDatosPage() {
         setBusy(`${INV_SIDE_LABEL[p.side]} · ${p.fileName}…`)
         await uploadPart(p, { cutoff, force, onProgress: m => setBusy(`${INV_SIDE_LABEL[p.side]}: ${m}`) })
       }
-      await recalcular(m => setBusy(m))
-      setDone(`Carga aplicada: ${parsed.parts.map(p => `${INV_SIDE_LABEL[p.side]} ${fmtN(p.rows.length)} filas`).join(' · ')}.`)
+      const rb = await recalcular(m => setBusy(m))
+      setDone(`Carga aplicada: ${parsed.parts.map(p => `${INV_SIDE_LABEL[p.side]} ${fmtN(p.rows.length)} filas`).join(' · ')}.`
+        + (rb.pending ? ' El recálculo sigue en el servidor y termina solo en unos minutos (no vuelva a subir el archivo).' : ''))
       setParsed(null)
       if (input.current) input.current.value = ''
     } catch (e) {

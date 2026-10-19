@@ -42,12 +42,13 @@ async function retry<T>(work: () => Promise<T>, progress?: (m: string) => void):
   }
 }
 
-type ServerStep = { success?: boolean; error?: string; partial?: boolean; fallback?: boolean } & Record<string, unknown>
+type ServerStep = { success?: boolean; error?: string; partial?: boolean; fallback?: boolean; timeout?: boolean } & Record<string, unknown>
 
 async function server(body: Record<string, unknown>): Promise<ServerStep> {
   const res = await fetch('/api/inventario/procesar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   let out: ServerStep = {}
-  try { out = await res.json() } catch { out = { success: false, error: `El servidor respondió ${res.status}` } }
+  // Sin JSON = la plataforma cortó la petición (tiempo agotado); el trabajo puede seguir en la base
+  try { out = await res.json() } catch { out = { success: false, error: `El servidor respondió ${res.status}`, timeout: true } }
   return out
 }
 
@@ -77,11 +78,20 @@ export async function uploadPart(part: InvParsedPart, opts: { cutoff?: string; f
   return applied
 }
 
-export async function recalcular(onProgress?: (m: string) => void) {
+// Recalcula en el servidor. Si la petición se corta por tiempo (archivos muy grandes), el trabajo programado de la base
+// (inv_rebuild_if_dirty, cada 2 min) termina el recálculo: se informa como pendiente. Un error del recálculo se muestra.
+export async function recalcular(onProgress?: (m: string) => void): Promise<{ pending: boolean }> {
   onProgress?.('Recalculando stock, estadía y trazabilidad…')
-  let out = await server({ accion: 'recalcular' })
+  let out: ServerStep
+  try {
+    out = await server({ accion: 'recalcular' })
+  } catch (e) {
+    if (e instanceof TypeError) { notifyInvUpdated(); return { pending: true } }
+    throw e
+  }
   if (out.fallback) out = await call<ServerStep>('inv_recalcular')
-  if (!out.success) throw new Error(out.error || 'No se pudo recalcular el inventario')
   notifyInvUpdated()
-  return out
+  if (out.timeout) return { pending: true }
+  if (!out.success) throw new Error(out.error || 'No se pudo recalcular el inventario')
+  return { pending: false }
 }
