@@ -514,21 +514,35 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE d date:=COALESCE(NULLIF(p->>'from','')::date,date_trunc('month',now() AT TIME ZONE 'America/Lima')::date);
  u date:=COALESCE(NULLIF(p->>'to','')::date,(now() AT TIME ZONE 'America/Lima')::date);
  area uuid:=NULLIF(p->>'area_id','')::uuid; site uuid:=NULLIF(p->>'site_id','')::uuid;
- cost_access boolean; aggregate_cost boolean; rows_data jsonb; actions_data jsonb; action_counts jsonb;
+ cost_access boolean; aggregate_cost boolean; rows_data jsonb; actions_data jsonb; action_counts jsonb; allowed uuid[]; rec_days int; rec_events int;
 BEGIN
  IF NOT public.is_active_tms_user() OR NOT EXISTS(SELECT 1 FROM public.hhee_areas WHERE public.hhee_can(id)) THEN
   RETURN jsonb_build_object('success',false,'error','Sin acceso a HHEE.'); END IF;
  IF u<d OR u-d>366 THEN RETURN jsonb_build_object('success',false,'error','Seleccione hasta 366 días.'); END IF;
  cost_access:=public.hhee_cost_access(); aggregate_cost:=cost_access OR public.has_tms_read_permission('hhee-gerencia');
- WITH base AS (
+ SELECT COALESCE(array_agg(id),'{}'::uuid[]) INTO allowed FROM public.hhee_areas a
+ WHERE public.hhee_can(a.id) AND (area IS NULL OR a.id=area) AND (site IS NULL OR a.site_id=site);
+ SELECT recurrence_days,recurrence_events INTO rec_days,rec_events FROM public.hhee_settings WHERE id=1;
+ -- Aggregate actual events once per day, then compute rolling recurrence once per area/cause/day.
+ -- Counts include earlier days outside the displayed period, regardless of request-state/search filters.
+ WITH daily AS MATERIALIZED(
+  SELECT x.area_id,COALESCE(x.confirmed_cause_id,x.cause_id) cause_id,x.work_date,count(*) event_count
+  FROM public.hhee_requests x WHERE x.area_id=ANY(allowed) AND x.work_date BETWEEN d-rec_days+1 AND u
+   AND x.state IN('EJECUTADA','VALIDADA')
+   AND (NULLIF(p->>'cause_id','') IS NULL OR COALESCE(x.confirmed_cause_id,x.cause_id)=(p->>'cause_id')::uuid)
+   AND EXISTS(SELECT 1 FROM public.hhee_lines xl WHERE xl.request_id=x.id AND xl.actual_minutes>0)
+  GROUP BY x.area_id,COALESCE(x.confirmed_cause_id,x.cause_id),x.work_date
+ ), rolling AS MATERIALIZED(
+  SELECT area_id,cause_id,work_date,sum(event_count) OVER(PARTITION BY area_id,cause_id ORDER BY work_date::timestamp
+   RANGE BETWEEN ((rec_days-1)*interval '1 day') PRECEDING AND CURRENT ROW) event_count FROM daily
+ ), base AS (
   SELECT r.*,a.name area_name,a.site_id,s.name site_name,c.name cause_name,o.name origin_area_name,
     public.hhee_needs_exception(r.id) needs_exception,
-    (SELECT count(*)>=cfg.recurrence_events FROM public.hhee_requests x
-     WHERE x.area_id=r.area_id AND COALESCE(x.confirmed_cause_id,x.cause_id)=COALESCE(r.confirmed_cause_id,r.cause_id)
-     AND x.state IN('EJECUTADA','VALIDADA') AND EXISTS(SELECT 1 FROM public.hhee_lines xl WHERE xl.request_id=x.id AND xl.actual_minutes>0) AND x.work_date BETWEEN r.work_date-cfg.recurrence_days+1 AND r.work_date) recurrent
+    COALESCE(z.event_count>=rec_events,false) recurrent
   FROM public.hhee_requests r JOIN public.hhee_areas a ON a.id=r.area_id JOIN public.sites s ON s.id=a.site_id
-  JOIN public.hhee_causes c ON c.id=COALESCE(r.confirmed_cause_id,r.cause_id) LEFT JOIN public.hhee_areas o ON o.id=r.origin_area_id CROSS JOIN public.hhee_settings cfg
-  WHERE public.hhee_can(r.area_id) AND r.work_date BETWEEN d AND u
+  JOIN public.hhee_causes c ON c.id=COALESCE(r.confirmed_cause_id,r.cause_id) LEFT JOIN public.hhee_areas o ON o.id=r.origin_area_id
+  LEFT JOIN rolling z ON z.area_id=r.area_id AND z.cause_id=COALESCE(r.confirmed_cause_id,r.cause_id) AND z.work_date=r.work_date
+  WHERE r.area_id=ANY(allowed) AND r.work_date BETWEEN d AND u
     AND (area IS NULL OR r.area_id=area) AND (site IS NULL OR a.site_id=site)
     AND (NULLIF(p->>'cause_id','') IS NULL OR COALESCE(r.confirmed_cause_id,r.cause_id)=(p->>'cause_id')::uuid)
     AND (NULLIF(p->>'state','') IS NULL OR r.state=p->>'state')
@@ -570,14 +584,14 @@ BEGIN
    count(*) FILTER(WHERE target IS NOT NULL) targets_defined FROM enriched WHERE state='VALIDADA' GROUP BY area_id,area_name) t),'[]')
  ) INTO rows_data;
  SELECT jsonb_build_object('actions_total',count(*),'actions_overdue',count(*) FILTER(WHERE x.state IN('ABIERTA','EN_CURSO') AND x.due_date<(now() AT TIME ZONE 'America/Lima')::date))
- INTO action_counts FROM public.hhee_actions x JOIN public.hhee_areas a ON a.id=x.area_id WHERE public.hhee_can(x.area_id)
+ INTO action_counts FROM public.hhee_actions x JOIN public.hhee_areas a ON a.id=x.area_id WHERE x.area_id=ANY(allowed)
  AND (area IS NULL OR x.area_id=area) AND (site IS NULL OR a.site_id=site)
  AND (NULLIF(p->>'cause_id','') IS NULL OR x.cause_id=(p->>'cause_id')::uuid)
  AND (x.due_date BETWEEN d AND u OR x.state<>'VERIFICADA');
  SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.due_date),'[]') INTO actions_data FROM (
   SELECT x.*,a.name area_name,c.name cause_name,COALESCE(NULLIF(concat_ws(' ',to_jsonb(pr)->>'first_name',to_jsonb(pr)->>'last_name'),''),pr.id::text) assigned_name
   FROM public.hhee_actions x JOIN public.hhee_areas a ON a.id=x.area_id JOIN public.hhee_causes c ON c.id=x.cause_id JOIN public.profiles pr ON pr.id=x.assigned_to
-  WHERE public.hhee_can(x.area_id) AND (area IS NULL OR x.area_id=area) AND (site IS NULL OR a.site_id=site)
+  WHERE x.area_id=ANY(allowed) AND (area IS NULL OR x.area_id=area) AND (site IS NULL OR a.site_id=site)
    AND (NULLIF(p->>'cause_id','') IS NULL OR x.cause_id=(p->>'cause_id')::uuid)
    AND (x.due_date BETWEEN d AND u OR x.state<>'VERIFICADA') ORDER BY x.due_date LIMIT 500
  ) t;
