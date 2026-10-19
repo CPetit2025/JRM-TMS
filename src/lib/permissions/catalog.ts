@@ -12,6 +12,16 @@ export type PermissionModule = { id: string; label: string; mode?: PermissionMod
 export type PermissionGroup = { title: string; hint?: string; modules: PermissionModule[] }
 
 export const PERMISSION_GROUPS: PermissionGroup[] = [
+  { title: 'Control de horas extras', hint: 'Además del permiso, asigne las áreas autorizadas en Configuración HHEE. Gerencia consulta agregados por sede.', modules: [
+    { id: 'hhee', label: 'Consulta de horas extras por área' },
+    { id: 'hhee-solicitar', label: 'Solicitar HHEE y registrar resultados' },
+    { id: 'hhee-aprobar', label: 'Aprobar HHEE como jefe del área' },
+    { id: 'hhee-validar', label: 'Importar asistencia y validar HHEE (RR. HH.)' },
+    { id: 'hhee-gerencia', label: 'Informe gerencial con costos agregados' },
+    { id: 'hhee-excepciones', label: 'Revisar excepciones (Gerencia)' },
+    { id: 'hhee-costos', label: 'Consultar costos individuales de HHEE' },
+    { id: 'hhee-config', label: 'Configurar áreas, accesos y directorio HHEE' },
+  ] },
   { title: 'Reportes y Analítica', modules: [
     { id: 'dashboard', label: 'Centro de Analítica (vista general)' },
     { id: 'reportes', label: 'Reporte de despachos y recojos' },
