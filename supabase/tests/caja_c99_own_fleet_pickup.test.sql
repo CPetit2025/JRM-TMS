@@ -1,6 +1,10 @@
 -- Own pickups remain documented with no invented freight/distance; third-party quotes require explicit approval.
 BEGIN;
 DO $settings$ BEGIN
+ -- This case tests explicit supervisor authorization; do not depend on the production auto-approval preference.
+ IF to_regclass('public.transport_request_approval_settings') IS NOT NULL THEN
+  UPDATE public.transport_request_approval_settings SET auto_approve=false WHERE id;
+ END IF;
  IF to_regclass('public.transport_lead_time_settings') IS NOT NULL THEN
   UPDATE public.transport_lead_time_settings SET settings=jsonb_set(settings,'{enabled}','false'::jsonb);
  END IF;
