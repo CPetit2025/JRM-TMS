@@ -22,7 +22,10 @@ BEGIN
   RAISE EXCEPTION 'CAJA C55 FAIL: vista omite RLS sin barrera explícita';
  END IF;
  IF EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.prosecdef
- AND has_function_privilege('anon',p.oid,'EXECUTE') AND p.proname NOT IN ('get_public_tracking_info','get_public_daily_tracking_info','get_public_daily_tracking_locations','get_public_tracking_portal_info','tracking_portal_sign_in','tracking_portal_sign_in_session','get_public_tracking_portal_view','tracking_portal_sign_out','native_tracking_sync')) THEN
+ AND has_function_privilege('anon',p.oid,'EXECUTE')
+ AND NOT (p.proname IN ('get_public_tracking_info','get_public_daily_tracking_info','get_public_daily_tracking_locations','get_public_tracking_portal_info','tracking_portal_sign_in','get_public_tracking_portal_view','tracking_portal_sign_out','native_tracking_sync')
+  -- This exact public overload validates the link/PIN and a browser-session nonce; private presence helpers remain forbidden.
+  OR COALESCE(p.oid=to_regprocedure('public.tracking_portal_sign_in_session(uuid,text,text,uuid)'),false))) THEN
   RAISE EXCEPTION 'CAJA C55 FAIL: RPC privilegiado expuesto a anónimos';
  END IF;
  IF EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.prosecdef

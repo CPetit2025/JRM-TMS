@@ -38,11 +38,10 @@ async function presenceSession(token: string, name: string): Promise<string> {
   const readOrCreate = () => {
     try {
       const existing = window.localStorage.getItem(key)
-      if (existing && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(existing)) return existing
+      if (existing && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(existing)) { fallbackSessions.delete(key); return existing }
     } catch { /* Sin almacenamiento: conservar el nonce de esta pestaña para los reintentos. */ }
     const id = fallbackSessions.get(key) || crypto.randomUUID()
-    fallbackSessions.set(key, id)
-    try { window.localStorage.setItem(key, id) } catch { /* Continúa con memoria local. */ }
+    try { window.localStorage.setItem(key, id); fallbackSessions.delete(key) } catch { fallbackSessions.set(key, id) /* Continúa con memoria local solo cuando no puede guardar. */ }
     return id
   }
   return navigator.locks?.request ? navigator.locks.request(key, readOrCreate) : readOrCreate()

@@ -10,7 +10,7 @@ const key = token => `jrm:tracking-access:v2:${token}`
 // La sesión guarda el código y a la persona identificada (nombre) que ve el portal
 const access = (pin, viewer = 'viewer-1', name = 'Ana Pérez') => JSON.stringify({ pin, viewer, name })
 const payload = { mode: 'permanent', label: 'Gerencia', rows: [], requests: [] }
-function harness(initial = {}, sharedStore = new Map()) {
+function harness(initial = {}, sharedStore = new Map(), options = {}) {
   const store = new Map(Object.entries(initial)), calls = []
   let token = 'link-A', answer = { data: payload }, interval
   const client = { rpc: async (name, args) => {
@@ -20,7 +20,12 @@ function harness(initial = {}, sharedStore = new Map()) {
     if (name === 'tracking_portal_sign_in_session' && value?.data?.mode) return { data: { success: true, viewer_id: 'viewer-1', name: args.p_name }, error: null }
     return value
   } }
-  const browser = { sessionStorage: { getItem: k => store.get(k) || null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k) }, localStorage: { getItem: k => sharedStore.get(k) || null, setItem: (k, v) => sharedStore.set(k, v), removeItem: k => sharedStore.delete(k) }, setInterval: fn => { interval = fn; return 1 }, clearInterval: () => { interval = null } }
+  const localStorage = {
+    getItem: k => { if (options.storageBlocked) throw Error('Storage disabled'); return sharedStore.get(k) || null },
+    setItem: (k, v) => { if (options.storageBlocked) throw Error('Storage disabled'); sharedStore.set(k, v) },
+    removeItem: k => { if (options.storageBlocked) throw Error('Storage disabled'); sharedStore.delete(k) }
+  }
+  const browser = { sessionStorage: { getItem: k => store.get(k) || null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k) }, localStorage, setInterval: fn => { interval = fn; return 1 }, clearInterval: () => { interval = null } }
   const mocks = name => {
     if (name === 'next/navigation') return { useParams: () => ({ token }) }
     if (name === '@/lib/supabase/client') return { createClient: () => client }
@@ -77,6 +82,30 @@ test('a failed sign-in retry keeps its nonce and another link receives a differe
   await h.token('link-B'); await signIn(h, 'A7K2')
   assert.notEqual(h.calls.filter(c => c.name === 'tracking_portal_sign_in_session').at(-1).p_session, failed.p_session)
   await h.unmount()
+})
+test('an exit in another tab cannot revive the old nonce from the first tab memory', async () => {
+  const shared = new Map(), first = harness({}, shared), second = harness({}, shared)
+  await first.render(); await signIn(first, 'A7K2')
+  const originalNonce = first.calls.find(c => c.name === 'tracking_portal_sign_in_session').p_session
+  await second.render(); await signIn(second, 'A7K2')
+  assert.equal(second.calls.find(c => c.name === 'tracking_portal_sign_in_session').p_session, originalNonce)
+  await act(async () => second.tree.root.findAllByType('button').find(b => text(b) === 'Salir').props.onClick())
+  first.respond({ data: { error: 'Acceso vencido: ingrese su nombre y el código nuevamente' } }); await first.tick()
+  assert.equal(signedIn(first.tree), false); assert.equal(first.store.has(key('link-A')), false)
+  first.respond({ data: payload }); await signIn(first, 'A7K2')
+  assert.notEqual(first.calls.filter(c => c.name === 'tracking_portal_sign_in_session').at(-1).p_session, originalNonce)
+  assert.ok(signedIn(first.tree)); await first.unmount(); await second.unmount()
+})
+test('blocked local storage retains an in-memory nonce across lost-response retries', async () => {
+  const shared = new Map(), h = harness({}, shared, { storageBlocked: true })
+  await h.render(); h.respond(new Error('Response lost after sign-in')); await signIn(h, 'A7K2')
+  const originalNonce = h.calls.find(c => c.name === 'tracking_portal_sign_in_session').p_session
+  assert.equal(signedIn(h.tree), false); assert.equal(shared.size, 0)
+  await signIn(h, 'A7K2'); assert.equal(signedIn(h.tree), false)
+  assert.equal(h.calls.filter(c => c.name === 'tracking_portal_sign_in_session').at(-1).p_session, originalNonce)
+  h.respond({ data: payload }); await signIn(h, 'A7K2')
+  assert.equal(h.calls.filter(c => c.name === 'tracking_portal_sign_in_session').at(-1).p_session, originalNonce)
+  assert.ok(signedIn(h.tree)); assert.equal(shared.size, 0); await h.unmount()
 })
 for (const error of ['Acceso revocado', 'Código de acceso incorrecto', 'Tracking link is invalid, expired, or incorrect PIN.']) test(`server rejects restored access: ${error}`, async () => {
   const h = harness({ [key('link-A')]: access('A7K2') }); h.respond({ data: { error } }); await h.render()
