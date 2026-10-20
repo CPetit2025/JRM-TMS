@@ -1,4 +1,5 @@
 "use client"
+import { ForkliftFields, EMPTY_FORKLIFT, forkliftValid } from '@/components/despacho/ForkliftFields'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { TransportWorkflow, TorreControlButton } from '@/components/transport/TransportWorkflow'
@@ -196,6 +197,7 @@ export default function DespachoPage() {
   // Auxiliares de la ruta (personas de Personal); hasta 6
   const [auxiliares, setAuxiliares] = useState<string[]>([])
   const [auxDrivers, setAuxDrivers] = useState(false)
+  const [forklift, setForklift] = useState(EMPTY_FORKLIFT)
   const [newDispatch, setNewDispatch] = useState<{
     selected_requests: { id: string, document_number: string }[],
     driver_name: string,
@@ -433,6 +435,7 @@ export default function DespachoPage() {
     if (selectedReqsFull.some(r => !r.attention_mode || (r.attention_mode === 'RECOJO_CLIENTE') !== isPickup)) {
       toast.error('Defina la modalidad en Solicitudes; no mezcle recojos por cliente y transporte JRM.'); return
     }
+    if (!forkliftValid(forklift)) { toast.error('Complete proveedor y montacarguista.'); return }
     // El servidor valida la reserva vigente y el gasto autorizado; saldo cero puede ser una reserva propia.
     setIsSubmitting(true)
     if (modalidad === 'TERCERO' && newDispatch.document_type === 'GR') {
@@ -457,13 +460,13 @@ export default function DespachoPage() {
           const authorizedFreight = serviceShare(request.id)
           setPendingRequests(current => current.map(r => r.id === request.id ? { ...r, service_cost: authorizedFreight, operational_approved_pen: Math.round((authorizedFreight + Number(r.unloading_estimate_pen || 0)) * 100) / 100 } : r))
         }
-        const { data: newDispatchId, error } = await supabase.rpc('schedule_dispatch_tercero', {
+        const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { mode: 'TERCERO', forklift: forklift.enabled ? forklift : null, auxiliaries: [],
           p_carrier_id: tercero.carrier_id, p_plate: tercero.placa, p_conductor: tercero.conductor, p_telefono: tercero.telefono,
           p_doc: tercero.doc || null, p_departure: new Date(newDispatch.scheduled_departure).toISOString(),
           p_estimated_km: isPickup ? 0 : Number(newDispatch.estimated_distance_km) || 0, p_freight_cost: freightCost,
           p_contract_id: firstReq?.contracts?.id || null,
           p_requests: programmingRequests(),
-        })
+        } })
         if (error) throw error
         if (!isPickup && newDispatchId && freightQuote && detectedFreightRate?.rate && freightCost === detectedFreightRate.rate) {
           await supabase.rpc('set_dispatch_freight_quote', { p_dispatch_id: newDispatchId, p_breakdown: freightQuote })
@@ -473,6 +476,7 @@ export default function DespachoPage() {
           const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(newDispatch.scheduled_departure))
           router.push(`/torre-control?despacho=${newDispatchId}&fecha=${day}&proveedor=1`)
         }
+        setForklift(EMPTY_FORKLIFT)
         setIsModalOpen(false)
         setNewDispatch({ selected_requests: [], driver_name: '', vehicle_plate: '', scheduled_departure: '', estimated_distance_km: '', document_type: 'GR' })
         setManualFreightCost(''); setTercero(TERCERO_VACIO); setModalidad('PROPIA')
@@ -534,7 +538,7 @@ export default function DespachoPage() {
 
       const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
       const freightCost = routeFreight
-      const { data: newDispatchId, error } = await supabase.rpc('schedule_dispatch', {
+      const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { mode: 'PROPIA', forklift: forklift.enabled ? forklift : null, auxiliaries: isPickup ? [] : auxiliares,
         p_driver_id: isPickup ? null : matches[0]?.id || null,
         p_vehicle_plate: isPickup ? 'EXTERNO' : newDispatch.vehicle_plate,
         p_departure: new Date(newDispatch.scheduled_departure).toISOString(),
@@ -543,18 +547,15 @@ export default function DespachoPage() {
         p_contract_id: firstReq?.contracts?.id || null,
         p_document_type: newDispatch.document_type,
         p_requests: programmingRequests()
-      })
+      } })
       if (error) throw error
       // Se guarda con qué tarifa se calculó el flete (si vino del tarifario)
       if (!isPickup && newDispatchId && freightQuote && detectedFreightRate?.rate && freightCost === detectedFreightRate.rate) {
         await supabase.rpc('set_dispatch_freight_quote', { p_dispatch_id: newDispatchId, p_breakdown: freightQuote })
       }
-      if (!isPickup && newDispatchId && auxiliares.length) {
-        const { data: auxRes, error: auxErr } = await supabase.rpc('set_route_auxiliaries', { p_dispatch: newDispatchId, p_people: auxiliares })
-        if (auxErr || !auxRes?.success) toast.warning('La ruta quedó programada, pero no se asignaron los auxiliares: ' + (auxErr?.message || auxRes?.error || 'error'))
-      }
       setAutoDeparture('')
       setAuxiliares([])
+      setForklift(EMPTY_FORKLIFT)
       toast.success(isPickup ? 'Recojo por el cliente programado con Nota de Salida y sin flete JRM.' : 'Despacho programado y financiamiento validado.')
       setIsModalOpen(false)
       setNewDispatch({ selected_requests: [], driver_name: '', vehicle_plate: '', scheduled_departure: '', estimated_distance_km: '', document_type: 'GR' })
@@ -948,6 +949,8 @@ export default function DespachoPage() {
                 )}
               </div>
             </FormSection>
+
+            <ForkliftFields value={forklift} onChange={setForklift} />
 
             <FormSection id="ruta-salida" step={3} title="Salida" hint="La fecha de salida se confirma por separado de la fecha requerida de cada servicio.">
               <div className="grid gap-3 md:grid-cols-2">

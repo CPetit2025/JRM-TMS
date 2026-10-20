@@ -10,8 +10,10 @@ const key = token => `jrm:tracking-access:v2:${token}`
 // La sesión guarda el código y a la persona identificada (nombre) que ve el portal
 const access = (pin, viewer = 'viewer-1', name = 'Ana Pérez') => JSON.stringify({ pin, viewer, name })
 const payload = { mode: 'permanent', label: 'Gerencia', rows: [], requests: [] }
+const routeShare = { exports: {}, require: () => ({ deliveryTime: String }) }
+vm.runInNewContext(ts.transpileModule(readFileSync('src/lib/route-share.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, routeShare)
 function harness(initial = {}, sharedStore = new Map(), options = {}) {
-  const store = new Map(Object.entries(initial)), calls = []
+  const store = new Map(Object.entries(initial)), calls = [], notices = []
   let token = 'link-A', answer = { data: payload }, interval
   const client = { rpc: async (name, args) => {
     calls.push({ name, ...args }); const value = await answer
@@ -29,7 +31,8 @@ function harness(initial = {}, sharedStore = new Map(), options = {}) {
   const mocks = name => {
     if (name === 'next/navigation') return { useParams: () => ({ token }) }
     if (name === '@/lib/supabase/client') return { createClient: () => client }
-    if (name === 'sonner') return { toast: { success() {}, error() {} } }
+    if (name === 'sonner') return { toast: { success() {}, error() {}, info: (...args) => notices.push(args) } }
+    if (name === '@/lib/route-share') return routeShare.exports
     if (name === '@/lib/tracking-calendar') return { limaDay: () => '2026-10-12', monthDays: () => ['2026-10-01', ...Array(40).fill('2026-10-12'), '2026-11-11'] }
     if (name.startsWith('@/components/')) return new Proxy({}, { get: (_, component) => props => React.createElement('section', { 'data-component': component, ...props }) })
     return require(name)
@@ -38,7 +41,7 @@ function harness(initial = {}, sharedStore = new Map(), options = {}) {
   vm.runInNewContext(ts.transpileModule(readFileSync('src/app/tracking/[token]/page.tsx', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText, context)
   let tree
   const render = async () => { await act(async () => { tree = create(React.createElement(context.exports.default)) }); return tree }
-  return { store, calls, render, get tree() { return tree }, respond: value => { answer = value }, tick: async () => { await act(async () => { await interval?.() }) }, token: async value => { token = value; await act(async () => tree.update(React.createElement(context.exports.default))) }, unmount: async () => { await act(async () => tree.unmount()) } }
+  return { store, calls, notices, render, get tree() { return tree }, respond: value => { answer = value }, tick: async () => { await act(async () => { await interval?.() }) }, token: async value => { token = value; await act(async () => tree.update(React.createElement(context.exports.default))) }, unmount: async () => { await act(async () => tree.unmount()) } }
 }
 function text(node) { return typeof node === 'string' ? node : (node?.children || []).map(text).join('') }
 function signedIn(tree) { return tree.root.findAllByType('button').some(b => text(b) === 'Salir') }
@@ -153,5 +156,25 @@ test('the portal asks for the person name before the access code and an old sess
   assert.equal(signedIn(h.tree), false); assert.equal(h.calls.length, 0)
   const inputs = h.tree.root.findAllByType('input'); assert.equal(inputs.length, 2); assert.equal(inputs[0].props.autoComplete, 'name')
   await signIn(h, 'A7K2', 'X'); assert.equal(h.calls.length, 0, 'sin nombre válido no consulta el servidor')
+  await h.unmount()
+})
+
+test('authenticated public viewers receive each event change once and revoked access cannot receive more', async () => {
+  const initialRow = { dispatch_id: 'route-1', request_id: 'stop-1', dispatch_number: 'R001', plate: 'ABC-123', state: 'PROGRAMADO', last_event_at: '2026-10-20T12:00:00Z', events: [] }
+  const h = harness({ [key('link-A')]: access('A1B2') })
+  h.respond({ data: { ...payload, rows: [initialRow] } })
+  await h.render()
+  assert.equal(h.notices.length, 0)
+  const changed = { ...initialRow, state: 'EN_CURSO', last_event_at: '2026-10-20T13:00:00Z', events: [{ type: 'EN_RUTA', at: '2026-10-20T13:00:00Z', description: 'Salida de planta' }] }
+  h.respond({ data: { ...payload, rows: [changed] } })
+  await h.tick()
+  assert.equal(h.notices.length, 1)
+  assert.match(h.notices[0][1].description, /R001.*ABC-123.*EN RUTA/)
+  await h.tick()
+  assert.equal(h.notices.length, 1)
+  h.respond({ data: { error: 'Acceso revocado' } })
+  await h.tick()
+  assert.equal(signedIn(h.tree), false)
+  assert.equal(h.notices.length, 1)
   await h.unmount()
 })

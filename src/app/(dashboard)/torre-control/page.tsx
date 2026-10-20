@@ -20,6 +20,8 @@ import { DispatchExecutionActions } from '@/components/transport/DispatchExecuti
 import { DispatchCrewUnloading } from '@/components/despacho/DispatchCrewUnloading'
 import { EvidenceGallery } from '@/components/evidence/EvidenceGallery'
 import { toast } from 'sonner'
+import { RouteShareModal } from '@/components/despacho/RouteShareModal'
+import { RouteForkliftInfo } from '@/components/despacho/RouteForkliftInfo'
 
 interface DispatchRequest {
   transport_request_id: string
@@ -103,6 +105,8 @@ export default function TorreControlPage() {
   const [responsibles, setResponsibles] = useState<Array<{ user_id: string, full_name: string }>>([])
 
   const [portalOpen, setPortalOpen] = useState(false)
+  const [shareRoutes, setShareRoutes] = useState<string[]>([])
+  const canceling = useRef(false)
 
   useEffect(() => {
     const query = new URLSearchParams(window.location.search)
@@ -162,13 +166,17 @@ export default function TorreControlPage() {
 
   // Solo un despacho PROGRAMADO se cancela: libera la partida, anula el flete y devuelve las solicitudes a Por asignar
   const cancelDispatch = async (dispatch: Dispatch) => {
+    if (canceling.current) return
     const reason = prompt(`Motivo de la cancelación del despacho ${dispatch.dispatch_number}:`)
     if (!reason?.trim()) return
+    canceling.current = true
+    try {
     const { data, error } = await supabase.rpc('cancel_dispatch', { p_dispatch_id: dispatch.id, p_reason: reason.trim() })
     if (error || (data && !data.success)) { toast.error('Error al cancelar: ' + (error?.message || data?.error || 'No se pudo cancelar')); return }
     toast.success('Despacho cancelado: se liberó la partida y las solicitudes volvieron a Por asignar.')
     setSelectedDispatch(null)
     await fetchDispatches()
+    } catch { toast.error('No se pudo cancelar la ruta. Intente nuevamente.') } finally { canceling.current = false }
   }
 
   useEffect(() => {
@@ -366,7 +374,8 @@ export default function TorreControlPage() {
         </div>
       </div>
 
-      <DeliveryTable rows={rows.filter(row => filteredDispatches.some(d => d.id === row.dispatch_id))} loading={loading} error={loadError} refreshedAt={refreshedAt} onRefresh={() => void fetchDispatches()} onEvidence={setReview} onDispatch={row => setSelectedDispatch(dispatches.find(d => d.id === row.dispatch_id) || null)} onAddService={canAddService ? row => setAddServiceId(row.dispatch_id) : undefined} onProvider={canWrite('despacho') ? row => setThirdId(row.dispatch_id) : undefined} />
+      {shareRoutes.length > 0 && <RouteShareModal ids={shareRoutes} onClose={() => setShareRoutes([])} />}
+      <DeliveryTable onShareRoutes={setShareRoutes} cancelableRoutes={dispatches.filter(d => d.status === 'PROGRAMADO').map(d => d.id)} onCancelRoute={canWrite('despacho') ? id => { const d = dispatches.find(x => x.id === id); if (d) void cancelDispatch(d) } : undefined} rows={rows.filter(row => filteredDispatches.some(d => d.id === row.dispatch_id))} loading={loading} error={loadError} refreshedAt={refreshedAt} onRefresh={() => void fetchDispatches()} onEvidence={setReview} onDispatch={row => setSelectedDispatch(dispatches.find(d => d.id === row.dispatch_id) || null)} onAddService={canAddService ? row => setAddServiceId(row.dispatch_id) : undefined} onProvider={canWrite('despacho') ? row => setThirdId(row.dispatch_id) : undefined} />
       <AddRouteService dispatchId={addServiceId} onClose={() => setAddServiceId(null)} onChanged={() => { setSelectedDispatch(null); void fetchDispatches() }} />
       <DeliveryReview row={review} onClose={() => setReview(null)} onChanged={() => void fetchDispatches()} />
       <TerceroAvanceModal dispatchId={thirdId} onClose={() => setThirdId(null)} onChanged={() => void fetchDispatches()} />
@@ -544,7 +553,8 @@ export default function TorreControlPage() {
             </div>
 
             <div className="border-t pt-4">
-              <DispatchCrewUnloading dispatchId={selectedDispatch.id} status={selectedDispatch.status} canEdit={canWrite('despacho')}
+              <RouteForkliftInfo key={selectedDispatch.id} dispatchId={selectedDispatch.id} />
+            <DispatchCrewUnloading dispatchId={selectedDispatch.id} status={selectedDispatch.status} canEdit={canWrite('despacho')}
                 stops={rows.filter(row => row.dispatch_id === selectedDispatch.id).map(row => ({ request_id: row.request_id, request_number: row.request_number }))} />
             </div>
             <div className="border-t pt-4">
