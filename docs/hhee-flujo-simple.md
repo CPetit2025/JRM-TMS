@@ -39,7 +39,7 @@ Ficha: código, nombres, documento, cargo, área, jornada de referencia (horas d
 - **Armar ruta → Unidad y conductor:** auxiliar opcional, elegido de **Personal (/hhee/personal)**: fichas activas,
   tengan o no usuario en el sistema; con «Incluir conductores disponibles» se suman las fichas enlazadas a Flota. No
   aparecen quienes ya conducen, acompañan o van de auxiliar en otra ruta activa (`list_route_assistants`,
-  migración `20261021130000_auxiliar_desde_personal.sql`). Se guarda con `set_route_auxiliary` en `route_auxiliaries`;
+  migración `20261021140000_auxiliar_desde_personal.sql`). Se guarda con `set_route_auxiliary` en `route_auxiliaries`;
   si la ficha tiene usuario, también como tripulación AUXILIAR.
 - **Fecha programada de salida:** al elegir servicios con una sola fecha requerida, se completa sola con esa fecha a
   las 08:00 (se ajusta la hora); si se cambia a mano, ya no se reemplaza.
