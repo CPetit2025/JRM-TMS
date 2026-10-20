@@ -2,16 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CalendarDays, Loader2, Route, ShieldCheck } from 'lucide-react'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { TrackingCalendar } from '@/components/tracking/TrackingCalendar'
 import { RouteDay } from '@/components/tracking/RouteDay'
-import { ActiveViewers, type Viewer } from '@/components/tracking/ActiveViewers'
+import { ActiveViewers, viewerOrigin, type Viewer, type PresenceEvent } from '@/components/tracking/ActiveViewers'
 import type { PortalRow } from '@/lib/tracking-portal'
 import { limaDay, monthDays, type PortalRequest } from '@/lib/tracking-calendar'
 
 // Planificación y Seguimiento de Transporte para los usuarios del TMS: el mismo portal que se comparte con los
 // clientes (calendario y ruta del día), de toda la sede, sin código: la sesión del TMS ya identifica a la persona.
-type View = { rows: PortalRow[]; requests: PortalRequest[]; limited?: boolean; label?: string | null; viewer_id?: string; viewers?: Viewer[]; active_count?: number }
+type View = { rows: PortalRow[]; requests: PortalRequest[]; limited?: boolean; label?: string | null; viewer_id?: string; viewers?: Viewer[]; active_count?: number; presence_events?: PresenceEvent[] }
 const SITE_KEY = 'jrm:seguimiento:sede'
 
 export default function SeguimientoPage() {
@@ -26,6 +27,7 @@ export default function SeguimientoPage() {
   const [month, setMonth] = useState(() => limaDay(new Date().toISOString()).slice(0, 7))
   const [routeDay, setRouteDay] = useState(() => limaDay(new Date().toISOString()))
   const range = useMemo(() => { const days = monthDays(month); return { p_from: days[0], p_to: days[41] } }, [month])
+  const observedPresence = useRef<{ scope: string; ids: Set<string> } | null>(null)
   const viewer = useRef<{ site: string; id: string } | null>(null)
   const changeRouteDay = (day: string) => { setRouteDay(day); if (day < range.p_from || day > range.p_to) setMonth(day.slice(0, 7)) }
 
@@ -47,25 +49,55 @@ export default function SeguimientoPage() {
   useEffect(() => {
     if (!site) return
     let alive = true
+    let inFlight = false
     const load = async () => {
+      if (inFlight) return
+      inFlight = true
+      try {
       const current = viewer.current?.site === site ? viewer.current.id : null
       const { data: r, error: e } = await db.rpc('get_internal_tracking_view', { p_site: site, ...range, p_viewer: current })
       if (!alive) return
       if (e || r?.error) { setError(r?.error || e?.message || 'No se pudo actualizar el seguimiento'); return }
       if (r.viewer_id) viewer.current = { site, id: r.viewer_id }
       setData(r); setUpdatedAt(new Date().toISOString()); setError('')
+      const events = (r.presence_events || []) as PresenceEvent[], scope = `${site}:${r.viewer_id || ''}`
+      if (!r.viewer_id) return
+      const previous = observedPresence.current
+      if (!previous || previous.scope !== scope) {
+        // La primera carga establece el corte: los ingresos anteriores quedan en la bandeja de notificaciones.
+        observedPresence.current = { scope, ids: new Set(events.map(event => event.id)) }
+        return
+      }
+      const fresh = events.filter(event => !previous.ids.has(event.id) && !event.me)
+      observedPresence.current = { scope, ids: new Set([...previous.ids, ...events.map(event => event.id)].slice(-512)) }
+      if (document.visibilityState !== 'visible') return
+      const storageKey = `jrm:tracking-entry-notices:v1:${scope}`
+      const announce = () => {
+        if (!alive || document.visibilityState !== 'visible') return
+        let seen: string[] = []
+        try { const value = JSON.parse(window.localStorage.getItem(storageKey) || '[]'); if (Array.isArray(value)) seen = value.filter((value): value is string => typeof value === 'string') } catch { /* Sin almacenamiento: deduplicación de esta pestaña. */ }
+        const announceEvents = fresh.filter(event => !seen.includes(event.id))
+        if (!announceEvents.length) return
+        try { window.localStorage.setItem(storageKey, JSON.stringify([...seen, ...announceEvents.map(event => event.id)].slice(-256))) } catch { /* Continúa con memoria local. */ }
+        for (const event of announceEvents) {
+          const at = new Date(event.entered_at)
+          const time = Number.isNaN(at.getTime()) ? '' : new Intl.DateTimeFormat('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit' }).format(at)
+          toast.info(`${event.name} ingresó al seguimiento`, { id: `tracking-entry:${event.id}`, description: `${viewerOrigin(event.access_type)}${time ? ` · ${time}, Lima` : ''}` })
+        }
+      }
+      // Web Locks evita dos avisos para el mismo ingreso cuando hay varias pestañas del TMS.
+      if (navigator.locks?.request) await navigator.locks.request(storageKey, announce)
+      else announce()
+      } catch (e) { if (alive) setError(e instanceof Error ? e.message : 'No se pudo actualizar el seguimiento') }
+      finally { inFlight = false }
     }
     void load()
     const timer = window.setInterval(load, 15000)
     return () => { alive = false; window.clearInterval(timer) }
   }, [db, site, range, version])
 
-  // Al salir de la pantalla o cambiar de sede deja de figurar como «viendo»
-  useEffect(() => () => {
-    const v = viewer.current
-    if (v) void db.rpc('internal_tracking_sign_out', { p_site: v.site, p_viewer: v.id })
-  }, [db, site])
-
+  // No cerramos presencia durante cleanup: actualizar o duplicar una pestaña no representa un nuevo ingreso.
+  // El servidor libera las presencias sin heartbeat al vencer el TTL.
   const chooseSite = (id: string) => {
     setSite(id); setData(null)
     try { window.localStorage.setItem(SITE_KEY, id) } catch { /* Sin almacenamiento */ }

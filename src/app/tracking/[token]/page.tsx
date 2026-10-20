@@ -30,6 +30,28 @@ function readAccess(token: string): Access | null {
   } catch { /* Storage unavailable or invalid. */ }
   return null
 }
+// El nonce identifica esta sesión declarada, nunca sustituye la validación del enlace y código.
+const presenceSessionKey = (token: string, name: string) => `jrm:tracking-presence-session:v1:${token}:${name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('es-PE')}`
+const fallbackSessions = new Map<string, string>()
+async function presenceSession(token: string, name: string): Promise<string> {
+  const key = presenceSessionKey(token, name)
+  const readOrCreate = () => {
+    try {
+      const existing = window.localStorage.getItem(key)
+      if (existing && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(existing)) return existing
+    } catch { /* Sin almacenamiento: conservar el nonce de esta pestaña para los reintentos. */ }
+    const id = fallbackSessions.get(key) || crypto.randomUUID()
+    fallbackSessions.set(key, id)
+    try { window.localStorage.setItem(key, id) } catch { /* Continúa con memoria local. */ }
+    return id
+  }
+  return navigator.locks?.request ? navigator.locks.request(key, readOrCreate) : readOrCreate()
+}
+function forgetPresenceSession(token: string, name: string) {
+  const key = presenceSessionKey(token, name)
+  fallbackSessions.delete(key)
+  try { window.localStorage.removeItem(key) } catch { /* Al salir se elimina siempre la sesión de acceso de la pestaña. */ }
+}
 export default function TrackingPage() {
   const { token: routeToken } = useParams()
   const token = String(routeToken || '')
@@ -136,7 +158,9 @@ export default function TrackingPage() {
     setIsLoading(true)
     try {
       // 1) Nombre + código: registra a la persona  2) Primera consulta del portal con su sesión
-      const { data: signIn, error: signError } = await supabase.rpc('tracking_portal_sign_in', { p_token: token, p_pin: pin, p_name: fullName })
+      const session = await presenceSession(token, fullName)
+      if (currentToken.current !== token || attempt !== authAttempt.current) return
+      const { data: signIn, error: signError } = await supabase.rpc('tracking_portal_sign_in_session', { p_token: token, p_pin: pin, p_name: fullName, p_session: session })
       if (currentToken.current !== token || attempt !== authAttempt.current) return
       if (signError || signIn?.error || !signIn?.viewer_id) throw new Error(signIn?.error || signError?.message || 'No se pudo validar el acceso.')
       const { data, error } = await supabase.rpc('get_public_tracking_portal_view', {
@@ -239,7 +263,7 @@ export default function TrackingPage() {
               <Truck className="hidden w-5 h-5 text-blue-600 sm:block" />
               <span className="font-bold text-base leading-snug sm:text-lg text-slate-800">Planificación y Seguimiento de Transporte</span>
             </div>
-            <div className="flex items-center justify-between gap-2 sm:justify-end"><ActiveViewers viewers={viewers} total={activeCount} /><button className="rounded-lg border px-3 py-2 text-xs text-slate-600" onClick={() => {authAttempt.current++;if (viewer) void supabase.rpc('tracking_portal_sign_out', { p_token: token, p_viewer: viewer });saveAccess(token, null);setIsAuthenticated(false);setPin('');setViewer('');setViewers([]);setActiveCount(0);setTrackingData(null);setRefreshError('');setRestoreRetry(false)}}>Salir</button><div className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-medium border border-blue-200">
+            <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end"><ActiveViewers viewers={viewers} total={activeCount} /><button className="rounded-lg border px-3 py-2 text-xs text-slate-600" onClick={() => {authAttempt.current++;if (viewer) void supabase.rpc('tracking_portal_sign_out', { p_token: token, p_viewer: viewer });forgetPresenceSession(token, name);saveAccess(token, null);setIsAuthenticated(false);setPin('');setViewer('');setViewers([]);setActiveCount(0);setTrackingData(null);setRefreshError('');setRestoreRetry(false)}}>Salir</button><div className="max-w-full break-words px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-medium border border-blue-200">
               {trackingData?.planning_date ? new Date(`${trackingData?.planning_date}T00:00:00`).toLocaleDateString('es-PE') : trackingData?.label || 'Portal de seguimiento'}
             </div></div>
           </div>
