@@ -79,8 +79,9 @@ export default function GPSGuard({ children }: { children: ReactNode }) {
         dispatchId = null
         localStorage.removeItem(activeRouteKey)
         // Ruta cerrada con horas extras abiertas: el GPS nativo sigue para el cierre por geocerca (salida de la base)
-        const { data: target } = await supabase.rpc('hhee_driver_tracking_target')
-        const overtimeDispatch = (target as { dispatch_id?: string | null } | null)?.dispatch_id
+        const overtimeDispatch = nativeRouteTracker
+          ? ((await supabase.rpc('hhee_driver_tracking_target')).data as { dispatch_id?: string | null } | null)?.dispatch_id
+          : null
         if (nativeRouteTracker && overtimeDispatch && !stopped) {
           try {
             const deviceToken = await trackingDeviceToken(supabase, userData.user.id)
