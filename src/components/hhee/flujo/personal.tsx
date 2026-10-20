@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Download, FileUp, Plus, Search, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Download, FileUp, Plus, Search, Trash2 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { Card, Field, Modal, btn2Cls, btnCls, inputCls, useFlow } from './context'
 import { RECARGOS, baseRate, call, fmtDate, fmtDateTime, fmtMoney, fmtNum, today, type Concept, type Person } from '@/lib/hhee/flujo'
@@ -15,8 +15,17 @@ export function Personal() {
   const [edit, setEdit] = useState<Person | 'new' | null>(null)
   const [history, setHistory] = useState<Person | null>(null)
   const [importing, setImporting] = useState(false)
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'name', dir: 1 })
   const people = useMemo(() => ctx.people.filter(p => (estado === 'todos' || (estado === 'activos' ? p.active : p.active && !p.rate_ready))
-    && (!q.trim() || `${p.code} ${p.name} ${p.document_number ?? ''} ${p.position ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()))), [ctx.people, q, estado])
+    && (!q.trim() || `${p.code} ${p.name} ${p.document_number ?? ''} ${p.position ?? ''}`.toLowerCase().includes(q.trim().toLowerCase())))
+    .sort((a, b) => {
+      const va = SORT_VALUE[sort.key](a), vb = SORT_VALUE[sort.key](b)
+      // Sin dato siempre al final, en cualquier sentido
+      if (va == null || vb == null) return va == null && vb == null ? 0 : va == null ? 1 : -1
+      const c = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb), 'es', { numeric: true, sensitivity: 'base' })
+      return (c || a.name.localeCompare(b.name, 'es')) * sort.dir
+    }), [ctx.people, q, estado, sort])
+  const toggle = (key: SortKey) => setSort(s => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : 1 }))
   const pendientes = ctx.people.filter(p => p.active && !p.rate_ready).length
   const showPay = ctx.caps.remuneration
   return (
@@ -35,9 +44,9 @@ export function Personal() {
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr>
-              <th className="p-2.5">Código</th><th className="p-2.5">Trabajador</th><th className="p-2.5">Cargo / área</th><th className="p-2.5">Jornada</th>
-              {showPay && <><th className="p-2.5 text-right">Hora normal</th>{RECARGOS.map(r => <th key={r.key} className="p-2.5 text-right">HHEE {r.label}</th>)}</>}
-              <th className="p-2.5">Estado</th><th className="p-2.5" />
+              <SortTh sort={sort} onSort={toggle} k="code" label="Código" /><SortTh sort={sort} onSort={toggle} k="name" label="Trabajador" /><SortTh sort={sort} onSort={toggle} k="position" label="Cargo / área" /><SortTh sort={sort} onSort={toggle} k="monthly_hours" label="Jornada" />
+              {showPay && <><SortTh sort={sort} onSort={toggle} k="rate" label="Hora normal" right />{RECARGOS.map(r => <SortTh key={r.key} sort={sort} onSort={toggle} k="rate" label={`HHEE ${r.label}`} right />)}</>}
+              <SortTh sort={sort} onSort={toggle} k="status" label="Estado" /><th className="p-2.5" />
             </tr></thead>
             <tbody className="divide-y divide-slate-100">
               {people.map(p => <tr key={p.id} className={p.active ? 'hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}>
@@ -66,6 +75,24 @@ export function Personal() {
       {importing && <ImportModal onClose={() => setImporting(false)} onDone={reload} />}
     </div>
   )
+}
+
+type SortKey = 'code' | 'name' | 'position' | 'monthly_hours' | 'rate' | 'status'
+const SORT_VALUE: Record<SortKey, (p: Person) => string | number | null> = {
+  code: p => p.code,
+  name: p => p.name,
+  position: p => [p.position, p.area_name].filter(Boolean).join(' ') || null,
+  monthly_hours: p => p.monthly_hours,
+  rate: p => (p.rate_ready ? p.base_hour_cost ?? null : null),
+  status: p => (!p.active ? 2 : p.rate_ready ? 1 : 0),
+}
+
+function SortTh({ k, label, right = false, sort, onSort }: { k: SortKey; label: string; right?: boolean; sort: { key: SortKey; dir: 1 | -1 }; onSort: (k: SortKey) => void }) {
+  const on = sort.key === k, Icon = on ? (sort.dir === 1 ? ArrowUp : ArrowDown) : ArrowUpDown
+  return <th className="p-0" aria-sort={on ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
+    <button type="button" onClick={() => onSort(k)} title={`Ordenar por ${label.toLowerCase()}`}
+      className={`flex w-full items-center gap-1 whitespace-nowrap p-2.5 uppercase tracking-wide hover:text-slate-800 ${right ? 'justify-end' : ''} ${on ? 'text-[#002855]' : ''}`}>
+      {label}<Icon className={`h-3.5 w-3.5 shrink-0 ${on ? '' : 'opacity-40'}`} /></button></th>
 }
 
 const DEFAULT_CONCEPTS: Concept[] = [{ name: 'Básico', amount: 0, computable: true }, { name: 'Asignación familiar', amount: 0, computable: true }]
