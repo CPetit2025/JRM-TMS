@@ -2,11 +2,12 @@
 -- sesiones abiertas sin nombre. Siempre se revierte.
 BEGIN;
 DO $test$
-DECLARE actor uuid; site uuid; payload jsonb; tok uuid; pin text; a jsonb; b jsonb; r jsonb; pass int := 0; fails text[] := '{}';
+DECLARE actor uuid; site uuid:=gen_random_uuid(); payload jsonb; tok uuid; pin text; a jsonb; b jsonb; r jsonb; a_display uuid; b_display uuid; pass int := 0; fails text[] := '{}';
 BEGIN
  SELECT p.id INTO actor FROM public.profiles p JOIN public.roles ro ON ro.id = p.role_id WHERE ro.name = 'Administrador' AND p.is_active LIMIT 1;
- SELECT id INTO site FROM public.sites LIMIT 1;
- IF actor IS NULL OR site IS NULL THEN RAISE EXCEPTION 'CAJA C108 FAIL: fixture administrador/sede ausente'; END IF;
+ IF actor IS NULL THEN RAISE EXCEPTION 'CAJA C108 FAIL: fixture administrador ausente'; END IF;
+ -- A dedicated synthetic site keeps exact presence counts independent of real staff/clients already online.
+ INSERT INTO public.sites(id,code,name) VALUES(site,'C108-'||site::text,'C108 presencia aislada');
  PERFORM set_config('request.jwt.claim.sub', actor::text, true);
  PERFORM set_config('request.jwt.claims', json_build_object('sub', actor, 'role', 'authenticated')::text, true);
  payload := public.generate_tracking_portal_link(jsonb_build_object('site_id', site));
@@ -18,21 +19,30 @@ BEGIN
  IF (public.tracking_portal_sign_in(tok, pin, '  ')->>'error') LIKE 'Ingrese su nombre%'
     AND (public.tracking_portal_sign_in(tok, pin, '12')->>'error') LIKE 'Ingrese su nombre%'
     AND public.tracking_portal_sign_in(tok, 'ZZZZ', 'Ana Pérez') ? 'error'
+    AND public.tracking_portal_sign_in_session(tok, 'ZZZZ', 'Ana Pérez', gen_random_uuid()) ? 'error'
+    AND public.tracking_portal_sign_in_session(tok, pin, 'Ana Pérez', NULL) ? 'error'
  THEN pass := pass + 1; ELSE fails := fails || 'T1 nombre/código'::text; END IF;
 
  -- T2: dos personas ingresan con nombre y código; cada una ve a ambas en la presencia
  a := public.tracking_portal_sign_in(tok, pin, '  Ana   Pérez ');
  b := public.tracking_portal_sign_in(tok, lower(pin), 'Luis Rojas');
+ SELECT presence_id INTO a_display FROM public.tracking_portal_viewers WHERE id=(a->>'viewer_id')::uuid;
+ SELECT presence_id INTO b_display FROM public.tracking_portal_viewers WHERE id=(b->>'viewer_id')::uuid;
  r := public.get_public_tracking_portal_view(tok, pin, (a->>'viewer_id')::uuid, current_date, current_date);
  IF a->>'name' = 'Ana Pérez' AND r->>'mode' = 'permanent' AND (r->>'active_count')::int = 2
+    AND (r->>'active_count')::int = jsonb_array_length(r->'viewers')
     AND r->'viewer'->>'name' = 'Ana Pérez' AND (r->'viewers'->0->>'me')::boolean
-    AND EXISTS (SELECT 1 FROM jsonb_array_elements(r->'viewers') x WHERE x->>'name' = 'Luis Rojas' AND NOT (x->>'me')::boolean)
+    AND EXISTS (SELECT 1 FROM jsonb_array_elements(r->'viewers') x WHERE (x->>'id')::uuid=a_display AND x->>'name'='Ana Pérez' AND (x->>'me')::boolean)
+    AND EXISTS (SELECT 1 FROM jsonb_array_elements(r->'viewers') x WHERE (x->>'id')::uuid=b_display AND x->>'name'='Luis Rojas' AND NOT (x->>'me')::boolean)
+    AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'viewers') x WHERE x->>'id' IN(a->>'viewer_id',b->>'viewer_id'))
  THEN pass := pass + 1; ELSE fails := fails || ('T2 presencia: ' || COALESCE(r::text, '∅')); END IF;
 
  -- T3: quien sale o deja de consultar (más de 60 s) ya no aparece; su sesión no sirve para otro enlace
  PERFORM public.tracking_portal_sign_out(tok, (b->>'viewer_id')::uuid);
  r := public.get_public_tracking_portal_view(tok, pin, (a->>'viewer_id')::uuid, current_date, current_date);
- IF (r->>'active_count')::int = 1
+ IF (r->>'active_count')::int = 1 AND (r->>'active_count')::int = jsonb_array_length(r->'viewers')
+    AND EXISTS (SELECT 1 FROM jsonb_array_elements(r->'viewers') x WHERE (x->>'id')::uuid=a_display AND (x->>'me')::boolean)
+    AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'viewers') x WHERE (x->>'id')::uuid=b_display)
     AND (public.get_public_tracking_portal_view(tok, pin, (b->>'viewer_id')::uuid, current_date, current_date)->>'error') LIKE 'Acceso vencido%'
     AND (public.get_public_tracking_portal_view(gen_random_uuid(), pin, (a->>'viewer_id')::uuid, current_date, current_date)->>'error') LIKE 'Acceso vencido%'
  THEN pass := pass + 1; ELSE fails := fails || ('T3 salida: ' || COALESCE(r::text, '∅')); END IF;
@@ -46,6 +56,8 @@ BEGIN
  -- T5: permisos: la tabla no es accesible y las funciones públicas sí
  IF NOT has_table_privilege('anon', 'public.tracking_portal_viewers', 'SELECT')
     AND has_function_privilege('anon', 'public.tracking_portal_sign_in(uuid,text,text)', 'EXECUTE')
+    AND has_function_privilege('anon', 'public.tracking_portal_sign_in_session(uuid,text,text,uuid)', 'EXECUTE')
+    AND NOT has_function_privilege('anon', 'public.tracking_presence_payload(uuid)', 'EXECUTE')
     AND has_function_privilege('anon', 'public.get_public_tracking_portal_view(uuid,text,uuid,date,date)', 'EXECUTE')
  THEN pass := pass + 1; ELSE fails := fails || 'T5 permisos'::text; END IF;
 
