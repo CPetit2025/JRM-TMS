@@ -9,6 +9,8 @@ export type Person = {
   id: string; code: string; name: string; document_number: string | null; position: string | null; area_id: string; area_name: string | null
   active: boolean; daily_hours: number; monthly_hours: number; divisor_confirmed: boolean; effective_from: string | null; rate_ready: boolean
   updated_at: string; base_hour_cost?: number | null; remuneration_concepts?: Concept[]
+  // Enlace por DNI: nombre y DNI vienen de Flota (conductor) o de Maestros (trabajador)
+  driver_id?: string | null; master?: 'FLOTA' | 'MAESTROS' | null
 }
 export type FlowContext = {
   user_id: string; caps: Caps; areas: Area[]; causes: Array<{ id: string; name: string }>; people: Person[]
@@ -25,6 +27,8 @@ export type Line = {
   id?: string; person_id: string; name: string; code: string; position: string | null; start: string; end: string; break_minutes: number; minutes: number
   minutes_25: number | null; minutes_35: number | null; minutes_100: number | null; approved_minutes?: number | null; rate_ready?: boolean; cost?: number | null
   document_number?: string | null; rest_day?: boolean
+  // Conductor: placa de su ruta asignada (RUTA) o indicada a mano con motivo (MANUAL)
+  dispatch_id?: string | null; dispatch_number?: string | null; vehicle_plate?: string | null; plate_source?: 'RUTA' | 'MANUAL' | null; plate_reason?: string | null
 }
 export type Snapshot = {
   revision: number; area: string; site: string | null; cause: string; requester: string; approver: string
@@ -51,7 +55,14 @@ export type Dashboard = {
 }
 
 // Cálculo legal del servidor (hhee_flow_preview): primeras 2 h del día al 25 %, resto al 35 %; descanso o feriado al 100 %
-export type PreviewLine = { person_id: string; minutes?: number; m25?: number; m35?: number; m100?: number; prior?: number; error?: string }
+export type Route = { id: string; number: string | null; plate: string; status: string | null; departure: string | null }
+export type PreviewLine = { person_id: string; minutes?: number; m25?: number; m35?: number; m100?: number; prior?: number; error?: string; driver?: boolean; routes?: Route[] | null }
+export type UnifyIssue = { kind: 'COINCIDE_SIN_ENLACE' | 'NOMBRE_DISTINTO' | 'SIN_DNI' | 'CONDUCTOR_SIN_FICHA' | 'DNI_REPETIDO_FLOTA'; doc: string | null
+  person_id: string | null; code: string | null; name: string | null; area: string | null; driver_id: string | null; driver_name: string | null }
+export type UnifyReport = { summary: { people: number; linked_driver: number; linked_profile: number; drivers_active: number; by_kind: Partial<Record<UnifyIssue['kind'], number>> }; rows: UnifyIssue[] }
+export const plateLabel = (l: Pick<Line, 'vehicle_plate' | 'dispatch_number' | 'plate_source' | 'plate_reason'>) =>
+  !l.plate_source ? '' : l.plate_source === 'RUTA' ? `Placa ${l.vehicle_plate}${l.dispatch_number ? ` · ruta ${l.dispatch_number}` : ''}`
+    : `${l.vehicle_plate ? `Placa ${l.vehicle_plate}` : 'Sin unidad'} (indicada: ${l.plate_reason ?? ''})`
 export type Preview = { holiday: string | null; isodow: number; lines: PreviewLine[] }
 export type Consolidated = { cost_visible: boolean; skipped: number; items: Array<{ request_id: string; revision: number; snapshot: Snapshot }> }
 export const LEGAL_BASIS = 'D.S. 007-2002-TR (TUO Ley de Jornada) art. 10: primeras 2 h extra del día con 25 % y las siguientes con 35 %. D. Leg. 713: trabajo en día de descanso o feriado con 100 %.'
