@@ -28,9 +28,11 @@ BEGIN
   UPDATE public.profiles SET role_id = v_rreq, is_active = true WHERE id = v_req;
   UPDATE public.profiles SET role_id = v_rapp, is_active = true WHERE id = v_app;
   -- La ficha del conductor queda en el área de prueba (así la solicitud cae en ella); el auxiliar viaja en la ruta
-  UPDATE public.hhee_people SET driver_id = NULL WHERE driver_id = d.driver_id;
-  INSERT INTO public.hhee_people (code, name, area_id, active, daily_hours, monthly_hours, divisor_confirmed, remuneration_concepts, driver_id)
-  VALUES ('C128-COND', 'Conductor C128', v_area, true, 8, 240, false, '[]'::jsonb, d.driver_id);
+  UPDATE public.hhee_people SET area_id = v_area, active = true WHERE driver_id = d.driver_id;
+  IF NOT FOUND THEN
+    INSERT INTO public.hhee_people (code, name, area_id, active, daily_hours, monthly_hours, divisor_confirmed, remuneration_concepts, driver_id)
+    VALUES ('C128-COND', 'Conductor C128', v_area, true, 8, 240, false, '[]'::jsonb, d.driver_id);
+  END IF;
   DELETE FROM public.dispatch_crew WHERE dispatch_id = d.id;
   INSERT INTO public.dispatch_crew (dispatch_id, profile_id, crew_role) VALUES (d.id, v_aux, 'AUXILIAR');
 
