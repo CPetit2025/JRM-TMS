@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { AlertTriangle, Download } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Card, Field, Kpi, btn2Cls, inputCls, useFlow } from './context'
-import { call, fmtDate, fmtMoney, fmtNum, today, type Dashboard } from '@/lib/hhee/flujo'
+import { call, fmtDate, fmtMoney, fmtNum, today, type Dashboard, type ExecSummary } from '@/lib/hhee/flujo'
 import { exportAptXlsx } from '@/lib/apt/export'
 
 // Panel gerencial: horas y costo aproximado AUTORIZADOS (antes de la ejecución): evolución, causas, recargos,
@@ -31,11 +31,13 @@ export function Panel() {
   const [preset, setPreset] = useState('month')
   const [d, setD] = useState<Dashboard | null>(null)
   const [error, setError] = useState('')
+  const [ex, setEx] = useState<ExecSummary | null>(null)
   const [loading, setLoading] = useState(true)
   useEffect(() => {
     let alive = true
     const t = setTimeout(() => {
       setLoading(true)
+      call<ExecSummary>('hhee_flow_exec_summary', { p: { from: f.from, to: f.to, area_id: f.area_id } }).then(r => { if (alive) setEx(r) }).catch(() => { if (alive) setEx(null) })
       call<Dashboard>('hhee_flow_dashboard', { p: f }).then(r => { if (alive) { setD(r); setError('') } })
         .catch(e => { if (alive) setError(e instanceof Error ? e.message : 'No se pudo cargar') }).finally(() => { if (alive) setLoading(false) })
     }, 200)
@@ -103,6 +105,13 @@ export function Panel() {
           <Kpi label="Trabajadores" value={fmtNum(m.workers, 0)} hint={`${m.recurrent_workers} recurrente(s): ${d.recurrence_events}+ días con HHEE en ${d.recurrence_days} días`} tone={m.recurrent_workers ? 'warn' : 'default'} />
           <Kpi label="Solicitudes aprobadas" value={fmtNum(m.approved, 0)} hint={<><Link href="/hhee/solicitudes" className="underline">{m.pending} por aprobar</Link> · {m.observed} observadas · {m.rejected} rechazadas{m.approval_hours_avg != null ? ` · aprobación en ${fmtNum(m.approval_hours_avg)} h promedio` : ''}</>} tone={m.pending ? 'warn' : 'default'} />
         </div>
+        {ex && ex.closed_lines + ex.open_lines > 0 && <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Kpi label="Horas ejecutadas (cerradas)" value={fmtNum(ex.executed_minutes / 60, 1)} tone="navy"
+            hint={`Autorizadas en esas mismas líneas: ${fmtNum(ex.authorized_of_closed / 60, 1)} h${ex.authorized_of_closed ? ` (${fmtNum(ex.executed_minutes * 100 / ex.authorized_of_closed, 0)} %)` : ''}`} />
+          <Kpi label="Abiertas" value={fmtNum(ex.open_lines, 0)} tone={ex.open_lines ? 'warn' : 'default'} hint="Trabajadores con horas extras aprobadas sin cerrar" />
+          <Kpi label="Cierre" value={`${ex.by_closure.CONDUCTOR} / ${ex.by_closure.GEOCERCA} / ${ex.by_closure.SUPERVISOR}`} hint="App del conductor / salida de la base (geocerca) / supervisor" />
+          <Kpi label="A compensar con descanso" value={`${fmtNum(ex.compensation_minutes / 60, 1)} h`} hint={ex.executed_cost != null ? `Costo ejecutado (pago): ${fmtMoney(ex.executed_cost)}` : 'Bolsa de horas en Personal'} />
+        </div>}
         <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
           <Card title="Evolución de horas autorizadas" subtitle={`Por fecha de trabajo · ${fmtDate(d.from)} – ${fmtDate(d.to)}`}>
             {d.trend.length ? <ResponsiveContainer width="100%" height={260}>

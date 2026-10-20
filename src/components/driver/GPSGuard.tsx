@@ -78,6 +78,20 @@ export default function GPSGuard({ children }: { children: ReactNode }) {
       } else if (navigator.onLine) {
         dispatchId = null
         localStorage.removeItem(activeRouteKey)
+        // Ruta cerrada con horas extras abiertas: el GPS nativo sigue para el cierre por geocerca (salida de la base)
+        const { data: target } = await supabase.rpc('hhee_driver_tracking_target')
+        const overtimeDispatch = (target as { dispatch_id?: string | null } | null)?.dispatch_id
+        if (nativeRouteTracker && overtimeDispatch && !stopped) {
+          try {
+            const deviceToken = await trackingDeviceToken(supabase, userData.user.id)
+            if (deviceToken) {
+              await nativeRouteTracker.start({ dispatchId: overtimeDispatch, driverId: driver.id,
+                supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL, anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, deviceToken })
+              nativeStarted = true
+              return
+            }
+          } catch (nativeError) { console.error('No se pudo iniciar GPS nativo para horas extras:', nativeError) }
+        }
         if (nativeRouteTracker) {
           await nativeRouteTracker.stop()
           nativeStarted = false

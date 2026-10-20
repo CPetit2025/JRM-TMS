@@ -39,6 +39,7 @@ type Geofence = {
 const TYPE_LABELS: Record<string, string> = {
   cedi:              'CEDI / Almacén',
   depot:             'Depósito',
+  cochera:           'Cochera',
   zona_distribucion: 'Zona de Distribución',
   restringida:       'Zona Restringida',
 }

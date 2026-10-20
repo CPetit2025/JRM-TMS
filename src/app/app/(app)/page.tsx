@@ -5,6 +5,7 @@ import { AlertTriangle, Banknote, Bot, CalendarClock, Camera, CheckCircle2, Chev
 import { useActiveTrip } from '@/contexts/ActiveTripContext'
 import { DesempenoConductorCard } from '@/components/driver/DesempenoConductorCard'
 import { BatteryOptimizationCard } from '@/components/driver/BatteryOptimizationCard'
+import { HheeConductorCard } from '@/components/driver/HheeConductorCard'
 
 function greeting() {
   const hour = new Date().getHours()
@@ -64,6 +65,7 @@ export default function OperationalHome() {
     </button>
 
     {driver && <Link href="/app/checklist" className="flex min-h-14 items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-[#002855]"><ClipboardCheck className="h-5 w-5 shrink-0" />Inspección de pre uso · FR-DT 007<ChevronRight className="ml-auto h-5 w-5 shrink-0" /></Link>}
+    {user && <HheeConductorCard />}
     {driver && <Link href="/app/jornada" className="flex min-h-14 items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-[#002855]"><Gauge className="h-5 w-5 shrink-0" />Cerrar jornada · odómetro final<ChevronRight className="ml-auto h-5 w-5 shrink-0" /></Link>}
     {(trip || driver) && <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><h2 className="font-black text-slate-800">Pendientes de operación</h2><div className="mt-3 space-y-2 text-sm">
       {pending.checklist && <Link href="/app/checklist" className="flex items-center gap-2 rounded-xl bg-amber-50 p-3 text-amber-900"><AlertTriangle className="h-4 w-4" />Inspección del día/unidad pendiente</Link>}
