@@ -10,17 +10,17 @@ const key = token => `jrm:tracking-access:v2:${token}`
 // La sesión guarda el código y a la persona identificada (nombre) que ve el portal
 const access = (pin, viewer = 'viewer-1', name = 'Ana Pérez') => JSON.stringify({ pin, viewer, name })
 const payload = { mode: 'permanent', label: 'Gerencia', rows: [], requests: [] }
-function harness(initial = {}) {
+function harness(initial = {}, sharedStore = new Map()) {
   const store = new Map(Object.entries(initial)), calls = []
   let token = 'link-A', answer = { data: payload }, interval
   const client = { rpc: async (name, args) => {
     calls.push({ name, ...args }); const value = await answer
     if (value instanceof Error) throw value
     // Ingreso con nombre: si el portal respondería datos, la persona queda registrada
-    if (name === 'tracking_portal_sign_in' && value?.data?.mode) return { data: { success: true, viewer_id: 'viewer-1', name: args.p_name }, error: null }
+    if (name === 'tracking_portal_sign_in_session' && value?.data?.mode) return { data: { success: true, viewer_id: 'viewer-1', name: args.p_name }, error: null }
     return value
   } }
-  const browser = { sessionStorage: { getItem: k => store.get(k) || null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k) }, setInterval: fn => { interval = fn; return 1 }, clearInterval: () => { interval = null } }
+  const browser = { sessionStorage: { getItem: k => store.get(k) || null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k) }, localStorage: { getItem: k => sharedStore.get(k) || null, setItem: (k, v) => sharedStore.set(k, v), removeItem: k => sharedStore.delete(k) }, setInterval: fn => { interval = fn; return 1 }, clearInterval: () => { interval = null } }
   const mocks = name => {
     if (name === 'next/navigation') return { useParams: () => ({ token }) }
     if (name === '@/lib/supabase/client') return { createClient: () => client }
@@ -29,7 +29,7 @@ function harness(initial = {}) {
     if (name.startsWith('@/components/')) return new Proxy({}, { get: (_, component) => props => React.createElement('section', { 'data-component': component, ...props }) })
     return require(name)
   }
-  const context = { exports: {}, require: mocks, window: browser }
+  const context = { exports: {}, require: mocks, window: browser, crypto: require('node:crypto').webcrypto, navigator: { locks: { request: async (_key, work) => work() } } }
   vm.runInNewContext(ts.transpileModule(readFileSync('src/app/tracking/[token]/page.tsx', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText, context)
   let tree
   const render = async () => { await act(async () => { tree = create(React.createElement(context.exports.default)) }); return tree }
@@ -46,11 +46,36 @@ async function signIn(h, pin, name = 'Ana Pérez') {
 test('refresh restores tab-scoped access only after server validation; explicit exit clears it', async () => {
   const h = harness(); await h.render(); await signIn(h, 'A7K2')
   assert.equal(h.store.get(key('link-A')), access('A7K2')); assert.ok(signedIn(h.tree))
-  assert.equal(h.calls.find(c => c.name === 'tracking_portal_sign_in').p_name, 'Ana Pérez')
+  assert.equal(h.calls.find(c => c.name === 'tracking_portal_sign_in_session').p_name, 'Ana Pérez')
   await h.unmount(); const before = h.calls.length; await h.render()
   assert.ok(h.calls.length > before); assert.equal(h.calls[before].p_pin, 'A7K2'); assert.equal(h.calls[before].p_viewer, 'viewer-1'); assert.ok(signedIn(h.tree))
   await act(async () => h.tree.root.findAllByType('button').find(b => text(b) === 'Salir').props.onClick())
   assert.equal(h.store.has(key('link-A')), false); assert.equal(signedIn(h.tree), false)
+  await h.unmount()
+})
+test('tabs share a nonce for one declared browser session; refresh does not sign in again; explicit exit rotates it', async () => {
+  const shared = new Map(), first = harness({}, shared), second = harness({}, shared)
+  await first.render(); await signIn(first, 'A7K2')
+  const firstCall = first.calls.find(c => c.name === 'tracking_portal_sign_in_session')
+  assert.match(firstCall.p_session, /^[0-9a-f-]{36}$/)
+  await second.render(); await signIn(second, 'A7K2', '  Ana   Pérez ')
+  assert.equal(second.calls.find(c => c.name === 'tracking_portal_sign_in_session').p_session, firstCall.p_session)
+  await first.unmount(); await first.render()
+  assert.equal(first.calls.filter(c => c.name === 'tracking_portal_sign_in_session').length, 1)
+  await act(async () => first.tree.root.findAllByType('button').find(b => text(b) === 'Salir').props.onClick())
+  assert.equal(first.calls.filter(c => c.name === 'tracking_portal_sign_out').length, 1)
+  await signIn(first, 'A7K2')
+  assert.notEqual(first.calls.filter(c => c.name === 'tracking_portal_sign_in_session').at(-1).p_session, firstCall.p_session)
+  await first.unmount(); await second.unmount()
+})
+test('a failed sign-in retry keeps its nonce and another link receives a different session', async () => {
+  const h = harness(); await h.render(); h.respond(new Error('Response lost after sign-in'))
+  await signIn(h, 'A7K2'); assert.equal(signedIn(h.tree), false); assert.equal(h.store.has(key('link-A')), false)
+  const failed = h.calls.find(c => c.name === 'tracking_portal_sign_in_session')
+  h.respond({ data: payload }); await signIn(h, 'A7K2')
+  assert.equal(h.calls.filter(c => c.name === 'tracking_portal_sign_in_session').at(-1).p_session, failed.p_session)
+  await h.token('link-B'); await signIn(h, 'A7K2')
+  assert.notEqual(h.calls.filter(c => c.name === 'tracking_portal_sign_in_session').at(-1).p_session, failed.p_session)
   await h.unmount()
 })
 for (const error of ['Acceso revocado', 'Código de acceso incorrecto', 'Tracking link is invalid, expired, or incorrect PIN.']) test(`server rejects restored access: ${error}`, async () => {
