@@ -377,5 +377,45 @@ try {
  assert.equal(sql(`SELECT amount_pen FROM dispatch_request_freight WHERE dispatch_id='${mixRoute}' AND request_id='${ownDelivery.id}'`),'308')
  console.log('PASS: own pickup schedule ignores stale freight/km; same-OT mixed route retains delivery freight and independent zero-cost pickup ledger.')
 
+ // Automatic approval uses the real save gateway and financial triggers, including a requester without approval rights.
+ sql(read('supabase/migrations/20261017120000_aprobacion_automatica_solicitudes.sql'))
+ sql(read('supabase/migrations/20261021130000_auto_approval_references.sql'))
+ sql(`CREATE OR REPLACE FUNCTION is_tms_admin() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT current_setting('test.supervisor',true) IS DISTINCT FROM 'off' $$;`)
+ const waiting=full(payload({contract_id:null,request_type:'TRASLADO',supplier_id:id(11),reference_type:'RQ',reference_number:'AUTO-WAIT',attention_mode:'TRANSPORTE_JRM'}))
+ assert.equal(waiting.status,'PENDIENTE DE APROBACIÓN')
+ sql(staff+`SELECT set_request_auto_approval(true);`)
+ assert.equal(sql(`SELECT status FROM transport_requests WHERE id='${waiting.id}'`),'PENDIENTE DE APROBACIÓN','enabling never sweeps previous requests')
+ const requestAuto=(p,u=[],request=null)=>JSON.parse(sql(staff+`SET test.supervisor='off'; SELECT save_transport_request_full(${request?"'"+request+"'":'NULL'},${lit(p)},'[]',${lit(u)});`))
+ const autoBudgetBefore=sql('SELECT sum(reserved_pen)+sum(consumed_pen) FROM contract_budgets')
+ let approvedReference
+ for(const kind of ['RECOJO','TRASLADO'])for(const reference of ['OC','OS','RQ']) {
+  const document=payload({contract_id:null,request_type:kind,supplier_id:id(11),reference_type:reference,reference_number:'AUTO-'+kind+'-'+reference,attention_mode:'TRANSPORTE_JRM'})
+  const result=requestAuto(document,[{concept:'ESTIBA',estimated_pen:50}])
+  assert.equal(result.auto_approved,true);assert.equal(result.status,'APROBADA')
+  assert.equal(sql(`SELECT contract_id IS NULL AND approved_at IS NOT NULL AND approved_by='${id(2)}' AND operational_approved_pen=COALESCE(service_cost,0)+COALESCE(unloading_estimate_pen,0) AND reserved_pen=0 FROM transport_requests WHERE id='${result.id}'`),'t')
+  assert.equal(sql(`SELECT count(*) FROM transport_request_events WHERE request_id='${result.id}' AND next_state->>'origen'='APROBACION_AUTOMATICA' AND next_state->>'reference_type'='${reference}'`),'1')
+  assert.equal(sql('SELECT count(*) FROM transport_request_auto_approval_contexts'),'0')
+  approvedReference={...result,document}
+ }
+ assert.equal(sql('SELECT sum(reserved_pen)+sum(consumed_pen) FROM contract_budgets'),autoBudgetBefore,'no reference consumes another OT budget')
+ deny(staff+`SET test.supervisor='off'; SET tms.auto_approval='on'; UPDATE transport_requests SET status='APROBADA' WHERE id='${waiting.id}';`,/Solo el Supervisor/)
+ deny(staff+`SELECT is_transport_request_auto_approval('${waiting.id}');`,/permission denied/)
+ deny(staff+`INSERT INTO transport_request_auto_approval_contexts VALUES('${waiting.id}','${id(2)}',txid_current(),pg_backend_pid());`,/permission denied/)
+ deny(staff+`SET test.supervisor='off'; SELECT set_request_auto_approval(false);`,/Solo el Administrador/)
+ const autoEdited=requestAuto({...approvedReference.document,reference_number:'AUTO-EDIT'},[],approvedReference.id)
+ assert.equal(autoEdited.auto_approved,true)
+ assert.equal(sql(`SELECT status||'/'||reference_number FROM transport_requests WHERE id='${autoEdited.id}'`),'APROBADA/AUTO-EDIT')
+ sql(staff+`UPDATE transport_requests SET status='OBSERVADA',budget_observation='Sustento observado: corregir antes de aprobar' WHERE id='${waiting.id}';`)
+ assert.equal(sql(`SET request.jwt.claim.sub='${id(2)}'; SELECT transport_request_try_auto_approve('${waiting.id}');`),'f')
+ assert.equal(sql(`SELECT status FROM transport_requests WHERE id='${waiting.id}'`),'OBSERVADA')
+ sql(staff+`SELECT set_request_auto_approval(false);`)
+ const manual=requestAuto({...approvedReference.document,reference_number:'AUTO-DISABLED'})
+ assert.equal(manual.status,'PENDIENTE DE APROBACIÓN');assert.notEqual(manual.auto_approved,true)
+ assert.equal(sql('SELECT count(*) FROM transport_request_auto_approval_contexts'),'0')
+ sql('ALTER TABLE contracts ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();')
+ const autoRegression=query(read('supabase/tests/caja_c112_aprobacion_automatica.test.sql'))
+ assert.notEqual(autoRegression.status,0);assert.match(autoRegression.stderr,/CAJA C112 PASS \(6\/6\)/)
+ console.log('PASS: automatic OC/OS/RQ pickup and point-to-point approval authorizes the saved amount with audit, no OT budget, no retroactive sweep, private unforgeable context and manual fallback when disabled/observed.')
+
 
 } finally {spawnSync('docker',['rm','-f',name],{stdio:'ignore'})}
