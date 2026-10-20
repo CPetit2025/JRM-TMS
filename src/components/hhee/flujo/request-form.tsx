@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { CalendarX2, Loader2, Plus, Scale, Trash2, Truck } from 'lucide-react'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { Card, Field, Modal, btn2Cls, btnCls, inputCls, useFlow } from './context'
 import { LEGAL_BASIS, REFERENCES, call, isPendingText, fmtDate, fmtHours, fmtMoney, fmtTime, lineCost, limaLocal, today, type Detail, type Preview } from '@/lib/hhee/flujo'
 
@@ -30,7 +31,8 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
   const [calculating, setCalculating] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const people = ctx.people.filter(p => p.active && p.area_id === f.area_id)
+  const people = useMemo(() => ctx.people.filter(p => p.active && p.area_id === f.area_id)
+    .sort((a, b) => a.code.localeCompare(b.code, 'es', { numeric: true, sensitivity: 'base' })), [ctx.people, f.area_id])
   const set = (k: keyof typeof f, v: string) => setF(x => ({ ...x, [k]: v }))
   const setLine = (i: number, k: keyof L, v: string) => setLines(x => x.map((l, j) => (j === i ? { ...l, [k]: v } : l)))
 
@@ -115,8 +117,10 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
             const c = calc[i]
             return <div key={i} className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3">
               <div className="grid gap-2 sm:grid-cols-[minmax(200px,2fr)_repeat(3,minmax(80px,1fr))_auto]">
-                <Field label={`Trabajador ${i + 1}`}><select aria-label={`Trabajador ${i + 1}`} className={inputCls} value={l.person_id} onChange={e => setLine(i, 'person_id', e.target.value)}>
-                  <option value="">Elija</option>{people.map(p => <option key={p.id} value={p.id} disabled={lines.some((x, j) => j !== i && x.person_id === p.id)}>{p.code} · {p.name}{p.rate_ready ? '' : ' (costo pendiente)'}</option>)}</select></Field>
+                <div className="grid min-w-0 gap-1 text-xs font-semibold text-slate-600"><span>Trabajador {i + 1}</span><SearchableSelect ariaLabel={`Trabajador ${i + 1}`} value={l.person_id} onChange={value => setLine(i, 'person_id', value)}
+                  placeholder="Elija un trabajador" searchPlaceholder="Buscar por código, nombre o DNI…"
+                  options={people.map(p => ({ value: p.id, label: `${p.code} · ${p.name}${p.document_number ? ` · DNI ${p.document_number}` : ''}${p.rate_ready ? '' : ' (costo pendiente)'}`,
+                    disabled: lines.some((x, j) => j !== i && x.person_id === p.id) }))} /></div>
                 <Field label="Inicio"><input aria-label={`Inicio del trabajador ${i + 1}`} className={inputCls} type="time" value={l.start} onChange={e => setLine(i, 'start', e.target.value)} /></Field>
                 <Field label={`Fin${c.nextDay ? ' (día sig.)' : ''}`}><input aria-label={`Fin del trabajador ${i + 1}`} className={inputCls} type="time" value={l.end} onChange={e => setLine(i, 'end', e.target.value)} /></Field>
                 <Field label="Descanso (min)"><input aria-label={`Descanso del trabajador ${i + 1}`} className={inputCls} type="number" min={0} step={5} value={l.break_minutes} onChange={e => setLine(i, 'break_minutes', e.target.value)} /></Field>
