@@ -1,5 +1,5 @@
 -- CAJA C112 — Aprobación automática de solicitudes: interruptor en Configuración con historial y permisos; activa,
--- aprueba la solicitud con OT que queda pendiente y deja en aprobación manual la OC/OS/RQ sin OT. Siempre se revierte.
+-- aprueba solicitudes válidas con OT o con OC/OS/RQ sin OT. Siempre se revierte.
 BEGIN;
 DO $settings$ BEGIN
  IF to_regclass('public.transport_lead_time_settings') IS NOT NULL THEN
@@ -43,15 +43,18 @@ BEGIN
     AND EXISTS (SELECT 1 FROM public.transport_request_approval_settings_audit WHERE actor_id = actor AND NOT previous_value AND next_value)
  THEN pass := pass + 1; ELSE fails := fails || ('T2 activar: ' || COALESCE(r::text, '∅')); END IF;
 
- -- T3: activa, una solicitud OC/OS/RQ sin OT sigue esperando la autorización de su monto
+ -- T3: activa, OC/OS/RQ sin OT se aprueba con importe autorizado, sin reservar en otra OT
  INSERT INTO public.suppliers(tax_id, business_name) VALUES ((floor(random()*90000000000)+10000000000)::bigint::text, 'ZZ C112') RETURNING id INTO supplier;
  payload := jsonb_build_object('department','Logística','request_type','RECOJO','attention_mode','TRANSPORTE_JRM',
   'site_id',site,'required_date',current_date+7,'cargo_description','ZZ C112','pickup_address','Origen prueba',
   'pickup_district','CHILCA','delivery_address','Destino prueba','delivery_district','CALLAO','service_cost',100,
   'reference_type','RQ','reference_number','ZZ-C112','supplier_id',supplier);
  saved := public.save_transport_request_full(NULL, payload, '[]', '[]'); req := (saved->>'id')::uuid;
- IF req IS NOT NULL AND COALESCE((saved->>'auto_approved')::boolean, false) = false
-    AND (SELECT status FROM public.transport_requests WHERE id = req) NOT IN ('APROBADA', 'APROBADO')
+ IF req IS NOT NULL AND COALESCE((saved->>'auto_approved')::boolean, false)
+    AND EXISTS(SELECT 1 FROM public.transport_requests WHERE id=req AND status='APROBADA' AND contract_id IS NULL
+      AND approved_at IS NOT NULL AND approved_by=actor AND reserved_pen=0
+      AND operational_approved_pen=COALESCE(service_cost,0)+COALESCE(unloading_estimate_pen,0))
+    AND EXISTS(SELECT 1 FROM public.transport_request_events WHERE request_id=req AND next_state->>'origen'='APROBACION_AUTOMATICA')
  THEN pass := pass + 1; ELSE fails := fails || ('T3 sin OT: ' || COALESCE(saved::text, '∅')); END IF;
 
  -- T4: con OT y pendiente se aprueba sola, con el origen automático en el historial
@@ -88,9 +91,12 @@ BEGIN
     AND NOT has_function_privilege('anon', 'public.get_request_auto_approval()', 'EXECUTE')
     AND has_function_privilege('authenticated', 'public.save_transport_request_full(uuid,jsonb,jsonb,jsonb)', 'EXECUTE')
     AND NOT has_table_privilege('authenticated', 'public.transport_request_approval_settings', 'UPDATE')
+    AND NOT has_table_privilege('authenticated', 'public.transport_request_auto_approval_contexts', 'INSERT')
+    AND NOT has_function_privilege('authenticated', 'public.is_transport_request_auto_approval(uuid)', 'EXECUTE')
+    AND NOT EXISTS(SELECT 1 FROM public.transport_request_auto_approval_contexts)
  THEN pass := pass + 1; ELSE fails := fails || 'T6 permisos'::text; END IF;
 
  IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C112 FAIL (%/6): %', pass, array_to_string(fails, ' | '); END IF;
- RAISE EXCEPTION 'CAJA C112 PASS (6/6) aprobación automática: permiso e historial, OT pendiente aprobada sola, OC/OS/RQ sin OT manual y desactivada sin efecto';
+ RAISE EXCEPTION 'CAJA C112 PASS (6/6) aprobación automática: permiso e historial, OT y OC/OS/RQ sin OT aprobadas, contexto privado y desactivada sin efecto';
 END $test$;
 ROLLBACK;

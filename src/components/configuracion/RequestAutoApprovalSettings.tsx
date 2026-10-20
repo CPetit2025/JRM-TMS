@@ -28,7 +28,7 @@ export function RequestAutoApprovalSettings() {
   const toggle = async (enabled: boolean) => {
     if (!state?.can_edit) return
     if (!window.confirm(enabled
-      ? '¿Activar la aprobación automática? Las solicitudes con OT que se registren sin observaciones quedarán aprobadas sin revisión del Supervisor de Despacho.'
+      ? '¿Activar la aprobación automática? Las solicitudes con OT o con OC, OS o RQ sin OT que se registren sin observaciones quedarán aprobadas sin revisión del Supervisor de Despacho. Para las referencias sin OT se autoriza el monto registrado.'
       : '¿Desactivar la aprobación automática? Las nuevas solicitudes volverán a esperar la aprobación del Supervisor de Despacho.')) return
     setSaving(true); setError('')
     const { data, error: saveError } = await supabase.rpc('set_request_auto_approval', { p_enabled: enabled })
@@ -51,13 +51,14 @@ export function RequestAutoApprovalSettings() {
         <span className="min-w-0 flex-1">
           <strong className="flex items-center gap-2 text-sm">Aprobación automática {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${state.enabled ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}`}>{state.enabled ? 'Activa' : 'Desactivada'}</span></strong>
-          <span className="mt-1 block text-xs text-slate-600">Activa: una solicitud con OT que se registra o corrige sin observaciones pasa directamente a «Aprobada» y queda lista para armar la ruta. Desactivada: espera la aprobación del Supervisor de Despacho.</span>
+          <span className="mt-1 block text-xs text-slate-600">Activa: una solicitud con OT o con OC, OS o RQ sin OT que se registra o corrige sin observaciones pasa directamente a «Aprobada» y queda lista para armar la ruta. Desactivada: espera la aprobación del Supervisor de Despacho.</span>
         </span>
       </label>
       <ul className="list-disc space-y-1 rounded-lg bg-blue-50 p-3 pl-7 text-xs leading-5 text-blue-900">
-        <li>Siguen en aprobación manual las solicitudes observadas (partida, costos o referencia) y las de OC, OS o RQ sin OT, que requieren autorizar su monto.</li>
+        <li>Incluye recojos y traslados con OC, OS o RQ sin OT: se autoriza automáticamente el monto registrado de flete y descarga, sin consumir la partida de otra OT.</li>
+        <li>Las solicitudes observadas por partida, costos o referencia deben corregirse antes de aprobarse.</li>
         <li>No aprueba las solicitudes que ya estaban pendientes: aplica a las que se registren o editen después del cambio.</li>
-        <li>El historial de cada solicitud indica cuándo se aprobó de forma automática. El saldo de la partida se sigue validando al armar la ruta.</li>
+        <li>El historial indica cuándo se aprobó de forma automática. Al armar la ruta se valida la partida de las solicitudes con OT y el monto autorizado de las referencias sin OT.</li>
       </ul>
       <p className="text-xs text-slate-500">
         {state.updated_at ? `Último cambio: ${new Date(state.updated_at).toLocaleString('es-PE', { timeZone: 'America/Lima' })}${state.updated_by_name ? ` · ${state.updated_by_name}` : ''}. ` : ''}
