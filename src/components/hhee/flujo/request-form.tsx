@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CalendarX2, Loader2, Plus, Scale, Trash2, Truck } from 'lucide-react'
 import { Card, Field, Modal, btn2Cls, btnCls, inputCls, useFlow } from './context'
-import { LEGAL_BASIS, REFERENCES, call, fmtDate, fmtHours, fmtMoney, fmtTime, lineCost, limaLocal, today, type Detail, type Preview } from '@/lib/hhee/flujo'
+import { LEGAL_BASIS, REFERENCES, call, isPendingText, fmtDate, fmtHours, fmtMoney, fmtTime, lineCost, limaLocal, today, type Detail, type Preview } from '@/lib/hhee/flujo'
 
 // Solicitud de HHEE del Supervisor de Transporte o Despacho: actividad, causa, justificación y, por trabajador,
 // horario y descanso. Las horas al 25 %, 35 % y 100 % las calcula el servidor según la ley (hhee_flow_preview) y
@@ -19,7 +19,9 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
   const r = detail?.request
   const [f, setF] = useState({
     area_id: r?.area_id ?? areas[0]?.id ?? '', work_date: r?.work_date ?? today(), cause_id: r?.cause_id ?? '', reference_type: r?.reference_type ?? 'SIN_REFERENCIA',
-    reference_code: r?.reference_code ?? '', activity: r?.activity ?? '', justification: r?.justification ?? '', alternatives: r?.alternatives ?? '', expected_result: r?.expected_result ?? '',
+    reference_code: r?.reference_code ?? '',
+    // Las generadas por una ruta traen textos «PENDIENTE»: se muestran vacíos para completarlos
+    ...Object.fromEntries((['activity', 'justification', 'alternatives', 'expected_result'] as const).map(k => [k, isPendingText(r?.[k]) ? '' : r?.[k] ?? ''])) as Record<'activity' | 'justification' | 'alternatives' | 'expected_result', string>,
   })
   const [lines, setLines] = useState<L[]>(() => detail?.lines.map(l => ({ person_id: l.person_id, start: limaLocal(l.start).slice(11), end: limaLocal(l.end).slice(11),
     break_minutes: String(l.break_minutes || 0), rest_day: !!l.rest_day, dispatch_id: l.dispatch_id ?? '', manual: l.plate_source === 'MANUAL',
@@ -83,6 +85,7 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
 
   return (
     <Modal title={r ? `Corregir solicitud HE-${String(r.sequence).padStart(5, '0')}` : 'Nueva solicitud de horas extras'} onClose={onClose} wide>
+      {r?.auto_dispatch_id && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">Generada automáticamente: la ruta <strong>{r.auto_dispatch_number ?? ''}</strong> siguió en curso fuera del horario. Complete la actividad, por qué se necesitan, la alternativa y el resultado; ajuste la hora de fin estimada y preséntela.</p>}
       {r?.approval === 'APROBADA' && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Esta solicitud ya está aprobada. Si cambia personas u horas volverá a borrador y requerirá una nueva aprobación (se generará una nueva versión del informe).</p>}
       {r?.approval === 'OBSERVADA' && r.approval_reason && <p className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-orange-900"><strong>Observación del aprobador:</strong> {r.approval_reason}</p>}
       <Card title="1. Datos de la solicitud">

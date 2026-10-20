@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { Card, Field, Modal, btn2Cls, btnCls, inputCls, useFlow } from './context'
 import { RequestForm } from './request-form'
 import { consolidate, consolidatedEmailDraft, downloadConsolidatedPdf, downloadPdf, emailDraft, folio } from './informe'
-import { STATUS, call, plateLabel, fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtTime, statusOf, type Consolidated, type Detail, type RequestRow } from '@/lib/hhee/flujo'
+import { STATUS, call, isPendingText, plateLabel, fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtTime, statusOf, type Consolidated, type Detail, type RequestRow } from '@/lib/hhee/flujo'
 import { trackingEmailUrl, type EmailClient } from '@/lib/tracking-email'
 
 // Solicitudes y aprobación: el supervisor registra y presenta; el Jefe de Distribución o el Administrador aprueba,
@@ -85,7 +85,8 @@ export function Solicitudes() {
                     checked={selected.has(r.id)} onChange={() => toggle(r)} />}</td>
                   <td className="p-2.5 font-mono text-xs font-semibold text-[#002855]">HE-{String(r.sequence).padStart(5, '0')}</td>
                   <td className="p-2.5">{fmtDate(r.work_date)}</td>
-                  <td className="p-2.5"><p className="max-w-80 truncate font-medium text-slate-800">{r.activity}</p><p className="text-[11px] text-slate-500">{r.cause} · {r.area}</p></td>
+                  <td className="p-2.5"><p className="max-w-80 truncate font-medium text-slate-800">{isPendingText(r.activity) ? <span className="text-amber-800">Completar actividad y motivo</span> : r.activity}</p>
+                    <p className="text-[11px] text-slate-500">{r.cause} · {r.area}{r.auto_dispatch_id && <span className="ml-1.5 rounded-full bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-800">Automática · ruta {r.auto_dispatch_number}</span>}</p></td>
                   <td className="p-2.5 text-xs">{r.requester}</td>
                   <td className="p-2.5 text-right tabular-nums">{r.workers}</td>
                   <td className="p-2.5 text-right tabular-nums">{fmtHours(r.minutes)}</td>

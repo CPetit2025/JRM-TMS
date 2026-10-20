@@ -22,7 +22,10 @@ export type RequestRow = Totals & {
   id: string; sequence: number; version: number; work_date: string; area_id: string; area: string; cause_id: string; cause: string; activity: string
   state: string; approval: Approval; created_by: string; requester: string; approver: string | null; approved_at: string | null; submitted_at: string | null
   created_at: string; approval_reason: string | null; revisions: number; can_edit: boolean; can_decide: boolean
+  // Generada por una ruta en curso fuera del horario: textos «PENDIENTE» que completa el supervisor
+  auto_dispatch_id?: string | null; auto_dispatch_number?: string | null
 }
+export const isPendingText = (v: string | null | undefined) => !!v && v.startsWith('PENDIENTE')
 export type Line = {
   id?: string; person_id: string; name: string; code: string; position: string | null; start: string; end: string; break_minutes: number; minutes: number
   minutes_25: number | null; minutes_35: number | null; minutes_100: number | null; approved_minutes?: number | null; rate_ready?: boolean; cost?: number | null
@@ -89,7 +92,7 @@ export const fmtMoney = (v: number | null | undefined) => (v == null ? '—' : m
 export const fmtHours = (minutes: number | null | undefined) => {
   if (minutes == null) return '—'
   const h = Math.floor(minutes / 60), m = Math.round(minutes % 60)
-  return m ? `${h} h ${m} min` : `${h} h`
+  return m ? (h ? `${h} h ${m} min` : `${m} min`) : `${h} h`
 }
 export const fmtNum = (v: number | null | undefined, d = 1) => (v == null ? '—' : new Intl.NumberFormat('es-PE', { maximumFractionDigits: d }).format(v))
 export const fmtDate = (v: string | null | undefined) => (v ? new Intl.DateTimeFormat('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(v.length === 10 ? `${v}T12:00:00-05:00` : v)) : '—')
