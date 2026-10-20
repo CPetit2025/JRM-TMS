@@ -187,7 +187,7 @@ function HistoryModal({ person, onClose }: { person: Person; onClose: () => void
 
 // Importación por Excel: una fila por trabajador; el código identifica a quien ya existe (se actualiza)
 const TEMPLATE_HEADERS = ['Código', 'Nombres y apellidos', 'Documento', 'Cargo', 'Área', 'Horas diarias', 'Divisor mensual', 'Divisor confirmado (SI/NO)',
-  'Vigente desde (AAAA-MM-DD)', 'Básico', 'Asignación familiar', 'Otros computables', 'No computables', 'Activo (SI/NO)']
+  'Vigente desde (DD/MM/AAAA)', 'Básico', 'Asignación familiar', 'Otros computables', 'No computables', 'Activo (SI/NO)']
 function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => Promise<void> }) {
   const { ctx } = useFlow()
   const [rows, setRows] = useState<Array<Record<string, unknown>>>([])
@@ -196,26 +196,44 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => P
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const template = () => {
-    const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ['T001', 'Juan Pérez Rojas', '70123456', 'Operario de despacho', ctx.areas[0]?.name ?? 'Distribución', 8, 240, 'SI', today(), 1500, 113, 0, 0, 'SI']])
+    const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ['T001', 'Juan Pérez Rojas', '70123456', 'Operario de despacho', ctx.areas[0]?.name ?? 'Distribución', 8, 240, 'SI', today().split('-').reverse().join('/'), 1500, 113, 0, 0, 'SI']])
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Personal'); XLSX.writeFile(wb, 'plantilla-personal-hhee.xlsx')
   }
   const yes = (v: unknown, dflt: boolean) => (v == null || v === '' ? dflt : /^(si|sí|s|1|true|x)$/i.test(String(v).trim()))
   const num = (v: unknown) => (v == null || v === '' ? 0 : Number(String(v).replace(',', '.')))
+  // Fecha de Excel (número de serie) o texto DD/MM/AAAA, DD-MM-AAAA o AAAA-MM-DD → AAAA-MM-DD; undefined si no se reconoce
+  const isoDate = (v: unknown): string | null | undefined => {
+    if (v == null || String(v).trim() === '') return null
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const valid = (y: number, m: number, d: number) => {
+      const dt = new Date(Date.UTC(y, m - 1, d))
+      return y >= 1950 && y <= 2100 && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d ? `${y}-${pad(m)}-${pad(d)}` : undefined
+    }
+    if (typeof v === 'number') { const c = XLSX.SSF.parse_date_code(v); return c ? valid(c.y, c.m, c.d) : undefined }
+    const t = String(v).trim()
+    let m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/.exec(t)
+    if (m) return valid(+m[1], +m[2], +m[3])
+    m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})$/.exec(t)
+    if (m) return valid(m[3].length === 2 ? 2000 + +m[3] : +m[3], +m[2], +m[1])
+    return undefined
+  }
   const read = async (file: File) => {
     setResult(null); setError('')
-    const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true })
+    const wb = XLSX.read(await file.arrayBuffer())
     const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: '' })
     const issues: string[] = []
     const out = data.map((r, i) => {
       const area = ctx.areas.find(a => a.name.toLowerCase() === String(r['Área'] ?? '').trim().toLowerCase()) ?? (ctx.areas.length === 1 ? ctx.areas[0] : undefined)
       if (!area) issues.push(`Fila ${i + 2}: área «${r['Área']}» no encontrada`)
-      const vig = r['Vigente desde (AAAA-MM-DD)']
+      const vigRaw = r['Vigente desde (DD/MM/AAAA)'] ?? r['Vigente desde (AAAA-MM-DD)'] ?? r['Vigente desde']
+      const vig = isoDate(vigRaw)
+      if (vig === undefined) issues.push(`Fila ${i + 2}: fecha «${vigRaw}» no válida en Vigente desde (use DD/MM/AAAA o AAAA-MM-DD)`)
       const concepts: Concept[] = [['Básico', true], ['Asignación familiar', true], ['Otros computables', true], ['No computables', false]]
         .map(([k, comp]) => ({ name: String(k), amount: Math.round(num(r[String(k)]) * 100) / 100, computable: Boolean(comp) })).filter(c => c.amount > 0)
       return { code: String(r['Código'] ?? '').trim(), name: String(r['Nombres y apellidos'] ?? '').trim(), document_number: String(r['Documento'] ?? '').trim(),
         position: String(r['Cargo'] ?? '').trim(), area_id: area?.id, daily_hours: num(r['Horas diarias']) || 8, monthly_hours: num(r['Divisor mensual']) || 240,
         divisor_confirmed: yes(r['Divisor confirmado (SI/NO)'], false), active: yes(r['Activo (SI/NO)'], true),
-        effective_from: vig instanceof Date ? vig.toISOString().slice(0, 10) : String(vig || '').slice(0, 10) || null, remuneration_concepts: concepts }
+        effective_from: vig ?? null, remuneration_concepts: concepts }
     })
     // Duplicados dentro del archivo
     const seen = new Map<string, number>()
