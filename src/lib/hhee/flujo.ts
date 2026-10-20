@@ -24,16 +24,17 @@ export type RequestRow = Totals & {
 export type Line = {
   id?: string; person_id: string; name: string; code: string; position: string | null; start: string; end: string; break_minutes: number; minutes: number
   minutes_25: number | null; minutes_35: number | null; minutes_100: number | null; approved_minutes?: number | null; rate_ready?: boolean; cost?: number | null
+  document_number?: string | null; rest_day?: boolean
 }
 export type Snapshot = {
   revision: number; area: string; site: string | null; cause: string; requester: string; approver: string
   request: { id: string; sequence: number; work_date: string; activity: string; justification: string; alternatives: string; expected_result: string
     reference_type: string; reference_code: string | null; created_at: string; submitted_at: string | null; approved_at: string; approval_reason: string }
-  lines: Line[]; totals: Totals
+  lines: Line[]; totals: Totals; holiday?: string | null
 }
 export type Authorization = { id: string; revision: number; approved_at: string; approver: string; snapshot: Snapshot }
 export type Detail = {
-  cost_visible: boolean
+  cost_visible: boolean; holiday?: string | null
   request: RequestRow & { justification: string; alternatives: string; expected_result: string; reference_type: string; reference_code: string | null }
   lines: Line[]; authorizations: Authorization[]; events: Array<{ at: string; event: string; reason: string | null; by: string }>
 }
@@ -48,6 +49,12 @@ export type Dashboard = {
   weekdays: Array<{ dow: number; hours: number }>
   causes_by_month: Array<{ month: string; cause: string; hours: number }>
 }
+
+// Cálculo legal del servidor (hhee_flow_preview): primeras 2 h del día al 25 %, resto al 35 %; descanso o feriado al 100 %
+export type PreviewLine = { person_id: string; minutes?: number; m25?: number; m35?: number; m100?: number; prior?: number; error?: string }
+export type Preview = { holiday: string | null; isodow: number; lines: PreviewLine[] }
+export type Consolidated = { cost_visible: boolean; skipped: number; items: Array<{ request_id: string; revision: number; snapshot: Snapshot }> }
+export const LEGAL_BASIS = 'D.S. 007-2002-TR (TUO Ley de Jornada) art. 10: primeras 2 h extra del día con 25 % y las siguientes con 35 %. D. Leg. 713: trabajo en día de descanso o feriado con 100 %.'
 
 export async function call<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
   const { data, error } = await createClient().rpc(fn, args)

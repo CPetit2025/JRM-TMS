@@ -7,7 +7,9 @@ SET LOCAL statement_timeout = '60s';
 DO $test$
 DECLARE v_req uuid; v_app uuid; v_rreq uuid := gen_random_uuid(); v_rapp uuid := gen_random_uuid(); v_site uuid := gen_random_uuid();
   v_area uuid := gen_random_uuid(); v_cause uuid; v_p1 uuid; v_p2 uuid; v_id uuid; v_ver int; r jsonb; d jsonb; pass int := 0; fails text[] := '{}';
-  v_day text := ((now() AT TIME ZONE 'America/Lima')::date)::text;
+  -- Día laborable sin feriado (el reparto legal pondría todo al 100 % en feriado)
+  v_day text := (SELECT gs::date::text FROM generate_series((now() AT TIME ZONE 'America/Lima')::date, (now() AT TIME ZONE 'America/Lima')::date + 10, interval '1 day') gs
+                 WHERE public.hhee_pe_holiday(gs::date) IS NULL ORDER BY gs LIMIT 1);
   v_c1 jsonb := '[{"name":"Básico","amount":2400,"computable":true},{"name":"Movilidad","amount":300,"computable":false}]';
 BEGIN
   SELECT p.id INTO v_req FROM public.profiles p JOIN auth.users u ON u.id = p.id ORDER BY p.id LIMIT 1;
@@ -57,8 +59,8 @@ BEGIN
   r := public.hhee_flow_request_save(jsonb_build_object('area_id', v_area, 'cause_id', v_cause, 'work_date', v_day,
     'activity', 'Despacho urgente C125', 'justification', 'Pedido adicional del cliente para hoy', 'alternatives', 'Reasignar turno',
     'expected_result', 'Despacho completo', 'lines', jsonb_build_array(
-      jsonb_build_object('person_id', v_p1, 'start', v_day || 'T18:00', 'end', v_day || 'T21:00', 'break_minutes', 0, 'minutes_25', 120, 'minutes_35', 60, 'minutes_100', 0),
-      jsonb_build_object('person_id', v_p2, 'start', v_day || 'T18:00', 'end', v_day || 'T19:30', 'break_minutes', 0, 'minutes_25', 0, 'minutes_35', 0, 'minutes_100', 60))));
+      jsonb_build_object('person_id', v_p1, 'start', v_day || 'T18:00', 'end', v_day || 'T21:00', 'break_minutes', 0, 'break_minutes', 0),
+      jsonb_build_object('person_id', v_p2, 'start', v_day || 'T18:00', 'end', v_day || 'T19:00', 'break_minutes', 0, 'rest_day', true))));
   v_id := (r->>'id')::uuid; v_ver := (r->>'version')::int;
   IF (d->'caps'->>'request')::boolean AND NOT (d->'caps'->>'remuneration')::boolean
      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(d->'people') x WHERE x ? 'base_hour_cost' OR x ? 'remuneration_concepts')
@@ -66,14 +68,14 @@ BEGIN
      AND (r->'totals'->>'minutes')::int = 240
   THEN pass := pass + 1; ELSE fails := fails || ('T3 solicitud ' || left(r::text, 300)); END IF;
 
-  -- T4: validaciones: horas mayores al horario, trabajador repetido; el supervisor no decide
+  -- T4: validaciones: descanso mayor al horario, trabajador repetido; el supervisor no decide
   BEGIN
     r := public.hhee_flow_request_save(jsonb_build_object('area_id', v_area, 'cause_id', v_cause, 'work_date', v_day, 'activity', 'Prueba C125',
       'justification', 'Justificación suficiente', 'alternatives', 'Ninguna', 'expected_result', 'Resultado', 'lines', jsonb_build_array(
-        jsonb_build_object('person_id', v_p1, 'start', v_day || 'T18:00', 'end', v_day || 'T19:00', 'minutes_25', 120))));
-    fails := fails || 'T4 horas mayores al horario aceptadas'::text;
+        jsonb_build_object('person_id', v_p1, 'start', v_day || 'T18:00', 'end', v_day || 'T19:00', 'break_minutes', 90))));
+    fails := fails || 'T4 descanso mayor al horario aceptado'::text;
   EXCEPTION WHEN OTHERS THEN
-    IF SQLERRM ~ 'superan su horario' THEN pass := pass + 1; ELSE fails := fails || ('T4 ' || SQLERRM); END IF;
+    IF SQLERRM ~ 'supera su horario' THEN pass := pass + 1; ELSE fails := fails || ('T4 ' || SQLERRM); END IF;
   END;
   r := public.hhee_flow_submit(v_id, v_ver); v_ver := (r->>'version')::int;
   IF NOT (r->>'success')::boolean OR (public.hhee_flow_decide(jsonb_build_object('id', v_id, 'decision', 'APROBADA', 'reason', 'Auto aprobación', 'expected_version', v_ver))->>'success')::boolean THEN
@@ -99,7 +101,7 @@ BEGIN
   r := public.hhee_flow_request_save(jsonb_build_object('id', v_id, 'expected_version', v_ver, 'area_id', v_area, 'cause_id', v_cause, 'work_date', v_day,
     'activity', 'Despacho urgente C125', 'justification', 'Pedido adicional del cliente para hoy', 'alternatives', 'Reasignar turno',
     'expected_result', 'Despacho completo', 'lines', jsonb_build_array(
-      jsonb_build_object('person_id', v_p1, 'start', v_day || 'T18:00', 'end', v_day || 'T21:00', 'minutes_25', 180))));
+      jsonb_build_object('person_id', v_p1, 'start', v_day || 'T18:00', 'end', v_day || 'T21:00'))));
   v_ver := (r->>'version')::int;
   v_ver := (public.hhee_flow_submit(v_id, v_ver)->>'version')::int;
   PERFORM set_config('request.jwt.claim.sub', v_app::text, true);
@@ -112,7 +114,7 @@ BEGIN
     r := public.hhee_flow_request_save(jsonb_build_object('id', v_id, 'expected_version', (d->>'version')::int, 'area_id', v_area, 'cause_id', v_cause, 'work_date', v_day,
       'activity', 'Despacho urgente C125', 'justification', 'Pedido adicional del cliente para hoy', 'alternatives', 'Reasignar turno',
       'expected_result', 'Despacho completo', 'lines', jsonb_build_array(
-        jsonb_build_object('person_id', v_p1, 'start', v_day || 'T18:00', 'end', v_day || 'T21:00', 'minutes_25', 120))));
+        jsonb_build_object('person_id', v_p1, 'start', v_day || 'T18:00', 'end', v_day || 'T20:00'))));
     v_ver := (public.hhee_flow_submit(v_id, (r->>'version')::int)->>'version')::int;
     PERFORM set_config('request.jwt.claim.sub', v_app::text, true);
     PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_app, 'role', 'authenticated')::text, true);
