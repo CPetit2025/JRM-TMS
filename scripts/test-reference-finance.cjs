@@ -415,6 +415,10 @@ try {
  sql('ALTER TABLE contracts ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();')
  const autoRegression=query(read('supabase/tests/caja_c112_aprobacion_automatica.test.sql'))
  assert.notEqual(autoRegression.status,0);assert.match(autoRegression.stderr,/CAJA C112 PASS \(6\/6\)/)
+ sql(staff+`SELECT set_request_auto_approval(true);`)
+ const manualPickupRegression=query(read('supabase/tests/caja_c99_own_fleet_pickup.test.sql'))
+ assert.notEqual(manualPickupRegression.status,0);assert.match(manualPickupRegression.stderr,/CAJA C99 PASS/)
+ assert.equal(sql('SELECT auto_approve FROM transport_request_approval_settings WHERE id'),'t','manual-mode probe must roll back the setting')
  console.log('PASS: automatic OC/OS/RQ pickup and point-to-point approval authorizes the saved amount with audit, no OT budget, no retroactive sweep, private unforgeable context and manual fallback when disabled/observed.')
 
 
