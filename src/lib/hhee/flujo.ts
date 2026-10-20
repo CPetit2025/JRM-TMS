@@ -11,6 +11,8 @@ export type Person = {
   updated_at: string; base_hour_cost?: number | null; remuneration_concepts?: Concept[]
   // Enlace por DNI: nombre y DNI vienen de Flota (conductor) o de Maestros (trabajador)
   driver_id?: string | null; master?: 'FLOTA' | 'MAESTROS' | null
+  // Bolsa de horas compensables (minutos): ejecutado a compensar − descansos tomados
+  comp_balance?: number | null
 }
 export type FlowContext = {
   user_id: string; caps: Caps; areas: Area[]; causes: Array<{ id: string; name: string }>; people: Person[]
@@ -32,7 +34,17 @@ export type Line = {
   document_number?: string | null; rest_day?: boolean
   // Conductor: placa de su ruta asignada (RUTA) o indicada a mano con motivo (MANUAL)
   dispatch_id?: string | null; dispatch_number?: string | null; vehicle_plate?: string | null; plate_source?: 'RUTA' | 'MANUAL' | null; plate_reason?: string | null
+  // Ejecutado: fin real, minutos y reparto; quién cerró (app, geocerca o supervisor); pago o compensación con descanso
+  actual_end?: string | null; actual_minutes?: number | null; exec_minutes_25?: number | null; exec_minutes_35?: number | null; exec_minutes_100?: number | null
+  exec_cost?: number | null; closed_by?: 'CONDUCTOR' | 'GEOCERCA' | 'SUPERVISOR' | null; closed_at?: string | null; close_reason?: string | null
+  compensation?: boolean; geo_entered_at?: string | null
 }
+export const CLOSED_BY: Record<string, string> = { CONDUCTOR: 'Conductor (app)', GEOCERCA: 'Salida de la base (geocerca)', SUPERVISOR: 'Registrado por el supervisor' }
+export type CompBalance = { earned: number; taken: number; balance: number }
+export type CompList = { balance: CompBalance; earned: Array<{ folio: string; work_date: string; minutes: number; route: string | null }>
+  rests: Array<{ id: string; rest_date: string; minutes: number; note: string | null; by: string; cancelled: boolean }> }
+export type ExecSummary = { authorized_minutes: number; executed_minutes: number; closed_lines: number; open_lines: number; authorized_of_closed: number
+  compensation_minutes: number; by_closure: Record<'CONDUCTOR' | 'GEOCERCA' | 'SUPERVISOR', number>; executed_cost: number | null }
 export type Snapshot = {
   revision: number; area: string; site: string | null; cause: string; requester: string; approver: string
   request: { id: string; sequence: number; work_date: string; activity: string; justification: string; alternatives: string; expected_result: string
