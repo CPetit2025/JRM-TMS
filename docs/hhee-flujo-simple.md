@@ -39,8 +39,10 @@ Ficha: código, nombres, documento, cargo, área, jornada de referencia (horas d
 - **Armar ruta → Unidad y conductor:** auxiliar opcional, elegido de **Personal (/hhee/personal)**: fichas activas,
   tengan o no usuario en el sistema; con «Incluir conductores disponibles» se suman las fichas enlazadas a Flota. No
   aparecen quienes ya conducen, acompañan o van de auxiliar en otra ruta activa (`list_route_assistants`,
-  migración `20261021140000_auxiliar_desde_personal.sql`). Se guarda con `set_route_auxiliary` en `route_auxiliaries`;
-  si la ficha tiene usuario, también como tripulación AUXILIAR.
+  migración `20261021140000_auxiliar_desde_personal.sql`). Se pueden agregar **hasta 6 auxiliares** por ruta (cada uno
+  se quita con «×»); se guardan con `set_route_auxiliaries` en `route_auxiliaries` (migración
+  `20261021150000_varios_auxiliares.sql`) y los que tienen usuario también como tripulación AUXILIAR. Todos entran en
+  la solicitud automática de horas extras de la ruta.
 - **Fecha programada de salida:** al elegir servicios con una sola fecha requerida, se completa sola con esa fecha a
   las 08:00 (se ajusta la hora); si se cambia a mano, ya no se reemplaza.
 - **Horario ordinario** (`hhee_settings`): lunes a viernes hasta las 17:30, sábado hasta las 13:30. Domingo y feriado:
@@ -126,4 +128,4 @@ día de la semana, trabajadores recurrentes y exportación a Excel.
 - Los usuarios activos con esos roles quedan como miembros del área Distribución.
 - Quien solo solicita no ve tarifas ni costos.
 
-Pruebas: `supabase/tests/caja_c125_hhee_flujo_simple.test.sql` (C125) , `caja_c126_hhee_calculo_legal.test.sql` (C126) `caja_c127_personal_unificado_placa.test.sql` (C127) `caja_c128_rutas_auxiliar_hhee_auto.test.sql` (C128) `caja_c129_hhee_cierre_ruta_compensacion.test.sql` (C129) y `caja_c130_auxiliar_desde_personal.test.sql` (C130).
+Pruebas: `supabase/tests/caja_c125_hhee_flujo_simple.test.sql` (C125) , `caja_c126_hhee_calculo_legal.test.sql` (C126) `caja_c127_personal_unificado_placa.test.sql` (C127) `caja_c128_rutas_auxiliar_hhee_auto.test.sql` (C128) `caja_c129_hhee_cierre_ruta_compensacion.test.sql` (C129) `caja_c130_auxiliar_desde_personal.test.sql` (C130) y `caja_c131_varios_auxiliares.test.sql` (C131).
