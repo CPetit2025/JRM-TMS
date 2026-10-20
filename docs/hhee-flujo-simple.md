@@ -34,6 +34,20 @@ Ficha: código, nombres, documento, cargo, área, jornada de referencia (horas d
   Flota, fichas sin DNI), «Enlazar por DNI y actualizar datos» y «Crear fichas» para los conductores activos que no
   tienen (cargo Conductor, costo pendiente hasta completar la remuneración).
 
+### Rutas: auxiliar y horas extras automáticas (migración `20261021100000_rutas_auxiliar_hhee_automatica.sql`)
+
+- **Armar ruta → Unidad y conductor:** auxiliar opcional. La lista trae auxiliares y, con «Incluir conductores
+  disponibles», conductores que no conducen ni acompañan otra ruta activa (`list_route_assistants`). Se guarda como
+  tripulación AUXILIAR (`set_dispatch_crew`, que rechaza a un conductor que conduce otra ruta activa).
+- **Horario ordinario** (`hhee_settings`): lunes a viernes hasta las 17:30, sábado hasta las 13:30. Domingo y feriado:
+  todo el tiempo de ruta, al 100 %.
+- **Solicitud automática:** cada 10 minutos (pg_cron `hhee-rutas-fuera-de-horario`) las rutas de flota propia que siguen
+  en curso pasado el horario generan una sola solicitud en borrador con el conductor y la tripulación que viaja
+  (auxiliar / ayudante), la placa de la ruta, inicio al fin del horario y fin estimado (la siguiente hora en punto).
+  El supervisor que programó la ruta recibe el aviso, completa actividad, por qué, alternativa y resultado (vienen
+  «PENDIENTE»; no se puede presentar sin completarlos), ajusta la hora de fin y la presenta. Quien no tiene ficha de
+  personal recibe una con costo pendiente. Las horas extras de otras actividades siguen siendo manuales.
+
 ## 2. Solicitud y aprobación
 
 **Conductores — placa de la ruta.** Al elegir a un conductor, la placa sale de su ruta asignada en Despacho para esa
@@ -88,4 +102,4 @@ día de la semana, trabajadores recurrentes y exportación a Excel.
 - Los usuarios activos con esos roles quedan como miembros del área Distribución.
 - Quien solo solicita no ve tarifas ni costos.
 
-Pruebas: `supabase/tests/caja_c125_hhee_flujo_simple.test.sql` (C125) , `caja_c126_hhee_calculo_legal.test.sql` (C126) y `caja_c127_personal_unificado_placa.test.sql` (C127).
+Pruebas: `supabase/tests/caja_c125_hhee_flujo_simple.test.sql` (C125) , `caja_c126_hhee_calculo_legal.test.sql` (C126) `caja_c127_personal_unificado_placa.test.sql` (C127) y `caja_c128_rutas_auxiliar_hhee_auto.test.sql` (C128).
