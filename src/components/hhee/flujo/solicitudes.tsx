@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { Card, Field, Modal, btn2Cls, btnCls, inputCls, useFlow } from './context'
 import { RequestForm } from './request-form'
 import { consolidate, consolidatedEmailDraft, downloadConsolidatedPdf, downloadPdf, emailDraft, folio } from './informe'
-import { STATUS, call, plateLabel, fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtTime, statusOf, type Consolidated, type Detail, type RequestRow } from '@/lib/hhee/flujo'
+import { CLOSED_BY, STATUS, call, isPendingText, plateLabel, fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtTime, statusOf, type Consolidated, type Detail, type RequestRow } from '@/lib/hhee/flujo'
 import { trackingEmailUrl, type EmailClient } from '@/lib/tracking-email'
 
 // Solicitudes y aprobación: el supervisor registra y presenta; el Jefe de Distribución o el Administrador aprueba,
@@ -85,7 +85,8 @@ export function Solicitudes() {
                     checked={selected.has(r.id)} onChange={() => toggle(r)} />}</td>
                   <td className="p-2.5 font-mono text-xs font-semibold text-[#002855]">HE-{String(r.sequence).padStart(5, '0')}</td>
                   <td className="p-2.5">{fmtDate(r.work_date)}</td>
-                  <td className="p-2.5"><p className="max-w-80 truncate font-medium text-slate-800">{r.activity}</p><p className="text-[11px] text-slate-500">{r.cause} · {r.area}</p></td>
+                  <td className="p-2.5"><p className="max-w-80 truncate font-medium text-slate-800">{isPendingText(r.activity) ? <span className="text-amber-800">Completar actividad y motivo</span> : r.activity}</p>
+                    <p className="text-[11px] text-slate-500">{r.cause} · {r.area}{r.auto_dispatch_id && <span className="ml-1.5 rounded-full bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-800">Automática · ruta {r.auto_dispatch_number}</span>}</p></td>
                   <td className="p-2.5 text-xs">{r.requester}</td>
                   <td className="p-2.5 text-right tabular-nums">{r.workers}</td>
                   <td className="p-2.5 text-right tabular-nums">{fmtHours(r.minutes)}</td>
@@ -171,6 +172,8 @@ function RequestDetail({ id, onClose, onChanged, onEdit }: { id: string; onClose
           {r.pending_cost > 0 && d.cost_visible && <p className="mt-2 text-xs text-amber-800">{r.pending_cost} trabajador(es) con costo pendiente: completar su ficha en Personal.</p>}
         </Card>
       </div>
+      {r.approval === 'APROBADA' && r.state !== 'CANCELADA' && <ExecCard d={d} canPay={ctx.caps.approve || ctx.caps.people} canClose={ctx.caps.approve || (mine && ctx.caps.request) || ctx.caps.admin}
+        busy={busy} act={act} />}
       {r.can_decide && <Card title="Decisión del aprobador" subtitle="Sustento obligatorio. Al aprobar se genera el informe PDF y el correo.">
         <Field label="Sustento de aprobación, observación o rechazo *"><textarea className={inputCls} rows={3} value={reason} onChange={e => setReason(e.target.value)} maxLength={2000} /></Field>
         {notice && <p role="alert" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{notice}</p>}
@@ -197,6 +200,38 @@ function RequestDetail({ id, onClose, onChanged, onEdit }: { id: string; onClose
         onPdf={() => void downloadPdf(mail.snapshot, d.cost_visible)} onClose={() => setMail(null)} />}
     </Modal>
   )
+}
+
+// Ejecutado frente a lo autorizado: cierre (app, geocerca o supervisor), reparto real y pago o compensación por línea
+function ExecCard({ d, canPay, canClose, busy, act }: { d: Detail; canPay: boolean; canClose: boolean; busy: boolean; act: (fn: () => Promise<unknown>, done: string) => Promise<void> }) {
+  const [end, setEnd] = useState(''); const [why, setWhy] = useState('')
+  const open = d.lines.filter(l => !l.actual_end)
+  return <Card title="Ejecutado" subtitle={open.length ? `${open.length} trabajador(es) con horas extras abiertas: las cierra el conductor desde el app, la salida de la base o el registro del supervisor.` : 'Horas extras cerradas.'}>
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[640px] text-left text-xs [&_td]:px-2 [&_th]:px-2">
+        <thead className="text-[10px] uppercase text-slate-500"><tr><th className="py-1.5">Trabajador</th><th>Fin real</th><th className="text-right">Autorizado</th><th className="text-right">Ejecutado</th><th>Cierre</th><th>Pago o descanso</th>{d.cost_visible && <th className="text-right">Costo ejecutado</th>}</tr></thead>
+        <tbody className="divide-y divide-slate-100">{d.lines.map(l => <tr key={l.person_id}>
+          <td className="py-1.5 font-semibold">{l.name}</td>
+          <td>{l.actual_end ? fmtTime(l.actual_end) : <span className="text-amber-700">Abierta</span>}</td>
+          <td className="text-right">{fmtHours(l.minutes)}</td>
+          <td className="text-right font-semibold">{l.actual_end ? <>{fmtHours(l.actual_minutes)}<span className="block text-[10px] font-normal text-slate-500">{[[l.exec_minutes_25, '25'], [l.exec_minutes_35, '35'], [l.exec_minutes_100, '100']].filter(([m]) => Number(m) > 0).map(([m, p]) => `${fmtHours(Number(m))} al ${p} %`).join(' · ')}</span></> : '—'}</td>
+          <td>{l.closed_by ? <span title={l.close_reason || undefined}>{CLOSED_BY[l.closed_by]}</span> : '—'}</td>
+          <td>{canPay && l.id ? <select aria-label={`Pago o compensación de ${l.name}`} className="rounded border border-slate-300 px-1 py-0.5" disabled={busy} value={l.compensation ? 'C' : 'P'}
+              onChange={e => void act(() => call('hhee_line_set_compensation', { p_line: l.id, p_compensation: e.target.value === 'C' }), e.target.value === 'C' ? 'Se compensará con descanso' : 'Se pagará')}>
+              <option value="P">Pago</option><option value="C">Compensar con descanso</option></select>
+            : l.compensation ? 'Compensar con descanso' : 'Pago'}</td>
+          {d.cost_visible && <td className="text-right">{l.actual_end ? (l.exec_cost == null ? <span className="text-amber-700">Pendiente</span> : fmtMoney(l.exec_cost)) : '—'}</td>}
+        </tr>)}</tbody>
+      </table>
+    </div>
+    <p className="mt-2 text-[11px] text-slate-500">Compensar (D.S. 007-2002-TR art. 10): el trabajador recibe descanso equivalente en lugar del pago; las horas ejecutadas suman a su bolsa en Personal.</p>
+    {canClose && open.length > 0 && <div className="mt-3 grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[auto_1fr_auto] sm:items-end">
+      <Field label="Fin real"><input type="datetime-local" className={inputCls} value={end} onChange={e => setEnd(e.target.value)} /></Field>
+      <Field label="Por qué lo registra usted *"><input className={inputCls} value={why} maxLength={300} onChange={e => setWhy(e.target.value)} placeholder="Ej.: el conductor no cerró en el app" /></Field>
+      <button type="button" className={btnCls} disabled={busy || !end || why.trim().length < 5}
+        onClick={() => void act(() => call('hhee_flow_close', { p: { id: d.request.id, end, reason: why } }), 'Cierre registrado')}><CheckCircle2 className="h-4 w-4" /> Registrar cierre</button>
+    </div>}
+  </Card>
 }
 
 // Informe consolidado: una sola autorización vigente por solicitud elegida, con resumen por trabajador, PDF y correo

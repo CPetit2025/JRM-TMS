@@ -33,7 +33,7 @@ BEGIN
   v_mode := 'conductor existente';
   IF v_drv IS NULL THEN
     v_drv := gen_random_uuid(); v_mode := 'copia temporal';
-    INSERT INTO public.drivers SELECT * FROM jsonb_populate_record(NULL::public.drivers, (SELECT to_jsonb(d) FROM public.drivers d LIMIT 1)
+    INSERT INTO public.drivers SELECT * FROM jsonb_populate_record(NULL::public.drivers, (SELECT to_jsonb(d0) FROM public.drivers d0 LIMIT 1)
       || jsonb_build_object('id', v_drv, 'first_name', 'Conductor', 'last_name', 'Prueba C127', 'document_number', '71270127', 'document_id', '71270127',
          'profile_id', NULL, 'pin', NULL, 'is_active', true, 'license_number', 'C127-' || left(v_drv::text, 8)));
   END IF;

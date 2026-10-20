@@ -11,6 +11,8 @@ export type Person = {
   updated_at: string; base_hour_cost?: number | null; remuneration_concepts?: Concept[]
   // Enlace por DNI: nombre y DNI vienen de Flota (conductor) o de Maestros (trabajador)
   driver_id?: string | null; master?: 'FLOTA' | 'MAESTROS' | null
+  // Bolsa de horas compensables (minutos): ejecutado a compensar − descansos tomados
+  comp_balance?: number | null
 }
 export type FlowContext = {
   user_id: string; caps: Caps; areas: Area[]; causes: Array<{ id: string; name: string }>; people: Person[]
@@ -22,14 +24,27 @@ export type RequestRow = Totals & {
   id: string; sequence: number; version: number; work_date: string; area_id: string; area: string; cause_id: string; cause: string; activity: string
   state: string; approval: Approval; created_by: string; requester: string; approver: string | null; approved_at: string | null; submitted_at: string | null
   created_at: string; approval_reason: string | null; revisions: number; can_edit: boolean; can_decide: boolean
+  // Generada por una ruta en curso fuera del horario: textos «PENDIENTE» que completa el supervisor
+  auto_dispatch_id?: string | null; auto_dispatch_number?: string | null
 }
+export const isPendingText = (v: string | null | undefined) => !!v && v.startsWith('PENDIENTE')
 export type Line = {
   id?: string; person_id: string; name: string; code: string; position: string | null; start: string; end: string; break_minutes: number; minutes: number
   minutes_25: number | null; minutes_35: number | null; minutes_100: number | null; approved_minutes?: number | null; rate_ready?: boolean; cost?: number | null
   document_number?: string | null; rest_day?: boolean
   // Conductor: placa de su ruta asignada (RUTA) o indicada a mano con motivo (MANUAL)
   dispatch_id?: string | null; dispatch_number?: string | null; vehicle_plate?: string | null; plate_source?: 'RUTA' | 'MANUAL' | null; plate_reason?: string | null
+  // Ejecutado: fin real, minutos y reparto; quién cerró (app, geocerca o supervisor); pago o compensación con descanso
+  actual_end?: string | null; actual_minutes?: number | null; exec_minutes_25?: number | null; exec_minutes_35?: number | null; exec_minutes_100?: number | null
+  exec_cost?: number | null; closed_by?: 'CONDUCTOR' | 'GEOCERCA' | 'SUPERVISOR' | null; closed_at?: string | null; close_reason?: string | null
+  compensation?: boolean; geo_entered_at?: string | null
 }
+export const CLOSED_BY: Record<string, string> = { CONDUCTOR: 'Conductor (app)', GEOCERCA: 'Salida de la base (geocerca)', SUPERVISOR: 'Registrado por el supervisor' }
+export type CompBalance = { earned: number; taken: number; balance: number }
+export type CompList = { balance: CompBalance; earned: Array<{ folio: string; work_date: string; minutes: number; route: string | null }>
+  rests: Array<{ id: string; rest_date: string; minutes: number; note: string | null; by: string; cancelled: boolean }> }
+export type ExecSummary = { authorized_minutes: number; executed_minutes: number; closed_lines: number; open_lines: number; authorized_of_closed: number
+  compensation_minutes: number; by_closure: Record<'CONDUCTOR' | 'GEOCERCA' | 'SUPERVISOR', number>; executed_cost: number | null }
 export type Snapshot = {
   revision: number; area: string; site: string | null; cause: string; requester: string; approver: string
   request: { id: string; sequence: number; work_date: string; activity: string; justification: string; alternatives: string; expected_result: string
@@ -89,7 +104,7 @@ export const fmtMoney = (v: number | null | undefined) => (v == null ? '—' : m
 export const fmtHours = (minutes: number | null | undefined) => {
   if (minutes == null) return '—'
   const h = Math.floor(minutes / 60), m = Math.round(minutes % 60)
-  return m ? `${h} h ${m} min` : `${h} h`
+  return m ? (h ? `${h} h ${m} min` : `${m} min`) : `${h} h`
 }
 export const fmtNum = (v: number | null | undefined, d = 1) => (v == null ? '—' : new Intl.NumberFormat('es-PE', { maximumFractionDigits: d }).format(v))
 export const fmtDate = (v: string | null | undefined) => (v ? new Intl.DateTimeFormat('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(v.length === 10 ? `${v}T12:00:00-05:00` : v)) : '—')

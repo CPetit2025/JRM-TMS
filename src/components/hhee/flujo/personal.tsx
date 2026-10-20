@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown, Download, FileUp, Link2, Loader2, Plus, Search, Trash2, Truck } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { Card, Field, Modal, btn2Cls, btnCls, inputCls, useFlow } from './context'
-import { RECARGOS, baseRate, call, fmtDate, fmtDateTime, fmtMoney, fmtNum, today, type Concept, type Person, type UnifyIssue, type UnifyReport } from '@/lib/hhee/flujo'
+import { RECARGOS, baseRate, call, fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtNum, today, type CompList, type Concept, type Person, type UnifyIssue, type UnifyReport } from '@/lib/hhee/flujo'
 
 // Personal: ficha de cada trabajador con su jornada de referencia y remuneración; calcula la hora normal y las
 // tarifas de HHEE al 25 %, 35 % y 100 %. Sin divisor confirmado o sin conceptos computables: «costo pendiente».
@@ -14,6 +14,7 @@ export function Personal() {
   const [estado, setEstado] = useState<'activos' | 'todos' | 'pendientes'>('activos')
   const [edit, setEdit] = useState<Person | 'new' | null>(null)
   const [history, setHistory] = useState<Person | null>(null)
+  const [bank, setBank] = useState<Person | null>(null)
   const [importing, setImporting] = useState(false)
   const [unifying, setUnifying] = useState(false)
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'name', dir: 1 })
@@ -48,7 +49,7 @@ export function Personal() {
             <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr>
               <SortTh sort={sort} onSort={toggle} k="code" label="Código" /><SortTh sort={sort} onSort={toggle} k="name" label="Trabajador" /><SortTh sort={sort} onSort={toggle} k="position" label="Cargo / área" /><SortTh sort={sort} onSort={toggle} k="monthly_hours" label="Jornada" />
               {showPay && <><SortTh sort={sort} onSort={toggle} k="rate" label="Hora normal" right />{RECARGOS.map(r => <SortTh key={r.key} sort={sort} onSort={toggle} k="rate" label={`HHEE ${r.label}`} right />)}</>}
-              <SortTh sort={sort} onSort={toggle} k="status" label="Estado" /><th className="p-2.5" />
+              <SortTh sort={sort} onSort={toggle} k="comp" label="Bolsa de horas" right /><SortTh sort={sort} onSort={toggle} k="status" label="Estado" /><th className="p-2.5" />
             </tr></thead>
             <tbody className="divide-y divide-slate-100">
               {people.map(p => <tr key={p.id} className={p.active ? 'hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}>
@@ -60,12 +61,14 @@ export function Personal() {
                 <td className="p-2.5 text-xs">{fmtNum(p.daily_hours, 2)} h/día · divisor {fmtNum(p.monthly_hours, 2)} h<p className={p.divisor_confirmed ? 'text-emerald-700' : 'font-semibold text-amber-700'}>{p.divisor_confirmed ? 'Divisor confirmado' : 'Divisor sin confirmar'}</p></td>
                 {showPay && <><td className="p-2.5 text-right tabular-nums">{p.rate_ready ? fmtMoney(p.base_hour_cost) : '—'}</td>
                   {RECARGOS.map(r => <td key={r.key} className="p-2.5 text-right tabular-nums">{p.rate_ready && p.base_hour_cost != null ? fmtMoney(p.base_hour_cost * r.factor) : '—'}</td>)}</>}
+                <td className="p-2.5 text-right tabular-nums">{p.comp_balance ? <button type="button" className="font-semibold text-[#002855] underline" onClick={() => setBank(p)}>{fmtHours(p.comp_balance)}</button> : <span className="text-slate-400">—</span>}</td>
                 <td className="p-2.5">{!p.active ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold">Inactivo</span>
                   : p.rate_ready ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">Ficha completa</span>
                   : <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900">Costo pendiente: completar ficha</span>}</td>
                 <td className="p-2.5 text-right"><div className="flex justify-end gap-1">
                   {ctx.caps.people && <button type="button" className="rounded-md px-2 py-1 text-xs font-semibold text-[#002855] underline" onClick={() => setEdit(p)}>Editar ficha</button>}
                   {showPay && <button type="button" className="rounded-md px-2 py-1 text-xs font-semibold text-[#002855] underline" onClick={() => setHistory(p)}>Historial</button>}
+                  <button type="button" className="rounded-md px-2 py-1 text-xs font-semibold text-[#002855] underline" onClick={() => setBank(p)}>Bolsa</button>
                 </div></td>
               </tr>)}
             </tbody>
@@ -76,19 +79,21 @@ export function Personal() {
       </Card>
       {edit && <PersonForm person={edit === 'new' ? null : edit} onClose={() => setEdit(null)} onSaved={async () => { setEdit(null); await reload() }} />}
       {history && <HistoryModal person={history} onClose={() => setHistory(null)} />}
+      {bank && <CompModal person={bank} canEdit={ctx.caps.people} onClose={() => setBank(null)} onChanged={reload} />}
       {importing && <ImportModal onClose={() => setImporting(false)} onDone={reload} />}
       {unifying && <UnifyModal onClose={() => setUnifying(false)} onDone={reload} />}
     </div>
   )
 }
 
-type SortKey = 'code' | 'name' | 'position' | 'monthly_hours' | 'rate' | 'status'
+type SortKey = 'code' | 'name' | 'position' | 'monthly_hours' | 'rate' | 'comp' | 'status'
 const SORT_VALUE: Record<SortKey, (p: Person) => string | number | null> = {
   code: p => p.code,
   name: p => p.name,
   position: p => [p.position, p.area_name].filter(Boolean).join(' ') || null,
   monthly_hours: p => p.monthly_hours,
   rate: p => (p.rate_ready ? p.base_hour_cost ?? null : null),
+  comp: p => p.comp_balance ?? 0,
   status: p => (!p.active ? 2 : p.rate_ready ? 1 : 0),
 }
 
@@ -194,6 +199,51 @@ function PersonForm({ person, onClose, onSaved }: { person: Person | null; onClo
         <button type="button" className={btn2Cls} onClick={onClose}>Cancelar</button>
         <button type="button" className={btnCls} disabled={busy || !f.code.trim() || f.name.trim().length < 3 || !f.area_id} onClick={() => void save()}>{busy ? 'Guardando…' : 'Guardar ficha de personal'}</button>
       </div>
+    </Modal>
+  )
+}
+
+// Bolsa de horas: horas ejecutadas marcadas «compensar con descanso» menos los descansos tomados
+function CompModal({ person, canEdit, onClose, onChanged }: { person: Person; canEdit: boolean; onClose: () => void; onChanged: () => Promise<void> }) {
+  const [data, setData] = useState<CompList | null>(null)
+  const [error, setError] = useState('')
+  const [f, setF] = useState({ rest_date: today(), hours: '', note: '' })
+  const [busy, setBusy] = useState(false)
+  const load = async () => {
+    try { setData(await call<CompList>('hhee_comp_list', { p_person: person.id })) } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo cargar') }
+  }
+  useEffect(() => { const t = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(t) }, [person.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true); setError('')
+    try { await fn(); await load(); await onChanged() } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar') } finally { setBusy(false) }
+  }
+  const minutes = Math.round(Number(f.hours.replace(',', '.')) * 60)
+  return (
+    <Modal title={`Bolsa de horas · ${person.name}`} onClose={onClose}>
+      {error && <p role="alert" className="mb-2 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      {!data ? <p className="text-sm text-slate-500">Cargando…</p> : <div className="grid gap-3 text-sm">
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <p className="rounded-lg bg-slate-50 p-2"><span className="block text-[11px] text-slate-500">Ganadas</span><b>{fmtHours(data.balance.earned)}</b></p>
+          <p className="rounded-lg bg-slate-50 p-2"><span className="block text-[11px] text-slate-500">Descansos tomados</span><b>{fmtHours(data.balance.taken)}</b></p>
+          <p className="rounded-lg bg-emerald-50 p-2"><span className="block text-[11px] text-emerald-700">Saldo</span><b className="text-emerald-900">{fmtHours(data.balance.balance)}</b></p>
+        </div>
+        <p className="text-xs text-slate-500">Suman las horas ejecutadas que el aprobador marcó «Compensar con descanso» (en lugar del pago). D.S. 007-2002-TR art. 10.</p>
+        {canEdit && data.balance.balance > 0 && <div className="grid gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-[auto_auto_1fr_auto] sm:items-end">
+          <Field label="Fecha del descanso"><input type="date" className={inputCls} value={f.rest_date} onChange={e => setF({ ...f, rest_date: e.target.value })} /></Field>
+          <Field label="Horas"><input inputMode="decimal" className={`${inputCls} w-24`} value={f.hours} onChange={e => setF({ ...f, hours: e.target.value.replace(/[^0-9.,]/g, '') })} placeholder="Ej.: 2,5" /></Field>
+          <Field label="Nota"><input className={inputCls} maxLength={300} value={f.note} onChange={e => setF({ ...f, note: e.target.value })} /></Field>
+          <button type="button" className={btnCls} disabled={busy || !(minutes > 0) || !f.rest_date}
+            onClick={() => void run(async () => { await call('hhee_comp_rest_save', { p: { person_id: person.id, rest_date: f.rest_date, minutes, note: f.note } }); setF({ ...f, hours: '', note: '' }) })}>Registrar descanso</button>
+        </div>}
+        <div><h3 className="mb-1 text-xs font-bold uppercase text-slate-500">Horas a compensar</h3>
+          {data.earned.length ? <ul className="divide-y divide-slate-100">{data.earned.map((e, i) => <li key={i} className="flex justify-between py-1"><span>{e.folio} · {fmtDate(e.work_date)}{e.route ? ` · ruta ${e.route}` : ''}</span><b>{fmtHours(e.minutes)}</b></li>)}</ul>
+            : <p className="text-xs text-slate-400">Ninguna.</p>}</div>
+        <div><h3 className="mb-1 text-xs font-bold uppercase text-slate-500">Descansos</h3>
+          {data.rests.length ? <ul className="divide-y divide-slate-100">{data.rests.map(r => <li key={r.id} className={`flex items-center justify-between gap-2 py-1 ${r.cancelled ? 'text-slate-400 line-through' : ''}`}>
+            <span>{fmtDate(r.rest_date)} · {fmtHours(r.minutes)}{r.note ? ` · ${r.note}` : ''} <small className="text-slate-500">({r.by})</small></span>
+            {canEdit && !r.cancelled && <button type="button" className="text-xs font-semibold text-red-700 underline" disabled={busy} onClick={() => { if (window.confirm('¿Anular este descanso? Las horas vuelven a la bolsa.')) void run(() => call('hhee_comp_rest_cancel', { p_id: r.id })) }}>Anular</button>}
+          </li>)}</ul> : <p className="text-xs text-slate-400">Ninguno.</p>}</div>
+      </div>}
     </Modal>
   )
 }
