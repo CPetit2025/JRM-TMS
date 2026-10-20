@@ -23,7 +23,23 @@ Ficha: código, nombres, documento, cargo, área, jornada de referencia (horas d
 - Cada cambio remunerativo queda en el historial (`hhee_people_history`). Las solicitudes ya aprobadas conservan la
   tarifa usada (`hhee_lines.plan_rate`, `plan_cost`).
 
+### Personal unificado por DNI (migración `20261021080000_personal_unificado_placa_hhee.sql`)
+
+- Un DNI = una persona. La ficha con el DNI de un conductor se **enlaza a Flota** (`hhee_people.driver_id`) y toma de
+  allí nombre y DNI. Las demás fichas toman nombre y DNI de **Maestros → Trabajadores** (`profile_id`).
+- Si se corrigen en Flota o en Maestros, la ficha se actualiza sola (triggers que nunca bloquean la edición en Flota).
+  En la ficha esos campos quedan de solo lectura e indican de dónde vienen.
+- La remuneración sigue solo en Personal (HHEE).
+- Botón **Unificar con Flota**: diagnóstico por DNI (conductores sin ficha, DNI que coincide sin enlace, DNI repetido en
+  Flota, fichas sin DNI), «Enlazar por DNI y actualizar datos» y «Crear fichas» para los conductores activos que no
+  tienen (cargo Conductor, costo pendiente hasta completar la remuneración).
+
 ## 2. Solicitud y aprobación
+
+**Conductores — placa de la ruta.** Al elegir a un conductor, la placa sale de su ruta asignada en Despacho para esa
+fecha (una ruta: automática; varias: se elige). Si no tiene ruta o usó otra unidad, se indica la placa (opcional) y el
+**motivo** (obligatorio). La placa, la ruta y el motivo quedan en el informe, el correo y el consolidado.
+
 
 1. El supervisor registra fecha, área, causa, actividad, por qué se necesita, alternativa evaluada y resultado
    esperado; agrega trabajadores con hora de inicio, fin y descanso. **Las horas por recargo se calculan solas**
@@ -72,4 +88,4 @@ día de la semana, trabajadores recurrentes y exportación a Excel.
 - Los usuarios activos con esos roles quedan como miembros del área Distribución.
 - Quien solo solicita no ve tarifas ni costos.
 
-Pruebas: `supabase/tests/caja_c125_hhee_flujo_simple.test.sql` (C125) y `caja_c126_hhee_calculo_legal.test.sql` (C126).
+Pruebas: `supabase/tests/caja_c125_hhee_flujo_simple.test.sql` (C125) , `caja_c126_hhee_calculo_legal.test.sql` (C126) y `caja_c127_personal_unificado_placa.test.sql` (C127).

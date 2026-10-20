@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { Card, Field, Modal, btn2Cls, btnCls, inputCls, useFlow } from './context'
 import { RequestForm } from './request-form'
 import { consolidate, consolidatedEmailDraft, downloadConsolidatedPdf, downloadPdf, emailDraft, folio } from './informe'
-import { STATUS, call, fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtTime, statusOf, type Consolidated, type Detail, type RequestRow } from '@/lib/hhee/flujo'
+import { STATUS, call, plateLabel, fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtTime, statusOf, type Consolidated, type Detail, type RequestRow } from '@/lib/hhee/flujo'
 import { trackingEmailUrl, type EmailClient } from '@/lib/tracking-email'
 
 // Solicitudes y aprobación: el supervisor registra y presenta; el Jefe de Distribución o el Administrador aprueba,
@@ -160,7 +160,7 @@ function RequestDetail({ id, onClose, onChanged, onEdit }: { id: string; onClose
             <table className="w-full min-w-[520px] text-left text-xs">
               <thead className="text-[10px] uppercase text-slate-500"><tr><th className="py-1.5">Trabajador</th><th>Horario</th><th className="text-right">25 %</th><th className="text-right">35 %</th><th className="text-right">100 %</th><th className="text-right">Total</th>{d.cost_visible && <th className="text-right">Costo</th>}</tr></thead>
               <tbody className="divide-y divide-slate-100">{d.lines.map(l => <tr key={l.person_id}>
-                <td className="py-1.5"><p className="font-semibold">{l.name}</p><p className="text-[10px] text-slate-500">{l.code}{l.document_number ? ` · DNI ${l.document_number}` : ''}{l.position ? ` · ${l.position}` : ''}{l.rest_day ? ' · día de descanso' : ''}</p></td>
+                <td className="py-1.5"><p className="font-semibold">{l.name}</p><p className="text-[10px] text-slate-500">{l.code}{l.document_number ? ` · DNI ${l.document_number}` : ''}{l.position ? ` · ${l.position}` : ''}{l.rest_day ? ' · día de descanso' : ''}</p>{l.plate_source && <p className={`text-[10px] font-semibold ${l.plate_source === 'MANUAL' ? 'text-amber-800' : 'text-blue-800'}`}>{plateLabel(l)}</p>}</td>
                 <td>{fmtTime(l.start)}–{fmtTime(l.end)}{l.break_minutes ? ` (−${l.break_minutes}m)` : ''}</td>
                 <td className="text-right">{fmtHours(l.minutes_25)}</td><td className="text-right">{fmtHours(l.minutes_35)}</td><td className="text-right">{fmtHours(l.minutes_100)}</td>
                 <td className="text-right font-semibold">{fmtHours(l.minutes)}</td>

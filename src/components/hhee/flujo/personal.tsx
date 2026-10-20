@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, ArrowUpDown, Download, FileUp, Plus, Search, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Download, FileUp, Link2, Loader2, Plus, Search, Trash2, Truck } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { Card, Field, Modal, btn2Cls, btnCls, inputCls, useFlow } from './context'
-import { RECARGOS, baseRate, call, fmtDate, fmtDateTime, fmtMoney, fmtNum, today, type Concept, type Person } from '@/lib/hhee/flujo'
+import { RECARGOS, baseRate, call, fmtDate, fmtDateTime, fmtMoney, fmtNum, today, type Concept, type Person, type UnifyIssue, type UnifyReport } from '@/lib/hhee/flujo'
 
 // Personal: ficha de cada trabajador con su jornada de referencia y remuneración; calcula la hora normal y las
 // tarifas de HHEE al 25 %, 35 % y 100 %. Sin divisor confirmado o sin conceptos computables: «costo pendiente».
@@ -15,6 +15,7 @@ export function Personal() {
   const [edit, setEdit] = useState<Person | 'new' | null>(null)
   const [history, setHistory] = useState<Person | null>(null)
   const [importing, setImporting] = useState(false)
+  const [unifying, setUnifying] = useState(false)
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'name', dir: 1 })
   const people = useMemo(() => ctx.people.filter(p => (estado === 'todos' || (estado === 'activos' ? p.active : p.active && !p.rate_ready))
     && (!q.trim() || `${p.code} ${p.name} ${p.document_number ?? ''} ${p.position ?? ''}`.toLowerCase().includes(q.trim().toLowerCase())))
@@ -32,6 +33,7 @@ export function Personal() {
     <div className="grid gap-4">
       <Card title="Personal" subtitle={`${ctx.people.filter(p => p.active).length} trabajadores activos${pendientes ? ` · ${pendientes} con costo pendiente (completar ficha)` : ''}`}
         actions={ctx.caps.people && <>
+          <button type="button" className={btn2Cls} onClick={() => setUnifying(true)}><Link2 className="h-4 w-4" /> Unificar con Flota</button>
           <button type="button" className={btn2Cls} onClick={() => setImporting(true)}><FileUp className="h-4 w-4" /> Importar Excel</button>
           <button type="button" className={btnCls} onClick={() => setEdit('new')}><Plus className="h-4 w-4" /> Registrar trabajador</button>
         </>}>
@@ -51,7 +53,9 @@ export function Personal() {
             <tbody className="divide-y divide-slate-100">
               {people.map(p => <tr key={p.id} className={p.active ? 'hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}>
                 <td className="p-2.5 font-mono text-xs">{p.code}</td>
-                <td className="p-2.5"><p className="font-semibold text-slate-800">{p.name}</p><p className="text-[11px] text-slate-500">{p.document_number ? `Doc. ${p.document_number}` : 'Sin documento'}</p></td>
+                <td className="p-2.5"><p className="font-semibold text-slate-800">{p.name}</p><p className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">{p.document_number ? `DNI ${p.document_number}` : 'Sin documento'}
+                  {p.master === 'FLOTA' && <span title="Nombre y DNI enlazados al conductor de Flota" className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-800"><Truck className="h-3 w-3" /> Conductor · Flota</span>}
+                  {p.master === 'MAESTROS' && <span title="Nombre y DNI enlazados al trabajador de Maestros" className="rounded-full bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-700">Maestros</span>}</p></td>
                 <td className="p-2.5"><p>{p.position || '—'}</p><p className="text-[11px] text-slate-500">{p.area_name}</p></td>
                 <td className="p-2.5 text-xs">{fmtNum(p.daily_hours, 2)} h/día · divisor {fmtNum(p.monthly_hours, 2)} h<p className={p.divisor_confirmed ? 'text-emerald-700' : 'font-semibold text-amber-700'}>{p.divisor_confirmed ? 'Divisor confirmado' : 'Divisor sin confirmar'}</p></td>
                 {showPay && <><td className="p-2.5 text-right tabular-nums">{p.rate_ready ? fmtMoney(p.base_hour_cost) : '—'}</td>
@@ -73,6 +77,7 @@ export function Personal() {
       {edit && <PersonForm person={edit === 'new' ? null : edit} onClose={() => setEdit(null)} onSaved={async () => { setEdit(null); await reload() }} />}
       {history && <HistoryModal person={history} onClose={() => setHistory(null)} />}
       {importing && <ImportModal onClose={() => setImporting(false)} onDone={reload} />}
+      {unifying && <UnifyModal onClose={() => setUnifying(false)} onDone={reload} />}
     </div>
   )
 }
@@ -100,6 +105,7 @@ const DEFAULT_CONCEPTS: Concept[] = [{ name: 'Básico', amount: 0, computable: t
 function PersonForm({ person, onClose, onSaved }: { person: Person | null; onClose: () => void; onSaved: () => Promise<void> }) {
   const { ctx } = useFlow()
   const areas = ctx.areas
+  const linked = person?.master === 'FLOTA' ? 'Flota (conductor)' : person?.master === 'MAESTROS' ? 'Maestros → Trabajadores' : null
   const [f, setF] = useState({
     code: person?.code ?? '', name: person?.name ?? '', document_number: person?.document_number ?? '', position: person?.position ?? '',
     area_id: person?.area_id ?? areas[0]?.id ?? '', active: person?.active ?? true, daily_hours: String(person?.daily_hours ?? 8),
@@ -132,8 +138,10 @@ function PersonForm({ person, onClose, onSaved }: { person: Person | null; onClo
           <Card title="Identificación">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Código *"><input className={inputCls} value={f.code} onChange={e => set('code', e.target.value.toUpperCase())} maxLength={50} /></Field>
-              <Field label="Documento de identidad"><input className={inputCls} value={f.document_number} onChange={e => set('document_number', e.target.value)} maxLength={20} inputMode="numeric" /></Field>
-              <Field label="Nombres y apellidos *" className="sm:col-span-2"><input className={inputCls} value={f.name} onChange={e => set('name', e.target.value)} maxLength={160} /></Field>
+              <Field label="Documento de identidad" hint={linked ? `Se corrige en ${linked}` : 'Con el DNI de un conductor se enlaza a Flota y toma su nombre'}>
+                <input className={inputCls} value={f.document_number} onChange={e => set('document_number', e.target.value)} maxLength={20} inputMode="numeric" disabled={!!linked} /></Field>
+              <Field label="Nombres y apellidos *" className="sm:col-span-2" hint={linked ? `Viene de ${linked}; si cambia allá se actualiza aquí` : undefined}>
+                <input className={inputCls} value={f.name} onChange={e => set('name', e.target.value)} maxLength={160} disabled={!!linked} /></Field>
               <Field label="Cargo"><input className={inputCls} value={f.position} onChange={e => set('position', e.target.value)} maxLength={100} placeholder="Ej. Operario de despacho" /></Field>
               <Field label="Área *"><select className={inputCls} value={f.area_id} onChange={e => set('area_id', e.target.value)}>{areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></Field>
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.active} onChange={e => set('active', e.target.checked)} className="h-4 w-4" /> Activo (aparece en las solicitudes)</label>
@@ -208,6 +216,77 @@ function HistoryModal({ person, onClose }: { person: Person; onClose: () => void
           <p className="text-xs text-slate-500">Vigente desde {fmtDate(h.effective_from)} · divisor {fmtNum(h.monthly_hours, 2)} h {h.divisor_confirmed ? '(confirmado)' : '(sin confirmar)'} · hora normal {fmtMoney(h.base_hour_cost)}</p>
           <p className="mt-1 text-xs">{h.remuneration_concepts.map(c => `${c.name}: ${fmtMoney(c.amount)}${c.computable ? '' : ' (no computable)'}`).join(' · ') || 'Sin conceptos'}</p>
         </div>)}</div>}
+    </Modal>
+  )
+}
+
+// Unificar con Flota y Maestros: un DNI = una persona. Diagnóstico, enlace (Flota o Maestros mandan en nombre y DNI)
+// y fichas para los conductores activos que aún no tienen (remuneración pendiente)
+const KINDS: Record<UnifyIssue['kind'], { label: string; hint: string; tone: string }> = {
+  CONDUCTOR_SIN_FICHA: { label: 'Conductor sin ficha', hint: 'Está activo en Flota y no tiene ficha de personal', tone: 'bg-amber-50 text-amber-900' },
+  COINCIDE_SIN_ENLACE: { label: 'DNI coincide sin enlace', hint: 'El DNI está repetido en Flota o el conductor ya está enlazado a otra ficha', tone: 'bg-red-50 text-red-800' },
+  NOMBRE_DISTINTO: { label: 'Nombre distinto', hint: 'Enlazado, pero el nombre aún no se actualizó', tone: 'bg-orange-50 text-orange-900' },
+  SIN_DNI: { label: 'Ficha sin DNI', hint: 'Sin DNI no se puede enlazar', tone: 'bg-slate-100 text-slate-700' },
+  DNI_REPETIDO_FLOTA: { label: 'DNI repetido en Flota', hint: 'Dos conductores con el mismo DNI: corregir en Flota', tone: 'bg-red-50 text-red-800' },
+}
+function UnifyModal({ onClose, onDone }: { onClose: () => void; onDone: () => Promise<void> }) {
+  const { ctx } = useFlow()
+  const [rep, setRep] = useState<UnifyReport | null>(null)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [kind, setKind] = useState<UnifyIssue['kind'] | ''>('')
+  const [area, setArea] = useState(ctx.areas[0]?.id ?? '')
+  const [nonce, setNonce] = useState(0)
+  useEffect(() => {
+    let alive = true
+    call<UnifyReport>('hhee_people_unify', { p: { action: 'report' } }).then(r => { if (alive) setRep(r) }).catch(e => { if (alive) setError(e instanceof Error ? e.message : 'No se pudo cargar') })
+    return () => { alive = false }
+  }, [nonce])
+  const run = async (p: Record<string, unknown>, done: (r: { reviewed?: number; linked_new?: number; created?: number }) => string) => {
+    setBusy(true); setError(''); setMsg('')
+    try { const r = await call<{ reviewed?: number; linked_new?: number; created?: number }>('hhee_people_unify', { p }); setMsg(done(r)); await onDone(); setNonce(n => n + 1) }
+    catch (e) { setError(e instanceof Error ? e.message : 'No se pudo completar') } finally { setBusy(false) }
+  }
+  const s = rep?.summary
+  const rows = (rep?.rows ?? []).filter(r => !kind || r.kind === kind)
+  const sinFicha = s?.by_kind.CONDUCTOR_SIN_FICHA ?? 0
+  return (
+    <Modal title="Unificar personal con Flota y Maestros" onClose={onClose} wide>
+      <p className="rounded-lg bg-blue-50 p-3 text-xs leading-relaxed text-blue-950">Un DNI = una persona. La ficha con el DNI de un conductor se enlaza a Flota y toma de allí el nombre y el DNI
+        (para los demás, de Maestros → Trabajadores). Si se corrigen en Flota o Maestros, la ficha se actualiza sola. La remuneración sigue solo en esta ventana.</p>
+      {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      {msg && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{msg}</p>}
+      {!rep ? <p className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Cruzando por DNI…</p> : <>
+        <div className="grid gap-3 sm:grid-cols-4">
+          {[['Fichas de personal', s!.people], ['Enlazadas a Flota', s!.linked_driver], ['Enlazadas a Maestros', s!.linked_profile], ['Conductores activos en Flota', s!.drivers_active]]
+            .map(([k, v]) => <div key={k} className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{k}</p><p className="mt-1 text-2xl font-black text-[#002855]">{v}</p></div>)}
+        </div>
+        <Card title="Acciones">
+          <div className="flex flex-wrap items-end gap-3">
+            <button type="button" className={btn2Cls} disabled={busy} onClick={() => void run({ action: 'link' }, r => `Revisadas ${r.reviewed} fichas: ${r.linked_new} enlazada(s) nueva(s); nombres y DNI tomados de Flota / Maestros.`)}>
+              <Link2 className="h-4 w-4" /> Enlazar por DNI y actualizar datos</button>
+            <Field label="Área para las fichas nuevas"><select className={`${inputCls} w-48`} value={area} onChange={e => setArea(e.target.value)}>{ctx.areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></Field>
+            <button type="button" className={btnCls} disabled={busy || !sinFicha || !area} onClick={() => void run({ action: 'create_drivers', area_id: area }, r => `${r.created} ficha(s) creada(s) para conductores. Complete su remuneración para calcular el costo.`)}>
+              <Truck className="h-4 w-4" /> Crear fichas de {sinFicha} conductor(es)</button>
+          </div>
+        </Card>
+        <Card title="Diferencias encontradas" subtitle={rep.rows.length ? `${rep.rows.length} caso(s)` : 'Todo coincide'}
+          actions={<select aria-label="Tipo de diferencia" className={`${inputCls} w-56`} value={kind} onChange={e => setKind(e.target.value as typeof kind)}>
+            <option value="">Todas</option>{(Object.keys(KINDS) as UnifyIssue['kind'][]).map(k => <option key={k} value={k}>{KINDS[k].label} ({s!.by_kind[k] ?? 0})</option>)}</select>}>
+          {rows.length ? <div className="max-h-[50vh] overflow-auto rounded-lg border border-slate-200">
+            <table className="w-full min-w-[680px] text-left text-xs">
+              <thead className="sticky top-0 bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th className="p-2">Caso</th><th className="p-2">DNI</th><th className="p-2">Ficha de personal</th><th className="p-2">Conductor en Flota</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">{rows.map((r, i) => <tr key={i}>
+                <td className="p-2"><span title={KINDS[r.kind].hint} className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${KINDS[r.kind].tone}`}>{KINDS[r.kind].label}</span></td>
+                <td className="p-2 font-mono">{r.doc ?? '—'}</td>
+                <td className="p-2">{r.name ? <><p className="font-semibold">{r.name}</p><p className="text-[10px] text-slate-500">{r.code} · {r.area}</p></> : '—'}</td>
+                <td className="p-2">{r.driver_name ?? '—'}</td>
+              </tr>)}</tbody>
+            </table>
+          </div> : <p className="py-6 text-center text-sm text-slate-400">Sin diferencias en este filtro.</p>}
+        </Card>
+      </>}
     </Modal>
   )
 }
