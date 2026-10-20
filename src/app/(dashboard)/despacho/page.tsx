@@ -179,6 +179,8 @@ export default function DespachoPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [calculatingDistance, setCalculatingDistance] = useState(false)
   const reqDistances = useRef<Record<string, number>>({})
+  // Fecha de salida propuesta desde la fecha requerida (se reemplaza mientras el usuario no la cambie a mano)
+  const [autoDeparture, setAutoDeparture] = useState('')
 
   // Freight rate lookup state
   const [detectedFreightRate, setDetectedFreightRate] = useState<{ rate: number; district: string; zone: string } | null>(null)
@@ -189,8 +191,8 @@ export default function DespachoPage() {
   // Unidad propia o de un transportista tercero que no usa el app
   const [modalidad, setModalidad] = useState<'PROPIA' | 'TERCERO'>('PROPIA')
   const [tercero, setTercero] = useState<TerceroForm>(TERCERO_VACIO)
-  // Auxiliar opcional de la ruta (tripulación AUXILIAR): auxiliares y, con el filtro, conductores disponibles
-  const [assistants, setAssistants] = useState<{ profile_id: string; name: string; kind: 'AUXILIAR' | 'CONDUCTOR'; employee_type: string | null; busy: string | null }[]>([])
+  // Auxiliar opcional de la ruta: fichas activas de Personal (HHEE) y, con el filtro, conductores disponibles
+  const [assistants, setAssistants] = useState<{ person_id: string; profile_id: string | null; driver_id: string | null; name: string; position: string | null; area: string | null; kind: 'AUXILIAR' | 'CONDUCTOR'; busy: string | null }[]>([])
   const [auxiliar, setAuxiliar] = useState('')
   const [auxDrivers, setAuxDrivers] = useState(false)
   const [newDispatch, setNewDispatch] = useState<{
@@ -547,9 +549,10 @@ export default function DespachoPage() {
         await supabase.rpc('set_dispatch_freight_quote', { p_dispatch_id: newDispatchId, p_breakdown: freightQuote })
       }
       if (!isPickup && newDispatchId && auxiliar) {
-        const { data: crewRes, error: crewErr } = await supabase.rpc('set_dispatch_crew', { p_dispatch_id: newDispatchId, p_crew: [{ profile_id: auxiliar, crew_role: 'AUXILIAR' }] })
-        if (crewErr || !crewRes?.success) toast.warning('La ruta quedó programada, pero no se asignó el auxiliar: ' + (crewErr?.message || crewRes?.error || 'error'))
+        const { data: auxRes, error: auxErr } = await supabase.rpc('set_route_auxiliary', { p_dispatch: newDispatchId, p_person: auxiliar })
+        if (auxErr || !auxRes?.success) toast.warning('La ruta quedó programada, pero no se asignó el auxiliar: ' + (auxErr?.message || auxRes?.error || 'error'))
       }
+      setAutoDeparture('')
       setAuxiliar('')
       toast.success(isPickup ? 'Recojo por el cliente programado con Nota de Salida y sin flete JRM.' : 'Despacho programado y financiamiento validado.')
       setIsModalOpen(false)
@@ -574,6 +577,13 @@ export default function DespachoPage() {
       toast.error('Agrupe solicitudes de la misma modalidad y sede. Puede combinar OT, entregas, recojos y traslados.'); return
     }
     setFreightShares({})
+    const nextIds = isSelected ? newDispatch.selected_requests.filter(r => r.id !== reqId).map(r => r.id) : [...newDispatch.selected_requests.map(r => r.id), reqId]
+    const nextDates = [...new Set(nextIds.map(id => pendingRequests.find(r => r.id === id)?.required_date?.slice(0, 10)).filter((date): date is string => !!date))]
+    const proposed = nextDates.length === 1 ? `${nextDates[0]}T08:00` : ''
+    if (!newDispatch.scheduled_departure || newDispatch.scheduled_departure === autoDeparture) {
+      setAutoDeparture(proposed)
+      setNewDispatch(prev => ({ ...prev, scheduled_departure: proposed }))
+    }
     const pickupByCustomer = request?.attention_mode === 'RECOJO_CLIENTE'
     if (!isSelected && pickupByCustomer) {
       setNewDispatch(prev => ({ ...prev, selected_requests: [...prev.selected_requests, { id: reqId, document_number: '' }], document_type: 'NOTA_SALIDA', driver_name: '', vehicle_plate: '', estimated_distance_km: '' }))
@@ -899,7 +909,7 @@ export default function DespachoPage() {
                       <label className="block text-xs font-semibold text-slate-700 mb-1">Conductor</label>
                       <SearchableSelect
                         value={newDispatch.driver_name}
-                        onChange={(val) => { setNewDispatch({...newDispatch, driver_name: val}); if (auxiliar && drivers.find(d => `${d.first_name} ${d.last_name}`.trim() === val.trim())?.profile_id === auxiliar) setAuxiliar('') }}
+                        onChange={(val) => { setNewDispatch({...newDispatch, driver_name: val}); const dId = drivers.find(d => `${d.first_name} ${d.last_name}`.trim() === val.trim())?.id; if (auxiliar && dId && assistants.find(a => a.person_id === auxiliar)?.driver_id === dId) setAuxiliar('') }}
                         options={drivers.map(d => ({ value: `${d.first_name} ${d.last_name}`, label: `${d.first_name} ${d.last_name} - ${d.document_number} (${d.carriers?.business_name})` }))}
                         placeholder="Seleccione conductor..."
                       />
@@ -908,19 +918,19 @@ export default function DespachoPage() {
                       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                         <label className="block text-xs font-semibold text-slate-700">Auxiliar <span className="font-normal text-slate-500">(opcional)</span></label>
                         <label className="flex items-center gap-1.5 text-xs text-slate-600"><input type="checkbox" className="h-4 w-4" checked={auxDrivers}
-                          onChange={e => { setAuxDrivers(e.target.checked); if (!e.target.checked && assistants.find(a => a.profile_id === auxiliar)?.kind === 'CONDUCTOR') setAuxiliar('') }} /> Incluir conductores disponibles</label>
+                          onChange={e => { setAuxDrivers(e.target.checked); if (!e.target.checked && assistants.find(a => a.person_id === auxiliar)?.kind === 'CONDUCTOR') setAuxiliar('') }} /> Incluir conductores disponibles</label>
                       </div>
                       {(() => {
-                        const options = assistants.filter(a => !a.busy && a.profile_id !== selectedDriver?.profile_id && (auxDrivers || a.kind === 'AUXILIAR'))
+                        const options = assistants.filter(a => !a.busy && (!a.driver_id || a.driver_id !== selectedDriver?.id) && (auxDrivers || a.kind === 'AUXILIAR'))
                         const busy = assistants.filter(a => a.busy && (auxDrivers || a.kind === 'AUXILIAR')).length
                         return <>
                           <div className="flex gap-2">
                             <div className="min-w-0 flex-1"><SearchableSelect value={auxiliar} onChange={val => setAuxiliar(val)}
-                              options={options.map(a => ({ value: a.profile_id, label: `${a.name} · ${a.kind === 'CONDUCTOR' ? 'Conductor' : a.employee_type || 'Auxiliar'}` }))}
-                              placeholder={options.length ? 'Sin auxiliar' : 'No hay auxiliares disponibles'} /></div>
+                              options={options.map(a => ({ value: a.person_id, label: `${a.name} · ${a.kind === 'CONDUCTOR' ? 'Conductor' : a.position || 'Personal'}${a.area ? ` · ${a.area}` : ''}` }))}
+                              placeholder={options.length ? 'Sin auxiliar' : 'No hay personal disponible en /hhee/personal'} /></div>
                             {auxiliar && <button type="button" onClick={() => setAuxiliar('')} className="min-h-10 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-600">Quitar</button>}
                           </div>
-                          <p className="mt-1 text-[11px] text-slate-500">Viaja con el conductor; si la ruta sigue en curso fuera del horario, entra en la solicitud automática de horas extras.{busy ? ` ${busy} no disponible(s): ya están en otra ruta activa.` : ''}</p>
+                          <p className="mt-1 text-[11px] text-slate-500">Lista de Personal (HHEE). Viaja con el conductor; si la ruta sigue en curso fuera del horario, entra en la solicitud automática de horas extras.{busy ? ` ${busy} no disponible(s): ya están en otra ruta activa.` : ''}</p>
                         </>
                       })()}
                     </div>
@@ -945,7 +955,8 @@ export default function DespachoPage() {
                     value={newDispatch.scheduled_departure}
                     onChange={(e) => setNewDispatch({...newDispatch, scheduled_departure: e.target.value})}
                   />
-                  {selectedDates.length === 1 && <button type="button" onClick={() => setNewDispatch(current => ({ ...current, scheduled_departure: `${selectedDates[0]}T${current.scheduled_departure.slice(11,16) || '08:00'}` }))} className="mt-2 min-h-11 text-xs font-semibold text-blue-700 underline">Usar fecha requerida: {serviceDate(selectedDates[0])}</button>}
+                  {selectedDates.length === 1 && newDispatch.scheduled_departure && newDispatch.scheduled_departure === autoDeparture && <p className="mt-2 text-xs text-emerald-700">Tomada de la fecha requerida ({serviceDate(selectedDates[0])}) a las 08:00; ajuste la hora si es necesario.</p>}
+                  {selectedDates.length === 1 && newDispatch.scheduled_departure.slice(0, 10) !== selectedDates[0] && <button type="button" onClick={() => setNewDispatch(current => ({ ...current, scheduled_departure: `${selectedDates[0]}T${current.scheduled_departure.slice(11,16) || '08:00'}` }))} className="mt-2 min-h-11 text-xs font-semibold text-blue-700 underline">Usar fecha requerida: {serviceDate(selectedDates[0])}</button>}
                   {selectedDates.length > 1 && <p className="mt-2 text-xs text-amber-800">Las solicitudes tienen fechas distintas: {selectedDates.map(serviceDate).join(', ')}. Confirme la salida según el orden de atención.</p>}
                   <p className="mt-1 text-[11px] text-slate-500">La fecha de salida se confirma por separado de la fecha requerida de cada servicio.</p>
                 </div>
@@ -1004,7 +1015,7 @@ export default function DespachoPage() {
                 {newDispatch.document_type === 'GR' && <>
                   <div className="flex justify-between gap-2"><dt className="text-slate-500">Unidad</dt><dd className="truncate font-semibold text-slate-900">{(modalidad === 'TERCERO' ? tercero.placa : newDispatch.vehicle_plate) || '—'}{modalidad === 'TERCERO' && <span className="font-normal text-slate-500"> · tercero</span>}</dd></div>
                   <div className="flex justify-between gap-2"><dt className="text-slate-500">Conductor</dt><dd className="truncate font-semibold text-slate-900">{(modalidad === 'TERCERO' ? tercero.conductor : newDispatch.driver_name) || '—'}</dd></div>
-                  {auxiliar && modalidad === 'PROPIA' && <div className="flex justify-between gap-2"><dt className="text-slate-500">Auxiliar</dt><dd className="truncate font-semibold text-slate-900">{assistants.find(a => a.profile_id === auxiliar)?.name ?? '—'}</dd></div>}
+                  {auxiliar && modalidad === 'PROPIA' && <div className="flex justify-between gap-2"><dt className="text-slate-500">Auxiliar</dt><dd className="truncate font-semibold text-slate-900">{assistants.find(a => a.person_id === auxiliar)?.name ?? '—'}</dd></div>}
                 </>}
                 <div className="flex justify-between gap-2"><dt className="text-slate-500">Salida</dt><dd className="font-semibold text-slate-900">{newDispatch.scheduled_departure ? cellDateTime(new Date(newDispatch.scheduled_departure).toISOString()) : '—'}</dd></div>
                 {newDispatch.document_type === 'GR' && <div className="flex justify-between gap-2"><dt className="text-slate-500">Distancia</dt><dd className="font-semibold tabular-nums text-slate-900">{newDispatch.estimated_distance_km !== '' ? `${newDispatch.estimated_distance_km} km` : '—'}</dd></div>}
