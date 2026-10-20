@@ -20,11 +20,12 @@ BEGIN
     AND public.tracking_portal_sign_in(tok, 'ZZZZ', 'Ana Pérez') ? 'error'
  THEN pass := pass + 1; ELSE fails := fails || 'T1 nombre/código'::text; END IF;
 
- -- T2: dos personas ingresan con nombre y código; cada una ve a ambas en la presencia
+ -- T2: dos personas ingresan con nombre y código; cada una ve a ambas en la presencia (la presencia es por sede:
+ -- en producción puede haber además personas reales viendo el portal, por eso no se exige un total exacto)
  a := public.tracking_portal_sign_in(tok, pin, '  Ana   Pérez ');
  b := public.tracking_portal_sign_in(tok, lower(pin), 'Luis Rojas');
  r := public.get_public_tracking_portal_view(tok, pin, (a->>'viewer_id')::uuid, current_date, current_date);
- IF a->>'name' = 'Ana Pérez' AND r->>'mode' = 'permanent' AND (r->>'active_count')::int = 2
+ IF a->>'name' = 'Ana Pérez' AND r->>'mode' = 'permanent' AND (r->>'active_count')::int >= 2
     AND r->'viewer'->>'name' = 'Ana Pérez' AND (r->'viewers'->0->>'me')::boolean
     AND EXISTS (SELECT 1 FROM jsonb_array_elements(r->'viewers') x WHERE x->>'name' = 'Luis Rojas' AND NOT (x->>'me')::boolean)
  THEN pass := pass + 1; ELSE fails := fails || ('T2 presencia: ' || COALESCE(r::text, '∅')); END IF;
@@ -32,7 +33,8 @@ BEGIN
  -- T3: quien sale o deja de consultar (más de 60 s) ya no aparece; su sesión no sirve para otro enlace
  PERFORM public.tracking_portal_sign_out(tok, (b->>'viewer_id')::uuid);
  r := public.get_public_tracking_portal_view(tok, pin, (a->>'viewer_id')::uuid, current_date, current_date);
- IF (r->>'active_count')::int = 1
+ IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'viewers') x WHERE x->>'name' = 'Ana Pérez' AND (x->>'me')::boolean)
+    AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'viewers') x WHERE x->>'id' = b->>'viewer_id')
     AND (public.get_public_tracking_portal_view(tok, pin, (b->>'viewer_id')::uuid, current_date, current_date)->>'error') LIKE 'Acceso vencido%'
     AND (public.get_public_tracking_portal_view(gen_random_uuid(), pin, (a->>'viewer_id')::uuid, current_date, current_date)->>'error') LIKE 'Acceso vencido%'
  THEN pass := pass + 1; ELSE fails := fails || ('T3 salida: ' || COALESCE(r::text, '∅')); END IF;
