@@ -47,7 +47,7 @@ El GPS del arrendador o las lecturas de odómetro quedan como control (km fuera 
 
 ## Pendientes
 
-- Completar el RUC de Transportes Valeriani en Maestros › Transportistas. Se creó con `PEND-VALERIANI`.
+- Completar el RUC de Transportes Valeriani en Maestros › Proveedores logísticos. Se creó con `PEND-VALERIANI`.
 - Aprobar las liquidaciones de agosto y setiembre. Debe hacerlo un usuario distinto al que las registró, en
   Flota › Liquidaciones de alquiler.
 

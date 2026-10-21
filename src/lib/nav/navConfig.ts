@@ -1,7 +1,7 @@
 import {
   Boxes,
   ArchiveRestore, BadgeCheck, BadgeDollarSign, Banknote, BarChart3, Briefcase, Building2, Calculator, CalendarClock, CalendarRange,
-  ChartColumn, CircleCheckBig, CircleDot, ClipboardCheck, ClipboardList, Container, Database, Factory, FileSignature,
+  ChartColumn, CircleCheckBig, CircleDot, ClipboardCheck, ClipboardList, Database, Factory, FileSignature,
   FileText, FileUp, Fuel, Gauge, HardHat, Home, KeyRound, Map as MapIcon, MapPin, PackageCheck,
   PackageSearch, Radar, Receipt, ReceiptText, Route, Scale, Settings, Settings2, ShieldAlert, ShieldCheck, Sparkles, TriangleAlert,
   Timer, Truck, UserRound, Users, Wallet, Warehouse, Wrench, Forklift, History, LayoutDashboard, type LucideIcon,
@@ -108,10 +108,10 @@ export const NAV_SECTIONS: NavSection[] = [
     { href: '/caja/combustible', label: 'Control de Combustible', icon: Fuel, show: any('caja-combustible'), keywords: 'combustible petroleo galones' },
     { href: '/caja/tarifario', label: 'Reglas de Caja', icon: Scale, show: any('caja-tarifario'), keywords: 'tarifario reglas viaticos topes' },
   ] }] },
-  { id: 'maestros', title: 'Catálogos', icon: Database, groups: [{ items: [
-    { href: '/maestros/trabajadores', label: 'Trabajadores', icon: HardHat, show: any('maestros-trabajadores'), keywords: 'trabajador conductor ayudante' },
+  { id: 'maestros', title: 'Proveedores logísticos', icon: Database, groups: [{ items: [
+    { href: '/maestros/proveedores', label: 'Proveedores logísticos', icon: Factory, show: any('proveedores-logisticos', 'despacho', 'torre-control', 'tarifas'), keywords: 'proveedor transportista montacarga conductor placa licencia empresa' },
+    { href: '/maestros/trabajadores', label: 'Personal interno', icon: HardHat, show: any('maestros-trabajadores'), keywords: 'trabajador interno conductor ayudante' },
     { href: '/maestros/tarifas', label: 'Tarifario de Transporte', icon: BadgeDollarSign, show: any('tarifas'), keywords: 'tarifa flete precio' },
-    { href: '/maestros/transportistas', label: 'Transportistas', icon: Container, show: any('tarifas'), keywords: 'transportista tercero proveedor' },
   ] }] },
   { id: 'admin', title: 'Administración', icon: Settings, groups: [{ items: [
     { href: '/usuarios', label: 'Usuarios del Sistema', icon: Users, show: any('usuarios'), keywords: 'usuario' },
