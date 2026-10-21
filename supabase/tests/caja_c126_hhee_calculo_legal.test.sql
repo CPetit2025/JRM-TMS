@@ -8,8 +8,10 @@ DECLARE v_req uuid; v_app uuid; v_rreq uuid := gen_random_uuid(); v_rapp uuid :=
   v_area uuid := gen_random_uuid(); v_cause uuid; v_p1 uuid; v_p2 uuid; v_a uuid; v_b uuid; v_c uuid; v_ver int; r jsonb; d jsonb; pass int := 0; fails text[] := '{}';
   v_day text := (SELECT gs::date::text FROM generate_series((now() AT TIME ZONE 'America/Lima')::date, (now() AT TIME ZONE 'America/Lima')::date + 10, interval '1 day') gs
                  WHERE public.hhee_pe_holiday(gs::date) IS NULL ORDER BY gs LIMIT 1);
-  v_base jsonb;
+  v_day2 text; v_base jsonb; v_dup text;
 BEGIN
+  v_day2 := (SELECT gs::date::text FROM generate_series(v_day::date + 1, v_day::date + 15, interval '1 day') gs
+             WHERE public.hhee_pe_holiday(gs::date) IS NULL AND extract(isodow FROM gs) < 7 ORDER BY gs LIMIT 1);
   SELECT p.id INTO v_req FROM public.profiles p JOIN auth.users u ON u.id = p.id ORDER BY p.id LIMIT 1;
   SELECT p.id INTO v_app FROM public.profiles p JOIN auth.users u ON u.id = p.id WHERE p.id <> v_req ORDER BY p.id LIMIT 1;
   SELECT id INTO v_cause FROM public.hhee_causes WHERE active ORDER BY name LIMIT 1;
@@ -48,20 +50,36 @@ BEGIN
   IF (r->>'success')::boolean AND (SELECT (plan_minutes_25, plan_minutes_35, plan_minutes_100, planned_minutes) = (120, 60, 0, 180) FROM public.hhee_lines WHERE request_id = v_a)
   THEN pass := pass + 1; ELSE fails := fails || ('T2 reparto ' || left(r::text, 300)); END IF;
 
-  -- T3: segunda solicitud del mismo día: el trabajador 1 ya usó sus 2 h al 25 % → todo al 35 %; el 2 en su descanso → 100 %
+  -- T3: el mismo trabajador no puede estar en dos solicitudes del mismo día; el 2 en su descanso → 100 %. Para seguir
+  -- verificando el acumulado legal del día (2 h al 25 % por trabajador y día), la línea del trabajador 1 en la segunda
+  -- solicitud se inserta como dato anterior a esa regla: ya usó sus 2 h al 25 % → todo al 35 %
+  BEGIN
+    PERFORM public.hhee_flow_request_save(v_base || jsonb_build_object('lines', jsonb_build_array(
+      jsonb_build_object('person_id', v_p1, 'start', v_day || 'T22:00', 'end', v_day || 'T23:59', 'break_minutes', 0))));
+    v_dup := 'aceptado';
+  EXCEPTION WHEN OTHERS THEN v_dup := SQLERRM;
+  END;
   r := public.hhee_flow_request_save(v_base || jsonb_build_object('lines', jsonb_build_array(
-    jsonb_build_object('person_id', v_p1, 'start', v_day || 'T22:00', 'end', v_day || 'T23:59', 'break_minutes', 0),
     jsonb_build_object('person_id', v_p2, 'start', v_day || 'T08:00', 'end', v_day || 'T12:00', 'break_minutes', 0, 'rest_day', true))));
   v_b := (r->>'id')::uuid; v_ver := (r->>'version')::int;
+  INSERT INTO public.hhee_lines (request_id, person_id, person_name, person_code, planned_start, planned_end, planned_break, planned_minutes,
+    plan_minutes_25, plan_minutes_35, plan_minutes_100, plan_rate, plan_cost, estimated_cost, rest_day)
+  SELECT v_b, v_p1, 'C126 Trabajador Uno', 'C126-01', (v_day || ' 22:00')::timestamp AT TIME ZONE 'America/Lima', (v_day || ' 23:59')::timestamp AT TIME ZONE 'America/Lima', 0, 119,
+    (sp->>'m25')::int, (sp->>'m35')::int, (sp->>'m100')::int, public.hhee_flow_rate(v_p1),
+    public.hhee_flow_cost(public.hhee_flow_rate(v_p1), (sp->>'m25')::int, (sp->>'m35')::int, (sp->>'m100')::int),
+    public.hhee_flow_cost(public.hhee_flow_rate(v_p1), (sp->>'m25')::int, (sp->>'m35')::int, (sp->>'m100')::int), false
+  FROM (SELECT public.hhee_flow_split(v_p1, v_day::date, 119, false, v_b) sp) x;
+  IF v_dup !~ 'ya tiene horas extras' THEN fails := fails || ('T3 duplicado del día: ' || v_dup); END IF;
   IF (SELECT (plan_minutes_25, plan_minutes_35) = (0, 119) FROM public.hhee_lines WHERE request_id = v_b AND person_id = v_p1)
      AND (SELECT (plan_minutes_100, rest_day) = (240, true) FROM public.hhee_lines WHERE request_id = v_b AND person_id = v_p2)
   THEN pass := pass + 1; ELSE fails := fails || ('T3 acumulado del día ' || left(r::text, 300)); END IF;
 
   -- T4: vista previa (lo mismo que calculará el servidor) y errores de horario
-  r := public.hhee_flow_preview(jsonb_build_object('work_date', v_day, 'lines', jsonb_build_array(
+  -- (el trabajador 1 ya está en otra solicitud de ese día: la vista previa lo marca)
+  r := public.hhee_flow_preview(jsonb_build_object('id', v_b, 'work_date', v_day, 'lines', jsonb_build_array(
     jsonb_build_object('person_id', v_p1, 'start', v_day || 'T06:00', 'end', v_day || 'T07:00', 'break_minutes', 0),
     jsonb_build_object('person_id', v_p2, 'start', v_day || 'T06:00', 'end', v_day || 'T07:00', 'break_minutes', 90))));
-  IF (r->>'success')::boolean AND r->'lines'->0 @> '{"m25":0,"m35":60,"prior":299}' AND r->'lines'->1->>'error' ~ 'descanso'
+  IF (r->>'success')::boolean AND r->'lines'->0->>'error' ~ 'Ya tiene horas extras' AND r->'lines'->1->>'error' ~ 'descanso'
   THEN pass := pass + 1; ELSE fails := fails || ('T4 vista previa ' || left(r::text, 300)); END IF;
 
   -- T5: se anula la primera; al aprobar la segunda se vuelve a repartir: ahora 2 h al 25 % y el costo se recalcula
@@ -84,8 +102,8 @@ BEGIN
   -- T7: informe consolidado: solo aprobadas (la anulada se omite); el supervisor no ve montos, el jefe sí
   PERFORM set_config('request.jwt.claim.sub', v_req::text, true);
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_req, 'role', 'authenticated')::text, true);
-  r := public.hhee_flow_request_save(v_base || jsonb_build_object('lines', jsonb_build_array(
-    jsonb_build_object('person_id', v_p2, 'start', v_day || 'T18:00', 'end', v_day || 'T19:00', 'break_minutes', 0))));
+  r := public.hhee_flow_request_save(v_base || jsonb_build_object('work_date', v_day2, 'lines', jsonb_build_array(
+    jsonb_build_object('person_id', v_p2, 'start', v_day2 || 'T18:00', 'end', v_day2 || 'T19:00', 'break_minutes', 0))));
   v_c := (r->>'id')::uuid; v_ver := (public.hhee_flow_submit(v_c, (r->>'version')::int)->>'version')::int;
   PERFORM set_config('request.jwt.claim.sub', v_app::text, true);
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_app, 'role', 'authenticated')::text, true);

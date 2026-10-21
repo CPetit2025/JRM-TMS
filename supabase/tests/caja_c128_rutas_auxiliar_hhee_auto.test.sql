@@ -14,9 +14,16 @@ BEGIN
   FROM public.dispatches x JOIN public.drivers dr ON dr.id = x.driver_id
   WHERE x.vehicle_plate IS NOT NULL AND x.vehicle_plate <> 'EXTERNO' AND length((public.hhee_driver_master(dr.id))->>'name') >= 3
     AND NOT EXISTS (SELECT 1 FROM public.hhee_requests h WHERE h.auto_dispatch_id = x.id)
+    -- sin horas extras vigentes el 20/10/2026 (un trabajador no se repite en la misma fecha)
+    AND NOT EXISTS (SELECT 1 FROM public.hhee_lines l JOIN public.hhee_people hp ON hp.id = l.person_id JOIN public.hhee_requests h ON h.id = l.request_id
+                    WHERE hp.driver_id = x.driver_id AND h.work_date = '2026-10-20' AND h.state <> 'CANCELADA' AND h.approval <> 'RECHAZADA')
   ORDER BY x.id LIMIT 1;
   SELECT p.id INTO v_aux FROM public.profiles p WHERE COALESCE(p.is_active, true) AND p.id IS DISTINCT FROM d.driver_profile
-    AND length(trim(concat_ws(' ', to_jsonb(p)->>'first_name', to_jsonb(p)->>'last_name'))) >= 3 ORDER BY p.id LIMIT 1;
+    AND length(trim(concat_ws(' ', to_jsonb(p)->>'first_name', to_jsonb(p)->>'last_name'))) >= 3
+    AND NOT EXISTS (SELECT 1 FROM public.hhee_lines l JOIN public.hhee_people hp ON hp.id = l.person_id JOIN public.hhee_requests h ON h.id = l.request_id
+                    WHERE (hp.profile_id = p.id OR hp.driver_id IN (SELECT dr.id FROM public.drivers dr WHERE dr.profile_id = p.id))
+                      AND h.work_date = '2026-10-20' AND h.state <> 'CANCELADA' AND h.approval <> 'RECHAZADA')
+    ORDER BY p.id LIMIT 1;
   IF v_req IS NULL OR v_app IS NULL OR d.id IS NULL OR v_aux IS NULL THEN RAISE EXCEPTION 'CAJA C128 FAIL: faltan perfiles o un despacho con conductor'; END IF;
   INSERT INTO public.roles (id, name, permissions) VALUES
     (v_rreq, 'C128-sup-' || left(v_rreq::text, 8), '["hhee-solicitar:write","hhee:read","despacho:write"]'),

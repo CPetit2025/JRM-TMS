@@ -26,7 +26,11 @@ export type RequestRow = Totals & {
   created_at: string; approval_reason: string | null; revisions: number; can_edit: boolean; can_decide: boolean
   // Generada por una ruta en curso fuera del horario: textos «PENDIENTE» que completa el supervisor
   auto_dispatch_id?: string | null; auto_dispatch_number?: string | null
+  // Trabajadores, placas y referencia (OT / OC / OS / RQ) para la lista
+  people?: string[]; plates?: string[]; reference_type?: string; reference_code?: string | null
 }
+export const referenceLabel = (type?: string | null, code?: string | null) =>
+  !type || type === 'SIN_REFERENCIA' ? '' : type === 'MANTENIMIENTO' ? `Mant.${code ? ` ${code}` : ''}` : `${type}${code ? ` ${code}` : ''}`
 export const isPendingText = (v: string | null | undefined) => !!v && v.startsWith('PENDIENTE')
 export type Line = {
   id?: string; person_id: string; name: string; code: string; position: string | null; start: string; end: string; break_minutes: number; minutes: number

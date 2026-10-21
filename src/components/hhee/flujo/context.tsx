@@ -88,7 +88,8 @@ export function Kpi({ label, value, hint, tone = 'default' }: { label: string; v
     </div>
   )
 }
-export function Modal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+// wide: max-w-6xl · xl: casi todo el ancho de la pantalla. footer: barra de acciones fija al pie del modal
+export function Modal({ title, onClose, children, wide = false, xl = false, footer }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean; xl?: boolean; footer?: ReactNode }) {
   useEffect(() => {
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', key)
@@ -98,12 +99,13 @@ export function Modal({ title, onClose, children, wide = false }: { title: strin
   if (typeof document === 'undefined') return null
   return createPortal(
     <div className="fixed inset-0 z-[300] flex items-start justify-center overflow-y-auto bg-slate-950/40 p-2 sm:p-6" role="dialog" aria-modal="true" aria-label={title}>
-      <div className={`w-full ${wide ? 'max-w-6xl' : 'max-w-3xl'} rounded-2xl bg-slate-50 shadow-2xl`}>
+      <div className={`w-full ${xl ? 'max-w-[min(96rem,98vw)]' : wide ? 'max-w-6xl' : 'max-w-3xl'} rounded-2xl bg-slate-50 shadow-2xl`}>
         <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-t-2xl border-b border-slate-200 bg-white px-5 py-3">
           <h2 className="text-base font-bold text-[#002855]">{title}</h2>
           <button type="button" onClick={onClose} className="min-h-9 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100">Cerrar</button>
         </div>
         <div className="grid gap-4 p-4 sm:p-5">{children}</div>
+        {footer && <div className="sticky bottom-0 z-10 rounded-b-2xl border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(15,23,42,0.06)] sm:px-5">{footer}</div>}
       </div>
     </div>,
     document.body,
