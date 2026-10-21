@@ -14,9 +14,10 @@ import { DeliveryReview, type DeliveryReviewTarget } from '@/components/delivery
 // salida y consulta las guías. El proveedor sube el sustento mediante su acceso exclusivo
 // desde el portal público, sin instalar nada (/tracking/entregas).
 
-export type TerceroForm = { carrier_id: string; placa: string; conductor: string; telefono: string; doc: string }
-export const TERCERO_VACIO: TerceroForm = { carrier_id: '', placa: '', conductor: '', telefono: '', doc: '' }
-type Carrier = { id: string; business_name: string; ruc: string | null }
+export type TerceroForm = { carrier_id: string; supplier_vehicle_id: string; supplier_personnel_id: string; placa: string; conductor: string; telefono: string; doc: string; license_number: string; license_expiration: string }
+export const TERCERO_VACIO: TerceroForm = { carrier_id: '', supplier_vehicle_id: '', supplier_personnel_id: '', placa: '', conductor: '', telefono: '', doc: '', license_number: '', license_expiration: '' }
+type SupplierRoster = { id: string; supplier_personnel?: { id: string; full_name: string; document_number: string | null; phone: string | null; license_number: string | null; license_expiration: string | null }[]; supplier_vehicles?: { id: string; plate: string; unit_type: string; brand: string | null; model: string | null }[] }
+type Carrier = { id: string; business_name: string; ruc: string | null; suppliers?: SupplierRoster | null }
 
 const input = 'w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none text-sm'
 const nowLocal = () => {
@@ -30,38 +31,61 @@ export function TerceroFields({ value, onChange }: { value: TerceroForm; onChang
   const [carriers, setCarriers] = useState<Carrier[]>([])
   useEffect(() => {
     // En producción el RUC está en tax_id (en el repositorio, ruc): se lee la fila completa
-    void supabase.from('carriers').select('*').order('business_name')
+    void supabase.from('carriers').select('*,suppliers(id,supplier_personnel(id,full_name,document_number,phone,license_number,license_expiration),supplier_vehicles(id,plate,unit_type,brand,model))').order('business_name')
       .then(({ data }) => setCarriers(((data || []) as Record<string, unknown>[])
         .filter(c => c.is_active !== false && String(c.type || '').toUpperCase() !== 'PROPIO')
-        .map(c => ({ id: String(c.id), business_name: String(c.business_name || ''), ruc: (c.tax_id ?? c.ruc ?? null) as string | null }))))
+        .map(c => ({ id: String(c.id), business_name: String(c.business_name || ''), ruc: (c.tax_id ?? c.ruc ?? null) as string | null,
+          suppliers: (c.suppliers || null) as SupplierRoster | null }))))
   }, [supabase])
-  const set = (k: keyof TerceroForm, v: string) => onChange({ ...value, [k]: v })
+  const set = (k: keyof TerceroForm, v: string) => onChange({ ...value, [k]: v,
+    ...(['doc','telefono','license_number','license_expiration'].includes(k) ? { supplier_personnel_id: '' } : {}) })
+  const carrier = carriers.find(c => c.id === value.carrier_id)
   return (
     <div className="space-y-3">
       <div>
         <label className="block text-xs font-semibold text-slate-700 mb-1">Transportista (proveedor)</label>
-        <SearchableSelect value={value.carrier_id} onChange={v => set('carrier_id', v)}
+        <SearchableSelect value={value.carrier_id} onChange={v => onChange({ ...TERCERO_VACIO, carrier_id: v })}
           options={carriers.map(c => ({ value: c.id, label: `${c.business_name}${c.ruc ? ` · RUC ${c.ruc}` : ''}` }))}
           placeholder="Seleccione el transportista..." />
         {carriers.length === 0 && <p className="text-[11px] text-amber-700 mt-1">No hay transportistas proveedores activos: regístrelo en Maestros → Transportistas.</p>}
       </div>
+      {carrier?.suppliers?.supplier_vehicles?.length ? <div>
+        <label className="block text-xs font-semibold text-slate-700 mb-1">Placa registrada en el maestro</label>
+        <SearchableSelect ariaLabel="Placa registrada del transportista" value={value.supplier_vehicle_id}
+          onChange={id => { const v = carrier.suppliers?.supplier_vehicles?.find(x => x.id === id); if (v) onChange({ ...value, supplier_vehicle_id: id, placa: v.plate }) }}
+          options={carrier.suppliers.supplier_vehicles.map(v => ({ value: v.id, label: `${v.plate} · ${[v.unit_type,v.brand,v.model].filter(Boolean).join(' ')}` }))} placeholder="Buscar placa registrada…" />
+      </div> : null}
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1">Placa</label>
-          <input className={`${input} uppercase`} value={value.placa} onChange={e => set('placa', e.target.value.toUpperCase())} placeholder="ABC-123" maxLength={10} />
+          <input className={`${input} uppercase`} value={value.placa} onChange={e => onChange({ ...value, placa: e.target.value.toUpperCase(), supplier_vehicle_id: '' })} placeholder="ABC-123" maxLength={10} />
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1">DNI / CE del conductor</label>
-          <input className={input} value={value.doc} onChange={e => set('doc', e.target.value)} maxLength={20} />
+          <input className={input} value={value.doc} onChange={e => set('doc', e.target.value)} maxLength={20} readOnly={!!value.supplier_personnel_id} />
         </div>
       </div>
+      {carrier?.suppliers?.supplier_personnel?.length ? <div>
+        <label className="block text-xs font-semibold text-slate-700 mb-1">Conductor registrado en el maestro</label>
+        <SearchableSelect ariaLabel="Conductor registrado del transportista" value={value.supplier_personnel_id}
+          onChange={id => { const p = carrier.suppliers?.supplier_personnel?.find(x => x.id === id); if (p) onChange({ ...value, supplier_personnel_id: id, conductor: p.full_name, doc: p.document_number || '', telefono: p.phone || '', license_number: p.license_number || '', license_expiration: p.license_expiration || '' }) }}
+          options={carrier.suppliers.supplier_personnel.map(p => ({ value: p.id, label: `${p.full_name}${p.document_number ? ` · DNI ${p.document_number}` : ''}${p.license_number ? ` · Lic. ${p.license_number}` : ''}` }))} placeholder="Buscar conductor registrado…" />
+      </div> : null}
       <div>
         <label className="block text-xs font-semibold text-slate-700 mb-1">Chofer</label>
-        <input className={input} value={value.conductor} onChange={e => set('conductor', e.target.value)} placeholder="Nombre y apellido" maxLength={120} />
+          <input className={input} value={value.conductor} onChange={e => onChange({ ...value, conductor: e.target.value, supplier_personnel_id: '' })} placeholder="Nombre y apellido" maxLength={120} />
       </div>
       <div>
         <label className="block text-xs font-semibold text-slate-700 mb-1">Celular del chofer</label>
-        <input className={input} value={value.telefono} onChange={e => set('telefono', e.target.value.replace(/[^\d+ ]/g, ''))} placeholder="999 888 777" maxLength={20} />
+        <input className={input} value={value.telefono} onChange={e => set('telefono', e.target.value.replace(/[^\d+ ]/g, ''))} placeholder="999 888 777" maxLength={20} readOnly={!!value.supplier_personnel_id} />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="block text-xs font-semibold text-slate-700">Licencia
+          <input className={input} value={value.license_number} onChange={e => set('license_number', e.target.value)} maxLength={100} readOnly={!!value.supplier_personnel_id} />
+        </label>
+        <label className="block text-xs font-semibold text-slate-700">Vencimiento
+          <input className={input} type="date" value={value.license_expiration} onChange={e => set('license_expiration', e.target.value)} readOnly={!!value.supplier_personnel_id} />
+        </label>
       </div>
       <p className="text-[11px] text-slate-500 leading-snug">
         Sin checklist pre-ruta ni GPS: el avance se registra desde Despacho o con el enlace para el chofer. La guía de remisión

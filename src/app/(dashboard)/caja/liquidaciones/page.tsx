@@ -6,7 +6,7 @@ import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { AlertTriangle, CheckCircle2, Loader2, Printer, RefreshCw, RotateCcw, Search } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Download, Loader2, Printer, RefreshCw, RotateCcw, Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Modal } from '@/components/ui/modal'
@@ -140,20 +140,25 @@ function SettlementModal({ trip, driverName, canClose, isAdmin, onClose, onDone 
   const [settlement, setSettlement] = useState<Row | null>(null)
   const [boxes, setBoxes] = useState<Row[]>([])
   const [cats, setCats] = useState<Record<string, string>>({})
+  const [forklift, setForklift] = useState<Row | null>(null)
+  const [forkliftHours, setForkliftHours] = useState('')
+  const [forkliftRate, setForkliftRate] = useState('')
   const [form, setForm] = useState({ resolution: '', box_id: '', method: 'EFECTIVO', reference: '', notes: '' })
   const [reopenReason, setReopenReason] = useState('')
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
-    const [p, e, a, s, b, c] = await Promise.all([
+    const [p, e, a, s, b, c, f] = await Promise.all([
       supabase.rpc('preview_trip_settlement', { p_dispatch_id: trip.dispatch_id }),
       supabase.from('dispatch_expenses').select('*').eq('dispatch_id', trip.dispatch_id).order('expense_date'),
       supabase.from('trip_advances').select('*').eq('dispatch_id', trip.dispatch_id).order('requested_at'),
       supabase.from('trip_settlements').select('*').eq('dispatch_id', trip.dispatch_id).maybeSingle(),
       supabase.from('vw_cash_box_balances').select('box_id, name, balance').eq('is_active', true).order('name'),
       supabase.from('expense_categories').select('code, label'),
+      supabase.from('route_forklifts').select('hourly_rate,final_hours,final_amount,supplier_id,suppliers(business_name,tax_id,contact_email)').eq('dispatch_id', trip.dispatch_id).maybeSingle(),
     ])
     setPreview(p.data); setExpenses(e.data || []); setAdvances(a.data || []); setSettlement(s.data); setBoxes(b.data || [])
+    setForklift(f.data as Row | null); setForkliftHours(String(f.data?.final_hours ?? '')); setForkliftRate(String(f.data?.hourly_rate ?? ''))
     setCats(Object.fromEntries((c.data || []).map(x => [x.code, x.label])))
     setForm(f => ({ ...f, resolution: p.data?.suggested_resolution || '' }))
   }, [trip.dispatch_id])
@@ -168,12 +173,41 @@ function SettlementModal({ trip, driverName, canClose, isAdmin, onClose, onDone 
   const close = async () => {
     setBusy(true)
     try {
-      await rpcOk(supabase, 'close_trip_settlement', {
+      await rpcOk(supabase, 'close_route_with_forklift', {
         p_dispatch_id: trip.dispatch_id, p_resolution: form.resolution, p_box_id: needsBox ? form.box_id : null,
         p_payment_method: needsBox ? form.method : null, p_reference: form.reference || null, p_notes: form.notes || null,
+        p_forklift_hours: forklift ? Number(forkliftHours) : null,
+        p_forklift_hourly_rate: forklift?.hourly_rate == null ? Number(forkliftRate) : null,
       })
       toast.success('Viaje liquidado')
+      if (forklift) await downloadForkliftReport()
       onDone()
+    } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
+  }
+  const downloadForkliftReport = async () => {
+    setBusy(true)
+    try {
+      const { data, error } = await supabase.rpc('route_forklift_settlement_document', { p_dispatch_id: trip.dispatch_id })
+      if (error || !data?.success) throw new Error(error?.message || data?.error || 'No se pudo preparar el reporte')
+      const { jsPDF } = await import('jspdf')
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4' })
+      const service = data.service, vendor = data.supplier, dispatch = data.dispatch
+      pdf.setFontSize(16); pdf.text('REPORTE DE SERVICIO · MONTACARGA', 18, 22)
+      pdf.setFontSize(10); pdf.text(`Despacho: ${dispatch.dispatch_number}`, 18, 34); pdf.text(`Fecha de ruta: ${String(dispatch.scheduled_departure || '').slice(0,10)}`, 18, 41)
+      pdf.text(`Proveedor: ${vendor.name} · RUC ${vendor.ruc}`, 18, 52); pdf.text(`Operador: ${service.operator}${service.document_number ? ` · DNI ${service.document_number}` : ''}`, 18, 61)
+      pdf.text(`Tarifa: ${money(service.rate)} / hora`, 18, 72); pdf.text(`Horas aprobadas: ${service.hours}`, 18, 81); pdf.setFontSize(12); pdf.text(`Total del servicio: ${money(service.amount)}`, 18, 94)
+      if (service.notes) { pdf.setFontSize(10); const lines = pdf.splitTextToSize(`Notas: ${service.notes}`, 170); pdf.text(lines, 18, 107) }
+      pdf.setFontSize(8); pdf.text('Documento de sustento para facturación. Emitido por JRM TMS.', 18, 280)
+      const filename = `Reporte_montacarga_${dispatch.dispatch_number}.pdf`, blob = pdf.output('blob')
+      const file = new File([blob], filename, { type: 'application/pdf' })
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: `Servicio montacarga · ${dispatch.dispatch_number}`,
+          text: `Reporte para ${vendor.name}${vendor.contact_email ? ` · ${vendor.contact_email}` : ''}` })
+        toast.success('Reporte compartido desde el dispositivo.')
+      } else {
+        pdf.save(filename)
+        toast.success(`Reporte PDF descargado para enviarlo a ${vendor.contact_email || 'el proveedor'}.`)
+      }
     } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
   }
   const reopen = async () => {
@@ -203,6 +237,15 @@ function SettlementModal({ trip, driverName, canClose, isAdmin, onClose, onDone 
             <span>Rechazado: <b className="text-slate-700">{money(preview.rejected_total)}</b></span>
             {preview.driver_declared != null && <span>Declarado en el retorno (app): <b className="text-slate-700">{money(preview.driver_declared)}</b></span>}
           </div>
+          {forklift && <section className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-2">
+            <h4 className="font-bold text-violet-950">Servicio de montacarga · {forklift.suppliers?.business_name}</h4>
+            {closed ? <p className="text-sm">{forklift.final_hours} h × {money(forklift.hourly_rate)} = <b>{money(forklift.final_amount)}</b></p> : <div className="grid gap-2 sm:grid-cols-3 items-end">
+              {forklift.hourly_rate == null ? <label className="text-xs font-semibold">Tarifa por hora (registro anterior)<input aria-label="Tarifa horaria montacarga en liquidación" type="number" min="0.01" step="0.01" value={forkliftRate} onChange={e => setForkliftRate(e.target.value)} className="caja-input mt-1" /></label> : <p className="text-xs text-violet-900">Tarifa acordada: <b>{money(forklift.hourly_rate)} por hora</b></p>}
+              <label className="text-xs font-semibold">Horas finales del servicio<input aria-label="Horas finales montacarga" type="number" min="0" max="168" step="0.25" value={forkliftHours} onChange={e => setForkliftHours(e.target.value)} className="caja-input mt-1" /></label>
+              <p className="text-xs text-violet-900">Importe a facturar: <b>{money(Number(forkliftHours || 0) * Number(forklift.hourly_rate ?? forkliftRate))}</b></p>
+            </div>}
+            {closed && <button disabled={busy} onClick={() => void downloadForkliftReport()} className="inline-flex items-center gap-2 rounded-lg border border-violet-300 bg-white px-3 py-2 text-sm font-semibold text-violet-900"><Download className="h-4 w-4" />Descargar reporte PDF para {forklift.suppliers?.contact_email || 'el proveedor'}</button>}
+          </section>}
 
           <div className="grid md:grid-cols-2 gap-4">
             <div>
@@ -291,7 +334,7 @@ function SettlementModal({ trip, driverName, canClose, isAdmin, onClose, onDone 
                 <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} className="caja-input" />
               </label>
               <div className="flex justify-end">
-                <button disabled={busy || (needsBox && !form.box_id) || (form.resolution === 'DESCUENTO_PLANILLA' && !form.notes.trim())} onClick={close}
+                <button disabled={busy || (needsBox && !form.box_id) || (form.resolution === 'DESCUENTO_PLANILLA' && !form.notes.trim()) || (!!forklift && (forkliftHours.trim() === '' || Number(forkliftHours) < 0 || Number(forkliftHours) > 168 || Number(forklift.hourly_rate ?? forkliftRate) <= 0))} onClick={close}
                   className="px-4 py-2 bg-[#002855] text-white rounded-lg font-semibold flex items-center gap-2 disabled:opacity-50">
                   {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}Liquidar viaje
                 </button>
