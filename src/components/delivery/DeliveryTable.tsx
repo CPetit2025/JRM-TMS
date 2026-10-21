@@ -14,6 +14,7 @@ import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 import { SERVICE_KINDS, type ServiceKind } from '@/lib/request-service'
 import { canAddRouteService } from '@/lib/route-assignment'
 import { compareCells, type SortDirection } from '@/components/ui/table-sort'
+import { routeIds } from '@/lib/route-share'
 
 export function DeliverySignal({ state, onClick, compact = false }: { state: string; onClick?: () => void; compact?: boolean }) {
   const style = deliveryStatus(state)
@@ -42,14 +43,18 @@ function guideStatus(row: DeliveryRow): { label: string; tone: StatusTone; title
 const hasOt = (row: DeliveryRow) => !!row.ot_code && row.ot_code !== 'Sin OT vinculada'
 const conformityTone = (c: DeliveryRow['conformity']) => c === 'VALIDADA' ? 'text-emerald-700' : c === 'OBSERVADA' || c === 'RECHAZADA' ? 'text-red-700' : c === 'NO_APLICA' || c === 'HISTORICA' ? 'text-slate-600' : 'text-amber-800'
 
-export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, onEvidence, onDispatch, onProvider, onAddService }: {
+export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, onEvidence, onDispatch, onProvider, onAddService, onShareRoutes, onCancelRoute, cancelableRoutes = [] }: {
   rows: DeliveryRow[]; loading?: boolean; error?: string | null; refreshedAt?: string | null
   onRefresh: () => void; onEvidence?: (row: DeliveryRow) => void; onDispatch?: (row: DeliveryRow) => void; onProvider?: (row: DeliveryRow) => void; onAddService?: (row: DeliveryRow) => void
+  onShareRoutes?: (ids: string[]) => void; onCancelRoute?: (id: string) => void; cancelableRoutes?: string[]
 }) {
   const [search, setSearch] = useState(''), [state, setState] = useState(''), [conformity, setConformity] = useState(''), [service, setService] = useState('')
   const [page, setPage] = useState(0), [history, setHistory] = useState<DeliveryRow | null>(null)
   const [exporting, setExporting] = useState(false)
   const [sort, setSort] = useState<{ column: number; direction: SortDirection } | null>(null)
+  const [selectedRoutes, setSelectedRoutes] = useState<string[]>([])
+  const selected = selectedRoutes.filter(id => rows.some(row => row.dispatch_id === id))
+  const toggleRoute = (id: string, checked: boolean) => setSelectedRoutes(ids => checked ? [...new Set([...ids, id])] : ids.filter(x => x !== id))
   const filtered = useMemo(() => filterDeliveries(rows, search, state, conformity).filter(row => !service || deliveryServiceKind(row) === service), [rows, search, state, conformity, service])
   const services = (Object.keys(SERVICE_KINDS) as ServiceKind[]).filter(kind => kind === service || rows.some(row => deliveryServiceKind(row) === kind))
   const pages = Math.max(1, Math.ceil(filtered.length / 25)), current = Math.min(page, pages - 1)
@@ -91,8 +96,10 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
   return <section className="min-w-0 max-w-full space-y-3">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h2 className="text-lg font-bold text-[#002855]">OT y entregas <span className="text-sm font-normal text-slate-500">({filtered.length})</span></h2>
-        <p className="text-xs text-slate-500">Una fila por entrega (OT). Última actualización: {deliveryTime(refreshedAt || null)}</p></div>
+        <p className="text-xs text-slate-500">Una fila por entrega (OT). Última actualización: {deliveryTime(refreshedAt || null)}</p>{onShareRoutes && <p className="mt-1 text-xs text-slate-500">Seleccione las rutas que desea compartir. Cada ruta incluye todas sus entregas.</p>}</div>
       <div className="flex gap-2">
+        {onShareRoutes && <button type="button" disabled={!selected.length || !!error} onClick={() => onShareRoutes(selected)} className="min-h-10 rounded-lg bg-[#002855] px-3 text-xs font-semibold text-white disabled:opacity-50">Compartir {selected.length ? `${selected.length} ruta(s)` : 'rutas'}</button>}
+        {onShareRoutes && selected.length > 0 && <button type="button" onClick={() => setSelectedRoutes([])} className="min-h-10 rounded-lg border px-3 text-xs">Limpiar selección</button>}
         <button type="button" onClick={onRefresh} disabled={loading} className="flex min-h-10 items-center gap-1.5 rounded-lg border bg-white px-3 text-xs font-semibold disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
         <button type="button" onClick={() => void exportRows()} disabled={exporting || !filtered.length || !!error} className="flex min-h-10 items-center gap-1.5 rounded-lg border bg-white px-3 text-xs font-semibold disabled:opacity-50"><Download className="h-4 w-4" />Excel</button>
       </div>
@@ -105,11 +112,12 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
     </div>
     {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error} La información anterior puede estar desactualizada.</p>}
     <div className="overflow-x-auto rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
-      <DataTable dense className="w-full min-w-[900px] text-left text-xs" onSortChange={next => { setSort(next); setPage(0) }}>
-        <thead className="bg-slate-50 text-slate-600"><tr>{['Fecha', 'Servicio', 'OT', 'Unidad', 'Empresa', 'Destino', 'GR / Nota', 'Conformidad', 'Último evento', 'Acciones'].map((label, i) => <th key={label} className={`whitespace-nowrap font-semibold ${i === 9 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead>
+      <DataTable dense className="w-full min-w-[900px] text-left text-xs" onSortChange={next => { setSort(next ? { ...next, column: next.column - (onShareRoutes ? 1 : 0) } : null); setPage(0) }}>
+        <thead className="bg-slate-50 text-slate-600"><tr>{onShareRoutes && <th><input type="checkbox" aria-label="Seleccionar todas las rutas filtradas" checked={filtered.length > 0 && routeIds(filtered).every(id => selected.includes(id))} onChange={e => { const ids = routeIds(filtered); setSelectedRoutes(prev => e.target.checked ? [...new Set([...prev, ...ids])] : prev.filter(id => !ids.includes(id))) }} /></th>}{['Fecha', 'Servicio', 'OT', 'Unidad', 'Empresa', 'Destino', 'GR / Nota', 'Conformidad', 'Último evento', 'Acciones'].map((label, i) => <th key={label} className={`whitespace-nowrap font-semibold ${i === 9 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead>
         <tbody className="divide-y">
-          {!visible.length && <tr><td colSpan={10} className="p-8 text-center text-slate-500">{loading ? 'Cargando entregas…' : 'No hay entregas con los filtros seleccionados.'}</td></tr>}
+          {!visible.length && <tr><td colSpan={onShareRoutes ? 11 : 10} className="p-8 text-center text-slate-500">{loading ? 'Cargando entregas…' : 'No hay entregas con los filtros seleccionados.'}</td></tr>}
           {visible.map(row => { const pickup = deliveryServiceKind(row) === 'RECOJO', point = pickup ? row.pickup_address : row.delivery_address, doc = guideStatus(row); return <tr key={`${row.dispatch_id}/${row.request_id}`} className="align-middle hover:bg-slate-50">
+            {onShareRoutes && <td><input type="checkbox" aria-label={`Seleccionar ruta ${row.dispatch_number} · ${row.request_number}`} checked={selected.includes(row.dispatch_id)} onChange={e => toggleRoute(row.dispatch_id, e.target.checked)} /></td>}
             <td className="whitespace-nowrap text-slate-700" title={deliveryTime(row.scheduled_departure)}>{cellDateTime(row.scheduled_departure)}</td>
             <td><ServiceTypeBadge kind={deliveryServiceKind(row)} /></td>
             <td className="whitespace-nowrap font-bold text-jrm-navy" title={`Solicitud ${row.request_number} · Despacho ${row.dispatch_number}`}>{hasOt(row) ? `OT ${row.ot_code}` : referenceLabel(row) || 'Sin OT'}</td>
@@ -120,6 +128,7 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
             <td><button type="button" onClick={() => onEvidence ? onEvidence(row) : setHistory(row)} title={doc.title} className="inline-flex items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-jrm-navy"><StatusBadge tone={doc.tone}>{doc.label}</StatusBadge><ChevronRight aria-hidden className="h-3.5 w-3.5 text-slate-400" /></button></td>
             <td className="whitespace-nowrap" title={`Actualizado ${deliveryTime(row.last_event_at)}`}><DeliverySignal compact state={row.state} onClick={() => setHistory(row)} /></td>
             <td><div className="flex justify-end gap-1.5">
+              {onCancelRoute && cancelableRoutes.includes(row.dispatch_id) && <button type="button" onClick={() => onCancelRoute(row.dispatch_id)} className="min-h-9 rounded-lg border border-red-200 px-2.5 font-semibold text-red-700">Cancelar ruta</button>}
               {onAddService && canAddRouteService({ status: row.state, plate: row.plate, scheduled_departure: row.scheduled_departure }) && <button type="button" onClick={() => onAddService(row)} className="min-h-9 whitespace-nowrap rounded-lg border border-blue-200 bg-blue-50 px-2.5 font-semibold text-jrm-navy">Agregar servicio</button>}
               {onProvider && row.modalidad === 'TERCERO' && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'EN_RUTA'].includes(row.state) && <button type="button" onClick={() => onProvider(row)} title="Ver portal, placa y código para compartir con el tercero" className="flex min-h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-violet-200 bg-violet-50 px-2.5 font-semibold text-violet-800 hover:bg-violet-100"><Link2 className="h-4 w-4" />Compartir acceso GR</button>}
               <button type="button" onClick={() => setHistory(row)} title="Ver detalle" aria-label="Ver detalle" className="flex min-h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-2.5 font-semibold text-jrm-navy hover:bg-slate-50"><Eye className="h-4 w-4" /><span className="hidden 2xl:inline">Ver detalle</span></button>

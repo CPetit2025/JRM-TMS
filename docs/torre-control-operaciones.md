@@ -1,0 +1,13 @@
+# Rutas: compartir, avisos, cancelación y montacarga
+
+En `/torre-control`, las casillas seleccionan rutas completas, aunque aparezcan en varias filas por sus entregas. La casilla del encabezado selecciona todas las rutas filtradas, incluidas las de otras páginas. **Compartir rutas** abre una vista previa para copiar los datos o usar el menú de compartir del dispositivo. Incluye conductor y licencia registrados, auxiliares, clientes, servicios, direcciones, contactos, documentos disponibles y apoyo de montacarga. No incluye PIN, credenciales, tarifas ni remuneraciones. El servidor comprueba de nuevo el acceso a cada ruta antes de preparar la ficha.
+
+**Cancelar ruta** aparece en Acciones para usuarios con escritura en Despacho y rutas programadas. Exige un motivo y usa la cancelación existente: libera reservas y recursos y devuelve las solicitudes a **Por asignar** en `/solicitudes`. Las rutas iniciadas conservan su flujo operativo y de cierre.
+
+Los cambios del último evento generan notificaciones para administradores de sistema, supervisores, jefes de distribución, gerencia y administradores de contratos. Se respeta la sede; los usuarios restringidos a una cartera solo reciben avisos de sus contratos. Cada destinatario recibe su aviso en la campana y un mensaje en pantalla. El sistema usa tiempo real y comprobación cada 15 segundos. Las preferencias de silencio existentes se mantienen.
+
+Las personas conectadas al portal público con enlace, código y nombre reciben un mensaje y un aviso visible cuando cambia el evento de una entrega que están consultando. Se valida su acceso en cada actualización (15 segundos); no se muestran avisos históricos al ingresar o cambiar el período. Los avisos requieren que el portal esté abierto y el acceso vigente.
+
+En `/despacho`, **Armar ruta y programar unidad → Montacarga** permite elegir el proveedor por RUC o razón social y registrarlo dentro del modal. El operador puede elegirse de Personal (con DNI y licencia disponibles) o ingresarse como externo. La programación, auxiliares y apoyo se guardan en una misma transacción mediante `schedule_route_resources`: cualquier asignación inválida revierte la nueva ruta. El apoyo se consulta en el detalle de Torre y en la ficha compartida. Los costos de descarga mantienen su gestión actual.
+
+Pruebas: `node scripts/test-route-operations.cjs`, `node scripts/test-route-operations-ui.cjs`, `node scripts/test-public-tracking-session.cjs` y caja SQL C132.

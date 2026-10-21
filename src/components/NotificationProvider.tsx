@@ -1,5 +1,5 @@
 "use client"
-import { useCallback, useEffect, useState, createContext, useContext } from 'react'
+import { useCallback, useEffect, useRef, useState, createContext, useContext } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 
@@ -59,10 +59,19 @@ export default function NotificationProvider({ role, children }: NotificationPro
   const [supabase] = useState(() => createClient())
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [feed, setFeed] = useState<NotifFeed | null>(null)
+  const latestNotice = useRef<number | null>(null)
 
   const loadFeed = useCallback(async () => {
     const { data, error } = await supabase.rpc('notif_list', { p_categoria: null, p_limit: 100 })
-    if (!error && data?.success) setFeed({ items: data.items ?? [], no_leidas: data.no_leidas ?? 0, por_categoria: data.por_categoria ?? {}, silenciadas: data.silenciadas ?? [] })
+    if (!error && data?.success) {
+      const items = (data.items ?? []) as NotifItem[]
+      const previous = latestNotice.current
+      latestNotice.current = Math.max(previous ?? 0, ...items.map(n => n.id))
+      if (previous !== null) for (const n of items.filter(n => n.id > previous && !n.leida && n.evento === 'RUTA_ULTIMO_EVENTO').reverse()) {
+        toast.info(n.titulo, { description: n.cuerpo || undefined, duration: 10000, action: n.link ? { label: 'Ver ruta', onClick: () => { window.location.href = n.link! } } : undefined })
+      }
+      setFeed({ items, no_leidas: data.no_leidas ?? 0, por_categoria: data.por_categoria ?? {}, silenciadas: data.silenciadas ?? [] })
+    }
   }, [supabase])
   const markRead = useCallback(async (ids: number[]) => {
     await supabase.rpc('notif_mark_read', { p_ids: ids })
@@ -147,7 +156,7 @@ export default function NotificationProvider({ role, children }: NotificationPro
     let first: number | undefined
     if (role === 'admin') {
       first = window.setTimeout(() => void loadFeed(), 0)
-      timer = window.setInterval(() => void loadFeed(), 60000)
+      timer = window.setInterval(() => void loadFeed(), 15000)
       channel.on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'notifications' },

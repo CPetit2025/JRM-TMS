@@ -11,6 +11,7 @@ import { RouteDay } from '@/components/tracking/RouteDay'
 import { ActiveViewers, type Viewer } from '@/components/tracking/ActiveViewers'
 import type { PortalRow } from '@/lib/tracking-portal'
 import { limaDay, monthDays, type PortalRequest } from '@/lib/tracking-calendar'
+import { routeEventChanges, type EventSnapshot } from '@/lib/route-share'
 
 // v2: la sesión guarda también a la persona identificada (nombre). Las sesiones anteriores, sin nombre, ya no sirven.
 const sessionKey = (token: string) => `jrm:tracking-access:v2:${token}`
@@ -81,6 +82,8 @@ export default function TrackingPage() {
   const [updatedAt, setUpdatedAt] = useState<string | null>(null)
   const [refreshError, setRefreshError] = useState('')
   const [version, setVersion] = useState(0)
+  const eventSnapshot = useRef<{ scope: string; rows: EventSnapshot }>({ scope: '', rows: new Map() })
+  const [eventMessage, setEventMessage] = useState('')
   // Each link has its own tab-scoped credential. Never show cached operational data
   // before the server confirms the access is still valid.
   useEffect(() => {
@@ -92,6 +95,7 @@ export default function TrackingPage() {
       await Promise.resolve()
       if (cancelled) return
       setIsAuthenticated(false); setTrackingData(null); setRefreshError('')
+      eventSnapshot.current = { scope: '', rows: new Map() }; setEventMessage('')
       setRestoring(true); setRestoreRetry(false); setPin(''); setIsLoading(false)
       try { setName(window.localStorage.getItem(NAME_KEY) || '') } catch { /* Storage unavailable. */ }
       const saved = readAccess(token)
@@ -128,6 +132,13 @@ export default function TrackingPage() {
         if (cancelled) return
         if (error || data?.error) throw new Error(data?.error || error?.message || 'No se pudo actualizar el seguimiento.')
         if (!data || (data.mode !== 'permanent' && data.mode !== 'legacy')) throw new Error('No se pudo verificar la respuesta del seguimiento.')
+        const scope = `${token}/${viewer}/${range.p_from}/${range.p_to}`
+        const events = routeEventChanges(eventSnapshot.current.scope === scope ? eventSnapshot.current.rows : new Map(), data.rows || [])
+        eventSnapshot.current = { scope, rows: events.snapshot }
+        if (events.changes.length) {
+          const message = [...new Set(events.changes.map(row => `Ruta ${row.dispatch_number} · ${row.plate} · ${row.events.slice().sort((a, b) => b.at.localeCompare(a.at))[0]?.type.replaceAll('_', ' ') || row.state.replaceAll('_', ' ')}`))].join(' / ')
+          setEventMessage(message); toast.info('Se actualizó el último evento', { description: message, duration: 10000 })
+        }
         setTrackingData(data); applyPresence(data); setUpdatedAt(new Date().toISOString()); setRefreshError('')
       } catch (err) {
         if (cancelled) return
@@ -262,7 +273,7 @@ export default function TrackingPage() {
               <Truck className="hidden w-5 h-5 text-blue-600 sm:block" />
               <span className="font-bold text-base leading-snug sm:text-lg text-slate-800">Planificación y Seguimiento de Transporte</span>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end"><ActiveViewers viewers={viewers} total={activeCount} /><button className="rounded-lg border px-3 py-2 text-xs text-slate-600" onClick={() => {authAttempt.current++;if (viewer) void supabase.rpc('tracking_portal_sign_out', { p_token: token, p_viewer: viewer });forgetPresenceSession(token, name);saveAccess(token, null);setIsAuthenticated(false);setPin('');setViewer('');setViewers([]);setActiveCount(0);setTrackingData(null);setRefreshError('');setRestoreRetry(false)}}>Salir</button><div className="max-w-full break-words px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-medium border border-blue-200">
+            <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end"><ActiveViewers viewers={viewers} total={activeCount} /><button className="rounded-lg border px-3 py-2 text-xs text-slate-600" onClick={() => {authAttempt.current++;if (viewer) void supabase.rpc('tracking_portal_sign_out', { p_token: token, p_viewer: viewer });forgetPresenceSession(token, name);saveAccess(token, null);setIsAuthenticated(false);setPin('');setViewer('');setViewers([]);setActiveCount(0);setTrackingData(null);eventSnapshot.current={scope:'',rows:new Map()};setEventMessage('');setRefreshError('');setRestoreRetry(false)}}>Salir</button><div className="max-w-full break-words px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-medium border border-blue-200">
               {trackingData?.planning_date ? new Date(`${trackingData?.planning_date}T00:00:00`).toLocaleDateString('es-PE') : trackingData?.label || 'Portal de seguimiento'}
             </div></div>
           </div>
@@ -281,6 +292,7 @@ export default function TrackingPage() {
       </div>
 
       <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-6">
+        {eventMessage && <div role="status" aria-live="polite" className="flex items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900"><span><strong>Último evento actualizado:</strong> {eventMessage}</span><button type="button" className="min-h-10 px-2 font-semibold" onClick={() => setEventMessage('')}>Cerrar aviso</button></div>}
         {activeTab === 'calendar' && trackingData?.mode === 'permanent' && <div className="space-y-6">
           {trackingData.limited && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Hay más solicitudes. Consulta un período más específico o solicita un acceso acotado.</p>}
           <TrackingCalendar month={month} onMonth={setMonth} requests={trackingData.requests || []} rows={trackingData.rows || []} access={{ token: String(token), pin }} />
