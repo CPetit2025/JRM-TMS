@@ -7,26 +7,35 @@ import { toast } from 'sonner'
 export type Forklift = { enabled: boolean; supplier_id: string; person_id: string; supplier_personnel_id: string; operator_name: string; document_number: string; license_number: string; license_expiration: string; phone: string; notes: string; hourly_rate: string }
 export const EMPTY_FORKLIFT: Forklift = { enabled: false, supplier_id: '', person_id: '', supplier_personnel_id: '', operator_name: '', document_number: '', license_number: '', license_expiration: '', phone: '', notes: '', hourly_rate: '' }
 export const forkliftValid = (f: Forklift) => !f.enabled || (!!(f.supplier_id && f.operator_name.trim().length >= 3) && Number.isFinite(Number(f.hourly_rate)) && Number(f.hourly_rate) > 0)
-type Candidate = { id: string; code: string; name: string; document_number: string | null; position: string | null; license_number: string | null; license_expiration: string | null; phone: string | null }
 type SupplierPerson = { id: string; supplier_id: string; full_name: string; document_number: string | null; position: string | null; license_number: string | null; license_expiration: string | null; phone: string | null }
 const input = 'min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm'
 export function ForkliftFields({ value: f, onChange }: { value: Forklift; onChange: (value: Forklift) => void }) {
  const supabase = useMemo(() => createClient(), [])
- const [suppliers, setSuppliers] = useState<Supplier[]>([]), [people, setPeople] = useState<Candidate[]>([]), [supplierPeople, setSupplierPeople] = useState<SupplierPerson[]>([])
+ const [suppliers, setSuppliers] = useState<Supplier[]>([]), [supplierPeople, setSupplierPeople] = useState<SupplierPerson[]>([])
  const [error, setError] = useState(''), [creating, setCreating] = useState(false), [busy, setBusy] = useState(false)
  const [draft, setDraft] = useState({ tax_id: '', business_name: '', contact_name: '', contact_phone: '' })
  const set = (key: keyof Forklift, value: string | boolean) => onChange({ ...f, [key]: value })
+ const loadSupplierPeople = (supplierId: string) => {
+  if (!supplierId) { setSupplierPeople([]); return }
+  void supabase.from('supplier_personnel').select('id,supplier_id,full_name,document_number,position,license_number,license_expiration,phone')
+   .eq('supplier_id', supplierId).eq('is_active', true).order('full_name')
+   .then(({ data, error: queryError }) => {
+    if (queryError) setError(queryError.message)
+    else setSupplierPeople((data || []) as SupplierPerson[])
+   })
+ }
  useEffect(() => {
   let alive = true
-  void Promise.all([supabase.from('suppliers').select('id,tax_id,business_name,category,is_active,contact_name,contact_phone').eq('is_active', true).in('category',['MONTACARGA','SERVICIOS']).order('business_name'), supabase.rpc('route_forklift_candidates')]).then(([s, p]) => {
+  void supabase.from('suppliers').select('id,tax_id,business_name,category,is_active,contact_name,contact_phone').eq('is_active', true).in('category',['MONTACARGA','SERVICIOS']).order('business_name').then(s => {
    if (!alive) return
-   if (s.error || p.error) setError(s.error?.message || p.error?.message || 'No se pudieron cargar los registros')
-   else { setSuppliers(s.data as Supplier[]); setPeople((p.data || []) as Candidate[]) }
+   if (s.error) setError(s.error.message || 'No se pudieron cargar los proveedores')
+   else setSuppliers(s.data as Supplier[])
   })
   return () => { alive = false }
  }, [supabase])
  useEffect(() => {
   let alive = true
+  setSupplierPeople([])
   if (!f.supplier_id) return () => { alive = false }
   void supabase.from('supplier_personnel').select('id,supplier_id,full_name,document_number,position,license_number,license_expiration,phone')
    .eq('supplier_id', f.supplier_id).eq('is_active', true).order('full_name')
@@ -45,7 +54,8 @@ export function ForkliftFields({ value: f, onChange }: { value: Forklift; onChan
    if (error) throw error
    const supplier = { ...draft, id: data as string, is_active: true, category: 'MONTACARGA' } as Supplier
    setSuppliers(prev => [...prev, supplier].sort((a, b) => a.business_name.localeCompare(b.business_name)))
-   set('supplier_id', supplier.id); setCreating(false); setDraft({ tax_id: '', business_name: '', contact_name: '', contact_phone: '' })
+   onChange({ ...f, supplier_id: supplier.id, person_id: '', supplier_personnel_id: '', operator_name: '', document_number: '', license_number: '', license_expiration: '', phone: '' })
+   loadSupplierPeople(supplier.id); setCreating(false); setDraft({ tax_id: '', business_name: '', contact_name: '', contact_phone: '' })
    toast.success('Proveedor registrado y seleccionado')
   } catch (e) { toast.error((e as { message?: string }).message || 'No se pudo crear el proveedor') } finally { setBusy(false) }
  }
@@ -63,12 +73,10 @@ export function ForkliftFields({ value: f, onChange }: { value: Forklift; onChan
     <input aria-label="Tarifa montacarga por hora" className={input} type="number" min="0.01" step="0.01" value={f.hourly_rate} onChange={e => set('hourly_rate', e.target.value)} placeholder="0.00" />
    </label>
    <span className="block text-xs font-semibold">Montacarguista registrado</span>
-   <SearchableSelect ariaLabel="Montacarguista registrado" value={f.supplier_personnel_id || f.person_id} onChange={id => {
+   <SearchableSelect ariaLabel="Montacarguista registrado" value={f.supplier_personnel_id} onChange={id => {
     const supplierPerson = supplierPeople.find(x => x.id === id && x.supplier_id === f.supplier_id)
-    const p = people.find(x => x.id === id)
     if (supplierPerson) onChange({ ...f, supplier_personnel_id: supplierPerson.id, person_id: '', operator_name: supplierPerson.full_name, document_number: supplierPerson.document_number || '', license_number: supplierPerson.license_number || '', license_expiration: supplierPerson.license_expiration || '', phone: supplierPerson.phone || '' })
-    else if (p) onChange({ ...f, person_id: p.id, supplier_personnel_id: '', operator_name: p.name, document_number: p.document_number || '', license_number: p.license_number || '', license_expiration: p.license_expiration || '', phone: p.phone || '' })
-   }} options={[...supplierPeople.filter(p => p.supplier_id === f.supplier_id).map(p => ({ value: p.id, label: `${p.full_name}${p.document_number ? ` · DNI ${p.document_number}` : ''}${p.license_number ? ` · Lic. ${p.license_number}` : ''} · Personal del proveedor` })), ...people.map(p => ({ value: p.id, label: `${p.code} · ${p.name}${p.document_number ? ` · ${p.document_number}` : ''}${p.position ? ` · ${p.position}` : ''} · Personal interno` }))]} placeholder="Buscar personal del proveedor o personal interno…" />
+   }} options={supplierPeople.filter(p => p.supplier_id === f.supplier_id).map(p => ({ value: p.id, label: `${p.full_name}${p.document_number ? ` · DNI ${p.document_number}` : ''}${p.license_number ? ` · Lic. ${p.license_number}` : ''}` }))} placeholder={f.supplier_id ? 'Buscar personal registrado del proveedor…' : 'Seleccione primero el proveedor…'} />
    <button type="button" onClick={() => onChange({ ...EMPTY_FORKLIFT, enabled: true, supplier_id: f.supplier_id })} className="min-h-9 text-xs font-semibold text-blue-800">Ingresar montacarguista externo</button>
    <div className="grid gap-3 sm:grid-cols-2">
     {(['operator_name', 'document_number', 'license_number', 'license_expiration', 'phone', 'notes'] as const).map((key, i) => <label key={key} className="text-xs font-semibold text-slate-600">{['Montacarguista *', 'DNI / documento', 'Licencia / acreditación', 'Vencimiento de licencia', 'Teléfono', 'Información del servicio'][i]}
