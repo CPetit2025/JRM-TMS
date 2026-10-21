@@ -103,8 +103,9 @@ BEGIN
   INTO v_disp FROM public.dispatches x
   WHERE x.driver_id IS NOT NULL AND x.vehicle_plate IS NOT NULL AND upper(COALESCE(to_jsonb(x)->>'status', '')) NOT IN ('CANCELADO', 'CANCELADA', 'ANULADO', 'ANULADA', 'BORRADOR')
   ORDER BY x.id LIMIT 1;
-  r := public.hhee_flow_preview(jsonb_build_object('work_date', v_day, 'lines', jsonb_build_array(
-    jsonb_build_object('person_id', v_p, 'start', v_day || 'T18:00', 'end', v_day || 'T19:00'))));
+  -- (otro día: el trabajador ya tiene una solicitud el v_day y no puede repetirse esa fecha)
+  r := public.hhee_flow_preview(jsonb_build_object('work_date', (v_day::date + 1)::text, 'lines', jsonb_build_array(
+    jsonb_build_object('person_id', v_p, 'start', (v_day::date + 1)::text || 'T18:00', 'end', (v_day::date + 1)::text || 'T19:00'))));
   IF (r->'lines'->0->>'driver')::boolean AND jsonb_typeof(r->'lines'->0->'routes') = 'array'
      AND (v_disp.id IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements(public.hhee_driver_routes(v_disp.driver_id, v_disp.dia)) e WHERE e->>'id' = v_disp.id::text))
   THEN pass := pass + 1; ELSE fails := fails || ('T6 rutas ' || left(r::text, 200)); END IF;

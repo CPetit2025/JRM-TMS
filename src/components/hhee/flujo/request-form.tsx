@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarX2, Loader2, Plus, Scale, Trash2, Truck } from 'lucide-react'
+import { CalendarX2, Loader2, Plus, Scale, Send, Trash2, Truck } from 'lucide-react'
+import { toast } from 'sonner'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { Card, Field, Modal, btn2Cls, btnCls, inputCls, useFlow } from './context'
 import { LEGAL_BASIS, REFERENCES, call, isPendingText, fmtDate, fmtHours, fmtMoney, fmtTime, lineCost, limaLocal, today, type Detail, type Preview } from '@/lib/hhee/flujo'
@@ -75,18 +76,32 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
     && f.expected_result.trim().length >= 5 && lines.length > 0 && lines.every(l => l.person_id && l.start && l.end) && calc.every(c => c.total > 0 && !c.error && c.plateOk)
     && new Set(lines.map(l => l.person_id)).size === lines.length && !calculating
 
-  const save = async () => {
+  // Guardar deja la solicitud en borrador; «Guardar y presentar» la envía además al aprobador
+  const save = async (submit: boolean) => {
     setBusy(true); setError('')
     try {
-      const res = await call<{ id: string }>('hhee_flow_request_save', { p: {
+      const res = await call<{ id: string; version: number }>('hhee_flow_request_save', { p: {
         id: r?.id, expected_version: r?.version, ...f, lines: savedLines(),
       } })
+      if (submit) {
+        try { await call('hhee_flow_submit', { p_id: res.id, p_version: res.version }); toast.success('Solicitud guardada y presentada para aprobación') }
+        catch (e) { toast.warning(`Guardada como borrador; no se pudo presentar: ${e instanceof Error ? e.message : 'error'}`) }
+      } else toast.success('Solicitud guardada como borrador')
       await onSaved(res.id)
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar') } finally { setBusy(false) }
   }
 
   return (
-    <Modal title={r ? `Corregir solicitud HE-${String(r.sequence).padStart(5, '0')}` : 'Nueva solicitud de horas extras'} onClose={onClose} wide>
+    <Modal title={r ? `Corregir solicitud HE-${String(r.sequence).padStart(5, '0')}` : 'Nueva solicitud de horas extras'} onClose={onClose} xl footer={
+      <div className="grid gap-2">
+        {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-800">{error}</p>}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="mr-auto text-xs text-slate-500">{lines.length} trabajador(es) · {fmtHours(totals.min)}{!valid && !calculating ? ' · complete los campos con * y el horario de cada trabajador' : ''}</span>
+          <button type="button" className={btn2Cls} onClick={onClose}>Cancelar</button>
+          <button type="button" className={btn2Cls} disabled={busy || !valid} onClick={() => void save(false)}>{busy ? 'Guardando…' : 'Guardar borrador'}</button>
+          <button type="button" className={btnCls} disabled={busy || !valid} onClick={() => void save(true)}><Send className="h-4 w-4" /> Guardar y presentar para aprobación</button>
+        </div>
+      </div>}>
       {r?.auto_dispatch_id && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">Generada automáticamente: la ruta <strong>{r.auto_dispatch_number ?? ''}</strong> siguió en curso fuera del horario. Complete la actividad, por qué se necesitan, la alternativa y el resultado; ajuste la hora de fin estimada y preséntela.</p>}
       {r?.approval === 'APROBADA' && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Esta solicitud ya está aprobada. Si cambia personas u horas volverá a borrador y requerirá una nueva aprobación (se generará una nueva versión del informe).</p>}
       {r?.approval === 'OBSERVADA' && r.approval_reason && <p className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-orange-900"><strong>Observación del aprobador:</strong> {r.approval_reason}</p>}
@@ -116,15 +131,15 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
           {lines.map((l, i) => {
             const c = calc[i]
             return <div key={i} className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3">
-              <div className="grid gap-2 sm:grid-cols-[minmax(200px,2fr)_repeat(3,minmax(80px,1fr))_auto]">
-                <div className="grid min-w-0 gap-1 text-xs font-semibold text-slate-600"><span>Trabajador {i + 1}</span><SearchableSelect ariaLabel={`Trabajador ${i + 1}`} value={l.person_id} onChange={value => setLine(i, 'person_id', value)}
+              <div className="grid items-end gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,3fr)_minmax(7rem,1fr)_minmax(7rem,1fr)_minmax(7rem,1fr)_auto]">
+                <div className="grid min-w-0 gap-1 text-xs font-semibold text-slate-600 sm:col-span-2 lg:col-span-1"><span>Trabajador {i + 1}</span><SearchableSelect className="min-w-0" ariaLabel={`Trabajador ${i + 1}`} value={l.person_id} onChange={value => setLine(i, 'person_id', value)}
                   placeholder="Elija un trabajador" searchPlaceholder="Buscar por código, nombre o DNI…"
-                  options={people.map(p => ({ value: p.id, label: `${p.code} · ${p.name}${p.document_number ? ` · DNI ${p.document_number}` : ''}${p.rate_ready ? '' : ' (costo pendiente)'}`,
+                  options={people.map(p => ({ value: p.id, label: `${p.name} · ${p.code}${p.document_number ? ` · DNI ${p.document_number}` : ''}${p.rate_ready ? '' : ' (costo pendiente)'}`,
                     disabled: lines.some((x, j) => j !== i && x.person_id === p.id) }))} /></div>
-                <Field label="Inicio"><input aria-label={`Inicio del trabajador ${i + 1}`} className={inputCls} type="time" value={l.start} onChange={e => setLine(i, 'start', e.target.value)} /></Field>
-                <Field label={`Fin${c.nextDay ? ' (día sig.)' : ''}`}><input aria-label={`Fin del trabajador ${i + 1}`} className={inputCls} type="time" value={l.end} onChange={e => setLine(i, 'end', e.target.value)} /></Field>
-                <Field label="Descanso (min)"><input aria-label={`Descanso del trabajador ${i + 1}`} className={inputCls} type="number" min={0} step={5} value={l.break_minutes} onChange={e => setLine(i, 'break_minutes', e.target.value)} /></Field>
-                <button type="button" aria-label={`Quitar trabajador ${i + 1}`} onClick={() => setLines(x => x.filter((_, j) => j !== i))} className="self-end rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-red-700"><Trash2 className="h-4 w-4" /></button>
+                <Field label="Inicio" className="min-w-0"><input aria-label={`Inicio del trabajador ${i + 1}`} className={inputCls} type="time" value={l.start} onChange={e => setLine(i, 'start', e.target.value)} /></Field>
+                <Field label={`Fin${c.nextDay ? ' (día sig.)' : ''}`} className="min-w-0"><input aria-label={`Fin del trabajador ${i + 1}`} className={inputCls} type="time" value={l.end} onChange={e => setLine(i, 'end', e.target.value)} /></Field>
+                <Field label="Descanso (min)" className="min-w-0"><input aria-label={`Descanso del trabajador ${i + 1}`} className={inputCls} type="number" min={0} step={5} value={l.break_minutes} onChange={e => setLine(i, 'break_minutes', e.target.value)} /></Field>
+                <button type="button" aria-label={`Quitar trabajador ${i + 1}`} onClick={() => setLines(x => x.filter((_, j) => j !== i))} className="self-end justify-self-end rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-red-700"><Trash2 className="h-4 w-4" /></button>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-600">
@@ -168,12 +183,6 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
           {ctx.caps.remuneration && <span>Costo aproximado: <strong className="text-[#002855]">{fmtMoney(Math.round(totals.cost * 100) / 100)}</strong>{totals.pending ? ` (+${totals.pending} con costo pendiente)` : ''}</span>}
         </div>
       </Card>
-      {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {!valid && !calculating && <span className="text-xs text-slate-500">Complete los campos con * y el horario de cada trabajador.</span>}
-        <button type="button" className={btn2Cls} onClick={onClose}>Cancelar</button>
-        <button type="button" className={btnCls} disabled={busy || !valid} onClick={() => void save()}>{busy ? 'Guardando…' : 'Guardar y revisar solicitud'}</button>
-      </div>
     </Modal>
   )
 }

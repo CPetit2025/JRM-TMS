@@ -58,7 +58,7 @@ export function SearchableSelect({
         className={`w-full border border-slate-300 rounded-lg p-2.5 outline-none bg-white flex justify-between items-center ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer focus-within:ring-2 focus-within:ring-[#002855] focus-within:border-[#002855]'}`}
         onClick={() => { if (!disabled) { setSearchTerm(''); setIsOpen(!isOpen) } }}
       >
-        <span className={`truncate text-sm ${!selectedOption ? 'text-slate-500' : 'text-slate-900'}`}>
+        <span className={`min-w-0 truncate text-left text-sm ${!selectedOption ? 'text-slate-500' : 'text-slate-900'}`}>
           {selectedOption ? selectedOption.label : placeholder}
         </span>
         <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0 ml-2" />

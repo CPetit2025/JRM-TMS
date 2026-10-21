@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { Card, Field, Modal, btn2Cls, btnCls, inputCls, useFlow } from './context'
 import { RequestForm } from './request-form'
 import { consolidate, consolidatedEmailDraft, downloadConsolidatedPdf, downloadPdf, emailDraft, folio } from './informe'
-import { CLOSED_BY, STATUS, call, isPendingText, plateLabel, fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtTime, statusOf, type Consolidated, type Detail, type RequestRow } from '@/lib/hhee/flujo'
+import { CLOSED_BY, STATUS, call, isPendingText, plateLabel, referenceLabel, fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtTime, statusOf, type Consolidated, type Detail, type RequestRow } from '@/lib/hhee/flujo'
 import { trackingEmailUrl, type EmailClient } from '@/lib/tracking-email'
 
 // Solicitudes y aprobación: el supervisor registra y presenta; el Jefe de Distribución o el Administrador aprueba,
@@ -72,26 +72,27 @@ export function Solicitudes() {
         </div>
         {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : !rows ? <p className="text-sm text-slate-500">Cargando…</p> : (
           <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full min-w-[820px] text-left text-sm">
+            <table className="w-full min-w-[1040px] text-left text-sm [&_th]:whitespace-nowrap">
               <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr>
                 <th className="w-10 p-2.5"><input type="checkbox" aria-label="Seleccionar las aprobadas visibles" className="h-4 w-4" disabled={!visibleSelectable.length} checked={allVisible}
                   onChange={() => setSelected(m => { const n = new Map(m); visibleSelectable.forEach(r => (allVisible ? n.delete(r.id) : n.set(r.id, r))); return n })} /></th>
-                <th className="p-2.5">N.°</th><th className="p-2.5">Fecha</th><th className="p-2.5">Actividad / causa</th><th className="p-2.5">Solicitante</th>
-                <th className="p-2.5 text-right">Trab.</th><th className="p-2.5 text-right">Horas</th>{ctx.caps.costs && <th className="p-2.5 text-right">Costo aprox.</th>}<th className="p-2.5">Estado</th>
+                <th className="p-2.5">N.°</th><th className="p-2.5">Fecha</th><th className="p-2.5">Actividad / causa</th><th className="p-2.5">Trabajadores</th>
+                <th className="p-2.5">Placa</th><th className="p-2.5">Referencia</th><th className="p-2.5 text-right">Horas</th>{ctx.caps.costs && <th className="p-2.5 text-right">Costo aprox.</th>}<th className="p-2.5">Estado</th>
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {rows.map(r => { const st = STATUS[statusOf(r)]; return <tr key={r.id} className={`cursor-pointer hover:bg-slate-50 ${selected.has(r.id) ? 'bg-blue-50/60' : ''}`} onClick={() => setOpen(r.id)}>
                   <td className="p-2.5" onClick={e => e.stopPropagation()}>{selectable(r) && <input type="checkbox" aria-label={`Incluir HE-${String(r.sequence).padStart(5, '0')} en el consolidado`} className="h-4 w-4"
                     checked={selected.has(r.id)} onChange={() => toggle(r)} />}</td>
-                  <td className="p-2.5 font-mono text-xs font-semibold text-[#002855]">HE-{String(r.sequence).padStart(5, '0')}</td>
-                  <td className="p-2.5">{fmtDate(r.work_date)}</td>
-                  <td className="p-2.5"><p className="max-w-80 truncate font-medium text-slate-800">{isPendingText(r.activity) ? <span className="text-amber-800">Completar actividad y motivo</span> : r.activity}</p>
+                  <td className="whitespace-nowrap p-2.5 font-mono text-xs font-semibold text-[#002855]">HE-{String(r.sequence).padStart(5, '0')}</td>
+                  <td className="whitespace-nowrap p-2.5">{fmtDate(r.work_date)}</td>
+                  <td className="p-2.5"><p className="max-w-72 truncate font-medium text-slate-800">{isPendingText(r.activity) ? <span className="text-amber-800">Completar actividad y motivo</span> : r.activity}</p>
                     <p className="text-[11px] text-slate-500">{r.cause} · {r.area}{r.auto_dispatch_id && <span className="ml-1.5 rounded-full bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-800">Automática · ruta {r.auto_dispatch_number}</span>}</p></td>
-                  <td className="p-2.5 text-xs">{r.requester}</td>
-                  <td className="p-2.5 text-right tabular-nums">{r.workers}</td>
-                  <td className="p-2.5 text-right tabular-nums">{fmtHours(r.minutes)}</td>
+                  <td className="p-2.5 text-xs"><PeopleCell people={r.people ?? []} total={r.workers} /></td>
+                  <td className="whitespace-nowrap p-2.5 font-mono text-xs">{r.plates?.length ? r.plates.join(', ') : <span className="text-slate-400">—</span>}</td>
+                  <td className="whitespace-nowrap p-2.5 text-xs">{referenceLabel(r.reference_type, r.reference_code) || <span className="text-slate-400">—</span>}</td>
+                  <td className="whitespace-nowrap p-2.5 text-right tabular-nums">{fmtHours(r.minutes)}</td>
                   {ctx.caps.costs && <td className="p-2.5 text-right tabular-nums">{r.cost != null ? fmtMoney(r.cost) : '—'}{r.pending_cost ? <span className="block text-[10px] text-amber-700">{r.pending_cost} pendiente</span> : null}</td>}
-                  <td className="p-2.5"><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.tone}`}>{st.label}</span>{r.revisions > 1 && <span className="ml-1 text-[10px] text-slate-500">v{r.revisions}</span>}</td>
+                  <td className="whitespace-nowrap p-2.5"><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.tone}`}>{st.label}</span>{r.revisions > 1 && <span className="ml-1 text-[10px] text-slate-500">v{r.revisions}</span>}</td>
                 </tr> })}
               </tbody>
             </table>
@@ -104,6 +105,16 @@ export function Solicitudes() {
       {open && !form && <RequestDetail id={open} onClose={() => setOpen(null)} onChanged={refresh} onEdit={d => setForm(d)} />}
     </div>
   )
+}
+
+// Nombres de quienes generan horas extras (los 3 primeros y «+n»; el resto en el título)
+function PeopleCell({ people, total }: { people: string[]; total: number }) {
+  if (!people.length) return <span className="text-slate-400">—</span>
+  const shown = people.slice(0, 3), more = Math.max(total, people.length) - shown.length
+  return <span title={people.join('\n')} className="block max-w-64">
+    {shown.map(n => <span key={n} className="block truncate font-medium text-slate-800">{n}</span>)}
+    {more > 0 && <span className="text-[11px] font-semibold text-slate-500">+{more} más</span>}
+  </span>
 }
 
 function RequestDetail({ id, onClose, onChanged, onEdit }: { id: string; onClose: () => void; onChanged: () => void; onEdit: (d: Detail) => void }) {
@@ -132,16 +143,29 @@ function RequestDetail({ id, onClose, onChanged, onEdit }: { id: string; onClose
     decision === 'APROBADA' ? 'Aprobada: informe generado' : decision === 'OBSERVADA' ? 'Observada: devuelta al supervisor' : 'Rechazada')
   const latest = d.authorizations[0]
   return (
-    <Modal title={`HE-${String(r.sequence).padStart(5, '0')} · ${r.activity}`} onClose={onClose} wide>
+    <Modal title={`HE-${String(r.sequence).padStart(5, '0')} · ${isPendingText(r.activity) ? 'Completar actividad y motivo' : r.activity}`} onClose={onClose} xl footer={
+      // Acciones y cambios de estado de la solicitud, siempre visibles al pie del modal
+      <div className="grid gap-2">
+        {r.can_decide && <Field label="Sustento de la decisión * (aprobar, observar o rechazar)"><textarea className={inputCls} rows={2} value={reason} onChange={e => setReason(e.target.value)} maxLength={2000} placeholder="Ej. Necesidad operativa verificada con el cliente" /></Field>}
+        {notice && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-sm text-amber-900">{notice}</p>}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="mr-auto text-xs text-slate-500">{r.can_decide ? 'Al aprobar se genera el informe PDF y el correo.' : r.state === 'BORRADOR' ? 'Borrador: preséntelo para que el aprobador lo revise.' : r.state === 'SOLICITADA' && r.approval === 'PENDIENTE' ? 'En espera de la decisión del aprobador.' : ''}</span>
+          {mine && (r.state === 'BORRADOR' || (r.state === 'SOLICITADA' && r.approval === 'PENDIENTE')) && <button type="button" className={btn2Cls} disabled={busy}
+            onClick={() => { if (window.confirm('¿Anular esta solicitud?')) void act(() => call('hhee_flow_cancel', { p_id: r.id, p_version: r.version, p_reason: null }), 'Solicitud anulada') }}><XCircle className="h-4 w-4 text-red-600" /> Anular</button>}
+          {r.can_edit && <button type="button" className={btn2Cls} onClick={() => onEdit(d)}><Pencil className="h-4 w-4" /> {r.approval === 'APROBADA' ? 'Modificar (requiere nueva aprobación)' : isPendingText(r.activity) ? 'Completar y editar' : 'Editar'}</button>}
+          {r.can_edit && r.state === 'BORRADOR' && <button type="button" className={btnCls} disabled={busy} onClick={() => void act(() => call('hhee_flow_submit', { p_id: r.id, p_version: r.version }), 'Presentada para aprobación')}><Send className="h-4 w-4" /> Presentar para aprobación</button>}
+          {r.can_decide && <>
+            <button type="button" className={btn2Cls} disabled={busy || reason.trim().length < 5} onClick={() => void decide('RECHAZADA')}><XCircle className="h-4 w-4 text-red-600" /> Rechazar</button>
+            <button type="button" className={btn2Cls} disabled={busy || reason.trim().length < 5} onClick={() => void decide('OBSERVADA')}>Observar (devolver para corregir)</button>
+            <button type="button" className={btnCls} disabled={busy || reason.trim().length < 5} onClick={() => void decide('APROBADA')}><CheckCircle2 className="h-4 w-4" /> Aprobar y generar informe</button>
+          </>}
+          <button type="button" className={btn2Cls} onClick={onClose}>Cerrar</button>
+        </div>
+      </div>}>
       <div className="flex flex-wrap items-center gap-2">
         <span className={`rounded-full px-3 py-1 text-xs font-bold ${st.tone}`}>{st.label}</span>
         <span className="text-xs text-slate-500">Registrada por {r.requester} el {fmtDateTime(r.created_at)}{r.submitted_at ? ` · presentada ${fmtDateTime(r.submitted_at)}` : ''}</span>
-        <div className="ml-auto flex flex-wrap gap-2">
-          {r.can_edit && <button type="button" className={btn2Cls} onClick={() => onEdit(d)}><Pencil className="h-4 w-4" /> {r.approval === 'APROBADA' ? 'Modificar (requiere nueva aprobación)' : 'Editar'}</button>}
-          {r.can_edit && r.state === 'BORRADOR' && <button type="button" className={btnCls} disabled={busy} onClick={() => void act(() => call('hhee_flow_submit', { p_id: r.id, p_version: r.version }), 'Presentada para aprobación')}><Send className="h-4 w-4" /> Presentar para aprobación</button>}
-          {mine && (r.state === 'BORRADOR' || (r.state === 'SOLICITADA' && r.approval === 'PENDIENTE')) && <button type="button" className={btn2Cls} disabled={busy}
-            onClick={() => { if (window.confirm('¿Anular esta solicitud?')) void act(() => call('hhee_flow_cancel', { p_id: r.id, p_version: r.version, p_reason: null }), 'Solicitud anulada') }}>Anular</button>}
-        </div>
+        {referenceLabel(r.reference_type, r.reference_code) && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{referenceLabel(r.reference_type, r.reference_code)}</span>}
       </div>
       {r.approval_reason && r.approval !== 'PENDIENTE' && <p className={`rounded-lg p-3 text-sm ${r.approval === 'APROBADA' ? 'bg-emerald-50 text-emerald-900' : r.approval === 'OBSERVADA' ? 'bg-orange-50 text-orange-900' : 'bg-red-50 text-red-900'}`}>
         <strong>{r.approval === 'APROBADA' ? `Aprobada por ${r.approver} (${fmtDateTime(r.approved_at)})` : r.approval === 'OBSERVADA' ? 'Observación' : `Rechazada por ${r.approver}`}:</strong> {r.approval_reason}</p>}
@@ -174,15 +198,6 @@ function RequestDetail({ id, onClose, onChanged, onEdit }: { id: string; onClose
       </div>
       {r.approval === 'APROBADA' && r.state !== 'CANCELADA' && <ExecCard d={d} canPay={ctx.caps.approve || ctx.caps.people} canClose={ctx.caps.approve || (mine && ctx.caps.request) || ctx.caps.admin}
         busy={busy} act={act} />}
-      {r.can_decide && <Card title="Decisión del aprobador" subtitle="Sustento obligatorio. Al aprobar se genera el informe PDF y el correo.">
-        <Field label="Sustento de aprobación, observación o rechazo *"><textarea className={inputCls} rows={3} value={reason} onChange={e => setReason(e.target.value)} maxLength={2000} /></Field>
-        {notice && <p role="alert" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{notice}</p>}
-        <div className="mt-3 flex flex-wrap justify-end gap-2">
-          <button type="button" className={btn2Cls} disabled={busy || reason.trim().length < 5} onClick={() => void decide('RECHAZADA')}><XCircle className="h-4 w-4 text-red-600" /> Rechazar</button>
-          <button type="button" className={btn2Cls} disabled={busy || reason.trim().length < 5} onClick={() => void decide('OBSERVADA')}>Observar (devolver para corregir)</button>
-          <button type="button" className={btnCls} disabled={busy || reason.trim().length < 5} onClick={() => void decide('APROBADA')}><CheckCircle2 className="h-4 w-4" /> Aprobar y generar informe</button>
-        </div>
-      </Card>}
       {d.authorizations.length > 0 && <Card title="Informe de autorización" subtitle={`${d.authorizations.length} versión(es). Cada nueva aprobación genera una nueva versión.`}>
         <div className="grid gap-2">{d.authorizations.map(a => <div key={a.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-3 text-sm">
           <span className="font-semibold text-[#002855]">{folio(a.snapshot)} · versión {a.revision}{a === latest ? ' (vigente)' : ''}</span>

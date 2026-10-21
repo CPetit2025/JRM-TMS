@@ -76,6 +76,17 @@ Ficha: código, nombres, documento, cargo, área, jornada de referencia (horas d
 
 ## 2. Solicitud y aprobación
 
+**Lista** (`/hhee/solicitudes`): N.°, fecha, actividad y causa, **trabajadores** (nombres de quienes generan las horas
+extras), **placa**, **referencia** (OT / OC / OS / RQ), horas, costo y estado.
+
+**Un trabajador, una solicitud por día** (migración `20261022150000_hhee_solicitudes_trabajadores_unicos.sql`): una
+persona no puede estar en dos solicitudes vigentes (no anuladas ni rechazadas) de la misma fecha. La vista previa lo
+marca con el folio de la solicitud existente (se agregan las horas en esa), el guardado lo rechaza y la solicitud
+automática de ruta no la vuelve a agregar.
+
+**Acciones en el modal:** el formulario guarda en borrador o «Guardar y presentar para aprobación»; el detalle muestra
+al pie las acciones según el estado (editar, presentar, anular; aprobar, observar o rechazar con sustento).
+
 **Conductores — placa de la ruta.** Al elegir a un conductor, la placa sale de su ruta asignada en Despacho para esa
 fecha (una ruta: automática; varias: se elige). Si no tiene ruta o usó otra unidad, se indica la placa (opcional) y el
 **motivo** (obligatorio). La placa, la ruta y el motivo quedan en el informe, el correo y el consolidado.
@@ -128,4 +139,4 @@ día de la semana, trabajadores recurrentes y exportación a Excel.
 - Los usuarios activos con esos roles quedan como miembros del área Distribución.
 - Quien solo solicita no ve tarifas ni costos.
 
-Pruebas: `supabase/tests/caja_c125_hhee_flujo_simple.test.sql` (C125) , `caja_c126_hhee_calculo_legal.test.sql` (C126) `caja_c127_personal_unificado_placa.test.sql` (C127) `caja_c128_rutas_auxiliar_hhee_auto.test.sql` (C128) `caja_c129_hhee_cierre_ruta_compensacion.test.sql` (C129) `caja_c130_auxiliar_desde_personal.test.sql` (C130) y `caja_c131_varios_auxiliares.test.sql` (C131).
+Pruebas: `supabase/tests/caja_c125_hhee_flujo_simple.test.sql` (C125) , `caja_c126_hhee_calculo_legal.test.sql` (C126) `caja_c127_personal_unificado_placa.test.sql` (C127) `caja_c128_rutas_auxiliar_hhee_auto.test.sql` (C128) `caja_c129_hhee_cierre_ruta_compensacion.test.sql` (C129) `caja_c130_auxiliar_desde_personal.test.sql` (C130) `caja_c131_varios_auxiliares.test.sql` (C131) y `caja_c132_hhee_solicitudes_trabajadores_unicos.test.sql` (C132).
