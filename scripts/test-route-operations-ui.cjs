@@ -78,7 +78,7 @@ test('forklift selects recorded operator credentials and creates its supplier wi
   const filters = [], query = { eq: (key, value) => { filters.push([key, value]); return query }, in: () => query,
    order: async () => ({ data: table === 'supplier_personnel' && filters.some(([key, value]) => key === 'supplier_id' && value === 'supplier-new') ? [supplierPerson] : [] }) }
   return query
- } }), rpc: async (name, args) => { calls.push({ name, args }); return { data: name === 'route_forklift_candidates' ? [person] : 'supplier-new' } } }
+ } }), rpc: async (name, args) => { calls.push({ name, args }); return { data: 'supplier-new' } } }
  const { ForkliftFields, EMPTY_FORKLIFT, forkliftValid } = load('src/components/despacho/ForkliftFields.tsx', { '@/lib/supabase/client': { createClient: () => client }, sonner: { toast: { success() {}, error() {} } } })
  let value
  function Form() { const [f, setF] = React.useState(EMPTY_FORKLIFT); value = f; return React.createElement(ForkliftFields, { value: f, onChange: setF }) }
@@ -95,11 +95,11 @@ test('forklift selects recorded operator credentials and creates its supplier wi
  assert.equal(calls.at(-1).name, 'save_supplier')
  assert.equal(calls.at(-1).args.p_supplier.category, 'MONTACARGA')
  const picker = view.root.findAll(node => node.props.ariaLabel === 'Montacarguista registrado' && typeof node.type === 'function')[0]
- assert.ok(picker.props.options.some(option => option.value === supplierPerson.id && option.label.includes('Personal del proveedor')))
+ assert.ok(picker.props.options.some(option => option.value === supplierPerson.id && option.label.includes(supplierPerson.full_name)))
+ assert.ok(picker.props.options.every(option => option.value !== person.id && !option.label.includes('Personal interno')), 'registered selector only lists the selected supplier personnel')
+ assert.equal(calls.some(call => call.name === 'route_forklift_candidates'), false, 'internal personnel candidates are not loaded for this selector')
  await act(async () => picker.props.onChange('sp1'))
  assert.equal(value.operator_name, supplierPerson.full_name); assert.equal(value.license_number, supplierPerson.license_number); assert.equal(value.document_number, supplierPerson.document_number)
- await act(async () => picker.props.onChange('p1'))
- assert.equal(value.operator_name, person.name); assert.equal(value.license_number, person.license_number); assert.equal(value.document_number, person.document_number)
  await act(async () => view.root.findByProps({ 'aria-label': 'Tarifa montacarga por hora' }).props.onChange({ target: { value: '75.50' } }))
  assert.equal(forkliftValid(value), true)
  await act(async () => view.unmount())
