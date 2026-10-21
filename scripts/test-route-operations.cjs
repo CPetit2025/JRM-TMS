@@ -19,6 +19,7 @@ async function main() {
   sql(read('supabase/migrations/20261021160000_route_operations.sql'))
   sql(read('supabase/migrations/20261022100000_supplier_services_forklift.sql'))
   sql(read('supabase/migrations/20261022110000_supplier_fleet_master.sql'))
+  sql(read('supabase/migrations/20261022120000_supplier_fleet_fk_indexes.sql'))
   sql(`INSERT INTO drivers(id,document_number,license_number,license_category,phone) VALUES('${id(10)}','12345678','LIC-001','A-II','999111222');
    INSERT INTO suppliers(id,business_name,tax_id,category,contact_email) VALUES('${id(11)}','Montacargas Prueba','20123456789','MONTACARGA','proveedor@example.com'),('${id(14)}','Transportes Prueba','20100070970','TRANSPORTE','flota@example.com');
    INSERT INTO hhee_people(id,code,name,document_number) VALUES('${id(12)}','T001','Operador Uno','87654321');
