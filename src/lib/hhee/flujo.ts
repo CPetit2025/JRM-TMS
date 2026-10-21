@@ -24,6 +24,7 @@ export type RequestRow = Totals & {
   id: string; sequence: number; version: number; work_date: string; area_id: string; area: string; cause_id: string; cause: string; activity: string
   state: string; approval: Approval; created_by: string; requester: string; approver: string | null; approved_at: string | null; submitted_at: string | null
   created_at: string; approval_reason: string | null; revisions: number; can_edit: boolean; can_decide: boolean
+  reference_type?: string; reference_code?: string | null; people?: string[]; plates?: string[]
   // Generada por una ruta en curso fuera del horario: textos «PENDIENTE» que completa el supervisor
   auto_dispatch_id?: string | null; auto_dispatch_number?: string | null
 }
@@ -71,7 +72,7 @@ export type Dashboard = {
 
 // Cálculo legal del servidor (hhee_flow_preview): primeras 2 h del día al 25 %, resto al 35 %; descanso o feriado al 100 %
 export type Route = { id: string; number: string | null; plate: string; status: string | null; departure: string | null }
-export type PreviewLine = { person_id: string; minutes?: number; m25?: number; m35?: number; m100?: number; prior?: number; error?: string; driver?: boolean; routes?: Route[] | null }
+export type PreviewLine = { person_id: string; minutes?: number; m25?: number; m35?: number; m100?: number; prior?: number; duplicate?: boolean; error?: string; driver?: boolean; routes?: Route[] | null }
 export type UnifyIssue = { kind: 'COINCIDE_SIN_ENLACE' | 'NOMBRE_DISTINTO' | 'SIN_DNI' | 'CONDUCTOR_SIN_FICHA' | 'DNI_REPETIDO_FLOTA'; doc: string | null
   person_id: string | null; code: string | null; name: string | null; area: string | null; driver_id: string | null; driver_name: string | null }
 export type UnifyReport = { summary: { people: number; linked_driver: number; linked_profile: number; drivers_active: number; by_kind: Partial<Record<UnifyIssue['kind'], number>> }; rows: UnifyIssue[] }

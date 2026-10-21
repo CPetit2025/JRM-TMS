@@ -72,12 +72,12 @@ export function Solicitudes() {
         </div>
         {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : !rows ? <p className="text-sm text-slate-500">Cargando…</p> : (
           <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full min-w-[820px] text-left text-sm">
+            <table className="w-full min-w-[1320px] text-left text-sm">
               <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><tr>
                 <th className="w-10 p-2.5"><input type="checkbox" aria-label="Seleccionar las aprobadas visibles" className="h-4 w-4" disabled={!visibleSelectable.length} checked={allVisible}
                   onChange={() => setSelected(m => { const n = new Map(m); visibleSelectable.forEach(r => (allVisible ? n.delete(r.id) : n.set(r.id, r))); return n })} /></th>
-                <th className="p-2.5">N.°</th><th className="p-2.5">Fecha</th><th className="p-2.5">Actividad / causa</th><th className="p-2.5">Solicitante</th>
-                <th className="p-2.5 text-right">Trab.</th><th className="p-2.5 text-right">Horas</th>{ctx.caps.costs && <th className="p-2.5 text-right">Costo aprox.</th>}<th className="p-2.5">Estado</th>
+                <th className="p-2.5">N.°</th><th className="p-2.5">Fecha</th><th className="p-2.5">Actividad / causa</th><th className="p-2.5">Personal HHEE</th>
+                <th className="p-2.5">Placa</th><th className="p-2.5">OT / OC / OS / RQ</th><th className="p-2.5 text-right">Trab.</th><th className="p-2.5 text-right">Horas</th>{ctx.caps.costs && <th className="p-2.5 text-right">Costo aprox.</th>}<th className="p-2.5">Estado</th><th className="p-2.5">Acciones</th>
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {rows.map(r => { const st = STATUS[statusOf(r)]; return <tr key={r.id} className={`cursor-pointer hover:bg-slate-50 ${selected.has(r.id) ? 'bg-blue-50/60' : ''}`} onClick={() => setOpen(r.id)}>
@@ -87,11 +87,14 @@ export function Solicitudes() {
                   <td className="p-2.5">{fmtDate(r.work_date)}</td>
                   <td className="p-2.5"><p className="max-w-80 truncate font-medium text-slate-800">{isPendingText(r.activity) ? <span className="text-amber-800">Completar actividad y motivo</span> : r.activity}</p>
                     <p className="text-[11px] text-slate-500">{r.cause} · {r.area}{r.auto_dispatch_id && <span className="ml-1.5 rounded-full bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-800">Automática · ruta {r.auto_dispatch_number}</span>}</p></td>
-                  <td className="p-2.5 text-xs">{r.requester}</td>
+                  <td className="max-w-64 p-2.5 text-xs" title={r.people?.join(' · ')}>{r.people?.join(' · ') || '—'}</td>
+                  <td className="p-2.5 text-xs" title={r.plates?.join(' · ')}>{r.plates?.join(' · ') || '—'}</td>
+                  <td className="p-2.5 text-xs">{r.reference_type && r.reference_type !== 'SIN_REFERENCIA' ? `${r.reference_type}${r.reference_code ? ` · ${r.reference_code}` : ''}` : '—'}</td>
                   <td className="p-2.5 text-right tabular-nums">{r.workers}</td>
                   <td className="p-2.5 text-right tabular-nums">{fmtHours(r.minutes)}</td>
                   {ctx.caps.costs && <td className="p-2.5 text-right tabular-nums">{r.cost != null ? fmtMoney(r.cost) : '—'}{r.pending_cost ? <span className="block text-[10px] text-amber-700">{r.pending_cost} pendiente</span> : null}</td>}
                   <td className="p-2.5"><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.tone}`}>{st.label}</span>{r.revisions > 1 && <span className="ml-1 text-[10px] text-slate-500">v{r.revisions}</span>}</td>
+                  <td className="p-2.5" onClick={e => e.stopPropagation()}><button type="button" className="whitespace-nowrap rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-[#002855] hover:bg-blue-50" onClick={() => setOpen(r.id)}>Gestionar</button></td>
                 </tr> })}
               </tbody>
             </table>

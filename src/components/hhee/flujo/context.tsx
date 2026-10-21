@@ -98,7 +98,7 @@ export function Modal({ title, onClose, children, wide = false }: { title: strin
   if (typeof document === 'undefined') return null
   return createPortal(
     <div className="fixed inset-0 z-[300] flex items-start justify-center overflow-y-auto bg-slate-950/40 p-2 sm:p-6" role="dialog" aria-modal="true" aria-label={title}>
-      <div className={`w-full ${wide ? 'max-w-6xl' : 'max-w-3xl'} rounded-2xl bg-slate-50 shadow-2xl`}>
+      <div className={`w-full ${wide ? 'max-w-7xl' : 'max-w-3xl'} rounded-2xl bg-slate-50 shadow-2xl`}>
         <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-t-2xl border-b border-slate-200 bg-white px-5 py-3">
           <h2 className="text-base font-bold text-[#002855]">{title}</h2>
           <button type="button" onClick={onClose} className="min-h-9 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100">Cerrar</button>
