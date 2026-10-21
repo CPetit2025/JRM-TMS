@@ -28,6 +28,7 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
     break_minutes: String(l.break_minutes || 0), rest_day: !!l.rest_day, dispatch_id: l.dispatch_id ?? '', manual: l.plate_source === 'MANUAL',
     plate: l.plate_source === 'MANUAL' ? l.vehicle_plate ?? '' : '', plate_reason: l.plate_reason ?? '' })) ?? [])
   const [preview, setPreview] = useState<Preview | null>(null)
+  const [previewChecking, setPreviewChecking] = useState(false)
   const [calculating, setCalculating] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -52,8 +53,9 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
     let alive = true
     const t = setTimeout(() => {
       setCalculating(true)
+      setPreviewChecking(true)
       call<Preview>('hhee_flow_preview', { p: { id: r?.id, work_date: f.work_date, lines: payloadLines } })
-        .then(p => { if (alive) setPreview(p) }).catch(() => { if (alive) setPreview(null) }).finally(() => { if (alive) setCalculating(false) })
+        .then(p => { if (alive) setPreview(p) }).catch(() => { if (alive) setPreview(null) }).finally(() => { if (alive) { setCalculating(false); setPreviewChecking(false) } })
     }, 350)
     return () => { alive = false; clearTimeout(t) }
   }, [payloadLines, f.work_date, r?.id])
@@ -65,7 +67,8 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
     const m25 = pv?.m25 ?? 0, m35 = pv?.m35 ?? 0, m100 = pv?.m100 ?? 0
     const routes = pv?.routes ?? []
     const plateOk = !pv?.driver || ((l.manual || !routes.length) ? l.plate_reason.trim().length >= 5 : routes.length === 1 || routes.some(x => x.id === l.dispatch_id))
-    return { nextDay: nextDayOf(l), pv, plateOk, total: pv?.minutes ?? 0, m25, m35, m100, error: pv?.error,
+    const duplicate = !!pv?.duplicate
+    return { nextDay: nextDayOf(l), pv, plateOk, duplicate, total: pv?.minutes ?? 0, m25, m35, m100, error: pv?.error || (duplicate ? 'Este trabajador ya tiene una solicitud de HHEE para esta fecha.' : undefined),
       cost: ctx.caps.remuneration && pv?.minutes ? lineCost(rate, m25, m35, m100) : null, pending: !person?.rate_ready }
   }), [lines, preview, ctx.people, ctx.caps.remuneration])
   const totals = calc.reduce((t, c) => ({ min: t.min + c.total, m25: t.m25 + c.m25, m35: t.m35 + c.m35, m100: t.m100 + c.m100, cost: t.cost + (c.cost ?? 0), pending: t.pending + (c.pending ? 1 : 0) }),
@@ -116,15 +119,15 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
           {lines.map((l, i) => {
             const c = calc[i]
             return <div key={i} className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3">
-              <div className="grid gap-2 sm:grid-cols-[minmax(200px,2fr)_repeat(3,minmax(80px,1fr))_auto]">
-                <div className="grid min-w-0 gap-1 text-xs font-semibold text-slate-600"><span>Trabajador {i + 1}</span><SearchableSelect ariaLabel={`Trabajador ${i + 1}`} value={l.person_id} onChange={value => setLine(i, 'person_id', value)}
+              <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-12 lg:items-end">
+                <div className="grid min-w-0 gap-1 text-xs font-semibold text-slate-600 sm:col-span-2 lg:col-span-4"><span>Trabajador {i + 1}</span><SearchableSelect ariaLabel={`Trabajador ${i + 1}`} value={l.person_id} onChange={value => setLine(i, 'person_id', value)}
                   placeholder="Elija un trabajador" searchPlaceholder="Buscar por código, nombre o DNI…"
                   options={people.map(p => ({ value: p.id, label: `${p.code} · ${p.name}${p.document_number ? ` · DNI ${p.document_number}` : ''}${p.rate_ready ? '' : ' (costo pendiente)'}`,
-                    disabled: lines.some((x, j) => j !== i && x.person_id === p.id) }))} /></div>
-                <Field label="Inicio"><input aria-label={`Inicio del trabajador ${i + 1}`} className={inputCls} type="time" value={l.start} onChange={e => setLine(i, 'start', e.target.value)} /></Field>
-                <Field label={`Fin${c.nextDay ? ' (día sig.)' : ''}`}><input aria-label={`Fin del trabajador ${i + 1}`} className={inputCls} type="time" value={l.end} onChange={e => setLine(i, 'end', e.target.value)} /></Field>
-                <Field label="Descanso (min)"><input aria-label={`Descanso del trabajador ${i + 1}`} className={inputCls} type="number" min={0} step={5} value={l.break_minutes} onChange={e => setLine(i, 'break_minutes', e.target.value)} /></Field>
-                <button type="button" aria-label={`Quitar trabajador ${i + 1}`} onClick={() => setLines(x => x.filter((_, j) => j !== i))} className="self-end rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-red-700"><Trash2 className="h-4 w-4" /></button>
+                    disabled: lines.some((x, j) => j !== i && x.person_id === p.id) || (!previewChecking && !!preview?.lines.find(line => line.person_id === p.id)?.duplicate) }))} /></div>
+                <Field label="Inicio" className="min-w-0 lg:col-span-2"><input aria-label={`Inicio del trabajador ${i + 1}`} className={inputCls} type="time" value={l.start} onChange={e => setLine(i, 'start', e.target.value)} /></Field>
+                <Field label={`Fin${c.nextDay ? ' (día sig.)' : ''}`} className="min-w-0 lg:col-span-2"><input aria-label={`Fin del trabajador ${i + 1}`} className={inputCls} type="time" value={l.end} onChange={e => setLine(i, 'end', e.target.value)} /></Field>
+                <Field label="Descanso (min)" className="min-w-0 lg:col-span-3"><input aria-label={`Descanso del trabajador ${i + 1}`} className={inputCls} type="number" min={0} step={5} value={l.break_minutes} onChange={e => setLine(i, 'break_minutes', e.target.value)} /></Field>
+                <button type="button" aria-label={`Quitar trabajador ${i + 1}`} onClick={() => setLines(x => x.filter((_, j) => j !== i))} className="min-h-10 self-end rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-red-700"><Trash2 className="h-4 w-4" /></button>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-600">
