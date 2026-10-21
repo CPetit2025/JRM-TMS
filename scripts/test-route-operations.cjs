@@ -21,6 +21,8 @@ async function main() {
   sql(read('supabase/migrations/20261022110000_supplier_fleet_master.sql'))
   sql(read('supabase/migrations/20261022120000_supplier_fleet_fk_indexes.sql'))
   sql(read('supabase/migrations/20261022130000_logistics_supplier_permissions.sql'))
+  sql(read('supabase/migrations/20261022140000_forklift_service_times_and_logistics_reads.sql'))
+  sql(read('supabase/tests/caja_c135_forklift_service_times.test.sql'), /CAJA C135 PASS/)
   sql(read('supabase/tests/caja_c134_logistics_supplier_directory.test.sql'), /CAJA C134 PASS/)
   sql(`INSERT INTO drivers(id,document_number,license_number,license_category,phone) VALUES('${id(10)}','12345678','LIC-001','A-II','999111222');
    INSERT INTO suppliers(id,business_name,tax_id,category,contact_email) VALUES('${id(11)}','Montacargas Prueba','20123456789','MONTACARGA','proveedor@example.com'),('${id(14)}','Transportes Prueba','20100070970','TRANSPORTE','flota@example.com');
@@ -39,6 +41,10 @@ async function main() {
   const route = schedule({ auxiliaries: [id(12)], forklift: { supplier_id: id(11), supplier_personnel_id: id(13), operator_name: 'Nombre falsificado', document_number: 'FALSO', license_number: 'ACR-001', phone: '999222333', hourly_rate: 75 } })
   assert.equal(sql(`SELECT operator_name||'/'||document_number FROM route_forklifts WHERE dispatch_id='${route}'`), 'Operador del proveedor/99112233')
   assert.equal(sql(`SELECT hourly_rate FROM route_forklifts WHERE dispatch_id='${route}'`), '75.00')
+  const timeSettlement = JSON.parse(sql(actor + `SELECT settle_route_forklift_times('${route}','2026-10-21T08:00:00-05:00','2026-10-21T10:30:00-05:00')`))
+  assert.equal(timeSettlement.hours, 2.5); assert.equal(timeSettlement.amount, 187.5)
+  const invalidTime = JSON.parse(sql(actor + `SELECT settle_route_forklift_times('${route}','2026-10-21T10:30:00-05:00','2026-10-21T08:00:00-05:00')`))
+  assert.equal(invalidTime.success, false); assert.match(invalidTime.error, /inicio y fin válidos/)
   const shares = JSON.parse(sql(actor + `SELECT get_route_share_details(ARRAY['${route}','${route}']::uuid[])`))
   assert.equal(shares.length, 1); assert.equal(shares[0].driver_license, 'LIC-001'); assert.equal(shares[0].auxiliaries.length, 1); assert.equal(shares[0].forklift.license_number, 'MONT-01')
   sql(actor + `SELECT get_route_share_details(ARRAY['${route}','${id(90)}']::uuid[])`, /Sin acceso/)

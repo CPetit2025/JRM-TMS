@@ -10,6 +10,7 @@ import { filteredDataset, loadDataset } from '@/lib/analytics/api'
 import { AnalysisPanel, MetricCard } from './AnalysisPanel'
 import { ReportFilters, type SavedView } from './ReportFilters'
 import DesempenoPanel from './DesempenoPanel'
+import { SupplierServiceReport } from './SupplierServiceReport'
 
 interface Result { section: Perspective; current?: Dataset; previous?: Dataset | null; error?: string; comparisonError?: string }
 export default function Reportes() {
@@ -26,6 +27,7 @@ export default function Reportes() {
   const [userId, setUserId] = useState('')
   const [views, setViews] = useState<SavedView[]>([])
   const [viewError, setViewError] = useState('')
+  const [showSupplierServices, setShowSupplierServices] = useState(false)
   const key = `${section}|${filterKey}|${nonce}`
   const data = result?.key === key ? result : null
   const domains = useMemo(() => section === 'resumen' ? visible.filter(p => !['resumen', 'desempeno'].includes(p.id)).map(p => p.id) : [section], [section, visible])
@@ -85,7 +87,8 @@ export default function Reportes() {
         <div><p className="text-xs font-bold uppercase tracking-[.18em] text-[#cf152d]">Supply Chain Management</p><h1 className="mt-1 flex items-center gap-2 text-2xl font-extrabold text-[#002855]"><BarChart3 className="h-7 w-7" />Reportes y Analítica</h1><p className="mt-1 text-sm text-slate-500">Del resultado al sustento: operación, costos, activos y desempeño según su acceso.</p></div>
         {section !== 'desempeno' && <button onClick={() => setNonce(n => n + 1)} className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm"><RefreshCw className="h-4 w-4" />Actualizar</button>}
       </header>
-      <nav aria-label="Perspectivas analíticas" className="flex gap-1 overflow-x-auto border-b border-slate-200">{visible.map(p => <button key={p.id} onClick={() => navigate(p.id)} aria-current={section === p.id ? 'page' : undefined} className={`shrink-0 border-b-2 px-4 py-3 text-sm ${section === p.id ? 'border-[#cf152d] font-semibold text-[#002855]' : 'border-transparent text-slate-500 hover:text-[#002855]'}`}>{p.label}</button>)}</nav>
+      <nav aria-label="Perspectivas analíticas" className="flex gap-1 overflow-x-auto border-b border-slate-200">{visible.map(p => <button key={p.id} onClick={() => { setShowSupplierServices(false); navigate(p.id) }} aria-current={!showSupplierServices && section === p.id ? 'page' : undefined} className={`shrink-0 border-b-2 px-4 py-3 text-sm ${!showSupplierServices && section === p.id ? 'border-[#cf152d] font-semibold text-[#002855]' : 'border-transparent text-slate-500 hover:text-[#002855]'}`}>{p.label}</button>)}{hasAccess('despacho') && <button onClick={() => setShowSupplierServices(true)} aria-current={showSupplierServices ? 'page' : undefined} className={`shrink-0 border-b-2 px-4 py-3 text-sm ${showSupplierServices ? 'border-[#cf152d] font-semibold text-[#002855]' : 'border-transparent text-slate-500 hover:text-[#002855]'}`}>Servicios de proveedores</button>}</nav>
+      {showSupplierServices ? <SupplierServiceReport /> : <>
       {section === 'desempeno' ? <DesempenoPanel /> : <>
         <ReportFilters key={`${section}|${filterKey}`} filters={filters} section={section} rows={scope} onApply={f => navigate(section, f)} onDirty={setDirty}
           views={views.filter(v => visible.some(p => p.id === v.section))} onSave={(name, f) => saveViews([...views.filter(v => v.name !== name), { name, section, filters: f }].slice(-20))}
@@ -107,6 +110,7 @@ export default function Reportes() {
           })}<p className="text-xs text-slate-500">Cada bloque conserva su unidad y base de cálculo. No se construye un índice general mezclando rentabilidad, disponibilidad y desempeño.</p></div>
           : focused?.error ? <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-800"><p>{focused.error}</p><button onClick={() => setNonce(n => n + 1)} className="mt-2 font-semibold">Reintentar</button></div>
           : current && <>{focused?.comparisonError && <p role="alert" className="text-sm text-amber-700">Comparación no disponible: {focused.comparisonError}. Actualice para reintentar.</p>}<AnalysisPanel key={key} section={section} title={title} data={current} previous={previous} filters={filters} blocked={dirty || !!focused?.comparisonError} onFilter={patch => navigate(section, { ...filters, ...patch })} /></>}
+      </>}
       </>}
     </div>
   )

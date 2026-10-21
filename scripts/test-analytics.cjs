@@ -107,6 +107,7 @@ test('interfaz oculta datos anteriores y descarta respuestas fuera de orden al c
     '@/lib/analytics/api': { filteredDataset: (_, d) => d, loadDataset: () => { const d = deferred(); pending.push(d); return d.promise } },
     './AnalysisPanel': { AnalysisPanel: Panel, MetricCard: () => null },
     './ReportFilters': { ReportFilters: Filter }, './DesempenoPanel': { __esModule: true, default: () => null },
+    './SupplierServiceReport': { SupplierServiceReport: () => null },
   }).default
   let root
   await renderer.act(async () => { root = renderer.create(React.createElement(Component)) })
