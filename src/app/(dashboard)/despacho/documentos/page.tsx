@@ -405,6 +405,7 @@ function DispatchCard({ item, canEdit, canPacking, canSettle = false, canUpload 
   onOpen: (p: string) => void; onUploaded: () => Promise<void>; deliveries: DeliveryRow[]; onEvidence: (row: DeliveryReviewTarget) => void; children?: React.ReactNode
 }) {
   const [upload, setUpload] = useState<{ requestId: string | null; type: string; label: string } | null>(null)
+  const [tab, setTab] = useState<'servicios' | 'guias' | 'archivos' | 'liquidacion'>('servicios')
   const uploadPanel = useRef<HTMLDivElement>(null)
   useEffect(() => { if (upload) uploadPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) }, [upload])
   const badge = STATUS_BADGE[item.doc_status]
@@ -418,6 +419,15 @@ function DispatchCard({ item, canEdit, canPacking, canSettle = false, canUpload 
   const chip = (title: string, ready: boolean, detail: string, optional = false) => <li className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs ring-1 ring-inset ${ready ? 'bg-emerald-50 text-emerald-800 ring-emerald-200' : optional ? 'bg-slate-50 text-slate-600 ring-slate-200' : 'bg-amber-50 text-amber-800 ring-amber-200'}`}>{ready ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <Clock className="h-3.5 w-3.5 shrink-0" />}<span className="font-semibold">{title}</span><span>· {detail}</span></li>
   const beginUpload = (requestId: string | null, type: string, title: string) => setUpload({ requestId, type, label: title })
   const uploadForm = (requestId: string | null) => upload && upload.requestId === requestId && (canPacking || canEdit) && <div ref={uploadPanel} className="scroll-m-4 border-t border-blue-200 bg-blue-50/40 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h4 className="text-sm font-bold text-[#002855]">{DOC_LABEL[upload.type]} · {upload.label}</h4><p className="mt-0.5 text-xs text-slate-500">{upload.requestId ? 'El archivo se vincula únicamente a esta solicitud.' : 'Este archivo cubre todas las solicitudes y OT del despacho.'}</p></div><button type="button" onClick={() => setUpload(null)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 lg:min-h-9">Cancelar</button></div><UploadForm key={`${upload.requestId}/${upload.type}`} dispatchId={item.id} requestId={upload.requestId} isPickup={item.is_pickup} canPacking={canPacking} canDocuments={canEdit} documentType={upload.type} onUploaded={async () => { await onUploaded(); setUpload(null) }} /></div>
+  const tabs: [typeof tab, string][] = [['servicios', `Servicios · ${item.stops.length}`], ...(!packingOnly ? [['guias', 'Guías y notas'], ['liquidacion', 'Liquidación']] as [typeof tab, string][] : []), ['archivos', `Archivos · ${generalDocs.length}`]]
+  const onTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    const current = tabs.findIndex(([value]) => value === tab)
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length
+    setTab(tabs[next][0])
+    document.getElementById(`dispatch-doc-tab-${tabs[next][0]}`)?.focus()
+  }
 
   return <div className="min-w-0 space-y-4">
     <dl className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
@@ -428,7 +438,11 @@ function DispatchCard({ item, canEdit, canPacking, canSettle = false, canUpload 
     </dl>
     {item.docs_reissue && <p className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Reemisión: {item.docs_reissue_reason || 'Actualizar los documentos del servicio.'}</p>}
 
-    <section aria-label="Documentos por servicio" className="space-y-3">
+    <div role="tablist" aria-label="Secciones de documentos del despacho" className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-1">
+      {tabs.map(([value, label]) => <button key={value} id={`dispatch-doc-tab-${value}`} type="button" role="tab" aria-selected={tab === value} aria-controls={`dispatch-doc-panel-${value}`} tabIndex={tab === value ? 0 : -1} onClick={() => setTab(value)} onKeyDown={onTabKeyDown} className={`min-h-10 shrink-0 rounded-lg px-4 text-sm font-semibold transition-colors ${tab === value ? 'bg-white text-[#002855] shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:bg-white/70 hover:text-[#002855]'}`}>{label}</button>)}
+    </div>
+
+    {tab === 'servicios' && <section id="dispatch-doc-panel-servicios" role="tabpanel" aria-labelledby="dispatch-doc-tab-servicios" aria-label="Servicios" className="space-y-3">
       <h3 className="text-sm font-bold text-[#002855]">Servicios <span className="font-normal text-slate-500">· {item.stops.length}{item.is_pickup ? ' · Recojo por el cliente' : ''}</span></h3>
       {!item.stops.length && <p className="rounded-xl border border-slate-200 p-4 text-sm text-slate-500">Este despacho no tiene solicitudes asociadas.</p>}
       {item.stops.map((s, i) => {
@@ -472,22 +486,36 @@ function DispatchCard({ item, canEdit, canPacking, canSettle = false, canUpload 
             {!packingOnly && !item.is_pickup && delivery && <button type="button" onClick={() => onEvidence(delivery)} className={`${secondary} sm:ml-auto`}><FileCheck2 className="h-4 w-4" />Ver guía y conformidad</button>}
           </div>}
           {uploadForm(s.request_id)}
-          {canSettle && <SettlementUpload key={`${s.request_id}/${checklists?.get(`${item.id}/${s.request_id}`)?.kind || ''}`} dispatchId={item.id} requestId={s.request_id} checklist={checklists?.get(`${item.id}/${s.request_id}`)} canUpload={canUpload} canManual={canManual} onUploaded={onUploaded} />}
         </article>
       })}
-    </section>
+    </section>}
 
-    {canSettle && !packingOnly && !item.is_pickup && <ForkliftTimeSettlement dispatchId={item.id} onSaved={onUploaded} />}
+    {tab === 'guias' && <section id="dispatch-doc-panel-guias" role="tabpanel" aria-labelledby="dispatch-doc-tab-guias" className="space-y-3">
+      {children}
+      {!children && <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">No hay números de guía o nota vinculados a este despacho.</p>}
+    </section>}
 
-    {children}
-
-    {(!!generalDocs.length || canEdit || canPacking) && <section aria-label="Archivos de todo el despacho" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    {tab === 'archivos' && <section id="dispatch-doc-panel-archivos" role="tabpanel" aria-labelledby="dispatch-doc-tab-archivos" aria-label="Archivos de todo el despacho" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"><div><h3 className="text-sm font-bold text-[#002855]">Archivos de todo el despacho</h3><p className="text-xs text-slate-500">Cubren todas las OT del despacho{generalDocs.length ? ` · ${generalDocs.length} archivo(s)` : ''}.</p></div><div className="flex flex-wrap gap-2">
         {canPacking && <button type="button" onClick={() => beginUpload(null, 'PACKING_LIST', 'Todas las solicitudes del despacho')} className={secondary}><Upload className="h-4 w-4" />{consolidated ? 'Reemplazar Packing List consolidado' : 'Packing List consolidado'}</button>}
         {canEdit && <button type="button" onClick={() => beginUpload(null, 'OTRO', 'Todas las solicitudes del despacho')} className={secondary}><Upload className="h-4 w-4" />Otro archivo</button>}
       </div></div>
       {!!generalDocs.length && <div className="border-t border-slate-100 px-4 pb-3"><DocList docs={generalDocs} canEdit={canEdit} onVoid={onVoid} onOpen={onOpen} /></div>}
       {uploadForm(null)}
+    </section>}
+
+    {tab === 'liquidacion' && !packingOnly && <section id="dispatch-doc-panel-liquidacion" role="tabpanel" aria-labelledby="dispatch-doc-tab-liquidacion" aria-label="Liquidación de servicios" className="space-y-3">
+      {canSettle && item.stops.map(s => {
+        const check = checklists?.get(`${item.id}/${s.request_id}`)
+        const kind = check?.kind || settlementKind(serviceTypes.get(s.request_id), item.is_pickup)
+        return <article key={s.request_id} className="rounded-xl border border-slate-200 bg-white p-4">
+          <h3 className="mb-3 text-sm font-bold text-[#002855]">{s.ot_code ? `OT ${s.ot_code}` : referenceLabel(serviceTypes.get(s.request_id)) || 'Servicio'} · {s.request_number} <span className="font-normal text-slate-600">· {s.client || 'Sin cliente'}</span></h3>
+          <SettlementUpload key={`${s.request_id}/${checklists?.get(`${item.id}/${s.request_id}`)?.kind || ''}`} dispatchId={item.id} requestId={s.request_id} checklist={checklists?.get(`${item.id}/${s.request_id}`)} canUpload={canUpload} canManual={canManual} onUploaded={onUploaded} />
+          {!check && <p className="mt-2 text-xs text-slate-500">Tipo de liquidación: {kind}.</p>}
+        </article>
+      })}
+      {canSettle && !item.is_pickup && <ForkliftTimeSettlement dispatchId={item.id} onSaved={onUploaded} />}
+      {!canSettle && <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">La liquidación no está disponible para esta ruta.</p>}
     </section>}
   </div>
 }
