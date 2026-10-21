@@ -26,6 +26,7 @@ const calls = []
 const wrapper = ({ children, actions }) => React.createElement('div', null, actions, children)
 const { RequestForm } = load('src/components/hhee/flujo/request-form.tsx', {
   '@/components/ui/SearchableSelect': { SearchableSelect },
+  sonner: { toast: { success() {}, warning() {}, error() {} } },
   './context': { useFlow: () => ({ ctx: { people, areas: [{ id: 'a', can_request: true }], causes: [], caps: {} } }), Card: wrapper, Field: wrapper, Modal: wrapper },
   '@/lib/hhee/flujo': { REFERENCES: [], today: () => '2026-10-20', isPendingText: () => false, limaLocal: x => x,
     fmtHours: String, fmtMoney: String, call: async (name, args) => { calls.push({ name, args }); return { lines: args.p.lines.map(l => ({ person_id: l.person_id, minutes: 150, m25: 120, m35: 30 })) } } },

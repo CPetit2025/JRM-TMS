@@ -134,7 +134,7 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
               <div className="grid items-end gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,3fr)_minmax(7rem,1fr)_minmax(7rem,1fr)_minmax(7rem,1fr)_auto]">
                 <div className="grid min-w-0 gap-1 text-xs font-semibold text-slate-600 sm:col-span-2 lg:col-span-1"><span>Trabajador {i + 1}</span><SearchableSelect className="min-w-0" ariaLabel={`Trabajador ${i + 1}`} value={l.person_id} onChange={value => setLine(i, 'person_id', value)}
                   placeholder="Elija un trabajador" searchPlaceholder="Buscar por código, nombre o DNI…"
-                  options={people.map(p => ({ value: p.id, label: `${p.name} · ${p.code}${p.document_number ? ` · DNI ${p.document_number}` : ''}${p.rate_ready ? '' : ' (costo pendiente)'}`,
+                  options={people.map(p => ({ value: p.id, label: `${p.code} · ${p.name}${p.document_number ? ` · DNI ${p.document_number}` : ''}${p.rate_ready ? '' : ' (costo pendiente)'}`,
                     disabled: lines.some((x, j) => j !== i && x.person_id === p.id) }))} /></div>
                 <Field label="Inicio" className="min-w-0"><input aria-label={`Inicio del trabajador ${i + 1}`} className={inputCls} type="time" value={l.start} onChange={e => setLine(i, 'start', e.target.value)} /></Field>
                 <Field label={`Fin${c.nextDay ? ' (día sig.)' : ''}`} className="min-w-0"><input aria-label={`Fin del trabajador ${i + 1}`} className={inputCls} type="time" value={l.end} onChange={e => setLine(i, 'end', e.target.value)} /></Field>
