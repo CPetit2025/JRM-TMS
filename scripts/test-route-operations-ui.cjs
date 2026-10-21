@@ -63,7 +63,7 @@ test('public alerts ignore initial load, unrelated rows, backfilled history and 
 })
 test('forklift selects recorded operator credentials and creates its supplier without leaving the form', async () => {
  const calls = [], person = { id: 'p1', code: 'T001', name: 'Operador Uno', document_number: '12345678', license_number: 'ACR-001', license_expiration: '2099-01-01', phone: '999111222' }
- const client = { from: () => ({ select: () => ({ eq: () => ({ order: async () => ({ data: [] }) }) }) }), rpc: async (name, args) => { calls.push({ name, args }); return { data: name === 'route_forklift_candidates' ? [person] : 'supplier-new' } } }
+ const client = { from: () => ({ select: () => ({ eq: () => ({ in: () => ({ order: async () => ({ data: [] }) }), order: async () => ({ data: [] }) }) }) }), rpc: async (name, args) => { calls.push({ name, args }); return { data: name === 'route_forklift_candidates' ? [person] : 'supplier-new' } } }
  const { ForkliftFields, EMPTY_FORKLIFT, forkliftValid } = load('src/components/despacho/ForkliftFields.tsx', { '@/lib/supabase/client': { createClient: () => client }, sonner: { toast: { success() {}, error() {} } } })
  let value
  function Form() { const [f, setF] = React.useState(EMPTY_FORKLIFT); value = f; return React.createElement(ForkliftFields, { value: f, onChange: setF }) }
@@ -77,10 +77,11 @@ test('forklift selects recorded operator credentials and creates its supplier wi
  await act(async () => button('Registrar proveedor').props.onClick())
  assert.equal(value.supplier_id, 'supplier-new')
  assert.equal(calls.at(-1).name, 'save_supplier')
- assert.equal(calls.at(-1).args.p_supplier.category, 'SERVICIOS')
+ assert.equal(calls.at(-1).args.p_supplier.category, 'MONTACARGA')
  const picker = view.root.findAll(node => node.props.ariaLabel === 'Montacarguista registrado' && typeof node.type === 'function')[0]
  await act(async () => picker.props.onChange('p1'))
  assert.equal(value.operator_name, person.name); assert.equal(value.license_number, person.license_number); assert.equal(value.document_number, person.document_number)
+ await act(async () => view.root.findByProps({ 'aria-label': 'Tarifa montacarga por hora' }).props.onChange({ target: { value: '75.50' } }))
  assert.equal(forkliftValid(value), true)
  await act(async () => view.unmount())
 })

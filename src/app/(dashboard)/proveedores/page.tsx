@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { errorMessage } from '@/lib/caja'
 import { isValidRuc, SUPPLIER_CATEGORIES, type Supplier, type SupplierCategory, type SupplierLocation } from '@/lib/suppliers'
+import { SupplierFleetManager } from '@/components/suppliers/SupplierFleetManager'
 
 // Proveedores de materia prima, insumos, producción y proyectos (los transportistas y talleres tienen su propio
 // maestro). Los recojos y traslados punto a punto de la solicitud se vinculan a un proveedor y su punto de recojo.
@@ -150,6 +151,8 @@ export default function ProveedoresPage() {
             <button type="button" onClick={addLocation} className="flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-jrm-navy px-3 text-sm font-semibold text-jrm-navy hover:bg-blue-50"><Factory className="h-4 w-4" />Agregar punto</button>
           </div>}
         </section>
+        {form.id && (form.category === 'TRANSPORTE' || form.category === 'MONTACARGA') &&
+          <SupplierFleetManager supplierId={form.id} category={form.category} canManage={canManage} />}
       </fieldset>}
     </Modal>
   </div>

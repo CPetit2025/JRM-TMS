@@ -435,7 +435,7 @@ export default function DespachoPage() {
     if (selectedReqsFull.some(r => !r.attention_mode || (r.attention_mode === 'RECOJO_CLIENTE') !== isPickup)) {
       toast.error('Defina la modalidad en Solicitudes; no mezcle recojos por cliente y transporte JRM.'); return
     }
-    if (!forkliftValid(forklift)) { toast.error('Complete proveedor y montacarguista.'); return }
+    if (!forkliftValid(forklift)) { toast.error('Complete proveedor, montacarguista y tarifa por hora del montacarga.'); return }
     // El servidor valida la reserva vigente y el gasto autorizado; saldo cero puede ser una reserva propia.
     setIsSubmitting(true)
     if (modalidad === 'TERCERO' && newDispatch.document_type === 'GR') {
@@ -462,7 +462,9 @@ export default function DespachoPage() {
         }
         const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { mode: 'TERCERO', forklift: forklift.enabled ? forklift : null, auxiliaries: [],
           p_carrier_id: tercero.carrier_id, p_plate: tercero.placa, p_conductor: tercero.conductor, p_telefono: tercero.telefono,
-          p_doc: tercero.doc || null, p_departure: new Date(newDispatch.scheduled_departure).toISOString(),
+          p_supplier_vehicle_id: tercero.supplier_vehicle_id || null, p_supplier_personnel_id: tercero.supplier_personnel_id || null,
+          p_doc: tercero.doc || null, p_tercero_license_number: tercero.license_number || null,
+          p_tercero_license_expiration: tercero.license_expiration || null, p_departure: new Date(newDispatch.scheduled_departure).toISOString(),
           p_estimated_km: isPickup ? 0 : Number(newDispatch.estimated_distance_km) || 0, p_freight_cost: freightCost,
           p_contract_id: firstReq?.contracts?.id || null,
           p_requests: programmingRequests(),
