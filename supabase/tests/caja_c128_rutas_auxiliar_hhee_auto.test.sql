@@ -73,9 +73,21 @@ BEGIN
      AND EXISTS (SELECT 1 FROM public.hhee_people WHERE profile_id = v_aux OR driver_id = (SELECT id FROM public.drivers WHERE profile_id = v_aux LIMIT 1))
   THEN pass := pass + 1; ELSE fails := fails || ('T4 solicitud de ruta ' || r::text); END IF;
 
-  -- T5: el reparto legal aplica: 17:30–20:00 = 2 h al 25 % y 30 min al 35 %
-  IF (SELECT bool_and((plan_minutes_25, plan_minutes_35, plan_minutes_100) = (120, 30, 0)) FROM public.hhee_lines WHERE request_id = v_id)
-  THEN pass := pass + 1; ELSE fails := fails || 'T5 reparto'::text; END IF;
+  -- T5: 150 minutos comparten las dos primeras horas al 25 % con las otras solicitudes
+  -- anteriores del trabajador ese día. Producción puede tener HHEE previas válidas: no asumir cero.
+  IF (WITH expected AS (
+    SELECT l.*, LEAST(150, GREATEST(0, 120 - COALESCE((
+      SELECT sum(GREATEST(COALESCE(prior.planned_minutes, 0) - COALESCE(prior.plan_minutes_100, 0), 0))
+      FROM public.hhee_lines prior JOIN public.hhee_requests h ON h.id = prior.request_id
+      WHERE prior.person_id = l.person_id AND h.work_date = current_request.work_date
+        AND h.sequence < current_request.sequence AND h.id <> v_id
+        AND h.state <> 'CANCELADA' AND h.approval <> 'RECHAZADA' AND NOT prior.rest_day
+    ), 0)::int)) AS expected_25
+    FROM public.hhee_lines l JOIN public.hhee_requests current_request ON current_request.id = l.request_id
+    WHERE l.request_id = v_id
+  ) SELECT count(*) = 2 AND bool_and((planned_minutes, plan_minutes_25, plan_minutes_35, plan_minutes_100) = (150, expected_25, 150 - expected_25, 0)) FROM expected)
+  THEN pass := pass + 1; ELSE fails := fails || ('T5 reparto ' || COALESCE((SELECT jsonb_agg(jsonb_build_object(
+    'person', person_id, 'minutes', planned_minutes, 'm25', plan_minutes_25, 'm35', plan_minutes_35, 'm100', plan_minutes_100))::text FROM public.hhee_lines WHERE request_id = v_id), 'sin líneas')); END IF;
 
   -- T6: no se presenta con textos «PENDIENTE»; completados, sí; el supervisor tiene el aviso
   IF NOT EXISTS (SELECT 1 FROM public.notifications n JOIN public.hhee_requests h ON h.id = v_id
