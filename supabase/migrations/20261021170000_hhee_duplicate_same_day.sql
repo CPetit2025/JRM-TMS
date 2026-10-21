@@ -55,12 +55,15 @@ END $$;
 
 CREATE OR REPLACE FUNCTION public.hhee_prevent_duplicate_person_day() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
-DECLARE v_date date; v_key bigint;
+DECLARE v_date date; v_key bigint; v_auto_dispatch_id uuid;
 BEGIN
-  SELECT work_date INTO v_date FROM public.hhee_requests WHERE id = NEW.request_id;
+  SELECT work_date, auto_dispatch_id INTO v_date, v_auto_dispatch_id FROM public.hhee_requests WHERE id = NEW.request_id;
   v_key := hashtextextended('hhee-person-day:' || NEW.person_id::text || ':' || v_date::text, 0);
   IF NOT pg_try_advisory_xact_lock(v_key) THEN RAISE EXCEPTION 'Hay una solicitud de HHEE en curso para este trabajador y fecha; vuelva a intentar.'; END IF;
-  IF EXISTS (SELECT 1 FROM public.hhee_lines l JOIN public.hhee_requests r ON r.id = l.request_id
+  -- Route-generated rows are a separate record per route and the existing legal split
+  -- accumulates those minutes across the day. Keep that automation intact; user-entered
+  -- requests still cannot duplicate a person already covered by any active request.
+  IF v_auto_dispatch_id IS NULL AND EXISTS (SELECT 1 FROM public.hhee_lines l JOIN public.hhee_requests r ON r.id = l.request_id
     WHERE l.person_id = NEW.person_id AND r.work_date = v_date AND r.id <> NEW.request_id
       AND r.state <> 'CANCELADA' AND r.approval <> 'RECHAZADA') THEN
     RAISE EXCEPTION 'Este trabajador ya tiene una solicitud de HHEE para esta fecha.';
