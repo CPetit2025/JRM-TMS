@@ -32,5 +32,5 @@ BEGIN
    AND pg_get_functiondef('public.close_route_with_forklift(uuid,text,uuid,text,text,text,numeric,numeric)'::regprocedure) LIKE '%final_amount%'
    INTO v_ok;
  IF NOT v_ok THEN RAISE EXCEPTION 'CAJA C133 FAIL: tarifa no llega a programación y cierre'; END IF;
- RAISE NOTICE 'CAJA C133 PASS: tarifa horaria, horas finales, costo y reporte protegidos';
+ RAISE EXCEPTION 'CAJA C133 PASS: tarifa horaria, horas finales, costo y reporte protegidos';
 END $$;
