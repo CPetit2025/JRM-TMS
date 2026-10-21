@@ -47,7 +47,7 @@ export function TerceroFields({ value, onChange }: { value: TerceroForm; onChang
         <SearchableSelect value={value.carrier_id} onChange={v => onChange({ ...TERCERO_VACIO, carrier_id: v })}
           options={carriers.map(c => ({ value: c.id, label: `${c.business_name}${c.ruc ? ` · RUC ${c.ruc}` : ''}` }))}
           placeholder="Seleccione el transportista..." />
-        {carriers.length === 0 && <p className="text-[11px] text-amber-700 mt-1">No hay transportistas proveedores activos: regístrelo en Maestros → Transportistas.</p>}
+        {carriers.length === 0 && <p className="text-[11px] text-amber-700 mt-1">No hay transportistas proveedores activos: regístrelo en Maestros → Proveedores logísticos.</p>}
       </div>
       {carrier?.suppliers?.supplier_vehicles?.length ? <div>
         <label className="block text-xs font-semibold text-slate-700 mb-1">Placa registrada en el maestro</label>
@@ -288,7 +288,7 @@ export function TerceroAvanceModal({ dispatchId, onClose, onChanged }: { dispatc
   )
 }
 
-// Desempeño por proveedor (Maestros → Transportistas)
+// Desempeño por proveedor (Maestros → Proveedores logísticos)
 type Prov = { carrier_id: string | null; proveedor: string; ruc: string | null; viajes: number; cerrados: number; flete: number; horas_ruta: number | null
   salida_puntual_pct: number | null; entregas: number; entrega_a_tiempo_pct: number | null }
 type Viaje = { id: string; numero: string; proveedor: string | null; placa: string; conductor: string | null; estado: string; flete: number

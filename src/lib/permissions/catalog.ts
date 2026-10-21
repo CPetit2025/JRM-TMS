@@ -71,9 +71,10 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     { id: 'caja-combustible', label: 'Control de combustible' },
     { id: 'caja-tarifario', label: 'Reglas de Caja' },
   ] },
-  { title: 'Catálogos', modules: [
-    { id: 'maestros-trabajadores', label: 'Trabajadores' },
-    { id: 'tarifas', label: 'Tarifario de transporte y transportistas' },
+  { title: 'Proveedores logísticos', modules: [
+    { id: 'proveedores-logisticos', label: 'Proveedores logísticos (personal, flota y servicios)' },
+    { id: 'maestros-trabajadores', label: 'Personal interno (trabajadores)' },
+    { id: 'tarifas', label: 'Tarifario de transporte' },
   ] },
   { title: 'Administración', modules: [
     { id: 'usuarios', label: 'Usuarios del sistema' },

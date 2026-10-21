@@ -4,6 +4,8 @@ CREATE TABLE public.dispatch_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(
 CREATE TABLE public.hhee_people(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),code text,name text,document_number text,position text,profile_id uuid,driver_id uuid,active boolean DEFAULT true);
 CREATE TABLE public.route_auxiliaries(dispatch_id uuid,person_id uuid);
 CREATE TABLE public.suppliers(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),business_name text,tax_id text,category text DEFAULT 'SERVICIOS',contact_email text,contact_name text,contact_phone text,is_active boolean DEFAULT true);
+CREATE TABLE public.supplier_locations(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),supplier_id uuid REFERENCES public.suppliers(id),name text,address text,department text,province text,district text,contact_name text,contact_phone text,is_active boolean DEFAULT true);
+ALTER TABLE public.supplier_locations ENABLE ROW LEVEL SECURITY;
 CREATE TABLE public.carriers(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),type text,business_name text,ruc text UNIQUE,contact_name text,phone text,email text,address text,status text DEFAULT 'ACTIVE');
 CREATE TABLE public.transport_requests(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),contract_id uuid);
 CREATE TABLE public.dispatch_requests(dispatch_id uuid,transport_request_id uuid);

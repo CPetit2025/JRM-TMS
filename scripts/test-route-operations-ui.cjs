@@ -24,6 +24,16 @@ function load(file, overrides = {}) {
  cache.set(filename, m.exports); return m.exports
 }
 const { routeIds, routeShareText, routeEventChanges } = load('src/lib/route-share.ts')
+test('logistics providers have a dedicated master path and permission, separate from commercial providers', () => {
+ const { visibleSections } = load('src/lib/nav/navConfig.ts')
+ const { canOpenPath } = load('src/lib/nav/web-access.ts')
+ const sections = visibleSections(permission => permission === 'proveedores-logisticos')
+ const logistics = sections.find(section => section.id === 'maestros')
+ assert.equal(logistics.title, 'Proveedores logísticos')
+ assert.ok(logistics.groups.flatMap(group => group.items).some(item => item.href === '/maestros/proveedores'))
+ assert.equal(canOpenPath('Operador', ['proveedores-logisticos'], '/maestros/transportistas'), true, 'legacy route redirects to the new master')
+ assert.equal(canOpenPath('Operador', ['proveedores-logisticos'], '/proveedores'), false, 'commercial provider path remains separate')
+})
 const row = (dispatch, request) => ({ dispatch_id: dispatch, dispatch_number: dispatch, request_id: request, request_number: request, plate: 'JRM-001', state: 'PROGRAMADO', events: [], last_event_at: '2026-10-20T12:00:00Z', scheduled_departure: '2026-10-20T12:00:00Z', conformity: 'PENDIENTE', ot_code: 'OT1', photos_count: 0, pickup_address: 'Origen', delivery_address: 'Destino', client_name: 'Cliente Uno', driver_name: 'Conductor Uno' })
 test('selection groups a route across deliveries and pages, and exposes cancellation only when authorized', async () => {
  const { DeliveryTable } = load('src/components/delivery/DeliveryTable.tsx')

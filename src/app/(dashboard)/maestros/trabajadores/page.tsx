@@ -140,7 +140,7 @@ export default function TrabajadoresPage() {
 
   return (
     <div className="space-y-3">
-      <PageHeader showTitle title="Maestro de Trabajadores Operativos" description="Personal sin acceso al sistema para asignación de Tareo Automático y Rutas." actions={<>
+      <PageHeader showTitle title="Personal Interno" description="Trabajadores propios que se asignan a tareos, HHEE y rutas; separado del personal de empresas proveedoras." actions={<>
 <button 
           onClick={openNew}
           className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"

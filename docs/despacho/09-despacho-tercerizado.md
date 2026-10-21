@@ -7,7 +7,7 @@ registra Despacho / Torre de Control desde la web, o el chofer del tercero desde
 ## Flujo
 
 1. **Programar** — Despacho → *Armar ruta* → *Unidad propia / Tercero*. En *Tercero* se elige el transportista
-   (Maestros → Transportistas, tipo proveedor) y se escriben placa, chofer, celular y, si se tiene, DNI o licencia.
+   (Maestros → Proveedores logísticos, categoría Transporte) y se escriben placa, chofer, celular y, si se tiene, DNI o licencia.
    El flete es el monto pactado o, si se deja vacío, el del tarifario. Se reserva en la partida de transporte de la
    OT y queda como servicio FLETE a nombre del proveedor (RUC). No hay checklist pre-ruta ni GPS.
 2. **Guía** — la Asistente Documentario confirma la guía de remisión antes de la salida, igual que en un despacho
@@ -26,7 +26,7 @@ registra Despacho / Torre de Control desde la web, o el chofer del tercero desde
 ## Indicadores
 
 - El despacho tercerizado no tiene conductor propio: no entra en los indicadores de los conductores.
-- **Maestros → Transportistas → Desempeño de transportistas tercerizados**: viajes, cerrados, salida puntual (hasta
+- **Maestros → Proveedores logísticos → Desempeño de transportistas tercerizados**: viajes, cerrados, salida puntual (hasta
   30 min después de la programada), entrega a tiempo (hasta la fecha requerida de la solicitud), horas en ruta y flete.
 - En Despacho, filtro *Unidad: flota propia / tercerizada* y etiqueta *Tercero*. En Reportes → Transporte el detalle
   indica *Unidad: Tercerizada* y el chofer aparece como «(tercero)».
