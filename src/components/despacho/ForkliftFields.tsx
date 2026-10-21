@@ -18,14 +18,25 @@ export function ForkliftFields({ value: f, onChange }: { value: Forklift; onChan
  const set = (key: keyof Forklift, value: string | boolean) => onChange({ ...f, [key]: value })
  useEffect(() => {
   let alive = true
-  void Promise.all([supabase.from('suppliers').select('id,tax_id,business_name,category,is_active,contact_name,contact_phone').eq('is_active', true).in('category',['MONTACARGA','SERVICIOS']).order('business_name'), supabase.rpc('route_forklift_candidates'),
-   supabase.from('supplier_personnel').select('id,supplier_id,full_name,document_number,position,license_number,license_expiration,phone').eq('is_active',true).order('full_name')]).then(([s, p, sp]) => {
+  void Promise.all([supabase.from('suppliers').select('id,tax_id,business_name,category,is_active,contact_name,contact_phone').eq('is_active', true).in('category',['MONTACARGA','SERVICIOS']).order('business_name'), supabase.rpc('route_forklift_candidates')]).then(([s, p]) => {
    if (!alive) return
-   if (s.error || p.error || sp.error) setError(s.error?.message || p.error?.message || sp.error?.message || 'No se pudieron cargar los registros')
-   else { setSuppliers(s.data as Supplier[]); setPeople((p.data || []) as Candidate[]); setSupplierPeople((sp.data || []) as SupplierPerson[]) }
+   if (s.error || p.error) setError(s.error?.message || p.error?.message || 'No se pudieron cargar los registros')
+   else { setSuppliers(s.data as Supplier[]); setPeople((p.data || []) as Candidate[]) }
   })
   return () => { alive = false }
  }, [supabase])
+ useEffect(() => {
+  let alive = true
+  if (!f.supplier_id) return () => { alive = false }
+  void supabase.from('supplier_personnel').select('id,supplier_id,full_name,document_number,position,license_number,license_expiration,phone')
+   .eq('supplier_id', f.supplier_id).eq('is_active', true).order('full_name')
+   .then(({ data, error: queryError }) => {
+    if (!alive) return
+    if (queryError) setError(queryError.message)
+    else setSupplierPeople((data || []) as SupplierPerson[])
+   })
+  return () => { alive = false }
+ }, [supabase, f.supplier_id])
  const createSupplier = async () => {
   if (!isValidRuc(draft.tax_id.trim()) || !draft.business_name.trim()) { toast.error('Complete un RUC válido y la razón social.'); return }
   setBusy(true)
