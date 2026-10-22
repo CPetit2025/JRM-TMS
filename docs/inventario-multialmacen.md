@@ -4,7 +4,7 @@ Un solo libro de movimientos para **todas las bodegas** del ERP. Cubre cuatro pr
 libre (**stock disponible**), cuánto tiempo pasa en cada bodega (**estadía**), de dónde viene y en qué terminó un lote
 (**trazabilidad**) y cómo se mueve el material entre almacenes (**flujo**).
 
-Menú: *Almacén APT → Inventario multi‑almacén* (`/apt`) y *Cargar datos del ERP* (`/apt/datos`). Las pantallas APT anteriores se retiraron: sus direcciones redirigen al módulo nuevo. Permisos: `apt` (ver) y `apt-carga` (cargar,
+Menú: *Almacén APT → Inventario multi‑almacén* (`/apt`) y *Cargar datos del ERP* (`/apt/datos`). El APT clásico (dashboard operativo, control de OT y lotes, ingresos, estadía FIFO, Gantt, detalle, productos, pareto, mapa de calor, FechaEntrega, tendencias, flujo 647 · 540 · ST con kardex, calidad y parámetros) volvió en *Almacén APT → APT clásico* (`/apt/clasico`); sus direcciones anteriores (`/apt/detalle`, `/apt/flujo/kardex`, `/apt/lote/…`) redirigen ahí. No tiene carga propia: los archivos se cargan una vez en `/apt/datos` y alimentan ambos. Permisos: `apt` (ver) y `apt-carga` (cargar,
 recalcular y editar catálogos). El Administrador y el Jefe de Distribución tienen ambos.
 
 ## Uso diario

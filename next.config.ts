@@ -30,18 +30,16 @@ const nextConfig: NextConfig = {
       { source: '/api/:path*', headers: [{ key: 'Cache-Control', value: 'no-store' }] },
     ]
   },
-  // Almacén APT: las pantallas anteriores se reemplazaron por el inventario multi-almacén (un solo módulo en /apt)
+  // Almacén APT: /apt es el inventario multi-almacén; el APT clásico vive en /apt/clasico
   async redirects() {
     if (isCapacitor) return []
     return [
       { source: '/apt/inventario', destination: '/apt', permanent: false },
       { source: '/apt/inventario/:path*', destination: '/apt/:path*', permanent: false },
-      { source: '/apt/lote/:lote', destination: '/apt/trazabilidad?q=:lote', permanent: false },
-      { source: '/apt/flujo/trazabilidad', destination: '/apt/trazabilidad', permanent: false },
-      { source: '/apt/flujo/:path+', destination: '/apt/flujo', permanent: false },
-      { source: '/apt/cargas', destination: '/apt/datos', permanent: false },
-      { source: '/apt/calidad', destination: '/apt/datos', permanent: false },
-      { source: '/apt/:old(operacion|ingresos|gantt|clientes|detalle|productos|pareto|heatmap|fecha-entrega|tendencias)', destination: '/apt', permanent: false },
+      // Las direcciones del APT anterior abren el APT clásico restaurado en /apt/clasico
+      { source: '/apt/lote/:lote', destination: '/apt/clasico/lote/:lote', permanent: false },
+      { source: '/apt/flujo/:path+', destination: '/apt/clasico/flujo/:path+', permanent: false },
+      { source: '/apt/:old(cargas|calidad|operacion|ingresos|gantt|clientes|detalle|productos|pareto|heatmap|fecha-entrega|tendencias)', destination: '/apt/clasico/:old', permanent: false },
     ]
   },
   // Versión visible en el login: versión, commit y fecha/hora del despliegue (fijadas al compilar).
