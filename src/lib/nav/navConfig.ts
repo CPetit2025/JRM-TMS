@@ -1,5 +1,5 @@
 import {
-  Boxes,
+  Boxes, BookOpenCheck, Hourglass, Workflow,
   ArchiveRestore, BadgeCheck, BadgeDollarSign, Banknote, BarChart3, Briefcase, Building2, Calculator, CalendarClock, CalendarRange,
   ChartColumn, CircleCheckBig, CircleDot, ClipboardCheck, ClipboardList, Database, Factory, FileSignature,
   FileText, FileUp, Fuel, Gauge, HardHat, Home, KeyRound, Map as MapIcon, MapPin, PackageCheck,
@@ -71,6 +71,13 @@ export const NAV_SECTIONS: NavSection[] = [
     { href: '/apt', label: 'Inventario multi‑almacén', icon: Boxes, show: any('apt', 'apt-carga'), keywords: 'apt inventario stock disponible estadia trazabilidad flujo bodegas almacenes 647 540 st contrato glosa lote ot guia traspaso materia prima perneria mro kardex' },
     { href: '/apt/datos', label: 'Cargar datos del ERP', icon: FileUp, show: any('apt-carga'), keywords: 'carga entradas salidas erp excel foto stock verificacion cuadre catalogo' },
     { href: '/apt/analitica', label: 'Analítica APT y Distribución', icon: BarChart3, show: any('apt', 'apt-carga'), keywords: 'analitica kpi permanencia fifo despachos distribucion trazabilidad calidad flujos variacion pareto pedidos avance cumplimiento' },
+  ] }, { title: 'APT clásico', items: [
+    { href: '/apt/clasico', label: 'Dashboard operativo APT', icon: ChartColumn, show: any('apt', 'apt-carga'), keywords: 'apt clasico anterior antiguo dashboard analitica operativa saldo stock rotacion detalle productos pareto heatmap tendencias fecha entrega clientes' },
+    { href: '/apt/clasico/operacion', label: 'Control de OT y Lotes', icon: ClipboardCheck, show: any('apt', 'apt-carga'), keywords: 'apt clasico ot lote pendientes permanencia acciones' },
+    { href: '/apt/clasico/estadia', label: 'Estadía de Producción', icon: Hourglass, show: any('apt', 'apt-carga'), keywords: 'apt clasico estadia cohorte fifo aging' },
+    { href: '/apt/clasico/gantt', label: 'Trazabilidad SCM · Gantt', icon: CalendarRange, show: any('apt', 'apt-carga'), keywords: 'apt clasico gantt ot lote trazabilidad toneladas tn permanencia' },
+    { href: '/apt/clasico/flujo', label: 'Flujo 647 · 540 · ST', icon: Workflow, show: any('apt', 'apt-carga'), keywords: 'apt clasico 647 540 st ventas flujo almacen etapas adelantos' },
+    { href: '/apt/clasico/flujo/kardex', label: 'Kardex APT', icon: BookOpenCheck, show: any('apt', 'apt-carga'), keywords: 'apt clasico kardex movimientos saldo trazabilidad guia lote' },
   ] }] },
   { id: 'flota', title: 'Flota y Mantenimiento', icon: Wrench, groups: [
     { title: 'Taller', items: [

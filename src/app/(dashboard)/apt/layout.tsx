@@ -38,6 +38,8 @@ export default function AptLayout({ children }: { children: React.ReactNode }) {
       </div>
     )
   }
+  // El APT clásico (/apt/clasico) trae su propio encabezado, pestañas y filtros
+  if (pathname.startsWith('/apt/clasico')) return <>{children}</>
   // La analítica tiene su propio encabezado, filtros y pestañas (no usa el ámbito del inventario)
   if (pathname.startsWith('/apt/analitica')) {
     return (

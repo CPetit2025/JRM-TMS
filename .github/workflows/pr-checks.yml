@@ -45,6 +45,9 @@ jobs:
       - run: node scripts/test-apt-almacenes.cjs
       - run: node scripts/test-apt-gantt.cjs
       - run: node scripts/test-apt-operational.cjs
+      - run: node scripts/test-apt-operations.cjs
+      - run: node scripts/test-apt-recovery.cjs
+      - run: node scripts/test-apt-operational-report.cjs
       - run: node scripts/test-apt-readiness.cjs
       - run: node scripts/test-apt-ai.cjs
       - run: node scripts/test-request-attention.cjs
