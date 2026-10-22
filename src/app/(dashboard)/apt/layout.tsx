@@ -20,6 +20,7 @@ const TABS = [
   { href: '/apt/trazabilidad', label: 'Trazabilidad' },
   { href: '/apt/flujo', label: 'Flujo entre almacenes' },
   { href: '/apt/datos', label: 'Datos y verificación' },
+  { href: '/apt/analitica', label: 'Analítica APT y Distribución' },
 ] as const
 
 export default function AptLayout({ children }: { children: React.ReactNode }) {
@@ -34,6 +35,17 @@ export default function AptLayout({ children }: { children: React.ReactNode }) {
         <Lock className="h-8 w-8 text-slate-300" />
         <p className="font-semibold text-slate-700">No tiene acceso al inventario</p>
         <p className="text-sm text-slate-500">Solicite el permiso «APT — Estadía de inventario» al administrador.</p>
+      </div>
+    )
+  }
+  // La analítica tiene su propio encabezado, filtros y pestañas (no usa el ámbito del inventario)
+  if (pathname.startsWith('/apt/analitica')) {
+    return (
+      <div className="space-y-3 pb-10">
+        <nav aria-label="Almacén APT" className="flex flex-wrap items-center gap-2 text-xs">
+          <Link href="/apt" className="font-semibold text-[#002855] hover:underline">← Inventario multi‑almacén</Link>
+        </nav>
+        <Suspense fallback={<LoadingBlock />}>{children}</Suspense>
       </div>
     )
   }
