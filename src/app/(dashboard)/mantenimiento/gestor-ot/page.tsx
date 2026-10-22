@@ -2,6 +2,7 @@
 import { PageHeader } from '@/components/ui/page-header'
 import { protectedFileHref } from '@/lib/protected-files'
 import { DataTable } from '@/components/ui/data-table'
+import { CierreTallerModal } from '@/components/mantenimiento/CierreTallerModal'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -329,6 +330,7 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
   }, [loadCosts])
 
   const [warrantyReview, setWarrantyReview] = useState<ActiveWarranty[] | null>(null)
+  const [closing, setClosing] = useState(false)
 
   const rpc = async (fn: string, args: Record<string, unknown>, okMsg?: string) => {
     setBusy(true)
@@ -352,7 +354,8 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
   const transition = (status: WoStatus) => {
     let notes: string | null = null
     if (status === 'CANCELADA') { notes = prompt('Motivo de la cancelación (obligatorio):'); if (!notes?.trim()) return }
-    if (status === 'TERMINADA') { notes = prompt('Actividades realizadas (obligatorio):', order.activities_performed || ''); if (!notes?.trim()) return }
+    // Terminar exige el cierre de taller: tipo, ingreso y salida, lectura validada, moneda e IGV
+    if (status === 'TERMINADA') { setClosing(true); return }
     if (status === 'VALIDACION' || status === 'EN_ESPERA') notes = prompt(status === 'EN_ESPERA' ? 'Motivo de la espera (repuesto, proveedor…):' : 'Observaciones de la validación:') || null
     rpc('transition_work_order', { p_work_order_id: order.id, p_new_status: status, p_notes: notes }, `OT ${order.ot_code} → ${status}`)
   }
@@ -454,6 +457,8 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
           </div>
         )}
 
+        {closing && <CierreTallerModal orderId={order.id} otCode={order.ot_code} activities={order.activities_performed}
+          onClose={() => setClosing(false)} onDone={() => { setClosing(false); onChanged() }} />}
         {order.status === 'CERRADA' && order.release_result?.eligibility && (
           <div className={`rounded-lg p-3 text-sm ${order.release_result.eligibility.status === 'NO_APTO' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
             Elegibilidad al cierre: <b>{order.release_result.eligibility.status}</b>
