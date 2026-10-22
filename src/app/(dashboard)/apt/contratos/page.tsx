@@ -129,7 +129,7 @@ function exportFicha(d: InvContrato) {
   exportAptXlsx(`ot-${d.ot}-${d.corte ?? ''}`, {
     IDs: (d.productos ?? []).map(p => ({ ID: p.producto, Glosa: p.glosa ?? '', Unidad: p.unidad ?? '', Lotes: p.lotes.join(', '),
       Ingresado: p.ingresado, Producido: p.producido, Despachado: p.despachado, 'Otras salidas': p.otras_salidas,
-      'Stock 647': p.stock_647, 'Stock 540': p.stock_540, 'Stock ST': p.stock_st, 'Stock total': p.stock, 'Stock kg': p.stock_kg,
+      'Stock 647': p.stock_647, 'Stock 540': p.stock_540, 'Stock ST': p.stock_st, 'Stock total': p.stock, 'Stock kg': p.stock_kg, 'Stock TN': Math.round(p.stock_kg) / 1000,
       'Ingresado kg': p.ingresado_kg, 'Despachado kg': p.despachado_kg, Diferencia: p.diferencia,
       'Último ingreso': p.ultimo_ingreso ?? '', 'Última salida': p.ultima_salida ?? '', 'Días en APT': p.dias_apt ?? '', Guías: p.guias })),
     Guías: (d.guias ?? []).map(g => ({ Guía: g.numero, Fecha: g.fecha, Almacén: g.almacen, Cliente: g.cliente ?? '', Líneas: g.lineas, Cantidad: g.cantidad, Kg: g.kg,
@@ -182,7 +182,7 @@ function Ficha({ q, onOpen }: { q: string; onOpen: (q: string) => void }) {
       actions={<label className="flex items-center gap-2 text-xs font-semibold text-slate-600"><input type="checkbox" checked={soloStock} onChange={e => setSoloStock(e.target.checked)} className="h-4 w-4" /> Solo con stock</label>}>
       <Table empty={!productos.length} head={<tr><th className={th}>ID / glosa</th><th className={th}>Lotes</th><th className={`${th} text-right`}>Ingresado</th><th className={`${th} text-right`}>Despachado</th>
         <th className={`${th} text-right`}>Otras salidas</th><th className={`${th} text-right`}>647</th><th className={`${th} text-right`}>540</th><th className={`${th} text-right`}>ST</th><th className={`${th} text-right`}>Stock</th>
-        <th className={th}>Último ingreso</th><th className={th}>Última salida</th><th className={th}>Días en APT</th></tr>}>
+        <th className={`${th} text-right`}>Stock TN</th><th className={th}>Último ingreso</th><th className={th}>Última salida</th><th className={th}>Días en APT</th></tr>}>
         {productos.map(p => <tr key={p.producto} className="hover:bg-slate-50">
           <td className={td}><ProductoCell producto={p.producto} glosa={p.glosa} />
             <button type="button" onClick={() => verKardex(p.producto)} className="text-[11px] font-semibold text-[#002855] underline decoration-dotted">Kardex del ID</button></td>
@@ -191,8 +191,9 @@ function Ficha({ q, onOpen }: { q: string; onOpen: (q: string) => void }) {
           <td className={tdNum}>{fmtQty(p.despachado)}<p className="text-[10px] text-slate-500">{fmtN(p.guias)} guías</p></td>
           <td className={tdNum}>{p.otras_salidas ? fmtQty(p.otras_salidas) : '—'}</td>
           <td className={tdNum}>{p.stock_647 ? fmtQty(p.stock_647) : '—'}</td><td className={tdNum}>{p.stock_540 ? fmtQty(p.stock_540) : '—'}</td><td className={tdNum}>{p.stock_st ? fmtQty(p.stock_st) : '—'}</td>
-          <td className={`${tdNum} font-semibold`}>{p.stock ? fmtQty(p.stock) : '0'}{p.stock_kg > 0 && <p className="text-[10px] font-normal text-slate-500">{fmtPeso(p.stock_kg)}</p>}
+          <td className={`${tdNum} font-semibold`}>{p.stock ? fmtQty(p.stock) : '0'}
             {Math.abs(p.diferencia) > 0.0005 && <p className="text-[10px] font-semibold text-amber-700" title="Ingresado − despachado − otras salidas − stock">dif. {fmtQty(p.diferencia)}</p>}</td>
+          <td className={tdNum}>{p.stock_kg > 0 ? (p.stock_kg / 1000).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>
           <td className={td}>{fmtDate(p.ultimo_ingreso)}</td><td className={td}>{fmtDate(p.ultima_salida)}</td>
           <td className={td}>{p.stock > 0 ? <DiasPill dias={p.dias_apt} title="Desde el ingreso más antiguo con saldo" /> : '—'}</td>
         </tr>)}
