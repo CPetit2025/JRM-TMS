@@ -38,6 +38,7 @@ jobs:
       - run: node scripts/test-app-session.cjs
       - run: node scripts/test-apt-upload.cjs
       - run: node scripts/test-inventario-parse.cjs
+      - run: node --test scripts/test-mant-import.cjs
       - run: node --test scripts/test-apt-analitica.cjs
       - run: node scripts/test-apt-begin.cjs
       - run: node scripts/test-apt-fifo.cjs

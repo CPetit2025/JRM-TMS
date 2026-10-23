@@ -91,6 +91,7 @@ export const NAV_SECTIONS: NavSection[] = [
     ] },
     { title: 'Activos', items: [
       { href: '/mantenimiento/flota', label: 'Flota 360°', icon: Truck, show: any('mantenimiento-flota'), keywords: 'flota unidad placa vehiculo' },
+      { href: '/mantenimiento/activos', label: 'Activos y equivalencias', icon: Gauge, show: any('mantenimiento-flota', 'mantenimiento-finanzas'), keywords: 'activo montacargas transpaleta horometro odometro area baja equivalencia proveedor importacion excel historial' },
       { href: '/flota/reporte-unidad', label: 'Reporte por unidad', icon: Gauge, show: any('mantenimiento-flota', 'despacho', 'flota-eficiencia'), keywords: 'reporte unidad placa km kilometraje odometro diario ot peso rutas' },
       { href: '/mantenimiento/neumaticos', label: 'Neumáticos', icon: CircleDot, show: any('mantenimiento-flota'), keywords: 'neumatico llanta' },
       { href: '/mantenimiento/inventario', label: 'Repuestos', icon: PackageSearch, show: any('mantenimiento-ot'), keywords: 'repuesto inventario almacen' },

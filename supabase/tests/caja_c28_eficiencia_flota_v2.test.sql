@@ -21,6 +21,8 @@ DO $test$
 DECLARE v_user uuid; v_rc uuid; v_up uuid; r jsonb; u jsonb; e jsonb; x jsonb; v_vid uuid; n numeric;
   v_fail text[] := '{}'; v_pass int := 0;
 BEGIN
+  -- La carga de Eficiencia no se reemplaza por el registro único de mantenimiento durante esta prueba
+  PERFORM set_config('mant.sync_fe_maint', 'off', true);
   SELECT id INTO v_user FROM public.profiles WHERE id IN (SELECT u2.id FROM auth.users u2)
     AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) ORDER BY id LIMIT 1;
   INSERT INTO public.roles (name, permissions) VALUES ('ZZ C28 carga', '["flota-eficiencia-carga"]') RETURNING id INTO v_rc;
