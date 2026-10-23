@@ -7,6 +7,8 @@ import { Table, td, tdNum, th } from '@/components/inventario/parts'
 import { useInvQuery } from '@/components/inventario/useInvQuery'
 import { VerificationPanel } from '@/components/inventario/VerificationPanel'
 import { syncLegacyApt } from '@/lib/inventario/legacy'
+import { syncAnalitica, syncPesoServicios } from '@/lib/inventario/vinculacion'
+import { VinculacionPanel } from '@/components/inventario/VinculacionPanel'
 import { invApi, notifyInvUpdated, recalcular, resetUpload as uploadsReset, uploadPart } from '@/lib/inventario/api'
 import { CLASES, CLASE_LABEL, KINDS, KIND_LABEL, fmtN, fmtPeso } from '@/lib/inventario/format'
 import { INV_SIDE_LABEL, parseInventoryWorkbooks, type InvParseResult } from '@/lib/inventario/parse'
@@ -62,6 +64,7 @@ export default function InventarioDatosPage() {
   const [done, setDone] = useState<string | null>(null)
   const [results, setResults] = useState<Record<number, PartResult>>({})
   const canLoad = status.data?.can_load ?? false
+  const [linked, setLinked] = useState(0)
 
   const pick = async (files: FileList | null) => {
     if (!files?.length) return
@@ -108,10 +111,17 @@ export default function InventarioDatosPage() {
       }
       const rb = await recalcular(m => setBusy(m))
       // Carga única: los mismos archivos actualizan el APT anterior (peso de servicios, guías, flota); no bloquea
-      const legacy = parsed.parts.some(p => p.side !== 'STOCK') && files.length ? await syncLegacyApt(files, m => setBusy(m)) : null
+      const movs = parsed.parts.some(p => p.side !== 'STOCK') && files.length > 0
+      const legacy = movs ? await syncLegacyApt(files, m => setBusy(m)) : null
+      // …y la Analítica APT y Distribución (cada archivo una vez) y el peso APT de los servicios
+      const analitica = movs ? await syncAnalitica(files, m => setBusy(m)) : null
+      const peso = movs && !legacy ? await syncPesoServicios(m => setBusy(m)) : []
       setDone(`Carga aplicada y comprobada: ${parsed.parts.map(p => `${INV_SIDE_LABEL[p.side]} ${fmtN(p.rows.length)} filas`).join(' · ')}.`
         + (rb.pending ? ' El recálculo sigue en el servidor y termina solo en unos minutos (no vuelva a subir el archivo).' : '')
-        + (legacy ? ` Aviso: servicios y guías no se actualizaron (${legacy}).` : ' Servicios, guías y flota también actualizados.'))
+        + (legacy ? ` Aviso: el APT clásico, servicios y guías no se actualizaron (${legacy}).` : ' APT clásico, servicios, guías y flota también actualizados.')
+        + (analitica ? ` Aviso: la Analítica no se actualizó (${analitica}).` : movs ? ' Analítica actualizada.' : '')
+        + (peso.length ? ` ${peso.join(' ')}` : ''))
+      setLinked(k => k + 1)
       setParsed(null); setResults({})
       if (input.current) input.current.value = ''
     } catch (e) {
@@ -155,6 +165,7 @@ export default function InventarioDatosPage() {
           {done && <p className="flex items-center gap-2 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800"><CheckCircle2 className="h-4 w-4" />{done}</p>}
         </div>
       </ChartCard>}
+      <VinculacionPanel canLoad={canLoad} reloadKey={linked} />
       {ver.data && <VerificationPanel v={ver.data} full />}
       {status.loading ? <LoadingBlock /> : status.error ? <ErrorBlock message={status.error} onRetry={status.reload} /> : status.data && <>
         <ChartCard title="Cobertura de datos" subtitle={status.data.state.stats.segundos !== undefined ? `Último recálculo: ${fmtN(status.data.state.stats.movimientos)} movimientos, ${fmtN(status.data.state.stats.traspasos_enlazados)} traspasos enlazados, ${status.data.state.stats.segundos} s` : undefined}>
