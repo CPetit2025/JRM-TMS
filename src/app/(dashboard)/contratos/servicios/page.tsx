@@ -9,7 +9,7 @@ import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 import { TableActions } from '@/components/ui/table-actions'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, Check, Ban, Loader2, Upload, Download, AlertCircle, Search, X, ArrowUp, ArrowDown, ArrowUpDown, RefreshCw, Scale, Info, Layers, Clock, CheckCircle2, FileEdit } from 'lucide-react'
+import { Plus, Check, Ban, Loader2, Upload, Download, AlertCircle, Search, X, ArrowUp, ArrowDown, ArrowUpDown, RefreshCw, Scale, Info, Layers, Clock, CheckCircle2, FileEdit, CircleDollarSign } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { toast } from 'sonner'
@@ -101,6 +101,8 @@ export default function ContractServicesPage() {
   const [registryContext, setRegistryContext] = useState<Record<string, RegistryContext>>({})
   const [budgetContract, setBudgetContract] = useState('')
   const [reconcilingDispatch, setReconcilingDispatch] = useState<string | null>(null)
+  // Ruta programada cuyo flete aún no tiene monto (flota propia sin tarifa): figura en el registro para valorizarla
+  const sinValorizar = (s: ContractService) => s.service_type === 'FLETE' && !!s.dispatch_id && s.status !== 'ANULADO' && Number(s.amount_pen) === 0
   const stageOf = (s: ContractService): RegistryContext['stage'] => s.status === 'ANULADO' ? 'ANULADO' : registryContext[s.id]?.stage || (s.dispatch_id ? 'COMPROMETIDO' : 'REGISTRO_MANUAL')
   const [pesoApt, setPesoApt] = useState<Record<string, PesoApt>>({})
   const [syncingPeso, setSyncingPeso] = useState(false)
@@ -209,19 +211,26 @@ export default function ContractServicesPage() {
     const fetchData = async () => {
     setLoading(true)
     try {
-      const { data: sData, error: sError } = await supabase
-        .from('contract_services')
-        .select(`
-          *,
-          contracts!contract_id (
-            code,
-            clients (business_name)
-          )
-        `)
-        .order('created_at', { ascending: false })
-      
-      if (sError) throw sError
-      const rows = (sData as unknown as ContractService[]) || []
+      // Se lee por páginas: el API devuelve como máximo 1.000 filas por consulta
+      const rows: ContractService[] = []
+      for (let from = 0; ; from += 1000) {
+        const { data: sData, error: sError } = await supabase
+          .from('contract_services')
+          .select(`
+            *,
+            contracts!contract_id (
+              code,
+              clients (business_name)
+            )
+          `)
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: true })
+          .range(from, from + 999)
+        if (sError) throw sError
+        const page = (sData as unknown as ContractService[]) || []
+        rows.push(...page)
+        if (page.length < 1000) break
+      }
       const contexts: RegistryContext[] = []
       for (let offset = 0; offset < rows.length; offset += 200) {
         const { data, error } = await supabase.rpc('get_service_registry_context', { p_services: rows.slice(offset, offset + 200).map(s => s.id) })
@@ -479,7 +488,7 @@ export default function ContractServicesPage() {
     const matchesDateFrom = dateFrom ? srvDate >= dateFrom : true
     const matchesDateTo = dateTo ? srvDate <= dateTo : true
     
-    const matchesStatus = filterStatus === 'TODOS' ? true : stageOf(srv) === filterStatus
+    const matchesStatus = filterStatus === 'TODOS' ? true : filterStatus === 'SIN_VALORIZAR' ? sinValorizar(srv) : stageOf(srv) === filterStatus
     
     return matchesSearch && matchesDateFrom && matchesDateTo && matchesStatus
   })
@@ -557,8 +566,8 @@ export default function ContractServicesPage() {
         <TransportWorkflow current="registro" torre={false} />
         {registryView === 'OT' && <div className="ml-auto min-w-0">
           <InlineStatusBar label="Resumen por etapa (filtra la tabla)" active={filterStatus} loading={loading} onChange={setFilterStatus}
-            items={([['TODOS', 'Todos', Layers, 'navy'], ['COMPROMETIDO', 'Comprometidos', Clock, 'amber'], ['REALIZADO', 'Realizados', CheckCircle2, 'emerald'], ['REGISTRO_MANUAL', 'Manuales', FileEdit, 'slate'], ['ANULADO', 'Anulados', Ban, 'rose']] as const)
-              .map(([key, label, Icon, tone]) => ({ key, label, icon: <Icon />, tone, count: key === 'TODOS' ? services.length : services.filter(srv => stageOf(srv) === key).length }))} />
+            items={([['TODOS', 'Todos', Layers, 'navy'], ['COMPROMETIDO', 'Comprometidos', Clock, 'amber'], ['REALIZADO', 'Realizados', CheckCircle2, 'emerald'], ['REGISTRO_MANUAL', 'Manuales', FileEdit, 'slate'], ['ANULADO', 'Anulados', Ban, 'rose'], ['SIN_VALORIZAR', 'Sin valorizar', CircleDollarSign, 'amber']] as const)
+              .map(([key, label, Icon, tone]) => ({ key, label, icon: <Icon />, tone, count: key === 'TODOS' ? services.length : key === 'SIN_VALORIZAR' ? services.filter(sinValorizar).length : services.filter(srv => stageOf(srv) === key).length }))} />
         </div>}
       </div>
 
@@ -678,7 +687,9 @@ export default function ContractServicesPage() {
                       })()}
                     </td>
                     <td className={`whitespace-nowrap text-sm font-bold text-right ${srv.status === 'ANULADO' ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
-                      {Number(srv.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                      {sinValorizar(srv)
+                        ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200" title="Ruta programada sin flete: abra el servicio e ingrese el monto">Sin valorizar</span>
+                        : Number(srv.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="whitespace-nowrap text-right text-sm">
                       {(() => {
