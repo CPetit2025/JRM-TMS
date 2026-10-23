@@ -2,19 +2,20 @@
 
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { usePathname } from 'next/navigation'
-import { Bot, Send, X, Mic, Square, Loader2, RotateCcw, Volume2, VolumeX } from 'lucide-react'
+import { Bot, Send, X, Mic, Square, Loader2, RotateCcw, Volume2, VolumeX, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useDriverNudges, type NudgeAction } from '@/components/ai/useDriverNudges'
 import { toast } from 'sonner'
 import { Capacitor } from '@capacitor/core'
 import { toWav16k } from '@/lib/audio-wav'
+import { AiRichText } from '@/components/ai/AiRichText'
 
 type Context = {
   contractId?: string; vehiclePlate?: string; dispatchId?: string; status?: string; activeStep?: number
   aptFilters?: Record<string, unknown>; aptLegacyFilters?: Record<string, unknown>; aptContext?: string
   userName?: string; driverName?: string; pending?: { checklist?: boolean; stops?: number; expenses?: number; failures?: number }
 }
-type Message = { from: 'user' | 'ai'; text: string; evidence?: { filters?: Record<string, unknown>; summary?: { meta?: { cutoff?: string; model_fresh?: boolean }; quality?: unknown }; sampleTruncated?: boolean }; mode?: string }
+type Message = { from: 'user' | 'ai'; text: string; followUps?: string[]; deep?: boolean; evidence?: { filters?: Record<string, unknown>; summary?: { meta?: { cutoff?: string; model_fresh?: boolean }; quality?: unknown }; sampleTruncated?: boolean }; mode?: string }
 type Site = { id: string; name: string }
 type Proposal = { id: string; action_type?: string; payload: Record<string, unknown>; status?: string }
 type OfficeLine = { label: string; value: string }
@@ -43,6 +44,9 @@ export function JrmAiAssistant() {
   const [available, setAvailable] = useState(false)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  // Análisis profundo: modelo más capaz y más consultas cruzadas (también se activa solo en preguntas de decisión)
+  const [deepOn, setDeepOn] = useState(() => { try { return localStorage.getItem('jrm-ai-deep') === 'on' } catch { return false } })
+  const toggleDeep = () => setDeepOn(on => { try { localStorage.setItem('jrm-ai-deep', on ? 'off' : 'on') } catch { /* sin almacenamiento */ } return !on })
   const [listening, setListening] = useState(false)
   const [inputOrigin, setInputOrigin] = useState<'ai_chat' | 'ai_voice'>('ai_chat')
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
@@ -270,7 +274,7 @@ export function JrmAiAssistant() {
   const ask = async (value: string, origin: 'ai_chat' | 'ai_voice' = inputOrigin) => {
     const text = value.trim()
     if (!text || busy || !enabled) return
-    const history = messages.slice(-12)
+    const history = messages.slice(-16).map(({ from, text }) => ({ from, text }))
     setMessages(prev => [...prev, { from: 'user', text }])
     setQuestion('')
     setBusy(true)
@@ -284,10 +288,11 @@ export function JrmAiAssistant() {
       }
       const response = await fetch('/api/jrm-ai', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history, context: { path, ...selected, ...(selected.aptFilters === undefined && aptUrlFilters !== undefined ? { aptFilters: aptUrlFilters } : {}), siteId: siteId || undefined, origin } }),
+        body: JSON.stringify({ message: text, history, deep: deepOn, context: { path, ...selected, ...(selected.aptFilters === undefined && aptUrlFilters !== undefined ? { aptFilters: aptUrlFilters } : {}), siteId: siteId || undefined, origin } }),
       })
       const data = await response.json()
-      setMessages(prev => [...prev, { from: 'ai', text: response.ok ? data.answer : data.error || 'No pude completar la consulta.', evidence: response.ok ? data.evidence : undefined, mode: data.mode }])
+      setMessages(prev => [...prev, { from: 'ai', text: response.ok ? data.answer : data.error || 'No pude completar la consulta.', evidence: response.ok ? data.evidence : undefined, mode: data.mode,
+        followUps: response.ok && Array.isArray(data.followUps) ? data.followUps.filter((q: unknown) => typeof q === 'string').slice(0, 3) : undefined, deep: Boolean(data.deep) }])
       if (response.ok && Array.isArray(data.proposals)) setProposals(prev => [...prev, ...data.proposals])
       setInputOrigin('ai_chat')
     } catch {
@@ -424,7 +429,7 @@ export function JrmAiAssistant() {
               <p className="font-bold text-[#002855]">Hola{(selected.userName || selected.driverName || profile.name) ? `, ${selected.userName || selected.driverName || profile.name}` : ''}. 👋</p>
               <p className="mt-1">{profile.isDriver
                 ? 'Soy tu copiloto de viaje. Puedo consultar tu ruta y tus pendientes, y preparar reportes de retraso, incidencias, fallas o gastos para que solo los confirmes.'
-                : 'Soy JRM IA. Consulto en tiempo real solicitudes, tarifas, despachos, documentos, caja, flota y mantenimiento según tus permisos. Pregúntame con tus palabras; recuerdo lo que conversamos.'}</p>
+                : 'Soy JRM IA. Respondo dudas del sistema (cómo hacer, dónde está, qué significa), consulto en tiempo real solicitudes, despachos, caja, flota, mantenimiento y APT según tus permisos, y te ayudo a priorizar y decidir con datos. Pregúntame con tus palabras; recuerdo lo que conversamos.'}</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {suggestions.map(text => <button type="button" key={text} onClick={() => void ask(text)}
@@ -432,8 +437,13 @@ export function JrmAiAssistant() {
             </div>
           </>}
           {messages.map((item, index) => <div key={index}
-            className={`whitespace-pre-wrap rounded-xl p-3 text-sm ${item.from === 'user' ? 'ml-8 bg-blue-50' : 'mr-5 bg-slate-100'}`}>
-            {item.text}
+            className={`rounded-xl p-3 text-sm ${item.from === 'user' ? 'ml-8 whitespace-pre-wrap bg-blue-50' : 'mr-5 bg-slate-100'}`}>
+            {item.from === 'ai' ? <AiRichText text={item.text} onRoute={href => router.push(href)} /> : item.text}
+            {item.from === 'ai' && item.deep && <p className="mt-2 flex items-center gap-1 text-[11px] text-slate-500"><Sparkles className="h-3 w-3" />Análisis profundo</p>}
+            {item.from === 'ai' && index === messages.length - 1 && !!item.followUps?.length && <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-200 pt-2">
+              {item.followUps.map(q => <button key={q} type="button" disabled={busy} onClick={() => void ask(q)}
+                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-left text-xs text-[#002855] hover:bg-blue-50 disabled:opacity-50">{q}</button>)}
+            </div>}
             {item.evidence && <div className="mt-3 border-t border-slate-300 pt-2 text-xs text-slate-600">
               <p>Fuente: resumen operativo APT · corte {item.evidence.summary?.meta?.cutoff || 'no informado'}{item.evidence.summary?.meta?.model_fresh === false ? ' · recálculo pendiente' : ''}</p>
               {item.evidence.sampleTruncated && <p>El detalle consultado es una muestra; los indicadores corresponden al alcance filtrado.</p>}
@@ -482,9 +492,15 @@ export function JrmAiAssistant() {
                   className="rounded border border-slate-300 px-3 py-2 disabled:opacity-50">Cancelar</button>
               </div>}
           </div>})}
-          {busy && <p className="text-sm text-slate-500">Consultando datos autorizados...</p>}
+          {busy && <p className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />{deepOn ? 'Analizando a fondo: cruzando datos de varias áreas…' : 'Consultando y analizando…'}</p>}
           <div ref={bottomRef} />
         </div>
+        {enabled && !profile.isDriver && <div className="flex items-center justify-between border-t border-slate-100 px-4 pt-2 text-xs">
+          <button type="button" role="switch" aria-checked={deepOn} onClick={toggleDeep}
+            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-semibold ${deepOn ? 'border-[#002855] bg-[#002855] text-white' : 'border-slate-300 text-slate-600'}`}>
+            <Sparkles className="h-3.5 w-3.5" />Análisis profundo {deepOn ? 'activado' : 'desactivado'}</button>
+          <span className="text-slate-400">Se activa solo en preguntas de decisión o análisis</span>
+        </div>}
         <form onSubmit={event => { event.preventDefault(); void ask(question) }} className="flex gap-2 border-t border-slate-100 p-4 bg-white rounded-b-3xl">
           <button
             type="button"

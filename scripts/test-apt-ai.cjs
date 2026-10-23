@@ -63,7 +63,7 @@ function endpoint({ authorized = true, quota = true, signedIn = true } = {}) {
     '@/lib/ai/apt-analysis': analysis,
     '@/lib/ai/auth': { getAiIdentity: async () => signedIn ? identity : null, reserveAiRequest: async () => quota },
     '@/lib/ai/tools': { toolAccess: { get_apt_operational_analysis: { scope: 'inventarios', modules: ['apt'] } }, toolDefinitions: [{ name: 'get_apt_operational_analysis' }] },
-    '@/lib/ai/audit': { writeAiAudit: async () => {} }, '@/lib/ai/actions': {},
+    '@/lib/ai/audit': { writeAiAudit: async () => {} }, '@/lib/ai/actions': {}, '@/lib/ai/knowledge': { searchHelp: () => ({ pantallas: [], documentos: [] }) },
   })
   return { route, calls }
 }
