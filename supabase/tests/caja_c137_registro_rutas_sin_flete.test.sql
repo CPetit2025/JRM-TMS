@@ -14,7 +14,7 @@ BEGIN
 END $$;
 
 DO $test$
-DECLARE site uuid; client uuid; ct uuid; ct2 uuid; r1 uuid; r2 uuid; r3 uuid; r4 uuid; r5 uuid; r6 uuid; r7 uuid;
+DECLARE site uuid; client uuid; ct uuid; ct2 uuid; r1 uuid; r2 uuid; r3 uuid; r4 uuid; r5 uuid; r6 uuid; r7 uuid; r8 uuid;
   own uuid; legacy uuid; mixed uuid; priced uuid; pickup uuid; dropped uuid; sid uuid; n int; tag text := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6));
   reqs uuid[] := '{}';
 BEGIN
@@ -32,6 +32,10 @@ BEGIN
       'contract_id', CASE WHEN i IN (3, 5) THEN ct2 ELSE ct END, 'site_id', site, 'client_id', client, 'attention_mode', 'TRANSPORTE_JRM'));
   END LOOP;
   r1 := reqs[1]; r2 := reqs[2]; r3 := reqs[3]; r4 := reqs[4]; r5 := reqs[5]; r6 := reqs[6]; r7 := reqs[7];
+  -- Recojo por el cliente: la Nota de salida exige esa modalidad en la solicitud
+  r8 := pg_temp.ins('transport_requests', jsonb_build_object('request_number', 'ZZ-C137-' || tag || '-8', 'requester_name', 'ZZ C137',
+    'pickup_address', 'Origen', 'delivery_address', 'Destino', 'request_type', 'DESPACHO', 'status', 'ASIGNADA', 'required_date', current_date,
+    'contract_id', ct, 'site_id', site, 'client_id', client, 'attention_mode', 'RECOJO_CLIENTE'));
 
   -- T1 flota propia sin tarifa (flete 0): dos servicios de la OT A y uno de la OT B → una línea por OT, sin valorizar
   INSERT INTO public.dispatches(dispatch_number, vehicle_plate, driver_name, scheduled_departure, status, freight_cost, contract_id, site_id)
@@ -63,7 +67,7 @@ BEGIN
   -- T5 recojo por el cliente (EXTERNO / Nota de salida) y parada retirada en la misma transacción → sin línea
   INSERT INTO public.dispatches(dispatch_number, vehicle_plate, driver_name, scheduled_departure, status, freight_cost, contract_id, site_id)
   VALUES ('ZZ-C137-5-' || tag, 'EXTERNO', 'ZZ C137', now() + interval '2 day', 'PROGRAMADO', 0, ct, site) RETURNING id INTO pickup;
-  INSERT INTO public.dispatch_requests(dispatch_id, transport_request_id, status, document_type, sequence_order) VALUES (pickup, r1, 'PROGRAMADO', 'NOTA_SALIDA', 1);
+  INSERT INTO public.dispatch_requests(dispatch_id, transport_request_id, status, document_type, sequence_order) VALUES (pickup, r8, 'PROGRAMADO', 'NOTA_SALIDA', 1);
   INSERT INTO public.dispatches(dispatch_number, vehicle_plate, driver_name, scheduled_departure, status, freight_cost, contract_id, site_id)
   VALUES ('ZZ-C137-6-' || tag, 'ZZ6' || tag, 'ZZ C137', now() + interval '3 day', 'PROGRAMADO', 0, ct, site) RETURNING id INTO dropped;
   INSERT INTO public.dispatch_requests(dispatch_id, transport_request_id, status, document_type, sequence_order) VALUES (dropped, r2, 'PROGRAMADO', 'GR', 1);
