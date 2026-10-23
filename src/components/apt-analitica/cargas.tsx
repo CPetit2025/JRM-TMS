@@ -4,7 +4,8 @@ import { useMemo, useState } from 'react'
 import { CheckCircle2, FileUp, Loader2, RotateCcw, ShieldAlert, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
-import { PARSER_VERSION, type ParsedSheet } from '@/lib/apt-analitica/normalize'
+import type { ParsedSheet } from '@/lib/apt-analitica/normalize'
+import { filePeriod, importAnaliticaFile } from '@/lib/apt-analitica/importFile'
 import { MAX_FILE_BYTES, fileHash, parseWorkbook, type WorkbookParse } from '@/lib/apt-analitica/workbook'
 import type { SourceType } from '@/lib/apt-analitica/types'
 import { Modal } from '@/components/ui/modal'
@@ -57,11 +58,7 @@ export function CargasTab() {
     setPrepared(out); setReading(false)
   }
 
-  const period = (p: Prepared) => {
-    const f = p.parse.sheets.map(s => s.periodFrom).filter(Boolean).sort()[0] ?? null
-    const t = p.parse.sheets.map(s => s.periodTo).filter(Boolean).sort().at(-1) ?? null
-    return { from: f, to: t }
-  }
+  const period = (p: Prepared) => filePeriod(p.parse)
   const already = (p: Prepared) => imports.find(i => i.status === 'ACTIVA' && i.file_hash === p.hash && i.source_type === source)
   const overlaps = (p: Prepared) => { const { from, to } = period(p); return from && to ? imports.filter(i => i.status === 'ACTIVA' && family(i.source_type) === family(source) && i.period_from && i.period_to && i.period_from <= to && i.period_to >= from) : [] }
   const anyOverlap = prepared.some(p => overlaps(p).length > 0)
@@ -69,34 +66,7 @@ export function CargasTab() {
 
   const run = async () => {
     const res: typeof summary = []
-    for (const p of valid) {
-      const rows = p.parse.sheets.flatMap(s => s.rows)
-      const { from, to } = period(p)
-      setRunning(`${p.file.name}: preparando…`)
-      const { data: b, error: e1 } = await supabase.rpc('apa_import_begin', { p: {
-        source_type: source, file_name: p.file.name, file_hash: p.hash, file_size: p.file.size, period_from: from, period_to: to, cutoff: cutoff || null,
-        parser_version: PARSER_VERSION, sheets: p.parse.sheets.map(s => ({ sheet: s.sheet, header_row: s.header.headerRow, rows: s.rows.length, counts: s.counts,
-          ignored: s.header.columns.filter(c => c.ignored).map(c => c.header || `(columna ${c.index + 1} sin encabezado)`) })),
-        warnings: [...p.parse.sheets.flatMap(s => s.warnings.slice(0, 20)), ...p.parse.skipped.map(s => `Hoja ${s.sheet} ignorada: ${s.reason}`)] } })
-      if (e1 || !b?.success) { res.push({ file: p.file.name, ok: false, text: e1?.message ?? b?.error ?? 'No se pudo iniciar' }); continue }
-      const id = b.id as string
-      let failed: string | null = null
-      for (let i = 0; i < rows.length; i += 1000) {
-        setRunning(`${p.file.name}: ${fmtNum(Math.min(rows.length, i + 1000))} de ${fmtNum(rows.length)} filas`)
-        const chunk = rows.slice(i, i + 1000).map(r => ({ sheet: r.sheet, row: r.row, raw: r.raw, status: r.status, reasons: r.reasons, fingerprint: r.fingerprint, dup: r.dup, norm: r.norm }))
-        let ok = false
-        for (let attempt = 0; attempt < 3 && !ok; attempt++) {
-          const { error } = await supabase.rpc('apa_import_rows', { p_import: id, p_rows: chunk })
-          if (!error) ok = true; else if (attempt === 2) failed = error.message; else await new Promise(r => setTimeout(r, 1500 * (attempt + 1)))
-        }
-        if (failed) break
-      }
-      if (failed) { res.push({ file: p.file.name, ok: false, text: `Envío interrumpido: ${failed}. La carga quedó en preparación y no cuenta; vuelva a intentarlo.` }); continue }
-      setRunning(`${p.file.name}: cerrando y buscando repetidos…`)
-      const { data: f, error: e3 } = await supabase.rpc('apa_import_finish', { p_import: id, p_expected: rows.length })
-      if (e3) { res.push({ file: p.file.name, ok: false, text: e3.message }); continue }
-      res.push({ file: p.file.name, ok: true, text: `${fmtNum(f.rows_accepted)} aceptadas, ${fmtNum(f.rows_rejected)} rechazadas y ${fmtNum(f.rows_review)} en revisión${f.repeated ? ` (${fmtNum(f.repeated)} posibles repetidos de otra carga)` : ''}.` })
-    }
+    for (const p of valid) res.push({ file: p.file.name, ...await importAnaliticaFile(supabase, p, source, cutoff || null, setRunning) })
     setRunning(null); setSummary(res); setPrepared([])
     if (res.some(r => r.ok)) { toast.success('Carga aplicada'); await reload() }
   }
