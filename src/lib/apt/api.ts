@@ -203,6 +203,15 @@ export const aptApi = {
     call<{ rows: number }>('apt_upload_rows', { p_upload_id: uploadId, p_kind: kind, p_rows: rows }),
   rebuildModels,
   uploadApply: async (uploadId: string) => {
+    const summary = await aptApi.uploadApplyOnly(uploadId)
+    try {
+      return { summary, ...await rebuildModels(), warning: null }
+    } catch (error) {
+      return { summary, warning: `La carga está aplicada. El recálculo quedó pendiente: ${error instanceof Error ? error.message : 'error del servidor'}` }
+    }
+  },
+  // Aplica el reemplazo por fechas sin recalcular (una carga grande se aplica por meses y se recalcula una vez al final)
+  uploadApplyOnly: async (uploadId: string): Promise<AptUpload['summary']> => {
     clearAptCache()
     let summary: AptUpload['summary']
     try {
@@ -216,11 +225,7 @@ export const aptApi = {
       if (statusError || data?.status !== 'APLICADA') throw error
       summary = data.summary as AptUpload['summary']
     }
-    try {
-      return { summary, ...await rebuildModels(), warning: null }
-    } catch (error) {
-      return { summary, warning: `La carga está aplicada. El recálculo quedó pendiente: ${error instanceof Error ? error.message : 'error del servidor'}` }
-    }
+    return summary
   },
   uploadDiscard: (uploadId: string) => call<Record<string, never>>('apt_upload_discard', { p_upload_id: uploadId }).finally(clearAptCache),
   uploads: async (limit = 50) => {

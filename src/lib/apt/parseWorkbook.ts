@@ -85,7 +85,7 @@ function cellValue(v: unknown): unknown {
   return v
 }
 
-function isoOf(v: unknown): string | null {
+export function isoOf(v: unknown): string | null {
   if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10)
   if (typeof v === 'string') {
     const m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
