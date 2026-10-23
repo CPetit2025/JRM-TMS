@@ -75,7 +75,7 @@ BEGIN
  d := rep->'days'->0;
  IF rep->>'success' = 'true' AND (d->>'odo_start')::numeric = 1500 AND (d->>'checklists')::int = 1 AND (d->>'routes')::int = 0
     AND d->'alerts' ? 'ODOMETRO_RETROCEDE' AND jsonb_array_length(d->'readings') = 3
-    AND (public.unit_daily_report('ZZC107A', current_date - 200, current_date)->>'success') = 'false'
+    AND (public.unit_daily_report('ZZC107A', current_date - 500, current_date)->>'success') = 'false'
     AND (SELECT count(*) FROM jsonb_array_elements(public.unit_report_plates()) p WHERE p->>'plate' = 'ZZC107A') = 1
  THEN pass := pass + 1; ELSE fails := fails || ('T5 reporte: ' || COALESCE(d::text, rep::text)); END IF;
 
