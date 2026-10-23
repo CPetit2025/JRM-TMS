@@ -50,6 +50,8 @@ jobs:
       - run: node scripts/test-apt-operational-report.cjs
       - run: node scripts/test-apt-readiness.cjs
       - run: node scripts/test-apt-ai.cjs
+      - run: node --test scripts/test-jrm-ai-knowledge.cjs
+      - run: node --test scripts/test-jrm-ai-orchestration.cjs
       - run: node scripts/test-request-attention.cjs
       - run: node scripts/test-request-inline-components.cjs
       - run: node scripts/test-request-reference.mjs

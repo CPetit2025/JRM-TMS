@@ -30,6 +30,10 @@ const nextConfig: NextConfig = {
       { source: '/api/:path*', headers: [{ key: 'Cache-Control', value: 'no-store' }] },
     ]
   },
+  // JRM IA lee la documentación funcional (docs/*.md) para responder dudas de uso del sistema
+  outputFileTracingIncludes: {
+    '/api/jrm-ai': ['./docs/**/*.md'],
+  },
   // Almacén APT: /apt es el inventario multi-almacén; el APT clásico vive en /apt/clasico
   async redirects() {
     if (isCapacitor) return []
