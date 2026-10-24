@@ -38,6 +38,8 @@ test('every row searches code, name and DNI in natural order without changing ho
   const add = () => renderer.root.findAllByType('button').find(b => b.children.includes(' Agregar trabajador'))
   await act(async () => { add().props.onClick(); add().props.onClick() })
   const selectors = () => renderer.root.findAllByType(SearchableSelect)
+  await act(pause)
+  assert.equal(calls.length,0,'no se consulta el ERP de personal mientras no se elige un trabajador')
   assert.equal(selectors().length, 2)
   assert.deepEqual(selectors()[0].props.options.map(o => o.value), ['T001', 'T002', 'T2', 'T003', 'T010', 'T10'])
   const input = label => renderer.root.findByProps({ 'aria-label': label })
@@ -56,6 +58,9 @@ test('every row searches code, name and DNI in natural order without changing ho
   }
   let options = await search(1, 'jose perez', ['T001'])
   await act(async () => options[0].props.onClick())
+  await act(pause)
+  assert.equal(calls.at(-1).args.p.lines.length,1,'las filas vacías no invalidan la vista previa de las filas elegidas')
+  assert.ok(renderer.root.findByProps({ 'aria-label': 'Horas calculadas del trabajador 1' }))
   options = await search(2, '12345672', ['T001'])
   assert.equal(options[0].props.disabled, true)
   await act(async () => options[0].props.onClick())
