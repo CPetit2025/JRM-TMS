@@ -15,6 +15,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { GuiaDetalleModal } from '@/components/guias/GuiaDetalleModal'
+import { ErpGuiasValidacion, ErpOtReferencia } from '@/components/erp/ErpReferencia'
 import { useDropzone } from 'react-dropzone'
 import * as XLSX from 'xlsx'
 
@@ -827,6 +828,7 @@ export default function ContractServicesPage() {
                   </div>
                 )
               })()}
+              {newService.contract_id && <div className="mt-2"><ErpOtReferencia ot={contracts.find(c => c.id === newService.contract_id)?.code} compact /></div>}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -1072,7 +1074,9 @@ export default function ContractServicesPage() {
               ) : (
                 <span className="text-slate-400 text-sm italic">Sin guías registradas</span>
               )}
+              {viewingService.referral_guide && <div className="mt-2"><ErpGuiasValidacion guias={viewingService.referral_guide.split(',')} ot={viewingService.contracts?.code} /></div>}
             </div>
+            {viewingService.contracts?.code && <ErpOtReferencia ot={viewingService.contracts.code} />}
 
             <div className="bg-white p-3 rounded border border-slate-200">
               <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Detalle / KG</span>

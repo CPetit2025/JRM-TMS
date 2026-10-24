@@ -39,6 +39,7 @@ import { checkDispatchEligibility } from '@/lib/eligibility'
 import { ReportarFallaButton } from '@/components/mantenimiento/ReportarFalla'
 import { TerceroFields, TERCERO_VACIO, type TerceroForm } from '@/components/despacho/Tercero'
 import { AddRouteService } from '@/components/despacho/AddRouteService'
+import { ErpOtLinea } from '@/components/erp/ErpReferencia'
 import { OCCUPIED_DISPATCH_STATUSES, routeAssignment } from '@/lib/route-assignment'
 
 type PlanningCarrier = { business_name: string | null }
@@ -814,6 +815,8 @@ export default function DespachoPage() {
                             <span>Atención: <b className="text-slate-800">{requestedAttention(req)}</b></span>
                             <span className="truncate" title={`${req.pickup_address} → ${req.delivery_address}`}>{districtOf(req.pickup_address, req.pickup_district) || 'Origen'} → {districtOf(req.delivery_address, req.delivery_district) || 'Destino'}</span>
                           </span>
+                          {/* Referencia del ERP (solo lectura) de la OT de cada parada elegida */}
+                          {stop >= 0 && req.contracts?.code && <span className="mt-0.5 block"><ErpOtLinea ot={req.contracts.code} /></span>}
                         </span>
                       </label>
                     </li>
