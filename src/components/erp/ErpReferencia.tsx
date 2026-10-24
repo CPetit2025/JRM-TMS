@@ -29,22 +29,26 @@ export interface ErpRefResumen { success: true; sin_datos?: boolean; desde: stri
   solo_tms: Array<{ guia: string; ot_tms: string | null; rutas: string | null; placas: string | null; fecha_tms: string | null }>
   desfase: Array<{ guia: string; ots: string | null; rutas: string | null; fecha_erp: string | null; fecha_tms: string | null; dif_dias: number }> }
 
-// null = sin acceso o error (no se muestra); las respuestas se reutilizan durante la sesión de la pantalla
+// null = sin acceso o error (no se muestra); PENDIENTE = la base aún no tiene la función (migración sin aplicar: se
+// avisa en vez de ocultar); las respuestas se reutilizan durante la sesión de la pantalla
+const PENDIENTE = { pendiente: true } as const
+const isPendiente = (d: unknown): d is typeof PENDIENTE => d === PENDIENTE
 const cache = new Map<string, Promise<unknown>>()
-function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T | null> {
+function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T | typeof PENDIENTE | null> {
   const key = `${fn}|${JSON.stringify(args)}`
   if (!cache.has(key)) {
     cache.set(key, Promise.resolve(supabase.rpc(fn, args)).then(({ data, error }) => {
       const out = data as { success?: boolean } | null
+      if (error && (error.code === 'PGRST202' || error.code === '42883')) return PENDIENTE
       if (error || !out || out.success === false) { cache.delete(key); return null }
       return out
     }, () => { cache.delete(key); return null }))
   }
-  return cache.get(key) as Promise<T | null>
+  return cache.get(key) as Promise<T | typeof PENDIENTE | null>
 }
 function useRpc<T>(fn: string, args: Record<string, unknown> | null) {
   const key = args ? JSON.stringify(args) : ''
-  const [state, setState] = useState<{ key: string; data: T | null; loading: boolean }>({ key: '', data: null, loading: false })
+  const [state, setState] = useState<{ key: string; data: T | typeof PENDIENTE | null; loading: boolean }>({ key: '', data: null, loading: false })
   useEffect(() => {
     if (!key) return
     let alive = true
@@ -56,6 +60,12 @@ function useRpc<T>(fn: string, args: Record<string, unknown> | null) {
 
 const ratio = (v: number | null | undefined) => v == null ? '—' : fmtPct(Number(v) * 100)
 const corte = (c?: Cortes) => c?.CONTRATOS ? `corte ERP ${fmtDateTime(c.CONTRATOS)}` : 'sin corte'
+
+// Aviso visible cuando la función aún no está instalada en la base (p. ej. vista previa antes de aplicar la migración)
+function Pendiente({ title }: { title: string }) {
+  return <Shell title={title}><p className="font-semibold text-indigo-900">Referencia del ERP pendiente de activar: la base aún no tiene esta consulta
+    (se activa al aplicar la migración del despliegue). Este recuadro mostrará aquí los datos del ERP.</p></Shell>
+}
 
 function Shell({ children, title, sub }: { children: React.ReactNode; title: string; sub?: string }) {
   return (
@@ -73,6 +83,7 @@ export function ErpOtReferencia({ ot, compact = false }: { ot: string | null | u
   if (!ot) return null
   if (loading) return <p className="text-xs text-slate-400">Consultando el ERP…</p>
   if (!data) return null
+  if (isPendiente(data)) return <Pendiente title={`OT ${ot}`} />
   if (data.sin_datos) return <p className="text-xs text-slate-500">Aún no hay carga del Actualizable del ERP.</p>
   if (!data.en_erp) return <Shell title={`OT ${data.ot}`} sub={corte(data.cortes)}><p className="font-semibold text-amber-800">La OT no está en el Actualizable vigente.</p></Shell>
   const incompletas = data.grupos.reduce((s, g) => s + g.incompletas, 0)
@@ -112,7 +123,9 @@ export function ErpOtReferencia({ ot, compact = false }: { ot: string | null | u
 // Una línea por OT para listas (p. ej. paradas de una ruta)
 export function ErpOtLinea({ ot }: { ot: string | null | undefined }) {
   const { data } = useRpc<ErpRefOt>('erp_ref_ot', ot ? { p_ot: ot } : null)
-  if (!ot || !data || data.sin_datos) return null
+  if (!ot || !data) return null
+  if (isPendiente(data)) return <span className="inline-flex items-center gap-1 text-[11px] text-indigo-800"><Database className="h-3 w-3" aria-hidden="true" />Referencia del ERP pendiente de activar</span>
+  if (data.sin_datos) return null
   if (!data.en_erp) return <span className="inline-flex items-center gap-1 text-[11px] text-amber-700"><Database className="h-3 w-3" aria-hidden="true" />OT no está en el ERP</span>
   const pend = data.grupos.filter(g => g.validas && (g.pendiente ?? 0) > 0)
   return (
@@ -130,7 +143,9 @@ export function ErpGuiasValidacion({ guias, ot }: { guias: Array<string | null |
   // Un campo puede traer varias guías (separadas por coma, punto y coma, barra o espacio), igual que en el cruce del ERP
   const list = [...new Set(guias.flatMap(g => (g ?? '').split(/[,;/\s·]+/)).map(g => g.trim()).filter(Boolean))].sort()
   const { data } = useRpc<{ success: true; sin_datos?: boolean; cortes: Cortes; guias: ErpRefGuiaCheck[] }>('erp_ref_guias', list.length ? { p_guias: list, p_ot: ot ?? null } : null)
-  if (!list.length || !data || data.sin_datos) return null
+  if (!list.length || !data) return null
+  if (isPendiente(data)) return <p className="text-[11px] font-semibold text-indigo-800">Validación de guías contra el ERP pendiente de activar ({list.join(', ')}).</p>
+  if (data.sin_datos) return null
   return (
     <div className="flex flex-wrap gap-1.5 text-[11px]" aria-label="Guías frente al ERP">
       {data.guias.map(g => !g.en_erp
@@ -152,7 +167,9 @@ export function ErpGuiasResumenCard({ dias = 7, canOpenErp = false }: { dias?: n
   const desde = new Date(new Date(`${hasta}T12:00:00`).getTime() - dias * 86400000).toISOString().slice(0, 10)
   const { data } = useRpc<ErpRefResumen>('erp_ref_guias_resumen', { p: { desde, hasta, limit: 8 } })
   const [open, setOpen] = useState<'solo_erp' | 'solo_tms' | 'desfase' | null>(null)
-  if (!data || data.sin_datos) return null
+  if (!data) return null
+  if (isPendiente(data)) return <Pendiente title="Guías ERP vs TMS" />
+  if (data.sin_datos) return null
   const r = data.resumen
   const items = [
     ['solo_erp', 'Guías del ERP sin ruta en el TMS', r.solo_erp, 'text-amber-800'],
