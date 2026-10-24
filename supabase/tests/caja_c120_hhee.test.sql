@@ -12,8 +12,10 @@ BEGIN
  SELECT p.id INTO reviewer FROM public.profiles p JOIN auth.users u ON u.id=p.id WHERE p.id<>actor ORDER BY p.id LIMIT 1;
  IF actor IS NULL OR reviewer IS NULL THEN RAISE EXCEPTION 'CAJA C120 FAIL: faltan dos perfiles para probar independencia'; END IF;
  INSERT INTO public.roles(id,name,permissions) VALUES(request_role,'C120-request-'||request_role,'["hhee-solicitar:write"]'),
- (chief_role,'C120-chief-'||chief_role,'["hhee-aprobar:write"]'),(hr_role,'C120-hr-'||hr_role,'["hhee-validar:write"]'),
+ (hr_role,'C120-hr-'||hr_role,'["hhee-validar:write"]'),
  (manager_role,'C120-mgr-'||manager_role,'["hhee-gerencia:read","hhee-excepciones:write"]');
+ INSERT INTO public.roles(id,name,permissions) VALUES(chief_role,'Jefe de Distribución','["hhee-aprobar:write"]')
+ ON CONFLICT(name) DO UPDATE SET permissions=excluded.permissions RETURNING id INTO chief_role;
  INSERT INTO public.sites(id,code,name) VALUES(site,'C120-'||site,'C120 scope');
  INSERT INTO public.user_site_access(user_id,site_id) VALUES(actor,site),(reviewer,site) ON CONFLICT DO NOTHING;
  INSERT INTO public.hhee_areas(id,site_id,name) VALUES(area,site,'C120 area'),(outside,public.primary_site_id(),'C120 outside '||outside);
