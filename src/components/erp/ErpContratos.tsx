@@ -224,7 +224,7 @@ export function ErpSinAltaModal({ open, onClose, onAlta, onAuto }: {
       <div className="space-y-3 text-sm">
         <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="flex-1">Al cargar el Actualizable, las OT activas que faltan se dan de alta solas (madre con su cliente por RUC, subcontratos y errores; sin partida).
+            <p className="flex-1">Al cargar el Actualizable, las OT que faltan (activas o con saldo pendiente en el ERP) se dan de alta solas (madre con su cliente por RUC, subcontratos y errores; sin partida).
               Las garantías y las OT sin RUC válido se registran aquí con «Dar de alta».</p>
             {!auto && <button type="button" disabled={autoBusy} onClick={() => void runAuto(true)}
               className="min-h-9 rounded-lg border border-sky-300 bg-white px-3 font-semibold text-sky-900 disabled:opacity-50">{autoBusy ? 'Revisando…' : 'Dar de alta automáticamente ahora'}</button>}
@@ -232,7 +232,7 @@ export function ErpSinAltaModal({ open, onClose, onAlta, onAuto }: {
           {auto && <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-sky-200 pt-2">
             <p className="flex-1">{auto.madres + auto.hijos
               ? `Se darán de alta ${fmtN(auto.madres)} OT madre y ${fmtN(auto.hijos)} subcontratos/errores.`
-              : 'No hay OT activas pendientes de alta automática.'}
+              : 'No hay OT pendientes de alta automática.'}
               {auto.garantias ? ` ${fmtN(auto.garantias)} garantías quedan para alta manual.` : ''}
               {auto.ruc_invalido ? ` ${fmtN(auto.ruc_invalido)} sin RUC válido.` : ''}
               {auto.sin_madre ? ` ${fmtN(auto.sin_madre)} esperan a su OT madre.` : ''}</p>

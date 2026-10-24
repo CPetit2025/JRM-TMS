@@ -112,7 +112,7 @@ export async function erpSincronizarClientes(): Promise<{ corregidas: number; cl
   return error || !out?.success ? null : out
 }
 
-// Alta automática de las OT activas del ERP que no existen en el TMS (madre con su cliente por RUC, subcontratos y
+// Alta automática de las OT del ERP (activas o con saldo pendiente) que no existen en el TMS (madre con su cliente por RUC, subcontratos y
 // errores; sin partida). Se ejecuta en el servidor (sin el límite de 8 s); si no está disponible, desde el navegador.
 export type ErpAltaResultado = {
   success: boolean; error?: string; simulacion?: boolean; madres: number; hijos: number; clientes_creados: number
