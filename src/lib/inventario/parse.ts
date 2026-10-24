@@ -41,6 +41,20 @@ export interface InvParseResult {
   parts: InvParsedPart[]
   ignored: Array<{ fileName: string; sheetName: string; reason: string }>
   warnings: string[]
+  // Excel del ERP (Actualizable Despacho o Stock Bodega Despacho): se cargan en «ERP: OT, guías y stock»
+  erpFiles: string[]
+}
+
+export const ERP_SHEET = 'ERP'
+// Actualizable (Nro_Documento + Cant_Pendiente) o Stock Bodega Despacho (Stock_Comprometido o Fecha_Actualizacion con
+// Bodega, Stock y Lote). El stock del ERP es la foto de hoy, no un saldo inicial: como foto del inventario dejaría
+// sin usar todos los movimientos anteriores.
+export function isErpExport(aoa: unknown[][]) {
+  return aoa.slice(0, 10).some(r => {
+    const k = new Set((r || []).map(normKey))
+    return (k.has('nrodocumento') && k.has('cantpendiente'))
+      || (k.has('codproducto') && k.has('stock') && k.has('lote') && (k.has('stockcomprometido') || k.has('fechaactualizacion')))
+  })
 }
 
 export interface InvInputFile { name: string; data: ArrayBuffer | Uint8Array }
@@ -97,6 +111,7 @@ function emptyPart(side: InvSide, fileName: string, sheetName: string): InvParse
 }
 
 export function parseInventorySheet(aoa: unknown[][], fileName: string, sheetName: string): { parts: InvParsedPart[] } | { skip: string } {
+  if (isErpExport(aoa)) return { skip: ERP_SHEET }
   const h = findHeader(aoa)
   if (!h) return { skip: 'No tiene las columnas BODEGA, Producto y (TIPODOCTO, Fecha, Cantidad) o un saldo de stock' }
   const headers = (aoa[h.row] || []).map(c => {
@@ -147,7 +162,7 @@ export function parseInventorySheet(aoa: unknown[][], fileName: string, sheetNam
 }
 
 export function parseInventoryWorkbooks(files: InvInputFile[], onProgress?: (m: string) => void): InvParseResult {
-  const out: InvParseResult = { parts: [], ignored: [], warnings: [] }
+  const out: InvParseResult = { parts: [], ignored: [], warnings: [], erpFiles: [] }
   for (const f of files) {
     onProgress?.(`Leyendo ${f.name}…`)
     const wb = XLSX.read(f.data, { type: 'array', cellDates: true, dense: true })
@@ -157,6 +172,7 @@ export function parseInventoryWorkbooks(files: InvInputFile[], onProgress?: (m: 
       onProgress?.(`Procesando ${f.name} · ${name}…`)
       const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: null, blankrows: false })
       const res = parseInventorySheet(aoa, f.name, name)
+      if ('skip' in res && res.skip === ERP_SHEET) { if (!out.erpFiles.includes(f.name)) out.erpFiles.push(f.name); continue }
       if ('skip' in res) { out.ignored.push({ fileName: f.name, sheetName: name, reason: res.skip }); continue }
       // El lado lo decide el signo de Cantidad; si contradice el nombre de la hoja, se avisa antes de aplicar
       const hint: InvSide | null = /ENTRADA|INGRESO/i.test(name) ? 'E' : /SALIDA|EGRESO/i.test(name) ? 'S' : null
@@ -166,7 +182,7 @@ export function parseInventoryWorkbooks(files: InvInputFile[], onProgress?: (m: 
       out.parts.push(...res.parts)
     }
   }
-  if (!out.parts.length) throw new Error('No se encontraron movimientos ni una foto de stock. Suba los reportes de Entradas y Salidas del ERP (columnas TIPODOCTO, BODEGA, Numero, Fecha, Producto, Cantidad, Lote…).')
+  if (!out.parts.length && !out.erpFiles.length) throw new Error('No se encontraron movimientos ni una foto de stock. Suba los reportes de Entradas y Salidas del ERP (columnas TIPODOCTO, BODEGA, Numero, Fecha, Producto, Cantidad, Lote…).')
   out.parts = mergeBySide(out.parts, out.warnings)
   for (const p of out.parts) {
     if (p.sinFecha) out.warnings.push(`${p.fileName} · ${p.sheetName}: ${p.sinFecha} fila(s) sin fecha válida no se cargarán.`)

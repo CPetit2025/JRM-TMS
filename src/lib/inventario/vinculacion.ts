@@ -69,3 +69,11 @@ export async function syncPesoServicios(onProgress: (m: string) => void): Promis
   if (data && data.success === false && !/permiso/i.test(String(data.error))) return [`Peso de servicios: ${data.error}`]
   return []
 }
+
+// Descarta la foto de stock vigente (cargada por error o posterior a los movimientos) y recalcula con todo el historial
+export async function descartarFotoStock(onProgress: (m: string) => void): Promise<string[]> {
+  onProgress('Descartando la foto de stock…')
+  const { data, error } = await supabase.rpc('inv_snapshot_discard')
+  if (error || !data?.success) throw new Error(data?.error || error?.message || 'No se pudo descartar la foto de stock')
+  return recalcularTodo(onProgress)
+}

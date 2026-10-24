@@ -12,7 +12,7 @@ import { ERP_KIND_LABEL, parseErpWorkbooks, type ErpParseResult } from '@/lib/er
 import type { ErpEstado } from '@/lib/erp/types'
 
 // Lee en un worker; si el navegador no puede crearlo, en el hilo principal
-function readFiles(files: File[], onProgress: (m: string) => void): Promise<ErpParseResult> {
+export function readErpFiles(files: File[], onProgress: (m: string) => void): Promise<ErpParseResult> {
   return new Promise((resolve, reject) => {
     const fallback = () => {
       setTimeout(async () => {
@@ -77,7 +77,7 @@ export function ErpCarga({ estado }: { estado: ErpEstado }) {
     setError(null); setDone(null); setParsed(null); setResults({})
     setBusy('Leyendo archivos…')
     try {
-      const r = await readFiles([...files], m => setBusy(m))
+      const r = await readErpFiles([...files], m => setBusy(m))
       setParsed(r)
       if (r.errors.length) setError(r.errors.join(' '))
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo leer el archivo') } finally { setBusy(null) }

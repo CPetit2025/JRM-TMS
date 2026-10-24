@@ -13,6 +13,10 @@ import { invApi, notifyInvUpdated, recalcular, resetUpload as uploadsReset, uplo
 import { CLASES, CLASE_LABEL, KINDS, KIND_LABEL, fmtN, fmtPeso } from '@/lib/inventario/format'
 import { INV_SIDE_LABEL, parseInventoryWorkbooks, type InvParseResult } from '@/lib/inventario/parse'
 import { fmtDate, fmtDateTime } from '@/lib/apt/format'
+import Link from 'next/link'
+import { readErpFiles } from '@/components/erp/ErpCarga'
+import { uploadErpFile } from '@/lib/erp/api'
+import { ERP_KIND_LABEL, type ErpParseResult } from '@/lib/erp/parse'
 
 // Lee en un worker; si el navegador no puede crearlo, en el hilo principal
 function readFiles(files: File[], onProgress: (m: string) => void): Promise<InvParseResult> {
@@ -57,6 +61,9 @@ export default function InventarioDatosPage() {
   const [files, setFiles] = useState<File[]>([])
   const input = useRef<HTMLInputElement>(null)
   const [parsed, setParsed] = useState<InvParseResult | null>(null)
+  // Actualizable Despacho y Stock Bodega Despacho: van a «ERP: OT, guías y stock», no al inventario
+  const [erp, setErp] = useState<ErpParseResult | null>(null)
+  const [erpDone, setErpDone] = useState<Record<number, PartResult>>({})
   const [cutoff, setCutoff] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -68,15 +75,45 @@ export default function InventarioDatosPage() {
 
   const pick = async (files: FileList | null) => {
     if (!files?.length) return
-    setError(null); setDone(null); setParsed(null); setPartial(false); setResults({})
+    setError(null); setDone(null); setParsed(null); setPartial(false); setResults({}); setErp(null); setErpDone({})
     setBusy('Leyendo archivos…')
     setFiles([...files])
-    try { setParsed(await readFiles([...files], m => setBusy(m))) } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo leer el archivo') } finally { setBusy(null) }
+    try {
+      const r = await readFiles([...files], m => setBusy(m))
+      if (r.erpFiles.length) {
+        const e = await readErpFiles([...files].filter(f => r.erpFiles.includes(f.name)), m => setBusy(m))
+        setErp(e)
+        if (e.errors.length) setError(e.errors.join(' '))
+      }
+      setParsed(r)
+    } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo leer el archivo') } finally { setBusy(null) }
   }
   const upload = async (force = false) => {
     if (!parsed || busy) return
     if (parsed.parts.some(p => p.side === 'STOCK') && !cutoff) { setError('Indique la fecha de corte de la foto de stock.'); return }
     setError(null); setPartial(false); setDone(null)
+    // Excel del ERP primero: cada uno reemplaza su foto en «ERP: OT, guías y stock»
+    const erpRes = { ...erpDone }
+    const erpFailed: string[] = []
+    for (const [i, f] of (erp?.files ?? []).entries()) {
+      if (erpRes[i]?.ok) continue
+      try {
+        const r = await uploadErpFile(f, m => setBusy(`${ERP_KIND_LABEL[f.kind]}: ${m}`))
+        erpRes[i] = { ok: true, text: `${fmtN(r.rows)} filas aplicadas en ERP: OT, guías y stock` }
+      } catch (e) {
+        erpRes[i] = { ok: false, text: errorText(e) }
+        erpFailed.push(`${ERP_KIND_LABEL[f.kind]}: ${errorText(e)}`)
+      }
+      setErpDone({ ...erpRes })
+    }
+    if (!parsed.parts.length) {
+      setBusy(null); notifyInvUpdated()
+      if (erpFailed.length) { setError(`No se aplicó: ${erpFailed.join(' · ')}. Pulse «Reanudar carga» para completar solo lo pendiente.`); return }
+      setDone('Excel del ERP aplicados: véalos en ERP: OT, guías y stock. El inventario no cambia (necesita los reportes de Entradas y Salidas).')
+      setParsed(null); setErp(null); setErpDone({})
+      if (input.current) input.current.value = ''
+      return
+    }
     // Cada parte (Entradas, Salidas, foto) se aplica por separado: si una falla, las demás siguen y se informa cuál falta
     const res: Record<number, PartResult> = { ...results }
     const failed: string[] = []
@@ -95,6 +132,7 @@ export default function InventarioDatosPage() {
       setResults({ ...res })
     }
     try {
+      failed.push(...erpFailed)
       if (failed.length) {
         setPartial(anyPartial)
         setError(`No se aplicó: ${failed.join(' · ')}. Lo demás quedó cargado; pulse «Reanudar carga» para completar solo lo pendiente.`)
@@ -111,18 +149,20 @@ export default function InventarioDatosPage() {
       }
       const rb = await recalcular(m => setBusy(m))
       // Carga única: los mismos archivos actualizan el APT anterior (peso de servicios, guías, flota); no bloquea
-      const movs = parsed.parts.some(p => p.side !== 'STOCK') && files.length > 0
-      const legacy = movs ? await syncLegacyApt(files, m => setBusy(m)) : null
+      const movFiles = files.filter(f => !parsed.erpFiles.includes(f.name))
+      const movs = parsed.parts.some(p => p.side !== 'STOCK') && movFiles.length > 0
+      const legacy = movs ? await syncLegacyApt(movFiles, m => setBusy(m)) : null
       // …y la Analítica APT y Distribución (cada archivo una vez) y el peso APT de los servicios
-      const analitica = movs ? await syncAnalitica(files, m => setBusy(m)) : null
+      const analitica = movs ? await syncAnalitica(movFiles, m => setBusy(m)) : null
       const peso = movs && !legacy ? await syncPesoServicios(m => setBusy(m)) : []
       setDone(`Carga aplicada y comprobada: ${parsed.parts.map(p => `${INV_SIDE_LABEL[p.side]} ${fmtN(p.rows.length)} filas`).join(' · ')}.`
         + (rb.pending ? ' El recálculo sigue en el servidor y termina solo en unos minutos (no vuelva a subir el archivo).' : '')
-        + (legacy ? ` Aviso: el APT clásico, servicios y guías no se actualizaron (${legacy}).` : ' APT clásico, servicios, guías y flota también actualizados.')
+        + (!movs ? '' : legacy ? ` Aviso: el APT clásico, servicios y guías no se actualizaron (${legacy}).` : ' APT clásico, servicios, guías y flota también actualizados.')
+        + (erp?.files.length ? ' Excel del ERP aplicados en ERP: OT, guías y stock.' : '')
         + (analitica ? ` Aviso: la Analítica no se actualizó (${analitica}).` : movs ? ' Analítica actualizada.' : '')
         + (peso.length ? ` ${peso.join(' ')}` : ''))
       setLinked(k => k + 1)
-      setParsed(null); setResults({})
+      setParsed(null); setResults({}); setErp(null); setErpDone({})
       if (input.current) input.current.value = ''
     } catch (e) {
       setError(errorText(e))
@@ -144,7 +184,7 @@ export default function InventarioDatosPage() {
             <span className="text-xs text-slate-500">Columnas: TIPODOCTO, BODEGA, Numero, Fecha, Producto, GLOSA, Cantidad, UNIDAD, NumRel, Lote, PesoUnitario, PesoTotalProduccido…</span>
             <input ref={input} type="file" accept=".xlsx,.xls" multiple className="sr-only" disabled={!!busy} onChange={e => pick(e.target.files)} />
           </label>
-          {parsed && <div className="space-y-3">
+          {parsed && (parsed.parts.length > 0 || !!erp?.files.length) && <div className="space-y-3">
             <Table head={<tr><th className={th}>Tipo</th><th className={th}>Archivo · hoja</th><th className={`${th} text-right`}>Filas</th><th className={th}>Rango</th><th className={`${th} text-right`}>Peso</th><th className={th}>Bodegas</th><th className={th}>Resultado</th></tr>}>
               {parsed.parts.map((p, i) => <tr key={i}>
                 <td className={`${td} font-bold`}>{INV_SIDE_LABEL[p.side]}</td><td className={td}>{p.fileName} · {p.sheetName}</td><td className={tdNum}>{fmtN(p.rows.length)}</td>
@@ -152,6 +192,12 @@ export default function InventarioDatosPage() {
                 <td className={tdNum}>{fmtPeso(p.kg)}</td><td className={`${td} max-w-96 text-[11px] text-slate-600`}>{p.bodegas.join(' · ')}</td>
                 <td className={`${td} text-xs`}>{results[i] ? <span className={`flex items-start gap-1 ${results[i].ok ? 'text-emerald-700' : 'text-red-700'}`}>
                   {results[i].ok ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}{results[i].text}</span> : <span className="text-slate-400">Pendiente</span>}</td>
+              </tr>)}
+              {erp?.files.map((f, i) => <tr key={`erp${i}`} className="bg-sky-50/60">
+                <td className={`${td} font-bold`}>ERP</td><td className={td}>{f.fileName} · {f.sheetName}</td><td className={tdNum}>{fmtN(f.rows.length)}</td>
+                <td className={td} colSpan={3}>{ERP_KIND_LABEL[f.kind]}: se carga en <Link href="/apt/erp" className="font-semibold underline">ERP: OT, guías y stock</Link> (no es una foto del inventario)</td>
+                <td className={`${td} text-xs`}>{erpDone[i] ? <span className={`flex items-start gap-1 ${erpDone[i].ok ? 'text-emerald-700' : 'text-red-700'}`}>
+                  {erpDone[i].ok ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}{erpDone[i].text}</span> : <span className="text-slate-400">Pendiente</span>}</td>
               </tr>)}
             </Table>
             {parsed.warnings.map((w, i) => <p key={i} className="flex items-start gap-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{w}</p>)}
