@@ -81,6 +81,12 @@ BEGIN
     VALUES (gen_random_uuid(), v_area, v_cause, '2025-03-03', 'Manual C132', 'Justificación C132', 'Ninguna', 'Resultado', 'SIN_REFERENCIA', v_req) RETURNING id INTO v_auto;
     INSERT INTO public.hhee_lines (request_id, person_id, person_name, person_code, planned_start, planned_end, planned_break, planned_minutes)
     VALUES (v_auto, v_cond, 'Conductor C132', 'C132-COND', '2025-03-03 18:00-05', '2025-03-03 19:00-05', 0, 60);
+  -- Horario sintético explícito para conductor y auxiliares; la transacción se revierte.
+  UPDATE public.dispatches SET started_at='2025-03-03 08:00:00-05' WHERE id=d.id;
+  INSERT INTO public.gp_shift_days(person_id,work_date,shift,reason,updated_by)
+  SELECT h.id,'2025-03-03',public.gp_checked_shift('{"kind":"TRABAJO","start":"08:00","end":"17:30","break_minutes":60}'),'Turno sintético C132',v_req
+  FROM public.hhee_people h WHERE h.area_id=v_area OR h.driver_id=d.driver_id
+  ON CONFLICT(person_id,work_date) DO UPDATE SET shift=excluded.shift;
     r := public.hhee_route_request_for(d.id, '2025-03-03 19:10:00-05');
     IF (r->>'created')::boolean AND (r->>'workers')::int = 1
        AND NOT EXISTS (SELECT 1 FROM public.hhee_lines WHERE request_id = (r->>'id')::uuid AND person_id = v_cond)

@@ -6,7 +6,7 @@ CREATE TABLE auth.users(id uuid PRIMARY KEY);
 -- Supabase grants broad privileges to new public objects; each HHEE migration must revoke them.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon,authenticated;
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$SELECT NULLIF(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
-CREATE TABLE public.roles(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),name varchar(50),permissions jsonb DEFAULT '[]');
+CREATE TABLE public.roles(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),name varchar(50) UNIQUE,permissions jsonb DEFAULT '[]');
 CREATE TABLE public.profiles(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),is_active boolean DEFAULT true,role_id uuid REFERENCES roles,first_name text,last_name text,area text);
 CREATE TABLE public.sites(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),code text,name text,is_active boolean DEFAULT true);
 CREATE TABLE public.contracts(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),code text);

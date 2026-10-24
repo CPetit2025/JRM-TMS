@@ -196,7 +196,7 @@ function RequestDetail({ id, onClose, onChanged, onEdit }: { id: string; onClose
           {r.pending_cost > 0 && d.cost_visible && <p className="mt-2 text-xs text-amber-800">{r.pending_cost} trabajador(es) con costo pendiente: completar su ficha en Personal.</p>}
         </Card>
       </div>
-      {r.approval === 'APROBADA' && r.state !== 'CANCELADA' && <ExecCard d={d} canPay={ctx.caps.approve || ctx.caps.people} canClose={ctx.caps.approve || (mine && ctx.caps.request) || ctx.caps.admin}
+      {r.approval === 'APROBADA' && r.state !== 'CANCELADA' && <ExecCard d={d} canPay={ctx.areas.some(a => a.id === r.area_id && a.can_approve)} canClose={ctx.caps.approve || (mine && ctx.caps.request) || ctx.caps.admin}
         busy={busy} act={act} />}
       {d.authorizations.length > 0 && <Card title="Informe de autorización" subtitle={`${d.authorizations.length} versión(es). Cada nueva aprobación genera una nueva versión.`}>
         <div className="grid gap-2">{d.authorizations.map(a => <div key={a.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-3 text-sm">
@@ -220,8 +220,9 @@ function RequestDetail({ id, onClose, onChanged, onEdit }: { id: string; onClose
 // Ejecutado frente a lo autorizado: cierre (app, geocerca o supervisor), reparto real y pago o compensación por línea
 function ExecCard({ d, canPay, canClose, busy, act }: { d: Detail; canPay: boolean; canClose: boolean; busy: boolean; act: (fn: () => Promise<unknown>, done: string) => Promise<void> }) {
   const [end, setEnd] = useState(''); const [why, setWhy] = useState('')
+  const [validationReason, setValidationReason] = useState('')
   const open = d.lines.filter(l => !l.actual_end)
-  return <Card title="Ejecutado" subtitle={open.length ? `${open.length} trabajador(es) con horas extras abiertas: las cierra el conductor desde el app, la salida de la base o el registro del supervisor.` : 'Horas extras cerradas.'}>
+  return <Card title="Ejecutado y validación" subtitle={open.length ? `${open.length} trabajador(es) con horas extras abiertas: las cierra el conductor desde el app, la salida de la base o el registro del supervisor.` : 'Horas extras cerradas. El saldo compensable se genera después de la validación.'}>
     <div className="overflow-x-auto">
       <table className="w-full min-w-[640px] text-left text-xs [&_td]:px-2 [&_th]:px-2">
         <thead className="text-[10px] uppercase text-slate-500"><tr><th className="py-1.5">Trabajador</th><th>Fin real</th><th className="text-right">Autorizado</th><th className="text-right">Ejecutado</th><th>Cierre</th><th>Pago o descanso</th>{d.cost_visible && <th className="text-right">Costo ejecutado</th>}</tr></thead>
@@ -231,7 +232,7 @@ function ExecCard({ d, canPay, canClose, busy, act }: { d: Detail; canPay: boole
           <td className="text-right">{fmtHours(l.minutes)}</td>
           <td className="text-right font-semibold">{l.actual_end ? <>{fmtHours(l.actual_minutes)}<span className="block text-[10px] font-normal text-slate-500">{[[l.exec_minutes_25, '25'], [l.exec_minutes_35, '35'], [l.exec_minutes_100, '100']].filter(([m]) => Number(m) > 0).map(([m, p]) => `${fmtHours(Number(m))} al ${p} %`).join(' · ')}</span></> : '—'}</td>
           <td>{l.closed_by ? <span title={l.close_reason || undefined}>{CLOSED_BY[l.closed_by]}</span> : '—'}</td>
-          <td>{canPay && l.id ? <select aria-label={`Pago o compensación de ${l.name}`} className="rounded border border-slate-300 px-1 py-0.5" disabled={busy} value={l.compensation ? 'C' : 'P'}
+          <td>{canPay && l.id && !d.execution_validated ? <select aria-label={`Pago o compensación de ${l.name}`} className="rounded border border-slate-300 px-1 py-0.5" disabled={busy} value={l.compensation ? 'C' : 'P'}
               onChange={e => void act(() => call('hhee_line_set_compensation', { p_line: l.id, p_compensation: e.target.value === 'C' }), e.target.value === 'C' ? 'Se compensará con descanso' : 'Se pagará')}>
               <option value="P">Pago</option><option value="C">Compensar con descanso</option></select>
             : l.compensation ? 'Compensar con descanso' : 'Pago'}</td>
@@ -239,7 +240,9 @@ function ExecCard({ d, canPay, canClose, busy, act }: { d: Detail; canPay: boole
         </tr>)}</tbody>
       </table>
     </div>
-    <p className="mt-2 text-[11px] text-slate-500">Compensar (D.S. 007-2002-TR art. 10): el trabajador recibe descanso equivalente en lugar del pago; las horas ejecutadas suman a su bolsa en Personal.</p>
+    <p className="mt-2 text-[11px] text-slate-500">Seleccione pago o compensación antes de validar. Solo las horas cerradas y validadas para compensación alimentan la bolsa; no se acreditan horas solicitadas ni solamente aprobadas.</p>
+    {d.can_validate && !open.length && d.lines.length > 0 && !d.execution_validated && <div className="mt-3 flex flex-wrap items-end gap-3 rounded-lg bg-sky-50 p-3"><Field label="Sustento de validación"><input className={inputCls} value={validationReason} minLength={5} maxLength={1000} onChange={e => setValidationReason(e.target.value)} /></Field><button className={btnCls} disabled={busy || validationReason.trim().length < 5} onClick={() => void act(() => call('gp_overtime_validate', { p: { id: d.request.id, version: d.request.version, reason: validationReason } }), 'Horas validadas; bolsa actualizada')}>Validar horas ejecutadas</button></div>}
+    {d.execution_validated && <p className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">Horas validadas. El destino pago/compensación y las cantidades quedan protegidos.</p>}
     {canClose && open.length > 0 && <div className="mt-3 grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[auto_1fr_auto] sm:items-end">
       <Field label="Fin real"><input type="datetime-local" className={inputCls} value={end} onChange={e => setEnd(e.target.value)} /></Field>
       <Field label="Por qué lo registra usted *"><input className={inputCls} value={why} maxLength={300} onChange={e => setWhy(e.target.value)} placeholder="Ej.: el conductor no cerró en el app" /></Field>

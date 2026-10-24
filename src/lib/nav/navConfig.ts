@@ -35,10 +35,14 @@ export const SEGUIMIENTO_ITEM: NavItem = {
 }
 
 export const NAV_SECTIONS: NavSection[] = [
-  { id: 'hhee', title: 'Control de Horas Extras', icon: Timer, groups: [{ items: [
-    { href: '/hhee/solicitudes', label: 'Solicitudes y aprobación', icon: ClipboardList, show: any('hhee','hhee-gerencia','hhee-solicitar','hhee-aprobar','hhee-validar','hhee-excepciones','hhee-costos','hhee-config'), keywords: 'hhee horas extras solicitar aprobar pdf correo informe' },
-    { href: '/hhee/personal', label: 'Personal y tarifas', icon: Users, show: any('hhee','hhee-gerencia','hhee-solicitar','hhee-aprobar','hhee-validar','hhee-excepciones','hhee-costos','hhee-config'), keywords: 'hhee alta personal trabajador remuneracion tarifa hora excel' },
-    { href: '/hhee', label: 'Panel gerencial', icon: BarChart3, show: any('hhee','hhee-gerencia','hhee-solicitar','hhee-aprobar','hhee-validar','hhee-excepciones','hhee-costos','hhee-config'), keywords: 'hhee panel gerencial causas recurrencia graficos' },
+  { id: 'hhee', title: 'Gestión de Personal', icon: Timer, groups: [{ items: [
+    { href: '/hhee/solicitudes', label: 'Solicitud de HHEE', icon: ClipboardList, show: any('hhee','hhee-gerencia','hhee-solicitar','hhee-aprobar','hhee-validar','hhee-excepciones','hhee-costos','hhee-config'), keywords: 'hhee horas extras solicitar aprobar pdf correo informe' },
+    { href: '/hhee/personal', label: 'Lista de Personal', icon: Users, show: any('hhee','hhee-gerencia','hhee-solicitar','hhee-aprobar','hhee-validar','hhee-excepciones','hhee-costos','hhee-config'), keywords: 'hhee alta personal trabajador remuneracion tarifa hora excel' },
+    { href: '/hhee', label: 'Gestión diaria', icon: BarChart3, show: any('hhee','hhee-gerencia','hhee-solicitar','hhee-aprobar','hhee-validar','hhee-excepciones','hhee-costos','hhee-config'), keywords: 'hhee panel gerencial causas recurrencia graficos' },
+    { href: '/hhee/horarios', label: 'Horarios', icon: CalendarClock, show: any('hhee','hhee-gerencia','hhee-solicitar','hhee-aprobar','hhee-validar','hhee-excepciones','hhee-costos','hhee-config'), keywords: 'personal horarios' },
+    { href: '/hhee/asistencia', label: 'Control de Asistencia', icon: ClipboardCheck, show: any('hhee','hhee-gerencia','hhee-solicitar','hhee-aprobar','hhee-validar','hhee-excepciones','hhee-costos','hhee-config'), keywords: 'personal control de asistencia' },
+    { href: '/hhee/permisos', label: 'Permisos y compensaciones', icon: CalendarRange, show: any('hhee','hhee-gerencia','hhee-solicitar','hhee-aprobar','hhee-validar','hhee-excepciones','hhee-costos','hhee-config'), keywords: 'personal permisos y compensaciones' },
+    { href: '/hhee/reportes', label: 'Reportes de Personal', icon: BarChart3, show: any('hhee','hhee-gerencia','hhee-solicitar','hhee-aprobar','hhee-validar','hhee-excepciones','hhee-costos','hhee-config'), keywords: 'personal reportes de personal' },
     { href: '/hhee/configuracion', label: 'Áreas, accesos y causas', icon: Settings2, show: any('hhee-config') },
   ] }] },
   { id: 'analitica', title: 'Reportes y Analítica', icon: BarChart3, groups: [{ items: [

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { ArrowDown, ArrowUp, ArrowUpDown, Download, FileUp, Link2, Loader2, Plus, Search, Trash2, Truck } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { Card, Field, Modal, btn2Cls, btnCls, inputCls, useFlow } from './context'
@@ -207,7 +208,6 @@ function PersonForm({ person, onClose, onSaved }: { person: Person | null; onClo
 function CompModal({ person, canEdit, onClose, onChanged }: { person: Person; canEdit: boolean; onClose: () => void; onChanged: () => Promise<void> }) {
   const [data, setData] = useState<CompList | null>(null)
   const [error, setError] = useState('')
-  const [f, setF] = useState({ rest_date: today(), hours: '', note: '' })
   const [busy, setBusy] = useState(false)
   const load = async () => {
     try { setData(await call<CompList>('hhee_comp_list', { p_person: person.id })) } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo cargar') }
@@ -217,7 +217,6 @@ function CompModal({ person, canEdit, onClose, onChanged }: { person: Person; ca
     setBusy(true); setError('')
     try { await fn(); await load(); await onChanged() } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar') } finally { setBusy(false) }
   }
-  const minutes = Math.round(Number(f.hours.replace(',', '.')) * 60)
   return (
     <Modal title={`Bolsa de horas · ${person.name}`} onClose={onClose}>
       {error && <p role="alert" className="mb-2 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
@@ -227,21 +226,15 @@ function CompModal({ person, canEdit, onClose, onChanged }: { person: Person; ca
           <p className="rounded-lg bg-slate-50 p-2"><span className="block text-[11px] text-slate-500">Descansos tomados</span><b>{fmtHours(data.balance.taken)}</b></p>
           <p className="rounded-lg bg-emerald-50 p-2"><span className="block text-[11px] text-emerald-700">Saldo</span><b className="text-emerald-900">{fmtHours(data.balance.balance)}</b></p>
         </div>
-        <p className="text-xs text-slate-500">Suman las horas ejecutadas que el aprobador marcó «Compensar con descanso» (en lugar del pago). D.S. 007-2002-TR art. 10.</p>
-        {canEdit && data.balance.balance > 0 && <div className="grid gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-[auto_auto_1fr_auto] sm:items-end">
-          <Field label="Fecha del descanso"><input type="date" className={inputCls} value={f.rest_date} onChange={e => setF({ ...f, rest_date: e.target.value })} /></Field>
-          <Field label="Horas"><input inputMode="decimal" className={`${inputCls} w-24`} value={f.hours} onChange={e => setF({ ...f, hours: e.target.value.replace(/[^0-9.,]/g, '') })} placeholder="Ej.: 2,5" /></Field>
-          <Field label="Nota"><input className={inputCls} maxLength={300} value={f.note} onChange={e => setF({ ...f, note: e.target.value })} /></Field>
-          <button type="button" className={btnCls} disabled={busy || !(minutes > 0) || !f.rest_date}
-            onClick={() => void run(async () => { await call('hhee_comp_rest_save', { p: { person_id: person.id, rest_date: f.rest_date, minutes, note: f.note } }); setF({ ...f, hours: '', note: '' }) })}>Registrar descanso</button>
-        </div>}
+        <p className="text-xs text-slate-500">Solo suman las HHEE cerradas, validadas y destinadas a compensación. Reservadas: {fmtHours(data.balance.reserved ?? 0)}. Históricas pendientes de validar: {fmtHours(data.balance.legacy_unvalidated ?? 0)}.</p>
+        <Link href="/hhee/permisos" className={btn2Cls}>Gestionar permisos y compensaciones</Link>
         <div><h3 className="mb-1 text-xs font-bold uppercase text-slate-500">Horas a compensar</h3>
           {data.earned.length ? <ul className="divide-y divide-slate-100">{data.earned.map((e, i) => <li key={i} className="flex justify-between py-1"><span>{e.folio} · {fmtDate(e.work_date)}{e.route ? ` · ruta ${e.route}` : ''}</span><b>{fmtHours(e.minutes)}</b></li>)}</ul>
             : <p className="text-xs text-slate-400">Ninguna.</p>}</div>
         <div><h3 className="mb-1 text-xs font-bold uppercase text-slate-500">Descansos</h3>
           {data.rests.length ? <ul className="divide-y divide-slate-100">{data.rests.map(r => <li key={r.id} className={`flex items-center justify-between gap-2 py-1 ${r.cancelled ? 'text-slate-400 line-through' : ''}`}>
             <span>{fmtDate(r.rest_date)} · {fmtHours(r.minutes)}{r.note ? ` · ${r.note}` : ''} <small className="text-slate-500">({r.by})</small></span>
-            {canEdit && !r.cancelled && <button type="button" className="text-xs font-semibold text-red-700 underline" disabled={busy} onClick={() => { if (window.confirm('¿Anular este descanso? Las horas vuelven a la bolsa.')) void run(() => call('hhee_comp_rest_cancel', { p_id: r.id })) }}>Anular</button>}
+            {canEdit && !r.cancelled && !r.note?.startsWith('Permiso ') && <button type="button" className="text-xs font-semibold text-red-700 underline" disabled={busy} onClick={() => { if (window.confirm('¿Anular este descanso? Las horas vuelven a la bolsa.')) void run(() => call('hhee_comp_rest_cancel', { p_id: r.id })) }}>Anular</button>}
           </li>)}</ul> : <p className="text-xs text-slate-400">Ninguno.</p>}</div>
       </div>}
     </Modal>
