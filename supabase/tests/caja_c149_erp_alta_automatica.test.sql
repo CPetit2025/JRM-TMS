@@ -72,6 +72,7 @@ BEGIN
   THEN pass := pass + 1; ELSE fails := fails || ('T4 cliente APT: ' || COALESCE(public.inv_ot_cliente(oc), 'null')); END IF;
 
   IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C149 FAIL (%/4): %', pass, array_to_string(fails, ' | '); END IF;
-  RAISE NOTICE 'CAJA C149 OK (%/4)', pass;
+  -- El despliegue exige PASS y una excepción deliberada para revertir el escenario completo.
+  RAISE EXCEPTION 'CAJA C149 PASS (%/4)', pass;
 END $test$;
 ROLLBACK;
