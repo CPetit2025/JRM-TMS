@@ -20,6 +20,7 @@ export const toolAccess = {
   get_transport_requests: { scope: 'contratos', modules: ['solicitudes', 'ot', 'despacho-aprobacion'] },
   quote_freight: { scope: 'contratos', modules: ['solicitudes', 'ot', 'tarifas', 'despacho'] },
   find_dispatch: { scope: 'distribucion', modules: ['despacho', 'torre-control', 'documentario', 'monitoreo'] },
+  get_pending_conformities: { scope: 'distribucion', modules: ['torre-control', 'despacho', 'documentario', 'monitoreo', 'entregas-validacion'] },
   get_compliance_alerts: { scope: 'distribucion', modules: ['despacho', 'documentario', 'torre-control', 'flota', 'mantenimiento-flota'] },
   get_cash_status: { scope: 'caja', modules: ['caja', 'caja-aprobacion', 'caja-anticipos', 'caja-liquidaciones', 'caja-fondos'] },
   get_contract_expenses: { scope: 'contratos', modules: ['contratos-servicios', 'ot', 'clientes'] },
@@ -71,6 +72,8 @@ export const toolDefinitions = [
       weight_kg: { type: ['number', 'null'] }, vehicle_class: { type: ['string', 'null'] },
     }, required: ['contract_code', 'district', 'weight_kg', 'vehicle_class'], additionalProperties: false } },
   { type: 'function', name: 'find_dispatch', description: 'Busca un despacho por número (p. ej. DSP-000123) o placa y devuelve estado, conductor, paradas, últimos eventos, documentos cargados (guías, packing list) y estado de caja (anticipos, gastos, liquidación). Usa reference null para el despacho seleccionado en pantalla.', strict: true,
+    parameters: { type: 'object', properties: { reference: { type: ['string', 'null'] } }, required: ['reference'], additionalProperties: false } },
+  { type: 'function', name: 'get_pending_conformities', description: 'Guías y conformidades de entrega enviadas por el conductor o el transportista que esperan la validación del Supervisor de Transporte (incluye servicios sin OT: punto a punto o recojo con OC/OS/RQ). Busca por OC/OS/RQ (p. ej. «OS 66049»), solicitud, despacho, placa, guía, OT o nombre de quien envió; reference null lista todas. Devuelve el enlace que abre la revisión en Torre de Control y si el usuario puede validar.', strict: true,
     parameters: { type: 'object', properties: { reference: { type: ['string', 'null'] } }, required: ['reference'], additionalProperties: false } },
   { type: 'function', name: 'get_compliance_alerts', description: 'Cumplimiento documentario: documentos de unidades vencidos o por vencer (SOAT, revisión técnica, etc.), licencias y documentos de conductores que vencen en 30 días y despachos abiertos sin guía de remisión cargada.', strict: true, parameters: emptySchema },
   { type: 'function', name: 'get_cash_status', description: 'Situación de Caja: saldos de cajas y fondos (bajo mínimo), gastos pendientes u observados por aprobar, anticipos esperando aprobación o vencidos sin rendir y viajes con liquidación atrasada.', strict: true, parameters: emptySchema },
@@ -337,6 +340,15 @@ export async function executeAiTool(
     if (error) throw new Error('El tarifario no está disponible para su usuario.')
     return { asOf, contract: contract.code, district, quote: data, url: '/maestros/tarifas',
       note: 'Costo referencial según el tarifario vigente; no incluye ajustes del despacho real.' }
+  }
+  if (name === 'get_pending_conformities') {
+    const q = typeof args.reference === 'string' ? args.reference.trim().slice(0, 80) : ''
+    const { data, error } = await supabase.rpc('delivery_pending_reviews', { p_q: q || null, p_limit: 30 })
+    const out = data as { success?: boolean; error?: string; total?: number; puede_validar?: boolean; filas?: Row[] } | null
+    if (error || !out?.success) return { asOf, error: out?.error || 'No se pudo consultar las guías por validar.' }
+    return { asOf, busqueda: q || null, total: out.total, usuarioPuedeValidar: out.puede_validar, guiasPorValidar: out.filas,
+      comoValidar: 'Torre de Control › columna Conformidad «Por validar» › Guía y conformidad › Aprobar, Observar o Rechazar (observar y rechazar piden motivo). Solo valida quien tiene el permiso «Validar conformidad de entregas» (Supervisor de Transporte). No es la aprobación de gastos de Caja.',
+      url: '/torre-control' }
   }
   if (name === 'find_dispatch') {
     const raw = typeof args.reference === 'string' ? args.reference.trim() : ''

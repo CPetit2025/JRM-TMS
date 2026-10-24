@@ -92,6 +92,8 @@ export default function TorreControlPage() {
   const [selectedDispatch, setSelectedDispatch] = useState<Dispatch | null>(null)
   const requestedDispatch = useRef<string | null>(null)
   const requestedProvider = useRef(false)
+  // ?despacho=<id>&revisar=<solicitud>: abre directamente la guía y conformidad por validar (enlace de JRM IA)
+  const requestedReview = useRef<string | null>(null)
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('jrm:context', { detail: selectedDispatch ? { dispatchId: selectedDispatch.id } : {} }))
@@ -120,6 +122,8 @@ export default function TorreControlPage() {
     if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return
     requestedDispatch.current = id
     requestedProvider.current = query.get('proveedor') === '1'
+    const revisar = query.get('revisar')
+    requestedReview.current = revisar && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(revisar) ? revisar : null
     const timer = window.setTimeout(() => {
       setStatusFilter('TODOS')
       const day = query.get('fecha')
@@ -153,7 +157,10 @@ export default function TorreControlPage() {
       if (requestedDispatch.current) {
         const selected = list.find(item => item.id === requestedDispatch.current)
         if (selected) {
-          if (requestedProvider.current && (selected.modalidad === 'TERCERO' || ((deliveries || []) as DeliveryRow[]).some(row => row.dispatch_id === selected.id && row.modalidad === 'TERCERO')) && canWrite('despacho')) setThirdId(selected.id)
+          const reviewRow = requestedReview.current ? ((deliveries || []) as DeliveryRow[]).find(row => row.dispatch_id === selected.id && row.request_id === requestedReview.current) : undefined
+          requestedReview.current = null
+          if (reviewRow) setReview(reviewRow)
+          else if (requestedProvider.current && (selected.modalidad === 'TERCERO' || ((deliveries || []) as DeliveryRow[]).some(row => row.dispatch_id === selected.id && row.modalidad === 'TERCERO')) && canWrite('despacho')) setThirdId(selected.id)
           else setSelectedDispatch(selected)
           requestedDispatch.current = null
         }
