@@ -183,7 +183,8 @@ El módulo Contratos usa el Actualizable y el Stock como fuente de verificación
   Administrador puede aplicar la corrección también a las solicitudes cerradas o revertirla; una corrección revertida no
   se vuelve a aplicar mientras el ERP mantenga el mismo RUC. También se puede revisar y corregir a mano («Revisar
   diferencias con el ERP»).
-- **Alta automática**: con cada Actualizable nuevo, las OT **activas** que aún no existen en el TMS se dan de alta solas:
+- **Alta automática**: con cada Actualizable nuevo, las OT que aún no existen en el TMS y están **activas o tienen saldo
+  pendiente** en el ERP se dan de alta solas (las inactivas ya completas no):
   primero la OT madre (con su cliente por RUC, registrado si no existe; sede principal) y luego sus subcontratos y
   errores, colgados de la madre con su cliente y sede. Quedan **sin partida** (se asigna en Contratos; nada se libera
   solo). No se dan de alta solas: las garantías (llevan su Error de contrato, decisión comercial), las OT madre sin RUC
