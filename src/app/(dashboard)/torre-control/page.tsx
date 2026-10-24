@@ -22,6 +22,7 @@ import { EvidenceGallery } from '@/components/evidence/EvidenceGallery'
 import { toast } from 'sonner'
 import { RouteShareModal } from '@/components/despacho/RouteShareModal'
 import { RouteForkliftInfo } from '@/components/despacho/RouteForkliftInfo'
+import { ErpGuiasResumenCard, ErpOtReferencia } from '@/components/erp/ErpReferencia'
 
 interface DispatchRequest {
   transport_request_id: string
@@ -322,6 +323,9 @@ export default function TorreControlPage() {
         </div>
       </div>
 
+      {/* Referencia del ERP (solo lectura): guías del ERP sin ruta, guías de rutas que el ERP no muestra y desfases de fecha */}
+      <ErpGuiasResumenCard canOpenErp={['apt', 'apt-carga'].some(module => canRead(module))} />
+
       {/* Advanced Filters */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-4">
         <div className="relative flex-1 min-w-[250px]">
@@ -432,6 +436,9 @@ export default function TorreControlPage() {
                   </span>
                 </div>
                 
+                {(selectedDispatch.contract_codes?.length ?? 0) > 0 && <div className="space-y-2">
+                  {[...new Set(selectedDispatch.contract_codes)].map(code => <ErpOtReferencia key={code} ot={code} compact />)}
+                </div>}
                 {selectedDispatch.dispatch_requests?.length === 0 ? (
                   <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-lg border border-dashed border-slate-200">
                     Vacio. No hay OTs asociadas a este recurso.

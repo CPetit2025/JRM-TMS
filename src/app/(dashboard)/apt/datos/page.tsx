@@ -15,7 +15,7 @@ import { INV_SIDE_LABEL, parseInventoryWorkbooks, type InvParseResult } from '@/
 import { fmtDate, fmtDateTime } from '@/lib/apt/format'
 import Link from 'next/link'
 import { ErpVigencia, readErpFiles } from '@/components/erp/ErpCarga'
-import { erpApi, erpDeriveEstado, erpLogError, uploadErpFile } from '@/lib/erp/api'
+import { erpApi, erpDeriveEstado, erpLogError, erpSincronizarClientes, uploadErpFile } from '@/lib/erp/api'
 import { derivarDia, type DeriveResumen } from '@/lib/erp/derive'
 import { ERP_KIND_LABEL, type ErpParseResult } from '@/lib/erp/parse'
 
@@ -123,7 +123,10 @@ export default function InventarioDatosPage() {
       if (erpRes[i]?.ok) continue
       try {
         const r = await uploadErpFile(f, m => setBusy(`${ERP_KIND_LABEL[f.kind]}: ${m}`))
-        erpRes[i] = { ok: true, text: `${fmtN(r.rows)} filas aplicadas en ERP: OT, guías y stock` }
+        // Con el Actualizable vigente se corrige el cliente de las OT según el RUC del ERP (con historial y aviso)
+        const cli = f.kind === 'CONTRATOS' ? (setBusy('Revisando el cliente de las OT con el ERP…'), await erpSincronizarClientes()) : null
+        erpRes[i] = { ok: true, text: `${fmtN(r.rows)} filas aplicadas en ERP: OT, guías y stock${cli?.corregidas
+          ? ` · cliente corregido en ${fmtN(cli.corregidas)} OT${cli.clientes_creados ? ` (${fmtN(cli.clientes_creados)} clientes registrados desde el ERP)` : ''}` : ''}` }
       } catch (e) {
         erpRes[i] = { ok: false, text: errorText(e) }
         erpFailed.push(`${ERP_KIND_LABEL[f.kind]}: ${errorText(e)}`)

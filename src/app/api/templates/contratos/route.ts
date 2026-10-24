@@ -37,7 +37,7 @@ export async function GET() {
 
     // Add instructions row
     const instructions = [
-      'Valores: CONTRATO, SUBCONTRATO, ERROR',
+      'Valores: CONTRATO, SUBCONTRATO, ERROR, GARANTIA (la garantía genera su Error de contrato y no lleva presupuesto)',
       'Código único del contrato/sub',
       'Dejar vacío para CONTRATO',
       'RUC del cliente (11 dígitos, Opcional)',
@@ -92,10 +92,10 @@ export async function GET() {
       worksheet.getCell(`A${i}`).dataValidation = {
         type: 'list',
         allowBlank: false,
-        formulae: ['"CONTRATO,SUBCONTRATO,ERROR"'],
+        formulae: ['"CONTRATO,SUBCONTRATO,ERROR,GARANTIA"'],
         showErrorMessage: true,
         errorTitle: 'Tipo Inválido',
-        error: 'El tipo debe ser CONTRATO, SUBCONTRATO o ERROR'
+        error: 'El tipo debe ser CONTRATO, SUBCONTRATO, ERROR o GARANTIA'
       };
     }
 

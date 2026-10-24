@@ -25,7 +25,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
   
   // Modals state
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [modalType, setModalType] = useState<'SUBCONTRATO' | 'ERROR'>('SUBCONTRATO')
+  const [modalType, setModalType] = useState<'SUBCONTRATO' | 'ERROR' | 'GARANTIA'>('SUBCONTRATO')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [newChild, setNewChild] = useState({
     correlative: '',
@@ -109,13 +109,14 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
           destination_district: contract.destination_district,
           destination_address: contract.destination_address,
         },
-        p_budget_pen: Number(newChild.budget_pen) || 0,
+        p_budget_pen: modalType === 'GARANTIA' ? 0 : Number(newChild.budget_pen) || 0,
       })
       if (error) throw new Error(error.message)
-      const result = data as { success?: boolean; error?: string } | null
+      const result = data as { success?: boolean; error?: string; error_generado?: { code: string } | null } | null
       if (!result?.success) throw new Error(result?.error || 'No se pudo registrar')
 
-      toast.success(`${modalType === 'SUBCONTRATO' ? 'Subcontrato' : 'Error'} registrado exitosamente`)
+      toast.success(result.error_generado ? `Garantía registrada con su Error de contrato ${result.error_generado.code}`
+        : `${modalType === 'SUBCONTRATO' ? 'Subcontrato' : 'Error'} registrado exitosamente`)
       setIsModalOpen(false)
       setNewChild({ correlative: '', budget_pen: '', total_weight_kg: '', total_volume_m3: '' })
       fetchContractDetails() // refresh parent and children
@@ -196,7 +197,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
           }`}
         >
           <FileWarning className="w-4 h-4" />
-          Errores / Penalidades
+          Errores / Garantías
           {contract.errors_count > 0 && (
             <span className="bg-red-50 text-red-600 ml-1 px-2 py-0.5 rounded-full text-xs">
               {contract.errors_count}
@@ -343,14 +344,32 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
         {activeTab === 'errores' && (
           <div>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-sm font-semibold text-slate-800">Errores y Penalidades</h3>
-              <button 
-                onClick={() => { setModalType('ERROR'); setIsModalOpen(true); }}
-                className="text-sm bg-red-50 text-red-700 px-3 py-1.5 rounded-lg font-medium hover:bg-red-100"
-              >
-                + Registrar Error
-              </button>
+              <h3 className="text-sm font-semibold text-slate-800">Errores, penalidades y garantías</h3>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => { setModalType('GARANTIA'); setIsModalOpen(true); }}
+                  className="text-sm bg-teal-50 text-teal-800 px-3 py-1.5 rounded-lg font-medium hover:bg-teal-100">
+                  + Registrar Garantía
+                </button>
+                <button 
+                  onClick={() => { setModalType('ERROR'); setIsModalOpen(true); }}
+                  className="text-sm bg-red-50 text-red-700 px-3 py-1.5 rounded-lg font-medium hover:bg-red-100"
+                >
+                  + Registrar Error
+                </button>
+              </div>
             </div>
+            {childrenContracts.some(c => c.type === 'GARANTIA') && (
+              <ul className="mb-4 space-y-1 rounded-lg border border-teal-200 bg-teal-50/60 p-3 text-sm">
+                {childrenContracts.filter(c => c.type === 'GARANTIA').map(g => {
+                  const err = childrenContracts.find(c => c.garantia_id === g.id)
+                  return <li key={g.id} className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-teal-900">Garantía {g.code}</span>
+                    {err ? <span className="text-slate-700">→ su transporte va por el Error <strong>{err.code}</strong></span>
+                      : <span className="font-semibold text-amber-700">sin Error de contrato: regístrelo para llevar el transporte</span>}
+                  </li>
+                })}
+              </ul>
+            )}
             
             {childrenContracts.filter(c => c.type === 'ERROR').length === 0 ? (
               <p className="text-sm text-slate-500 py-8 text-center bg-slate-50 rounded-lg border border-slate-100">
@@ -369,7 +388,8 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
                   <tbody className="divide-y divide-slate-100">
                     {childrenContracts.filter(c => c.type === 'ERROR').map((child) => (
                       <tr key={child.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 font-semibold text-slate-900">{child.code}</td>
+                        <td className="px-4 py-3 font-semibold text-slate-900">{child.code}
+                          {child.garantia_id && <span className="ml-2 rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800">de garantía {childrenContracts.find(c => c.id === child.garantia_id)?.code || ''}</span>}</td>
                         <td className="px-4 py-3 font-medium text-red-600 text-right">
                           S/ {child.allocated_pen?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}
                         </td>
@@ -543,7 +563,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
       <Modal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
-        title={`Nuevo ${modalType === 'SUBCONTRATO' ? 'Subcontrato' : 'Error / Penalidad'}`} 
+        title={`Nuevo ${modalType === 'SUBCONTRATO' ? 'Subcontrato' : modalType === 'GARANTIA' ? 'Garantía' : 'Error / Penalidad'}`} 
         maxWidth="max-w-xl"
       >
         <form onSubmit={handleCreateChild} className="space-y-6">
@@ -561,11 +581,12 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
                     value={newChild.correlative}
                     onChange={(e) => setNewChild({...newChild, correlative: e.target.value})}
                     className="w-full p-2.5 outline-none text-sm"
-                    placeholder={modalType === 'SUBCONTRATO' ? 'S001' : 'E001'}
+                    placeholder={modalType === 'SUBCONTRATO' ? 'S001' : modalType === 'GARANTIA' ? 'G01' : 'E001'}
                   />
                 </div>
               </div>
 
+              {modalType === 'GARANTIA' ? <p className="rounded-lg border border-teal-200 bg-teal-50 p-3 text-xs text-teal-900">La garantía no lleva partida propia. Al guardarla se genera su <strong>Error de contrato</strong> (siguiente correlativo libre en el TMS y en el ERP), que lleva el transporte y su costo con la partida de la OT.</p> :
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Partida de transporte bruta (S/) · se suma a la OT madre
@@ -578,7 +599,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
                   className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-[#002855] transition-all text-sm bg-white"
                   placeholder="0.00"
                 />
-              </div>
+              </div>}
 
               {modalType === 'SUBCONTRATO' && (
                 <div className="grid grid-cols-2 gap-3">

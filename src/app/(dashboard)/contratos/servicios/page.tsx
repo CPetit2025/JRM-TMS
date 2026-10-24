@@ -15,6 +15,8 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { GuiaDetalleModal } from '@/components/guias/GuiaDetalleModal'
+import { ErpGuiasValidacion, ErpOtReferencia } from '@/components/erp/ErpReferencia'
+import { ErpServicioCelda, useErpContratos, useErpGuiasLote } from '@/components/erp/ErpContratos'
 import { useDropzone } from 'react-dropzone'
 import * as XLSX from 'xlsx'
 
@@ -124,6 +126,8 @@ export default function ContractServicesPage() {
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
   const [filterStatus, setFilterStatus] = useState('TODOS')
+  // Acopio con el ERP: guías del servicio contra el Actualizable y actividad de la OT (solo lectura)
+  const [filterErp, setFilterErp] = useState('TODOS')
 
   const [newService, setNewService] = useState({
     contract_id: '',
@@ -164,7 +168,7 @@ export default function ContractServicesPage() {
     return null
   }
   const categoryOf = (type?: string) => type === 'SUBCONTRATO' ? 'Subcontrato' : type === 'ERROR' ? 'Error' : 'Contrato'
-  const typeTag = (type?: string) => type === 'SUBCONTRATO' ? ' · Subcontrato' : type === 'ERROR' ? ' · Error' : ''
+  const typeTag = (type?: string) => type === 'SUBCONTRATO' ? ' · Subcontrato' : type === 'ERROR' ? ' · Error' : type === 'GARANTIA' ? ' · Garantía' : ''
 
 
   // Desde la ficha de la OT: /contratos/servicios?contrato=<id> abre el registro con la OT elegida (una vez)
@@ -472,6 +476,20 @@ export default function ContractServicesPage() {
     fetchData()
   }
 
+  const erpGuias = useErpGuiasLote(services.map(srv => ({ id: srv.id, ot: srv.contracts?.code, guias: srv.referral_guide })))
+  const erpOts = useErpContratos(services.map(srv => srv.contracts?.code || ''))
+  const erpMatches = (srv: ContractService) => {
+    if (filterErp === 'TODOS') return true
+    const g = erpGuias.items[srv.id]
+    const ot = srv.contracts?.code ? erpOts.filas[srv.contracts.code] : undefined
+    switch (filterErp) {
+      case 'DIFERENCIAS': return !!g && (g.no_erp > 0 || g.otra_ot > 0) || !!ot && ot.diferencias.length > 0
+      case 'GUIA_NO_ERP': return !!g && g.no_erp > 0
+      case 'GUIA_OTRA_OT': return !!g && g.otra_ot > 0
+      case 'OT_INACTIVA': return ot?.activa === false
+      default: return true
+    }
+  }
   const filteredServices = services.filter(srv => {
     const searchString = `${srv.contracts?.code} ${srv.contracts?.clients?.business_name} ${srv.service_type} ${srv.category} ${srv.description} ${srv.plate} ${srv.driver_name} ${srv.provider_name} ${srv.provider_ruc} ${srv.referral_guide || ''}`.toLowerCase()
     const matchesSearch = searchTerm ? searchString.includes(searchTerm.toLowerCase()) : true
@@ -490,7 +508,7 @@ export default function ContractServicesPage() {
     
     const matchesStatus = filterStatus === 'TODOS' ? true : filterStatus === 'SIN_VALORIZAR' ? sinValorizar(srv) : stageOf(srv) === filterStatus
     
-    return matchesSearch && matchesDateFrom && matchesDateTo && matchesStatus
+    return matchesSearch && matchesDateFrom && matchesDateTo && matchesStatus && erpMatches(srv)
   })
 
   // Orden de la tabla: por defecto fecha del servicio, más reciente primero (desempate por fecha de registro)
@@ -578,13 +596,20 @@ export default function ContractServicesPage() {
       {registryView === 'REFERENCIA' ? <ReferenceServiceRegistry /> : <>
 
       {/* Filtros, búsqueda y saldo de partida en una fila */}
-      <FilterToolbar compact label="Búsqueda y filtros de servicios" onClear={() => { setSearchTerm(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterStatus('TODOS') }}>
+      <FilterToolbar compact label="Búsqueda y filtros de servicios" onClear={() => { setSearchTerm(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterStatus('TODOS'); setFilterErp('TODOS') }}>
         <label className="relative min-w-0 flex-1 basis-56">
           <span className="sr-only">Buscar servicios</span><Search aria-hidden className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
           <input type="search" placeholder="Buscar por contrato, cliente, placa, etc..." className={`${filterControl} pl-9`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </label>
         <FilterField inline label="Desde" className="w-48"><input type="date" className={filterControl} value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} /></FilterField>
         <FilterField inline label="Hasta" className="w-48"><input type="date" className={filterControl} value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} /></FilterField>
+        <FilterField inline label="ERP" className="w-60"><select className={filterControl} value={filterErp} onChange={e => setFilterErp(e.target.value)}>
+          <option value="TODOS">Todos</option>
+          <option value="DIFERENCIAS">Con diferencias con el ERP</option>
+          <option value="GUIA_NO_ERP">Guía que no está en el ERP</option>
+          <option value="GUIA_OTRA_OT">Guía de otra OT en el ERP</option>
+          <option value="OT_INACTIVA">OT inactiva</option>
+        </select></FilterField>
         <span className="ml-auto whitespace-nowrap text-xs text-slate-500" aria-live="polite">{loading ? '' : `${filteredServices.length} servicio(s)`}</span>
       </FilterToolbar>
 
@@ -614,6 +639,7 @@ export default function ContractServicesPage() {
                 {sortHeader('Servicio', 'servicio')}
                 {sortHeader('Placa', 'placa')}
                 {sortHeader('Guía', 'guia')}
+                <th className="font-semibold" title="Guías contra el Actualizable del ERP y actividad de la OT (solo lectura)">ERP</th>
                 {sortHeader('TON', 'ton', 'text-right')}
                 {sortHeader('Monto S/', 'monto', 'text-right')}
                 {sortHeader('Saldo OT S/', 'saldo', 'text-right')}
@@ -624,14 +650,14 @@ export default function ContractServicesPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={12} className="p-8 text-center text-slate-500">
+                  <td colSpan={13} className="p-8 text-center text-slate-500">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                     Cargando servicios...
                   </td>
                 </tr>
               ) : filteredServices.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="p-8 text-center text-slate-500">
+                  <td colSpan={13} className="p-8 text-center text-slate-500">
                     No hay servicios registrados o que coincidan con los filtros.
                   </td>
                 </tr>
@@ -673,6 +699,9 @@ export default function ContractServicesPage() {
                         </span>
                       })() : <span className="text-slate-400">-</span>}
                     </td>
+                    <td><ErpServicioCelda guias={erpGuias.items[srv.id]} ot={srv.contracts?.code ? erpOts.filas[srv.contracts.code] : undefined}
+                      estado={erpGuias.estado === 'pendiente' || erpOts.estado === 'pendiente' ? 'pendiente' : erpGuias.estado === 'cargando' || erpOts.estado === 'cargando' ? 'cargando' : 'listo'}
+                      umbral={erpOts.config?.umbral_dias} /></td>
                     <td className="text-right text-sm font-medium text-slate-800">
                       {(() => {
                         const p = pesoApt[srv.id]
@@ -1072,7 +1101,9 @@ export default function ContractServicesPage() {
               ) : (
                 <span className="text-slate-400 text-sm italic">Sin guías registradas</span>
               )}
+              {viewingService.referral_guide && <div className="mt-2"><ErpGuiasValidacion guias={viewingService.referral_guide.split(',')} ot={viewingService.contracts?.code} /></div>}
             </div>
+            {viewingService.contracts?.code && <ErpOtReferencia ot={viewingService.contracts.code} />}
 
             <div className="bg-white p-3 rounded border border-slate-200">
               <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Detalle / KG</span>

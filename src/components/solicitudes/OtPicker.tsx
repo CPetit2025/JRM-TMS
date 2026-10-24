@@ -55,7 +55,8 @@ export function OtPicker({ nodes, value, onSelect, onClear, disabled }: {
 
   const { roots, children } = useMemo(() => {
     const kids = new Map<string, OtNode[]>()
-    nodes.forEach(n => { if (n.parent_contract_id) kids.set(n.parent_contract_id, [...(kids.get(n.parent_contract_id) || []), n]) })
+    // La garantía no se elige para transporte: su transporte va por el Error de contrato que se generó con ella
+    nodes.forEach(n => { if (n.parent_contract_id && n.type !== 'GARANTIA') kids.set(n.parent_contract_id, [...(kids.get(n.parent_contract_id) || []), n]) })
     kids.forEach(list => list.sort((a, b) => a.code.localeCompare(b.code, 'es', { numeric: true })))
     return { roots: nodes.filter(n => !n.parent_contract_id), children: kids }
   }, [nodes])

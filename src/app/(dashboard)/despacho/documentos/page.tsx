@@ -11,6 +11,7 @@ import { AlertTriangle, CheckCircle2, ChevronRight, Clock, Info, Layers, FileChe
 import { useSearchParams } from 'next/navigation'
 import { Modal } from '@/components/ui/modal'
 import { GuiaDetalleModal } from '@/components/guias/GuiaDetalleModal'
+import { ErpGuiasValidacion, ErpOtReferencia } from '@/components/erp/ErpReferencia'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -306,11 +307,19 @@ function noteLinked(item: QueueItem, stop: Stop | null) {
     || !!item.number_references?.some(ref => ref.doc_type === 'NOTA_DESPACHO' && ref.request_id === stop?.request_id)
 }
 
+/** Guías de remisión del servicio: guía de entrega, archivos de Documentos y números vinculados. */
+function stopGuides(item: QueueItem, stop: Stop | null, delivery: DeliveryRow | undefined) {
+  const own = item.documents.filter(doc => doc.request_id === stop?.request_id && doc.document_number)
+  const refs = (item.number_references || []).filter(ref => ref.request_id === stop?.request_id)
+  const guides = [...new Set([delivery?.guide_number, ...own.filter(doc => doc.doc_type === 'GUIA_REMISION').map(doc => doc.document_number), ...refs.filter(ref => ref.doc_type === 'GUIA_REMISION').map(ref => ref.document_number)].filter(Boolean))]
+  return guides as string[]
+}
+
 /** GR (guía de entrega o registrada por Documentos) y Nota de Despacho del servicio. */
 function stopNumbers(item: QueueItem, stop: Stop | null, delivery: DeliveryRow | undefined) {
   const own = item.documents.filter(doc => doc.request_id === stop?.request_id && doc.document_number)
   const refs = (item.number_references || []).filter(ref => ref.request_id === stop?.request_id)
-  const guides = [...new Set([delivery?.guide_number, ...own.filter(doc => doc.doc_type === 'GUIA_REMISION').map(doc => doc.document_number), ...refs.filter(ref => ref.doc_type === 'GUIA_REMISION').map(ref => ref.document_number)].filter(Boolean))]
+  const guides = stopGuides(item, stop, delivery)
   const notes = [...new Set([...own.filter(doc => doc.doc_type === 'NOTA_DESPACHO').map(doc => doc.document_number), ...refs.filter(ref => ref.doc_type === 'NOTA_DESPACHO').map(ref => ref.document_number)].filter(Boolean))]
   return documentNumberLabel(guides.join(' · '), notes.join(' · '))
 }
@@ -396,6 +405,9 @@ function DocumentStatusModal({ target, reference, packingOnly, canEdit, onClose,
       <ol className="space-y-2">{state.steps.map(step => <li key={step.label} className={`flex items-start justify-between gap-3 rounded-lg border p-3 ${tone[step.tone]}`}>
         <span className="font-semibold">{step.label}</span><span className="text-right text-xs">{step.detail}</span>
       </li>)}</ol>
+      {/* Referencia del ERP (solo lectura): las guías del servicio frente al Actualizable y la OT */}
+      <ErpGuiasValidacion guias={stopGuides(item, stop, delivery)} ot={stop?.ot_code} />
+      {stop?.ot_code && <ErpOtReferencia ot={stop.ot_code} compact />}
     </div>
   </Modal>
 }

@@ -136,3 +136,61 @@ limitaciones, y si depende de reglas v1. Meta y responsable: pendientes de confi
 - Marcas de tiempo: **corte del ERP** (de cuándo son los datos) y **procesado en el TMS** (cuándo se aplicaron).
 - La actualización es manual. La actualización automática cada 20 minutos **no está operativa**: requiere un proceso
   de extracción y envío desde la red del ERP que aún no existe ni se ha probado.
+
+## Referencia del ERP en Operaciones (solo lectura)
+
+Las pantallas de Operaciones consultan el ERP vigente como referencia, sin crear ni modificar registros del TMS y con las
+reglas del análisis exacto (sin conversiones de unidad; filas con cantidades ausentes fuera de las sumas).
+
+- **Registro de Servicios** (vista de acopio de Comercial a Operaciones): columna **ERP** por servicio con sus guías
+  contra el Actualizable (✓ en el ERP, ⚠ de otra OT, ✗ no está) y la actividad de la OT, y filtro «ERP» (diferencias,
+  guía que no está, guía de otra OT, OT inactiva). En el detalle de un servicio se ven la referencia de la OT y la
+  validación de cada guía.
+- **Programación y Ruteo** (Armar ruta): cada parada elegida muestra en una línea el pendiente del ERP de su OT, el stock
+  coincidente y cuántas guías del ERP no tienen ruta.
+- **Torre de Control**: tarjeta «Guías ERP vs TMS» de los últimos 7 días (en ambos, solo ERP, solo TMS y desfase de fecha)
+  y, en el expediente del despacho, la referencia de cada OT.
+- **Documentos de Despacho**: en «Estado documentario» las guías del servicio se validan contra el ERP y se muestra la OT.
+- Monitoreo GPS no cambia: muestra posiciones y no tiene datos del ERP que cruzar.
+
+Funciones: `erp_ref_ot`, `erp_ref_guias`, `erp_ref_guias_resumen` (permiso `erp_ref_can_view`: APT, Contratos y OTs o
+alguna pantalla de Operaciones). El Administrador de Contratos solo ve las OT de su cartera (`erp_ref_ot_visible`) y nadie
+ve una OT de una sede a la que no tiene acceso. Prueba: C145.
+
+## Contratos con el ERP
+
+El módulo Contratos usa el Actualizable y el Stock como fuente de verificación. El ERP numera igual que el TMS (`15304`,
+`15304-S008`, `15304-E011`, `14840-G01`); se enlaza por código sin ceros a la izquierda en el correlativo (`E01` = `E001`).
+
+- **Columna ERP** en la lista de Contratos: si la OT está en el ERP, su estado (sin despacho, parcial, completo), avance
+  (solo con una unidad; no se suman unidades distintas), stock listo (lote = documento, mismo producto y unidad, con
+  pendiente), OT activa o inactiva y diferencias: no está en el ERP, cliente distinto, RUC no válido, documentos del ERP
+  sin alta y garantía sin Error. Filtro «Verificación con el ERP». La OT independiente no aplica.
+- **OT activa**: el último despacho (el más reciente entre el ERP y las rutas del TMS) está dentro del umbral (90 días por
+  defecto). La reactivan, aunque no haya despacho reciente, los eventos marcados: garantía nueva (ERP o TMS), subcontrato
+  o error nuevo en el ERP y solicitud en el TMS. Un contrato sin despachos cuenta desde su fecha de contrato. El umbral,
+  los eventos y las horas para avisar que el corte está desactualizado los cambia el Administrador (botón de
+  configuración). La marca solo informa y filtra: no bloquea solicitudes ni libera partidas (reglas comerciales pendientes).
+- **Garantía de ventas**: tipo de documento hijo de la OT madre, sin partida propia. Al registrarla (alta, ficha de la OT
+  o carga masiva) se genera siempre su **Error de contrato** con el siguiente correlativo libre en el TMS y en el ERP,
+  vinculado a la garantía; ese Error lleva el transporte y su costo con la partida de la familia. La garantía no se elige
+  en Solicitudes.
+- **Cliente según el ERP**: al cargar el Actualizable, el cliente de cada OT madre se corrige con el RUC del ERP (si el
+  cliente no existe se registra; RUC con dígito verificador SUNAT; un RUC no válido no corrige nada y queda como
+  diferencia). Se corrigen la OT, sus subcontratos, errores y garantías, y las solicitudes que aún no salen a ruta; las que
+  están en ruta, entregadas o cerradas conservan su cliente. Queda un historial con el cliente anterior y se avisa al
+  responsable de la OT (aviso «Cliente de una OT corregido», categoría Cumplimiento). En «Correcciones de cliente» el
+  Administrador puede aplicar la corrección también a las solicitudes cerradas o revertirla; una corrección revertida no
+  se vuelve a aplicar mientras el ERP mantenga el mismo RUC. También se puede revisar y corregir a mano («Revisar
+  diferencias con el ERP»).
+- **Alta asistida**: «ERP sin alta» lista los documentos del ERP que no existen en el TMS (por defecto de OT activas) y
+  «Dar de alta» abre el alta con el tipo, la madre y el código. Al escribir un código en el alta se muestra lo que dice el
+  ERP y se puede tomar su cliente (se registra si no existe). El destino y la partida los completa una persona: el ERP no
+  los trae.
+- **Ficha rápida de la OT**: referencia del ERP con el pendiente por tipo y unidad, stock y guías.
+
+Funciones: `erp_ref_contratos` (por lotes de hasta 5.000 códigos), `erp_ref_documento`, `erp_ref_sin_alta`,
+`erp_ref_guias_lote`, `erp_cliente_desde_erp`, `erp_contratos_sincronizar_clientes`, `erp_cliente_correcciones`,
+`erp_cliente_correccion_aplicar_cerradas`, `erp_cliente_correccion_revertir`, `erp_contratos_config_json` y
+`erp_contratos_config_set`. Tablas: `erp_contract_settings`, `contract_client_corrections`; columna
+`contracts.garantia_id`. Prueba: C146.
