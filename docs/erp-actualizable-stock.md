@@ -183,13 +183,13 @@ El módulo Contratos usa el Actualizable y el Stock como fuente de verificación
   Administrador puede aplicar la corrección también a las solicitudes cerradas o revertirla; una corrección revertida no
   se vuelve a aplicar mientras el ERP mantenga el mismo RUC. También se puede revisar y corregir a mano («Revisar
   diferencias con el ERP»).
-- **Alta automática**: al cargar el Actualizable, las OT **activas** del ERP que no existen en el TMS se dan de alta solas:
+- **Alta automática**: con cada Actualizable nuevo, las OT **activas** que aún no existen en el TMS se dan de alta solas:
   primero la OT madre (con su cliente por RUC, registrado si no existe; sede principal) y luego sus subcontratos y
-  errores, colgados de la madre con su cliente y sede. Quedan **sin partida** (se asigna en Contratos; nada se libera por
-  el ERP). No se dan de alta solas: las garantías (llevan su Error de contrato, decisión comercial), las OT madre sin RUC
-  válido y los hijos cuya madre falta; esos siguen en «ERP sin alta». Cada alta queda registrada (`erp_contract_altas`) y
-  se avisa a Contratos y OTs (aviso «OT dadas de alta desde el ERP», Cumplimiento). En «ERP sin alta», «Dar de alta
-  automáticamente ahora» muestra cuántas se crearán y pide confirmación. Se ejecuta en el servidor (sin el límite de 8 s).
+  errores, colgados de la madre con su cliente y sede. Quedan **sin partida** (se asigna en Contratos; nada se libera
+  solo). No se dan de alta solas: las garantías (llevan su Error de contrato, decisión comercial), las OT madre sin RUC
+  válido y los hijos cuya madre falta; esos siguen en la lista de documentos sin alta. Cada alta queda en el historial
+  (`erp_contract_altas`) y se avisa a Contratos y OTs (categoría Cumplimiento). En esa lista, «Dar de alta
+  automáticamente ahora» muestra cuántas se crearán y pide confirmación.
 - **Alta asistida**: «ERP sin alta» lista los documentos del ERP que no existen en el TMS (por defecto de OT activas) y
   «Dar de alta» abre el alta con el tipo, la madre y el código. Al escribir un código en el alta se muestra lo que dice el
   ERP y se puede tomar su cliente (se registra si no existe). El destino y la partida los completa una persona: el ERP no
