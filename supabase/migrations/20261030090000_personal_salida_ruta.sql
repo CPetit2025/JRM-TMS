@@ -15,4 +15,21 @@ BEGIN
  IF s->>'kind'='DESCANSO' OR public.hhee_pe_holiday(base) IS NOT NULL THEN RETURN greatest(departure,base::timestamp AT TIME ZONE 'America/Lima'); END IF;
  RETURN greatest(departure,((base+CASE WHEN (s->>'next_day')::boolean THEN 1 ELSE 0 END)+(s->>'end')::time) AT TIME ZONE 'America/Lima');
 END $$;
+-- Configuración por selección explícita; todo el lote se guarda o se revierte.
+CREATE FUNCTION public.gp_schedule_batch(p jsonb) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE person uuid; n int:=0;
+BEGIN
+ IF jsonb_typeof(p->'people') IS DISTINCT FROM 'array' OR jsonb_array_length(p->'people') NOT BETWEEN 1 AND 500 THEN RAISE EXCEPTION 'Seleccione entre 1 y 500 colaboradores'; END IF;
+ IF (SELECT count(DISTINCT value) FROM jsonb_array_elements_text(p->'people'))<>jsonb_array_length(p->'people') THEN RAISE EXCEPTION 'Hay colaboradores repetidos'; END IF;
+ FOR person IN SELECT value::uuid FROM jsonb_array_elements_text(p->'people') ORDER BY value::uuid LOOP
+  IF NOT EXISTS(SELECT 1 FROM public.hhee_people WHERE id=person AND active) THEN RAISE EXCEPTION 'Colaborador inexistente o inactivo'; END IF;
+  PERFORM public.gp_schedule_save((p-'people')||jsonb_build_object('person_id',person));
+  n:=n+1;
+ END LOOP;
+ RETURN jsonb_build_object('success',true,'updated',n);
+END $$;
+REVOKE ALL ON FUNCTION public.gp_schedule_batch(jsonb) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.gp_schedule_batch(jsonb) TO authenticated;
+
 COMMIT;

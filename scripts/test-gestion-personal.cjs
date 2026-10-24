@@ -146,6 +146,14 @@ async function main() {
   await db.exec(`SELECT set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000009999',false)`)
   await assert.rejects(rpc('gp_permit',{action:'CREATE',person_id:person,date,minutes:10,kind:'PERMISO',reason:'Sin permisos'}),/Sin permiso/)
   await assert.rejects(day(),/Sin acceso/)
+  await db.exec(`SELECT set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',false)`)
+  const batchPerson=await scalar(`INSERT INTO hhee_people(code,name,area_id) VALUES('GP05','Lote sintético',$1) RETURNING id AS v`,[area])
+  await assert.rejects(rpc('gp_schedule_batch',{people:[batchPerson,person],from:date,mode:'FIJO',week}),/confirmada/)
+  assert.equal(await scalar('SELECT count(*)::int AS v FROM gp_schedules WHERE person_id=$1',[batchPerson]),0,'el lote fallido no guarda parcialmente')
+  const batchResult=await rpc('gp_schedule_batch',{people:[batchPerson],from:date,mode:'FIJO',week})
+  assert.equal(batchResult.updated,1)
+  await assert.rejects(rpc('gp_schedule_batch',{people:[batchPerson,batchPerson],from:tomorrow,mode:'FIJO',week}),/repetidos/)
+  console.log('PASS programación masiva: selección explícita, sin duplicados y transacción atómica')
   console.log('PASS reportes reconciliados, trazabilidad y permisos de acceso')
  } finally { await db.close() }
 }
