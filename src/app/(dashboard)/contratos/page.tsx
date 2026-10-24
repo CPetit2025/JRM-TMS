@@ -557,7 +557,8 @@ export default function ContratosPage() {
 
   // Helper
   const getSelectedParentCode = () => {
-    if (!newContract.parent_contract_id) return ''
+    // Solo los hijos llevan el prefijo de la madre (al volver a «OT Madre» no queda el de una elección anterior)
+    if (!newContract.parent_contract_id || !['SUBCONTRATO', 'ERROR', 'GARANTIA'].includes(newContract.type)) return ''
     const p = contracts.find(c => c.id === newContract.parent_contract_id)
     return p ? p.code + '-' : ''
   }
@@ -735,16 +736,16 @@ export default function ContratosPage() {
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div role="region" aria-label="Tabla de contratos" tabIndex={0} className="h-full overflow-auto">
-          <DataTable className="relative w-full min-w-[880px] table-fixed text-left text-sm">
+          <DataTable className="relative w-full min-w-[1040px] table-fixed text-left text-sm">
             <colgroup>
-              <col className="w-[15%]" />
+              <col className="w-[13%]" />
               <col />
-              <col className="hidden lg:table-column w-[8%]" />
+              <col className="hidden lg:table-column w-[7%]" />
               <col className="hidden md:table-column w-[8%]" />
-              <col className="w-[18%]" />
+              <col className="w-[16%]" />
               <col className="w-[8%]" />
-              <col className="w-[17%]" />
-              {role === 'admin' && <col className="hidden xl:table-column w-[12%]" />}
+              <col className="w-[15%]" />
+              {role === 'admin' && <col className="hidden xl:table-column w-[9%]" />}
               <col className={role === 'admin' ? 'w-[92px]' : 'w-[56px]'} />
             </colgroup>
             <thead className="sticky top-0 z-30 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_#e2e8f0]">

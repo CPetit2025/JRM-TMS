@@ -33,6 +33,9 @@ export const DIFERENCIA_LABEL: Record<ErpDiferencia, string> = {
   NO_EN_ERP: 'No está en el ERP', CLIENTE_DISTINTO: 'Cliente distinto al del ERP', RUC_INVALIDO: 'RUC del ERP no válido',
   HIJOS_SIN_ALTA: 'Documentos del ERP sin alta', GARANTIA_SIN_ERROR: 'Garantía sin Error de contrato',
 }
+const CHIP_LABEL: Record<ErpDiferencia, string> = {
+  NO_EN_ERP: 'No en ERP', CLIENTE_DISTINTO: 'Cliente distinto', RUC_INVALIDO: 'RUC no válido', HIJOS_SIN_ALTA: 'Sin alta', GARANTIA_SIN_ERROR: 'Garantía sin Error',
+}
 export const MOTIVO_LABEL: Record<ErpMotivo, string> = {
   DESPACHO: 'despacho', GARANTIA: 'garantía', SUBCONTRATO: 'subcontrato nuevo', ERROR: 'error nuevo', SOLICITUD_TMS: 'solicitud en el TMS',
   CONTRATO_NUEVO: 'contrato nuevo',
@@ -81,7 +84,8 @@ export function ErpContratoCelda({ info, estado, umbral }: { info?: ErpContratoI
   if (estado === 'pendiente') return <span className="text-[11px] font-semibold text-indigo-700" title="La base aún no tiene esta consulta: se activa con la migración del despliegue">Pendiente de activar</span>
   if (estado !== 'listo' || !info) return <span className="text-[11px] text-slate-400">—</span>
   if (!info.aplica) return <span className="text-[11px] text-slate-400" title="La OT independiente no tiene documento en el ERP">No aplica</span>
-  const difs = info.diferencias || []
+  // «No está en el ERP» ya se ve en la primera etiqueta
+  const difs = (info.diferencias || []).filter(d => d !== 'NO_EN_ERP')
   return (
     <div className="flex min-w-0 flex-col gap-1 text-[11px]">
       <div className="flex flex-wrap items-center gap-1">
@@ -98,7 +102,7 @@ export function ErpContratoCelda({ info, estado, umbral }: { info?: ErpContratoI
         {difs.map(d => <span key={d} className="inline-flex items-center gap-0.5 rounded bg-amber-50 px-1 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-200"
           title={d === 'CLIENTE_DISTINTO' ? `ERP: ${info.cliente_erp || '—'} (RUC ${info.ruc_erp || '—'}) · TMS: ${info.cliente_tms || 'sin cliente'}`
             : d === 'HIJOS_SIN_ALTA' ? info.hijos_sin_alta.join(', ') : d === 'RUC_INVALIDO' ? `RUC en el ERP: ${info.ruc_erp || '—'}` : DIFERENCIA_LABEL[d]}>
-          <AlertTriangle className="h-3 w-3" aria-hidden="true" />{d === 'HIJOS_SIN_ALTA' ? `${info.hijos_sin_alta.length} sin alta` : DIFERENCIA_LABEL[d]}</span>)}
+          <AlertTriangle className="h-3 w-3" aria-hidden="true" />{d === 'HIJOS_SIN_ALTA' ? `${info.hijos_sin_alta.length} sin alta` : CHIP_LABEL[d]}</span>)}
       </span>}
     </div>
   )
