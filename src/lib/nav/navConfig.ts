@@ -69,6 +69,7 @@ export const NAV_SECTIONS: NavSection[] = [
   ] }] },
   { id: 'apt', title: 'Almacén APT', icon: Warehouse, groups: [{ items: [
     { href: '/apt', label: 'Inventario multi‑almacén', icon: Boxes, show: any('apt', 'apt-carga'), keywords: 'apt inventario stock disponible estadia trazabilidad flujo bodegas almacenes 647 540 st contrato glosa lote ot guia traspaso materia prima perneria mro kardex' },
+    { href: '/apt/erp', label: 'ERP: OT, guías y stock', icon: Database, show: any('apt', 'apt-carga'), keywords: 'erp actualizable despacho stock bodega ot pendiente contrato despachado guia fecha erp fecha tms listo para despachar sobrante flexline cientos' },
     { href: '/apt/datos', label: 'Cargar datos del ERP', icon: FileUp, show: any('apt-carga'), keywords: 'carga entradas salidas erp excel foto stock verificacion cuadre catalogo' },
     { href: '/apt/analitica', label: 'Analítica APT y Distribución', icon: BarChart3, show: any('apt', 'apt-carga'), keywords: 'analitica kpi permanencia fifo despachos distribucion trazabilidad calidad flujos variacion pareto pedidos avance cumplimiento' },
   ] }, { title: 'APT clásico', items: [

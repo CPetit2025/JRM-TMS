@@ -19,6 +19,7 @@ const TABS = [
   { href: '/apt/estadia', label: 'Estadía' },
   { href: '/apt/trazabilidad', label: 'Trazabilidad' },
   { href: '/apt/flujo', label: 'Flujo entre almacenes' },
+  { href: '/apt/erp', label: 'ERP: OT, guías y stock' },
   { href: '/apt/datos', label: 'Datos y verificación' },
   { href: '/apt/analitica', label: 'Analítica APT y Distribución' },
 ] as const

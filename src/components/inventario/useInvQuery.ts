@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { INV_UPDATED } from '@/lib/inventario/api'
 
 // Lectura con estado de carga/error que se repite al cambiar la clave o cuando se aplica una carga o un recálculo
-export function useInvQuery<T>(key: string, fetcher: () => Promise<T>) {
+// keepPrevious: al recargar sigue mostrando el último dato (no desmonta lo que depende de él)
+export function useInvQuery<T>(key: string, fetcher: () => Promise<T>, opts?: { keepPrevious?: boolean }) {
   const [nonce, setNonce] = useState(0)
   const [res, setRes] = useState<{ key: string; data: T | null; error: string | null } | null>(null)
   const full = `${key}|${nonce}`
@@ -23,5 +24,5 @@ export function useInvQuery<T>(key: string, fetcher: () => Promise<T>) {
   }, [])
   const reload = useCallback(() => setNonce(n => n + 1), [])
   const current = res?.key === full
-  return { data: current ? res.data : null, error: current ? res.error : null, loading: !current, reload }
+  return { data: current ? res.data : opts?.keepPrevious ? res?.data ?? null : null, error: current ? res.error : null, loading: !current, reload }
 }
