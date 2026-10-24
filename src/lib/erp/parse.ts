@@ -140,7 +140,8 @@ export function parseErpSheet(fileName: string, sheetName: string, aoa: unknown[
     const stamp = isoStamp(at(r, 'fecha_actualizacion'))
     if (stamp && (!cutAt || stamp > cutAt)) cutAt = stamp
     if (kind === 'CONTRATOS') {
-      const row: ErpRow = {}
+      // linea = fila del Excel (trazabilidad hasta el origen)
+      const row: ErpRow = { linea: i + 1 }
       for (const key of Object.keys(CONTRATO_COLS) as Array<keyof typeof CONTRATO_COLS>) {
         if (key === 'guias_adicionales' || key === 'fecha_actualizacion') continue
         const v = at(r, key)
@@ -164,6 +165,8 @@ export function parseErpSheet(fileName: string, sheetName: string, aoa: unknown[
       if (row.nro_guias !== null && row.nro_guias !== row.guias.length) bump('nro_guias_distinto')
       if (!near(total, Number(row.cant_despachada || 0))) bump('guias_no_cuadran')
       if (Number(row.cant_pendiente) < 0) bump('sobredespacho')
+      // Dato ausente ≠ cero: la base guarda 0, pero se cuenta y se marca la línea
+      if (['cant_contrato', 'cant_despachada', 'cant_reemplazada', 'cant_pendiente'].some(k => row[k] === null)) { bump('cantidades_ausentes'); row.cantidades_ausentes = 1 }
       bump('lineas'); bump('despachos', row.guias.length)
       rows.push(row)
     } else {
@@ -184,6 +187,7 @@ export function parseErpSheet(fileName: string, sheetName: string, aoa: unknown[
   if (stats.descartadas) warnings.push(`${stats.descartadas} fila(s) sin documento, secuencia, bodega o producto se omitieron.`)
   if (stats.nro_guias_distinto) warnings.push(`${stats.nro_guias_distinto} línea(s) donde «Nro_Guias» no coincide con las guías escritas.`)
   if (stats.guias_no_cuadran) warnings.push(`${stats.guias_no_cuadran} línea(s) donde la suma de las guías no cuadra con la cantidad despachada.`)
+  if (stats.cantidades_ausentes) warnings.push(`${stats.cantidades_ausentes} línea(s) sin alguna cantidad (contratada, despachada, reemplazada o pendiente): quedan marcadas como dato ausente.`)
   if (stats.sobredespacho) warnings.push(`${stats.sobredespacho} línea(s) con más despachado que contratado (pendiente negativo).`)
   if (stats.stock_negativo) warnings.push(`${stats.stock_negativo} lote(s) con stock negativo.`)
   if (stats.sin_lote) warnings.push(`${stats.sin_lote} fila(s) de stock sin lote: no se pueden asociar a una OT.`)
