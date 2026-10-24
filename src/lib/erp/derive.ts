@@ -4,6 +4,7 @@ import { recalcular, uploadPart } from '@/lib/inventario/api'
 import { parseInventoryWorkbooks } from '@/lib/inventario/parse'
 import { syncLegacyApt } from '@/lib/inventario/legacy'
 import { syncAnalitica, syncPesoServicios } from '@/lib/inventario/vinculacion'
+import { erpLogFinish, erpLogStart } from './api'
 
 // ERP como única fuente: con el Actualizable y el Stock vigentes, el servidor calcula los movimientos del día
 // (despachos por guía, traspasos, ingresos y ajustes de 647 · 540 · ST). Aquí se arma con ellos un archivo de Entradas y
@@ -51,8 +52,22 @@ async function revertAnalitica(name: string) {
   for (const i of prev) await supabase.rpc('apa_import_revert', { p_import: i.id, p_reason: 'Nueva derivación del mismo día desde el ERP' })
 }
 
-// null = faltan los dos archivos (aún no hay nada que derivar)
+// null = faltan los dos archivos (aún no hay nada que derivar). Cada intento queda en el registro de cargas.
 export async function derivarDia(onProgress: (m: string) => void): Promise<{ resumen: DeriveResumen; avisos: string[] } | null> {
+  const log = await erpLogStart({ kind: 'MOVIMIENTOS', file_name: 'Movimientos del día derivados del ERP' })
+  try {
+    const out = await derivarDiaCore(onProgress)
+    await erpLogFinish(log, out
+      ? { status: 'OK', rows_loaded: out.filas, detalle: { resumen: out.resumen, avisos: out.avisos } }
+      : { status: 'OK', rows_loaded: 0, detalle: { omitida: 'Faltan los dos archivos del ERP (Actualizable y Stock)' } })
+    return out && { resumen: out.resumen, avisos: out.avisos }
+  } catch (e) {
+    await erpLogFinish(log, { status: 'ERROR', error: e instanceof Error ? e.message : 'No se generaron los movimientos del día' })
+    throw e
+  }
+}
+
+async function derivarDiaCore(onProgress: (m: string) => void): Promise<{ resumen: DeriveResumen; avisos: string[]; filas: number } | null> {
   onProgress('Calculando los movimientos del día (despachos, traspasos e ingresos)…')
   let preview = await derive(false)
   // La primera vez la base es el inventario: si se está recalculando, se espera (hasta ~5 min)
@@ -86,5 +101,5 @@ export async function derivarDia(onProgress: (m: string) => void): Promise<{ res
   }
   const done = await derive(true, resumen)
   if (!done.success) throw new Error(done.error || 'No se pudo guardar el día como base del siguiente')
-  return { resumen, avisos }
+  return { resumen, avisos, filas: rows.length }
 }

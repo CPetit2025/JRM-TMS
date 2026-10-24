@@ -101,7 +101,7 @@ for (const name of readdirSync(migDir).filter(n => n.endsWith('.sql') && n >= '2
   for (const stmt of sql.split(';')) {
     const flat = stripNested(stmt).replace(/\s+/g, ' ').trim()
     const m = flat.match(/(?:^|\s)(UPDATE|DELETE FROM)\s+[\w.]+/i)
-    if (!m || /\bON CONFLICT\b|\bFOR UPDATE\b/i.test(flat.slice(Math.max(0, m.index - 30), m.index + m[0].length + 5))) continue
+    if (!m || /\bCREATE (?:OR REPLACE )?(?:CONSTRAINT )?TRIGGER\b/i.test(flat) || /\bON CONFLICT\b|\bFOR UPDATE\b/i.test(flat.slice(Math.max(0, m.index - 30), m.index + m[0].length + 5))) continue
     if (!/\bWHERE\b/i.test(flat.slice(m.index))) errors.push(`${name}: «${flat.slice(m.index, m.index + 60)}…» no tiene WHERE: en Supabase (pg_safeupdate) falla. Agregue WHERE (o WHERE true).`)
   }
 }

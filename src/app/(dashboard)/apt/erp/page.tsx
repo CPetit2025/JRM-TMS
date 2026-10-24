@@ -7,6 +7,7 @@ import { Table, td, tdNum, th } from '@/components/inventario/parts'
 import { useInvQuery } from '@/components/inventario/useInvQuery'
 import Link from 'next/link'
 import { ErpVigencia } from '@/components/erp/ErpCarga'
+import { AnalisisSection, CalidadSection, CargasLogSection, DiccionarioSection, ReglasSection, ReglasV1Aviso } from '@/components/erp/ErpAnalisis'
 import { fmtN, fmtPeso } from '@/lib/inventario/format'
 import { fmtDate, fmtDateTime } from '@/lib/apt/format'
 import { exportAptXlsx } from '@/lib/apt/export'
@@ -15,11 +16,16 @@ import type { ErpGuia, ErpSituacion } from '@/lib/erp/types'
 
 // ERP como fuente: Actualizable Despacho (OT, contrato, despachado, pendiente y cada despacho por guía) y Stock Bodega
 // Despacho (stock por OT o subcontrato). Las guías se cruzan con las rutas del TMS para tener las dos fechas.
+// «OT pendientes» y «Stock por OT» aplican las reglas heredadas (v1); «Análisis» usa el cruce exacto sin reglas.
 const SECTIONS = [
-  { key: 'ots', label: 'OT pendientes' },
+  { key: 'analisis', label: 'Análisis (cruce exacto)' },
+  { key: 'ots', label: 'OT pendientes (reglas v1)' },
   { key: 'guias', label: 'Guías: fecha ERP y fecha TMS' },
-  { key: 'stock', label: 'Stock por OT' },
-  { key: 'carga', label: 'Historial de cargas' },
+  { key: 'stock', label: 'Stock por OT (reglas v1)' },
+  { key: 'calidad', label: 'Calidad de datos' },
+  { key: 'reglas', label: 'Reglas y comparación' },
+  { key: 'diccionario', label: 'Diccionario de indicadores' },
+  { key: 'carga', label: 'Cargas' },
 ] as const
 type Section = typeof SECTIONS[number]['key']
 
@@ -31,6 +37,7 @@ const tn = (t: number | null | undefined) => t == null ? '—' : fmtPeso(Number(
 export default function ErpPage() {
   const estado = useInvQuery('erp-estado', () => erpApi.estado(), { keepPrevious: true })
   const [section, setSection] = useState<Section>('ots')
+  const verReglas = () => setSection('reglas')
   if (!estado.data && estado.loading) return <LoadingBlock />
   if (!estado.data) return <ErrorBlock message={estado.error || 'Sin datos'} onRetry={estado.reload} />
   const e = estado.data
@@ -42,14 +49,17 @@ export default function ErpPage() {
         {SECTIONS.map(s => <button key={s.key} type="button" onClick={() => setSection(s.key)} aria-pressed={section === s.key}
           className={`rounded-full px-3 py-1.5 text-xs font-bold ${section === s.key ? 'bg-[#002855] text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'}`}>{s.label}</button>)}
       </nav>
-      {empty && section !== 'carga'
+      {empty && section !== 'carga' && section !== 'diccionario'
         ? <p className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">Aún no se cargan los Excel del ERP. Súbalos en <Link href="/apt/datos" className="font-semibold text-[#002855] underline">Cargar datos del ERP</Link>.</p>
-        : section === 'ots' ? <OtsSection /> : section === 'guias' ? <GuiasSection /> : section === 'stock' ? <StockSection /> : <>
+        : section === 'analisis' ? <AnalisisSection /> : section === 'ots' ? <><ReglasV1Aviso onVer={verReglas} /><OtsSection /></>
+        : section === 'guias' ? <GuiasSection /> : section === 'stock' ? <><ReglasV1Aviso onVer={verReglas} /><StockSection /></>
+        : section === 'calidad' ? <CalidadSection /> : section === 'reglas' ? <ReglasSection /> : section === 'diccionario' ? <DiccionarioSection /> : <>
           {e.can_load && <Link href="/apt/datos" className="flex items-center gap-3 rounded-xl border border-[#002855]/20 bg-[#002855]/5 px-4 py-3 text-sm font-semibold text-[#002855] shadow-sm hover:bg-[#002855]/10">
             <FileUp className="h-5 w-5 shrink-0" />
             <span>Los dos archivos (Actualizable Despacho y Stock Bodega Despacho) se cargan juntos en «Cargar datos del ERP».</span>
           </Link>}
-          <ChartCard title="Historial de cargas">
+          <CargasLogSection />
+          <ChartCard title="Historial de archivos aplicados">
             <Table empty={!e.historial.length} head={<tr><th className={th}>Fecha</th><th className={th}>Archivo</th><th className={th}>Estado</th><th className={th}>Corte del ERP</th><th className={`${th} text-right`}>Filas</th></tr>}>
               {e.historial.map(h => <tr key={h.id}><td className={td}>{fmtDateTime(h.applied_at ?? h.created_at)}</td><td className={`${td} max-w-80 truncate`} title={h.file_name}>{h.file_name}</td>
                 <td className={td}>{h.status === 'ACTIVA' ? 'Vigente' : h.status === 'REEMPLAZADA' ? 'Reemplazada' : 'Incompleta'}</td><td className={td}>{h.cut_at ? fmtDateTime(h.cut_at) : '—'}</td><td className={tdNum}>{fmtN(h.rows)}</td></tr>)}
