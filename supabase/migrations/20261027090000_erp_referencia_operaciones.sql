@@ -4,16 +4,28 @@
 -- ausentes quedan fuera de las sumas (se informan aparte).
 BEGIN;
 
--- Ven la referencia quienes ven APT o alguna pantalla de Operaciones
+-- Ven la referencia quienes ven APT, Contratos y OTs o alguna pantalla de Operaciones
 CREATE OR REPLACE FUNCTION public.erp_ref_can_view()
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
-  SELECT public.apt_can_view() OR EXISTS (SELECT 1 FROM public.profiles p JOIN public.roles r ON r.id = p.role_id
+  SELECT public.apt_can_view() OR public.is_contract_administrator() OR EXISTS (SELECT 1 FROM public.profiles p JOIN public.roles r ON r.id = p.role_id
     WHERE p.id = auth.uid() AND p.is_active
-      AND COALESCE(r.permissions, '[]'::jsonb) ?| ARRAY['despacho', 'despacho:read', 'despacho:write', 'monitoreo', 'monitoreo:read', 'monitoreo:write',
+      AND COALESCE(r.permissions, '[]'::jsonb) ?| ARRAY['ot', 'ot:read', 'ot:write', 'despacho', 'despacho:read', 'despacho:write', 'monitoreo', 'monitoreo:read', 'monitoreo:write',
         'torre-control', 'torre-control:read', 'torre-control:write', 'documentario', 'documentario:read', 'documentario:write',
         'packing-list', 'packing-list:read', 'packing-list:write', 'planificacion', 'planificacion:read', 'planificacion:write',
         'contratos-servicios', 'contratos-servicios:read', 'contratos-servicios:write', 'clientes', 'clientes:read', 'clientes:write']);
 $$;
+
+-- Cartera y sede: el Administrador de Contratos solo ve las OT que tiene asignadas; nadie ve una OT del TMS de una sede
+-- a la que no tiene acceso. Una OT que solo existe en el ERP la ven los demás usuarios con acceso a la referencia.
+CREATE OR REPLACE FUNCTION public.erp_ref_ot_visible(p_ot text)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+  SELECT CASE WHEN public.is_contract_administrator() AND NOT public.is_tms_admin()
+    THEN EXISTS (SELECT 1 FROM public.contracts c WHERE c.code = split_part(public.erp_key(p_ot), '-', 1) AND c.parent_contract_id IS NULL
+                   AND public.has_assigned_contract(c.id))
+    ELSE NOT EXISTS (SELECT 1 FROM public.contracts c WHERE c.code = split_part(public.erp_key(p_ot), '-', 1) AND c.parent_contract_id IS NULL
+                   AND NOT public.can_access_site(c.site_id)) END;
+$$;
+REVOKE ALL ON FUNCTION public.erp_ref_ot_visible(text) FROM PUBLIC, anon, authenticated;
 
 -- Guías del ERP con su fecha y documentos (carga vigente del Actualizable); p_keys acota a esas guías
 CREATE OR REPLACE FUNCTION public.erp_ref_guias_erp(v_c uuid, p_keys text[] DEFAULT NULL)
@@ -38,6 +50,7 @@ BEGIN
   IF NOT public.erp_ref_can_view() THEN RETURN jsonb_build_object('success', false, 'error', 'Sin acceso a la referencia del ERP'); END IF;
   IF v_c IS NULL THEN RETURN jsonb_build_object('success', true, 'sin_datos', true); END IF;
   IF v_ot IS NULL THEN RETURN jsonb_build_object('success', false, 'error', 'Indique una OT'); END IF;
+  IF NOT public.erp_ref_ot_visible(v_ot) THEN RETURN jsonb_build_object('success', false, 'error', 'La OT no está en su cartera'); END IF;
   -- Guías de los documentos de la OT (se acota antes de cruzar con el TMS)
   SELECT array_agg(DISTINCT g.guia_key) INTO v_keys FROM public.erp_contract_guias g
   WHERE g.import_id = v_c AND g.nro_documento IN (SELECT DISTINCT nro_documento FROM public.erp_contract_lines WHERE import_id = v_c AND ot = v_ot);
@@ -89,15 +102,21 @@ END $$;
 CREATE OR REPLACE FUNCTION public.erp_ref_guias(p_guias text[], p_ot text DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp SET enable_nestloop = off AS $$
 DECLARE v_c uuid := public.erp_active_import('CONTRATOS'); v_ot text := split_part(public.erp_key(p_ot), '-', 1); v_out jsonb;
+  v_ca boolean := public.is_contract_administrator() AND NOT public.is_tms_admin();
 BEGIN
   IF NOT public.erp_ref_can_view() THEN RETURN jsonb_build_object('success', false, 'error', 'Sin acceso a la referencia del ERP'); END IF;
+  IF v_ot IS NOT NULL AND NOT public.erp_ref_ot_visible(v_ot) THEN RETURN jsonb_build_object('success', false, 'error', 'La OT no está en su cartera'); END IF;
   IF v_c IS NULL THEN RETURN jsonb_build_object('success', true, 'sin_datos', true, 'guias', '[]'::jsonb); END IF;
   WITH i AS (SELECT DISTINCT btrim(x) AS entrada, public.apt_guia_key(x) AS guia_key FROM unnest(COALESCE(p_guias, '{}'::text[])) x WHERE NULLIF(btrim(x), '') IS NOT NULL LIMIT 200),
-  e AS (SELECT * FROM public.erp_ref_guias_erp(v_c, (SELECT array_agg(guia_key) FROM i)))
+  e0 AS (SELECT * FROM public.erp_ref_guias_erp(v_c, (SELECT array_agg(guia_key) FROM i))),
+  -- Fuera de la cartera solo se informa que la guía existe, sin OT, documentos ni cliente
+  e AS (SELECT e0.guia_key, e0.guia, e0.fecha, e0.exacta, CASE WHEN o.ok THEN e0.ots END AS ots, CASE WHEN o.ok THEN e0.docs END AS docs,
+          e0.items, e0.cantidad, CASE WHEN o.ok THEN e0.cliente END AS cliente, NOT o.ok AS oculta
+        FROM e0 CROSS JOIN LATERAL (SELECT NOT v_ca OR EXISTS (SELECT 1 FROM unnest(string_to_array(e0.ots, ', ')) x WHERE public.erp_ref_ot_visible(x)) AS ok) o)
   SELECT jsonb_build_object('success', true, 'cortes', (SELECT jsonb_object_agg(kind, cut_at) FROM public.erp_imports WHERE id = v_c),
     'guias', COALESCE(jsonb_agg(jsonb_build_object('entrada', i.entrada, 'guia', e.guia, 'en_erp', e.guia_key IS NOT NULL, 'ots', e.ots, 'documentos', e.docs,
       'items', e.items, 'cantidad', e.cantidad, 'cliente', e.cliente, 'fecha_erp', e.fecha, 'fecha_erp_exacta', e.exacta,
-      'ot_distinta', v_ot IS NOT NULL AND e.ots IS NOT NULL AND NOT (v_ot = ANY (string_to_array(e.ots, ', ')))) ORDER BY i.entrada), '[]'::jsonb))
+      'ot_distinta', v_ot IS NOT NULL AND (e.oculta OR (e.ots IS NOT NULL AND NOT (v_ot = ANY (string_to_array(e.ots, ', ')))))) ORDER BY i.entrada), '[]'::jsonb))
   INTO v_out
   FROM i LEFT JOIN e ON e.guia_key = i.guia_key;
   RETURN v_out;
@@ -110,6 +129,7 @@ DECLARE v_c uuid := public.erp_active_import('CONTRATOS'); v_out jsonb;
   v_to date := COALESCE(NULLIF(p->>'hasta', '')::date, (now() AT TIME ZONE 'America/Lima')::date);
   v_from date := COALESCE(NULLIF(p->>'desde', '')::date, COALESCE(NULLIF(p->>'hasta', '')::date, (now() AT TIME ZONE 'America/Lima')::date) - 7);
   v_tol integer := greatest(COALESCE((p->>'tolerancia')::integer, 2), 0); v_lim integer := least(greatest(COALESCE((p->>'limit')::integer, 15), 1), 100);
+  v_ca boolean := public.is_contract_administrator() AND NOT public.is_tms_admin();
 BEGIN
   IF NOT public.erp_ref_can_view() THEN RETURN jsonb_build_object('success', false, 'error', 'Sin acceso a la referencia del ERP'); END IF;
   IF v_c IS NULL THEN RETURN jsonb_build_object('success', true, 'sin_datos', true); END IF;
@@ -121,7 +141,9 @@ BEGIN
       t.fecha - e.fecha AS dif_dias, COALESCE(t.fecha, e.fecha) AS fecha_ref
     FROM e FULL JOIN t ON t.guia_key = e.guia_key),
   -- Solo TMS desde la primera fecha que cubre el Actualizable (antes no hay con qué cruzar)
-  f AS (SELECT * FROM j WHERE fecha_ref BETWEEN v_from AND v_to AND (origen <> 'SOLO_TMS' OR fecha_tms >= (SELECT min(fecha) FROM e)))
+  f AS (SELECT * FROM j WHERE fecha_ref BETWEEN v_from AND v_to AND (origen <> 'SOLO_TMS' OR fecha_tms >= (SELECT min(fecha) FROM e))
+          -- El Administrador de Contratos solo ve las guías de su cartera
+          AND (NOT v_ca OR public.erp_ref_ot_visible(split_part(COALESCE(ots, ot_tms, ''), ', ', 1))))
   SELECT jsonb_build_object('success', true, 'desde', v_from, 'hasta', v_to, 'tolerancia', v_tol,
     'cortes', (SELECT jsonb_object_agg(kind, cut_at) FROM public.erp_imports WHERE id = v_c),
     'resumen', (SELECT jsonb_build_object('total', count(*), 'ambos', count(*) FILTER (WHERE origen = 'AMBOS'), 'solo_erp', count(*) FILTER (WHERE origen = 'SOLO_ERP'),
