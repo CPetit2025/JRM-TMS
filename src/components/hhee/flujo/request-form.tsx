@@ -53,15 +53,17 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
   useEffect(() => {
     let alive = true
     const t = setTimeout(() => {
+      const selected = payloadLines.filter(l => l.person_id)
+      if (!selected.length) { setPreview(null); setCalculating(false); setError(''); return }
       setCalculating(true)
-      call<Preview>('hhee_flow_preview', { p: { id: r?.id, work_date: f.work_date, lines: payloadLines } })
+      call<Preview>('hhee_flow_preview', { p: { id: r?.id, work_date: f.work_date, lines: selected } })
         .then(p => { if (alive) {setPreview(p);setError('')} }).catch(e => { if (alive) {setPreview(null);setError(e instanceof Error ? e.message : 'No se pudo calcular')} }).finally(() => { if (alive) setCalculating(false) })
     }, 350)
     return () => { alive = false; clearTimeout(t) }
   }, [payloadLines, f.work_date, r?.id])
 
-  const calc = useMemo(() => lines.map((l, i) => {
-    const pv = preview?.lines[i]?.person_id === l.person_id ? preview.lines[i] : undefined
+  const calc = useMemo(() => lines.map(l => {
+    const pv = l.person_id ? preview?.lines.find(p => p.person_id === l.person_id) : undefined
     const person = ctx.people.find(p => p.id === l.person_id)
     const rate = person?.rate_ready ? person.base_hour_cost : null
     const m25 = pv?.m25 ?? 0, m35 = pv?.m35 ?? 0, m100 = pv?.m100 ?? 0
