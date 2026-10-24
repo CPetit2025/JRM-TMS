@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ExternalLink, FileText, Layers, Loader2, MapPin, Pencil, UserCog } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/modal'
+import { ErpOtReferencia } from '@/components/erp/ErpReferencia'
 
 // Vista rápida de un contrato/OT al hacer clic en la tabla: partida, componentes y últimas solicitudes,
 // con accesos a editar, asignar responsable y abrir la ficha completa.
@@ -106,12 +107,12 @@ export function ContractQuickView({ contract, responsible, isAdmin, onClose, onE
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <div className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-800"><Layers className="h-4 w-4" />Subcontratos y errores</div>
+              <div className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-800"><Layers className="h-4 w-4" />Subcontratos, errores y garantías</div>
               {!data ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : data.children.length === 0 ? <p className="text-xs text-slate-400">Sin componentes.</p> : (
                 <ul className="space-y-1 text-sm">
                   {data.children.map(c => (
                     <li key={c.id} className="flex items-center gap-2">
-                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${c.type === 'ERROR' ? 'bg-red-100 text-red-800' : 'bg-purple-100 text-purple-800'}`}>{c.type === 'ERROR' ? 'Error' : 'Sub'}</span>
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${c.type === 'ERROR' ? 'bg-red-100 text-red-800' : c.type === 'GARANTIA' ? 'bg-teal-100 text-teal-800' : 'bg-purple-100 text-purple-800'}`}>{c.type === 'ERROR' ? 'Error' : c.type === 'GARANTIA' ? 'Garantía' : 'Sub'}</span>
                       <span className="font-medium text-slate-700">{c.code}</span>
                       <span className="text-xs text-slate-400">{c.status}</span>
                     </li>
@@ -133,6 +134,9 @@ export function ContractQuickView({ contract, responsible, isAdmin, onClose, onE
               )}
             </div>
           </div>
+
+          {/* Referencia del ERP de la OT: pendiente por tipo y unidad, stock y guías (solo lectura) */}
+          <ErpOtReferencia ot={contract.code} compact />
 
           <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
             {isAdmin && <button type="button" onClick={onAssign} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><UserCog className="h-4 w-4" />Responsable</button>}

@@ -104,6 +104,14 @@ async function uploadErpFileCore(file: ErpParsedFile, onProgress?: (m: string) =
 
 type Applied = { rows: number; summary: Record<string, unknown> }
 
+// Después de aplicar el Actualizable: corrige el cliente de las OT madre según el RUC del ERP (registra el cliente si no
+// existe; solo solicitudes abiertas; historial y aviso al responsable). null si la base aún no lo tiene o no hay permiso.
+export async function erpSincronizarClientes(): Promise<{ corregidas: number; clientes_creados: number; ruc_invalido: number; errores: number } | null> {
+  const { data, error } = await supabase.rpc('erp_contratos_sincronizar_clientes', { p_simular: false })
+  const out = data as { success?: boolean; corregidas: number; clientes_creados: number; ruc_invalido: number; errores: number } | null
+  return error || !out?.success ? null : out
+}
+
 // En el servidor no rige el límite de 8 s del navegador. null = el servidor no está disponible: se aplica desde aquí.
 async function applyOnServer(id: string): Promise<Applied | null> {
   let res: Response

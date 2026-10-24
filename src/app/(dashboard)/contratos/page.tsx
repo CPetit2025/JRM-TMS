@@ -4,7 +4,7 @@ import { DataTable } from '@/components/ui/data-table'
 
 import { operatingFromBalance } from '@/lib/transport-budget'
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Search, Layers, FileWarning, Briefcase, CheckCircle2, Upload, Download, Edit2, Filter, MapPin, UserCog, ChevronRight, AlertTriangle } from 'lucide-react'
+import { Plus, Search, Layers, FileWarning, Briefcase, CheckCircle2, Upload, Download, Edit2, Filter, MapPin, UserCog, ChevronRight, AlertTriangle, ShieldCheck, Database, History, Settings2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
@@ -17,11 +17,16 @@ import { ContractQuickView } from '@/components/contratos/ContractQuickView'
 import { ClaimContractsModal } from '@/components/contratos/ClaimContractsModal'
 import { clientDocLabel } from '@/lib/countries'
 import { InlineClientCreator } from '@/components/contratos/InlineClientCreator'
+import { ErpContratoCelda, ErpConfigModal, ErpCorreccionesModal, ErpCorteAviso, ErpSinAltaModal, useErpContratos, type ErpSinAltaFila } from '@/components/erp/ErpContratos'
+
+// Documento del ERP para prellenar el alta (misma numeración que el TMS)
+type ErpDoc = { en_erp: boolean; documento?: string; tipo?: string | null; tipo_erp?: string | null; cliente?: string | null; ruc?: string | null
+  ruc_valido?: boolean; client_id?: string | null; client_name?: string | null; ya_en_tms?: boolean; madre_id?: string | null }
 
 interface Contract {
   id: string
   code: string
-  type: 'CONTRATO' | 'SUBCONTRATO' | 'ERROR' | 'OT_INDEPENDIENTE'
+  type: 'CONTRATO' | 'SUBCONTRATO' | 'ERROR' | 'GARANTIA' | 'OT_INDEPENDIENTE'
   client_id: string
   parent_contract_id?: string | null
   status: string
@@ -53,7 +58,7 @@ export default function ContratosPage() {
   const router = useRouter()
   const [quickView, setQuickView] = useState<Contract | null>(null)
   const supabase = createClient()
-  const { role } = usePermissions()
+  const { role, hasAccess } = usePermissions()
   const [contracts, setContracts] = useState<Contract[]>([])
   const [contractAdmins, setContractAdmins] = useState<Array<{ id: string, name: string }>>([])
   const [profileNames, setProfileNames] = useState<Record<string, string>>({})
@@ -104,6 +109,13 @@ export default function ContratosPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [filterStatus, setFilterStatus] = useState('TODOS')
   const [filterType, setFilterType] = useState('TODOS')
+  // Verificación con el ERP (Actualizable + Stock): diferencias, OT activa por último despacho, alta asistida y correcciones
+  const [filterErp, setFilterErp] = useState('TODOS')
+  const erp = useErpContratos(contracts.map(c => c.code))
+  const [sinAltaOpen, setSinAltaOpen] = useState(false)
+  const [correccionesOpen, setCorreccionesOpen] = useState(false)
+  const [erpConfigOpen, setErpConfigOpen] = useState(false)
+  const canSyncErp = role === 'admin' || role === 'jefe de distribución' || hasAccess('apt-carga')
 
   const filteredContracts = contracts.filter(c => {
     const matchesSearch = searchTerm === '' || 
@@ -112,9 +124,24 @@ export default function ContratosPage() {
       
     const matchesStatus = filterStatus === 'TODOS' || c.status === filterStatus;
     const matchesType = filterType === 'TODOS' || c.type === filterType;
+    const info = erp.filas[c.code]
+    const matchesErp = filterErp === 'TODOS' || (!!info && (
+      filterErp === 'DIFERENCIAS' ? info.diferencias.length > 0
+        : filterErp === 'ACTIVAS' ? info.activa === true
+        : filterErp === 'INACTIVAS' ? info.activa === false
+        : filterErp === 'NO_EN_ERP' ? info.diferencias.includes('NO_EN_ERP')
+        : filterErp === 'CLIENTE' ? info.diferencias.includes('CLIENTE_DISTINTO') || info.diferencias.includes('RUC_INVALIDO')
+        : filterErp === 'SIN_ALTA' ? info.diferencias.includes('HIJOS_SIN_ALTA') : true));
 
-    return matchesSearch && matchesStatus && matchesType;
+    return matchesSearch && matchesStatus && matchesType && matchesErp;
   });
+
+  // Enlace desde el aviso «cliente corregido» (/contratos?ot=…): se aplica una vez, al cargar la lista
+  const otFromLink = useRef(false)
+
+  // Alta asistida: el código escrito (o elegido en «sin alta») se busca en el ERP para prellenar tipo, madre y cliente
+  const [erpDocState, setErpDoc] = useState<{ code: string; doc: ErpDoc } | null>(null)
+  const [erpClientBusy, setErpClientBusy] = useState(false)
 
   useEffect(() => {
     fetchContracts()
@@ -221,6 +248,11 @@ export default function ContratosPage() {
       }))
 
       setContracts(formatted)
+      if (!otFromLink.current) {
+        otFromLink.current = true
+        const ot = new URLSearchParams(window.location.search).get('ot')
+        if (ot) setSearchTerm(ot)
+      }
     } catch (error: any) {
       toast.error('Error al cargar contratos: ' + error.message)
     } finally {
@@ -234,11 +266,11 @@ export default function ContratosPage() {
 
     try {
       let finalCode = newContract.correlative.trim()
-      const isChild = newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR'
+      const isChild = newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR' || newContract.type === 'GARANTIA'
       if (!isChild && !newContract.client_id) throw new Error('Seleccione el cliente de la OT (por RUC o razón social)')
       
-      // Si es Subcontrato o Error, prefijamos con el código del contrato madre
-      if (newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR') {
+      // Si es Subcontrato, Error o Garantía, prefijamos con el código del contrato madre
+      if (isChild) {
         if (!newContract.parent_contract_id) {
           throw new Error('Debe seleccionar un Contrato Madre')
         }
@@ -265,13 +297,14 @@ export default function ContratosPage() {
       // Alta en el servidor: permisos, sede, jerarquía, duplicados y partida en una sola operación
       const { data, error } = await supabase.rpc('create_contract', {
         p_payload: payload,
-        p_budget_pen: Number(newContract.budget_pen) || 0,
+        p_budget_pen: newContract.type === 'GARANTIA' ? 0 : Number(newContract.budget_pen) || 0,
       })
       if (error) throw new Error(error.message)
-      const result = data as { success?: boolean; error?: string } | null
+      const result = data as { success?: boolean; error?: string; error_generado?: { code: string } | null } | null
       if (!result?.success) throw new Error(result?.error || 'No se pudo registrar el contrato')
 
-      toast.success('Contrato creado exitosamente')
+      toast.success(result.error_generado ? `Garantía registrada con su Error de contrato ${result.error_generado.code}` : 'Contrato creado exitosamente')
+      erp.reload()
       setIsModalOpen(false)
       setNewContract({ correlative: '', type: 'CONTRATO', client_id: '', parent_contract_id: '', budget_pen: '', total_weight_kg: '', total_volume_m3: '', destination_department: '', destination_province: '', destination_district: '', destination_address: '' })
       fetchContracts()
@@ -395,7 +428,7 @@ export default function ContratosPage() {
 
         for (const row of data) {
           try {
-            const tipo = (row.Tipo || '').toString().trim().toUpperCase()
+            const tipo = (row.Tipo || '').toString().trim().toUpperCase().replace('GARANTÍA', 'GARANTIA')
             if (!tipo) continue
 
             // En el Excel: para CONTRATO el código está en CodigoMadre,
@@ -436,7 +469,7 @@ export default function ContratosPage() {
             let parentId = null
             let finalCode = codigo
 
-            if (tipo === 'SUBCONTRATO' || tipo === 'ERROR') {
+            if (tipo === 'SUBCONTRATO' || tipo === 'ERROR' || tipo === 'GARANTIA') {
               if (codigoMadre && contractMap.has(codigoMadre)) {
                 const parent = contractMap.get(codigoMadre)
                 if (parent) {
@@ -476,7 +509,7 @@ export default function ContratosPage() {
             }
             const { data: created, error } = await supabase.rpc('create_contract', {
               p_payload: payload,
-              p_budget_pen: presupuesto,
+              p_budget_pen: tipo === 'GARANTIA' ? 0 : presupuesto,
             })
             if (error) throw new Error(error.message)
             const result = created as { success?: boolean; error?: string; id?: string } | null
@@ -517,6 +550,7 @@ export default function ContratosPage() {
       case 'CONTRATO': return <span className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-[11px] font-semibold inline-flex items-center gap-1"><Briefcase className="w-3 h-3"/> Madre</span>
       case 'SUBCONTRATO': return <span className="bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded text-[11px] font-semibold inline-flex items-center gap-1"><Layers className="w-3 h-3"/> Sub</span>
       case 'ERROR': return <span className="bg-red-100 text-red-800 px-1.5 py-0.5 rounded text-[11px] font-semibold inline-flex items-center gap-1"><FileWarning className="w-3 h-3"/> Error</span>
+      case 'GARANTIA': return <span className="bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded text-[11px] font-semibold inline-flex items-center gap-1"><ShieldCheck className="w-3 h-3"/> Garantía</span>
       default: return <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-[11px] font-semibold">{type === 'OT_INDEPENDIENTE' ? 'OT indep.' : type}</span>
     }
   }
@@ -527,7 +561,48 @@ export default function ContratosPage() {
     const p = contracts.find(c => c.id === newContract.parent_contract_id)
     return p ? p.code + '-' : ''
   }
-  const isChildType = newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR'
+  const isChildType = newContract.type === 'SUBCONTRATO' || newContract.type === 'ERROR' || newContract.type === 'GARANTIA'
+  const typedCode = isChildType ? (getSelectedParentCode() && newContract.correlative.trim() ? getSelectedParentCode() + newContract.correlative.trim() : '') : newContract.correlative.trim()
+
+  // Abre el alta con un documento del ERP (desde «Documentos del ERP sin alta»)
+  const altaDesdeErp = (f: ErpSinAltaFila) => {
+    const tipo = f.tipo || 'CONTRATO'
+    const madre = tipo === 'CONTRATO' ? undefined : contracts.find(c => c.code === f.ot && !c.parent_contract_id)
+    setSinAltaOpen(false)
+    setAddingClient(false)
+    setNewContract(current => ({ ...current, type: tipo, correlative: tipo === 'CONTRATO' ? f.documento : f.documento.slice(f.ot.length + 1),
+      parent_contract_id: madre?.id || '', client_id: '',
+      ...(madre ? { destination_department: madre.destination_department || '', destination_province: madre.destination_province || '',
+        destination_district: madre.destination_district || '', destination_address: madre.destination_address || '' } : {}) }))
+    setIsModalOpen(true)
+  }
+  useEffect(() => {
+    if (!isModalOpen || typedCode.length < 3) return
+    let alive = true
+    const t = setTimeout(() => {
+      void supabase.rpc('erp_ref_documento', { p_codigo: typedCode }).then(({ data, error }) => {
+        const out = data as ({ success?: boolean; sin_datos?: boolean } & ErpDoc) | null
+        if (alive && !error && out?.success && !out.sin_datos) setErpDoc({ code: typedCode, doc: out })
+      })
+    }, 350)
+    return () => { alive = false; clearTimeout(t) }
+    // supabase es el mismo cliente en cada render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isModalOpen, typedCode])
+  const erpDoc = isModalOpen && erpDocState?.code === typedCode ? erpDocState.doc : null
+  const erpTipoDistinto = !!erpDoc?.en_erp && !!erpDoc.tipo && erpDoc.tipo !== newContract.type
+  const usarClienteErp = async () => {
+    if (!typedCode) return
+    setErpClientBusy(true)
+    const { data, error } = await supabase.rpc('erp_cliente_desde_erp', { p_codigo: typedCode })
+    setErpClientBusy(false)
+    const out = data as { success?: boolean; error?: string; client_id?: string; creado?: boolean; cliente?: string; ruc?: string } | null
+    if (error || !out?.success || !out.client_id) { toast.error(error?.message || out?.error || 'No se pudo tomar el cliente del ERP'); return }
+    const client = { id: out.client_id, business_name: out.cliente || '', tax_id: out.ruc || '' }
+    setClients(list => list.some(c => c.id === client.id) ? list : [...list, client].sort((a, b) => String(a.business_name).localeCompare(String(b.business_name))))
+    setNewContract(current => ({ ...current, client_id: out.client_id! }))
+    toast.success(out.creado ? `Cliente ${out.cliente} registrado desde el ERP` : `Cliente del ERP: ${out.cliente}`)
+  }
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col gap-3 mx-auto">
@@ -539,6 +614,18 @@ export default function ContratosPage() {
               <UserCog className="h-4 w-4" /> Mis contratos
             </button>
           )}
+          <button type="button" onClick={() => setSinAltaOpen(true)} title="Documentos del Actualizable del ERP que aún no tienen alta en el TMS"
+            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-sm font-semibold text-indigo-900 hover:bg-indigo-100">
+            <Database className="h-4 w-4" aria-hidden="true" /> ERP sin alta
+          </button>
+          <button type="button" onClick={() => setCorreccionesOpen(true)} title="Cliente de OT corregido según el RUC del ERP"
+            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            <History className="h-4 w-4" aria-hidden="true" /> Correcciones de cliente
+          </button>
+          <button type="button" onClick={() => setErpConfigOpen(true)} title="Regla de OT activa (umbral y eventos)" aria-label="Regla de OT activa"
+            className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50">
+            <Settings2 className="h-4 w-4" aria-hidden="true" />
+          </button>
           <input
             type="file"
             accept=".xlsx, .xls"
@@ -601,6 +688,19 @@ export default function ContratosPage() {
       {showFilters && (
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Verificación con el ERP</label>
+            <select value={filterErp} onChange={(e) => setFilterErp(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="TODOS">Todas</option>
+              <option value="DIFERENCIAS">Con diferencias con el ERP</option>
+              <option value="ACTIVAS">OT activas</option>
+              <option value="INACTIVAS">OT inactivas</option>
+              <option value="NO_EN_ERP">No están en el ERP</option>
+              <option value="CLIENTE">Cliente distinto o RUC no válido</option>
+              <option value="SIN_ALTA">Con documentos del ERP sin alta</option>
+            </select>
+          </div>
+          <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Estado</label>
             <select
               value={filterStatus}
@@ -624,22 +724,26 @@ export default function ContratosPage() {
               <option value="CONTRATO">Contrato Madre</option>
               <option value="SUBCONTRATO">Subcontrato</option>
               <option value="ERROR">Error</option>
+              <option value="GARANTIA">Garantía</option>
               <option value="OT_INDEPENDIENTE">OT Independiente</option>
             </select>
           </div>
         </div>
       )}
 
+      <ErpCorteAviso config={erp.config} estado={erp.estado} />
+
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div role="region" aria-label="Tabla de contratos" tabIndex={0} className="h-full overflow-auto">
-          <DataTable className="relative w-full min-w-[720px] table-fixed text-left text-sm">
+          <DataTable className="relative w-full min-w-[880px] table-fixed text-left text-sm">
             <colgroup>
-              <col className="w-[19%]" />
+              <col className="w-[15%]" />
               <col />
-              <col className="hidden lg:table-column w-[10%]" />
-              <col className="hidden md:table-column w-[9%]" />
-              <col className="w-[20%]" />
-              <col className="w-[10%]" />
+              <col className="hidden lg:table-column w-[8%]" />
+              <col className="hidden md:table-column w-[8%]" />
+              <col className="w-[18%]" />
+              <col className="w-[8%]" />
+              <col className="w-[17%]" />
               {role === 'admin' && <col className="hidden xl:table-column w-[12%]" />}
               <col className={role === 'admin' ? 'w-[92px]' : 'w-[56px]'} />
             </colgroup>
@@ -651,6 +755,7 @@ export default function ContratosPage() {
                 <th className="hidden px-4 py-3 font-semibold md:table-cell">Alta</th>
                 <th className="px-4 py-3 font-semibold">Partida consolidada</th>
                 <th className="px-4 py-3 font-semibold">Estado</th>
+                <th className="px-4 py-3 font-semibold" title="Verificación con el Actualizable y el Stock del ERP">ERP</th>
                 {role === 'admin' && <th className="hidden px-4 py-3 font-semibold xl:table-cell">Responsable</th>}
                 <th className="sticky right-0 z-40 bg-slate-50 px-2 py-3"><span className="sr-only">Acciones</span></th>
               </tr>
@@ -658,11 +763,11 @@ export default function ContratosPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={role === 'admin' ? 8 : 7} className="px-6 py-10 text-center text-slate-500">Cargando contratos...</td>
+                  <td colSpan={role === 'admin' ? 9 : 8} className="px-6 py-10 text-center text-slate-500">Cargando contratos...</td>
                 </tr>
               ) : filteredContracts.length === 0 ? (
                 <tr>
-                  <td colSpan={role === 'admin' ? 8 : 7} className="px-6 py-10 text-center text-slate-500">
+                  <td colSpan={role === 'admin' ? 9 : 8} className="px-6 py-10 text-center text-slate-500">
                     {contracts.length === 0 ? 'No hay contratos en tu cartera.' : 'Ningún contrato coincide con la búsqueda o los filtros.'}
                   </td>
                 </tr>
@@ -735,6 +840,7 @@ export default function ContratosPage() {
                         {contract.status}
                       </span>
                     </td>
+                    <td className="px-4 py-3"><ErpContratoCelda info={erp.filas[contract.code]} estado={erp.estado} umbral={erp.config?.umbral_dias} /></td>
                     {role === 'admin' && <td className="hidden px-4 py-3 text-xs xl:table-cell">
                       {responsible ? <span className="text-slate-700">{responsible}</span> : <span className="text-slate-400">Sin asignar</span>}
                     </td>}
@@ -777,6 +883,11 @@ export default function ContratosPage() {
         onAssign={() => { const c = quickView; setQuickView(null); if (c) openAssignment(c) }}
         onOpen={() => { const c = quickView; setQuickView(null); if (c) router.push(`/contratos/${c.id}`) }}
       />
+
+      <ErpSinAltaModal open={sinAltaOpen} onClose={() => setSinAltaOpen(false)} onAlta={altaDesdeErp} />
+      <ErpCorreccionesModal open={correccionesOpen} onClose={() => setCorreccionesOpen(false)} canSync={canSyncErp}
+        onChanged={() => { void fetchContracts(); erp.reload() }} />
+      {erpConfigOpen && <ErpConfigModal open onClose={() => setErpConfigOpen(false)} config={erp.config} onSaved={erp.reload} />}
 
       {claimOpen && <ClaimContractsModal open firstTime={claimFirstTime} onClose={() => setClaimOpen(false)} onClaimed={() => { void fetchContracts() }} />}
 
@@ -824,8 +935,9 @@ export default function ContratosPage() {
           {/* 1. Tipo, código y cliente */}
           <section className="space-y-4">
             <h3 className="flex items-center gap-2 text-sm font-bold text-[#002855]"><span className="grid h-6 w-6 place-items-center rounded-full bg-[#002855] text-xs text-white">1</span>Registro y cliente</h3>
-            <div role="radiogroup" aria-label="Tipo de registro" className="grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1">
-              {([['CONTRATO', 'OT Madre', 'Contrato principal'], ['SUBCONTRATO', 'Subcontrato', 'Hereda cliente y destino'], ['ERROR', 'Error / Reproceso', 'Hereda cliente y destino']] as const).map(([value, label, hint]) =>
+            <div role="radiogroup" aria-label="Tipo de registro" className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 sm:grid-cols-4">
+              {([['CONTRATO', 'OT Madre', 'Contrato principal'], ['SUBCONTRATO', 'Subcontrato', 'Hereda cliente y destino'], ['ERROR', 'Error / Reproceso', 'Hereda cliente y destino'],
+                ['GARANTIA', 'Garantía', 'Genera su Error de contrato']] as const).map(([value, label, hint]) =>
                 <button key={value} type="button" role="radio" aria-checked={newContract.type === value} onClick={() => { setNewContract({ ...newContract, type: value }); setAddingClient(false) }}
                   className={`min-h-11 rounded-md px-2 py-1.5 text-left text-sm ${newContract.type === value ? 'bg-white font-semibold text-[#002855] shadow-sm' : 'text-slate-600 hover:text-[#002855]'}`}>
                   <span className="block">{label}</span><span className="hidden text-[11px] font-normal text-slate-500 sm:block">{hint}</span>
@@ -858,9 +970,19 @@ export default function ContratosPage() {
                 <div className="flex overflow-hidden rounded-lg border border-slate-300 bg-white transition-all focus-within:border-[#002855] focus-within:ring-2 focus-within:ring-[#002855]">
                   {getSelectedParentCode() && <div className="flex items-center border-r border-slate-300 bg-slate-100 px-3 text-sm font-medium text-slate-600">{getSelectedParentCode()}</div>}
                   <input type="text" required value={newContract.correlative} onChange={(e) => setNewContract({...newContract, correlative: e.target.value})}
-                    className="w-full p-2.5 text-sm outline-none" placeholder={newContract.type === 'SUBCONTRATO' ? 'S001' : newContract.type === 'ERROR' ? 'E001' : '16584'} />
+                    className="w-full p-2.5 text-sm outline-none" placeholder={newContract.type === 'SUBCONTRATO' ? 'S001' : newContract.type === 'ERROR' ? 'E001' : newContract.type === 'GARANTIA' ? 'G01' : '16584'} />
                 </div>
               </div>
+              {erpDoc && <div className={`md:col-span-2 rounded-lg border p-3 text-xs ${erpDoc.en_erp ? (erpTipoDistinto || erpDoc.ya_en_tms ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-indigo-200 bg-indigo-50 text-indigo-900') : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+                <p className="flex items-center gap-1.5 font-semibold"><Database className="h-3.5 w-3.5" aria-hidden="true" />
+                  {erpDoc.ya_en_tms ? `${typedCode} ya tiene alta en el TMS` : erpDoc.en_erp ? `${erpDoc.documento} está en el ERP: ${erpDoc.tipo_erp}` : `${typedCode} no está en el Actualizable del ERP`}</p>
+                {erpDoc.en_erp && <p className="mt-1">Cliente del ERP: <strong>{erpDoc.cliente || '—'}</strong> · RUC {erpDoc.ruc || '—'}{erpDoc.ruc_valido ? '' : ' (no válido: registre el cliente a mano)'}
+                  {erpDoc.client_name ? ` · registrado en el TMS como ${erpDoc.client_name}` : erpDoc.ruc_valido ? ' · aún no está registrado: se registra al usarlo' : ''}</p>}
+                {erpTipoDistinto && <p className="mt-1 font-semibold">En el ERP es {erpDoc.tipo_erp}: revise el tipo elegido.</p>}
+                {erpDoc.en_erp && !isChildType && erpDoc.ruc_valido && !erpDoc.ya_en_tms && newContract.client_id !== erpDoc.client_id &&
+                  <button type="button" disabled={erpClientBusy} onClick={usarClienteErp} className="mt-2 min-h-9 rounded-lg bg-[#002855] px-3 text-xs font-semibold text-white disabled:opacity-50">
+                    {erpClientBusy ? 'Tomando…' : erpDoc.client_id ? 'Usar el cliente del ERP' : 'Registrar y usar el cliente del ERP'}</button>}
+              </div>}
               {isChildType ? <div className="md:col-span-2">
                 <p className="text-sm font-medium text-slate-700">Cliente</p>
                 <p className="mt-1 rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-sm text-slate-600">
@@ -907,11 +1029,12 @@ export default function ContratosPage() {
           <section className="space-y-3 border-t border-slate-100 pt-4">
             <h3 className="flex items-center gap-2 text-sm font-bold text-[#002855]"><span className="grid h-6 w-6 place-items-center rounded-full bg-[#002855] text-xs text-white">3</span>Partida y carga <span className="text-xs font-normal text-slate-500">· opcional</span></h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {newContract.type === 'GARANTIA' ? <p className="rounded-lg border border-teal-200 bg-teal-50 p-2.5 text-xs text-teal-900">La garantía no lleva partida propia: al guardarla se genera su <strong>Error de contrato</strong> (siguiente correlativo libre), que es el que lleva el transporte y su costo con la partida de la OT madre.</p> :
               <label className="block text-sm font-medium text-slate-700">Partida propia (S/)
                 <input type="number" step="0.01" min="0" value={newContract.budget_pen} onChange={(e) => setNewContract({...newContract, budget_pen: e.target.value})}
                   className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 text-sm outline-none focus:border-[#002855] focus:ring-2 focus:ring-[#002855]" placeholder="0.00" />
                 <span className="mt-1 block text-xs font-normal text-slate-500">{Number(newContract.budget_pen) > 0 ? `Operación (80%): S/ ${(Number(newContract.budget_pen) * 0.8).toFixed(2)}` : '80% disponible para operación'}</span>
-              </label>
+              </label>}
               <label className="block text-sm font-medium text-slate-700">Peso (toneladas)
                 <input type="number" step="0.01" min="0" max={MAX_TONS} value={newContract.total_weight_kg} onChange={(e) => setNewContract({...newContract, total_weight_kg: e.target.value})}
                   className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 text-sm outline-none focus:border-[#002855] focus:ring-2 focus:ring-[#002855]" placeholder="Ej. 15" />
