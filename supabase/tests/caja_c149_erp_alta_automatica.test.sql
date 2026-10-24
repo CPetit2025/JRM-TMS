@@ -1,7 +1,8 @@
 -- CAJA C149 — Alta automática desde el ERP: las OT activas del Actualizable que no existen en el TMS se dan de alta
 -- (madre con su cliente por RUC, registrado si no existe; luego subcontratos y errores), la garantía y las OT inactivas
 -- no; sin RUC válido la madre y sus hijos quedan pendientes; la simulación no crea nada; repetir no duplica.
--- Cliente de las OT en el APT: sin guía ni contrato en el TMS se toma del Actualizable. Siempre se revierte.
+-- Cliente de las OT en el APT: sin guía ni contrato en el TMS se toma del Actualizable. Siempre se revierte (termina en
+-- error a propósito; también verifica que no hayan quedado datos de una corrida anterior).
 BEGIN;
 DO $test$
 DECLARE admin_id uuid; up uuid; res jsonb; pass int := 0; fails text[] := '{}'; oa text; ob text; oc text; rb text;
@@ -12,6 +13,10 @@ BEGIN
   IF admin_id IS NULL THEN RAISE EXCEPTION 'CAJA C149 FAIL: falta un Administrador activo'; END IF;
   PERFORM set_config('request.jwt.claim.sub', admin_id::text, true);
   PERFORM set_config('request.jwt.claims', json_build_object('sub', admin_id, 'role', 'authenticated')::text, true);
+  IF EXISTS (SELECT 1 FROM public.erp_imports WHERE file_name = 'C149.xlsx')
+     OR EXISTS (SELECT 1 FROM public.clients WHERE business_name LIKE 'CLIENTE C149 %') THEN
+    RAISE EXCEPTION 'CAJA C149 FAIL: quedaron datos de una corrida anterior (carga C149.xlsx o clientes CLIENTE C149)';
+  END IF;
 
   -- Tres OT libres y un RUC válido (dígito verificador SUNAT) que no exista
   LOOP oa := (80000 + floor(random() * 9999))::int::text; EXIT WHEN NOT EXISTS (SELECT 1 FROM public.contracts WHERE code LIKE oa || '%'); END LOOP;
@@ -72,6 +77,6 @@ BEGIN
   THEN pass := pass + 1; ELSE fails := fails || ('T4 cliente APT: ' || COALESCE(public.inv_ot_cliente(oc), 'null')); END IF;
 
   IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C149 FAIL (%/4): %', pass, array_to_string(fails, ' | '); END IF;
-  RAISE NOTICE 'CAJA C149 OK (%/4)', pass;
+  RAISE EXCEPTION 'CAJA C149 PASS (%/4) Alta automática de OT activas desde el ERP y cliente del Actualizable en el APT', pass;
 END $test$;
 ROLLBACK;
