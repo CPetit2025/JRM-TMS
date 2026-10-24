@@ -105,3 +105,18 @@ test('libro con hojas SALIDA y ENTRADA (formato del ERP): ambas se reconocen; un
 
 // Import transport regressions run alongside the existing parser check in PR CI.
 require('./test-inventario-upload.cjs')
+
+test('Excel del ERP (Actualizable o Stock Bodega Despacho): no es foto del inventario, se deriva al módulo ERP', () => {
+  const stock = book({Consulta1: [
+    ['Bodega', 'Cod_Producto', 'Producto', 'Tipo_Producto', 'Unidad', 'Lote', 'Stock', 'Stock_Falla', 'Stock_Comprometido', 'Peso_Unitario', 'Peso_Total', 'Fecha_Actualizacion'],
+    ['647-04  ALM PT', 'APP.45', 'ADAPTADOR', 'PRODUCTO TERMINADO', 'UND', 15696, 161, 0, 4655, 1.2, 193, new Date(2026, 9, 23)],
+  ], Hoja1: [[]]})
+  const actualizable = book({Consulta1: [['Nro_Contrato', 'Nro_Documento', 'Secuencia', 'Cod_Producto', 'Cant_Contrato', 'Cant_Despachada', 'Cant_Pendiente'], [1, '1', 1, 'X', 1, 0, 1]]})
+  const res = parseInventoryWorkbooks([{name: 'StockBodegaDespacho.xlsx', data: stock}, {name: 'Actualizable_Despacho.xlsx', data: actualizable}])
+  assert.equal(res.parts.length, 0)
+  assert.deepEqual(res.erpFiles, ['StockBodegaDespacho.xlsx', 'Actualizable_Despacho.xlsx'])
+  // Una foto de stock genérica (sin columnas del ERP) sigue siendo foto del inventario
+  const foto = parseInventoryWorkbooks([{name: 'Foto.xlsx', data: book({Hoja1: [['BODEGA', 'Producto', 'Lote', 'Saldo'], ['647-04 ALM PT', 'A', 1, 5]]})}])
+  assert.equal(foto.parts[0].side, 'STOCK')
+  assert.deepEqual(foto.erpFiles, [])
+})

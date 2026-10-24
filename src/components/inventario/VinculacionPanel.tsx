@@ -8,7 +8,7 @@ import { Table, td, tdNum, th } from '@/components/inventario/parts'
 import { fmtDate, fmtDateTime } from '@/lib/apt/format'
 import { fmtN } from '@/lib/inventario/format'
 import { notifyInvUpdated } from '@/lib/inventario/api'
-import { recalcularTodo, vinculacionEstado, type VinculacionEstado } from '@/lib/inventario/vinculacion'
+import { descartarFotoStock, recalcularTodo, vinculacionEstado, type VinculacionEstado } from '@/lib/inventario/vinculacion'
 
 // Qué tiene cada módulo de la carga única y qué quedó sin vincular o sin calcular
 function hallazgos(e: VinculacionEstado) {
@@ -37,6 +37,11 @@ export function VinculacionPanel({ canLoad, reloadKey }: { canLoad: boolean; rel
     setAvisos(null)
     try { setAvisos(await recalcularTodo(m => setBusy(m))) } finally { setBusy(null); notifyInvUpdated(); load() }
   }
+  const descartar = async () => {
+    if (!window.confirm('Se descarta la foto de stock y el inventario vuelve a calcular con todos los movimientos cargados. ¿Continuar?')) return
+    setAvisos(null)
+    try { setAvisos(await descartarFotoStock(m => setBusy(m))) } catch (e) { setAvisos([e instanceof Error ? e.message : 'No se pudo descartar']) } finally { setBusy(null); notifyInvUpdated(); load() }
+  }
   if (error) return <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">Estado de vinculación: {error}</p>
   if (!estado) return null
   const inv = estado.inventario, apt = estado.clasico, ana = estado.analitica
@@ -60,6 +65,8 @@ export function VinculacionPanel({ canLoad, reloadKey }: { canLoad: boolean; rel
       {canLoad && <div className="flex flex-wrap items-center gap-3">
         <button type="button" onClick={() => void todo()} disabled={!!busy} className="flex min-h-10 items-center gap-2 rounded-lg border border-[#002855] px-4 text-sm font-semibold text-[#002855] disabled:opacity-60">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}Recalcular y vincular todo</button>
+        {inv.sin_usar > 0 && <button type="button" onClick={() => void descartar()} disabled={!!busy} className="flex min-h-10 items-center gap-2 rounded-lg bg-[#cf152d] px-4 text-sm font-semibold text-white disabled:opacity-60">
+          Descartar la foto de stock del {fmtDate(inv.snapshot_cutoff)}</button>}
         <span className="text-xs text-slate-500">{busy ?? 'Rehace el inventario, la estadía y el flujo del APT clásico y el peso APT de los servicios con lo ya cargado (no vuelve a subir archivos).'}</span>
       </div>}
       {avisos && (avisos.length
