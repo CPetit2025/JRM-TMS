@@ -136,3 +136,21 @@ limitaciones, y si depende de reglas v1. Meta y responsable: pendientes de confi
 - Marcas de tiempo: **corte del ERP** (de cuándo son los datos) y **procesado en el TMS** (cuándo se aplicaron).
 - La actualización es manual. La actualización automática cada 20 minutos **no está operativa**: requiere un proceso
   de extracción y envío desde la red del ERP que aún no existe ni se ha probado.
+
+## Referencia del ERP en Operaciones (solo lectura)
+
+Las pantallas de Operaciones consultan el ERP vigente como referencia, sin crear ni modificar registros del TMS y con las
+reglas del análisis exacto (sin conversiones de unidad; filas con cantidades ausentes fuera de las sumas).
+
+- **Registro de Servicios**: al elegir la OT en «Registrar Servicio» se ve su pendiente por tipo de documento y unidad,
+  el stock coincidente y las guías del ERP con o sin ruta en el TMS. En el detalle de un servicio, cada guía se valida
+  contra el ERP: existe (con su fecha ERP), pertenece a otra OT o no está en el ERP.
+- **Programación y Ruteo** (Armar ruta): cada parada elegida muestra en una línea el pendiente del ERP de su OT, el stock
+  coincidente y cuántas guías del ERP no tienen ruta.
+- **Torre de Control**: tarjeta «Guías ERP vs TMS» de los últimos 7 días (en ambos, solo ERP, solo TMS y desfase de fecha)
+  y, en el expediente del despacho, la referencia de cada OT.
+- **Documentos de Despacho**: en «Estado documentario» las guías del servicio se validan contra el ERP y se muestra la OT.
+- Monitoreo GPS no cambia: muestra posiciones y no tiene datos del ERP que cruzar.
+
+Funciones: `erp_ref_ot`, `erp_ref_guias`, `erp_ref_guias_resumen` (permiso `erp_ref_can_view`: APT o alguna pantalla de
+Operaciones). Prueba: C145.
