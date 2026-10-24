@@ -14,26 +14,39 @@ export async function POST(request: Request) {
   if (!serviceRoleKey) {
     return NextResponse.json({ success: false, error: 'Configuración del servidor incompleta', fallback: true }, { status: 503 })
   }
-  let body: { upload_id?: string; accion?: string; commit?: boolean; resumen?: Record<string, unknown> | null }
+  let body: { upload_id?: string; accion?: string; commit?: boolean; simular?: boolean; resumen?: Record<string, unknown> | null }
   try {
     body = await request.json()
   } catch {
     return NextResponse.json({ success: false, error: 'Solicitud no válida' }, { status: 400 })
   }
   const derivar = body.accion === 'derivar'
-  if (!derivar && !/^[0-9a-f-]{36}$/i.test(body.upload_id || '')) return NextResponse.json({ success: false, error: 'Carga no válida' }, { status: 400 })
+  const altaOt = body.accion === 'alta_ot'
+  if (!derivar && !altaOt && !/^[0-9a-f-]{36}$/i.test(body.upload_id || '')) return NextResponse.json({ success: false, error: 'Carga no válida' }, { status: 400 })
 
   const session = await createClient()
   const { data: { user } } = await session.auth.getUser()
   if (!user) return NextResponse.json({ success: false, error: 'Sesión no válida' }, { status: 401 })
-  const perm = await session.rpc('erp_estado')
-  if (perm.error || !perm.data?.success || !perm.data.can_load) {
-    return NextResponse.json({ success: false, error: 'No tiene permiso para cargar datos del ERP' }, { status: 403 })
+  if (altaOt) {
+    // Alta automática de las OT activas del ERP: carga del ERP, Contratos y OTs o Administrador
+    const puede = await session.rpc('erp_contratos_alta_permiso')
+    if (puede.error) return NextResponse.json({ success: false, error: puede.error.message, fallback: true }, { status: 503 })
+    if (puede.data !== true) return NextResponse.json({ success: false, error: 'No tiene permiso para dar de alta OT desde el ERP' }, { status: 403 })
+  } else {
+    const perm = await session.rpc('erp_estado')
+    if (perm.error || !perm.data?.success || !perm.data.can_load) {
+      return NextResponse.json({ success: false, error: 'No tiene permiso para cargar datos del ERP' }, { status: 403 })
+    }
   }
 
   const admin = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
+  if (altaOt) {
+    const alta = (await admin.rpc('erp_contratos_alta_automatica_core', { p_simular: !!body.simular, p_user: user.id })) as Paso
+    if (alta.error) return NextResponse.json({ success: false, error: alta.error.message }, { status: 400 })
+    return NextResponse.json(alta.data ?? { success: false, error: 'Sin respuesta' })
+  }
   // derivar: movimientos del día a partir de los dos archivos (commit = guardar el día como base del siguiente)
   const applied = (derivar
     ? await admin.rpc('erp_derive_core', { p_commit: !!body.commit, p_user: user.id, p_resumen: body.resumen ?? null })

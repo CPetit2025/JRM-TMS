@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/modal'
 import { fmtN, fmtQty } from '@/lib/inventario/format'
+import { erpAltaAutomatica, type ErpAltaResultado } from '@/lib/erp/api'
 import { fmtDate, fmtDateTime, fmtPct } from '@/lib/apt/format'
 
 // Contratos con el ERP como fuente de verificación (Actualizable + Stock vigentes): por código del TMS, el documento del
@@ -178,32 +179,68 @@ export function ErpConfigModal({ open, onClose, config, onSaved }: { open: boole
 export interface ErpSinAltaFila { documento: string; ot: string; tipo: 'CONTRATO' | 'SUBCONTRATO' | 'ERROR' | 'GARANTIA' | null; tipo_erp: string | null; cliente: string | null
   ruc: string | null; fecha_contrato: string | null; ult_despacho: string | null; pendiente: boolean | null; activa: boolean | null; motivo: ErpMotivo | null
   ultimo_despacho: string | null; madre_en_tms: boolean }
-export function ErpSinAltaModal({ open, onClose, onAlta }: { open: boolean; onClose: () => void; onAlta: (fila: ErpSinAltaFila) => void }) {
+export function ErpSinAltaModal({ open, onClose, onAlta, onAuto }: {
+  open: boolean; onClose: () => void; onAlta: (fila: ErpSinAltaFila) => void; onAuto?: () => void
+}) {
   const [tipo, setTipo] = useState('')
   const [activas, setActivas] = useState(true)
   const [q, setQ] = useState('')
   const [page, setPage] = useState(0)
+  const [tick, setTick] = useState(0)
   const [res, setRes] = useState<{ total: number; por_tipo: Record<string, number>; filas: ErpSinAltaFila[] } | null>(null)
+  const [auto, setAuto] = useState<ErpAltaResultado | null>(null)
+  const [autoBusy, setAutoBusy] = useState(false)
   const consulta = JSON.stringify({ tipo: tipo || null, solo_activas: activas, q: q.trim() || null, limit: 50, offset: page * 50 })
   const [hecho, setHecho] = useState<{ consulta: string; estado: 'listo' | 'pendiente' | 'error' } | null>(null)
-  const estado = hecho?.consulta === consulta ? hecho.estado : 'cargando'
+  const clave = `${consulta}#${tick}`
+  const estado = hecho?.consulta === clave ? hecho.estado : 'cargando'
   useEffect(() => {
     if (!open) return
     let alive = true
     const t = setTimeout(() => {
       void supabase.rpc('erp_ref_sin_alta', { p: JSON.parse(consulta) }).then(({ data, error }) => {
         if (!alive) return
-        if (error) { setHecho({ consulta, estado: isMissing(error.code) ? 'pendiente' : 'error' }); return }
+        if (error) { setHecho({ consulta: clave, estado: isMissing(error.code) ? 'pendiente' : 'error' }); return }
         const out = data as { success?: boolean; total: number; por_tipo: Record<string, number>; filas: ErpSinAltaFila[] } | null
-        if (!out?.success) { setHecho({ consulta, estado: 'error' }); return }
-        setRes(out); setHecho({ consulta, estado: 'listo' })
+        if (!out?.success) { setHecho({ consulta: clave, estado: 'error' }); return }
+        setRes(out); setHecho({ consulta: clave, estado: 'listo' })
       })
     }, 300)
     return () => { alive = false; clearTimeout(t) }
-  }, [open, consulta])
+  }, [open, consulta, clave])
+  // Alta automática: primero se simula y se muestra cuántas OT se crearán; luego se confirma
+  const runAuto = async (simular: boolean) => {
+    setAutoBusy(true)
+    const out = await erpAltaAutomatica(simular)
+    setAutoBusy(false)
+    if (!out?.success) { toast.error(out?.error || 'No se pudo dar de alta desde el ERP'); return }
+    if (simular) { setAuto(out); return }
+    setAuto(null); setTick(t => t + 1); onAuto?.()
+    toast.success(`${fmtN(out.madres + out.hijos)} OT dadas de alta desde el ERP (${fmtN(out.madres)} madre, ${fmtN(out.hijos)} subcontratos/errores)`
+      + (out.errores ? ` · ${fmtN(out.errores)} con error` : ''))
+  }
   return (
     <Modal isOpen={open} onClose={onClose} title="Documentos del ERP sin alta en el TMS" maxWidth="max-w-5xl">
       <div className="space-y-3 text-sm">
+        <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="flex-1">Al cargar el Actualizable, las OT activas que faltan se dan de alta solas (madre con su cliente por RUC, subcontratos y errores; sin partida).
+              Las garantías y las OT sin RUC válido se registran aquí con «Dar de alta».</p>
+            {!auto && <button type="button" disabled={autoBusy} onClick={() => void runAuto(true)}
+              className="min-h-9 rounded-lg border border-sky-300 bg-white px-3 font-semibold text-sky-900 disabled:opacity-50">{autoBusy ? 'Revisando…' : 'Dar de alta automáticamente ahora'}</button>}
+          </div>
+          {auto && <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-sky-200 pt-2">
+            <p className="flex-1">{auto.madres + auto.hijos
+              ? `Se darán de alta ${fmtN(auto.madres)} OT madre y ${fmtN(auto.hijos)} subcontratos/errores.`
+              : 'No hay OT activas pendientes de alta automática.'}
+              {auto.garantias ? ` ${fmtN(auto.garantias)} garantías quedan para alta manual.` : ''}
+              {auto.ruc_invalido ? ` ${fmtN(auto.ruc_invalido)} sin RUC válido.` : ''}
+              {auto.sin_madre ? ` ${fmtN(auto.sin_madre)} esperan a su OT madre.` : ''}</p>
+            <button type="button" onClick={() => setAuto(null)} className="min-h-9 rounded-lg border border-slate-300 bg-white px-3">Cancelar</button>
+            {auto.madres + auto.hijos > 0 && <button type="button" disabled={autoBusy} onClick={() => void runAuto(false)}
+              className="min-h-9 rounded-lg bg-[#002855] px-3 font-semibold text-white disabled:opacity-50">{autoBusy ? 'Dando de alta…' : 'Confirmar alta'}</button>}
+          </div>}
+        </div>
         <div className="flex flex-wrap items-end gap-2">
           <label className="text-xs font-semibold text-slate-600">Buscar<input value={q} onChange={e => { setQ(e.target.value); setPage(0) }} placeholder="OT, documento o cliente"
             className="mt-1 block min-h-11 w-56 rounded-lg border border-slate-300 px-3 text-sm font-normal" /></label>

@@ -15,7 +15,7 @@ import { INV_SIDE_LABEL, parseInventoryWorkbooks, type InvParseResult } from '@/
 import { fmtDate, fmtDateTime } from '@/lib/apt/format'
 import Link from 'next/link'
 import { ErpVigencia, readErpFiles } from '@/components/erp/ErpCarga'
-import { erpApi, erpDeriveEstado, erpLogError, erpSincronizarClientes, uploadErpFile } from '@/lib/erp/api'
+import { erpAltaAutomatica, erpApi, erpDeriveEstado, erpLogError, erpSincronizarClientes, uploadErpFile } from '@/lib/erp/api'
 import { derivarDia, type DeriveResumen } from '@/lib/erp/derive'
 import { ERP_KIND_LABEL, type ErpParseResult } from '@/lib/erp/parse'
 
@@ -123,9 +123,13 @@ export default function InventarioDatosPage() {
       if (erpRes[i]?.ok) continue
       try {
         const r = await uploadErpFile(f, m => setBusy(`${ERP_KIND_LABEL[f.kind]}: ${m}`))
-        // Con el Actualizable vigente se corrige el cliente de las OT según el RUC del ERP (con historial y aviso)
+        // Con el Actualizable vigente se dan de alta las OT activas que faltan en el TMS y se corrige el cliente de las OT
+        // según el RUC del ERP (con historial y aviso)
+        const alta = f.kind === 'CONTRATOS' ? (setBusy('Dando de alta las OT activas del ERP que faltan en el TMS…'), await erpAltaAutomatica()) : null
         const cli = f.kind === 'CONTRATOS' ? (setBusy('Revisando el cliente de las OT con el ERP…'), await erpSincronizarClientes()) : null
-        erpRes[i] = { ok: true, text: `${fmtN(r.rows)} filas aplicadas en ERP: OT, guías y stock${cli?.corregidas
+        const altas = alta?.success ? alta.madres + alta.hijos : 0
+        erpRes[i] = { ok: true, text: `${fmtN(r.rows)} filas aplicadas en ERP: OT, guías y stock${altas
+          ? ` · ${fmtN(altas)} OT dadas de alta desde el ERP (${fmtN(alta!.madres)} madre, ${fmtN(alta!.hijos)} subcontratos/errores; sin partida)` : ''}${cli?.corregidas
           ? ` · cliente corregido en ${fmtN(cli.corregidas)} OT${cli.clientes_creados ? ` (${fmtN(cli.clientes_creados)} clientes registrados desde el ERP)` : ''}` : ''}` }
       } catch (e) {
         erpRes[i] = { ok: false, text: errorText(e) }

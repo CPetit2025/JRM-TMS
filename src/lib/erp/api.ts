@@ -112,6 +112,25 @@ export async function erpSincronizarClientes(): Promise<{ corregidas: number; cl
   return error || !out?.success ? null : out
 }
 
+// Alta automática de las OT activas del ERP que no existen en el TMS (madre con su cliente por RUC, subcontratos y
+// errores; sin partida). Se ejecuta en el servidor (sin el límite de 8 s); si no está disponible, desde el navegador.
+export type ErpAltaResultado = {
+  success: boolean; error?: string; simulacion?: boolean; madres: number; hijos: number; clientes_creados: number
+  ruc_invalido: number; sin_madre: number; garantias: number; errores: number
+  detalle?: { codigo: string; tipo?: string; cliente?: string; cliente_creado?: boolean; error?: string }[]
+}
+export async function erpAltaAutomatica(simular = false): Promise<ErpAltaResultado | null> {
+  try {
+    const res = await fetch('/api/erp/aplicar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'alta_ot', simular }) })
+    const out = await res.json() as ErpAltaResultado & { fallback?: boolean }
+    if (!out.fallback) return out
+  } catch { /* se intenta desde el navegador */ }
+  const { data, error } = await supabase.rpc('erp_contratos_alta_automatica', { p_simular: simular })
+  if (error) return null
+  return data as ErpAltaResultado
+}
+
 // En el servidor no rige el límite de 8 s del navegador. null = el servidor no está disponible: se aplica desde aquí.
 async function applyOnServer(id: string): Promise<Applied | null> {
   let res: Response

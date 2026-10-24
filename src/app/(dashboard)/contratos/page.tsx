@@ -885,7 +885,8 @@ export default function ContratosPage() {
         onOpen={() => { const c = quickView; setQuickView(null); if (c) router.push(`/contratos/${c.id}`) }}
       />
 
-      <ErpSinAltaModal open={sinAltaOpen} onClose={() => setSinAltaOpen(false)} onAlta={altaDesdeErp} />
+      <ErpSinAltaModal open={sinAltaOpen} onClose={() => setSinAltaOpen(false)} onAlta={altaDesdeErp}
+        onAuto={() => { void fetchContracts(); erp.reload() }} />
       <ErpCorreccionesModal open={correccionesOpen} onClose={() => setCorreccionesOpen(false)} canSync={canSyncErp}
         onChanged={() => { void fetchContracts(); erp.reload() }} />
       {erpConfigOpen && <ErpConfigModal open onClose={() => setErpConfigOpen(false)} config={erp.config} onSaved={erp.reload} />}
