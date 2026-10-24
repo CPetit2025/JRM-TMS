@@ -92,6 +92,20 @@ for (const { name, text } of allMigrations.filter(m => m.name >= '20261011050000
   }
 }
 
+// En Supabase las consultas que llegan por la API pasan por pg_safeupdate: un UPDATE o DELETE sin WHERE falla
+// («UPDATE requires a WHERE clause»), también dentro de funciones y sobre tablas temporales. Las pruebas locales no lo
+// detectan. Desde 20261025100000 cada UPDATE/DELETE debe llevar WHERE en su nivel (WHERE true si es intencional).
+const stripNested = sql => { let out = '', depth = 0; for (const ch of sql) { if (ch === '(') depth++; else if (ch === ')') depth = Math.max(0, depth - 1); else if (!depth) out += ch } return out }
+for (const name of readdirSync(migDir).filter(n => n.endsWith('.sql') && n >= '20261025100000')) {
+  const sql = readFileSync(path.join(migDir, name), 'utf8').replace(/--[^\n]*/g, '').replace(/\$q\$/g, '')
+  for (const stmt of sql.split(';')) {
+    const flat = stripNested(stmt).replace(/\s+/g, ' ').trim()
+    const m = flat.match(/(?:^|\s)(UPDATE|DELETE FROM)\s+[\w.]+/i)
+    if (!m || /\bON CONFLICT\b|\bFOR UPDATE\b/i.test(flat.slice(Math.max(0, m.index - 30), m.index + m[0].length + 5))) continue
+    if (!/\bWHERE\b/i.test(flat.slice(m.index))) errors.push(`${name}: «${flat.slice(m.index, m.index + 60)}…» no tiene WHERE: en Supabase (pg_safeupdate) falla. Agregue WHERE (o WHERE true).`)
+  }
+}
+
 if (errors.length) {
   console.error('Guardas fallidas:\n- ' + errors.join('\n- '))
   process.exit(1)
