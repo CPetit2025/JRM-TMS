@@ -14,13 +14,14 @@ export async function POST(request: Request) {
   if (!serviceRoleKey) {
     return NextResponse.json({ success: false, error: 'Configuración del servidor incompleta', fallback: true }, { status: 503 })
   }
-  let body: { upload_id?: string }
+  let body: { upload_id?: string; accion?: string; commit?: boolean; resumen?: Record<string, unknown> | null }
   try {
     body = await request.json()
   } catch {
     return NextResponse.json({ success: false, error: 'Solicitud no válida' }, { status: 400 })
   }
-  if (!/^[0-9a-f-]{36}$/i.test(body.upload_id || '')) return NextResponse.json({ success: false, error: 'Carga no válida' }, { status: 400 })
+  const derivar = body.accion === 'derivar'
+  if (!derivar && !/^[0-9a-f-]{36}$/i.test(body.upload_id || '')) return NextResponse.json({ success: false, error: 'Carga no válida' }, { status: 400 })
 
   const session = await createClient()
   const { data: { user } } = await session.auth.getUser()
@@ -33,7 +34,10 @@ export async function POST(request: Request) {
   const admin = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
-  const applied = await admin.rpc('erp_upload_apply_core', { p_upload_id: body.upload_id }) as Paso
+  // derivar: movimientos del día a partir de los dos archivos (commit = guardar el día como base del siguiente)
+  const applied = (derivar
+    ? await admin.rpc('erp_derive_core', { p_commit: !!body.commit, p_user: user.id, p_resumen: body.resumen ?? null })
+    : await admin.rpc('erp_upload_apply_core', { p_upload_id: body.upload_id })) as Paso
   if (applied.error) return NextResponse.json({ success: false, error: applied.error.message }, { status: 400 })
   if (!applied.data?.success) return NextResponse.json({ ...(applied.data || {}), success: false }, { status: 400 })
   return NextResponse.json(applied.data)
