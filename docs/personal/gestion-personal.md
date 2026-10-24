@@ -32,3 +32,9 @@ La URL raíz sigue siendo `/hhee` para conservar enlaces. El módulo muestra Ini
 4. Conciliar HHEE históricas y descansos existentes; validar únicamente ejecuciones revisadas. Verificar saldos negativos antes de compensar.
 5. Comprobar que el cron existente de rutas está habilitado y se ejecuta. El código reutiliza ese mecanismo; no demuestra por sí solo que esté operativo en producción.
 6. Aplicar y desplegar mediante el flujo del proyecto después de revisión. Este trabajo no aplica SQL ni despliega producción. No revertir tablas con movimientos: conservarlas y corregir mediante migraciones posteriores auditadas.
+## Configuración confirmada para octubre de 2026
+
+- Base común: lunes a viernes 08:00–17:30; sábado 08:00–13:30; refrigerio de 60 minutos. Domingo como descanso base, con trabajo mediante HHEE planificada.
+- Ustedes seleccionan/asignan colaboradores según capacidad operativa. La pantalla Horarios ofrece una plantilla de base y guardado por selección explícita, con fecha revisable. No asigna automáticamente personas ni sobrescribe historia incompatible.
+- Turnos operativos informados: lunes a viernes 07:00–19:00 / 19:00–07:00; sábado 07:00–13:00 / 13:00–19:00. **No deben guardarse como jornada ordinaria**: la regla acordada considera HHEE solo los tramos fuera de la base común.
+- La solicitud automática de rutas calcula el tramo posterior al fin ordinario. La planificación completa de jornadas con tramos separados antes y después, refrigerio en una franja concreta y cruce de medianoche necesita tratar cada intervalo expresamente; no se debe cargar toda la jornada de 12 horas como HHEE ni asumir que este generador ya cubre el ingreso anticipado.

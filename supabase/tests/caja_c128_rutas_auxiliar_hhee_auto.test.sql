@@ -63,7 +63,7 @@ BEGIN
   -- Programación explícita de la prueba; no se usa un horario global implícito.
   PERFORM public.hhee_person_for(d.driver_id,NULL,v_area);
   PERFORM public.hhee_person_for(NULL,v_aux,v_area);
-  UPDATE public.dispatches SET started_at='2026-10-20 08:00:00-05' WHERE id=d.id;
+  UPDATE public.dispatches SET departure_time='2026-10-20 08:00:00-05' WHERE id=d.id;
   INSERT INTO public.gp_shift_days(person_id,work_date,shift,reason,updated_by)
   SELECT h.id,day::date,public.gp_checked_shift(CASE WHEN day::date='2026-10-25' THEN '{"kind":"DESCANSO"}'::jsonb
    ELSE jsonb_build_object('kind','TRABAJO','start','08:00','end',CASE WHEN day::date='2026-10-24' THEN '13:30' ELSE '17:30' END,'break_minutes',60) END),'Turno sintético C128',v_req

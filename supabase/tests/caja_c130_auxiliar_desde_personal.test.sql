@@ -82,7 +82,7 @@ BEGIN
   -- T5: la solicitud automática incluye al auxiliar de Personal sin usuario (y no lo duplica)
   INSERT INTO public.route_auxiliaries (dispatch_id, person_id) VALUES (d.id, v_aux);
   -- Horario sintético explícito para conductor y auxiliares; la transacción se revierte.
-  UPDATE public.dispatches SET started_at='2025-03-03 08:00:00-05' WHERE id=d.id;
+  UPDATE public.dispatches SET departure_time='2025-03-03 08:00:00-05' WHERE id=d.id;
   INSERT INTO public.gp_shift_days(person_id,work_date,shift,reason,updated_by)
   SELECT h.id,'2025-03-03',public.gp_checked_shift('{"kind":"TRABAJO","start":"08:00","end":"17:30","break_minutes":60}'),'Turno sintético C130',v_req
   FROM public.hhee_people h WHERE h.area_id=v_area OR h.driver_id=d.driver_id

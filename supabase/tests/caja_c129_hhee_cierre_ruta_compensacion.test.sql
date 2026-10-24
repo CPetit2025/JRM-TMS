@@ -52,7 +52,7 @@ BEGIN
     (SELECT jsonb_agg(jsonb_build_object('kind','TRABAJO','start','08:00','end','17:30','break_minutes',60)) FROM generate_series(1,7))));
   PERFORM public.gp_schedule_save(jsonb_build_object('person_id',v_id,'from','2025-03-01','mode','FIJO','week',
     (SELECT jsonb_agg(jsonb_build_object('kind','TRABAJO','start','08:00','end','17:30','break_minutes',60)) FROM generate_series(1,7))));
-  UPDATE public.dispatches SET started_at='2025-03-03 08:00:00-05' WHERE id=d.id;
+  UPDATE public.dispatches SET departure_time='2025-03-03 08:00:00-05' WHERE id=d.id;
 
   -- Solicitud automática de la ruta (lunes 03/03/2025, 17:30–20:00), completada, presentada y aprobada
   v_id := (public.hhee_route_request_for(d.id, '2025-03-03 19:10:00-05')->>'id')::uuid;

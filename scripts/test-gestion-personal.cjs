@@ -23,7 +23,7 @@ async function main() {
     ADD COLUMN rest_day boolean DEFAULT false NOT NULL, ADD COLUMN driver_dispatch_id uuid, ADD COLUMN vehicle_plate text, ADD COLUMN plate_source text,
     ADD COLUMN plate_reason text, ADD COLUMN exec_minutes_25 int, ADD COLUMN exec_minutes_35 int, ADD COLUMN exec_minutes_100 int, ADD COLUMN exec_cost numeric;
    CREATE TABLE hhee_comp_rests(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),person_id uuid,rest_date date,minutes int,note text,created_by uuid,created_at timestamptz DEFAULT now(),cancelled_at timestamptz,cancelled_by uuid);
-   CREATE TABLE dispatches(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),driver_id uuid,vehicle_plate text,status text,started_at timestamptz,created_by uuid);
+   CREATE TABLE dispatches(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),driver_id uuid,vehicle_plate text,status text,departure_time timestamptz,created_by uuid);
    CREATE TABLE route_auxiliaries(dispatch_id uuid,person_id uuid);
    CREATE TABLE dispatch_crew(dispatch_id uuid,profile_id uuid,removed_at timestamptz,crew_role text);
    CREATE FUNCTION hhee_person_for(d uuid,p uuid,a uuid) RETURNS uuid LANGUAGE sql AS $$ SELECT id FROM hhee_people WHERE driver_id=d OR profile_id=p LIMIT 1 $$;
@@ -34,6 +34,7 @@ async function main() {
   await db.exec(fn('supabase/migrations/20261022150000_hhee_solicitudes_trabajadores_unicos.sql','hhee_route_request_for'))
   await db.exec(fn('supabase/migrations/20261021110000_hhee_cierre_ruta_compensacion.sql','hhee_line_set_compensation'))
   await db.exec(read(migration))
+  await db.exec(read('supabase/migrations/20261030090000_personal_salida_ruta.sql'))
   await db.exec(`SELECT set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',false)`)
   const scalar = async (sql, params=[]) => (await db.query(sql, params)).rows[0].v
   const rpc = async (name, p) => scalar(`SELECT ${name}($1::jsonb) AS v`, [JSON.stringify(p)])
@@ -107,7 +108,7 @@ async function main() {
   const routePerson = await scalar(`INSERT INTO hhee_people(code,name,area_id,driver_id) VALUES('GP03','Ruta sintética',$1,$2) RETURNING id AS v`,[area,driver])
   await rpc('gp_schedule_save',{person_id:routePerson,from:'2025-03-01',mode:'FIJO',week})
   await db.exec(`INSERT INTO hhee_causes(name) SELECT 'Ruta extendida fuera del horario' WHERE NOT EXISTS(SELECT 1 FROM hhee_causes WHERE name='Ruta extendida fuera del horario')`)
-  const dispatch = await scalar(`INSERT INTO dispatches(driver_id,vehicle_plate,started_at,created_by) VALUES($1,'TEST-01','2025-03-03 08:00:00-05','00000000-0000-4000-8000-000000000001') RETURNING id AS v`,[driver])
+  const dispatch = await scalar(`INSERT INTO dispatches(driver_id,vehicle_plate,departure_time,created_by) VALUES($1,'TEST-01','2025-03-03 08:00:00-05','00000000-0000-4000-8000-000000000001') RETURNING id AS v`,[driver])
   assert.equal(await scalar(`SELECT (gp_overtime_start($1,'2025-03-03',$2) AT TIME ZONE 'America/Lima')::time::text AS v`,[routePerson,dispatch]),'17:00:00')
   assert.equal((await scalar(`SELECT hhee_route_request_for($1,'2025-03-03 16:30:00-05') AS v`,[dispatch])).created,false)
   const generated = await scalar(`SELECT hhee_route_request_for($1,'2025-03-03 18:15:00-05') AS v`,[dispatch])
@@ -145,6 +146,14 @@ async function main() {
   await db.exec(`SELECT set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000009999',false)`)
   await assert.rejects(rpc('gp_permit',{action:'CREATE',person_id:person,date,minutes:10,kind:'PERMISO',reason:'Sin permisos'}),/Sin permiso/)
   await assert.rejects(day(),/Sin acceso/)
+  await db.exec(`SELECT set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',false)`)
+  const batchPerson=await scalar(`INSERT INTO hhee_people(code,name,area_id) VALUES('GP05','Lote sintético',$1) RETURNING id AS v`,[area])
+  await assert.rejects(rpc('gp_schedule_batch',{people:[batchPerson,person],from:date,mode:'FIJO',week}),/confirmada/)
+  assert.equal(await scalar('SELECT count(*)::int AS v FROM gp_schedules WHERE person_id=$1',[batchPerson]),0,'el lote fallido no guarda parcialmente')
+  const batchResult=await rpc('gp_schedule_batch',{people:[batchPerson],from:date,mode:'FIJO',week})
+  assert.equal(batchResult.updated,1)
+  await assert.rejects(rpc('gp_schedule_batch',{people:[batchPerson,batchPerson],from:tomorrow,mode:'FIJO',week}),/repetidos/)
+  console.log('PASS programación masiva: selección explícita, sin duplicados y transacción atómica')
   console.log('PASS reportes reconciliados, trazabilidad y permisos de acceso')
  } finally { await db.close() }
 }
