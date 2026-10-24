@@ -114,11 +114,13 @@ BEGIN
   -- (el supervisor de prueba toma la solicitud para presentarla)
   UPDATE public.hhee_requests SET created_by = v_req WHERE id = v_id;
   v_ver := (SELECT version FROM public.hhee_requests WHERE id = v_id);
+  UPDATE public.hhee_lines SET gp_plan=gp_plan||jsonb_build_object('meal_pending',false,'no_meal_reason','Tramo extra corto, refrigerio fuera del tramo') WHERE request_id=v_id AND gp_plan IS NOT NULL;
   r := public.hhee_flow_submit(v_id, v_ver);
   IF NOT (r->>'success')::boolean AND r->>'error' ~ 'Complete la actividad' THEN
     UPDATE public.hhee_requests SET activity = 'Reparto tardío ruta norte', justification = 'Cliente recibió fuera de horario',
       alternatives = 'Reprogramar al día siguiente', expected_result = 'Entregas completas' WHERE id = v_id;
-    r := public.hhee_flow_submit(v_id, v_ver);
+    UPDATE public.hhee_lines SET gp_plan=gp_plan||jsonb_build_object('meal_pending',false,'no_meal_reason','Tramo extra corto, refrigerio fuera del tramo') WHERE request_id=v_id AND gp_plan IS NOT NULL;
+  r := public.hhee_flow_submit(v_id, v_ver);
     IF (r->>'success')::boolean THEN pass := pass + 1; ELSE fails := fails || ('T6 presentar ' || r::text); END IF;
   ELSE fails := fails || ('T6 presentada con textos pendientes ' || r::text); END IF;
 

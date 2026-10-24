@@ -32,7 +32,10 @@ export type RequestRow = Totals & {
 export const referenceLabel = (type?: string | null, code?: string | null) =>
   !type || type === 'SIN_REFERENCIA' ? '' : type === 'MANTENIMIENTO' ? `Mant.${code ? ` ${code}` : ''}` : `${type}${code ? ` ${code}` : ''}`
 export const isPendingText = (v: string | null | undefined) => !!v && v.startsWith('PENDIENTE')
+export type WorkPart = { start: string; end: string; date: string; minutes: number; rest: boolean }
+export type WorkPlan = { start: string; end: string; meal_start: string | null; meal_end: string | null; no_meal_reason: string | null; meal_pending: boolean; meal_required?: boolean; parts: WorkPart[]; minutes: number; worked_minutes: number; ordinary_minutes: number }
 export type Line = {
+  actual_start?: string | null; actual_meal?: {start:string|null;end:string|null;reason:string|null} | null; work_plan?: WorkPlan | null; actual_parts?: WorkPart[] | null;
   id?: string; person_id: string; name: string; code: string; position: string | null; start: string; end: string; break_minutes: number; minutes: number
   minutes_25: number | null; minutes_35: number | null; minutes_100: number | null; approved_minutes?: number | null; rate_ready?: boolean; cost?: number | null
   document_number?: string | null; rest_day?: boolean
@@ -76,7 +79,7 @@ export type Dashboard = {
 
 // Cálculo legal del servidor (hhee_flow_preview): primeras 2 h del día al 25 %, resto al 35 %; descanso o feriado al 100 %
 export type Route = { id: string; number: string | null; plate: string; status: string | null; departure: string | null }
-export type PreviewLine = { person_id: string; minutes?: number; m25?: number; m35?: number; m100?: number; prior?: number; error?: string; driver?: boolean; routes?: Route[] | null }
+export type PreviewLine = { work_plan?: WorkPlan; person_id: string; minutes?: number; m25?: number; m35?: number; m100?: number; prior?: number; error?: string; driver?: boolean; routes?: Route[] | null }
 export type UnifyIssue = { kind: 'COINCIDE_SIN_ENLACE' | 'NOMBRE_DISTINTO' | 'SIN_DNI' | 'CONDUCTOR_SIN_FICHA' | 'DNI_REPETIDO_FLOTA'; doc: string | null
   person_id: string | null; code: string | null; name: string | null; area: string | null; driver_id: string | null; driver_name: string | null }
 export type UnifyReport = { summary: { people: number; linked_driver: number; linked_profile: number; drivers_active: number; by_kind: Partial<Record<UnifyIssue['kind'], number>> }; rows: UnifyIssue[] }

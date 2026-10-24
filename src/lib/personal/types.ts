@@ -4,6 +4,7 @@ export type DayRow = { person_id: string; name: string; code: string; shift: Shi
 export type Day = { day: { id: string; revision: number; confirmed_at: string } | null; rows: DayRow[]; can_confirm: boolean; can_correct: boolean }
 export type Permit = { id: string; person_id: string; person: string; code: string; work_date: string; minutes: number; kind: string; compensation: boolean; status: string; reason: string; revision: number; can_approve: boolean }
 export type Overview = {
+ parts: { request_id: string; folio: string; request_date: string; code: string; person: string; area: string; cause: string; source: string; kind: string; date: string; start: string; end: string; minutes: number; rest: boolean; validated: boolean; compensation: boolean }[]
  permits: Permit[]; balances: { person_id: string; person: string; code: string; area_id: string; balance: Balance }[]
  schedules: { id: string; person_id: string; person: string; mode: string; valid_from: string; valid_to: string | null; week: Shift[] }[]
  attendance: { work_date: string; area_id: string; area: string; status: string; people: number }[]
