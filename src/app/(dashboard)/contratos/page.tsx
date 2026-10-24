@@ -226,13 +226,23 @@ export default function ContratosPage() {
   const fetchContracts = async () => {
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('vw_contracts_dashboard')
-        .select('*')
-        .is('parent_contract_id', null)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
+      // Lista en una sola pasada en la base (la vista por fila excede el tiempo con miles de OT); si la función aún no
+      // existe se usa la vista
+      const rpc = await supabase.rpc('contracts_dashboard_list')
+      const out = rpc.data as { success?: boolean; error?: string; filas?: Record<string, unknown>[] } | null
+      let data: Record<string, unknown>[] | null
+      if (!rpc.error && out?.success) data = out.filas ?? []
+      else if (rpc.error && !['PGRST202', '42883'].includes(rpc.error.code)) throw rpc.error
+      else if (!rpc.error) throw new Error(out?.error || 'No se pudo cargar la lista')
+      else {
+        const { data: rows, error } = await supabase
+          .from('vw_contracts_dashboard')
+          .select('*')
+          .is('parent_contract_id', null)
+          .order('created_at', { ascending: false })
+        if (error) throw error
+        data = rows
+      }
 
       const formatted = (data || []).map((c: any) => ({
         ...c,
