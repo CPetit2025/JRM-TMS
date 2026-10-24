@@ -39,6 +39,7 @@ async function main() {
   await db.exec(read(migration))
   await db.exec(read('supabase/migrations/20261030090000_personal_salida_ruta.sql'))
   await db.exec(read('supabase/migrations/20261031090000_personal_turnos_tramos.sql'))
+  await db.exec(read('supabase/migrations/20261101090000_personal_cierre_precision.sql'))
   await db.exec(`SELECT set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',false)`)
   const scalar = async (sql, params=[]) => (await db.query(sql, params)).rows[0].v
   const rpc = async (name, p) => scalar(`SELECT ${name}($1::jsonb) AS v`, [JSON.stringify(p)])
@@ -150,6 +151,7 @@ async function main() {
   await rpc('gp_schedule_save',{person_id:plannedPerson,from:'2025-01-01',mode:'FIJO',week:baseWeek})
   const plan=(start,end,meal_start,meal_end)=>scalar('SELECT gp_plan_build($1,$2::jsonb) AS v',[plannedPerson,JSON.stringify({start,end,meal_start,meal_end,work_plan:true})])
   const dayPlan=await plan('2025-03-03T07:00','2025-03-03T19:00','2025-03-03T13:00','2025-03-03T14:00')
+  const secondsPlan=await scalar('SELECT gp_plan_measure($1::jsonb,$2::timestamptz,$3::timestamptz) AS v',[JSON.stringify(dayPlan),'2025-03-03T17:30:25-05:00','2025-03-03T19:00:40-05:00']);assert.equal(secondsPlan.minutes,90);assert.equal(Date.parse(secondsPlan.parts[0].start),Date.parse('2025-03-03T17:30:25-05:00'))
   assert.equal(dayPlan.minutes,150);assert.equal(dayPlan.ordinary_minutes,510);assert.equal(dayPlan.parts.length,2)
   const night=await plan('2025-03-03T19:00','2025-03-04T07:00','2025-03-04T01:00','2025-03-04T02:00')
   assert.equal(night.minutes,660);assert.equal(night.parts.length,3)
@@ -229,9 +231,9 @@ async function main() {
   assert.equal(batchResult.updated,1)
   await assert.rejects(rpc('gp_schedule_batch',{people:[batchPerson,batchPerson],from:tomorrow,mode:'FIJO',week}),/repetidos/)
   console.log('PASS programación masiva: selección explícita, sin duplicados y transacción atómica')
-  await assert.rejects(db.exec(read('supabase/tests/caja_c148_personal_turnos_tramos.test.sql')),/CAJA C148 PASS: 7\/7/)
+  await assert.rejects(db.exec(read('supabase/tests/caja_c148_personal_turnos_tramos.test.sql')),/CAJA C148 PASS: 8\/8/)
   await db.exec('ROLLBACK')
-  console.log('PASS C148: 7/7 con cálculo y permisos de la migración real')
+  console.log('PASS C148: 8/8 con cálculo y permisos de la migración real')
   console.log('PASS reportes reconciliados, trazabilidad y permisos de acceso')
  } finally { await db.close() }
 }

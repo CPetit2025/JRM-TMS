@@ -6,7 +6,7 @@ BEGIN;
 SET LOCAL statement_timeout = '60s';
 DO $test$
 DECLARE v_req uuid; v_app uuid; v_aux uuid; v_rreq uuid := gen_random_uuid(); v_rapp uuid := gen_random_uuid(); v_site uuid := gen_random_uuid();
-  v_area uuid := gen_random_uuid(); d record; r jsonb; v_id uuid; v_ver int; v_l1 uuid; v_p1 uuid; v_base int; pass int := 0; fails text[] := '{}'; v_note text := '';
+  v_area uuid := gen_random_uuid(); d record; r jsonb; v_id uuid; v_ver int; v_l1 uuid; v_p1 uuid; v_base int; pass int := 0; fails text[] := '{}'; v_note text := ''; v_test_plans jsonb;
 BEGIN
   SELECT p.id INTO v_req FROM public.profiles p JOIN auth.users u ON u.id = p.id ORDER BY p.id LIMIT 1;
   SELECT p.id INTO v_app FROM public.profiles p JOIN auth.users u ON u.id = p.id WHERE p.id <> v_req ORDER BY p.id LIMIT 1;
@@ -48,10 +48,13 @@ BEGIN
   -- Horarios explícitos; el generador ya no inventa el turno global.
   PERFORM set_config('request.jwt.claim.sub', v_app::text, true);
   v_id := public.hhee_person_for(NULL, v_aux, v_area);
-  PERFORM public.gp_schedule_save(jsonb_build_object('person_id',v_p1,'from','2025-03-01','mode','FIJO','week',
-    (SELECT jsonb_agg(jsonb_build_object('kind','TRABAJO','start','08:00','end','17:30','break_minutes',60)) FROM generate_series(1,7))));
-  PERFORM public.gp_schedule_save(jsonb_build_object('person_id',v_id,'from','2025-03-01','mode','FIJO','week',
-    (SELECT jsonb_agg(jsonb_build_object('kind','TRABAJO','start','08:00','end','17:30','break_minutes',60)) FROM generate_series(1,7))));
+  -- Escenario histórico aislado por fecha. No intentar retroceder la vigencia de la jornada real ya configurada.
+  INSERT INTO public.gp_shift_days(person_id,work_date,shift,reason,updated_by)
+  SELECT h.id,day::date,public.gp_checked_shift(jsonb_build_object('kind','TRABAJO','start','08:00','end','17:30','break_minutes',60)),
+    'Turno histórico sintético C129',v_app
+  FROM public.hhee_people h CROSS JOIN generate_series('2025-03-02'::date,'2025-03-04'::date,interval '1 day') day
+  WHERE h.id IN (v_p1,v_id)
+  ON CONFLICT(person_id,work_date) DO UPDATE SET shift=excluded.shift;
   UPDATE public.dispatches SET departure_time='2025-03-03 08:00:00-05' WHERE id=d.id;
 
   -- Solicitud automática de la ruta (lunes 03/03/2025, 17:30–20:00), completada, presentada y aprobada
@@ -97,7 +100,9 @@ BEGIN
   IF d.driver_profile IS NULL THEN v_note := ' (T3 sin conductor con usuario)'; pass := pass + 1;
   ELSE
     -- (el app cierra hasta 16 h después del inicio: la prueba ubica el inicio hace 2 h)
-    UPDATE public.hhee_lines SET planned_start = now() - interval '2 hours' WHERE request_id = v_id;
+    -- Este subcaso legacy desplaza artificialmente el reloj años: apartar su fotografía, restaurada antes de T4.
+    SELECT jsonb_object_agg(id::text,gp_plan) INTO v_test_plans FROM public.hhee_lines WHERE request_id=v_id;
+    UPDATE public.hhee_lines SET gp_plan=NULL, planned_start = now() - interval '2 hours',planned_end=now()+interval '1 hour' WHERE request_id = v_id;
     PERFORM set_config('request.jwt.claim.sub', d.driver_profile::text, true);
     PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', d.driver_profile, 'role', 'authenticated')::text, true);
     r := public.hhee_driver_close(v_id);
@@ -106,10 +111,11 @@ BEGIN
     THEN pass := pass + 1; ELSE fails := fails || ('T3 cierre del conductor ' || r::text); END IF;
   END IF;
 
-  UPDATE public.hhee_lines SET planned_start = '2025-03-03 17:30:00-05' WHERE request_id = v_id;
+  UPDATE public.hhee_lines SET planned_start = '2025-03-03 17:30:00-05',planned_end='2025-03-03 20:00:00-05' WHERE request_id = v_id;
   -- T4: el supervisor registra el cierre (con motivo, sin hora futura): 17:30–20:15 = 2 h al 25 % y 45 min al 35 %
   UPDATE public.hhee_lines SET actual_start = NULL, actual_end = NULL, actual_minutes = NULL, closed_by = NULL, closed_at = NULL,
     exec_minutes_25 = NULL, exec_minutes_35 = NULL, exec_minutes_100 = NULL, exec_cost = NULL WHERE request_id = v_id;
+  IF v_test_plans IS NOT NULL THEN UPDATE public.hhee_lines SET gp_plan=v_test_plans->id::text WHERE request_id=v_id; END IF;
   PERFORM set_config('request.jwt.claim.sub', v_req::text, true);
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_req, 'role', 'authenticated')::text, true);
   IF (public.hhee_flow_close(jsonb_build_object('id', v_id, 'end', '2025-03-03T20:15', 'reason', 'ok'))->>'success')::boolean
