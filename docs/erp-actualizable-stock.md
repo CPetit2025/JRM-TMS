@@ -183,14 +183,24 @@ El módulo Contratos usa el Actualizable y el Stock como fuente de verificación
   Administrador puede aplicar la corrección también a las solicitudes cerradas o revertirla; una corrección revertida no
   se vuelve a aplicar mientras el ERP mantenga el mismo RUC. También se puede revisar y corregir a mano («Revisar
   diferencias con el ERP»).
+- **Alta automática**: con cada Actualizable nuevo, las OT **activas** que aún no existen en el TMS se dan de alta solas:
+  primero la OT madre (con su cliente por RUC, registrado si no existe; sede principal) y luego sus subcontratos y
+  errores, colgados de la madre con su cliente y sede. Quedan **sin partida** (se asigna en Contratos; nada se libera
+  solo). No se dan de alta solas: las garantías (llevan su Error de contrato, decisión comercial), las OT madre sin RUC
+  válido y los hijos cuya madre falta; esos siguen en la lista de documentos sin alta. Cada alta queda en el historial
+  (`erp_contract_altas`) y se avisa a Contratos y OTs (categoría Cumplimiento). En esa lista, «Dar de alta
+  automáticamente ahora» muestra cuántas se crearán y pide confirmación.
 - **Alta asistida**: «ERP sin alta» lista los documentos del ERP que no existen en el TMS (por defecto de OT activas) y
   «Dar de alta» abre el alta con el tipo, la madre y el código. Al escribir un código en el alta se muestra lo que dice el
   ERP y se puede tomar su cliente (se registra si no existe). El destino y la partida los completa una persona: el ERP no
   los trae.
 - **Ficha rápida de la OT**: referencia del ERP con el pendiente por tipo y unidad, stock y guías.
+- **Cliente en el APT** («OT con más stock», Contratos y ficha de la OT): el de las guías; si la OT no tiene guías, el del
+  contrato en el TMS (madre o hijos); si tampoco, el del Actualizable vigente.
 
 Funciones: `erp_ref_contratos` (por lotes de hasta 5.000 códigos), `erp_ref_documento`, `erp_ref_sin_alta`,
-`erp_ref_guias_lote`, `erp_cliente_desde_erp`, `erp_contratos_sincronizar_clientes`, `erp_cliente_correcciones`,
+`erp_ref_guias_lote`, `erp_cliente_desde_erp`, `erp_contratos_alta_automatica` (núcleo `_core` en el servidor),
+`erp_contratos_sincronizar_clientes`, `erp_cliente_correcciones`,
 `erp_cliente_correccion_aplicar_cerradas`, `erp_cliente_correccion_revertir`, `erp_contratos_config_json` y
 `erp_contratos_config_set`. Tablas: `erp_contract_settings`, `contract_client_corrections`; columna
-`contracts.garantia_id`. Prueba: C146.
+`contracts.garantia_id`, `erp_contract_altas`. Pruebas: C146 y C149.
