@@ -9,8 +9,9 @@ import { fmtN, fmtQty } from '@/lib/inventario/format'
 import { fmtDate, fmtDateTime, fmtPct } from '@/lib/apt/format'
 import { exportAptXlsx } from '@/lib/apt/export'
 import { erpApi } from '@/lib/erp/api'
+import { fetchAllRows } from '@/lib/erp/exportar'
 import { ERP_INDICADORES, ERP_META, ERP_RESPONSABLE } from '@/lib/erp/diccionario'
-import type { ErpAnalisisDoc, ErpAnalisisFiltros, ErpAnalisisOt, ErpCargaLog, ErpControl, ErpCruce, ErpReglas } from '@/lib/erp/types'
+import type { ErpAnalisis, ErpAnalisisDoc, ErpAnalisisFiltros, ErpAnalisisOt, ErpCargaLog, ErpControl, ErpCruce, ErpReglas } from '@/lib/erp/types'
 
 // Pestañas de análisis del ERP con cruce exacto (sin reglas de conversión), calidad de datos, reglas heredadas y su
 // comparación, diccionario de indicadores y registro de cargas. Ninguna cambia los indicadores existentes.
@@ -27,6 +28,11 @@ export const CRUCE: Record<ErpCruce, { label: string; hint: string; tone: string
   SIN_COINCIDENCIA: { label: 'Sin coincidencia de stock', hint: 'No hay lote para este documento y producto (distinto de stock 0)', tone: 'bg-slate-100 text-slate-700' },
 }
 const TIPO_CONTROL = { ERROR: 'bg-red-100 text-red-800', REVISAR: 'bg-amber-100 text-amber-800', INFORMATIVO: 'bg-slate-100 text-slate-700' } as const
+
+// Cantidad con datos ausentes: sin valor, nunca 0; los totales que excluyen filas incompletas se marcan «parcial»
+const Qty = ({ v, parcial }: { v: number | null | undefined; parcial?: number }) => <>{v == null ? <span className="text-amber-700" title="Cantidad ausente en el Actualizable">s/d</span> : fmtQty(v)}
+  {!!parcial && v != null && <span className="block text-[10px] font-semibold text-amber-700" title={`No incluye ${parcial} fila(s) con cantidades ausentes`}>parcial</span>}</>
+const EXPORT_PAGE = 5000
 
 const label = (k: string) => k.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase())
 const cell = (v: unknown) => v == null ? '—' : typeof v === 'number' ? fmtQty(v) : typeof v === 'boolean' ? (v ? 'Sí' : 'No')
@@ -81,33 +87,57 @@ export function AnalisisSection() {
   const [vista, setVista] = useState<'DOCUMENTO' | 'OT'>('DOCUMENTO')
   const [offset, setOffset] = useState(0)
   const [open, setOpen] = useState<string | null>(null)
-  const [exporting, setExporting] = useState(false)
+  const [exporting, setExporting] = useState<string | null>(null)
+  const [exportMsg, setExportMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const args: ErpAnalisisFiltros = { ...applied, vista, limit: PAGE, offset }
   const res = useInvQuery(`erp-analisis|${JSON.stringify(args)}`, () => erpApi.analisis(args), { keepPrevious: true })
   // Mientras llega la otra vista se muestra la anterior solo si tiene la misma forma
   const d = res.data && (res.data.sin_datos || res.data.vista === vista) ? res.data : null
   const set = (k: keyof ErpAnalisisFiltros, v: string | boolean) => setForm(f => ({ ...f, [k]: v === '' ? undefined : v }))
   const apply = (next: ErpAnalisisFiltros) => { setApplied(next); setOffset(0); setOpen(null) }
+  // Exportación completa: todas las páginas del filtro, comprobando que las filas coinciden con el total filtrado
   const exportXlsx = async () => {
-    setExporting(true)
+    setExporting('Preparando…'); setExportMsg(null)
     try {
-      const [docs, ots] = await Promise.all([erpApi.analisis({ ...applied, vista: 'DOCUMENTO', limit: 20000 }), erpApi.analisis({ ...applied, vista: 'OT', limit: 20000 })])
+      let resumen: ErpAnalisis['resumen'] = []
+      const docs = await fetchAllRows<ErpAnalisisDoc>(async (o, l) => {
+        const r = await erpApi.analisis({ ...applied, vista: 'DOCUMENTO', limit: l, offset: o })
+        if (o === 0) resumen = r.resumen
+        return { total: r.total, filas: r.filas as ErpAnalisisDoc[] }
+      }, { pageSize: EXPORT_PAGE, keyOf: r => `${r.documento}|${r.cod_producto}|${r.unidad}`, onProgress: (n, t) => setExporting(`Documentos ${fmtN(n)} de ${fmtN(t)}…`) })
+      const ots = await fetchAllRows<ErpAnalisisOt>(async (o, l) => {
+        const r = await erpApi.analisis({ ...applied, vista: 'OT', limit: l, offset: o })
+        return { total: r.total, filas: r.filas as ErpAnalisisOt[] }
+      }, { pageSize: EXPORT_PAGE, keyOf: r => `${r.ot}|${r.tipo_documento}|${r.unidad}`, onProgress: (n, t) => setExporting(`OT ${fmtN(n)} de ${fmtN(t)}…`) })
       exportAptXlsx('Analisis_ERP_cruce_exacto', {
-        'Resumen unidad y tipo': docs.resumen.map(r => ({ Unidad: r.unidad, 'Tipo de documento': r.tipo_documento, Documentos: r.documentos, Líneas: r.lineas,
+        Control: [
+          { Dato: 'Documento y producto: total filtrado', Valor: docs.total }, { Dato: 'Documento y producto: filas exportadas', Valor: docs.rows.length },
+          { Dato: 'OT por tipo y unidad: total filtrado', Valor: ots.total }, { Dato: 'OT por tipo y unidad: filas exportadas', Valor: ots.rows.length },
+          { Dato: 'Filas con cantidades ausentes (indicadores sin valor; totales parciales)', Valor: docs.rows.filter(r => r.incompleto).length },
+          { Dato: 'Filtros', Valor: JSON.stringify(applied) }, { Dato: 'Exportado', Valor: new Date().toISOString() },
+          { Dato: 'Nota', Valor: 'Cruce exacto sin reglas de conversión. El filtro de bodega selecciona documentos; el stock incluye todas sus bodegas.' },
+        ],
+        'Resumen unidad y tipo': resumen.map(r => ({ Unidad: r.unidad, 'Tipo de documento': r.tipo_documento, Documentos: r.documentos, Líneas: r.lineas,
           Contratado: r.contratado, Despachado: r.despachado, Reemplazado: r.reemplazado, Pendiente: r.pendiente, Avance: r.avance,
           'Stock coincidente': r.stock_coincidente, Faltante: r.faltante, Cobertura: r.cobertura, 'Con pendiente': r.con_pendiente,
-          'Pendiente con stock': r.pendiente_con_stock, Sobredespacho: r.sobredespacho, 'Fecha de vencimiento superada': r.vencidas })),
-        'Documento y producto': (docs.filas as ErpAnalisisDoc[]).map(r => ({ OT: r.ot, Documento: r.documento, 'Tipo de documento': r.tipo_documento, Cliente: r.cliente, RUC: r.ruc,
+          'Pendiente con stock': r.pendiente_con_stock, Sobredespacho: r.sobredespacho, 'Fecha de vencimiento superada': r.vencidas,
+          'Filas con cantidades ausentes (excluidas de las sumas)': r.incompletas })),
+        'Documento y producto': docs.rows.map(r => ({ OT: r.ot, Documento: r.documento, 'Tipo de documento': r.tipo_documento, Cliente: r.cliente, RUC: r.ruc,
           SKU: r.cod_producto, Producto: r.producto, Familia: r.familia, 'Unidad (ERP)': r.unidad, Líneas: r.lineas, 'Filas del Excel': r.filas_origen.join(', '),
           Contratado: r.contratado, Despachado: r.despachado, Reemplazado: r.reemplazado, Pendiente: r.pendiente, Avance: r.avance,
           'Stock coincidente': r.stock, 'Lotes': r.lotes, Bodegas: r.bodegas, Cruce: CRUCE[r.cruce].label, Faltante: r.faltante, Cobertura: r.cobertura,
           'Fecha contrato': r.fecha_contrato, 'Fecha_Vcto': r.fecha_vcto, 'Fecha de vencimiento superada': r.vencida ? 'Sí' : '', 'Vigencia (ERP)': r.vigencia,
-          'Estado (ERP)': r.estados, 'Último despacho': r.ult_despacho, 'Antigüedad (días)': r.antiguedad, 'Cantidades ausentes': r.dato_ausente ? 'Sí' : '' })),
-        'OT por tipo y unidad': (ots.filas as ErpAnalisisOt[]).map(r => ({ OT: r.ot, 'Tipo de documento': r.tipo_documento, Unidad: r.unidad, Cliente: r.cliente,
+          'Estado (ERP)': r.estados, 'Último despacho': r.ult_despacho, 'Antigüedad (días)': r.antiguedad,
+          'Cantidades ausentes': r.cantidades_ausentes.join(', ') })),
+        'OT por tipo y unidad': ots.rows.map(r => ({ OT: r.ot, 'Tipo de documento': r.tipo_documento, Unidad: r.unidad, Cliente: r.cliente,
           Documentos: r.documentos, Contratado: r.contratado, Despachado: r.despachado, Pendiente: r.pendiente, 'Stock coincidente': r.stock, Faltante: r.faltante,
-          Avance: r.avance, Cobertura: r.cobertura, 'Con stock': r.con_stock, 'Fecha de vencimiento superada': r.vencidas })),
+          Avance: r.avance, Cobertura: r.cobertura, 'Con stock': r.con_stock, 'Fecha de vencimiento superada': r.vencidas,
+          'Filas con cantidades ausentes (excluidas de las sumas)': r.incompletas })),
       })
-    } finally { setExporting(false) }
+      setExportMsg({ ok: true, text: `Exportado completo: ${fmtN(docs.rows.length)} de ${fmtN(docs.total)} documentos y productos · ${fmtN(ots.rows.length)} de ${fmtN(ots.total)} renglones de OT.` })
+    } catch (e) {
+      setExportMsg({ ok: false, text: e instanceof Error ? e.message : 'No se pudo exportar' })
+    } finally { setExporting(null) }
   }
   return (
     <div className="space-y-3">
@@ -126,7 +156,8 @@ export function AnalisisSection() {
         <label className="text-xs font-semibold text-slate-600">Estado (ERP)<select value={form.estado ?? ''} onChange={ev => set('estado', ev.target.value)} className={`mt-1 block ${input}`}>
           <option value="">Todos</option>{ESTADOS.map(t => <option key={t} value={t}>{t}</option>)}</select></label>
         <label className="text-xs font-semibold text-slate-600">Unidad (ERP)<input value={form.unidad ?? ''} onChange={ev => set('unidad', ev.target.value)} placeholder="UND, CIEN…" className={`mt-1 block w-24 ${input}`} /></label>
-        <label className="text-xs font-semibold text-slate-600">Bodega<select value={form.bodega ?? ''} onChange={ev => set('bodega', ev.target.value)} className={`mt-1 block ${input}`}>
+        <label className="text-xs font-semibold text-slate-600" title="Selecciona los documentos con stock coincidente en esa bodega; el stock mostrado incluye todas sus bodegas">
+          Bodega (documentos con stock en ella)<select value={form.bodega ?? ''} onChange={ev => set('bodega', ev.target.value)} className={`mt-1 block ${input}`}>
           <option value="">Todas</option>{BODEGAS.map(b => <option key={b} value={b}>{b}</option>)}</select></label>
         <label className="text-xs font-semibold text-slate-600">Vigencia_Contrato (ERP)<select value={form.vigencia ?? ''} onChange={ev => set('vigencia', ev.target.value)} className={`mt-1 block ${input}`}>
           <option value="">Todas</option><option value="S">S</option><option value="N">N</option></select></label>
@@ -136,9 +167,16 @@ export function AnalisisSection() {
         <label className="flex min-h-10 items-center gap-1.5 text-xs text-slate-700"><input type="checkbox" checked={!!form.vencida} onChange={ev => set('vencida', ev.target.checked)} />Fecha de vencimiento superada</label>
         <button type="submit" className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white"><Search className="h-4 w-4" />Aplicar</button>
         <button type="button" onClick={() => { setForm({ solo_pendiente: true }); apply({ solo_pendiente: true }) }} className={btn}>Limpiar</button>
-        {d && !d.sin_datos && <button type="button" onClick={exportXlsx} disabled={exporting} className={`ml-auto ${btn}`}><Download className="h-4 w-4" />{exporting ? 'Exportando…' : 'Excel'}</button>}
+        {d && !d.sin_datos && <button type="button" onClick={exportXlsx} disabled={!!exporting} className={`ml-auto ${btn}`}><Download className="h-4 w-4" />{exporting ?? 'Excel (todo el filtro)'}</button>}
       </form>
+      {applied.bodega && <p className="rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-900">Filtro de bodega <b>{applied.bodega}</b>: selecciona los documentos que tienen stock coincidente
+        en esa bodega. El stock, el faltante y la cobertura mostrados incluyen <b>todas</b> las bodegas del documento (ver la columna de bodegas).</p>}
+      {exportMsg && <p role="status" className={`rounded-lg px-3 py-2 text-xs ${exportMsg.ok ? 'bg-emerald-50 text-emerald-900' : 'bg-red-50 text-red-800'}`}>{exportMsg.text}</p>}
       {!d && !res.error ? <LoadingBlock /> : res.error ? <ErrorBlock message={res.error} onRetry={res.reload} /> : d?.sin_datos ? <p className="text-sm text-slate-500">Cargue el Actualizable.</p> : d && <>
+        {d.incompletas > 0 && <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span><b>Análisis incompleto:</b> {fmtN(d.incompletas)} documento(s) y producto(s) del filtro tienen cantidades ausentes en
+          el Actualizable. Sus indicadores afectados aparecen «s/d» (no se calculan con 0) y los totales que los excluyen se marcan «parcial». Las vistas v1 conservan su
+          comportamiento (toman la cantidad ausente como 0).</span></p>}
         {!d.unidad_original && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">El Actualizable vigente se cargó antes de guardar la unidad original: UNID aparece como UND. Vuelva a cargarlo para ver la unidad del ERP.</p>}
         <ChartCard title="Resumen por unidad y tipo de documento" subtitle="Porcentajes calculados desde las sumas. Las filas no se suman entre sí: cada una tiene su unidad y su tipo de documento.">
           <Table empty={!d.resumen.length} head={<tr><th className={th}>Unidad</th><th className={th}>Tipo de documento</th><th className={`${th} text-right`}>Documentos</th>
@@ -148,8 +186,9 @@ export function AnalisisSection() {
             {d.resumen.map(r => <tr key={`${r.unidad}|${r.tipo_documento}`} className="cursor-pointer hover:bg-slate-50"
               onClick={() => { const n = { ...applied, unidad: r.unidad, tipo_documento: r.tipo_documento ?? undefined }; setForm(n); apply(n) }}>
               <td className={`${td} font-semibold`}>{r.unidad}</td><td className={td}>{r.tipo_documento ?? '—'}</td><td className={tdNum}>{fmtN(r.documentos)}</td>
-              <td className={tdNum}>{fmtQty(r.contratado)}</td><td className={tdNum}>{fmtQty(r.despachado)}</td><td className={tdNum}>{fmtQty(r.pendiente)}</td><td className={tdNum}>{ratio(r.avance)}</td>
-              <td className={tdNum}>{fmtQty(r.stock_coincidente)}</td><td className={tdNum}>{fmtQty(r.faltante)}</td><td className={tdNum}>{ratio(r.cobertura)}</td>
+              <td className={tdNum}><Qty v={r.contratado} parcial={r.incompletas} /></td><td className={tdNum}><Qty v={r.despachado} parcial={r.incompletas} /></td>
+              <td className={tdNum}><Qty v={r.pendiente} parcial={r.incompletas} /></td><td className={tdNum}>{ratio(r.avance)}</td>
+              <td className={tdNum}>{fmtQty(r.stock_coincidente)}</td><td className={tdNum}><Qty v={r.faltante} parcial={r.incompletas} /></td><td className={tdNum}>{ratio(r.cobertura)}</td>
               <td className={tdNum}>{fmtN(r.con_pendiente)} / {fmtN(r.pendiente_con_stock)}</td><td className={tdNum}>{fmtN(r.sobredespacho)}</td><td className={tdNum}>{fmtN(r.vencidas)}</td>
             </tr>)}
           </Table>
@@ -170,8 +209,9 @@ export function AnalisisSection() {
               <th className={`${th} text-right`}>Stock coincidente</th><th className={`${th} text-right`}>Faltante</th><th className={`${th} text-right`}>Cobertura</th><th className={`${th} text-right`}>Vcto. superado</th></tr>}>
               {(d.filas as ErpAnalisisOt[]).map(r => <tr key={`${r.ot}|${r.tipo_documento}|${r.unidad}`}>
                 <td className={`${td} font-bold text-[#002855]`}>{r.ot}</td><td className={td}>{r.tipo_documento ?? '—'}</td><td className={td}>{r.unidad}</td><td className={`${td} max-w-56`}>{r.cliente ?? '—'}</td>
-                <td className={tdNum}>{fmtQty(r.contratado)}</td><td className={tdNum}>{fmtQty(r.despachado)}</td><td className={tdNum}>{fmtQty(r.pendiente)}</td>
-                <td className={tdNum}>{fmtQty(r.stock)}</td><td className={tdNum}>{fmtQty(r.faltante)}</td><td className={tdNum}>{ratio(r.cobertura)}</td><td className={tdNum}>{fmtN(r.vencidas)}</td>
+                <td className={tdNum}><Qty v={r.contratado} parcial={r.incompletas} /></td><td className={tdNum}><Qty v={r.despachado} parcial={r.incompletas} /></td>
+                <td className={tdNum}><Qty v={r.pendiente} parcial={r.incompletas} /></td>
+                <td className={tdNum}>{fmtQty(r.stock)}</td><td className={tdNum}><Qty v={r.faltante} parcial={r.incompletas} /></td><td className={tdNum}>{ratio(r.cobertura)}</td><td className={tdNum}>{fmtN(r.vencidas)}</td>
               </tr>)}
             </Table>
             : <Table empty={!d.filas.length} head={<tr><th className={th}>Documento</th><th className={th}>SKU · producto</th><th className={th}>Unidad</th>
@@ -184,10 +224,12 @@ export function AnalisisSection() {
                       <span className="block text-[11px] text-slate-500">{r.tipo_documento}{r.lineas > 1 ? ` · ${r.lineas} líneas` : ''}</span></td>
                     <td className={`${td} max-w-72`}>{r.cod_producto}<span className="block text-[11px] text-slate-500">{r.producto}</span>{r.cliente && <span className="block text-[11px] text-slate-400">{r.cliente}</span>}</td>
                     <td className={td}>{r.unidad}</td>
-                    <td className={tdNum}>{fmtQty(r.contratado)}</td><td className={tdNum}>{fmtQty(r.despachado)}</td>
-                    <td className={`${tdNum} ${r.pendiente < 0 ? 'text-red-700' : ''}`}>{fmtQty(r.pendiente)}{r.dato_ausente && <span className="block text-[10px] text-amber-700">cantidades ausentes</span>}</td>
+                    <td className={tdNum}><Qty v={r.contratado} /></td><td className={tdNum}><Qty v={r.despachado} /></td>
+                    <td className={`${tdNum} ${(r.pendiente ?? 0) < 0 ? 'text-red-700' : ''}`}><Qty v={r.pendiente} />{r.incompleto && <span className="block text-[10px] font-semibold text-amber-700"
+                      title="Indicadores afectados sin calcular">incompleto: falta {r.cantidades_ausentes.join(', ')}</span>}</td>
                     <td className={tdNum}>{r.stock == null ? <span className="text-slate-400" title="Sin coincidencia de stock">—</span> : fmtQty(r.stock)}{r.bodegas && <span className="block text-[10px] text-slate-500">{r.bodegas}</span>}</td>
-                    <td className={tdNum}>{fmtQty(r.faltante)}</td><td className={tdNum}>{ratio(r.cobertura)}</td>
+                    <td className={tdNum}>{r.incompleto && r.pendiente == null ? <Qty v={null} /> : fmtQty(r.faltante)}</td>
+                    <td className={tdNum}>{r.incompleto && r.pendiente == null ? <Qty v={null} /> : ratio(r.cobertura)}</td>
                     <td className={td}><span title={CRUCE[r.cruce].hint} className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${CRUCE[r.cruce].tone}`}>{CRUCE[r.cruce].label}</span></td>
                     <td className={td}>{fmtDate(r.fecha_vcto)}{r.vencida && <span className="block text-[10px] font-semibold text-amber-800">vencimiento superado</span>}
                       {r.vigencia && <span className="block text-[10px] text-slate-500">Vigencia ERP: {r.vigencia}</span>}</td>
@@ -212,6 +254,9 @@ function Pager({ total, offset, onChange }: { total: number; offset: number; onC
   )
 }
 
+const LOTE_CRUCE = { COINCIDE: 'Coincide (exacto)', CANDIDATO_UNIDAD_DISTINTA: 'Candidato: otra unidad', CANDIDATO_CEROS: 'Candidato: lote con ceros',
+  CANDIDATO_SUFIJO_D: 'Candidato: sufijo D' } as const
+
 function DocDetalle({ doc }: { doc: ErpAnalisisDoc }) {
   const res = useInvQuery(`erp-analisis-det|${doc.documento}|${doc.cod_producto}|${doc.unidad}`, () => erpApi.analisisDetalle(doc.documento, doc.cod_producto, doc.unidad))
   if (res.loading) return <LoadingBlock className="h-24" />
@@ -221,12 +266,14 @@ function DocDetalle({ doc }: { doc: ErpAnalisisDoc }) {
     <div className="space-y-3">
       <div><p className="mb-1 text-xs font-bold text-slate-700">Líneas del Actualizable ({d.lineas.length})</p>
         <RowsTable rows={d.lineas.map(l => ({ 'Fila del Excel': l.fila_origen, Tipo: l.tipo_documento, Correlativo: l.correlativo, Secuencia: l.secuencia, 'Unidad ERP': l.unidad_erp,
-          Contratado: l.contratado, Despachado: l.despachado, Reemplazado: l.reemplazado, Pendiente: l.pendiente, 'Estado ERP': l.estado, 'Vigencia ERP': l.vigencia,
-          'Fecha contrato': l.fecha_contrato, Fecha_Vcto: l.fecha_vcto, 'Último despacho': l.ult_despacho, Guías: l.guias, 'Cantidades ausentes': l.dato_ausente }))} /></div>
+          Contratado: l.contratado ?? 's/d', Despachado: l.despachado ?? 's/d', Reemplazado: l.reemplazado ?? 's/d', Pendiente: l.pendiente ?? 's/d', 'Estado ERP': l.estado,
+          'Vigencia ERP': l.vigencia, 'Fecha contrato': l.fecha_contrato, Fecha_Vcto: l.fecha_vcto, 'Último despacho': l.ult_despacho, Guías: l.guias,
+          'Cantidades ausentes': l.dato_ausente ? (l.cantidades_ausentes.join(', ') || 'sí') : '' }))} /></div>
       <div><p className="mb-1 text-xs font-bold text-slate-700">Lotes del Stock con este documento y producto ({d.lotes.length})</p>
-        <p className="mb-1 text-[11px] text-slate-500">Incluye lotes con ceros a la izquierda o sufijo D y otras unidades; solo los marcados «coincide» suman al stock coincidente.</p>
+        <p className="mb-1 text-[11px] text-slate-500">Coincide solo el lote igual al documento, con el mismo producto y la misma unidad (misma normalización que la tabla). Los lotes con
+          ceros a la izquierda, sufijo D u otra unidad son <b>candidatos</b>: no suman al stock coincidente.</p>
         <RowsTable rows={d.lotes.map(l => ({ 'Fila del Excel': l.fila_origen, Bodega: l.bodega, Lote: l.lote, Unidad: l.unidad, Stock: l.stock, 'Stock en falla': l.stock_falla,
-          'Peso unitario': l.peso_unitario, 'Peso total (ERP)': l.peso_total_erp, Coincide: l.coincide }))} /></div>
+          'Peso unitario': l.peso_unitario, 'Peso total (ERP)': l.peso_total_erp, Cruce: LOTE_CRUCE[l.cruce] }))} /></div>
       <div><p className="mb-1 text-xs font-bold text-slate-700">Guías ({d.guias.length})</p>
         <RowsTable rows={d.guias.map(g => ({ Guía: g.guia, Secuencia: g.secuencia, Cantidad: g.cantidad, 'Fecha ERP': g.fecha_erp, 'Fecha exacta': g.fecha_erp_exacta }))} /></div>
     </div>

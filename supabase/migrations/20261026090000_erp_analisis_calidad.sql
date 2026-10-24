@@ -11,6 +11,8 @@ BEGIN;
 ALTER TABLE public.erp_contract_lines ADD COLUMN IF NOT EXISTS unidad_erp text;
 ALTER TABLE public.erp_contract_lines ADD COLUMN IF NOT EXISTS linea integer;
 ALTER TABLE public.erp_contract_lines ADD COLUMN IF NOT EXISTS cantidades_ausentes boolean NOT NULL DEFAULT false;
+-- Qué cantidades venían vacías (se guardan como 0 por la regla heredada; el análisis nuevo no las usa como dato)
+ALTER TABLE public.erp_contract_lines ADD COLUMN IF NOT EXISTS cantidades_ausentes_campos text[] NOT NULL DEFAULT '{}';
 ALTER TABLE public.erp_imports ADD COLUMN IF NOT EXISTS rule_version integer;
 ALTER TABLE public.erp_derive_days ADD COLUMN IF NOT EXISTS rule_version integer;
 
@@ -153,7 +155,7 @@ BEGIN
   IF v_kind = 'CONTRATOS' THEN
     INSERT INTO public.erp_contract_lines (import_id, nro_documento, secuencia, ot, tipo_documento, correlativo, fecha_contrato, fecha_vcto,
       vigencia, ruc, cliente, cod_producto, producto, color, unidad, cant_contrato, cant_despachada, cant_reemplazada, cant_pendiente,
-      estado, nro_guias, fecha_ult_despacho, tipo_producto, tipo, familia, subfamilia, unidad_erp, linea, cantidades_ausentes)
+      estado, nro_guias, fecha_ult_despacho, tipo_producto, tipo, familia, subfamilia, unidad_erp, linea, cantidades_ausentes, cantidades_ausentes_campos)
     SELECT p_upload_id, btrim(r->>'nro_documento'), (r->>'secuencia')::integer,
       COALESCE(NULLIF(btrim(r->>'nro_contrato'), ''), split_part(btrim(r->>'nro_documento'), '-', 1)),
       NULLIF(btrim(r->>'tipo_documento'), ''), NULLIF(r->>'correlativo', '')::bigint, NULLIF(r->>'fecha_contrato', '')::date,
@@ -165,8 +167,11 @@ BEGIN
       NULLIF(btrim(r->>'estado'), ''), COALESCE(NULLIF(r->>'nro_guias', '')::integer, 0), NULLIF(r->>'fecha_ult_despacho', '')::date,
       NULLIF(btrim(r->>'tipo_producto'), ''), NULLIF(btrim(r->>'tipo'), ''), NULLIF(btrim(r->>'familia'), ''), NULLIF(btrim(r->>'subfamilia'), ''),
       -- Unidad tal como viene del ERP (la columna unidad conserva la regla heredada UNID → UND) y fila del Excel
-      NULLIF(r->>'unidad', ''), NULLIF(r->>'linea', '')::integer, COALESCE(NULLIF(r->>'cantidades_ausentes', '')::integer, 0) = 1
+      NULLIF(r->>'unidad', ''), NULLIF(r->>'linea', '')::integer,
+      COALESCE(NULLIF(r->>'cantidades_ausentes', '')::integer, 0) = 1 OR cardinality(a.campos) > 0, a.campos
     FROM jsonb_array_elements(p_rows) r
+    CROSS JOIN LATERAL (SELECT ARRAY(SELECT k FROM unnest(ARRAY['cant_contrato', 'cant_despachada', 'cant_reemplazada', 'cant_pendiente']) k
+      WHERE NULLIF(btrim(r->>k), '') IS NULL) AS campos) a
     WHERE NULLIF(btrim(r->>'nro_documento'), '') IS NOT NULL AND NULLIF(r->>'secuencia', '') IS NOT NULL AND NULLIF(btrim(r->>'cod_producto'), '') IS NOT NULL
     ON CONFLICT DO NOTHING;
     INSERT INTO public.erp_contract_guias (import_id, nro_documento, secuencia, guia, guia_key, cantidad, posicion)
@@ -234,10 +239,20 @@ BEGIN
     max(producto) AS producto, max(familia) AS familia, max(tipo_producto) AS tipo_producto, count(*) AS lineas,
     sum(cant_contrato) AS contratado, sum(cant_despachada) AS despachado, sum(cant_reemplazada) AS reemplazado, sum(cant_pendiente) AS pendiente,
     sum(cant_contrato - cant_despachada - cant_reemplazada - cant_pendiente) AS dif_formula, bool_or(cantidades_ausentes) AS dato_ausente,
+    bool_or('cant_contrato' = ANY(cantidades_ausentes_campos)) AS aus_c, bool_or('cant_despachada' = ANY(cantidades_ausentes_campos)) AS aus_d,
+    bool_or('cant_reemplazada' = ANY(cantidades_ausentes_campos)) AS aus_r, bool_or('cant_pendiente' = ANY(cantidades_ausentes_campos)) AS aus_p,
     min(fecha_contrato) AS fecha_contrato, max(fecha_vcto) AS fecha_vcto, max(fecha_ult_despacho) AS ult_despacho,
     string_agg(DISTINCT estado, ', ') AS estados, string_agg(DISTINCT vigencia, ', ') AS vigencia, sum(nro_guias) AS guias,
     array_agg(secuencia ORDER BY secuencia) AS secuencias, array_agg(linea ORDER BY secuencia) AS filas_origen
   FROM l GROUP BY 1, 2, 3;
+  -- Cantidades ausentes: el análisis nuevo no las toma como 0. La cantidad afectada queda sin valor (también la diferencia de
+  -- fórmula) y la fila se marca incompleta; las cargas anteriores sin detalle de campos se tratan como ausentes en todo.
+  UPDATE a_doc SET aus_c = aus_c OR NOT (aus_c OR aus_d OR aus_r OR aus_p), aus_d = aus_d OR NOT (aus_c OR aus_d OR aus_r OR aus_p),
+    aus_r = aus_r OR NOT (aus_c OR aus_d OR aus_r OR aus_p), aus_p = aus_p OR NOT (aus_c OR aus_d OR aus_r OR aus_p)
+  WHERE dato_ausente;
+  UPDATE a_doc SET contratado = CASE WHEN aus_c THEN NULL ELSE contratado END, despachado = CASE WHEN aus_d THEN NULL ELSE despachado END,
+    reemplazado = CASE WHEN aus_r THEN NULL ELSE reemplazado END, pendiente = CASE WHEN aus_p THEN NULL ELSE pendiente END, dif_formula = NULL
+  WHERE dato_ausente;
   ALTER TABLE a_doc ADD COLUMN stock numeric, ADD COLUMN lotes integer, ADD COLUMN bodegas text, ADD COLUMN cruce text;
   UPDATE a_doc d SET stock = s.stock, lotes = s.lotes, bodegas = s.bodegas, cruce = 'COINCIDE'
   FROM a_stk s WHERE s.lk = d.documento AND s.pk = d.cod_producto AND s.u = d.unidad;
@@ -250,7 +265,10 @@ BEGIN
   WHERE d.cruce IS NULL;
 
   WITH f AS (
-    SELECT d.*, CASE WHEN d.pendiente > 0 THEN greatest(d.pendiente - COALESCE(d.stock, 0), 0) END AS faltante,
+    SELECT d.*, d.dato_ausente AS incompleto,
+      array_remove(ARRAY[CASE WHEN d.aus_c THEN 'contratada' END, CASE WHEN d.aus_d THEN 'despachada' END, CASE WHEN d.aus_r THEN 'reemplazada' END,
+        CASE WHEN d.aus_p THEN 'pendiente' END], NULL) AS cantidades_ausentes,
+      CASE WHEN d.pendiente > 0 THEN greatest(d.pendiente - COALESCE(d.stock, 0), 0) END AS faltante,
       CASE WHEN d.pendiente > 0 AND d.cruce = 'COINCIDE' THEN round(d.stock / d.pendiente, 4) END AS cobertura,
       CASE WHEN d.contratado > 0 THEN round(d.despachado / d.contratado, 4) END AS avance,
       (d.pendiente > 0 AND d.fecha_vcto < v_hoy) AS vencida, v_hoy - d.fecha_contrato AS antiguedad
@@ -261,7 +279,7 @@ BEGIN
       AND (f_prod IS NULL OR d.cod_producto LIKE '%' || f_prod || '%' OR public.erp_key(d.producto) LIKE '%' || f_prod || '%')
       AND (f_uni IS NULL OR d.unidad = f_uni) AND (f_bod IS NULL OR d.bodegas LIKE '%' || f_bod || '%')
       AND (f_est IS NULL OR d.estados LIKE '%' || f_est || '%') AND (f_vig IS NULL OR d.vigencia LIKE '%' || f_vig || '%')
-      AND (f_cruce IS NULL OR d.cruce = f_cruce) AND (NOT f_pend OR d.pendiente > 0)
+      AND (f_cruce IS NULL OR d.cruce = f_cruce) AND (NOT f_pend OR d.pendiente > 0 OR d.pendiente IS NULL)
       AND (NOT f_venc OR (d.pendiente > 0 AND d.fecha_vcto < v_hoy))),
   -- Por OT: un renglón por OT, tipo de documento y unidad (nunca se suman tipos ni unidades entre sí)
   o AS (
@@ -269,6 +287,7 @@ BEGIN
       sum(contratado) AS contratado, sum(despachado) AS despachado, sum(reemplazado) AS reemplazado, sum(pendiente) AS pendiente,
       sum(stock) AS stock, sum(faltante) AS faltante, count(*) FILTER (WHERE cruce = 'COINCIDE') AS con_stock,
       count(*) FILTER (WHERE vencida) AS vencidas, min(fecha_contrato) AS fecha_contrato, max(fecha_vcto) AS fecha_vcto, max(ult_despacho) AS ult_despacho,
+      count(*) FILTER (WHERE incompleto) AS incompletas,
       CASE WHEN sum(contratado) > 0 THEN round(sum(despachado) / sum(contratado), 4) END AS avance,
       CASE WHEN sum(pendiente) FILTER (WHERE pendiente > 0) > 0 THEN round(sum(stock) FILTER (WHERE pendiente > 0 AND cruce = 'COINCIDE') / sum(pendiente) FILTER (WHERE pendiente > 0), 4) END AS cobertura
     FROM f GROUP BY 1, 2, 3)
@@ -283,16 +302,21 @@ BEGIN
          CASE WHEN sum(pendiente) FILTER (WHERE pendiente > 0) > 0
            THEN round(sum(stock) FILTER (WHERE pendiente > 0 AND cruce = 'COINCIDE') / sum(pendiente) FILTER (WHERE pendiente > 0), 4) END AS cobertura,
          count(*) FILTER (WHERE pendiente > 0) AS con_pendiente, count(*) FILTER (WHERE pendiente > 0 AND cruce = 'COINCIDE') AS pendiente_con_stock,
-         count(*) FILTER (WHERE pendiente < 0) AS sobredespacho, count(*) FILTER (WHERE vencida) AS vencidas
+         count(*) FILTER (WHERE pendiente < 0) AS sobredespacho, count(*) FILTER (WHERE vencida) AS vencidas,
+         -- Filas con cantidades ausentes: sus cantidades no entran en las sumas, que quedan parciales
+         count(*) FILTER (WHERE incompleto) AS incompletas
        FROM f GROUP BY 1, 2) r), '[]'::jsonb),
+    'incompletas', (SELECT count(*) FROM f WHERE incompleto),
     'estados', COALESCE((SELECT jsonb_object_agg(e, n) FROM (
        SELECT COALESCE(l.estado, '(vacío)') AS e, count(*) AS n FROM public.erp_contract_lines l
        WHERE l.import_id = v_c AND EXISTS (SELECT 1 FROM f WHERE f.documento = public.erp_key(l.nro_documento) AND f.cod_producto = public.erp_key(l.cod_producto)
          AND f.unidad = public.erp_key(COALESCE(l.unidad_erp, l.unidad))) GROUP BY 1) z), '{}'::jsonb),
     'cruces', COALESCE((SELECT jsonb_object_agg(cruce, n) FROM (SELECT cruce, count(*) AS n FROM f GROUP BY 1) z), '{}'::jsonb),
     'filas', CASE WHEN v_vista = 'OT'
-      THEN COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT * FROM o ORDER BY faltante DESC NULLS LAST, pendiente DESC, ot, tipo_documento LIMIT v_lim OFFSET v_off) x), '[]'::jsonb)
-      ELSE COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT * FROM f ORDER BY faltante DESC NULLS LAST, pendiente DESC, documento, cod_producto LIMIT v_lim OFFSET v_off) x), '[]'::jsonb) END)
+      THEN COALESCE((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT * FROM o
+        ORDER BY faltante DESC NULLS LAST, pendiente DESC NULLS LAST, ot, tipo_documento NULLS FIRST, unidad LIMIT v_lim OFFSET v_off) x), '[]'::jsonb)
+      ELSE COALESCE((SELECT jsonb_agg(to_jsonb(x) - 'aus_c' - 'aus_d' - 'aus_r' - 'aus_p' - 'dato_ausente') FROM (SELECT * FROM f
+        ORDER BY faltante DESC NULLS LAST, pendiente DESC NULLS LAST, documento, cod_producto, unidad LIMIT v_lim OFFSET v_off) x), '[]'::jsonb) END)
   INTO v_out;
   RETURN v_out;
 END $$;
@@ -306,16 +330,27 @@ BEGIN
   IF NOT public.apt_can_view() THEN RETURN jsonb_build_object('success', false, 'error', 'Sin acceso a los datos del ERP'); END IF;
   RETURN jsonb_build_object('success', true,
     'lineas', COALESCE((SELECT jsonb_agg(jsonb_build_object('fila_origen', l.linea, 'tipo_documento', l.tipo_documento, 'correlativo', l.correlativo, 'secuencia', l.secuencia,
-        'producto', l.producto, 'color', l.color, 'unidad_erp', l.unidad_erp, 'unidad', l.unidad, 'contratado', l.cant_contrato, 'despachado', l.cant_despachada,
-        'reemplazado', l.cant_reemplazada, 'pendiente', l.cant_pendiente, 'estado', l.estado, 'vigencia', l.vigencia, 'fecha_contrato', l.fecha_contrato,
-        'fecha_vcto', l.fecha_vcto, 'ult_despacho', l.fecha_ult_despacho, 'guias', l.nro_guias, 'dato_ausente', l.cantidades_ausentes) ORDER BY l.secuencia)
+        'producto', l.producto, 'color', l.color, 'unidad_erp', l.unidad_erp, 'unidad', l.unidad,
+        -- Cantidad ausente en el archivo: sin valor (la base la guarda como 0 por la regla heredada)
+        'contratado', CASE WHEN l.cantidades_ausentes AND ('cant_contrato' = ANY(l.cantidades_ausentes_campos) OR l.cantidades_ausentes_campos = '{}') THEN NULL ELSE l.cant_contrato END,
+        'despachado', CASE WHEN l.cantidades_ausentes AND ('cant_despachada' = ANY(l.cantidades_ausentes_campos) OR l.cantidades_ausentes_campos = '{}') THEN NULL ELSE l.cant_despachada END,
+        'reemplazado', CASE WHEN l.cantidades_ausentes AND ('cant_reemplazada' = ANY(l.cantidades_ausentes_campos) OR l.cantidades_ausentes_campos = '{}') THEN NULL ELSE l.cant_reemplazada END,
+        'pendiente', CASE WHEN l.cantidades_ausentes AND ('cant_pendiente' = ANY(l.cantidades_ausentes_campos) OR l.cantidades_ausentes_campos = '{}') THEN NULL ELSE l.cant_pendiente END,
+        'estado', l.estado, 'vigencia', l.vigencia, 'fecha_contrato', l.fecha_contrato,
+        'fecha_vcto', l.fecha_vcto, 'ult_despacho', l.fecha_ult_despacho, 'guias', l.nro_guias, 'dato_ausente', l.cantidades_ausentes, 'cantidades_ausentes', l.cantidades_ausentes_campos) ORDER BY l.secuencia)
       FROM public.erp_contract_lines l WHERE l.import_id = v_c AND public.erp_key(l.nro_documento) = d AND public.erp_key(l.cod_producto) = pr
         AND public.erp_key(COALESCE(l.unidad_erp, l.unidad)) = u), '[]'::jsonb),
     'lotes', COALESCE((SELECT jsonb_agg(jsonb_build_object('fila_origen', s.linea, 'bodega', s.bodega, 'lote', s.lote_raw, 'unidad', s.unidad, 'stock', s.stock,
         'stock_falla', s.stock_falla, 'peso_unitario', s.peso_unitario, 'peso_total_erp', s.peso_total,
-        'coincide', public.erp_key(s.unidad) = u) ORDER BY s.bodega)
+        -- Misma normalización que la tabla principal: coincide solo con lote, producto y unidad exactos; el resto son candidatos
+        'cruce', CASE WHEN public.erp_key(s.lote_raw) = d AND public.erp_key(s.unidad) IS NOT DISTINCT FROM u THEN 'COINCIDE'
+          WHEN public.erp_key(s.lote_raw) = d THEN 'CANDIDATO_UNIDAD_DISTINTA'
+          WHEN public.erp_key(s.lote_raw) = d || 'D' THEN 'CANDIDATO_SUFIJO_D'
+          ELSE 'CANDIDATO_CEROS' END,
+        'coincide', public.erp_key(s.lote_raw) = d AND public.erp_key(s.unidad) IS NOT DISTINCT FROM u) ORDER BY s.bodega)
       FROM public.erp_stock_lots s WHERE s.import_id = v_s AND public.erp_key(s.cod_producto) = pr
-        AND (public.erp_key(s.lote_raw) = d OR regexp_replace(public.erp_key(s.lote_raw), '^0+(?=[0-9])', '') = d OR public.erp_key(s.lote_raw) = d || 'D')), '[]'::jsonb),
+        AND (public.erp_key(s.lote_raw) = d OR (public.erp_key(s.lote_raw) ~ '^0+[0-9]' AND regexp_replace(public.erp_key(s.lote_raw), '^0+(?=[0-9])', '') = d)
+          OR public.erp_key(s.lote_raw) = d || 'D')), '[]'::jsonb),
     'guias', COALESCE((SELECT jsonb_agg(jsonb_build_object('guia', g.guia, 'cantidad', g.cantidad, 'secuencia', g.secuencia, 'fecha_erp', f.fecha, 'fecha_erp_exacta', f.exacta) ORDER BY f.fecha DESC NULLS LAST)
       FROM public.erp_contract_guias g JOIN public.erp_contract_lines l ON l.import_id = g.import_id AND l.nro_documento = g.nro_documento AND l.secuencia = g.secuencia
       LEFT JOIN public.erp_guia_fechas f ON f.import_id = g.import_id AND f.guia_key = g.guia_key
@@ -388,15 +423,16 @@ BEGIN
     UNION ALL SELECT 'A03', 'Actualizable', 'Filas omitidas al cargar (clave repetida o sin documento/secuencia/producto)', 'ERROR',
       COALESCE((ic.summary->>'omitidas')::integer, ic.expected - ic.rows_loaded, 0), NULL
     UNION ALL SELECT 'A04', 'Actualizable', 'Pendiente del ERP distinto de contratada − despachada − reemplazada', 'REVISAR',
-      (SELECT count(*) FROM l WHERE abs(cant_contrato - cant_despachada - cant_reemplazada - cant_pendiente) > 0.000001),
+      (SELECT count(*) FROM l WHERE NOT cantidades_ausentes AND abs(cant_contrato - cant_despachada - cant_reemplazada - cant_pendiente) > 0.000001),
       (SELECT jsonb_agg(z) FROM (SELECT nro_documento, secuencia, cod_producto, cant_contrato, cant_despachada, cant_reemplazada, cant_pendiente, linea AS fila_origen FROM l
-        WHERE abs(cant_contrato - cant_despachada - cant_reemplazada - cant_pendiente) > 0.000001 LIMIT 10) z)
+        WHERE NOT cantidades_ausentes AND abs(cant_contrato - cant_despachada - cant_reemplazada - cant_pendiente) > 0.000001 LIMIT 10) z)
     UNION ALL SELECT 'A05', 'Actualizable', 'Despachado mayor que contratado (avance sobre 100 %, pendiente negativo)', 'REVISAR',
-      (SELECT count(*) FROM l WHERE cant_despachada > cant_contrato OR cant_pendiente < 0),
+      (SELECT count(*) FROM l WHERE NOT cantidades_ausentes AND (cant_despachada > cant_contrato OR cant_pendiente < 0)),
       (SELECT jsonb_agg(z) FROM (SELECT nro_documento, secuencia, cod_producto, unidad_erp, cant_contrato, cant_despachada, cant_pendiente, linea AS fila_origen FROM l
-        WHERE cant_despachada > cant_contrato OR cant_pendiente < 0 LIMIT 10) z)
-    UNION ALL SELECT 'A06', 'Actualizable', 'Cantidades ausentes en el archivo (guardadas como 0)', 'REVISAR',
-      (SELECT count(*) FROM l WHERE cantidades_ausentes), (SELECT jsonb_agg(z) FROM (SELECT nro_documento, secuencia, linea AS fila_origen FROM l WHERE cantidades_ausentes LIMIT 10) z)
+        WHERE NOT cantidades_ausentes AND (cant_despachada > cant_contrato OR cant_pendiente < 0) LIMIT 10) z)
+    UNION ALL SELECT 'A06', 'Actualizable', 'Cantidades ausentes en el archivo (las vistas v1 las toman como 0; el análisis exacto las deja sin valor y marca la fila incompleta)', 'REVISAR',
+      (SELECT count(*) FROM l WHERE cantidades_ausentes), (SELECT jsonb_agg(z) FROM (SELECT nro_documento, secuencia, cod_producto,
+        array_to_string(cantidades_ausentes_campos, ', ') AS cantidades_ausentes, linea AS fila_origen FROM l WHERE cantidades_ausentes LIMIT 10) z)
     UNION ALL SELECT 'A07', 'Actualizable', 'Cant_Reemplazada es 0 en todas las líneas (la regla de reemplazo no se puede validar)', 'INFORMATIVO',
       CASE WHEN (SELECT bool_and(cant_reemplazada = 0) FROM l) THEN (SELECT count(*) FROM l) ELSE 0 END, NULL
     UNION ALL SELECT 'A08', 'Actualizable', 'Escrituras de unidad distintas (no se suman entre sí; equivalencias sin aprobar)', 'INFORMATIVO',

@@ -54,34 +54,38 @@ export interface ErpAnalisisFiltros {
 }
 export interface ErpAnalisisDoc {
   documento: string; cod_producto: string; unidad: string; ot: string | null; tipo_documento: string | null; cliente: string | null; ruc: string | null
-  producto: string | null; familia: string | null; tipo_producto: string | null; lineas: number; contratado: number; despachado: number; reemplazado: number
-  pendiente: number; dif_formula: number; dato_ausente: boolean; fecha_contrato: string | null; fecha_vcto: string | null; ult_despacho: string | null
+  producto: string | null; familia: string | null; tipo_producto: string | null; lineas: number
+  // null = alguna línea del grupo no traía esa cantidad (no se calcula con 0)
+  contratado: number | null; despachado: number | null; reemplazado: number | null; pendiente: number | null; dif_formula: number | null
+  incompleto: boolean; cantidades_ausentes: string[]; fecha_contrato: string | null; fecha_vcto: string | null; ult_despacho: string | null
   estados: string | null; vigencia: string | null; guias: number; secuencias: number[]; filas_origen: Array<number | null>
   stock: number | null; lotes: number | null; bodegas: string | null; cruce: ErpCruce
-  faltante: number | null; cobertura: number | null; avance: number | null; vencida: boolean; antiguedad: number | null
+  faltante: number | null; cobertura: number | null; avance: number | null; vencida: boolean | null; antiguedad: number | null
 }
 export interface ErpAnalisisOt {
   ot: string; tipo_documento: string | null; unidad: string; cliente: string | null; documentos_producto: number; documentos: number
   contratado: number; despachado: number; reemplazado: number; pendiente: number; stock: number | null; faltante: number | null; con_stock: number
   vencidas: number; fecha_contrato: string | null; fecha_vcto: string | null; ult_despacho: string | null; avance: number | null; cobertura: number | null
+  incompletas: number
 }
 export interface ErpAnalisisResumen {
   unidad: string; tipo_documento: string | null; filas: number; documentos: number; lineas: number; contratado: number; despachado: number; reemplazado: number
   pendiente: number; avance: number | null; stock_coincidente: number | null; faltante: number | null; cobertura: number | null
-  con_pendiente: number; pendiente_con_stock: number; sobredespacho: number; vencidas: number
+  con_pendiente: number; pendiente_con_stock: number; sobredespacho: number; vencidas: number; incompletas: number
 }
 export interface ErpAnalisis {
-  success: true; sin_datos?: boolean; vista: 'DOCUMENTO' | 'OT'; unidad_original: boolean; hoy: string; total: number
+  success: true; sin_datos?: boolean; vista: 'DOCUMENTO' | 'OT'; unidad_original: boolean; hoy: string; total: number; incompletas: number
   resumen: ErpAnalisisResumen[]; estados: Record<string, number>; cruces: Partial<Record<ErpCruce, number>>
   filas: Array<ErpAnalisisDoc | ErpAnalisisOt>
 }
 export interface ErpAnalisisDetalle {
   success: true
   lineas: Array<{ fila_origen: number | null; tipo_documento: string | null; correlativo: number | null; secuencia: number; producto: string | null; color: string | null
-    unidad_erp: string | null; unidad: string | null; contratado: number; despachado: number; reemplazado: number; pendiente: number; estado: string | null
-    vigencia: string | null; fecha_contrato: string | null; fecha_vcto: string | null; ult_despacho: string | null; guias: number; dato_ausente: boolean }>
+    unidad_erp: string | null; unidad: string | null; contratado: number | null; despachado: number | null; reemplazado: number | null; pendiente: number | null
+    estado: string | null; vigencia: string | null; fecha_contrato: string | null; fecha_vcto: string | null; ult_despacho: string | null; guias: number
+    dato_ausente: boolean; cantidades_ausentes: string[] }>
   lotes: Array<{ fila_origen: number; bodega: string; lote: string | null; unidad: string | null; stock: number; stock_falla: number; peso_unitario: number | null
-    peso_total_erp: number | null; coincide: boolean }>
+    peso_total_erp: number | null; coincide: boolean; cruce: 'COINCIDE' | 'CANDIDATO_UNIDAD_DISTINTA' | 'CANDIDATO_CEROS' | 'CANDIDATO_SUFIJO_D' }>
   guias: Array<{ guia: string; cantidad: number; secuencia: number; fecha_erp: string | null; fecha_erp_exacta: boolean | null }>
 }
 export interface ErpStockCruce {
