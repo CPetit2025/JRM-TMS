@@ -47,7 +47,7 @@ INSERT INTO public.erp_rule_versions (version, estado, origen, nota, reglas) VAL
     {"codigo": "UNID_A_UND", "titulo": "Unidad UNID del Actualizable guardada como UND", "detalle": "Al cargar el Actualizable, la unidad UNID se guarda como UND. Desde la versión de análisis también se guarda la unidad original (unidad_erp).", "aplica_en": ["OT pendientes", "Guías"]},
     {"codigo": "LOTE_SIN_CEROS", "titulo": "Lote sin ceros a la izquierda", "detalle": "El lote 0000016037 se trata como el documento 16037.", "aplica_en": ["OT pendientes (listo en stock)", "Stock por OT", "Movimientos derivados (clave de lote del inventario)"]},
     {"codigo": "PESO_POR_UNIDAD", "titulo": "Peso calculado por unidad", "detalle": "El peso del stock se calcula como stock × factor de unidad × Peso_Unitario, en lugar del Peso_Total del ERP, que en productos en cientos resulta 100 veces menor.", "aplica_en": ["Stock por OT (peso)", "OT pendientes (toneladas)", "Movimientos derivados (peso)"]},
-    {"codigo": "OT_SUMA_TIPOS", "titulo": "Total por OT suma todos los tipos de documento", "detalle": "En OT pendientes, el total de la OT suma contrato, subcontratos y garantías.", "aplica_en": ["OT pendientes"]},
+    {"codigo": "OT_SUMA_TIPOS", "titulo": "Total por OT suma todos los tipos de documento", "detalle": "En OT pendientes, el total de la OT suma contrato, subcontratos, garantías y errores (si se incluyen), y también cantidades de unidades distintas. El pendiente negativo (sobredespacho) cuenta como 0. El stock se cruza por lote y producto, sin comparar la unidad.", "aplica_en": ["OT pendientes"]},
     {"codigo": "EXCLUSION_POR_DEFECTO", "titulo": "Exclusión por defecto de ERROR DE CONTRATO y SERVICIO A TERCEROS", "detalle": "OT pendientes no los cuenta salvo que se marquen las casillas para incluirlos.", "aplica_en": ["OT pendientes"]}
   ]'::jsonb)
 ON CONFLICT (version) DO NOTHING;
@@ -272,7 +272,7 @@ BEGIN
       CASE WHEN sum(contratado) > 0 THEN round(sum(despachado) / sum(contratado), 4) END AS avance,
       CASE WHEN sum(pendiente) FILTER (WHERE pendiente > 0) > 0 THEN round(sum(stock) FILTER (WHERE pendiente > 0 AND cruce = 'COINCIDE') / sum(pendiente) FILTER (WHERE pendiente > 0), 4) END AS cobertura
     FROM f GROUP BY 1, 2, 3)
-  SELECT jsonb_build_object('success', true, 'unidad_original', COALESCE(v_orig, false), 'hoy', v_hoy,
+  SELECT jsonb_build_object('success', true, 'vista', v_vista, 'unidad_original', COALESCE(v_orig, false), 'hoy', v_hoy,
     'total', CASE WHEN v_vista = 'OT' THEN (SELECT count(*) FROM o) ELSE (SELECT count(*) FROM f) END,
     -- Resumen por unidad y tipo de documento (porcentajes desde las sumas, no promedio de filas)
     'resumen', COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.unidad, r.tipo_documento) FROM (
@@ -473,7 +473,7 @@ BEGIN
       round(s.stock * s.peso_unitario, 4) AS stock_x_peso_unitario, round(s.stock * s.factor * s.peso_unitario, 4) AS stock_x_factor_x_peso_unitario
     FROM s WHERE s.factor <> 1 AND s.peso_unitario > 0),
   -- OT con varios tipos de documento con pendiente
-  ot AS (SELECT ot, count(DISTINCT tipo_documento) AS tipos FROM l WHERE cant_pendiente > 0 GROUP BY 1)
+  ot AS (SELECT ot, count(DISTINCT tipo_documento) AS tipos, count(DISTINCT u) AS unidades FROM l WHERE cant_pendiente > 0 GROUP BY 1)
   SELECT jsonb_build_object('success', true,
     'regla_vigente', (SELECT jsonb_build_object('version', version, 'origen', origen, 'nota', nota, 'reglas', reglas) FROM public.erp_rule_versions WHERE estado = 'VIGENTE'),
     'cortes', (SELECT jsonb_object_agg(kind, jsonb_build_object('corte', cut_at, 'procesado', applied_at, 'version_reglas', rule_version)) FROM public.erp_imports WHERE id IN (v_c, v_s)),
@@ -500,6 +500,8 @@ BEGIN
       'ejemplos', (SELECT jsonb_agg(z) FROM (SELECT * FROM peso ORDER BY stock_x_factor_x_peso_unitario DESC LIMIT 10) z)),
     'OT_SUMA_TIPOS', jsonb_build_object(
       'ot_con_pendiente', (SELECT count(*) FROM ot), 'ot_con_varios_tipos', (SELECT count(*) FROM ot WHERE tipos > 1),
+      'ot_con_varias_unidades', (SELECT count(*) FROM ot WHERE unidades > 1),
+      'sobredespacho_que_la_regla_cuenta_como_cero', (SELECT jsonb_build_object('lineas', count(*), 'cantidad', sum(cant_pendiente)) FROM l WHERE cant_pendiente < 0),
       'pendiente_por_tipo_y_unidad', (SELECT jsonb_agg(z ORDER BY z.unidad, z.tipo_documento) FROM (
          SELECT tipo_documento, u AS unidad, count(*) AS lineas, sum(cant_pendiente) FILTER (WHERE cant_pendiente > 0) AS pendiente FROM l GROUP BY 1, 2) z)),
     'EXCLUSION_POR_DEFECTO', jsonb_build_object(

@@ -15,7 +15,7 @@ import { INV_SIDE_LABEL, parseInventoryWorkbooks, type InvParseResult } from '@/
 import { fmtDate, fmtDateTime } from '@/lib/apt/format'
 import Link from 'next/link'
 import { ErpVigencia, readErpFiles } from '@/components/erp/ErpCarga'
-import { erpApi, erpDeriveEstado, uploadErpFile } from '@/lib/erp/api'
+import { erpApi, erpDeriveEstado, erpLogError, uploadErpFile } from '@/lib/erp/api'
 import { derivarDia, type DeriveResumen } from '@/lib/erp/derive'
 import { ERP_KIND_LABEL, type ErpParseResult } from '@/lib/erp/parse'
 
@@ -103,10 +103,14 @@ export default function InventarioDatosPage() {
       if (r.erpFiles.length) {
         const e = await readErpFiles([...files].filter(f => r.erpFiles.includes(f.name)), m => setBusy(m))
         setErp(e)
-        if (e.errors.length) setError(e.errors.join(' '))
+        if (e.errors.length) { setError(e.errors.join(' ')); void erpLogError('LECTURA', r.erpFiles.join(' · '), e.errors.join(' ')) }
       }
       setParsed(r)
-    } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo leer el archivo') } finally { setBusy(null) }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'No se pudo leer el archivo'
+      setError(msg)
+      void erpLogError('LECTURA', [...files].map(f => f.name).join(' · '), msg)
+    } finally { setBusy(null) }
   }
   const upload = async (force = false) => {
     if (!parsed || busy) return

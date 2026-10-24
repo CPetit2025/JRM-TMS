@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/client'
 import type { ErpParsedFile } from './parse'
-import type { ErpEstado, ErpGuias, ErpOtDetalle, ErpOts, ErpStock } from './types'
+import type { ErpAnalisis, ErpAnalisisDetalle, ErpAnalisisFiltros, ErpCalidad, ErpCargasLog, ErpEstado, ErpGuias, ErpOtDetalle, ErpOts, ErpReglas, ErpStock,
+  ErpStockCruce } from './types'
 
 // Datos del ERP (Actualizable Despacho y Stock Bodega Despacho): carga manual y consultas public.erp_*
 const supabase = createClient()
@@ -23,6 +24,32 @@ export const erpApi = {
   ot: (ot: string) => call<ErpOtDetalle>('erp_ot_detalle', { p_ot: ot }),
   guias: (p: { desde?: string; hasta?: string; referencia?: string; origen?: string; tolerancia?: number; q?: string; limit?: number }) => call<ErpGuias>('erp_guias', { p }),
   stock: (p: { q?: string; situacion?: string; bodega?: string; limit?: number }) => call<ErpStock>('erp_stock', { p }),
+  // Análisis con cruce exacto (sin reglas de conversión), calidad de datos, comparación de reglas y registro de cargas
+  analisis: (p: ErpAnalisisFiltros) => call<ErpAnalisis>('erp_analisis', { p }),
+  analisisDetalle: (documento: string, producto: string, unidad: string) =>
+    call<ErpAnalisisDetalle>('erp_analisis_detalle', { p_documento: documento, p_producto: producto, p_unidad: unidad }),
+  stockCruce: (p: { bodega?: string; cruce?: string; q?: string; unidad?: string; limit?: number }) => call<ErpStockCruce>('erp_stock_cruce', { p }),
+  calidad: () => call<ErpCalidad>('erp_calidad'),
+  reglas: () => call<ErpReglas>('erp_reglas_comparacion'),
+  cargas: (limit = 100) => call<ErpCargasLog>('erp_cargas_log', { p_limit: limit }),
+}
+
+// Registro de cada intento de carga (también los fallidos). Si el registro no está disponible, la carga sigue igual;
+// solo una carga del mismo archivo en curso de otro usuario la detiene.
+export type ErpLogKind = 'CONTRATOS' | 'STOCK' | 'MOVIMIENTOS' | 'LECTURA'
+export async function erpLogStart(p: { kind: ErpLogKind; file_name?: string; cut_at?: string | null; rows_expected?: number; detalle?: Record<string, unknown> }): Promise<string | null> {
+  const { data, error } = await supabase.rpc('erp_log_start', { p })
+  if (error) return null
+  const out = data as { success?: boolean; id?: string; error?: string } | null
+  if (out?.success === false && /otra carga/i.test(out.error || '')) throw new Error(out.error)
+  return out?.id ?? null
+}
+export async function erpLogFinish(id: string | null, p: { status: 'OK' | 'ERROR'; rows_loaded?: number; import_id?: string; error?: string; detalle?: Record<string, unknown> }) {
+  if (!id) return
+  try { await supabase.rpc('erp_log_finish', { p: { id, ...p } }) } catch { /* el registro no detiene la carga */ }
+}
+export async function erpLogError(kind: ErpLogKind, file_name: string, error: string) {
+  try { await erpLogFinish(await erpLogStart({ kind, file_name }), { status: 'ERROR', error }) } catch { /* idem */ }
 }
 
 const CHUNK = 1000
@@ -42,6 +69,19 @@ async function retry<T>(work: () => Promise<T>, progress?: (m: string) => void):
 // Iniciar, enviar por bloques (un reintento no duplica: la base ignora filas repetidas) y aplicar. Si se corta, el
 // siguiente intento sigue desde el último bloque confirmado.
 export async function uploadErpFile(file: ErpParsedFile, onProgress?: (m: string) => void) {
+  const log = await erpLogStart({ kind: file.kind, file_name: `${file.fileName} · ${file.sheetName}`, cut_at: file.cutAt, rows_expected: file.rows.length,
+    detalle: { reanudada: uploads.has(file) } })
+  try {
+    const out = await uploadErpFileCore(file, onProgress)
+    await erpLogFinish(log, { status: 'OK', rows_loaded: out.rows, import_id: out.upload_id })
+    return out
+  } catch (e) {
+    await erpLogFinish(log, { status: 'ERROR', error: e instanceof Error ? e.message : 'No se pudo cargar', import_id: uploads.get(file)?.id })
+    throw e
+  }
+}
+
+async function uploadErpFileCore(file: ErpParsedFile, onProgress?: (m: string) => void) {
   let state = uploads.get(file)
   if (!state) {
     const begin = await call<{ upload_id: string }>('erp_upload_begin', {
@@ -59,7 +99,7 @@ export async function uploadErpFile(file: ErpParsedFile, onProgress?: (m: string
   onProgress?.('Aplicando y cruzando con el TMS…')
   const out = await applyOnServer(state.id) ?? await retry(() => call<Applied>('erp_upload_apply', { p_upload_id: state!.id }), onProgress)
   uploads.delete(file)
-  return out
+  return { ...out, upload_id: state.id }
 }
 
 type Applied = { rows: number; summary: Record<string, unknown> }
