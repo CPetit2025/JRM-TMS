@@ -19,6 +19,8 @@ BEGIN
  IF (v->>'minutes')::int<>660 OR EXISTS(SELECT 1 FROM jsonb_array_elements(v->'parts') x WHERE NOT (x->>'rest')::boolean) THEN RAISE EXCEPTION 'CAJA C148 FAIL: domingo %',v; END IF;n:=n+1;
  IF has_function_privilege('authenticated','public.gp_plan_build(uuid,jsonb)','EXECUTE') OR has_function_privilege('authenticated','public.gp_overview_before_parts(jsonb)','EXECUTE') OR has_function_privilege('anon','public.gp_plan_close(jsonb)','EXECUTE') THEN RAISE EXCEPTION 'CAJA C148 FAIL: exposición RPC'; END IF;n:=n+1;
  IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='gp_execution_parts' AND NOT tgisinternal) OR NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='gp_plan_request_review' AND NOT tgisinternal) THEN RAISE EXCEPTION 'CAJA C148 FAIL: faltan guardas de cierre/revisión'; END IF;n:=n+1;
- RAISE EXCEPTION 'CAJA C148 PASS: %/% cálculo por tramos y protecciones',n,7;
+ v:=public.gp_plan_measure(p,'2025-03-03 17:30:25-05','2025-03-03 19:00:40-05');
+ IF (v->>'minutes')::int<>90 OR (v#>>'{parts,0,start}')::timestamptz<>'2025-03-03 17:30:25-05'::timestamptz THEN RAISE EXCEPTION 'CAJA C148 FAIL: precisión de cierre real %',v; END IF;n:=n+1;
+ RAISE EXCEPTION 'CAJA C148 PASS: %/% cálculo por tramos y protecciones',n,8;
 END $test$;
 ROLLBACK;
