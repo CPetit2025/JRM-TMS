@@ -31,3 +31,9 @@ Es distinto de los transportistas (`carriers`) y de los talleres (`maintenance_p
   no cambien tipo, modalidad o proveedor.
 - `save_supplier` guarda el proveedor y sus puntos de recojo en una sola transacción (respeta RLS).
 - `request_service_types` también devuelve `purchase_order` para mostrar la OC/OS de solicitudes antiguas.
+
+## Placas de las unidades del proveedor
+
+Cada unidad se registra con su placa (5 a 10 letras o números). Un tracto con semirremolque se registra en una sola
+unidad con las dos placas separadas por «/» (p. ej. `ALZ721/AFM975`), igual que la flota propia; no se aceptan más de
+dos placas.

@@ -13,6 +13,23 @@ Torre de Control y Seguimiento de Planificación muestran la misma tabla, con un
 
 Las guardas de base de datos impiden confirmar solicitudes/paradas, autorizar retorno o cerrar y consumir la partida si faltan conformidades. Los terceros pasan a ENTREGADO cuando todas las guías se aprueban; los conductores propios conservan el flujo de autorización de retorno y llegada a base.
 
+## Cómo validar una guía o conformidad (Supervisor de Transporte)
+
+Aprobar la documentación (guía firmada, fotos y conformidad) que envía el conductor o el transportista **no** es la
+aprobación de gastos de Caja ni la aprobación de solicitudes de transporte. Se hace así:
+
+1. Abra **Torre de Control** (`/torre-control`). En la columna **Conformidad**, las entregas enviadas figuran como
+   **Por validar**. Puede buscar por solicitud, placa, despacho, OT o la referencia OC/OS/RQ.
+2. Pulse la etiqueta **Por validar** (o, en el detalle de la ruta, **Guía y conformidad**). Se abren las fotos, el número
+   de guía, el receptor y quién envió.
+3. Elija **Aprobar**, **Observar** o **Rechazar**. Observar y rechazar piden el motivo y habilitan un nuevo envío.
+
+También se valida desde **Documentos de Despacho** (`/despacho/documentos`) con el botón de la guía de cada parada.
+Los servicios sin OT (punto a punto o recojo con OC, OS o RQ, p. ej. «OS 66049») se validan igual: en la tabla figuran
+como «Sin OT vinculada» con su referencia. Valida quien tiene el permiso **Validar conformidad de entregas** (el rol
+Supervisor de Transporte lo tiene) y acceso a la sede del servicio. JRM IA puede listar las guías por validar y dar el
+enlace que abre directamente la revisión (`/torre-control?despacho=…&revisar=…`).
+
 ## Transportista sin app
 
 Portal público: `/tracking/entregas`. El código se genera automáticamente al programar el servicio. Operaciones lo consulta o renueva en **Acceso tercero**, y comparte las instrucciones mediante copia o el botón WhatsApp: URL, placa y código aleatorio. También se conserva el enlace directo de viaje para clientes anteriores. No se envían mensajes automáticamente ni se requiere una cuenta del proveedor.
