@@ -63,6 +63,7 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', v_req::text, true);
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_req, 'role', 'authenticated')::text, true);
   v_ver := (SELECT version FROM public.hhee_requests WHERE id = v_id);
+  UPDATE public.hhee_lines SET gp_plan=gp_plan||jsonb_build_object('meal_pending',false,'no_meal_reason','Tramo extra corto, refrigerio fuera del tramo') WHERE request_id=v_id AND gp_plan IS NOT NULL;
   r := public.hhee_flow_submit(v_id, v_ver);
   IF NOT (r->>'success')::boolean THEN RAISE EXCEPTION 'CAJA C129 FAIL: presentar %', r; END IF;
   PERFORM set_config('request.jwt.claim.sub', v_app::text, true);
@@ -129,6 +130,7 @@ BEGIN
   r := public.hhee_line_set_compensation(v_l1, true);
   IF NOT (r->>'success')::boolean OR (public.hhee_comp_balance_of(v_p1)->>'balance')::int <> v_base THEN
     fails := fails || 'T5 acreditar antes de validar'::text; END IF;
+  UPDATE public.hhee_lines SET gp_actual_meal=jsonb_build_object('start',NULL,'end',NULL,'reason','Refrigerio fuera del tramo extra') WHERE request_id=v_id AND gp_plan IS NOT NULL;
   PERFORM public.gp_overtime_validate(jsonb_build_object('id',v_id,'version',(SELECT version FROM public.hhee_requests WHERE id=v_id),'reason','Cierre revisado C129'));
   IF (public.hhee_comp_balance_of(v_p1)->>'balance')::int = v_base + 165
      AND EXISTS (SELECT 1 FROM jsonb_array_elements(public.hhee_comp_list(v_p1)->'earned') e WHERE e->>'work_date'='2025-03-03' AND (e->>'minutes')::int=165)

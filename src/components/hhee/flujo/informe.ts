@@ -11,7 +11,7 @@ export const folio = (s: Snapshot) => `HE-${String(s.request.sequence).padStart(
 const hoursOf = (m: number | null | undefined) => ((m ?? 0) / 60).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const NAVY: [number, number, number] = [0, 40, 85], RED: [number, number, number] = [207, 21, 45]
 const dayType = (s: Snapshot) => (s.holiday ? `Feriado: ${s.holiday} (100 %)` : 'Día laborable')
-const workerSub = (l: Line) => [l.document_number ? `DNI ${l.document_number}` : null, l.position, plateLabel(l) || null, l.rest_day ? 'Día de descanso (100 %)' : null].filter(Boolean).join(' · ')
+const workerSub = (l: Line) => [l.document_number ? `DNI ${l.document_number}` : null, l.position, plateLabel(l) || null, l.rest_day ? 'Día de descanso (100 %)' : null, l.work_plan ? `HHEE por tramos: ${l.work_plan.parts.map(p=>`${fmtDate(p.date)} ${fmtTime(p.start)}–${fmtTime(p.end)}`).join(' / ')}; ordinarias excluidas ${hoursOf(l.work_plan.ordinary_minutes)} h` : null].filter(Boolean).join(' · ')
 
 async function logo(): Promise<string | null> {
   try {
@@ -132,7 +132,7 @@ export async function downloadPdf(s: Snapshot, withCost: boolean) {
 
 export function emailDraft(s: Snapshot, withCost: boolean) {
   const t = s.totals
-  const lines = s.lines.map(l => `• ${l.code} · ${l.name}${l.document_number ? ` · DNI ${l.document_number}` : ''}${l.position ? ` (${l.position})` : ''}: ${fmtTime(l.start)}–${fmtTime(l.end)}${l.break_minutes ? ` − ${l.break_minutes} min` : ''} · ${hoursOf(l.minutes)} h (25 %: ${hoursOf(l.minutes_25)} · 35 %: ${hoursOf(l.minutes_35)} · 100 %: ${hoursOf(l.minutes_100)})${l.plate_source ? ` · ${plateLabel(l)}` : ''}${l.rest_day ? ' · día de descanso' : ''}${withCost ? ` · ${l.cost == null ? 'costo pendiente' : fmtMoney(l.cost)}` : ''}`).join('\n')
+  const lines = s.lines.map(l => `• ${l.code} · ${l.name}${l.document_number ? ` · DNI ${l.document_number}` : ''}${l.position ? ` (${l.position})` : ''}: ${fmtTime(l.start)}–${fmtTime(l.end)}${l.break_minutes ? ` − ${l.break_minutes} min` : ''} · ${hoursOf(l.minutes)} h (25 %: ${hoursOf(l.minutes_25)} · 35 %: ${hoursOf(l.minutes_35)} · 100 %: ${hoursOf(l.minutes_100)})${l.plate_source ? ` · ${plateLabel(l)}` : ''}${l.rest_day ? ' · día de descanso' : ''}${l.work_plan ? ` · ${workerSub(l)}` : ''}${withCost ? ` · ${l.cost == null ? 'costo pendiente' : fmtMoney(l.cost)}` : ''}`).join('\n')
   return {
     subject: `Autorización de horas extras ${folio(s)} v${s.revision} · ${s.area} · ${fmtDate(s.request.work_date)}`,
     body: `AUTORIZACIÓN DE HORAS EXTRAS ${folio(s)} (versión ${s.revision})\n\nFecha de trabajo: ${fmtDate(s.request.work_date)} · ${dayType(s)}\nÁrea: ${s.area}${s.site ? ` · ${s.site}` : ''}\nCausa: ${s.cause}\nActividad: ${s.request.activity}\n\n¿POR QUÉ SE NECESITAN?\n${s.request.justification}\n\nAlternativa evaluada: ${s.request.alternatives}\nResultado esperado: ${s.request.expected_result}\n\nPERSONAL Y HORAS AUTORIZADAS\n${lines}\n\nTotal: ${t.workers} trabajador(es) · ${fmtHours(t.minutes)} (25 %: ${hoursOf(t.minutes_25)} h · 35 %: ${hoursOf(t.minutes_35)} h · 100 %: ${hoursOf(t.minutes_100)} h)${withCost ? `\nCosto aproximado: ${fmtMoney(t.cost ?? 0)}` : ''}\n\nSolicitado por: ${s.requester}\nAprobado por: ${s.approver} el ${fmtDateTime(s.request.approved_at)}\nSustento: ${s.request.approval_reason}\n\nCálculo: ${LEGAL_BASIS}\nSe adjunta el PDF de la autorización. Horas y costo aproximado autorizados antes de la ejecución; no constituyen horas trabajadas ni liquidación de planilla.\n\nAtentamente,`,

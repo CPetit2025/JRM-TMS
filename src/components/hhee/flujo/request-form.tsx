@@ -11,7 +11,7 @@ import { LEGAL_BASIS, REFERENCES, call, isPendingText, fmtDate, fmtHours, fmtMon
 // horario y descanso. Las horas al 25 %, 35 % y 100 % las calcula el servidor según la ley (hhee_flow_preview) y
 // el costo aproximado sale de la ficha del trabajador.
 // Conductor: dispatch_id de su ruta ese día, o placa y motivo a mano (manual) cuando no tiene ruta o usó otra unidad
-type L = { person_id: string; start: string; end: string; break_minutes: string; rest_day: boolean; dispatch_id: string; manual: boolean; plate: string; plate_reason: string }
+type L = { meal_required: boolean; work_plan: boolean; meal_start: string; meal_end: string; no_meal_reason: string; person_id: string; start: string; end: string; break_minutes: string; rest_day: boolean; dispatch_id: string; manual: boolean; plate: string; plate_reason: string }
 const addDay = (d: string) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10) }
 const isSunday = (d: string) => new Date(`${d}T12:00:00Z`).getUTCDay() === 0
 
@@ -27,12 +27,12 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
   })
   const [lines, setLines] = useState<L[]>(() => detail?.lines.map(l => ({ person_id: l.person_id, start: limaLocal(l.start).slice(11), end: limaLocal(l.end).slice(11),
     break_minutes: String(l.break_minutes || 0), rest_day: !!l.rest_day, dispatch_id: l.dispatch_id ?? '', manual: l.plate_source === 'MANUAL',
-    plate: l.plate_source === 'MANUAL' ? l.vehicle_plate ?? '' : '', plate_reason: l.plate_reason ?? '' })) ?? [])
+    plate: l.plate_source === 'MANUAL' ? l.vehicle_plate ?? '' : '', plate_reason: l.plate_reason ?? '', meal_required:l.work_plan?.meal_required ?? true, work_plan: !!l.work_plan, meal_start: l.work_plan?.meal_start ? limaLocal(l.work_plan.meal_start).slice(11,16) : '', meal_end: l.work_plan?.meal_end ? limaLocal(l.work_plan.meal_end).slice(11,16) : '', no_meal_reason: l.work_plan?.no_meal_reason ?? '' })) ?? [])
   const [preview, setPreview] = useState<Preview | null>(null)
   const [calculating, setCalculating] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [common, setCommon] = useState({ start: '', end: '', break_minutes: '0' })
+  const [common, setCommon] = useState({ start: '', end: '', break_minutes: '0',meal_required:true,work_plan:false,meal_start:'',meal_end:'',no_meal_reason:'' })
   const people = useMemo(() => ctx.people.filter(p => p.active && p.area_id === f.area_id)
     .sort((a, b) => a.code.localeCompare(b.code, 'es', { numeric: true, sensitivity: 'base' })), [ctx.people, f.area_id])
   const set = (k: keyof typeof f, v: string) => setF(x => ({ ...x, [k]: v }))
@@ -40,7 +40,7 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
 
   const nextDayOf = (l: L) => !!l.start && !!l.end && l.end <= l.start
   const payloadLines = useMemo(() => lines.map(l => ({ person_id: l.person_id, start: `${f.work_date}T${l.start}`,
-    end: `${nextDayOf(l) ? addDay(f.work_date) : f.work_date}T${l.end}`, break_minutes: Number(l.break_minutes || 0), rest_day: l.rest_day })), [lines, f.work_date])
+    end: `${nextDayOf(l) ? addDay(f.work_date) : f.work_date}T${l.end}`, break_minutes: Number(l.break_minutes || 0), rest_day: l.rest_day, ...(l.work_plan ? {work_plan:true,meal_required:l.meal_required, meal_start:l.meal_start ? `${nextDayOf(l) && l.meal_start<l.start ? addDay(f.work_date):f.work_date}T${l.meal_start}`:null, meal_end:l.meal_end ? `${nextDayOf(l) && l.meal_end<l.start ? addDay(f.work_date):f.work_date}T${l.meal_end}`:null, no_meal_reason:l.no_meal_reason} : {}) })), [lines, f.work_date])
   // Lo que se guarda: la vista previa no depende de la placa elegida
   const savedLines = () => payloadLines.map((x, i) => {
     const l = lines[i], routes = calc[i].pv?.routes ?? []
@@ -55,7 +55,7 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
     const t = setTimeout(() => {
       setCalculating(true)
       call<Preview>('hhee_flow_preview', { p: { id: r?.id, work_date: f.work_date, lines: payloadLines } })
-        .then(p => { if (alive) setPreview(p) }).catch(() => { if (alive) setPreview(null) }).finally(() => { if (alive) setCalculating(false) })
+        .then(p => { if (alive) {setPreview(p);setError('')} }).catch(e => { if (alive) {setPreview(null);setError(e instanceof Error ? e.message : 'No se pudo calcular')} }).finally(() => { if (alive) setCalculating(false) })
     }, 350)
     return () => { alive = false; clearTimeout(t) }
   }, [payloadLines, f.work_date, r?.id])
@@ -74,7 +74,7 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
     { min: 0, m25: 0, m35: 0, m100: 0, cost: 0, pending: 0 })
   const sunday = isSunday(f.work_date)
   const valid = f.area_id && f.cause_id && f.activity.trim().length >= 5 && f.justification.trim().length >= 10 && f.alternatives.trim().length >= 5
-    && f.expected_result.trim().length >= 5 && lines.length > 0 && lines.every(l => l.person_id && l.start && l.end) && calc.every(c => c.total > 0 && !c.error && c.plateOk)
+    && f.expected_result.trim().length >= 5 && lines.length > 0 && lines.every(l => l.person_id && l.start && l.end && (!l.work_plan || (l.meal_start && l.meal_end) || l.no_meal_reason.trim().length>=5)) && calc.every(c => c.total > 0 && !c.error && c.plateOk)
     && new Set(lines.map(l => l.person_id)).size === lines.length && !calculating
 
   // Guardar deja la solicitud en borrador; «Guardar y presentar» la envía además al aprobador
@@ -122,12 +122,16 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
         </div>
       </Card>
       <Card title="2. Trabajadores y horas" subtitle="Indique el horario del trabajo extra y el descanso. Las horas al 25 %, 35 % y 100 % se calculan automáticamente según la ley."
-        actions={<button type="button" className={btn2Cls} onClick={() => setLines(x => [...x, { person_id: '', start: '18:00', end: '20:00', break_minutes: '0', rest_day: sunday, dispatch_id: '', manual: false, plate: '', plate_reason: '' }])} disabled={lines.length >= 50 || !people.length}><Plus className="h-4 w-4" /> Agregar trabajador</button>}>
-        <div className="mb-3 flex flex-wrap items-end gap-2 rounded-lg bg-sky-50 p-3"><Field label="Inicio común"><input type="time" className={inputCls} value={common.start} onChange={e => setCommon({ ...common, start: e.target.value })} /></Field><Field label="Fin común"><input type="time" className={inputCls} value={common.end} onChange={e => setCommon({ ...common, end: e.target.value })} /></Field><Field label="Descanso común (min)"><input type="number" min={0} step={1} className={`${inputCls} w-28`} value={common.break_minutes} onChange={e => setCommon({ ...common, break_minutes: e.target.value })} /></Field><button type="button" className={btn2Cls} disabled={!lines.length || !common.start || !common.end} onClick={() => setLines(ls => ls.map(l => ({ ...l, ...common })))}>Aplicar al equipo</button><p className="w-full text-xs text-slate-600">Se actualizan los trabajadores agregados. Ajuste las excepciones antes de presentar.</p></div>
+        actions={<button type="button" className={btn2Cls} onClick={() => setLines(x => [...x, { person_id: '', start: common.start || '18:00', end: common.end || '20:00', break_minutes: '0', rest_day: sunday, dispatch_id: '', manual: false, plate: '', plate_reason: '',meal_required:true,work_plan:common.work_plan,meal_start:common.meal_start,meal_end:common.meal_end,no_meal_reason:common.no_meal_reason }])} disabled={lines.length >= 50 || !people.length}><Plus className="h-4 w-4" /> Agregar trabajador</button>}>
+        <p className="mb-2 rounded-lg bg-amber-50 p-3 text-sm">Para un turno completo, active «Calcular solo tramos fuera de jornada». Se excluyen la jornada base y el refrigerio ubicado, incluso al cruzar medianoche. Una propuesta no acredita saldo sin cierre y validación.</p>
+        <div className="mb-2 flex flex-wrap gap-2">{[['Diurno 07–19','07:00','19:00'],['Nocturno 19–07','19:00','07:00'],['Sábado 07–13','07:00','13:00'],['Sábado 13–19','13:00','19:00']].map(([label,start,end])=><button key={label} type="button" className={btn2Cls} onClick={()=>setCommon({...common,start,end,work_plan:true,meal_start:'',meal_end:'',no_meal_reason:''})}>{label}</button>)}</div>
+        <label className="mb-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={common.work_plan} onChange={e=>setCommon({...common,work_plan:e.target.checked})}/>Calcular solo tramos fuera de jornada al aplicar al equipo</label>
+        {common.work_plan && <div className="mb-2 flex flex-wrap gap-2"><Field label="Inicio refrigerio común"><input type="time" className={inputCls} value={common.meal_start} onChange={e=>setCommon({...common,meal_start:e.target.value})}/></Field><Field label="Fin refrigerio común"><input type="time" className={inputCls} value={common.meal_end} onChange={e=>setCommon({...common,meal_end:e.target.value})}/></Field><Field label="Motivo sin refrigerio (solo tramos cortos)"><input className={inputCls} value={common.no_meal_reason} onChange={e=>setCommon({...common,no_meal_reason:e.target.value})}/></Field></div>}
+        <div className="mb-3 flex flex-wrap items-end gap-2 rounded-lg bg-sky-50 p-3"><Field label="Inicio común"><input type="time" className={inputCls} value={common.start} onChange={e => setCommon({ ...common, start: e.target.value })} /></Field><Field label="Fin común"><input type="time" className={inputCls} value={common.end} onChange={e => setCommon({ ...common, end: e.target.value })} /></Field>{!common.work_plan && <Field label="Descanso común (min)"><input type="number" min={0} step={1} className={`${inputCls} w-28`} value={common.break_minutes} onChange={e => setCommon({ ...common, break_minutes: e.target.value })} /></Field>}<button type="button" className={btn2Cls} disabled={!lines.length || !common.start || !common.end} onClick={() => setLines(ls => ls.map(l => ({ ...l, ...common })))}>Aplicar al equipo</button><p className="w-full text-xs text-slate-600">Se actualizan los trabajadores agregados. Ajuste las excepciones antes de presentar.</p></div>
         <p className="mb-3 flex gap-2 rounded-lg bg-slate-50 p-2.5 text-[11px] leading-snug text-slate-600"><Scale className="mt-0.5 h-4 w-4 shrink-0 text-[#002855]" />
           <span>{LEGAL_BASIS} Las 2 primeras horas se cuentan por trabajador y por día, sumando sus otras solicitudes del mismo día.</span></p>
-        {preview?.holiday && <p className="mb-3 flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 p-2.5 text-sm text-violet-900"><CalendarX2 className="h-4 w-4" /> Feriado: <strong>{preview.holiday}</strong>. Todas las horas se pagan al 100 %.</p>}
-        {!preview?.holiday && sunday && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">Domingo: marque «Su día de descanso» en cada trabajador cuyo descanso semanal sea hoy (se paga al 100 %).</p>}
+        {preview?.holiday && <p className="mb-3 flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 p-2.5 text-sm text-violet-900"><CalendarX2 className="h-4 w-4" /> Feriado: <strong>{preview.holiday}</strong>. En cálculo por tramos, cada fecha conserva su clasificación; en un intervalo simple se aplica la fecha de la solicitud.</p>}
+        {!preview?.holiday && sunday && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">Domingo: el cálculo por tramos utiliza el descanso de la jornada base de cada fecha. En intervalos simples, revise «Su día de descanso».</p>}
         {!people.length && <p className="text-sm text-amber-800">No hay personal activo en el área. Regístrelo en la ventana Personal.</p>}
         <div className="grid gap-3">
           {lines.map((l, i) => {
@@ -140,13 +144,16 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
                     disabled: lines.some((x, j) => j !== i && x.person_id === p.id) }))} /></div>
                 <Field label="Inicio" className="min-w-0"><input aria-label={`Inicio del trabajador ${i + 1}`} className={inputCls} type="time" value={l.start} onChange={e => setLine(i, 'start', e.target.value)} /></Field>
                 <Field label={`Fin${c.nextDay ? ' (día sig.)' : ''}`} className="min-w-0"><input aria-label={`Fin del trabajador ${i + 1}`} className={inputCls} type="time" value={l.end} onChange={e => setLine(i, 'end', e.target.value)} /></Field>
-                <Field label="Descanso (min)" className="min-w-0"><input aria-label={`Descanso del trabajador ${i + 1}`} className={inputCls} type="number" min={0} step={5} value={l.break_minutes} onChange={e => setLine(i, 'break_minutes', e.target.value)} /></Field>
+                {!l.work_plan && <Field label="Descanso (min)" className="min-w-0"><input aria-label={`Descanso del trabajador ${i + 1}`} className={inputCls} type="number" min={0} step={5} value={l.break_minutes} onChange={e => setLine(i, 'break_minutes', e.target.value)} /></Field>}
                 <button type="button" aria-label={`Quitar trabajador ${i + 1}`} onClick={() => setLines(x => x.filter((_, j) => j !== i))} className="self-end justify-self-end rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-red-700"><Trash2 className="h-4 w-4" /></button>
               </div>
+              <label className="flex items-center gap-2 text-sm"><input aria-label={`Calcular tramos del trabajador ${i+1}`} type="checkbox" checked={l.work_plan} onChange={e=>setLines(x=>x.map((y,j)=>j===i?{...y,work_plan:e.target.checked}:y))}/>Calcular solo tramos fuera de jornada</label>
+              {l.work_plan && <div className="flex flex-wrap gap-2"><Field label="Inicio refrigerio"><input aria-label={`Inicio refrigerio del trabajador ${i+1}`} type="time" className={inputCls} value={l.meal_start} onChange={e=>setLine(i,'meal_start',e.target.value)}/></Field><Field label="Fin refrigerio"><input aria-label={`Fin refrigerio del trabajador ${i+1}`} type="time" className={inputCls} value={l.meal_end} onChange={e=>setLine(i,'meal_end',e.target.value)}/></Field><Field label="Motivo sin refrigerio en este tramo"><input aria-label={`Motivo sin refrigerio del trabajador ${i+1}`} className={inputCls} value={l.no_meal_reason} onChange={e=>setLine(i,'no_meal_reason',e.target.value)}/></Field><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={l.meal_required} onChange={e=>setLines(x=>x.map((y,j)=>j===i?{...y,meal_required:e.target.checked}:y))}/>Turno completo: requiere 60 minutos de refrigerio</label><p className="w-full text-xs text-slate-500">Turno completo: ubique los 60 minutos de refrigerio. En una extensión de ruta, indique el refrigerio o el motivo de no tomarlo dentro de ese tramo.</p></div>}
+              {c.pv?.work_plan && <p className="rounded-lg bg-sky-50 p-2 text-xs">Jornada ordinaria excluida: {fmtHours(c.pv.work_plan.ordinary_minutes)} · HHEE: {c.pv.work_plan.parts.map(p=>`${fmtDate(p.date)} ${fmtTime(p.start)}–${fmtTime(p.end)}`).join(' / ')}</p>}
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-600">
-                  <input type="checkbox" aria-label={`Día de descanso del trabajador ${i + 1}`} className="h-4 w-4" checked={l.rest_day} disabled={!!preview?.holiday}
-                    onChange={e => setLines(x => x.map((y, j) => (j === i ? { ...y, rest_day: e.target.checked } : y)))} /> Su día de descanso</label>
+                  <input type="checkbox" aria-label={`Día de descanso del trabajador ${i + 1}`} className="h-4 w-4" checked={l.rest_day} disabled={!!preview?.holiday || l.work_plan}
+                    onChange={e => setLines(x => x.map((y, j) => (j === i ? { ...y, rest_day: e.target.checked } : y)))} /> {l.work_plan ? 'Descanso según jornada base de cada fecha' : 'Su día de descanso'}</label>
                 {c.error ? <p role="alert" className="text-xs font-semibold text-red-700">{c.error}</p> : c.total > 0 && <div className="flex flex-wrap gap-1.5" aria-label={`Horas calculadas del trabajador ${i + 1}`}>
                   {([['25 %', c.m25, 'bg-blue-50 text-blue-900'], ['35 %', c.m35, 'bg-amber-50 text-amber-900'], ['100 %', c.m100, 'bg-violet-50 text-violet-900']] as const).filter(([, m]) => m > 0)
                     .map(([lab, m, tone]) => <span key={lab} className={`rounded-full px-2.5 py-1 text-xs font-semibold ${tone}`}>{fmtHours(m)} al {lab}</span>)}

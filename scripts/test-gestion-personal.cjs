@@ -21,7 +21,7 @@ async function main() {
    ALTER TABLE hhee_requests ADD COLUMN auto_dispatch_id uuid;
    ALTER TABLE hhee_lines ADD COLUMN compensation boolean DEFAULT false NOT NULL, ADD COLUMN dispatch_number text,
     ADD COLUMN rest_day boolean DEFAULT false NOT NULL, ADD COLUMN driver_dispatch_id uuid, ADD COLUMN vehicle_plate text, ADD COLUMN plate_source text,
-    ADD COLUMN plate_reason text, ADD COLUMN exec_minutes_25 int, ADD COLUMN exec_minutes_35 int, ADD COLUMN exec_minutes_100 int, ADD COLUMN exec_cost numeric;
+    ADD COLUMN closed_by text, ADD COLUMN closed_at timestamptz, ADD COLUMN close_reason text, ADD COLUMN plate_reason text, ADD COLUMN exec_minutes_25 int, ADD COLUMN exec_minutes_35 int, ADD COLUMN exec_minutes_100 int, ADD COLUMN exec_cost numeric;
    CREATE TABLE hhee_comp_rests(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),person_id uuid,rest_date date,minutes int,note text,created_by uuid,created_at timestamptz DEFAULT now(),cancelled_at timestamptz,cancelled_by uuid);
    CREATE TABLE dispatches(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),driver_id uuid,vehicle_plate text,status text,departure_time timestamptz,created_by uuid);
    CREATE TABLE route_auxiliaries(dispatch_id uuid,person_id uuid);
@@ -33,8 +33,12 @@ async function main() {
   await db.exec(fn('supabase/migrations/20261022150000_hhee_solicitudes_trabajadores_unicos.sql','hhee_person_day_conflict'))
   await db.exec(fn('supabase/migrations/20261022150000_hhee_solicitudes_trabajadores_unicos.sql','hhee_route_request_for'))
   await db.exec(fn('supabase/migrations/20261021110000_hhee_cierre_ruta_compensacion.sql','hhee_line_set_compensation'))
+  await db.exec(`CREATE FUNCTION hhee_driver_routes(d uuid,dt date) RETURNS jsonb LANGUAGE sql AS $$SELECT '[]'::jsonb$$;`)
+  await db.exec(fn('supabase/migrations/20261022150000_hhee_solicitudes_trabajadores_unicos.sql','hhee_flow_preview'))
+  await db.exec(fn('supabase/migrations/20261022150000_hhee_solicitudes_trabajadores_unicos.sql','hhee_flow_request_save'))
   await db.exec(read(migration))
   await db.exec(read('supabase/migrations/20261030090000_personal_salida_ruta.sql'))
+  await db.exec(read('supabase/migrations/20261031090000_personal_turnos_tramos.sql'))
   await db.exec(`SELECT set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000001',false)`)
   const scalar = async (sql, params=[]) => (await db.query(sql, params)).rows[0].v
   const rpc = async (name, p) => scalar(`SELECT ${name}($1::jsonb) AS v`, [JSON.stringify(p)])
@@ -117,7 +121,7 @@ async function main() {
   assert.equal(await scalar('SELECT count(*)::int AS v FROM hhee_lines WHERE request_id=$1',[generated.id]),1)
   assert.equal(await scalar('SELECT planned_minutes AS v FROM hhee_lines WHERE request_id=$1',[generated.id]),120)
   const late = await scalar(`INSERT INTO hhee_people(code,name,area_id) VALUES('GP04','Turno tardío',$1) RETURNING id AS v`,[area])
-  await rpc('gp_schedule_save',{person_id:late,from:'2025-03-01',mode:'FIJO',week:Array.from({length:7},()=>({kind:'TRABAJO',start:'10:00',end:'19:00',break_minutes:60}))})
+  await rpc('gp_schedule_save',{person_id:late,from:'2025-03-01',mode:'FIJO',week:Array.from({length:7},()=>({kind:'TRABAJO',start:'08:00',end:'19:00',break_minutes:60}))})
   await db.query('INSERT INTO route_auxiliaries(dispatch_id,person_id) VALUES($1,$2)',[dispatch,late])
   assert.equal((await scalar(`SELECT hhee_route_request_for($1,'2025-03-03 18:30:00-05') AS v`,[dispatch])).created,false)
   const appended = await scalar(`SELECT hhee_route_request_for($1,'2025-03-03 19:15:00-05') AS v`,[dispatch])
@@ -141,6 +145,77 @@ async function main() {
   assert.equal(Number(report.overtime[0].validated_minutes),240)
   assert.equal(report.balances.find(x=>x.person_id===person).balance.balance,240)
   assert.ok(report.events.length>0)
+  const plannedPerson=await scalar(`INSERT INTO hhee_people(code,name,area_id) VALUES('GP06','Planificación sintética',$1) RETURNING id AS v`,[area])
+  const baseWeek=Array.from({length:7},(_,i)=>i===6?{kind:'DESCANSO'}:{kind:'TRABAJO',start:'08:00',end:i===5?'13:30':'17:30',break_minutes:60})
+  await rpc('gp_schedule_save',{person_id:plannedPerson,from:'2025-01-01',mode:'FIJO',week:baseWeek})
+  const plan=(start,end,meal_start,meal_end)=>scalar('SELECT gp_plan_build($1,$2::jsonb) AS v',[plannedPerson,JSON.stringify({start,end,meal_start,meal_end,work_plan:true})])
+  const dayPlan=await plan('2025-03-03T07:00','2025-03-03T19:00','2025-03-03T13:00','2025-03-03T14:00')
+  assert.equal(dayPlan.minutes,150);assert.equal(dayPlan.ordinary_minutes,510);assert.equal(dayPlan.parts.length,2)
+  const night=await plan('2025-03-03T19:00','2025-03-04T07:00','2025-03-04T01:00','2025-03-04T02:00')
+  assert.equal(night.minutes,660);assert.equal(night.parts.length,3)
+  const satMorning=await plan('2025-03-08T07:00','2025-03-08T13:00','2025-03-08T10:00','2025-03-08T11:00')
+  assert.equal(satMorning.minutes,60)
+  const satAfternoon=await plan('2025-03-08T13:00','2025-03-08T19:00','2025-03-08T16:00','2025-03-08T17:00')
+  assert.equal(satAfternoon.minutes,270)
+  const sunday=await plan('2025-03-09T07:00','2025-03-09T19:00','2025-03-09T13:00','2025-03-09T14:00')
+  assert.equal(sunday.minutes,660);assert.ok(sunday.parts.every(p=>p.rest))
+  const crossover=await plan('2025-03-08T19:00','2025-03-09T07:00','2025-03-09T01:00','2025-03-09T02:00')
+  const categories=await scalar('SELECT gp_parts_split($1,$2::jsonb,NULL) AS v',[plannedPerson,JSON.stringify(crossover.parts)])
+  assert.deepEqual(categories,{m25:120,m35:180,m100:360})
+  await assert.rejects(plan('2025-03-03T07:00','2025-03-03T19:00',null,null),/refrigerio/)
+  await assert.rejects(plan('2025-03-03T07:00','2025-03-03T19:00','2025-03-03T06:00','2025-03-03T07:00'),/dentro/)
+  const workDay=await scalar(`SELECT (((now() AT TIME ZONE 'America/Lima')::date-extract(isodow FROM now() AT TIME ZONE 'America/Lima')::int+1)-7)::text AS v`)
+  const body={area_id:area,work_date:workDay,cause_id:cause,activity:'Turno operativo planificado',justification:'Capacidad operativa requerida',alternatives:'Reprogramación evaluada',expected_result:'Atención de carga completa',reference_type:'SIN_REFERENCIA',lines:[{person_id:plannedPerson,start:workDay+'T07:00',end:workDay+'T19:00',meal_start:workDay+'T13:00',meal_end:workDay+'T14:00',work_plan:true}]}
+  const preview=await rpc('hhee_flow_preview',body)
+  assert.equal(preview.lines[0].minutes,150);assert.equal(preview.lines[0].m25,120);assert.equal(preview.lines[0].m35,30)
+  const saved=await rpc('hhee_flow_request_save',body);assert.equal(saved.success,true)
+  const savedLine=await scalar(`SELECT id AS v FROM hhee_lines WHERE request_id=$1`,[saved.id])
+  assert.equal(await scalar(`SELECT planned_break AS v FROM hhee_lines WHERE id=$1`,[savedLine]),60)
+  const snapshot=await scalar('SELECT hhee_flow_snapshot($1) AS v',[saved.id]);assert.equal(snapshot.lines[0].work_plan.parts.length,2)
+  await db.query(`UPDATE hhee_requests SET state='SOLICITADA',approval='APROBADA' WHERE id=$1`,[saved.id])
+  await db.query('UPDATE hhee_lines SET compensation=true WHERE id=$1',[savedLine])
+  const close={line_id:savedLine,version:saved.version,start:workDay+'T07:00',end:workDay+'T19:00',meal_start:workDay+'T13:00',meal_end:workDay+'T14:00',reason:'Ejecución real revisada'}
+  await rpc('gp_plan_close',close)
+  assert.equal(await scalar('SELECT actual_minutes AS v FROM hhee_lines WHERE id=$1',[savedLine]),150)
+  await assert.rejects(rpc('gp_plan_close',close),/cambió/)
+  await rpc('gp_plan_close',{...close,version:saved.version+1,end:workDay+'T18:00',reason:'Corrección de fin real'})
+  assert.equal(await scalar('SELECT actual_minutes AS v FROM hhee_lines WHERE id=$1',[savedLine]),90)
+  await assert.rejects(rpc('hhee_flow_request_save',{...body,id:saved.id,expected_version:3}),/ejecución cerrada/)
+  await rpc('gp_overtime_validate',{id:saved.id,version:saved.version+2,reason:'Ejecución validada por responsable'})
+  assert.equal((await scalar('SELECT hhee_comp_balance_of($1) AS v',[plannedPerson])).earned,90)
+  await assert.rejects(rpc('gp_plan_close',{...close,version:saved.version+3}),/sin validar/)
+  const nextBody={...body,work_date:workDay,lines:[{...body.lines[0],person_id:plannedPerson}]}
+  await assert.rejects(rpc('hhee_flow_request_save',nextBody),/ya tiene|solapa/)
+  const detailReport=await rpc('gp_overview',{from:workDay,to:workDay});
+  assert.equal(detailReport.parts.filter(x=>x.request_id===saved.id&&x.kind==='EJECUTADO').reduce((n,x)=>n+x.minutes,0),90)
+  assert.equal(detailReport.parts.filter(x=>x.request_id===saved.id&&x.kind==='PLANIFICADO').reduce((n,x)=>n+x.minutes,0),150)
+  assert.ok(detailReport.parts.filter(x=>x.request_id===saved.id).every(x=>x.validated))
+  const nextWorkDay=await scalar('SELECT ($1::date+1)::text AS v',[workDay])
+  const pendingBody={...body,work_date:nextWorkDay,lines:body.lines.map(l=>({...l,start:nextWorkDay+'T07:00',end:nextWorkDay+'T19:00',meal_start:nextWorkDay+'T13:00',meal_end:nextWorkDay+'T14:00'}))}
+  const pendingSaved=await rpc('hhee_flow_request_save',pendingBody);assert.equal(pendingSaved.success,true)
+  const pendingLine=await scalar('SELECT id AS v FROM hhee_lines WHERE request_id=$1',[pendingSaved.id])
+  await db.query(`UPDATE hhee_lines SET actual_start=planned_start,actual_end=$2::timestamptz,closed_by='GEOFENCE',closed_at=now(),close_reason='Cierre automático sintético' WHERE id=$1`,[pendingLine,nextWorkDay+'T18:00:00-05'])
+  const edited=await rpc('hhee_flow_request_save',{...pendingBody,id:pendingSaved.id,expected_version:pendingSaved.version})
+  assert.equal(edited.success,true)
+  assert.equal(await scalar('SELECT actual_minutes AS v FROM hhee_lines WHERE request_id=$1',[pendingSaved.id]),90,'editar un borrador conserva los hechos del cierre automático')
+  await db.query(`UPDATE hhee_requests SET approval='APROBADA',state='SOLICITADA' WHERE id=$1`,[pendingSaved.id])
+  await assert.rejects(rpc('gp_overtime_validate',{id:pendingSaved.id,version:edited.version,reason:'Sin revisar refrigerio real'}),/refrigerio real/)
+  await rpc('gp_shift_day_save',{person_id:plannedPerson,date:nextWorkDay,reason:'Cambio posterior de programación',shift:{kind:'TRABAJO',start:'09:00',end:'18:00',break_minutes:60}})
+  assert.equal(await scalar(`SELECT (gp_plan_measure(gp_plan,actual_start,actual_end,(gp_plan->>'meal_start')::timestamptz,(gp_plan->>'meal_end')::timestamptz)->>'minutes')::int AS v FROM hhee_lines WHERE request_id=$1`,[pendingSaved.id]),90,'el cierre conserva la base congelada aunque cambie el horario')
+  // Una nueva ruta anticipada propone solo HHEE, conserva los huecos ordinarios y exige revisión.
+  const earlyDriver='00000000-0000-4000-8000-000000000008'
+  const earlyPerson=await scalar(`INSERT INTO hhee_people(code,name,area_id,driver_id) VALUES('GP08','Ruta anticipada',$1,$2) RETURNING id AS v`,[area,earlyDriver])
+  await rpc('gp_schedule_save',{person_id:earlyPerson,from:'2025-01-01',mode:'FIJO',week:baseWeek})
+  const earlyDispatch=await scalar(`INSERT INTO dispatches(driver_id,vehicle_plate,departure_time,created_by) VALUES($1,'TEST-08','2025-03-03 07:00:00-05','00000000-0000-4000-8000-000000000001') RETURNING id AS v`,[earlyDriver])
+  const earlyGenerated=await scalar(`SELECT hhee_route_request_for($1,'2025-03-03 07:15:00-05') AS v`,[earlyDispatch]);assert.equal(earlyGenerated.created,true)
+  assert.equal(await scalar('SELECT planned_minutes AS v FROM hhee_lines WHERE request_id=$1',[earlyGenerated.id]),60)
+  await scalar(`SELECT hhee_route_request_for($1,'2025-03-03 18:15:00-05') AS v`,[earlyDispatch])
+  assert.equal(await scalar('SELECT planned_minutes AS v FROM hhee_lines WHERE request_id=$1',[earlyGenerated.id]),150)
+  await assert.rejects(db.query(`UPDATE hhee_requests SET state='SOLICITADA' WHERE id=$1`,[earlyGenerated.id]),/refrigerio/)
+  for(const helper of ['gp_plan_build(uuid,jsonb)','gp_plan_measure(jsonb,timestamp with time zone,timestamp with time zone,timestamp with time zone,timestamp with time zone)','hhee_flow_request_save_before_shifts(jsonb)','gp_overview_before_parts(jsonb)']) assert.equal(await scalar("SELECT has_function_privilege('authenticated',$1,'EXECUTE') AS v",[helper]),false)
+  console.log('PASS revisión real, cierres conservados al editar, horario congelado, ruta anticipada/extendida y reportes de tramos reconciliados')
+  console.log('PASS integración: vista previa, solicitud, fotografía, cierre/corrección, versiones, validación y crédito exacto por tramos')
+  console.log('PASS tramos: diurno, nocturno, sábado, domingo, refrigerio ubicado y cambio de recargo al cruzar medianoche')
   const priv = await scalar(`SELECT has_table_privilege('authenticated','gp_permits','SELECT') AS v`)
   assert.equal(priv,false)
   await db.exec(`SELECT set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000009999',false)`)
@@ -154,8 +229,10 @@ async function main() {
   assert.equal(batchResult.updated,1)
   await assert.rejects(rpc('gp_schedule_batch',{people:[batchPerson,batchPerson],from:tomorrow,mode:'FIJO',week}),/repetidos/)
   console.log('PASS programación masiva: selección explícita, sin duplicados y transacción atómica')
+  await assert.rejects(db.exec(read('supabase/tests/caja_c148_personal_turnos_tramos.test.sql')),/CAJA C148 PASS: 7\/7/)
+  await db.exec('ROLLBACK')
+  console.log('PASS C148: 7/7 con cálculo y permisos de la migración real')
   console.log('PASS reportes reconciliados, trazabilidad y permisos de acceso')
  } finally { await db.close() }
 }
-main().catch(e=>{console.error(e.message, e.detail || '', e.where || '');process.exitCode=1})
-
+main().catch(e=>{console.error(e.stack, e.detail || '', e.where || '');process.exitCode=1})

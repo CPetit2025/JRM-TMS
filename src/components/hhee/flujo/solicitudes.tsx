@@ -6,8 +6,9 @@ import { CalendarX2, CheckCircle2, Copy, FileDown, Files, Mail, Pencil, Plus, Se
 import { toast } from 'sonner'
 import { Card, Field, Modal, btn2Cls, btnCls, inputCls, useFlow } from './context'
 import { RequestForm } from './request-form'
+import { PlanClose } from '@/components/personal/plan-close'
 import { consolidate, consolidatedEmailDraft, downloadConsolidatedPdf, downloadPdf, emailDraft, folio } from './informe'
-import { CLOSED_BY, STATUS, call, isPendingText, plateLabel, referenceLabel, fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtTime, statusOf, type Consolidated, type Detail, type RequestRow } from '@/lib/hhee/flujo'
+import { CLOSED_BY, STATUS, call, isPendingText, plateLabel, referenceLabel, fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtTime, statusOf, type Consolidated, type Line, type Detail, type RequestRow } from '@/lib/hhee/flujo'
 import { trackingEmailUrl, type EmailClient } from '@/lib/tracking-email'
 
 // Solicitudes y aprobación: el supervisor registra y presenta; el Jefe de Distribución o el Administrador aprueba,
@@ -186,7 +187,7 @@ function RequestDetail({ id, onClose, onChanged, onEdit }: { id: string; onClose
               <thead className="text-[10px] uppercase text-slate-500"><tr><th className="py-1.5">Trabajador</th><th>Horario</th><th className="text-right">25 %</th><th className="text-right">35 %</th><th className="text-right">100 %</th><th className="text-right">Total</th>{d.cost_visible && <th className="text-right">Costo</th>}</tr></thead>
               <tbody className="divide-y divide-slate-100">{d.lines.map(l => <tr key={l.person_id}>
                 <td className="py-1.5"><p className="font-semibold">{l.name}</p><p className="text-[10px] text-slate-500">{l.code}{l.document_number ? ` · DNI ${l.document_number}` : ''}{l.position ? ` · ${l.position}` : ''}{l.rest_day ? ' · día de descanso' : ''}</p>{l.plate_source && <p className={`text-[10px] font-semibold ${l.plate_source === 'MANUAL' ? 'text-amber-800' : 'text-blue-800'}`}>{plateLabel(l)}</p>}</td>
-                <td>{fmtTime(l.start)}–{fmtTime(l.end)}{l.break_minutes ? ` (−${l.break_minutes}m)` : ''}</td>
+                <td>{fmtTime(l.start)}–{fmtTime(l.end)}{l.break_minutes ? ` (−${l.break_minutes}m)` : ''}{l.work_plan && <small className="block">Tramos HHEE: {l.work_plan.parts.map(p=>`${fmtDate(p.date)} ${fmtTime(p.start)}–${fmtTime(p.end)}`).join(' / ')}</small>}</td>
                 <td className="text-right">{fmtHours(l.minutes_25)}</td><td className="text-right">{fmtHours(l.minutes_35)}</td><td className="text-right">{fmtHours(l.minutes_100)}</td>
                 <td className="text-right font-semibold">{fmtHours(l.minutes)}</td>
                 {d.cost_visible && <td className="text-right">{l.cost == null ? <span className="text-amber-700">Pendiente</span> : fmtMoney(l.cost)}</td>}
@@ -196,7 +197,7 @@ function RequestDetail({ id, onClose, onChanged, onEdit }: { id: string; onClose
           {r.pending_cost > 0 && d.cost_visible && <p className="mt-2 text-xs text-amber-800">{r.pending_cost} trabajador(es) con costo pendiente: completar su ficha en Personal.</p>}
         </Card>
       </div>
-      {r.approval === 'APROBADA' && r.state !== 'CANCELADA' && <ExecCard d={d} canPay={ctx.areas.some(a => a.id === r.area_id && a.can_approve)} canClose={ctx.caps.approve || (mine && ctx.caps.request) || ctx.caps.admin}
+      {r.approval === 'APROBADA' && r.state !== 'CANCELADA' && <ExecCard d={d} canPay={!!d.can_validate} canClose={!!d.can_validate || (mine && ctx.caps.request) || ctx.caps.admin}
         busy={busy} act={act} />}
       {d.authorizations.length > 0 && <Card title="Informe de autorización" subtitle={`${d.authorizations.length} versión(es). Cada nueva aprobación genera una nueva versión.`}>
         <div className="grid gap-2">{d.authorizations.map(a => <div key={a.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-3 text-sm">
@@ -221,13 +222,14 @@ function RequestDetail({ id, onClose, onChanged, onEdit }: { id: string; onClose
 function ExecCard({ d, canPay, canClose, busy, act }: { d: Detail; canPay: boolean; canClose: boolean; busy: boolean; act: (fn: () => Promise<unknown>, done: string) => Promise<void> }) {
   const [end, setEnd] = useState(''); const [why, setWhy] = useState('')
   const [validationReason, setValidationReason] = useState('')
+  const [planClose,setPlanClose]=useState<Line|null>(null)
   const open = d.lines.filter(l => !l.actual_end)
   return <Card title="Ejecutado y validación" subtitle={open.length ? `${open.length} trabajador(es) con horas extras abiertas: las cierra el conductor desde el app, la salida de la base o el registro del supervisor.` : 'Horas extras cerradas. El saldo compensable se genera después de la validación.'}>
     <div className="overflow-x-auto">
       <table className="w-full min-w-[640px] text-left text-xs [&_td]:px-2 [&_th]:px-2">
         <thead className="text-[10px] uppercase text-slate-500"><tr><th className="py-1.5">Trabajador</th><th>Fin real</th><th className="text-right">Autorizado</th><th className="text-right">Ejecutado</th><th>Cierre</th><th>Pago o descanso</th>{d.cost_visible && <th className="text-right">Costo ejecutado</th>}</tr></thead>
         <tbody className="divide-y divide-slate-100">{d.lines.map(l => <tr key={l.person_id}>
-          <td className="py-1.5 font-semibold">{l.name}</td>
+          <td className="py-1.5 font-semibold">{l.name}{l.work_plan && <span className="block font-normal">HHEE: {l.work_plan.parts.map(p=>`${fmtDate(p.date)} ${fmtTime(p.start)}–${fmtTime(p.end)}`).join(' / ')}{l.work_plan.meal_pending && !l.actual_meal && <b className="block text-amber-800">Refrigerio pendiente de revisión</b>}{canClose && !d.execution_validated && <button className="block text-blue-800 underline" type="button" onClick={()=>setPlanClose(l)}>{l.actual_end?'Corregir ejecución':'Registrar ejecución por tramos'}</button>}</span>}</td>
           <td>{l.actual_end ? fmtTime(l.actual_end) : <span className="text-amber-700">Abierta</span>}</td>
           <td className="text-right">{fmtHours(l.minutes)}</td>
           <td className="text-right font-semibold">{l.actual_end ? <>{fmtHours(l.actual_minutes)}<span className="block text-[10px] font-normal text-slate-500">{[[l.exec_minutes_25, '25'], [l.exec_minutes_35, '35'], [l.exec_minutes_100, '100']].filter(([m]) => Number(m) > 0).map(([m, p]) => `${fmtHours(Number(m))} al ${p} %`).join(' · ')}</span></> : '—'}</td>
@@ -243,12 +245,13 @@ function ExecCard({ d, canPay, canClose, busy, act }: { d: Detail; canPay: boole
     <p className="mt-2 text-[11px] text-slate-500">Seleccione pago o compensación antes de validar. Solo las horas cerradas y validadas para compensación alimentan la bolsa; no se acreditan horas solicitadas ni solamente aprobadas.</p>
     {d.can_validate && !open.length && d.lines.length > 0 && !d.execution_validated && <div className="mt-3 flex flex-wrap items-end gap-3 rounded-lg bg-sky-50 p-3"><Field label="Sustento de validación"><input className={inputCls} value={validationReason} minLength={5} maxLength={1000} onChange={e => setValidationReason(e.target.value)} /></Field><button className={btnCls} disabled={busy || validationReason.trim().length < 5} onClick={() => void act(() => call('gp_overtime_validate', { p: { id: d.request.id, version: d.request.version, reason: validationReason } }), 'Horas validadas; bolsa actualizada')}>Validar horas ejecutadas</button></div>}
     {d.execution_validated && <p className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">Horas validadas. El destino pago/compensación y las cantidades quedan protegidos.</p>}
-    {canClose && open.length > 0 && <div className="mt-3 grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[auto_1fr_auto] sm:items-end">
+    {canClose && open.some(l=>!l.work_plan) && <div className="mt-3 grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[auto_1fr_auto] sm:items-end">
       <Field label="Fin real"><input type="datetime-local" className={inputCls} value={end} onChange={e => setEnd(e.target.value)} /></Field>
       <Field label="Por qué lo registra usted *"><input className={inputCls} value={why} maxLength={300} onChange={e => setWhy(e.target.value)} placeholder="Ej.: el conductor no cerró en el app" /></Field>
       <button type="button" className={btnCls} disabled={busy || !end || why.trim().length < 5}
         onClick={() => void act(() => call('hhee_flow_close', { p: { id: d.request.id, end, reason: why } }), 'Cierre registrado')}><CheckCircle2 className="h-4 w-4" /> Registrar cierre</button>
     </div>}
+    {planClose && <PlanClose line={planClose} version={d.request.version} onClose={()=>setPlanClose(null)} onSaved={()=>act(async()=>{},'Ejecución actualizada; requiere validación')}/>}
   </Card>
 }
 
