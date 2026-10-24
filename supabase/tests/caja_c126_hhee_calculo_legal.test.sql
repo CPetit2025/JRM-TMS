@@ -17,8 +17,8 @@ BEGIN
   SELECT id INTO v_cause FROM public.hhee_causes WHERE active ORDER BY name LIMIT 1;
   IF v_req IS NULL OR v_app IS NULL OR v_cause IS NULL THEN RAISE EXCEPTION 'CAJA C126 FAIL: faltan perfiles o causas'; END IF;
   INSERT INTO public.roles (id, name, permissions) VALUES
-    (v_rreq, 'C126-sup-' || left(v_rreq::text, 8), '["hhee-solicitar:write","hhee:read"]'),
-    (v_rapp, 'C126-jefe-' || left(v_rapp::text, 8), '["hhee-aprobar:write","hhee-costos:read","hhee-gerencia:read","hhee-config:write","hhee:read"]');
+    (v_rreq, 'C126-sup-' || left(v_rreq::text, 8), '["hhee-solicitar:write","hhee:read"]');
+  INSERT INTO public.roles(id,name,permissions) VALUES(v_rapp,'Jefe de Distribución','["hhee-aprobar:write","hhee-costos:read","hhee-gerencia:read","hhee-config:write","hhee:read"]') ON CONFLICT(name) DO UPDATE SET permissions=excluded.permissions RETURNING id INTO v_rapp;
   INSERT INTO public.sites (id, code, name) VALUES (v_site, 'C126-' || v_site, 'C126 sede');
   INSERT INTO public.user_site_access (user_id, site_id) VALUES (v_req, v_site), (v_app, v_site) ON CONFLICT DO NOTHING;
   INSERT INTO public.hhee_areas (id, site_id, name, module_enabled) VALUES (v_area, v_site, 'C126 Distribución', true);

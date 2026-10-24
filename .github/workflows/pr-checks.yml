@@ -26,6 +26,8 @@ jobs:
       - run: npm ci
       - run: node scripts/test-tracking-email.cjs
       - run: node scripts/test-hhee.cjs
+      - run: node scripts/test-gestion-personal.cjs
+      - run: node --test scripts/test-gestion-personal-ui.cjs
       - run: node --test scripts/test-hhee-worker-search.cjs
       - run: node scripts/test-route-operations.cjs
       - run: node --test scripts/test-route-operations-ui.cjs

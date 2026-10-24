@@ -32,6 +32,7 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
   const [calculating, setCalculating] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [common, setCommon] = useState({ start: '', end: '', break_minutes: '0' })
   const people = useMemo(() => ctx.people.filter(p => p.active && p.area_id === f.area_id)
     .sort((a, b) => a.code.localeCompare(b.code, 'es', { numeric: true, sensitivity: 'base' })), [ctx.people, f.area_id])
   const set = (k: keyof typeof f, v: string) => setF(x => ({ ...x, [k]: v }))
@@ -122,6 +123,7 @@ export function RequestForm({ detail, onClose, onSaved }: { detail: Detail | nul
       </Card>
       <Card title="2. Trabajadores y horas" subtitle="Indique el horario del trabajo extra y el descanso. Las horas al 25 %, 35 % y 100 % se calculan automáticamente según la ley."
         actions={<button type="button" className={btn2Cls} onClick={() => setLines(x => [...x, { person_id: '', start: '18:00', end: '20:00', break_minutes: '0', rest_day: sunday, dispatch_id: '', manual: false, plate: '', plate_reason: '' }])} disabled={lines.length >= 50 || !people.length}><Plus className="h-4 w-4" /> Agregar trabajador</button>}>
+        <div className="mb-3 flex flex-wrap items-end gap-2 rounded-lg bg-sky-50 p-3"><Field label="Inicio común"><input type="time" className={inputCls} value={common.start} onChange={e => setCommon({ ...common, start: e.target.value })} /></Field><Field label="Fin común"><input type="time" className={inputCls} value={common.end} onChange={e => setCommon({ ...common, end: e.target.value })} /></Field><Field label="Descanso común (min)"><input type="number" min={0} step={1} className={`${inputCls} w-28`} value={common.break_minutes} onChange={e => setCommon({ ...common, break_minutes: e.target.value })} /></Field><button type="button" className={btn2Cls} disabled={!lines.length || !common.start || !common.end} onClick={() => setLines(ls => ls.map(l => ({ ...l, ...common })))}>Aplicar al equipo</button><p className="w-full text-xs text-slate-600">Se actualizan los trabajadores agregados. Ajuste las excepciones antes de presentar.</p></div>
         <p className="mb-3 flex gap-2 rounded-lg bg-slate-50 p-2.5 text-[11px] leading-snug text-slate-600"><Scale className="mt-0.5 h-4 w-4 shrink-0 text-[#002855]" />
           <span>{LEGAL_BASIS} Las 2 primeras horas se cuentan por trabajador y por día, sumando sus otras solicitudes del mismo día.</span></p>
         {preview?.holiday && <p className="mb-3 flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 p-2.5 text-sm text-violet-900"><CalendarX2 className="h-4 w-4" /> Feriado: <strong>{preview.holiday}</strong>. Todas las horas se pagan al 100 %.</p>}

@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BarChart3, ClipboardList, Loader2, Settings2, Users } from 'lucide-react'
+import { BarChart3, CalendarClock, CalendarCheck, ClipboardList, Loader2, Settings2, Users } from 'lucide-react'
 import { call, type FlowContext } from '@/lib/hhee/flujo'
 
 // Contexto del módulo HHEE (permisos, áreas, causas y personal) y cabecera con las tres ventanas del flujo
@@ -23,22 +23,26 @@ export function FlowProvider({ children }: { children: ReactNode }) {
   }, [])
   const path = usePathname()
   const tabs = [
-    { href: '/hhee/solicitudes', label: 'Solicitudes y aprobación', icon: ClipboardList },
-    { href: '/hhee/personal', label: 'Personal', icon: Users },
-    { href: '/hhee', label: 'Panel gerencial', icon: BarChart3 },
+    { href: '/hhee', label: 'Inicio', icon: Users },
+    { href: '/hhee/personal', label: 'Lista de Personal', icon: Users },
+    { href: '/hhee/horarios', label: 'Horarios', icon: CalendarClock },
+    { href: '/hhee/asistencia', label: 'Asistencia', icon: CalendarCheck },
+    { href: '/hhee/permisos', label: 'Permisos y compensaciones', icon: CalendarClock },
+    { href: '/hhee/solicitudes', label: 'Solicitud de HHEE', icon: ClipboardList },
+    { href: '/hhee/reportes', label: 'Reportes y analítica', icon: BarChart3 },
   ]
   return (
     <div className="mx-auto grid max-w-[1600px] gap-4 pb-10">
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Control de horas extras · Distribución</p>
-            <h1 className="text-lg font-black tracking-tight text-[#002855]">Horas extras (HHEE)</h1>
-            <p className="text-xs text-slate-500">Personal → solicitud del supervisor → aprobación con informe PDF y correo → panel gerencial</p>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Área de Distribución · TMS</p>
+            <h1 className="text-lg font-black tracking-tight text-[#002855]">Gestión de Personal</h1>
+            <p className="text-xs text-slate-500">Padrón único · asistencia por excepción · permisos · HHEE validadas · compensaciones</p>
           </div>
           {ctx?.caps.config && <Link href="/hhee/configuracion" className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-[#002855]"><Settings2 className="h-4 w-4" /> Áreas, accesos y causas</Link>}
         </div>
-        <nav aria-label="Control de horas extras" className="mt-3 flex gap-1 overflow-x-auto border-t border-slate-100 px-2">
+        <nav aria-label="Gestión de Personal" className="mt-3 flex gap-1 overflow-x-auto border-t border-slate-100 px-2">
           {tabs.map(t => {
             const active = t.href === '/hhee' ? path === '/hhee' : path.startsWith(t.href)
             return <Link key={t.href} href={t.href} aria-current={active ? 'page' : undefined}

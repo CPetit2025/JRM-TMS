@@ -44,7 +44,7 @@ export type Line = {
   compensation?: boolean; geo_entered_at?: string | null
 }
 export const CLOSED_BY: Record<string, string> = { CONDUCTOR: 'Conductor (app)', GEOCERCA: 'Salida de la base (geocerca)', SUPERVISOR: 'Registrado por el supervisor' }
-export type CompBalance = { earned: number; taken: number; balance: number }
+export type CompBalance = { earned: number; taken: number; balance: number; reserved?: number; legacy_unvalidated?: number }
 export type CompList = { balance: CompBalance; earned: Array<{ folio: string; work_date: string; minutes: number; route: string | null }>
   rests: Array<{ id: string; rest_date: string; minutes: number; note: string | null; by: string; cancelled: boolean }> }
 export type ExecSummary = { authorized_minutes: number; executed_minutes: number; closed_lines: number; open_lines: number; authorized_of_closed: number
@@ -57,6 +57,7 @@ export type Snapshot = {
 }
 export type Authorization = { id: string; revision: number; approved_at: string; approver: string; snapshot: Snapshot }
 export type Detail = {
+  execution_validated?: boolean; can_validate?: boolean
   cost_visible: boolean; holiday?: string | null
   request: RequestRow & { justification: string; alternatives: string; expected_result: string; reference_type: string; reference_code: string | null }
   lines: Line[]; authorizations: Authorization[]; events: Array<{ at: string; event: string; reason: string | null; by: string }>
@@ -131,7 +132,7 @@ export const STATUS: Record<string, { label: string; tone: string }> = {
   RECHAZADA: { label: 'Rechazada', tone: 'bg-red-50 text-red-800' },
   CANCELADA: { label: 'Anulada', tone: 'bg-slate-100 text-slate-500' },
   EJECUTADA: { label: 'Ejecutada (flujo anterior)', tone: 'bg-blue-50 text-blue-800' },
-  VALIDADA: { label: 'Validada (flujo anterior)', tone: 'bg-blue-50 text-blue-800' },
+  VALIDADA: { label: 'Horas validadas', tone: 'bg-blue-50 text-blue-800' },
 }
 export function statusOf(r: Pick<RequestRow, 'state' | 'approval'>): keyof typeof STATUS {
   if (r.state === 'CANCELADA') return 'CANCELADA'

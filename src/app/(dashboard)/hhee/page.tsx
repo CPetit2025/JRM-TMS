@@ -1,2 +1,2 @@
-import { Panel } from '@/components/hhee/flujo/panel';
-export default function Page() { return <Panel />; }
+import { PersonnelReports } from '@/components/personal/gestion'
+export default function Page() { return <PersonnelReports home /> }

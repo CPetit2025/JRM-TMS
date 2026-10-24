@@ -26,8 +26,8 @@ BEGIN
     ORDER BY p.id LIMIT 1;
   IF v_req IS NULL OR v_app IS NULL OR d.id IS NULL OR v_aux IS NULL THEN RAISE EXCEPTION 'CAJA C128 FAIL: faltan perfiles o un despacho con conductor'; END IF;
   INSERT INTO public.roles (id, name, permissions) VALUES
-    (v_rreq, 'C128-sup-' || left(v_rreq::text, 8), '["hhee-solicitar:write","hhee:read","despacho:write"]'),
-    (v_rapp, 'C128-jefe-' || left(v_rapp::text, 8), '["hhee-aprobar:write","hhee-costos:read","hhee-gerencia:read","hhee-config:write","hhee:read"]');
+    (v_rreq, 'C128-sup-' || left(v_rreq::text, 8), '["hhee-solicitar:write","hhee:read","despacho:write"]');
+  INSERT INTO public.roles(id,name,permissions) VALUES(v_rapp,'Jefe de Distribución','["hhee-aprobar:write","hhee-costos:read","hhee-gerencia:read","hhee-config:write","hhee:read"]') ON CONFLICT(name) DO UPDATE SET permissions=excluded.permissions RETURNING id INTO v_rapp;
   INSERT INTO public.sites (id, code, name) VALUES (v_site, 'C128-' || v_site, 'C128 sede');
   INSERT INTO public.user_site_access (user_id, site_id) VALUES (v_req, v_site), (v_app, v_site) ON CONFLICT DO NOTHING;
   INSERT INTO public.hhee_areas (id, site_id, name, module_enabled) VALUES (v_area, v_site, 'C128 Distribución', true);
@@ -59,6 +59,17 @@ BEGIN
   IF v_busy.disp IS NULL THEN v_note := ' (T2 sin ruta programada para probar)'; pass := pass + 1;
   ELSIF COALESCE(public.set_dispatch_crew(v_busy.disp, jsonb_build_array(jsonb_build_object('profile_id', v_busy.profile_id, 'crew_role', 'AUXILIAR')))->>'error', '') ~ 'conduce la ruta'
   THEN pass := pass + 1; ELSE fails := fails || 'T2 conductor ocupado aceptado como auxiliar'::text; END IF;
+
+  -- Programación explícita de la prueba; no se usa un horario global implícito.
+  PERFORM public.hhee_person_for(d.driver_id,NULL,v_area);
+  PERFORM public.hhee_person_for(NULL,v_aux,v_area);
+  UPDATE public.dispatches SET started_at='2026-10-20 08:00:00-05' WHERE id=d.id;
+  INSERT INTO public.gp_shift_days(person_id,work_date,shift,reason,updated_by)
+  SELECT h.id,day::date,public.gp_checked_shift(CASE WHEN day::date='2026-10-25' THEN '{"kind":"DESCANSO"}'::jsonb
+   ELSE jsonb_build_object('kind','TRABAJO','start','08:00','end',CASE WHEN day::date='2026-10-24' THEN '13:30' ELSE '17:30' END,'break_minutes',60) END),'Turno sintético C128',v_req
+  FROM public.hhee_people h CROSS JOIN unnest(ARRAY['2026-10-20','2026-10-24','2026-10-25']) day
+  WHERE h.area_id=v_area OR h.driver_id=d.driver_id OR h.profile_id=v_aux
+  ON CONFLICT(person_id,work_date) DO UPDATE SET shift=excluded.shift;
 
   -- T3: inicio de las horas extras: lunes a viernes 17:30, sábado 13:30, domingo desde el inicio del día o la salida
   IF public.hhee_route_overtime_start(d.id, '2026-10-20') = '2026-10-20 17:30:00-05'::timestamptz

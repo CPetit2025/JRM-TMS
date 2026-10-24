@@ -21,8 +21,8 @@ BEGIN
     AND length(trim(concat_ws(' ', to_jsonb(p)->>'first_name', to_jsonb(p)->>'last_name'))) >= 3 ORDER BY p.id LIMIT 1;
   IF v_req IS NULL OR v_app IS NULL OR d.id IS NULL OR v_aux IS NULL THEN RAISE EXCEPTION 'CAJA C129 FAIL: faltan perfiles o un despacho con conductor'; END IF;
   INSERT INTO public.roles (id, name, permissions) VALUES
-    (v_rreq, 'C129-sup-' || left(v_rreq::text, 8), '["hhee-solicitar:write","hhee:read","despacho:write"]'),
-    (v_rapp, 'C129-jefe-' || left(v_rapp::text, 8), '["hhee-aprobar:write","hhee-costos:read","hhee-gerencia:read","hhee-config:write","hhee:read"]');
+    (v_rreq, 'C129-sup-' || left(v_rreq::text, 8), '["hhee-solicitar:write","hhee:read","despacho:write"]');
+  INSERT INTO public.roles(id,name,permissions) VALUES(v_rapp,'Jefe de Distribución','["hhee-aprobar:write","hhee-costos:read","hhee-gerencia:read","hhee-config:write","hhee:read"]') ON CONFLICT(name) DO UPDATE SET permissions=excluded.permissions RETURNING id INTO v_rapp;
   INSERT INTO public.sites (id, code, name) VALUES (v_site, 'C129-' || v_site, 'C129 sede');
   INSERT INTO public.user_site_access (user_id, site_id) VALUES (v_req, v_site), (v_app, v_site) ON CONFLICT DO NOTHING;
   INSERT INTO public.hhee_areas (id, site_id, name, module_enabled) VALUES (v_area, v_site, 'C129 Distribución', true);
@@ -44,6 +44,15 @@ BEGIN
   END IF;
   EXECUTE $q$INSERT INTO public.geofences (name, color, type, description, is_active, coordinates)
     VALUES ('C129 CEDI prueba', '#3B82F6', 'cedi', 'C129', true, '[[-12.51,-78.51],[-12.51,-78.49],[-12.49,-78.49],[-12.49,-78.51]]'::jsonb)$q$;
+
+  -- Horarios explícitos; el generador ya no inventa el turno global.
+  PERFORM set_config('request.jwt.claim.sub', v_app::text, true);
+  v_id := public.hhee_person_for(NULL, v_aux, v_area);
+  PERFORM public.gp_schedule_save(jsonb_build_object('person_id',v_p1,'from','2025-03-01','mode','FIJO','week',
+    (SELECT jsonb_agg(jsonb_build_object('kind','TRABAJO','start','08:00','end','17:30','break_minutes',60)) FROM generate_series(1,7))));
+  PERFORM public.gp_schedule_save(jsonb_build_object('person_id',v_id,'from','2025-03-01','mode','FIJO','week',
+    (SELECT jsonb_agg(jsonb_build_object('kind','TRABAJO','start','08:00','end','17:30','break_minutes',60)) FROM generate_series(1,7))));
+  UPDATE public.dispatches SET started_at='2025-03-03 08:00:00-05' WHERE id=d.id;
 
   -- Solicitud automática de la ruta (lunes 03/03/2025, 17:30–20:00), completada, presentada y aprobada
   v_id := (public.hhee_route_request_for(d.id, '2025-03-03 19:10:00-05')->>'id')::uuid;
@@ -118,16 +127,13 @@ BEGIN
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_app, 'role', 'authenticated')::text, true);
   v_base := (public.hhee_comp_balance_of(v_p1)->>'balance')::int;
   r := public.hhee_line_set_compensation(v_l1, true);
-  IF NOT ((r->>'success')::boolean AND (SELECT (compensation, plan_cost, exec_cost) = (true, 0::numeric, 0::numeric) FROM public.hhee_lines WHERE id = v_l1)
-     AND (public.hhee_comp_balance_of(v_p1)->>'balance')::int = v_base + 165) THEN fails := fails || ('T5 compensar ' || r::text || public.hhee_comp_balance_of(v_p1)::text); END IF;
-  IF (public.hhee_comp_rest_save(jsonb_build_object('person_id', v_p1, 'rest_date', '2026-10-24', 'minutes', v_base + 200))->>'success')::boolean THEN
-    fails := fails || 'T5 descanso mayor que la bolsa'::text; END IF;
-  r := public.hhee_comp_rest_save(jsonb_build_object('person_id', v_p1, 'rest_date', '2026-10-24', 'minutes', 120, 'note', 'Sábado libre'));
-  IF NOT (r->>'success')::boolean OR (public.hhee_comp_balance_of(v_p1)->>'balance')::int <> v_base + 45 THEN fails := fails || ('T5 descanso ' || r::text); END IF;
-  r := public.hhee_comp_rest_cancel((SELECT id FROM public.hhee_comp_rests WHERE person_id = v_p1 AND cancelled_at IS NULL AND note = 'Sábado libre' ORDER BY created_at DESC LIMIT 1));
-  IF (r->>'success')::boolean AND (public.hhee_comp_balance_of(v_p1)->>'balance')::int = v_base + 165
-     AND EXISTS (SELECT 1 FROM jsonb_array_elements(public.hhee_comp_list(v_p1)->'earned') e WHERE e->>'work_date' = '2025-03-03' AND (e->>'minutes')::int = 165)
-  THEN pass := pass + 1; ELSE fails := fails || ('T5 compensación ' || r::text || ' ' || public.hhee_comp_balance_of(v_p1)::text); END IF;
+  IF NOT (r->>'success')::boolean OR (public.hhee_comp_balance_of(v_p1)->>'balance')::int <> v_base THEN
+    fails := fails || 'T5 acreditar antes de validar'::text; END IF;
+  PERFORM public.gp_overtime_validate(jsonb_build_object('id',v_id,'version',(SELECT version FROM public.hhee_requests WHERE id=v_id),'reason','Cierre revisado C129'));
+  IF (public.hhee_comp_balance_of(v_p1)->>'balance')::int = v_base + 165
+     AND EXISTS (SELECT 1 FROM jsonb_array_elements(public.hhee_comp_list(v_p1)->'earned') e WHERE e->>'work_date'='2025-03-03' AND (e->>'minutes')::int=165)
+  THEN pass := pass + 1; ELSE fails := fails || 'T5 compensación validada'::text; END IF;
+  -- Reserva/aplicación/anulación y saldo insuficiente se cubren en test-gestion-personal.cjs.
 
   -- T6: detalle y panel muestran lo ejecutado frente a lo autorizado
   r := public.hhee_flow_detail(v_id);

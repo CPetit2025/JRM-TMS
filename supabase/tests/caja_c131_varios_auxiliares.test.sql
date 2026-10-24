@@ -69,6 +69,12 @@ BEGIN
   DELETE FROM public.route_auxiliaries WHERE dispatch_id = d.id;
   DELETE FROM public.dispatch_crew WHERE dispatch_id = d.id;
   INSERT INTO public.route_auxiliaries (dispatch_id, person_id) VALUES (d.id, v_a), (d.id, v_c);
+  -- Horario sintético explícito para conductor y auxiliares; la transacción se revierte.
+  UPDATE public.dispatches SET started_at='2025-03-03 08:00:00-05' WHERE id=d.id;
+  INSERT INTO public.gp_shift_days(person_id,work_date,shift,reason,updated_by)
+  SELECT h.id,'2025-03-03',public.gp_checked_shift('{"kind":"TRABAJO","start":"08:00","end":"17:30","break_minutes":60}'),'Turno sintético C131',v_req
+  FROM public.hhee_people h WHERE h.area_id=v_area OR h.driver_id=d.driver_id
+  ON CONFLICT(person_id,work_date) DO UPDATE SET shift=excluded.shift;
   r := public.hhee_route_request_for(d.id, '2025-03-03 19:10:00-05');
   v_id := (r->>'id')::uuid;
   IF (r->>'created')::boolean AND (r->>'workers')::int = 3
