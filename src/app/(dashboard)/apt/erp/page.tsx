@@ -1,11 +1,12 @@
 'use client'
 
 import { Fragment, useState } from 'react'
-import { AlertTriangle, Download, Search } from 'lucide-react'
+import { AlertTriangle, Download, FileUp, Search } from 'lucide-react'
 import { ChartCard, ErrorBlock, LoadingBlock } from '@/components/apt/ui'
 import { Table, td, tdNum, th } from '@/components/inventario/parts'
 import { useInvQuery } from '@/components/inventario/useInvQuery'
-import { ErpCarga, ErpVigencia } from '@/components/erp/ErpCarga'
+import Link from 'next/link'
+import { ErpVigencia } from '@/components/erp/ErpCarga'
 import { fmtN, fmtPeso } from '@/lib/inventario/format'
 import { fmtDate, fmtDateTime } from '@/lib/apt/format'
 import { exportAptXlsx } from '@/lib/apt/export'
@@ -18,7 +19,7 @@ const SECTIONS = [
   { key: 'ots', label: 'OT pendientes' },
   { key: 'guias', label: 'Guías: fecha ERP y fecha TMS' },
   { key: 'stock', label: 'Stock por OT' },
-  { key: 'carga', label: 'Carga y estado' },
+  { key: 'carga', label: 'Historial de cargas' },
 ] as const
 type Section = typeof SECTIONS[number]['key']
 
@@ -42,9 +43,12 @@ export default function ErpPage() {
           className={`rounded-full px-3 py-1.5 text-xs font-bold ${section === s.key ? 'bg-[#002855] text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'}`}>{s.label}</button>)}
       </nav>
       {empty && section !== 'carga'
-        ? <p className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">Aún no se cargan los Excel del ERP. Vaya a «Carga y estado».</p>
+        ? <p className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">Aún no se cargan los Excel del ERP. Súbalos en <Link href="/apt/datos" className="font-semibold text-[#002855] underline">Cargar datos del ERP</Link>.</p>
         : section === 'ots' ? <OtsSection /> : section === 'guias' ? <GuiasSection /> : section === 'stock' ? <StockSection /> : <>
-          <ErpCarga estado={e} />
+          {e.can_load && <Link href="/apt/datos" className="flex items-center gap-3 rounded-xl border border-[#002855]/20 bg-[#002855]/5 px-4 py-3 text-sm font-semibold text-[#002855] shadow-sm hover:bg-[#002855]/10">
+            <FileUp className="h-5 w-5 shrink-0" />
+            <span>Los dos archivos (Actualizable Despacho y Stock Bodega Despacho) se cargan juntos en «Cargar datos del ERP».</span>
+          </Link>}
           <ChartCard title="Historial de cargas">
             <Table empty={!e.historial.length} head={<tr><th className={th}>Fecha</th><th className={th}>Archivo</th><th className={th}>Estado</th><th className={th}>Corte del ERP</th><th className={`${th} text-right`}>Filas</th></tr>}>
               {e.historial.map(h => <tr key={h.id}><td className={td}>{fmtDateTime(h.applied_at ?? h.created_at)}</td><td className={`${td} max-w-80 truncate`} title={h.file_name}>{h.file_name}</td>

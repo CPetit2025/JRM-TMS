@@ -3,15 +3,26 @@
 Pantalla `/apt/erp`. Usa dos Excel conectados al ERP (FLEXLINE) como fuente: **Actualizable Despacho**
 (`usp_Rpt_ChecklistContratosListado`) y **Stock Bodega Despacho** (`usp_Rpt_StockBodegasListado`).
 
-## Cómo cargar los Excel
+## Cómo cargar los Excel (única fuente)
+
+El ERP se carga solo con dos archivos, una vez al día, en **Almacén APT › Cargar datos del ERP** (`/apt/datos`):
+**Actualizable Despacho** y **Stock Bodega Despacho**.
 
 1. Abra cada Excel en una PC de la red de JRM y presione **Datos › Actualizar todo**; guárdelo.
-2. En **ERP: OT, guías y stock › Carga y estado**, seleccione uno o los dos archivos y pulse **Aplicar carga**.
-3. Cada carga es una foto completa: reemplaza a la anterior del mismo archivo. Si la conexión se corta, **Reanudar
-   carga** sigue desde el último bloque enviado, sin duplicar.
+2. Seleccione los dos archivos juntos y pulse **Aplicar carga**. Cada uno reemplaza su foto anterior.
+3. Con los dos vigentes, el TMS genera los **movimientos del día** comparando el stock de hoy con el del día anterior
+   (bodegas 647-04 ALM PT, 540-04 APT LB y ST-VENTAS-IMD) y tomando las guías nuevas:
+   - guía nueva del Actualizable → despacho (con la fecha de la guía en el ERP);
+   - lote que baja en una bodega y sube en otra → traspaso;
+   - lote que sube sin traspaso → ingreso (producción en 647);
+   - lote que baja sin guía ni traspaso → ajuste.
+4. Esos movimientos actualizan el inventario multi-almacén (stock, estadía, trazabilidad y flujo), el APT clásico, la
+   Analítica APT y Distribución y el peso APT de los servicios. Volver a cargar el mismo día recalcula ese día sin duplicar.
 
-Requiere el permiso de carga del APT. Las tarjetas superiores muestran la hora de corte del ERP de cada archivo y
-avisan cuando tiene más de un día.
+La primera carga toma como base el stock del inventario calculado con el último DATA (Entradas y Salidas) cargado; desde
+entonces solo se usan los dos archivos. Una bodega que no viene en el Stock (hoy la 540) no se modifica. Si se salta
+un día, los cambios entran juntos con la fecha de la carga siguiente (las guías conservan su fecha). «Generar
+movimientos del día» reintenta la generación sin volver a subir los archivos.
 
 ## OT pendientes
 

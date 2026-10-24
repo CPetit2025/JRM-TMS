@@ -34,7 +34,7 @@ export default function AptCargasPage() {
       {data.can_load ? (
         <Link href="/apt/datos" className="flex items-center gap-2 rounded-xl border border-[#002855]/20 bg-[#002855]/5 px-4 py-3 text-sm font-semibold text-[#002855] shadow-sm hover:bg-[#002855]/10">
           <FileUp className="h-4 w-4 shrink-0" />
-          Cargar ENTRADA y SALIDA en «Cargar datos del ERP»: una sola carga alimenta el inventario y este APT clásico.
+          Cargar el Actualizable Despacho y el Stock Bodega Despacho en «Cargar datos del ERP»: una sola carga alimenta el inventario y este APT clásico.
         </Link>
       ) : (
         <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">

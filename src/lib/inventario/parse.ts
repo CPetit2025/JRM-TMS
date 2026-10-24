@@ -182,7 +182,7 @@ export function parseInventoryWorkbooks(files: InvInputFile[], onProgress?: (m: 
       out.parts.push(...res.parts)
     }
   }
-  if (!out.parts.length && !out.erpFiles.length) throw new Error('No se encontraron movimientos ni una foto de stock. Suba los reportes de Entradas y Salidas del ERP (columnas TIPODOCTO, BODEGA, Numero, Fecha, Producto, Cantidad, Lote…).')
+  if (!out.parts.length && !out.erpFiles.length) throw new Error('No se encontraron movimientos ni una foto de stock. Suba el Actualizable Despacho y el Stock Bodega Despacho del ERP.')
   out.parts = mergeBySide(out.parts, out.warnings)
   for (const p of out.parts) {
     if (p.sinFecha) out.warnings.push(`${p.fileName} · ${p.sheetName}: ${p.sinFecha} fila(s) sin fecha válida no se cargarán.`)

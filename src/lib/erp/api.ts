@@ -13,6 +13,10 @@ async function call<T>(fn: string, args: Record<string, unknown> = {}): Promise<
   return out as T
 }
 
+export interface ErpDeriveDia { fecha: string; base_fecha: string; base_fuente: 'DATA' | 'ERP' | 'VACIA'; created_at: string; es_base: boolean
+  resumen: { guias: number; despachos: number; traspasos: number; ingresos: number; ajustes: number; bodegas: string[] } }
+export const erpDeriveEstado = () => call<{ success: true; dias: ErpDeriveDia[] }>('erp_derive_estado')
+
 export const erpApi = {
   estado: () => call<ErpEstado>('erp_estado'),
   ots: (p: { q?: string; estado?: 'PENDIENTE' | 'TODAS'; incluir_servicios?: boolean; incluir_errores?: boolean; limit?: number }) => call<ErpOts>('erp_ots', { p }),

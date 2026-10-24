@@ -31,7 +31,7 @@ function Analitica() {
   const panel = (t: Tab) => {
     if (t === 'cargas') return <CargasTab />
     if (t === 'config') return <ConfigTab />
-    if (noData) return <Notice>No hay datos importados todavía. Cargue los reportes de Entradas y Salidas del ERP en la pestaña «Cargas»; las fechas del período se toman de los datos.</Notice>
+    if (noData) return <Notice>No hay datos importados todavía. Cargue el Actualizable Despacho y el Stock Bodega Despacho en «Cargar datos del ERP» (/apt/datos); las fechas del período se toman de los datos.</Notice>
     switch (t) {
       case 'resumen': return <ResumenTab />
       case 'apt': return <AptTab />

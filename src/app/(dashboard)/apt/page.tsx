@@ -32,7 +32,7 @@ function AptResumen() {
   if (q.loading) return <LoadingBlock label="Cargando el resumen del APT…" className="h-96" />
   if (q.error) return <ErrorBlock message={q.error} onRetry={q.reload} />
   if (!d || !d.corte) {
-    return <EmptyState title="Aún no hay movimientos cargados">Suba los reportes de Entradas y Salidas del ERP en <Link href="/apt/datos" className="font-semibold text-[#002855] underline">Datos y verificación</Link>.</EmptyState>
+    return <EmptyState title="Aún no hay movimientos cargados">Suba el Actualizable Despacho y el Stock Bodega Despacho en <Link href="/apt/datos" className="font-semibold text-[#002855] underline">Cargar datos del ERP</Link>.</EmptyState>
   }
   const sum = (k: 'stock_kg' | 'kg_libre' | 'kg_comprometido' | 'ingresado_kg_30' | 'despachado_kg_30') => d.almacenes.reduce((t, a) => t + a[k], 0)
   const stock = sum('stock_kg')
@@ -104,7 +104,7 @@ function PanoramaTodas() {
   if (q.loading) return <LoadingBlock label="Calculando el panorama…" className="h-96" />
   if (q.error) return <ErrorBlock message={q.error} onRetry={q.reload} />
   if (!d || !d.state.data_max) {
-    return <EmptyState title="Aún no hay movimientos cargados">Suba los reportes de Entradas y Salidas del ERP en <Link href="/apt/datos" className="font-semibold text-[#002855] underline">Cargas y catálogos</Link>.</EmptyState>
+    return <EmptyState title="Aún no hay movimientos cargados">Suba el Actualizable Despacho y el Stock Bodega Despacho en <Link href="/apt/datos" className="font-semibold text-[#002855] underline">Cargar datos del ERP</Link>.</EmptyState>
   }
   const kg = d.bodegas.reduce((t, b) => t + b.kg, 0)
   const libre = d.bodegas.reduce((t, b) => t + b.kg_libre, 0)

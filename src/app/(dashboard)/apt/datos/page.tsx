@@ -14,8 +14,9 @@ import { CLASES, CLASE_LABEL, KINDS, KIND_LABEL, fmtN, fmtPeso } from '@/lib/inv
 import { INV_SIDE_LABEL, parseInventoryWorkbooks, type InvParseResult } from '@/lib/inventario/parse'
 import { fmtDate, fmtDateTime } from '@/lib/apt/format'
 import Link from 'next/link'
-import { readErpFiles } from '@/components/erp/ErpCarga'
-import { uploadErpFile } from '@/lib/erp/api'
+import { ErpVigencia, readErpFiles } from '@/components/erp/ErpCarga'
+import { erpApi, erpDeriveEstado, uploadErpFile } from '@/lib/erp/api'
+import { derivarDia, type DeriveResumen } from '@/lib/erp/derive'
 import { ERP_KIND_LABEL, type ErpParseResult } from '@/lib/erp/parse'
 
 // Lee en un worker; si el navegador no puede crearlo, en el hilo principal
@@ -46,6 +47,15 @@ function readFiles(files: File[], onProgress: (m: string) => void): Promise<InvP
 
 type PartResult = { ok: boolean; text: string }
 
+const BASE_LABEL = { DATA: 'inventario calculado con el DATA', ERP: 'stock del día anterior', VACIA: 'sin base (primera carga)' } as const
+function derivedText(r: DeriveResumen, avisos: string[]) {
+  return `Movimientos del ${fmtDate(r.desde)} al ${fmtDate(r.hasta)} generados desde el ERP (base: ${BASE_LABEL[r.base_fuente]} al ${fmtDate(r.base_fecha)}): `
+    + `${fmtN(r.guias)} guías (${fmtN(r.despachos)} líneas de despacho), ${fmtN(r.traspasos)} traspasos, ${fmtN(r.ingresos)} ingresos y ${fmtN(r.ajustes)} ajustes. `
+    + 'Inventario, APT clásico, Analítica y peso de servicios actualizados.'
+    + (r.bodegas_sin_stock.length ? ` Sin datos en el Stock: ${r.bodegas_sin_stock.join(', ')} (no se modifica).` : '')
+    + (avisos.length ? ` ${avisos.join(' ')}` : '')
+}
+
 function errorText(e: unknown) {
   return e instanceof Error && /statement timeout|canceling statement|timeout|fetch|network/i.test(e.message)
     ? 'la conexión o el procesamiento se interrumpió (se reanuda desde el último bloque confirmado, sin duplicar)'
@@ -58,6 +68,16 @@ export default function InventarioDatosPage() {
   const status = useInvQuery('status', () => invApi.status())
   const cats = useInvQuery('cats', () => invApi.catalogs())
   const ver = useInvQuery('verify', () => invApi.verify())
+  const erpEstado = useInvQuery('erp-estado', () => erpApi.estado(), { keepPrevious: true })
+  const derivados = useInvQuery('erp-derivados', () => erpDeriveEstado(), { keepPrevious: true })
+  const regenerar = async () => {
+    if (busy) return
+    setError(null); setDone(null)
+    try {
+      const d = await derivarDia(m => setBusy(m))
+      setDone(d ? derivedText(d.resumen, d.avisos) : 'Faltan los dos archivos del ERP (Actualizable y Stock).')
+    } catch (e) { setError(errorText(e)) } finally { setBusy(null); notifyInvUpdated(); setLinked(k => k + 1); derivados.reload() }
+  }
   const [files, setFiles] = useState<File[]>([])
   const input = useRef<HTMLInputElement>(null)
   const [parsed, setParsed] = useState<InvParseResult | null>(null)
@@ -107,11 +127,16 @@ export default function InventarioDatosPage() {
       setErpDone({ ...erpRes })
     }
     if (!parsed.parts.length) {
-      setBusy(null); notifyInvUpdated()
-      if (erpFailed.length) { setError(`No se aplicó: ${erpFailed.join(' · ')}. Pulse «Reanudar carga» para completar solo lo pendiente.`); return }
-      setDone('Excel del ERP aplicados: véalos en ERP: OT, guías y stock. El inventario no cambia (necesita los reportes de Entradas y Salidas).')
-      setParsed(null); setErp(null); setErpDone({})
-      if (input.current) input.current.value = ''
+      if (erpFailed.length) { setBusy(null); notifyInvUpdated(); setError(`No se aplicó: ${erpFailed.join(' · ')}. Pulse «Reanudar carga» para completar solo lo pendiente.`); return }
+      // Con los dos archivos vigentes se generan los movimientos del día para inventario, APT clásico y Analítica
+      try {
+        const d = await derivarDia(m => setBusy(m))
+        setDone(d ? derivedText(d.resumen, d.avisos) : 'Archivo aplicado. Cargue también el otro archivo del ERP (Actualizable y Stock) para generar los movimientos del día.')
+        setParsed(null); setErp(null); setErpDone({})
+        if (input.current) input.current.value = ''
+      } catch (e) {
+        setError(`Los archivos quedaron cargados, pero no se generaron los movimientos del día: ${errorText(e)}. Use «Generar movimientos del día» para reintentar.`)
+      } finally { setBusy(null); notifyInvUpdated(); setLinked(k => k + 1); derivados.reload() }
       return
     }
     // Cada parte (Entradas, Salidas, foto) se aplica por separado: si una falla, las demás siguen y se informa cuál falta
@@ -176,12 +201,12 @@ export default function InventarioDatosPage() {
 
   return (
     <div className="space-y-4">
-      {canLoad && <ChartCard title="Cargar reportes del ERP" subtitle="Entradas y Salidas (todas las bodegas) y, si tiene, una foto de stock por bodega, producto y lote">
+      {canLoad && <ChartCard title="Cargar datos del ERP" subtitle="Los dos Excel del ERP en una sola carga: Actualizable Despacho y Stock Bodega Despacho (actualícelos en Excel y súbalos juntos, una vez al día)">
         <div className="space-y-3">
           <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-6 text-center hover:border-[#002855]">
             <FileSpreadsheet className="h-8 w-8 text-slate-400" />
-            <span className="text-sm font-semibold text-slate-700">Seleccione uno o varios .xlsx</span>
-            <span className="text-xs text-slate-500">Columnas: TIPODOCTO, BODEGA, Numero, Fecha, Producto, GLOSA, Cantidad, UNIDAD, NumRel, Lote, PesoUnitario, PesoTotalProduccido…</span>
+            <span className="text-sm font-semibold text-slate-700">Seleccione Actualizable_Despacho.xlsx y StockBodegaDespacho.xlsx</span>
+            <span className="max-w-3xl text-xs text-slate-500">Con los dos, el TMS genera los movimientos del día (despachos por guía, traspasos entre 647 · 540 · ST, ingresos y ajustes) y actualiza el inventario, la estadía, el APT clásico, la Analítica y el peso de los servicios.</span>
             <input ref={input} type="file" accept=".xlsx,.xls" multiple className="sr-only" disabled={!!busy} onChange={e => pick(e.target.files)} />
           </label>
           {parsed && (parsed.parts.length > 0 || !!erp?.files.length) && <div className="space-y-3">
@@ -210,6 +235,19 @@ export default function InventarioDatosPage() {
             {partial && <button type="button" onClick={() => upload(true)} className="ml-2 font-bold underline">Reemplazar igualmente</button>}</div>}
           {done && <p className="flex items-center gap-2 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800"><CheckCircle2 className="h-4 w-4" />{done}</p>}
         </div>
+      </ChartCard>}
+      {erpEstado.data && <ErpVigencia estado={erpEstado.data} />}
+      {derivados.data && <ChartCard title="Movimientos generados desde el ERP" subtitle="Un día por carga: lo que cambió en el stock y las guías nuevas respecto del día anterior"
+        actions={canLoad ? <button type="button" onClick={() => void regenerar()} disabled={!!busy} className="rounded-lg border border-[#002855] px-3 py-1.5 text-xs font-semibold text-[#002855] disabled:opacity-60">Generar movimientos del día</button> : undefined}>
+        <Table empty={!derivados.data.dias.length} head={<tr><th className={th}>Día</th><th className={th}>Base</th><th className={`${th} text-right`}>Guías</th><th className={`${th} text-right`}>Traspasos</th>
+          <th className={`${th} text-right`}>Ingresos</th><th className={`${th} text-right`}>Ajustes</th><th className={th}>Bodegas</th><th className={th}>Generado</th></tr>}>
+          {derivados.data.dias.map(d => d.es_base ? <tr key={d.fecha} className="text-slate-500"><td className={`${td} font-semibold`}>{fmtDate(d.fecha)}</td>
+            <td className={td} colSpan={7}>Base inicial: {d.base_fuente === 'DATA' ? 'stock del inventario calculado con el DATA (Entradas y Salidas) hasta este día' : 'sin stock previo'}</td></tr>
+            : <tr key={d.fecha}><td className={`${td} font-semibold`}>{fmtDate(d.fecha)}</td>
+            <td className={td}>{BASE_LABEL[d.base_fuente]} ({fmtDate(d.base_fecha)})</td>
+            <td className={tdNum}>{fmtN(d.resumen.guias)}</td><td className={tdNum}>{fmtN(d.resumen.traspasos)}</td><td className={tdNum}>{fmtN(d.resumen.ingresos)}</td><td className={tdNum}>{fmtN(d.resumen.ajustes)}</td>
+            <td className={`${td} text-[11px]`}>{(d.resumen.bodegas || []).join(' · ')}</td><td className={td}>{fmtDateTime(d.created_at)}</td></tr>)}
+        </Table>
       </ChartCard>}
       <VinculacionPanel canLoad={canLoad} reloadKey={linked} />
       {ver.data && <VerificationPanel v={ver.data} full />}
