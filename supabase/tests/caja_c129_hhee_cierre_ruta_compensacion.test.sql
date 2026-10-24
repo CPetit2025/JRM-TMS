@@ -48,10 +48,13 @@ BEGIN
   -- Horarios explícitos; el generador ya no inventa el turno global.
   PERFORM set_config('request.jwt.claim.sub', v_app::text, true);
   v_id := public.hhee_person_for(NULL, v_aux, v_area);
-  PERFORM public.gp_schedule_save(jsonb_build_object('person_id',v_p1,'from','2025-03-01','mode','FIJO','week',
-    (SELECT jsonb_agg(jsonb_build_object('kind','TRABAJO','start','08:00','end','17:30','break_minutes',60)) FROM generate_series(1,7))));
-  PERFORM public.gp_schedule_save(jsonb_build_object('person_id',v_id,'from','2025-03-01','mode','FIJO','week',
-    (SELECT jsonb_agg(jsonb_build_object('kind','TRABAJO','start','08:00','end','17:30','break_minutes',60)) FROM generate_series(1,7))));
+  -- Escenario histórico aislado por fecha. No intentar retroceder la vigencia de la jornada real ya configurada.
+  INSERT INTO public.gp_shift_days(person_id,work_date,shift,reason,updated_by)
+  SELECT h.id,day::date,public.gp_checked_shift(jsonb_build_object('kind','TRABAJO','start','08:00','end','17:30','break_minutes',60)),
+    'Turno histórico sintético C129',v_app
+  FROM public.hhee_people h CROSS JOIN generate_series('2025-03-02'::date,'2025-03-04'::date,interval '1 day') day
+  WHERE h.id IN (v_p1,v_id)
+  ON CONFLICT(person_id,work_date) DO UPDATE SET shift=excluded.shift;
   UPDATE public.dispatches SET departure_time='2025-03-03 08:00:00-05' WHERE id=d.id;
 
   -- Solicitud automática de la ruta (lunes 03/03/2025, 17:30–20:00), completada, presentada y aprobada
