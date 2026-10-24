@@ -39,7 +39,7 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', admin_id::text, true);
 
   -- T3 placa de tercero: tracto/semirremolque válido; una sola placa válida; tres placas o una placa corta no
-  CREATE TEMP TABLE c147_veh (LIKE public.supplier_vehicles INCLUDING CONSTRAINTS) ON COMMIT DROP;
+  CREATE TEMP TABLE c147_veh (LIKE public.supplier_vehicles INCLUDING CONSTRAINTS INCLUDING DEFAULTS) ON COMMIT DROP;
   INSERT INTO c147_veh (id, supplier_id, plate, unit_type) VALUES (gen_random_uuid(), gen_random_uuid(), 'ALZ721/AFM975', 'TRAILER'),
     (gen_random_uuid(), gen_random_uuid(), 'ABC123', 'CAMION');
   BEGIN
