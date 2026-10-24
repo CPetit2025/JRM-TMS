@@ -3,7 +3,7 @@
 -- tipos, versión de reglas en cada procesamiento, registro de cargas y controles de calidad. Siempre se revierte.
 BEGIN;
 DO $test$
-DECLARE admin_id uuid; up uuid; res jsonb; r jsonb; lg jsonb; pass int := 0; fails text[] := '{}';
+DECLARE admin_id uuid; up uuid; res jsonb; r jsonb; lg jsonb; c0 jsonb; k0 jsonb; q0 jsonb; pass int := 0; fails text[] := '{}';
   tag text := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6)); ot text := (70000 + floor(random() * 9999))::int::text;
   pa text; pb text; pc text; pd text; pe text; pf text;
   rows jsonb := '[]'::jsonb;
@@ -81,7 +81,14 @@ BEGIN
   IF (SELECT count(*) FROM jsonb_array_elements(res->'filas') x WHERE x->>'ot' = ot) = 3
      AND (SELECT (x->>'pendiente')::numeric FROM jsonb_array_elements(res->'filas') x WHERE x->>'tipo_documento' = 'SUBCONTRATO DE VENTAS' AND x->>'unidad' = 'UND') = 7
      AND (SELECT (x->>'pendiente')::numeric FROM jsonb_array_elements(res->'filas') x WHERE x->>'tipo_documento' = 'CONTRATO DE VENTAS' AND x->>'unidad' = 'UND') = 223
-     AND (SELECT (x->>'incompletas')::int FROM jsonb_array_elements(res->'filas') x WHERE x->>'tipo_documento' = 'CONTRATO DE VENTAS' AND x->>'unidad' = 'UND') = 1
+     -- La fila incompleta (F: contratada 8, despachada 3, pendiente vacía) queda fuera de todas las sumas y del avance
+     AND (SELECT (x->>'incompletas')::int = 1 AND (x->>'validas')::int = 5 AND (x->>'contratado')::numeric = 228 AND (x->>'despachado')::numeric = 5
+            AND (x->>'avance')::numeric = 0.0219 AND (x->>'cobertura')::numeric = 0.0314 AND (x->>'stock')::numeric = 7
+          FROM jsonb_array_elements(res->'filas') x WHERE x->>'tipo_documento' = 'CONTRATO DE VENTAS' AND x->>'unidad' = 'UND')
+     -- Un grupo solo con filas incompletas no muestra cifras
+     AND (SELECT jsonb_typeof(x->'contratado') = 'null' AND jsonb_typeof(x->'despachado') = 'null' AND jsonb_typeof(x->'pendiente') = 'null'
+            AND jsonb_typeof(x->'avance') = 'null' AND (x->>'validas')::int = 0
+          FROM jsonb_array_elements(res->'filas') x WHERE x->>'tipo_documento' = 'SUBCONTRATO DE VENTAS' AND x->>'unidad' = 'UNID')
   THEN pass := pass + 1; ELSE fails := fails || ('T3 vista OT: ' || res::text); END IF;
 
   -- T4 versión de reglas: cada carga activa y cada día derivado registran la versión vigente
@@ -138,12 +145,45 @@ BEGIN
      AND (SELECT jsonb_typeof(x->'pendiente') = 'null' AND jsonb_typeof(x->'contratado') = 'null' AND jsonb_array_length(x->'cantidades_ausentes') = 4
           FROM jsonb_array_elements(res->'filas') x WHERE x->>'cod_producto' = pc AND x->>'documento' = ot || '-1')
      AND (res->>'incompletas')::int = 2
-     AND (SELECT (x->>'incompletas')::int = 1 AND (x->>'pendiente')::numeric = 223 FROM jsonb_array_elements(res->'resumen') x
-          WHERE x->>'tipo_documento' = 'CONTRATO DE VENTAS' AND x->>'unidad' = 'UND')
+     AND (SELECT (x->>'incompletas')::int = 1 AND (x->>'validas')::int = 5 AND (x->>'filas')::int = 6 AND (x->>'pendiente')::numeric = 223
+            AND (x->>'contratado')::numeric = 228 AND (x->>'despachado')::numeric = 5 AND (x->>'avance')::numeric = 0.0219
+            AND (x->>'cobertura')::numeric = 0.0314 AND (x->>'stock_coincidente')::numeric = 7 AND (x->>'con_pendiente')::int = 5 AND (x->>'lineas')::int = 6
+          FROM jsonb_array_elements(res->'resumen') x WHERE x->>'tipo_documento' = 'CONTRATO DE VENTAS' AND x->>'unidad' = 'UND')
+     AND (SELECT jsonb_typeof(x->'contratado') = 'null' AND jsonb_typeof(x->'avance') = 'null' AND (x->>'incompletas')::int = 1
+          FROM jsonb_array_elements(res->'resumen') x WHERE x->>'tipo_documento' = 'SUBCONTRATO DE VENTAS' AND x->>'unidad' = 'UNID')
      -- «Solo con pendiente» no oculta una fila cuyo pendiente es desconocido
      AND EXISTS (SELECT 1 FROM jsonb_array_elements(public.erp_analisis(jsonb_build_object('ot', ot, 'solo_pendiente', true))->'filas') x WHERE x->>'cod_producto' = pf)
      AND (SELECT jsonb_typeof(x->'pendiente') FROM jsonb_array_elements(public.erp_analisis_detalle(ot, pf, 'UND')->'lineas') x) = 'null'
   THEN pass := pass + 1; ELSE fails := fails || ('T9 ausentes: ' || COALESCE(r::text, res::text)); END IF;
+
+  -- T10 exportación con cargas fijas: se reemplazan el Actualizable y el Stock con las mismas claves y el mismo total pero otras
+  -- cantidades; las páginas siguientes con las cargas de la primera se rechazan (documentos, OT y resumen)
+  res := public.erp_analisis(jsonb_build_object('ot', ot, 'limit', 3, 'offset', 0));
+  c0 := res->'cargas';
+  SELECT jsonb_agg(x->>'documento' || '|' || (x->>'cod_producto') || '|' || (x->>'unidad') ORDER BY 1) INTO k0
+  FROM jsonb_array_elements(public.erp_analisis(jsonb_build_object('ot', ot, 'limit', 50))->'filas') x;
+  q0 := public.erp_analisis(jsonb_build_object('ot', ot, 'limit', 50))->'resumen';
+  up := (public.erp_upload_begin('CONTRATOS', 'C143 v2.xlsx', '2099-03-02 18:00-05', 9)->>'upload_id')::uuid;
+  PERFORM public.erp_upload_rows(up, (SELECT jsonb_agg(CASE WHEN x ? 'cant_despachada' AND x->>'cant_despachada' <> ''
+      THEN x || jsonb_build_object('cant_despachada', (x->>'cant_despachada')::numeric + 1) ELSE x END) FROM jsonb_array_elements(rows) x));
+  PERFORM public.erp_upload_apply(up);
+  res := public.erp_analisis(jsonb_build_object('ot', ot, 'limit', 50));
+  IF (res->>'total')::int = 8
+     AND (SELECT jsonb_agg(x->>'documento' || '|' || (x->>'cod_producto') || '|' || (x->>'unidad') ORDER BY 1) FROM jsonb_array_elements(res->'filas') x) = k0
+     AND res->'resumen' IS DISTINCT FROM q0
+     AND (public.erp_analisis(jsonb_build_object('ot', ot, 'limit', 3, 'offset', 3, 'contratos_id', c0->>'contratos', 'stock_id', c0->>'stock'))->>'cargas_cambiaron')::boolean
+     AND (public.erp_analisis(jsonb_build_object('ot', ot, 'vista', 'OT', 'limit', 3, 'contratos_id', c0->>'contratos', 'stock_id', c0->>'stock'))->>'success')::boolean = false
+     -- Con las cargas nuevas fijadas sí responde; luego cambia solo el Stock (mismas claves, otro stock) y se rechaza
+     AND (public.erp_analisis(jsonb_build_object('ot', ot, 'limit', 3, 'contratos_id', res->'cargas'->>'contratos', 'stock_id', res->'cargas'->>'stock'))->>'success')::boolean
+  THEN
+    c0 := res->'cargas';
+    up := (public.erp_upload_begin('STOCK', 'C143 stock v2.xlsx', '2099-03-02 20:00-05', 1)->>'upload_id')::uuid;
+    PERFORM public.erp_upload_rows(up, jsonb_build_array(jsonb_build_object('linea', 2, 'bodega', '647-04 ALM PT', 'cod_producto', pa, 'unidad', 'UND', 'lote', ot, 'stock', 1)));
+    PERFORM public.erp_upload_apply(up);
+    IF (public.erp_analisis(jsonb_build_object('ot', ot, 'limit', 3, 'offset', 3, 'contratos_id', c0->>'contratos', 'stock_id', c0->>'stock'))->>'cargas_cambiaron')::boolean
+       AND (public.erp_analisis(jsonb_build_object('ot', ot, 'limit', 50))->>'total')::int = 8
+    THEN pass := pass + 1; ELSE fails := fails || 'T10 cambio de Stock no detectado'::text; END IF;
+  ELSE fails := fails || ('T10 cargas fijas: ' || res::text); END IF;
 
   -- T7 sin permiso no se ve ni se registra
   PERFORM set_config('request.jwt.claim.sub', gen_random_uuid()::text, true);
@@ -151,7 +191,7 @@ BEGIN
      OR has_function_privilege('anon', 'public.erp_analisis(jsonb)', 'EXECUTE')
   THEN fails := fails || 'T7 permisos'::text; ELSE pass := pass + 1; END IF;
 
-  IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C143 FAIL (%/9): %', pass, array_to_string(fails, ' | '); END IF;
-  RAISE EXCEPTION 'CAJA C143 PASS (9/9) ERP análisis: cruce exacto sin multiplicar, stock cero distinto de sin coincidencia, candidatos en el detalle, cantidades ausentes sin valor, tipos separados, versión de reglas, registro de cargas y calidad';
+  IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C143 FAIL (%/10): %', pass, array_to_string(fails, ' | '); END IF;
+  RAISE EXCEPTION 'CAJA C143 PASS (10/10) ERP análisis: cruce exacto sin multiplicar, totales solo con filas válidas, exportación con cargas fijas, stock cero distinto de sin coincidencia, candidatos en el detalle, cantidades ausentes sin valor, tipos separados, versión de reglas, registro de cargas y calidad';
 END $test$;
 ROLLBACK;

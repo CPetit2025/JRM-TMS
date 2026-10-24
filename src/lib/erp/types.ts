@@ -51,6 +51,8 @@ export type ErpStockCruceEstado = 'COINCIDE' | 'UNIDAD_DISTINTA' | 'DOCUMENTO_SI
 export interface ErpAnalisisFiltros {
   ot?: string; cliente?: string; documento?: string; tipo_documento?: string; familia?: string; producto?: string; unidad?: string; bodega?: string
   estado?: string; vigencia?: string; cruce?: string; solo_pendiente?: boolean; vencida?: boolean; vista?: 'DOCUMENTO' | 'OT'; limit?: number; offset?: number
+  // Exportación: cargas fijadas en la primera página; la base rechaza si ya no son las vigentes
+  contratos_id?: string; stock_id?: string
 }
 export interface ErpAnalisisDoc {
   documento: string; cod_producto: string; unidad: string; ot: string | null; tipo_documento: string | null; cliente: string | null; ruc: string | null
@@ -66,15 +68,16 @@ export interface ErpAnalisisOt {
   ot: string; tipo_documento: string | null; unidad: string; cliente: string | null; documentos_producto: number; documentos: number
   contratado: number; despachado: number; reemplazado: number; pendiente: number; stock: number | null; faltante: number | null; con_stock: number
   vencidas: number; fecha_contrato: string | null; fecha_vcto: string | null; ult_despacho: string | null; avance: number | null; cobertura: number | null
-  incompletas: number
+  incompletas: number; validas: number
 }
 export interface ErpAnalisisResumen {
   unidad: string; tipo_documento: string | null; filas: number; documentos: number; lineas: number; contratado: number; despachado: number; reemplazado: number
   pendiente: number; avance: number | null; stock_coincidente: number | null; faltante: number | null; cobertura: number | null
-  con_pendiente: number; pendiente_con_stock: number; sobredespacho: number; vencidas: number; incompletas: number
+  con_pendiente: number; pendiente_con_stock: number; sobredespacho: number; vencidas: number; incompletas: number; validas: number
 }
 export interface ErpAnalisis {
   success: true; sin_datos?: boolean; vista: 'DOCUMENTO' | 'OT'; unidad_original: boolean; hoy: string; total: number; incompletas: number
+  cargas: { contratos: string; stock: string | null }
   resumen: ErpAnalisisResumen[]; estados: Record<string, number>; cruces: Partial<Record<ErpCruce, number>>
   filas: Array<ErpAnalisisDoc | ErpAnalisisOt>
 }

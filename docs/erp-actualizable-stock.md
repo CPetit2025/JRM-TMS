@@ -75,15 +75,20 @@ unidad del ERP (se normalizan solo espacios y mayúsculas; se conservan ceros in
   (`cantidades_ausentes_campos`).
 - **Cantidades ausentes**: las vistas v1 conservan su comportamiento (la cantidad vacía cuenta como 0). En el análisis
   exacto la cantidad vacía queda «s/d» y también los indicadores que dependen de ella (avance, faltante, cobertura); la fila
-  se marca incompleta, «solo con pendiente» no la oculta y los totales del resumen y de la vista por OT la excluyen y se
-  marcan «parcial», con el número de filas excluidas. Un aviso indica cuántas filas del filtro están incompletas.
+  se marca incompleta y «solo con pendiente» no la oculta. En el resumen y en la vista por OT una fila incompleta queda
+  fuera de **todas** las sumas, conteos e indicadores (contratado, despachado, reemplazado, pendiente, stock, faltante,
+  avance y cobertura): cada porcentaje se calcula con la misma población de filas válidas. Se informan las filas válidas y
+  las excluidas, y el total se marca «parcial». Un aviso indica cuántas filas del filtro están incompletas.
 - **Filtro de bodega**: selecciona los documentos con stock coincidente en esa bodega; el stock, el faltante y la cobertura
   mostrados incluyen todas las bodegas del documento (se ve la lista de bodegas en cada fila).
 - **Detalle**: un lote «coincide» solo si lote = documento, mismo producto y misma unidad, con la misma normalización de la
   tabla. Los lotes con ceros a la izquierda, sufijo D u otra unidad se muestran como **candidatos** y no suman.
 - **Exportación**: trae todo el filtro por páginas de 5.000 con orden estable (la base entrega como máximo 20.000 por
   consulta) y comprueba que las filas exportadas coincidan con el total filtrado, sin repetidos; si no, no genera el
-  archivo. La hoja «Control» registra total filtrado, filas exportadas, filtros y fecha.
+  archivo. Las cargas del Actualizable y del Stock de la primera página quedan fijas para documentos, OT y resumen: cada
+  página siguiente las envía y la base la rechaza si otra carga las reemplazó (aunque el total y las claves sean iguales),
+  igual que una consulta durante la cual cambien. La hoja «Control» registra total filtrado, filas exportadas, los
+  identificadores de ambas cargas, filtros y fecha.
 
 ## Calidad de datos
 

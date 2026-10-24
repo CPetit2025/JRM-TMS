@@ -29,9 +29,10 @@ export const CRUCE: Record<ErpCruce, { label: string; hint: string; tone: string
 }
 const TIPO_CONTROL = { ERROR: 'bg-red-100 text-red-800', REVISAR: 'bg-amber-100 text-amber-800', INFORMATIVO: 'bg-slate-100 text-slate-700' } as const
 
-// Cantidad con datos ausentes: sin valor, nunca 0; los totales que excluyen filas incompletas se marcan «parcial»
+// Cantidad con datos ausentes: sin valor, nunca 0. Los totales del resumen y por OT excluyen por completo las filas
+// incompletas (todas las sumas y porcentajes usan solo filas válidas) y se marcan «parcial» con cuántas excluyen
 const Qty = ({ v, parcial }: { v: number | null | undefined; parcial?: number }) => <>{v == null ? <span className="text-amber-700" title="Cantidad ausente en el Actualizable">s/d</span> : fmtQty(v)}
-  {!!parcial && v != null && <span className="block text-[10px] font-semibold text-amber-700" title={`No incluye ${parcial} fila(s) con cantidades ausentes`}>parcial</span>}</>
+  {!!parcial && v != null && <span className="block text-[10px] font-semibold text-amber-700" title={`Excluye ${parcial} fila(s) con cantidades ausentes de todas las sumas y porcentajes`}>parcial</span>}</>
 const EXPORT_PAGE = 5000
 
 const label = (k: string) => k.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase())
@@ -99,21 +100,32 @@ export function AnalisisSection() {
   const exportXlsx = async () => {
     setExporting('Preparando…'); setExportMsg(null)
     try {
+      // Las cargas (Actualizable y Stock) de la primera página quedan fijas para documentos, OT y resumen: la base
+      // rechaza cualquier página posterior si otra carga las reemplazó, aunque el total y las claves no cambien
       let resumen: ErpAnalisis['resumen'] = []
+      let pin: { contratos_id: string; stock_id: string } | null = null
+      const version = (c: ErpAnalisis['cargas']) => `${c.contratos}|${c.stock ?? ''}`
+      const page = async (vista: 'DOCUMENTO' | 'OT', o: number, l: number) => {
+        const r = await erpApi.analisis({ ...applied, vista, limit: l, offset: o, ...(pin ?? {}) })
+        pin ??= { contratos_id: r.cargas.contratos, stock_id: r.cargas.stock ?? '' }
+        return r
+      }
       const docs = await fetchAllRows<ErpAnalisisDoc>(async (o, l) => {
-        const r = await erpApi.analisis({ ...applied, vista: 'DOCUMENTO', limit: l, offset: o })
+        const r = await page('DOCUMENTO', o, l)
         if (o === 0) resumen = r.resumen
-        return { total: r.total, filas: r.filas as ErpAnalisisDoc[] }
+        return { total: r.total, filas: r.filas as ErpAnalisisDoc[], version: version(r.cargas) }
       }, { pageSize: EXPORT_PAGE, keyOf: r => `${r.documento}|${r.cod_producto}|${r.unidad}`, onProgress: (n, t) => setExporting(`Documentos ${fmtN(n)} de ${fmtN(t)}…`) })
       const ots = await fetchAllRows<ErpAnalisisOt>(async (o, l) => {
-        const r = await erpApi.analisis({ ...applied, vista: 'OT', limit: l, offset: o })
-        return { total: r.total, filas: r.filas as ErpAnalisisOt[] }
-      }, { pageSize: EXPORT_PAGE, keyOf: r => `${r.ot}|${r.tipo_documento}|${r.unidad}`, onProgress: (n, t) => setExporting(`OT ${fmtN(n)} de ${fmtN(t)}…`) })
+        const r = await page('OT', o, l)
+        return { total: r.total, filas: r.filas as ErpAnalisisOt[], version: version(r.cargas) }
+      }, { pageSize: EXPORT_PAGE, version: docs.version, keyOf: r => `${r.ot}|${r.tipo_documento}|${r.unidad}`, onProgress: (n, t) => setExporting(`OT ${fmtN(n)} de ${fmtN(t)}…`) })
+      const cargas = pin as { contratos_id: string; stock_id: string } | null
       exportAptXlsx('Analisis_ERP_cruce_exacto', {
         Control: [
           { Dato: 'Documento y producto: total filtrado', Valor: docs.total }, { Dato: 'Documento y producto: filas exportadas', Valor: docs.rows.length },
           { Dato: 'OT por tipo y unidad: total filtrado', Valor: ots.total }, { Dato: 'OT por tipo y unidad: filas exportadas', Valor: ots.rows.length },
-          { Dato: 'Filas con cantidades ausentes (indicadores sin valor; totales parciales)', Valor: docs.rows.filter(r => r.incompleto).length },
+          { Dato: 'Filas con cantidades ausentes (indicadores sin valor; excluidas de todas las sumas y porcentajes del resumen y por OT)', Valor: docs.rows.filter(r => r.incompleto).length },
+          { Dato: 'Carga del Actualizable (id)', Valor: cargas?.contratos_id }, { Dato: 'Carga del Stock (id)', Valor: cargas?.stock_id || '—' },
           { Dato: 'Filtros', Valor: JSON.stringify(applied) }, { Dato: 'Exportado', Valor: new Date().toISOString() },
           { Dato: 'Nota', Valor: 'Cruce exacto sin reglas de conversión. El filtro de bodega selecciona documentos; el stock incluye todas sus bodegas.' },
         ],
@@ -121,7 +133,7 @@ export function AnalisisSection() {
           Contratado: r.contratado, Despachado: r.despachado, Reemplazado: r.reemplazado, Pendiente: r.pendiente, Avance: r.avance,
           'Stock coincidente': r.stock_coincidente, Faltante: r.faltante, Cobertura: r.cobertura, 'Con pendiente': r.con_pendiente,
           'Pendiente con stock': r.pendiente_con_stock, Sobredespacho: r.sobredespacho, 'Fecha de vencimiento superada': r.vencidas,
-          'Filas con cantidades ausentes (excluidas de las sumas)': r.incompletas })),
+          'Filas válidas (base de sumas y porcentajes)': r.validas, 'Filas con cantidades ausentes (excluidas)': r.incompletas })),
         'Documento y producto': docs.rows.map(r => ({ OT: r.ot, Documento: r.documento, 'Tipo de documento': r.tipo_documento, Cliente: r.cliente, RUC: r.ruc,
           SKU: r.cod_producto, Producto: r.producto, Familia: r.familia, 'Unidad (ERP)': r.unidad, Líneas: r.lineas, 'Filas del Excel': r.filas_origen.join(', '),
           Contratado: r.contratado, Despachado: r.despachado, Reemplazado: r.reemplazado, Pendiente: r.pendiente, Avance: r.avance,
@@ -132,7 +144,7 @@ export function AnalisisSection() {
         'OT por tipo y unidad': ots.rows.map(r => ({ OT: r.ot, 'Tipo de documento': r.tipo_documento, Unidad: r.unidad, Cliente: r.cliente,
           Documentos: r.documentos, Contratado: r.contratado, Despachado: r.despachado, Pendiente: r.pendiente, 'Stock coincidente': r.stock, Faltante: r.faltante,
           Avance: r.avance, Cobertura: r.cobertura, 'Con stock': r.con_stock, 'Fecha de vencimiento superada': r.vencidas,
-          'Filas con cantidades ausentes (excluidas de las sumas)': r.incompletas })),
+          'Filas válidas (base de sumas y porcentajes)': r.validas, 'Filas con cantidades ausentes (excluidas)': r.incompletas })),
       })
       setExportMsg({ ok: true, text: `Exportado completo: ${fmtN(docs.rows.length)} de ${fmtN(docs.total)} documentos y productos · ${fmtN(ots.rows.length)} de ${fmtN(ots.total)} renglones de OT.` })
     } catch (e) {
@@ -175,7 +187,8 @@ export function AnalisisSection() {
       {!d && !res.error ? <LoadingBlock /> : res.error ? <ErrorBlock message={res.error} onRetry={res.reload} /> : d?.sin_datos ? <p className="text-sm text-slate-500">Cargue el Actualizable.</p> : d && <>
         {d.incompletas > 0 && <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span><b>Análisis incompleto:</b> {fmtN(d.incompletas)} documento(s) y producto(s) del filtro tienen cantidades ausentes en
-          el Actualizable. Sus indicadores afectados aparecen «s/d» (no se calculan con 0) y los totales que los excluyen se marcan «parcial». Las vistas v1 conservan su
+          el Actualizable. Sus indicadores afectados aparecen «s/d» (no se calculan con 0). En el resumen y por OT esas filas quedan fuera de todas las sumas
+          y porcentajes (contratado, despachado, pendiente, stock, avance y cobertura usan solo filas válidas) y el total se marca «parcial». Las vistas v1 conservan su
           comportamiento (toman la cantidad ausente como 0).</span></p>}
         {!d.unidad_original && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">El Actualizable vigente se cargó antes de guardar la unidad original: UNID aparece como UND. Vuelva a cargarlo para ver la unidad del ERP.</p>}
         <ChartCard title="Resumen por unidad y tipo de documento" subtitle="Porcentajes calculados desde las sumas. Las filas no se suman entre sí: cada una tiene su unidad y su tipo de documento.">
@@ -188,7 +201,7 @@ export function AnalisisSection() {
               <td className={`${td} font-semibold`}>{r.unidad}</td><td className={td}>{r.tipo_documento ?? '—'}</td><td className={tdNum}>{fmtN(r.documentos)}</td>
               <td className={tdNum}><Qty v={r.contratado} parcial={r.incompletas} /></td><td className={tdNum}><Qty v={r.despachado} parcial={r.incompletas} /></td>
               <td className={tdNum}><Qty v={r.pendiente} parcial={r.incompletas} /></td><td className={tdNum}>{ratio(r.avance)}</td>
-              <td className={tdNum}>{fmtQty(r.stock_coincidente)}</td><td className={tdNum}><Qty v={r.faltante} parcial={r.incompletas} /></td><td className={tdNum}>{ratio(r.cobertura)}</td>
+              <td className={tdNum}>{r.stock_coincidente == null && r.validas > 0 ? '—' : <Qty v={r.stock_coincidente} parcial={r.incompletas} />}</td><td className={tdNum}><Qty v={r.faltante} parcial={r.incompletas} /></td><td className={tdNum}>{ratio(r.cobertura)}</td>
               <td className={tdNum}>{fmtN(r.con_pendiente)} / {fmtN(r.pendiente_con_stock)}</td><td className={tdNum}>{fmtN(r.sobredespacho)}</td><td className={tdNum}>{fmtN(r.vencidas)}</td>
             </tr>)}
           </Table>
@@ -211,7 +224,7 @@ export function AnalisisSection() {
                 <td className={`${td} font-bold text-[#002855]`}>{r.ot}</td><td className={td}>{r.tipo_documento ?? '—'}</td><td className={td}>{r.unidad}</td><td className={`${td} max-w-56`}>{r.cliente ?? '—'}</td>
                 <td className={tdNum}><Qty v={r.contratado} parcial={r.incompletas} /></td><td className={tdNum}><Qty v={r.despachado} parcial={r.incompletas} /></td>
                 <td className={tdNum}><Qty v={r.pendiente} parcial={r.incompletas} /></td>
-                <td className={tdNum}>{fmtQty(r.stock)}</td><td className={tdNum}><Qty v={r.faltante} parcial={r.incompletas} /></td><td className={tdNum}>{ratio(r.cobertura)}</td><td className={tdNum}>{fmtN(r.vencidas)}</td>
+                <td className={tdNum}>{r.stock == null && r.validas > 0 ? '—' : <Qty v={r.stock} parcial={r.incompletas} />}</td><td className={tdNum}><Qty v={r.faltante} parcial={r.incompletas} /></td><td className={tdNum}>{ratio(r.cobertura)}</td><td className={tdNum}>{fmtN(r.vencidas)}</td>
               </tr>)}
             </Table>
             : <Table empty={!d.filas.length} head={<tr><th className={th}>Documento</th><th className={th}>SKU · producto</th><th className={th}>Unidad</th>

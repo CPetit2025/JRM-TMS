@@ -68,5 +68,27 @@ test('página vacía antes del total: exportación incompleta', async () => {
 
 test('filtro sin filas: exporta 0 de 0', async () => {
   const res = await fetchAllRows(server([]), {pageSize: 5000})
-  assert.deepEqual(res, {rows: [], total: 0})
+  assert.deepEqual({rows: res.rows, total: res.total}, {rows: [], total: 0})
+})
+
+test('cambian las cargas con el mismo total y las mismas claves: no genera el archivo', async () => {
+  const rows = rowsOf(12000)
+  let call = 0
+  // Misma cantidad de filas y mismas claves en todas las páginas; cambia la carga (y las cantidades) desde la segunda
+  const reloaded = async (o, l) => {
+    call++
+    const version = call === 1 ? 'C1|S1' : 'C2|S1'
+    return {total: 12000, version, filas: rows.slice(o, o + l).map(r => ({...r, pendiente: call === 1 ? 5 : 7}))}
+  }
+  await assert.rejects(fetchAllRows(reloaded, {pageSize: 5000, keyOf: key}), /Las cargas del ERP cambiaron/)
+})
+
+test('la versión fijada en documentos se exige también en OT y resumen', async () => {
+  const docs = await fetchAllRows(server(rowsOf(6000)).bind(null), {pageSize: 5000})
+  assert.equal(docs.version, undefined)
+  const pinned = async (o, l) => ({total: 3, version: 'C1|S2', filas: rowsOf(3).slice(o, o + l)})
+  await assert.rejects(fetchAllRows(pinned, {pageSize: 5000, version: 'C1|S1'}), /Las cargas del ERP cambiaron/)
+  const ok = await fetchAllRows(async (o, l) => ({total: 3, version: 'C1|S1', filas: rowsOf(3).slice(o, o + l)}), {pageSize: 5000, version: 'C1|S1'})
+  assert.equal(ok.rows.length, 3)
+  assert.equal(ok.version, 'C1|S1')
 })

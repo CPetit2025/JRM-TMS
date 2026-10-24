@@ -223,6 +223,11 @@ DECLARE v_c uuid := public.erp_active_import('CONTRATOS'); v_s uuid := public.er
 BEGIN
   IF NOT public.apt_can_view() THEN RETURN jsonb_build_object('success', false, 'error', 'Sin acceso a los datos del ERP'); END IF;
   IF v_c IS NULL THEN RETURN jsonb_build_object('success', true, 'sin_datos', true); END IF;
+  -- Exportación por páginas: el cliente fija las cargas de la primera página; si otra carga las reemplazó, se rechaza
+  IF (p ? 'contratos_id' AND NULLIF(p->>'contratos_id', '')::uuid IS DISTINCT FROM v_c) OR (p ? 'stock_id' AND NULLIF(p->>'stock_id', '')::uuid IS DISTINCT FROM v_s) THEN
+    RETURN jsonb_build_object('success', false, 'cargas_cambiaron', true,
+      'error', 'Las cargas del ERP cambiaron durante la exportación (se aplicó otro Actualizable o Stock). Vuelva a exportar.');
+  END IF;
   -- Cargas anteriores a esta versión no guardaron la unidad original: se usa la guardada y se avisa
   SELECT bool_and(unidad_erp IS NOT NULL) INTO v_orig FROM (SELECT unidad_erp FROM public.erp_contract_lines WHERE import_id = v_c LIMIT 2000) z;
   SET LOCAL client_min_messages = warning;
@@ -282,29 +287,41 @@ BEGIN
       AND (f_cruce IS NULL OR d.cruce = f_cruce) AND (NOT f_pend OR d.pendiente > 0 OR d.pendiente IS NULL)
       AND (NOT f_venc OR (d.pendiente > 0 AND d.fecha_vcto < v_hoy))),
   -- Por OT: un renglón por OT, tipo de documento y unidad (nunca se suman tipos ni unidades entre sí)
+  -- Por OT y en el resumen, una fila incompleta (cantidades ausentes) queda fuera de todas las sumas, conteos e indicadores;
+  -- cada porcentaje usa la misma población válida. Se informa cuántas filas se excluyeron.
   o AS (
-    SELECT ot, tipo_documento, unidad, max(cliente) AS cliente, count(*) AS documentos_producto, count(DISTINCT documento) AS documentos,
-      sum(contratado) AS contratado, sum(despachado) AS despachado, sum(reemplazado) AS reemplazado, sum(pendiente) AS pendiente,
-      sum(stock) AS stock, sum(faltante) AS faltante, count(*) FILTER (WHERE cruce = 'COINCIDE') AS con_stock,
-      count(*) FILTER (WHERE vencida) AS vencidas, min(fecha_contrato) AS fecha_contrato, max(fecha_vcto) AS fecha_vcto, max(ult_despacho) AS ult_despacho,
-      count(*) FILTER (WHERE incompleto) AS incompletas,
-      CASE WHEN sum(contratado) > 0 THEN round(sum(despachado) / sum(contratado), 4) END AS avance,
-      CASE WHEN sum(pendiente) FILTER (WHERE pendiente > 0) > 0 THEN round(sum(stock) FILTER (WHERE pendiente > 0 AND cruce = 'COINCIDE') / sum(pendiente) FILTER (WHERE pendiente > 0), 4) END AS cobertura
+    SELECT ot, tipo_documento, unidad, max(cliente) AS cliente, count(*) AS documentos_producto, count(*) FILTER (WHERE NOT incompleto) AS validas,
+      count(*) FILTER (WHERE incompleto) AS incompletas, count(DISTINCT documento) FILTER (WHERE NOT incompleto) AS documentos,
+      sum(contratado) FILTER (WHERE NOT incompleto) AS contratado, sum(despachado) FILTER (WHERE NOT incompleto) AS despachado,
+      sum(reemplazado) FILTER (WHERE NOT incompleto) AS reemplazado, sum(pendiente) FILTER (WHERE NOT incompleto) AS pendiente,
+      sum(stock) FILTER (WHERE NOT incompleto) AS stock, sum(faltante) FILTER (WHERE NOT incompleto) AS faltante,
+      count(*) FILTER (WHERE NOT incompleto AND cruce = 'COINCIDE') AS con_stock, count(*) FILTER (WHERE NOT incompleto AND vencida) AS vencidas,
+      min(fecha_contrato) AS fecha_contrato, max(fecha_vcto) AS fecha_vcto, max(ult_despacho) AS ult_despacho,
+      CASE WHEN sum(contratado) FILTER (WHERE NOT incompleto) > 0
+        THEN round(sum(despachado) FILTER (WHERE NOT incompleto) / sum(contratado) FILTER (WHERE NOT incompleto), 4) END AS avance,
+      CASE WHEN sum(pendiente) FILTER (WHERE NOT incompleto AND pendiente > 0) > 0
+        THEN round(COALESCE(sum(stock) FILTER (WHERE NOT incompleto AND pendiente > 0 AND cruce = 'COINCIDE'), 0)
+          / sum(pendiente) FILTER (WHERE NOT incompleto AND pendiente > 0), 4) END AS cobertura
     FROM f GROUP BY 1, 2, 3)
   SELECT jsonb_build_object('success', true, 'vista', v_vista, 'unidad_original', COALESCE(v_orig, false), 'hoy', v_hoy,
+    'cargas', jsonb_build_object('contratos', v_c, 'stock', v_s),
     'total', CASE WHEN v_vista = 'OT' THEN (SELECT count(*) FROM o) ELSE (SELECT count(*) FROM f) END,
     -- Resumen por unidad y tipo de documento (porcentajes desde las sumas, no promedio de filas)
     'resumen', COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.unidad, r.tipo_documento) FROM (
-       SELECT unidad, tipo_documento, count(*) AS filas, count(DISTINCT documento) AS documentos, sum(lineas) AS lineas,
-         sum(contratado) AS contratado, sum(despachado) AS despachado, sum(reemplazado) AS reemplazado, sum(pendiente) AS pendiente,
-         CASE WHEN sum(contratado) > 0 THEN round(sum(despachado) / sum(contratado), 4) END AS avance,
-         sum(stock) FILTER (WHERE pendiente > 0 AND cruce = 'COINCIDE') AS stock_coincidente, sum(faltante) AS faltante,
-         CASE WHEN sum(pendiente) FILTER (WHERE pendiente > 0) > 0
-           THEN round(sum(stock) FILTER (WHERE pendiente > 0 AND cruce = 'COINCIDE') / sum(pendiente) FILTER (WHERE pendiente > 0), 4) END AS cobertura,
-         count(*) FILTER (WHERE pendiente > 0) AS con_pendiente, count(*) FILTER (WHERE pendiente > 0 AND cruce = 'COINCIDE') AS pendiente_con_stock,
-         count(*) FILTER (WHERE pendiente < 0) AS sobredespacho, count(*) FILTER (WHERE vencida) AS vencidas,
-         -- Filas con cantidades ausentes: sus cantidades no entran en las sumas, que quedan parciales
-         count(*) FILTER (WHERE incompleto) AS incompletas
+       SELECT unidad, tipo_documento, count(*) AS filas, count(*) FILTER (WHERE NOT incompleto) AS validas, count(*) FILTER (WHERE incompleto) AS incompletas,
+         count(DISTINCT documento) FILTER (WHERE NOT incompleto) AS documentos, sum(lineas) FILTER (WHERE NOT incompleto) AS lineas,
+         sum(contratado) FILTER (WHERE NOT incompleto) AS contratado, sum(despachado) FILTER (WHERE NOT incompleto) AS despachado,
+         sum(reemplazado) FILTER (WHERE NOT incompleto) AS reemplazado, sum(pendiente) FILTER (WHERE NOT incompleto) AS pendiente,
+         CASE WHEN sum(contratado) FILTER (WHERE NOT incompleto) > 0
+           THEN round(sum(despachado) FILTER (WHERE NOT incompleto) / sum(contratado) FILTER (WHERE NOT incompleto), 4) END AS avance,
+         sum(stock) FILTER (WHERE NOT incompleto AND pendiente > 0 AND cruce = 'COINCIDE') AS stock_coincidente,
+         sum(faltante) FILTER (WHERE NOT incompleto) AS faltante,
+         CASE WHEN sum(pendiente) FILTER (WHERE NOT incompleto AND pendiente > 0) > 0
+           THEN round(COALESCE(sum(stock) FILTER (WHERE NOT incompleto AND pendiente > 0 AND cruce = 'COINCIDE'), 0)
+             / sum(pendiente) FILTER (WHERE NOT incompleto AND pendiente > 0), 4) END AS cobertura,
+         count(*) FILTER (WHERE NOT incompleto AND pendiente > 0) AS con_pendiente,
+         count(*) FILTER (WHERE NOT incompleto AND pendiente > 0 AND cruce = 'COINCIDE') AS pendiente_con_stock,
+         count(*) FILTER (WHERE NOT incompleto AND pendiente < 0) AS sobredespacho, count(*) FILTER (WHERE NOT incompleto AND vencida) AS vencidas
        FROM f GROUP BY 1, 2) r), '[]'::jsonb),
     'incompletas', (SELECT count(*) FROM f WHERE incompleto),
     'estados', COALESCE((SELECT jsonb_object_agg(e, n) FROM (
@@ -318,6 +335,10 @@ BEGIN
       ELSE COALESCE((SELECT jsonb_agg(to_jsonb(x) - 'aus_c' - 'aus_d' - 'aus_r' - 'aus_p' - 'dato_ausente') FROM (SELECT * FROM f
         ORDER BY faltante DESC NULLS LAST, pendiente DESC NULLS LAST, documento, cod_producto, unidad LIMIT v_lim OFFSET v_off) x), '[]'::jsonb) END)
   INTO v_out;
+  -- Si otra carga reemplazó las usadas mientras se calculaba, el resultado mezclaría cortes: se rechaza
+  IF public.erp_active_import('CONTRATOS') IS DISTINCT FROM v_c OR public.erp_active_import('STOCK') IS DISTINCT FROM v_s THEN
+    RETURN jsonb_build_object('success', false, 'cargas_cambiaron', true, 'error', 'Las cargas del ERP cambiaron durante la consulta. Vuelva a intentar.');
+  END IF;
   RETURN v_out;
 END $$;
 
