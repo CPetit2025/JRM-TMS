@@ -1,11 +1,14 @@
 'use client'
 import { useMemo, useState } from 'react'
-import { Eye } from 'lucide-react'
+import { CalendarRange, Eye, FileDown, Mail, X } from 'lucide-react'
+import { toast } from 'sonner'
 import { DataTable } from '@/components/ui/data-table'
 import { Modal } from '@/components/ui/modal'
 import { limaDay, monthDays, portalTime, portalAllowedTime, requestAnticipation, requestFamily, type PortalRequest } from '@/lib/tracking-calendar'
 import { PORTAL_ORIGINS, originStyle, portalExtraRefs, portalOrigin, portalParty, portalReference, portalStatus, type PortalAccess, type PortalOrigin, type PortalRow } from '@/lib/tracking-portal'
 import { OriginBadge, PortalDocButtons, StatusPill } from '@/components/tracking/PortalBits'
+import { ProgramacionEnvio, descargarProgramacion } from '@/components/tracking/ProgramacionEnvio'
+import type { ProgRow } from '@/lib/tracking-programacion-pdf'
 
 // Calendario del portal público: cada servicio se marca por su origen (OT, subcontrato, error, OS, OC, RQ) en su
 // fecha de salida programada o, si aún no tiene ruta, en la fecha de atención solicitada. Hoy (despacho actual) y
@@ -19,6 +22,7 @@ const addDays = (day: string, n: number) => { const d = new Date(`${day}T12:00:0
 const serviceLabel = (r: PortalRequest) => r.attention_mode === 'RECOJO_CLIENTE' ? 'Recojo por cliente' : r.request_type === 'RECOJO' ? 'Recojo' : r.request_type === 'TRASLADO' ? 'Punto a punto' : 'Entrega'
 const district = (r: PortalRequest) => (r.request_type === 'RECOJO' ? r.pickup_district : r.delivery_district) || r.delivery_zone || '—'
 const dayLabel = (day: string) => `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}`
+const hourLima = (value: string) => new Date(value).toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hour12: false })
 const routeTime = (value: string) => new Date(value).toLocaleString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
 
 export { OriginBadge }
@@ -30,6 +34,10 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
   const [view, setView] = useState<'month' | 'week' | 'day'>('month')
   const [search, setSearch] = useState('')
   const [hidden, setHidden] = useState<PortalOrigin[]>([])
+  // Servicios elegidos para el informe de programación (se conservan al cambiar de mes: la semana puede cruzar meses)
+  const [picked, setPicked] = useState<Map<string, ProgRow>>(new Map())
+  const [sending, setSending] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
   const days = useMemo(() => monthDays(month), [month])
   const today = limaDay(new Date().toISOString()), tomorrow = addDays(today, 1)
 
@@ -62,6 +70,41 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
   const filtered = requests.filter(r => !hidden.includes(portalOrigin(r))
     && (!activeDays || activeDays.includes(basis === 'registered' ? limaDay(r.created_at) : basis === 'attention' ? attentionDay(r) || '' : scheduledDay(r)))
     && [r.request_number, r.ot_code, r.parent_ot, r.reference_number, r.purchase_order, r.client_name, r.supplier_name, r.delivery_address, district(r), stopOf.get(r.id)?.plate, stopOf.get(r.id)?.driver_name, stopOf.get(r.id)?.dispatch_number, requestFamily(r).codes.join(' ')].join(' ').toLowerCase().includes(search.toLowerCase()))
+  const progRow = (r: PortalRequest): ProgRow => {
+    const stop = stopOf.get(r.id), family = requestFamily(r)
+    return {
+      id: r.id, day: scheduledDay(r), scheduled: Boolean(stop), request_number: r.request_number,
+      reference: family.mother ? `OT ${family.mother}` : portalReference(r), family: family.mother ? family.summary : '',
+      party: portalParty(r).name || '', service: serviceLabel(r),
+      origin: [r.pickup_address, r.pickup_district].filter(Boolean).join(' · '), destination: r.delivery_address || '', district: district(r),
+      attention: r.required_at ? portalTime(r.required_at) : `${r.required_date ? dayLabel(r.required_date.slice(0, 10)) : '—'} · sin hora`,
+      departure: stop ? hourLima(stop.scheduled_departure) : '', route: stop?.dispatch_number || '',
+      unit: stop ? `${stop.plate && stop.plate !== 'EXTERNO' ? stop.plate : 'Unidad por asignar'} · ${stop.driver_name || 'Conductor por asignar'}` : '',
+      status: portalStatus(stop, r.status).label,
+    }
+  }
+  const togglePick = (r: PortalRequest) => setPicked(m => { const n = new Map(m); if (n.has(r.id)) n.delete(r.id); else n.set(r.id, progRow(r)); return n })
+  const allShownPicked = filtered.length > 0 && filtered.every(r => picked.has(r.id))
+  const togglePickAll = () => setPicked(m => {
+    const n = new Map(m)
+    if (allShownPicked) filtered.forEach(r => n.delete(r.id)); else filtered.forEach(r => n.set(r.id, progRow(r)))
+    return n
+  })
+  // Próxima semana: lunes a domingo siguientes, por fecha programada (respeta los orígenes ocultos)
+  const pickNextWeek = () => {
+    const dow = new Date(`${today}T12:00:00Z`).getUTCDay()
+    const monday = addDays(today, ((8 - dow) % 7) || 7), sunday = addDays(monday, 6)
+    const list = requests.filter(r => !hidden.includes(portalOrigin(r)) && r.status !== 'CANCELADA' && r.status !== 'ANULADA')
+      .filter(r => { const d = scheduledDay(r); return d >= monday && d <= sunday })
+    setPicked(m => { const n = new Map(m); list.forEach(r => n.set(r.id, progRow(r))); return n })
+    const crosses = !monday.startsWith(month) || !sunday.startsWith(month)
+    toast.success(`${list.length} servicio${list.length === 1 ? '' : 's'} del ${dayLabel(monday)} al ${dayLabel(sunday)} seleccionado${list.length === 1 ? '' : 's'}`
+      + (crosses ? '. La semana cruza de mes: cambie al otro mes y pulse de nuevo para sumar esos días.' : ''))
+  }
+  const pdf = async () => {
+    setPdfBusy(true)
+    try { await descargarProgramacion([...picked.values()]) } catch (e) { toast.error('No se pudo generar el PDF: ' + (e as Error).message) } finally { setPdfBusy(false) }
+  }
   const navigate = (direction: number) => {
     const day = addDays(anchor, direction * (view === 'week' ? 7 : 1))
     if (!day.startsWith(month)) onMonth(day.slice(0, 7)); setSelected(day)
@@ -143,14 +186,25 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
           <select aria-label="Fecha para filtrar solicitudes" value={basis} onChange={e => setBasis(e.target.value as typeof basis)} className="h-9 rounded-lg border px-2 text-sm"><option value="scheduled">Fecha programada</option><option value="registered">Fecha de registro</option><option value="attention">Fecha de atención</option></select>
           {selected && <button onClick={() => setSelected('')} className="text-xs text-blue-700">Ver todo</button>}
           <input aria-label="Buscar solicitud" value={search} onChange={e => setSearch(e.target.value)} placeholder="OT, solicitud, ruta, cliente o placa" className="h-9 w-56 rounded-lg border px-2 text-sm" />
+          <button type="button" onClick={pickNextWeek} className="inline-flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-sm text-[#002855]" title="Selecciona los servicios programados de lunes a domingo de la semana siguiente"><CalendarRange className="h-4 w-4" />Próxima semana</button>
         </div>
       </div>
+      {picked.size > 0 && <div className="flex flex-wrap items-center gap-2 border-b bg-blue-50 px-4 py-2 text-sm">
+        <strong className="text-[#002855]">{picked.size} servicio{picked.size === 1 ? '' : 's'} seleccionado{picked.size === 1 ? '' : 's'}</strong>
+        <span className="text-xs text-slate-600">para el informe de programación</span>
+        <span className="ml-auto flex flex-wrap gap-2">
+          <button type="button" onClick={() => setPicked(new Map())} className="inline-flex h-8 items-center gap-1 rounded-lg border bg-white px-2.5 text-xs"><X className="h-3.5 w-3.5" />Limpiar</button>
+          <button type="button" disabled={pdfBusy} onClick={pdf} className="inline-flex h-8 items-center gap-1 rounded-lg border bg-white px-2.5 text-xs font-semibold text-[#002855] disabled:opacity-50"><FileDown className="h-3.5 w-3.5" />{pdfBusy ? 'Generando…' : 'Generar PDF'}</button>
+          <button type="button" onClick={() => setSending(true)} className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#002855] px-2.5 text-xs font-semibold text-white"><Mail className="h-3.5 w-3.5" />Enviar por correo</button>
+        </span>
+      </div>}
       <div className="overflow-x-auto"><DataTable className="w-full min-w-[1320px] text-left text-sm">
-        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{['Registro / Solicitud', 'OT / OC / OS / RQ', 'Cliente / Proveedor', 'Servicio / Recorrido', 'Atención solicitada', 'Fecha programada', 'Ruta / Unidad', 'Estado', 'Acciones'].map(h => <th key={h} className="px-3 py-2">{h}</th>)}</tr></thead>
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="w-8 px-3 py-2"><input type="checkbox" aria-label="Seleccionar las solicitudes mostradas" checked={allShownPicked} onChange={togglePickAll} disabled={!filtered.length} /></th>{['Registro / Solicitud', 'OT / OC / OS / RQ', 'Cliente / Proveedor', 'Servicio / Recorrido', 'Atención solicitada', 'Fecha programada', 'Ruta / Unidad', 'Estado', 'Acciones'].map(h => <th key={h} className="px-3 py-2">{h}</th>)}</tr></thead>
         <tbody className="divide-y">
           {filtered.map(r => {
             const stop = stopOf.get(r.id), family = requestFamily(r)
-            return <tr key={r.id} className="hover:bg-slate-50">
+            return <tr key={r.id} className={picked.has(r.id) ? 'bg-blue-50/60' : 'hover:bg-slate-50'}>
+              <td className="px-3 py-2"><input type="checkbox" aria-label={`Seleccionar ${r.request_number}`} checked={picked.has(r.id)} onChange={() => togglePick(r)} /></td>
               <td className="whitespace-nowrap px-3 py-2"><span className="block">{portalTime(r.created_at)}</span><span className="text-xs text-slate-500">{r.request_number}</span></td>
               <td className="px-3 py-2"><span className="flex items-center gap-1.5"><OriginBadge origin={portalOrigin(r)} /><span className="font-semibold text-slate-800">{family.mother ? `OT ${family.mother}` : portalReference(r)}</span></span>{family.mother && <span className="mt-1 block text-xs text-slate-500" title={family.codes.join(' · ')}>{family.summary}</span>}</td>
               <td className="max-w-56 px-3 py-2">{(() => { const p = portalParty(r); return p.name
@@ -164,10 +218,12 @@ export function TrackingCalendar({ month, onMonth, requests, rows, access }: Pro
               <td className="px-3 py-2 text-right"><button onClick={() => setDetail(r)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-300 px-2.5 text-xs font-semibold text-[#002855] hover:bg-white"><Eye className="h-3.5 w-3.5" />Ver detalle</button></td>
             </tr>
           })}
-          {!filtered.length && <tr><td colSpan={9} className="p-8 text-center text-slate-500">No hay solicitudes para los filtros seleccionados.</td></tr>}
+          {!filtered.length && <tr><td colSpan={10} className="p-8 text-center text-slate-500">No hay solicitudes para los filtros seleccionados.</td></tr>}
         </tbody>
       </DataTable></div>
     </section>
+
+    {sending && <ProgramacionEnvio rows={[...picked.values()]} onClose={() => setSending(false)} />}
 
     <Modal isOpen={Boolean(detail)} onClose={() => setDetail(null)} title={`Detalle · ${detail?.request_number || ''}`} maxWidth="max-w-3xl">
       {detail && <div className="space-y-4 text-sm">
