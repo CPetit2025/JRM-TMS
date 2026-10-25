@@ -1,4 +1,5 @@
 'use client'
+import { allPages } from '@/lib/analytics/model'
 import { useEffect, useMemo, useState } from 'react'
 import { Loader2, Search } from 'lucide-react'
 import { toast } from 'sonner'
@@ -21,12 +22,10 @@ export function ClaimContractsModal({ open, onClose, onClaimed, firstTime }: Pro
 
   useEffect(() => {
     let alive = true
-    supabase.rpc('contract_admin_available_ots').then(({ data, error }) => {
-      if (!alive) return
-      if (error) toast.error('No se pudieron cargar las OT disponibles: ' + error.message)
-      setItems((data as Available[]) || [])
-      setLoading(false)
-    })
+    // Por páginas: la API entrega como máximo 1.000 filas por consulta
+    allPages<Available>((o, n) => supabase.rpc('contract_admin_available_ots').order('code').order('id').range(o, o + n - 1), 1000)
+      .then(data => { if (alive) setItems(data) }, (error: Error) => { if (alive) toast.error('No se pudieron cargar las OT disponibles: ' + error.message) })
+      .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [supabase])
 

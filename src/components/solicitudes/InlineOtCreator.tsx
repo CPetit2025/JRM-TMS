@@ -1,5 +1,6 @@
 'use client'
 
+import { allPages } from '@/lib/analytics/model'
 import { useEffect, useMemo, useState } from 'react'
 import { Briefcase, Loader2, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -40,8 +41,10 @@ export function InlineOtCreator({ canSetBudget, initialDestination, onCreated, o
 
   useEffect(() => {
     let cancelled = false
-    void supabase.from('clients').select('id, business_name, tax_id, country_code, country_name').eq('is_active', true).order('business_name')
-      .then(({ data }) => { if (!cancelled) setClients((data as ClientOption[]) || []) })
+    // Por páginas: la API entrega como máximo 1.000 filas por consulta
+    void allPages<ClientOption>((o, n) => supabase.from('clients').select('id, business_name, tax_id, country_code, country_name').eq('is_active', true)
+      .order('business_name').order('id').range(o, o + n - 1), 1000)
+      .then(data => { if (!cancelled) setClients(data) }, () => { if (!cancelled) setClients([]) })
     return () => { cancelled = true }
   }, [supabase])
 

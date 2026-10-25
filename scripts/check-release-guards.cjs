@@ -106,6 +106,22 @@ for (const name of readdirSync(migDir).filter(n => n.endsWith('.sql') && n >= '2
   }
 }
 
+// La API de la base entrega como máximo 1.000 filas por consulta: una lista de contratos, clientes, solicitudes o
+// servicios sin paginar se corta en silencio cuando crecen (ya pasó con el alta automática desde el ERP: OT que existían
+// no aparecían en Solicitudes). Toda consulta de esas tablas debe ir por páginas (.range con allPages) o estar acotada
+// (por id/código, .limit, .single/.maybeSingle o una escritura).
+const BIG_TABLES = /\.from\('(contracts|clients|transport_requests|contract_services|contract_service_peso_apt|vw_contracts_dashboard|contract_budgets)'\)/g
+for (const { file, text } of sources) {
+  for (const m of text.matchAll(BIG_TABLES)) {
+    let chain = text.slice(m.index, m.index + 900)
+    const stop = chain.search(/\n\s*\n|\n\s*(const|let|if|return|setLoading|setError|try|\}\s*catch)\b/)
+    if (stop > 0) chain = chain.slice(0, stop)
+    const bounded = /\.(range|limit|single|maybeSingle|insert|update|upsert|delete)\(/.test(chain)
+      || /\.(eq|in|ilike|match)\('(\w*id|code|tax_id|request_number|business_name)'/.test(chain) || /head:\s*true/.test(chain)
+    if (!bounded) errors.push(`${path.relative(root, file)}:${text.slice(0, m.index).split('\n').length}: la consulta a ${m[1]} no está paginada ni acotada; la API corta en 1.000 filas. Use allPages con .range (src/lib/analytics/model.ts).`)
+  }
+}
+
 if (errors.length) {
   console.error('Guardas fallidas:\n- ' + errors.join('\n- '))
   process.exit(1)

@@ -69,7 +69,9 @@ export function TransportTariffManager() {
     const run = async () => {
       const [r, c, k] = await Promise.all([
         supabase.from('freight_rates').select('*').order('concept').order('district'),
-        supabase.from('clients').select('id, business_name').order('business_name'),
+        allPages<{ id: string; business_name: string }>((o, n) => supabase.from('clients').select('id, business_name').order('business_name').order('id')
+          .range(o, o + n - 1), 1000)
+          .then(data => ({ data, error: null as { message: string } | null }), (e: Error) => ({ data: null, error: { message: e.message } })),
         // Por páginas: la API entrega como máximo 1.000 filas por consulta
         allPages<{ id: string; code: string; parent_contract_id: string | null }>((o, n) => supabase.from('contracts')
           .select('id, code, parent_contract_id').is('parent_contract_id', null).order('code').order('id').range(o, o + n - 1), 1000)

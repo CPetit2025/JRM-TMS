@@ -1,4 +1,5 @@
 "use client"
+import { allPages } from '@/lib/analytics/model'
 import { ForkliftFields, EMPTY_FORKLIFT, forkliftValid } from '@/components/despacho/ForkliftFields'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -310,7 +311,8 @@ export default function DespachoPage() {
     setLoading(true)
     try {
       // 1. Obtener Solicitudes pendientes de asignar
-      const { data: reqData, error: reqError } = await supabase
+      // Por páginas: la API entrega como máximo 1.000 filas por consulta
+      const reqData = await allPages<any>((o, n) => supabase
         .from('transport_requests')
         .select(`
           *,
@@ -334,9 +336,9 @@ export default function DespachoPage() {
           )
         `)
         .in('status', ['APROBADA', 'REPROGRAMADA'])
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false }).order('id')
+        .range(o, o + n - 1), 1000)
 
-      if (reqError) throw reqError
       const { data: history, error: historyError } = reqData?.length ? await supabase.rpc('get_transport_request_rescheduling', { p_request_ids: reqData.map(r => r.id) }) : { data: [], error: null }
       if (historyError) throw historyError
       setPendingRequests(newestFirst(withRescheduling(reqData || [], history || [])))
