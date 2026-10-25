@@ -363,7 +363,8 @@ export default function SolicitudesPage() {
   const fetchRequests = useCallback(async () => {
     setLoading(true)
     try {
-      const { data, error } = await supabase
+      // Por páginas: la API entrega como máximo 1.000 filas por consulta
+      const data = await allPages<any>((o, n) => supabase
         .from('transport_requests')
         .select(`
           *,
@@ -375,10 +376,9 @@ export default function SolicitudesPage() {
             clients(business_name)
           )
         `)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-      setRequests(data || [])
+        .order('created_at', { ascending: false }).order('id')
+        .range(o, o + n - 1), 1000)
+      setRequests(data)
       if (data?.length) {
         try {
           const summaries: Record<string, RequestSummary> = {}

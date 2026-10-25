@@ -217,8 +217,9 @@ export default function ContratosPage() {
 
   const fetchClients = async () => {
     try {
-      const { data, error } = await supabase.from('clients').select('id, business_name, tax_id, country_code, country_name').eq('is_active', true)
-      if (!error && data) setClients(data)
+      // Por páginas: la API entrega como máximo 1.000 filas por consulta
+      setClients(await allPages<{ id: string; business_name: string; tax_id: string | null; country_code: string | null; country_name: string | null }>((o, n) => supabase.from('clients').select('id, business_name, tax_id, country_code, country_name')
+        .eq('is_active', true).order('business_name').order('id').range(o, o + n - 1), 1000))
     } catch (e) {
       console.error('Error fetching clients', e)
     }
@@ -236,13 +237,12 @@ export default function ContratosPage() {
       else if (rpc.error && !['PGRST202', '42883'].includes(rpc.error.code)) throw rpc.error
       else if (!rpc.error) throw new Error(out?.error || 'No se pudo cargar la lista')
       else {
-        const { data: rows, error } = await supabase
+        data = await allPages<Record<string, unknown>>((o, n) => supabase
           .from('vw_contracts_dashboard')
           .select('*')
           .is('parent_contract_id', null)
-          .order('created_at', { ascending: false })
-        if (error) throw error
-        data = rows
+          .order('created_at', { ascending: false }).order('id')
+          .range(o, o + n - 1), 1000)
       }
 
       const formatted = (data || []).map((c: any) => ({
@@ -435,7 +435,8 @@ export default function ContratosPage() {
 
         // Clientes por RUC (solo dígitos, coincidencia exacta) y por razón social exacta: nunca por parecido,
         // así una fila no queda con un cliente equivocado ni sin cliente.
-        const { data: dbClients } = await supabase.from('clients').select('id, tax_id, business_name')
+        const dbClients = await allPages<{ id: string; tax_id: string | null; business_name: string | null }>((o, n) => supabase.from('clients')
+          .select('id, tax_id, business_name').order('id').range(o, o + n - 1), 1000)
         const rucDigits = (v: unknown) => String(v ?? '').replace(/\D/g, '')
         const clientMapByRuc = new Map(dbClients?.filter(c => rucDigits(c.tax_id)).map(c => [rucDigits(c.tax_id), c.id]))
         const clientMapByName = new Map(dbClients?.filter(c => c.business_name).map(c => [String(c.business_name).trim().toUpperCase().replace(/\s+/g, ' '), c.id]))

@@ -1,4 +1,5 @@
 "use client"
+import { allPages } from '@/lib/analytics/model'
 import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
@@ -36,9 +37,10 @@ export default function ClientesPage() {
   const fetchClients = async () => {
     setLoading(true)
     try {
-      const { data, error } = await supabase.from('clients').select('*').order('created_at', { ascending: false })
-      if (error) throw error
-      setClients(data || [])
+      // Por páginas: la API entrega como máximo 1.000 filas por consulta
+      const data = await allPages<any>((o, n) => supabase.from('clients').select('*').order('created_at', { ascending: false }).order('id')
+        .range(o, o + n - 1), 1000)
+      setClients(data)
     } catch (error: any) {
       toast.error('Error al cargar clientes: ' + error.message)
     } finally {

@@ -245,7 +245,8 @@ export default function ContractServicesPage() {
       setRegistryContext(Object.fromEntries(contexts.map(c => [c.service_id, c])))
       setServices(rows)
       // Peso según APT (si la tabla aún no existe, la columna usa el KG manual)
-      const { data: pData } = await supabase.from('contract_service_peso_apt').select('*')
+      const pData = await allPages<PesoApt>((o, n) => supabase.from('contract_service_peso_apt').select('*').order('service_id')
+        .range(o, o + n - 1), 1000).catch(() => [] as PesoApt[])
       setPesoApt(Object.fromEntries(((pData as PesoApt[]) || []).map(p => [p.service_id, p])))
 
       // Por páginas: la API entrega como máximo 1.000 filas por consulta y hay miles de OT
