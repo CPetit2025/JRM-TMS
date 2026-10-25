@@ -125,12 +125,14 @@ export default function InventarioDatosPage() {
         const r = await uploadErpFile(f, m => setBusy(`${ERP_KIND_LABEL[f.kind]}: ${m}`))
         // Con el Actualizable vigente se dan de alta las OT activas que faltan en el TMS y se corrige el cliente de las OT
         // según el RUC del ERP (con historial y aviso)
-        const alta = f.kind === 'CONTRATOS' ? (setBusy('Dando de alta las OT del ERP que faltan en el TMS…'), await erpAltaAutomatica()) : null
+        // El peso unitario por SKU sale del Stock: con cualquiera de los dos archivos se recalculan las altas y el peso de las OT
+        const alta = (setBusy(f.kind === 'CONTRATOS' ? 'Dando de alta las OT del ERP que faltan en el TMS…' : 'Actualizando el peso de las OT…'),
+          await erpAltaAutomatica())
         const cli = f.kind === 'CONTRATOS' ? (setBusy('Revisando el cliente de las OT con el ERP…'), await erpSincronizarClientes()) : null
         const altas = alta?.success ? alta.madres + alta.hijos : 0
-        const altaError = f.kind === 'CONTRATOS' && !alta?.success ? ` · no se pudo dar de alta las OT del ERP${alta?.error ? `: ${alta.error}` : ''} (use «ERP sin alta» en Contratos)` : ''
+        const altaError = !alta?.success ? ` · no se pudo dar de alta las OT del ERP${alta?.error ? `: ${alta.error}` : ''} (use «ERP sin alta» en Contratos)` : ''
         erpRes[i] = { ok: true, text: `${fmtN(r.rows)} filas aplicadas en ERP: OT, guías y stock${altas
-          ? ` · ${fmtN(altas)} OT dadas de alta desde el ERP (${fmtN(alta!.madres)} madre, ${fmtN(alta!.hijos)} subcontratos/errores; sin partida)` : ''}${cli?.corregidas
+          ? ` · ${fmtN(altas)} OT dadas de alta desde el ERP (${fmtN(alta!.madres)} madre, ${fmtN(alta!.hijos)} subcontratos/errores; sin partida)` : ''}${alta?.pesos?.actualizadas ? ` · peso del ERP en ${fmtN(alta.pesos.actualizadas)} OT` : ''}${cli?.corregidas
           ? ` · cliente corregido en ${fmtN(cli.corregidas)} OT${cli.clientes_creados ? ` (${fmtN(cli.clientes_creados)} clientes registrados desde el ERP)` : ''}` : ''}${altaError}` }
       } catch (e) {
         erpRes[i] = { ok: false, text: errorText(e) }

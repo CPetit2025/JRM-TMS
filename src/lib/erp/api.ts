@@ -117,6 +117,7 @@ export async function erpSincronizarClientes(): Promise<{ corregidas: number; cl
 export type ErpAltaResultado = {
   success: boolean; error?: string; simulacion?: boolean; madres: number; hijos: number; clientes_creados: number
   ruc_invalido: number; sin_madre: number; garantias: number; errores: number
+  pesos?: { actualizadas?: number; parciales?: number } | null
   detalle?: { codigo: string; tipo?: string; cliente?: string; cliente_creado?: boolean; error?: string }[]
 }
 export async function erpAltaAutomatica(simular = false): Promise<ErpAltaResultado | null> {

@@ -1,4 +1,5 @@
 "use client"
+import { allPages } from '@/lib/analytics/model'
 import { TransportWorkflow, TorreControlButton } from '@/components/transport/TransportWorkflow'
 import { ReferenceServiceRegistry } from '@/components/transport/ReferenceServiceRegistry'
 import { DataTable } from '@/components/ui/data-table'
@@ -247,7 +248,8 @@ export default function ContractServicesPage() {
       const { data: pData } = await supabase.from('contract_service_peso_apt').select('*')
       setPesoApt(Object.fromEntries(((pData as PesoApt[]) || []).map(p => [p.service_id, p])))
 
-      const { data: cData, error: cError } = await supabase
+      // Por páginas: la API entrega como máximo 1.000 filas por consulta y hay miles de OT
+      const cData = await allPages<unknown>((o, n) => supabase
         .from('contracts')
         .select(`
           id, code, type, parent_contract_id,
@@ -255,9 +257,8 @@ export default function ContractServicesPage() {
           contract_budgets(balance_pen, allocated_pen, concept)
         `)
         .eq('status', 'ACTIVO')
-        .order('code')
-
-      if (cError) throw cError
+        .order('code').order('id')
+        .range(o, o + n - 1), 1000)
       setContracts((cData as unknown as Contract[]) || [])
       applyPreselect(((cData as unknown) as Contract[]) || [])
       const { data: canVoid } = await supabase.rpc('can_void_contract_service')

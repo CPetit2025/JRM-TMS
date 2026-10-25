@@ -45,6 +45,11 @@ export async function POST(request: Request) {
   if (altaOt) {
     const alta = (await admin.rpc('erp_contratos_alta_automatica_core', { p_simular: !!body.simular, p_user: user.id })) as Paso
     if (alta.error) return NextResponse.json({ success: false, error: alta.error.message }, { status: 400 })
+    // Peso de cada OT según el Actualizable (si la base aún no tiene la función, se omite)
+    if (!body.simular && alta.data?.success) {
+      const pesos = (await admin.rpc('erp_contratos_pesos_core')) as Paso
+      if (!pesos.error) return NextResponse.json({ ...alta.data, pesos: pesos.data })
+    }
     return NextResponse.json(alta.data ?? { success: false, error: 'Sin respuesta' })
   }
   // derivar: movimientos del día a partir de los dos archivos (commit = guardar el día como base del siguiente)

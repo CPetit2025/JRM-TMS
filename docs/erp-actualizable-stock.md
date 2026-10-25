@@ -191,6 +191,10 @@ El módulo Contratos usa el Actualizable y el Stock como fuente de verificación
   válido y los hijos cuya madre falta; esos siguen en la lista de documentos sin alta. Cada alta queda en el historial
   (`erp_contract_altas`) y se avisa a Contratos y OTs (categoría Cumplimiento). En esa lista, «Dar de alta
   automáticamente ahora» muestra cuántas se crearán y pide confirmación.
+- **Peso de la OT**: el peso de cada documento (OT madre, subcontrato o error) es la suma de cantidad del contrato ×
+  peso unitario del SKU (del Stock o, si falta, del inventario) en sus líneas con peso. Se completa en la OT cuando no
+  tiene peso o el valor es automático; un peso escrito a mano no se reemplaza. Si algunas líneas no tienen peso unitario,
+  el peso es parcial. Se recalcula con cada Actualizable o Stock nuevo.
 - **Alta asistida**: «ERP sin alta» lista los documentos del ERP que no existen en el TMS (por defecto de OT activas) y
   «Dar de alta» abre el alta con el tipo, la madre y el código. Al escribir un código en el alta se muestra lo que dice el
   ERP y se puede tomar su cliente (se registra si no existe). El destino y la partida los completa una persona: el ERP no
@@ -204,4 +208,4 @@ Funciones: `erp_ref_contratos` (por lotes de hasta 5.000 códigos), `erp_ref_doc
 `erp_contratos_sincronizar_clientes`, `erp_cliente_correcciones`,
 `erp_cliente_correccion_aplicar_cerradas`, `erp_cliente_correccion_revertir`, `erp_contratos_config_json` y
 `erp_contratos_config_set`. Tablas: `erp_contract_settings`, `contract_client_corrections`; columna
-`contracts.garantia_id`, `erp_contract_altas`. Pruebas: C146 y C149.
+`contracts.garantia_id`, `erp_contract_altas`, `erp_contract_pesos`. Pruebas: C146, C149 y C151.

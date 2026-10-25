@@ -1,4 +1,5 @@
 "use client"
+import { allPages } from '@/lib/analytics/model'
 import { TransportWorkflow, TorreControlButton } from '@/components/transport/TransportWorkflow'
 import { DataTable } from '@/components/ui/data-table'
 import { TableActions, type TableAction } from '@/components/ui/table-actions'
@@ -405,12 +406,12 @@ export default function SolicitudesPage() {
       const base = `id, code, type, status, parent_contract_id,
           destination_address, destination_department, destination_province, destination_district,
           clients ( business_name )`
-      let result: { data: unknown[] | null; error: { message: string } | null } = await supabase.from('contracts')
-        .select(`${base}, contract_budgets ( concept, allocated_pen, balance_pen )`).eq('status', 'ACTIVO').order('code')
+      // Por páginas: la API entrega como máximo 1.000 filas por consulta y hay miles de OT (alta desde el ERP)
+      const load = (select: string) => allPages<unknown>((o, n) => supabase.from('contracts').select(select)
+        .eq('status', 'ACTIVO').order('code').order('id').range(o, o + n - 1), 1000)
+      let data: unknown[]
       // Sin acceso a partidas: se busca igual, sin mostrar saldo
-      if (result.error) result = await supabase.from('contracts').select(base).eq('status', 'ACTIVO').order('code')
-      const { data, error } = result
-      if (error) throw error
+      try { data = await load(`${base}, contract_budgets ( concept, allocated_pen, balance_pen )`) } catch { data = await load(base) }
 
       type Row = Contract & { parent_contract_id: string | null; contract_budgets?: { concept: string; allocated_pen: number | null; balance_pen: number | null }[] }
       const rows = (data || []) as unknown as Row[]

@@ -1,4 +1,5 @@
 "use client"
+import { allPages } from '@/lib/analytics/model'
 import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
@@ -426,7 +427,10 @@ export default function ContratosPage() {
         const errorDetails: string[] = []
 
         // Traemos contratos de la BD para mapear CodigoMadre -> UUID en memoria
-        const { data: dbContracts } = await supabase.from('contracts').select('id, code, destination_department, destination_province, destination_district, destination_address')
+        // Por páginas: la API entrega como máximo 1.000 filas por consulta
+        const dbContracts = await allPages<{ id: string; code: string; destination_department: string | null; destination_province: string | null
+          destination_district: string | null; destination_address: string | null }>((o, n) => supabase.from('contracts')
+          .select('id, code, destination_department, destination_province, destination_district, destination_address').order('id').range(o, o + n - 1), 1000)
         const contractMap = new Map(dbContracts?.map(c => [c.code, c]))
 
         // Clientes por RUC (solo dígitos, coincidencia exacta) y por razón social exacta: nunca por parecido,

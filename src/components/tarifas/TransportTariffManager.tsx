@@ -1,4 +1,5 @@
 'use client'
+import { allPages } from '@/lib/analytics/model'
 import { DataTable } from '@/components/ui/data-table'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -69,7 +70,10 @@ export function TransportTariffManager() {
       const [r, c, k] = await Promise.all([
         supabase.from('freight_rates').select('*').order('concept').order('district'),
         supabase.from('clients').select('id, business_name').order('business_name'),
-        supabase.from('contracts').select('id, code, parent_contract_id').is('parent_contract_id', null).order('code'),
+        // Por páginas: la API entrega como máximo 1.000 filas por consulta
+        allPages<{ id: string; code: string; parent_contract_id: string | null }>((o, n) => supabase.from('contracts')
+          .select('id, code, parent_contract_id').is('parent_contract_id', null).order('code').order('id').range(o, o + n - 1), 1000)
+          .then(data => ({ data, error: null as { message: string } | null }), (e: Error) => ({ data: null, error: { message: e.message } })),
       ])
       if (cancel) return
       if (r.error) toast.error('No se pudo cargar el tarifario: ' + r.error.message)
