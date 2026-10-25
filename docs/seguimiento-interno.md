@@ -41,3 +41,18 @@ el mismo nombre conservan identidades distintas.
 Migración: `20261021090000_tracking_presence_scoped.sql`. Pruebas PostgreSQL C108, C123 y C128:
 `node scripts/test-tracking-presence.cjs`. El arnés usa PostgreSQL aislado y un contenido operativo reducido;
 valida las funciones reales de acceso, presencia y notificaciones, sin consultar producción.
+
+## Informe de programación (PDF y correo)
+
+En el **Registro de solicitudes** cada fila tiene una casilla; la del encabezado elige todas las mostradas. «Próxima
+semana» marca los servicios con fecha programada de lunes a domingo de la semana siguiente (respeta los orígenes
+ocultos). La selección se conserva al cambiar de mes, así una semana que cruza de mes se arma completa.
+
+Con servicios elegidos aparecen:
+- **Generar PDF**: A4 horizontal agrupado por fecha programada (salida de la ruta o, sin ruta, la atención solicitada),
+  con solicitud, OT y componentes, cliente o proveedor, servicio, origen y destino, atención solicitada, ruta, unidad,
+  conductor y estado.
+- **Enviar por correo**: arma asunto y mensaje con el resumen por día; «Compartir» adjunta el PDF (Outlook, Correo,
+  WhatsApp) y Outlook web, Gmail o el programa de correo abren el mensaje listo y descargan el PDF para adjuntarlo.
+
+Funciona igual en `/seguimiento` y en el portal público de seguimiento.
