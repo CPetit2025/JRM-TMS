@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/modal'
 import { fmtN, fmtQty } from '@/lib/inventario/format'
+import { ErpReferenceError, referenceBatches } from '@/lib/erp/reference-batches'
 import { erpAltaAutomatica, type ErpAltaResultado } from '@/lib/erp/api'
 import { fmtDate, fmtDateTime, fmtPct } from '@/lib/apt/format'
 
@@ -28,7 +29,7 @@ export interface ErpContratoInfo {
 export type ErpMotivo = 'DESPACHO' | 'GARANTIA' | 'SUBCONTRATO' | 'ERROR' | 'SOLICITUD_TMS' | 'CONTRATO_NUEVO'
 export interface ErpContratosConfig { umbral_dias: number; reactivan: string[]; corte_max_horas: number; updated_at: string | null
   corte_contratos: string | null; desactualizado: boolean; puede_editar: boolean; eventos: Array<{ id: string; label: string }> }
-export type ErpContratosEstado = 'cargando' | 'listo' | 'pendiente' | 'sin_acceso' | 'sin_datos'
+export type ErpContratosEstado = 'cargando' | 'listo' | 'pendiente' | 'sin_acceso' | 'sin_datos' | 'error'
 
 export const DIFERENCIA_LABEL: Record<ErpDiferencia, string> = {
   NO_EN_ERP: 'No está en el ERP', CLIENTE_DISTINTO: 'Cliente distinto al del ERP', RUC_INVALIDO: 'RUC del ERP no válido',
@@ -43,40 +44,29 @@ export const MOTIVO_LABEL: Record<ErpMotivo, string> = {
 }
 
 const isMissing = (code?: string) => code === 'PGRST202' || code === '42883'
-const LOTE = 400
 
-// Referencia por lotes de 400 códigos (la lista completa puede tener miles)
+// Referencia con lotes acotados, dos consultas simultáneas y cancelación de vistas anteriores.
 export function useErpContratos(codes: string[]) {
   const key = [...new Set(codes.filter(Boolean))].sort().join('|')
-  const [state, setState] = useState<{ key: string; estado: ErpContratosEstado; filas: Record<string, ErpContratoInfo>; config: ErpContratosConfig | null }>(
-    { key: '', estado: 'cargando', filas: {}, config: null })
+  const [state, setState] = useState<{ key: string; estado: ErpContratosEstado; filas: Record<string, ErpContratoInfo>; config: ErpContratosConfig | null; error: string | null }>(
+    { key: '', estado: 'cargando', filas: {}, config: null, error: null })
   const [tick, setTick] = useState(0)
   useEffect(() => {
     if (!key) return
-    let alive = true
-    const all = key.split('|')
-    const lotes: string[][] = []
-    for (let i = 0; i < all.length; i += LOTE) lotes.push(all.slice(i, i + LOTE))
-    void Promise.all(lotes.map(l => supabase.rpc('erp_ref_contratos', { p_codes: l }))).then(results => {
-      if (!alive) return
-      const filas: Record<string, ErpContratoInfo> = {}
-      let config: ErpContratosConfig | null = null
-      let estado: ErpContratosEstado = 'listo'
-      for (const { data, error } of results) {
-        if (error) { estado = isMissing(error.code) ? 'pendiente' : 'sin_acceso'; break }
-        const out = data as { success?: boolean; sin_datos?: boolean; filas?: Record<string, ErpContratoInfo>; config?: ErpContratosConfig } | null
-        if (!out?.success) { estado = 'sin_acceso'; break }
-        if (out.sin_datos) estado = 'sin_datos'
-        Object.assign(filas, out.filas || {})
-        config = out.config || config
-      }
-      setState({ key, estado, filas, config })
-    })
-    return () => { alive = false }
+    const controller = new AbortController()
+    void referenceBatches<ErpContratoInfo,ErpContratosConfig>(key.split('|'),
+      (batch, signal) => supabase.rpc('erp_ref_contratos', { p_codes: batch }).abortSignal(signal), controller.signal)
+      .then(result => {
+        if (!controller.signal.aborted) setState({key,estado:result.sin_datos?'sin_datos':'listo',filas:result.filas,config:result.config,error:null})
+      }).catch(error => {
+        if (!controller.signal.aborted) setState({key,estado:error instanceof ErpReferenceError?error.state:'error',filas:{},config:null,
+          error:error instanceof ErpReferenceError?error.message:'No se pudo consultar el ERP. Reintente.'})
+      })
+    return () => controller.abort()
   }, [key, tick])
   const reload = useCallback(() => setTick(t => t + 1), [])
-  if (!key) return { estado: 'listo' as ErpContratosEstado, filas: {}, config: null, reload }
-  return state.key === key ? { ...state, reload } : { estado: 'cargando' as ErpContratosEstado, filas: state.filas, config: state.config, reload }
+  if (!key) return { estado: 'listo' as ErpContratosEstado, filas: {} as Record<string,ErpContratoInfo>, config: null, error:null, reload }
+  return state.key === key ? { ...state, reload } : { estado: 'cargando' as ErpContratosEstado, filas: {} as Record<string,ErpContratoInfo>, config: null, error:null, reload }
 }
 
 // Celda compacta para la lista de Contratos
@@ -123,7 +113,8 @@ export function ActividadBadge({ info, umbral }: { info: ErpContratoInfo; umbral
 }
 
 // Aviso del corte del ERP (desactualizado si supera las horas configuradas)
-export function ErpCorteAviso({ config, estado }: { config: ErpContratosConfig | null; estado: ErpContratosEstado }) {
+export function ErpCorteAviso({ config, estado, error, onRetry }: { config: ErpContratosConfig | null; estado: ErpContratosEstado; error?:string|null; onRetry?:()=>void }) {
+  if (estado === 'error' || estado === 'sin_acceso') return <p role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">{error || (estado==='sin_acceso'?'Sin acceso a la referencia del ERP.':'No se pudo consultar el ERP.')}{onRetry && estado==='error' && <button type="button" className="font-semibold underline" onClick={onRetry}>Reintentar consulta ERP</button>}</p>
   if (estado === 'pendiente') return <p className="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs text-indigo-900">
     <Database className="h-3.5 w-3.5" aria-hidden="true" />Verificación con el ERP pendiente de activar: la base aún no tiene estas consultas (se activan con la migración del despliegue).</p>
   if (estado === 'sin_datos') return <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">Aún no hay carga del Actualizable del ERP.</p>
@@ -197,8 +188,9 @@ export function ErpSinAltaModal({ open, onClose, onAlta, onAuto }: {
   useEffect(() => {
     if (!open) return
     let alive = true
+    const controller = new AbortController()
     const t = setTimeout(() => {
-      void supabase.rpc('erp_ref_sin_alta', { p: JSON.parse(consulta) }).then(({ data, error }) => {
+      void supabase.rpc('erp_ref_sin_alta', { p: JSON.parse(consulta) }).abortSignal(controller.signal).then(({ data, error }) => {
         if (!alive) return
         if (error) { setHecho({ consulta: clave, estado: isMissing(error.code) ? 'pendiente' : 'error' }); return }
         const out = data as { success?: boolean; total: number; por_tipo: Record<string, number>; filas: ErpSinAltaFila[] } | null
@@ -206,7 +198,7 @@ export function ErpSinAltaModal({ open, onClose, onAlta, onAuto }: {
         setRes(out); setHecho({ consulta: clave, estado: 'listo' })
       })
     }, 300)
-    return () => { alive = false; clearTimeout(t) }
+    return () => { alive = false; controller.abort(); clearTimeout(t) }
   }, [open, consulta, clave])
   // Alta automática: primero se simula y se muestra cuántas OT se crearán; luego se confirma
   const runAuto = async (simular: boolean) => {
@@ -269,7 +261,7 @@ export function ErpSinAltaModal({ open, onClose, onAlta, onAuto }: {
                     <td className="px-3 py-2">{fmtDate(f.fecha_contrato)}</td>
                     <td className="px-3 py-2">{fmtDate(f.ultimo_despacho)}</td>
                     <td className="px-3 py-2">{f.activa ? <span className="font-semibold text-sky-800">Activa{f.motivo && f.motivo !== 'DESPACHO' ? ` · ${MOTIVO_LABEL[f.motivo]}` : ''}</span> : <span className="text-slate-500">Inactiva</span>}</td>
-                    <td className="px-3 py-2 text-right">{f.tipo !== 'CONTRATO' && !f.madre_en_tms
+                    <td className="px-3 py-2 text-right">{!f.tipo ? <span className="text-[11px] text-amber-700">Tipo ERP sin equivalencia: requiere revisión</span> : f.tipo !== 'CONTRATO' && !f.madre_en_tms
                       ? <span className="text-[11px] text-amber-700" title="Primero dé de alta la OT madre">Falta la madre {f.ot}</span>
                       : <button type="button" onClick={() => onAlta(f)} className="min-h-9 rounded-lg bg-[#002855] px-3 text-xs font-semibold text-white">Dar de alta</button>}</td>
                   </tr>))}

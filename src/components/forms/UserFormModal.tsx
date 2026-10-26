@@ -80,11 +80,14 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
     try {
       // Validar duplicidad
       if (!editingUser?.id) {
-        const { data: existingDni } = await supabase
+        const { data: existingDni, error: dniError } = await supabase
           .from('profiles')
           .select('id')
-          .eq('document_number', newUser.document_number)
-          .single()
+          .eq('document_number', newUser.document_number.trim())
+          .limit(1)
+          .maybeSingle()
+
+        if (dniError) throw new Error('No se pudo verificar el documento. Reintente antes de crear el usuario.')
 
         if (existingDni) {
           toast.error('El número de documento ya está registrado.')
@@ -92,11 +95,14 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
           return
         }
 
-        const { data: existingUser } = await supabase
+        const { data: existingUser, error: usernameError } = await supabase
           .from('profiles')
           .select('id')
-          .eq('username', newUser.username)
-          .single()
+          .eq('username', newUser.username.trim().toLowerCase())
+          .limit(1)
+          .maybeSingle()
+
+        if (usernameError) throw new Error('No se pudo verificar el usuario. Reintente antes de crearlo.')
 
         if (existingUser) {
           toast.error('El nombre de usuario ya está registrado.')
