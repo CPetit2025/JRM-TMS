@@ -8,8 +8,8 @@ CREATE OR REPLACE FUNCTION public.erp_ot_actividad(p_ots text[])
 RETURNS TABLE (ot text, ult_despacho_erp date, ult_despacho_tms date, ultimo_despacho date, fecha_contrato date, pendiente boolean,
   activa boolean, motivo text, motivo_fecha date)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp SET enable_nestloop = off AS $$
-  WITH cfg AS (
-    SELECT COALESCE((SELECT s.umbral_dias FROM public.erp_contract_settings s WHERE s.id = 1), 90) AS umbral,
+  WITH cfg AS MATERIALIZED (
+    SELECT public.erp_active_import('CONTRATOS') AS import_id, COALESCE((SELECT s.umbral_dias FROM public.erp_contract_settings s WHERE s.id = 1), 90) AS umbral,
       COALESCE((SELECT s.reactivan FROM public.erp_contract_settings s WHERE s.id = 1), ARRAY['GARANTIA', 'SUBCONTRATO', 'ERROR', 'SOLICITUD_TMS']) AS reactivan,
       (now() AT TIME ZONE 'America/Lima')::date AS hoy),
   o AS MATERIALIZED (SELECT DISTINCT x AS ot FROM unnest(COALESCE(p_ots, '{}'::text[])) x WHERE x IS NOT NULL),
@@ -20,8 +20,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp SET enabl
       max(l.fecha_contrato) FILTER (WHERE l.tipo_documento = 'SUBCONTRATO DE VENTAS') AS f_sub,
       max(l.fecha_contrato) FILTER (WHERE l.tipo_documento = 'ERROR DE CONTRATO') AS f_err,
       bool_or(l.cant_pendiente > 0 AND NOT l.cantidades_ausentes) AS pendiente
-    FROM public.erp_contract_lines l
-    WHERE l.import_id = public.erp_active_import('CONTRATOS') AND l.ot IN (SELECT o.ot FROM o) GROUP BY l.ot),
+    FROM public.erp_contract_lines l CROSS JOIN cfg
+    WHERE l.import_id = cfg.import_id AND l.ot IN (SELECT o.ot FROM o) GROUP BY l.ot),
   roots AS MATERIALIZED (
     SELECT o.ot, r.id, r.type::text AS tipo, r.created_at
     FROM o JOIN public.contracts r ON r.code = o.ot AND r.parent_contract_id IS NULL),
