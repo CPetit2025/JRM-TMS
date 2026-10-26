@@ -747,7 +747,7 @@ export default function ContratosPage() {
         </div>
       )}
 
-      <ErpCorteAviso config={erp.config} estado={erp.estado} />
+      <ErpCorteAviso config={erp.config} estado={erp.estado} error={erp.error} onRetry={erp.reload} />
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div role="region" aria-label="Tabla de contratos" tabIndex={0} className="h-full overflow-auto">

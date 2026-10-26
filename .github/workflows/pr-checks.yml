@@ -41,6 +41,8 @@ jobs:
       - run: node scripts/test-apt-upload.cjs
       - run: node scripts/test-inventario-parse.cjs
       - run: node scripts/test-erp-parse.cjs
+      - run: node scripts/test-erp-reference.cjs
+      - run: node --test scripts/test-erp-reference-batches.cjs scripts/test-erp-reference-ui.cjs scripts/test-user-duplicate-check.cjs
       - run: node --test scripts/test-erp-export.cjs
       - run: node --test scripts/test-apt-analitica.cjs
       - run: node scripts/test-apt-begin.cjs
