@@ -84,6 +84,7 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
           .from('profiles')
           .select('id')
           .eq('document_number', newUser.document_number.trim())
+          .limit(1)
           .maybeSingle()
 
         if (dniError) throw new Error('No se pudo verificar el documento. Reintente antes de crear el usuario.')
@@ -98,6 +99,7 @@ export function UserFormModal({ isOpen, onClose, onSuccess, editingUser, roles }
           .from('profiles')
           .select('id')
           .eq('username', newUser.username.trim().toLowerCase())
+          .limit(1)
           .maybeSingle()
 
         if (usernameError) throw new Error('No se pudo verificar el usuario. Reintente antes de crearlo.')
