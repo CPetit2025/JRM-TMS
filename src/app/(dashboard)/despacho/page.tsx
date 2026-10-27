@@ -25,13 +25,14 @@ import { DISPATCH_STATUS_GROUPS } from '@/lib/dispatch-status'
 import { splitFreight } from '@/lib/transport-budget'
 import { isTransportUnit, TRANSPORT_VEHICLE_TYPES } from '@/lib/fleet-filters'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Truck, MapPin, Loader2, Plus, FileText, Tag, Search, Clock, Route, PackageCheck, X } from 'lucide-react'
+import { Truck, MapPin, Loader2, Plus, FileText, Tag, Search, Clock, Route, PackageCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { FormSection, PendingPanel, PendingStatus, type PendingItem } from '@/components/ui/form-section'
 import { QuoteBreakdown } from '@/components/tarifas/TransportTariffManager'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
+import { RouteAuxiliaryPicker, type RouteAssistant } from '@/components/despacho/RouteAuxiliaryPicker'
 import { calculateRouteDistance } from '@/lib/routing'
 import { usePermissions } from '@/hooks/usePermissions'
 import { errorMessage } from '@/lib/caja'
@@ -194,11 +195,12 @@ export default function DespachoPage() {
   // Unidad propia o de un transportista tercero que no usa el app
   const [modalidad, setModalidad] = useState<'PROPIA' | 'TERCERO'>('PROPIA')
   const [tercero, setTercero] = useState<TerceroForm>(TERCERO_VACIO)
-  // Auxiliar opcional de la ruta: fichas activas de Personal (HHEE) y, con el filtro, conductores disponibles
-  const [assistants, setAssistants] = useState<{ person_id: string; profile_id: string | null; driver_id: string | null; name: string; position: string | null; area: string | null; kind: 'AUXILIAR' | 'CONDUCTOR'; busy: string | null }[]>([])
-  // Auxiliares de la ruta (personas de Personal); hasta 6
+  // El catálogo incluye auxiliares y conductores activos de Personal, con disponibilidad explícita.
+  const [assistants, setAssistants] = useState<RouteAssistant[]>([])
+  const [assistantsLoading, setAssistantsLoading] = useState(false)
+  const [assistantsError, setAssistantsError] = useState('')
+  const assistantsLoadId = useRef(0)
   const [auxiliares, setAuxiliares] = useState<string[]>([])
-  const [auxDrivers, setAuxDrivers] = useState(false)
   const [forklift, setForklift] = useState(EMPTY_FORKLIFT)
   const [newDispatch, setNewDispatch] = useState<{
     selected_requests: { id: string, document_number: string }[],
@@ -307,6 +309,33 @@ export default function DespachoPage() {
     }
   }
 
+  const fetchAssistants = useCallback(async () => {
+    const loadId = ++assistantsLoadId.current
+    setAssistantsLoading(true)
+    setAssistantsError('')
+    try {
+      const { data, error } = await supabase.rpc('list_route_assistants', { p_dispatch_id: null })
+      if (error) throw error
+      if (!Array.isArray(data)) throw new Error('La consulta no devolvió la lista de personal.')
+      if (loadId === assistantsLoadId.current) setAssistants(data as RouteAssistant[])
+    } catch (error) {
+      if (loadId === assistantsLoadId.current) setAssistantsError('No se pudo cargar el personal. Pulsa Actualizar personal para reintentar. ' + errorMessage(error))
+    } finally {
+      if (loadId === assistantsLoadId.current) setAssistantsLoading(false)
+    }
+  }, [supabase])
+
+  useEffect(() => {
+    if (!isModalOpen) return
+    const refresh = () => { void fetchAssistants() }
+    const initialLoad = window.setTimeout(refresh, 0)
+    window.addEventListener('focus', refresh)
+    return () => {
+      window.clearTimeout(initialLoad)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [isModalOpen, fetchAssistants])
+
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
@@ -384,8 +413,6 @@ export default function DespachoPage() {
       
       setVehicles((vData || []).filter(vehicle => isTransportUnit(vehicle.type) && (vehicle.status === 'DISPONIBLE' || dispatchData?.some(route => route.vehicle_plate === vehicle.plate))).map(vehicle => ({ ...vehicle, carriers: Array.isArray(vehicle.carriers) ? vehicle.carriers[0] || null : vehicle.carriers })))
       setDrivers((dData || []).map(driver => ({ ...driver, carriers: Array.isArray(driver.carriers) ? driver.carriers[0] || null : driver.carriers })))
-      const { data: aData } = await supabase.rpc('list_route_assistants', { p_dispatch_id: null })
-      setAssistants(Array.isArray(aData) ? aData : [])
 
     } catch (error) {
       toast.error('Error al cargar datos de despacho: ' + errorMessage(error))
@@ -924,29 +951,9 @@ export default function DespachoPage() {
                       />
                     </div>
                     <div className="md:col-span-2">
-                      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-                        <label className="block text-xs font-semibold text-slate-700">Auxiliares <span className="font-normal text-slate-500">(opcional, hasta 6)</span></label>
-                        <label className="flex items-center gap-1.5 text-xs text-slate-600"><input type="checkbox" className="h-4 w-4" checked={auxDrivers}
-                          onChange={e => { setAuxDrivers(e.target.checked); if (!e.target.checked) setAuxiliares(list => list.filter(id => assistants.find(a => a.person_id === id)?.kind !== 'CONDUCTOR')) }} /> Incluir conductores disponibles</label>
-                      </div>
-                      {(() => {
-                        const options = assistants.filter(a => !a.busy && !auxiliares.includes(a.person_id) && (!a.driver_id || a.driver_id !== selectedDriver?.id) && (auxDrivers || a.kind === 'AUXILIAR'))
-                        const label = (a: (typeof assistants)[number]) => `${a.name} · ${a.kind === 'CONDUCTOR' ? 'Conductor' : a.position || 'Personal'}${a.area ? ` · ${a.area}` : ''}`
-                        const busy = assistants.filter(a => a.busy && (auxDrivers || a.kind === 'AUXILIAR')).length
-                        return <>
-                          {auxiliares.length > 0 && <ul aria-label="Auxiliares de la ruta" className="mb-2 flex flex-wrap gap-2">{auxiliares.map(id => {
-                            const a = assistants.find(x => x.person_id === id)
-                            return <li key={id} className="flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 py-1 pl-3 pr-1 text-xs font-semibold text-[#002855]">
-                              {a ? label(a) : 'Persona'}
-                              <button type="button" aria-label={`Quitar a ${a?.name ?? 'auxiliar'}`} onClick={() => setAuxiliares(list => list.filter(x => x !== id))} className="rounded-full p-1 hover:bg-blue-100"><X className="h-3.5 w-3.5" /></button>
-                            </li>
-                          })}</ul>}
-                          {auxiliares.length < 6 && <SearchableSelect value="" onChange={val => { if (val) setAuxiliares(list => list.includes(val) ? list : [...list, val].slice(0, 6)) }}
-                            options={options.map(a => ({ value: a.person_id, label: label(a) }))}
-                            placeholder={!options.length ? 'No hay más personal disponible en /hhee/personal' : auxiliares.length ? 'Agregar otro auxiliar' : 'Sin auxiliar · agregar'} />}
-                          <p className="mt-1 text-[11px] text-slate-500">Lista de Personal (HHEE). Viaja con el conductor; si la ruta sigue en curso fuera del horario, entra en la solicitud automática de horas extras.{busy ? ` ${busy} no disponible(s): ya están en otra ruta activa.` : ''}</p>
-                        </>
-                      })()}
+                      <RouteAuxiliaryPicker people={assistants} value={auxiliares} onChange={setAuxiliares}
+                        driverId={selectedDriver?.id} loading={assistantsLoading} error={assistantsError}
+                        onRefresh={() => { void fetchAssistants() }} />
                     </div>
                   </div>
                 ) : (
