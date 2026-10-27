@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Briefcase, ChevronDown, FileWarning, Layers, MapPin, Search, X } from 'lucide-react'
 
 // Buscador de OT para solicitudes: agrupa cada OT madre (o independiente) con sus subcontratos y errores.
@@ -36,15 +36,17 @@ function Balance({ node }: { node: OtNode }) {
   return <span className={`text-xs font-semibold tabular-nums ${cls}`}>S/ {money(balance)}</span>
 }
 
-export function OtPicker({ nodes, value, onSelect, onClear, disabled }: {
+export function OtPicker({ nodes, value, onSelect, onClear, disabled, loading = false }: {
   nodes: OtNode[]
   value: string
   onSelect: (rootId: string, childId?: string) => void
   onClear: () => void
+  loading?: boolean
   disabled?: boolean
 }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const searchQuery = useDeferredValue(query)
   const box = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -53,29 +55,41 @@ export function OtPicker({ nodes, value, onSelect, onClear, disabled }: {
     return () => document.removeEventListener('mousedown', close)
   }, [])
 
-  const { roots, children } = useMemo(() => {
+  const { roots, children, searchText, codes } = useMemo(() => {
     const kids = new Map<string, OtNode[]>()
     // La garantía no se elige para transporte: su transporte va por el Error de contrato que se generó con ella
-    nodes.forEach(n => { if (n.parent_contract_id && n.type !== 'GARANTIA') kids.set(n.parent_contract_id, [...(kids.get(n.parent_contract_id) || []), n]) })
+    const searchText = new Map<string, string>()
+    const codes = new Map<string, string>()
+    nodes.forEach(n => {
+      searchText.set(n.id, norm([n.code, n.client_name, n.destination_district, n.destination_address].join(' ')))
+      codes.set(n.id, norm(n.code))
+      if (n.parent_contract_id && n.type !== 'GARANTIA') {
+        const siblings = kids.get(n.parent_contract_id) || []
+        if (!kids.has(n.parent_contract_id)) kids.set(n.parent_contract_id, siblings)
+        siblings.push(n)
+      }
+    })
     kids.forEach(list => list.sort((a, b) => a.code.localeCompare(b.code, 'es', { numeric: true })))
-    return { roots: nodes.filter(n => !n.parent_contract_id), children: kids }
+    return { roots: nodes.filter(n => !n.parent_contract_id), children: kids, searchText, codes }
   }, [nodes])
 
   const results = useMemo(() => {
-    const terms = norm(query).split(/\s+/).filter(Boolean)
-    const text = (n: OtNode) => norm([n.code, n.client_name, n.destination_district, n.destination_address].join(' '))
-    const matches = (n: OtNode) => terms.every(t => text(n).includes(t))
-    return roots
-      .map(root => {
-        const kids = children.get(root.id) || []
-        const kidHits = terms.length ? kids.filter(matches) : []
-        return { root, kids, kidHits, hit: !terms.length || matches(root) || kidHits.length > 0 }
-      })
-      .filter(r => r.hit)
-      // Coincidencia exacta de código primero
-      .sort((a, b) => Number(norm(b.root.code) === norm(query)) - Number(norm(a.root.code) === norm(query)))
-      .slice(0, 40)
-  }, [roots, children, query])
+    if (!open) return []
+    const normalizedQuery = norm(searchQuery)
+    const terms = normalizedQuery.split(/\s+/).filter(Boolean)
+    const matches = (n: OtNode) => terms.every(t => searchText.get(n.id)!.includes(t))
+    const hits = []
+    for (const root of roots) {
+      const kids = children.get(root.id) || []
+      const kidHits = terms.length ? kids.filter(matches) : []
+      if (!terms.length || matches(root) || kidHits.length) hits.push({ root, kids, kidHits })
+      if (!terms.length && hits.length === 40) break
+    }
+    // Mantener el código exacto primero sin ordenar todo el catálogo.
+    const exact = hits.findIndex(hit => codes.get(hit.root.id) === normalizedQuery)
+    if (exact > 0) hits.unshift(hits.splice(exact, 1)[0])
+    return hits.slice(0, 40)
+  }, [roots, children, searchText, codes, searchQuery, open])
 
   const selected = roots.find(r => r.id === value)
   const choose = (rootId: string, childId?: string) => { onSelect(rootId, childId); setOpen(false); setQuery('') }
@@ -118,7 +132,7 @@ export function OtPicker({ nodes, value, onSelect, onClear, disabled }: {
           onChange={e => { setQuery(e.target.value); setOpen(true) }}
           onKeyDown={e => {
             if (e.key === 'Escape') setOpen(false)
-            if (e.key === 'Enter') { e.preventDefault(); if (results[0]) choose(results[0].root.id, results[0].kidHits.length === 1 ? results[0].kidHits[0].id : undefined) }
+            if (e.key === 'Enter') { e.preventDefault(); if (query === searchQuery && results[0]) choose(results[0].root.id, results[0].kidHits.length === 1 ? results[0].kidHits[0].id : undefined) }
           }}
           placeholder="Buscar OT por código (madre, sub o error), cliente o destino…"
           className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-9 text-slate-900 outline-none focus:ring-2 focus:ring-[#002855]"
@@ -126,8 +140,8 @@ export function OtPicker({ nodes, value, onSelect, onClear, disabled }: {
         <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
       </div>
       {open && (
-        <div className="absolute z-50 mt-1 max-h-80 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
-          {results.length === 0 ? <p className="p-3 text-sm text-slate-500">Sin OT activas que coincidan.</p> : results.map(({ root, kids, kidHits }) => (
+        <div aria-busy={loading || query !== searchQuery} className="absolute z-50 mt-1 max-h-80 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+          {loading && nodes.length === 0 ? <p className="p-3 text-sm text-slate-500" role="status">Cargando OT…</p> : results.length === 0 ? <p className="p-3 text-sm text-slate-500">Sin OT activas que coincidan.</p> : results.map(({ root, kids, kidHits }) => (
             <div key={root.id} className="border-b border-slate-100 last:border-0">
               <button type="button" onClick={() => choose(root.id)} className="flex w-full items-start gap-3 px-3 py-2 text-left hover:bg-blue-50">
                 <div className="min-w-0 flex-1">

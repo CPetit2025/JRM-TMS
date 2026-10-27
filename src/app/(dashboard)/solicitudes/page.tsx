@@ -170,6 +170,8 @@ export default function SolicitudesPage() {
   const [requests, setRequests] = useState<TransportRequest[]>([])
   const [requestSummaries, setRequestSummaries] = useState<Record<string, RequestSummary>>({})
   const [contracts, setContracts] = useState<Contract[]>([])
+  const [contractsLoading, setContractsLoading] = useState(false)
+  const contractsFetchPending = useRef(false)
   const [contractsLoaded, setContractsLoaded] = useState(false)
   const [autoApproval, setAutoApproval] = useState(false)
   const [, setContractSearch] = useState('')
@@ -402,13 +404,21 @@ export default function SolicitudesPage() {
   }, [supabase])
 
   const fetchContracts = useCallback(async () => {
+    if (contractsFetchPending.current) return
+    contractsFetchPending.current = true
+    setContractsLoading(true)
     try {
       const base = `id, code, type, status, parent_contract_id,
           destination_address, destination_department, destination_province, destination_district,
           clients ( business_name )`
       // Por páginas: la API entrega como máximo 1.000 filas por consulta y hay miles de OT (alta desde el ERP)
-      const load = (select: string) => allPages<unknown>((o, n) => supabase.from('contracts').select(select)
-        .eq('status', 'ACTIVO').order('code').order('id').range(o, o + n - 1), 1000)
+      const load = (select: string) => allPages<unknown>((o, n) => {
+        const query = supabase.from('contracts').select(select)
+          .eq('status', 'ACTIVO').neq('type', 'GARANTIA').range(o, o + n - 1)
+        // Filtro del recurso embebido: conservar también OT sin partida (left join).
+        if (select.includes('contract_budgets')) query.eq('contract_budgets.concept', 'PARTIDA_TRANSPORTE')
+        return query.order('code').order('id')
+      }, 1000)
       let data: unknown[]
       // Sin acceso a partidas: se busca igual, sin mostrar saldo
       try { data = await load(`${base}, contract_budgets ( concept, allocated_pen, balance_pen )`) } catch { data = await load(base) }
@@ -428,6 +438,9 @@ export default function SolicitudesPage() {
       }))
     } catch (error: unknown) {
       toast.error('Error al cargar OTs: ' + errorMessage(error))
+    } finally {
+      contractsFetchPending.current = false
+      setContractsLoading(false)
     }
   }, [supabase])
 
@@ -1120,6 +1133,7 @@ export default function SolicitudesPage() {
 
             <FormSection id="req-ot" step={2} title={referenceRequired ? "OT madre y componentes (opcional)" : "OT madre y componentes"} hint={referenceRequired ? "El recojo o traslado se identifica con OC, OS o RQ. Vincula una OT solo cuando corresponda." : "La entrega se vincula a una OT madre; sus componentes pueden tener o no partida de transporte."}>
               <OtPicker
+                loading={contractsLoading}
                 nodes={otNodes}
                 disabled={isSubmitting || isCreatingComponent}
                 value={newRequest.contract_id}
