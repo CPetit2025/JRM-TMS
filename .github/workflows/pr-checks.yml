@@ -61,6 +61,7 @@ jobs:
       - run: node scripts/test-request-attention.cjs
       - run: node scripts/test-request-inline-components.cjs
       - run: node --test scripts/test-request-ot-picker.cjs
+      - run: node scripts/test-request-ot-catalog.cjs
       - run: node scripts/test-request-reference.mjs
       - run: node scripts/test-reference-service-registry.cjs
       - run: node scripts/test-reference-finance.cjs

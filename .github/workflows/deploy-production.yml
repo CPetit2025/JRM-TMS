@@ -103,6 +103,15 @@ jobs:
       - name: Apply migrations
         run: supabase db push --password "$SUPABASE_DB_PASSWORD"
 
+      - name: Verify request OT catalog performance
+        run: |
+          if ! out=$(supabase db query --linked -f scripts/security/request-ot-performance.sql 2>&1); then
+            echo "$out"
+            exit 1
+          fi
+          echo "$out"
+          echo "$out" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Reconcile APT derived cache
         run: |
           if ! out=$(supabase db query --linked -f scripts/security/apt-refresh-derived.sql 2>&1); then

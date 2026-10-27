@@ -64,3 +64,13 @@ test('shows loading rather than an empty result while catalog is pending', async
   assert.equal(view.root.findByProps({ role: 'status' }).children.join(''), 'Cargando OT…')
   await act(async () => view.unmount())
 })
+
+test('a catalog error offers retry instead of claiming no matching OTs', async () => {
+  let view, retries = 0
+  await act(async () => { view = create(React.createElement(OtPicker, { nodes: [], value: '', error: 'No se pudieron cargar las OT.', onRetry() { retries++ }, onSelect() {}, onClear() {} })) })
+  await act(async () => view.root.findByType('input').props.onFocus())
+  assert.ok(view.root.findByProps({ role: 'alert' }))
+  await act(async () => view.root.findByType('button').props.onClick())
+  assert.equal(retries, 1)
+  await act(async () => view.unmount())
+})

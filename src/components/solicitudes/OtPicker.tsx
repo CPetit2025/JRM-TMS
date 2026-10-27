@@ -36,11 +36,13 @@ function Balance({ node }: { node: OtNode }) {
   return <span className={`text-xs font-semibold tabular-nums ${cls}`}>S/ {money(balance)}</span>
 }
 
-export function OtPicker({ nodes, value, onSelect, onClear, disabled, loading = false }: {
+export function OtPicker({ nodes, value, onSelect, onClear, disabled, loading = false, error, onRetry }: {
   nodes: OtNode[]
   value: string
   onSelect: (rootId: string, childId?: string) => void
   onClear: () => void
+  error?: string
+  onRetry?: () => void
   loading?: boolean
   disabled?: boolean
 }) {
@@ -141,7 +143,9 @@ export function OtPicker({ nodes, value, onSelect, onClear, disabled, loading = 
       </div>
       {open && (
         <div aria-busy={loading || query !== searchQuery} className="absolute z-50 mt-1 max-h-80 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
-          {loading && nodes.length === 0 ? <p className="p-3 text-sm text-slate-500" role="status">Cargando OT…</p> : results.length === 0 ? <p className="p-3 text-sm text-slate-500">Sin OT activas que coincidan.</p> : results.map(({ root, kids, kidHits }) => (
+          {loading && nodes.length === 0 ? <p className="p-3 text-sm text-slate-500" role="status">Cargando OT…</p> : error && nodes.length === 0 ? <div className="p-3 text-sm text-red-700" role="alert">{error}
+            {onRetry && <button type="button" onClick={onRetry} className="ml-2 font-semibold underline">Reintentar</button>}
+          </div> : results.length === 0 ? <p className="p-3 text-sm text-slate-500">Sin OT activas que coincidan.</p> : results.map(({ root, kids, kidHits }) => (
             <div key={root.id} className="border-b border-slate-100 last:border-0">
               <button type="button" onClick={() => choose(root.id)} className="flex w-full items-start gap-3 px-3 py-2 text-left hover:bg-blue-50">
                 <div className="min-w-0 flex-1">
