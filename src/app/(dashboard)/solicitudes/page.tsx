@@ -170,6 +170,7 @@ export default function SolicitudesPage() {
   const [requests, setRequests] = useState<TransportRequest[]>([])
   const [requestSummaries, setRequestSummaries] = useState<Record<string, RequestSummary>>({})
   const [contracts, setContracts] = useState<Contract[]>([])
+  const [contractsError, setContractsError] = useState('')
   const [contractsLoading, setContractsLoading] = useState(false)
   const contractsFetchPending = useRef(false)
   const [contractsLoaded, setContractsLoaded] = useState(false)
@@ -407,36 +408,27 @@ export default function SolicitudesPage() {
     if (contractsFetchPending.current) return
     contractsFetchPending.current = true
     setContractsLoading(true)
+    setContractsError('')
     try {
-      const base = `id, code, type, status, parent_contract_id,
-          destination_address, destination_department, destination_province, destination_district,
-          clients ( business_name )`
-      // Por páginas: la API entrega como máximo 1.000 filas por consulta y hay miles de OT (alta desde el ERP)
-      const load = (select: string) => allPages<unknown>((o, n) => {
-        const query = supabase.from('contracts').select(select)
-          .eq('status', 'ACTIVO').neq('type', 'GARANTIA').range(o, o + n - 1)
-        // Filtro del recurso embebido: conservar también OT sin partida (left join).
-        if (select.includes('contract_budgets')) query.eq('contract_budgets.concept', 'PARTIDA_TRANSPORTE')
-        return query.order('code').order('id')
-      }, 1000)
-      let data: unknown[]
-      // Sin acceso a partidas: se busca igual, sin mostrar saldo
-      try { data = await load(`${base}, contract_budgets ( concept, allocated_pen, balance_pen )`) } catch { data = await load(base) }
-
-      type Row = Contract & { parent_contract_id: string | null; contract_budgets?: { concept: string; allocated_pen: number | null; balance_pen: number | null }[] }
-      const rows = (data || []) as unknown as Row[]
+      // Una lectura dedicada: evita páginas con RLS y relaciones embebidas por cada OT.
+      const { data, error } = await supabase.rpc('get_transport_request_ot_catalog')
+      if (error) throw error
+      type Row = Contract & { parent_contract_id: string | null; allocated_pen: number | null; balance_pen: number | null }
+      const result = data as { success?: boolean; rows?: Row[] } | null
+      if (!result?.success || !Array.isArray(result.rows)) throw new Error('No se pudo cargar el catálogo de OT.')
+      const rows = result.rows
       setContracts(rows.filter(c => !c.parent_contract_id && ['CONTRATO', 'OT_INDEPENDIENTE'].includes(c.type)))
       setContractsLoaded(true)
       setOtNodes(rows.filter(c => !c.parent_contract_id ? ['CONTRATO', 'OT_INDEPENDIENTE'].includes(c.type) : true).map(c => {
-        const budget = (c.contract_budgets || []).find(b => b.concept === 'PARTIDA_TRANSPORTE')
         return {
           id: c.id, code: c.code, type: c.type, parent_contract_id: c.parent_contract_id,
           client_name: (Array.isArray(c.clients) ? c.clients[0]?.business_name : c.clients?.business_name) || null,
           destination_district: c.destination_district || null, destination_address: c.destination_address || null,
-          allocated_pen: budget?.allocated_pen ?? null, balance_pen: budget?.balance_pen ?? null,
+          allocated_pen: c.allocated_pen, balance_pen: c.balance_pen,
         }
       }))
     } catch (error: unknown) {
+      setContractsError('No se pudieron cargar las OT. Reintenta la consulta.')
       toast.error('Error al cargar OTs: ' + errorMessage(error))
     } finally {
       contractsFetchPending.current = false
@@ -1134,6 +1126,8 @@ export default function SolicitudesPage() {
             <FormSection id="req-ot" step={2} title={referenceRequired ? "OT madre y componentes (opcional)" : "OT madre y componentes"} hint={referenceRequired ? "El recojo o traslado se identifica con OC, OS o RQ. Vincula una OT solo cuando corresponda." : "La entrega se vincula a una OT madre; sus componentes pueden tener o no partida de transporte."}>
               <OtPicker
                 loading={contractsLoading}
+                error={contractsError}
+                onRetry={() => { void fetchContracts() }}
                 nodes={otNodes}
                 disabled={isSubmitting || isCreatingComponent}
                 value={newRequest.contract_id}
