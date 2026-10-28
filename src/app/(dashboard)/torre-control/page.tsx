@@ -22,6 +22,8 @@ import { EvidenceGallery } from '@/components/evidence/EvidenceGallery'
 import { toast } from 'sonner'
 import { RouteShareModal } from '@/components/despacho/RouteShareModal'
 import { RouteForkliftInfo } from '@/components/despacho/RouteForkliftInfo'
+import { RouteCrewDetails } from '@/components/despacho/RouteCrewDetails'
+import { ManualOperationalCloseButton } from '@/components/despacho/ManualOperationalCloseButton'
 import { ErpGuiasResumenCard, ErpOtReferencia } from '@/components/erp/ErpReferencia'
 
 interface DispatchRequest {
@@ -153,7 +155,7 @@ export default function TorreControlPage() {
       const { data: refs } = list.length ? await supabase.rpc('get_dispatch_document_references_batch', { p_dispatches: list.map(d => d.id) }) : { data: [] }
       const numbers = documentNumbersByStop([...(docs || []), ...((refs || []) as { dispatch_id: string; request_id: string; doc_type: string; document_number: string }[])])
       if (version !== fetchVersion.current) return
-      setDispatches(list); setRows(((deliveries || []) as DeliveryRow[]).map(r => { const n = numbers.get(`${r.dispatch_id}/${r.request_id}`); return { ...r, ...types.get(r.request_id), guide_number: [...new Set([r.guide_number, ...(n?.guide || '').split(' · ')].filter(Boolean))].join(' · ') || null, note_number: n?.note || null } })); setRefreshedAt(new Date().toISOString()); setLoadError('')
+      setDispatches(list); setSelectedDispatch(current => current ? list.find(item => item.id === current.id) || null : null); setRows(((deliveries || []) as DeliveryRow[]).map(r => { const n = numbers.get(`${r.dispatch_id}/${r.request_id}`); return { ...r, ...types.get(r.request_id), guide_number: [...new Set([r.guide_number, ...(n?.guide || '').split(' · ')].filter(Boolean))].join(' · ') || null, note_number: n?.note || null } })); setRefreshedAt(new Date().toISOString()); setLoadError('')
       if (requestedDispatch.current) {
         const selected = list.find(item => item.id === requestedDispatch.current)
         if (selected) {
@@ -218,7 +220,7 @@ export default function TorreControlPage() {
     if (!isoStr) return '-'
     const d = new Date(isoStr)
     return d.toLocaleString('es-PE', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
+      timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit'
     })
   }
@@ -386,7 +388,7 @@ export default function TorreControlPage() {
       </div>
 
       {shareRoutes.length > 0 && <RouteShareModal ids={shareRoutes} onClose={() => setShareRoutes([])} />}
-      <DeliveryTable onShareRoutes={setShareRoutes} cancelableRoutes={dispatches.filter(d => d.status === 'PROGRAMADO').map(d => d.id)} onCancelRoute={canWrite('despacho') ? id => { const d = dispatches.find(x => x.id === id); if (d) void cancelDispatch(d) } : undefined} rows={rows.filter(row => filteredDispatches.some(d => d.id === row.dispatch_id))} loading={loading} error={loadError} refreshedAt={refreshedAt} onRefresh={() => void fetchDispatches()} onEvidence={setReview} onDispatch={row => setSelectedDispatch(dispatches.find(d => d.id === row.dispatch_id) || null)} onAddService={canAddService ? row => setAddServiceId(row.dispatch_id) : undefined} onProvider={canWrite('despacho') ? row => setThirdId(row.dispatch_id) : undefined} />
+      <DeliveryTable showCrewDetails renderManualClose={(row, closeDetail) => <ManualOperationalCloseButton dispatchId={row.dispatch_id} dispatchNumber={row.dispatch_number} status={dispatches.find(item => item.id === row.dispatch_id)?.status || row.state} onClosed={() => { closeDetail(); setSelectedDispatch(null); void fetchDispatches() }} />} onShareRoutes={setShareRoutes} cancelableRoutes={dispatches.filter(d => d.status === 'PROGRAMADO').map(d => d.id)} onCancelRoute={canWrite('despacho') ? id => { const d = dispatches.find(x => x.id === id); if (d) void cancelDispatch(d) } : undefined} rows={rows.filter(row => filteredDispatches.some(d => d.id === row.dispatch_id))} loading={loading} error={loadError} refreshedAt={refreshedAt} onRefresh={() => void fetchDispatches()} onEvidence={setReview} onDispatch={row => setSelectedDispatch(dispatches.find(d => d.id === row.dispatch_id) || null)} onAddService={canAddService ? row => setAddServiceId(row.dispatch_id) : undefined} onProvider={canWrite('despacho') ? row => setThirdId(row.dispatch_id) : undefined} />
       <AddRouteService dispatchId={addServiceId} onClose={() => setAddServiceId(null)} onChanged={() => { setSelectedDispatch(null); void fetchDispatches() }} />
       <DeliveryReview row={review} onClose={() => setReview(null)} onChanged={() => void fetchDispatches()} />
       <TerceroAvanceModal dispatchId={thirdId} onClose={() => setThirdId(null)} onChanged={() => void fetchDispatches()} />
@@ -395,12 +397,14 @@ export default function TorreControlPage() {
         isOpen={!!selectedDispatch} 
         onClose={() => setSelectedDispatch(null)} 
         title={`Expediente Operativo: ${selectedDispatch?.dispatch_number}`}
-        maxWidth="max-w-5xl"
+        maxWidth="max-w-7xl"
+        footer={<div className="flex justify-end"><button type="button" onClick={() => setSelectedDispatch(null)} className="min-h-10 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-jrm-navy">Cerrar expediente</button></div>}
       >
         {selectedDispatch && (
           <div className="space-y-6">
-            {/* Header Modal */}
-            <div className="flex flex-wrap gap-4 p-5 bg-slate-50 rounded-xl border border-slate-200">
+            {/* Resumen de la ruta */}
+            <div className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-5 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">N.º despacho</p><p className="mt-1 text-lg font-bold text-jrm-navy">{selectedDispatch.dispatch_number}</p><p className="mt-1 text-xs text-slate-500">{selectedDispatch.dispatch_requests?.length || 0} servicio(s)</p></div>
               <div className="flex-1 min-w-[150px]">
                 <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Unidad de Transporte</p>
                 <div className="flex items-center gap-2 mt-1">
@@ -424,20 +428,29 @@ export default function TorreControlPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              {selectedDispatch.status === 'CIERRE_OPERATIVO' && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Unidad y conductor liberados por corte diario a las 00:00 de Lima. Las guías y el cierre financiero permanecen pendientes; no se confirma entrega ni retorno.</p>}
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <h3 className="mb-3 font-bold text-slate-800">Acciones operativas</h3>
+              <div className="flex flex-wrap gap-2">
+              <ManualOperationalCloseButton dispatchId={selectedDispatch.id} dispatchNumber={selectedDispatch.dispatch_number} status={selectedDispatch.status} onClosed={() => { setSelectedDispatch(null); void fetchDispatches() }} />
+              {selectedDispatch.status === 'CIERRE_OPERATIVO' && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">La ruta tiene cierre operativo. Las guías, conformidades y la liquidación financiera conservan su estado; consulta el motivo y el responsable en la bitácora.</p>}
               {canAddService && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA'].includes(selectedDispatch.status) && selectedDispatch.vehicle_plate !== 'EXTERNO' && <button type="button" onClick={() => { setAddServiceId(selectedDispatch.id); setSelectedDispatch(null) }} className="min-h-11 rounded-lg bg-jrm-navy px-4 text-sm font-semibold text-white">Agregar servicio a la ruta</button>}
               <DispatchExecutionActions dispatch={{ ...selectedDispatch, modalidad: rows.find(row => row.dispatch_id === selectedDispatch.id)?.modalidad || selectedDispatch.modalidad }} onChanged={async () => { setSelectedDispatch(null); await fetchDispatches() }} />
               {canWrite('despacho') && (selectedDispatch.modalidad === 'TERCERO' || rows.some(row => row.dispatch_id === selectedDispatch.id && row.modalidad === 'TERCERO')) && <button onClick={() => { setThirdId(selectedDispatch.id); setSelectedDispatch(null) }} className="min-h-11 rounded-lg border border-violet-200 px-4 text-sm font-semibold text-violet-700">Compartir acceso GR · tercero</button>}
               {['documentario', 'packing-list', 'planificacion'].some(module => canRead(module)) && <Link href={`/despacho/documentos?despacho=${selectedDispatch.id}&vista=${selectedDispatch.status === 'PROGRAMADO' ? 'salida' : 'historial'}&desde=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(selectedDispatch.scheduled_departure))}`} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855]">Documentos del servicio</Link>}
               {canWrite('despacho') && selectedDispatch.status === 'PROGRAMADO' && <button type="button" onClick={() => void cancelDispatch(selectedDispatch)} className="min-h-11 rounded-lg border border-red-200 px-4 text-sm font-semibold text-red-700 hover:bg-red-50">Cancelar despacho</button>}
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)]">
+              <RouteCrewDetails key={`${selectedDispatch.id}/${refreshedAt}`} dispatchId={selectedDispatch.id} />
+              <RouteForkliftInfo key={selectedDispatch.id} dispatchId={selectedDispatch.id} />
+            </div>
+
+            <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
               {/* OTs Section */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <h3 className="font-bold text-slate-800 text-sm">Manifiesto de Carga (OTs)</h3>
+                  <h3 className="font-bold text-slate-800 text-sm">Servicios y puntos de la ruta</h3>
                   <span className="bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-md text-xs font-bold border border-slate-200">
                     {selectedDispatch.dispatch_requests?.length || 0} Asignaciones
                   </span>
@@ -448,7 +461,7 @@ export default function TorreControlPage() {
                 </div>}
                 {selectedDispatch.dispatch_requests?.length === 0 ? (
                   <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-lg border border-dashed border-slate-200">
-                    Vacio. No hay OTs asociadas a este recurso.
+                    No hay servicios asociados a esta ruta.
                   </div>
                 ) : (
                   <div className="flex flex-col gap-3">
@@ -489,7 +502,7 @@ export default function TorreControlPage() {
               {/* Timeline Section */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <h3 className="font-bold text-slate-800 text-sm">Bitácora de Telemetría</h3>
+                  <h3 className="font-bold text-slate-800 text-sm">Bitácora operativa y telemetría</h3>
                   <span className="bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-md text-xs font-bold border border-slate-200">
                     {selectedDispatch.dispatch_events?.length || 0} Registros
                   </span>
@@ -512,14 +525,14 @@ export default function TorreControlPage() {
                           <div className={`flex-1 p-3.5 rounded-xl border shadow-sm ${isAlert ? 'bg-red-50 border-red-100' : 'bg-white border-slate-200'}`}>
                             <div className="flex justify-between items-start mb-1.5">
                               <span className={`font-bold text-xs uppercase tracking-wide ${isAlert ? 'text-red-700' : 'text-slate-700'}`}>
-                                {evt.event_type.replace('_', ' ')}
+                                {evt.event_type.replaceAll('_', ' ')}
                               </span>
                               <div className="flex flex-col items-end">
-                                <span className="text-[10px] font-bold text-slate-500">{new Date(evt.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</span>
-                                <span className="text-[9px] text-slate-400">{new Date(evt.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}</span>
+                                <span className="text-[10px] font-bold text-slate-500">{new Date(evt.created_at).toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit' })}</span>
+                                <span className="text-[9px] text-slate-400">{new Date(evt.created_at).toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: 'short' })}</span>
                               </div>
                             </div>
-                            <p className="text-sm text-slate-700 font-medium mb-2">{evt.description || 'Registro automático de sistema'}</p>
+                            <p className="mb-2 whitespace-pre-wrap break-words text-sm font-medium text-slate-700">{evt.description || 'Registro automático de sistema'}</p>
                             <p className="text-[10px] text-slate-400 font-semibold border-t border-slate-100/50 pt-2">
                               Reportado por: {evt.created_by}
                             </p>
@@ -566,11 +579,11 @@ export default function TorreControlPage() {
               </div>
             </div>
 
-            <div className="border-t pt-4">
-              <RouteForkliftInfo key={selectedDispatch.id} dispatchId={selectedDispatch.id} />
-            <DispatchCrewUnloading dispatchId={selectedDispatch.id} status={selectedDispatch.status} canEdit={canWrite('despacho')}
-                stops={rows.filter(row => row.dispatch_id === selectedDispatch.id).map(row => ({ request_id: row.request_id, request_number: row.request_number }))} />
-            </div>
+            <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <summary className="cursor-pointer font-bold text-slate-800">Asignación de tripulación y costos de descarga</summary>
+              <div className="mt-4"><DispatchCrewUnloading dispatchId={selectedDispatch.id} status={selectedDispatch.status} canEdit={canWrite('despacho')}
+                stops={rows.filter(row => row.dispatch_id === selectedDispatch.id).map(row => ({ request_id: row.request_id, request_number: row.request_number }))} /></div>
+            </details>
             <div className="border-t pt-4">
               <EvidenceGallery dispatchId={selectedDispatch.id} title="Evidencias registradas · consulta" />
             </div>
