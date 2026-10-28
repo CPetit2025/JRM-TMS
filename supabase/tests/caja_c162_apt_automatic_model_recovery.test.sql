@@ -10,7 +10,7 @@ BEGIN
  IF (SELECT count(*) FROM cron.job WHERE jobname IN ('apt-modelo-estadia','apt-modelo-flujo') AND active AND schedule='* * * * *')<>2 THEN
   RAISE EXCEPTION 'CAJA C162 FAIL: falta programación automática de ambos modelos'; END IF;
  RAISE EXCEPTION 'CAJA C162 PASS: recuperación APT programada y protegida; estadia_actualizada=%, flujo_actualizado=%',
-  (SELECT COALESCE(rebuilt_at>=(SELECT max(applied_at) FROM public.apt_uploads WHERE status='APLICADA'),true) FROM public.apt_state WHERE id=1),
-  (SELECT COALESCE(rebuilt_at>=(SELECT max(applied_at) FROM public.apt_uploads WHERE status='APLICADA'),true) FROM public.apt_flow_state WHERE id=1);
+  (SELECT rebuilt_at IS NOT NULL AND COALESCE(rebuilt_at>=(SELECT max(applied_at) FROM public.apt_uploads WHERE status='APLICADA'),true) FROM public.apt_state WHERE id=1),
+  (SELECT rebuilt_at IS NOT NULL AND COALESCE(rebuilt_at>=(SELECT max(applied_at) FROM public.apt_uploads WHERE status='APLICADA'),true) FROM public.apt_flow_state WHERE id=1);
 END $$;
 ROLLBACK;
