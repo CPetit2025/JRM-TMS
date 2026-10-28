@@ -47,6 +47,7 @@ jobs:
       - run: node scripts/test-erp-parse.cjs
       - run: node scripts/test-erp-reference.cjs
       - run: node scripts/test-erp-stock-corte.cjs
+      - run: node scripts/test-cubicaje-familias.cjs
       - run: node --test scripts/test-erp-reference-batches.cjs scripts/test-erp-reference-ui.cjs scripts/test-user-duplicate-check.cjs
       - run: node --test scripts/test-erp-export.cjs
       - run: node --test scripts/test-apt-analitica.cjs
