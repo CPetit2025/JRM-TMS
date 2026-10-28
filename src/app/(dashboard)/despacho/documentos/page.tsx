@@ -1,4 +1,5 @@
 'use client'
+import { forkliftScopeLabel } from '@/lib/forklift-stop'
 import { TransportWorkflow, TorreControlButton } from '@/components/transport/TransportWorkflow'
 import { DataTable } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
@@ -539,17 +540,18 @@ function toLocalInput(value: string | null) {
 }
 function ForkliftTimeSettlement({ dispatchId, onSaved }: { dispatchId: string; onSaved: () => Promise<void> }) {
   const supabase = useMemo(() => createClient(), [])
-  const [service, setService] = useState<{ supplier: string; operator: string; rate: number; hours: number | null; amount: number | null; start: string | null; end: string | null } | null>(null)
+  const [service, setService] = useState<{ stop: string; supplier: string; operator: string; rate: number; hours: number | null; amount: number | null; start: string | null; end: string | null } | null>(null)
   const [open, setOpen] = useState(false), [start, setStart] = useState(''), [end, setEnd] = useState(''), [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   useEffect(() => {
     let alive = true
-    void supabase.from('route_forklifts').select('hourly_rate,final_hours,final_amount,service_started_at,service_ended_at,operator_name,suppliers(business_name)').eq('dispatch_id', dispatchId).maybeSingle().then(({ data, error: queryError }) => {
+    void supabase.from('route_forklifts').select('transport_request_id,hourly_rate,final_hours,final_amount,service_started_at,service_ended_at,operator_name,suppliers(business_name),transport_requests(request_number,delivery_address)').eq('dispatch_id', dispatchId).maybeSingle().then(({ data, error: queryError }) => {
       if (!alive) return
       if (queryError) { setError(errorMessage(queryError)); return }
       if (!data) { setService(null); return }
       const vendor = Array.isArray(data.suppliers) ? data.suppliers[0] : data.suppliers
-      const normalized = { supplier: vendor?.business_name || 'Proveedor montacarga', operator: data.operator_name, rate: Number(data.hourly_rate || 0), hours: data.final_hours == null ? null : Number(data.final_hours), amount: data.final_amount == null ? null : Number(data.final_amount), start: data.service_started_at, end: data.service_ended_at }
+      const stop = Array.isArray(data.transport_requests) ? data.transport_requests[0] : data.transport_requests
+      const normalized = { stop: forkliftScopeLabel(data.transport_request_id, { number: stop?.request_number, destination: stop?.delivery_address }), supplier: vendor?.business_name || 'Proveedor montacarga', operator: data.operator_name, rate: Number(data.hourly_rate || 0), hours: data.final_hours == null ? null : Number(data.final_hours), amount: data.final_amount == null ? null : Number(data.final_amount), start: data.service_started_at, end: data.service_ended_at }
       setService(normalized); setStart(toLocalInput(normalized.start)); setEnd(toLocalInput(normalized.end))
     })
     return () => { alive = false }
@@ -568,10 +570,10 @@ function ForkliftTimeSettlement({ dispatchId, onSaved }: { dispatchId: string; o
     } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
   }
   return <section className="rounded-xl border border-violet-200 bg-violet-50 p-4">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-bold text-violet-950">Liquidación del montacarga · {service.supplier}</h3><p className="text-xs text-violet-900">{service.operator} · Tarifa: S/ {service.rate.toFixed(2)} por hora{service.hours != null ? ` · Liquidado: ${service.hours} h = S/ ${(service.amount || 0).toFixed(2)}` : ''}</p></div><button type="button" onClick={() => setOpen(true)} className="min-h-10 rounded-lg border border-violet-300 bg-white px-3 text-sm font-semibold text-violet-950">{service.hours == null ? 'Ingresar inicio y fin' : 'Editar horas del servicio'}</button></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-bold text-violet-950">Liquidación del montacarga · {service.supplier}</h3><p className="text-xs text-violet-900">Punto del servicio: {service.stop}</p><p className="text-xs text-violet-900">{service.operator} · Tarifa: S/ {service.rate.toFixed(2)} por hora{service.hours != null ? ` · Liquidado: ${service.hours} h = S/ ${(service.amount || 0).toFixed(2)}` : ''}</p></div><button type="button" onClick={() => setOpen(true)} className="min-h-10 rounded-lg border border-violet-300 bg-white px-3 text-sm font-semibold text-violet-950">{service.hours == null ? 'Ingresar inicio y fin' : 'Editar horas del servicio'}</button></div>
     {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
     <Modal isOpen={open} onClose={() => setOpen(false)} title="Liquidar servicio de montacarga" footer={<div className="flex justify-end gap-2"><button type="button" onClick={() => setOpen(false)} className="min-h-10 rounded-lg border px-4 text-sm">Cancelar</button><button type="button" onClick={() => void save()} disabled={busy || !start || !end || duration <= 0 || duration > 168} className="min-h-10 rounded-lg bg-violet-800 px-4 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Guardando…' : 'Guardar liquidación'}</button></div>}>
-      <div className="space-y-4 p-1"><p className="text-sm text-slate-600">{service.supplier} · {service.operator} · Tarifa acordada S/ {service.rate.toFixed(2)} por hora.</p><div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-semibold">Hora de inicio<input aria-label="Hora de inicio del servicio de montacarga" type="datetime-local" value={start} onChange={e => setStart(e.target.value)} className="mt-1 min-h-10 w-full rounded-lg border px-3" /></label><label className="text-xs font-semibold">Hora final<input aria-label="Hora final del servicio de montacarga" type="datetime-local" value={end} onChange={e => setEnd(e.target.value)} className="mt-1 min-h-10 w-full rounded-lg border px-3" /></label></div>{start && end && <div className="rounded-lg bg-violet-50 p-3 text-sm">Duración: <b>{duration > 0 && duration <= 168 ? duration.toFixed(2) : 'Verifique las horas'}</b> h · Importe: <b>S/ {(duration > 0 && duration <= 168 ? duration * service.rate : 0).toFixed(2)}</b></div>}{error && <p role="alert" className="text-sm text-red-700">{error}</p>}</div>
+      <div className="space-y-4 p-1"><p className="text-sm text-slate-600">{service.stop} · {service.supplier} · {service.operator} · Tarifa acordada S/ {service.rate.toFixed(2)} por hora.</p><div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-semibold">Hora de inicio<input aria-label="Hora de inicio del servicio de montacarga" type="datetime-local" value={start} onChange={e => setStart(e.target.value)} className="mt-1 min-h-10 w-full rounded-lg border px-3" /></label><label className="text-xs font-semibold">Hora final<input aria-label="Hora final del servicio de montacarga" type="datetime-local" value={end} onChange={e => setEnd(e.target.value)} className="mt-1 min-h-10 w-full rounded-lg border px-3" /></label></div>{start && end && <div className="rounded-lg bg-violet-50 p-3 text-sm">Duración: <b>{duration > 0 && duration <= 168 ? duration.toFixed(2) : 'Verifique las horas'}</b> h · Importe: <b>S/ {(duration > 0 && duration <= 168 ? duration * service.rate : 0).toFixed(2)}</b></div>}{error && <p role="alert" className="text-sm text-red-700">{error}</p>}</div>
     </Modal>
   </section>
 }

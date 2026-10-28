@@ -4,12 +4,15 @@ import { createClient } from '@/lib/supabase/client'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { isValidRuc, type Supplier } from '@/lib/suppliers'
 import { toast } from 'sonner'
-export type Forklift = { enabled: boolean; supplier_id: string; person_id: string; supplier_personnel_id: string; operator_name: string; document_number: string; license_number: string; license_expiration: string; phone: string; notes: string; hourly_rate: string }
-export const EMPTY_FORKLIFT: Forklift = { enabled: false, supplier_id: '', person_id: '', supplier_personnel_id: '', operator_name: '', document_number: '', license_number: '', license_expiration: '', phone: '', notes: '', hourly_rate: '' }
-export const forkliftValid = (f: Forklift) => !f.enabled || (!!(f.supplier_id && f.operator_name.trim().length >= 3) && Number.isFinite(Number(f.hourly_rate)) && Number(f.hourly_rate) > 0)
+export type Forklift = { enabled: boolean; transport_request_id: string; supplier_id: string; person_id: string; supplier_personnel_id: string; operator_name: string; document_number: string; license_number: string; license_expiration: string; phone: string; notes: string; hourly_rate: string }
+export const EMPTY_FORKLIFT: Forklift = { enabled: false, transport_request_id: '', supplier_id: '', person_id: '', supplier_personnel_id: '', operator_name: '', document_number: '', license_number: '', license_expiration: '', phone: '', notes: '', hourly_rate: '' }
+export type ForkliftStop = { id: string; label: string }
+export const forkliftForStops = (f: Forklift, stops: ForkliftStop[]): Forklift => ({ ...f, transport_request_id: stops.some(stop => stop.id === f.transport_request_id) ? f.transport_request_id : !f.transport_request_id && stops.length === 1 ? stops[0].id : '' })
+export const forkliftValid = (f: Forklift, stops?: ForkliftStop[]) => !f.enabled || (!!(f.supplier_id && f.operator_name.trim().length >= 3) && Number.isFinite(Number(f.hourly_rate)) && Number(f.hourly_rate) > 0 && (!stops || stops.some(stop => stop.id === f.transport_request_id)))
 type SupplierPerson = { id: string; supplier_id: string; full_name: string; document_number: string | null; position: string | null; license_number: string | null; license_expiration: string | null; phone: string | null }
 const input = 'min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm'
-export function ForkliftFields({ value: f, onChange }: { value: Forklift; onChange: (value: Forklift) => void }) {
+export function ForkliftFields({ value: f, onChange, stops }: { value: Forklift; onChange: (value: Forklift) => void; stops?: ForkliftStop[] }) {
+ const displayed = stops ? forkliftForStops(f, stops) : f
  const supabase = useMemo(() => createClient(), [])
  const [suppliers, setSuppliers] = useState<Supplier[]>([]), [supplierPeople, setSupplierPeople] = useState<SupplierPerson[]>([])
  const [error, setError] = useState(''), [creating, setCreating] = useState(false), [busy, setBusy] = useState(false)
@@ -35,7 +38,6 @@ export function ForkliftFields({ value: f, onChange }: { value: Forklift; onChan
  }, [supabase])
  useEffect(() => {
   let alive = true
-  setSupplierPeople([])
   if (!f.supplier_id) return () => { alive = false }
   void supabase.from('supplier_personnel').select('id,supplier_id,full_name,document_number,position,license_number,license_expiration,phone')
    .eq('supplier_id', f.supplier_id).eq('is_active', true).order('full_name')
@@ -62,6 +64,11 @@ export function ForkliftFields({ value: f, onChange }: { value: Forklift; onChan
  return <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
   <label className="flex items-center gap-2 text-sm font-semibold text-[#002855]"><input type="checkbox" checked={f.enabled} onChange={e => set('enabled', e.target.checked)} />Montacarga · requiere apoyo</label>
   {f.enabled && <>
+   {stops && <div className="space-y-1">
+    <label className="block text-xs font-semibold text-slate-600">Punto de entrega donde se usará el montacarga *</label>
+    <SearchableSelect ariaLabel="Parada del montacarga" value={displayed.transport_request_id} onChange={id => set('transport_request_id', id)} options={stops.map(stop => ({ value: stop.id, label: stop.label }))} disabled={stops.length === 1 && displayed.transport_request_id === stops[0].id} placeholder="Seleccione una parada de esta ruta…" />
+    <p className="text-xs text-slate-500">El servicio, sus horas y su costo corresponden únicamente a esta parada.</p>
+   </div>}
    {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
    <div className="flex items-center justify-between"><span className="text-xs font-semibold">Proveedor de montacarga *</span><button type="button" onClick={() => setCreating(v => !v)} className="min-h-9 text-xs font-semibold text-blue-800">{creating ? 'Cerrar alta' : '+ Nuevo proveedor'}</button></div>
    <SearchableSelect ariaLabel="Proveedor de montacarga" value={f.supplier_id} onChange={id => onChange({ ...f, supplier_id: id, person_id: '', supplier_personnel_id: '', operator_name: '', document_number: '', license_number: '', license_expiration: '', phone: '' })} options={suppliers.map(s => ({ value: s.id, label: `${s.business_name} · ${s.tax_id}` }))} placeholder="Buscar proveedor por razón social o RUC…" />
@@ -77,7 +84,7 @@ export function ForkliftFields({ value: f, onChange }: { value: Forklift; onChan
     const supplierPerson = supplierPeople.find(x => x.id === id && x.supplier_id === f.supplier_id)
     if (supplierPerson) onChange({ ...f, supplier_personnel_id: supplierPerson.id, person_id: '', operator_name: supplierPerson.full_name, document_number: supplierPerson.document_number || '', license_number: supplierPerson.license_number || '', license_expiration: supplierPerson.license_expiration || '', phone: supplierPerson.phone || '' })
    }} options={supplierPeople.filter(p => p.supplier_id === f.supplier_id).map(p => ({ value: p.id, label: `${p.full_name}${p.document_number ? ` · DNI ${p.document_number}` : ''}${p.license_number ? ` · Lic. ${p.license_number}` : ''}` }))} placeholder={f.supplier_id ? 'Buscar personal registrado del proveedor…' : 'Seleccione primero el proveedor…'} />
-   <button type="button" onClick={() => onChange({ ...EMPTY_FORKLIFT, enabled: true, supplier_id: f.supplier_id })} className="min-h-9 text-xs font-semibold text-blue-800">Ingresar montacarguista externo</button>
+   <button type="button" onClick={() => onChange({ ...EMPTY_FORKLIFT, enabled: true, supplier_id: f.supplier_id, transport_request_id: f.transport_request_id })} className="min-h-9 text-xs font-semibold text-blue-800">Ingresar montacarguista externo</button>
    <div className="grid gap-3 sm:grid-cols-2">
     {(['operator_name', 'document_number', 'license_number', 'license_expiration', 'phone', 'notes'] as const).map((key, i) => <label key={key} className="text-xs font-semibold text-slate-600">{['Montacarguista *', 'DNI / documento', 'Licencia / acreditación', 'Vencimiento de licencia', 'Teléfono', 'Información del servicio'][i]}
      <input aria-label={`Montacarga · ${key}`} className={input} type={key === 'license_expiration' ? 'date' : 'text'} maxLength={key === 'notes' ? 1000 : key === 'phone' || key === 'document_number' ? 50 : key === 'license_number' ? 100 : 200} required={key === 'operator_name'} readOnly={!!f.person_id && (key === 'operator_name' || key === 'document_number')} value={f[key]} onChange={e => set(key, e.target.value)} />

@@ -1,6 +1,6 @@
 "use client"
 import { allPages } from '@/lib/analytics/model'
-import { ForkliftFields, EMPTY_FORKLIFT, forkliftValid } from '@/components/despacho/ForkliftFields'
+import { ForkliftFields, EMPTY_FORKLIFT, forkliftValid, forkliftForStops } from '@/components/despacho/ForkliftFields'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { TransportWorkflow, TorreControlButton } from '@/components/transport/TransportWorkflow'
@@ -220,6 +220,9 @@ export default function DespachoPage() {
 
   const [freightShares, setFreightShares] = useState<Record<string, string>>({})
   const selectedServices = newDispatch.selected_requests.map(selected => pendingRequests.find(r => r.id === selected.id)).filter((r): r is TransportRequest => !!r)
+  const forkliftStops = selectedServices.map(request => ({ id: request.id,
+    label: `${request.request_number} · ${request.delivery_address || request.delivery_district || 'Destino sin dirección'}` }))
+  const routeForklift = forkliftForStops(forklift, forkliftStops)
   const mixedOT = new Set(selectedServices.map(r => r.contract_id || `ORDEN:${r.reference_type || ''}:${r.reference_number || r.id}`)).size > 1
   const selectedDates = [...new Set(selectedServices.map(r => r.required_date?.slice(0,10)).filter((date): date is string => !!date))]
   const customerPickup = selectedServices[0]?.attention_mode === 'RECOJO_CLIENTE'
@@ -465,7 +468,7 @@ export default function DespachoPage() {
     if (selectedReqsFull.some(r => !r.attention_mode || (r.attention_mode === 'RECOJO_CLIENTE') !== isPickup)) {
       toast.error('Defina la modalidad en Solicitudes; no mezcle recojos por cliente y transporte JRM.'); return
     }
-    if (!forkliftValid(forklift)) { toast.error('Complete proveedor, montacarguista y tarifa por hora del montacarga.'); return }
+    if (!forkliftValid(routeForklift, forkliftStops)) { toast.error('Seleccione la parada del montacarga y complete proveedor, montacarguista y tarifa por hora.'); return }
     // El servidor valida la reserva vigente y el gasto autorizado; saldo cero puede ser una reserva propia.
     setIsSubmitting(true)
     if (modalidad === 'TERCERO' && newDispatch.document_type === 'GR') {
@@ -490,7 +493,7 @@ export default function DespachoPage() {
           const authorizedFreight = serviceShare(request.id)
           setPendingRequests(current => current.map(r => r.id === request.id ? { ...r, service_cost: authorizedFreight, operational_approved_pen: Math.round((authorizedFreight + Number(r.unloading_estimate_pen || 0)) * 100) / 100 } : r))
         }
-        const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { mode: 'TERCERO', forklift: forklift.enabled ? forklift : null, auxiliaries: [],
+        const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { mode: 'TERCERO', forklift: routeForklift.enabled ? routeForklift : null, auxiliaries: [],
           p_carrier_id: tercero.carrier_id, p_plate: tercero.placa, p_conductor: tercero.conductor, p_telefono: tercero.telefono,
           p_supplier_vehicle_id: tercero.supplier_vehicle_id || null, p_supplier_personnel_id: tercero.supplier_personnel_id || null,
           p_doc: tercero.doc || null, p_tercero_license_number: tercero.license_number || null,
@@ -570,7 +573,7 @@ export default function DespachoPage() {
 
       const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
       const freightCost = routeFreight
-      const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { mode: 'PROPIA', forklift: forklift.enabled ? forklift : null, auxiliaries: isPickup ? [] : auxiliares,
+      const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { mode: 'PROPIA', forklift: routeForklift.enabled ? routeForklift : null, auxiliaries: isPickup ? [] : auxiliares,
         p_driver_id: isPickup ? null : matches[0]?.id || null,
         p_vehicle_plate: isPickup ? 'EXTERNO' : newDispatch.vehicle_plate,
         p_departure: new Date(newDispatch.scheduled_departure).toISOString(),
@@ -964,7 +967,7 @@ export default function DespachoPage() {
               </div>
             </FormSection>
 
-            <ForkliftFields value={forklift} onChange={setForklift} />
+            <ForkliftFields value={forklift} onChange={setForklift} stops={forkliftStops} />
 
             <FormSection id="ruta-salida" step={3} title="Salida" hint="La fecha de salida se confirma por separado de la fecha requerida de cada servicio.">
               <div className="grid gap-3 md:grid-cols-2">
@@ -1042,6 +1045,7 @@ export default function DespachoPage() {
                 </>}
                 <div className="flex justify-between gap-2"><dt className="text-slate-500">Salida</dt><dd className="font-semibold text-slate-900">{newDispatch.scheduled_departure ? cellDateTime(new Date(newDispatch.scheduled_departure).toISOString()) : '—'}</dd></div>
                 {newDispatch.document_type === 'GR' && <div className="flex justify-between gap-2"><dt className="text-slate-500">Distancia</dt><dd className="font-semibold tabular-nums text-slate-900">{newDispatch.estimated_distance_km !== '' ? `${newDispatch.estimated_distance_km} km` : '—'}</dd></div>}
+                {routeForklift.enabled && <div className="flex justify-between gap-2"><dt className="text-slate-500">Montacarga en</dt><dd className="text-right font-semibold text-slate-900">{forkliftStops.find(stop => stop.id === routeForklift.transport_request_id)?.label || 'Seleccione la parada'}</dd></div>}
                 <div className="flex justify-between gap-2"><dt className="text-slate-500">Flete de ruta</dt><dd className="font-semibold tabular-nums text-slate-900">S/ {routeFreight.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd></div>
               </dl>
             </div>

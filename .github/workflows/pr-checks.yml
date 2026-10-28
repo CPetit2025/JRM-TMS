@@ -30,6 +30,7 @@ jobs:
       - run: node --test scripts/test-gestion-personal-ui.cjs
       - run: node --test scripts/test-hhee-worker-search.cjs
       - run: node scripts/test-route-operations.cjs
+      - run: node scripts/test-forklift-stop.cjs
       - run: node --test scripts/test-route-operations-ui.cjs
       - run: node scripts/test-hhee-postgres.cjs
       - run: node scripts/test-hhee-route-accumulation.cjs
