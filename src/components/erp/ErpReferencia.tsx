@@ -120,6 +120,32 @@ export function ErpOtReferencia({ ot, compact = false }: { ot: string | null | u
   )
 }
 
+// Hasta qué hora es la foto de stock del ERP que se consulta al programar. Sin caché: se pide cada vez que se monta,
+// para que una carga nueva del Excel se vea al reabrir la ruta.
+type StockCorte = { success: true; cut_at: string | null; applied_at: string | null; horas: number | null; max_horas: number; estado: 'VIGENTE' | 'DESACTUALIZADO' | 'SIN_CARGA' }
+export function ErpStockCorteAviso() {
+  const [data, setData] = useState<StockCorte | null>(null)
+  useEffect(() => {
+    let alive = true
+    Promise.resolve(supabase.rpc('erp_stock_corte')).then(({ data: out, error }) => {
+      if (alive && !error && (out as { success?: boolean } | null)?.success) setData(out as StockCorte)
+    }, () => {})
+    return () => { alive = false }
+  }, [])
+  if (!data) return null
+  const hace = data.horas == null ? '' : data.horas < 1 ? ' (hace menos de 1 h)' : data.horas < 48 ? ` (hace ${Math.round(data.horas)} h)` : ` (hace ${Math.round(data.horas / 24 * 10) / 10} días)`
+  const [tone, Icon, text] = data.estado === 'SIN_CARGA'
+    ? ['border-red-200 bg-red-50 text-red-800', XCircle, 'Sin foto de stock del ERP: el stock de las OT no está disponible.'] as const
+    : data.estado === 'DESACTUALIZADO'
+      ? ['border-amber-200 bg-amber-50 text-amber-900', AlertTriangle, `Stock del ERP al ${data.cut_at ? fmtDateTime(data.cut_at) : '—'}${hace}: supera ${data.max_horas} h, cargue el Excel «Stock Bodega Despacho» antes de confirmar cantidades.`] as const
+      : ['border-emerald-200 bg-emerald-50 text-emerald-900', CheckCircle2, `Stock del ERP al ${data.cut_at ? fmtDateTime(data.cut_at) : '—'}${hace}. Lo despachado después de esa hora no se refleja.`] as const
+  return (
+    <p role="status" className={`mb-2 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${tone}`}>
+      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{text}
+    </p>
+  )
+}
+
 // Una línea por OT para listas (p. ej. paradas de una ruta)
 export function ErpOtLinea({ ot }: { ot: string | null | undefined }) {
   const { data } = useRpc<ErpRefOt>('erp_ref_ot', ot ? { p_ot: ot } : null)
@@ -131,7 +157,9 @@ export function ErpOtLinea({ ot }: { ot: string | null | undefined }) {
   return (
     <span className="inline-flex flex-wrap items-center gap-x-2 text-[11px] text-indigo-800" title={`Referencia del ERP (${corte(data.cortes)}), solo lectura`}>
       <Database className="h-3 w-3" aria-hidden="true" />
-      {pend.length ? pend.map(g => <span key={`${g.tipo_documento}|${g.unidad}`}>pend. {fmtQty(g.pendiente)} {g.unidad}{g.stock_coincidente != null ? ` · stock ${fmtQty(g.stock_coincidente)}` : ''}{(g.tipo_documento ?? '').startsWith('CONTRATO') ? '' : ` (${(g.tipo_documento ?? '').toLowerCase()})`}</span>)
+      {pend.length ? pend.map(g => <span key={`${g.tipo_documento}|${g.unidad}`}>pend. {fmtQty(g.pendiente)} {g.unidad}{g.stock_coincidente != null ? ` · stock ${fmtQty(g.stock_coincidente)}` : ''}{(g.tipo_documento ?? '').startsWith('CONTRATO') ? '' : ` (${(g.tipo_documento ?? '').toLowerCase()})`}
+        {g.cobertura != null && g.cobertura < 1 && <b className="ml-1 text-amber-700" title={`Stock del ERP (${data.cortes.STOCK ? `corte ${fmtDateTime(data.cortes.STOCK)}` : 'sin corte'}) menor al pendiente`}>stock cubre {ratio(g.cobertura)}</b>}
+        {g.stock_coincidente == null && <b className="ml-1 text-red-700" title="Sin stock coincidente en la foto del ERP (lote = documento, mismo producto y unidad)">sin stock</b>}</span>)
         : <span>sin pendiente en el ERP</span>}
       {data.guias_total > data.guias_con_ruta && <span className="text-amber-700">{fmtN(data.guias_total - data.guias_con_ruta)} guía(s) ERP sin ruta</span>}
     </span>

@@ -41,7 +41,7 @@ import { checkDispatchEligibility } from '@/lib/eligibility'
 import { ReportarFallaButton } from '@/components/mantenimiento/ReportarFalla'
 import { TerceroFields, TERCERO_VACIO, type TerceroForm } from '@/components/despacho/Tercero'
 import { AddRouteService } from '@/components/despacho/AddRouteService'
-import { ErpOtLinea } from '@/components/erp/ErpReferencia'
+import { ErpOtLinea, ErpStockCorteAviso } from '@/components/erp/ErpReferencia'
 import { OCCUPIED_DISPATCH_STATUSES, routeAssignment } from '@/lib/route-assignment'
 
 type PlanningCarrier = { business_name: string | null }
@@ -812,6 +812,7 @@ export default function DespachoPage() {
           <div className="min-w-0 space-y-4">
             <FormSection id="ruta-servicios" step={1} title="Servicios de la ruta" hint="Combine entregas, recojos y traslados con OT u OC, OS o RQ, con la misma modalidad y sede. El orden de selección es el orden de las paradas."
               aside={<span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800">{newDispatch.selected_requests.length} seleccionadas</span>}>
+              {isModalOpen && <ErpStockCorteAviso />}
               <div className="mb-2 flex flex-wrap gap-2">
                 <label className="relative min-w-0 flex-1 basis-56"><span className="sr-only">Buscar servicios</span><Search aria-hidden className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <input type="search" value={routeSearch} onChange={e => setRouteSearch(e.target.value)} placeholder="Buscar RT, OT, empresa o distrito…" className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#002855]" /></label>
