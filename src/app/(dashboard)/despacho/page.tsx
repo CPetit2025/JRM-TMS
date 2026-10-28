@@ -42,10 +42,11 @@ import { ReportarFallaButton } from '@/components/mantenimiento/ReportarFalla'
 import { TerceroFields, TERCERO_VACIO, type TerceroForm } from '@/components/despacho/Tercero'
 import { AddRouteService } from '@/components/despacho/AddRouteService'
 import { ErpOtLinea, ErpStockCorteAviso } from '@/components/erp/ErpReferencia'
+import { RouteCubicaje } from '@/components/despacho/RouteCubicaje'
 import { OCCUPIED_DISPATCH_STATUSES, routeAssignment } from '@/lib/route-assignment'
 
 type PlanningCarrier = { business_name: string | null }
-type PlanningVehicle = { plate: string; status: string; type: string | null; brand: string | null; model: string | null; assigned_driver_id: string | null; carriers: PlanningCarrier | null }
+type PlanningVehicle = { plate: string; status: string; type: string | null; brand: string | null; model: string | null; assigned_driver_id: string | null; weight_capacity: number | null; volume_capacity: number | null; carriers: PlanningCarrier | null }
 type PlanningDriver = { id: string; first_name: string; last_name: string; document_number: string; profile_id: string | null; carriers: PlanningCarrier | null }
 
 interface TransportRequest {
@@ -408,7 +409,7 @@ export default function DespachoPage() {
       }
 
       // 3. Obtener vehículos y conductores para el select
-      const { data: vData } = await supabase.from('vehicles').select('plate, status, type, brand, model, assigned_driver_id, carriers(business_name)')
+      const { data: vData } = await supabase.from('vehicles').select('plate, status, type, brand, model, assigned_driver_id, weight_capacity, volume_capacity, carriers(business_name)')
         .in('status', ['DISPONIBLE', 'ASIGNADA', 'EN_RUTA', 'EN_OPERACION']).eq('is_active', true).in('type', [...TRANSPORT_VEHICLE_TYPES])
       const { data: dData } = await supabase.from('drivers')
         .select('id, first_name, last_name, document_number, profile_id, carriers(business_name)')
@@ -1050,6 +1051,9 @@ export default function DespachoPage() {
                 <div className="flex justify-between gap-2"><dt className="text-slate-500">Flete de ruta</dt><dd className="font-semibold tabular-nums text-slate-900">S/ {routeFreight.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd></div>
               </dl>
             </div>
+            {newDispatch.document_type === 'GR' && <RouteCubicaje stops={selectedServices.map(r => ({ id: r.id, ot: r.contracts?.code ?? null, estimated_weight: r.estimated_weight }))}
+              capacidadKg={modalidad === 'PROPIA' ? Number(vehicles.find(v => v.plate === newDispatch.vehicle_plate)?.weight_capacity) || null : null}
+              capacidadM3={modalidad === 'PROPIA' ? Number(vehicles.find(v => v.plate === newDispatch.vehicle_plate)?.volume_capacity) || null : null} />}
             <PendingPanel items={routePending} doneText="Revise las paradas y programe la ruta." />
           </aside>
         </form>
