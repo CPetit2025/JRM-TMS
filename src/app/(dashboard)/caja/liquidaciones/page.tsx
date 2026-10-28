@@ -1,4 +1,5 @@
 'use client'
+import { forkliftScopeLabel } from '@/lib/forklift-stop'
 import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
@@ -155,7 +156,7 @@ function SettlementModal({ trip, driverName, canClose, isAdmin, onClose, onDone 
       supabase.from('trip_settlements').select('*').eq('dispatch_id', trip.dispatch_id).maybeSingle(),
       supabase.from('vw_cash_box_balances').select('box_id, name, balance').eq('is_active', true).order('name'),
       supabase.from('expense_categories').select('code, label'),
-      supabase.from('route_forklifts').select('hourly_rate,final_hours,final_amount,supplier_id,suppliers(business_name,tax_id,contact_email)').eq('dispatch_id', trip.dispatch_id).maybeSingle(),
+      supabase.from('route_forklifts').select('transport_request_id,hourly_rate,final_hours,final_amount,supplier_id,suppliers(business_name,tax_id,contact_email),transport_requests(request_number,delivery_address)').eq('dispatch_id', trip.dispatch_id).maybeSingle(),
     ])
     setPreview(p.data); setExpenses(e.data || []); setAdvances(a.data || []); setSettlement(s.data); setBoxes(b.data || [])
     setForklift(f.data as Row | null); setForkliftHours(String(f.data?.final_hours ?? '')); setForkliftRate(String(f.data?.hourly_rate ?? ''))
@@ -196,7 +197,8 @@ function SettlementModal({ trip, driverName, canClose, isAdmin, onClose, onDone 
       pdf.setFontSize(10); pdf.text(`Despacho: ${dispatch.dispatch_number}`, 18, 34); pdf.text(`Fecha de ruta: ${String(dispatch.scheduled_departure || '').slice(0,10)}`, 18, 41)
       pdf.text(`Proveedor: ${vendor.name} · RUC ${vendor.ruc}`, 18, 52); pdf.text(`Operador: ${service.operator}${service.document_number ? ` · DNI ${service.document_number}` : ''}`, 18, 61)
       pdf.text(`Tarifa: ${money(service.rate)} / hora`, 18, 72); pdf.text(`Horas aprobadas: ${service.hours}`, 18, 81); pdf.setFontSize(12); pdf.text(`Total del servicio: ${money(service.amount)}`, 18, 94)
-      if (service.notes) { pdf.setFontSize(10); const lines = pdf.splitTextToSize(`Notas: ${service.notes}`, 170); pdf.text(lines, 18, 107) }
+      pdf.setFontSize(10); pdf.text(pdf.splitTextToSize(`Punto del servicio: ${forkliftScopeLabel(data.transport_request_id, { number: data.stop?.number, destination: data.stop?.destination, otCode: data.stop?.ot_code })}`, 170), 18, 107)
+      if (service.notes) { pdf.setFontSize(10); const lines = pdf.splitTextToSize(`Notas: ${service.notes}`, 170); pdf.text(lines, 18, 135) }
       pdf.setFontSize(8); pdf.text('Documento de sustento para facturación. Emitido por JRM TMS.', 18, 280)
       const filename = `Reporte_montacarga_${dispatch.dispatch_number}.pdf`, blob = pdf.output('blob')
       const file = new File([blob], filename, { type: 'application/pdf' })
@@ -239,6 +241,7 @@ function SettlementModal({ trip, driverName, canClose, isAdmin, onClose, onDone 
           </div>
           {forklift && <section className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-2">
             <h4 className="font-bold text-violet-950">Servicio de montacarga · {forklift.suppliers?.business_name}</h4>
+            <p className="mb-2 text-xs text-slate-600">Punto del montacarga: {forkliftScopeLabel(forklift.transport_request_id, { number: forklift.transport_requests?.request_number, destination: forklift.transport_requests?.delivery_address })}</p>
             {closed ? <p className="text-sm">{forklift.final_hours} h × {money(forklift.hourly_rate)} = <b>{money(forklift.final_amount)}</b></p> : <div className="grid gap-2 sm:grid-cols-3 items-end">
               {forklift.hourly_rate == null ? <label className="text-xs font-semibold">Tarifa por hora (registro anterior)<input aria-label="Tarifa horaria montacarga en liquidación" type="number" min="0.01" step="0.01" value={forkliftRate} onChange={e => setForkliftRate(e.target.value)} className="caja-input mt-1" /></label> : <p className="text-xs text-violet-900">Tarifa acordada: <b>{money(forklift.hourly_rate)} por hora</b></p>}
               <label className="text-xs font-semibold">Horas finales del servicio<input aria-label="Horas finales montacarga" type="number" min="0" max="168" step="0.25" value={forkliftHours} onChange={e => setForkliftHours(e.target.value)} className="caja-input mt-1" /></label>

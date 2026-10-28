@@ -1,7 +1,8 @@
 'use client'
 import { DataTable } from '@/components/ui/data-table'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
+import { RouteCrewDetails } from '@/components/despacho/RouteCrewDetails'
 import { ChevronRight, Download, Eye, FileCheck2, Link2, RefreshCw, Search, Truck } from 'lucide-react'
 import { districtOf } from '@/lib/address'
 import { cellDateTime } from '@/lib/table-format'
@@ -43,9 +44,10 @@ function guideStatus(row: DeliveryRow): { label: string; tone: StatusTone; title
 const hasOt = (row: DeliveryRow) => !!row.ot_code && row.ot_code !== 'Sin OT vinculada'
 const conformityTone = (c: DeliveryRow['conformity']) => c === 'VALIDADA' ? 'text-emerald-700' : c === 'OBSERVADA' || c === 'RECHAZADA' ? 'text-red-700' : c === 'NO_APLICA' || c === 'HISTORICA' ? 'text-slate-600' : 'text-amber-800'
 
-export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, onEvidence, onDispatch, onProvider, onAddService, onShareRoutes, onCancelRoute, cancelableRoutes = [] }: {
+export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, onEvidence, onDispatch, onProvider, onAddService, onShareRoutes, onCancelRoute, cancelableRoutes = [], showCrewDetails = false, renderManualClose }: {
   rows: DeliveryRow[]; loading?: boolean; error?: string | null; refreshedAt?: string | null
   onRefresh: () => void; onEvidence?: (row: DeliveryRow) => void; onDispatch?: (row: DeliveryRow) => void; onProvider?: (row: DeliveryRow) => void; onAddService?: (row: DeliveryRow) => void
+  showCrewDetails?: boolean; renderManualClose?: (row: DeliveryRow, closeDetail: () => void) => ReactNode
   onShareRoutes?: (ids: string[]) => void; onCancelRoute?: (id: string) => void; cancelableRoutes?: string[]
 }) {
   const [search, setSearch] = useState(''), [state, setState] = useState(''), [conformity, setConformity] = useState(''), [service, setService] = useState('')
@@ -66,12 +68,13 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
         case 0: return row.scheduled_departure ? new Date(row.scheduled_departure).toISOString() : ''
         case 1: return (k => k ? SERVICE_KINDS[k].label : '')(deliveryServiceKind(row))
         case 2: return hasOt(row) ? row.ot_code : referenceLabel(row) || ''
-        case 3: return row.plate || ''
-        case 4: return partyName(row, row.client_name, row.supplier_name) || ''
-        case 5: return districtOf(deliveryServiceKind(row) === 'RECOJO' ? row.pickup_address : row.delivery_address)
-        case 6: return documentNumberLabel(row.guide_number, row.note_number).pending ? '' : documentNumberLabel(row.guide_number, row.note_number).text
-        case 7: return guideStatus(row).label
-        case 8: return row.last_event_at ? new Date(row.last_event_at).toISOString() : ''
+        case 3: return row.dispatch_number || ''
+        case 4: return row.plate || ''
+        case 5: return partyName(row, row.client_name, row.supplier_name) || ''
+        case 6: return districtOf(deliveryServiceKind(row) === 'RECOJO' ? row.pickup_address : row.delivery_address)
+        case 7: return documentNumberLabel(row.guide_number, row.note_number).pending ? '' : documentNumberLabel(row.guide_number, row.note_number).text
+        case 8: return guideStatus(row).label
+        case 9: return row.last_event_at ? new Date(row.last_event_at).toISOString() : ''
         default: return ''
       }
     }
@@ -112,15 +115,16 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
     </div>
     {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error} La información anterior puede estar desactualizada.</p>}
     <div className="overflow-x-auto rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
-      <DataTable dense className="w-full min-w-[900px] text-left text-xs" onSortChange={next => { setSort(next ? { ...next, column: next.column - (onShareRoutes ? 1 : 0) } : null); setPage(0) }}>
-        <thead className="bg-slate-50 text-slate-600"><tr>{onShareRoutes && <th><input type="checkbox" aria-label="Seleccionar todas las rutas filtradas" checked={filtered.length > 0 && routeIds(filtered).every(id => selected.includes(id))} onChange={e => { const ids = routeIds(filtered); setSelectedRoutes(prev => e.target.checked ? [...new Set([...prev, ...ids])] : prev.filter(id => !ids.includes(id))) }} /></th>}{['Fecha', 'Servicio', 'OT', 'Unidad', 'Empresa', 'Destino', 'GR / Nota', 'Conformidad', 'Último evento', 'Acciones'].map((label, i) => <th key={label} className={`whitespace-nowrap font-semibold ${i === 9 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead>
+      <DataTable dense className="w-full min-w-[1060px] text-left text-xs" onSortChange={next => { setSort(next ? { ...next, column: next.column - (onShareRoutes ? 1 : 0) } : null); setPage(0) }}>
+        <thead className="bg-slate-50 text-slate-600"><tr>{onShareRoutes && <th><input type="checkbox" aria-label="Seleccionar todas las rutas filtradas" checked={filtered.length > 0 && routeIds(filtered).every(id => selected.includes(id))} onChange={e => { const ids = routeIds(filtered); setSelectedRoutes(prev => e.target.checked ? [...new Set([...prev, ...ids])] : prev.filter(id => !ids.includes(id))) }} /></th>}{['Fecha', 'Servicio', 'OT', 'N.º despacho', 'Unidad', 'Empresa', 'Destino', 'GR / Nota', 'Conformidad', 'Último evento', 'Acciones'].map((label, i) => <th key={label} className={`whitespace-nowrap font-semibold ${i === 10 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead>
         <tbody className="divide-y">
-          {!visible.length && <tr><td colSpan={onShareRoutes ? 11 : 10} className="p-8 text-center text-slate-500">{loading ? 'Cargando entregas…' : 'No hay entregas con los filtros seleccionados.'}</td></tr>}
+          {!visible.length && <tr><td colSpan={onShareRoutes ? 12 : 11} className="p-8 text-center text-slate-500">{loading ? 'Cargando entregas…' : 'No hay entregas con los filtros seleccionados.'}</td></tr>}
           {visible.map(row => { const pickup = deliveryServiceKind(row) === 'RECOJO', point = pickup ? row.pickup_address : row.delivery_address, doc = guideStatus(row); return <tr key={`${row.dispatch_id}/${row.request_id}`} className="align-middle hover:bg-slate-50">
             {onShareRoutes && <td><input type="checkbox" aria-label={`Seleccionar ruta ${row.dispatch_number} · ${row.request_number}`} checked={selected.includes(row.dispatch_id)} onChange={e => toggleRoute(row.dispatch_id, e.target.checked)} /></td>}
             <td className="whitespace-nowrap text-slate-700" title={deliveryTime(row.scheduled_departure)}>{cellDateTime(row.scheduled_departure)}</td>
             <td><ServiceTypeBadge kind={deliveryServiceKind(row)} /></td>
             <td className="whitespace-nowrap font-bold text-jrm-navy" title={`Solicitud ${row.request_number} · Despacho ${row.dispatch_number}`}>{hasOt(row) ? `OT ${row.ot_code}` : referenceLabel(row) || 'Sin OT'}</td>
+            <td className="whitespace-nowrap font-semibold tabular-nums text-jrm-navy">{row.dispatch_number || 'Sin número'}</td>
             <td className="whitespace-nowrap font-bold" title={`${row.driver_name || (row.modalidad === 'RECOJO_CLIENTE' ? 'Unidad del cliente' : 'Sin conductor')}${row.modalidad === 'TERCERO' ? ` · Tercero${row.carrier_name ? ` (${row.carrier_name})` : ''}` : ''}`}>{row.plate || 'Sin placa'}{row.modalidad === 'TERCERO' && <span className="ml-1 text-[11px] font-semibold text-violet-700">T</span>}</td>
             <td className="max-w-36">{(() => { const party = partyName(row, row.client_name, row.supplier_name); return <p className="truncate font-semibold text-slate-800" title={party ? `${requiresSupplier(row) ? 'Proveedor' : 'Cliente'}: ${party}` : undefined}>{party || (requiresSupplier(row) ? 'Proveedor sin vincular' : 'Cliente sin vincular')}</p> })()}</td>
             <td className="max-w-32"><p className="truncate text-slate-700" title={`${pickup ? 'Origen' : 'Destino'}: ${point}`}>{districtOf(point)}</p></td>
@@ -138,8 +142,9 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
       </DataTable>
     </div>
     <div className="flex items-center justify-between gap-2 text-xs text-slate-500"><span>{filtered.length} entregas · Página {current + 1} de {pages}</span><div className="flex gap-2"><button type="button" disabled={current === 0} onClick={() => setPage(current - 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Anterior</button><button type="button" disabled={current + 1 >= pages} onClick={() => setPage(current + 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Siguiente</button></div></div>
-    <Modal isOpen={!!history} onClose={() => setHistory(null)} title={history ? `Detalle · ${history.ot_code ? `OT ${history.ot_code}` : 'Sin OT'} · ${history.request_number}` : 'Detalle'} maxWidth="max-w-3xl"
+    <Modal isOpen={!!history} onClose={() => setHistory(null)} title={history ? `Detalle · Despacho ${history.dispatch_number} · ${history.request_number}` : 'Detalle'} maxWidth="max-w-7xl"
       footer={history && <div className="flex flex-wrap justify-end gap-2">
+        {renderManualClose?.(history, () => setHistory(null))}
         {onAddService && canAddRouteService({ status: history.state, plate: history.plate, scheduled_departure: history.scheduled_departure }) && <button type="button" onClick={() => { const r = history; setHistory(null); onAddService(r) }} className="min-h-10 rounded-lg bg-jrm-navy px-3 text-sm font-semibold text-white">Agregar servicio a la ruta</button>}
         {onProvider && history.modalidad === 'TERCERO' && <button type="button" onClick={() => { const r = history; setHistory(null); onProvider(r) }} className="min-h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-blue-700">Compartir acceso GR · tercero</button>}
         {onDispatch && <button type="button" onClick={() => { const r = history; setHistory(null); onDispatch(r) }} className="flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-jrm-navy"><Truck className="h-4 w-4" />Ver despacho {history.dispatch_number}</button>}
@@ -147,24 +152,42 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
       </div>}>
       {history && <div className="space-y-4 text-sm">
         <div className="flex flex-wrap items-center gap-2"><DeliverySignal state={history.state} /><span className={`font-semibold ${conformityTone(history.conformity)}`}>Conformidad: {conformityLabels[history.conformity]}</span></div>
-        <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-          {([
-            ['Tipo de servicio', (k => k ? SERVICE_KINDS[k].label : 'Sin identificar')(deliveryServiceKind(history))],
-            ['OT', hasOt(history) ? history.ot_code : 'Sin OT'], ['Documento', referenceLabel(history) || 'Sin documento'], ['Solicitud', history.request_number], ['Despacho', history.dispatch_number],
-            ['Cliente', history.client_name || 'Cliente sin vincular'], ['Proveedor', history.supplier_name || (requiresSupplier(history) ? 'Proveedor sin vincular' : 'No aplica')], ['Programación', deliveryTime(history.scheduled_departure)],
-            ['Llegada a destino', history.arrived_at ? deliveryTime(history.arrived_at) : 'Sin registrar'],
-            ['Origen', history.pickup_address || '—'], ['Destino', history.delivery_address || '—'],
-            ['Unidad', history.plate || 'Sin placa'], ['Conductor', history.driver_name || 'Sin conductor'],
-            ['Proveedor / modalidad', history.carrier_name || (history.modalidad === 'RECOJO_CLIENTE' ? 'Recojo por cliente' : history.modalidad === 'TERCERO' ? 'Tercero' : 'Transporte propio')],
-            ['Guía de entrega', history.guide_number || 'Pendiente'],
-            ['Documentos de salida', !history.documents_state || history.documents_state === 'NO_REQUERIDO' ? 'No requeridos' : history.documents_state === 'LISTO' ? 'Listos' : history.documents_state === 'REEMISION' ? 'Por reemitir' : 'Pendientes'],
-            ['Fotos de entrega', `${history.photos_count}`],
-            ['Último evento', deliveryTime(history.last_event_at)],
-            ...(history.modalidad !== 'TERCERO' && history.modalidad !== 'RECOJO_CLIENTE' ? [['GPS', history.gps_at ? `${refreshedAt && Date.parse(refreshedAt) - Date.parse(history.gps_at) > 180000 ? 'Desactualizado · ' : ''}${deliveryTime(history.gps_at)}` : 'Sin señal registrada']] : []),
-          ] as [string, string][]).map(([k, v]) => <div key={k} className="min-w-0"><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{k}</dt><dd className="mt-0.5 break-words text-slate-800">{v}</dd></div>)}
-        </dl>
-        <div><h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Historial de avance</h3>
-          {history.events.length ? <ol className="space-y-3">{history.events.map((event, i) => <li key={`${event.at}/${i}`} className="border-l-2 border-blue-200 pl-3"><p className="text-xs text-slate-500">{deliveryTime(event.at)}</p><p className="font-semibold">{event.type.replaceAll('_', ' ')}</p>{event.description && <p>{event.description}</p>}</li>)}</ol> : <p className="text-slate-500">Sin eventos registrados.</p>}</div>
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(18rem,1fr)]">
+          <div className="min-w-0 space-y-5">
+            {([
+              ['Servicio y referencias', [
+                ['Tipo de servicio', (k => k ? SERVICE_KINDS[k].label : 'Sin identificar')(deliveryServiceKind(history))],
+                ['N.º despacho', history.dispatch_number], ['Solicitud', history.request_number],
+                ['OT', hasOt(history) ? history.ot_code : 'Sin OT'], ['Documento de referencia', referenceLabel(history) || 'Sin documento'],
+                ['Cliente', history.client_name || 'Cliente sin vincular'], ['Proveedor', history.supplier_name || (requiresSupplier(history) ? 'Proveedor sin vincular' : 'No aplica')],
+              ]],
+              ['Ruta y programación', [
+                ['Programación', deliveryTime(history.scheduled_departure)], ['Llegada a destino', history.arrived_at ? deliveryTime(history.arrived_at) : 'Sin registrar'],
+                ['Origen', history.pickup_address || '—'], ['Destino', history.delivery_address || '—'],
+              ]],
+              ['Unidad y conductor', [
+                ['Unidad', history.plate || 'Sin placa'], ['Conductor', history.driver_name || 'Sin conductor'],
+                ['Proveedor / modalidad', history.carrier_name || (history.modalidad === 'RECOJO_CLIENTE' ? 'Recojo por cliente' : history.modalidad === 'TERCERO' ? 'Tercero' : 'Transporte propio')],
+                ...(history.modalidad !== 'TERCERO' && history.modalidad !== 'RECOJO_CLIENTE' ? [['GPS', history.gps_at ? `${refreshedAt && Date.parse(refreshedAt) - Date.parse(history.gps_at) > 180000 ? 'Desactualizado · ' : ''}${deliveryTime(history.gps_at)}` : 'Sin señal registrada']] : []),
+              ]],
+              ['Documentos y conformidad', [
+                ['Guía de entrega', history.guide_number || 'Pendiente'],
+                ['Documentos de salida', !history.documents_state || history.documents_state === 'NO_REQUERIDO' ? 'No requeridos' : history.documents_state === 'LISTO' ? 'Listos' : history.documents_state === 'REEMISION' ? 'Por reemitir' : 'Pendientes'],
+                ['Conformidad', conformityLabels[history.conformity]], ['Fotos de entrega', `${history.photos_count}`],
+              ]],
+            ] as [string,[string,string][]][]).map(([title,fields]) => <section key={title} className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+              <h3 className="mb-3 font-bold text-slate-800">{title}</h3><dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                {fields.map(([name,value]) => <div key={name} className="min-w-0"><dt className="text-xs font-medium text-slate-500">{name}</dt><dd className="mt-0.5 whitespace-pre-wrap break-words text-slate-800">{value}</dd></div>)}
+              </dl>
+            </section>)}
+            {showCrewDetails && <RouteCrewDetails key={history.dispatch_id} dispatchId={history.dispatch_id} />}
+          </div>
+          <section className="min-w-0 rounded-xl border border-slate-200 p-4">
+            <h3 className="mb-1 font-bold text-slate-800">Bitácora e historial de avance</h3>
+            <p className="mb-4 text-xs text-slate-500">Última actualización: {deliveryTime(history.last_event_at)}</p>
+            {history.events.length ? <ol className="space-y-4">{history.events.map((event,index) => <li key={`${event.at}/${index}`} className="border-l-2 border-blue-200 pl-3"><p className="text-xs text-slate-500">{deliveryTime(event.at)}</p><p className="font-semibold">{event.type.replaceAll('_',' ')}</p>{event.description && <p className="mt-1 whitespace-pre-wrap break-words text-slate-700">{event.description}</p>}</li>)}</ol> : <p className="text-slate-500">Sin eventos registrados.</p>}
+          </section>
+        </div>
       </div>}
     </Modal>
   </section>

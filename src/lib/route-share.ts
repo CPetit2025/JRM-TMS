@@ -1,9 +1,10 @@
+import { forkliftScopeLabel } from './forklift-stop'
 import { deliveryTime, type DeliveryRow } from './delivery'
 export type RouteShare = {
  id: string; number: string; plate: string; status: string; departure: string; driver: string | null; driver_document: string | null
  driver_license: string | null; license_category: string | null; license_expiration: string | null; driver_phone: string | null
  auxiliaries: { name: string; code: string; document_number: string | null; position: string | null }[]
- forklift: { supplier: string; tax_id: string; operator_name: string; document_number: string | null; license_number: string | null; license_expiration: string | null; phone: string | null; notes: string | null } | null
+ forklift: { transport_request_id?: string | null; request_number?: string | null; destination_address?: string | null; ot_code?: string | null; supplier: string; tax_id: string; operator_name: string; document_number: string | null; license_number: string | null; license_expiration: string | null; phone: string | null; notes: string | null } | null
  services: (DeliveryRow & { cargo_description?: string | null; pickup_contact?: string | null; pickup_phone?: string | null; delivery_contact?: string | null; delivery_phone?: string | null; requester_name?: string | null })[]
 }
 export const routeIds = (rows: Pick<DeliveryRow, 'dispatch_id'>[]) => [...new Set(rows.map(r => r.dispatch_id))]
@@ -15,7 +16,7 @@ export function routeShareText(routes: RouteShare[]): string {
   ...(r.driver_phone ? [`Teléfono: ${r.driver_phone}`] : []),
   ...[...new Set(r.services.map(s => s.carrier_name).filter(Boolean))].map(name => `Transportista: ${name}`),
   ...r.auxiliaries.map(a => `Auxiliar: ${a.code} · ${a.name} · DNI: ${a.document_number || 'Sin registrar'}${a.position ? ` · ${a.position}` : ''}`),
-  ...(r.forklift ? [`Montacarga: ${r.forklift.supplier} · RUC ${r.forklift.tax_id}`, `Montacarguista: ${r.forklift.operator_name} · DNI: ${r.forklift.document_number || 'Sin registrar'} · Licencia: ${r.forklift.license_number || 'Sin registrar'}${r.forklift.license_expiration ? ` · Vence: ${r.forklift.license_expiration}` : ''}`, ...[r.forklift.phone, r.forklift.notes].filter(Boolean)] : []),
+  ...(r.forklift ? [`Punto del montacarga: ${forkliftScopeLabel(r.forklift.transport_request_id, { number: r.forklift.request_number, otCode: r.forklift.ot_code, destination: r.forklift.destination_address })}`, `Montacarga: ${r.forklift.supplier} · RUC ${r.forklift.tax_id}`, `Montacarguista: ${r.forklift.operator_name} · DNI: ${r.forklift.document_number || 'Sin registrar'} · Licencia: ${r.forklift.license_number || 'Sin registrar'}${r.forklift.license_expiration ? ` · Vence: ${r.forklift.license_expiration}` : ''}`, ...[r.forklift.phone, r.forklift.notes].filter(Boolean)] : []),
   ...r.services.map(s => [`Servicio ${s.request_number}${s.ot_code ? ` · OT ${s.ot_code}` : ''}`, `Cliente: ${s.client_name || 'Sin registrar'}${s.supplier_name ? ` · Proveedor: ${s.supplier_name}` : ''}`,
    `Origen: ${s.pickup_address || 'Sin registrar'}`, `Destino: ${s.delivery_address || 'Sin registrar'}`,
    ...[s.cargo_description && `Carga: ${s.cargo_description}`, s.requester_name && `Solicitante: ${s.requester_name}`,

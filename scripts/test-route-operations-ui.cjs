@@ -139,3 +139,85 @@ test('assistant load errors remain visible and selected people can be removed', 
  assert.deepEqual(selected, [[]])
  await act(async () => view.unmount())
 })
+
+test('a forklift on a three-stop route requires one explicit stop and never follows another OT silently', async () => {
+ const { ForkliftFields, EMPTY_FORKLIFT, forkliftValid, forkliftForStops } = load('src/components/despacho/ForkliftFields.tsx')
+ const stops = [{ id:'s1',label:'S-1 · Entrega A' },{ id:'s2',label:'S-2 · Entrega B' },{ id:'s3',label:'S-3 · Entrega C' }]
+ let value = { ...EMPTY_FORKLIFT, enabled:true, supplier_id:'supplier1', operator_name:'Operador prueba', hourly_rate:'75' }
+ assert.equal(forkliftValid(value,stops),false)
+ let view
+ const render = () => React.createElement(ForkliftFields,{ value, stops, onChange:next => { value=next } })
+ await act(async () => { view=create(render()) })
+ await act(async () => view.root.findByProps({ 'aria-label':'Parada del montacarga' }).props.onClick())
+ const option=view.root.findAllByType('button').find(button => button.children.includes('S-2 · Entrega B'))
+ await act(async () => option.props.onClick())
+ assert.equal(value.transport_request_id,'s2'); assert.equal(forkliftValid(value,stops),true)
+ assert.equal(forkliftForStops(value,[stops[0],stops[2]]).transport_request_id,'','removing the chosen stop clears scope instead of charging another stop')
+ assert.equal(forkliftValid(forkliftForStops(value,[stops[0],stops[2]]),[stops[0],stops[2]]),false)
+ assert.equal(forkliftForStops(EMPTY_FORKLIFT,[stops[2]]).transport_request_id,'s3','single-stop routes resolve their only stop')
+ await act(async () => view.update(render()))
+ const external=view.root.findAllByType('button').find(button => button.children.includes('Ingresar montacarguista externo'))
+ await act(async () => external.props.onClick())
+ assert.equal(value.transport_request_id,'s2','changing the operator preserves the chosen delivery')
+ await act(async () => view.unmount())
+})
+
+test('route share identifies the forklift stop and keeps its cost out of operational messages', () => {
+ const base = { id:'r',number:'R1',plate:'JRM-001',status:'PROGRAMADO',departure:'2026-10-20T12:00:00Z',driver:'Conductor',auxiliaries:[],services:[row('R1','S1'),row('R1','S2'),row('R1','S3')],forklift:{ supplier:'Proveedor',tax_id:'20111111111',operator_name:'Operador',transport_request_id:'S2',request_number:'S-2',destination_address:'Entrega B',ot_code:'OT-B',final_amount:150 } }
+ const text=routeShareText([base])
+ assert.ok(text.includes('Punto del montacarga: S-2 · OT OT-B · Entrega B'))
+ assert.equal(text.split('Montacarga: Proveedor').length-1,1)
+ assert.ok(!text.includes('150'))
+ assert.ok(routeShareText([{...base,forklift:{...base.forklift,transport_request_id:null,request_number:null}}]).includes('Servicio general de ruta (histórico)'))
+})
+
+test('supplier report shows one forklift amount for its selected stop and OT on a three-stop route', async () => {
+ const queries=[]
+ const record={ transport_request_id:'s2',dispatch_id:'r1',supplier_id:'vendor',operator_name:'Operador',document_number:null,hourly_rate:75,final_hours:2,final_amount:150,service_started_at:null,service_ended_at:null,
+  suppliers:{business_name:'Proveedor',tax_id:'20111111111'},dispatches:{dispatch_number:'R-3-PARADAS',scheduled_departure:'2026-10-20T12:00:00Z',status:'CERRADO',vehicle_plate:'JRM-001'},
+  transport_requests:{request_number:'S-2',delivery_address:'Entrega B',contract_id:'otb',contracts:{code:'OT-B'}} }
+ const client={from:table=>{
+  const query={ select:fields=>{queries.push([table,fields]);return query},eq:()=>query,gte:()=>query,lte:()=>query,order:()=>query,limit:()=>query,
+   then:(resolve,reject)=>Promise.resolve({data:table==='route_forklifts'?[record]:[],error:null}).then(resolve,reject) }
+  return query
+ }}
+ const { SupplierServiceReport }=load('src/components/analytics/SupplierServiceReport.tsx',{'@/lib/supabase/client':{createClient:()=>client}})
+ let view; await act(async()=>{view=create(React.createElement(SupplierServiceReport))})
+ const rows=view.root.findByType('tbody').findAllByType('tr')
+ assert.equal(rows.length,1,'three route stops must not multiply a single provider service')
+ const json=JSON.stringify(rows[0].toJSON ? rows[0].toJSON() : view.toJSON())
+ assert.ok(json.includes('S-2 · OT OT-B · Entrega B'))
+ assert.equal((json.match(/S\/ 150\.00/g)||[]).length,1,'charge appears once, not once per stop')
+ assert.ok(!json.includes('Entrega A')); assert.ok(!json.includes('Entrega C'))
+ assert.ok(queries.find(([table,fields])=>table==='route_forklifts' && fields.includes('transport_requests(')))
+ await act(async()=>view.unmount())
+})
+
+test('removing chosen B from a two-stop route requires confirming A even after changing operator data', async () => {
+ const { ForkliftFields, EMPTY_FORKLIFT, forkliftValid, forkliftForStops } = load('src/components/despacho/ForkliftFields.tsx')
+ const remaining=[{id:'a',label:'S-A · Entrega A'}]
+ let value={...EMPTY_FORKLIFT,enabled:true,transport_request_id:'b',supplier_id:'supplier1',operator_name:'Operador',hourly_rate:'75'}
+ assert.equal(forkliftForStops(value,remaining).transport_request_id,'')
+ let view
+ const render=()=>React.createElement(ForkliftFields,{value,stops:remaining,onChange:next=>{value=next}})
+ await act(async()=>{view=create(render())})
+ assert.equal(view.root.findByProps({'aria-label':'Parada del montacarga'}).props.disabled,false)
+ await act(async()=>view.root.findByProps({'aria-label':'Montacarga · operator_name'}).props.onChange({target:{value:'Operador nuevo'}}))
+ assert.equal(value.transport_request_id,'b','editing another field retains the invalid former target for review')
+ assert.equal(forkliftForStops(value,remaining).transport_request_id,'')
+ assert.equal(forkliftValid(forkliftForStops(value,remaining),remaining),false)
+ await act(async()=>view.update(render()))
+ await act(async()=>view.root.findByProps({'aria-label':'Parada del montacarga'}).props.onClick())
+ const option=view.root.findAllByType('button').find(button=>button.children.includes('S-A · Entrega A'))
+ await act(async()=>option.props.onClick())
+ assert.equal(value.transport_request_id,'a')
+ assert.equal(forkliftValid(forkliftForStops(value,remaining),remaining),true)
+ await act(async()=>view.unmount())
+})
+
+test('unavailable scoped stop details are never relabeled as an unscoped historical service', () => {
+ const {forkliftScopeLabel}=load('src/lib/forklift-stop.ts')
+ assert.equal(forkliftScopeLabel('s2',null),'Punto de entrega no disponible')
+ assert.equal(forkliftScopeLabel(null,null),'Servicio general de ruta (histórico)')
+ assert.equal(forkliftScopeLabel('s2',{number:'S-2',destination:'Entrega B',otCode:'OT-B'}),'S-2 · OT OT-B · Entrega B')
+})
