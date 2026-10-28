@@ -104,3 +104,38 @@ test('forklift selects recorded operator credentials and creates its supplier wi
  assert.equal(forkliftValid(value), true)
  await act(async () => view.unmount())
 })
+
+test('route assistants include drivers and show occupied people with a disabled reason', async () => {
+ const { RouteAuxiliaryPicker } = load('src/components/despacho/RouteAuxiliaryPicker.tsx')
+ const people = [
+  { person_id: 'aux', profile_id: null, driver_id: null, name: 'Auxiliar disponible', position: 'Auxiliar', area: 'Transporte', kind: 'AUXILIAR', busy: null },
+  { person_id: 'driver', profile_id: null, driver_id: 'd1', name: 'Conductor disponible', position: 'Conductor', area: 'Transporte', kind: 'CONDUCTOR', busy: null },
+  { person_id: 'busy', profile_id: null, driver_id: null, name: 'Auxiliar ocupado', position: 'Auxiliar', area: 'Transporte', kind: 'AUXILIAR', busy: 'R-123' },
+  { person_id: 'main', profile_id: null, driver_id: 'd2', name: 'Conductor principal', position: 'Conductor', area: 'Transporte', kind: 'CONDUCTOR', busy: null },
+ ]
+ const selected = [], refreshed = []
+ let view
+ await act(async () => { view = create(React.createElement(RouteAuxiliaryPicker, { people, value: [], onChange: value => selected.push(value), driverId: 'd2', loading: false, error: '', onRefresh: () => refreshed.push(true) })) })
+ await act(async () => view.root.findByProps({ 'aria-label': 'Agregar auxiliar o conductor' }).props.onClick())
+ const option = name => view.root.findAllByType('button').find(button => button.children.some(child => typeof child === 'string' && child.includes(name)))
+ assert.ok(option('Conductor disponible'), 'drivers appear without activating a hidden filter')
+ assert.equal(option('Auxiliar ocupado').props.disabled, true)
+ assert.match(option('Auxiliar ocupado').children.join(''), /R-123/)
+ assert.equal(option('Conductor principal').props.disabled, true)
+ await act(async () => option('Conductor disponible').props.onClick())
+ assert.deepEqual(selected, [['driver']])
+ await act(async () => option('Actualizar personal').props.onClick())
+ assert.equal(refreshed.length, 1)
+ await act(async () => view.unmount())
+})
+
+test('assistant load errors remain visible and selected people can be removed', async () => {
+ const { RouteAuxiliaryPicker } = load('src/components/despacho/RouteAuxiliaryPicker.tsx')
+ let view; const selected = []
+ await act(async () => { view = create(React.createElement(RouteAuxiliaryPicker, { people: [], value: ['selected'], onChange: value => selected.push(value), loading: false, error: 'Error al consultar personal', onRefresh() {} })) })
+ assert.equal(view.root.findByProps({ role: 'alert' }).children.join(''), 'Error al consultar personal')
+ assert.equal(view.root.findByProps({ 'aria-label': 'Agregar auxiliar o conductor' }).props.disabled, true)
+ await act(async () => view.root.findByProps({ 'aria-label': 'Quitar a auxiliar' }).props.onClick())
+ assert.deepEqual(selected, [[]])
+ await act(async () => view.unmount())
+})
