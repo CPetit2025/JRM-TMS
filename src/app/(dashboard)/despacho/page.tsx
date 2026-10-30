@@ -227,6 +227,8 @@ export default function DespachoPage() {
   })
 
   const [freightShares, setFreightShares] = useState<Record<string, string>>({})
+  // Motivo cuando el flete de la ruta difiere del referencial de las solicitudes
+  const [freightReason, setFreightReason] = useState('')
   const selectedServices = newDispatch.selected_requests.map(selected => pendingRequests.find(r => r.id === selected.id)).filter((r): r is TransportRequest => !!r)
   const forkliftStops = selectedServices.map(request => ({ id: request.id,
     label: `${request.request_number} · ${request.delivery_address || request.delivery_district || 'Destino sin dirección'}` }))
@@ -267,6 +269,11 @@ export default function DespachoPage() {
   const defaultShares = splitFreight(routeFreight, valuedServices)
   const serviceShare = (id: string) => modalidad === 'PROPIA' && selectedServices.some(r => r.id === id && r.request_type === 'RECOJO') ? 0 : Number(freightShares[id] ?? defaultShares.find(r => r.id === id)?.amount ?? 0)
   const allocationMatches = Math.round(selectedServices.reduce((sum, r) => sum + serviceShare(r.id), 0) * 100) === Math.round(routeFreight * 100)
+  // Flete acordado vs. referencial (suma del costo de las solicitudes): si difieren se exige motivo, igual que el servidor.
+  // Sin motivo: recojos con flota propia y Nota de Salida sin flete.
+  const referentialFreight = selectedServices.reduce((sum, r) => sum + Number(r.service_cost || 0), 0)
+  const freightExempt = routeFreight === 0 && (newDispatch.document_type === 'NOTA_SALIDA' || customerPickup || ownPickupOnly)
+  const freightNeedsReason = selectedServices.length > 0 && !freightExempt && Math.round(routeFreight * 100) !== Math.round(referentialFreight * 100)
   const [routeSearch, setRouteSearch] = useState('')
   const [routeService, setRouteService] = useState<ServiceKind | ''>('')
   const routeCandidates = pendingRequests.filter(r => {
@@ -284,6 +291,7 @@ export default function DespachoPage() {
     newDispatch.selected_requests.length > 0 && newDispatch.document_type === 'GR' && modalidad === 'TERCERO' && (!tercero.carrier_id || !tercero.placa.trim() || !tercero.conductor.trim() || !tercero.telefono.trim() || !tercero.doc.trim()) && { label: 'Datos del transportista tercero', target: 'ruta-unidad' },
     !newDispatch.scheduled_departure && { label: 'Fecha y hora de salida', target: 'ruta-salida' },
     mixedOT && !allocationMatches && { label: 'Distribución del flete por servicio', target: 'ruta-flete' },
+    freightNeedsReason && freightReason.trim().length < 5 && { label: 'Motivo del flete distinto al referencial', target: 'ruta-flete-motivo' },
   ].filter(Boolean) as PendingItem[])
   const programmingRequests = () => newDispatch.selected_requests.map(req => ({ ...req,
     leg_planned_km: reqDistances.current[req.id] ?? null, freight_share_pen: serviceShare(req.id) }))
@@ -500,6 +508,8 @@ export default function DespachoPage() {
     if (!forkliftValid(routeForklift, forkliftStops)) { toast.error('Seleccione la parada del montacarga y complete proveedor, montacarguista y tarifa por hora.'); return }
     const special = specialServicesPayload(specialServices, inheritedLines, routeForklift)
     if (special.error) { toast.error(special.error); return }
+    if (freightNeedsReason && freightReason.trim().length < 5) { toast.error('Indique el motivo: el flete de la ruta difiere del referencial de las solicitudes (mínimo 5 caracteres).'); return }
+    const freight_reason = freightNeedsReason ? freightReason.trim() : null
     // El servidor valida la reserva vigente y el gasto autorizado; saldo cero puede ser una reserva propia.
     setIsSubmitting(true)
     if (modalidad === 'TERCERO' && newDispatch.document_type === 'GR') {
@@ -524,7 +534,7 @@ export default function DespachoPage() {
           const authorizedFreight = serviceShare(request.id)
           setPendingRequests(current => current.map(r => r.id === request.id ? { ...r, service_cost: authorizedFreight, operational_approved_pen: Math.round((authorizedFreight + Number(r.unloading_estimate_pen || 0)) * 100) / 100 } : r))
         }
-        const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { mode: 'TERCERO', forklift: routeForklift.enabled ? routeForklift : null, auxiliaries: [], special_services: special.value,
+        const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { mode: 'TERCERO', forklift: routeForklift.enabled ? routeForklift : null, auxiliaries: [], special_services: special.value, freight_reason,
           p_carrier_id: tercero.carrier_id, p_plate: tercero.placa, p_conductor: tercero.conductor, p_telefono: tercero.telefono,
           p_supplier_vehicle_id: tercero.supplier_vehicle_id || null, p_supplier_personnel_id: tercero.supplier_personnel_id || null,
           p_doc: tercero.doc || null, p_tercero_license_number: tercero.license_number || null,
@@ -545,7 +555,7 @@ export default function DespachoPage() {
         setForklift(EMPTY_FORKLIFT); setSpecialServices(EMPTY_SPECIAL_SERVICES)
         setIsModalOpen(false)
         setNewDispatch({ selected_requests: [], driver_name: '', vehicle_plate: '', scheduled_departure: '', estimated_distance_km: '', document_type: 'GR' })
-        setManualFreightCost(''); setTercero(TERCERO_VACIO); setModalidad('PROPIA')
+        setManualFreightCost(''); setFreightReason(''); setTercero(TERCERO_VACIO); setModalidad('PROPIA')
         fetchData()
       } catch (error) {
         toast.error('Error al programar el despacho: ' + (error instanceof Error ? error.message : (error as { message?: string })?.message || String(error)))
@@ -604,7 +614,7 @@ export default function DespachoPage() {
 
       const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
       const freightCost = routeFreight
-      const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { mode: 'PROPIA', forklift: routeForklift.enabled ? routeForklift : null, auxiliaries: isPickup ? [] : auxiliares, special_services: special.value,
+      const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { mode: 'PROPIA', forklift: routeForklift.enabled ? routeForklift : null, auxiliaries: isPickup ? [] : auxiliares, special_services: special.value, freight_reason,
         p_driver_id: isPickup ? null : matches[0]?.id || null,
         p_vehicle_plate: isPickup ? 'EXTERNO' : newDispatch.vehicle_plate,
         p_departure: new Date(newDispatch.scheduled_departure).toISOString(),
@@ -625,7 +635,7 @@ export default function DespachoPage() {
       toast.success(isPickup ? 'Recojo por el cliente programado con Nota de Salida y sin flete JRM.' : 'Despacho programado y financiamiento validado.')
       setIsModalOpen(false)
       setNewDispatch({ selected_requests: [], driver_name: '', vehicle_plate: '', scheduled_departure: '', estimated_distance_km: '', document_type: 'GR' })
-      setManualFreightCost('')
+      setManualFreightCost(''); setFreightReason('')
       fetchData()
     } catch (error) {
       toast.error('Error al programar el despacho: ' + errorMessage(error))
@@ -1057,6 +1067,13 @@ export default function DespachoPage() {
                 <p className={`text-xs font-semibold ${allocationMatches ? 'text-emerald-700' : 'text-red-700'}`}>Total de ruta S/ {routeFreight.toFixed(2)} · Distribuido S/ {selectedServices.reduce((sum, r) => sum + serviceShare(r.id), 0).toFixed(2)}{!allocationMatches && ' · Ajuste la distribución para continuar'}</p>
               </div>
             </FormSection>}
+            {freightNeedsReason && <div id="ruta-flete-motivo" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
+              <p className="text-xs text-amber-900">Flete de la ruta <b className="tabular-nums">S/ {routeFreight.toFixed(2)}</b> · referencial de las solicitudes <b className="tabular-nums">S/ {referentialFreight.toFixed(2)}</b> ({routeFreight > referentialFreight ? '+' : ''}{(routeFreight - referentialFreight).toFixed(2)})</p>
+              <label className="mt-2 block"><span className="mb-0.5 block text-[11px] font-semibold text-amber-800">Motivo de la diferencia del flete *</span>
+                <input value={freightReason} onChange={e => setFreightReason(e.target.value)} placeholder="Ej.: tarifa del transportista con peaje nuevo"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#002855]" /></label>
+              <p className="mt-1 text-[11px] text-amber-800">Queda en el historial de costos junto al flete acordado.</p>
+            </div>}
             <p className="text-xs text-slate-500">Para sumar servicios después de programar y antes de salir, cancele y rearme la ruta; el sistema libera las reservas y conserva el motivo. En ruta, registre una incidencia.</p>
           </div>
 

@@ -94,11 +94,13 @@ async function setupEconomicClosure() {
   await db.exec(migration) // reaplicable
  return db
 }
-// Etapa E (20261111090000): referencial original del flete protegido, con las columnas que lee en producción
-async function applyReferentialStage(db) {
+// Etapas E (20261111090000, referencial protegido) y D: las migraciones previas al rediseño, en el orden de producción
+async function applyPriorStages(db) {
  await db.exec(`ALTER TABLE transport_requests ADD COLUMN approved_at timestamptz;
   CREATE TABLE transport_request_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),request_id uuid REFERENCES transport_requests(id) ON DELETE CASCADE,
    actor_id uuid,action text,previous_state jsonb,next_state jsonb,created_at timestamptz DEFAULT now());`)
  await db.exec(read('supabase/migrations/20261111090000_referencial_protegido.sql'))
+ // Etapa D (20261111100000): sustento del acordado y cobro por unidad y tonelada (validate_service_final vigente)
+ await db.exec(read('supabase/migrations/20261111100000_sustento_unidades_cobro.sql'))
 }
-module.exports = { setupEconomicClosure, applyReferentialStage, read, id, fn }
+module.exports = { setupEconomicClosure, applyPriorStages, read, id, fn }

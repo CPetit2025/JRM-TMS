@@ -3,7 +3,7 @@
 // y última actualización; referencial original del flete; umbral de desviación; notas internas sin cambio de estado;
 // servicio agregado en el cierre (origen CIERRE, acordado 0, sin reserva hasta aprobar) e historial unificado.
 const assert = require('node:assert/strict')
-const { setupEconomicClosure, applyReferentialStage, read, id } = require('./fixtures/economic-closure-setup.cjs')
+const { setupEconomicClosure, applyPriorStages, read, id } = require('./fixtures/economic-closure-setup.cjs')
 ;(async () => {
  const db = await setupEconomicClosure()
  try {
@@ -11,7 +11,7 @@ const { setupEconomicClosure, applyReferentialStage, read, id } = require('./fix
   const rpc = async (sql, params=[]) => (await db.query(`SELECT ${sql} AS value`,params)).rows[0].value
   await db.exec(`CREATE TABLE documentary_closures(dispatch_id uuid, request_id uuid, status text);`)
   await db.exec(read('supabase/migrations/20261110090000_indicadores_costos_servicios.sql'))
-  await applyReferentialStage(db)
+  await applyPriorStages(db)
   const migration = read('supabase/migrations/20261111110000_cierre_economico_bandeja.sql')
   assert.doesNotMatch(migration, /replace\(\s*(def|source)/i, 'functions are rewritten in full')
   await db.exec(migration)
@@ -23,9 +23,9 @@ const { setupEconomicClosure, applyReferentialStage, read, id } = require('./fix
   await rpc('save_request_unloading_costs($1,$2::jsonb)',[id(30),JSON.stringify([{concept:'GRUA',estimated_pen:0}])])
   await rpc('apply_request_tariff($1)',[id(30)])
   const grua = await scalar(`SELECT id AS value FROM transport_unloading_costs WHERE transport_request_id=$1 AND concept='GRUA'`,[id(30)])
-  const route = await scalar('SELECT schedule_route_resources($1::jsonb) AS value',[JSON.stringify({ mode:'PROPIA',p_driver_id:null,p_vehicle_plate:'RB-1',
+  const route = await scalar('SELECT schedule_route_resources($1::jsonb) AS value',[JSON.stringify({ mode:'PROPIA',freight_reason:'Flete acordado aparte',p_driver_id:null,p_vehicle_plate:'RB-1',
    p_departure:'2026-10-30T12:00:00Z',p_estimated_km:10,p_freight_cost:0,p_contract_id:id(20),p_document_type:'GR',auxiliaries:[],p_requests:[{id:id(30)}],forklift:null,
-   special_services:{items:[{id:grua,supplier_id:id(11),billing_unit:'HORA',agreed_rate:100,agreed_qty:2,min_billable_qty:3,fraction_minutes:30},
+   special_services:{items:[{id:grua,supplier_id:id(11),billing_unit:'HORA',agreed_rate:100,agreed_qty:2,min_billable_qty:3,fraction_minutes:30,reason:'Tarifa del proveedor por hora'},
     {transport_request_id:id(30),concept:'ESTIBA',supplier_id:id(12),billing_unit:'JORNADA',agreed_rate:90,agreed_qty:1,workers:4,reason:'Cuadrilla por volumen'}]} })])
   const estiba = await scalar(`SELECT id AS value FROM transport_unloading_costs WHERE dispatch_id=$1 AND concept='ESTIBA'`,[route])
   await db.query(`UPDATE dispatches SET freight_cost=500 WHERE id=$1`,[route])
