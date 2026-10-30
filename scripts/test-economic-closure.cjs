@@ -214,6 +214,28 @@ function fn(file, name) {
   assert.deepEqual([await consumed(id(20)) - c20, await consumed(id(21)) - c21],[40,20],'each OT absorbs only its own difference')
   assert.deepEqual((await db.query(`SELECT amount_pen::float AS a FROM dispatch_request_freight WHERE dispatch_id=$1 ORDER BY request_id`,[mixed])).rows.map(x => x.a),[340,220])
 
+  // --- Etapa 6: indicadores (cada costo una vez; rutas mixtas por OT) ---
+  await db.exec(`CREATE TABLE documentary_closures(dispatch_id uuid, request_id uuid, status text);
+   INSERT INTO documentary_closures VALUES('${route}','${id(30)}','PENDIENTE'),('${mixed}','${id(31)}','COMPLETO'),('${mixed}','${id(39)}','COMPLETO');`)
+  await db.exec(read('supabase/migrations/20261110090000_indicadores_costos_servicios.sql'))
+  const ind = await rpc(`service_cost_indicators('2026-10-01','2026-10-31')`)
+  assert.equal(ind.success,true,ind.error); assert.equal(ind.routes,2)
+  const t = ind.totals
+  assert.deepEqual([t.items,t.with_final,Number(t.referential_pen),Number(t.agreed_pen),Number(t.final_pen),Number(t.extras_pen)],[5,5,380,1660,1810,150],
+   'freight 300/500/550 + grúa 80/300/300 + estiba 0/360/400 + mixed OT A 0/300/340 + OT B 0/200/220')
+  const flete = ind.by_type.find(x => x.concept === 'FLETE')
+  assert.deepEqual([flete.items,Number(flete.agreed_pen),Number(flete.final_pen)],[3,1000,1110])
+  const ot20 = ind.by_contract.find(x => x.contract_id === id(20)), ot21 = ind.by_contract.find(x => x.contract_id === id(21))
+  assert.deepEqual([Number(ot20.agreed_pen),Number(ot20.final_pen),Number(ot21.agreed_pen),Number(ot21.final_pen)],[1460,1590,200,220])
+  assert.ok(ot20.budget && Number(ot20.budget.allocated_pen) === 5000,'OT budget beside its costs')
+  assert.deepEqual(ind.by_supplier.find(x => x.supplier === 'Grúas prueba').final_pen*1,300)
+  assert.deepEqual(ind.pending,{routes_open:0,economic_pending:0,economic_review:0,economic_closed:2,documentary_pending_services:1,documentary_complete_economic_pending:0})
+  assert.equal((await rpc(`service_cost_indicators('2026-01-01','2027-12-31')`)).success,false,'period up to 366 days')
+
+  await assert.rejects(db.exec(read('supabase/tests/caja_c174_indicadores_costos.test.sql')),/CAJA C174 PASS/)
+  await db.exec('ROLLBACK').catch(() => {})
+  await db.exec(`SELECT set_config('request.jwt.claim.sub','${id(1)}',false)`)
+
   // Verificación de producción C173 sobre este esquema
   await assert.rejects(db.exec(read('supabase/tests/caja_c173_cierre_economico.test.sql')),/CAJA C173 PASS/)
   await db.exec('ROLLBACK').catch(() => {})
@@ -224,6 +246,6 @@ function fn(file, name) {
    SELECT set_config('request.jwt.claim.sub','${id(91)}',false);`)
   assert.equal((await rpc(`economic_closure_queue('2026-10-01','2026-10-31')`)).success,false)
   assert.equal((await action('ENVIAR')).success,false)
-  console.log('PASS cierre económico: reglas de cobro (fracción, mínimo, jornada), validación con motivo, bloqueo en revisión, envío, observación, aprobación con permiso, impacto en la partida solo por diferencia y reapertura (Etapa 4)')
+  console.log('PASS cierre económico: reglas de cobro (fracción, mínimo, jornada), validación con motivo, bloqueo en revisión, envío, observación, aprobación con permiso, impacto en la partida solo por diferencia, reapertura (Etapa 4) e indicadores (Etapa 6)')
  } finally { await db.close() }
 })().catch(e => { console.error(e); process.exit(1) })
