@@ -3,7 +3,7 @@
 // observan y reabren por separado; CIERRE_PARCIAL / CERRADO; bloqueo del costo final de ítems aprobados; monto de Caja
 // aparte; rutas cerradas antes de la migración sin doble conteo; rutas mixtas con dos OT; reapertura de un solo ítem.
 const assert = require('node:assert/strict')
-const { setupEconomicClosure, read, id } = require('./fixtures/economic-closure-setup.cjs')
+const { setupEconomicClosure, applyReferentialStage, read, id } = require('./fixtures/economic-closure-setup.cjs')
 ;(async () => {
  const db = await setupEconomicClosure()
  try {
@@ -11,6 +11,7 @@ const { setupEconomicClosure, read, id } = require('./fixtures/economic-closure-
   const rpc = async (sql, params=[]) => (await db.query(`SELECT ${sql} AS value`,params)).rows[0].value
   await db.exec(`CREATE TABLE documentary_closures(dispatch_id uuid, request_id uuid, status text);`)
   await db.exec(read('supabase/migrations/20261110090000_indicadores_costos_servicios.sql'))
+  await applyReferentialStage(db)
   await db.exec(read('supabase/migrations/20261111110000_cierre_economico_bandeja.sql'))
   await db.exec(`INSERT INTO suppliers(id,business_name,tax_id,category) VALUES('${id(11)}','Grúas prueba','20111111111','GRUA'),('${id(12)}','Estiba prueba','20222222222','ESTIBA');
    INSERT INTO transport_requests(id,contract_id,request_number,delivery_address,delivery_district,site_id) VALUES
