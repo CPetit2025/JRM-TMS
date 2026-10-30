@@ -39,6 +39,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     { id: 'despacho', label: 'Programación y Ruteo' },
     { id: 'despacho-aprobacion', label: 'Aprobar solicitudes de transporte' },
     { id: 'documentario', label: 'Documentos de Despacho (Asistente Documentario)' },
+    { id: 'cierre-economico', label: 'Cierre económico (aprobar costos finales y reabrir)' },
     { id: 'monitoreo', label: 'Monitoreo GPS' },
     { id: 'planificacion', label: 'Planificación de despachos (consulta del auditor)' },
     { id: 'packing-list', label: 'Carga de Packing List (auditor)' },
