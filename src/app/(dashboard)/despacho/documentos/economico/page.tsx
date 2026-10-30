@@ -1,7 +1,7 @@
 "use client"
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { AlertTriangle, CheckCircle2, ClipboardCheck, Clock, Eye, FileText, Hourglass, RefreshCw, Search, ShieldCheck, Wallet, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
@@ -36,7 +36,13 @@ function Badge({ map, value }: { map: Record<string, { label: string; cls: strin
 }
 
 export default function CierreEconomicoPage() {
+  return <Suspense fallback={null}><CierreEconomico /></Suspense>
+}
+
+function CierreEconomico() {
   const router = useRouter()
+  // ?despacho=<id> (desde Documentos de Despacho): abre directamente la validación de esa ruta
+  const linked = useSearchParams().get('despacho')
   const today = new Date()
   const [from, setFrom] = useState(limaDate(new Date(today.getFullYear(), today.getMonth(), 1)))
   const [to, setTo] = useState(limaDate(today))
@@ -44,7 +50,17 @@ export default function CierreEconomicoPage() {
   const [perm, setPerm] = useState({ validate: false, approve: false })
   const [settings, setSettings] = useState<EconSettings>(DEFAULT_SETTINGS)
   const [view, setView] = useState<'bandeja' | 'indicadores'>('bandeja')
-  const [open, setOpen] = useState<{ id: string; tab: 'resumen' | 'servicios' } | null>(null)
+  const [open, setOpen] = useState<{ id: string; tab: 'resumen' | 'servicios' } | null>(() => (linked && /^[0-9a-f-]{36}$/i.test(linked) ? { id: linked, tab: 'servicios' } : null))
+  // La bandeja incluye la fecha de la ruta enlazada aunque sea anterior al período por defecto
+  useEffect(() => {
+    if (!linked || !/^[0-9a-f-]{36}$/i.test(linked)) return
+    let alive = true
+    void supabase.from('dispatches').select('scheduled_departure').eq('id', linked).maybeSingle().then(({ data }) => {
+      const day = data?.scheduled_departure ? limaDate(new Date(data.scheduled_departure)) : null
+      if (alive && day) setFrom(current => (day < current ? day : current))
+    })
+    return () => { alive = false }
+  }, [linked])
   const [f, setF] = useState({ q: '', econ: '', doc: '', supplier: '', concept: '', contract: '', plate: '', responsible: '' })
   const [sort, setSort] = useState<Sort>('fecha')
   const [page, setPage] = useState(1)
