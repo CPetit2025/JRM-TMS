@@ -27,6 +27,7 @@ import { referenceLabel } from '@/lib/suppliers'
 import { cellDateTime, fullDateTime } from '@/lib/table-format'
 import { fetchServiceTypes, serviceKind, type ServiceKind } from '@/lib/request-service'
 import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
+import { DocumentaryBadge, DocumentaryHistory, type DocumentaryClosure } from '@/components/despacho/DocumentaryClosure'
 
 // Auditor: Packing List. Asistente: confirmación documentaria y Nota de Despacho en recojos.
 // La guía de entrega obligatoria procede del app/proveedor; solo Transporte valida la conformidad.
@@ -478,6 +479,7 @@ function DispatchCard({ item, canEdit, canPacking, canSettle = false, canUpload 
               {!packingOnly && kind === 'ENTREGA' && chip('GR o Nota de Despacho', delivery?.conformity === 'VALIDADA' || !!note || !!check?.note, note || check?.note ? 'Nota de Despacho cargada' : `${delivery ? conformityLabels[delivery.conformity] : 'Aún no disponible'}${delivery?.guide_number ? ` · ${delivery.guide_number}` : ''}`)}
               {!packingOnly && kind === 'RECOJO' && chip('Guía de Remisión', delivery?.conformity === 'VALIDADA', `${delivery ? conformityLabels[delivery.conformity] : 'Aún no disponible'}${delivery?.guide_number ? ` · ${delivery.guide_number}` : ''}`)}
               {!packingOnly && kind === 'TRASLADO' && chip('Documentos', !!packing || !!note || delivery?.conformity === 'VALIDADA' || !!check?.references.length, 'Opcionales en punto a punto', true)}
+              {!packingOnly && check?.documentary && <li><DocumentaryBadge closure={check.documentary} /></li>}
             </ul>
           </header>
           <div className="grid gap-4 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -596,6 +598,9 @@ type SettlementChecklist = {
   missing: string[]; guide_state: string; note: boolean; packing: boolean; references: string[]
   rejection?: { reason: string; note: string | null; photos: number; captured_at: string; decision: string | null; decision_reason: string | null; decided_at: string | null }
   manual?: { reason: string; missing: string[]; closed_at: string; closed_by: string | null }
+  // Reapertura y estado persistido del cierre documentario (independiente del cierre económico)
+  reopened?: { reason: string; at: string; by: string | null }
+  documentary?: DocumentaryClosure
 }
 type NumberedKind = 'GUIA' | 'NOTA' | 'OC' | 'OS' | 'RQ'
 const NUMBERED: Record<NumberedKind, { label: string; pattern: RegExp; example: string; hint: string }> = {
@@ -613,7 +618,7 @@ const SETTLEMENT_RULES: Record<SettlementChecklist['kind'], { label: string; req
   RECOJO_CLIENTE: { label: 'Recojo por el cliente', required: 'Nota de Despacho', numbered: ['NOTA'], packingRequired: false, packingAllowed: true },
   RECHAZO: { label: 'Rechazada en destino', required: 'evidencia del rechazo (fotos del conductor) y decisión de Despacho: reprogramar o anular', numbered: [], packingRequired: false, packingAllowed: false },
 }
-const MISSING_LABEL: Record<string, string> = { GUIA_O_NOTA: 'GR validada o Nota de Despacho', PACKING_LIST: 'Packing List', GUIA_REMISION: 'GR validada', NOTA_DESPACHO: 'Nota de Despacho', DECISION_RECHAZO: 'Decisión de Despacho (reprogramar o anular)' }
+const MISSING_LABEL: Record<string, string> = { GUIA_O_NOTA: 'GR validada o Nota de Despacho', PACKING_LIST: 'Packing List', GUIA_REMISION: 'GR validada', NOTA_DESPACHO: 'Nota de Despacho', DECISION_RECHAZO: 'Decisión de Despacho (reprogramar o anular)', REAPERTURA: 'Revisión por reapertura' }
 // Uno de los documentos con número es obligatorio según el tipo de servicio (en entrega: GR o Nota, uno de los dos)
 const requiredFor = (service: SettlementChecklist['kind'], doc: NumberedKind) => service === 'ENTREGA' ? doc === 'GUIA' || doc === 'NOTA' : service === 'RECOJO' ? doc === 'GUIA' : service === 'RECOJO_CLIENTE' ? doc === 'NOTA' : false
 const GUIDE_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp'
@@ -633,8 +638,9 @@ function SettlementUpload({ dispatchId, requestId, checklist, canUpload, canManu
   const [docFiles, setDocFiles] = useState<File[]>([])
   const [packingFiles, setPackingFiles] = useState<File[]>([])
   const [busy, setBusy] = useState<'' | 'doc' | 'packing' | 'manual'>('')
-  const [manualOpen, setManualOpen] = useState(false)
-  const [manualReason, setManualReason] = useState('')
+  // Acciones con motivo obligatorio (queda en el historial): cierre manual, deshacerlo o reabrir un cierre completo
+  const [reasonFor, setReasonFor] = useState<null | 'manual' | 'undo' | 'reopen'>(null)
+  const [reason, setReason] = useState('')
   const operation = useRef(crypto.randomUUID())
   const active = options.includes(kind) ? kind : options[0]
   const spec = active ? NUMBERED[active] : null
@@ -689,27 +695,24 @@ function SettlementUpload({ dispatchId, requestId, checklist, canUpload, canManu
       await onUploaded()
     } catch (error) { toast.error(errorMessage(error)) } finally { setBusy('') }
   }
-  const settleManually = async () => {
-    if (manualReason.trim().length < 10 || busy) return
+  const submitReason = async () => {
+    if (!reasonFor || reason.trim().length < 10 || busy) return
     setBusy('manual')
     try {
-      const { error } = await supabase.rpc('settlement_mark_settled', { p_dispatch: dispatchId, p_request: requestId, p_reason: manualReason.trim() })
+      const rpc = reasonFor === 'manual' ? 'settlement_mark_settled' : reasonFor === 'undo' ? 'settlement_undo_manual' : 'documentary_reopen'
+      const { error } = await supabase.rpc(rpc, { p_dispatch: dispatchId, p_request: requestId, p_reason: reason.trim() })
       if (error) throw error
-      toast.success('Servicio dado por liquidado')
-      setManualOpen(false); setManualReason('')
+      toast.success(reasonFor === 'manual' ? 'Cierre documentario manual registrado' : reasonFor === 'undo' ? 'Cierre manual deshecho: vuelve a la regla automática' : 'Cierre documentario reabierto: el servicio queda observado')
+      setReasonFor(null); setReason('')
       await onUploaded()
     } catch (error) { toast.error(errorMessage(error)) } finally { setBusy('') }
   }
-  const undoManual = async () => {
-    if (busy) return
-    setBusy('manual')
-    try {
-      const { error } = await supabase.rpc('settlement_undo_manual', { p_dispatch: dispatchId, p_request: requestId })
-      if (error) throw error
-      toast.success('Liquidación manual revertida: vuelve a la regla automática')
-      await onUploaded()
-    } catch (error) { toast.error(errorMessage(error)) } finally { setBusy('') }
-  }
+  const REASON_FORM = {
+    manual: { label: 'Motivo del cierre documentario manual', placeholder: 'Ej.: el cliente confirmó la recepción por correo; la guía física llega el lunes', confirm: 'Confirmar cierre documentario' },
+    undo: { label: 'Motivo para deshacer el cierre manual', placeholder: 'Ej.: la guía física no llegó; se espera el documento del cliente', confirm: 'Deshacer cierre manual' },
+    reopen: { label: 'Motivo de la reapertura', placeholder: 'Ej.: la guía validada no corresponde al servicio', confirm: 'Reabrir cierre documentario' },
+  } as const
+  const documentary = checklist?.documentary
   const pick = (setter: (files: File[]) => void) => (event: React.ChangeEvent<HTMLInputElement>) => { setter(Array.from(event.target.files || []).slice(0, 5)); event.target.value = '' }
   const fileButton = 'inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-[#002855] hover:bg-slate-50 lg:min-h-9'
   const primary = 'inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002855] px-3 text-xs font-semibold text-white disabled:opacity-40 lg:min-h-9'
@@ -721,13 +724,16 @@ function SettlementUpload({ dispatchId, requestId, checklist, canUpload, canManu
   return <div className={`space-y-3 border-t px-4 py-3 ${checklist?.complete ? 'border-emerald-200 bg-emerald-50/40' : 'border-amber-200 bg-amber-50/40'}`}>
     <div className="flex flex-wrap items-start justify-between gap-2">
       <div>
-        <p className="text-xs font-bold uppercase tracking-wide text-[#002855]">Liquidación · {rule.label}</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-[#002855]">Cierre documentario · {rule.label}</p>
         <p className="text-xs text-slate-600">Obligatorio: {rule.required}.</p>
       </div>
-      {checklist && (checklist.complete
-        ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800"><CheckCircle2 className="h-3.5 w-3.5" />{checklist.manual ? 'Liquidado manualmente' : 'Liquidado automáticamente'}</span>
-        : <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900"><Clock className="h-3.5 w-3.5" />Falta: {checklist.missing.map(m => MISSING_LABEL[m] || m).join(' · ')}</span>)}
+      <div className="flex flex-col items-end gap-1">
+        {documentary && <DocumentaryBadge closure={documentary} />}
+        {checklist && !checklist.complete && <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900 ring-1 ring-amber-200"><Clock className="h-3.5 w-3.5" />Falta: {checklist.missing.map(m => MISSING_LABEL[m] || m).join(' · ')}</span>}
+        {documentary?.status === 'COMPLETO' && documentary.completed_at && <span className="text-[11px] text-slate-500">{documentary.completed_by ? `${documentary.completed_by} · ` : ''}{new Date(documentary.completed_at).toLocaleString('es-PE', { timeZone: 'America/Lima' })}</span>}
+      </div>
     </div>
+    {checklist?.reopened && <p className="flex items-start gap-2 rounded-lg bg-white px-3 py-2 text-xs text-red-800 ring-1 ring-red-200"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span><strong>Reabierto</strong>{checklist.reopened.by ? ` por ${checklist.reopened.by}` : ''} · {new Date(checklist.reopened.at).toLocaleString('es-PE', { timeZone: 'America/Lima' })}<span className="block">Motivo: {checklist.reopened.reason}</span><span className="block text-slate-600">Se cierra de nuevo al cargar o validar un documento del servicio, o manualmente con motivo.</span></span></p>}
     {(guideNote || checklist?.note || checklist?.packing || !!checklist?.references.length) && <p className="flex flex-wrap gap-1.5 text-xs">
       {guideNote && <span className="rounded bg-white px-2 py-0.5 ring-1 ring-slate-200">{guideNote}</span>}
       {checklist?.note && <span className="rounded bg-white px-2 py-0.5 ring-1 ring-slate-200">Nota de Despacho vinculada</span>}
@@ -735,21 +741,25 @@ function SettlementUpload({ dispatchId, requestId, checklist, canUpload, canManu
       {checklist?.references.map(ref => <span key={ref} className="rounded bg-white px-2 py-0.5 ring-1 ring-slate-200">{ref}</span>)}
     </p>}
     {checklist?.manual && <div className="flex flex-wrap items-start justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs ring-1 ring-emerald-200">
-      <p className="min-w-0 text-slate-700"><strong>Dado por liquidado</strong>{checklist.manual.closed_by ? ` por ${checklist.manual.closed_by}` : ''} · {new Date(checklist.manual.closed_at).toLocaleString('es-PE', { timeZone: 'America/Lima' })}<span className="block text-slate-600">Motivo: {checklist.manual.reason}</span>{!!checklist.manual.missing?.length && <span className="block text-slate-500">Faltaba: {checklist.manual.missing.map(m => MISSING_LABEL[m] || m).join(' · ')}</span>}</p>
-      {canManual && <button type="button" onClick={() => void undoManual()} disabled={!!busy} className="min-h-9 rounded-lg border border-slate-300 bg-white px-3 font-semibold text-slate-700 disabled:opacity-40">Revertir</button>}
+      <p className="min-w-0 text-slate-700"><strong>Cierre documentario manual</strong>{checklist.manual.closed_by ? ` por ${checklist.manual.closed_by}` : ''} · {new Date(checklist.manual.closed_at).toLocaleString('es-PE', { timeZone: 'America/Lima' })}<span className="block text-slate-600">Motivo: {checklist.manual.reason}</span>{!!checklist.manual.missing?.length && <span className="block text-slate-500">Faltaba: {checklist.manual.missing.map(m => MISSING_LABEL[m] || m).join(' · ')}</span>}</p>
+      {canManual && !reasonFor && <button type="button" onClick={() => { setReasonFor('undo'); setReason('') }} disabled={!!busy} className="min-h-9 rounded-lg border border-slate-300 bg-white px-3 font-semibold text-slate-700 disabled:opacity-40">Deshacer cierre manual</button>}
     </div>}
-    {canManual && checklist && !checklist.complete && (manualOpen
+    {canManual && checklist && (reasonFor
       ? <div className="space-y-2 rounded-lg bg-white p-3 ring-1 ring-slate-200">
-          <label className="block text-xs text-slate-600">Motivo para dar por liquidado (queda registrado)
-            <textarea value={manualReason} onChange={e => setManualReason(e.target.value)} maxLength={500} rows={2} placeholder="Ej.: el cliente confirmó la recepción por correo; la guía física llega el lunes" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-            <span className="mt-1 block text-slate-500">Mínimo 10 caracteres. Falta: {checklist.missing.map(m => MISSING_LABEL[m] || m).join(' · ')}.</span>
+          <label className="block text-xs text-slate-600">{REASON_FORM[reasonFor].label} (queda en el historial)
+            <textarea value={reason} onChange={e => setReason(e.target.value)} maxLength={500} rows={2} placeholder={REASON_FORM[reasonFor].placeholder} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <span className="mt-1 block text-slate-500">Mínimo 10 caracteres.{reasonFor === 'manual' && checklist.missing.length ? ` Falta: ${checklist.missing.map(m => MISSING_LABEL[m] || m).join(' · ')}.` : ''}</span>
           </label>
           <div className="flex flex-wrap justify-end gap-2">
-            <button type="button" onClick={() => { setManualOpen(false); setManualReason('') }} className="min-h-9 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700">Cancelar</button>
-            <button type="button" onClick={() => void settleManually()} disabled={manualReason.trim().length < 10 || !!busy} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-700 px-3 text-xs font-semibold text-white disabled:opacity-40">{busy === 'manual' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar liquidación</button>
+            <button type="button" onClick={() => { setReasonFor(null); setReason('') }} className="min-h-9 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700">Cancelar</button>
+            <button type="button" onClick={() => void submitReason()} disabled={reason.trim().length < 10 || !!busy} className={`inline-flex min-h-9 items-center gap-2 rounded-lg px-3 text-xs font-semibold text-white disabled:opacity-40 ${reasonFor === 'manual' ? 'bg-emerald-700' : 'bg-red-700'}`}>{busy === 'manual' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{REASON_FORM[reasonFor].confirm}</button>
           </div>
         </div>
-      : <div className="flex justify-end"><button type="button" onClick={() => setManualOpen(true)} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-emerald-600 bg-white px-3 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"><CheckCircle2 className="h-4 w-4" />Dar por liquidado</button></div>)}
+      : <div className="flex flex-wrap justify-end gap-2">
+          {!checklist.complete && <button type="button" onClick={() => setReasonFor('manual')} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-emerald-600 bg-white px-3 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"><CheckCircle2 className="h-4 w-4" />Cerrar manualmente</button>}
+          {documentary?.status === 'COMPLETO' && <button type="button" onClick={() => setReasonFor('reopen')} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-red-300 bg-white px-3 text-xs font-semibold text-red-800 hover:bg-red-50"><AlertTriangle className="h-4 w-4" />Reabrir cierre documentario</button>}
+        </div>)}
+    {documentary && <DocumentaryHistory key={`${documentary.status}/${documentary.reopened_at || ''}/${checklist?.manual?.closed_at || ''}`} dispatchId={dispatchId} requestId={requestId} />}
     {canUpload && checklist?.kind !== 'RECHAZO' && <div className={`grid gap-3 ${rule.packingAllowed ? 'lg:grid-cols-2' : ''}`}>
       {spec && active ? <div className="min-w-0 space-y-2">
         <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="Documento con número">
@@ -777,7 +787,7 @@ function SettlementUpload({ dispatchId, requestId, checklist, canUpload, canManu
         {chosen(packingFiles, () => setPackingFiles([]))}
       </div>}
     </div>}
-    <p className="text-[11px] text-slate-500">La liquidación es automática: el servicio sale de «Liquidación pendiente» al completar los obligatorios. La GR cuenta cuando el Supervisor de Transporte la aprueba en Conformidad.{canManual ? ' También puedes darlo por liquidado con un motivo.' : ''}</p>
+    <p className="text-[11px] text-slate-500">El cierre documentario es automático: el servicio sale de «Liquidación pendiente» al completar los obligatorios. La GR cuenta cuando el Supervisor de Transporte la aprueba en Conformidad.{canManual ? ' También puedes cerrarlo manualmente o reabrirlo con un motivo.' : ''} No incluye el cierre económico (montos).</p>
   </div>
 }
 
