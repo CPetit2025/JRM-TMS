@@ -213,6 +213,18 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
       refresh()
     } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
   }
+  const itemAct = async (item: EconItem, action: string, ask?: string) => {
+    let reason: string | null = null
+    if (ask) { reason = window.prompt(ask); if (reason === null) return }
+    setBusy(true)
+    try {
+      const { data: out, error } = await supabase.rpc('economic_item_action', { p_dispatch_id: dispatchId, p_item: item.key, p_action: action, p_reason: reason })
+      if (error) throw error
+      if (!out?.success) throw new Error(out?.error)
+      toast.success(`${ITEM_LABEL[item.concept] || item.concept}: ${(ACTION_LABEL[action] || 'listo').toLowerCase()}`)
+      refresh()
+    } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
+  }
   const saveNote = async () => {
     if (note.trim().length < 3) { toast.error('Escriba la observación (mínimo 3 caracteres)'); return }
     setBusy(true)
@@ -229,7 +241,8 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
   const st = data?.state
   const status = data ? (['LIQUIDADO', 'CERRADO'].includes(data.route_status) ? st!.status : 'RUTA_ABIERTA') : ''
   const editable = !!data && data.can_validate && ['PENDIENTE', 'OBSERVADO', 'CIERRE_PARCIAL'].includes(st!.status) && !OPEN_ROUTE.includes(data.route_status)
-  const deviations = (data?.items || []).filter(i => isDeviation(i.agreed_pen, i.final_pen, settings))
+  const closedRoute = !!data && ['LIQUIDADO', 'CERRADO'].includes(data.route_status)
+  const deviations =(data?.items || []).filter(i => isDeviation(i.agreed_pen, i.final_pen, settings))
   const services = new Map((data?.services || []).map(s => [s.id, s]))
 
   if (!mounted) return null
@@ -301,7 +314,7 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
                       const s = i.id ? services.get(i.id) : undefined
                       const canEdit = editable && (i.kind === 'FLETE' || !!s) && !['EN_REVISION', 'APROBADO'].includes(i.status)
                       return <tr key={i.key} className={isDeviation(i.agreed_pen, i.final_pen, settings) ? 'bg-red-50/60' : ''}>
-                        <td className="px-2 py-1.5"><b className="text-slate-800">{ITEM_LABEL[i.concept] || i.concept}</b><span className="block text-slate-500">{i.request_number}{i.contract_code ? ` · ${i.contract_code}` : ''}{i.supplier ? ` · ${i.supplier}` : ''}</span></td>
+                        <td className="px-2 py-1.5"><b className="text-slate-800">{ITEM_LABEL[i.concept] || i.concept}</b><span className="block text-slate-500">{i.request_number}{i.contract_code ? ` · ${i.contract_code}` : ''}{i.supplier ? ` · ${i.supplier}` : ''}</span>{i.caja_pen != null && <span className="block text-[10px] text-slate-500">Caja S/ {money(Number(i.caja_pen))}</span>}</td>
                         <td className="px-2">{ORIGIN_TEXT[i.origin || ''] || i.origin || '—'}</td>
                         <td className="px-2 text-right tabular-nums">{money(Number(i.referential_pen))}</td>
                         <td className="px-2 text-right tabular-nums">{money(Number(i.agreed_pen))}</td>
@@ -309,10 +322,22 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
                         <td className="px-2 text-slate-600">{i.kind === 'FLETE' ? (i.extras_pen ? `adic. ${money(Number(i.extras_pen))}` : 'Flete') : i.executed_qty != null
                           ? `${i.executed_qty}${i.billable_qty != null && Number(i.billable_qty) !== Number(i.executed_qty) ? ` → ${i.billable_qty}` : ''} ${(BILLING_LABEL[i.billing_unit || ''] || i.billing_unit || '').toLowerCase()}` : '—'}</td>
                         <td className="px-2 text-right"><Variation base={i.agreed_pen} value={i.final_pen} settings={settings} /></td>
-                        <td className="px-2"><Badge map={ITEM_STATUS} value={i.status} /></td>
+                        <td className="px-2"><Badge map={ITEM_STATUS} value={i.status} />
+                          {i.status === 'APROBADO' && i.approved_by && <span className="block text-[10px] text-slate-500">{i.approved_by} · {fmtDate(i.approved_at ?? null)}</span>}
+                          {i.observation && ['OBSERVADO', 'VALIDADO'].includes(i.status) && <span className="block max-w-40 text-[10px] text-red-700">{i.observation}</span>}</td>
                         <td className="px-2 text-slate-600">{i.validated_by || '—'}{i.validated_at && <span className="block text-[10px] text-slate-400">{fmtDate(i.validated_at)}</span>}</td>
-                        <td className="px-2 text-right">{canEdit && <button type="button" onClick={() => setEditing(editing === i.key ? null : i.key)} className="rounded border border-slate-300 px-2 py-0.5 font-semibold text-[#002855] hover:bg-slate-50">
-                          {editing === i.key ? 'Cerrar' : i.final_pen == null ? 'Validar' : 'Corregir'}</button>}</td>
+                        <td className="px-2 text-right"><div className="flex flex-wrap justify-end gap-1">
+                          {canEdit && <button type="button" onClick={() => setEditing(editing === i.key ? null : i.key)} className="rounded border border-slate-300 px-2 py-0.5 font-semibold text-[#002855] hover:bg-slate-50">
+                            {editing === i.key ? 'Cerrar' : i.final_pen == null ? 'Validar' : 'Corregir'}</button>}
+                          {data.can_validate && closedRoute && ['VALIDADO', 'OBSERVADO'].includes(i.status) && <button type="button" disabled={busy} onClick={() => void itemAct(i, 'ENVIAR')}
+                            className="rounded border border-[#002855] px-2 py-0.5 font-semibold text-[#002855] disabled:opacity-50">Enviar</button>}
+                          {data.can_approve && closedRoute && ['VALIDADO', 'OBSERVADO', 'EN_REVISION'].includes(i.status) && <button type="button" disabled={busy} onClick={() => void itemAct(i, 'APROBAR')}
+                            className="rounded bg-emerald-600 px-2 py-0.5 font-semibold text-white disabled:opacity-50">Aprobar</button>}
+                          {data.can_approve && ['VALIDADO', 'EN_REVISION'].includes(i.status) && <button type="button" disabled={busy} onClick={() => void itemAct(i, 'OBSERVAR', 'Observación del ítem (qué falta o qué corregir)')}
+                            className="rounded border border-red-300 px-2 py-0.5 font-semibold text-red-700 disabled:opacity-50">Observar</button>}
+                          {data.can_approve && i.status === 'APROBADO' && <button type="button" disabled={busy} onClick={() => void itemAct(i, 'REABRIR', 'Motivo para reabrir este ítem')}
+                            className="rounded border border-slate-300 px-2 py-0.5 font-semibold text-slate-700 disabled:opacity-50">Reabrir</button>}
+                        </div></td>
                       </tr>
                     })}
                   </tbody>
@@ -361,11 +386,11 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
             {data.can_validate && ['PENDIENTE', 'OBSERVADO', 'CIERRE_PARCIAL'].includes(st.status) && <button type="button" disabled={busy || st.pending.length > 0} onClick={() => void act('ENVIAR')}
               title={st.pending.length ? 'Faltan costos por validar' : undefined}
               className="inline-flex items-center gap-1 rounded-lg border border-[#002855] px-3 py-2 text-sm font-semibold text-[#002855] disabled:opacity-50"><Send className="h-4 w-4" />Enviar a revisión</button>}
-            {data.can_approve && st.status === 'EN_REVISION' && <>
-              <button type="button" disabled={busy} onClick={() => void act('OBSERVAR', 'Observación para Programación (qué falta o qué corregir)')} className="inline-flex items-center gap-1 rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"><XCircle className="h-4 w-4" />Observar</button>
-              <button type="button" disabled={busy} onClick={() => void act('APROBAR')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"><CheckCircle2 className="h-4 w-4" />Aprobar cierre</button>
+            {data.can_approve && ['EN_REVISION', 'CIERRE_PARCIAL'].includes(st.status) && <>
+              {data.items.some(i => i.status === 'EN_REVISION') && <button type="button" disabled={busy} onClick={() => void act('OBSERVAR', 'Observación para Programación (qué falta o qué corregir)')} className="inline-flex items-center gap-1 rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"><XCircle className="h-4 w-4" />Observar</button>}
+              <button type="button" disabled={busy || st.pending.length > 0} title={st.pending.length ? 'No se cierra con ítems pendientes: apruebe por ítem' : undefined} onClick={() => void act('APROBAR')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"><CheckCircle2 className="h-4 w-4" />Aprobar cierre</button>
             </>}
-            {data.can_approve && st.status === 'CERRADO' && <button type="button" disabled={busy} onClick={() => void act('REABRIR', 'Motivo de la reapertura del cierre económico')}
+            {data.can_approve && ['CERRADO', 'CIERRE_PARCIAL'].includes(st.status) && <button type="button" disabled={busy} onClick={() => void act('REABRIR', 'Motivo de la reapertura del cierre económico')}
               className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"><Undo2 className="h-4 w-4" />Reabrir</button>}
             {data.can_validate && <button type="button" disabled={busy || !note.trim()} onClick={() => void saveNote()} className="inline-flex items-center gap-1 rounded-lg bg-[#002855] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"><Save className="h-4 w-4" />Guardar</button>}
             <Link href={documentaryHref(dispatchId)} className="ml-auto inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FileText className="h-4 w-4" />Ir a cierre documentario</Link>
