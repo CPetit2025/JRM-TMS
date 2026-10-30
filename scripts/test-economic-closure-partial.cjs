@@ -3,7 +3,7 @@
 // observan y reabren por separado; CIERRE_PARCIAL / CERRADO; bloqueo del costo final de ítems aprobados; monto de Caja
 // aparte; rutas cerradas antes de la migración sin doble conteo; rutas mixtas con dos OT; reapertura de un solo ítem.
 const assert = require('node:assert/strict')
-const { setupEconomicClosure, applyReferentialStage, read, id } = require('./fixtures/economic-closure-setup.cjs')
+const { setupEconomicClosure, applyPriorStages, read, id } = require('./fixtures/economic-closure-setup.cjs')
 ;(async () => {
  const db = await setupEconomicClosure()
  try {
@@ -11,7 +11,7 @@ const { setupEconomicClosure, applyReferentialStage, read, id } = require('./fix
   const rpc = async (sql, params=[]) => (await db.query(`SELECT ${sql} AS value`,params)).rows[0].value
   await db.exec(`CREATE TABLE documentary_closures(dispatch_id uuid, request_id uuid, status text);`)
   await db.exec(read('supabase/migrations/20261110090000_indicadores_costos_servicios.sql'))
-  await applyReferentialStage(db)
+  await applyPriorStages(db)
   await db.exec(read('supabase/migrations/20261111110000_cierre_economico_bandeja.sql'))
   await db.exec(`INSERT INTO suppliers(id,business_name,tax_id,category) VALUES('${id(11)}','Grúas prueba','20111111111','GRUA'),('${id(12)}','Estiba prueba','20222222222','ESTIBA');
    INSERT INTO transport_requests(id,contract_id,request_number,delivery_address,delivery_district,site_id) VALUES
@@ -28,9 +28,9 @@ const { setupEconomicClosure, applyReferentialStage, read, id } = require('./fix
    await rpc('save_request_unloading_costs($1,$2::jsonb)',[request,JSON.stringify([{concept:'GRUA',estimated_pen:0}])])
    await rpc('apply_request_tariff($1)',[request])
    const grua = await scalar(`SELECT id AS value FROM transport_unloading_costs WHERE transport_request_id=$1 AND concept='GRUA'`,[request])
-   const route = await scalar('SELECT schedule_route_resources($1::jsonb) AS value',[JSON.stringify({ mode:'PROPIA',p_driver_id:null,p_vehicle_plate:plate,
+   const route = await scalar('SELECT schedule_route_resources($1::jsonb) AS value',[JSON.stringify({ mode:'PROPIA',freight_reason:'Flete acordado aparte',p_driver_id:null,p_vehicle_plate:plate,
     p_departure:'2026-10-30T12:00:00Z',p_estimated_km:10,p_freight_cost:0,p_contract_id:id(20),p_document_type:'GR',auxiliaries:[],p_requests:[{id:request}],forklift:null,
-    special_services:{items:[{id:grua,supplier_id:id(11),billing_unit:'HORA',agreed_rate:grua_rate,agreed_qty:2,min_billable_qty:3,fraction_minutes:30},
+    special_services:{items:[{id:grua,supplier_id:id(11),billing_unit:'HORA',agreed_rate:grua_rate,agreed_qty:2,min_billable_qty:3,fraction_minutes:30,reason:'Tarifa del proveedor por hora'},
      {transport_request_id:request,concept:'ESTIBA',supplier_id:id(12),billing_unit:'JORNADA',agreed_rate:90,agreed_qty:1,workers:4,reason:'Cuadrilla por volumen'}]} })])
    const estiba = await scalar(`SELECT id AS value FROM transport_unloading_costs WHERE dispatch_id=$1 AND concept='ESTIBA'`,[route])
    await db.query(`UPDATE dispatches SET freight_cost=500 WHERE id=$1`,[route])
