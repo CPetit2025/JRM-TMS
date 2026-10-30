@@ -75,9 +75,14 @@ BEGIN
   IF NOT (public.settlement_checklist(ent[1], ent[2])->>'complete')::boolean THEN RAISE EXCEPTION 'CAJA C99 FAIL: lista de verificación (T2)'; END IF;
   -- T3: se puede revertir y vuelve a la regla automática
   PERFORM pg_temp.c99_user(actor);
-  c := public.settlement_undo_manual(ent[1], ent[2]);
+  c := public.settlement_undo_manual(ent[1], ent[2], 'La guía física no llegó al cierre');
   PERFORM pg_temp.c99_user(NULL);
   IF (c->>'complete')::boolean OR c ? 'manual' THEN RAISE EXCEPTION 'CAJA C99 FAIL: reversión (T3) %', c; END IF;
+  -- El cierre manual deshecho queda en el historial del cierre documentario con su motivo
+  IF NOT EXISTS (SELECT 1 FROM public.documentary_closure_events e WHERE e.dispatch_id = ent[1] AND e.request_id = ent[2]
+      AND e.action = 'DESHACER_MANUAL' AND e.reason = 'La guía física no llegó al cierre'
+      AND e.details->'cierre_manual'->>'reason' = 'Cliente confirmó recepción por correo') THEN
+    RAISE EXCEPTION 'CAJA C99 FAIL: historial de la reversión (T3)'; END IF;
   -- T4: una ruta programada no se liquida y los anónimos no tienen acceso
   -- (ruta propia aún programada: producción no deja volver una ruta cerrada a PROGRAMADO)
   prog := pg_temp.c99_route('ZC99P' || suffix, site, client, 'PROGRAMADO', 'DESPACHO');
