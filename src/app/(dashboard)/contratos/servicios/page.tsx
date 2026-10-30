@@ -290,9 +290,12 @@ export default function ContractServicesPage() {
         return
       }
 
-      const { error } = await supabase.rpc('update_contract_service_amount', {
+      const reason = window.prompt('Motivo del cambio de monto (queda en el historial de costos)')
+      if (reason === null) return
+      const { error } = await supabase.rpc('update_contract_service_amount_with_reason', {
         p_service_id: viewingService.id,
-        p_new_amount: newAmount
+        p_new_amount: newAmount,
+        p_reason: reason
       })
 
       if (error) throw error
