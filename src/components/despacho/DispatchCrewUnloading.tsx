@@ -6,6 +6,7 @@ import { Ban, Loader2, Plus, Receipt, Save, Trash2, Users, Wrench } from 'lucide
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { errorMessage, money } from '@/lib/caja'
+import { ORIGIN_LABEL, unloadingAmountLabel } from '@/components/despacho/InheritedSpecialServices'
 
 // Tripulación del despacho y costos de descarga (F4). Transporte asigna ayudantes/auxiliares y planifica la
 // descarga (reserva la partida); el costo real llega por Caja (gasto aprobado) o por factura registrada aquí.
@@ -16,6 +17,7 @@ type CrewRow = { profile_id: string; full_name: string; crew_role: string }
 type Line = {
   id?: string; transport_request_id: string; concept: string; description: string | null; estimated_pen: number
   planned_pen: number | null; actual_pen: number | null; status: string; provider_name: string | null; expense_id: string | null
+  origin?: string | null; tariff_missing?: boolean | null; estimated_source?: string | null  // origen: Solicitud, Programación o Caja
   planned: string  // valor editable
 }
 
@@ -49,7 +51,7 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
         supabase.rpc('get_dispatch_crew', { p_dispatch_id: dispatchId }),
         canEdit && programmed ? supabase.rpc('list_crew_candidates') : Promise.resolve({ data: [] }),
         ids.length ? supabase.from('transport_unloading_costs')
-          .select('id, transport_request_id, dispatch_id, concept, description, estimated_pen, planned_pen, actual_pen, status, provider_name, expense_id')
+          .select('id, transport_request_id, dispatch_id, concept, description, estimated_pen, planned_pen, actual_pen, status, provider_name, expense_id, origin, tariff_missing, estimated_source')
           .in('transport_request_id', ids).order('created_at') : Promise.resolve({ data: [] }),
       ])
       if (cancel) return
@@ -195,9 +197,10 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
                           {Object.entries(CONCEPTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                         </select>
                       ) : CONCEPTS[l.concept]}
+                      <span className="ml-1 rounded bg-slate-100 px-1 text-[10px] font-semibold text-slate-600" title="Origen del servicio">{ORIGIN_LABEL[l.origin || 'PROGRAMACION'] || l.origin}</span>
                       {l.description && <div className="text-[11px] text-slate-400">{l.description}</div>}
                     </td>
-                    <td className="pr-2 text-right">{l.estimated_pen ? `S/ ${money(l.estimated_pen)}` : '—'}</td>
+                    <td className="pr-2 text-right">{l.id && (l.tariff_missing || l.estimated_source === 'MANUAL') ? unloadingAmountLabel({ ...l, planned_pen: null }) : l.estimated_pen ? `S/ ${money(l.estimated_pen)}` : '—'}</td>
                     <td className="pr-2 text-right">
                       {editable && (l.status === 'ESTIMADO' || l.status === 'PLANIFICADO') ? (
                         <input value={l.planned} onChange={e => setLine(i, { planned: e.target.value })} inputMode="decimal"

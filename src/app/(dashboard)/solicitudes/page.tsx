@@ -290,7 +290,8 @@ export default function SolicitudesPage() {
   useEffect(() => { activeRequestRoot.current = newRequest.contract_id }, [newRequest.contract_id])
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
   // Costos de descarga estimados (montacargas, grúa, estiba, otros): suman al costo que se valida con la partida
-  const [unloading, setUnloading] = useState<{ concept: string; estimated_pen: string; description: string }[]>([])
+  // source: TARIFA (monto del tarifario) · MANUAL (sin tarifa, monto referencial con motivo) · '' (sin tarifa, por cotizar)
+  const [unloading, setUnloading] = useState<{ concept: string; estimated_pen: string; description: string; source?: '' | 'TARIFA' | 'MANUAL'; manual_reason?: string }[]>([])
   // Respuesta obligatoria: ¿la entrega requiere descarga especial? ('' = sin responder)
   const [unloadingAnswer, setUnloadingAnswer] = useState<'' | 'SI' | 'NO'>('')
   const [unloadingHistory, setUnloadingHistory] = useState<UnloadingHistory[]>([])
@@ -496,7 +497,9 @@ export default function SolicitudesPage() {
       const lines = (q.lines || []) as { concept: string; unit_rate: number }[]
       setUnloading(list => list.map(u => {
         const hit = lines.find(l => l.concept === u.concept)
-        return { ...u, estimated_pen: hit ? String(hit.unit_rate) : '' }
+        if (hit) return { ...u, estimated_pen: String(hit.unit_rate), source: 'TARIFA' as const, manual_reason: '' }
+        // Sin tarifa no es S/ 0: se conserva el monto manual (con motivo) o queda por cotizar
+        return u.source === 'MANUAL' ? u : { ...u, estimated_pen: '', source: '' as const }
       }))
     }, 500)
     return () => { cancel = true; window.clearTimeout(t) }
@@ -640,8 +643,11 @@ export default function SolicitudesPage() {
       toast.info(`Copia de ${request.request_number}: indique la fecha de atención y el número de documento.`)
     }
     const { data: unloadingRows } = await supabase.from('transport_unloading_costs')
-      .select('concept, estimated_pen, description').eq('transport_request_id', request.id).eq('status', 'ESTIMADO')
-    setUnloading((unloadingRows || []).map(u => ({ concept: u.concept, estimated_pen: String(u.estimated_pen), description: u.description || '' })))
+      .select('concept, estimated_pen, description, estimated_source, manual_reason, tariff_missing').eq('transport_request_id', request.id).eq('status', 'ESTIMADO')
+    setUnloading((unloadingRows || []).map(u => {
+      const source: '' | 'TARIFA' | 'MANUAL' = u.estimated_source === 'MANUAL' ? 'MANUAL' : !u.tariff_missing && Number(u.estimated_pen) > 0 ? 'TARIFA' : ''
+      return { concept: u.concept, estimated_pen: source ? String(u.estimated_pen) : '', description: u.description || '', source, manual_reason: u.manual_reason || '' }
+    }))
     setUnloadingAnswer(request.unloading_required === true || (unloadingRows?.length || 0) > 0 ? 'SI' : request.unloading_required === false ? 'NO' : '')
     setIsModalOpen(true)
   }
@@ -706,6 +712,10 @@ export default function SolicitudesPage() {
       toast.error('Revise los costos estimados.')
       return
     }
+    if (unloadingAnswer === 'SI' && unloading.some(u => u.source === 'MANUAL' && (!(Number(u.estimated_pen) > 0) || (u.manual_reason || '').trim().length < 3))) {
+      toast.error('Sin tarifa: indique el costo referencial manual (mayor a cero) y su motivo, o deje el monto vacío para cotizarlo después.')
+      return
+    }
     // El costo de la solicitud es referencial: no bloquea; el saldo se valida al armar la ruta con la unidad asignada
     const referentialOverBalance = Boolean(newRequest.contract_id) && estimatedCost > 0 && rootBalance != null && estimatedCost > Number(rootBalance)
     if (requiresSupplier({ request_type: newRequest.request_type, attention_mode: newRequest.attention_mode }) && !newRequest.supplier_id) {
@@ -726,7 +736,8 @@ export default function SolicitudesPage() {
       const { data: saved, error } = await supabase.rpc('save_transport_request_full', {
         p_request_id: editingRequestId,
         p_payload: { ...newRequest, purchase_order: newRequest.reference_type === 'OC' ? newRequest.reference_number : newRequest.reference_type ? '' : newRequest.purchase_order, required_at: requiredAt, delivery_zone: requiresDeliveryLeadTime ? newRequest.delivery_zone : null, contract_id: newRequest.contract_id || null, service_cost: (isCustomerPickup || isPickupRequest) ? 0 : newRequest.service_cost, destination_acknowledged: destinationAcknowledged },
-        p_unloading: unloadingAnswer === 'SI' ? unloading.map(x => ({ concept: x.concept, estimated_pen: Number(x.estimated_pen) || 0, description: x.description || null })) : [],
+        p_unloading: unloadingAnswer === 'SI' ? unloading.map(x => ({ concept: x.concept, estimated_pen: Number(x.estimated_pen) || 0, description: x.description || null,
+          estimated_source: x.source === 'MANUAL' ? 'MANUAL' : null, manual_reason: x.source === 'MANUAL' ? (x.manual_reason || '').trim() : null })) : [],
         p_components: selected.map(c => ({
           contract_id: c.contract_id,
           weight_kg: selectedComponents[c.contract_id].weight_kg || null,
@@ -1385,10 +1396,25 @@ export default function SolicitudesPage() {
                         <option value="MONTACARGAS">Montacargas</option><option value="GRUA">Grúa</option>
                         <option value="ESTIBA">Estiba</option><option value="OTROS">Otros</option>
                       </select>
-                      <span className={`w-36 px-2 py-1.5 rounded-lg text-sm tabular-nums border ${u.estimated_pen ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-amber-50 border-amber-200 text-amber-700'}`}
-                        title="Monto referencial del tarifario">
-                        {u.estimated_pen ? `S/ ${Number(u.estimated_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}` : 'Sin tarifa'}
-                      </span>
+                      {u.source === 'TARIFA' ? (
+                        <span className="w-36 px-2 py-1.5 rounded-lg text-sm tabular-nums border bg-slate-50 border-slate-200 text-slate-800" title="Monto referencial del tarifario">
+                          S/ {Number(u.estimated_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                        </span>
+                      ) : quoting ? (
+                        <span className="w-36 px-2 py-1.5 rounded-lg text-sm border bg-slate-50 border-slate-200 text-slate-500">Cotizando…</span>
+                      ) : (
+                        <input type="number" min="0.01" step="0.01" aria-label={`Costo manual ${UNLOADING_LABEL[u.concept] || u.concept} (sin tarifa)`}
+                          placeholder="Sin tarifa · S/ manual" value={u.source === 'MANUAL' ? u.estimated_pen : ''}
+                          title="No hay tarifa: puede indicar un costo referencial manual con su motivo, o dejarlo vacío (por cotizar)"
+                          onChange={e => setUnloading(list => list.map((x, j) => j === i ? { ...x, estimated_pen: e.target.value, source: e.target.value ? 'MANUAL' : '' } : x))}
+                          className="w-36 px-2 py-1.5 rounded-lg text-sm tabular-nums border bg-amber-50 border-amber-300 text-amber-900" />
+                      )}
+                      {u.source === 'MANUAL' && (
+                        <input type="text" maxLength={500} aria-label={`Motivo del costo manual ${UNLOADING_LABEL[u.concept] || u.concept}`}
+                          placeholder="Motivo del costo manual (sin tarifa) *" value={u.manual_reason || ''}
+                          onChange={e => setUnloading(list => list.map((x, j) => j === i ? { ...x, manual_reason: e.target.value } : x))}
+                          className="flex-1 min-w-[180px] px-2 py-1.5 bg-white border border-amber-300 rounded-lg text-sm" />
+                      )}
                       <input type="text" placeholder="Detalle (capacidad, horas, cuadrilla…)" value={u.description}
                         onChange={e => setUnloading(list => list.map((x, j) => j === i ? { ...x, description: e.target.value } : x))}
                         className="flex-1 min-w-[140px] px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-sm" />
@@ -1399,6 +1425,7 @@ export default function SolicitudesPage() {
                   <button type="button" onClick={() => setUnloading(list => [...list, { concept: 'MONTACARGAS', estimated_pen: '', description: '' }])}
                     className="text-sm text-[#002855] font-medium hover:underline">+ Agregar recurso de descarga</button>
                   {unloadingTotal > 0 && <span className="ml-3 text-xs text-slate-600">Total descarga: S/ {unloadingTotal.toLocaleString('es-PE')}</span>}
+                  {!quoting && unloading.some(u => !u.source) && <span className="ml-3 text-xs font-semibold text-amber-700">{unloading.filter(u => !u.source).length} sin tarifa (por cotizar, no es S/ 0)</span>}
                 </>}
             </FormSection>
           </div>
