@@ -29,6 +29,8 @@ import { cellDateTime, fullDateTime } from '@/lib/table-format'
 import { fetchServiceTypes, serviceKind, type ServiceKind } from '@/lib/request-service'
 import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 import { DocumentaryBadge, DocumentaryHistory, type DocumentaryClosure } from '@/components/despacho/DocumentaryClosure'
+import { dispatchStatusLabel } from '@/lib/dispatch-status'
+import { CostSummary, EconomicServicesTable, FILE_CATEGORY, GuidesTable, useEconomicDetail, useModalContext, type GuideRow } from '@/components/documentos/DispatchModalSections'
 
 // Auditor: Packing List. Asistente: confirmación documentaria y Nota de Despacho en recojos.
 // La guía de entrega obligatoria procede del app/proveedor; solo Transporte valida la conformidad.
@@ -282,7 +284,7 @@ function DocumentaryQueue() {
           <span>{focused ? <>Liquidación por servicio: se muestra <b>1 de {selectedRoute.stops.length}</b> servicios de la ruta {selectedRoute.dispatch_number}.</> : <>Ruta {selectedRoute.dispatch_number} completa · {selectedRoute.stops.length} servicios.</>}</span>
           <button type="button" onClick={() => setShowAllStops(v => !v)} className="min-h-9 rounded-lg border border-blue-300 bg-white px-3 font-semibold hover:bg-blue-100">{focused ? `Ver los ${selectedRoute.stops.length} servicios` : 'Ver solo este servicio'}</button>
         </p>}
-        {selected && <DispatchCard key={selected.id} item={selected} canEdit={canEdit && selected.status === 'PROGRAMADO'} canPacking={canPacking && selected.status === 'PROGRAMADO'} canSettle={(canNumbers || canManual) && !packingOnly && !NOT_SETTLEABLE.includes(selected.status)} canUpload={canNumbers} canManual={canManual} checklists={checklists} packingOnly={packingOnly} serviceTypes={serviceTypes}
+        {selected && <DispatchCard key={selected.id} item={selected} canEdit={canEdit && selected.status === 'PROGRAMADO'} canPacking={canPacking && selected.status === 'PROGRAMADO'} canAttach={canEdit && selected.status !== 'CANCELADO'} canSettle={(canNumbers || canManual) && !packingOnly && !NOT_SETTLEABLE.includes(selected.status)} canUpload={canNumbers} canManual={canManual} checklists={checklists} packingOnly={packingOnly} serviceTypes={serviceTypes}
           onVoid={voidDoc} onOpen={openDoc} onUploaded={load}
           deliveries={deliveries.filter(row => row.dispatch_id === selected.id)} onEvidence={row => { setSelectedId(null); setReview(row) }}>
           {!packingOnly && <DocumentNumberLinks key={selected.id} dispatchId={selected.id} services={selected.stops.map(stop => ({ ...stop, order_reference: referenceLabel(serviceTypes.get(stop.request_id)) }))} known={knownNumbers(selected, deliveries)} canEdit={canNumbers && selected.status !== 'CANCELADO'} onChanged={load} />}
@@ -415,12 +417,14 @@ function DocumentStatusModal({ target, reference, packingOnly, canEdit, onClose,
   </Modal>
 }
 
-function DispatchCard({ item, canEdit, canPacking, canSettle = false, canUpload = false, canManual = false, checklists, packingOnly, serviceTypes, onVoid, onOpen, onUploaded, deliveries, onEvidence, children }: {
-  item: QueueItem; canEdit: boolean; canPacking: boolean; canSettle?: boolean; canUpload?: boolean; canManual?: boolean; checklists?: Map<string, SettlementChecklist>; packingOnly: boolean; serviceTypes: Awaited<ReturnType<typeof fetchServiceTypes>>; onVoid: (d: Doc) => void
+function DispatchCard({ item, canEdit, canPacking, canAttach = false, canSettle = false, canUpload = false, canManual = false, checklists, packingOnly, serviceTypes, onVoid, onOpen, onUploaded, deliveries, onEvidence, children }: {
+  item: QueueItem; canEdit: boolean; canPacking: boolean; canAttach?: boolean; canSettle?: boolean; canUpload?: boolean; canManual?: boolean; checklists?: Map<string, SettlementChecklist>; packingOnly: boolean; serviceTypes: Awaited<ReturnType<typeof fetchServiceTypes>>; onVoid: (d: Doc) => void
   onOpen: (p: string) => void; onUploaded: () => Promise<void>; deliveries: DeliveryRow[]; onEvidence: (row: DeliveryReviewTarget) => void; children?: React.ReactNode
 }) {
   const [upload, setUpload] = useState<{ requestId: string | null; type: string; label: string } | null>(null)
   const [tab, setTab] = useState<'servicios' | 'guias' | 'archivos' | 'liquidacion'>('servicios')
+  const [category, setCategory] = useState('COMPROBANTE')
+  const [attachTo, setAttachTo] = useState('')
   const uploadPanel = useRef<HTMLDivElement>(null)
   useEffect(() => { if (upload) uploadPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) }, [upload])
   const badge = STATUS_BADGE[item.doc_status]
@@ -433,8 +437,45 @@ function DispatchCard({ item, canEdit, canPacking, canSettle = false, canUpload 
   // Estado de cada documento requerido en una sola línea: verde listo, ámbar pendiente
   const chip = (title: string, ready: boolean, detail: string, optional = false) => <li className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs ring-1 ring-inset ${ready ? 'bg-emerald-50 text-emerald-800 ring-emerald-200' : optional ? 'bg-slate-50 text-slate-600 ring-slate-200' : 'bg-amber-50 text-amber-800 ring-amber-200'}`}>{ready ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <Clock className="h-3.5 w-3.5 shrink-0" />}<span className="font-semibold">{title}</span><span>· {detail}</span></li>
   const beginUpload = (requestId: string | null, type: string, title: string) => setUpload({ requestId, type, label: title })
-  const uploadForm = (requestId: string | null) => upload && upload.requestId === requestId && (canPacking || canEdit) && <div ref={uploadPanel} className="scroll-m-4 border-t border-blue-200 bg-blue-50/40 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h4 className="text-sm font-bold text-[#002855]">{DOC_LABEL[upload.type]} · {upload.label}</h4><p className="mt-0.5 text-xs text-slate-500">{upload.requestId ? 'El archivo se vincula únicamente a esta solicitud.' : 'Este archivo cubre todas las solicitudes y OT del despacho.'}</p></div><button type="button" onClick={() => setUpload(null)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 lg:min-h-9">Cancelar</button></div><UploadForm key={`${upload.requestId}/${upload.type}`} dispatchId={item.id} requestId={upload.requestId} isPickup={item.is_pickup} canPacking={canPacking} canDocuments={canEdit} documentType={upload.type} onUploaded={async () => { await onUploaded(); setUpload(null) }} /></div>
-  const tabs: [typeof tab, string][] = [['servicios', `Servicios · ${item.stops.length}`], ...(!packingOnly ? [['guias', 'Guías y notas'], ['liquidacion', 'Liquidación']] as [typeof tab, string][] : []), ['archivos', `Archivos · ${generalDocs.length}`]]
+  const uploadForm = (requestId: string | null) => upload && upload.requestId === requestId && (canPacking || canEdit || (canAttach && upload.type === 'OTRO')) && <div ref={uploadPanel} className="scroll-m-4 border-t border-blue-200 bg-blue-50/40 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h4 className="text-sm font-bold text-[#002855]">{DOC_LABEL[upload.type]} · {upload.label}</h4><p className="mt-0.5 text-xs text-slate-500">{upload.requestId ? 'El archivo se vincula únicamente a esta solicitud.' : 'Este archivo cubre todas las solicitudes y OT del despacho.'}</p></div><button type="button" onClick={() => setUpload(null)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 lg:min-h-9">Cancelar</button></div><UploadForm key={`${upload.requestId}/${upload.type}`} dispatchId={item.id} requestId={upload.requestId} isPickup={item.is_pickup} canPacking={canPacking} canDocuments={canEdit || canAttach} documentType={upload.type} category={upload.type === 'OTRO' && tab === 'archivos' ? category : null} onUploaded={async () => { await onUploaded(); setUpload(null) }} /></div>
+  // Contexto que la bandeja no trae (retorno, quién subió, tamaño, categoría) y costos de solo consulta (misma fuente que el Cierre económico)
+  const ctx = useModalContext(item.id, item.documents.length)
+  const economic = useEconomicDetail(item.id, !packingOnly)
+  const docMeta = new Map((ctx?.documents || []).map(d => [d.id, d]))
+  const stopLabel = (requestId: string | null) => {
+    const s = item.stops.find(x => x.request_id === requestId)
+    return s ? { ot: s.ot_code ? `OT ${s.ot_code}` : referenceLabel(serviceTypes.get(s.request_id)) || 'Sin referencia', request: s.request_number } : { ot: 'Toda la ruta', request: item.stops.length ? `${item.stops.length} servicio(s)` : '—' }
+  }
+  // Guías y notas de la ruta en una tabla: guía del conductor (con su conformidad), números vinculados y archivos, sin repetir números
+  const guideRows: GuideRow[] = []
+  if (!packingOnly) for (const s of item.stops) {
+    const label = stopLabel(s.request_id)
+    const rows: GuideRow[] = []
+    const add = (row: Omit<GuideRow, 'ot' | 'request'>) => {
+      const same = row.number ? rows.find(r => r.type === row.type && r.number?.toUpperCase() === row.number?.toUpperCase()) : undefined
+      if (same) { same.file = same.file || row.file; same.date = same.date || row.date; return }
+      rows.push({ ...row, ...label })
+    }
+    const delivery = deliveries.find(d => d.request_id === s.request_id)
+    if (delivery?.guide_number) add({ key: `${s.request_id}/gr-app`, type: 'Guía de Remisión', number: delivery.guide_number, date: delivery.submitted_at,
+      status: delivery.conformity === 'VALIDADA' ? 'VALIDADA' : ['OBSERVADA', 'RECHAZADA'].includes(delivery.conformity) ? 'OBSERVADA' : 'POR_VALIDAR', onReview: () => onEvidence(delivery) })
+    for (const d of item.documents.filter(x => x.request_id === s.request_id && ['GUIA_REMISION', 'NOTA_DESPACHO'].includes(x.doc_type)))
+      add({ key: d.id, type: d.doc_type === 'GUIA_REMISION' ? 'Guía de Remisión' : 'Nota de Despacho', number: d.document_number, date: d.uploaded_at, status: 'REGISTRADA', file: { path: d.file_path, name: d.file_name || 'Archivo' } })
+    for (const n of (item.number_references || []).filter(x => x.request_id === s.request_id))
+      add({ key: `${s.request_id}/${n.doc_type}/${n.document_number}`, type: n.doc_type === 'GUIA_REMISION' ? 'Guía de Remisión' : 'Nota de Despacho', number: n.document_number, date: null, status: 'REGISTRADA' })
+    const kind = checklists?.get(`${item.id}/${s.request_id}`)?.kind || settlementKind(serviceTypes.get(s.request_id), item.is_pickup)
+    const hasNote = rows.some(r => r.type === 'Nota de Despacho'), grOk = rows.some(r => r.type === 'Guía de Remisión' && r.status === 'VALIDADA')
+    const grPending = rows.some(r => r.type === 'Guía de Remisión' && r.status !== 'VALIDADA')
+    const missing = kind === 'ENTREGA' && !grOk && !hasNote && !grPending ? 'Guía de Remisión o Nota de Despacho'
+      : kind === 'RECOJO' && !grOk && !grPending ? 'Guía de Remisión' : kind === 'RECOJO_CLIENTE' && !hasNote ? 'Nota de Despacho' : null
+    if (missing && item.status !== 'PROGRAMADO' && item.status !== 'CANCELADO') rows.push({ key: `${s.request_id}/falta`, ...label, type: missing, number: null, date: null, status: 'FALTA', onReview: delivery ? () => onEvidence(delivery) : undefined })
+    guideRows.push(...rows)
+  }
+  const missingGuides = guideRows.filter(r => r.status === 'FALTA' || r.status === 'POR_VALIDAR').length
+  const settlementPending = item.stops.filter(s => checklists?.get(`${item.id}/${s.request_id}`)?.complete === false).length
+  const tabs: [typeof tab, string][] = [['servicios', `Servicios · ${item.stops.length}`],
+    ...(!packingOnly ? [['guias', `Guías y notas · ${guideRows.filter(r => r.status !== 'FALTA').length}${missingGuides ? ` (${missingGuides} pend.)` : ''}`], ['liquidacion', `Liquidación${settlementPending ? ` · ${settlementPending} pend.` : ''}`]] as [typeof tab, string][] : []),
+    ['archivos', `Archivos · ${item.documents.length}`]]
   const onTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
     event.preventDefault()
@@ -445,20 +486,28 @@ function DispatchCard({ item, canEdit, canPacking, canSettle = false, canUpload 
   }
 
   return <div className="min-w-0 space-y-4">
+    {/* Cabecera y pestañas fijas: el contenido se desplaza debajo */}
+    <div className="sticky -top-4 z-20 -mx-4 -mt-4 space-y-2 border-b border-slate-200 bg-white px-4 pb-3 pt-4 sm:-top-6 sm:-mx-6 sm:-mt-6 sm:px-6 sm:pt-6">
     <dl className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+      <div className="flex items-center gap-1.5"><dt className="text-xs text-slate-500">Ruta</dt><dd className="font-bold text-[#002855]">{item.dispatch_number}</dd>
+        <dd className="text-xs text-slate-600">· {[...new Set(item.stops.map(s => stopLabel(s.request_id).ot))].join(', ') || 'Sin OT'} · {item.stops.map(s => s.request_number).join(', ')}</dd></div>
       <div className="flex items-center gap-2"><Truck aria-hidden className="h-4 w-4 text-[#002855]" /><dt className="sr-only">Unidad</dt><dd><span className="font-bold text-[#002855]">{item.is_pickup ? 'Unidad del cliente' : item.vehicle_plate || 'Sin unidad'}</span> <span className="text-xs text-slate-500">· {item.is_pickup ? 'Recojo por el cliente' : item.modalidad === 'TERCERO' ? 'Transporte contratado por JRM' : 'Transporte JRM'}</span></dd></div>
       <div className="flex items-center gap-1.5"><dt className="text-xs text-slate-500">Conductor</dt><dd className="font-semibold text-slate-800">{item.is_pickup ? 'No aplica' : item.driver_name || 'Sin conductor registrado'}</dd></div>
       <div className="flex items-center gap-1.5"><dt className="text-xs text-slate-500">Salida</dt><dd className={`font-semibold ${urgent ? 'text-red-700' : 'text-slate-800'}`}>{fmtDate(item.scheduled_departure, true)}{urgent && <span className="ml-1 text-xs font-medium">· {h !== null && h < 0 ? 'atrasada' : 'próxima'}</span>}</dd></div>
-      <div className="flex items-center gap-1.5 sm:ml-auto"><dt className="sr-only">Estado documentario</dt><dd className="flex items-center gap-2"><StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>{item.docs_ready_at && !item.docs_reissue && <span className="text-xs text-emerald-700">Confirmado · {fmtDate(item.docs_ready_at, true)}</span>}</dd></div>
+      {ctx?.returned_at && <div className="flex items-center gap-1.5"><dt className="text-xs text-slate-500">Retorno</dt><dd className="font-semibold text-slate-800">{fmtDate(ctx.returned_at, true)}</dd></div>}
+      <div className="flex items-center gap-1.5 sm:ml-auto"><dt className="sr-only">Estado operativo y documentario</dt><dd className="flex flex-wrap items-center gap-2"><StatusBadge tone={['LIQUIDADO', 'CERRADO'].includes(item.status) ? 'success' : item.status === 'CANCELADO' ? 'danger' : 'neutral'}>Ruta: {dispatchStatusLabel(item.status)}</StatusBadge><StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>{item.docs_ready_at && !item.docs_reissue && <span className="text-xs text-emerald-700">Confirmado · {fmtDate(item.docs_ready_at, true)}</span>}</dd></div>
     </dl>
     {item.docs_reissue && <p className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Reemisión: {item.docs_reissue_reason || 'Actualizar los documentos del servicio.'}</p>}
 
     <div role="tablist" aria-label="Secciones de documentos del despacho" className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-1">
       {tabs.map(([value, label]) => <button key={value} id={`dispatch-doc-tab-${value}`} type="button" role="tab" aria-selected={tab === value} aria-controls={`dispatch-doc-panel-${value}`} tabIndex={tab === value ? 0 : -1} onClick={() => setTab(value)} onKeyDown={onTabKeyDown} className={`min-h-10 shrink-0 rounded-lg px-4 text-sm font-semibold transition-colors ${tab === value ? 'bg-white text-[#002855] shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:bg-white/70 hover:text-[#002855]'}`}>{label}</button>)}
     </div>
+    </div>
 
     {tab === 'servicios' && <section id="dispatch-doc-panel-servicios" role="tabpanel" aria-labelledby="dispatch-doc-tab-servicios" aria-label="Servicios" className="space-y-3">
-      <h3 className="text-sm font-bold text-[#002855]">Servicios <span className="font-normal text-slate-500">· {item.stops.length}{item.is_pickup ? ' · Recojo por el cliente' : ''}</span></h3>
+      <CostSummary detail={economic} />
+      <EconomicServicesTable detail={economic} dispatchId={item.id} transportLabel={item.modalidad === 'TERCERO' ? 'Transportista contratado' : 'JRM / flota propia'} carrier={null} />
+      <h3 className="text-sm font-bold text-[#002855]">Servicios por OT y solicitud <span className="font-normal text-slate-500">· {item.stops.length}{item.is_pickup ? ' · Recojo por el cliente' : ''}</span></h3>
       {!item.stops.length && <p className="rounded-xl border border-slate-200 p-4 text-sm text-slate-500">Este despacho no tiene solicitudes asociadas.</p>}
       {item.stops.map((s, i) => {
         const docs = item.documents.filter(d => d.request_id === s.request_id)
@@ -507,20 +556,62 @@ function DispatchCard({ item, canEdit, canPacking, canSettle = false, canUpload 
     </section>}
 
     {tab === 'guias' && <section id="dispatch-doc-panel-guias" role="tabpanel" aria-labelledby="dispatch-doc-tab-guias" className="space-y-3">
-      {children}
-      {!children && <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">No hay números de guía o nota vinculados a este despacho.</p>}
+      <GuidesTable rows={guideRows} onOpen={onOpen} />
+      {children && <details className="rounded-xl border border-slate-200 bg-white p-3" open={!guideRows.length}>
+        <summary className="cursor-pointer text-sm font-semibold text-[#002855]">Vincular números de guía o nota por servicio</summary>
+        <div className="mt-3">{children}</div>
+      </details>}
     </section>}
 
-    {tab === 'archivos' && <section id="dispatch-doc-panel-archivos" role="tabpanel" aria-labelledby="dispatch-doc-tab-archivos" aria-label="Archivos de todo el despacho" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"><div><h3 className="text-sm font-bold text-[#002855]">Archivos de todo el despacho</h3><p className="text-xs text-slate-500">Cubren todas las OT del despacho{generalDocs.length ? ` · ${generalDocs.length} archivo(s)` : ''}.</p></div><div className="flex flex-wrap gap-2">
+    {tab === 'archivos' && <section id="dispatch-doc-panel-archivos" role="tabpanel" aria-labelledby="dispatch-doc-tab-archivos" aria-label="Archivos del despacho" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="flex flex-wrap items-end justify-between gap-2 px-4 py-3"><div><h3 className="text-sm font-bold text-[#002855]">Archivos del despacho</h3><p className="text-xs text-slate-500">Documentos de la ruta y de cada servicio · {item.documents.length} vigente(s){ctx?.voided ? ` · ${ctx.voided} anulado(s)` : ''}. PDF, imagen o Excel, máximo 15 MB cada uno.</p></div><div className="flex flex-wrap items-end gap-2">
         {canPacking && <button type="button" onClick={() => beginUpload(null, 'PACKING_LIST', 'Todas las solicitudes del despacho')} className={secondary}><Upload className="h-4 w-4" />{consolidated ? 'Reemplazar Packing List consolidado' : 'Packing List consolidado'}</button>}
-        {canEdit && <button type="button" onClick={() => beginUpload(null, 'OTRO', 'Todas las solicitudes del despacho')} className={secondary}><Upload className="h-4 w-4" />Otro archivo</button>}
+        {(canEdit || canAttach) && <>
+          <label className="text-[11px] font-semibold text-slate-600">Categoría<select value={category} onChange={e => setCategory(e.target.value)} className="mt-0.5 block min-h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs">
+            {Object.entries(FILE_CATEGORY).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+          <label className="text-[11px] font-semibold text-slate-600">Asociar a<select value={attachTo} onChange={e => setAttachTo(e.target.value)} className="mt-0.5 block min-h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs">
+            <option value="">Toda la ruta</option>{item.stops.map(s => <option key={s.request_id} value={s.request_id}>{stopLabel(s.request_id).ot} · {s.request_number}</option>)}</select></label>
+          <button type="button" onClick={() => beginUpload(attachTo || null, 'OTRO', attachTo ? `${stopLabel(attachTo).ot} · ${stopLabel(attachTo).request}` : 'Todas las solicitudes del despacho')} className={secondary}><Upload className="h-4 w-4" />Cargar archivos</button>
+        </>}
       </div></div>
-      {!!generalDocs.length && <div className="border-t border-slate-100 px-4 pb-3"><DocList docs={generalDocs} canEdit={canEdit} onVoid={onVoid} onOpen={onOpen} /></div>}
-      {uploadForm(null)}
+      {uploadForm(attachTo || null)}
+      <div className="overflow-x-auto border-t border-slate-100">
+        <table className="w-full min-w-[52rem] text-sm">
+          <thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-3 py-2">Nombre</th><th className="px-3 py-2">Tipo</th><th className="px-3 py-2">OT · solicitud</th><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Subido por</th><th className="px-3 py-2 text-right">Tamaño</th><th className="px-3 py-2">Validación</th><th className="px-3 py-2 text-right">Acciones</th></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {item.documents.map(d => {
+              const meta = docMeta.get(d.id), where = stopLabel(d.request_id)
+              const type = d.doc_type === 'OTRO' ? FILE_CATEGORY[meta?.category || 'OTROS'] : DOC_LABEL[d.doc_type] || 'Documento'
+              const validation = d.doc_type === 'PACKING_LIST' ? (d.signed && d.auditor_name ? `Firmado · ${d.auditor_name}` : 'Sin firma confirmada') : d.document_number ? `N.º ${d.document_number}` : '—'
+              return <tr key={d.id}>
+                <td className="px-3 py-2"><button type="button" onClick={() => onOpen(d.file_path)} className="flex min-w-0 items-center gap-2 text-left"><KindTag kind={fileKind(d.file_name || d.file_path, d.mime_type)} /><span className="max-w-64 truncate font-semibold text-blue-800 hover:underline">{d.file_name || 'Archivo adjunto'}</span></button></td>
+                <td className="px-3 py-2 text-xs text-slate-700">{type}</td>
+                <td className="px-3 py-2 text-xs"><b className="text-slate-700">{where.ot}</b><span className="block text-slate-500">{where.request}</span></td>
+                <td className="px-3 py-2 text-xs text-slate-600">{fmtDate(d.uploaded_at, true)}</td>
+                <td className="px-3 py-2 text-xs text-slate-600">{meta?.uploaded_by_name || '—'}</td>
+                <td className="px-3 py-2 text-right text-xs tabular-nums text-slate-600">{meta?.size_bytes ? `${(meta.size_bytes / 1024 / 1024).toFixed(1)} MB` : '—'}</td>
+                <td className="px-3 py-2 text-xs text-slate-600">{validation}</td>
+                <td className="px-3 py-2 text-right"><button type="button" onClick={() => onOpen(d.file_path)} className="rounded-lg px-2 py-1 text-xs font-semibold text-[#002855] hover:bg-slate-100">Ver</button>
+                  {canEdit && <button type="button" onClick={() => onVoid(d)} className="rounded-lg px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50">Anular</button>}</td>
+              </tr>
+            })}
+            {deliveries.filter(dl => dl.photos_count > 0).map(dl => <tr key={`ev-${dl.request_id}`} className="bg-slate-50/50">
+              <td className="px-3 py-2 text-xs font-semibold text-slate-700">Evidencias de entrega ({dl.photos_count} foto{dl.photos_count === 1 ? '' : 's'})</td>
+              <td className="px-3 py-2 text-xs text-slate-700">Evidencia fotográfica · app del conductor</td>
+              <td className="px-3 py-2 text-xs"><b className="text-slate-700">{stopLabel(dl.request_id).ot}</b><span className="block text-slate-500">{stopLabel(dl.request_id).request}</span></td>
+              <td className="px-3 py-2 text-xs text-slate-600">{dl.submitted_at ? fmtDate(dl.submitted_at, true) : '—'}</td>
+              <td className="px-3 py-2 text-xs text-slate-600">{dl.driver_name || 'Conductor'}</td><td />
+              <td className="px-3 py-2 text-xs text-slate-600">{conformityLabels[dl.conformity]}</td>
+              <td className="px-3 py-2 text-right"><button type="button" onClick={() => onEvidence(dl)} className="rounded-lg px-2 py-1 text-xs font-semibold text-[#002855] hover:bg-slate-100">Ver</button></td>
+            </tr>)}
+            {!item.documents.length && !deliveries.some(dl => dl.photos_count > 0) && <tr><td colSpan={8} className="px-3 py-6 text-center text-sm text-slate-500">Sin archivos cargados.</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </section>}
 
     {tab === 'liquidacion' && !packingOnly && <section id="dispatch-doc-panel-liquidacion" role="tabpanel" aria-labelledby="dispatch-doc-tab-liquidacion" aria-label="Liquidación de servicios" className="space-y-3">
+      <h3 className="text-sm font-bold text-[#002855]">A. Cierre documentario por servicio</h3>
       {canSettle && item.stops.map(s => {
         const check = checklists?.get(`${item.id}/${s.request_id}`)
         const kind = check?.kind || settlementKind(serviceTypes.get(s.request_id), item.is_pickup)
@@ -531,7 +622,8 @@ function DispatchCard({ item, canEdit, canPacking, canSettle = false, canUpload 
         </article>
       })}
       {canSettle && !item.is_pickup && <ForkliftTimeSettlement dispatchId={item.id} onSaved={onUploaded} />}
-      {!canSettle && <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">La liquidación no está disponible para esta ruta.</p>}
+      {!canSettle && <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">La liquidación documentaria no está disponible para esta ruta.</p>}
+      <div className="border-t border-slate-200 pt-3"><EconomicServicesTable detailed detail={economic} dispatchId={item.id} transportLabel={item.modalidad === 'TERCERO' ? 'Transportista contratado' : 'JRM / flota propia'} carrier={null} /></div>
     </section>}
   </div>
 }
@@ -854,8 +946,8 @@ function DocList({ docs, canEdit, onVoid, onOpen }: { docs: Doc[]; canEdit: bool
   )
 }
 
-function UploadForm({ dispatchId, requestId, isPickup, canPacking, canDocuments, documentType, onUploaded }: {
-  dispatchId: string; requestId: string | null; isPickup: boolean; canPacking: boolean; canDocuments: boolean; documentType: string; onUploaded: () => Promise<void>
+function UploadForm({ dispatchId, requestId, isPickup, canPacking, canDocuments, documentType, category = null, onUploaded }: {
+  dispatchId: string; requestId: string | null; isPickup: boolean; canPacking: boolean; canDocuments: boolean; documentType: string; category?: string | null; onUploaded: () => Promise<void>
 }) {
   const supabase = useMemo(() => createClient(), [])
   const types = [...(canPacking ? ['PACKING_LIST'] : []), ...(canDocuments ? [...(requestId && isPickup ? ['NOTA_DESPACHO'] : []), 'OTRO'] : [])]
@@ -894,6 +986,8 @@ function UploadForm({ dispatchId, requestId, isPickup, canPacking, canDocuments,
       await supabase.storage.from(DOCS_BUCKET).remove([path])
       throw new Error(data?.error || 'No se pudo registrar el documento')
     }
+    // Categoría del archivo (Comprobante, Conformidad, Evidencia u Otros); no cambia su tipo ni las reglas de liquidación
+    if (!packing && docType === 'OTRO' && category && data.id) await supabase.rpc('set_dispatch_document_category', { p_document_id: data.id, p_category: category })
   }
 
   const submit = async () => {
