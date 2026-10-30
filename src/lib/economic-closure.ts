@@ -8,6 +8,7 @@ export type EconItem = {
   referential_pen: number; agreed_pen: number; final_pen: number | null; extras_pen: number | null
   billing_unit: string | null; executed_qty: number | null; billable_qty: number | null; reason: string | null
   validated_at: string | null; validated_by: string | null; status: string
+  applied_pen?: number | null; caja_pen?: number | null; observation?: string | null; approved_at?: string | null; approved_by?: string | null
 }
 export type EconState = { status: string; route_status: string; pending: string[]; referential_pen: number; agreed_pen: number; final_pen: number | null; extras_pen: number }
 export type EconRoute = {
