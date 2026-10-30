@@ -1,4 +1,5 @@
 'use client'
+import Link from 'next/link'
 import { forkliftScopeLabel } from '@/lib/forklift-stop'
 import { TransportWorkflow, TorreControlButton } from '@/components/transport/TransportWorkflow'
 import { DataTable } from '@/components/ui/data-table'
@@ -234,7 +235,7 @@ function DocumentaryQueue() {
   return (
     <div className="min-w-0 space-y-2.5">
       <PageHeader showTitle title="Documentos de Despacho" description="Salida y conformidad en un único espacio · documentos por servicio, parada y OT."
-        actions={<><button onClick={() => void load()} className="flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button><TorreControlButton /></>} />
+        actions={<><button onClick={() => void load()} className="flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50"><RefreshCw className="w-4 h-4" />Actualizar</button><Link href="/despacho/documentos/economico" className="flex h-10 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cierre económico</Link><TorreControlButton /></>} />
       <p role="note" className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-[#002855]"><b>Nuevo proceso:</b> el conductor carga el Packing List y la guía de remisión desde el app o el enlace de entrega. La salida a ruta ya no depende de la confirmación documentaria; esta bandeja queda como consulta y para documentos opcionales.</p>
       <div className="flex flex-wrap items-center gap-2">
         <TransportWorkflow current="documentos" torre={false} />
