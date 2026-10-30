@@ -3,7 +3,7 @@
 // y última actualización; referencial original del flete; umbral de desviación; notas internas sin cambio de estado;
 // servicio agregado en el cierre (origen CIERRE, acordado 0, sin reserva hasta aprobar) e historial unificado.
 const assert = require('node:assert/strict')
-const { setupEconomicClosure, read, id } = require('./fixtures/economic-closure-setup.cjs')
+const { setupEconomicClosure, applyReferentialStage, read, id } = require('./fixtures/economic-closure-setup.cjs')
 ;(async () => {
  const db = await setupEconomicClosure()
  try {
@@ -11,6 +11,7 @@ const { setupEconomicClosure, read, id } = require('./fixtures/economic-closure-
   const rpc = async (sql, params=[]) => (await db.query(`SELECT ${sql} AS value`,params)).rows[0].value
   await db.exec(`CREATE TABLE documentary_closures(dispatch_id uuid, request_id uuid, status text);`)
   await db.exec(read('supabase/migrations/20261110090000_indicadores_costos_servicios.sql'))
+  await applyReferentialStage(db)
   const migration = read('supabase/migrations/20261111110000_cierre_economico_bandeja.sql')
   assert.doesNotMatch(migration, /replace\(\s*(def|source)/i, 'functions are rewritten in full')
   await db.exec(migration)
@@ -46,7 +47,8 @@ const { setupEconomicClosure, read, id } = require('./fixtures/economic-closure-
   assert.equal(row.doc_status,'PENDIENTE')
 
   // Referencial original del flete (Etapa E): request_referential_freight prevalece sobre service_cost
-  await db.exec(`INSERT INTO transport_request_referentials VALUES('${id(30)}',400); UPDATE transport_requests SET service_cost=520 WHERE id='${id(30)}';`)
+  await db.exec(`UPDATE transport_requests SET service_cost=400 WHERE id='${id(30)}'; UPDATE transport_requests SET approved_at=now() WHERE id='${id(30)}';
+   UPDATE transport_requests SET service_cost=520 WHERE id='${id(30)}';`)
   row = await queueRow()
   assert.equal(Number(row.items[0].referential_pen),400,'original referential freight before a pickup authorization')
   assert.equal(Number(row.state.referential_pen),400 + 80,'route state uses the original referential too (freight 400 + grúa 80)')

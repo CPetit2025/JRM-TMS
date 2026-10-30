@@ -92,11 +92,13 @@ async function setupEconomicClosure() {
   assert.doesNotMatch(migration, /replace\(\s*(def|source)/i, 'functions are rewritten in full, never patched with replace()')
   await db.exec(migration)
   await db.exec(migration) // reaplicable
-  // Etapa E: referencial original del flete, misma firma que public.request_referential_freight
-  await db.exec(`CREATE TABLE IF NOT EXISTS transport_request_referentials(request_id uuid PRIMARY KEY, referential_pen numeric NOT NULL);
-   CREATE OR REPLACE FUNCTION request_referential_freight(p_request_id uuid) RETURNS numeric LANGUAGE sql STABLE AS $$
-    SELECT COALESCE((SELECT referential_pen FROM transport_request_referentials WHERE request_id=p_request_id),
-     (SELECT service_cost FROM transport_requests WHERE id=p_request_id)) $$;`)
  return db
 }
-module.exports = { setupEconomicClosure, read, id, fn }
+// Etapa E (20261111090000): referencial original del flete protegido, con las columnas que lee en producción
+async function applyReferentialStage(db) {
+ await db.exec(`ALTER TABLE transport_requests ADD COLUMN approved_at timestamptz;
+  CREATE TABLE transport_request_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),request_id uuid REFERENCES transport_requests(id) ON DELETE CASCADE,
+   actor_id uuid,action text,previous_state jsonb,next_state jsonb,created_at timestamptz DEFAULT now());`)
+ await db.exec(read('supabase/migrations/20261111090000_referencial_protegido.sql'))
+}
+module.exports = { setupEconomicClosure, applyReferentialStage, read, id, fn }
