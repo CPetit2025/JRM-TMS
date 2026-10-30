@@ -1,7 +1,7 @@
 "use client"
 import { allPages } from '@/lib/analytics/model'
 import { ForkliftFields, EMPTY_FORKLIFT, forkliftValid, forkliftForStops } from '@/components/despacho/ForkliftFields'
-import { InheritedSpecialServices, INHERITED_LINE_COLUMNS, type InheritedLine } from '@/components/despacho/InheritedSpecialServices'
+import { InheritedSpecialServices, INHERITED_LINE_COLUMNS, EMPTY_SPECIAL_SERVICES, specialServicesPayload, type InheritedLine } from '@/components/despacho/InheritedSpecialServices'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { TransportWorkflow, TorreControlButton } from '@/components/transport/TransportWorkflow'
@@ -205,6 +205,8 @@ export default function DespachoPage() {
   const assistantsLoadId = useRef(0)
   const [auxiliares, setAuxiliares] = useState<string[]>([])
   const [forklift, setForklift] = useState(EMPTY_FORKLIFT)
+  // Acuerdos con proveedores de los servicios especiales (se envían al programar)
+  const [specialServices, setSpecialServices] = useState(EMPTY_SPECIAL_SERVICES)
   // Servicios especiales pedidos en las solicitudes seleccionadas (se heredan al programar)
   const [inheritedLines, setInheritedLines] = useState<InheritedLine[]>([])
   const autoForklift = useRef<Set<string>>(new Set())
@@ -496,6 +498,8 @@ export default function DespachoPage() {
       toast.error('Defina la modalidad en Solicitudes; no mezcle recojos por cliente y transporte JRM.'); return
     }
     if (!forkliftValid(routeForklift, forkliftStops)) { toast.error('Seleccione la parada del montacarga y complete proveedor, montacarguista y tarifa por hora.'); return }
+    const special = specialServicesPayload(specialServices, inheritedLines, routeForklift)
+    if (special.error) { toast.error(special.error); return }
     // El servidor valida la reserva vigente y el gasto autorizado; saldo cero puede ser una reserva propia.
     setIsSubmitting(true)
     if (modalidad === 'TERCERO' && newDispatch.document_type === 'GR') {
@@ -520,7 +524,7 @@ export default function DespachoPage() {
           const authorizedFreight = serviceShare(request.id)
           setPendingRequests(current => current.map(r => r.id === request.id ? { ...r, service_cost: authorizedFreight, operational_approved_pen: Math.round((authorizedFreight + Number(r.unloading_estimate_pen || 0)) * 100) / 100 } : r))
         }
-        const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { mode: 'TERCERO', forklift: routeForklift.enabled ? routeForklift : null, auxiliaries: [],
+        const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { mode: 'TERCERO', forklift: routeForklift.enabled ? routeForklift : null, auxiliaries: [], special_services: special.value,
           p_carrier_id: tercero.carrier_id, p_plate: tercero.placa, p_conductor: tercero.conductor, p_telefono: tercero.telefono,
           p_supplier_vehicle_id: tercero.supplier_vehicle_id || null, p_supplier_personnel_id: tercero.supplier_personnel_id || null,
           p_doc: tercero.doc || null, p_tercero_license_number: tercero.license_number || null,
@@ -538,7 +542,7 @@ export default function DespachoPage() {
           const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(newDispatch.scheduled_departure))
           router.push(`/torre-control?despacho=${newDispatchId}&fecha=${day}&proveedor=1`)
         }
-        setForklift(EMPTY_FORKLIFT)
+        setForklift(EMPTY_FORKLIFT); setSpecialServices(EMPTY_SPECIAL_SERVICES)
         setIsModalOpen(false)
         setNewDispatch({ selected_requests: [], driver_name: '', vehicle_plate: '', scheduled_departure: '', estimated_distance_km: '', document_type: 'GR' })
         setManualFreightCost(''); setTercero(TERCERO_VACIO); setModalidad('PROPIA')
@@ -600,7 +604,7 @@ export default function DespachoPage() {
 
       const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
       const freightCost = routeFreight
-      const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { mode: 'PROPIA', forklift: routeForklift.enabled ? routeForklift : null, auxiliaries: isPickup ? [] : auxiliares,
+      const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { mode: 'PROPIA', forklift: routeForklift.enabled ? routeForklift : null, auxiliaries: isPickup ? [] : auxiliares, special_services: special.value,
         p_driver_id: isPickup ? null : matches[0]?.id || null,
         p_vehicle_plate: isPickup ? 'EXTERNO' : newDispatch.vehicle_plate,
         p_departure: new Date(newDispatch.scheduled_departure).toISOString(),
@@ -617,7 +621,7 @@ export default function DespachoPage() {
       }
       setAutoDeparture('')
       setAuxiliares([])
-      setForklift(EMPTY_FORKLIFT)
+      setForklift(EMPTY_FORKLIFT); setSpecialServices(EMPTY_SPECIAL_SERVICES)
       toast.success(isPickup ? 'Recojo por el cliente programado con Nota de Salida y sin flete JRM.' : 'Despacho programado y financiamiento validado.')
       setIsModalOpen(false)
       setNewDispatch({ selected_requests: [], driver_name: '', vehicle_plate: '', scheduled_departure: '', estimated_distance_km: '', document_type: 'GR' })
@@ -992,7 +996,7 @@ export default function DespachoPage() {
                     Nota de salida seleccionada. El cliente recoge, no requiere asignar conductor ni vehículo.
                   </div>
                 )}
-                <InheritedSpecialServices services={selectedServices} lines={inheritedLines} />
+                <InheritedSpecialServices services={selectedServices} lines={inheritedLines} value={specialServices} onChange={setSpecialServices} forklift={routeForklift} />
               </div>
             </FormSection>
 

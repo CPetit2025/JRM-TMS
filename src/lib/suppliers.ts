@@ -5,6 +5,7 @@ import { serviceKind, type RequestService } from '@/lib/request-service'
 export const SUPPLIER_CATEGORIES = {
   MATERIA_PRIMA: 'Materia prima', INSUMOS: 'Insumos', PRODUCCION: 'Producción',
   PROYECTOS: 'Proyectos', SERVICIOS: 'Servicios', OTROS: 'Otros', TRANSPORTE: 'Transporte', MONTACARGA: 'Montacarga',
+  GRUA: 'Grúa', ESTIBA: 'Estiba',
 } as const
 export type SupplierCategory = keyof typeof SUPPLIER_CATEGORIES
 

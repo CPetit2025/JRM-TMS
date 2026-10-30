@@ -2,11 +2,11 @@
 import { DataTable } from '@/components/ui/data-table'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Ban, Loader2, Plus, Receipt, Save, Trash2, Users, Wrench } from 'lucide-react'
+import { Ban, History, Loader2, Plus, Receipt, Save, Trash2, Users, Wrench } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { errorMessage, money } from '@/lib/caja'
-import { ORIGIN_LABEL, unloadingAmountLabel } from '@/components/despacho/InheritedSpecialServices'
+import { BILLING_LABEL, ORIGIN_LABEL, unloadingAmountLabel } from '@/components/despacho/InheritedSpecialServices'
 
 // Tripulación del despacho y costos de descarga (F4). Transporte asigna ayudantes/auxiliares y planifica la
 // descarga (reserva la partida); el costo real llega por Caja (gasto aprobado) o por factura registrada aquí.
@@ -18,6 +18,8 @@ type Line = {
   id?: string; transport_request_id: string; concept: string; description: string | null; estimated_pen: number
   planned_pen: number | null; actual_pen: number | null; status: string; provider_name: string | null; expense_id: string | null
   origin?: string | null; tariff_missing?: boolean | null; estimated_source?: string | null  // origen: Solicitud, Programación o Caja
+  // Acuerdo con el proveedor (Etapa 2): modalidad, tarifa y cantidad
+  billing_unit?: string | null; agreed_rate?: number | null; agreed_qty?: number | null; workers?: number | null; suppliers?: { business_name: string } | { business_name: string }[] | null
   planned: string  // valor editable
 }
 
@@ -25,6 +27,8 @@ const ROLES: Record<string, string> = {
   AYUDANTE: 'Ayudante', AUXILIAR: 'Auxiliar', ESTIBADOR: 'Estibador', MONTACARGUISTA: 'Montacarguista', OPERADOR_GRUA: 'Operador de grúa', OTRO: 'Otro',
 }
 const CONCEPTS: Record<string, string> = { MONTACARGAS: 'Montacargas', GRUA: 'Grúa', ESTIBA: 'Estiba', OTROS: 'Otros' }
+type CostEvent = { id: string; unloading_cost_id: string | null; concept: string | null; stage: string; old_amount: number | null; new_amount: number | null; new_status: string | null; reason: string | null; created_at: string; supplier: string | null; user: string | null }
+const STAGE_LABEL: Record<string, string> = { REFERENCIAL: 'Referencial', ACORDADO: 'Acordado', FINAL: 'Final', ESTADO: 'Estado' }
 const STATUS_CLS: Record<string, string> = {
   ESTIMADO: 'bg-slate-100 text-slate-600', PLANIFICADO: 'bg-blue-100 text-blue-700', CONSUMIDO: 'bg-emerald-100 text-emerald-700', ANULADO: 'bg-red-50 text-red-600',
 }
@@ -40,6 +44,7 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
   const [lines, setLines] = useState<Line[] | null>(null)
   const [reload, setReload] = useState(0)
   const [saving, setSaving] = useState<string | null>(null)
+  const [history, setHistory] = useState<CostEvent[] | null>(null)
   const stopKey = stops.map(s => s.request_id).join(',')
   const requestNumber = (id: string) => stops.find(s => s.request_id === id)?.request_number || '—'
 
@@ -51,7 +56,7 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
         supabase.rpc('get_dispatch_crew', { p_dispatch_id: dispatchId }),
         canEdit && programmed ? supabase.rpc('list_crew_candidates') : Promise.resolve({ data: [] }),
         ids.length ? supabase.from('transport_unloading_costs')
-          .select('id, transport_request_id, dispatch_id, concept, description, estimated_pen, planned_pen, actual_pen, status, provider_name, expense_id, origin, tariff_missing, estimated_source')
+          .select('id, transport_request_id, dispatch_id, concept, description, estimated_pen, planned_pen, actual_pen, status, provider_name, expense_id, origin, tariff_missing, estimated_source, billing_unit, agreed_rate, agreed_qty, workers, suppliers(business_name)')
           .in('transport_request_id', ids).order('created_at') : Promise.resolve({ data: [] }),
       ])
       if (cancel) return
@@ -91,10 +96,12 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
     if (!lines) return
     const items = lines.filter(l => l.status === 'PLANIFICADO' || (l.planned.trim() !== '' && (l.status === 'ESTIMADO' || !l.id)))
     if (items.some(l => !(Number(l.planned) >= 0) || l.planned.trim() === '')) { toast.error('Indique el monto planificado de cada costo'); return }
+    const reason = window.prompt('Motivo del cambio de costos (queda en el historial)')
+    if (reason === null) return
     setSaving('plan')
     try {
-      const { data, error } = await supabase.rpc('plan_dispatch_unloading', {
-        p_dispatch_id: dispatchId,
+      const { data, error } = await supabase.rpc('plan_dispatch_unloading_with_reason', {
+        p_dispatch_id: dispatchId, p_reason: reason,
         p_items: items.map(l => l.id
           ? { id: l.id, planned_pen: Number(l.planned), description: l.description }
           : { request_id: l.transport_request_id, concept: l.concept, description: l.description, planned_pen: Number(l.planned) }),
@@ -102,6 +109,7 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
       if (error) throw error
       if (!data?.success) throw new Error(data?.error)
       toast.success('Descarga planificada y reservada en la partida')
+      setHistory(null)
       setReload(n => n + 1)
     } catch (e) { toast.error(errorMessage(e)) } finally { setSaving(null) }
   }
@@ -123,6 +131,13 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
     if (error || !data?.success) { toast.error(error ? errorMessage(error) : data?.error); return }
     toast.success('Descarga anulada; la reserva se liberó')
     setReload(n => n + 1)
+  }
+
+  const toggleHistory = async () => {
+    if (history) { setHistory(null); return }
+    const { data, error } = await supabase.rpc('service_cost_history', { p_dispatch_id: dispatchId })
+    if (error || !data?.success) { toast.error(error ? errorMessage(error) : data?.error); return }
+    setHistory(data.events as CostEvent[])
   }
 
   const editable = canEdit && programmed
@@ -206,6 +221,7 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
                         <input value={l.planned} onChange={e => setLine(i, { planned: e.target.value })} inputMode="decimal"
                           className="border rounded px-1 py-0.5 w-24 text-right" placeholder="0.00" />
                       ) : l.planned_pen != null ? `S/ ${money(l.planned_pen)}` : '—'}
+                      {l.agreed_rate != null && <div className="text-[11px] text-slate-500">{(Array.isArray(l.suppliers) ? l.suppliers[0] : l.suppliers)?.business_name || 'Proveedor'} · {BILLING_LABEL[l.billing_unit || 'SERVICIO']} S/ {money(l.agreed_rate)} × {l.agreed_qty ?? 1}{l.workers ? ` × ${l.workers} trab.` : ''}</div>}
                     </td>
                     <td className="pr-2 text-right">{l.actual_pen != null ? `S/ ${money(l.actual_pen)}` : '—'}
                       {l.provider_name && <div className="text-[11px] text-slate-400">{l.provider_name}</div>}
@@ -238,6 +254,26 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
               {saving === 'plan' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}Guardar planificación
             </button>
           </div>
+        )}
+        {lines && lines.length > 0 && (
+          <button type="button" onClick={() => void toggleHistory()} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:underline">
+            <History className="w-3.5 h-3.5" />{history ? 'Ocultar historial de costos' : 'Ver historial de costos'}
+          </button>
+        )}
+        {history && (
+          history.length === 0 ? <p className="mt-1 text-xs text-slate-400">Sin cambios de costo registrados.</p> : (
+            <ul className="mt-1 space-y-1 text-xs">
+              {history.map(e => (
+                <li key={e.id} className="border-l-2 border-slate-200 pl-2">
+                  <span className="font-semibold text-slate-700">{STAGE_LABEL[e.stage] || e.stage} · {CONCEPTS[e.concept || ''] || e.concept}</span>
+                  <span className="text-slate-600"> {e.old_amount != null ? `S/ ${money(e.old_amount)} → ` : ''}{e.new_amount != null ? `S/ ${money(e.new_amount)}` : e.new_status}</span>
+                  {e.supplier && <span className="text-slate-500"> · {e.supplier}</span>}
+                  <span className="text-slate-400"> · {new Date(e.created_at).toLocaleString('es-PE')}{e.user ? ` · ${e.user}` : ''}</span>
+                  {e.reason && <div className="text-slate-500">Motivo: {e.reason}</div>}
+                </li>
+              ))}
+            </ul>
+          )
         )}
       </div>
     </div>
