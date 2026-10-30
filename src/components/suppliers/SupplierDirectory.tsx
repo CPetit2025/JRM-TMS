@@ -23,7 +23,7 @@ const EMPTY_SUPPLIER: SupplierForm = { tax_id: '', business_name: '', category: 
 const EMPTY_LOCATION: LocationForm = { name: '', address: '', department: '', province: '', district: '', contact_name: '', contact_phone: '', is_active: true }
 const input = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-jrm-navy'
 const COMMERCIAL_CATEGORIES: SupplierCategory[] = ['MATERIA_PRIMA', 'INSUMOS', 'PRODUCCION', 'PROYECTOS', 'OTROS']
-const LOGISTICS_CATEGORIES: SupplierCategory[] = ['TRANSPORTE', 'MONTACARGA', 'SERVICIOS']
+const LOGISTICS_CATEGORIES: SupplierCategory[] = ['TRANSPORTE', 'MONTACARGA', 'GRUA', 'ESTIBA', 'SERVICIOS']
 
 export function SupplierDirectory({ scope }: { scope: 'commercial' | 'logistics' }) {
   const supabase = useMemo(() => createClient(), [])
