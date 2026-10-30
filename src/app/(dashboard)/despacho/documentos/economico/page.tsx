@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Modal } from '@/components/ui/modal'
 import { errorMessage, money } from '@/lib/caja'
 import { DispatchFreightStages } from '@/components/despacho/DispatchFreightStages'
+import { ServiceCostIndicators } from '@/components/despacho/ServiceCostIndicators'
 import { BILLING_LABEL, CONCEPT_LABEL, ORIGIN_LABEL } from '@/components/despacho/InheritedSpecialServices'
 
 // Cierre económico por ruta (Etapa 4), separado del cierre documentario: se valida el costo final de cada servicio
@@ -214,6 +215,7 @@ export default function CierreEconomicoPage() {
   const [filter, setFilter] = useState('TODOS')
   const [q, setQ] = useState('')
   const [open, setOpen] = useState<Route | null>(null)
+  const [view, setView] = useState<'bandeja' | 'indicadores'>('bandeja')
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.rpc('economic_closure_queue', { p_from: from, p_to: to })
@@ -236,17 +238,21 @@ export default function CierreEconomicoPage() {
       <p className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-[#002855]"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
         Independiente del cierre documentario: una ruta puede tener la documentación completa y sus costos pendientes. No se cierra mientras falte validar el flete o algún servicio.</p>
       <div className="flex flex-wrap items-center gap-2">
-        <div role="tablist" aria-label="Estado económico" className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">
+        <div role="tablist" aria-label="Vista" className="flex gap-1 rounded-lg bg-slate-100 p-1">
+          {([['bandeja', 'Bandeja de cierre'], ['indicadores', 'Indicadores']] as const).map(([k, label]) => <button key={k} type="button" role="tab" aria-selected={view === k} onClick={() => setView(k)}
+            className={`min-h-9 rounded-md px-3 text-sm font-semibold ${view === k ? 'bg-[#002855] text-white' : 'text-slate-600 hover:text-[#002855]'}`}>{label}</button>)}
+        </div>
+        {view === 'bandeja' && <div role="tablist" aria-label="Estado económico" className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">
           {chips.map(([k, label]) => <button key={k} type="button" role="tab" aria-selected={filter === k} onClick={() => setFilter(k)}
             className={`min-h-9 rounded-md px-3 text-sm font-semibold ${filter === k ? 'bg-white text-[#002855] shadow-sm' : 'text-slate-600 hover:text-[#002855]'}`}>
             {label}{k !== 'TODOS' && counts[k] ? ` (${counts[k]})` : k === 'TODOS' && routes ? ` (${routes.length})` : ''}</button>)}
-        </div>
-        <label className="relative min-w-0 flex-1 basis-56"><span className="sr-only">Buscar ruta, OT, solicitud o placa</span><Search aria-hidden className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Ruta, OT, solicitud o placa…" className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-[#002855]" /></label>
+        </div>}
+        {view === 'bandeja' && <label className="relative min-w-0 flex-1 basis-56"><span className="sr-only">Buscar ruta, OT, solicitud o placa</span><Search aria-hidden className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Ruta, OT, solicitud o placa…" className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-[#002855]" /></label>}
         <label className="flex items-center gap-2 text-xs text-slate-500">Desde<input type="date" value={from} max={to} onChange={e => setFrom(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
         <label className="flex items-center gap-2 text-xs text-slate-500">Hasta<input type="date" value={to} min={from} onChange={e => setTo(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
       </div>
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      {view === 'indicadores' ? <ServiceCostIndicators from={from} to={to} /> : <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         {routes === null ? <p className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></p>
           : rows.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">No hay rutas para los filtros seleccionados.</p>
           : <table className="w-full min-w-[60rem] text-sm">
@@ -270,7 +276,7 @@ export default function CierreEconomicoPage() {
               })}
             </tbody>
           </table>}
-      </div>
+      </div>}
       <Modal isOpen={!!open} onClose={() => setOpen(null)} title={open ? `Cierre económico · ${open.dispatch_number}` : ''} maxWidth="max-w-4xl">
         {open && <ClosureDetail dispatchId={open.dispatch_id} onChanged={() => void load()} />}
       </Modal>
