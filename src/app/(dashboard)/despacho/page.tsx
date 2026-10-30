@@ -1,6 +1,7 @@
 "use client"
 import { allPages } from '@/lib/analytics/model'
 import { ForkliftFields, EMPTY_FORKLIFT, forkliftValid, forkliftForStops } from '@/components/despacho/ForkliftFields'
+import { InheritedSpecialServices, INHERITED_LINE_COLUMNS, type InheritedLine } from '@/components/despacho/InheritedSpecialServices'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { TransportWorkflow, TorreControlButton } from '@/components/transport/TransportWorkflow'
@@ -79,6 +80,7 @@ interface TransportRequest {
   estimated_weight?: number | null
   service_cost?: number | null
   unloading_estimate_pen?: number | null
+  unloading_required?: boolean | null
   operational_approved_pen?: number | null
   contracts?: {
     id: string
@@ -203,6 +205,9 @@ export default function DespachoPage() {
   const assistantsLoadId = useRef(0)
   const [auxiliares, setAuxiliares] = useState<string[]>([])
   const [forklift, setForklift] = useState(EMPTY_FORKLIFT)
+  // Servicios especiales pedidos en las solicitudes seleccionadas (se heredan al programar)
+  const [inheritedLines, setInheritedLines] = useState<InheritedLine[]>([])
+  const autoForklift = useRef<Set<string>>(new Set())
   const [newDispatch, setNewDispatch] = useState<{
     selected_requests: { id: string, document_number: string }[],
     driver_name: string,
@@ -224,6 +229,27 @@ export default function DespachoPage() {
   const forkliftStops = selectedServices.map(request => ({ id: request.id,
     label: `${request.request_number} · ${request.delivery_address || request.delivery_district || 'Destino sin dirección'}` }))
   const routeForklift = forkliftForStops(forklift, forkliftStops)
+  const selectedIdsKey = newDispatch.selected_requests.map(r => r.id).join(',')
+  useEffect(() => {
+    let cancel = false
+    const t = window.setTimeout(async () => {
+      const ids = selectedIdsKey ? selectedIdsKey.split(',') : []
+      if (!ids.length) { autoForklift.current.clear(); setInheritedLines([]); return }
+      const { data, error } = await supabase.from('transport_unloading_costs').select(INHERITED_LINE_COLUMNS)
+        .in('transport_request_id', ids).in('status', ['ESTIMADO', 'PLANIFICADO']).is('dispatch_id', null).order('created_at')
+      if (cancel) return
+      if (error) { setInheritedLines([]); toast.error('No se pudieron leer los servicios especiales: ' + error.message); return }
+      const lines = (data || []) as InheritedLine[]
+      setInheritedLines(lines)
+      // Montacarga pedido en la solicitud: el apoyo abre activado en la parada de esa solicitud (una sola vez).
+      const requested = ids.map(id => lines.find(l => l.concept === 'MONTACARGAS' && l.transport_request_id === id)).find(Boolean)
+      if (requested && !autoForklift.current.has(requested.transport_request_id)) {
+        autoForklift.current.add(requested.transport_request_id)
+        setForklift(prev => prev.enabled ? prev : { ...prev, enabled: true, transport_request_id: requested.transport_request_id })
+      }
+    }, 0)
+    return () => { cancel = true; window.clearTimeout(t) }
+  }, [supabase, selectedIdsKey])
   const mixedOT = new Set(selectedServices.map(r => r.contract_id || `ORDEN:${r.reference_type || ''}:${r.reference_number || r.id}`)).size > 1
   const selectedDates = [...new Set(selectedServices.map(r => r.required_date?.slice(0,10)).filter((date): date is string => !!date))]
   const customerPickup = selectedServices[0]?.attention_mode === 'RECOJO_CLIENTE'
@@ -966,6 +992,7 @@ export default function DespachoPage() {
                     Nota de salida seleccionada. El cliente recoge, no requiere asignar conductor ni vehículo.
                   </div>
                 )}
+                <InheritedSpecialServices services={selectedServices} lines={inheritedLines} />
               </div>
             </FormSection>
 
