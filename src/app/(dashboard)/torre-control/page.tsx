@@ -18,6 +18,7 @@ import { TrackingPortalManager } from '@/components/tracking/TrackingPortalManag
 import { TransportWorkflow } from '@/components/transport/TransportWorkflow'
 import { DispatchExecutionActions } from '@/components/transport/DispatchExecutionActions'
 import { DispatchCrewUnloading } from '@/components/despacho/DispatchCrewUnloading'
+import { DispatchFreightStages } from '@/components/despacho/DispatchFreightStages'
 import { EvidenceGallery } from '@/components/evidence/EvidenceGallery'
 import { toast } from 'sonner'
 import { RouteShareModal } from '@/components/despacho/RouteShareModal'
@@ -579,6 +580,10 @@ export default function TorreControlPage() {
               </div>
             </div>
 
+            <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <summary className="cursor-pointer font-bold text-slate-800">Flete: referencial, acordado y final</summary>
+              <div className="mt-4"><DispatchFreightStages dispatchId={selectedDispatch.id} /></div>
+            </details>
             <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <summary className="cursor-pointer font-bold text-slate-800">Asignación de tripulación y costos de descarga</summary>
               <div className="mt-4"><DispatchCrewUnloading dispatchId={selectedDispatch.id} status={selectedDispatch.status} canEdit={canWrite('despacho')}

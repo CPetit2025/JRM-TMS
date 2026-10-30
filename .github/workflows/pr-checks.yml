@@ -33,6 +33,7 @@ jobs:
       - run: node scripts/test-forklift-stop.cjs
       - run: node scripts/test-special-services-inheritance.cjs
       - run: node scripts/test-special-services-agreements.cjs
+      - run: node scripts/test-freight-stages.cjs
       - run: node scripts/test-tower-route-crew.cjs
       - run: node --test scripts/test-tower-detail-ui.cjs
       - run: node scripts/test-manual-operational-close.cjs

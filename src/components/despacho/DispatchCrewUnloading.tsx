@@ -26,9 +26,9 @@ type Line = {
 const ROLES: Record<string, string> = {
   AYUDANTE: 'Ayudante', AUXILIAR: 'Auxiliar', ESTIBADOR: 'Estibador', MONTACARGUISTA: 'Montacarguista', OPERADOR_GRUA: 'Operador de grúa', OTRO: 'Otro',
 }
-const CONCEPTS: Record<string, string> = { MONTACARGAS: 'Montacargas', GRUA: 'Grúa', ESTIBA: 'Estiba', OTROS: 'Otros' }
+const CONCEPTS: Record<string, string> = { MONTACARGAS: 'Montacargas', GRUA: 'Grúa', ESTIBA: 'Estiba', OTROS: 'Otros', FLETE: 'Flete' }
 type CostEvent = { id: string; unloading_cost_id: string | null; concept: string | null; stage: string; old_amount: number | null; new_amount: number | null; new_status: string | null; reason: string | null; created_at: string; supplier: string | null; user: string | null }
-const STAGE_LABEL: Record<string, string> = { REFERENCIAL: 'Referencial', ACORDADO: 'Acordado', FINAL: 'Final', ESTADO: 'Estado' }
+const STAGE_LABEL: Record<string, string> = { REFERENCIAL: 'Referencial', ACORDADO: 'Acordado', AJUSTE: 'Ajuste', FINAL: 'Final', ESTADO: 'Estado' }
 const STATUS_CLS: Record<string, string> = {
   ESTIMADO: 'bg-slate-100 text-slate-600', PLANIFICADO: 'bg-blue-100 text-blue-700', CONSUMIDO: 'bg-emerald-100 text-emerald-700', ANULADO: 'bg-red-50 text-red-600',
 }
