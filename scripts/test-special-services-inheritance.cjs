@@ -76,6 +76,13 @@ function fn(file, name) {
   assert.doesNotMatch(migration, /replace\(\s*(def|source)/i, 'functions are rewritten in full, never patched with replace()')
   await db.exec(migration)
   await db.exec(migration) // reaplicable: columnas, restricciones y disparadores con IF NOT EXISTS / DROP IF EXISTS
+  await db.exec(read('supabase/migrations/20261105100000_route_forklift_unloading_cost_index.sql'))
+  // Regla C55 de producción: toda FK nueva está validada y cubierta por un índice válido no parcial.
+  assert.equal(await (async () => (await db.query(`SELECT count(*)::int AS value FROM pg_constraint c
+   WHERE c.contype='f' AND c.conrelid IN ('route_forklifts'::regclass,'transport_unloading_costs'::regclass)
+   AND (NOT c.convalidated OR NOT EXISTS(SELECT 1 FROM pg_index i WHERE i.indrelid=c.conrelid AND i.indisvalid AND i.indpred IS NULL
+    AND (i.indkey::smallint[])[0:cardinality(c.conkey)-1] @> c.conkey))
+   AND c.conname='route_forklifts_unloading_cost_fk'`)).rows[0].value)(),0,'unloading_cost_id FK covered by a non-partial index')
   const scalar = async (sql, params=[]) => (await db.query(sql,params)).rows[0]?.value
   const origin = line => scalar('SELECT origin AS value FROM transport_unloading_costs WHERE id=$1',[line])
   assert.equal(await origin(id(50)),'SOLICITUD','backfill: request line without planning')
