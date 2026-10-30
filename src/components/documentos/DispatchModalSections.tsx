@@ -19,6 +19,9 @@ type EconomicDetail = {
   success: true; state: { status: string; pending: string[]; referential_pen: number; agreed_pen: number; final_pen: number | null }
   freight: { success?: boolean; referential_pen: number; agreed_pen: number; final_pen: number | null; final_reason: string | null; executed_as_planned: boolean | null; extras_pen: number | null; item_status?: string | null } | null
   services: EconomicService[]
+  items?: { key: string; kind: 'FLETE' | 'SERVICIO'; id: string | null; concept: string; request_number: string | null; supplier: string | null
+    referential_pen: number | null; agreed_pen: number | null; final_pen: number | null; billing_unit: string | null; executed_qty: number | null
+    billable_qty: number | null; reason: string | null; status: string }[]
 }
 export type ModalContext = { success: true; status: string; returned_at: string | null; documents: { id: string; category: string | null; size_bytes: number | null; uploaded_by_name: string | null }[]; voided: number }
 
@@ -94,7 +97,23 @@ export function CostSummary({ detail }: { detail: EconomicDetail | null }) {
 }
 
 type EcoRow = { key: string; label: string; request: string; supplier: string | null; ref: number | null; agreed: number | null; final: number | null; reason: string | null; mode: string; qty: string; rate: number | null; state: { label: string; cls: string } }
+const ITEM_STATE: Record<string, { label: string; cls: string }> = {
+  APROBADO: { label: 'Cerrado', cls: 'bg-emerald-100 text-emerald-800' }, EN_REVISION: { label: 'En revisión', cls: 'bg-blue-100 text-blue-800' },
+  OBSERVADO: { label: 'Observado', cls: 'bg-red-100 text-red-700' }, VALIDADO: { label: 'Validado', cls: 'bg-sky-100 text-sky-800' },
+  POR_VALIDAR: { label: 'Pendiente', cls: 'bg-amber-100 text-amber-800' },
+}
 function ecoRows(detail: EconomicDetail, transportLabel: string, carrier: string | null): EcoRow[] {
+  // Lista unificada del Cierre económico (flete + servicios, con estado por ítem); si no llega, se arma con freight/services
+  if (Array.isArray(detail.items)) return detail.items.map(i => {
+    const svc = i.kind === 'SERVICIO' ? detail.services.find(s => s.id === i.id) : undefined
+    return {
+      key: i.key, label: i.kind === 'FLETE' ? 'Transporte' : CONCEPT_LABEL[i.concept] || i.concept, request: i.request_number || 'Ruta', supplier: i.supplier,
+      ref: Number(i.referential_pen) || null, agreed: i.agreed_pen ?? null, final: i.final_pen ?? null, reason: i.reason,
+      mode: i.kind === 'FLETE' ? 'Viaje' : i.billing_unit ? BILLING_LABEL[i.billing_unit] || i.billing_unit : '—',
+      qty: i.kind === 'FLETE' ? '1' : i.executed_qty != null ? `${i.executed_qty}${i.billable_qty != null && i.billable_qty !== i.executed_qty ? ` (fact. ${i.billable_qty})` : ''}${svc?.workers ? ` × ${svc.workers} trab.` : ''}` : '—',
+      rate: i.kind === 'FLETE' ? i.agreed_pen ?? null : svc?.agreed_rate ?? null, state: ITEM_STATE[i.status] || ITEM_STATE.POR_VALIDAR,
+    }
+  })
   const f = detail.freight
   const rows: EcoRow[] = []
   if (f && (f.agreed_pen || f.referential_pen || f.final_pen != null)) rows.push({
