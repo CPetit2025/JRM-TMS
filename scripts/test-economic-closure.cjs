@@ -236,6 +236,29 @@ function fn(file, name) {
   await db.exec('ROLLBACK').catch(() => {})
   await db.exec(`SELECT set_config('request.jwt.claim.sub','${id(1)}',false)`)
 
+  // --- Etapa E: referencial protegido. Un recojo ya autorizado (evento COTIZACION_TERCERO) recupera su referencial original;
+  //     una modificación del flete tras aprobar la solicitud conserva el primer valor. ---
+  await db.exec(`ALTER TABLE transport_requests ADD COLUMN approved_at timestamptz;
+   CREATE TABLE transport_request_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),request_id uuid REFERENCES transport_requests(id) ON DELETE CASCADE,
+    actor_id uuid,action text,previous_state jsonb,next_state jsonb,created_at timestamptz DEFAULT now());
+   INSERT INTO transport_request_events(request_id,action,previous_state,next_state) VALUES
+    ('${id(31)}','STATUS_CHANGED','{"service_cost":120}','{"service_cost":200,"source":"COTIZACION_TERCERO"}');`)
+  const refMigration = read('supabase/migrations/20261111090000_referencial_protegido.sql')
+  assert.doesNotMatch(refMigration, /UPDATE public\.transport_requests/i, 'never updates transport_requests (production guards)')
+  await db.exec(refMigration); await db.exec(refMigration)
+  const referential = r0 => scalar('SELECT request_referential_freight($1)::float AS value',[r0])
+  assert.equal(await referential(id(31)),120,'backfill from the third-party quote event')
+  assert.equal(await referential(id(30)),300,'without changes: the current service_cost')
+  await db.query(`UPDATE transport_requests SET service_cost=999 WHERE id=$1`,[id(30)])
+  assert.equal(await referential(id(30)),999,'before approval the referential can still change')
+  await db.query(`UPDATE transport_requests SET service_cost=300, approved_at=now() WHERE id=$1`,[id(30)])
+  await db.query(`UPDATE transport_requests SET service_cost=450 WHERE id=$1`,[id(30)])
+  await db.query(`UPDATE transport_requests SET service_cost=500 WHERE id=$1`,[id(30)])
+  assert.equal(await referential(id(30)),300,'after approval the first value is kept')
+  const ind2 = await rpc(`service_cost_indicators('2026-10-01','2026-10-31')`)
+  assert.equal(Number(ind2.totals.referential_pen),380 + 120,'indicators read the protected referential (route 300, mixed OT A 120)')
+  assert.equal(Number((await rpc('dispatch_freight_summary($1)',[route])).referential_pen),300)
+
   // Verificación de producción C173 sobre este esquema
   await assert.rejects(db.exec(read('supabase/tests/caja_c173_cierre_economico.test.sql')),/CAJA C173 PASS/)
   await db.exec('ROLLBACK').catch(() => {})
