@@ -16,17 +16,22 @@ type Service = { id: string; request_number: string; unloading_required?: boolea
 type Supplier = { id: string; business_name: string; category: string }
 type ForkliftRef = { enabled: boolean; transport_request_id: string; supplier_id: string; hourly_rate: string }
 
-export type Agreement = { supplier_id: string; billing_unit: string; agreed_rate: string; agreed_qty: string; workers: string; min_billable_qty: string; fraction_minutes: string }
+export type Agreement = { supplier_id: string; billing_unit: string; agreed_rate: string; agreed_qty: string; workers: string; min_billable_qty: string; fraction_minutes: string; reason: string }
 export type AddedService = Agreement & { key: string; transport_request_id: string; concept: string; description: string; reason: string }
 export type SpecialServicesState = { edits: Record<string, Agreement>; removed: Record<string, string>; added: AddedService[] }
 export const EMPTY_SPECIAL_SERVICES: SpecialServicesState = { edits: {}, removed: {}, added: [] }
-const EMPTY_AGREEMENT: Agreement = { supplier_id: '', billing_unit: 'SERVICIO', agreed_rate: '', agreed_qty: '', workers: '', min_billable_qty: '', fraction_minutes: '' }
+const EMPTY_AGREEMENT: Agreement = { supplier_id: '', billing_unit: 'SERVICIO', agreed_rate: '', agreed_qty: '', workers: '', min_billable_qty: '', fraction_minutes: '', reason: '' }
 
 export const INHERITED_LINE_COLUMNS = 'id, transport_request_id, concept, description, estimated_pen, planned_pen, status, origin, tariff_missing, estimated_source'
 export const CONCEPT_LABEL: Record<string, string> = { MONTACARGAS: 'Montacargas', GRUA: 'Grúa', ESTIBA: 'Estiba', OTROS: 'Otros' }
 export const ORIGIN_LABEL: Record<string, string> = { SOLICITUD: 'Solicitado', PROGRAMACION: 'Programación', CAJA: 'Caja' }
-export const BILLING_LABEL: Record<string, string> = { SERVICIO: 'Por servicio', HORA: 'Por hora', JORNADA: 'Por jornada' }
-const UNITS: Record<string, string[]> = { MONTACARGAS: ['HORA', 'SERVICIO'], GRUA: ['SERVICIO', 'HORA'], ESTIBA: ['JORNADA', 'HORA', 'SERVICIO'], OTROS: ['SERVICIO', 'HORA', 'JORNADA'] }
+export const BILLING_LABEL: Record<string, string> = { SERVICIO: 'Por servicio', HORA: 'Por hora', JORNADA: 'Por jornada', UNIDAD: 'Por unidad', TONELADA: 'Por tonelada' }
+const QTY_LABEL: Record<string, string> = { SERVICIO: 'Servicios', HORA: 'Horas', JORNADA: 'Jornadas', UNIDAD: 'Unidades', TONELADA: 'Toneladas' }
+/** Nombre de la cantidad según la modalidad de cobro (Horas, Jornadas, Unidades, Toneladas…). */
+export const billingQtyLabel = (unit: string | null | undefined) => QTY_LABEL[unit || 'SERVICIO'] || 'Servicios'
+// Por unidad o tonelada la tarifa no se multiplica por trabajadores (mismo criterio que el servidor).
+const perWorker = (unit: string) => unit !== 'UNIDAD' && unit !== 'TONELADA'
+const UNITS: Record<string, string[]> = { MONTACARGAS: ['HORA', 'SERVICIO'], GRUA: ['SERVICIO', 'HORA', 'TONELADA', 'UNIDAD'], ESTIBA: ['JORNADA', 'HORA', 'SERVICIO', 'TONELADA', 'UNIDAD'], OTROS: ['SERVICIO', 'HORA', 'JORNADA', 'TONELADA', 'UNIDAD'] }
 const CATEGORIES: Record<string, string[]> = { MONTACARGAS: ['MONTACARGA', 'SERVICIOS'], GRUA: ['GRUA', 'SERVICIOS'], ESTIBA: ['ESTIBA', 'SERVICIOS'], OTROS: ['SERVICIOS', 'GRUA', 'ESTIBA', 'MONTACARGA', 'TRANSPORTE'] }
 const money = (n: number) => n.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const num = (v: string) => (v.trim() === '' ? null : Number(v))
@@ -41,9 +46,20 @@ export function unloadingAmountLabel(l: { estimated_pen: number; planned_pen?: n
 /** Monto acordado = tarifa × max(cantidad, mínimo) × trabajadores (mismo cálculo que el servidor). */
 export function agreedAmount(a: Agreement, concept: string): number | null {
   const rate = num(a.agreed_rate), qty = num(a.agreed_qty) ?? 1, min = a.billing_unit === 'SERVICIO' ? 0 : num(a.min_billable_qty) ?? 0
-  const workers = concept === 'ESTIBA' ? num(a.workers) ?? 1 : 1
+  const workers = concept === 'ESTIBA' && perWorker(a.billing_unit) ? num(a.workers) ?? 1 : 1
   if (rate == null || !(rate > 0) || !(qty > 0) || !(workers >= 1)) return null
   return Math.round(rate * Math.max(qty, min) * workers * 100) / 100
+}
+
+/** Referencial de la solicitud (con tarifa o costo manual); null = «sin tarifa», no exige motivo. */
+function referentialOf(l: InheritedLine) {
+  return l.tariff_missing && l.estimated_source !== 'MANUAL' ? null : Number(l.estimated_pen ?? 0)
+}
+
+/** El acordado de una línea heredada difiere de su referencial: se exige motivo (igual que el servidor). */
+export function agreedDiffers(l: InheritedLine, amount: number | null) {
+  const ref = referentialOf(l)
+  return amount != null && ref != null && Math.round(amount * 100) !== Math.round(ref * 100)
 }
 
 type Row = { key: string; id?: string; transport_request_id: string; concept: string; agreement: Agreement; forklift: boolean }
@@ -78,11 +94,13 @@ export function specialServicesPayload(state: SpecialServicesState, lines: Inher
     const label = CONCEPT_LABEL[concept]?.toLowerCase() || 'el servicio'
     if (isForklift && !(Number(value.agreed_qty) > 0)) return { error: 'Indique las horas estimadas del montacarga.' }
     if (!value.supplier_id) return { error: `Seleccione el proveedor de ${label}.` }
-    if (agreedAmount(value, concept) == null) return { error: `Complete la tarifa y cantidad acordadas de ${label}.` }
+    const amount = agreedAmount(value, concept)
+    if (amount == null) return { error: `Complete la tarifa y cantidad acordadas de ${label}.` }
     return {
+      amount,
       value: {
         supplier_id: value.supplier_id, billing_unit: value.billing_unit, agreed_rate: num(value.agreed_rate), agreed_qty: num(value.agreed_qty) ?? 1,
-        workers: concept === 'ESTIBA' ? num(value.workers) ?? 1 : null, min_billable_qty: value.billing_unit === 'SERVICIO' ? null : num(value.min_billable_qty),
+        workers: concept === 'ESTIBA' && perWorker(value.billing_unit) ? num(value.workers) ?? 1 : null, min_billable_qty: value.billing_unit === 'SERVICIO' ? null : num(value.min_billable_qty),
         fraction_minutes: value.billing_unit === 'HORA' ? num(value.fraction_minutes) : null,
       },
     }
@@ -94,7 +112,9 @@ export function specialServicesPayload(state: SpecialServicesState, lines: Inher
     if (!touched && l.id !== fk) continue  // sin acuerdo: conserva el monto pedido
     const r = agreement(l.id, a ?? EMPTY_AGREEMENT, l.concept)
     if (r.error) return { error: r.error }
-    items.push({ id: l.id, ...r.value })
+    const differs = agreedDiffers(l, r.amount ?? null), reason = (a?.reason ?? '').trim()
+    if (differs && reason.length < 5) return { error: `Indique el motivo: el acordado de ${CONCEPT_LABEL[l.concept]?.toLowerCase() || 'el servicio'} difiere del referencial (mínimo 5 caracteres).` }
+    items.push({ id: l.id, ...r.value, ...(differs ? { reason } : {}) })
   }
   for (const s of state.added) {
     if (s.reason.trim().length < 5) return { error: `Indique el motivo del servicio de ${CONCEPT_LABEL[s.concept]?.toLowerCase()} agregado en programación (mínimo 5 caracteres).` }
@@ -112,7 +132,7 @@ function AgreementFields({ concept, value, onChange, suppliers, forklift }: {
   const amount = agreedAmount(shown, concept)
   const input = 'w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#002855]'
   const options = suppliers.filter(s => (CATEGORIES[concept] || []).includes(s.category))
-  const qtyLabel = shown.billing_unit === 'HORA' ? 'Horas' : shown.billing_unit === 'JORNADA' ? 'Jornadas' : 'Servicios'
+  const qtyLabel = billingQtyLabel(shown.billing_unit)
   return (
     <div className="mt-2 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
       {forklift ? (
@@ -132,7 +152,7 @@ function AgreementFields({ concept, value, onChange, suppliers, forklift }: {
       </>)}
       <label><span className="mb-0.5 block text-[11px] font-semibold text-slate-600">{forklift ? 'Horas estimadas' : qtyLabel}</span>
         <input inputMode="decimal" value={value.agreed_qty} onChange={e => onChange({ ...value, agreed_qty: e.target.value })} placeholder="1" className={input} /></label>
-      {concept === 'ESTIBA' && <label><span className="mb-0.5 block text-[11px] font-semibold text-slate-600">Trabajadores</span>
+      {concept === 'ESTIBA' && perWorker(shown.billing_unit) && <label><span className="mb-0.5 block text-[11px] font-semibold text-slate-600">Trabajadores</span>
         <input inputMode="numeric" value={value.workers} onChange={e => onChange({ ...value, workers: e.target.value })} placeholder="1" className={input} /></label>}
       {shown.billing_unit !== 'SERVICIO' && <label><span className="mb-0.5 block text-[11px] font-semibold text-slate-600">Mínimo facturable</span>
         <input inputMode="decimal" value={value.min_billable_qty} onChange={e => onChange({ ...value, min_billable_qty: e.target.value })} placeholder="—" className={input} /></label>}
@@ -225,6 +245,10 @@ export function InheritedSpecialServices({ services, lines, value, onChange, for
               ) : (<>
                 <AgreementFields concept={r.concept} value={r.agreement} suppliers={suppliers} forklift={r.forklift ? forklift : null}
                   onChange={a => (addedRow ? setAdded(r.key, a) : setEdit(r.key, a))} />
+                {line && (r.agreement.supplier_id || r.agreement.agreed_rate || r.forklift)
+                  && agreedDiffers(line, agreedAmount(r.forklift ? withForklift(r.agreement, forklift) : r.agreement, r.concept)) &&
+                  <label className="mt-2 block"><span className="mb-0.5 block text-[11px] font-semibold text-amber-800">Motivo (el acordado difiere del referencial) *</span>
+                    <input value={r.agreement.reason} onChange={e => setEdit(r.key, { ...r.agreement, reason: e.target.value })} className={input} placeholder="Ej.: el proveedor cobra por tonelada" /></label>}
                 {addedRow && <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   <label><span className="mb-0.5 block text-[11px] font-semibold text-slate-600">Detalle</span>
                     <input value={addedRow.description} onChange={e => setAdded(r.key, { description: e.target.value })} className={input} placeholder="Opcional" /></label>
