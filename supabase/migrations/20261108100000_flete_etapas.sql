@@ -1,6 +1,7 @@
 -- Etapa 3 · Flete con etapas: referencial (solicitud) → acordado (programación) → final (después de la ejecución), sin
 -- sobrescribir. dispatches.freight_cost sigue siendo el flete vigente que mueve la partida; aparte se conserva el acordado
--- y el final por ruta (dispatch_freight_stages) y por OT en rutas mixtas (dispatch_request_freight.agreed_pen/final_pen).
+-- y el final por ruta (dispatch_freight_stages) y por OT en rutas mixtas (dispatch_request_freight_stages).
+-- dispatch_request_freight no se modifica: su guarda reference_freight_guard revalida cada UPDATE y rechaza filas históricas.
 -- Cada cambio deja un evento FLETE en service_cost_events (Etapa 2). La partida no se toca: el costo final la impacta
 -- en el cierre económico (Etapa 4).
 BEGIN;
@@ -31,9 +32,25 @@ CREATE POLICY security_active_account ON public.dispatch_freight_stages AS RESTR
 REVOKE ALL ON public.dispatch_freight_stages FROM PUBLIC, anon, authenticated;
 
 -- Por OT en rutas mixtas
-ALTER TABLE public.dispatch_request_freight ADD COLUMN IF NOT EXISTS agreed_pen numeric(15,2);
-ALTER TABLE public.dispatch_request_freight ADD COLUMN IF NOT EXISTS final_pen numeric(15,2);
-UPDATE public.dispatch_request_freight SET agreed_pen = amount_pen WHERE agreed_pen IS NULL;
+CREATE TABLE IF NOT EXISTS public.dispatch_request_freight_stages (
+  dispatch_id uuid NOT NULL REFERENCES public.dispatches(id) ON DELETE CASCADE,
+  request_id  uuid NOT NULL REFERENCES public.transport_requests(id) ON DELETE CASCADE,
+  agreed_pen  numeric(15,2) CHECK (agreed_pen >= 0),
+  final_pen   numeric(15,2) CHECK (final_pen >= 0),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (dispatch_id, request_id)
+);
+-- Regla C55: la FK a la solicitud cubierta por un índice no parcial
+CREATE INDEX IF NOT EXISTS dispatch_request_freight_stages_request_idx ON public.dispatch_request_freight_stages(request_id);
+ALTER TABLE public.dispatch_request_freight_stages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS security_active_account ON public.dispatch_request_freight_stages;
+CREATE POLICY security_active_account ON public.dispatch_request_freight_stages AS RESTRICTIVE FOR ALL TO authenticated
+  USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()));
+REVOKE ALL ON public.dispatch_request_freight_stages FROM PUBLIC, anon, authenticated;
+-- Rutas mixtas existentes: el acordado es el monto vigente de cada OT
+INSERT INTO public.dispatch_request_freight_stages(dispatch_id, request_id, agreed_pen)
+SELECT dispatch_id, request_id, amount_pen FROM public.dispatch_request_freight
+ON CONFLICT (dispatch_id, request_id) DO NOTHING;
 
 -- Un ajuste del flete después de la salida no es un nuevo acuerdo: etapa AJUSTE.
 ALTER TABLE public.service_cost_events DROP CONSTRAINT IF EXISTS service_cost_events_stage_check;
@@ -69,20 +86,19 @@ DROP TRIGGER IF EXISTS dispatch_freight_stage_update ON public.dispatches;
 CREATE TRIGGER dispatch_freight_stage_update AFTER UPDATE OF freight_cost ON public.dispatches
  FOR EACH ROW WHEN (NEW.freight_cost IS DISTINCT FROM OLD.freight_cost) EXECUTE FUNCTION public.dispatch_freight_stage_sync();
 
--- Por OT: el acordado sigue al monto mientras la ruta está programada.
+-- Por OT: el acordado se fija al reservar y sigue al monto solo mientras la ruta está programada.
 CREATE OR REPLACE FUNCTION public.dispatch_request_freight_agreed() RETURNS trigger
-LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 BEGIN
- IF TG_OP = 'INSERT' THEN
-  NEW.agreed_pen := COALESCE(NEW.agreed_pen, NEW.amount_pen);
- ELSIF NEW.amount_pen IS DISTINCT FROM OLD.amount_pen AND (SELECT status FROM public.dispatches WHERE id = NEW.dispatch_id) = 'PROGRAMADO' THEN
-  NEW.agreed_pen := NEW.amount_pen;
+ IF TG_OP = 'INSERT' OR (NEW.amount_pen IS DISTINCT FROM OLD.amount_pen AND (SELECT status FROM public.dispatches WHERE id = NEW.dispatch_id) = 'PROGRAMADO') THEN
+  INSERT INTO public.dispatch_request_freight_stages(dispatch_id, request_id, agreed_pen) VALUES (NEW.dispatch_id, NEW.request_id, NEW.amount_pen)
+  ON CONFLICT (dispatch_id, request_id) DO UPDATE SET agreed_pen = EXCLUDED.agreed_pen, updated_at = now();
  END IF;
- RETURN NEW;
+ RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION public.dispatch_request_freight_agreed() FROM PUBLIC,anon,authenticated;
 DROP TRIGGER IF EXISTS dispatch_request_freight_agreed ON public.dispatch_request_freight;
-CREATE TRIGGER dispatch_request_freight_agreed BEFORE INSERT OR UPDATE OF amount_pen ON public.dispatch_request_freight
+CREATE TRIGGER dispatch_request_freight_agreed AFTER INSERT OR UPDATE OF amount_pen ON public.dispatch_request_freight
  FOR EACH ROW EXECUTE FUNCTION public.dispatch_request_freight_agreed();
 
 -- Un flete corregido en Servicios de la OT con la ruta ya cerrada no cambia dispatches.freight_cost: se registra aquí.
@@ -153,8 +169,9 @@ BEGIN
  IF length(COALESCE(v_reason,'')) > 1000 THEN RAISE EXCEPTION 'Motivo demasiado extenso'; END IF;
 
  -- Rutas mixtas: el final se imputa por OT sin duplicar (suma exacta)
- SELECT count(*), COALESCE(sum(COALESCE(agreed_pen, amount_pen)), 0) INTO v_rows, v_agreed_total
- FROM public.dispatch_request_freight WHERE dispatch_id = p_dispatch_id AND status <> 'LIBERADO';
+ SELECT count(*), COALESCE(sum(COALESCE(st.agreed_pen, f.amount_pen)), 0) INTO v_rows, v_agreed_total
+ FROM public.dispatch_request_freight f LEFT JOIN public.dispatch_request_freight_stages st ON st.dispatch_id = f.dispatch_id AND st.request_id = f.request_id
+ WHERE f.dispatch_id = p_dispatch_id AND f.status <> 'LIBERADO';
  IF v_rows > 0 THEN
   IF jsonb_typeof(p->'allocation') = 'array' AND jsonb_array_length(p->'allocation') > 0 THEN
    FOR e IN SELECT value FROM jsonb_array_elements(p->'allocation') LOOP
@@ -171,16 +188,19 @@ BEGIN
   ELSE
    -- Proporcional a lo acordado por OT; el redondeo queda en el último servicio
    v_left := v_final;
-   FOR r IN SELECT request_id, COALESCE(agreed_pen, amount_pen) AS agreed FROM public.dispatch_request_freight
-            WHERE dispatch_id = p_dispatch_id AND status <> 'LIBERADO' ORDER BY contract_id, request_id LOOP
+   FOR r IN SELECT f.request_id, COALESCE(st.agreed_pen, f.amount_pen) AS agreed FROM public.dispatch_request_freight f
+            LEFT JOIN public.dispatch_request_freight_stages st ON st.dispatch_id = f.dispatch_id AND st.request_id = f.request_id
+            WHERE f.dispatch_id = p_dispatch_id AND f.status <> 'LIBERADO' ORDER BY f.contract_id, f.request_id LOOP
     v_i := v_i + 1;
     v_share := CASE WHEN v_i = v_rows THEN v_left
                     WHEN v_agreed_total > 0 THEN round(v_final * r.agreed / v_agreed_total, 2) ELSE round(v_final / v_rows, 2) END;
     v_alloc := v_alloc || jsonb_build_object(r.request_id::text, v_share); v_left := v_left - v_share;
    END LOOP;
   END IF;
-  UPDATE public.dispatch_request_freight SET final_pen = (v_alloc->>(request_id::text))::numeric
-  WHERE dispatch_id = p_dispatch_id AND status <> 'LIBERADO';
+  INSERT INTO public.dispatch_request_freight_stages(dispatch_id, request_id, agreed_pen, final_pen)
+  SELECT f.dispatch_id, f.request_id, f.amount_pen, (v_alloc->>(f.request_id::text))::numeric
+  FROM public.dispatch_request_freight f WHERE f.dispatch_id = p_dispatch_id AND f.status <> 'LIBERADO'
+  ON CONFLICT (dispatch_id, request_id) DO UPDATE SET final_pen = EXCLUDED.final_pen, updated_at = now();
  END IF;
 
  INSERT INTO public.dispatch_freight_stages(dispatch_id, agreed_pen, base_pen, extras_pen, final_pen, executed_as_planned, final_reason, final_by, final_at)
@@ -224,9 +244,10 @@ BEGIN
     AND (public.has_tms_permission('despacho') OR public.has_tms_permission('contratos-servicios')),
   'by_request', COALESCE((SELECT jsonb_agg(jsonb_build_object('request_id', f.request_id, 'request_number', t.request_number,
      'contract_code', (SELECT c.code FROM public.contracts c WHERE c.id = f.contract_id), 'referential_pen', COALESCE(t.service_cost, 0),
-     'agreed_pen', COALESCE(f.agreed_pen, f.amount_pen), 'current_pen', f.amount_pen, 'final_pen', f.final_pen, 'status', f.status)
+     'agreed_pen', COALESCE(st.agreed_pen, f.amount_pen), 'current_pen', f.amount_pen, 'final_pen', st.final_pen, 'status', f.status)
     ORDER BY t.request_number)
    FROM public.dispatch_request_freight f JOIN public.transport_requests t ON t.id = f.request_id
+   LEFT JOIN public.dispatch_request_freight_stages st ON st.dispatch_id = f.dispatch_id AND st.request_id = f.request_id
    WHERE f.dispatch_id = p_dispatch_id), '[]'::jsonb));
 END $$;
 REVOKE ALL ON FUNCTION public.dispatch_freight_summary(uuid) FROM PUBLIC,anon;

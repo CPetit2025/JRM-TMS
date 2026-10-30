@@ -79,6 +79,10 @@ function fn(file, name) {
    CREATE TABLE dispatch_request_freight(dispatch_id uuid NOT NULL REFERENCES dispatches(id),request_id uuid NOT NULL REFERENCES transport_requests(id),
     contract_id uuid REFERENCES contracts(id),amount_pen numeric(15,2) NOT NULL CHECK(amount_pen>=0),service_id uuid REFERENCES contract_services(id),
     status text NOT NULL DEFAULT 'RESERVADO' CHECK(status IN ('RESERVADO','CONSUMIDO','LIBERADO')),PRIMARY KEY(dispatch_id,request_id));
+   -- Como reference_freight_guard de producción: un UPDATE que no cambia el monto se revalida y falla en filas históricas.
+   CREATE FUNCTION drf_guard() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN IF NEW.amount_pen=OLD.amount_pen THEN
+    RAISE EXCEPTION 'El flete y la descarga superan el importe aprobado para esta referencia'; END IF; RETURN NEW; END$$;
+   CREATE TRIGGER drf_guard BEFORE UPDATE ON dispatch_request_freight FOR EACH ROW EXECUTE FUNCTION drf_guard();
    CREATE FUNCTION update_contract_service_amount(p_service_id uuid,p_new_amount numeric) RETURNS boolean LANGUAGE sql AS $$
     UPDATE contract_services SET amount_pen=p_new_amount WHERE id=p_service_id RETURNING true $$;`)
   await db.exec(read('supabase/migrations/20261105090000_herencia_servicios_especiales.sql'))
@@ -87,13 +91,13 @@ function fn(file, name) {
   // Ruta mixta previa a la migración: su acordado se toma del monto vigente.
   await db.exec(`INSERT INTO dispatches(id,vehicle_plate,status,site_id,freight_cost) VALUES('${id(80)}','OLD-1','LIQUIDADO',primary_site_id(),100);
    INSERT INTO dispatch_request_freight(dispatch_id,request_id,contract_id,amount_pen,status) VALUES('${id(80)}','${id(39)}','${id(21)}',100,'CONSUMIDO');`)
-  const migration = read('supabase/migrations/20261108090000_flete_etapas.sql')
+  const migration = read('supabase/migrations/20261108100000_flete_etapas.sql')
   assert.doesNotMatch(migration, /replace\(\s*(def|source)/i, 'functions are rewritten in full, never patched with replace()')
   await db.exec(migration)
   await db.exec(migration) // reaplicable
   const scalar = async (sql, params=[]) => (await db.query(sql,params)).rows[0]?.value
   const rpc = async (sql, params=[]) => (await db.query(`SELECT ${sql} AS value`,params)).rows[0].value
-  assert.equal(await scalar(`SELECT agreed_pen::float AS value FROM dispatch_request_freight WHERE dispatch_id=$1`,[id(80)]),100,'backfill: historical agreed = current amount')
+  assert.equal(await scalar(`SELECT agreed_pen::float AS value FROM dispatch_request_freight_stages WHERE dispatch_id=$1`,[id(80)]),100,'backfill: historical agreed = current amount')
   const stage = d => db.query(`SELECT agreed_pen::float AS agreed,base_pen::float AS base,extras_pen::float AS extras,final_pen::float AS final,executed_as_planned,final_reason FROM dispatch_freight_stages WHERE dispatch_id=$1`,[d]).then(r => r.rows[0])
   const events = d => db.query(`SELECT stage,old_amount::float AS old,new_amount::float AS new,reason FROM service_cost_events WHERE service_kind='FLETE' AND dispatch_id=$1 ORDER BY created_at,id`,[d]).then(r => r.rows.map(e => [e.stage,e.old,e.new,e.reason]))
   const final = (d, p) => rpc('register_dispatch_freight_final($1,$2::jsonb)',[d,JSON.stringify(p)])
@@ -135,7 +139,7 @@ function fn(file, name) {
   await db.query(`UPDATE dispatch_request_freight SET amount_pen=320 WHERE dispatch_id=$1 AND request_id=$2`,[id(82),id(31)])
   await db.query(`UPDATE dispatches SET status='RETORNO_COMPLETADO' WHERE id=$1`,[id(82)])
   await db.query(`UPDATE dispatch_request_freight SET amount_pen=330 WHERE dispatch_id=$1 AND request_id=$2`,[id(82),id(31)])
-  const perOt = () => db.query(`SELECT request_id,agreed_pen::float AS agreed,final_pen::float AS final FROM dispatch_request_freight WHERE dispatch_id=$1 ORDER BY request_id`,[id(82)]).then(x => x.rows)
+  const perOt = () => db.query(`SELECT request_id,agreed_pen::float AS agreed,final_pen::float AS final FROM dispatch_request_freight_stages WHERE dispatch_id=$1 ORDER BY request_id`,[id(82)]).then(x => x.rows)
   assert.deepEqual((await perOt()).map(x => x.agreed),[320,200],'per-OT agreed follows renegotiation only while programmed')
   r = await final(id(82),{executed_as_planned:false,base_pen:520,extras_pen:30,reason:'Peaje y estadía'})
   assert.equal(r.success,true,r.error)
