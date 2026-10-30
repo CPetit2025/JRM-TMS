@@ -9,7 +9,7 @@ import { FilterToolbar, filterControl } from '@/components/ui/filter-toolbar'
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, CheckCircle2, ChevronRight, Clock, Info, Layers, FileCheck2, FileImage, FileSpreadsheet, FileText, ListTree, Loader2, RefreshCw, Search, Trash2, Truck, Upload } from 'lucide-react'
+import { AlertTriangle, CalendarDays, CheckCircle2, ChevronRight, Clock, History, Info, Layers, FileCheck2, FileImage, FileSpreadsheet, FileText, Link2, ListTree, Loader2, RefreshCw, Save, Search, Trash2, Truck, Upload, User as UserIcon, X } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { Modal } from '@/components/ui/modal'
 import { GuiaDetalleModal } from '@/components/guias/GuiaDetalleModal'
@@ -30,7 +30,7 @@ import { fetchServiceTypes, serviceKind, type ServiceKind } from '@/lib/request-
 import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 import { DocumentaryBadge, DocumentaryHistory, type DocumentaryClosure } from '@/components/despacho/DocumentaryClosure'
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
-import { CostSummary, EconomicServicesTable, FILE_CATEGORY, GuidesTable, useEconomicDetail, useModalContext, type GuideRow } from '@/components/documentos/DispatchModalSections'
+import { CostHistoryModal, FILE_CATEGORY, FilesSection, GuidesTable, LiquidationDetail, MAX_FILE_MB, MAX_FILES, OtFilesModal, PendingDot, ServicesOverview, useEconomicDetail, useModalContext, type FileRow, type GuideRow } from '@/components/documentos/DispatchModalSections'
 
 // Auditor: Packing List. Asistente: confirmación documentaria y Nota de Despacho en recojos.
 // La guía de entrega obligatoria procede del app/proveedor; solo Transporte valida la conformidad.
@@ -279,12 +279,12 @@ function DocumentaryQueue() {
           <div className="overflow-x-auto"><DataTable dense className="block w-full text-left text-sm lg:table"><caption className="sr-only">Solicitudes y OT asociadas, Packing List, guía de entrega y conformidad</caption><thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['Salida', 'Servicio', 'OT / OC / OS / RQ', 'Placa', 'Empresa', 'Destino', 'GR / Nota', 'Estado', 'Acciones'].map((label, i) => <th key={label} scope="col" className={`whitespace-nowrap px-3 py-2.5 font-semibold ${i === 8 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead><tbody className="block divide-y divide-slate-200 lg:table-row-group">{visible.map(({ item, stop }) => <DocumentRow key={`${item.id}/${stop?.request_id || 'empty'}`} item={item} stop={stop} kind={stop && serviceTypes.has(stop.request_id) ? serviceKind(serviceTypes.get(stop.request_id)) : item.is_pickup ? 'RECOJO_CLIENTE' : null} info={stop ? serviceTypes.get(stop.request_id) : undefined} delivery={deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)} canEdit={canNumbers || canPacking} packingOnly={packingOnly} onManage={() => openService(item.id, stop?.request_id || null)} onStatus={() => setStatusOf({ item, stop, delivery: deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id) })} />)}</tbody></DataTable></div>
         </section>}
       <Modal isOpen={!!selected} onClose={() => setSelectedId(null)} title={`Documentos · ${selected?.dispatch_number || ''}${focused && selected?.stops[0] ? ` · ${selected.stops[0].ot_code ? `OT ${selected.stops[0].ot_code}` : referenceLabel(serviceTypes.get(selected.stops[0].request_id)) || selected.stops[0].request_number}` : ''}`} maxWidth="max-w-[1440px]"
-        footer={<div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-600">{assistantOnly ? 'Vincula los números por servicio. La guía firmada y su aprobación se gestionan por separado.' : selected && ['CIERRE_OPERATIVO', 'RETORNO_COMPLETADO', 'ENTREGADO'].includes(selected.status) ? 'Ruta cerrada: completa la liquidación de cada servicio según su tipo.' : selected && !NOT_SETTLEABLE.includes(selected.status) ? 'Ruta en curso: puedes liquidar los servicios ya atendidos.' : selected?.missing ? 'Completa los documentos pendientes para autorizar la salida.' : selected?.docs_ready_at ? 'Documentos confirmados para salida.' : 'Documentos y archivos asociados al servicio.'}</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setSelectedId(null)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Cerrar</button>{selected && canEdit && selected.status === 'PROGRAMADO' && ['PENDIENTE', 'REEMISION'].includes(selected.doc_status) && <button type="button" onClick={() => void confirmDocs(selected)} disabled={busy === selected.id || !!selected.missing} className="flex min-h-11 items-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-500">{busy === selected.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar documentos para salida</button>}</div></div>}>
+>
         {selectedRoute && phase !== 'salida' && selectedRoute.stops.length > 1 && focusStop && <p className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-[#002855]">
           <span>{focused ? <>Liquidación por servicio: se muestra <b>1 de {selectedRoute.stops.length}</b> servicios de la ruta {selectedRoute.dispatch_number}.</> : <>Ruta {selectedRoute.dispatch_number} completa · {selectedRoute.stops.length} servicios.</>}</span>
           <button type="button" onClick={() => setShowAllStops(v => !v)} className="min-h-9 rounded-lg border border-blue-300 bg-white px-3 font-semibold hover:bg-blue-100">{focused ? `Ver los ${selectedRoute.stops.length} servicios` : 'Ver solo este servicio'}</button>
         </p>}
-        {selected && <DispatchCard key={selected.id} item={selected} canEdit={canEdit && selected.status === 'PROGRAMADO'} canPacking={canPacking && selected.status === 'PROGRAMADO'} canAttach={canEdit && selected.status !== 'CANCELADO'} canSettle={(canNumbers || canManual) && !packingOnly && !NOT_SETTLEABLE.includes(selected.status)} canUpload={canNumbers} canManual={canManual} checklists={checklists} packingOnly={packingOnly} serviceTypes={serviceTypes}
+        {selected && <DispatchCard key={selected.id} item={selected} onClose={() => setSelectedId(null)} footerConfirm={selected && canEdit && selected.status === 'PROGRAMADO' && ['PENDIENTE', 'REEMISION'].includes(selected.doc_status) && <button type="button" onClick={() => void confirmDocs(selected)} disabled={busy === selected.id || !!selected.missing} className="flex min-h-11 items-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-500">{busy === selected.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar documentos para salida</button>} canEdit={canEdit && selected.status === 'PROGRAMADO'} canPacking={canPacking && selected.status === 'PROGRAMADO'} canAttach={canEdit && selected.status !== 'CANCELADO'} canSettle={(canNumbers || canManual) && !packingOnly && !NOT_SETTLEABLE.includes(selected.status)} canUpload={canNumbers} canManual={canManual} checklists={checklists} packingOnly={packingOnly} serviceTypes={serviceTypes}
           onVoid={voidDoc} onOpen={openDoc} onUploaded={load}
           deliveries={deliveries.filter(row => row.dispatch_id === selected.id)} onEvidence={row => { setSelectedId(null); setReview(row) }}>
           {!packingOnly && <DocumentNumberLinks key={selected.id} dispatchId={selected.id} services={selected.stops.map(stop => ({ ...stop, order_reference: referenceLabel(serviceTypes.get(stop.request_id)) }))} known={knownNumbers(selected, deliveries)} canEdit={canNumbers && selected.status !== 'CANCELADO'} onChanged={load} />}
@@ -417,14 +417,18 @@ function DocumentStatusModal({ target, reference, packingOnly, canEdit, onClose,
   </Modal>
 }
 
-function DispatchCard({ item, canEdit, canPacking, canAttach = false, canSettle = false, canUpload = false, canManual = false, checklists, packingOnly, serviceTypes, onVoid, onOpen, onUploaded, deliveries, onEvidence, children }: {
-  item: QueueItem; canEdit: boolean; canPacking: boolean; canAttach?: boolean; canSettle?: boolean; canUpload?: boolean; canManual?: boolean; checklists?: Map<string, SettlementChecklist>; packingOnly: boolean; serviceTypes: Awaited<ReturnType<typeof fetchServiceTypes>>; onVoid: (d: Doc) => void
+function DispatchCard({ item, onClose, footerConfirm, canEdit, canPacking, canAttach = false, canSettle = false, canUpload = false, canManual = false, checklists, packingOnly, serviceTypes, onVoid, onOpen, onUploaded, deliveries, onEvidence, children }: {
+  item: QueueItem; onClose: () => void; footerConfirm?: React.ReactNode; canEdit: boolean; canPacking: boolean; canAttach?: boolean; canSettle?: boolean; canUpload?: boolean; canManual?: boolean; checklists?: Map<string, SettlementChecklist>; packingOnly: boolean; serviceTypes: Awaited<ReturnType<typeof fetchServiceTypes>>; onVoid: (d: Doc) => void
   onOpen: (p: string) => void; onUploaded: () => Promise<void>; deliveries: DeliveryRow[]; onEvidence: (row: DeliveryReviewTarget) => void; children?: React.ReactNode
 }) {
   const [upload, setUpload] = useState<{ requestId: string | null; type: string; label: string } | null>(null)
   const [tab, setTab] = useState<'servicios' | 'guias' | 'archivos' | 'liquidacion'>('servicios')
   const [category, setCategory] = useState('COMPROBANTE')
-  const [attachTo, setAttachTo] = useState('')
+  const [staged, setStaged] = useState<File[]>([])
+  const [saving, setSaving] = useState(false)
+  const [history, setHistory] = useState(false)
+  const [linking, setLinking] = useState(false)
+  const [otFiles, setOtFiles] = useState(false)
   const uploadPanel = useRef<HTMLDivElement>(null)
   useEffect(() => { if (upload) uploadPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) }, [upload])
   const badge = STATUS_BADGE[item.doc_status]
@@ -473,9 +477,9 @@ function DispatchCard({ item, canEdit, canPacking, canAttach = false, canSettle 
   }
   const missingGuides = guideRows.filter(r => r.status === 'FALTA' || r.status === 'POR_VALIDAR').length
   const settlementPending = item.stops.filter(s => checklists?.get(`${item.id}/${s.request_id}`)?.complete === false).length
-  const tabs: [typeof tab, string][] = [['servicios', `Servicios · ${item.stops.length}`],
-    ...(!packingOnly ? [['guias', `Guías y notas · ${guideRows.filter(r => r.status !== 'FALTA').length}${missingGuides ? ` (${missingGuides} pend.)` : ''}`], ['liquidacion', `Liquidación${settlementPending ? ` · ${settlementPending} pend.` : ''}`]] as [typeof tab, string][] : []),
-    ['archivos', `Archivos · ${item.documents.length}`]]
+  const tabs: [typeof tab, string, boolean][] = [['servicios', `Servicios · ${item.stops.length}`, false],
+    ...(!packingOnly ? [['guias', 'Guías y notas', missingGuides > 0 || settlementPending > 0], ['liquidacion', 'Liquidación', !!economic?.state.pending.length]] as [typeof tab, string, boolean][] : []),
+    ['archivos', `Archivos · ${item.documents.length}`, false]]
   const onTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
     event.preventDefault()
@@ -485,29 +489,86 @@ function DispatchCard({ item, canEdit, canPacking, canAttach = false, canSettle 
     document.getElementById(`dispatch-doc-tab-${tabs[next][0]}`)?.focus()
   }
 
-  return <div className="min-w-0 space-y-4">
+  // Archivos: carga por arrastre o selección (Otro documento con categoría), máximo 5 archivos de 10 MB por carga
+  const canFiles = canEdit || canAttach
+  const stage = (picked: File[]) => {
+    const ok = picked.filter(f => /\.(pdf|jpe?g|png|webp|xlsx?|csv)$/i.test(f.name))
+    if (ok.length < picked.length) toast.error('Solo PDF, imagen JPG/PNG/WEBP o Excel')
+    const big = ok.find(f => f.size > MAX_FILE_MB * 1024 * 1024)
+    if (big) { toast.error(`${big.name} supera ${MAX_FILE_MB} MB`); return }
+    setStaged(prev => {
+      const next = [...prev, ...ok.filter(f => !prev.some(p => p.name === f.name && p.size === f.size))]
+      if (next.length > MAX_FILES) toast.error(`Hasta ${MAX_FILES} archivos por carga`)
+      return next.slice(0, MAX_FILES)
+    })
+  }
+  const saveFiles = async () => {
+    if (!staged.length) return
+    setSaving(true)
+    const supabase = createClient()
+    const failed: File[] = []
+    for (const file of staged) {
+      try {
+        const mime = isSheetName(file.name) ? sheetMime(file.name) : packingMime(file)
+        if (!mime) throw new Error('formato no permitido')
+        const path = `${item.id}/${crypto.randomUUID()}-${file.name.replace(/[^\w.-]+/g, '_').slice(-80)}`
+        const { error: upErr } = await supabase.storage.from(DOCS_BUCKET).upload(path, file, { contentType: mime })
+        if (upErr) throw upErr
+        const { data, error } = await supabase.rpc('register_dispatch_document', { p_dispatch_id: item.id, p_request_id: null, p_doc_type: 'OTRO', p_cargo_type: null,
+          p_document_number: null, p_file_path: path, p_file_name: file.name, p_mime_type: mime, p_size_bytes: file.size, p_notes: null })
+        if (error || !data?.success) { await supabase.storage.from(DOCS_BUCKET).remove([path]); throw new Error(error ? errorMessage(error) : data?.error) }
+        if (data.id) await supabase.rpc('set_dispatch_document_category', { p_document_id: data.id, p_category: category })
+      } catch (e) { failed.push(file); toast.error(`${file.name}: ${errorMessage(e)}`) }
+    }
+    const done = staged.length - failed.length
+    if (done) { toast.success(`${done} archivo(s) guardado(s)`); await onUploaded() }
+    setStaged(failed); setSaving(false)
+  }
+  const fileRows: FileRow[] = [
+    ...item.documents.map(d => {
+      const meta = docMeta.get(d.id)
+      return { key: d.id, name: d.file_name || 'Archivo adjunto', type: (d.file_name || d.file_path).split('.').pop()?.toUpperCase().slice(0, 5) || '—',
+        category: d.doc_type === 'OTRO' ? FILE_CATEGORY[meta?.category || 'OTROS'] : `${DOC_LABEL[d.doc_type]}${d.document_number ? ` ${d.document_number}` : ''}`,
+        where: item.stops.length > 1 ? (d.request_id ? `${stopLabel(d.request_id).ot} · ${stopLabel(d.request_id).request}` : 'Toda la ruta') : null,
+        size: meta?.size_bytes ?? null, date: d.uploaded_at, by: meta?.uploaded_by_name ?? null, onOpen: () => onOpen(d.file_path), onVoid: canEdit ? () => onVoid(d) : undefined }
+    }),
+    ...deliveries.filter(dl => dl.photos_count > 0).map(dl => ({ key: `ev-${dl.request_id}`, name: `Evidencias de entrega (${dl.photos_count} foto${dl.photos_count === 1 ? '' : 's'})`,
+      type: 'Evidencia', category: `App del conductor · ${conformityLabels[dl.conformity]}`, where: item.stops.length > 1 ? `${stopLabel(dl.request_id).ot} · ${stopLabel(dl.request_id).request}` : null,
+      size: null, date: dl.submitted_at, by: dl.driver_name, onOpen: () => onEvidence(dl) })),
+  ]
+  const operative = ['LIQUIDADO', 'CERRADO', 'CIERRE_OPERATIVO', 'RETORNO_COMPLETADO', 'ENTREGADO'].includes(item.status) ? { label: 'Ruta finalizada', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' }
+    : item.status === 'PROGRAMADO' ? { label: 'Ruta programada', cls: 'bg-blue-50 text-blue-700 ring-blue-200' }
+    : item.status === 'CANCELADO' ? { label: 'Ruta cancelada', cls: 'bg-red-50 text-red-700 ring-red-200' } : { label: 'Ruta en curso', cls: 'bg-amber-50 text-amber-700 ring-amber-200' }
+  const btn = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold'
+
+  return <div className="min-w-0 space-y-5">
     {/* Cabecera y pestañas fijas: el contenido se desplaza debajo */}
-    <div className="sticky -top-4 z-20 -mx-4 -mt-4 space-y-2 border-b border-slate-200 bg-white px-4 pb-3 pt-4 sm:-top-6 sm:-mx-6 sm:-mt-6 sm:px-6 sm:pt-6">
-    <dl className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-      <div className="flex items-center gap-1.5"><dt className="text-xs text-slate-500">Ruta</dt><dd className="font-bold text-[#002855]">{item.dispatch_number}</dd>
-        <dd className="text-xs text-slate-600">· {[...new Set(item.stops.map(s => stopLabel(s.request_id).ot))].join(', ') || 'Sin OT'} · {item.stops.map(s => s.request_number).join(', ')}</dd></div>
-      <div className="flex items-center gap-2"><Truck aria-hidden className="h-4 w-4 text-[#002855]" /><dt className="sr-only">Unidad</dt><dd><span className="font-bold text-[#002855]">{item.is_pickup ? 'Unidad del cliente' : item.vehicle_plate || 'Sin unidad'}</span> <span className="text-xs text-slate-500">· {item.is_pickup ? 'Recojo por el cliente' : item.modalidad === 'TERCERO' ? 'Transporte contratado por JRM' : 'Transporte JRM'}</span></dd></div>
-      <div className="flex items-center gap-1.5"><dt className="text-xs text-slate-500">Conductor</dt><dd className="font-semibold text-slate-800">{item.is_pickup ? 'No aplica' : item.driver_name || 'Sin conductor registrado'}</dd></div>
-      <div className="flex items-center gap-1.5"><dt className="text-xs text-slate-500">Salida</dt><dd className={`font-semibold ${urgent ? 'text-red-700' : 'text-slate-800'}`}>{fmtDate(item.scheduled_departure, true)}{urgent && <span className="ml-1 text-xs font-medium">· {h !== null && h < 0 ? 'atrasada' : 'próxima'}</span>}</dd></div>
-      {ctx?.returned_at && <div className="flex items-center gap-1.5"><dt className="text-xs text-slate-500">Retorno</dt><dd className="font-semibold text-slate-800">{fmtDate(ctx.returned_at, true)}</dd></div>}
-      <div className="flex items-center gap-1.5 sm:ml-auto"><dt className="sr-only">Estado operativo y documentario</dt><dd className="flex flex-wrap items-center gap-2"><StatusBadge tone={['LIQUIDADO', 'CERRADO'].includes(item.status) ? 'success' : item.status === 'CANCELADO' ? 'danger' : 'neutral'}>Ruta: {dispatchStatusLabel(item.status)}</StatusBadge><StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>{item.docs_ready_at && !item.docs_reissue && <span className="text-xs text-emerald-700">Confirmado · {fmtDate(item.docs_ready_at, true)}</span>}</dd></div>
-    </dl>
-    {item.docs_reissue && <p className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Reemisión: {item.docs_reissue_reason || 'Actualizar los documentos del servicio.'}</p>}
-
-    <div role="tablist" aria-label="Secciones de documentos del despacho" className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-1">
-      {tabs.map(([value, label]) => <button key={value} id={`dispatch-doc-tab-${value}`} type="button" role="tab" aria-selected={tab === value} aria-controls={`dispatch-doc-panel-${value}`} tabIndex={tab === value ? 0 : -1} onClick={() => setTab(value)} onKeyDown={onTabKeyDown} className={`min-h-10 shrink-0 rounded-lg px-4 text-sm font-semibold transition-colors ${tab === value ? 'bg-white text-[#002855] shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:bg-white/70 hover:text-[#002855]'}`}>{label}</button>)}
+    <div className="sticky -top-4 z-20 -mx-4 -mt-4 space-y-3 bg-white px-4 pb-3 pt-4 sm:-top-6 sm:-mx-6 sm:-mt-6 sm:px-6 sm:pt-5">
+      <dl className="flex flex-wrap items-center gap-x-10 gap-y-3 rounded-xl border border-slate-200 bg-white px-5 py-3.5">
+        <div className="flex items-center gap-3"><Truck aria-hidden className="h-6 w-6 text-[#002855]" /><div><dt className="sr-only">Unidad</dt>
+          <dd className="text-sm font-bold text-slate-900">{item.is_pickup ? 'Unidad del cliente' : item.vehicle_plate || 'Sin unidad'}</dd>
+          <dd className="text-xs text-slate-500">{item.is_pickup ? 'Recojo por el cliente' : item.modalidad === 'TERCERO' ? 'Transporte contratado por JRM' : 'Transporte JRM'}</dd></div></div>
+        <div className="flex items-center gap-3"><UserIcon aria-hidden className="h-6 w-6 text-[#002855]" /><div><dt className="text-xs text-slate-500">Conductor</dt>
+          <dd className="text-sm font-bold uppercase text-slate-900">{item.is_pickup ? 'No aplica' : item.driver_name || 'Sin conductor registrado'}</dd></div></div>
+        <div className="flex items-center gap-3"><CalendarDays aria-hidden className="h-6 w-6 text-[#002855]" /><div><dt className="text-xs text-slate-500">Salida</dt>
+          <dd className={`text-sm font-bold ${urgent ? 'text-red-700' : 'text-slate-900'}`}>{fmtDate(item.scheduled_departure, true)}{urgent && <span className="ml-1 text-xs font-medium">· {h !== null && h < 0 ? 'atrasada' : 'próxima'}</span>}</dd></div></div>
+        {ctx?.returned_at && <div className="flex items-center gap-3"><CalendarDays aria-hidden className="h-6 w-6 text-[#002855]" /><div><dt className="text-xs text-slate-500">Retorno</dt>
+          <dd className="text-sm font-bold text-slate-900">{fmtDate(ctx.returned_at, true)}</dd></div></div>}
+        <div className="sm:ml-auto"><dt className="sr-only">Estado de la ruta</dt><dd title={`${dispatchStatusLabel(item.status)} · ${badge.label}`} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ring-1 ring-inset ${operative.cls}`}>{operative.label}</dd></div>
+      </dl>
+      {item.docs_reissue && <p className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Reemisión: {item.docs_reissue_reason || 'Actualizar los documentos del servicio.'}</p>}
+      <div role="tablist" aria-label="Secciones de documentos del despacho" className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-1.5">
+        {tabs.map(([value, label, alert]) => <button key={value} id={`dispatch-doc-tab-${value}`} type="button" role="tab" aria-selected={tab === value} aria-controls={`dispatch-doc-panel-${value}`} tabIndex={tab === value ? 0 : -1} onClick={() => setTab(value)} onKeyDown={onTabKeyDown}
+          className={`inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-5 text-sm font-semibold transition-colors ${tab === value ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white hover:text-[#002855]'}`}>{label}{alert && tab !== value && <PendingDot />}</button>)}
+      </div>
     </div>
-    </div>
 
-    {tab === 'servicios' && <section id="dispatch-doc-panel-servicios" role="tabpanel" aria-labelledby="dispatch-doc-tab-servicios" aria-label="Servicios" className="space-y-3">
-      <CostSummary detail={economic} />
-      <EconomicServicesTable detail={economic} dispatchId={item.id} transportLabel={item.modalidad === 'TERCERO' ? 'Transportista contratado' : 'JRM / flota propia'} carrier={null} />
-      <h3 className="text-sm font-bold text-[#002855]">Servicios por OT y solicitud <span className="font-normal text-slate-500">· {item.stops.length}{item.is_pickup ? ' · Recojo por el cliente' : ''}</span></h3>
+    {tab === 'servicios' && <section id="dispatch-doc-panel-servicios" role="tabpanel" aria-labelledby="dispatch-doc-tab-servicios" aria-label="Servicios" className="space-y-5">
+      <ServicesOverview detail={economic} dispatchId={item.id} onGuides={() => setTab(packingOnly ? 'archivos' : 'guias')} />
+      <details className="group rounded-xl border border-slate-200 bg-white" open={packingOnly || !economic}>
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-semibold text-[#002855] [&::-webkit-details-marker]:hidden">
+          <span>Documentos por OT y solicitud <span className="font-normal text-slate-500">· {item.stops.length}{item.is_pickup ? ' · Recojo por el cliente' : ''}</span></span><ChevronRight className="h-4 w-4 transition-transform group-open:rotate-90" /></summary>
+        <div className="space-y-3 border-t border-slate-100 p-3">
       {!item.stops.length && <p className="rounded-xl border border-slate-200 p-4 text-sm text-slate-500">Este despacho no tiene solicitudes asociadas.</p>}
       {item.stops.map((s, i) => {
         const docs = item.documents.filter(d => d.request_id === s.request_id)
@@ -522,8 +583,6 @@ function DispatchCard({ item, canEdit, canPacking, canAttach = false, canSettle 
           <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
             <div className="min-w-0"><p className="break-words font-bold text-[#002855]">{reference} <span className="text-sm font-semibold text-slate-600">· {s.request_number}</span> <span className="text-xs font-normal text-slate-500">· Parada {s.sequence || i + 1}</span></p><p className="mt-0.5 break-words text-sm text-slate-700">{s.client || 'Sin cliente registrado'}</p></div>
             <ul aria-label="Documentos requeridos" className="flex flex-wrap gap-1.5">
-              {/* Documentos según el tipo de servicio (misma regla que la liquidación): entrega = GR o Nota + Packing List;
-                  recojo = GR; punto a punto = opcionales; recojo por el cliente = Nota de Despacho */}
               {kind === 'ENTREGA' && chip('Packing List', !!packing || !!check?.packing, packing ? `${packing.request_id ? 'Cargado' : 'Consolidado'}${packing.auditor_name ? ` · ${packing.auditor_name}` : ''}` : check?.packing ? 'Cargado' : 'Pendiente')}
               {kind === 'RECOJO_CLIENTE' && chip('Nota de Despacho', !!note || !!check?.note, note || check?.note ? 'Cargada' : 'Pendiente (Asistente)')}
               {!packingOnly && kind === 'ENTREGA' && chip('GR o Nota de Despacho', delivery?.conformity === 'VALIDADA' || !!note || !!check?.note, note || check?.note ? 'Nota de Despacho cargada' : `${delivery ? conformityLabels[delivery.conformity] : 'Aún no disponible'}${delivery?.guide_number ? ` · ${delivery.guide_number}` : ''}`)}
@@ -553,78 +612,58 @@ function DispatchCard({ item, canEdit, canPacking, canAttach = false, canSettle 
           {uploadForm(s.request_id)}
         </article>
       })}
+        </div>
+      </details>
     </section>}
 
-    {tab === 'guias' && <section id="dispatch-doc-panel-guias" role="tabpanel" aria-labelledby="dispatch-doc-tab-guias" className="space-y-3">
-      <GuidesTable rows={guideRows} onOpen={onOpen} />
-      {children && <details className="rounded-xl border border-slate-200 bg-white p-3" open={!guideRows.length}>
-        <summary className="cursor-pointer text-sm font-semibold text-[#002855]">Vincular números de guía o nota por servicio</summary>
-        <div className="mt-3">{children}</div>
-      </details>}
+    {tab === 'guias' && <section id="dispatch-doc-panel-guias" role="tabpanel" aria-labelledby="dispatch-doc-tab-guias" className="space-y-5">
+      {linking && children && <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3"><div className="mb-2 flex items-center justify-between"><p className="text-sm font-semibold text-[#002855]">Vincular números de guía o nota por servicio</p>
+        <button type="button" onClick={() => setLinking(false)} aria-label="Cerrar vinculación" className="rounded p-1 text-slate-500 hover:bg-white"><X className="h-4 w-4" /></button></div>{children}</div>}
+      <GuidesTable rows={guideRows} onOpen={onOpen} multipleStops={item.stops.length > 1} />
+      {canSettle && <section aria-label="Cierre documentario por servicio" className="space-y-2">
+        <h3 className="text-[15px] font-bold text-[#002855]">Cierre documentario por servicio</h3>
+        {item.stops.map(s => {
+          const check = checklists?.get(`${item.id}/${s.request_id}`)
+          return <details key={s.request_id} className="group rounded-xl border border-slate-200 bg-white" open={check?.complete === false}>
+            <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3 text-sm [&::-webkit-details-marker]:hidden">
+              <ChevronRight className="h-4 w-4 text-slate-500 transition-transform group-open:rotate-90" />
+              <b className="text-[#002855]">{s.ot_code ? `OT ${s.ot_code}` : referenceLabel(serviceTypes.get(s.request_id)) || 'Servicio'} · {s.request_number}</b>
+              <span className="text-slate-600">· {s.client || 'Sin cliente'}</span>
+              {check?.documentary ? <span className="ml-auto"><DocumentaryBadge closure={check.documentary} /></span> : check && <span className={`ml-auto rounded-md px-2 py-0.5 text-[11px] font-semibold ${check.complete ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{check.complete ? 'Completo' : 'Pendiente'}</span>}
+            </summary>
+            <div className="border-t border-slate-100 p-3"><SettlementUpload key={`${s.request_id}/${check?.kind || ''}`} dispatchId={item.id} requestId={s.request_id} checklist={check} canUpload={canUpload} canManual={canManual} onUploaded={onUploaded} /></div>
+          </details>
+        })}
+      </section>}
     </section>}
 
-    {tab === 'archivos' && <section id="dispatch-doc-panel-archivos" role="tabpanel" aria-labelledby="dispatch-doc-tab-archivos" aria-label="Archivos del despacho" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-      <div className="flex flex-wrap items-end justify-between gap-2 px-4 py-3"><div><h3 className="text-sm font-bold text-[#002855]">Archivos del despacho</h3><p className="text-xs text-slate-500">Documentos de la ruta y de cada servicio · {item.documents.length} vigente(s){ctx?.voided ? ` · ${ctx.voided} anulado(s)` : ''}. PDF, imagen o Excel, máximo 15 MB cada uno.</p></div><div className="flex flex-wrap items-end gap-2">
-        {canPacking && <button type="button" onClick={() => beginUpload(null, 'PACKING_LIST', 'Todas las solicitudes del despacho')} className={secondary}><Upload className="h-4 w-4" />{consolidated ? 'Reemplazar Packing List consolidado' : 'Packing List consolidado'}</button>}
-        {(canEdit || canAttach) && <>
-          <label className="text-[11px] font-semibold text-slate-600">Categoría<select value={category} onChange={e => setCategory(e.target.value)} className="mt-0.5 block min-h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs">
-            {Object.entries(FILE_CATEGORY).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
-          <label className="text-[11px] font-semibold text-slate-600">Asociar a<select value={attachTo} onChange={e => setAttachTo(e.target.value)} className="mt-0.5 block min-h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs">
-            <option value="">Toda la ruta</option>{item.stops.map(s => <option key={s.request_id} value={s.request_id}>{stopLabel(s.request_id).ot} · {s.request_number}</option>)}</select></label>
-          <button type="button" onClick={() => beginUpload(attachTo || null, 'OTRO', attachTo ? `${stopLabel(attachTo).ot} · ${stopLabel(attachTo).request}` : 'Todas las solicitudes del despacho')} className={secondary}><Upload className="h-4 w-4" />Cargar archivos</button>
-        </>}
-      </div></div>
-      {uploadForm(attachTo || null)}
-      <div className="overflow-x-auto border-t border-slate-100">
-        <table className="w-full min-w-[52rem] text-sm">
-          <thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-3 py-2">Nombre</th><th className="px-3 py-2">Tipo</th><th className="px-3 py-2">OT · solicitud</th><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Subido por</th><th className="px-3 py-2 text-right">Tamaño</th><th className="px-3 py-2">Validación</th><th className="px-3 py-2 text-right">Acciones</th></tr></thead>
-          <tbody className="divide-y divide-slate-100">
-            {item.documents.map(d => {
-              const meta = docMeta.get(d.id), where = stopLabel(d.request_id)
-              const type = d.doc_type === 'OTRO' ? FILE_CATEGORY[meta?.category || 'OTROS'] : DOC_LABEL[d.doc_type] || 'Documento'
-              const validation = d.doc_type === 'PACKING_LIST' ? (d.signed && d.auditor_name ? `Firmado · ${d.auditor_name}` : 'Sin firma confirmada') : d.document_number ? `N.º ${d.document_number}` : '—'
-              return <tr key={d.id}>
-                <td className="px-3 py-2"><button type="button" onClick={() => onOpen(d.file_path)} className="flex min-w-0 items-center gap-2 text-left"><KindTag kind={fileKind(d.file_name || d.file_path, d.mime_type)} /><span className="max-w-64 truncate font-semibold text-blue-800 hover:underline">{d.file_name || 'Archivo adjunto'}</span></button></td>
-                <td className="px-3 py-2 text-xs text-slate-700">{type}</td>
-                <td className="px-3 py-2 text-xs"><b className="text-slate-700">{where.ot}</b><span className="block text-slate-500">{where.request}</span></td>
-                <td className="px-3 py-2 text-xs text-slate-600">{fmtDate(d.uploaded_at, true)}</td>
-                <td className="px-3 py-2 text-xs text-slate-600">{meta?.uploaded_by_name || '—'}</td>
-                <td className="px-3 py-2 text-right text-xs tabular-nums text-slate-600">{meta?.size_bytes ? `${(meta.size_bytes / 1024 / 1024).toFixed(1)} MB` : '—'}</td>
-                <td className="px-3 py-2 text-xs text-slate-600">{validation}</td>
-                <td className="px-3 py-2 text-right"><button type="button" onClick={() => onOpen(d.file_path)} className="rounded-lg px-2 py-1 text-xs font-semibold text-[#002855] hover:bg-slate-100">Ver</button>
-                  {canEdit && <button type="button" onClick={() => onVoid(d)} className="rounded-lg px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50">Anular</button>}</td>
-              </tr>
-            })}
-            {deliveries.filter(dl => dl.photos_count > 0).map(dl => <tr key={`ev-${dl.request_id}`} className="bg-slate-50/50">
-              <td className="px-3 py-2 text-xs font-semibold text-slate-700">Evidencias de entrega ({dl.photos_count} foto{dl.photos_count === 1 ? '' : 's'})</td>
-              <td className="px-3 py-2 text-xs text-slate-700">Evidencia fotográfica · app del conductor</td>
-              <td className="px-3 py-2 text-xs"><b className="text-slate-700">{stopLabel(dl.request_id).ot}</b><span className="block text-slate-500">{stopLabel(dl.request_id).request}</span></td>
-              <td className="px-3 py-2 text-xs text-slate-600">{dl.submitted_at ? fmtDate(dl.submitted_at, true) : '—'}</td>
-              <td className="px-3 py-2 text-xs text-slate-600">{dl.driver_name || 'Conductor'}</td><td />
-              <td className="px-3 py-2 text-xs text-slate-600">{conformityLabels[dl.conformity]}</td>
-              <td className="px-3 py-2 text-right"><button type="button" onClick={() => onEvidence(dl)} className="rounded-lg px-2 py-1 text-xs font-semibold text-[#002855] hover:bg-slate-100">Ver</button></td>
-            </tr>)}
-            {!item.documents.length && !deliveries.some(dl => dl.photos_count > 0) && <tr><td colSpan={8} className="px-3 py-6 text-center text-sm text-slate-500">Sin archivos cargados.</td></tr>}
-          </tbody>
-        </table>
-      </div>
-    </section>}
-
-    {tab === 'liquidacion' && !packingOnly && <section id="dispatch-doc-panel-liquidacion" role="tabpanel" aria-labelledby="dispatch-doc-tab-liquidacion" aria-label="Liquidación de servicios" className="space-y-3">
-      <h3 className="text-sm font-bold text-[#002855]">A. Cierre documentario por servicio</h3>
-      {canSettle && item.stops.map(s => {
-        const check = checklists?.get(`${item.id}/${s.request_id}`)
-        const kind = check?.kind || settlementKind(serviceTypes.get(s.request_id), item.is_pickup)
-        return <article key={s.request_id} className="rounded-xl border border-slate-200 bg-white p-4">
-          <h3 className="mb-3 text-sm font-bold text-[#002855]">{s.ot_code ? `OT ${s.ot_code}` : referenceLabel(serviceTypes.get(s.request_id)) || 'Servicio'} · {s.request_number} <span className="font-normal text-slate-600">· {s.client || 'Sin cliente'}</span></h3>
-          <SettlementUpload key={`${s.request_id}/${checklists?.get(`${item.id}/${s.request_id}`)?.kind || ''}`} dispatchId={item.id} requestId={s.request_id} checklist={checklists?.get(`${item.id}/${s.request_id}`)} canUpload={canUpload} canManual={canManual} onUploaded={onUploaded} />
-          {!check && <p className="mt-2 text-xs text-slate-500">Tipo de liquidación: {kind}.</p>}
-        </article>
-      })}
+    {tab === 'liquidacion' && !packingOnly && <section id="dispatch-doc-panel-liquidacion" role="tabpanel" aria-labelledby="dispatch-doc-tab-liquidacion" aria-label="Liquidación de servicios" className="space-y-5">
+      <LiquidationDetail detail={economic} dispatchId={item.id} />
       {canSettle && !item.is_pickup && <ForkliftTimeSettlement dispatchId={item.id} onSaved={onUploaded} />}
-      {!canSettle && <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">La liquidación documentaria no está disponible para esta ruta.</p>}
-      <div className="border-t border-slate-200 pt-3"><EconomicServicesTable detailed detail={economic} dispatchId={item.id} transportLabel={item.modalidad === 'TERCERO' ? 'Transportista contratado' : 'JRM / flota propia'} carrier={null} /></div>
     </section>}
+
+    {tab === 'archivos' && <section id="dispatch-doc-panel-archivos" role="tabpanel" aria-labelledby="dispatch-doc-tab-archivos">
+      <FilesSection rows={fileRows} canUpload={canFiles} staged={staged} onStage={stage} onUnstage={i => setStaged(prev => prev.filter((_, j) => j !== i))} category={category} onCategory={setCategory}
+        extra={canPacking && <button type="button" onClick={() => beginUpload(null, 'PACKING_LIST', 'Todas las solicitudes del despacho')} className="text-xs font-semibold text-blue-700 hover:underline">{consolidated ? 'Reemplazar Packing List consolidado' : 'Cargar Packing List consolidado'}</button>} />
+      {uploadForm(null)}
+    </section>}
+
+    {/* Pie fijo: acción secundaria de la pestaña, Cerrar y Guardar cambios */}
+    <div className="sticky -bottom-4 z-20 -mx-4 -mb-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3 sm:-bottom-6 sm:-mx-6 sm:-mb-6 sm:px-6">
+      <div>
+        {(tab === 'servicios' || tab === 'liquidacion') && !packingOnly && <button type="button" onClick={() => setHistory(true)} className={`${btn} border border-slate-300 bg-white text-[#002855] hover:bg-slate-50`}><History className="h-4 w-4" />Ver historia de cambios</button>}
+        {tab === 'guias' && children && <button type="button" onClick={() => setLinking(v => !v)} className={`${btn} border border-slate-300 bg-white text-[#002855] hover:bg-slate-50`}><Link2 className="h-4 w-4" />Vincular números</button>}
+        {tab === 'archivos' && <button type="button" onClick={() => setOtFiles(true)} className={`${btn} border border-slate-300 bg-white text-[#002855] hover:bg-slate-50`}><History className="h-4 w-4" />Ver todos los archivos de la OT</button>}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {footerConfirm}
+        <button type="button" onClick={onClose} className={`${btn} border border-slate-300 bg-white text-slate-700 hover:bg-slate-50`}>Cerrar</button>
+        <button type="button" onClick={() => void saveFiles()} disabled={tab !== 'archivos' || !staged.length || saving} title={tab === 'archivos' ? (staged.length ? 'Guardar los archivos seleccionados' : 'Seleccione archivos para guardar') : 'Sin cambios pendientes en esta pestaña'}
+          className={`${btn} bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300`}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Guardar cambios</button>
+      </div>
+    </div>
+    {history && <CostHistoryModal dispatchId={item.id} onClose={() => setHistory(false)} />}
+    {otFiles && <OtFilesModal requestIds={item.stops.map(s => s.request_id)} onOpen={onOpen} onClose={() => setOtFiles(false)} />}
   </div>
 }
 
