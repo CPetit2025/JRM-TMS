@@ -2,7 +2,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { AlertTriangle, CheckCircle2, ClipboardCheck, Clock, Eye, FileText, Hourglass, RefreshCw, Search, ShieldCheck, Wallet, XCircle } from 'lucide-react'
+import { AlertTriangle, Ban, CheckCircle2, ClipboardCheck, Clock, Eye, FileText, Hourglass, RefreshCw, Search, ShieldCheck, TowerControl, Wallet, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { PageHeader } from '@/components/ui/page-header'
@@ -10,24 +10,23 @@ import { KpiStatCard } from '@/components/ui/kpi-stat-card'
 import { TablePagination } from '@/components/ui/table-pagination'
 import { TableActions, type TableAction } from '@/components/ui/table-actions'
 import { errorMessage, money } from '@/lib/caja'
-import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import {
-  DEFAULT_SETTINGS, DOC_STATUS, ECON_STATUS, ITEM_LABEL, documentaryHref, econKey, isDeviation, pendingText, routeSummary,
+  DEFAULT_SETTINGS, DOC_STATUS, ECON_STATUS, ITEM_LABEL, ROUTE_STATUS, daysPending, documentaryHref, econKey, isDeviation, pendingText, routeSummary, serviceText, supplierText,
   type EconRoute, type EconSettings,
 } from '@/lib/economic-closure'
 import { EconomicClosurePanel, Variation } from '@/components/despacho/EconomicClosurePanel'
 import { ServiceCostIndicators } from '@/components/despacho/ServiceCostIndicators'
 
 // Cierre económico por ruta, separado del cierre documentario: bandeja con indicadores, estado documentario y económico,
-// proveedor principal, variación acordado → final (en rojo sobre el umbral configurable), pendientes, responsable y
-// última actualización; filtros, orden y paginación. El detalle se abre en un panel lateral.
+// fecha, unidad, cliente, OT y orden de referencia, servicio, estado de la ruta en Torre, proveedor, referencial → acordado →
+// final con su variación (en rojo sobre el umbral configurable), pendiente y días en espera; filtros, orden y paginación.
+// Las rutas que siguen sin cerrar en Torre de Control se separan de las listas para el cierre. Detalle en un panel lateral.
 
 const supabase = createClient()
 const limaDate = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
 const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : '—')
-const fmtDateTime = (v: string | null) => (v ? new Date(v).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short' }) : '—')
 type Sort = 'fecha' | 'monto' | 'desviacion' | 'antiguedad' | 'pendientes'
-const SORTS: [Sort, string][] = [['fecha', 'Fecha (recientes)'], ['monto', 'Monto acordado'], ['desviacion', 'Mayor desviación'], ['antiguedad', 'Antigüedad'], ['pendientes', 'N.º de pendientes']]
+const SORTS: [Sort, string][] = [['fecha', 'Fecha (recientes)'], ['monto', 'Monto acordado'], ['desviacion', 'Mayor desviación'], ['antiguedad', 'Días en espera'], ['pendientes', 'N.º de pendientes']]
 const select = 'h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700'
 
 function Badge({ map, value }: { map: Record<string, { label: string; cls: string }>; value: string }) {
@@ -61,7 +60,7 @@ function CierreEconomico() {
     })
     return () => { alive = false }
   }, [linked])
-  const [f, setF] = useState({ q: '', econ: '', doc: '', supplier: '', concept: '', contract: '', plate: '', responsible: '' })
+  const [f, setF] = useState({ q: '', econ: '', doc: '', supplier: '', concept: '', contract: '', plate: '', responsible: '', client: '', unit: '', route: '' })
   const [sort, setSort] = useState<Sort>('fecha')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
@@ -76,13 +75,13 @@ function CierreEconomico() {
   useEffect(() => { const t = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(t) }, [load])
   const setFilter = (patch: Partial<typeof f>) => { setF(prev => ({ ...prev, ...patch })); setPage(1) }
 
-  const rows = useMemo(() => (routes || []).map(r => ({ r, s: routeSummary(r), key: econKey(r) })), [routes])
+  const rows = useMemo(() => (routes || []).map(r => ({ r, s: routeSummary(r), key: econKey(r), days: daysPending(r.ready_at ?? r.departure) })), [routes])
   const kpis = useMemo(() => {
     const count = (k: string) => rows.filter(x => x.key === k).length
     const withFinal = rows.reduce((a, x) => a + x.s.agreedWithFinal, 0)
     const variation = rows.reduce((a, x) => a + x.s.variation, 0)
     return {
-      pending: count('PENDIENTE') + count('RUTA_ABIERTA'), review: count('EN_REVISION'), observed: count('OBSERVADO'), partial: count('CIERRE_PARCIAL'), closed: count('CERRADO'),
+      pending: count('PENDIENTE'), open: count('RUTA_ABIERTA'), noCost: count('NO_APLICA'), review: count('EN_REVISION'), observed: count('OBSERVADO'), partial: count('CIERRE_PARCIAL'), closed: count('CERRADO'),
       pendingAmount: rows.reduce((a, x) => a + x.s.pendingAgreed, 0), variation, variationPct: withFinal ? Math.round(variation / withFinal * 1000) / 10 : null,
     }
   }, [rows])
@@ -93,6 +92,7 @@ function CierreEconomico() {
       concepts: uniq(rows.flatMap(x => x.r.items.map(i => i.concept))),
       contracts: uniq(rows.flatMap(x => (x.r.contracts || '').split(', '))),
       responsibles: uniq(rows.map(x => x.r.last?.by)),
+      clients: uniq(rows.flatMap(x => (x.r.clients || '').split(', '))),
     }
   }, [rows])
 
@@ -101,15 +101,16 @@ function CierreEconomico() {
     const list = rows.filter(({ r, key }) => (!f.econ || key === f.econ) && (!f.doc || r.doc_status === f.doc)
       && (!f.supplier || r.items.some(i => i.supplier === f.supplier)) && (!f.concept || r.items.some(i => i.concept === f.concept))
       && (!f.contract || (r.contracts || '').split(', ').includes(f.contract)) && (!plate || (r.plate || '').toLowerCase().includes(plate))
-      && (!f.responsible || r.last?.by === f.responsible)
-      && (!q || [r.dispatch_number, r.contracts, r.requests, r.plate].join(' ').toLowerCase().includes(q)))
+      && (!f.responsible || r.last?.by === f.responsible) && (!f.client || (r.clients || '').split(', ').includes(f.client))
+      && (!f.unit || (f.unit === 'TERCERO') === (r.modalidad === 'TERCERO')) && (!f.route || r.status === f.route)
+      && (!q || [r.dispatch_number, r.contracts, r.requests, r.references, r.clients, r.carrier, r.plate].join(' ').toLowerCase().includes(q)))
     const time = (v: string | null) => (v ? new Date(v).getTime() : 0)
     const by: Record<Sort, (a: typeof list[number], b: typeof list[number]) => number> = {
       fecha: (a, b) => time(b.r.departure) - time(a.r.departure),
       monto: (a, b) => b.s.agreed - a.s.agreed,
       desviacion: (a, b) => Math.abs(b.s.variation) - Math.abs(a.s.variation),
-      antiguedad: (a, b) => time(a.r.departure) - time(b.r.departure),
-      pendientes: (a, b) => b.s.pending.length - a.s.pending.length || time(a.r.departure) - time(b.r.departure),
+      antiguedad: (a, b) => (b.days ?? 0) - (a.days ?? 0) || time(a.r.departure) - time(b.r.departure),
+      pendientes: (a, b) => b.s.pending.length - a.s.pending.length || (b.days ?? 0) - (a.days ?? 0),
     }
     return [...list].sort(by[sort])
   }, [rows, f, sort])
@@ -143,11 +144,13 @@ function CierreEconomico() {
       <p className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-[#002855]"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
         Independiente del cierre documentario: una ruta puede tener la documentación completa y sus costos pendientes. No se cierra mientras falte validar el flete o algún servicio.</p>
 
-      <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
-        <KpiStatCard label="Pendientes" value={kpis.pending} tone="amber" icon={<Hourglass className="h-5 w-5" />} loading={!routes} active={f.econ === 'PENDIENTE'} onClick={() => setFilter({ econ: f.econ === 'PENDIENTE' ? '' : 'PENDIENTE' })} />
+      <div className="grid gap-2 sm:grid-cols-4 xl:grid-cols-8">
+        <KpiStatCard label="Sin cerrar en Torre" value={kpis.open} tone="amber" icon={<TowerControl className="h-5 w-5" />} loading={!routes} active={f.econ === 'RUTA_ABIERTA'} onClick={() => setFilter({ econ: f.econ === 'RUTA_ABIERTA' ? '' : 'RUTA_ABIERTA' })} />
+        <KpiStatCard label="Listas para cerrar" value={kpis.pending} tone="navy" icon={<Hourglass className="h-5 w-5" />} loading={!routes} active={f.econ === 'PENDIENTE'} onClick={() => setFilter({ econ: f.econ === 'PENDIENTE' ? '' : 'PENDIENTE' })} />
         <KpiStatCard label="En revisión" value={kpis.review} tone="blue" icon={<Clock className="h-5 w-5" />} loading={!routes} active={f.econ === 'EN_REVISION'} onClick={() => setFilter({ econ: f.econ === 'EN_REVISION' ? '' : 'EN_REVISION' })} />
         <KpiStatCard label="Observadas" value={kpis.observed} tone="rose" icon={<XCircle className="h-5 w-5" />} loading={!routes} active={f.econ === 'OBSERVADO'} onClick={() => setFilter({ econ: f.econ === 'OBSERVADO' ? '' : 'OBSERVADO' })} />
         <KpiStatCard label={kpis.partial ? `Cerradas (+${kpis.partial} parciales)` : 'Cerradas'} value={kpis.closed} tone="emerald" icon={<CheckCircle2 className="h-5 w-5" />} loading={!routes} active={f.econ === 'CERRADO'} onClick={() => setFilter({ econ: f.econ === 'CERRADO' ? '' : 'CERRADO' })} />
+        <KpiStatCard label="No aplica (sin costos)" value={kpis.noCost} tone="slate" icon={<Ban className="h-5 w-5" />} loading={!routes} active={f.econ === 'NO_APLICA'} onClick={() => setFilter({ econ: f.econ === 'NO_APLICA' ? '' : 'NO_APLICA' })} />
         <KpiStatCard label="Monto pendiente de validar" value={`${money(kpis.pendingAmount)}`} tone="violet" icon={<Wallet className="h-5 w-5" />} loading={!routes} />
         <KpiStatCard label={`Variación acumulada${kpis.variationPct != null ? ` (${kpis.variationPct > 0 ? '+' : ''}${kpis.variationPct}%)` : ''}`} value={`${kpis.variation > 0 ? '+' : ''}${money(kpis.variation)}`}
           tone={kpis.variation > 0 ? 'rose' : 'emerald'} icon={<AlertTriangle className="h-5 w-5" />} loading={!routes} />
@@ -163,9 +166,20 @@ function CierreEconomico() {
       </div>
 
       {view === 'indicadores' ? <ServiceCostIndicators from={from} to={to} /> : <>
+        {kpis.open > 0 && f.econ !== 'RUTA_ABIERTA' && <div className="flex flex-wrap items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-900">
+          <TowerControl className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1">
+            <b>{kpis.open} ruta{kpis.open > 1 ? 's' : ''} sin cerrar en Torre de Control</b> (unidad liberada, entregada o en cierre operativo): no entran al cierre económico hasta liquidarlas en Torre.</span>
+          <button type="button" onClick={() => setFilter({ econ: 'RUTA_ABIERTA' })} className="rounded-lg border border-orange-300 bg-white px-3 py-1 text-xs font-semibold text-orange-900 hover:bg-orange-100">Ver rutas</button>
+        </div>}
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-2">
-          <label className="relative min-w-0 flex-1 basis-56"><span className="sr-only">Buscar ruta, OT, solicitud o placa</span><Search aria-hidden className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <input value={f.q} onChange={e => setFilter({ q: e.target.value })} placeholder="Ruta, OT, solicitud o placa…" className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-[#002855]" /></label>
+          <label className="relative min-w-0 flex-1 basis-56"><span className="sr-only">Buscar ruta, cliente, OT, solicitud, orden o placa</span><Search aria-hidden className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <input value={f.q} onChange={e => setFilter({ q: e.target.value })} placeholder="Ruta, cliente, OT, solicitud, OC o placa…" className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-[#002855]" /></label>
+          <select aria-label="Cliente" value={f.client} onChange={e => setFilter({ client: e.target.value })} className={`${select} max-w-48`}>
+            <option value="">Cliente: todos</option>{options.clients.map(c => <option key={c} value={c}>{c}</option>)}</select>
+          <select aria-label="Unidad" value={f.unit} onChange={e => setFilter({ unit: e.target.value })} className={select}>
+            <option value="">Unidad: todas</option><option value="PROPIA">Flota propia</option><option value="TERCERO">Tercero</option></select>
+          <select aria-label="Estado de la ruta" value={f.route} onChange={e => setFilter({ route: e.target.value })} className={select}>
+            <option value="">Estado ruta: todos</option>{Object.entries(ROUTE_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
           <select aria-label="Estado económico" value={f.econ} onChange={e => setFilter({ econ: e.target.value })} className={select}>
             <option value="">Estado eco.: todos</option>{Object.entries(ECON_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
           <select aria-label="Estado documentario" value={f.doc} onChange={e => setFilter({ doc: e.target.value })} className={select}>
@@ -187,29 +201,34 @@ function CierreEconomico() {
           <div className="overflow-x-auto">
             {routes === null ? <p className="p-8 text-center text-sm text-slate-500">Cargando…</p>
               : filtered.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">No hay rutas para los filtros seleccionados.</p>
-              : <table className="w-full min-w-[84rem] text-sm">
+              : <table className="w-full min-w-[96rem] text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr>
-                  <th className="px-3 py-2">Ruta</th><th className="px-3 py-2">OT · solicitudes</th><th className="px-3 py-2">Estado doc.</th><th className="px-3 py-2">Estado eco.</th>
-                  <th className="px-3 py-2">Proveedor</th><th className="px-3 py-2 text-right">Referencial</th><th className="px-3 py-2 text-right">Acordado</th><th className="px-3 py-2 text-right">Final</th>
-                  <th className="px-3 py-2 text-right">Variación</th><th className="px-3 py-2">Pendientes</th><th className="px-3 py-2">Responsable</th><th className="px-3 py-2"><span className="sr-only">Acciones</span></th>
+                  <th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Unidad</th><th className="px-3 py-2">Cliente</th><th className="px-3 py-2">OT · solicitud</th><th className="px-3 py-2">Servicio</th>
+                  <th className="px-3 py-2">Estado ruta</th><th className="px-3 py-2">Doc.</th><th className="px-3 py-2">Eco.</th><th className="px-3 py-2">Proveedor</th>
+                  <th className="px-3 py-2 text-right">Referencial</th><th className="px-3 py-2 text-right">Acordado</th><th className="px-3 py-2 text-right">Final</th><th className="px-3 py-2 text-right">Var.</th>
+                  <th className="px-3 py-2">Pendiente</th><th className="px-3 py-2 text-right">Días</th><th className="px-3 py-2"><span className="sr-only">Acciones</span></th>
                 </tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                  {visible.map(({ r, s, key }) => {
+                  {visible.map(({ r, s, key, days }) => {
                     const alert = isDeviation(s.agreedWithFinal, s.final, settings)
+                    const amount = (v: number) => (s.total ? money(v) : '—')
+                    const late = days != null && days > 7
                     return <tr key={r.dispatch_id} className={`cursor-pointer hover:bg-slate-50 ${alert ? 'bg-red-50/40' : ''}`} onClick={() => setOpen({ id: r.dispatch_id, tab: 'resumen' })}>
-                      <td className="px-3 py-2"><b className="text-[#002855] underline">{r.dispatch_number}</b>
-                        <span className="block text-xs text-slate-500">{fmtDate(r.departure)} · {r.plate || '—'}</span>
-                        <span className="block text-[11px] text-slate-400">{dispatchStatusLabel(r.status)}</span></td>
-                      <td className="px-3 py-2 text-xs">{r.contracts || 'Sin OT'}<span className="block text-slate-500">{r.requests}</span></td>
+                      <td className="whitespace-nowrap px-3 py-2">{fmtDate(r.departure)}<span className="block text-[11px] text-slate-400">Ruta {r.dispatch_number}</span></td>
+                      <td className="whitespace-nowrap px-3 py-2 font-semibold text-[#002855]">{r.plate || '—'}<span className="block text-[11px] font-normal text-slate-500">{r.modalidad === 'TERCERO' ? 'Tercero' : 'Propia'}</span></td>
+                      <td className="max-w-48 px-3 py-2 text-xs">{r.clients || '—'}</td>
+                      <td className="px-3 py-2 text-xs">{[r.contracts || 'Sin OT', r.references].filter(Boolean).join(' · ')}<span className="block text-slate-500">{r.requests}</span></td>
+                      <td className="px-3 py-2 text-xs">{serviceText(r)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-xs">{ROUTE_STATUS[r.status] || r.status}</td>
                       <td className="px-3 py-2"><Badge map={DOC_STATUS} value={r.doc_status} /></td>
                       <td className="px-3 py-2"><Badge map={ECON_STATUS} value={key} />{s.approved > 0 && s.approved < s.total && <span className="block text-[11px] text-slate-500">{s.approved} de {s.total} aprobados</span>}</td>
-                      <td className="px-3 py-2 text-xs">{s.suppliers[0] || '—'}{s.suppliers.length > 1 && <span className="ml-1 rounded bg-slate-100 px-1 text-[11px] font-semibold text-slate-600" title={s.suppliers.slice(1).join(', ')}>+{s.suppliers.length - 1}</span>}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{money(s.referential)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{money(s.agreed)}</td>
+                      <td className="px-3 py-2 text-xs">{supplierText(r, s.suppliers)}{s.suppliers.length > 1 && <span className="ml-1 rounded bg-slate-100 px-1 text-[11px] font-semibold text-slate-600" title={s.suppliers.slice(1).join(', ')}>+{s.suppliers.length - 1}</span>}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{amount(s.referential)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{amount(s.agreed)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{s.final == null ? '—' : money(s.final)}{s.final != null && s.validated < s.total && <span className="block text-[11px] text-slate-500">{s.validated}/{s.total} ítems</span>}</td>
                       <td className="px-3 py-2 text-right text-xs">{s.final == null ? '—' : <Variation base={s.agreedWithFinal} value={s.final} settings={settings} />}</td>
-                      <td className="px-3 py-2 text-xs text-slate-600">{pendingText(s.pending) || (key === 'RUTA_ABIERTA' ? 'Cerrar ruta en Torre' : '—')}</td>
-                      <td className="px-3 py-2 text-xs">{r.last?.by || '—'}<span className="block text-[11px] text-slate-500">{fmtDateTime(r.last?.at)}</span></td>
+                      <td className="px-3 py-2 text-xs text-slate-600">{key === 'RUTA_ABIERTA' ? <span className="font-semibold text-orange-800">Cerrar ruta en Torre</span> : pendingText(s.pending) || '—'}</td>
+                      <td className={`px-3 py-2 text-right tabular-nums ${late ? 'font-semibold text-red-700' : ''}`} title="Días desde que la ruta quedó lista para el cierre">{days ?? '—'}</td>
                       <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}><TableActions label={`Acciones de la ruta ${r.dispatch_number}`} actions={rowActions(r)} /></td>
                     </tr>
                   })}
@@ -218,7 +237,7 @@ function CierreEconomico() {
           </div>
           <TablePagination total={filtered.length} page={page} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={n => { setPageSize(n); setPage(1) }} itemLabel="rutas" compact />
         </div>
-        <p className="text-[11px] text-slate-500">Variación en rojo: supera el {settings.deviation_pct}% o {money(Number(settings.deviation_pen))} sobre lo acordado (umbral configurable). Monto pendiente de validar: acordado de los ítems sin costo final.</p>
+        <p className="text-[11px] text-slate-500">Variación en rojo: supera el {settings.deviation_pct}% o {money(Number(settings.deviation_pen))} sobre lo acordado (umbral configurable). Monto pendiente de validar: acordado de los ítems sin costo final. Días: desde el cierre operativo o el retorno de la unidad (en rojo, más de 7).</p>
       </>}
 
       {open && <EconomicClosurePanel key={open.id} dispatchId={open.id} initialTab={open.tab} onClose={() => setOpen(null)} onChanged={() => void load()} />}

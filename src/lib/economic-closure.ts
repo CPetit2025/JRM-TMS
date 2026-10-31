@@ -15,6 +15,9 @@ export type EconRoute = {
   dispatch_id: string; dispatch_number: string; status: string; departure: string | null; plate: string | null
   contracts: string | null; requests: string | null; state: EconState; items: EconItem[]; doc_status: string
   last: { at: string | null; by: string | null }
+  // Datos de la bandeja (economic_closure_queue)
+  modalidad?: string | null; carrier?: string | null; ready_at?: string | null; clients?: string | null; references?: string | null
+  services?: { request_type: string | null; attention_mode: string | null }[] | null
 }
 
 export const DEFAULT_SETTINGS: EconSettings = { deviation_pct: 10, deviation_pen: 100 }
@@ -26,7 +29,7 @@ export const ECON_STATUS: Record<string, { label: string; cls: string }> = {
   CIERRE_PARCIAL: { label: 'Cierre parcial', cls: 'bg-violet-100 text-violet-800' },
   CERRADO: { label: 'Cerrado', cls: 'bg-emerald-100 text-emerald-800' },
   NO_APLICA: { label: 'No aplica (sin costos)', cls: 'bg-slate-100 text-slate-600' },
-  RUTA_ABIERTA: { label: 'Ruta sin cerrar', cls: 'bg-slate-100 text-slate-600' },
+  RUTA_ABIERTA: { label: 'Sin cerrar en Torre', cls: 'bg-orange-100 text-orange-800' },
 }
 export const DOC_STATUS: Record<string, { label: string; cls: string }> = {
   COMPLETO: { label: 'Completo', cls: 'bg-emerald-100 text-emerald-800' },
@@ -80,5 +83,28 @@ export function routeSummary(r: EconRoute) {
 export const pendingText = (pending: EconItem[]) => pending.length
   ? `${pending.length} pendiente${pending.length > 1 ? 's' : ''}: ${[...new Set(pending.map(i => ITEM_LABEL[i.concept] || i.concept))].join(' + ')}`
   : ''
+
+/** Estado de la ruta en Torre de Control, en corto para la bandeja. */
+export const ROUTE_STATUS: Record<string, string> = {
+  LIQUIDADO: 'Liquidada', CERRADO: 'Cerrada', RETORNO_COMPLETADO: 'Unidad liberada', ENTREGADO: 'Entregada', CIERRE_OPERATIVO: 'Cierre operativo',
+}
+
+/** Servicios de la ruta: Entrega, Recojo, Traslado o Recojo por cliente (sin repetir). */
+export function serviceText(r: EconRoute) {
+  const label = (s: { request_type: string | null; attention_mode: string | null }) => s.attention_mode === 'RECOJO_CLIENTE' ? 'Recojo por cliente'
+    : s.request_type === 'RECOJO' ? 'Recojo' : s.request_type === 'TRASLADO' ? 'Traslado' : s.request_type === 'DESPACHO' ? 'Entrega' : s.request_type || '—'
+  return [...new Set((r.services || []).map(label))].join(' + ') || '—'
+}
+
+/** Proveedor: el de mayor monto entre los ítems; sin ítems, el transportista (tercero) o JRM (flota propia). */
+export const supplierText = (r: EconRoute, suppliers: string[]) => suppliers[0]
+  || (r.modalidad === 'TERCERO' ? r.carrier || 'Tercero' : 'JRM (propia)')
+
+/** Días desde que la ruta quedó lista para el cierre (cierre operativo, retorno o salida), en fecha de Lima. */
+export function daysPending(v: string | null | undefined, now = new Date()) {
+  if (!v) return null
+  const day = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(d)
+  return Math.max(0, Math.round((Date.parse(day(now)) - Date.parse(day(new Date(v)))) / 86400000))
+}
 
 export const documentaryHref = (dispatchId: string) => `/despacho/documentos?despacho=${dispatchId}&vista=liquidacion`
