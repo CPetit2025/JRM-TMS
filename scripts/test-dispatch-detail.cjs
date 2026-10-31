@@ -132,7 +132,7 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12,'0')}`
 
   // Evidencias operativas con etapa y estimado OSRM: solo quien opera la ruta registra, en su carpeta y con el archivo
   // ya cargado; anular exige motivo y no borra; el estimado solo lo guarda Despacho y solo para solicitudes de la ruta.
-  const extras = read('supabase/migrations/20261121090000_detalle_despacho_evidencias_estimados.sql')
+  const extras = read('supabase/migrations/20261122090000_detalle_despacho_evidencias_estimados.sql')
   assert.doesNotMatch(extras, /UPDATE public\.(dispatch_request_freight|transport_requests) /i, 'never updates guarded tables')
   await db.exec(`CREATE SCHEMA storage; CREATE TABLE storage.objects(bucket_id text, name text);
    ALTER TABLE documentary_closures ADD COLUMN service_kind text; UPDATE documentary_closures SET service_kind='RECOJO';
@@ -168,7 +168,7 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12,'0')}`
   v = await detail(id(70), id(30))
   assert.equal(Number(v.estimate.duration_min), 110); assert.equal(v.estimate.geometry.length, 2); assert.deepEqual(v.sources_failed, [])
   assert.equal((await detail(id(70), id(31))).estimate, null, 'no estimate is invented for other stops')
-  await assert.rejects(db.exec(read('supabase/tests/caja_c193_detalle_evidencias_estimados.test.sql')), /CAJA C193 (PASS|FAIL: faltan las políticas)/)
+  await assert.rejects(db.exec(read('supabase/tests/caja_c194_detalle_evidencias_estimados.test.sql')), /CAJA C194 (PASS|FAIL: faltan las políticas)/)
   await db.exec('ROLLBACK').catch(() => {})
   console.log('PASS detalle del despacho: hitos reales, GPS confirmado, historial por parada, permisos y fuentes ausentes informadas')
  } finally { await db.close() }
