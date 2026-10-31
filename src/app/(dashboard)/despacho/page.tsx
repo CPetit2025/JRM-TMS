@@ -264,7 +264,7 @@ export default function DespachoPage() {
   const ownPickupOnly = modalidad === 'PROPIA' && selectedServices.length > 0 && selectedServices.every(r => r.request_type === 'RECOJO')
   const valuedServices = selectedServices.filter(r => modalidad === 'TERCERO' || r.request_type !== 'RECOJO')
   const routeFreight = customerPickup || ownPickupOnly ? 0 : modalidad === 'TERCERO'
-    ? (Number(manualFreightCost) > 0 ? Number(manualFreightCost) : detectedFreightRate?.rate || 0)
+    ? Math.max(Number(manualFreightCost) || 0, 0)
     : (Number(manualFreightCost) > 0 ? Number(manualFreightCost) : detectedFreightRate?.rate || 0)
   const defaultShares = splitFreight(routeFreight, valuedServices)
   const serviceShare = (id: string) => modalidad === 'PROPIA' && selectedServices.some(r => r.id === id && r.request_type === 'RECOJO') ? 0 : Number(freightShares[id] ?? defaultShares.find(r => r.id === id)?.amount ?? 0)
@@ -277,7 +277,9 @@ export default function DespachoPage() {
   // Un servicio de transporte de una OT no se programa sin costo, sea flota propia o tercero (misma regla que la base).
   // Excepciones: recojo por el cliente y recojo con flota propia (no se valoriza).
   const costedOT = (r: TransportRequest) => !!r.contract_id && r.attention_mode !== 'RECOJO_CLIENTE' && !(modalidad === 'PROPIA' && r.request_type === 'RECOJO')
-  const freightMissing = newDispatch.document_type === 'GR' && selectedServices.some(costedOT) && routeFreight <= 0
+  // Con tercero el flete pactado con el proveedor es obligatorio, tenga o no OT (el proveedor siempre cobra).
+  const terceroFreightMissing = newDispatch.document_type === 'GR' && modalidad === 'TERCERO' && selectedServices.length > 0 && !customerPickup && routeFreight <= 0
+  const freightMissing = terceroFreightMissing || (newDispatch.document_type === 'GR' && selectedServices.some(costedOT) && routeFreight <= 0)
   const shareMissing = newDispatch.document_type === 'GR' && mixedOT && selectedServices.some(r => costedOT(r) && serviceShare(r.id) <= 0)
   const [routeSearch, setRouteSearch] = useState('')
   const [routeService, setRouteService] = useState<ServiceKind | ''>('')
@@ -295,7 +297,7 @@ export default function DespachoPage() {
     newDispatch.selected_requests.length > 0 && newDispatch.document_type === 'GR' && modalidad === 'PROPIA' && !newDispatch.driver_name && { label: 'Conductor', target: 'ruta-unidad' },
     newDispatch.selected_requests.length > 0 && newDispatch.document_type === 'GR' && modalidad === 'TERCERO' && (!tercero.carrier_id || !tercero.placa.trim() || !tercero.conductor.trim() || !tercero.telefono.trim() || !tercero.doc.trim()) && { label: 'Datos del transportista tercero', target: 'ruta-unidad' },
     !newDispatch.scheduled_departure && { label: 'Fecha y hora de salida', target: 'ruta-salida' },
-    freightMissing && { label: 'Flete de la ruta: un servicio de OT no puede quedar sin costo', target: 'ruta-unidad' },
+    freightMissing && { label: terceroFreightMissing ? 'Flete pactado con el proveedor' : 'Flete de la ruta: un servicio de OT no puede quedar sin costo', target: 'ruta-unidad' },
     shareMissing && { label: 'Flete de cada servicio de OT (ninguno en S/ 0)', target: 'ruta-flete' },
     mixedOT && !allocationMatches && { label: 'Distribución del flete por servicio', target: 'ruta-flete' },
     freightNeedsReason && freightReason.trim().length < 5 && { label: 'Motivo del flete distinto al referencial', target: 'ruta-flete-motivo' },
@@ -507,7 +509,7 @@ export default function DespachoPage() {
       return
     }
     if (freightMissing || shareMissing) {
-      toast.error(freightMissing ? 'Indique el flete de la ruta: un servicio de transporte de una OT no puede quedar sin costo, sea flota propia o tercero.' : 'Cada servicio de OT debe llevar su flete en la distribución.')
+      toast.error(terceroFreightMissing ? 'Indique el flete pactado con el proveedor: es obligatorio para programar con tercero.' : freightMissing ? 'Indique el flete de la ruta: un servicio de transporte de una OT no puede quedar sin costo, sea flota propia o tercero.' : 'Cada servicio de OT debe llevar su flete en la distribución.')
       return
     }
 
@@ -530,7 +532,7 @@ export default function DespachoPage() {
           throw new Error('Complete transportista, placa, chofer, documento de identidad y celular del tercero.')
         }
         const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
-        const freightCost = Number(manualFreightCost) > 0 ? Number(manualFreightCost) : (detectedFreightRate?.rate || 0)
+        const freightCost = routeFreight
         const pickupFunding = selectedServices.filter(r => r.request_type === 'RECOJO' && !r.contract_id && serviceShare(r.id) > 0 && serviceShare(r.id) + Number(r.unloading_estimate_pen || 0) > Number(r.operational_approved_pen || 0))
         if (pickupFunding.length && !window.confirm(`Autorizar el flete contratado de los recojos: ${pickupFunding.map(r => `${r.request_number} · ${referenceLabel(r)} · S/ ${serviceShare(r.id).toFixed(2)}`).join('; ')}. La descarga se añade al importe autorizado. Esta aprobación queda registrada aunque la programación deba reintentarse.`)) return
         if (pickupFunding.length) setFreightShares(Object.fromEntries(selectedServices.map(r => [r.id, serviceShare(r.id).toFixed(2)])))
@@ -931,15 +933,17 @@ export default function DespachoPage() {
                   <>
                     <TerceroFields value={tercero} onChange={setTercero} />
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Flete pactado con el proveedor (S/)</label>
-                      <input type="number" min="0" step="0.01"
-                        className="w-full px-3 py-2 bg-white text-slate-900 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#002855] outline-none text-sm"
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Flete pactado con el proveedor (S/) <span className="text-red-700">*</span></label>
+                      <input type="number" min="0" step="0.01" required aria-label="Flete pactado con el proveedor"
+                        className={`w-full px-3 py-2 bg-white text-slate-900 border rounded-lg focus:ring-2 focus:ring-[#002855] outline-none text-sm ${terceroFreightMissing ? 'border-red-400' : 'border-slate-300'}`}
                         value={manualFreightCost} onChange={e => setManualFreightCost(e.target.value)}
-                        placeholder={detectedFreightRate ? `Tarifario: ${detectedFreightRate.rate}` : 'Monto acordado'} />
+                        placeholder="Monto acordado con el proveedor" />
                       {loadingRate && <p className="text-xs text-slate-400 flex items-center gap-1 mt-1"><Loader2 className="w-3 h-3 animate-spin" /> Buscando tarifa...</p>}
+                      {terceroFreightMissing && <p className="mt-1 text-[11px] font-semibold text-red-700">Obligatorio: escriba el monto pactado con el proveedor.
+                        {detectedFreightRate && <button type="button" onClick={() => setManualFreightCost(String(detectedFreightRate.rate))} className="ml-2 font-semibold text-blue-700 hover:underline">Usar el tarifario (S/ {detectedFreightRate.rate.toLocaleString('es-PE')})</button>}
+                      </p>}
                       <p className="text-[11px] text-slate-500 mt-1">
-                        {Number(manualFreightCost) > 0 ? 'Se usará el monto pactado.' : detectedFreightRate ? `Vacío = se toma el tarifario (S/ ${detectedFreightRate.rate.toLocaleString('es-PE')}).` : 'Sin tarifa en el tarifario para esta ruta: indique el monto.'}
-                        {' '}Con OT, se reserva en su partida a nombre del proveedor. Sin OT, el costo requiere aprobación del supervisor y se vincula a la OC, OS o RQ.
+                        {Number(manualFreightCost) > 0 ? 'Se usará el monto pactado. ' : ''}Con OT, se reserva en su partida a nombre del proveedor. Sin OT, el costo requiere aprobación del supervisor y se vincula a la OC, OS o RQ.
                       </p>
                     </div>
                   </>
