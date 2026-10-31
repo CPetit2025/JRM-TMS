@@ -25,7 +25,7 @@ DO $test$
 DECLARE
   v_admin uuid; v_desp uuid; v_nobody uuid; v_drv_prof uuid; v_contr uuid;
   v_role_d uuid; v_role_c uuid; v_site uuid; v_carrier uuid; v_driver uuid;
-  v_ct uuid; r1 uuid; r2 uuid; r3 uuid; d1 uuid; d2 uuid; s1 uuid; s2 uuid; v_err3 text;
+  v_ct uuid; r1 uuid; r2 uuid; r3 uuid; d1 uuid; d2 uuid; s1 uuid; s2 uuid;
   v_fail text[] := '{}';
   v_pass int := 0;
   r jsonb; v_err text; v_err2 text; v_err3 text; v_num numeric; v_n int;
