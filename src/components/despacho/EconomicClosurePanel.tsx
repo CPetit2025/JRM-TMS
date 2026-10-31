@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { errorMessage, money } from '@/lib/caja'
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import {
-  DEFAULT_SETTINGS, DOC_STATUS, ECON_STATUS, ITEM_LABEL, ITEM_STATUS, ORIGIN_TEXT, documentaryHref, econKey, isDeviation, isLiberated, isZeroClosed, routeSummary, torreNote,
+  DEFAULT_SETTINGS, DOC_STATUS, ECON_STATUS, ITEM_LABEL, ITEM_STATUS, ORIGIN_TEXT, documentaryHref, duplicateServices, econKey, isDeviation, isLiberated, isZeroClosed, routeSummary, torreNote,
   type EconItem, type EconRoute, type EconSettings, type EconState,
 } from '@/lib/economic-closure'
 import { DispatchFreightStages } from '@/components/despacho/DispatchFreightStages'
@@ -270,6 +270,7 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
   const torre = data ? torreNote(data.route_status) : ''
   const deviations =(data?.items || []).filter(i => isDeviation(i.agreed_pen, i.final_pen, settings))
   const services = new Map((data?.services || []).map(s => [s.id, s]))
+  const duplicates = duplicateServices(data?.items)
   // Lo cerrado en S/ 0 (operación interna que no se valoriza) no pide acción: se oculta salvo que se pida verlo
   const zeroClosed = (data?.items || []).filter(isZeroClosed), shownItems = (data?.items || []).filter(i => showZero || !isZeroClosed(i))
 
@@ -310,6 +311,8 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
 
             {deviations.length > 0 && <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <p><b>Desviación sobre el umbral</b> (más de {settings.deviation_pct}% o {money(Number(settings.deviation_pen))}): {deviations.map(i => `${ITEM_LABEL[i.concept] || i.concept} ${i.request_number || ''} (${money(Number(i.final_pen) - Number(i.agreed_pen))})`).join('; ')}</p></div>}
+            {duplicates.length > 0 && <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p><b>Posible servicio duplicado</b>: {duplicates.join('; ')}. Verifique que no sea la misma prestación registrada dos veces (programada, gasto de Caja o agregada en el cierre) antes de aprobar.</p></div>}
             {data.observation && <p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900">{st.status === 'OBSERVADO' ? 'Observación' : 'Último motivo'}: {data.observation}</p>}
 
             <div role="tablist" aria-label="Detalle" className="flex gap-1 border-b border-slate-200">
