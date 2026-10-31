@@ -25,6 +25,7 @@ export const ECON_STATUS: Record<string, { label: string; cls: string }> = {
   OBSERVADO: { label: 'Observado', cls: 'bg-red-100 text-red-700' },
   CIERRE_PARCIAL: { label: 'Cierre parcial', cls: 'bg-violet-100 text-violet-800' },
   CERRADO: { label: 'Cerrado', cls: 'bg-emerald-100 text-emerald-800' },
+  NO_APLICA: { label: 'No aplica (sin costos)', cls: 'bg-slate-100 text-slate-600' },
   RUTA_ABIERTA: { label: 'Ruta sin cerrar', cls: 'bg-slate-100 text-slate-600' },
 }
 export const DOC_STATUS: Record<string, { label: string; cls: string }> = {

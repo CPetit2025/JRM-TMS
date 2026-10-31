@@ -55,7 +55,7 @@ const observationOf = (i: EconomicItem) => i.status === 'SIN_ACUERDO' ? 'La ruta
 /** Ítems del cierre; si la ruta tiene flete referencial pero se programó sin flete, se muestra el transporte «sin flete acordado». */
 function itemsOf(detail: EconomicDetail): EconomicItem[] {
   const items = detail.items || []
-  if (items.some(i => i.kind === 'FLETE')) return items
+  if (detail.state.status === 'NO_APLICA' || items.some(i => i.kind === 'FLETE')) return items
   const freightRef = Math.round((Number(detail.state.referential_pen || 0) - items.reduce((t, i) => t + Number(i.referential_pen || 0), 0)) * 100) / 100
   return freightRef > 0 ? [{ key: 'F:sin-acuerdo', kind: 'FLETE', id: null, concept: 'FLETE', request_number: null, supplier: null, referential_pen: freightRef, agreed_pen: null,
     final_pen: null, billing_unit: null, executed_qty: null, billable_qty: null, reason: null, status: 'SIN_ACUERDO' }, ...items] : items
@@ -119,7 +119,7 @@ export function ServicesOverview({ detail, dispatchId, onGuides }: { detail: Eco
             <th className="px-3 py-2.5">Acordado</th><th className="px-3 py-2.5">Final</th><th className="px-3 py-2.5">Estado</th><th className="px-3 py-2.5">Observación</th><th className="w-10" />
           </tr></thead>
           <tbody className="divide-y divide-slate-100">
-            {items.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center text-slate-500">La ruta no tiene costos registrados.</td></tr>}
+            {items.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center text-slate-500">{st.status === 'NO_APLICA' ? 'Ruta sin costos: no requiere cierre económico.' : 'La ruta no tiene costos registrados.'}</td></tr>}
             {items.map((i, n) => <tr key={i.key}>
               <td className="px-3 py-2.5 text-slate-500">{n + 1}</td>
               <td className="px-3 py-2.5 font-semibold text-slate-900">{itemLabel(i)}{i.kind === 'SERVICIO' && i.request_number && <span className="block text-[11px] font-normal text-slate-500">{i.request_number}</span>}</td>
@@ -207,7 +207,7 @@ export function LiquidationDetail({ detail, dispatchId }: { detail: EconomicDeta
             <th className="px-3 py-2.5 text-right">Cantidad</th><th className="px-3 py-2.5 text-right">Tarifa</th><th className="px-3 py-2.5 text-right">Importe (S/)</th><th className="px-3 py-2.5">Obs.</th><th className="w-10" />
           </tr></thead>
           <tbody className="divide-y divide-slate-100">
-            {items.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center text-slate-500">La ruta no tiene costos registrados.</td></tr>}
+            {items.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center text-slate-500">{detail.state.status === 'NO_APLICA' ? 'Ruta sin costos: no requiere cierre económico.' : 'La ruta no tiene costos registrados.'}</td></tr>}
             {items.map((i, n) => {
               const pend = stateOf(i) === 'POR_VALIDAR', warn = pend ? 'text-orange-600' : ''
               const qty = i.kind === 'FLETE' ? 1 : i.executed_qty

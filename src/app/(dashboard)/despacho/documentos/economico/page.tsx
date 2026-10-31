@@ -128,7 +128,7 @@ function CierreEconomico() {
     return [
       { id: 'ver', label: 'Ver detalle', icon: <Eye className="h-4 w-4" />, onSelect: () => setOpen({ id: r.dispatch_id, tab: 'resumen' }) },
       { id: 'validar', label: 'Validar costos', icon: <ClipboardCheck className="h-4 w-4" />, onSelect: () => setOpen({ id: r.dispatch_id, tab: 'servicios' }),
-        disabled: !perm.validate || ['EN_REVISION', 'CERRADO'].includes(r.state.status) },
+        disabled: !perm.validate || ['EN_REVISION', 'CERRADO', 'NO_APLICA'].includes(r.state.status) },
       { id: 'observar', label: 'Observar', icon: <XCircle className="h-4 w-4" />, tone: 'danger', onSelect: () => act(r, 'OBSERVAR'), disabled: !perm.approve || !review },
       { id: 'aprobar', label: 'Aprobar cierre', icon: <CheckCircle2 className="h-4 w-4" />, onSelect: () => act(r, 'APROBAR'), disabled: !perm.approve || !review || r.state.pending.length > 0 },
       { id: 'documentario', label: 'Ir a cierre documentario', icon: <FileText className="h-4 w-4" />, onSelect: () => router.push(documentaryHref(r.dispatch_id)) },

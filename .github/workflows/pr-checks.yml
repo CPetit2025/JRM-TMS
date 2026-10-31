@@ -39,6 +39,7 @@ jobs:
       - run: node scripts/test-economic-closure-redesign.cjs
       - run: node scripts/test-programming-cost-reasons.cjs
       - run: node scripts/test-economic-closure-partial.cjs
+      - run: node scripts/test-economic-auto-close.cjs
       - run: node scripts/test-tower-route-crew.cjs
       - run: node --test scripts/test-tower-detail-ui.cjs
       - run: node scripts/test-manual-operational-close.cjs
