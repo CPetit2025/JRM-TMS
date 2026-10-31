@@ -275,6 +275,202 @@ export default function TorreControlPage() {
     )
   }
 
+  // Expediente de la ruta completa: en su propia ventana (enlace directo) o como pestaña «Toda la ruta» del detalle
+  const routeFile = (dispatch: Dispatch, done: () => void) => (
+          <div className="space-y-6">
+            {/* Resumen de la ruta */}
+            <div className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-5 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">N.º despacho</p><p className="mt-1 text-lg font-bold text-jrm-navy">{dispatch.dispatch_number}</p><p className="mt-1 text-xs text-slate-500">{dispatch.dispatch_requests?.length || 0} servicio(s)</p></div>
+              <div className="flex-1 min-w-[150px]">
+                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Unidad de Transporte</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <div className="p-1.5 bg-white rounded shadow-sm border border-slate-100">
+                    <Truck className="w-4 h-4 text-[#002855]" />
+                  </div>
+                  <p className="font-bold text-slate-800 text-lg">{dispatch.vehicle_plate}</p>
+                </div>
+              </div>
+              <div className="flex-1 min-w-[150px]">
+                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Operador (Conductor)</p>
+                <p className="font-semibold text-slate-700 mt-1.5">{dispatch.driver_name}</p>
+              </div>
+              <div className="flex-1 min-w-[150px]">
+                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Estado Logístico</p>
+                <div className="mt-1.5">{getStatusBadge(dispatch.status)}</div>
+              </div>
+              <div className="flex-1 min-w-[150px]">
+                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Salida Programada</p>
+                <p className="font-semibold text-slate-700 mt-1.5">{formatDate(dispatch.scheduled_departure)}</p>
+              </div>
+            </div>
+            <ProgrammingNotes dispatchId={dispatch.id} />
+
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <h3 className="mb-3 font-bold text-slate-800">Acciones operativas</h3>
+              <div className="flex flex-wrap gap-2">
+              <ManualOperationalCloseButton dispatchId={dispatch.id} dispatchNumber={dispatch.dispatch_number} status={dispatch.status} onClosed={() => { done(); void fetchDispatches() }} />
+              {dispatch.status === 'CIERRE_OPERATIVO' && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">La ruta tiene cierre operativo. Las guías, conformidades y la liquidación financiera conservan su estado; consulta el motivo y el responsable en la bitácora.</p>}
+              {canAddService && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA'].includes(dispatch.status) && dispatch.vehicle_plate !== 'EXTERNO' && <button type="button" onClick={() => { setAddServiceId(dispatch.id); done() }} className="min-h-11 rounded-lg bg-jrm-navy px-4 text-sm font-semibold text-white">Agregar servicio a la ruta</button>}
+              <DispatchExecutionActions dispatch={{ ...dispatch, modalidad: rows.find(row => row.dispatch_id === dispatch.id)?.modalidad || dispatch.modalidad }} onChanged={async () => { done(); await fetchDispatches() }} />
+              {canWrite('despacho') && (dispatch.modalidad === 'TERCERO' || rows.some(row => row.dispatch_id === dispatch.id && row.modalidad === 'TERCERO')) && <button onClick={() => { setThirdId(dispatch.id); done() }} className="min-h-11 rounded-lg border border-violet-200 px-4 text-sm font-semibold text-violet-700">Compartir acceso GR · tercero</button>}
+              {['documentario', 'packing-list', 'planificacion'].some(module => canRead(module)) && <Link href={`/despacho/documentos?despacho=${dispatch.id}&vista=${dispatch.status === 'PROGRAMADO' ? 'salida' : 'historial'}&desde=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(dispatch.scheduled_departure))}`} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855]">Documentos del servicio</Link>}
+              {canWrite('despacho') && dispatch.status === 'PROGRAMADO' && <button type="button" onClick={() => void cancelDispatch(dispatch)} className="min-h-11 rounded-lg border border-red-200 px-4 text-sm font-semibold text-red-700 hover:bg-red-50">Cancelar despacho</button>}
+              </div>
+            </div>
+
+            <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)]">
+              <RouteCrewDetails key={`${dispatch.id}/${refreshedAt}`} dispatchId={dispatch.id} />
+              <RouteForkliftInfo key={dispatch.id} dispatchId={dispatch.id} />
+            </div>
+
+            <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
+              {/* OTs Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <h3 className="font-bold text-slate-800 text-sm">Servicios y puntos de la ruta</h3>
+                  <span className="bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-md text-xs font-bold border border-slate-200">
+                    {dispatch.dispatch_requests?.length || 0} Asignaciones
+                  </span>
+                </div>
+                
+                {(dispatch.contract_codes?.length ?? 0) > 0 && <div className="space-y-2">
+                  {[...new Set(dispatch.contract_codes)].map(code => <ErpOtReferencia key={code} ot={code} compact />)}
+                </div>}
+                {dispatch.dispatch_requests?.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                    No hay servicios asociados a esta ruta.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    {dispatch.dispatch_requests?.map((req, idx) => (
+                      <div key={idx} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm relative overflow-hidden">
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500"></div>
+                        <div className="flex justify-between items-center mb-3 pl-2">
+                          <span className="font-black text-slate-800">
+                            {req.transport_requests.request_number}
+                          </span>
+                          <span className="text-[10px] bg-slate-50 text-slate-500 px-2.5 py-1 rounded-md font-bold uppercase tracking-wide border border-slate-200">
+                            {req.status}
+                          </span>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 gap-3 pl-2 mt-2">
+                          <div className="flex gap-3 items-start">
+                            <div className="mt-0.5"><MapPin className="w-4 h-4 text-slate-400" /></div>
+                            <div>
+                              <p className="text-[10px] uppercase font-bold text-slate-400">Origen (Recojo)</p>
+                              <p className="text-xs font-semibold text-slate-700 mt-0.5">{req.transport_requests.pickup_address}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-3 items-start">
+                            <div className="mt-0.5"><MapPin className="w-4 h-4 text-[#002855]" /></div>
+                            <div>
+                              <p className="text-[10px] uppercase font-bold text-[#002855]/70">Destino (Entrega)</p>
+                              <p className="text-xs font-semibold text-slate-800 mt-0.5">{req.transport_requests.delivery_address}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Timeline Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <h3 className="font-bold text-slate-800 text-sm">Bitácora operativa y telemetría</h3>
+                  <span className="bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-md text-xs font-bold border border-slate-200">
+                    {dispatch.dispatch_events?.length || 0} Registros
+                  </span>
+                </div>
+                
+                {(!dispatch.dispatch_events || dispatch.dispatch_events.length === 0) ? (
+                  <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                    Aún no hay reportes de campo para esta operación.
+                  </div>
+                ) : (
+                  <div className="relative pl-4 space-y-6 before:absolute before:inset-0 before:ml-6 before:w-0.5 before:bg-slate-200">
+                    {[...dispatch.dispatch_events].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((evt, idx) => {
+                      const isAlert = evt.event_type === 'INCIDENCIA' || evt.event_type === 'RETRASO' || evt.event_type === 'DESVIO';
+                      return (
+                        <div key={idx} className="relative flex items-start gap-4">
+                          <div className={`relative z-10 flex items-center justify-center w-5 h-5 rounded-full border-4 border-white shadow-sm mt-0.5 ${
+                            isAlert ? 'bg-red-500' : 'bg-slate-400'
+                          }`}></div>
+                          
+                          <div className={`flex-1 p-3.5 rounded-xl border shadow-sm ${isAlert ? 'bg-red-50 border-red-100' : 'bg-white border-slate-200'}`}>
+                            <div className="flex justify-between items-start mb-1.5">
+                              <span className={`font-bold text-xs uppercase tracking-wide ${isAlert ? 'text-red-700' : 'text-slate-700'}`}>
+                                {evt.event_type.replaceAll('_', ' ')}
+                              </span>
+                              <div className="flex flex-col items-end">
+                                <span className="text-[10px] font-bold text-slate-500">{new Date(evt.created_at).toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit' })}</span>
+                                <span className="text-[9px] text-slate-400">{new Date(evt.created_at).toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: 'short' })}</span>
+                              </div>
+                            </div>
+                            <p className="mb-2 whitespace-pre-wrap break-words text-sm font-medium text-slate-700">{evt.description || 'Registro automático de sistema'}</p>
+                            <p className="text-[10px] text-slate-400 font-semibold border-t border-slate-100/50 pt-2">
+                              Reportado por: {evt.created_by}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Maintenance Alerts Section */}
+                <div className="mt-8 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                    <h3 className="font-bold text-slate-800 text-sm">Alertas de Mantenimiento</h3>
+                    <span className="bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-md text-xs font-bold border border-slate-200">
+                      {dispatch.maintenance_alerts?.length || 0} Pendientes
+                    </span>
+                  </div>
+                  
+                  {(!dispatch.maintenance_alerts || dispatch.maintenance_alerts.length === 0) ? (
+                    <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                      El vehículo se encuentra en óptimas condiciones.
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {dispatch.maintenance_alerts.map((alert, idx) => (
+                        <div key={idx} className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm relative overflow-hidden">
+                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div>
+                          <div className="flex justify-between items-start mb-2 pl-2">
+                            <div className="flex items-center gap-2">
+                              <AlertTriangle className="w-4 h-4 text-red-600" />
+                              <span className="font-bold text-red-800 text-sm">{alert.severity}</span>
+                            </div>
+                            <span className="text-[10px] bg-red-100 text-red-700 px-2.5 py-1 rounded-md font-bold uppercase tracking-wide border border-red-200">
+                              {alert.status}
+                            </span>
+                          </div>
+                          <p className="text-sm font-medium text-red-900 pl-2 mt-1">{alert.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <summary className="cursor-pointer font-bold text-slate-800">Flete: referencial, acordado y final (consulta)</summary>
+              <div className="mt-4"><DispatchFreightStages dispatchId={dispatch.id} readOnly economicHref={`/despacho/documentos/economico?despacho=${dispatch.id}`} /></div>
+            </details>
+            <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <summary className="cursor-pointer font-bold text-slate-800">Asignación de tripulación y costos de descarga</summary>
+              <div className="mt-4"><DispatchCrewUnloading dispatchId={dispatch.id} status={dispatch.status} canEdit={canWrite('despacho')} economicHref={`/despacho/documentos/economico?despacho=${dispatch.id}`}
+                stops={rows.filter(row => row.dispatch_id === dispatch.id).map(row => ({ request_id: row.request_id, request_number: row.request_number }))} /></div>
+            </details>
+            <div className="border-t pt-4">
+              <EvidenceGallery dispatchId={dispatch.id} title="Evidencias registradas · consulta" />
+            </div>
+          </div>
+  )
+
   return (
     <div className="space-y-3 w-full mx-auto pb-10">
       <PageHeader showTitle title="Torre de Control" description="Supervisión operativa y telemetría de flota en tiempo real." actions={<>
@@ -398,10 +594,10 @@ export default function TorreControlPage() {
         const leave = (next: () => void) => () => { close(); next() }
         const documentsHref = ['documentario', 'packing-list', 'planificacion'].some(module => canRead(module)) ? `/despacho/documentos?despacho=${row.dispatch_id}&vista=${row.state === 'PROGRAMADO' ? 'salida' : 'historial'}&desde=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(row.scheduled_departure))}` : undefined
         const economicHref = ['cierre-economico', 'despacho', 'documentario'].some(module => canRead(module)) ? `/despacho/documentos/economico?despacho=${row.dispatch_id}` : undefined
-        return <DispatchDetailModal row={row} routeRows={rows} onSelect={select} onClose={close} documentsHref={documentsHref} economicHref={economicHref} onValidate={r => { close(); setReview(r) }} actions={<>
+        const routeDispatch = dispatches.find(d => d.id === row.dispatch_id)  // pestaña «Toda la ruta» (antes, la ventana aparte del Expediente)
+        return <DispatchDetailModal row={row} routeFile={routeDispatch ? routeFile(routeDispatch, close) : undefined} routeRows={rows} onSelect={select} onClose={close} documentsHref={documentsHref} economicHref={economicHref} onValidate={r => { close(); setReview(r) }} actions={<>
           <ManualOperationalCloseButton dispatchId={row.dispatch_id} dispatchNumber={row.dispatch_number} status={dispatches.find(item => item.id === row.dispatch_id)?.status || row.state} onClosed={() => { close(); void fetchDispatches() }} />
           <button type="button" onClick={leave(() => setReview(row))} className="min-h-10 rounded-lg border border-slate-300 px-3 text-left text-sm font-semibold text-jrm-navy">Guía y conformidad</button>
-          <button type="button" onClick={leave(() => setSelectedDispatch(dispatches.find(d => d.id === row.dispatch_id) || null))} className="min-h-10 rounded-lg border border-slate-300 px-3 text-left text-sm font-semibold text-jrm-navy">Expediente de la ruta {row.dispatch_number}</button>
           {canAddService && canAddRouteService({ status: row.state, plate: row.plate, scheduled_departure: row.scheduled_departure }) && <button type="button" onClick={leave(() => setAddServiceId(row.dispatch_id))} className="min-h-10 rounded-lg border border-slate-300 px-3 text-left text-sm font-semibold text-jrm-navy">Agregar servicio a la ruta</button>}
           {canWrite('despacho') && row.modalidad === 'TERCERO' && <button type="button" onClick={leave(() => setThirdId(row.dispatch_id))} className="min-h-10 rounded-lg border border-slate-300 px-3 text-left text-sm font-semibold text-violet-700">Compartir acceso GR · tercero</button>}
         </>} />
@@ -417,200 +613,7 @@ export default function TorreControlPage() {
         maxWidth="max-w-7xl"
         footer={<div className="flex justify-end"><button type="button" onClick={() => setSelectedDispatch(null)} className="min-h-10 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-jrm-navy">Cerrar expediente</button></div>}
       >
-        {selectedDispatch && (
-          <div className="space-y-6">
-            {/* Resumen de la ruta */}
-            <div className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-5 sm:grid-cols-2 xl:grid-cols-5">
-              <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">N.º despacho</p><p className="mt-1 text-lg font-bold text-jrm-navy">{selectedDispatch.dispatch_number}</p><p className="mt-1 text-xs text-slate-500">{selectedDispatch.dispatch_requests?.length || 0} servicio(s)</p></div>
-              <div className="flex-1 min-w-[150px]">
-                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Unidad de Transporte</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <div className="p-1.5 bg-white rounded shadow-sm border border-slate-100">
-                    <Truck className="w-4 h-4 text-[#002855]" />
-                  </div>
-                  <p className="font-bold text-slate-800 text-lg">{selectedDispatch.vehicle_plate}</p>
-                </div>
-              </div>
-              <div className="flex-1 min-w-[150px]">
-                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Operador (Conductor)</p>
-                <p className="font-semibold text-slate-700 mt-1.5">{selectedDispatch.driver_name}</p>
-              </div>
-              <div className="flex-1 min-w-[150px]">
-                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Estado Logístico</p>
-                <div className="mt-1.5">{getStatusBadge(selectedDispatch.status)}</div>
-              </div>
-              <div className="flex-1 min-w-[150px]">
-                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Salida Programada</p>
-                <p className="font-semibold text-slate-700 mt-1.5">{formatDate(selectedDispatch.scheduled_departure)}</p>
-              </div>
-            </div>
-            <ProgrammingNotes dispatchId={selectedDispatch.id} />
-
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <h3 className="mb-3 font-bold text-slate-800">Acciones operativas</h3>
-              <div className="flex flex-wrap gap-2">
-              <ManualOperationalCloseButton dispatchId={selectedDispatch.id} dispatchNumber={selectedDispatch.dispatch_number} status={selectedDispatch.status} onClosed={() => { setSelectedDispatch(null); void fetchDispatches() }} />
-              {selectedDispatch.status === 'CIERRE_OPERATIVO' && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">La ruta tiene cierre operativo. Las guías, conformidades y la liquidación financiera conservan su estado; consulta el motivo y el responsable en la bitácora.</p>}
-              {canAddService && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA'].includes(selectedDispatch.status) && selectedDispatch.vehicle_plate !== 'EXTERNO' && <button type="button" onClick={() => { setAddServiceId(selectedDispatch.id); setSelectedDispatch(null) }} className="min-h-11 rounded-lg bg-jrm-navy px-4 text-sm font-semibold text-white">Agregar servicio a la ruta</button>}
-              <DispatchExecutionActions dispatch={{ ...selectedDispatch, modalidad: rows.find(row => row.dispatch_id === selectedDispatch.id)?.modalidad || selectedDispatch.modalidad }} onChanged={async () => { setSelectedDispatch(null); await fetchDispatches() }} />
-              {canWrite('despacho') && (selectedDispatch.modalidad === 'TERCERO' || rows.some(row => row.dispatch_id === selectedDispatch.id && row.modalidad === 'TERCERO')) && <button onClick={() => { setThirdId(selectedDispatch.id); setSelectedDispatch(null) }} className="min-h-11 rounded-lg border border-violet-200 px-4 text-sm font-semibold text-violet-700">Compartir acceso GR · tercero</button>}
-              {['documentario', 'packing-list', 'planificacion'].some(module => canRead(module)) && <Link href={`/despacho/documentos?despacho=${selectedDispatch.id}&vista=${selectedDispatch.status === 'PROGRAMADO' ? 'salida' : 'historial'}&desde=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(selectedDispatch.scheduled_departure))}`} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855]">Documentos del servicio</Link>}
-              {canWrite('despacho') && selectedDispatch.status === 'PROGRAMADO' && <button type="button" onClick={() => void cancelDispatch(selectedDispatch)} className="min-h-11 rounded-lg border border-red-200 px-4 text-sm font-semibold text-red-700 hover:bg-red-50">Cancelar despacho</button>}
-              </div>
-            </div>
-
-            <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)]">
-              <RouteCrewDetails key={`${selectedDispatch.id}/${refreshedAt}`} dispatchId={selectedDispatch.id} />
-              <RouteForkliftInfo key={selectedDispatch.id} dispatchId={selectedDispatch.id} />
-            </div>
-
-            <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
-              {/* OTs Section */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <h3 className="font-bold text-slate-800 text-sm">Servicios y puntos de la ruta</h3>
-                  <span className="bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-md text-xs font-bold border border-slate-200">
-                    {selectedDispatch.dispatch_requests?.length || 0} Asignaciones
-                  </span>
-                </div>
-                
-                {(selectedDispatch.contract_codes?.length ?? 0) > 0 && <div className="space-y-2">
-                  {[...new Set(selectedDispatch.contract_codes)].map(code => <ErpOtReferencia key={code} ot={code} compact />)}
-                </div>}
-                {selectedDispatch.dispatch_requests?.length === 0 ? (
-                  <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-lg border border-dashed border-slate-200">
-                    No hay servicios asociados a esta ruta.
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-3">
-                    {selectedDispatch.dispatch_requests?.map((req, idx) => (
-                      <div key={idx} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm relative overflow-hidden">
-                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500"></div>
-                        <div className="flex justify-between items-center mb-3 pl-2">
-                          <span className="font-black text-slate-800">
-                            {req.transport_requests.request_number}
-                          </span>
-                          <span className="text-[10px] bg-slate-50 text-slate-500 px-2.5 py-1 rounded-md font-bold uppercase tracking-wide border border-slate-200">
-                            {req.status}
-                          </span>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 gap-3 pl-2 mt-2">
-                          <div className="flex gap-3 items-start">
-                            <div className="mt-0.5"><MapPin className="w-4 h-4 text-slate-400" /></div>
-                            <div>
-                              <p className="text-[10px] uppercase font-bold text-slate-400">Origen (Recojo)</p>
-                              <p className="text-xs font-semibold text-slate-700 mt-0.5">{req.transport_requests.pickup_address}</p>
-                            </div>
-                          </div>
-                          <div className="flex gap-3 items-start">
-                            <div className="mt-0.5"><MapPin className="w-4 h-4 text-[#002855]" /></div>
-                            <div>
-                              <p className="text-[10px] uppercase font-bold text-[#002855]/70">Destino (Entrega)</p>
-                              <p className="text-xs font-semibold text-slate-800 mt-0.5">{req.transport_requests.delivery_address}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Timeline Section */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <h3 className="font-bold text-slate-800 text-sm">Bitácora operativa y telemetría</h3>
-                  <span className="bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-md text-xs font-bold border border-slate-200">
-                    {selectedDispatch.dispatch_events?.length || 0} Registros
-                  </span>
-                </div>
-                
-                {(!selectedDispatch.dispatch_events || selectedDispatch.dispatch_events.length === 0) ? (
-                  <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-lg border border-dashed border-slate-200">
-                    Aún no hay reportes de campo para esta operación.
-                  </div>
-                ) : (
-                  <div className="relative pl-4 space-y-6 before:absolute before:inset-0 before:ml-6 before:w-0.5 before:bg-slate-200">
-                    {[...selectedDispatch.dispatch_events].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((evt, idx) => {
-                      const isAlert = evt.event_type === 'INCIDENCIA' || evt.event_type === 'RETRASO' || evt.event_type === 'DESVIO';
-                      return (
-                        <div key={idx} className="relative flex items-start gap-4">
-                          <div className={`relative z-10 flex items-center justify-center w-5 h-5 rounded-full border-4 border-white shadow-sm mt-0.5 ${
-                            isAlert ? 'bg-red-500' : 'bg-slate-400'
-                          }`}></div>
-                          
-                          <div className={`flex-1 p-3.5 rounded-xl border shadow-sm ${isAlert ? 'bg-red-50 border-red-100' : 'bg-white border-slate-200'}`}>
-                            <div className="flex justify-between items-start mb-1.5">
-                              <span className={`font-bold text-xs uppercase tracking-wide ${isAlert ? 'text-red-700' : 'text-slate-700'}`}>
-                                {evt.event_type.replaceAll('_', ' ')}
-                              </span>
-                              <div className="flex flex-col items-end">
-                                <span className="text-[10px] font-bold text-slate-500">{new Date(evt.created_at).toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit' })}</span>
-                                <span className="text-[9px] text-slate-400">{new Date(evt.created_at).toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: 'short' })}</span>
-                              </div>
-                            </div>
-                            <p className="mb-2 whitespace-pre-wrap break-words text-sm font-medium text-slate-700">{evt.description || 'Registro automático de sistema'}</p>
-                            <p className="text-[10px] text-slate-400 font-semibold border-t border-slate-100/50 pt-2">
-                              Reportado por: {evt.created_by}
-                            </p>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {/* Maintenance Alerts Section */}
-                <div className="mt-8 space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                    <h3 className="font-bold text-slate-800 text-sm">Alertas de Mantenimiento</h3>
-                    <span className="bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-md text-xs font-bold border border-slate-200">
-                      {selectedDispatch.maintenance_alerts?.length || 0} Pendientes
-                    </span>
-                  </div>
-                  
-                  {(!selectedDispatch.maintenance_alerts || selectedDispatch.maintenance_alerts.length === 0) ? (
-                    <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-lg border border-dashed border-slate-200">
-                      El vehículo se encuentra en óptimas condiciones.
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-3">
-                      {selectedDispatch.maintenance_alerts.map((alert, idx) => (
-                        <div key={idx} className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm relative overflow-hidden">
-                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div>
-                          <div className="flex justify-between items-start mb-2 pl-2">
-                            <div className="flex items-center gap-2">
-                              <AlertTriangle className="w-4 h-4 text-red-600" />
-                              <span className="font-bold text-red-800 text-sm">{alert.severity}</span>
-                            </div>
-                            <span className="text-[10px] bg-red-100 text-red-700 px-2.5 py-1 rounded-md font-bold uppercase tracking-wide border border-red-200">
-                              {alert.status}
-                            </span>
-                          </div>
-                          <p className="text-sm font-medium text-red-900 pl-2 mt-1">{alert.description}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <summary className="cursor-pointer font-bold text-slate-800">Flete: referencial, acordado y final (consulta)</summary>
-              <div className="mt-4"><DispatchFreightStages dispatchId={selectedDispatch.id} readOnly economicHref={`/despacho/documentos/economico?despacho=${selectedDispatch.id}`} /></div>
-            </details>
-            <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <summary className="cursor-pointer font-bold text-slate-800">Asignación de tripulación y costos de descarga</summary>
-              <div className="mt-4"><DispatchCrewUnloading dispatchId={selectedDispatch.id} status={selectedDispatch.status} canEdit={canWrite('despacho')} economicHref={`/despacho/documentos/economico?despacho=${selectedDispatch.id}`}
-                stops={rows.filter(row => row.dispatch_id === selectedDispatch.id).map(row => ({ request_id: row.request_id, request_number: row.request_number }))} /></div>
-            </details>
-            <div className="border-t pt-4">
-              <EvidenceGallery dispatchId={selectedDispatch.id} title="Evidencias registradas · consulta" />
-            </div>
-          </div>
-        )}
+        {selectedDispatch && routeFile(selectedDispatch, () => setSelectedDispatch(null))}
       </Modal>
     </div>
   )

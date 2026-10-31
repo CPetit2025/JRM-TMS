@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef, useState, type ReactNode, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertCircle, ArrowLeft, ArrowRight, Camera, CheckCircle2, ChevronDown, CircleDollarSign, MoreHorizontal, FileText, Files, History, MapPin, Printer, X } from 'lucide-react'
+import { AlertCircle, ArrowLeft, ArrowRight, Camera, CheckCircle2, ChevronDown, CircleDollarSign, MoreHorizontal, FileText, Files, History, MapPin, Printer, Route, X } from 'lucide-react'
 import { conformityLabels, deliveryStatus, type DeliveryRow } from '@/lib/delivery'
 import { DETAIL_TABS, type DetailTab } from '@/lib/dispatch-detail'
 import { useDispatchDetail } from './useDispatchDetail'
@@ -14,7 +14,10 @@ import { EvidenciasTab } from './EvidenciasTab'
 import { CostosTab } from './CostosTab'
 import { HistorialTab } from './HistorialTab'
 
-const ICONS: Record<DetailTab, ReactNode> = {
+// «Toda la ruta»: el expediente de la ruta completa (acciones de la ruta, tripulación, flete, notas), cuando Torre lo envía
+type Tab = DetailTab | 'expediente'
+const ICONS: Record<Tab, ReactNode> = {
+  expediente: <Route className="h-5 w-5" aria-hidden />,
   resumen: <FileText className="h-5 w-5" aria-hidden />, ruta: <MapPin className="h-5 w-5" aria-hidden />, documentos: <Files className="h-5 w-5" aria-hidden />,
   evidencias: <Camera className="h-5 w-5" aria-hidden />, costos: <CircleDollarSign className="h-5 w-5" aria-hidden />, historial: <History className="h-5 w-5" aria-hidden />,
 }
@@ -30,15 +33,15 @@ export function headline(row: DeliveryRow): { label: string; tone: keyof typeof 
 const btn = 'flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold'
 
 /**
- * Detalle de una parada (despacho × solicitud) en seis pestañas, con el diseño de los bosquejos aprobados. Solo muestra
+ * Detalle de una parada (despacho × solicitud) en seis pestañas, más «Toda la ruta» (expediente de la ruta completa) desde Torre. Solo muestra
  * registros reales y delega cada acción en su flujo actual; ningún cierre (operativo, documentario o económico) se dispara
- * desde aquí. «Finalizar» solo cierra; «Imprimir» imprime la pestaña visible. En móvil ocupa toda la pantalla.
+ * desde aquí. «Cerrar detalle» solo cierra la ventana (no cierra la ruta); «Imprimir» imprime la pestaña visible. En móvil ocupa toda la pantalla.
  */
-export function DispatchDetailModal({ row, routeRows = [], onSelect, onClose, onValidate, actions, documentsHref, economicHref }: {
+export function DispatchDetailModal({ row, routeRows = [], onSelect, onClose, onValidate, actions, documentsHref, economicHref, routeFile }: {
   row: DeliveryRow; routeRows?: DeliveryRow[]; onSelect?: (row: DeliveryRow) => void; onClose: () => void
-  onValidate?: (row: DeliveryRow) => void; actions?: ReactNode; documentsHref?: string; economicHref?: string
+  onValidate?: (row: DeliveryRow) => void; actions?: ReactNode; documentsHref?: string; economicHref?: string; routeFile?: ReactNode
 }) {
-  const [tab, setTab] = useState<DetailTab>('resumen'), [menu, setMenu] = useState(false), [mounted, setMounted] = useState(false)
+  const [tab, setTab] = useState<Tab>('resumen'), [menu, setMenu] = useState(false), [mounted, setMounted] = useState(false)
   const body = useRef<HTMLDivElement>(null)
   const { detail, error, loading, reload } = useDispatchDetail(row.dispatch_id, row.request_id)
   // Documentos y evidencias (también los archivos de soporte de Costos) se piden la primera vez que se abre su pestaña
@@ -47,9 +50,10 @@ export function DispatchDetailModal({ row, routeRows = [], onSelect, onClose, on
   if (!filesWanted && ['documentos', 'evidencias', 'costos'].includes(tab)) setFilesWanted(true)
   const costs = useDispatchCosts(row.dispatch_id, costsWanted || tab === 'costos')
   if (!costsWanted && tab === 'costos') setCostsWanted(true)
-  const index = DETAIL_TABS.findIndex(t => t.key === tab), last = index === DETAIL_TABS.length - 1
-  const go = (next: DetailTab) => { setTab(next); body.current?.scrollTo?.({ top: 0 }); document.getElementById?.(`detalle-tab-${next}`)?.scrollIntoView?.({ inline: 'center', block: 'nearest' }) }
-  const move = (step: number) => go(DETAIL_TABS[Math.min(DETAIL_TABS.length - 1, Math.max(0, index + step))].key)
+  const tabs: readonly { key: Tab; label: string }[] = routeFile ? [...DETAIL_TABS, { key: 'expediente', label: 'Toda la ruta' }] : DETAIL_TABS
+  const index = tabs.findIndex(t => t.key === tab), last = index === tabs.length - 1
+  const go = (next: Tab) => { setTab(next); body.current?.scrollTo?.({ top: 0 }); document.getElementById?.(`detalle-tab-${next}`)?.scrollIntoView?.({ inline: 'center', block: 'nearest' }) }
+  const move = (step: number) => go(tabs[Math.min(tabs.length - 1, Math.max(0, index + step))].key)
   const onTabKey = (e: KeyboardEvent) => { if (e.key === 'ArrowRight') move(1); else if (e.key === 'ArrowLeft') move(-1) }
   const stops = routeRows.filter(r => r.dispatch_id === row.dispatch_id), head = headline(row)
   useEffect(() => {
@@ -85,7 +89,7 @@ export function DispatchDetailModal({ row, routeRows = [], onSelect, onClose, on
             {stops.map((s, i) => <option key={s.request_id} value={s.request_id}>{s.request_number} ({i + 1} de {stops.length})</option>)}
           </select></label>}
         <div role="tablist" aria-label="Secciones del detalle" onKeyDown={onTabKey} className="print-hide -mx-4 mt-3 flex gap-1 overflow-x-auto border-b [scrollbar-width:none] [&::-webkit-scrollbar]:hidden border-slate-200 px-4 sm:-mx-8 sm:mt-4 sm:gap-4 sm:px-8">
-          {DETAIL_TABS.map(t => <button key={t.key} type="button" role="tab" id={`detalle-tab-${t.key}`} aria-selected={tab === t.key} aria-controls="detalle-panel" tabIndex={tab === t.key ? 0 : -1}
+          {tabs.map(t => <button key={t.key} type="button" role="tab" id={`detalle-tab-${t.key}`} aria-selected={tab === t.key} aria-controls="detalle-panel" tabIndex={tab === t.key ? 0 : -1}
             onClick={() => go(t.key)} className={`flex min-h-12 shrink-0 items-center gap-2 border-b-[3px] px-2 text-sm font-semibold sm:px-3 sm:text-base ${tab === t.key ? 'border-jrm-navy text-jrm-navy' : 'border-transparent text-slate-500 hover:text-jrm-navy'}`}>{ICONS[t.key]}{t.label}</button>)}
         </div>
       </header>
@@ -95,6 +99,7 @@ export function DispatchDetailModal({ row, routeRows = [], onSelect, onClose, on
       <div ref={body} role="tabpanel" id="detalle-panel" aria-labelledby={`detalle-tab-${tab}`} className="detail-body min-h-0 flex-1 overflow-y-auto bg-slate-50/70 p-3 sm:p-6">
         {loading ? <p role="status" className="py-10 text-center text-sm text-slate-500">Cargando detalle del despacho…</p>
           : error || !detail ? <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error || 'No se pudo cargar el detalle.'} <button type="button" onClick={reload} className="font-semibold underline">Reintentar</button></div>
+          : tab === 'expediente' ? <div className="space-y-3"><p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-jrm-navy">Toda la ruta {row.dispatch_number}: las acciones de esta pestaña afectan a la ruta completa, no solo a esta entrega.</p>{routeFile}</div>
           : tab === 'resumen' ? <ResumenTab row={row} detail={detail} />
           : tab === 'ruta' ? <RutaTab row={row} detail={detail} />
           : tab === 'documentos' ? filesPanel(() => <DocumentosTab row={row} files={files.files!} urls={files.urls} documentsHref={documentsHref} onGo={go} />)
@@ -109,7 +114,7 @@ export function DispatchDetailModal({ row, routeRows = [], onSelect, onClose, on
           {actions && <button type="button" aria-expanded={menu} aria-label="Más acciones" onClick={() => setMenu(open => !open)} className={`${btn} border border-slate-300 px-3 text-jrm-navy md:hidden`}><MoreHorizontal className="h-5 w-5" aria-hidden /></button>}
           {onValidate && row.conformity === 'RECIBIDA' && (tab === 'resumen' || tab === 'ruta' || tab === 'documentos') && <button type="button" onClick={() => onValidate(row)} className={`${btn} bg-jrm-navy px-3 text-white hover:bg-jrm-navy-dark sm:px-4`}><CheckCircle2 className="h-5 w-5" aria-hidden /><span className="sm:hidden">Validar</span><span className="hidden sm:inline">Validar conformidad</span></button>}
           {index > 0 && <button type="button" onClick={() => move(-1)} aria-label="Anterior" className={`${btn} border border-slate-300 px-3 text-jrm-navy hover:bg-slate-50 sm:px-4`}><ArrowLeft className="h-4 w-4" aria-hidden /><span className="hidden sm:inline">Anterior</span></button>}
-          {last ? <button type="button" onClick={onClose} className={`${btn} bg-jrm-navy px-4 text-white hover:bg-jrm-navy-dark sm:px-6`}><CheckCircle2 className="h-5 w-5" aria-hidden />Finalizar</button>
+          {last ? <button type="button" onClick={onClose} className={`${btn} bg-jrm-navy px-4 text-white hover:bg-jrm-navy-dark sm:px-6`}><CheckCircle2 className="h-5 w-5" aria-hidden />Cerrar detalle</button>
             : <button type="button" onClick={() => move(1)} className={`${btn} bg-jrm-navy px-4 text-white hover:bg-jrm-navy-dark sm:px-6`}>Siguiente<ArrowRight className="h-4 w-4" aria-hidden /></button>}
         </div>
       </footer>
