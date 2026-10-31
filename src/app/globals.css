@@ -54,3 +54,12 @@ body {
   body.caja-print .caja-printable, body.caja-print .caja-printable * { visibility: visible; }
   body.caja-print .caja-printable { position: fixed; inset: 0; padding: 1.5rem; overflow: visible; background: #fff; }
 }
+
+/* Detalle del despacho: «Imprimir» imprime solo la ventana con la pestaña visible, sin recortes por el desplazamiento */
+@media print {
+  body:has(> #detalle-despacho) > :not(#detalle-despacho) { display: none !important; }
+  #detalle-despacho { position: static !important; display: block !important; padding: 0 !important; }
+  #detalle-despacho .print-hide { display: none !important; }
+  #detalle-despacho .detail-panel { height: auto !important; max-width: none !important; box-shadow: none !important; overflow: visible !important; }
+  #detalle-despacho .detail-body { overflow: visible !important; background: #fff !important; }
+}

@@ -1,71 +1,99 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
-import { ClipboardCheck, Eye, FileText, Plus } from 'lucide-react'
-import { StatusBadge } from '@/components/ui/status-badge'
+import { ClipboardCheck, Clock, Download, Eye, FileText, Package, Plus, Search } from 'lucide-react'
 import type { DeliveryRow } from '@/lib/delivery'
-import { DOC_CATEGORY_LABEL, DOC_TYPE_LABEL, DOCUMENTARY_LABEL, DOCUMENTARY_STEPS, detailTime, docGroup, fileSize, missingLabel, type DetailDocument, type DispatchFiles } from '@/lib/dispatch-detail'
-import { DetailCard, FilePreview, SourcesWarning } from './DetailParts'
+import { conformityChecklist, detailTime, documentRows, documentaryProgress, downloadUrl, isImage, type ChecklistItem, type DetailTab, type DispatchFiles, type DocumentRow } from '@/lib/dispatch-detail'
+import { DetailCard, FilePreview, IconButton, MilestoneStepper, ServiceStrip, SourcesWarning, Img } from './DetailParts'
 
-type Filter = 'TODOS' | 'SALIDA' | 'OTROS'
-const reviewTone = (d?: string) => d === 'VALIDADA' ? 'success' : d ? 'danger' : 'warning'
-const reviewLabel = (d?: string) => d === 'VALIDADA' ? 'Validada' : d === 'OBSERVADA' ? 'Observada' : d === 'RECHAZADA' ? 'Rechazada' : 'Por validar'
+type Filter = 'TODOS' | DocumentRow['group']
+const FILTERS: [Filter, string][] = [['TODOS', 'Todos'], ['SALIDA', 'Salida'], ['RECEPCION', 'Recepción'], ['OTROS', 'Otros']]
+const STATE: Record<DocumentRow['state'], [string, string]> = {
+  VALIDADO: ['Validado', 'bg-emerald-50 text-emerald-700 ring-emerald-200'], REGISTRADO: ['Registrado', 'bg-emerald-50 text-emerald-700 ring-emerald-200'],
+  PENDIENTE: ['Pendiente', 'bg-orange-50 text-orange-700 ring-orange-200'], OBSERVADO: ['Observado', 'bg-rose-50 text-rose-700 ring-rose-200'], NO_REQUERIDO: ['No requerido', 'bg-slate-100 text-slate-600 ring-slate-200'],
+}
+const CHECK: Record<ChecklistItem['state'], [string, string]> = {
+  COMPLETO: ['Completo', 'bg-emerald-50 text-emerald-700 ring-emerald-200'], PENDIENTE: ['Pendiente', 'bg-slate-100 text-slate-600 ring-slate-200'],
+  NO_REQUERIDO: ['No requerido', 'bg-slate-100 text-slate-600 ring-slate-200'], OBSERVADO: ['Observado', 'bg-rose-50 text-rose-700 ring-rose-200'],
+}
+export const Chip = ({ value }: { value: [string, string] }) => <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset ${value[1]}`}>{value[0]}</span>
+const GROUP_TAG: Record<DocumentRow['group'], string> = { SALIDA: 'Salida', RECEPCION: 'Recepción', OTROS: 'Otros' }
 
-/** Documentos de la parada y de su ruta, guías de entrega y estado del cierre documentario (solo lectura). */
-export function DocumentosTab({ row, files, urls, documentsHref }: { row: DeliveryRow; files: DispatchFiles; urls: Record<string, string | null>; documentsHref?: string }) {
-  const [filter, setFilter] = useState<Filter>('TODOS'), [selected, setSelected] = useState<string | null>(null)
-  const docs = files.documents.filter(d => filter === 'TODOS' || docGroup(d) === filter)
-  const preview = files.documents.find(d => d.id === selected) || files.documents[0] || null
-  const count = (f: Filter) => files.documents.filter(d => f === 'TODOS' || docGroup(d) === f).length
-  const closure = files.documentary, stepIndex = closure ? DOCUMENTARY_STEPS.indexOf(closure.status === 'OBSERVADO' ? 'EN_VALIDACION' : closure.status) : -1
-  const name = (d: DetailDocument) => `${DOC_TYPE_LABEL[d.doc_type] || d.doc_type}${d.category ? ` · ${DOC_CATEGORY_LABEL[d.category] || d.category}` : ''}`
-  return <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(20rem,1fr)]">
-    <div className="min-w-0 space-y-4">
+/** Documentos de la parada y su ruta, checklist de conformidad y estado documentario (solo lectura). */
+export function DocumentosTab({ row, files, urls, documentsHref, onGo }: { row: DeliveryRow; files: DispatchFiles; urls: Record<string, string | null>; documentsHref?: string; onGo?: (tab: DetailTab) => void }) {
+  const [filter, setFilter] = useState<Filter>('TODOS'), [search, setSearch] = useState(''), [selected, setSelected] = useState<string | null>(null)
+  const all = documentRows(files, row), checklist = conformityChecklist(files, row), progress = documentaryProgress(files)
+  const needle = search.trim().toLocaleLowerCase('es-PE')
+  const shown = all.filter(d => (filter === 'TODOS' || d.group === filter) && (!needle || `${d.name} ${d.number || ''} ${d.responsible || ''}`.toLocaleLowerCase('es-PE').includes(needle)))
+  const related = files.submissions.flatMap(s => [...s.photos.map((path, i) => ({ path, label: i === 0 ? 'Foto de entrega' : `Foto de entrega ${i + 1}`, at: s.captured_at })),
+    ...s.packing_photos.map((path, i) => ({ path, label: `Carga entregada ${i + 1}`, at: s.captured_at }))])
+  const preview = all.find(d => d.key === selected && d.path) || (selected && related.find(r => r.path === selected) ? null : all.find(d => d.path)) || null
+  const previewRelated = selected ? related.find(r => r.path === selected) : null
+  const pendingCheck = checklist.some(c => c.state === 'PENDIENTE' || c.state === 'OBSERVADO')
+  return <div className="grid items-start gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1.75fr)_minmax(22rem,1fr)]">
+    <div className="min-w-0 space-y-4 sm:space-y-5">
       <SourcesWarning failed={files.sources_failed} />
-      <DetailCard title="Documentos del despacho" icon={<FileText className="h-5 w-5" aria-hidden />}
-        actions={documentsHref && <Link href={documentsHref} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-jrm-navy"><Plus className="h-4 w-4" aria-hidden />Agregar documento</Link>}>
-        {!files.can_view_documents ? <p className="text-sm text-slate-500">Sin acceso a los archivos de documentos de este despacho.</p> : <>
-          <div role="group" aria-label="Filtrar documentos" className="mb-3 flex flex-wrap gap-2">{(['TODOS', 'SALIDA', 'OTROS'] as Filter[]).map(f => <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)}
-            className={`min-h-9 rounded-lg border px-3 text-sm font-semibold ${filter === f ? 'border-jrm-navy bg-blue-50 text-jrm-navy' : 'border-slate-300 text-slate-600'}`}>{f === 'TODOS' ? 'Todos' : f === 'SALIDA' ? 'Salida' : 'Otros'} ({count(f)})</button>)}</div>
-          {!docs.length ? <p className="text-sm text-slate-500">Sin documentos registrados{filter !== 'TODOS' ? ' en este grupo' : ''}.</p>
-            : <ul className="divide-y rounded-lg border border-slate-200">{docs.map(d => <li key={d.id} className={`flex flex-wrap items-center gap-3 p-3 text-sm ${preview?.id === d.id ? 'bg-blue-50/60' : ''}`}>
-              <div className="min-w-0 flex-1"><p className="font-semibold text-slate-800">{name(d)}{d.number && <span className="ml-1 font-normal text-slate-600">· {d.number}</span>}</p>
-                <p className="text-xs text-slate-500">{detailTime(d.uploaded_at)} · Registrado por {d.uploaded_by || 'usuario no disponible'} · {fileSize(d.size_bytes)} · {d.scope === 'RUTA' ? 'De la ruta' : 'De esta solicitud'}</p></div>
-              <button type="button" onClick={() => setSelected(d.id)} aria-label={`Ver ${name(d)}`} className="flex min-h-9 items-center gap-1 rounded-lg border border-slate-300 px-2.5 text-xs font-semibold text-jrm-navy"><Eye className="h-4 w-4" aria-hidden />Ver</button>
-            </li>)}</ul>}
+      <ServiceStrip row={row} icon={<FileText />} title={<span><span className="block text-sm font-normal text-slate-500">Referencia</span>Despacho {row.dispatch_number} · {row.request_number}</span>} />
+      <DetailCard title="Documentos del despacho" icon={<FileText />}
+        actions={documentsHref && <Link href={documentsHref} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-jrm-navy hover:bg-slate-50"><Plus className="h-4 w-4" aria-hidden />Agregar documento</Link>}>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div role="group" aria-label="Filtrar documentos" className="flex flex-wrap gap-2">{FILTERS.map(([key, label]) => <button key={key} type="button" aria-pressed={filter === key} onClick={() => setFilter(key)}
+            className={`min-h-9 rounded-lg border px-3 text-sm font-semibold ${filter === key ? 'border-blue-200 bg-blue-50 text-jrm-navy' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}>{label} ({all.filter(d => key === 'TODOS' || d.group === key).length})</button>)}</div>
+          <label className="relative ml-auto w-full sm:w-64"><Search aria-hidden className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar documento, número o tipo…" aria-label="Buscar documento"
+            className="h-9 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm" /></label>
+        </div>
+        {!files.can_view_documents && <p className="mb-2 text-xs text-slate-500">Sin acceso a los archivos cargados por Documentos: se muestran la guía de entrega y los pendientes.</p>}
+        {!shown.length ? <p className="py-4 text-sm text-slate-500">Sin documentos con este filtro.</p> : <>
+          <div className="hidden overflow-x-auto rounded-lg border border-slate-200 lg:block"><table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-slate-600"><tr>{['Tipo de documento', 'Número', 'Relacionado con', 'Fecha', 'Estado', 'Responsable', 'Acciones'].map(h => <th key={h} className="px-3 py-2.5 font-medium">{h}</th>)}</tr></thead>
+            <tbody className="divide-y divide-slate-200">{shown.map(d => <tr key={d.key} className={`align-middle ${preview?.key === d.key && !previewRelated ? 'bg-blue-50/50' : ''}`}>
+              <td className="px-3 py-2.5"><div className="flex items-center gap-3"><FileText aria-hidden className={`h-6 w-6 shrink-0 ${d.mime === 'application/pdf' ? 'text-rose-500' : 'text-slate-400'}`} />
+                <div><p className="font-semibold text-slate-800">{d.name}</p><span className="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-jrm-navy">{GROUP_TAG[d.group]}</span></div></div></td>
+              <td className="px-3 py-2.5">{d.number || (d.state === 'NO_REQUERIDO' ? 'No requerido' : '—')}</td>
+              <td className="whitespace-pre-line px-3 py-2.5 text-slate-600">{d.related}</td>
+              <td className="px-3 py-2.5 tabular-nums text-slate-600">{d.at ? detailTime(d.at) : '—'}</td>
+              <td className="px-3 py-2.5"><Chip value={STATE[d.state]} /></td>
+              <td className="px-3 py-2.5 text-slate-700">{d.responsible || (d.state === 'PENDIENTE' ? 'Sin asignar' : '—')}</td>
+              <td className="px-3 py-2.5"><div className="flex gap-1.5">
+                <IconButton label={`Ver ${d.name}`} disabled={!d.path} onClick={() => setSelected(d.key)}><Eye className="h-4 w-4" /></IconButton>
+                {d.path && urls[d.path] && <IconButton label={`Descargar ${d.name}`} href={downloadUrl(urls[d.path]!)} download><Download className="h-4 w-4" /></IconButton>}
+              </div></td>
+            </tr>)}</tbody>
+          </table></div>
+          <ul className="space-y-2 lg:hidden">{shown.map(d => <li key={d.key} className="rounded-lg border border-slate-200 p-3 text-sm">
+            <div className="flex items-start justify-between gap-2"><div><p className="font-semibold text-slate-800">{d.name} {d.number && <span className="font-normal text-slate-600">· {d.number}</span>}</p>
+              <p className="text-xs text-slate-500">{GROUP_TAG[d.group]} · {d.at ? detailTime(d.at) : 'Sin fecha'} · {d.responsible || 'Sin asignar'}</p></div><Chip value={STATE[d.state]} /></div>
+            {d.path && <div className="mt-2 flex gap-1.5"><IconButton label={`Ver ${d.name}`} onClick={() => setSelected(d.key)}><Eye className="h-4 w-4" /></IconButton>
+              {urls[d.path] && <IconButton label={`Descargar ${d.name}`} href={downloadUrl(urls[d.path]!)} download><Download className="h-4 w-4" /></IconButton>}</div>}
+          </li>)}</ul>
         </>}
-        {files.references.length > 0 && <div className="mt-4"><h4 className="mb-2 text-sm font-semibold text-slate-700">Números vinculados por el Asistente Documentario</h4>
-          <ul className="flex flex-wrap gap-2">{files.references.map((r, i) => <li key={`${r.number}/${i}`} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs" title={`${detailTime(r.at)}${r.by ? ` · ${r.by}` : ''}`}>{r.doc_type === 'NOTA_DESPACHO' ? 'Nota' : 'GR'} {r.number}</li>)}</ul></div>}
       </DetailCard>
-      <DetailCard title="Guías de entrega (recepción)" icon={<ClipboardCheck className="h-5 w-5" aria-hidden />}>
-        {!files.submissions.length ? <p className="text-sm text-slate-500">{row.conformity === 'NO_APLICA' ? 'No aplica: recojo por cliente.' : 'Sin guía de entrega enviada.'}</p>
-          : <ul className="divide-y rounded-lg border border-slate-200">{files.submissions.map(s => <li key={s.id} className="flex flex-wrap items-start gap-3 p-3 text-sm">
-            <div className="min-w-0 flex-1"><p className="font-semibold text-slate-800">Guía {s.guide_number || 'sin número'}</p>
-              <p className="text-xs text-slate-500">Enviada {detailTime(s.submitted_at)}{s.submitted_by ? ` por ${s.submitted_by}` : ''}{s.received_by ? ` · recibió ${s.received_by}` : ''} · {s.photos.length} foto(s)</p>
-              {s.review && <p className="text-xs text-slate-600">{reviewLabel(s.review.decision)} {detailTime(s.review.at)}{s.review.by ? ` por ${s.review.by}` : ''}{s.review.reason ? ` · ${s.review.reason}` : ''}</p>}</div>
-            <StatusBadge tone={reviewTone(s.review?.decision)}>{reviewLabel(s.review?.decision)}</StatusBadge>
-          </li>)}</ul>}
-      </DetailCard>
-      <DetailCard title="Checklist del cierre documentario" icon={<ClipboardCheck className="h-5 w-5" aria-hidden />}
-        actions={closure && <StatusBadge tone={closure.status === 'COMPLETO' ? 'success' : closure.status === 'OBSERVADO' ? 'danger' : 'warning'}>{DOCUMENTARY_LABEL[closure.status]}</StatusBadge>}>
-        {!closure ? <p className="text-sm text-slate-500">El cierre documentario de esta solicitud aún no tiene registro.</p>
-          : closure.status === 'COMPLETO' ? <p className="text-sm text-emerald-800">Documentación completa{closure.source === 'MANUAL' ? ' (cierre manual)' : ''}{closure.completed_at ? ` · ${detailTime(closure.completed_at)}` : ''}{closure.completed_by ? ` por ${closure.completed_by}` : ''}.</p>
-          : closure.missing.length ? <ul className="space-y-1.5">{closure.missing.map(code => <li key={code} className="flex items-center gap-2 text-sm text-amber-900"><span aria-hidden className="h-2 w-2 rounded-full bg-amber-500" />Falta: {missingLabel(code)}</li>)}</ul>
-          : <p className="text-sm text-slate-600">En validación.</p>}
-        <p className="mt-3 text-xs text-slate-500">El cierre documentario es independiente del operativo y del económico; se gestiona en Documentos del despacho.</p>
+      <DetailCard title="Checklist de conformidad" icon={<ClipboardCheck />} actions={<Chip value={pendingCheck ? ['Pendiente', 'bg-orange-50 text-orange-700 ring-orange-200'] : ['Completo', 'bg-emerald-50 text-emerald-700 ring-emerald-200']} />}>
+        <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[34rem] text-left text-sm">
+          <thead className="bg-slate-50 text-slate-600"><tr><th className="px-3 py-2.5 font-medium">Ítem</th><th className="px-3 py-2.5 font-medium">Estado</th><th className="px-3 py-2.5 font-medium">Observación</th></tr></thead>
+          <tbody className="divide-y divide-slate-200">{checklist.map(c => <tr key={c.key}><td className="px-3 py-2.5 text-slate-800">{c.label}</td><td className="px-3 py-2.5"><Chip value={CHECK[c.state]} /></td><td className="px-3 py-2.5 text-slate-600">{c.note}</td></tr>)}</tbody>
+        </table></div>
+        <p className="mt-2 text-xs text-slate-500">Se valida en «Guía y conformidad». El cierre documentario es independiente del operativo y del económico.</p>
       </DetailCard>
     </div>
-    <div className="min-w-0 space-y-4">
-      <DetailCard title="Estado documentario">
-        {closure ? <ol className="flex">{DOCUMENTARY_STEPS.map((s, i) => <li key={s} className="flex flex-1 flex-col items-center text-center text-xs">
-          <span aria-hidden className={`grid h-7 w-7 place-items-center rounded-full ${i < stepIndex || closure.status === 'COMPLETO' ? 'bg-emerald-600 text-white' : i === stepIndex ? (closure.status === 'OBSERVADO' ? 'bg-rose-600 text-white' : 'bg-blue-600 text-white') : 'bg-slate-200 text-slate-500'}`}>{i + 1}</span>
-          <span className="mt-1 font-semibold text-slate-700">{i === stepIndex && closure.status === 'OBSERVADO' ? 'Observado' : DOCUMENTARY_LABEL[s]}</span>
-        </li>)}</ol> : <p className="text-sm text-slate-500">Sin registro.</p>}
+    <div className="min-w-0 space-y-4 sm:space-y-5">
+      <DetailCard title="Estado documentario" icon={<Package />} actions={onGo && <button type="button" onClick={() => onGo('historial')} className="text-sm font-semibold text-jrm-navy underline-offset-2 hover:underline">Historial</button>}>
+        <MilestoneStepper steps={progress.map(p => ({ ...p, value: <span className={`mt-1 rounded-md px-2 py-0.5 text-xs font-semibold ${p.state === 'done' ? 'bg-emerald-50 text-emerald-700' : p.state === 'alert' || p.state === 'current' ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-500'}`}>{p.count}</span> }))} />
+        {files.documentary?.missing.length ? <p className="mt-3 text-xs text-slate-600">Falta para el cierre: {files.documentary.missing.map(m => m.replaceAll('_', ' ').toLowerCase()).join(', ')}.</p> : null}
       </DetailCard>
-      <DetailCard title="Vista previa del documento">
-        {preview && files.can_view_documents ? <div className="space-y-2"><p className="text-sm font-semibold text-slate-800">{name(preview)}{preview.number ? ` · ${preview.number}` : ''}</p>
-          <FilePreview url={urls[`dispatch_documents/${preview.file_path}`]} path={preview.file_path} mime={preview.mime_type} title={name(preview)} /></div>
-          : <p className="text-sm text-slate-500">Seleccione un documento para verlo.</p>}
+      <DetailCard title="Vista previa del documento" icon={<Eye />}>
+        {previewRelated ? <div className="space-y-2"><p className="font-semibold text-jrm-navy">{previewRelated.label}</p><FilePreview url={urls[previewRelated.path]} path={previewRelated.path} title={previewRelated.label} /></div>
+          : preview?.path ? <div className="space-y-2"><div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold text-jrm-navy">{preview.name}{preview.number ? ` · ${preview.number}` : ''}</p><Chip value={STATE[preview.state]} /></div>
+            <FilePreview url={urls[preview.path]} path={preview.path} mime={preview.mime} title={preview.name} /></div>
+          : <p className="text-sm text-slate-500">Sin archivo para previsualizar.</p>}
+      </DetailCard>
+      <DetailCard title={`Archivos relacionados (${related.length})`} icon={<Clock />}>
+        {!related.length ? <p className="text-sm text-slate-500">Sin fotos de entrega.</p> : <ul className="space-y-3">{related.map(r => <li key={r.path} className="flex items-center gap-3">
+          <span className="h-16 w-24 shrink-0 overflow-hidden rounded-lg bg-slate-100">{urls[r.path] && isImage(r.path) && <Img src={urls[r.path]!} alt={r.label} className="h-full w-full object-cover" loading="lazy" />}</span>
+          <div className="min-w-0 flex-1 text-sm"><p className="font-medium text-slate-800">{r.label}</p><p className="text-xs text-slate-500">{detailTime(r.at)}</p></div>
+          <IconButton label={`Ver ${r.label}`} onClick={() => setSelected(r.path)}><Eye className="h-4 w-4" /></IconButton>
+          {urls[r.path] && <IconButton label={`Descargar ${r.label}`} href={downloadUrl(urls[r.path]!)} download><Download className="h-4 w-4" /></IconButton>}
+        </li>)}</ul>}
       </DetailCard>
     </div>
   </div>

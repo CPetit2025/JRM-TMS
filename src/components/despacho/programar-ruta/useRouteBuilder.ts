@@ -8,7 +8,7 @@ import { TERCERO_VACIO, type TerceroForm } from '@/components/despacho/Tercero'
 import type { RouteAssistant } from '@/components/despacho/RouteAuxiliaryPicker'
 import { referenceLabel } from '@/lib/suppliers'
 import { splitFreight } from '@/lib/transport-budget'
-import { calculateRouteDistance } from '@/lib/routing'
+import { calculateRouteEstimate, type RouteEstimate } from '@/lib/routing'
 import { errorMessage } from '@/lib/caja'
 import { checkDispatchEligibility, type DispatchEligibilityResult } from '@/lib/eligibility'
 import { OCCUPIED_DISPATCH_STATUSES, routeAssignment } from '@/lib/route-assignment'
@@ -70,6 +70,8 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [calculatingDistance, setCalculatingDistance] = useState(false)
   const reqDistances = useRef<Record<string, number>>({})
+  // Estimado de OSRM por solicitud (tiempo y trazo) que se guarda con la ruta para el detalle del despacho
+  const reqEstimates = useRef<Record<string, RouteEstimate>>({})
   // Fecha de salida propuesta desde la fecha requerida (se reemplaza mientras el usuario no la cambie a mano)
   const [autoDeparture, setAutoDeparture] = useState('')
 
@@ -322,6 +324,16 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
     if (error) toast.error('La ruta se programó, pero no se guardaron las observaciones: ' + error.message)
   }
 
+  // Tiempo y trazo estimados por OSRM: se guardan con la ruta; si falla, la ruta ya quedó programada
+  const saveEstimates = async (dispatchId: string) => {
+    const items = newDispatch.selected_requests.map(r => reqEstimates.current[r.id] && { request_id: r.id, distance_km: Math.round(reqEstimates.current[r.id].km * 10) / 10,
+      duration_min: reqEstimates.current[r.id].minutes, origin: reqEstimates.current[r.id].origin, destination: reqEstimates.current[r.id].destination,
+      geometry: reqEstimates.current[r.id].geometry }).filter(Boolean)
+    if (!items.length) return
+    const { error } = await supabase.rpc('save_dispatch_route_estimates', { p_dispatch: dispatchId, p_items: items })
+    if (error) console.warn('No se guardó el estimado de la ruta:', error.message)
+  }
+
   const handleProgramar = async () => {
     if (newDispatch.selected_requests.length === 0) {
       toast.error('Debes seleccionar al menos una solicitud.')
@@ -384,7 +396,7 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
         if (!isPickup && newDispatchId && freightQuote && detectedFreightRate?.rate && freightCost === detectedFreightRate.rate) {
           await saveQuote(newDispatchId as string, freightQuote)
         }
-        if (newDispatchId) await saveNotes(newDispatchId as string)
+        if (newDispatchId) { await saveNotes(newDispatchId as string); await saveEstimates(newDispatchId as string) }
         toast.success('Servicio programado. El acceso del proveedor está listo para compartir.')
         if (newDispatchId) {
           const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(newDispatch.scheduled_departure))
@@ -460,7 +472,7 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
       if (!isPickup && newDispatchId && freightQuote && detectedFreightRate?.rate && freightCost === detectedFreightRate.rate) {
         await saveQuote(newDispatchId as string, freightQuote)
       }
-      if (newDispatchId) await saveNotes(newDispatchId as string)
+      if (newDispatchId) { await saveNotes(newDispatchId as string); await saveEstimates(newDispatchId as string) }
       toast.success(isPickup ? 'Recojo por el cliente programado con Nota de Salida y sin flete JRM.' : 'Despacho programado y financiamiento validado.')
       setIsModalOpen(false)
       reset()
@@ -525,9 +537,11 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
         setCalculatingDistance(true)
         const loadingToast = toast.loading('Calculando ruta sugerida...')
         try {
-          const km = await calculateRouteDistance(pickup, delivery)
-          if (km) {
+          const estimate = await calculateRouteEstimate(pickup, delivery)
+          const km = estimate?.km
+          if (estimate && km) {
             reqDistances.current[reqId] = km // Guardar en caché para la próxima
+            reqEstimates.current[reqId] = estimate
 
             setNewDispatch(prev => {
               // Control anti-cruce: Solo sumar si el usuario NO LO DESMARCÓ mientras esperábamos la API

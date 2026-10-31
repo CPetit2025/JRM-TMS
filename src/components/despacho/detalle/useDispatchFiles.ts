@@ -24,7 +24,7 @@ export function useDispatchFiles(dispatchId: string, requestId: string, enabled:
         ])
         if (files.error || !files.data) throw new Error(files.error?.message || 'No se encontró el despacho.')
         const data = files.data as DispatchFiles, route = ((evidence.data || []) as RouteEvidence[]).filter(r => r.path)
-        const paths = [...data.documents.map(d => `dispatch_documents/${d.file_path}`), ...data.submissions.flatMap(s => [...s.photos, ...s.packing_photos]),
+        const paths = [...data.documents.map(d => `dispatch_documents/${d.file_path}`), ...(data.evidence || []).map(e => `dispatch_documents/${e.file_path}`), ...data.submissions.flatMap(s => [...s.photos, ...s.packing_photos]),
           ...(data.rejection?.photos || []), ...route.map(r => r.path)]
         const urls = Object.fromEntries(await Promise.all([...new Set(paths)].map(async p => [p, await receiptUrl(db, p).catch(() => null)] as const)))
         if (alive) setState({ key, files: data, route, urls, error: '' })
