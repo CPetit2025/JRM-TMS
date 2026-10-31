@@ -28,15 +28,18 @@ export function Fields({ items, cols = 'sm:grid-cols-2 lg:grid-cols-3' }: { item
   </div>)}</dl>
 }
 
-export const Place = ({ text }: { text: string }) => <span className="flex items-start gap-2"><MapPin aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-jrm-navy" /><span>{text || '—'}</span></span>
+export const Place = ({ text }: { text: string }) => <span className="flex min-w-0 items-start gap-2"><MapPin aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-jrm-navy" /><span className="min-w-0 break-words">{text || "—"}</span></span>
+
+/** Tipo de servicio que se ajusta a su celda (el chip común no corta línea y se montaba sobre la columna vecina). */
+export const ServiceChip = ({ row }: { row: DeliveryRow }) => <span className="inline-block max-w-full [&>span]:max-w-full [&>span]:whitespace-normal [&>span]:text-left"><ServiceTypeBadge kind={deliveryServiceKind(row)} full /></span>
 
 /** Franja «Información del servicio» de las pestañas Documentos, Evidencias y Costos. */
 export function ServiceStrip({ row, title = 'Información del servicio', icon }: { row: DeliveryRow; title?: ReactNode; icon?: ReactNode }) {
   const party = partyName(row, row.client_name, row.supplier_name)
   return <DetailCard title={title} icon={icon}>
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4 2xl:grid-cols-8">
-      {([['Tipo de servicio', <ServiceTypeBadge key="t" kind={deliveryServiceKind(row)} full />], ['N.º despacho', row.dispatch_number || '—'], ['Solicitud (RT)', row.request_number],
-        ['Documento de referencia', referenceLabel(row) || '—'], [requiresSupplier(row) ? 'Proveedor' : 'Cliente', <span key="p" title={party || undefined} className="line-clamp-2">{party || '—'}</span>, 'col-span-2'],
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4 2xl:grid-cols-[minmax(min-content,auto)_auto_auto_minmax(min-content,auto)_minmax(8rem,2fr)_minmax(min-content,auto)_minmax(min-content,auto)]">
+      {([['Tipo de servicio', <ServiceChip key="t" row={row} />], ['N.º despacho', row.dispatch_number || '—'], ['Solicitud (RT)', row.request_number],
+        ['Documento de referencia', referenceLabel(row) || '—'], [requiresSupplier(row) ? 'Proveedor' : 'Cliente', <span key="p" title={party || undefined} className="line-clamp-2">{party || "—"}</span>, "col-span-2 2xl:col-span-1"],
         ['Origen', <Place key="o" text={districtOf(row.pickup_address) || row.pickup_address} />], ['Destino', <Place key="d" text={districtOf(row.delivery_address) || row.delivery_address} />]] as [string, ReactNode, string?][])
         .map(([name, value, span]) => <div key={name} className={`min-w-0 border-slate-200 2xl:border-l 2xl:pl-3 2xl:first:border-l-0 2xl:first:pl-0 ${span || ''}`}><dt className="text-xs font-medium text-slate-500">{name}</dt><dd className="mt-1 break-words font-medium text-slate-800">{value}</dd></div>)}
     </dl>
