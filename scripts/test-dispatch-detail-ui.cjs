@@ -1,5 +1,5 @@
 // Modal «Detalle del despacho»: pestañas con datos reales, GPS solo con conexión confirmada, «Validar conformidad»
-// solo con guía recibida, «Finalizar» solo cierra, historial filtrable y el portal público conserva su detalle simple.
+// solo con guía recibida, «Cerrar detalle» solo cierra, historial filtrable y el portal público conserva su detalle simple.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module'), ts = require('typescript'), React = require('react')
@@ -81,7 +81,7 @@ test('tabs load the stop detail once and show real milestones, GPS and incidents
  assert.ok(text(view).includes('Tráfico')); assert.ok(text(view).includes('72 km'))
  assert.ok(text(view).includes('Sin estimar'), 'no invented estimated time')
  for (let i = 0; i < 4; i++) { await act(async () => button(view, 'Siguiente').props.onClick()); await act(flush) }
- assert.ok(!button(view, 'Siguiente')); await act(async () => button(view, 'Finalizar').props.onClick()); assert.equal(closed, 1, 'Finalizar only closes')
+ assert.ok(!button(view, 'Siguiente')); await act(async () => button(view, 'Cerrar detalle').props.onClick()); assert.equal(closed, 1, 'Finalizar only closes')
  assert.deepEqual(calls.filter(c => !['get_dispatch_detail', 'get_tower_route_crew', 'get_dispatch_detail_files', 'get_dispatch_evidence', 'economic_closure_detail'].includes(c.name)), [], 'only reads')
  await act(async () => view.unmount())
 })

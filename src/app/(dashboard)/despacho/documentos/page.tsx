@@ -124,7 +124,7 @@ function DocumentaryQueue() {
   const [reload, setReload] = useState(0)
   const [anulando, setAnulando] = useState<Doc | null>(null)
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([])
-  // Liquidación pendiente: estado documentario por servicio según su tipo (regla de la base)
+  // Documentación pendiente: estado documentario por servicio según su tipo (regla de la base)
   const [checklists, setChecklists] = useState<Map<string, SettlementChecklist>>(new Map())
   const [serviceTypes, setServiceTypes] = useState<Awaited<ReturnType<typeof fetchServiceTypes>>>(new Map())
   const [review, setReview] = useState<DeliveryReviewTarget | null>(null)
@@ -142,7 +142,7 @@ function DocumentaryQueue() {
         setQueueError('Selecciona un período válido de hasta 366 días.'); return
       }
       const pending = phase === 'liquidacion'
-      // Liquidación pendiente: la base filtra rutas con cierre operativo y documentación incompleta
+      // Documentación pendiente: la base filtra rutas con cierre operativo y documentación incompleta
       const { data, error } = await supabase.rpc(pending ? 'get_documentary_pending_settlement' : 'get_documentary_queue_period', {
         p_include_departed: showDeparted,
         p_from: showDeparted ? `${pending ? yearAgo() : dateFrom}T00:00:00-05:00` : null,
@@ -199,7 +199,7 @@ function DocumentaryQueue() {
       searchableNumbers(item, stop)].join(' ').toLocaleLowerCase('es-PE').includes(needle))
       .map(stop => ({ item, stop }))).filter(({ item, stop }) => documentPhaseMatches(phase, item, deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id), noteLinked(item, stop), checklists.get(`${item.id}/${stop?.request_id}`)?.complete))
   const selectedRoute = items?.find(item => item.id === selectedId)
-  // Lista de liquidación de la ruta abierta (en cualquier pestaña; «Liquidación pendiente» ya la trae para toda la bandeja)
+  // Lista de liquidación de la ruta abierta (en cualquier pestaña; «Documentación pendiente» ya la trae para toda la bandeja)
   const selectedRouteId = selectedRoute && !NOT_SETTLEABLE.includes(selectedRoute.status) ? selectedRoute.id : null
   useEffect(() => {
     if (!selectedRouteId || phase === 'liquidacion') return
@@ -249,7 +249,7 @@ function DocumentaryQueue() {
 
       <FilterToolbar compact label="Etapa, búsqueda y período">
         <div role="tablist" aria-label="Etapas documentarias" className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">
-          {([['salida', packingOnly ? 'Planificación · Packing List' : 'Previos a salida'], ...(!packingOnly ? [['liquidacion', 'Liquidación pendiente'], ['conformidad', 'Conformidad'], ['observados', 'Observados / reemisión'], ['historial', 'Historial']] : [['historial', 'Historial de Packing List']])] as [DocumentPhase, string][]).map(([value, title]) => <button key={value} type="button" role="tab" aria-selected={phase === value} onClick={() => { setPhaseChoice(value); setFilter('TODOS') }} className={`min-h-11 rounded-md px-3 text-sm font-semibold lg:min-h-9 ${phase === value ? 'bg-white text-jrm-navy shadow-sm' : 'text-slate-600 hover:text-jrm-navy'}`}>{title}</button>)}
+          {([['salida', packingOnly ? 'Planificación · Packing List' : 'Previos a salida'], ...(!packingOnly ? [['liquidacion', 'Documentación pendiente'], ['conformidad', 'Conformidad'], ['observados', 'Observados / reemisión'], ['historial', 'Historial']] : [['historial', 'Historial de Packing List']])] as [DocumentPhase, string][]).map(([value, title]) => <button key={value} type="button" role="tab" aria-selected={phase === value} onClick={() => { setPhaseChoice(value); setFilter('TODOS') }} className={`min-h-11 rounded-md px-3 text-sm font-semibold lg:min-h-9 ${phase === value ? 'bg-white text-jrm-navy shadow-sm' : 'text-slate-600 hover:text-jrm-navy'}`}>{title}</button>)}
         </div>
         <label className="relative min-w-0 flex-1 basis-56"><span className="sr-only">Buscar OT, solicitud, cliente, GR o despacho</span><Search aria-hidden className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="OT, solicitud, cliente, GR o despacho" className={`${filterControl} pl-9`} /></label>
         {showDeparted && phase !== 'liquidacion' && <>
@@ -275,7 +275,7 @@ function DocumentaryQueue() {
 
       {queueError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">No se pudo actualizar la bandeja: {queueError}. {items ? 'Se conserva la última consulta.' : 'Pulsa Actualizar para reintentar.'}</p>}
       {items === null && !queueError ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
-        : !visible.length ? <p className="text-slate-500 text-sm p-6 text-center border border-slate-200 rounded-xl bg-white">{queueError && !items ? 'La bandeja no está disponible.' : phase === 'salida' && !packingOnly ? 'No hay servicios por salir. Los servicios ya cerrados con documentación pendiente están en «Liquidación pendiente».' : phase === 'liquidacion' ? 'No hay servicios cerrados con documentación pendiente.' : 'No hay solicitudes para estos filtros.'}</p>
+        : !visible.length ? <p className="text-slate-500 text-sm p-6 text-center border border-slate-200 rounded-xl bg-white">{queueError && !items ? 'La bandeja no está disponible.' : phase === 'salida' && !packingOnly ? 'No hay servicios por salir. Los servicios ya cerrados con documentación pendiente están en «Documentación pendiente».' : phase === 'liquidacion' ? 'No hay servicios cerrados con documentación pendiente.' : 'No hay solicitudes para estos filtros.'}</p>
         : <section aria-label="Control documentario por OT" className="overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
           <div className="overflow-x-auto"><DataTable dense className="block w-full text-left text-sm lg:table"><caption className="sr-only">Solicitudes y OT asociadas, Packing List, guía de entrega y conformidad</caption><thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['Salida', 'Servicio', 'OT / OC / OS / RQ', 'Placa', 'Empresa', 'Destino', 'GR / Nota', 'Estado', 'Acciones'].map((label, i) => <th key={label} scope="col" className={`whitespace-nowrap px-3 py-2.5 font-semibold ${i === 8 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead><tbody className="block divide-y divide-slate-200 lg:table-row-group">{visible.map(({ item, stop }) => <DocumentRow key={`${item.id}/${stop?.request_id || 'empty'}`} item={item} stop={stop} kind={stop && serviceTypes.has(stop.request_id) ? serviceKind(serviceTypes.get(stop.request_id)) : item.is_pickup ? 'RECOJO_CLIENTE' : null} info={stop ? serviceTypes.get(stop.request_id) : undefined} delivery={deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)} canEdit={canNumbers || canPacking} packingOnly={packingOnly} onManage={() => openService(item.id, stop?.request_id || null)} onStatus={() => setStatusOf({ item, stop, delivery: deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id) })} />)}</tbody></DataTable></div>
         </section>}
@@ -480,7 +480,7 @@ function DispatchCard({ item, onClose, footerConfirm, canEdit, canPacking, canAt
   const settlementPending = item.stops.filter(s => checklists?.get(`${item.id}/${s.request_id}`)?.complete === false).length
   const guideCount = guideRows.filter(r => r.status !== 'FALTA').length
   const tabs: [typeof tab, string, number | null, boolean][] = [['servicios', 'Servicios', item.stops.length, false],
-    ...(!packingOnly ? [['guias', 'Guías y notas', guideCount, missingGuides > 0 || settlementPending > 0], ['liquidacion', 'Liquidación', null, !!economic?.state.pending.length || settlementPending > 0]] as [typeof tab, string, number | null, boolean][] : []),
+    ...(!packingOnly ? [['guias', 'Guías y notas', guideCount, missingGuides > 0 || settlementPending > 0], ['liquidacion', 'Cierre del servicio', null, !!economic?.state.pending.length || settlementPending > 0]] as [typeof tab, string, number | null, boolean][] : []),
     ['archivos', 'Archivos', item.documents.length, false]]
   const TAB_ICON = { servicios: FileText, guias: FileText, liquidacion: BadgeCheck, archivos: ClipboardList } as const
   const firstStop = item.stops[0], lastStop = item.stops[item.stops.length - 1]
@@ -697,14 +697,14 @@ function ForkliftTimeSettlement({ dispatchId, onSaved }: { dispatchId: string; o
       if (rpcError) throw rpcError
       if (!data?.success) throw new Error(data?.error || 'No se pudo guardar la liquidación')
       setService(s => s ? { ...s, hours: Number(data.hours), amount: Number(data.amount), start: data.started_at, end: data.ended_at } : s)
-      toast.success('Horas del servicio guardadas y liquidadas')
+      toast.success('Horas del montacarga registradas')
       await onSaved(); setOpen(false)
     } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
   }
   return <section className="rounded-xl border border-violet-200 bg-violet-50 p-4">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-bold text-violet-950">Liquidación del montacarga · {service.supplier}</h3><p className="text-xs text-violet-900">Punto del servicio: {service.stop}</p><p className="text-xs text-violet-900">{service.operator} · Tarifa: S/ {service.rate.toFixed(2)} por hora{service.hours != null ? ` · Liquidado: ${service.hours} h = S/ ${(service.amount || 0).toFixed(2)}` : ''}</p></div><button type="button" onClick={() => setOpen(true)} className="min-h-10 rounded-lg border border-violet-300 bg-white px-3 text-sm font-semibold text-violet-950">{service.hours == null ? 'Ingresar inicio y fin' : 'Editar horas del servicio'}</button></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-bold text-violet-950">Horas del montacarga · {service.supplier}</h3><p className="text-xs text-violet-900">Punto del servicio: {service.stop}</p><p className="text-xs text-violet-900">{service.operator} · Tarifa: S/ {service.rate.toFixed(2)} por hora{service.hours != null ? ` · Liquidado: ${service.hours} h = S/ ${(service.amount || 0).toFixed(2)}` : ''}</p></div><button type="button" onClick={() => setOpen(true)} className="min-h-10 rounded-lg border border-violet-300 bg-white px-3 text-sm font-semibold text-violet-950">{service.hours == null ? 'Ingresar inicio y fin' : 'Editar horas del servicio'}</button></div>
     {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
-    <Modal isOpen={open} onClose={() => setOpen(false)} title="Liquidar servicio de montacarga" footer={<div className="flex justify-end gap-2"><button type="button" onClick={() => setOpen(false)} className="min-h-10 rounded-lg border px-4 text-sm">Cancelar</button><button type="button" onClick={() => void save()} disabled={busy || !start || !end || duration <= 0 || duration > 168} className="min-h-10 rounded-lg bg-violet-800 px-4 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Guardando…' : 'Guardar liquidación'}</button></div>}>
+    <Modal isOpen={open} onClose={() => setOpen(false)} title="Registrar horas del montacarga" footer={<div className="flex justify-end gap-2"><button type="button" onClick={() => setOpen(false)} className="min-h-10 rounded-lg border px-4 text-sm">Cancelar</button><button type="button" onClick={() => void save()} disabled={busy || !start || !end || duration <= 0 || duration > 168} className="min-h-10 rounded-lg bg-violet-800 px-4 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Guardando…' : 'Guardar liquidación'}</button></div>}>
       <div className="space-y-4 p-1"><p className="text-sm text-slate-600">{service.stop} · {service.supplier} · {service.operator} · Tarifa acordada S/ {service.rate.toFixed(2)} por hora.</p><div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-semibold">Hora de inicio<input aria-label="Hora de inicio del servicio de montacarga" type="datetime-local" value={start} onChange={e => setStart(e.target.value)} className="mt-1 min-h-10 w-full rounded-lg border px-3" /></label><label className="text-xs font-semibold">Hora final<input aria-label="Hora final del servicio de montacarga" type="datetime-local" value={end} onChange={e => setEnd(e.target.value)} className="mt-1 min-h-10 w-full rounded-lg border px-3" /></label></div>{start && end && <div className="rounded-lg bg-violet-50 p-3 text-sm">Duración: <b>{duration > 0 && duration <= 168 ? duration.toFixed(2) : 'Verifique las horas'}</b> h · Importe: <b>S/ {(duration > 0 && duration <= 168 ? duration * service.rate : 0).toFixed(2)}</b></div>}{error && <p role="alert" className="text-sm text-red-700">{error}</p>}</div>
     </Modal>
   </section>
@@ -713,7 +713,7 @@ function ForkliftTimeSettlement({ dispatchId, onSaved }: { dispatchId: string; o
 // Liquidación por servicio: desde que la ruta sale (también en curso) hasta que se liquida
 const NOT_SETTLEABLE = ['PROGRAMADO', 'CANCELADO', 'LIQUIDADO', 'CERRADO']
 
-// Liquidación pendiente: la oficina completa los documentos de un servicio cerrado según su tipo (misma regla que la
+// Documentación pendiente: la oficina completa los documentos de un servicio cerrado según su tipo (misma regla que la
 // base, settlement_checklist). Documentos con número: primero el número (serie-correlativo); con el número válido se
 // activa la carga. Packing List sin correlativo: carga directa. La liquidación es automática al completar los
 // obligatorios; la GR cuenta cuando el Supervisor de Transporte la valida. El app del conductor no cambia.

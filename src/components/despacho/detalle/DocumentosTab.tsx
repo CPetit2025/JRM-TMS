@@ -3,8 +3,8 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { ClipboardCheck, Clock, Download, Eye, FileText, Package, Plus, Search } from 'lucide-react'
 import type { DeliveryRow } from '@/lib/delivery'
-import { conformityChecklist, detailTime, documentRows, documentaryProgress, downloadUrl, isImage, type ChecklistItem, type DetailTab, type DispatchFiles, type DocumentRow } from '@/lib/dispatch-detail'
-import { DetailCard, FilePreview, IconButton, MilestoneStepper, ServiceStrip, SourcesWarning, Img } from './DetailParts'
+import { conformityChecklist, detailTime, documentRows, documentaryProgress, downloadUrl, type ChecklistItem, type DetailTab, type DispatchFiles, type DocumentRow } from '@/lib/dispatch-detail'
+import { DetailCard, FilePreview, IconButton, MilestoneStepper, ServiceStrip, SourcesWarning } from './DetailParts'
 
 type Filter = 'TODOS' | DocumentRow['group']
 const FILTERS: [Filter, string][] = [['TODOS', 'Todos'], ['SALIDA', 'Salida'], ['RECEPCION', 'Recepción'], ['OTROS', 'Otros']]
@@ -87,13 +87,11 @@ export function DocumentosTab({ row, files, urls, documentsHref, onGo }: { row: 
             <FilePreview url={urls[preview.path]} path={preview.path} mime={preview.mime} title={preview.name} /></div>
           : <p className="text-sm text-slate-500">Sin archivo para previsualizar.</p>}
       </DetailCard>
-      <DetailCard title={`Archivos relacionados (${related.length})`} icon={<Clock />}>
-        {!related.length ? <p className="text-sm text-slate-500">Sin fotos de entrega.</p> : <ul className="space-y-3">{related.map(r => <li key={r.path} className="flex items-center gap-3">
-          <span className="h-16 w-24 shrink-0 overflow-hidden rounded-lg bg-slate-100">{urls[r.path] && isImage(r.path) && <Img src={urls[r.path]!} alt={r.label} className="h-full w-full object-cover" loading="lazy" />}</span>
-          <div className="min-w-0 flex-1 text-sm"><p className="font-medium text-slate-800">{r.label}</p><p className="text-xs text-slate-500">{detailTime(r.at)}</p></div>
-          <IconButton label={`Ver ${r.label}`} onClick={() => setSelected(r.path)}><Eye className="h-4 w-4" /></IconButton>
-          {urls[r.path] && <IconButton label={`Descargar ${r.label}`} href={downloadUrl(urls[r.path]!)} download><Download className="h-4 w-4" /></IconButton>}
-        </li>)}</ul>}
+      {/* Las fotos de entrega se ven en un solo lugar: «Fotos y evidencias» (aquí solo el acceso) */}
+      <DetailCard title={`Fotos de entrega (${related.length})`} icon={<Clock />}>
+        {!related.length ? <p className="text-sm text-slate-500">Sin fotos de entrega.</p>
+          : <div className="space-y-2 text-sm text-slate-600"><p>Están con el resto de la evidencia de la entrega, por etapa.</p>
+            {onGo && <button type="button" onClick={() => onGo('evidencias')} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-4 font-semibold text-jrm-navy hover:bg-slate-50"><Eye className="h-4 w-4" aria-hidden />Ver en Fotos y evidencias</button>}</div>}
       </DetailCard>
     </div>
   </div>
