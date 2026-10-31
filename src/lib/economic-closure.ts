@@ -25,6 +25,10 @@ export type EconRoute = {
 export const DEFAULT_SETTINGS: EconSettings = { deviation_pct: 10, deviation_pen: 100 }
 export const ITEM_LABEL: Record<string, string> = { FLETE: 'Transporte', MONTACARGAS: 'Montacarga', GRUA: 'Grúa', ESTIBA: 'Estiba', OTROS: 'Otros' }
 export const ECON_STATUS: Record<string, { label: string; cls: string }> = {
+  // Estados de la bandeja (cierre simplificado)
+  POR_CERRAR: { label: 'Por cerrar', cls: 'bg-amber-100 text-amber-800' },
+  POR_APROBAR: { label: 'Por aprobar', cls: 'bg-blue-100 text-blue-800' },
+  // Estados registrados en la base
   PENDIENTE: { label: 'Pendiente', cls: 'bg-amber-100 text-amber-800' },
   EN_REVISION: { label: 'En revisión', cls: 'bg-blue-100 text-blue-800' },
   OBSERVADO: { label: 'Observado', cls: 'bg-red-100 text-red-700' },
@@ -48,8 +52,23 @@ export const ITEM_STATUS: Record<string, { label: string; cls: string }> = {
 }
 export const ORIGIN_TEXT: Record<string, string> = { SOLICITUD: 'Solicitud', PROGRAMACION: 'Programación', CAJA: 'Caja', CIERRE: 'Cierre' }
 
-/** Estado económico mostrado: una ruta sin cerrar en Torre de Control aún no entra al cierre. */
-export const econKey = (r: { status: string; state: EconState }) => (['LIQUIDADO', 'CERRADO'].includes(r.status) ? r.state.status : 'RUTA_ABIERTA')
+/** Estados de la bandeja (cierre simplificado), calculados desde los ítems. */
+export const ECON_VIEW = ['POR_CERRAR', 'POR_APROBAR', 'CERRADO', 'NO_APLICA'] as const
+/** El cierre económico empieza al liberar la unidad; no espera la liquidación en Torre de Control. */
+export const LIBERATED = ['RETORNO_COMPLETADO', 'CIERRE_OPERATIVO', 'LIQUIDADO', 'CERRADO']
+export const isLiberated = (status: string) => LIBERATED.includes(status)
+
+/** Estado económico mostrado: Por cerrar, Por aprobar (solo lo que supera el umbral), Cerrado o No aplica. */
+export function econKey(r: { status: string; state: EconState; items?: EconItem[] }) {
+  if (r.state.status === 'NO_APLICA') return 'NO_APLICA'
+  const items = r.items || []
+  if (items.some(i => i.status === 'EN_REVISION')) return 'POR_APROBAR'
+  if (items.length ? items.every(i => i.status === 'APROBADO') : r.state.status === 'CERRADO') return 'CERRADO'
+  return 'POR_CERRAR'
+}
+
+/** Aviso de Torre de Control: informativo, no bloquea el cierre salvo que la unidad no esté liberada. */
+export const torreNote = (status: string) => (!isLiberated(status) ? 'Unidad no liberada' : ['RETORNO_COMPLETADO', 'CIERRE_OPERATIVO'].includes(status) ? 'Sin liquidar en Torre' : '')
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 

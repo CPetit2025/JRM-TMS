@@ -4,6 +4,7 @@ import { Loader2, Save, Truck } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { errorMessage, money } from '@/lib/caja'
+import { DEFAULT_SETTINGS, isDeviation, type EconSettings } from '@/lib/economic-closure'
 
 // Flete con etapas (Etapa 3): referencial de las solicitudes, acordado al programar, vigente (lo que mueve la partida) y
 // final después de la ejecución. Ninguna etapa sobrescribe a otra; cada cambio queda en el historial de costos.
@@ -21,7 +22,7 @@ const delta = (a: number, b: number) => {
   return <span className={d > 0 ? 'text-red-700' : 'text-emerald-700'}> ({d > 0 ? '+' : ''}{money(d)}; {d > 0 ? '+' : ''}{Math.round(d / a * 100)}%)</span>
 }
 
-export function DispatchFreightStages({ dispatchId, onSaved }: { dispatchId: string; onSaved?: () => void }) {
+export function DispatchFreightStages({ dispatchId, onSaved, settings = DEFAULT_SETTINGS }: { dispatchId: string; onSaved?: () => void; settings?: EconSettings }) {
   const supabase = useMemo(() => createClient(), [])
   const [data, setData] = useState<Summary | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -45,14 +46,15 @@ export function DispatchFreightStages({ dispatchId, onSaved }: { dispatchId: str
 
   const base = form.asPlanned ? data.agreed_pen : Number(form.base || 0)
   const final = Math.round((base + Number(form.extras || 0)) * 100) / 100
-  const differs = Math.abs(final - data.agreed_pen) >= 0.01
+  // Motivo solo cuando supera el umbral configurable o hay adicionales (igual que la base)
+  const differs = isDeviation(data.agreed_pen, final, settings) || Number(form.extras || 0) > 0
   const mixed = data.by_request.filter(r => r.status !== 'LIBERADO')
   const allocTotal = mixed.reduce((s, r) => s + Number(alloc[r.request_id] || 0), 0)
   const useAlloc = mixed.length > 1 && Object.values(alloc).some(v => v.trim() !== '')
 
   const save = async () => {
     if (!form.asPlanned && !(form.base.trim() && Number(form.base) >= 0)) { toast.error('Indique el flete ejecutado'); return }
-    if (differs && form.reason.trim().length < 5) { toast.error('Justifique la diferencia con el flete acordado (mínimo 5 caracteres)'); return }
+    if (differs && form.reason.trim().length < 5) { toast.error('Justifique la diferencia: supera el umbral o tiene adicionales (mínimo 5 caracteres)'); return }
     if (useAlloc && Math.abs(allocTotal - final) >= 0.01) { toast.error(`El reparto por OT debe sumar ${money(final)}`); return }
     setSaving(true)
     try {
@@ -124,7 +126,7 @@ export function DispatchFreightStages({ dispatchId, onSaved }: { dispatchId: str
             <label><span className="mb-0.5 block text-[11px] font-semibold text-slate-600">Adicionales S/</span>
               <input inputMode="decimal" value={form.extras} onChange={e => setForm({ ...form, extras: e.target.value })} placeholder="0.00" className={input} /></label>
             <label className={form.asPlanned ? 'sm:col-span-2' : ''}><span className="mb-0.5 block text-[11px] font-semibold text-slate-600">Motivo {differs && '*'}</span>
-              <input value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} placeholder={differs ? 'Obligatorio: diferencia con lo acordado' : 'Opcional'} className={input} /></label>
+              <input value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} placeholder={differs ? 'Obligatorio: supera el umbral o hay adicionales' : 'Opcional (dentro del umbral)'} className={input} /></label>
           </div>
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm">Final: <b className="tabular-nums">{money(final)}</b><span className="text-xs">{delta(data.agreed_pen, final)}</span></p>

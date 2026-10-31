@@ -2,7 +2,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { AlertTriangle, Ban, CheckCircle2, ClipboardCheck, Clock, Eye, FileText, Hourglass, RefreshCw, Search, ShieldCheck, TowerControl, Wallet, XCircle } from 'lucide-react'
+import { AlertTriangle, Ban, CheckCircle2, ClipboardCheck, Clock, Eye, FileText, Hourglass, Loader2, RefreshCw, Search, ShieldCheck, ThumbsUp, TowerControl, Wallet, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { PageHeader } from '@/components/ui/page-header'
@@ -11,7 +11,7 @@ import { TablePagination } from '@/components/ui/table-pagination'
 import { TableActions, type TableAction } from '@/components/ui/table-actions'
 import { errorMessage, money } from '@/lib/caja'
 import {
-  DEFAULT_SETTINGS, DOC_STATUS, ECON_STATUS, ITEM_LABEL, ROUTE_STATUS, daysPending, documentaryHref, econKey, isDeviation, pendingText, routeSummary, serviceText, supplierText,
+  DEFAULT_SETTINGS, DOC_STATUS, ECON_STATUS, ECON_VIEW, ITEM_LABEL, ROUTE_STATUS, daysPending, documentaryHref, econKey, isDeviation, isLiberated, pendingText, routeSummary, serviceText, supplierText,
   type EconRoute, type EconSettings,
 } from '@/lib/economic-closure'
 import { EconomicClosurePanel, Variation } from '@/components/despacho/EconomicClosurePanel'
@@ -20,7 +20,8 @@ import { ServiceCostIndicators } from '@/components/despacho/ServiceCostIndicato
 // Cierre económico por ruta, separado del cierre documentario: bandeja con indicadores, estado documentario y económico,
 // fecha, unidad, cliente, OT y orden de referencia, servicio, estado de la ruta en Torre, proveedor, referencial → acordado →
 // final con su variación (en rojo sobre el umbral configurable), pendiente y días en espera; filtros, orden y paginación.
-// Las rutas que siguen sin cerrar en Torre de Control se separan de las listas para el cierre. Detalle en un panel lateral.
+// Cierre simplificado: Por cerrar → «Conforme» (por ruta o en lote) cierra lo acordado; solo lo que supera el umbral queda
+// Por aprobar. Empieza al liberar la unidad (no espera Torre). Detalle en un panel lateral.
 
 const supabase = createClient()
 const limaDate = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
@@ -64,6 +65,8 @@ function CierreEconomico() {
   const [sort, setSort] = useState<Sort>('fecha')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulk, setBulk] = useState(false)
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.rpc('economic_closure_queue', { p_from: from, p_to: to })
@@ -81,7 +84,8 @@ function CierreEconomico() {
     const withFinal = rows.reduce((a, x) => a + x.s.agreedWithFinal, 0)
     const variation = rows.reduce((a, x) => a + x.s.variation, 0)
     return {
-      pending: count('PENDIENTE'), open: count('RUTA_ABIERTA'), noCost: count('NO_APLICA'), review: count('EN_REVISION'), observed: count('OBSERVADO'), partial: count('CIERRE_PARCIAL'), closed: count('CERRADO'),
+      toClose: count('POR_CERRAR'), toApprove: count('POR_APROBAR'), closed: count('CERRADO'), noCost: count('NO_APLICA'),
+      unreleased: rows.filter(x => !isLiberated(x.r.status)).length,
       pendingAmount: rows.reduce((a, x) => a + x.s.pendingAgreed, 0), variation, variationPct: withFinal ? Math.round(variation / withFinal * 1000) / 10 : null,
     }
   }, [rows])
@@ -115,6 +119,29 @@ function CierreEconomico() {
     return [...list].sort(by[sort])
   }, [rows, f, sort])
   const visible = filtered.slice((page - 1) * pageSize, page * pageSize)
+  const canConform = (r: EconRoute, key: string) => perm.validate && key === 'POR_CERRAR' && isLiberated(r.status)
+  const eligible = visible.filter(x => canConform(x.r, x.key))
+  const picked = filtered.filter(x => selected.has(x.r.dispatch_id) && canConform(x.r, x.key)).map(x => x.r)
+
+  // «Conforme»: registra como final lo acordado de lo que falta y cierra; lo que supera el umbral queda por aprobar
+  const conform = async (list: EconRoute[]) => {
+    if (!list.length) return
+    setBulk(true)
+    let closed = 0, review = 0
+    const errors: string[] = []
+    for (const r of list) {
+      const { data, error } = await supabase.rpc('economic_confirm', { p_dispatch_id: r.dispatch_id, p_conforme: true })
+      if (error || !data?.success) errors.push(error ? errorMessage(error) : String(data?.error))
+      else if ((data.review || []).length) review++
+      else closed++
+    }
+    setBulk(false); setSelected(new Set())
+    if (closed) toast.success(`${closed} ruta${closed > 1 ? 's' : ''} cerrada${closed > 1 ? 's' : ''} conforme`)
+    if (review) toast.info(`${review} ruta${review > 1 ? 's' : ''} con desviación sobre el umbral: queda${review > 1 ? 'n' : ''} por aprobar`)
+    if (errors.length) toast.error(errors.slice(0, 3).join(' · '))
+    void load()
+  }
+  const toggle = (idv: string) => setSelected(prev => { const next = new Set(prev); if (next.has(idv)) next.delete(idv); else next.add(idv); return next })
 
   const act = async (r: EconRoute, action: 'APROBAR' | 'OBSERVAR') => {
     let reason: string | null = null
@@ -124,14 +151,14 @@ function CierreEconomico() {
     toast.success(action === 'APROBAR' ? `Ruta ${r.dispatch_number}: cierre aprobado` : `Ruta ${r.dispatch_number}: observada`)
     void load()
   }
-  const rowActions = (r: EconRoute): TableAction[] => {
-    const review = ['EN_REVISION', 'CIERRE_PARCIAL'].includes(r.state.status)
+  const rowActions = (r: EconRoute, key: string): TableAction[] => {
+    const review = key === 'POR_APROBAR'
     return [
       { id: 'ver', label: 'Ver detalle', icon: <Eye className="h-4 w-4" />, onSelect: () => setOpen({ id: r.dispatch_id, tab: 'resumen' }) },
-      { id: 'validar', label: 'Validar costos', icon: <ClipboardCheck className="h-4 w-4" />, onSelect: () => setOpen({ id: r.dispatch_id, tab: 'servicios' }),
-        disabled: !perm.validate || ['EN_REVISION', 'CERRADO', 'NO_APLICA'].includes(r.state.status) },
+      { id: 'conforme', label: 'Conforme (cerrar lo acordado)', icon: <ThumbsUp className="h-4 w-4" />, onSelect: () => void conform([r]), disabled: bulk || !canConform(r, key) },
+      { id: 'validar', label: 'Registrar costo distinto', icon: <ClipboardCheck className="h-4 w-4" />, onSelect: () => setOpen({ id: r.dispatch_id, tab: 'servicios' }), disabled: !canConform(r, key) },
+      { id: 'aprobar', label: 'Aprobar desviación', icon: <CheckCircle2 className="h-4 w-4" />, onSelect: () => act(r, 'APROBAR'), disabled: !perm.approve || !review },
       { id: 'observar', label: 'Observar', icon: <XCircle className="h-4 w-4" />, tone: 'danger', onSelect: () => act(r, 'OBSERVAR'), disabled: !perm.approve || !review },
-      { id: 'aprobar', label: 'Aprobar cierre', icon: <CheckCircle2 className="h-4 w-4" />, onSelect: () => act(r, 'APROBAR'), disabled: !perm.approve || !review || r.state.pending.length > 0 },
       { id: 'documentario', label: 'Ir a cierre documentario', icon: <FileText className="h-4 w-4" />, onSelect: () => router.push(documentaryHref(r.dispatch_id)) },
     ]
   }
@@ -142,14 +169,12 @@ function CierreEconomico() {
         actions={<><button type="button" onClick={() => void load()} className="flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50"><RefreshCw className="h-4 w-4" />Actualizar</button>
           <Link href="/despacho/documentos" className="flex h-10 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cierre documentario</Link></>} />
       <p className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-[#002855]"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-        Independiente del cierre documentario: una ruta puede tener la documentación completa y sus costos pendientes. No se cierra mientras falte validar el flete o algún servicio.</p>
+        Solo se trabaja lo que se sale de lo acordado: «Conforme» cierra la ruta en un paso; dentro del umbral ({settings.deviation_pct}% o {money(Number(settings.deviation_pen))}) se cierra sin motivo ni aprobación; sobre el umbral pasa a «Por aprobar». Empieza al liberar la unidad.</p>
 
-      <div className="grid gap-2 sm:grid-cols-4 xl:grid-cols-8">
-        <KpiStatCard label="Sin cerrar en Torre" value={kpis.open} tone="amber" icon={<TowerControl className="h-5 w-5" />} loading={!routes} active={f.econ === 'RUTA_ABIERTA'} onClick={() => setFilter({ econ: f.econ === 'RUTA_ABIERTA' ? '' : 'RUTA_ABIERTA' })} />
-        <KpiStatCard label="Listas para cerrar" value={kpis.pending} tone="navy" icon={<Hourglass className="h-5 w-5" />} loading={!routes} active={f.econ === 'PENDIENTE'} onClick={() => setFilter({ econ: f.econ === 'PENDIENTE' ? '' : 'PENDIENTE' })} />
-        <KpiStatCard label="En revisión" value={kpis.review} tone="blue" icon={<Clock className="h-5 w-5" />} loading={!routes} active={f.econ === 'EN_REVISION'} onClick={() => setFilter({ econ: f.econ === 'EN_REVISION' ? '' : 'EN_REVISION' })} />
-        <KpiStatCard label="Observadas" value={kpis.observed} tone="rose" icon={<XCircle className="h-5 w-5" />} loading={!routes} active={f.econ === 'OBSERVADO'} onClick={() => setFilter({ econ: f.econ === 'OBSERVADO' ? '' : 'OBSERVADO' })} />
-        <KpiStatCard label={kpis.partial ? `Cerradas (+${kpis.partial} parciales)` : 'Cerradas'} value={kpis.closed} tone="emerald" icon={<CheckCircle2 className="h-5 w-5" />} loading={!routes} active={f.econ === 'CERRADO'} onClick={() => setFilter({ econ: f.econ === 'CERRADO' ? '' : 'CERRADO' })} />
+      <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
+        <KpiStatCard label="Por cerrar" value={kpis.toClose} tone="amber" icon={<Hourglass className="h-5 w-5" />} loading={!routes} active={f.econ === 'POR_CERRAR'} onClick={() => setFilter({ econ: f.econ === 'POR_CERRAR' ? '' : 'POR_CERRAR' })} />
+        <KpiStatCard label="Por aprobar (sobre el umbral)" value={kpis.toApprove} tone="blue" icon={<Clock className="h-5 w-5" />} loading={!routes} active={f.econ === 'POR_APROBAR'} onClick={() => setFilter({ econ: f.econ === 'POR_APROBAR' ? '' : 'POR_APROBAR' })} />
+        <KpiStatCard label="Cerradas" value={kpis.closed} tone="emerald" icon={<CheckCircle2 className="h-5 w-5" />} loading={!routes} active={f.econ === 'CERRADO'} onClick={() => setFilter({ econ: f.econ === 'CERRADO' ? '' : 'CERRADO' })} />
         <KpiStatCard label="No aplica (sin costos)" value={kpis.noCost} tone="slate" icon={<Ban className="h-5 w-5" />} loading={!routes} active={f.econ === 'NO_APLICA'} onClick={() => setFilter({ econ: f.econ === 'NO_APLICA' ? '' : 'NO_APLICA' })} />
         <KpiStatCard label="Monto pendiente de validar" value={`${money(kpis.pendingAmount)}`} tone="violet" icon={<Wallet className="h-5 w-5" />} loading={!routes} />
         <KpiStatCard label={`Variación acumulada${kpis.variationPct != null ? ` (${kpis.variationPct > 0 ? '+' : ''}${kpis.variationPct}%)` : ''}`} value={`${kpis.variation > 0 ? '+' : ''}${money(kpis.variation)}`}
@@ -166,10 +191,16 @@ function CierreEconomico() {
       </div>
 
       {view === 'indicadores' ? <ServiceCostIndicators from={from} to={to} /> : <>
-        {kpis.open > 0 && f.econ !== 'RUTA_ABIERTA' && <div className="flex flex-wrap items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-900">
+        {kpis.unreleased > 0 && f.route !== 'ENTREGADO' && <div className="flex flex-wrap items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-900">
           <TowerControl className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1">
-            <b>{kpis.open} ruta{kpis.open > 1 ? 's' : ''} sin cerrar en Torre de Control</b> (unidad liberada, entregada o en cierre operativo): no entran al cierre económico hasta liquidarlas en Torre.</span>
-          <button type="button" onClick={() => setFilter({ econ: 'RUTA_ABIERTA' })} className="rounded-lg border border-orange-300 bg-white px-3 py-1 text-xs font-semibold text-orange-900 hover:bg-orange-100">Ver rutas</button>
+            <b>{kpis.unreleased} ruta{kpis.unreleased > 1 ? 's' : ''} con la unidad sin liberar</b>: su cierre económico empieza cuando Torre de Control libera la unidad.</span>
+          <button type="button" onClick={() => setFilter({ route: 'ENTREGADO' })} className="rounded-lg border border-orange-300 bg-white px-3 py-1 text-xs font-semibold text-orange-900 hover:bg-orange-100">Ver rutas</button>
+        </div>}
+        {perm.validate && <div className="flex flex-wrap items-center gap-2">
+          <button type="button" disabled={bulk || picked.length === 0} onClick={() => void conform(picked)}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#002855] px-3 text-sm font-semibold text-white disabled:opacity-50">
+            {bulk ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsUp className="h-4 w-4" />}Marcar conforme{picked.length ? ` (${picked.length})` : ''}</button>
+          <span className="text-xs text-slate-500">Seleccione rutas «Por cerrar»: se cierran con lo acordado; las que superen el umbral quedan por aprobar.</span>
         </div>}
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-2">
           <label className="relative min-w-0 flex-1 basis-56"><span className="sr-only">Buscar ruta, cliente, OT, solicitud, orden o placa</span><Search aria-hidden className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -179,9 +210,9 @@ function CierreEconomico() {
           <select aria-label="Unidad" value={f.unit} onChange={e => setFilter({ unit: e.target.value })} className={select}>
             <option value="">Unidad: todas</option><option value="PROPIA">Flota propia</option><option value="TERCERO">Tercero</option></select>
           <select aria-label="Estado de la ruta" value={f.route} onChange={e => setFilter({ route: e.target.value })} className={select}>
-            <option value="">Estado ruta: todos</option>{Object.entries(ROUTE_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+            <option value="">Estado ruta: todos</option><option value="ENTREGADO">Entregada (sin liberar)</option>{Object.entries(ROUTE_STATUS).filter(([k]) => k !== 'ENTREGADO').map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
           <select aria-label="Estado económico" value={f.econ} onChange={e => setFilter({ econ: e.target.value })} className={select}>
-            <option value="">Estado eco.: todos</option>{Object.entries(ECON_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
+            <option value="">Estado eco.: todos</option>{ECON_VIEW.map(k => <option key={k} value={k}>{ECON_STATUS[k].label}</option>)}</select>
           <select aria-label="Estado documentario" value={f.doc} onChange={e => setFilter({ doc: e.target.value })} className={select}>
             <option value="">Estado doc.: todos</option>{['COMPLETO', 'PENDIENTE', 'OBSERVADO'].map(k => <option key={k} value={k}>{DOC_STATUS[k].label}</option>)}</select>
           <select aria-label="Proveedor" value={f.supplier} onChange={e => setFilter({ supplier: e.target.value })} className={`${select} max-w-48`}>
@@ -203,6 +234,9 @@ function CierreEconomico() {
               : filtered.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">No hay rutas para los filtros seleccionados.</p>
               : <table className="w-full min-w-[96rem] text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr>
+                  <th className="w-8 px-3 py-2">{perm.validate && <input type="checkbox" aria-label="Seleccionar las rutas por cerrar de esta página" disabled={!eligible.length}
+                    checked={eligible.length > 0 && eligible.every(x => selected.has(x.r.dispatch_id))}
+                    onChange={e => setSelected(prev => { const next = new Set(prev); for (const x of eligible) { if (e.target.checked) next.add(x.r.dispatch_id); else next.delete(x.r.dispatch_id) } return next })} />}</th>
                   <th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Unidad</th><th className="px-3 py-2">Cliente</th><th className="px-3 py-2">OT · solicitud</th><th className="px-3 py-2">Servicio</th>
                   <th className="px-3 py-2">Estado ruta</th><th className="px-3 py-2">Doc.</th><th className="px-3 py-2">Eco.</th><th className="px-3 py-2">Proveedor</th>
                   <th className="px-3 py-2 text-right">Referencial</th><th className="px-3 py-2 text-right">Acordado</th><th className="px-3 py-2 text-right">Final</th><th className="px-3 py-2 text-right">Var.</th>
@@ -214,6 +248,8 @@ function CierreEconomico() {
                     const amount = (v: number) => (s.total ? money(v) : '—')
                     const late = days != null && days > 7
                     return <tr key={r.dispatch_id} className={`cursor-pointer hover:bg-slate-50 ${alert ? 'bg-red-50/40' : ''}`} onClick={() => setOpen({ id: r.dispatch_id, tab: 'resumen' })}>
+                      <td className="px-3 py-2" onClick={e => e.stopPropagation()}>{canConform(r, key) && <input type="checkbox" aria-label={`Seleccionar la ruta ${r.dispatch_number}`}
+                        checked={selected.has(r.dispatch_id)} onChange={() => toggle(r.dispatch_id)} />}</td>
                       <td className="whitespace-nowrap px-3 py-2">{fmtDate(r.departure)}<span className="block text-[11px] text-slate-400">Ruta {r.dispatch_number}</span></td>
                       <td className="whitespace-nowrap px-3 py-2 font-semibold text-[#002855]">{r.plate || '—'}<span className="block text-[11px] font-normal text-slate-500">{r.modalidad === 'TERCERO' ? 'Tercero' : 'Propia'}</span></td>
                       <td className="max-w-48 px-3 py-2 text-xs">{r.clients || '—'}</td>
@@ -227,9 +263,11 @@ function CierreEconomico() {
                       <td className="px-3 py-2 text-right tabular-nums">{amount(s.agreed)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{s.final == null ? '—' : money(s.final)}{s.final != null && s.validated < s.total && <span className="block text-[11px] text-slate-500">{s.validated}/{s.total} ítems</span>}</td>
                       <td className="px-3 py-2 text-right text-xs">{s.final == null ? '—' : <Variation base={s.agreedWithFinal} value={s.final} settings={settings} />}</td>
-                      <td className="px-3 py-2 text-xs text-slate-600">{key === 'RUTA_ABIERTA' ? <span className="font-semibold text-orange-800">Cerrar ruta en Torre</span> : pendingText(s.pending) || '—'}</td>
+                      <td className="px-3 py-2 text-xs text-slate-600">{!isLiberated(r.status) ? <span className="font-semibold text-orange-800">Liberar unidad en Torre</span>
+                        : key === 'POR_APROBAR' ? <span className="font-semibold text-blue-800">Aprobar desviación</span>
+                        : key === 'POR_CERRAR' ? (pendingText(s.pending) || 'Confirmar conforme') : '—'}</td>
                       <td className={`px-3 py-2 text-right tabular-nums ${late ? 'font-semibold text-red-700' : ''}`} title="Días desde que la ruta quedó lista para el cierre">{days ?? '—'}</td>
-                      <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}><TableActions label={`Acciones de la ruta ${r.dispatch_number}`} actions={rowActions(r)} /></td>
+                      <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}><TableActions label={`Acciones de la ruta ${r.dispatch_number}`} actions={rowActions(r, key)} /></td>
                     </tr>
                   })}
                 </tbody>
@@ -237,7 +275,7 @@ function CierreEconomico() {
           </div>
           <TablePagination total={filtered.length} page={page} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={n => { setPageSize(n); setPage(1) }} itemLabel="rutas" compact />
         </div>
-        <p className="text-[11px] text-slate-500">Variación en rojo: supera el {settings.deviation_pct}% o {money(Number(settings.deviation_pen))} sobre lo acordado (umbral configurable). Monto pendiente de validar: acordado de los ítems sin costo final. Días: desde el cierre operativo o el retorno de la unidad (en rojo, más de 7).</p>
+        <p className="text-[11px] text-slate-500">Variación en rojo: supera el {settings.deviation_pct}% o {money(Number(settings.deviation_pen))} sobre lo acordado (umbral configurable). Monto pendiente de validar: acordado de los ítems sin costo final. Días: desde el cierre operativo o el retorno de la unidad (en rojo, más de 7). Por cerrar incluye lo observado y lo cerrado en parte.</p>
       </>}
 
       {open && <EconomicClosurePanel key={open.id} dispatchId={open.id} initialTab={open.tab} onClose={() => setOpen(null)} onChanged={() => void load()} />}

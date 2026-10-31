@@ -2,13 +2,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
-import { AlertTriangle, CheckCircle2, FileText, Loader2, Plus, Save, Send, Undo2, X, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, FileText, Loader2, Pencil, Plus, Save, ThumbsUp, Undo2, X, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { errorMessage, money } from '@/lib/caja'
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import {
-  DEFAULT_SETTINGS, DOC_STATUS, ECON_STATUS, ITEM_LABEL, ITEM_STATUS, ORIGIN_TEXT, documentaryHref, isDeviation, routeSummary,
+  DEFAULT_SETTINGS, DOC_STATUS, ECON_STATUS, ITEM_LABEL, ITEM_STATUS, ORIGIN_TEXT, documentaryHref, econKey, isDeviation, isLiberated, routeSummary, torreNote,
   type EconItem, type EconRoute, type EconSettings, type EconState,
 } from '@/lib/economic-closure'
 import { DispatchFreightStages } from '@/components/despacho/DispatchFreightStages'
@@ -16,7 +16,8 @@ import { BILLING_LABEL, CONCEPT_LABEL } from '@/components/despacho/InheritedSpe
 
 // Detalle del cierre económico de una ruta en panel lateral: cabecera, estado documentario y económico, pestañas
 // (resumen, servicios por ítem incluido el flete, historial unificado y archivos), observaciones internas que no cambian
-// el estado, alerta de desviación según el umbral configurable y acciones (enviar, observar, aprobar, reabrir).
+// el estado, alerta de desviación según el umbral configurable y acciones. Cierre simplificado: «Conforme» cierra lo
+// acordado; lo validado dentro del umbral se aprueba solo; lo que lo supera queda «Por aprobar» para Cierre económico.
 
 type Service = {
   id: string; request_number: string; concept: string; description: string | null; status: string; origin: string | null; supplier: string | null
@@ -41,8 +42,7 @@ type Detail = {
 type Tab = 'resumen' | 'servicios' | 'historial' | 'archivos'
 
 const supabase = createClient()
-const OPEN_ROUTE = ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'CANCELADO']
-const ACTION_LABEL: Record<string, string> = { ENVIAR: 'Enviado a revisión', APROBAR: 'Aprobado', OBSERVAR: 'Observado', REABRIR: 'Reabierto', NOTA: 'Observación interna', AGREGAR: 'Servicio agregado en el cierre' }
+const ACTION_LABEL: Record<string, string> = { CONFORME: 'Conforme', AUTOMATICO: 'Automático', ENVIAR: 'Enviado a aprobación', APROBAR: 'Aprobado', OBSERVAR: 'Observado', REABRIR: 'Reabierto', NOTA: 'Observación interna', AGREGAR: 'Servicio agregado en el cierre' }
 const STAGE_LABEL: Record<string, string> = { REFERENCIAL: 'Referencial', ACORDADO: 'Acordado', AJUSTE: 'Ajuste', FINAL: 'Final', ESTADO: 'Estado' }
 const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : '—')
 const fmtDateTime = (v: string | null) => (v ? new Date(v).toLocaleString('es-PE', { timeZone: 'America/Lima' }) : '—')
@@ -65,7 +65,7 @@ function billableQty(unit: string | null, qty: number, fraction: number | null, 
   return qty
 }
 
-function ServiceEditor({ s, onSaved }: { s: Service; onSaved: () => void }) {
+function ServiceEditor({ s, onSaved, settings }: { s: Service; onSaved: () => void; settings: EconSettings }) {
   const [form, setForm] = useState({
     qty: String(s.final_executed_qty ?? s.forklift_hours ?? s.agreed_qty ?? ''), workers: String(s.final_workers ?? s.workers ?? ''),
     extras: s.final_extras_pen ? String(s.final_extras_pen) : '', reason: s.final_reason || '', final: s.final_pen != null && s.agreed_rate == null ? String(s.final_pen) : '',
@@ -76,10 +76,11 @@ function ServiceEditor({ s, onSaved }: { s: Service; onSaved: () => void }) {
   const billable = s.agreed_rate != null ? billableQty(s.billing_unit, qty, s.fraction_minutes, s.min_billable_qty) : null
   const base = s.agreed_rate != null ? Math.round(Number(s.agreed_rate) * (billable || 0) * workers * 100) / 100 : Number(form.final || 0)
   const preview = Math.round((base + Number(form.extras || 0)) * 100) / 100
-  const needsReason = Math.abs(preview - reference) >= 0.01 || Number(form.extras || 0) > 0
+  // Motivo solo cuando supera el umbral configurable o hay adicionales (igual que la base)
+  const needsReason = isDeviation(reference, preview, settings) || Number(form.extras || 0) > 0
 
   const save = async () => {
-    if (needsReason && form.reason.trim().length < 5) { toast.error('Justifique la diferencia con lo acordado (mínimo 5 caracteres)'); return }
+    if (needsReason && form.reason.trim().length < 5) { toast.error('Justifique la diferencia: supera el umbral o tiene adicionales (mínimo 5 caracteres)'); return }
     setSaving(true)
     try {
       const { data, error } = await supabase.rpc('validate_service_final', { p_line_id: s.id, p: {
@@ -114,7 +115,7 @@ function ServiceEditor({ s, onSaved }: { s: Service; onSaved: () => void }) {
         <label><span className="mb-0.5 block text-[11px] font-semibold text-slate-600">Adicionales S/</span>
           <input inputMode="decimal" value={form.extras} onChange={e => setForm({ ...form, extras: e.target.value })} placeholder="0.00" className={input} /></label>
         <label className="sm:col-span-2"><span className="mb-0.5 block text-[11px] font-semibold text-slate-600">Motivo {needsReason && '*'}</span>
-          <input value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} placeholder={needsReason ? 'Obligatorio: diferencia o adicionales' : 'Opcional'} className={input} /></label>
+          <input value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} placeholder={needsReason ? 'Obligatorio: supera el umbral o hay adicionales' : 'Opcional (dentro del umbral)'} className={input} /></label>
         <div className="flex items-end justify-between gap-2">
           <p className="text-sm"><span className="text-[11px] text-slate-500">Final </span><b className="tabular-nums">{money(preview)}</b>
             {billable != null && <span className="block text-[11px] text-slate-500">facturable {billable}</span>}</p>
@@ -225,6 +226,29 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
       refresh()
     } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
   }
+  // Cierra lo validado: dentro del umbral se aprueba; sobre el umbral queda por aprobar. «Conforme» registra antes lo acordado.
+  const confirm = async (conforme: boolean) => {
+    setBusy(true)
+    try {
+      const { data: out, error } = await supabase.rpc('economic_confirm', { p_dispatch_id: dispatchId, p_conforme: conforme })
+      if (error) throw error
+      if (!out?.success) throw new Error(out?.error)
+      const review = (out.review || []).length
+      if (review) toast.info(`${review} ítem${review > 1 ? 's' : ''} supera${review > 1 ? 'n' : ''} el umbral: queda por aprobar`)
+      else if (conforme || (out.approved || []).length) toast.success(out.status === 'CERRADO' ? 'Cierre económico cerrado' : 'Costos cerrados')
+      setEditing(null); refresh()
+    } catch (e) { toast.error(errorMessage(e)); refresh() } finally { setBusy(false) }
+  }
+  // Cierre económico corrige directamente: observa el ítem (queda en el historial) y abre la edición
+  const correct = async (item: EconItem) => {
+    setBusy(true)
+    try {
+      const { data: out, error } = await supabase.rpc('economic_item_action', { p_dispatch_id: dispatchId, p_item: item.key, p_action: 'OBSERVAR', p_reason: 'Corrección directa de Cierre económico' })
+      if (error) throw error
+      if (!out?.success) throw new Error(out?.error)
+      setEditing(item.key); setReload(n => n + 1)
+    } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
+  }
   const saveNote = async () => {
     if (note.trim().length < 3) { toast.error('Escriba la observación (mínimo 3 caracteres)'); return }
     setBusy(true)
@@ -239,9 +263,10 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
   const summary = useMemo(() => data ? routeSummary({ items: data.items } as EconRoute) : null, [data])
   const settings = data?.settings || DEFAULT_SETTINGS
   const st = data?.state
-  const status = data ? (['LIQUIDADO', 'CERRADO'].includes(data.route_status) ? st!.status : 'RUTA_ABIERTA') : ''
-  const editable = !!data && data.can_validate && ['PENDIENTE', 'OBSERVADO', 'CIERRE_PARCIAL'].includes(st!.status) && !OPEN_ROUTE.includes(data.route_status)
-  const closedRoute = !!data && ['LIQUIDADO', 'CERRADO'].includes(data.route_status)
+  const status = data ? econKey({ status: data.route_status, state: st!, items: data.items }) : ''
+  const liberated = !!data && isLiberated(data.route_status)
+  const editable = !!data && data.can_validate && ['PENDIENTE', 'OBSERVADO', 'CIERRE_PARCIAL'].includes(st!.status) && liberated
+  const torre = data ? torreNote(data.route_status) : ''
   const deviations =(data?.items || []).filter(i => isDeviation(i.agreed_pen, i.final_pen, settings))
   const services = new Map((data?.services || []).map(s => [s.id, s]))
 
@@ -254,7 +279,8 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
           <div className="flex items-start gap-2">
             <div className="min-w-0 flex-1">
               <p className="text-xs text-slate-500">Cierre económico</p>
-              <h2 className="flex flex-wrap items-center gap-2 text-lg font-bold text-[#002855]">Ruta {data?.dispatch_number || '…'} {data && <Badge map={ECON_STATUS} value={status} />}</h2>
+              <h2 className="flex flex-wrap items-center gap-2 text-lg font-bold text-[#002855]">Ruta {data?.dispatch_number || '…'} {data && <Badge map={ECON_STATUS} value={status} />}
+                {torre && <span className={`rounded px-2 py-0.5 text-[11px] font-semibold ${liberated ? 'bg-slate-100 text-slate-600' : 'bg-orange-100 text-orange-800'}`}>{torre}</span>}</h2>
               {data && <p className="mt-0.5 text-xs text-slate-600">
                 {fmtDate(data.departure)} · {data.plate || 'Sin placa'} · {dispatchStatusLabel(data.route_status)} · OT {data.contracts || 'sin OT'} · Solicitudes {data.requests.map(r => r.request_number).join(', ') || '—'}
                 {summary?.suppliers.length ? ` · Proveedores: ${summary.suppliers.join(', ')}` : ''}</p>}
@@ -330,9 +356,9 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
                         <td className="px-2 text-right"><div className="flex flex-wrap justify-end gap-1">
                           {canEdit && <button type="button" onClick={() => setEditing(editing === i.key ? null : i.key)} className="rounded border border-slate-300 px-2 py-0.5 font-semibold text-[#002855] hover:bg-slate-50">
                             {editing === i.key ? 'Cerrar' : i.final_pen == null ? 'Validar' : 'Corregir'}</button>}
-                          {data.can_validate && closedRoute && ['VALIDADO', 'OBSERVADO'].includes(i.status) && <button type="button" disabled={busy} onClick={() => void itemAct(i, 'ENVIAR')}
-                            className="rounded border border-[#002855] px-2 py-0.5 font-semibold text-[#002855] disabled:opacity-50">Enviar</button>}
-                          {data.can_approve && closedRoute && ['VALIDADO', 'OBSERVADO', 'EN_REVISION'].includes(i.status) && <button type="button" disabled={busy} onClick={() => void itemAct(i, 'APROBAR')}
+                          {data.can_approve && liberated && i.status === 'EN_REVISION' && <button type="button" disabled={busy} onClick={() => void correct(i)}
+                            className="inline-flex items-center gap-0.5 rounded border border-slate-300 px-2 py-0.5 font-semibold text-[#002855] disabled:opacity-50"><Pencil className="h-3 w-3" />Corregir</button>}
+                          {data.can_approve && liberated && ['VALIDADO', 'EN_REVISION'].includes(i.status) && <button type="button" disabled={busy} onClick={() => void itemAct(i, 'APROBAR')}
                             className="rounded bg-emerald-600 px-2 py-0.5 font-semibold text-white disabled:opacity-50">Aprobar</button>}
                           {data.can_approve && ['VALIDADO', 'EN_REVISION'].includes(i.status) && <button type="button" disabled={busy} onClick={() => void itemAct(i, 'OBSERVAR', 'Observación del ítem (qué falta o qué corregir)')}
                             className="rounded border border-red-300 px-2 py-0.5 font-semibold text-red-700 disabled:opacity-50">Observar</button>}
@@ -347,9 +373,9 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
               {editing && (() => {
                 const item = data.items.find(i => i.key === editing)
                 if (!item) return null
-                if (item.kind === 'FLETE') return <section className="rounded-xl border border-slate-200 bg-slate-50 p-3"><DispatchFreightStages key={reload} dispatchId={dispatchId} onSaved={() => { setEditing(null); refresh() }} /></section>
+                if (item.kind === 'FLETE') return <section className="rounded-xl border border-slate-200 bg-slate-50 p-3"><DispatchFreightStages key={reload} dispatchId={dispatchId} settings={settings} onSaved={() => void confirm(false)} /></section>
                 const s = item.id ? services.get(item.id) : undefined
-                return s ? <ServiceEditor key={`${s.id}-${s.final_validated_at || ''}`} s={s} onSaved={refresh} /> : null
+                return s ? <ServiceEditor key={`${s.id}-${s.final_validated_at || ''}`} s={s} settings={settings} onSaved={() => void confirm(false)} /> : null
               })()}
               {editable && data.requests.length > 0 && <AddService dispatchId={dispatchId} requests={data.requests} onSaved={refresh} />}
             </div>}
@@ -384,16 +410,16 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
           </div>
 
           <footer className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-4 py-3">
-            {data.can_validate && ['PENDIENTE', 'OBSERVADO', 'CIERRE_PARCIAL'].includes(st.status) && <button type="button" disabled={busy || st.pending.length > 0} onClick={() => void act('ENVIAR')}
-              title={st.pending.length ? 'Faltan costos por validar' : undefined}
-              className="inline-flex items-center gap-1 rounded-lg border border-[#002855] px-3 py-2 text-sm font-semibold text-[#002855] disabled:opacity-50"><Send className="h-4 w-4" />Enviar a revisión</button>}
-            {data.can_approve && ['EN_REVISION', 'CIERRE_PARCIAL'].includes(st.status) && <>
+            {editable && status === 'POR_CERRAR' && <button type="button" disabled={busy} onClick={() => void confirm(true)}
+              title="Registra como costo final lo acordado de lo que falta y cierra; lo que supere el umbral queda por aprobar"
+              className="inline-flex items-center gap-1 rounded-lg bg-[#002855] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"><ThumbsUp className="h-4 w-4" />Conforme</button>}
+            {data.can_approve && status === 'POR_APROBAR' && <>
               {data.items.some(i => i.status === 'EN_REVISION') && <button type="button" disabled={busy} onClick={() => void act('OBSERVAR', 'Observación para Programación (qué falta o qué corregir)')} className="inline-flex items-center gap-1 rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"><XCircle className="h-4 w-4" />Observar</button>}
-              <button type="button" disabled={busy || st.pending.length > 0} title={st.pending.length ? 'No se cierra con ítems pendientes: apruebe por ítem' : undefined} onClick={() => void act('APROBAR')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"><CheckCircle2 className="h-4 w-4" />Aprobar cierre</button>
+              <button type="button" disabled={busy || st.pending.length > 0} title={st.pending.length ? 'No se cierra con ítems pendientes: apruebe por ítem' : undefined} onClick={() => void act('APROBAR')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"><CheckCircle2 className="h-4 w-4" />Aprobar</button>
             </>}
             {data.can_approve && ['CERRADO', 'CIERRE_PARCIAL'].includes(st.status) && <button type="button" disabled={busy} onClick={() => void act('REABRIR', 'Motivo de la reapertura del cierre económico')}
               className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"><Undo2 className="h-4 w-4" />Reabrir</button>}
-            {data.can_validate && <button type="button" disabled={busy || !note.trim()} onClick={() => void saveNote()} className="inline-flex items-center gap-1 rounded-lg bg-[#002855] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"><Save className="h-4 w-4" />Guardar</button>}
+            {data.can_validate && note.trim() && <button type="button" disabled={busy} onClick={() => void saveNote()} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"><Save className="h-4 w-4" />Guardar observación</button>}
             <Link href={documentaryHref(dispatchId)} className="ml-auto inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FileText className="h-4 w-4" />Ir a cierre documentario</Link>
           </footer>
         </>}
