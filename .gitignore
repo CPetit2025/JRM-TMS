@@ -48,3 +48,6 @@ next-env.d.ts
 /android/local.properties
 /android/.idea/
 /artifacts/
+
+# graphify: grafo de conocimiento local (se regenera con `graphify update .`)
+graphify-out/

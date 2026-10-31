@@ -21,11 +21,53 @@
       "Bash(gh api -X DELETE repos/cpetit2025/jrm-tms/git/refs/heads/master*)"
     ]
   },
+  "enabledPlugins": {
+    "ponytail@ponytail": true,
+    "agent-skills@addy-agent-skills": true
+  },
+  "extraKnownMarketplaces": {
+    "ponytail": {
+      "source": {
+        "source": "github",
+        "repo": "DietrichGebert/ponytail"
+      }
+    },
+    "addy-agent-skills": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/addyosmani/agent-skills.git"
+      }
+    }
+  },
   "autoMode": {
     "allow": [
       "$defaults",
       "En el repositorio cpetit2025/jrm-tms el dueño autorizó: mergear PR validados a master, desplegar con el workflow deploy-production.yml y lanzarlo manualmente (workflow_dispatch), incluidas las inspecciones de solo lectura (audit_only, audit_scope all/apt/apt-performance); leer sus anotaciones, logs y artefactos; y ejecutar en producción consultas de diagnóstico de solo lectura que terminan en ROLLBACK.",
       "Push a ramas claude/* y commits de scripts de auditoría o diagnóstico de solo lectura en scripts/security/."
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "graphify hook-guard search",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "graphify hook-guard read",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
