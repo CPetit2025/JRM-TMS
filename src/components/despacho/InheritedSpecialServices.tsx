@@ -13,14 +13,14 @@ export type InheritedLine = {
   tariff_missing: boolean | null; estimated_source: string | null
 }
 type Service = { id: string; request_number: string; unloading_required?: boolean | null }
-type Supplier = { id: string; business_name: string; category: string }
-type ForkliftRef = { enabled: boolean; transport_request_id: string; supplier_id: string; hourly_rate: string }
+export type Supplier = { id: string; business_name: string; category: string }
+export type ForkliftRef = { enabled: boolean; transport_request_id: string; supplier_id: string; hourly_rate: string }
 
 export type Agreement = { supplier_id: string; billing_unit: string; agreed_rate: string; agreed_qty: string; workers: string; min_billable_qty: string; fraction_minutes: string; reason: string }
 export type AddedService = Agreement & { key: string; transport_request_id: string; concept: string; description: string; reason: string }
 export type SpecialServicesState = { edits: Record<string, Agreement>; removed: Record<string, string>; added: AddedService[] }
 export const EMPTY_SPECIAL_SERVICES: SpecialServicesState = { edits: {}, removed: {}, added: [] }
-const EMPTY_AGREEMENT: Agreement = { supplier_id: '', billing_unit: 'SERVICIO', agreed_rate: '', agreed_qty: '', workers: '', min_billable_qty: '', fraction_minutes: '', reason: '' }
+export const EMPTY_AGREEMENT: Agreement = { supplier_id: '', billing_unit: 'SERVICIO', agreed_rate: '', agreed_qty: '', workers: '', min_billable_qty: '', fraction_minutes: '', reason: '' }
 
 export const INHERITED_LINE_COLUMNS = 'id, transport_request_id, concept, description, estimated_pen, planned_pen, status, origin, tariff_missing, estimated_source'
 export const CONCEPT_LABEL: Record<string, string> = { MONTACARGAS: 'Montacargas', GRUA: 'Grúa', ESTIBA: 'Estiba', OTROS: 'Otros' }
@@ -31,7 +31,7 @@ const QTY_LABEL: Record<string, string> = { SERVICIO: 'Servicios', HORA: 'Horas'
 export const billingQtyLabel = (unit: string | null | undefined) => QTY_LABEL[unit || 'SERVICIO'] || 'Servicios'
 // Por unidad o tonelada la tarifa no se multiplica por trabajadores (mismo criterio que el servidor).
 const perWorker = (unit: string) => unit !== 'UNIDAD' && unit !== 'TONELADA'
-const UNITS: Record<string, string[]> = { MONTACARGAS: ['HORA', 'SERVICIO'], GRUA: ['SERVICIO', 'HORA', 'TONELADA', 'UNIDAD'], ESTIBA: ['JORNADA', 'HORA', 'SERVICIO', 'TONELADA', 'UNIDAD'], OTROS: ['SERVICIO', 'HORA', 'JORNADA', 'TONELADA', 'UNIDAD'] }
+export const UNITS: Record<string, string[]> = { MONTACARGAS: ['HORA', 'SERVICIO'], GRUA: ['SERVICIO', 'HORA', 'TONELADA', 'UNIDAD'], ESTIBA: ['JORNADA', 'HORA', 'SERVICIO', 'TONELADA', 'UNIDAD'], OTROS: ['SERVICIO', 'HORA', 'JORNADA', 'TONELADA', 'UNIDAD'] }
 const CATEGORIES: Record<string, string[]> = { MONTACARGAS: ['MONTACARGA', 'SERVICIOS'], GRUA: ['GRUA', 'SERVICIOS'], ESTIBA: ['ESTIBA', 'SERVICIOS'], OTROS: ['SERVICIOS', 'GRUA', 'ESTIBA', 'MONTACARGA', 'TRANSPORTE'] }
 const money = (n: number) => n.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const num = (v: string) => (v.trim() === '' ? null : Number(v))
@@ -52,7 +52,7 @@ export function agreedAmount(a: Agreement, concept: string): number | null {
 }
 
 /** Referencial de la solicitud (con tarifa o costo manual); null = «sin tarifa», no exige motivo. */
-function referentialOf(l: InheritedLine) {
+export function referentialOf(l: InheritedLine) {
   return l.tariff_missing && l.estimated_source !== 'MANUAL' ? null : Number(l.estimated_pen ?? 0)
 }
 
@@ -65,15 +65,30 @@ export function agreedDiffers(l: InheritedLine, amount: number | null) {
 type Row = { key: string; id?: string; transport_request_id: string; concept: string; agreement: Agreement; forklift: boolean }
 
 // La línea de montacargas de la parada del montacarga programado toma su proveedor y tarifa por hora.
-function forkliftRowKey(lines: InheritedLine[], state: SpecialServicesState, forklift: ForkliftRef) {
+export function forkliftRowKey(lines: InheritedLine[], state: SpecialServicesState, forklift: ForkliftRef) {
   if (!forklift.enabled || !forklift.transport_request_id) return null
   const line = lines.find(l => l.concept === 'MONTACARGAS' && l.transport_request_id === forklift.transport_request_id && !(l.id in state.removed))
   if (line) return line.id
   return state.added.find(a => a.concept === 'MONTACARGAS' && a.transport_request_id === forklift.transport_request_id)?.key ?? null
 }
 
-function withForklift(a: Agreement, forklift: ForkliftRef): Agreement {
+export function withForklift(a: Agreement, forklift: ForkliftRef): Agreement {
   return { ...a, supplier_id: forklift.supplier_id, billing_unit: 'HORA', agreed_rate: forklift.hourly_rate }
+}
+
+/** Total de servicios especiales de la ruta: acordado si se definió; si no, el monto pedido. Sin los retirados. */
+export function specialServicesTotal(lines: InheritedLine[], state: SpecialServicesState, forklift: ForkliftRef) {
+  const fk = forkliftRowKey(lines, state, forklift)
+  const rows = [
+    ...lines.filter(l => !(l.id in state.removed)).map(l => ({ key: l.id, concept: l.concept, a: state.edits[l.id] ?? EMPTY_AGREEMENT, line: l as InheritedLine | undefined })),
+    ...state.added.map(a => ({ key: a.key, concept: a.concept, a: a as Agreement, line: undefined as InheritedLine | undefined })),
+  ]
+  const total = rows.reduce((sum, r) => {
+    const isFk = r.key === fk
+    const agreed = (r.a.supplier_id || r.a.agreed_rate || isFk) ? agreedAmount(isFk ? withForklift(r.a, forklift) : r.a, r.concept) : null
+    return sum + (agreed ?? (r.line ? Number(r.line.planned_pen ?? r.line.estimated_pen ?? 0) : 0))
+  }, 0)
+  return { total: Math.round(total * 100) / 100, count: rows.length }
 }
 
 /** Arma p.special_services de schedule_route_resources o devuelve el primer error a corregir. */
@@ -125,7 +140,7 @@ export function specialServicesPayload(state: SpecialServicesState, lines: Inher
   return { value: items.length || removed.length ? { items, removed } : null }
 }
 
-function AgreementFields({ concept, value, onChange, suppliers, forklift }: {
+export function AgreementFields({ concept, value, onChange, suppliers, forklift }: {
   concept: string; value: Agreement; onChange: (a: Agreement) => void; suppliers: Supplier[]; forklift: ForkliftRef | null
 }) {
   const shown = forklift ? withForklift(value, forklift) : value

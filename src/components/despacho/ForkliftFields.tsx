@@ -11,7 +11,7 @@ export const forkliftForStops = (f: Forklift, stops: ForkliftStop[]): Forklift =
 export const forkliftValid = (f: Forklift, stops?: ForkliftStop[]) => !f.enabled || (!!(f.supplier_id && f.operator_name.trim().length >= 3) && Number.isFinite(Number(f.hourly_rate)) && Number(f.hourly_rate) > 0 && (!stops || stops.some(stop => stop.id === f.transport_request_id)))
 type SupplierPerson = { id: string; supplier_id: string; full_name: string; document_number: string | null; position: string | null; license_number: string | null; license_expiration: string | null; phone: string | null }
 const input = 'min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm'
-export function ForkliftFields({ value: f, onChange, stops }: { value: Forklift; onChange: (value: Forklift) => void; stops?: ForkliftStop[] }) {
+export function ForkliftFields({ value: f, onChange, stops, embedded }: { value: Forklift; onChange: (value: Forklift) => void; stops?: ForkliftStop[]; embedded?: boolean }) {
  const displayed = stops ? forkliftForStops(f, stops) : f
  const supabase = useMemo(() => createClient(), [])
  const [suppliers, setSuppliers] = useState<Supplier[]>([]), [supplierPeople, setSupplierPeople] = useState<SupplierPerson[]>([])
@@ -61,8 +61,8 @@ export function ForkliftFields({ value: f, onChange, stops }: { value: Forklift;
    toast.success('Proveedor registrado y seleccionado')
   } catch (e) { toast.error((e as { message?: string }).message || 'No se pudo crear el proveedor') } finally { setBusy(false) }
  }
- return <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-  <label className="flex items-center gap-2 text-sm font-semibold text-[#002855]"><input type="checkbox" checked={f.enabled} onChange={e => set('enabled', e.target.checked)} />Montacarga · requiere apoyo</label>
+ return <div className={embedded ? "space-y-3" : "space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4"}>
+  {!embedded && <label className="flex items-center gap-2 text-sm font-semibold text-[#002855]"><input type="checkbox" checked={f.enabled} onChange={e => set('enabled', e.target.checked)} />Montacarga · requiere apoyo</label>}
   {f.enabled && <>
    {stops && <div className="space-y-1">
     <label className="block text-xs font-semibold text-slate-600">Punto de entrega donde se usará el montacarga *</label>

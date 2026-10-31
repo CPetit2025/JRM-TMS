@@ -26,6 +26,7 @@ import { RouteForkliftInfo } from '@/components/despacho/RouteForkliftInfo'
 import { RouteCrewDetails } from '@/components/despacho/RouteCrewDetails'
 import { ManualOperationalCloseButton } from '@/components/despacho/ManualOperationalCloseButton'
 import { ErpGuiasResumenCard, ErpOtReferencia } from '@/components/erp/ErpReferencia'
+import { ProgrammingNotes } from '@/components/despacho/programar-ruta/ProgrammingNotes'
 
 interface DispatchRequest {
   transport_request_id: string
@@ -428,6 +429,7 @@ export default function TorreControlPage() {
                 <p className="font-semibold text-slate-700 mt-1.5">{formatDate(selectedDispatch.scheduled_departure)}</p>
               </div>
             </div>
+            <ProgrammingNotes dispatchId={selectedDispatch.id} />
 
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <h3 className="mb-3 font-bold text-slate-800">Acciones operativas</h3>
