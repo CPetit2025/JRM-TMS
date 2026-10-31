@@ -148,7 +148,7 @@ function CierreEconomico() {
         <KpiStatCard label="En revisión" value={kpis.review} tone="blue" icon={<Clock className="h-5 w-5" />} loading={!routes} active={f.econ === 'EN_REVISION'} onClick={() => setFilter({ econ: f.econ === 'EN_REVISION' ? '' : 'EN_REVISION' })} />
         <KpiStatCard label="Observadas" value={kpis.observed} tone="rose" icon={<XCircle className="h-5 w-5" />} loading={!routes} active={f.econ === 'OBSERVADO'} onClick={() => setFilter({ econ: f.econ === 'OBSERVADO' ? '' : 'OBSERVADO' })} />
         <KpiStatCard label={kpis.partial ? `Cerradas (+${kpis.partial} parciales)` : 'Cerradas'} value={kpis.closed} tone="emerald" icon={<CheckCircle2 className="h-5 w-5" />} loading={!routes} active={f.econ === 'CERRADO'} onClick={() => setFilter({ econ: f.econ === 'CERRADO' ? '' : 'CERRADO' })} />
-        <KpiStatCard label="Monto pendiente de validar" value={`S/ ${money(kpis.pendingAmount)}`} tone="violet" icon={<Wallet className="h-5 w-5" />} loading={!routes} />
+        <KpiStatCard label="Monto pendiente de validar" value={`${money(kpis.pendingAmount)}`} tone="violet" icon={<Wallet className="h-5 w-5" />} loading={!routes} />
         <KpiStatCard label={`Variación acumulada${kpis.variationPct != null ? ` (${kpis.variationPct > 0 ? '+' : ''}${kpis.variationPct}%)` : ''}`} value={`${kpis.variation > 0 ? '+' : ''}${money(kpis.variation)}`}
           tone={kpis.variation > 0 ? 'rose' : 'emerald'} icon={<AlertTriangle className="h-5 w-5" />} loading={!routes} />
       </div>
@@ -218,7 +218,7 @@ function CierreEconomico() {
           </div>
           <TablePagination total={filtered.length} page={page} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={n => { setPageSize(n); setPage(1) }} itemLabel="rutas" compact />
         </div>
-        <p className="text-[11px] text-slate-500">Variación en rojo: supera el {settings.deviation_pct}% o S/ {money(Number(settings.deviation_pen))} sobre lo acordado (umbral configurable). Monto pendiente de validar: acordado de los ítems sin costo final.</p>
+        <p className="text-[11px] text-slate-500">Variación en rojo: supera el {settings.deviation_pct}% o {money(Number(settings.deviation_pen))} sobre lo acordado (umbral configurable). Monto pendiente de validar: acordado de los ítems sin costo final.</p>
       </>}
 
       {open && <EconomicClosurePanel key={open.id} dispatchId={open.id} initialTab={open.tab} onClose={() => setOpen(null)} onChanged={() => void load()} />}

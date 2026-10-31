@@ -32,7 +32,7 @@ function PctPill({ base, value }: { base: number | null | undefined; value: numb
   if (p == null || p === 0) return null
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${p > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-emerald-100 text-emerald-800'}`}>{p > 0 ? '+' : ''}{p}%</span>
 }
-const soles = (v: number | null | undefined) => (v == null ? '—' : `S/ ${money(Number(v))}`)
+const soles = (v: number | null | undefined) => (v == null ? '—' : `${money(Number(v))}`)
 
 const ITEM_STATE: Record<string, { label: string; cls: string; icon: typeof CheckCircle2 }> = {
   APROBADO: { label: 'Cerrado', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200', icon: CheckCircle2 },
@@ -41,15 +41,25 @@ const ITEM_STATE: Record<string, { label: string; cls: string; icon: typeof Chec
   OBSERVADO: { label: 'Observado', cls: 'bg-red-50 text-red-700 ring-red-200', icon: XCircle },
   POR_VALIDAR: { label: 'Pendiente', cls: 'bg-amber-50 text-amber-700 ring-amber-200', icon: Clock },
   NO_APLICA: { label: 'No aplica', cls: 'bg-slate-50 text-slate-600 ring-slate-200', icon: CircleDashed },
+  SIN_ACUERDO: { label: 'Sin flete acordado', cls: 'bg-amber-50 text-amber-700 ring-amber-200', icon: AlertTriangle },
 }
-const stateOf = (i: EconomicItem) => (!Number(i.agreed_pen) && !Number(i.final_pen) && i.final_pen != null ? 'NO_APLICA' : i.status in ITEM_STATE ? i.status : 'POR_VALIDAR')
+const stateOf = (i: EconomicItem) => i.status === 'SIN_ACUERDO' ? 'SIN_ACUERDO' : (!Number(i.agreed_pen) && !Number(i.final_pen) && i.final_pen != null ? 'NO_APLICA' : i.status in ITEM_STATE ? i.status : 'POR_VALIDAR')
 function StateChip({ state }: { state: string }) {
   const s = ITEM_STATE[state] || ITEM_STATE.POR_VALIDAR; const Icon = s.icon
   return <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${s.cls}`}><Icon className="h-3 w-3" />{s.label}</span>
 }
-const pendingItem = (i: EconomicItem) => ['POR_VALIDAR', 'OBSERVADO'].includes(stateOf(i))
+const pendingItem = (i: EconomicItem) => ['POR_VALIDAR', 'OBSERVADO', 'SIN_ACUERDO'].includes(stateOf(i))
 const itemLabel = (i: EconomicItem) => (i.kind === 'FLETE' ? 'Transporte' : CONCEPT_LABEL[i.concept] || i.concept)
-const observationOf = (i: EconomicItem) => i.observation || i.reason || (stateOf(i) === 'POR_VALIDAR' ? (i.billing_unit === 'HORA' ? 'Por validar horas' : 'Por validar') : stateOf(i) === 'NO_APLICA' ? 'No se requirió' : '—')
+const observationOf = (i: EconomicItem) => i.status === 'SIN_ACUERDO' ? 'La ruta se programó con flete S/ 0: no hay costo cargado a la partida' : i.observation || i.reason || (stateOf(i) === 'POR_VALIDAR' ? (i.billing_unit === 'HORA' ? 'Por validar horas' : 'Por validar') : stateOf(i) === 'NO_APLICA' ? 'No se requirió' : '—')
+
+/** Ítems del cierre; si la ruta tiene flete referencial pero se programó sin flete, se muestra el transporte «sin flete acordado». */
+function itemsOf(detail: EconomicDetail): EconomicItem[] {
+  const items = detail.items || []
+  if (items.some(i => i.kind === 'FLETE')) return items
+  const freightRef = Math.round((Number(detail.state.referential_pen || 0) - items.reduce((t, i) => t + Number(i.referential_pen || 0), 0)) * 100) / 100
+  return freightRef > 0 ? [{ key: 'F:sin-acuerdo', kind: 'FLETE', id: null, concept: 'FLETE', request_number: null, supplier: null, referential_pen: freightRef, agreed_pen: null,
+    final_pen: null, billing_unit: null, executed_qty: null, billable_qty: null, reason: null, status: 'SIN_ACUERDO' }, ...items] : items
+}
 
 /** Lee el detalle económico de la ruta (null si el usuario no tiene acceso). */
 export function useEconomicDetail(dispatchId: string, enabled: boolean) {
@@ -81,7 +91,7 @@ export function useModalContext(dispatchId: string, reload: number) {
 export function ServicesOverview({ detail, dispatchId, onGuides }: { detail: EconomicDetail | null; dispatchId: string; onGuides: () => void }) {
   const router = useRouter()
   if (!detail) return null
-  const items = detail.items || []
+  const items = itemsOf(detail)
   const st = detail.state
   const pending = items.filter(pendingItem).length
   const card = 'flex items-center gap-3 rounded-xl border p-3'
@@ -181,7 +191,7 @@ export function GuidesTable({ rows, onOpen, multipleStops }: { rows: GuideRow[];
 /** 3 · Liquidación: detalle de liquidación por servicio y totales (solo consulta; se edita en Cierre económico). */
 export function LiquidationDetail({ detail, dispatchId }: { detail: EconomicDetail | null; dispatchId: string }) {
   const router = useRouter()
-  const items = detail?.items || []
+  const items = detail ? itemsOf(detail) : []
   const rate = (i: EconomicItem) => i.kind === 'FLETE' ? i.agreed_pen : detail?.services.find(s => s.id === i.id)?.agreed_rate ?? null
   if (!detail) return <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">La información económica no está disponible para su perfil.</p>
   const st = detail.state
@@ -225,7 +235,7 @@ export function LiquidationDetail({ detail, dispatchId }: { detail: EconomicDeta
           {pct(st.referential_pen, st.agreed_pen) ? <dd className="text-xs font-semibold text-red-600">{pct(st.referential_pen, st.agreed_pen)! > 0 ? '+' : ''}{pct(st.referential_pen, st.agreed_pen)}%</dd> : null}</div>
         <div className="p-4"><dt className="text-xs text-slate-600">Final</dt><dd className="mt-1 text-xl font-bold tabular-nums text-slate-900">{st.final_pen == null ? 'Pendiente' : soles(st.final_pen)}</dd>
           {pct(st.agreed_pen, st.final_pen) ? <dd className={`text-xs font-semibold ${pct(st.agreed_pen, st.final_pen)! > 0 ? 'text-red-600' : 'text-emerald-700'}`}>{pct(st.agreed_pen, st.final_pen)! > 0 ? '+' : ''}{pct(st.agreed_pen, st.final_pen)}%</dd> : null}</div>
-        <div className="p-4"><dt className="text-xs text-slate-600">Diferencia acordado vs final</dt><dd className="mt-1 text-xl font-bold tabular-nums text-slate-900">{diff == null ? '—' : `S/ ${money(diff)}`}</dd></div>
+        <div className="p-4"><dt className="text-xs text-slate-600">Diferencia acordado vs final</dt><dd className="mt-1 text-xl font-bold tabular-nums text-slate-900">{diff == null ? '—' : `${money(diff)}`}</dd></div>
       </dl>
       <p className="mt-2 text-[11px] text-slate-500">Los importes se validan y aprueban en Cierre económico (lápiz); aquí solo se consultan. El cierre documentario y el económico son independientes.</p>
     </section>
@@ -323,7 +333,7 @@ export function CostHistoryModal({ dispatchId, onClose }: { dispatchId: string; 
       : events.length === 0 ? <p className="text-sm text-slate-500">Sin cambios de costo registrados.</p>
       : <ul className="space-y-2 text-sm">{events.map(e => <li key={e.id} className="border-l-2 border-slate-200 pl-3">
         <p><b className="text-slate-800">{STAGE[e.stage] || e.stage} · {e.concept === 'FLETE' ? 'Transporte' : CONCEPT_LABEL[e.concept || ''] || e.concept}</b>
-          <span className="text-slate-700"> {e.old_amount != null ? `S/ ${money(Number(e.old_amount))} → ` : ''}{e.new_amount != null ? `S/ ${money(Number(e.new_amount))}` : e.new_status}</span>
+          <span className="text-slate-700"> {e.old_amount != null ? `${money(Number(e.old_amount))} → ` : ''}{e.new_amount != null ? `${money(Number(e.new_amount))}` : e.new_status}</span>
           {e.supplier && <span className="text-slate-500"> · {e.supplier}</span>}</p>
         <p className="text-xs text-slate-500">{new Date(e.created_at).toLocaleString('es-PE', { timeZone: 'America/Lima' })}{e.user ? ` · ${e.user}` : ''}{e.reason ? ` · Motivo: ${e.reason}` : ''}</p>
       </li>)}</ul>}
