@@ -1,4 +1,5 @@
 import { connectionLevel } from '@/lib/gps-monitor'
+import type { EconItem, EconState } from '@/lib/economic-closure'
 import type { DeliveryRow } from '@/lib/delivery'
 
 // Detalle de una parada (despacho × solicitud) que devuelve get_dispatch_detail: solo registros guardados.
@@ -78,7 +79,7 @@ export function gpsStatus(detail: DispatchDetail, row: Pick<DeliveryRow, 'modali
 
 export const DETAIL_TABS = [
   { key: 'resumen', label: 'Resumen' }, { key: 'ruta', label: 'Ruta y seguimiento' }, { key: 'documentos', label: 'Documentos' },
-  { key: 'evidencias', label: 'Fotos y evidencias' }, { key: 'historial', label: 'Historial' },
+  { key: 'evidencias', label: 'Fotos y evidencias' }, { key: 'costos', label: 'Costos' }, { key: 'historial', label: 'Historial' },
 ] as const
 export type DetailTab = typeof DETAIL_TABS[number]['key']
 
@@ -166,3 +167,30 @@ export function evidenceItems(files: DispatchFiles | null, route: RouteEvidence[
 }
 /** URL firmada de Storage que fuerza la descarga (parámetro download de Supabase); otras URL quedan igual. */
 export const downloadUrl = (url: string) => /\/storage\/v1\/object\/sign\//.test(url) ? `${url}${url.includes('?') ? '&' : '?'}download=` : url
+
+// Costos (economic_closure_detail + gastos de Caja de la ruta). Solo lo atribuible a la solicitud suma a su costo.
+export type EconomicDetail = {
+  success: true; dispatch_number: string; route_status: string; state: EconState; items: EconItem[]
+  requests: { id: string; request_number: string; contract_code: string | null; doc_status: string | null }[]
+  can_validate: boolean; can_approve: boolean
+}
+export type RouteExpense = { id: string; expense_type: string; amount: number; status: string | null; description: string | null; created_at: string | null }
+export type DispatchCosts = { detail: EconomicDetail | null; error: string; expenses: RouteExpense[]; expensesError: string }
+const amount = (i: EconItem) => Number(i.final_pen ?? i.agreed_pen ?? 0)
+export function stopCosts(d: EconomicDetail, row: Pick<DeliveryRow, 'dispatch_id' | 'request_id' | 'request_number'>) {
+  const own = d.items.find(i => i.kind === 'FLETE' && i.key === `F:${row.request_id}`)
+  const route = own ? null : d.items.find(i => i.kind === 'FLETE' && i.key === `F:${row.dispatch_id}`) || null
+  const freight = own || route, freightScope: 'SERVICIO' | 'RUTA' = own || d.requests.length <= 1 ? 'SERVICIO' : 'RUTA'
+  const services = d.items.filter(i => i.kind === 'SERVICIO' && i.request_number === row.request_number)
+  const servicesTotal = Math.round(services.reduce((sum, i) => sum + amount(i), 0) * 100) / 100
+  const total = Math.round(((freight && freightScope === 'SERVICIO' ? amount(freight) : 0) + servicesTotal) * 100) / 100
+  return { freight, freightScope, services, servicesTotal, total }
+}
+
+// Recorrido GPS real de la ruta (route_track_points); se reduce para dibujarlo sin perder inicio ni fin
+export type TrackPoint = { at: string; lat: number; lon: number }
+export function thinTrack(points: TrackPoint[], max = 400): TrackPoint[] {
+  if (points.length <= max) return points
+  const step = (points.length - 1) / (max - 1)
+  return Array.from({ length: max }, (_, i) => points[Math.round(i * step)])
+}

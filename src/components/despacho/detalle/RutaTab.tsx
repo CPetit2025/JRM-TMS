@@ -5,6 +5,7 @@ import { deliveryServiceKind, deliveryStatus, type DeliveryRow } from '@/lib/del
 import { detailTime, eventActor, eventTitle, gpsStatus, incidents, milestones, pendingItems, type DispatchDetail } from '@/lib/dispatch-detail'
 import { DetailCard, Fields, MilestoneList, MilestoneStepper, PendingList } from './DetailParts'
 import { modalityLabel } from './ResumenTab'
+import { RouteTrack } from './RouteTrack'
 
 export function RutaTab({ row, detail }: { row: DeliveryRow; detail: DispatchDetail }) {
   const pickup = deliveryServiceKind(row) === 'RECOJO', steps = milestones(detail, row, true), current = steps.find(s => s.state === 'current' || s.state === 'alert')
@@ -38,6 +39,7 @@ export function RutaTab({ row, detail }: { row: DeliveryRow; detail: DispatchDet
       </DetailCard>
       <DetailCard title="Seguimiento GPS" icon={<Radio className="h-5 w-5" aria-hidden />}>
         <div className="flex flex-wrap items-center gap-2"><StatusBadge tone={gps.tone}>{gps.label}</StatusBadge><span className="text-sm text-slate-600">{gps.detail}</span></div>
+        {detail.presence.applies && <div className="mt-3"><RouteTrack dispatchId={row.dispatch_id} /></div>}
       </DetailCard>
       <DetailCard title="Pendientes"><PendingList items={pendingItems(row)} /></DetailCard>
     </div>

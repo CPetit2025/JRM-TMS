@@ -9,10 +9,10 @@ const noop = () => {}
 global.document = { addEventListener: noop, removeEventListener: noop }
 global.window = { setTimeout, clearTimeout }
 const cache = new Map(), calls = []
-let detail, files
-const query = { select: () => query, eq: () => query, maybeSingle: async () => ({ data: { programming_notes: null }, error: null }) }
+let detail, files, econ, expenses = { data: [], error: null }, track = { data: [], error: null }
+const query = { select: () => query, eq: () => query, order: () => Object.assign(Promise.resolve(expenses), { limit: async () => track }), maybeSingle: async () => ({ data: { programming_notes: null }, error: null }) }
 const client = {
- rpc: async (name, args) => { calls.push({ name, args }); return name === 'get_dispatch_detail' ? { data: detail, error: null } : name === 'get_dispatch_detail_files' ? { data: files, error: null }
+ rpc: async (name, args) => { calls.push({ name, args }); return name === 'get_dispatch_detail' ? { data: detail, error: null } : name === 'get_dispatch_detail_files' ? { data: files, error: null } : name === 'economic_closure_detail' ? { data: econ, error: null }
   : name === 'get_dispatch_evidence' ? { data: [{ kind: 'CHECKLIST', label: 'Checklist de la unidad', path: 'u/check.jpg', taken_at: '2026-10-30T20:50:00Z' }], error: null } : { data: { success: true, people: [], manual_closure: null }, error: null } },
  storage: { from: bucket => ({ createSignedUrl: async path => ({ data: { signedUrl: `https://x.supabase.co/storage/v1/object/sign/${bucket}/${path}?token=t` } }) }) },
  from: () => query,
@@ -27,6 +27,7 @@ function load(file) {
   if (name === '@/components/ui/modal') return { Modal: ({ isOpen, title, children, footer }) => isOpen ? React.createElement('div', { 'aria-label': title }, children, footer) : null }
   if (name === '@/components/ui/data-table') return { DataTable: ({ children, ...props }) => React.createElement('table', props, children) }
   if (name === 'sonner') return { toast: { error() {} } }
+  if (name === 'next/dynamic') return { __esModule: true, default: () => ({ points }) => React.createElement('div', { 'data-map-points': points.length }) }
   if (name === 'next/link') return { __esModule: true, default: ({ href, children, ...props }) => React.createElement('a', { href, ...props }, children) }
   if (name.startsWith('@/') || name.startsWith('.')) {
    const base = name.startsWith('@/') ? path.resolve(__dirname, '../src', name.slice(2)) : path.resolve(path.dirname(filename), name)
@@ -69,7 +70,7 @@ test('tabs load the stop detail once and show real milestones, GPS and incidents
  await act(async () => { view = create(React.createElement(DispatchDetailModal, { row: row(), onClose: () => closed++, onValidate: r => { validated = r } })) }); await act(flush)
  assert.deepEqual(calls.filter(c => c.name === 'get_dispatch_detail').map(c => c.args), [{ p_dispatch: 'd1', p_request: 's1' }])
  assert.ok(view.root.findByProps({ 'aria-label': 'Detalle del despacho 10103 · RT-002314' }))
- assert.deepEqual(view.root.findAllByProps({ role: 'tab' }).map(t => t.props.children[1]), ['Resumen', 'Ruta y seguimiento', 'Documentos', 'Fotos y evidencias', 'Historial'])
+ assert.deepEqual(view.root.findAllByProps({ role: 'tab' }).map(t => t.props.children[1]), ['Resumen', 'Ruta y seguimiento', 'Documentos', 'Fotos y evidencias', 'Costos', 'Historial'])
  assert.ok(!calls.some(c => c.name === 'get_dispatch_detail_files'), 'files load only when their tab opens')
  assert.ok(text(view).includes('45832165')); assert.ok(text(view).includes('Guía de entrega pendiente de validación'))
  await act(async () => button(view, 'Validar conformidad').props.onClick()); assert.equal(validated.request_id, 's1')
@@ -77,9 +78,9 @@ test('tabs load the stop detail once and show real milestones, GPS and incidents
  assert.ok(text(view).includes('Sin conexión'), 'stale presence is offline'); assert.ok(!text(view).includes('En línea'))
  assert.ok(text(view).includes('Tráfico')); assert.ok(text(view).includes('72 km'))
  assert.ok(!text(view).includes('Tiempo estimado'), 'no invented estimated time')
- for (let i = 0; i < 3; i++) { await act(async () => button(view, 'Siguiente').props.onClick()); await act(flush) }
+ for (let i = 0; i < 4; i++) { await act(async () => button(view, 'Siguiente').props.onClick()); await act(flush) }
  assert.ok(!button(view, 'Siguiente')); await act(async () => button(view, 'Finalizar').props.onClick()); assert.equal(closed, 1, 'Finalizar only closes')
- assert.deepEqual(calls.filter(c => !['get_dispatch_detail', 'get_tower_route_crew', 'get_dispatch_detail_files', 'get_dispatch_evidence'].includes(c.name)), [], 'only reads')
+ assert.deepEqual(calls.filter(c => !['get_dispatch_detail', 'get_tower_route_crew', 'get_dispatch_detail_files', 'get_dispatch_evidence', 'economic_closure_detail'].includes(c.name)), [], 'only reads')
  await act(async () => view.unmount())
 })
 
@@ -106,6 +107,55 @@ test('documents and evidence come from real sources, sign their files and offer 
  assert.ok(!text(view).includes('Recojo') && !text(view).includes('Tránsito'), 'no invented stages')
  assert.ok(!text(view).includes('Eliminar'), 'evidence is never deleted here')
  assert.ok(view.root.findAllByType('a').some(a => String(a.props.href).endsWith('&download=')), 'download forces a file')
+ await act(async () => view.unmount())
+})
+
+const item = (over) => ({ key: 'x', kind: 'SERVICIO', id: null, concept: 'MONTACARGAS', request_number: 'RT-002314', contract_id: null, contract_code: null, origin: 'SOLICITUD', supplier: null,
+ referential_pen: 0, agreed_pen: 0, final_pen: null, extras_pen: null, billing_unit: null, executed_qty: null, billable_qty: null, reason: null, validated_at: null, validated_by: null, status: 'POR_VALIDAR', ...over })
+const econOf = (items, requests = 1) => ({ success: true, dispatch_number: '10103', route_status: 'EN RUTA', state: { status: 'PENDIENTE', route_status: 'EN RUTA', pending: [], referential_pen: 650, agreed_pen: 650, final_pen: null, extras_pen: 0 },
+ items, requests: Array.from({ length: requests }, (_, i) => ({ id: 's' + (i + 1), request_number: i ? 'RT-9' + i : 'RT-002314', contract_code: null, doc_status: null })), can_validate: false, can_approve: false })
+const openCosts = async props => { let view; await act(async () => { view = create(React.createElement(DispatchDetailModal, { row: row(), onClose() {}, ...props })) }); await act(flush)
+ await act(async () => tab(view, 'Costos').props.onClick()); await act(flush); return view }
+
+test('a consolidated route freight is never attributed to the request; route expenses stay apart', async () => {
+ detail = base(); expenses = { data: [{ id: 'g1', expense_type: 'COMBUSTIBLE', amount: 120, status: 'APROBADO', description: 'Carga en ruta', created_at: null }], error: null }
+ econ = econOf([item({ key: 'F:d1', kind: 'FLETE', concept: 'FLETE', request_number: 'RT-002314, RT-91', referential_pen: 650, agreed_pen: 650 }), item({ key: 'S:1', agreed_pen: 48 }), item({ key: 'S:2', request_number: 'RT-91', agreed_pen: 500 })], 2)
+ const view = await openCosts({ economicHref: '/despacho/documentos/economico?despacho=d1' })
+ assert.ok(text(view).includes('Flete de la ruta completa (2 servicios)'))
+ assert.ok(text(view).includes('Costo de la solicitudS/ 48.00'), 'only the request service counts')
+ assert.ok(text(view).includes('Combustible')); assert.ok(text(view).includes('no se atribuyen a una solicitud'))
+ assert.ok(view.root.findAllByType('a').some(a => a.props.href === '/despacho/documentos/economico?despacho=d1'))
+ await act(async () => view.unmount())
+})
+
+test('per-request freight is attributed and no economic access shows nothing', async () => {
+ detail = base(); expenses = { data: null, error: { message: 'rls' } }
+ econ = econOf([item({ key: 'F:s1', kind: 'FLETE', concept: 'FLETE', agreed_pen: 300, final_pen: 320 }), item({ key: 'S:1', agreed_pen: 48, final_pen: 50 })], 2)
+ let view = await openCosts({})
+ assert.ok(text(view).includes('Costo de la solicitudS/ 370.00')); assert.ok(text(view).includes('Sin acceso a los gastos de Caja de la ruta.'))
+ await act(async () => view.unmount())
+ econ = { success: false, error: 'Sin acceso al cierre económico' }
+ view = await openCosts({})
+ assert.ok(text(view).includes('Sin acceso al cierre económico')); assert.ok(!text(view).includes('S/ '))
+ await act(async () => view.unmount())
+})
+
+test('the map draws only recorded GPS points and never for units without the app', async () => {
+ detail = base(); track = { data: Array.from({ length: 900 }, (_, i) => ({ recorded_at: new Date(Date.UTC(2026, 9, 30, 21, 25) + i * 5000).toISOString(), latitude: -12.1 - i / 1e4, longitude: -76.9 + i / 1e4 })), error: null }
+ let view; await act(async () => { view = create(React.createElement(DispatchDetailModal, { row: row(), onClose() {} })) }); await act(flush)
+ await act(async () => tab(view, 'Ruta y seguimiento').props.onClick()); await act(flush)
+ assert.equal(view.root.findByProps({ 'data-map-points': 400 }).props['data-map-points'], 400, 'long tracks are thinned for drawing')
+ assert.ok(text(view).includes('No incluye una ruta planificada'))
+ await act(async () => view.unmount())
+ track = { data: [], error: null }
+ await act(async () => { view = create(React.createElement(DispatchDetailModal, { row: row(), onClose() {} })) }); await act(flush)
+ await act(async () => tab(view, 'Ruta y seguimiento').props.onClick()); await act(flush)
+ assert.ok(text(view).includes('Sin puntos GPS registrados')); assert.equal(view.root.findAllByProps({ 'data-map-points': 0 }).length, 0)
+ await act(async () => view.unmount())
+ detail = base({ presence: { applies: false, connected: false, last_seen_at: null, gps_state: null, gps_at: null, server_now: '2026-10-30T23:00:00Z' } })
+ await act(async () => { view = create(React.createElement(DispatchDetailModal, { row: row({ modalidad: 'TERCERO' }), onClose() {} })) }); await act(flush)
+ await act(async () => tab(view, 'Ruta y seguimiento').props.onClick()); await act(flush)
+ assert.ok(!text(view).includes('Cargando recorrido') && !text(view).includes('Sin puntos GPS'), 'no track query for third parties')
  await act(async () => view.unmount())
 })
 
