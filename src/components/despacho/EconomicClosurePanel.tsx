@@ -96,10 +96,10 @@ function ServiceEditor({ s, onSaved }: { s: Service; onSaved: () => void }) {
   return (
     <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
       <p className="text-xs text-slate-600">
-        Acordado S/ {money(reference)}
-        {s.agreed_rate != null && <> ({BILLING_LABEL[s.billing_unit || 'SERVICIO'] || s.billing_unit} S/ {money(Number(s.agreed_rate))} × {s.agreed_qty ?? 1}{s.workers ? ` × ${s.workers} trab.` : ''}
+        Acordado {money(reference)}
+        {s.agreed_rate != null && <> ({BILLING_LABEL[s.billing_unit || 'SERVICIO'] || s.billing_unit} {money(Number(s.agreed_rate))} × {s.agreed_qty ?? 1}{s.workers ? ` × ${s.workers} trab.` : ''}
           {s.min_billable_qty ? ` · mínimo ${s.min_billable_qty}` : ''}{s.fraction_minutes ? ` · fracción ${s.fraction_minutes} min` : s.billing_unit === 'HORA' ? ' · hora completa' : ''})</>}
-        {s.expense_id && <> · gasto de Caja S/ {money(Number(s.actual_pen || 0))}</>}
+        {s.expense_id && <> · gasto de Caja {money(Number(s.actual_pen || 0))}</>}
       </p>
       <div className="grid gap-2 sm:grid-cols-6">
         {s.agreed_rate != null ? (
@@ -116,7 +116,7 @@ function ServiceEditor({ s, onSaved }: { s: Service; onSaved: () => void }) {
         <label className="sm:col-span-2"><span className="mb-0.5 block text-[11px] font-semibold text-slate-600">Motivo {needsReason && '*'}</span>
           <input value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} placeholder={needsReason ? 'Obligatorio: diferencia o adicionales' : 'Opcional'} className={input} /></label>
         <div className="flex items-end justify-between gap-2">
-          <p className="text-sm"><span className="text-[11px] text-slate-500">Final </span><b className="tabular-nums">S/ {money(preview)}</b>
+          <p className="text-sm"><span className="text-[11px] text-slate-500">Final </span><b className="tabular-nums">{money(preview)}</b>
             {billable != null && <span className="block text-[11px] text-slate-500">facturable {billable}</span>}</p>
           <button type="button" onClick={() => void save()} disabled={saving} className="rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50">
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Validar'}</button>
@@ -280,7 +280,7 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
             </div>
 
             {deviations.length > 0 && <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <p><b>Desviación sobre el umbral</b> (más de {settings.deviation_pct}% o S/ {money(Number(settings.deviation_pen))}): {deviations.map(i => `${ITEM_LABEL[i.concept] || i.concept} ${i.request_number || ''} (${money(Number(i.final_pen) - Number(i.agreed_pen))})`).join('; ')}</p></div>}
+              <p><b>Desviación sobre el umbral</b> (más de {settings.deviation_pct}% o {money(Number(settings.deviation_pen))}): {deviations.map(i => `${ITEM_LABEL[i.concept] || i.concept} ${i.request_number || ''} (${money(Number(i.final_pen) - Number(i.agreed_pen))})`).join('; ')}</p></div>}
             {data.observation && <p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900">{st.status === 'OBSERVADO' ? 'Observación' : 'Último motivo'}: {data.observation}</p>}
 
             <div role="tablist" aria-label="Detalle" className="flex gap-1 border-b border-slate-200">
@@ -291,10 +291,10 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
 
             {tab === 'resumen' && <div className="space-y-3">
               <dl className="grid gap-2 text-sm sm:grid-cols-4">
-                <div className="rounded-lg border p-2"><dt className="text-[11px] text-slate-500">Referencial</dt><dd className="font-bold tabular-nums">S/ {money(st.referential_pen)}</dd></div>
-                <div className="rounded-lg border p-2"><dt className="text-[11px] text-slate-500">Acordado</dt><dd className="font-bold tabular-nums">S/ {money(st.agreed_pen)}</dd></div>
+                <div className="rounded-lg border p-2"><dt className="text-[11px] text-slate-500">Referencial</dt><dd className="font-bold tabular-nums">{money(st.referential_pen)}</dd></div>
+                <div className="rounded-lg border p-2"><dt className="text-[11px] text-slate-500">Acordado</dt><dd className="font-bold tabular-nums">{money(st.agreed_pen)}</dd></div>
                 <div className="rounded-lg border p-2"><dt className="text-[11px] text-slate-500">Final{summary.validated < summary.total ? ` (${summary.validated}/${summary.total})` : ''}</dt>
-                  <dd className="font-bold tabular-nums">{summary.final == null ? <span className="text-amber-700">Pendiente</span> : `S/ ${money(summary.final)}`}</dd></div>
+                  <dd className="font-bold tabular-nums">{summary.final == null ? <span className="text-amber-700">Pendiente</span> : `${money(summary.final)}`}</dd></div>
                 <div className="rounded-lg border p-2"><dt className="text-[11px] text-slate-500">Variación acordado → final</dt><dd className="text-sm font-bold"><Variation base={summary.agreedWithFinal} value={summary.final} settings={settings} /></dd></div>
               </dl>
               {st.pending.length > 0 && <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900"><b>Pendientes para cerrar:</b>
@@ -314,7 +314,7 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
                       const s = i.id ? services.get(i.id) : undefined
                       const canEdit = editable && (i.kind === 'FLETE' || !!s) && !['EN_REVISION', 'APROBADO'].includes(i.status)
                       return <tr key={i.key} className={isDeviation(i.agreed_pen, i.final_pen, settings) ? 'bg-red-50/60' : ''}>
-                        <td className="px-2 py-1.5"><b className="text-slate-800">{ITEM_LABEL[i.concept] || i.concept}</b><span className="block text-slate-500">{i.request_number}{i.contract_code ? ` · ${i.contract_code}` : ''}{i.supplier ? ` · ${i.supplier}` : ''}</span>{i.caja_pen != null && <span className="block text-[10px] text-slate-500">Caja S/ {money(Number(i.caja_pen))}</span>}</td>
+                        <td className="px-2 py-1.5"><b className="text-slate-800">{ITEM_LABEL[i.concept] || i.concept}</b><span className="block text-slate-500">{i.request_number}{i.contract_code ? ` · ${i.contract_code}` : ''}{i.supplier ? ` · ${i.supplier}` : ''}</span>{i.caja_pen != null && <span className="block text-[10px] text-slate-500">Caja {money(Number(i.caja_pen))}</span>}</td>
                         <td className="px-2">{ORIGIN_TEXT[i.origin || ''] || i.origin || '—'}</td>
                         <td className="px-2 text-right tabular-nums">{money(Number(i.referential_pen))}</td>
                         <td className="px-2 text-right tabular-nums">{money(Number(i.agreed_pen))}</td>
@@ -358,11 +358,11 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
                 <span className="text-slate-500">{fmtDateTime(h.created_at)}{h.user ? ` · ${h.user}` : ''}</span><br />
                 {h.source === 'CIERRE'
                   ? <><b>{ACTION_LABEL[h.action || ''] || h.action}</b>{h.detail?.item?.label ? ` · ${h.detail.item.label}` : ''}{h.action !== 'NOTA' && h.to_status ? ` → ${ECON_STATUS[h.to_status]?.label || h.to_status}` : ''}
-                    {h.detail?.concept && h.detail.final_pen != null && ` · ${ITEM_LABEL[h.detail.concept] || h.detail.concept} S/ ${money(Number(h.detail.final_pen))}`}
+                    {h.detail?.concept && h.detail.final_pen != null && ` · ${ITEM_LABEL[h.detail.concept] || h.detail.concept} ${money(Number(h.detail.final_pen))}`}
                     {h.detail?.budget_delta_by_contract && Object.keys(h.detail.budget_delta_by_contract).length > 0 &&
-                      ` · ajuste de partida S/ ${money(Object.values(h.detail.budget_delta_by_contract).reduce((a, b) => a + Number(b), 0))}`}</>
+                      ` · ajuste de partida ${money(Object.values(h.detail.budget_delta_by_contract).reduce((a, b) => a + Number(b), 0))}`}</>
                   : <><b>{ITEM_LABEL[h.concept || ''] || h.concept} · {STAGE_LABEL[h.stage || ''] || h.stage}</b>{h.request_number ? ` · ${h.request_number}` : ''}
-                    {h.new_amount != null && ` · ${h.old_amount != null ? `S/ ${money(Number(h.old_amount))} → ` : ''}S/ ${money(Number(h.new_amount))}`}</>}
+                    {h.new_amount != null && ` · ${h.old_amount != null ? `${money(Number(h.old_amount))} → ` : ''}${money(Number(h.new_amount))}`}</>}
                 {h.reason && <span className="text-slate-600"> · {h.reason}</span>}
               </li>)}</ol>)}
 
