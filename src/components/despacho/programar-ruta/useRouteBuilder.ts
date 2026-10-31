@@ -322,29 +322,47 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
   }
 
   // Detalle del tarifario de la ruta recién programada: si falla, la ruta ya existe; se avisa y se reintenta solo este paso
-  const saveQuote = async (dispatchId: string, quote: Record<string, unknown>): Promise<void> => {
+  // Devuelven false si el dato no quedó guardado (la ruta ya existe: se reintenta solo ese paso, nunca la programación)
+  const saveQuote = async (dispatchId: string, quote: Record<string, unknown>): Promise<boolean> => {
     const { error } = await supabase.rpc('set_dispatch_freight_quote', { p_dispatch_id: dispatchId, p_breakdown: quote })
     if (error) toast.error('La ruta se programó, pero no se guardó el detalle del tarifario: ' + error.message, {
       duration: 15000, action: { label: 'Reintentar', onClick: () => { void saveQuote(dispatchId, quote) } },
     })
+    return !error
   }
 
   // Observaciones operativas: se guardan en la ruta recién programada
-  const saveNotes = async (dispatchId: string) => {
-    if (!notes.trim()) return
-    const { error } = await supabase.rpc('set_dispatch_programming_notes', { p_dispatch_id: dispatchId, p_notes: notes.trim() })
-    if (error) toast.error('La ruta se programó, pero no se guardaron las observaciones: ' + error.message)
+  const saveNotes = async (dispatchId: string, text = notes.trim()): Promise<boolean> => {
+    if (!text) return true
+    const { error } = await supabase.rpc('set_dispatch_programming_notes', { p_dispatch_id: dispatchId, p_notes: text })
+    if (error) toast.error('La ruta se programó, pero no se guardaron las observaciones: ' + error.message, {
+      duration: 15000, action: { label: 'Reintentar', onClick: () => { void saveNotes(dispatchId, text) } },
+    })
+    return !error
   }
 
   // Tiempo y trazo estimados por OSRM: se guardan con la ruta; si falla, la ruta ya quedó programada
-  const saveEstimates = async (dispatchId: string) => {
-    const items = newDispatch.selected_requests.map(r => reqEstimates.current[r.id] && { request_id: r.id, distance_km: Math.round(reqEstimates.current[r.id].km * 10) / 10,
+  const saveEstimates = async (dispatchId: string, prepared?: unknown[]): Promise<boolean> => {
+    const items = prepared || newDispatch.selected_requests.map(r => reqEstimates.current[r.id] && { request_id: r.id, distance_km: Math.round(reqEstimates.current[r.id].km * 10) / 10,
       duration_min: reqEstimates.current[r.id].minutes, origin: reqEstimates.current[r.id].origin, destination: reqEstimates.current[r.id].destination,
       geometry: reqEstimates.current[r.id].geometry }).filter(Boolean)
-    if (!items.length) return
+    if (!items.length) return true
     const { error } = await supabase.rpc('save_dispatch_route_estimates', { p_dispatch: dispatchId, p_items: items })
-    if (error) console.warn('No se guardó el estimado de la ruta:', error.message)
+    if (error) toast.error('La ruta se programó, pero no se guardó el tiempo y recorrido estimados: ' + error.message, {
+      duration: 15000, action: { label: 'Reintentar', onClick: () => { void saveEstimates(dispatchId, items) } },
+    })
+    return !error
   }
+
+  // Complementos de la ruta recién creada; el mensaje final dice si alguno quedó pendiente
+  const saveComplements = async (dispatchId: string, withQuote: boolean) => {
+    const quoteOk = withQuote && freightQuote ? await saveQuote(dispatchId, freightQuote) : true
+    const notesOk = await saveNotes(dispatchId)
+    const estimatesOk = await saveEstimates(dispatchId)
+    return quoteOk && notesOk && estimatesOk
+  }
+  const scheduled = (message: string, complete: boolean) => complete ? toast.success(message)
+    : toast.warning(`${message} Algunos datos complementarios no se guardaron: use «Reintentar» en los avisos.`, { duration: 15000 })
 
   const handleProgramar = async () => {
     if (newDispatch.selected_requests.length === 0) {
@@ -405,11 +423,9 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
           p_requests: programmingRequests(),
         } })
         if (error) throw error
-        if (!isPickup && newDispatchId && freightQuote && detectedFreightRate?.rate && freightCost === detectedFreightRate.rate) {
-          await saveQuote(newDispatchId as string, freightQuote)
-        }
-        if (newDispatchId) { await saveNotes(newDispatchId as string); await saveEstimates(newDispatchId as string) }
-        toast.success('Servicio programado. El acceso del proveedor está listo para compartir.')
+        const complete = newDispatchId ? await saveComplements(newDispatchId as string,
+          !isPickup && !!detectedFreightRate?.rate && freightCost === detectedFreightRate.rate) : true
+        scheduled('Servicio programado. El acceso del proveedor está listo para compartir.', complete)
         if (newDispatchId) {
           const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(newDispatch.scheduled_departure))
           router.push(`/torre-control?despacho=${newDispatchId}&fecha=${day}&proveedor=1`)
@@ -480,12 +496,10 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
         p_requests: programmingRequests()
       } })
       if (error) throw error
-      // Se guarda con qué tarifa se calculó el flete (si vino del tarifario)
-      if (!isPickup && newDispatchId && freightQuote && detectedFreightRate?.rate && freightCost === detectedFreightRate.rate) {
-        await saveQuote(newDispatchId as string, freightQuote)
-      }
-      if (newDispatchId) { await saveNotes(newDispatchId as string); await saveEstimates(newDispatchId as string) }
-      toast.success(isPickup ? 'Recojo por el cliente programado con Nota de Salida y sin flete JRM.' : 'Despacho programado y financiamiento validado.')
+      // Se guarda con qué tarifa se calculó el flete (si vino del tarifario), las observaciones y el estimado
+      const complete = newDispatchId ? await saveComplements(newDispatchId as string,
+        !isPickup && !!detectedFreightRate?.rate && freightCost === detectedFreightRate.rate) : true
+      scheduled(isPickup ? 'Recojo por el cliente programado con Nota de Salida y sin flete JRM.' : 'Despacho programado y financiamiento validado.', complete)
       setIsModalOpen(false)
       reset()
       void fetchData()

@@ -82,11 +82,13 @@ export default function MonitoreoPage() {
     e.preventDefault(); if (!selected?.dispatch_id || busy || !canRegister) return
     setBusy(true)
     try {
-      const { error } = await supabase.from('dispatch_events').insert({ dispatch_id: selected.dispatch_id, event_type: eventType, description: description.trim() })
-      if (error) throw error
       if (eventType === 'FIN_RUTA') {
-        const { data, error: transitionError } = await supabase.rpc('transition_dispatch_status', { p_dispatch_id: selected.dispatch_id, p_new_status: 'ENTREGADO', p_reason: 'Ruta finalizada desde Monitoreo' })
-        if (transitionError || !data?.success) throw new Error(transitionError?.message || data?.error || 'No se puede finalizar la ruta')
+        // Una sola operación en el servidor: pasa a Entregado y solo entonces registra el evento
+        const { data, error } = await supabase.rpc('finish_route_supervised', { p_dispatch_id: selected.dispatch_id, p_reason: description.trim() })
+        if (error || !data?.success) throw new Error(error?.message || data?.error || 'No se puede finalizar la ruta')
+      } else {
+        const { error } = await supabase.from('dispatch_events').insert({ dispatch_id: selected.dispatch_id, event_type: eventType, description: description.trim() })
+        if (error) throw error
       }
       toast.success(eventType === 'FIN_RUTA' ? 'Ruta finalizada' : 'Novedad registrada'); setEventOpen(false); setDescription(''); setVersion(v => v + 1)
     } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
@@ -141,6 +143,6 @@ export default function MonitoreoPage() {
       </section>
     </div>
     <Modal isOpen={reportOpen} onClose={() => setReportOpen(false)} title="Diagnóstico de conexión de conductores" maxWidth="max-w-5xl">{reportOpen && <ConnectivityReport />}</Modal>
-    <Modal isOpen={eventOpen} onClose={() => setEventOpen(false)} title={`Registrar novedad · ${selected?.plate || selected?.driver || ''}`} maxWidth="max-w-md"><form onSubmit={register} className="space-y-4"><label className="block text-sm">Tipo de evento<select value={eventType} onChange={e => setEventType(e.target.value)} className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3">{[['CHECKPOINT','Punto de control'],['LLEGADA_CLIENTE','Llegada a cliente'],['SALIDA_CLIENTE','Salida de cliente'],['RETRASO','Retraso / tráfico'],['INCIDENCIA','Incidencia'],['FIN_RUTA','Finalizar ruta (exige conformidad aprobada)']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="block text-sm">Descripción<textarea required maxLength={1000} value={description} onChange={e => setDescription(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 p-3" rows={3} /></label><p className="text-xs text-slate-500">La novedad registra el reporte. El avance del servicio sigue sujeto a su flujo operativo y a la guía aprobada.</p><button disabled={busy || !description.trim()} className="min-h-11 w-full rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Guardando…' : 'Guardar novedad'}</button></form></Modal>
+    <Modal isOpen={eventOpen} onClose={() => setEventOpen(false)} title={`Registrar novedad · ${selected?.plate || selected?.driver || ''}`} maxWidth="max-w-md"><form onSubmit={register} className="space-y-4"><label className="block text-sm">Tipo de evento<select value={eventType} onChange={e => setEventType(e.target.value)} className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3">{[['CHECKPOINT','Punto de control'],['LLEGADA_CLIENTE','Llegada a cliente'],['SALIDA_CLIENTE','Salida de cliente'],['RETRASO','Retraso / tráfico'],['INCIDENCIA','Incidencia'],['FIN_RUTA','Finalizar ruta · intervención del supervisor']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="block text-sm">{eventType === 'FIN_RUTA' ? 'Motivo de la intervención' : 'Descripción'}<textarea required minLength={eventType === 'FIN_RUTA' ? 5 : undefined} maxLength={1000} value={description} onChange={e => setDescription(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 p-3" rows={3} /></label><p className="text-xs text-slate-500">{eventType === 'FIN_RUTA' ? 'Pasa la ruta a Entregado solo si todas sus paradas están entregadas; si no, no se registra nada. Lo normal es que la ruta avance desde el app del conductor.' : 'La novedad registra el reporte. El avance del servicio sigue sujeto a su flujo operativo y a la guía aprobada.'}</p><button disabled={busy || !description.trim()} className="min-h-11 w-full rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Guardando…' : eventType === 'FIN_RUTA' ? 'Finalizar ruta' : 'Guardar novedad'}</button></form></Modal>
   </div>
 }
