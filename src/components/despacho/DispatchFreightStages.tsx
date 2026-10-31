@@ -21,7 +21,7 @@ const delta = (a: number, b: number) => {
   return <span className={d > 0 ? 'text-red-700' : 'text-emerald-700'}> ({d > 0 ? '+' : ''}{money(d)}; {d > 0 ? '+' : ''}{Math.round(d / a * 100)}%)</span>
 }
 
-export function DispatchFreightStages({ dispatchId }: { dispatchId: string }) {
+export function DispatchFreightStages({ dispatchId, onSaved }: { dispatchId: string; onSaved?: () => void }) {
   const supabase = useMemo(() => createClient(), [])
   const [data, setData] = useState<Summary | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -66,6 +66,7 @@ export function DispatchFreightStages({ dispatchId }: { dispatchId: string }) {
       toast.success('Flete final registrado')
       setForm({ asPlanned: true, base: '', extras: '', reason: '' }); setAlloc({})
       setReload(n => n + 1)
+      onSaved?.()
     } catch (e) { toast.error(errorMessage(e)) } finally { setSaving(false) }
   }
 

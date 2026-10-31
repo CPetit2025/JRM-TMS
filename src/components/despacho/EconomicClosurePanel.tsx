@@ -323,6 +323,7 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
                           ? `${i.executed_qty}${i.billable_qty != null && Number(i.billable_qty) !== Number(i.executed_qty) ? ` → ${i.billable_qty}` : ''} ${(BILLING_LABEL[i.billing_unit || ''] || i.billing_unit || '').toLowerCase()}` : '—'}</td>
                         <td className="px-2 text-right"><Variation base={i.agreed_pen} value={i.final_pen} settings={settings} /></td>
                         <td className="px-2"><Badge map={ITEM_STATUS} value={i.status} />
+                          {i.auto && <span className="block text-[10px] text-slate-500">Automático · no se valoriza</span>}
                           {i.status === 'APROBADO' && i.approved_by && <span className="block text-[10px] text-slate-500">{i.approved_by} · {fmtDate(i.approved_at ?? null)}</span>}
                           {i.observation && ['OBSERVADO', 'VALIDADO'].includes(i.status) && <span className="block max-w-40 text-[10px] text-red-700">{i.observation}</span>}</td>
                         <td className="px-2 text-slate-600">{i.validated_by || '—'}{i.validated_at && <span className="block text-[10px] text-slate-400">{fmtDate(i.validated_at)}</span>}</td>
@@ -335,7 +336,7 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
                             className="rounded bg-emerald-600 px-2 py-0.5 font-semibold text-white disabled:opacity-50">Aprobar</button>}
                           {data.can_approve && ['VALIDADO', 'EN_REVISION'].includes(i.status) && <button type="button" disabled={busy} onClick={() => void itemAct(i, 'OBSERVAR', 'Observación del ítem (qué falta o qué corregir)')}
                             className="rounded border border-red-300 px-2 py-0.5 font-semibold text-red-700 disabled:opacity-50">Observar</button>}
-                          {data.can_approve && i.status === 'APROBADO' && <button type="button" disabled={busy} onClick={() => void itemAct(i, 'REABRIR', 'Motivo para reabrir este ítem')}
+                          {data.can_approve && i.status === 'APROBADO' && !i.auto && <button type="button" disabled={busy} onClick={() => void itemAct(i, 'REABRIR', 'Motivo para reabrir este ítem')}
                             className="rounded border border-slate-300 px-2 py-0.5 font-semibold text-slate-700 disabled:opacity-50">Reabrir</button>}
                         </div></td>
                       </tr>
@@ -346,7 +347,7 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
               {editing && (() => {
                 const item = data.items.find(i => i.key === editing)
                 if (!item) return null
-                if (item.kind === 'FLETE') return <section className="rounded-xl border border-slate-200 bg-slate-50 p-3"><DispatchFreightStages key={reload} dispatchId={dispatchId} /></section>
+                if (item.kind === 'FLETE') return <section className="rounded-xl border border-slate-200 bg-slate-50 p-3"><DispatchFreightStages key={reload} dispatchId={dispatchId} onSaved={() => { setEditing(null); refresh() }} /></section>
                 const s = item.id ? services.get(item.id) : undefined
                 return s ? <ServiceEditor key={`${s.id}-${s.final_validated_at || ''}`} s={s} onSaved={refresh} /> : null
               })()}
