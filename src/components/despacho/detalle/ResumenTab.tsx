@@ -2,13 +2,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertCircle, Box, CalendarDays, FileText, Truck, User, Users } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 import { ProgrammingNotes } from '@/components/despacho/programar-ruta/ProgrammingNotes'
 import type { RouteCrewPerson } from '@/components/despacho/RouteCrewDetails'
 import { conformityLabels, deliveryServiceKind, deliveryStatus, type DeliveryRow } from '@/lib/delivery'
 import { partyName, referenceLabel, requiresSupplier } from '@/lib/suppliers'
 import { detailTime, milestones, pendingItems, type DispatchDetail, type Milestone } from '@/lib/dispatch-detail'
-import { Callout, CellGrid, DetailCard, MilestoneList, MilestoneStepper, PendingList, Place } from './DetailParts'
+import { Callout, CellGrid, DetailCard, MilestoneList, MilestoneStepper, PendingList, Place, ServiceChip } from './DetailParts'
 
 export const modalityLabel = (row: Pick<DeliveryRow, 'modalidad' | 'carrier_name'>) =>
   row.modalidad === 'TERCERO' ? `Tercero${row.carrier_name ? ` · ${row.carrier_name}` : ''}` : row.modalidad === 'RECOJO_CLIENTE' ? 'Recojo por cliente' : 'Transporte propio'
@@ -53,7 +52,7 @@ export function ResumenTab({ row, detail }: { row: DeliveryRow; detail: Dispatch
     <div className="min-w-0 space-y-4 sm:space-y-5">
       <DetailCard title="Resumen del servicio" icon={<FileText />}>
         <CellGrid cols="grid-cols-1 sm:grid-cols-6" items={[
-          ['Tipo de servicio', <ServiceTypeBadge key="k" kind={deliveryServiceKind(row)} full />, 'sm:col-span-2'], ['Solicitud (RT)', row.request_number, 'sm:col-span-2'], ['N.º despacho', row.dispatch_number || 'Sin número', 'sm:col-span-2'],
+          ['Tipo de servicio', <ServiceChip key="k" row={row} />, 'sm:col-span-2'], ['Solicitud (RT)', row.request_number, 'sm:col-span-2'], ['N.º despacho', row.dispatch_number || 'Sin número', 'sm:col-span-2'],
           ['Documento de referencia', referenceLabel(row) || (row.ot_code && row.ot_code !== 'Sin OT vinculada' ? `OT ${row.ot_code}` : 'Sin documento'), 'sm:col-span-2'],
           [requiresSupplier(row) ? 'Proveedor' : 'Cliente', party || (requiresSupplier(row) ? 'Proveedor sin vincular' : 'Cliente sin vincular'), 'sm:col-span-4'],
           [pickup ? 'Origen (recojo)' : 'Origen', <Place key="o" text={row.pickup_address} />, 'sm:col-span-3'], [pickup ? 'Destino' : 'Destino (entrega)', <Place key="d" text={row.delivery_address} />, 'sm:col-span-3'],

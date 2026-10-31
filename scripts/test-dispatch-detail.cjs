@@ -168,6 +168,11 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12,'0')}`
   v = await detail(id(70), id(30))
   assert.equal(Number(v.estimate.duration_min), 110); assert.equal(v.estimate.geometry.length, 2); assert.deepEqual(v.sources_failed, [])
   assert.equal((await detail(id(70), id(31))).estimate, null, 'no estimate is invented for other stops')
+  // Mismo criterio que C55: toda FK de las tablas nuevas cubierta por un índice
+  await db.exec(read('supabase/migrations/20261122100000_detalle_despacho_indices_fk.sql'))
+  const uncovered = (await db.query(`SELECT c.conname FROM pg_constraint c WHERE c.contype='f' AND c.conrelid IN ('dispatch_evidence'::regclass,'dispatch_route_estimates'::regclass)
+    AND NOT EXISTS(SELECT 1 FROM pg_index i WHERE i.indrelid=c.conrelid AND i.indisvalid AND i.indpred IS NULL AND (i.indkey::smallint[])[0:cardinality(c.conkey)-1] @> c.conkey)`)).rows
+  assert.deepEqual(uncovered, [], 'every foreign key has a covering index')
   await assert.rejects(db.exec(read('supabase/tests/caja_c194_detalle_evidencias_estimados.test.sql')), /CAJA C194 (PASS|FAIL: faltan las políticas)/)
   await db.exec('ROLLBACK').catch(() => {})
   console.log('PASS detalle del despacho: hitos reales, GPS confirmado, historial por parada, permisos y fuentes ausentes informadas')
