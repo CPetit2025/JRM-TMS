@@ -70,7 +70,7 @@ function Barra({ label, valor, capacidad, fmt, parcial }: { label: string; valor
   )
 }
 
-export function RouteCubicaje({ stops, capacidadKg, capacidadM3 }: { stops: CubicajeStop[]; capacidadKg?: number | null; capacidadM3?: number | null }) {
+export function RouteCubicaje({ stops, capacidadKg, capacidadM3, onCalc }: { stops: CubicajeStop[]; capacidadKg?: number | null; capacidadM3?: number | null; onCalc?: (calc: { kg: number; m3: number; kgSinMedida: number } | null) => void }) {
   const ots = useMemo(() => [...new Set(stops.map(s => s.ot).filter((o): o is string => Boolean(o)))].sort(), [stops])
   const key = ots.join('|')
   const [state, setState] = useState<{ key: string; data: Respuesta | null; error: boolean }>({ key: '', data: null, error: false })
@@ -87,6 +87,8 @@ export function RouteCubicaje({ stops, capacidadKg, capacidadM3 }: { stops: Cubi
   const loading = Boolean(key) && state.key !== key
   const data = state.key === key ? state.data : null
   const calc = useMemo(() => cubicajeRuta(stops, data?.ots ?? []), [stops, data])
+  // Totales para las alertas del armado de ruta (null mientras se calcula)
+  useEffect(() => { onCalc?.(loading || !stops.length ? null : { kg: calc.kg, m3: calc.m3, kgSinMedida: calc.kgSinMedida }) }, [onCalc, loading, stops.length, calc.kg, calc.m3, calc.kgSinMedida])
   if (!stops.length) return null
 
   return (
