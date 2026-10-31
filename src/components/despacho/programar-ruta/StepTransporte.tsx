@@ -68,7 +68,7 @@ function FreightPanel({ rb }: { rb: RouteBuilder }) {
 export function StepTransporte({ rb }: { rb: RouteBuilder }) {
   const nd = rb.newDispatch
   if (!nd.selected_requests.length) return <p className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">Seleccione primero los servicios: la modalidad se hereda de la solicitud.</p>
-  if (nd.document_type === 'NOTA_SALIDA') return <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">Recojo por el cliente · Nota de Salida. Sin conductor propio, monitoreo GPS ni flete JRM. El Asistente Documentario confirma la Nota de Despacho antes de la salida.</p>
+  if (nd.document_type === 'NOTA_SALIDA') return <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">Recojo por el cliente · Nota de Salida. Sin conductor propio, monitoreo GPS ni flete JRM. El Asistente Documentario prepara la Nota de Despacho; el retiro no espera esa confirmación.</p>
   const busyPlates = new Set(rb.dispatches.map(d => d.vehicle_plate))
   const busyDrivers = new Map(rb.dispatches.filter(d => d.driver_id).map(d => [d.driver_id as string, d.dispatch_number]))
   const elig = rb.currentEligibility

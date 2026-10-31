@@ -107,7 +107,7 @@ export const pendingText = (pending: EconItem[]) => pending.length
 
 /** Estado de la ruta en Torre de Control, en corto para la bandeja. */
 export const ROUTE_STATUS: Record<string, string> = {
-  LIQUIDADO: 'Liquidada', CERRADO: 'Cerrada', RETORNO_COMPLETADO: 'Unidad liberada', ENTREGADO: 'Entregada', CIERRE_OPERATIVO: 'Cierre operativo',
+  LIQUIDADO: 'Ruta cerrada', CERRADO: 'Ruta cerrada', RETORNO_COMPLETADO: 'Unidad liberada', ENTREGADO: 'Entregada', CIERRE_OPERATIVO: 'Cierre operativo',
 }
 
 /** Servicios de la ruta: Entrega, Recojo, Traslado o Recojo por cliente (sin repetir). */
