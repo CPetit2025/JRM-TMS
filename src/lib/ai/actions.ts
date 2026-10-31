@@ -192,13 +192,14 @@ export async function executeOfficeAction(payload: unknown, supabase: SupabaseCl
 
   if (p.kind === 'REGISTER_CONTRACT_EXPENSE') {
     if (!UUID.test(String(params.contract_id)) || !(Number(params.amount) > 0)) throw new Error('Datos del gasto inválidos.')
-    const { error } = await supabase.rpc('register_contract_service', {
+    const { data, error } = await supabase.rpc('register_contract_service_checked', {
       p_contract_id: params.contract_id, p_service_type: String(params.service_type), p_description: params.description ?? null,
       p_amount_pen: Number(params.amount), p_service_date: params.service_date ?? null, p_plate: null, p_driver_name: null,
       p_hours: params.hours ?? null, p_provider_ruc: params.provider_ruc ?? null, p_provider_name: params.provider_name ?? null,
       p_category: params.category ?? 'Contrato', p_referral_guide: params.referral_guide ?? null,
     })
     if (error) throw new Error(error.message)
+    if (!data?.success) throw new Error(data?.error || 'No se pudo registrar el gasto')
     return { status: 'Gasto registrado y descontado de la partida' }
   }
   if (p.kind === 'UPDATE_EXPENSE_AMOUNT') {

@@ -80,6 +80,8 @@ export default function ContratosPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [editingContract, setEditingContract] = useState<Contract | null>(null)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  // Edición guardada a medias (la partida falló): se informa en el modal y se reintenta solo ese paso
+  const [editPartial, setEditPartial] = useState('')
   const [editFormData, setEditFormData] = useState({
     client_id: '',
     budget_pen: '',
@@ -112,6 +114,7 @@ export default function ContratosPage() {
   const [filterType, setFilterType] = useState('TODOS')
   // Verificación con el ERP (Actualizable + Stock): diferencias, OT activa por último despacho, alta asistida y correcciones
   const [filterErp, setFilterErp] = useState('TODOS')
+  const [filterBudget, setFilterBudget] = useState<'TODOS' | 'SIN_PARTIDA'>('TODOS')
   const erp = useErpContratos(contracts.map(c => c.code))
   const [sinAltaOpen, setSinAltaOpen] = useState(false)
   const [correccionesOpen, setCorreccionesOpen] = useState(false)
@@ -134,8 +137,11 @@ export default function ContratosPage() {
         : filterErp === 'CLIENTE' ? info.diferencias.includes('CLIENTE_DISTINTO') || info.diferencias.includes('RUC_INVALIDO')
         : filterErp === 'SIN_ALTA' ? info.diferencias.includes('HIJOS_SIN_ALTA') : true));
 
-    return matchesSearch && matchesStatus && matchesType && matchesErp;
+    const matchesBudget = filterBudget === 'TODOS' || (c.status === 'ACTIVO' && !(Number(c.budget?.allocated_pen || 0) > 0));
+    return matchesSearch && matchesStatus && matchesType && matchesErp && matchesBudget;
   });
+  // OT activas sin partida de transporte (p. ej. creadas desde Solicitudes): las completa Contratos antes de programar con costo
+  const withoutBudget = contracts.filter(c => c.status === 'ACTIVO' && !(Number(c.budget?.allocated_pen || 0) > 0)).length
 
   // Enlace desde el aviso «cliente corregido» (/contratos?ot=…): se aplica una vez, al cargar la lista
   const otFromLink = useRef(false)
@@ -329,6 +335,7 @@ export default function ContratosPage() {
   const handleEditClick = (contract: Contract) => {
     window.dispatchEvent(new CustomEvent('jrm:context', { detail: { contractId: contract.id } }))
     setEditingContract(contract)
+    setEditPartial('')
     setEditFormData({
       client_id: contract.client_id || '',
       budget_pen: contract.budget?.own_allocated_pen?.toString() || '',
@@ -351,6 +358,10 @@ export default function ContratosPage() {
       // 0. Cliente: obligatorio. Completar uno que faltaba lo hace quien edita la OT; cambiar uno ya asignado, solo el
       //    Administrador (lo valida set_contract_client, que lo aplica a toda la familia y a sus solicitudes).
       if (!editFormData.client_id) throw new Error('Seleccione el cliente de la OT')
+      // Todo se valida antes de guardar: así no queda una edición a medias por un dato inválido
+      const rawBudget = editFormData.budget_pen.trim()
+      const newBudget = rawBudget === '' ? null : Number(rawBudget)
+      if (newBudget != null && (!Number.isFinite(newBudget) || newBudget < 0)) throw new Error('La partida debe ser un monto válido (cero o mayor)')
       if (editFormData.client_id !== (editingContract.client_id || '')) {
         const { error: clientError } = await supabase.rpc('set_contract_client', {
           p_contract_id: editingContract.id,
@@ -379,10 +390,7 @@ export default function ContratosPage() {
 
       // 2. Partida de transporte: en el servidor (permisos, cartera, sede, OT raíz) y se crea si la OT no la tenía.
       //    Antes se hacía un UPDATE directo que, sin fila de partida, no guardaba nada y aun así mostraba "actualizado".
-      const rawBudget = editFormData.budget_pen.trim()
-      if (rawBudget !== '') {
-        const newBudget = Number(rawBudget)
-        if (!Number.isFinite(newBudget) || newBudget < 0) throw new Error('La partida debe ser un monto válido (cero o mayor)')
+      if (newBudget != null) {
         const current = editingContract.budget?.own_allocated_pen
         if (current == null || Number(current) !== newBudget) {
           const { error: budgetError } = await supabase.rpc('set_contract_transport_budget', {
@@ -390,10 +398,17 @@ export default function ContratosPage() {
             p_amount: newBudget,
             p_reason: 'Edición de OT en Contratos',
           })
-          if (budgetError) throw new Error('Los datos de la OT se guardaron, pero la partida no: ' + budgetError.message)
+          if (budgetError) {
+            // Cliente y datos ya quedaron guardados: el modal sigue abierto y «Guardar» reintenta solo la partida
+            setEditingContract(prev => (prev ? { ...prev, client_id: editFormData.client_id } : prev))
+            setEditPartial('Los datos de la OT y el cliente se guardaron; falta la partida: ' + budgetError.message + '. Corrija y pulse «Reintentar partida».')
+            void fetchContracts()
+            return
+          }
         }
       }
 
+      setEditPartial('')
       toast.success('Contrato actualizado exitosamente')
       setIsEditModalOpen(false)
       setEditingContract(null)
@@ -674,6 +689,11 @@ export default function ContratosPage() {
           </button>
         </div>
 </>} />
+
+      {withoutBudget > 0 && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <span><b>{withoutBudget} OT activa{withoutBudget > 1 ? 's' : ''} sin partida de transporte.</b> Responsable: Contratos. Sin partida, sus servicios con costo no se pueden programar.</span>
+        <button type="button" onClick={() => setFilterBudget(v => (v === 'SIN_PARTIDA' ? 'TODOS' : 'SIN_PARTIDA'))} className="font-semibold text-[#002855] underline">{filterBudget === 'SIN_PARTIDA' ? 'Ver todas' : 'Ver solo esas'}</button>
+      </div>}
 
       {/* Buscador y Filtros */}
       <div className="flex flex-col md:flex-row gap-4">
@@ -1069,6 +1089,7 @@ export default function ContratosPage() {
       {/* Edit Modal */}
       <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={`Editar Contrato: ${editingContract?.code}`} maxWidth="max-w-4xl">
         <form onSubmit={handleUpdateContract} className="space-y-6">
+          {editPartial && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{editPartial}</p>}
           <div className={`rounded-lg border p-4 shadow-sm ${editingContract && !editingContract.client_id ? 'border-red-200 bg-red-50/50' : 'border-slate-200 bg-white'}`}>
             <label className="block text-sm font-semibold text-slate-800 mb-1">Cliente <span className="text-red-500">*</span></label>
             {editingContract?.client_id && role !== 'admin' ? (
@@ -1197,7 +1218,7 @@ export default function ContratosPage() {
               disabled={isSubmitting}
               className="px-6 py-2 bg-[#002855] text-white font-medium rounded-lg hover:bg-[#001d3d] transition-colors disabled:opacity-50 shadow-md"
             >
-              {isSubmitting ? 'Guardando...' : 'Guardar Cambios'}
+              {isSubmitting ? 'Guardando...' : editPartial ? 'Reintentar partida' : 'Guardar Cambios'}
             </button>
           </div>
         </form>

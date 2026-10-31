@@ -49,9 +49,9 @@ function FreightPanel({ rb }: { rb: RouteBuilder }) {
           <p className="text-xs font-semibold text-slate-800">Distribución por servicio <span className="font-normal text-slate-500">· con OT se usa el margen operativo de la partida</span></p>
           <button type="button" onClick={() => rb.setFreightShares({})} className="text-xs text-blue-700 underline">Distribuir según los estimados</button>
         </div>
-        {rb.modalidad === 'PROPIA' && rb.selectedServices.some(r => r.request_type === 'RECOJO') && <p className="text-xs text-blue-900">Los recojos con flota propia no se valorizan: el flete se reparte entre los demás servicios.</p>}
+        {rb.selectedServices.some(rb.internalService) && <p className="text-xs text-blue-900">Con flota propia, los recojos y los servicios sin OT son operación interna (sin flete): el flete se reparte entre los servicios con OT.</p>}
         {rb.selectedServices.map(req => {
-          const fixed = rb.modalidad === 'PROPIA' && req.request_type === 'RECOJO'
+          const fixed = rb.internalService(req)
           return <label key={req.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
             <span><strong>{req.request_number}</strong> · {req.contracts?.code ? `OT ${req.contracts.code}` : referenceLabel(req) || 'Sin referencia'} · {serviceLabel(req)}</span>
             <span className="flex items-center gap-1">S/
@@ -68,7 +68,7 @@ function FreightPanel({ rb }: { rb: RouteBuilder }) {
 export function StepTransporte({ rb }: { rb: RouteBuilder }) {
   const nd = rb.newDispatch
   if (!nd.selected_requests.length) return <p className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">Seleccione primero los servicios: la modalidad se hereda de la solicitud.</p>
-  if (nd.document_type === 'NOTA_SALIDA') return <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">Recojo por el cliente · Nota de Salida. Sin conductor propio, monitoreo GPS ni flete JRM. El Asistente Documentario confirma la Nota de Despacho antes de la salida.</p>
+  if (nd.document_type === 'NOTA_SALIDA') return <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">Recojo por el cliente · Nota de Salida. Sin conductor propio, monitoreo GPS ni flete JRM. El Asistente Documentario prepara la Nota de Despacho; el retiro no espera esa confirmación.</p>
   const busyPlates = new Set(rb.dispatches.map(d => d.vehicle_plate))
   const busyDrivers = new Map(rb.dispatches.filter(d => d.driver_id).map(d => [d.driver_id as string, d.dispatch_number]))
   const elig = rb.currentEligibility
@@ -111,7 +111,7 @@ export function StepTransporte({ rb }: { rb: RouteBuilder }) {
       )}
       <p className="text-xs text-slate-600">Capacidad de la unidad: {cap ? <b className="tabular-nums">{Math.round(cap).toLocaleString('es-PE')} kg{rb.capacityM3 ? ` · ${rb.capacityM3.toLocaleString('es-PE')} m³` : ''}</b> : <span className="text-amber-700">sin capacidad registrada</span>}
         {' '}· Carga declarada en las solicitudes: <b className={`tabular-nums ${cap && rb.declaredKg > cap ? 'text-red-700' : ''}`}>{Math.round(rb.declaredKg).toLocaleString('es-PE')} kg</b></p>
-      {rb.ownPickupOnly ? <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-900">Recojo con flota propia: sin valorización de flete. Se conserva el seguimiento y la documentación.</p> : <FreightPanel rb={rb} />}
+      {rb.ownInternalOnly ? <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-900">Operación interna con flota propia (recojo o traslado sin OT): sin flete. Se conserva el seguimiento y la documentación.</p> : <FreightPanel rb={rb} />}
     </div>
   )
 }

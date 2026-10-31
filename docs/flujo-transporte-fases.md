@@ -2,20 +2,34 @@
 
 ## Circuito y responsabilidades
 
-Solicitud de Transporte → Programación y Ruteo → Documentos de salida → Ejecución → Conformidad de entrega → Cierre y Registro de Servicios.
+Solicitud → Aprobación → Programación y ruteo → Ejecución → Conformidad de entrega → Cierre operativo → Cierre documentario → Cierre económico → Registro de Servicios y Caja.
 
-La Torre de Control supervisa transversalmente. El portal de seguimiento es de lectura; el portal del transportista y la app reciben evidencia de destino. Ninguna carga de guía por sí sola equivale a conformidad aprobada.
+La Torre de Control supervisa transversalmente y abre el Detalle del despacho (Resumen, Ruta y seguimiento, Documentos, Fotos y evidencias, Costos e Historial). El portal de seguimiento es de lectura. Ninguna carga de guía por sí sola equivale a conformidad aprobada.
 
-| Frente | Responsable y alcance |
-| --- | --- |
-| Solicitudes | Solicitante; modalidad, tipo de servicio, OT según área, fecha y hora solicitadas. |
-| Programación y Ruteo | Supervisor de Transporte; recursos, orden de paradas, programación y distribución de flete. |
-| Documentos previos a salida | Auditor registra Packing List firmado; Asistente verifica documentos y Nota de Despacho cuando corresponde. |
-| Evidencia de entrega | Conductor/proveedor presenta guía firmada en destino; Supervisor valida, observa o rechaza. |
-| Torre de Control | Seguimiento operativo, GPS, incidencias y accesos al servicio/documentos. |
-| Registro de Servicios | Compromisos, realizados y anulados; partidas y regularización trazable de vínculos. |
+| Paso | Responsable | Qué hace | Qué no hace |
+| --- | --- | --- | --- |
+| 1. Maestros | Comercial / Contratos | Cliente, proveedor, OT y su partida de transporte. Las OT activas sin partida aparecen en Contratos con su aviso y filtro. | Una referencia del ERP no es partida aprobada. |
+| 2. Solicitud | Solicitante | Necesidad, fecha y hora requeridas, destino, carga, OT u OC/OS/RQ y servicios especiales con su costo referencial. | El referencial no es el costo final ni una reserva. |
+| 3. Aprobación | Aprobador | Autoriza la demanda y sus excepciones. | No programa unidad ni asegura financiación de la ruta. |
+| 4. Programación | Supervisor de Transporte | Armado en 5 etapas: servicios y orden de paradas, unidad y personal, flete acordado (siempre escrito; con motivo si difiere del referencial), adicionales por parada, salida y observaciones. Reserva en la partida. | Peso declarado sobre la capacidad bloquea; el cubicaje del ERP solo advierte. |
+| 5. Ejecución | Conductor / tercero | Salida, hitos, Packing List y guía firmada desde el app o el enlace. **La salida no depende de documentos confirmados.** | Documentario puede «Marcar documentos preparados», pero no bloquea la salida. |
+| 6. Conformidad | Supervisor | Valida, observa o rechaza la evidencia de cada parada. | Número de guía ≠ archivo ≠ conformidad validada. |
+| 7. Cierre operativo | Torre de Control | Libera la unidad (retorno, corte diario o cierre manual con motivo). «Cerrar ruta» consume la reserva de la partida. | Una ruta que **no salió** se cancela (libera la reserva y devuelve las solicitudes). Si se cierra a mano desde Programado, su costo queda pendiente en Cierre económico. |
+| 8. Cierre documentario | Documentario | Completa la evidencia por parada o registra una excepción con motivo. | No crea archivos ni cierra lo económico. |
+| 9. Cierre económico | Cierre económico | Única autoridad del costo final: «Conforme» con lo acordado, desviación sobre el umbral con motivo y aprobación. Flota propia ejecutada se confirma sola. | Corregir lo aprobado exige observar o reabrir; Registro de Servicios ya no lo edita. |
+| 10. Registro y Caja | Contratos / Caja | Consolidado de servicios y gastos manuales justificados; rendición y pagos del viaje. | Un cargo manual parecido a uno existente (misma partida, tipo, ±3 días, ruta/importe/proveedor) exige motivo. Caja no recrea la prestación. |
 
-Una ruta admite varias OT y tipos de servicio. Se conservan exclusividad conductor–unidad, recojo por cliente sin flete/GPS JRM, historial de reprogramación y versiones documentales. El estado operativo, documental y económico tiene significado distinto.
+### Tres cierres independientes
+
+| Eje | Estados | Lo cierra |
+| --- | --- | --- |
+| Operativo | Programado → En ruta → Entregado → Unidad liberada / Cierre operativo → Ruta cerrada | Torre de Control |
+| Documentario | Pendiente → En validación → Observado → Completo | Documentario |
+| Económico | Por cerrar → Por aprobar → Cerrada / No aplica | Cierre económico |
+
+Ningún cierre cierra a otro. El corte diario libera recursos; no valida guías, no crea conformidades ni liquida costos.
+
+Una ruta admite varias OT y tipos de servicio: el flete se reparte por servicio y cada adicional pertenece a su parada. Se conservan exclusividad conductor–unidad, recojo por cliente sin flete/GPS JRM, historial de reprogramación y versiones documentales.
 
 ## Fases
 

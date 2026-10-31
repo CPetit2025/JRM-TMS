@@ -182,7 +182,7 @@ export default function DespachoPage() {
   }, [fetchData, supabase])
 
   // Armado de ruta («Armar ruta y programar unidad»): estado, reglas y programación en useRouteBuilder
-  const rb = useRouteBuilder({ supabase, pendingRequests, setPendingRequests, dispatches, vehicles, drivers, fetchData, canAddService, router, onLinkRequest: setLinkRequest })
+  const rb = useRouteBuilder({ supabase, pendingRequests, setPendingRequests, dispatches, vehicles, drivers, fetchData, canAddService, canAuthorizeFreight: canWrite('despacho-aprobacion'), router, onLinkRequest: setLinkRequest })
 
   return (
     <div className="w-full mx-auto space-y-2.5">

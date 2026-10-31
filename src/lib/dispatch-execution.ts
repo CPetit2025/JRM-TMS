@@ -15,7 +15,8 @@ export function dispatchExecutionAction(status: string, modalidad?: string | nul
     reason: 'Retorno autorizado desde Torre de Control',
   }
   if (status === 'ENTREGADO' || status === 'RETORNO_COMPLETADO') return { label: 'Cerrar ruta', rpc: 'close_dispatch_route' }
-  if (status === 'CIERRE_OPERATIVO') return { label: 'Completar cierre documental y financiero', rpc: 'close_dispatch_route' }
+  // Cierra la ruta (consume la reserva de la partida). El cierre documentario y el económico se hacen en sus propias bandejas.
+  if (status === 'CIERRE_OPERATIVO') return { label: 'Cerrar ruta', rpc: 'close_dispatch_route' }
   return null
 }
 

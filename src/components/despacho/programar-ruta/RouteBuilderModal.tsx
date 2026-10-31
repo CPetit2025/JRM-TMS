@@ -48,7 +48,7 @@ function StepSalida({ rb }: { rb: RouteBuilder }) {
         {rb.selectedDates.length === 1 && nd.scheduled_departure && nd.scheduled_departure === rb.autoDeparture && <span className="mt-1 block text-xs text-emerald-700">Tomada de la fecha requerida ({serviceDate(rb.selectedDates[0])}) a las 08:00; ajuste la hora si es necesario.</span>}
         {rb.selectedDates.length === 1 && nd.scheduled_departure.slice(0, 10) !== rb.selectedDates[0] && <button type="button" onClick={() => rb.setNewDispatch(c => ({ ...c, scheduled_departure: `${rb.selectedDates[0]}T${c.scheduled_departure.slice(11, 16) || '08:00'}` }))} className="mt-1 text-xs font-semibold text-blue-700 underline">Usar fecha requerida: {serviceDate(rb.selectedDates[0])}</button>}
       </label>
-      {nd.document_type === 'GR' && !rb.ownPickupOnly && <label><span className="mb-1 flex items-center justify-between text-xs font-semibold text-slate-700">Distancia estimada (km) {rb.calculatingDistance && <Loader2 className="h-3 w-3 animate-spin text-blue-500" />}</span>
+      {nd.document_type === 'GR' && !rb.ownInternalOnly && <label><span className="mb-1 flex items-center justify-between text-xs font-semibold text-slate-700">Distancia estimada (km) {rb.calculatingDistance && <Loader2 className="h-3 w-3 animate-spin text-blue-500" />}</span>
         <input type="number" min="0" step="0.1" placeholder="Cálculo automático" disabled={rb.calculatingDistance} className={control} value={nd.estimated_distance_km}
           onChange={e => rb.setNewDispatch({ ...nd, estimated_distance_km: e.target.value === '' ? '' : Number(e.target.value) })} />
         <span className="mt-1 block text-[11px] text-slate-500">Se calcula al seleccionar los servicios; puede ajustarla.</span></label>}
