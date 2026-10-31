@@ -1,16 +1,17 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowRight, ClipboardList, FileCheck2, Radar, Receipt, Route } from 'lucide-react'
+import { ArrowRight, ClipboardList, FileCheck2, Landmark, Radar, Receipt, Route } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
 
-export type TransportStage = 'solicitud' | 'programacion' | 'documentos' | 'registro'
+export type TransportStage = 'solicitud' | 'programacion' | 'documentos' | 'economico' | 'registro'
 
 const stages = [
   { id: 'solicitud', label: 'Solicitud', hint: 'Registro de solicitud', href: '/solicitudes', modules: ['solicitudes'], icon: ClipboardList },
   { id: 'programacion', label: 'Programación y ruteo', hint: 'Planificación de servicios', href: '/despacho', modules: ['despacho'], icon: Route },
   { id: 'documentos', label: 'Documentos y conformidad', hint: 'Gestión de documentos', href: '/despacho/documentos', modules: ['documentario', 'packing-list', 'planificacion'], icon: FileCheck2 },
-  { id: 'registro', label: 'Registro de servicios', hint: 'Ejecución y cierre', href: '/contratos/servicios', modules: ['contratos-servicios', 'clientes'], icon: Receipt },
+  { id: 'economico', label: 'Cierre económico', hint: 'Costo final y aprobación por ruta', href: '/despacho/documentos/economico', modules: ['cierre-economico'], icon: Landmark },
+  { id: 'registro', label: 'Registro de servicios', hint: 'Consolidado de servicios y gastos', href: '/contratos/servicios', modules: ['contratos-servicios', 'clientes'], icon: Receipt },
 ] as const
 
 const TORRE_TITLE = 'La Torre de Control supervisa la ejecución. Los documentos de salida y la conformidad de entrega se gestionan en momentos distintos.'
