@@ -237,3 +237,18 @@ test('download-all zip is a valid stored archive', async () => {
  assert.equal(view.getUint32(0, true), 0x04034b50, 'local header'); assert.equal(view.getUint32(bytes.length - 22, true), 0x06054b50, 'end of central directory')
  assert.equal(view.getUint16(bytes.length - 12, true), 2, 'two entries')
 })
+
+test('services closed at S/ 0 (internal own-fleet work) are not listed nor summed; pending zero items still are', async () => {
+ const econLib = load('src/lib/economic-closure.ts')
+ const zero = item({ key: 'F:s2', kind: 'FLETE', concept: 'FLETE', request_number: 'RT-91', agreed_pen: 0, final_pen: 0, status: 'APROBADO', auto: true })
+ const pendingZero = item({ key: 'S:9', concept: 'OTROS', agreed_pen: 0, status: 'POR_VALIDAR' })
+ const paid = item({ key: 'F:s1', kind: 'FLETE', concept: 'FLETE', agreed_pen: 300, final_pen: 320, status: 'APROBADO' })
+ assert.equal(econLib.isZeroClosed(zero), true); assert.equal(econLib.isZeroClosed(pendingZero), false)
+ const s = econLib.routeSummary({ items: [zero, pendingZero, paid] })
+ assert.deepEqual([s.total, s.approved, s.final], [2, 1, 320], 'zero-closed item excluded from counts and totals')
+ detail = base({ dispatch: { ...base().dispatch, services_count: 2 } }); expenses = { data: [], error: null }
+ econ = econOf([item({ key: 'F:s1', kind: 'FLETE', concept: 'FLETE', agreed_pen: 0, final_pen: 0, status: 'APROBADO', auto: true })], 2)
+ const view = await openCosts({})
+ assert.ok(text(view).includes('Sin flete: operación interna con flota propia (no se valoriza).'))
+ await act(async () => view.unmount())
+})

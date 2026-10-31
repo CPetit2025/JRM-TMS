@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { CircleDollarSign, Download, FileText, Fuel, Info, Paperclip, Pencil, Plus, Receipt, Truck, Wrench } from 'lucide-react'
 import { money } from '@/lib/caja'
 import type { DeliveryRow } from '@/lib/delivery'
-import { ECON_STATUS, ITEM_LABEL, ITEM_STATUS, econKey } from '@/lib/economic-closure'
+import { ECON_STATUS, ITEM_LABEL, ITEM_STATUS, econKey, isZeroClosed } from '@/lib/economic-closure'
 import { detailTime, downloadUrl, stopCosts, type DispatchCosts, type DispatchFiles } from '@/lib/dispatch-detail'
 import { Callout, CellGrid, DetailCard, IconButton, MilestoneStepper, ServiceStrip } from './DetailParts'
 import { modalityLabel } from './ResumenTab'
@@ -37,7 +37,8 @@ export function CostosTab({ row, costs, files, urls, servicesCount, economicHref
       <ServiceStrip row={row} icon={<Truck />} />
       <DetailCard title="1. Flete y transporte" icon={<Truck />} actions={economicHref && <Link href={economicHref} className={linkBtn}><Pencil className="h-4 w-4" aria-hidden />Editar</Link>}>
         <CellGrid cols="grid-cols-1 sm:grid-cols-3" items={[['Proveedor / modalidad', modalityLabel(row)], ['Unidad', row.plate || 'Sin placa'], ['Conductor', row.driver_name || 'Sin conductor']]} />
-        {freight ? <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+        {freight && isZeroClosed(freight) ? <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">Sin flete: operación interna con flota propia (no se valoriza).</p>
+        : freight ? <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
           {c.freightScope === 'RUTA' && <p className="mb-2 text-xs font-semibold text-amber-800">Flete de la ruta completa ({d.requests.length} servicios): no se reparte por solicitud y no se suma al costo de {row.request_number}.</p>}
           <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4 sm:divide-x sm:divide-slate-200">
             <div><dt className="flex items-center gap-1 text-xs text-slate-500">Flete referencial<Info aria-hidden className="h-3.5 w-3.5" /></dt><dd className="mt-1 text-xl font-bold text-slate-900">{pen(ref)}</dd></div>

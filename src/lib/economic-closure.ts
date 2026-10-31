@@ -81,8 +81,15 @@ export function isDeviation(agreed: number, final: number | null, s: EconSetting
   return Number(agreed) > 0 ? d / Number(agreed) * 100 > Number(s.deviation_pct) : true
 }
 
+/**
+ * Ítem cerrado en S/ 0 (p. ej. recojo o traslado sin OT con flota propia: operación interna que no se valoriza). No pide
+ * ninguna acción, así que no se lista ni suma en el cierre económico; lo que está en S/ 0 pero pendiente sí se muestra.
+ */
+export const isZeroClosed = (i: EconItem) => i.status === 'APROBADO' && !Number(i.agreed_pen || 0) && !Number(i.final_pen || 0)
+export const valuedItems = (items: EconItem[] | null | undefined) => (items || []).filter(i => !isZeroClosed(i))
+
 export function routeSummary(r: EconRoute) {
-  const items = r.items || []
+  const items = valuedItems(r.items)
   const withFinal = items.filter(i => i.final_pen != null)
   const agreed = items.reduce((a, i) => a + Number(i.agreed_pen || 0), 0)
   const agreedWithFinal = withFinal.reduce((a, i) => a + Number(i.agreed_pen || 0), 0)
