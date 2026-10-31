@@ -1,7 +1,7 @@
 // Cierre económico: tipos de la bandeja y del panel, etiquetas de negocio y cálculos compartidos (variación,
 // desviación según el umbral configurable de economic_settings, pendientes y proveedor principal).
 
-export type EconSettings = { deviation_pct: number; deviation_pen: number }
+export type EconSettings = { deviation_pct: number; deviation_pen: number; max_pending_days?: number }
 export type EconItem = {
   key: string; kind: 'FLETE' | 'SERVICIO'; id: string | null; concept: string; request_number: string | null
   contract_id: string | null; contract_code: string | null; origin: string | null; supplier: string | null
@@ -22,7 +22,7 @@ export type EconRoute = {
   services?: { request_type: string | null; attention_mode: string | null }[] | null
 }
 
-export const DEFAULT_SETTINGS: EconSettings = { deviation_pct: 10, deviation_pen: 100 }
+export const DEFAULT_SETTINGS: EconSettings = { deviation_pct: 10, deviation_pen: 100, max_pending_days: 7 }
 export const ITEM_LABEL: Record<string, string> = { FLETE: 'Transporte', MONTACARGAS: 'Montacarga', GRUA: 'Grúa', ESTIBA: 'Estiba', OTROS: 'Otros' }
 export const ECON_STATUS: Record<string, { label: string; cls: string }> = {
   // Estados de la bandeja (cierre simplificado)
@@ -60,7 +60,8 @@ export const isLiberated = (status: string) => LIBERATED.includes(status)
 
 /** Estado económico mostrado: Por cerrar, Por aprobar (solo lo que supera el umbral), Cerrado o No aplica. */
 export function econKey(r: { status: string; state: EconState; items?: EconItem[] }) {
-  if (r.state.status === 'NO_APLICA') return 'NO_APLICA'
+  // «No aplica» solo sin costos: un gasto de Caja posterior devuelve la ruta a la bandeja
+  if (r.state.status === 'NO_APLICA' && !(r.items || []).length) return 'NO_APLICA'
   const items = r.items || []
   if (items.some(i => i.status === 'EN_REVISION')) return 'POR_APROBAR'
   if (items.length ? items.every(i => i.status === 'APROBADO') : r.state.status === 'CERRADO') return 'CERRADO'
@@ -108,7 +109,19 @@ export function routeSummary(r: EconRoute) {
   }
 }
 
-export const pendingText = (pending: EconItem[]) => pending.length
+/** Montacarga, grúa o estiba con más de una línea para la misma solicitud: posible doble registro de una prestación. */
+export function duplicateServices(items: EconItem[] | null | undefined) {
+  const groups = new Map<string, EconItem[]>()
+  for (const i of items || []) {
+    if (i.kind !== 'SERVICIO' || !['MONTACARGAS', 'GRUA', 'ESTIBA'].includes(i.concept)) continue
+    const k = `${i.concept}|${i.request_number || ''}`
+    groups.set(k, [...(groups.get(k) || []), i])
+  }
+  return [...groups.values()].filter(g => g.length > 1).map(g =>
+    `${ITEM_LABEL[g[0].concept] || g[0].concept} ${g[0].request_number || ''} × ${g.length} (${g.map(i => ORIGIN_TEXT[i.origin || ''] || i.origin || '—').join(', ')})`)
+}
+
+export const pendingText =(pending: EconItem[]) => pending.length
   ? `${pending.length} pendiente${pending.length > 1 ? 's' : ''}: ${[...new Set(pending.map(i => ITEM_LABEL[i.concept] || i.concept))].join(' + ')}`
   : ''
 

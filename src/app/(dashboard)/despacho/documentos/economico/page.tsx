@@ -248,7 +248,7 @@ function CierreEconomico() {
                   {visible.map(({ r, s, key, days }) => {
                     const alert = isDeviation(s.agreedWithFinal, s.final, settings)
                     const amount = (v: number) => (s.total ? money(v) : '—')
-                    const late = days != null && days > 7
+                    const late = days != null && days > (settings.max_pending_days ?? 7)
                     return <tr key={r.dispatch_id} className={`cursor-pointer hover:bg-slate-50 ${alert ? 'bg-red-50/40' : ''}`} onClick={() => setOpen({ id: r.dispatch_id, tab: 'resumen' })}>
                       <td className="px-3 py-2" onClick={e => e.stopPropagation()}>{canConform(r, key) && <input type="checkbox" aria-label={`Seleccionar la ruta ${r.dispatch_number}`}
                         checked={selected.has(r.dispatch_id)} onChange={() => toggle(r.dispatch_id)} />}</td>
@@ -268,7 +268,7 @@ function CierreEconomico() {
                       <td className="px-3 py-2 text-xs text-slate-600">{!isLiberated(r.status) ? <span className="font-semibold text-orange-800">Liberar unidad en Torre</span>
                         : key === 'POR_APROBAR' ? <span className="font-semibold text-blue-800">Aprobar desviación</span>
                         : key === 'POR_CERRAR' ? (pendingText(s.pending) || 'Confirmar conforme') : '—'}</td>
-                      <td className={`px-3 py-2 text-right tabular-nums ${late ? 'font-semibold text-red-700' : ''}`} title="Días desde que la ruta quedó lista para el cierre">{days ?? '—'}</td>
+                      <td className={`px-3 py-2 text-right tabular-nums ${late ? 'font-semibold text-red-700' : ''}`} title={`Días desde que la ruta quedó lista para el cierre (atrasada desde ${settings.max_pending_days ?? 7})`}>{days ?? '—'}</td>
                       <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}><TableActions label={`Acciones de la ruta ${r.dispatch_number}`} actions={rowActions(r, key)} /></td>
                     </tr>
                   })}
