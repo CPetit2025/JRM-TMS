@@ -51,8 +51,10 @@ export function AddRouteService({ dispatchId, initialRequestId, onClose, onChang
  const day = context?.dispatch.operating_day || limaToday()
  // Ruta tercerizada (JRM contrata al tercero): el servicio agregado puede llevar flete adicional cuando lo amerite.
  const thirdParty = context?.dispatch.modalidad === 'TERCERO'
- const freightValue = thirdParty && freight ? Number(freight) : 0
- const freightInvalid = !Number.isFinite(freightValue) || freightValue < 0 || (freightValue > 0 && reason.trim().length < 10)
+ // Un servicio de OT no se agrega sin costo, sea flota propia o tercero (salvo recojo con flota propia, que no se valoriza).
+ const needsCost = !!selected?.ot && !(!thirdParty && selected?.type === 'RECOJO')
+ const freightValue = (thirdParty || needsCost) && freight ? Number(freight) : 0
+ const freightInvalid = !Number.isFinite(freightValue) || freightValue < 0 || (needsCost && freightValue <= 0) || (freightValue > 0 && reason.trim().length < 10)
  const filtered = context?.requests.filter(r => `${r.number} ${r.ot || references.get(r.id) || ''} ${r.origin} ${r.destination}`.toLowerCase().includes(search.toLowerCase())) || []
  const preview = context ? [...context.stops] : []
  if (selected) {
@@ -98,11 +100,11 @@ export function AddRouteService({ dispatchId, initialRequestId, onClose, onChang
      <section><h3 className="font-bold text-jrm-navy">3. Validar operación</h3><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:max-w-xl">
        <label className="text-sm">Peso del nuevo servicio (kg)<input required type="number" min={Math.max(Number(selected?.weight_kg || 0), 0.01)} step="0.01" value={cargo} onChange={e => setCargo(e.target.value)} className={field} /></label>
        <label className="text-sm">Hora de atención (Lima)<input required type="time" value={expected} onChange={e => setExpected(e.target.value)} className={field} /><span className="text-xs text-slate-500">Día de la ruta: {day}</span></label>
-       {thirdParty && <>
-         <label className="text-sm">Flete adicional del tercero (S/) <span className="text-xs text-slate-500">· opcional</span><input type="number" min={0} step="0.01" value={freight} onChange={e => setFreight(e.target.value)} placeholder="0.00" className={field} /><span className="text-xs text-slate-500">Solo si el servicio lo amerita; se reserva de la partida de la OT.</span></label>
+       {(thirdParty || needsCost) && <>
+         <label className="text-sm">{needsCost ? 'Flete del servicio (S/)' : 'Flete adicional del tercero (S/)'} <span className={`text-xs ${needsCost ? 'font-semibold text-red-700' : 'text-slate-500'}`}>· {needsCost ? 'obligatorio con OT' : 'opcional'}</span><input type="number" min={needsCost ? 0.01 : 0} step="0.01" required={needsCost} value={freight} onChange={e => setFreight(e.target.value)} placeholder="0.00" className={field} /><span className="text-xs text-slate-500">{needsCost ? 'Un servicio de transporte de una OT no puede quedar sin costo; se reserva de la partida de la OT.' : 'Solo si el servicio lo amerita; se reserva de la partida de la OT.'}</span></label>
          {freightValue > 0 && <label className="text-sm">Motivo del flete adicional<input required minLength={10} maxLength={500} value={reason} onChange={e => setReason(e.target.value)} placeholder="Ej.: desvío de 25 km a otro distrito" className={field} /><span className="text-xs text-slate-500">Mínimo 10 caracteres.</span></label>}
        </>}
-     </div><p className="mt-3 text-xs text-slate-600">{thirdParty ? 'Ruta tercerizada: indique flete adicional solo cuando el servicio lo amerite. La documentación (guía, Nota de Despacho, Packing List) se exige igual.' : 'El servicio agregado no se valoriza en la ruta: se documenta (guía, Nota de Despacho, Packing List) y el GPS registra el recorrido real.'}</p></section>
+     </div><p className="mt-3 text-xs text-slate-600">{needsCost ? 'Servicio de OT: indique su flete (propio o tercero). La documentación (guía, Nota de Despacho, Packing List) se exige igual.' : thirdParty ? 'Ruta tercerizada: indique flete adicional solo cuando el servicio lo amerite. La documentación (guía, Nota de Despacho, Packing List) se exige igual.' : 'El servicio agregado no se valoriza en la ruta: se documenta (guía, Nota de Despacho, Packing List) y el GPS registra el recorrido real.'}</p></section>
      <div className="flex flex-wrap justify-end gap-3"><button type="button" disabled={busy} onClick={onClose} className="min-h-11 rounded-lg border px-4 text-sm font-semibold">Cancelar</button><button disabled={busy || !selected || !cargo || !expected || freightInvalid} className="min-h-11 rounded-lg bg-jrm-navy px-4 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Agregando servicio…' : 'Confirmar incorporación'}</button></div>
    </form>}
  </Modal>
