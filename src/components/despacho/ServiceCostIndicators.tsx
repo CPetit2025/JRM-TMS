@@ -73,10 +73,10 @@ export function ServiceCostIndicators({ from, to }: { from: string; to: string }
     <div className="space-y-4">
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <div className={tile}><p className="text-xs text-slate-500">Referencial → acordado ({data.routes} rutas)</p>
-          <p className="text-lg font-bold tabular-nums">S/ {money(Number(t.agreed_pen))}</p><p className="text-xs"><Var base={t.referential_pen} value={t.agreed_pen} /> sobre S/ {money(Number(t.referential_pen))}</p></div>
+          <p className="text-lg font-bold tabular-nums">{money(Number(t.agreed_pen))}</p><p className="text-xs"><Var base={t.referential_pen} value={t.agreed_pen} /> sobre {money(Number(t.referential_pen))}</p></div>
         <div className={tile}><p className="text-xs text-slate-500">Acordado → final ({t.with_final}/{t.items} costos con final)</p>
-          <p className="text-lg font-bold tabular-nums">S/ {money(Number(t.final_pen))}</p><p className="text-xs"><Var base={t.agreed_with_final_pen} value={t.final_pen} /> sobre S/ {money(Number(t.agreed_with_final_pen))}</p></div>
-        <div className={tile}><p className="text-xs text-slate-500">Adicionales</p><p className="text-lg font-bold tabular-nums">S/ {money(Number(t.extras_pen))}</p>
+          <p className="text-lg font-bold tabular-nums">{money(Number(t.final_pen))}</p><p className="text-xs"><Var base={t.agreed_with_final_pen} value={t.final_pen} /> sobre {money(Number(t.agreed_with_final_pen))}</p></div>
+        <div className={tile}><p className="text-xs text-slate-500">Adicionales</p><p className="text-lg font-bold tabular-nums">{money(Number(t.extras_pen))}</p>
           <p className="text-xs text-slate-500">{Number(t.final_pen) ? `${Math.round(Number(t.extras_pen) / Number(t.final_pen) * 1000) / 10}% del costo final` : '—'}</p></div>
         <div className={tile}><p className="text-xs text-slate-500">Cierres pendientes</p>
           <p className="text-sm"><b>{p.economic_pending}</b> económicos por enviar · <b>{p.economic_review}</b> en revisión · <b>{p.economic_closed}</b> cerrados</p>
@@ -88,7 +88,7 @@ export function ServiceCostIndicators({ from, to }: { from: string; to: string }
         <AmountsTable first="Servicio" rows={data.by_type.map(r => ({ ...r, key: r.concept }))} label={r => LABEL[r.key] || r.key} /></section>
       <section><h3 className="mb-2 font-bold text-slate-800">Por OT y partida de transporte</h3>
         <AmountsTable first="OT" rows={data.by_contract.map(r => ({ ...r, key: r.contract_id || r.code, extra: r.budget ? (
-          <span className="block text-[11px] text-slate-500">Partida S/ {money(Number(r.budget.allocated_pen))} · consumido {money(Number(r.budget.consumed_pen))} · reservado {money(Number(r.budget.reserved_pen))} · saldo{' '}
+          <span className="block text-[11px] text-slate-500">Partida {money(Number(r.budget.allocated_pen))} · consumido {money(Number(r.budget.consumed_pen))} · reservado {money(Number(r.budget.reserved_pen))} · saldo{' '}
             <b className={Number(r.budget.balance_pen) < 0 ? 'text-red-700' : ''}>{money(Number(r.budget.balance_pen))}</b>
             {Number(r.budget.allocated_pen) > 0 && ` · uso ${Math.round((Number(r.budget.consumed_pen) + Number(r.budget.reserved_pen)) / Number(r.budget.allocated_pen) * 100)}% (operativo 80%)`}</span>
         ) : <span className="block text-[11px] text-slate-500">{r.routes} rutas · sin partida (OC/OS/RQ)</span> }))}

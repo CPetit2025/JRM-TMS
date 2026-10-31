@@ -215,15 +215,15 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
                       <span className="ml-1 rounded bg-slate-100 px-1 text-[10px] font-semibold text-slate-600" title="Origen del servicio">{ORIGIN_LABEL[l.origin || 'PROGRAMACION'] || l.origin}</span>
                       {l.description && <div className="text-[11px] text-slate-400">{l.description}</div>}
                     </td>
-                    <td className="pr-2 text-right">{l.id && (l.tariff_missing || l.estimated_source === 'MANUAL') ? unloadingAmountLabel({ ...l, planned_pen: null }) : l.estimated_pen ? `S/ ${money(l.estimated_pen)}` : '—'}</td>
+                    <td className="pr-2 text-right">{l.id && (l.tariff_missing || l.estimated_source === 'MANUAL') ? unloadingAmountLabel({ ...l, planned_pen: null }) : l.estimated_pen ? `${money(l.estimated_pen)}` : '—'}</td>
                     <td className="pr-2 text-right">
                       {editable && (l.status === 'ESTIMADO' || l.status === 'PLANIFICADO') ? (
                         <input value={l.planned} onChange={e => setLine(i, { planned: e.target.value })} inputMode="decimal"
                           className="border rounded px-1 py-0.5 w-24 text-right" placeholder="0.00" />
-                      ) : l.planned_pen != null ? `S/ ${money(l.planned_pen)}` : '—'}
-                      {l.agreed_rate != null && <div className="text-[11px] text-slate-500">{(Array.isArray(l.suppliers) ? l.suppliers[0] : l.suppliers)?.business_name || 'Proveedor'} · {BILLING_LABEL[l.billing_unit || 'SERVICIO']} S/ {money(l.agreed_rate)} × {l.agreed_qty ?? 1}{l.workers ? ` × ${l.workers} trab.` : ''}</div>}
+                      ) : l.planned_pen != null ? `${money(l.planned_pen)}` : '—'}
+                      {l.agreed_rate != null && <div className="text-[11px] text-slate-500">{(Array.isArray(l.suppliers) ? l.suppliers[0] : l.suppliers)?.business_name || 'Proveedor'} · {BILLING_LABEL[l.billing_unit || 'SERVICIO']} {money(l.agreed_rate)} × {l.agreed_qty ?? 1}{l.workers ? ` × ${l.workers} trab.` : ''}</div>}
                     </td>
-                    <td className="pr-2 text-right">{l.actual_pen != null ? `S/ ${money(l.actual_pen)}` : '—'}
+                    <td className="pr-2 text-right">{l.actual_pen != null ? `${money(l.actual_pen)}` : '—'}
                       {l.provider_name && <div className="text-[11px] text-slate-400">{l.provider_name}</div>}
                       {l.expense_id && <div className="text-[11px] text-slate-400">vía Caja</div>}
                     </td>
@@ -266,7 +266,7 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
               {history.map(e => (
                 <li key={e.id} className="border-l-2 border-slate-200 pl-2">
                   <span className="font-semibold text-slate-700">{STAGE_LABEL[e.stage] || e.stage} · {CONCEPTS[e.concept || ''] || e.concept}</span>
-                  <span className="text-slate-600"> {e.old_amount != null ? `S/ ${money(e.old_amount)} → ` : ''}{e.new_amount != null ? `S/ ${money(e.new_amount)}` : e.new_status}</span>
+                  <span className="text-slate-600"> {e.old_amount != null ? `${money(e.old_amount)} → ` : ''}{e.new_amount != null ? `${money(e.new_amount)}` : e.new_status}</span>
                   {e.supplier && <span className="text-slate-500"> · {e.supplier}</span>}
                   <span className="text-slate-400"> · {new Date(e.created_at).toLocaleString('es-PE')}{e.user ? ` · ${e.user}` : ''}</span>
                   {e.reason && <div className="text-slate-500">Motivo: {e.reason}</div>}
