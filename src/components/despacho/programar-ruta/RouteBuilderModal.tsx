@@ -131,7 +131,9 @@ export function RouteBuilderModal({ rb, onLink }: { rb: RouteBuilder; onLink: (r
               {rb.isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}Programar ruta</button>}
         </div>
       </div>}>
-      <form id="route-form" onSubmit={onSubmit} className="space-y-4">
+      {/* noValidate: todas las etapas quedan montadas (ocultas); un campo obligatorio de otra etapa no debe frenar «Siguiente»
+          en silencio. Las validaciones son las de cada etapa (rb.checks), que llevan a la etapa y dicen qué falta. */}
+      <form id="route-form" noValidate onSubmit={onSubmit} className="space-y-4">
         <Stepper rb={rb} onGo={go} />
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="min-w-0">
