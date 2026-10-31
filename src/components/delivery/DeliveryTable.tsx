@@ -44,10 +44,12 @@ function guideStatus(row: DeliveryRow): { label: string; tone: StatusTone; title
 const hasOt = (row: DeliveryRow) => !!row.ot_code && row.ot_code !== 'Sin OT vinculada'
 const conformityTone = (c: DeliveryRow['conformity']) => c === 'VALIDADA' ? 'text-emerald-700' : c === 'OBSERVADA' || c === 'RECHAZADA' ? 'text-red-700' : c === 'NO_APLICA' || c === 'HISTORICA' ? 'text-slate-600' : 'text-amber-800'
 
-export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, onEvidence, onDispatch, onProvider, onAddService, onShareRoutes, onCancelRoute, cancelableRoutes = [], showCrewDetails = false, renderManualClose }: {
+export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, onEvidence, onDispatch, onProvider, onAddService, onShareRoutes, onCancelRoute, cancelableRoutes = [], showCrewDetails = false, renderManualClose, renderDetail }: {
   rows: DeliveryRow[]; loading?: boolean; error?: string | null; refreshedAt?: string | null
   onRefresh: () => void; onEvidence?: (row: DeliveryRow) => void; onDispatch?: (row: DeliveryRow) => void; onProvider?: (row: DeliveryRow) => void; onAddService?: (row: DeliveryRow) => void
   showCrewDetails?: boolean; renderManualClose?: (row: DeliveryRow, closeDetail: () => void) => ReactNode
+  /** Detalle propio de la pantalla (Torre de Control); sin él se usa el detalle simple (portal público). */
+  renderDetail?: (row: DeliveryRow, controls: { close: () => void; select: (row: DeliveryRow) => void }) => ReactNode
   onShareRoutes?: (ids: string[]) => void; onCancelRoute?: (id: string) => void; cancelableRoutes?: string[]
 }) {
   const [search, setSearch] = useState(''), [state, setState] = useState(''), [conformity, setConformity] = useState(''), [service, setService] = useState('')
@@ -142,7 +144,8 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
       </DataTable>
     </div>
     <div className="flex items-center justify-between gap-2 text-xs text-slate-500"><span>{filtered.length} entregas · Página {current + 1} de {pages}</span><div className="flex gap-2"><button type="button" disabled={current === 0} onClick={() => setPage(current - 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Anterior</button><button type="button" disabled={current + 1 >= pages} onClick={() => setPage(current + 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Siguiente</button></div></div>
-    <Modal isOpen={!!history} onClose={() => setHistory(null)} title={history ? `Detalle · Despacho ${history.dispatch_number} · ${history.request_number}` : 'Detalle'} maxWidth="max-w-7xl"
+    {renderDetail && history && renderDetail(history, { close: () => setHistory(null), select: setHistory })}
+    <Modal isOpen={!!history && !renderDetail} onClose={() => setHistory(null)} title={history ? `Detalle · Despacho ${history.dispatch_number} · ${history.request_number}` : 'Detalle'} maxWidth="max-w-7xl"
       footer={history && <div className="flex flex-wrap justify-end gap-2">
         {renderManualClose?.(history, () => setHistory(null))}
         {onAddService && canAddRouteService({ status: history.state, plate: history.plate, scheduled_departure: history.scheduled_departure }) && <button type="button" onClick={() => { const r = history; setHistory(null); onAddService(r) }} className="min-h-10 rounded-lg bg-jrm-navy px-3 text-sm font-semibold text-white">Agregar servicio a la ruta</button>}
