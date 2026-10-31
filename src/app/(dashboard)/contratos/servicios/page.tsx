@@ -326,7 +326,8 @@ export default function ContractServicesPage() {
 
     setIsSubmitting(true)
     try {
-      const { error } = await supabase.rpc('register_contract_service', {
+      // Control de duplicados (auditoría F08): si la partida ya tiene un cargo parecido, se muestran y se pide motivo
+      const payload = {
         p_contract_id: newService.contract_id,
         p_service_type: newService.service_type,
         p_description: newService.description,
@@ -339,9 +340,18 @@ export default function ContractServicesPage() {
         p_provider_name: newService.isThirdParty ? newService.provider_name : null,
         p_category: newService.category,
         p_referral_guide: newService.referral_guide || null
-      })
-
+      }
+      let { data, error } = await supabase.rpc('register_contract_service_checked', payload)
       if (error) throw error
+      if (data?.duplicate) {
+        const list = (data.matches as { service_date: string; amount_pen: number; origin: string; provider?: string }[])
+          .map(m => `• ${m.service_date} · S/ ${Number(m.amount_pen).toFixed(2)} · ${m.origin}${m.provider ? ` · ${m.provider}` : ''}`).join('\n')
+        const reason = window.prompt(`Posible cargo duplicado en la misma partida (±3 días):\n${list}\n\nSi es otra prestación, indique el motivo (mínimo 10 caracteres). Cancelar no registra nada.`)
+        if (!reason) { toast.info('No se registró el cargo.'); return }
+        ;({ data, error } = await supabase.rpc('register_contract_service_checked', { ...payload, p_duplicate_reason: reason }))
+        if (error) throw error
+      }
+      if (!data?.success) throw new Error(data?.error || 'No se pudo registrar el servicio')
 
       toast.success('Servicio registrado exitosamente.')
       setIsModalOpen(false)
@@ -408,6 +418,7 @@ export default function ContractServicesPage() {
 
         let successCount = 0
         let errorCount = 0
+        let duplicateCount = 0
 
         for (const row of json) {
           const contractCodeUpload = String(row.Contrato || row.RUC_Contrato || row.Codigo_Contrato || '').replace(/^0+/, '');
@@ -429,7 +440,7 @@ export default function ContractServicesPage() {
             parsedDate = new Date(rawDate).toISOString().split('T')[0];
           }
 
-          const { error } = await supabase.rpc('register_contract_service', {
+          const { data: result, error } = await supabase.rpc('register_contract_service_checked', {
             p_contract_id: contract.id,
             p_service_type: row.Servicio || row.Tipo_Servicio || 'OTROS',
             p_description: row.KG || row.Descripcion || '',
@@ -444,14 +455,16 @@ export default function ContractServicesPage() {
             p_referral_guide: row['Guía de Remisión'] || row.Guia_Remision || row.guia_remision || null
           })
 
-          if (error) {
-            errorCount++
+          if (error || !result?.success) {
+            if (result?.duplicate) duplicateCount++
+            else errorCount++
           } else {
             successCount++
           }
         }
 
-        toast.success(`Carga completada: ${successCount} exitosos, ${errorCount} errores.`)
+        // Los posibles duplicados no se registran en la carga masiva: se ingresan uno a uno con su motivo
+        toast.success(`Carga completada: ${successCount} exitosos, ${errorCount} errores${duplicateCount ? `, ${duplicateCount} omitidos por posible duplicado (regístrelos uno a uno con su motivo)` : ''}.`)
         fetchData()
       } catch (err: unknown) {
         toast.error('Error procesando el archivo: ' + errorMessage(err))
