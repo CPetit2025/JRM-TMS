@@ -25,7 +25,7 @@ const mocks = {
  '@/components/ui/SearchableSelect': { SearchableSelect: ({ value, onChange, options, ariaLabel }) => h('select', { 'aria-label': ariaLabel, value, onChange: e => onChange(e.target.value) }, options.map(o => h('option', { key: o.value, value: o.value }, o.label))) },
  '@/components/tarifas/TransportTariffManager': { QuoteBreakdown: () => null },
  '@/components/erp/ErpReferencia': { ErpOtLinea: () => null, ErpStockCorteAviso: () => null },
- '@/lib/routing': { calculateRouteDistance: async () => 12.5 },
+ '@/lib/routing': { calculateRouteDistance: async () => 12.5, calculateRouteEstimate: async () => ({ km: 12.5, minutes: 20, origin: { lat: -12, lon: -77 }, destination: { lat: -12.1, lon: -77.1 }, geometry: [[-12, -77], [-12.1, -77.1]] }) },
  '@/lib/eligibility': { checkDispatchEligibility: async () => ({ status: 'APTO', blocking_reasons: [], observation_reasons: [] }) },
  '@/components/despacho/Tercero': { TERCERO_VACIO: { carrier_id: '', supplier_vehicle_id: '', supplier_personnel_id: '', placa: '', conductor: '', telefono: '', doc: '', license_number: '', license_expiration: '' },
   TerceroFields: ({ value, onChange }) => h('button', { type: 'button', 'aria-label': 'Completar tercero', onClick: () => onChange({ ...value, carrier_id: 'c1', placa: 'ABC-123', conductor: 'Chofer', telefono: '999', doc: '12345678' }) }) },
@@ -119,6 +119,8 @@ test('five steps: blocked advance, mandatory freight, stop order, late departure
  assert.equal(call[1].p.freight_reason, 'Peaje nuevo en la ruta')
  assert.deepEqual(call[1].p.p_requests.map(r => r.id), ['r2', 'r1'], 'stop order is sent')
  assert.ok(rpcCalls.some(([name, args]) => name === 'set_dispatch_programming_notes' && args.p_notes === 'El cliente recibe por la tarde'))
+ const estimates = rpcCalls.find(([name]) => name === 'save_dispatch_route_estimates')
+ assert.ok(estimates, 'OSRM estimate is saved with the route'); assert.equal(estimates[1].p_dispatch, 'route-1'); assert.equal(estimates[1].p_items[0].duration_min, 20); assert.equal(estimates[1].p_items[0].geometry.length, 2)
  assert.equal(rb.step, 1, 'form resets after programming')
  await act(async () => view.unmount())
 })

@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { receiptUrl } from '@/lib/caja'
 import type { DispatchCosts, EconomicDetail, RouteExpense } from '@/lib/dispatch-detail'
 
 /**
@@ -18,14 +19,17 @@ export function useDispatchCosts(dispatchId: string, enabled: boolean) {
     void (async () => {
       const [econ, expenses] = await Promise.all([
         Promise.resolve(db.rpc('economic_closure_detail', { p_dispatch_id: dispatchId })).catch(() => ({ data: null, error: { message: 'No se pudo cargar el cierre económico.' } })),
-        Promise.resolve(db.from('dispatch_expenses').select('id,expense_type,amount,status,description,created_at').eq('dispatch_id', dispatchId).order('created_at'))
+        Promise.resolve(db.from('dispatch_expenses').select('id,expense_type,amount,status,description,created_at,receipt_url').eq('dispatch_id', dispatchId).order('created_at'))
           .catch(() => ({ data: null, error: { message: 'error' } })),
       ])
+      const list = ((expenses.data || []) as RouteExpense[]).filter(e => e.status !== 'ANULADO')
+      // Comprobantes de los gastos de Caja (URL firmada al cargar)
+      const receipts = Object.fromEntries(await Promise.all(list.filter(e => e.receipt_url).map(async e => [e.id, await receiptUrl(db, e.receipt_url).catch(() => null)] as const)))
       const result = econ.data as (EconomicDetail | { success: false; error?: string }) | null
       const detail = result && result.success ? result as EconomicDetail : null
       if (alive) setState({ key, costs: {
         detail, error: detail ? '' : (result && !result.success && result.error) || econ.error?.message || 'Sin acceso al cierre económico de esta ruta.',
-        expenses: ((expenses.data || []) as RouteExpense[]).filter(e => e.status !== 'ANULADO'),
+        expenses: list, receipts,
         expensesError: expenses.error ? 'Sin acceso a los gastos de Caja de la ruta.' : '',
       } })
     })()

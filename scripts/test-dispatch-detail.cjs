@@ -129,6 +129,47 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12,'0')}`
   await db.exec(`CREATE TABLE vehicle_incidents(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),incident_type text,severity text,dispatch_id uuid,occurred_at timestamptz,location text,description text,created_by uuid)`)
   await assert.rejects(db.exec(read('supabase/tests/caja_c191_detalle_despacho.test.sql')), /CAJA C191 PASS/)
   await db.exec('ROLLBACK').catch(() => {})
+
+  // Evidencias operativas con etapa y estimado OSRM: solo quien opera la ruta registra, en su carpeta y con el archivo
+  // ya cargado; anular exige motivo y no borra; el estimado solo lo guarda Despacho y solo para solicitudes de la ruta.
+  const extras = read('supabase/migrations/20261122090000_detalle_despacho_evidencias_estimados.sql')
+  assert.doesNotMatch(extras, /UPDATE public\.(dispatch_request_freight|transport_requests) /i, 'never updates guarded tables')
+  await db.exec(`CREATE SCHEMA storage; CREATE TABLE storage.objects(bucket_id text, name text);
+   ALTER TABLE documentary_closures ADD COLUMN service_kind text; UPDATE documentary_closures SET service_kind='RECOJO';
+   CREATE FUNCTION dispatch_document_folder(p_name text) RETURNS uuid LANGUAGE plpgsql IMMUTABLE AS $$BEGIN RETURN split_part(p_name,'/',1)::uuid; EXCEPTION WHEN others THEN RETURN NULL; END$$;
+   CREATE FUNCTION can_operate_dispatch(s uuid) RETURNS boolean LANGUAGE sql STABLE AS $$SELECT (has_tms_permission('despacho') OR has_tms_permission('torre-control')) AND (s IS NULL OR can_access_site(s))$$;`)
+  await db.exec(extras); await db.exec(extras)
+  const call = async (sql, args) => (await db.query(sql, args)).rows[0].v
+  const register = (path, stage = 'RECOJO', request = id(30)) => call(`SELECT register_dispatch_evidence($1,$2,$3,$4,'f.jpg','image/jpeg',1200000,'Unidad en punto de recojo') AS v`, [id(70), request, stage, path])
+  await as(93)
+  const mine = `${id(70)}/evidencia/${id(93)}/1.jpg`
+  assert.match((await register(mine)).error, /no se cargó/, 'file must exist in storage first')
+  await db.query(`INSERT INTO storage.objects VALUES('dispatch_documents',$1),('dispatch_documents',$2)`, [mine, `${id(70)}/evidencia/${id(95)}/x.jpg`])
+  assert.match((await register(mine, 'VUELO')).error, /Etapa inválida/)
+  assert.match((await register(`${id(70)}/evidencia/${id(95)}/x.jpg`)).error, /Archivo inválido/, 'only the own folder')
+  assert.match((await register(mine, 'RECOJO', id(32))).error, /no pertenece/)
+  const ok = await register(mine); assert.equal(ok.success, true)
+  assert.match((await register(mine)).error, /ya está registrada/)
+  let f2 = await filesOf(id(70), id(30))
+  assert.equal(f2.evidence.length, 1); assert.equal(f2.evidence[0].stage, 'RECOJO'); assert.equal(f2.evidence[0].size_bytes, 1200000)
+  assert.equal(f2.evidence[0].uploaded_by, 'Ana Torre'); assert.equal(f2.evidence[0].can_void, true); assert.equal(f2.can_add_evidence, true); assert.equal(f2.service_kind, 'RECOJO')
+  assert.match((await call(`SELECT void_dispatch_evidence($1,'corto') AS v`, [ok.id])).error, /motivo/)
+  await as(97)
+  assert.match((await register(mine)).error, /Sin permiso/)
+  assert.match((await call(`SELECT void_dispatch_evidence($1,'Foto de otra unidad por error') AS v`, [ok.id])).error, /Sin permiso/)
+  await as(93)
+  assert.equal((await call(`SELECT void_dispatch_evidence($1,'Foto de otra unidad por error') AS v`, [ok.id])).success, true)
+  assert.equal((await db.query(`SELECT count(*)::int AS n FROM dispatch_evidence WHERE voided_at IS NOT NULL`)).rows[0].n, 1, 'voided, never deleted')
+  assert.deepEqual((await filesOf(id(70), id(30))).evidence, [])
+  const items = JSON.stringify([{ request_id: id(30), distance_km: 72, duration_min: 110, origin: { lat: -12.09, lon: -76.87 }, destination: { lat: -12.52, lon: -76.73 }, geometry: [[-12.09, -76.87], [-12.52, -76.73]] }, { request_id: id(32), distance_km: 5 }])
+  assert.match((await call(`SELECT save_dispatch_route_estimates($1,$2::jsonb) AS v`, [id(70), items])).error, /Sin permiso/, 'only Despacho saves estimates')
+  await as(95)
+  assert.equal((await call(`SELECT save_dispatch_route_estimates($1,$2::jsonb) AS v`, [id(70), items])).saved, 1, 'other route requests are ignored')
+  v = await detail(id(70), id(30))
+  assert.equal(Number(v.estimate.duration_min), 110); assert.equal(v.estimate.geometry.length, 2); assert.deepEqual(v.sources_failed, [])
+  assert.equal((await detail(id(70), id(31))).estimate, null, 'no estimate is invented for other stops')
+  await assert.rejects(db.exec(read('supabase/tests/caja_c194_detalle_evidencias_estimados.test.sql')), /CAJA C194 (PASS|FAIL: faltan las políticas)/)
+  await db.exec('ROLLBACK').catch(() => {})
   console.log('PASS detalle del despacho: hitos reales, GPS confirmado, historial por parada, permisos y fuentes ausentes informadas')
  } finally { await db.close() }
 })().catch(e => { console.error(e); process.exit(1) })

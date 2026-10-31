@@ -20,10 +20,17 @@ export type DispatchDetail = {
   }
   presence: { applies: boolean; connected: boolean; last_seen_at: string | null; gps_state: string | null; gps_at: string | null; server_now: string }
   events: DetailEvent[]
+  /** Estimado de OSRM guardado al programar (solo rutas programadas desde que existe el dato) */
+  estimate?: RouteEstimateData | null
   economic: boolean
   sources_failed: string[]
 }
 
+export type RouteEstimateData = {
+  distance_km: number | null; duration_min: number | null; origin: { lat: number; lon: number } | null; destination: { lat: number; lon: number } | null
+  geometry: [number, number][] | null; source: string; computed_at: string
+}
+export const durationLabel = (minutes: number | null | undefined) => minutes == null ? null : minutes < 60 ? `${Math.round(minutes)} min` : `${Math.floor(minutes / 60)} h ${Math.round(minutes % 60)} min`
 export type StepState = 'done' | 'current' | 'pending' | 'alert'
 export type Milestone = { key: string; label: string; at: string | null; state: StepState; note: string }
 
@@ -58,10 +65,10 @@ export type Pending = { key: string; title: string; detail: string; tab: DetailT
 export function pendingItems(row: DeliveryRow): Pending[] {
   const out: Pending[] = []
   if (row.state === 'PROGRAMADO' && row.documents_state && !['NO_REQUERIDO', 'LISTO'].includes(row.documents_state))
-    out.push({ key: 'salida', title: row.documents_state === 'REEMISION' ? 'Documentos de salida por reemitir' : 'Documentos de salida pendientes', detail: 'Completar los documentos de salida de la ruta.', tab: 'resumen' })
-  if (row.conformity === 'RECIBIDA') out.push({ key: 'validar', title: 'Guía de entrega pendiente de validación', detail: `Revisar y validar la guía${row.guide_number ? ` ${row.guide_number}` : ''} registrada.`, tab: 'resumen' })
-  if (row.conformity === 'OBSERVADA' || row.conformity === 'RECHAZADA') out.push({ key: 'observada', title: `Guía ${row.conformity === 'OBSERVADA' ? 'observada' : 'rechazada'}`, detail: 'El conductor debe volver a enviar la guía y las fotos.', tab: 'resumen' })
-  if (row.conformity === 'PENDIENTE' && row.arrived_at) out.push({ key: 'guia', title: 'Guía de entrega sin registrar', detail: 'La unidad llegó al destino y aún no envía la guía.', tab: 'resumen' })
+    out.push({ key: 'salida', title: row.documents_state === 'REEMISION' ? 'Documentos de salida por reemitir' : 'Documentos de salida pendientes', detail: 'Completar los documentos de salida de la ruta.', tab: 'documentos' })
+  if (row.conformity === 'RECIBIDA') out.push({ key: 'validar', title: 'Guía de entrega pendiente de validación', detail: `Revisar y validar la guía${row.guide_number ? ` ${row.guide_number}` : ''} registrada.`, tab: 'documentos' })
+  if (row.conformity === 'OBSERVADA' || row.conformity === 'RECHAZADA') out.push({ key: 'observada', title: `Guía ${row.conformity === 'OBSERVADA' ? 'observada' : 'rechazada'}`, detail: 'El conductor debe volver a enviar la guía y las fotos.', tab: 'documentos' })
+  if (row.conformity === 'PENDIENTE' && row.arrived_at) out.push({ key: 'guia', title: 'Guía de entrega sin registrar', detail: 'La unidad llegó al destino y aún no envía la guía.', tab: 'documentos' })
   return out
 }
 
@@ -133,9 +140,20 @@ export type DispatchFiles = {
   can_view_documents: boolean; documents: DetailDocument[]; references: { doc_type: string; number: string; at: string; by: string | null }[]
   documentary: DocumentaryState | null; submissions: DetailSubmission[]; arrival: { at: string; lat: number | null; lon: number | null } | null
   rejection: { kind: string; reason_code: string; note: string | null; photos: string[]; captured_at: string; lat: number | null; lon: number | null; decision: string | null } | null
+  evidence?: OperationalEvidence[]; service_kind?: string | null; can_add_evidence?: boolean
   sources_failed: string[]
 }
 export type RouteEvidence = { kind: string; label: string; path: string; taken_at: string | null }
+/** Evidencia operativa con etapa (dispatch_evidence), registrada desde el detalle por quien opera la ruta. */
+export type OperationalEvidence = {
+  id: string; stage: EvidenceStage; file_path: string; file_name: string | null; mime_type: string | null; size_bytes: number | null
+  note: string | null; uploaded_at: string; uploaded_by: string | null; scope: 'RUTA' | 'SERVICIO'; can_void: boolean
+}
+export type EvidenceStage = 'RECOJO' | 'TRANSITO' | 'LLEGADA' | 'DESCARGA' | 'INCIDENCIA' | 'OTRO'
+export const EVIDENCE_STAGES: Record<EvidenceStage, string> = { RECOJO: 'Recojo', TRANSITO: 'Tránsito', LLEGADA: 'Llegada', DESCARGA: 'Descarga', INCIDENCIA: 'Incidencia', OTRO: 'Otro' }
+/** Mismo límite que el resto de cargas del despacho (el bucket admite hasta 15 MB). */
+export const EVIDENCE_MAX_MB = 10
+export const EVIDENCE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
 
 export const DOC_TYPE_LABEL: Record<string, string> = { GUIA_REMISION: 'Guía de remisión', NOTA_DESPACHO: 'Nota de despacho', PACKING_LIST: 'Packing list', OTRO: 'Otro documento' }
 export const DOC_CATEGORY_LABEL: Record<string, string> = { CONFORMIDAD: 'Conformidad', EVIDENCIA: 'Evidencia', COMPROBANTE: 'Comprobante', OTROS: 'Otros' }
@@ -149,18 +167,27 @@ export const isImage = (path: string, mime?: string | null) => (mime || '').star
 export const isPdfFile = (path: string, mime?: string | null) => mime === 'application/pdf' || /\.pdf($|\?)/i.test(path)
 
 /** Grupo de cada evidencia según su fuente real (no hay etapa por foto en el modelo: no se inventa recojo/tránsito). */
-export type EvidenceGroup = 'ENTREGA' | 'CARGA' | 'DOCUMENTO' | 'UNIDAD' | 'INCIDENCIA' | 'GASTO'
-export const EVIDENCE_GROUPS: Record<EvidenceGroup, string> = { ENTREGA: 'Entrega', CARGA: 'Carga', DOCUMENTO: 'Documentos', UNIDAD: 'Unidad', INCIDENCIA: 'Incidencias', GASTO: 'Gastos' }
-export type DetailEvidence = { key: string; group: EvidenceGroup; label: string; path: string; at: string | null; scope: 'RUTA' | 'SERVICIO'; note?: string }
-const ROUTE_KIND: Record<string, EvidenceGroup> = { DOCUMENTO: 'DOCUMENTO', GUIA: 'DOCUMENTO', ENTREGA: 'ENTREGA', CHECKLIST: 'UNIDAD', ODOMETRO: 'UNIDAD', FALLA: 'INCIDENCIA', GASTO: 'GASTO', ANTICIPO: 'GASTO' }
-export function evidenceItems(files: DispatchFiles | null, route: RouteEvidence[]): DetailEvidence[] {
+export type EvidenceGroup = 'RECOJO' | 'TRANSITO' | 'LLEGADA' | 'DESCARGA' | 'DOCUMENTO' | 'UNIDAD' | 'INCIDENCIA' | 'GASTO' | 'OTRO'
+export const EVIDENCE_GROUPS: Record<EvidenceGroup, string> = { RECOJO: 'Recojo', TRANSITO: 'Tránsito', LLEGADA: 'Llegada', DESCARGA: 'Descarga', DOCUMENTO: 'Documento',
+  UNIDAD: 'Unidad', INCIDENCIA: 'Incidencias', GASTO: 'Gastos', OTRO: 'Otros' }
+export type DetailEvidence = { key: string; group: EvidenceGroup; label: string; path: string; at: string | null; scope: 'RUTA' | 'SERVICIO'; note?: string; by?: string | null
+  mime?: string | null; size?: number | null; place?: string | null; evidenceId?: string; canVoid?: boolean }
+const ROUTE_KIND: Record<string, EvidenceGroup> = { DOCUMENTO: 'DOCUMENTO', GUIA: 'DOCUMENTO', ENTREGA: 'LLEGADA', CHECKLIST: 'UNIDAD', ODOMETRO: 'UNIDAD', FALLA: 'INCIDENCIA', GASTO: 'GASTO', ANTICIPO: 'GASTO' }
+/**
+ * Evidencias de la parada por su etapa real: las operativas traen la etapa registrada; las fotos del app en destino son
+ * «Llegada» (guía) y «Descarga» (carga entregada); el rechazo es «Incidencias»; lo de la ruta según su fuente.
+ */
+export function evidenceItems(files: DispatchFiles | null, route: RouteEvidence[], places: { pickup?: string; delivery?: string } = {}): DetailEvidence[] {
   const out: DetailEvidence[] = []
+  const stagePlace = (stage: string) => stage === 'RECOJO' ? places.pickup : stage === 'LLEGADA' || stage === 'DESCARGA' ? places.delivery : null
+  for (const e of files?.evidence || []) out.push({ key: `o/${e.id}`, group: e.stage, label: e.note || EVIDENCE_STAGES[e.stage], path: `dispatch_documents/${e.file_path}`, at: e.uploaded_at,
+    scope: e.scope, by: e.uploaded_by, mime: e.mime_type, size: e.size_bytes, place: stagePlace(e.stage), evidenceId: e.id, canVoid: e.can_void })
   for (const s of files?.submissions || []) {
     const guide = s.guide_number ? ` · guía ${s.guide_number}` : ''
-    s.photos.forEach((path, i) => out.push({ key: `s/${s.id}/${i}`, group: 'ENTREGA', label: `Entrega${guide}`, path, at: s.captured_at, scope: 'SERVICIO', note: s.received_by ? `Recibió ${s.received_by}` : undefined }))
-    s.packing_photos.forEach((path, i) => out.push({ key: `p/${s.id}/${i}`, group: 'CARGA', label: `Carga entregada${guide}`, path, at: s.captured_at, scope: 'SERVICIO' }))
+    s.photos.forEach((path, i) => out.push({ key: `s/${s.id}/${i}`, group: 'LLEGADA', label: `Entrega en destino${guide}`, path, at: s.captured_at, scope: 'SERVICIO', note: s.received_by ? `Recibió ${s.received_by}` : undefined, by: s.submitted_by, place: places.delivery }))
+    s.packing_photos.forEach((path, i) => out.push({ key: `p/${s.id}/${i}`, group: 'DESCARGA', label: `Carga entregada${guide}`, path, at: s.captured_at, scope: 'SERVICIO', by: s.submitted_by, place: places.delivery }))
   }
-  files?.rejection?.photos.forEach((path, i) => out.push({ key: `r/${i}`, group: 'INCIDENCIA', label: `Rechazo ${files.rejection!.kind === 'TOTAL' ? 'total' : 'parcial'} en destino`, path, at: files.rejection!.captured_at, scope: 'SERVICIO', note: files.rejection!.note || undefined }))
+  files?.rejection?.photos.forEach((path, i) => out.push({ key: `r/${i}`, group: 'INCIDENCIA', label: `Rechazo ${files.rejection!.kind === 'TOTAL' ? 'total' : 'parcial'} en destino`, path, at: files.rejection!.captured_at, scope: 'SERVICIO', note: files.rejection!.note || undefined, place: places.delivery }))
   // De la ruta: los documentos ya se listan en la pestaña Documentos; aquí solo lo que el app registró como evidencia
   route.filter(r => r.path && r.kind !== 'DOCUMENTO').forEach((r, i) => out.push({ key: `e/${i}`, group: ROUTE_KIND[r.kind] || 'UNIDAD', label: r.label, path: r.path, at: r.taken_at, scope: 'RUTA' }))
   return out.sort((a, b) => (b.at ? Date.parse(b.at) : 0) - (a.at ? Date.parse(a.at) : 0))
@@ -173,9 +200,10 @@ export type EconomicDetail = {
   success: true; dispatch_number: string; route_status: string; state: EconState; items: EconItem[]
   requests: { id: string; request_number: string; contract_code: string | null; doc_status: string | null }[]
   can_validate: boolean; can_approve: boolean
+  services?: { id: string; agreed_rate: number | null; billing_unit: string | null; final_billable_qty: number | null; agreed_qty: number | null }[]
 }
-export type RouteExpense = { id: string; expense_type: string; amount: number; status: string | null; description: string | null; created_at: string | null }
-export type DispatchCosts = { detail: EconomicDetail | null; error: string; expenses: RouteExpense[]; expensesError: string }
+export type RouteExpense = { id: string; expense_type: string; amount: number; status: string | null; description: string | null; created_at: string | null; receipt_url?: string | null; provider_name?: string | null }
+export type DispatchCosts = { detail: EconomicDetail | null; error: string; expenses: RouteExpense[]; expensesError: string; receipts: Record<string, string | null> }
 const amount = (i: EconItem) => Number(i.final_pen ?? i.agreed_pen ?? 0)
 export function stopCosts(d: EconomicDetail, row: Pick<DeliveryRow, 'dispatch_id' | 'request_id' | 'request_number'>) {
   const own = d.items.find(i => i.kind === 'FLETE' && i.key === `F:${row.request_id}`)
@@ -193,4 +221,58 @@ export function thinTrack(points: TrackPoint[], max = 400): TrackPoint[] {
   if (points.length <= max) return points
   const step = (points.length - 1) / (max - 1)
   return Array.from({ length: max }, (_, i) => points[Math.round(i * step)])
+}
+
+/** Documentos de la parada con estado y responsable reales (registró / validó); lo exigido que falta aparece «Pendiente». */
+export type DocumentRow = {
+  key: string; name: string; group: 'SALIDA' | 'RECEPCION' | 'OTROS'; number: string | null; related: string; at: string | null
+  state: 'VALIDADO' | 'REGISTRADO' | 'PENDIENTE' | 'OBSERVADO' | 'NO_REQUERIDO'; responsible: string | null; path: string | null; mime: string | null; size: number | null
+}
+const REQUIRED: Record<string, { code: string; name: string; group: DocumentRow['group'] }[]> = {
+  ENTREGA: [{ code: 'GUIA_O_NOTA', name: 'Guía de entrega', group: 'RECEPCION' }, { code: 'PACKING_LIST', name: 'Packing list', group: 'SALIDA' }],
+  RECOJO: [{ code: 'GUIA_REMISION', name: 'Guía de entrega', group: 'RECEPCION' }],
+  RECOJO_CLIENTE: [{ code: 'NOTA_DESPACHO', name: 'Nota de despacho', group: 'SALIDA' }],
+}
+export function documentRows(files: DispatchFiles, row: Pick<DeliveryRow, 'dispatch_number' | 'request_number' | 'documents_state'>): DocumentRow[] {
+  const out: DocumentRow[] = [], related = `Despacho ${row.dispatch_number || ''}\n${row.request_number}`
+  for (const s of files.submissions) out.push({ key: `s/${s.id}`, name: 'Guía de entrega', group: 'RECEPCION', number: s.guide_number, related, at: s.submitted_at,
+    state: s.review?.decision === 'VALIDADA' ? 'VALIDADO' : s.review ? 'OBSERVADO' : 'PENDIENTE', responsible: s.review?.by || null, path: s.photos[0] || null, mime: null, size: null })
+  for (const d of files.documents) out.push({ key: `d/${d.id}`, name: DOC_TYPE_LABEL[d.doc_type] || d.doc_type, group: d.doc_type === 'OTRO' ? 'OTROS' : 'SALIDA', number: d.number,
+    related: d.scope === 'RUTA' ? `Ruta ${row.dispatch_number || ''}` : related, at: d.uploaded_at, state: 'REGISTRADO', responsible: d.uploaded_by, path: `dispatch_documents/${d.file_path}`, mime: d.mime_type, size: d.size_bytes })
+  for (const r of files.references) if (!out.some(o => o.number && o.number.toUpperCase() === r.number.toUpperCase()))
+    out.push({ key: `r/${r.number}`, name: r.doc_type === 'NOTA_DESPACHO' ? 'Nota de despacho' : 'Guía de remisión', group: 'SALIDA', number: r.number, related, at: r.at, state: 'REGISTRADO', responsible: r.by, path: null, mime: null, size: null })
+  // Exigidos por el cierre documentario que aún faltan (sin archivo ni número): pendientes, no se inventa el documento
+  const missing = files.documentary?.missing || []
+  for (const req of REQUIRED[files.service_kind || ''] || []) if (missing.includes(req.code) && !out.some(o => o.name === req.name))
+    out.push({ key: `m/${req.code}`, name: req.name, group: req.group, number: null, related, at: null, state: 'PENDIENTE', responsible: null, path: null, mime: null, size: null })
+  if (!row.documents_state || row.documents_state === 'NO_REQUERIDO')
+    out.push({ key: 'salida', name: 'Documentos de salida', group: 'SALIDA', number: null, related: '—', at: null, state: 'NO_REQUERIDO', responsible: null, path: null, mime: null, size: null })
+  return out
+}
+
+/** Checklist de conformidad derivado de los registros (solo lectura; se valida en «Guía y conformidad»). */
+export type ChecklistItem = { key: string; label: string; state: 'COMPLETO' | 'PENDIENTE' | 'NO_REQUERIDO' | 'OBSERVADO'; note: string }
+export function conformityChecklist(files: DispatchFiles, row: Pick<DeliveryRow, 'documents_state' | 'conformity'>): ChecklistItem[] {
+  const last = files.submissions[0], photos = files.submissions.reduce((n, s) => n + s.photos.length, 0), pickup = row.conformity === 'NO_APLICA'
+  const docsRequired = !!row.documents_state && row.documents_state !== 'NO_REQUERIDO'
+  return [
+    { key: 'guia', label: 'Guía de entrega recibida', state: last ? 'COMPLETO' : pickup ? 'NO_REQUERIDO' : 'PENDIENTE',
+      note: last ? `Guía ${last.guide_number || 'sin número'} enviada ${detailTime(last.submitted_at)}.` : pickup ? 'Recojo por cliente.' : 'Aún no se envía la guía.' },
+    { key: 'fotos', label: 'Fotos de entrega', state: photos ? 'COMPLETO' : pickup ? 'NO_REQUERIDO' : 'PENDIENTE', note: photos ? `${photos} foto(s) registrada(s).` : 'Sin fotos de entrega.' },
+    { key: 'salida', label: 'Documentos de salida', state: !docsRequired ? 'NO_REQUERIDO' : row.documents_state === 'LISTO' ? 'COMPLETO' : 'PENDIENTE',
+      note: !docsRequired ? 'No se requieren documentos de salida.' : row.documents_state === 'LISTO' ? 'Documentos de salida listos.' : 'Documentos de salida pendientes.' },
+    { key: 'conformidad', label: 'Conformidad de recepción', state: last?.review?.decision === 'VALIDADA' ? 'COMPLETO' : last?.review ? 'OBSERVADO' : pickup ? 'NO_REQUERIDO' : 'PENDIENTE',
+      note: last?.review ? `${last.review.decision === 'VALIDADA' ? 'Validada' : 'Observada'}${last.review.by ? ` por ${last.review.by}` : ''}${last.review.reason ? `: ${last.review.reason}` : ''}.` : 'Validación por el área correspondiente.' },
+  ]
+}
+
+/** Etapas documentarias con avance (Recepción, Validación, Cierre) contadas desde los registros. */
+export function documentaryProgress(files: DispatchFiles): { key: string; label: string; at: null; state: StepState; count: string }[] {
+  const received = files.submissions.length > 0, validated = files.submissions.some(s => s.review?.decision === 'VALIDADA')
+  const observed = !validated && !!files.submissions[0]?.review, closed = files.documentary?.status === 'COMPLETO'
+  return [
+    { key: 'recepcion', label: 'Recepción', at: null, state: received || closed ? 'done' : 'current', count: `${received || closed ? 1 : 0}/1` },
+    { key: 'validacion', label: 'Validación', at: null, state: validated || closed ? 'done' : observed ? 'alert' : received ? 'current' : 'pending', count: `${validated || closed ? 1 : 0}/1` },
+    { key: 'cierre', label: 'Cierre', at: null, state: closed ? 'done' : validated ? 'current' : 'pending', count: `${closed ? 1 : 0}/1` },
+  ]
 }
