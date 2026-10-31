@@ -12,7 +12,7 @@ import { TablePagination } from '@/components/ui/table-pagination'
 import { TableActions, type TableAction } from '@/components/ui/table-actions'
 import { errorMessage, money } from '@/lib/caja'
 import {
-  DEFAULT_SETTINGS, DOC_STATUS, ECON_STATUS, ECON_VIEW, ITEM_LABEL, ROUTE_STATUS, daysPending, documentaryHref, econKey, isDeviation, isLiberated, pendingText, routeSummary, serviceText, supplierText,
+  DEFAULT_SETTINGS, DOC_STATUS, ECON_STATUS, ECON_VIEW, ITEM_LABEL, ROUTE_STATUS, daysPending, documentaryHref, econKey, isDeviation, isLiberated, pendingText, routeSummary, serviceText, supplierText, valuedItems,
   type EconRoute, type EconSettings,
 } from '@/lib/economic-closure'
 import { EconomicClosurePanel, Variation } from '@/components/despacho/EconomicClosurePanel'
@@ -93,8 +93,8 @@ function CierreEconomico() {
   const options = useMemo(() => {
     const uniq = (values: (string | null | undefined)[]) => [...new Set(values.filter((v): v is string => !!v))].sort((a, b) => a.localeCompare(b, 'es'))
     return {
-      suppliers: uniq(rows.flatMap(x => x.r.items.map(i => i.supplier))),
-      concepts: uniq(rows.flatMap(x => x.r.items.map(i => i.concept))),
+      suppliers: uniq(rows.flatMap(x => valuedItems(x.r.items).map(i => i.supplier))),
+      concepts: uniq(rows.flatMap(x => valuedItems(x.r.items).map(i => i.concept))),
       contracts: uniq(rows.flatMap(x => (x.r.contracts || '').split(', '))),
       responsibles: uniq(rows.map(x => x.r.last?.by)),
       clients: uniq(rows.flatMap(x => (x.r.clients || '').split(', '))),
@@ -104,7 +104,7 @@ function CierreEconomico() {
   const filtered = useMemo(() => {
     const q = f.q.trim().toLowerCase(), plate = f.plate.trim().toLowerCase()
     const list = rows.filter(({ r, key }) => (!f.econ || key === f.econ) && (!f.doc || r.doc_status === f.doc)
-      && (!f.supplier || r.items.some(i => i.supplier === f.supplier)) && (!f.concept || r.items.some(i => i.concept === f.concept))
+      && (!f.supplier || valuedItems(r.items).some(i => i.supplier === f.supplier)) && (!f.concept || valuedItems(r.items).some(i => i.concept === f.concept))
       && (!f.contract || (r.contracts || '').split(', ').includes(f.contract)) && (!plate || (r.plate || '').toLowerCase().includes(plate))
       && (!f.responsible || r.last?.by === f.responsible) && (!f.client || (r.clients || '').split(', ').includes(f.client))
       && (!f.unit || (f.unit === 'TERCERO') === (r.modalidad === 'TERCERO')) && (!f.route || r.status === f.route)

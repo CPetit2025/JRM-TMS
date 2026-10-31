@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { errorMessage, money } from '@/lib/caja'
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import {
-  DEFAULT_SETTINGS, DOC_STATUS, ECON_STATUS, ITEM_LABEL, ITEM_STATUS, ORIGIN_TEXT, documentaryHref, econKey, isDeviation, isLiberated, routeSummary, torreNote,
+  DEFAULT_SETTINGS, DOC_STATUS, ECON_STATUS, ITEM_LABEL, ITEM_STATUS, ORIGIN_TEXT, documentaryHref, econKey, isDeviation, isLiberated, isZeroClosed, routeSummary, torreNote,
   type EconItem, type EconRoute, type EconSettings, type EconState,
 } from '@/lib/economic-closure'
 import { DispatchFreightStages } from '@/components/despacho/DispatchFreightStages'
@@ -184,6 +184,7 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
   const [editing, setEditing] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const [mounted, setMounted] = useState(false)
+  const [showZero, setShowZero] = useState(false)
 
   useEffect(() => { const t = window.setTimeout(() => setMounted(true), 0); return () => window.clearTimeout(t) }, [])
   useEffect(() => {
@@ -269,6 +270,8 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
   const torre = data ? torreNote(data.route_status) : ''
   const deviations =(data?.items || []).filter(i => isDeviation(i.agreed_pen, i.final_pen, settings))
   const services = new Map((data?.services || []).map(s => [s.id, s]))
+  // Lo cerrado en S/ 0 (operación interna que no se valoriza) no pide acción: se oculta salvo que se pida verlo
+  const zeroClosed = (data?.items || []).filter(isZeroClosed), shownItems = (data?.items || []).filter(i => showZero || !isZeroClosed(i))
 
   if (!mounted) return null
   return createPortal(
@@ -336,7 +339,7 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
                     <th className="px-2">Cantidad / base</th><th className="px-2 text-right">Variación</th><th className="px-2">Estado</th><th className="px-2">Validó</th><th className="px-2" />
                   </tr></thead>
                   <tbody className="divide-y divide-slate-100">
-                    {data.items.map(i => {
+                    {shownItems.map(i => {
                       const s = i.id ? services.get(i.id) : undefined
                       const canEdit = editable && (i.kind === 'FLETE' || !!s) && !['EN_REVISION', 'APROBADO'].includes(i.status)
                       return <tr key={i.key} className={isDeviation(i.agreed_pen, i.final_pen, settings) ? 'bg-red-50/60' : ''}>
@@ -370,6 +373,8 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
                   </tbody>
                 </table>
               </div>
+              {zeroClosed.length > 0 && <p className="flex flex-wrap items-center gap-2 text-xs text-slate-500">{zeroClosed.length} servicio{zeroClosed.length > 1 ? 's' : ''} en S/ 0 cerrado{zeroClosed.length > 1 ? 's' : ''} automáticamente (operación interna, no se valoriza){showZero ? '' : ': no se muestra' + (zeroClosed.length > 1 ? 'n' : '')}.
+                <button type="button" onClick={() => setShowZero(v => !v)} className="font-semibold text-[#002855] underline">{showZero ? 'Ocultar' : 'Mostrar'}</button></p>}
               {editing && (() => {
                 const item = data.items.find(i => i.key === editing)
                 if (!item) return null

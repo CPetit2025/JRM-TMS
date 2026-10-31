@@ -1,5 +1,5 @@
 import { connectionLevel } from '@/lib/gps-monitor'
-import type { EconItem, EconState } from '@/lib/economic-closure'
+import { isZeroClosed, type EconItem, type EconState } from '@/lib/economic-closure'
 import type { DeliveryRow } from '@/lib/delivery'
 
 // Detalle de una parada (despacho × solicitud) que devuelve get_dispatch_detail: solo registros guardados.
@@ -209,7 +209,7 @@ export function stopCosts(d: EconomicDetail, row: Pick<DeliveryRow, 'dispatch_id
   const own = d.items.find(i => i.kind === 'FLETE' && i.key === `F:${row.request_id}`)
   const route = own ? null : d.items.find(i => i.kind === 'FLETE' && i.key === `F:${row.dispatch_id}`) || null
   const freight = own || route, freightScope: 'SERVICIO' | 'RUTA' = own || d.requests.length <= 1 ? 'SERVICIO' : 'RUTA'
-  const services = d.items.filter(i => i.kind === 'SERVICIO' && i.request_number === row.request_number)
+  const services = d.items.filter(i => i.kind === 'SERVICIO' && i.request_number === row.request_number && !isZeroClosed(i))
   const servicesTotal = Math.round(services.reduce((sum, i) => sum + amount(i), 0) * 100) / 100
   const total = Math.round(((freight && freightScope === 'SERVICIO' ? amount(freight) : 0) + servicesTotal) * 100) / 100
   return { freight, freightScope, services, servicesTotal, total }
