@@ -16,7 +16,8 @@ type Data = {
   by_type: (Amounts & { concept: string })[]
   by_supplier: (Amounts & { supplier: string; concepts: string })[]
   by_contract: (Amounts & { contract_id: string | null; code: string; routes: number; budget: Budget })[]
-  pending: { routes_open: number; economic_pending: number; economic_review: number; economic_closed: number; documentary_pending_services: number; documentary_complete_economic_pending: number }
+  // Mismos estados y alcance que la bandeja del cierre económico
+  pending: { routes_unreleased: number; por_cerrar: number; por_aprobar: number; cerradas: number; no_aplica: number; documentary_pending_services: number; documentary_complete_economic_pending: number }
 }
 const LABEL: Record<string, string> = { FLETE: 'Transporte (flete)', MONTACARGAS: 'Montacargas', GRUA: 'Grúa', ESTIBA: 'Estiba', OTROS: 'Otros' }
 
@@ -78,10 +79,10 @@ export function ServiceCostIndicators({ from, to }: { from: string; to: string }
           <p className="text-lg font-bold tabular-nums">{money(Number(t.final_pen))}</p><p className="text-xs"><Var base={t.agreed_with_final_pen} value={t.final_pen} /> sobre {money(Number(t.agreed_with_final_pen))}</p></div>
         <div className={tile}><p className="text-xs text-slate-500">Adicionales</p><p className="text-lg font-bold tabular-nums">{money(Number(t.extras_pen))}</p>
           <p className="text-xs text-slate-500">{Number(t.final_pen) ? `${Math.round(Number(t.extras_pen) / Number(t.final_pen) * 1000) / 10}% del costo final` : '—'}</p></div>
-        <div className={tile}><p className="text-xs text-slate-500">Cierres pendientes</p>
-          <p className="text-sm"><b>{p.economic_pending}</b> económicos por enviar · <b>{p.economic_review}</b> en revisión · <b>{p.economic_closed}</b> cerrados</p>
+        <div className={tile}><p className="text-xs text-slate-500">Estado del cierre económico</p>
+          <p className="text-sm"><b>{p.por_cerrar}</b> por cerrar · <b>{p.por_aprobar}</b> por aprobar · <b>{p.cerradas}</b> cerradas · <b>{p.no_aplica}</b> no aplica</p>
           <p className="text-sm"><b>{p.documentary_pending_services}</b> servicios con cierre documentario pendiente</p>
-          <p className="text-xs text-slate-500">{p.documentary_complete_economic_pending} rutas con documentación completa y costo pendiente · {p.routes_open} rutas sin cerrar</p></div>
+          <p className="text-xs text-slate-500">{p.documentary_complete_economic_pending} rutas con documentación completa y costo pendiente · {p.routes_unreleased} con la unidad sin liberar</p></div>
       </div>
 
       <section><h3 className="mb-2 font-bold text-slate-800">Por tipo de servicio</h3>

@@ -2,7 +2,8 @@
 import { DataTable } from '@/components/ui/data-table'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Ban, History, Loader2, Plus, Receipt, Save, Trash2, Users, Wrench } from 'lucide-react'
+import Link from 'next/link'
+import { Ban, History, Loader2, Plus, Save, Trash2, Users, Wrench } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { errorMessage, money } from '@/lib/caja'
@@ -20,6 +21,7 @@ type Line = {
   origin?: string | null; tariff_missing?: boolean | null; estimated_source?: string | null  // origen: Solicitud, Programación o Caja
   // Acuerdo con el proveedor (Etapa 2): modalidad, tarifa y cantidad
   billing_unit?: string | null; agreed_rate?: number | null; agreed_qty?: number | null; workers?: number | null; suppliers?: { business_name: string } | { business_name: string }[] | null
+  final_pen?: number | null; econ_status?: string | null  // costo final del Cierre económico (único lugar donde se registra)
   planned: string  // valor editable
 }
 
@@ -33,8 +35,8 @@ const STATUS_CLS: Record<string, string> = {
   ESTIMADO: 'bg-slate-100 text-slate-600', PLANIFICADO: 'bg-blue-100 text-blue-700', CONSUMIDO: 'bg-emerald-100 text-emerald-700', ANULADO: 'bg-red-50 text-red-600',
 }
 
-export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
-  dispatchId: string; status: string; stops: Stop[]; canEdit: boolean
+export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit, economicHref }: {
+  dispatchId: string; status: string; stops: Stop[]; canEdit: boolean; economicHref?: string
 }) {
   const supabase = useMemo(() => createClient(), [])
   const programmed = status === 'PROGRAMADO'
@@ -56,7 +58,7 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
         supabase.rpc('get_dispatch_crew', { p_dispatch_id: dispatchId }),
         canEdit && programmed ? supabase.rpc('list_crew_candidates') : Promise.resolve({ data: [] }),
         ids.length ? supabase.from('transport_unloading_costs')
-          .select('id, transport_request_id, dispatch_id, concept, description, estimated_pen, planned_pen, actual_pen, status, provider_name, expense_id, origin, tariff_missing, estimated_source, billing_unit, agreed_rate, agreed_qty, workers, suppliers(business_name)')
+          .select('id, transport_request_id, dispatch_id, concept, description, estimated_pen, planned_pen, actual_pen, status, provider_name, expense_id, origin, tariff_missing, estimated_source, billing_unit, agreed_rate, agreed_qty, workers, final_pen, econ_status, suppliers(business_name)')
           .in('transport_request_id', ids).order('created_at') : Promise.resolve({ data: [] }),
       ])
       if (cancel) return
@@ -112,16 +114,6 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
       setHistory(null)
       setReload(n => n + 1)
     } catch (e) { toast.error(errorMessage(e)) } finally { setSaving(null) }
-  }
-
-  const registerActual = async (l: Line) => {
-    const amount = window.prompt(`Costo real de ${CONCEPTS[l.concept]} (S/)`, String(l.planned_pen ?? ''))
-    if (amount === null) return
-    const provider = window.prompt('Proveedor (opcional)') || null
-    const { data, error } = await supabase.rpc('register_unloading_actual', { p_line_id: l.id, p_amount: Number(amount), p_provider: provider })
-    if (error || !data?.success) { toast.error(error ? errorMessage(error) : data?.error); return }
-    toast.success('Costo real registrado y consumido de la partida')
-    setReload(n => n + 1)
   }
 
   const voidLine = async (l: Line) => {
@@ -185,8 +177,9 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
       <div>
         <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-1"><Wrench className="w-4 h-4" />Costos de descarga (partida de transporte)</h3>
         <p className="text-xs text-slate-500 mb-2">
-          Lo planificado se reserva en la partida del contrato. El costo real se consume al aprobarse en Caja el gasto del viaje
-          (alquiler de equipo o cuadrilla/estiba) o al registrar la factura aquí.
+          Lo planificado se reserva en la partida del contrato. El gasto aprobado en Caja (alquiler de equipo o cuadrilla/estiba) se
+          muestra como real; el costo final de cada servicio se registra y aprueba solo en el Cierre económico.
+          {economicHref && <> <Link href={economicHref} className="font-semibold text-[#002855] underline">Ir al cierre económico</Link></>}
         </p>
         {lines === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" /> : (
           <div className="overflow-x-auto">
@@ -231,8 +224,7 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit }: {
                     <td className="text-right whitespace-nowrap">
                       {canEdit && l.status === 'PLANIFICADO' && l.id && (
                         <>
-                          <button onClick={() => registerActual(l)} className="text-emerald-700 hover:underline text-xs mr-2 inline-flex items-center gap-0.5"><Receipt className="w-3 h-3" />Real</button>
-                          <button onClick={() => voidLine(l)} className="text-red-600 hover:underline text-xs inline-flex items-center gap-0.5"><Ban className="w-3 h-3" />Anular</button>
+                          {l.final_pen == null && !l.econ_status && <button onClick={() => voidLine(l)} className="text-red-600 hover:underline text-xs inline-flex items-center gap-0.5"><Ban className="w-3 h-3" />Anular</button>}
                         </>
                       )}
                       {!l.id && <button onClick={() => setLines(ls => ls && ls.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>}

@@ -44,6 +44,7 @@ jobs:
       - run: node scripts/test-economic-queue-columns.cjs
       - run: node scripts/test-economic-own-zero-freight.cjs
       - run: node scripts/test-economic-simplified.cjs
+      - run: node scripts/test-economic-unified.cjs
       - run: node scripts/test-ot-freight-required.cjs
       - run: node scripts/test-third-party-freight-required.cjs
       - run: node scripts/test-programming-notes.cjs

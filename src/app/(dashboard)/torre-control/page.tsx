@@ -598,12 +598,12 @@ export default function TorreControlPage() {
             </div>
 
             <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <summary className="cursor-pointer font-bold text-slate-800">Flete: referencial, acordado y final</summary>
-              <div className="mt-4"><DispatchFreightStages dispatchId={selectedDispatch.id} /></div>
+              <summary className="cursor-pointer font-bold text-slate-800">Flete: referencial, acordado y final (consulta)</summary>
+              <div className="mt-4"><DispatchFreightStages dispatchId={selectedDispatch.id} readOnly economicHref={`/despacho/documentos/economico?despacho=${selectedDispatch.id}`} /></div>
             </details>
             <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <summary className="cursor-pointer font-bold text-slate-800">Asignación de tripulación y costos de descarga</summary>
-              <div className="mt-4"><DispatchCrewUnloading dispatchId={selectedDispatch.id} status={selectedDispatch.status} canEdit={canWrite('despacho')}
+              <div className="mt-4"><DispatchCrewUnloading dispatchId={selectedDispatch.id} status={selectedDispatch.status} canEdit={canWrite('despacho')} economicHref={`/despacho/documentos/economico?despacho=${selectedDispatch.id}`}
                 stops={rows.filter(row => row.dispatch_id === selectedDispatch.id).map(row => ({ request_id: row.request_id, request_number: row.request_number }))} /></div>
             </details>
             <div className="border-t pt-4">

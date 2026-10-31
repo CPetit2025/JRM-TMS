@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { Loader2, Save, Truck } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
@@ -8,6 +9,7 @@ import { DEFAULT_SETTINGS, isDeviation, type EconSettings } from '@/lib/economic
 
 // Flete con etapas (Etapa 3): referencial de las solicitudes, acordado al programar, vigente (lo que mueve la partida) y
 // final después de la ejecución. Ninguna etapa sobrescribe a otra; cada cambio queda en el historial de costos.
+// El flete final se registra solo en el Cierre económico; fuera de él (Torre de Control) el componente es de consulta.
 
 type ByRequest = { request_id: string; request_number: string; contract_code: string | null; referential_pen: number; agreed_pen: number; current_pen: number; final_pen: number | null; status: string }
 type Summary = {
@@ -22,7 +24,9 @@ const delta = (a: number, b: number) => {
   return <span className={d > 0 ? 'text-red-700' : 'text-emerald-700'}> ({d > 0 ? '+' : ''}{money(d)}; {d > 0 ? '+' : ''}{Math.round(d / a * 100)}%)</span>
 }
 
-export function DispatchFreightStages({ dispatchId, onSaved, settings = DEFAULT_SETTINGS }: { dispatchId: string; onSaved?: () => void; settings?: EconSettings }) {
+export function DispatchFreightStages({ dispatchId, onSaved, settings = DEFAULT_SETTINGS, readOnly = false, economicHref }: {
+  dispatchId: string; onSaved?: () => void; settings?: EconSettings; readOnly?: boolean; economicHref?: string
+}) {
   const supabase = useMemo(() => createClient(), [])
   const [data, setData] = useState<Summary | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -44,6 +48,7 @@ export function DispatchFreightStages({ dispatchId, onSaved, settings = DEFAULT_
   if (error) return <p className="text-xs text-slate-500">{error}</p>
   if (!data) return <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
 
+  const canRegister = data.can_register_final && !readOnly
   const base = form.asPlanned ? data.agreed_pen : Number(form.base || 0)
   const final = Math.round((base + Number(form.extras || 0)) * 100) / 100
   // Motivo solo cuando supera el umbral configurable o hay adicionales (igual que la base)
@@ -97,7 +102,7 @@ export function DispatchFreightStages({ dispatchId, onSaved, settings = DEFAULT_
         <div className="overflow-x-auto">
           <table className="w-full min-w-[520px] text-xs">
             <thead><tr className="border-b text-left text-slate-500"><th className="py-1 pr-2">Servicio · OT</th><th className="pr-2 text-right">Referencial</th><th className="pr-2 text-right">Acordado</th><th className="pr-2 text-right">Vigente</th><th className="pr-2 text-right">Final</th>
-              {data.can_register_final && mixed.length > 1 && <th className="text-right">Reparto final</th>}</tr></thead>
+              {canRegister && mixed.length > 1 && <th className="text-right">Reparto final</th>}</tr></thead>
             <tbody>
               {data.by_request.map(r => (
                 <tr key={r.request_id} className="border-b last:border-0">
@@ -106,7 +111,7 @@ export function DispatchFreightStages({ dispatchId, onSaved, settings = DEFAULT_
                   <td className="pr-2 text-right tabular-nums">{money(r.agreed_pen)}</td>
                   <td className="pr-2 text-right tabular-nums">{money(r.current_pen)}</td>
                   <td className="pr-2 text-right tabular-nums">{r.final_pen == null ? '—' : money(r.final_pen)}</td>
-                  {data.can_register_final && mixed.length > 1 && <td className="text-right">{r.status !== 'LIBERADO' &&
+                  {canRegister && mixed.length > 1 && <td className="text-right">{r.status !== 'LIBERADO' &&
                     <input inputMode="decimal" aria-label={`Flete final de ${r.request_number}`} value={alloc[r.request_id] ?? ''} placeholder="Proporcional"
                       onChange={e => setAlloc(a => ({ ...a, [r.request_id]: e.target.value }))} className="w-24 rounded border border-slate-300 px-1 py-0.5 text-right" />}</td>}
                 </tr>
@@ -115,7 +120,8 @@ export function DispatchFreightStages({ dispatchId, onSaved, settings = DEFAULT_
           </table>
         </div>
       )}
-      {data.can_register_final && (
+      {readOnly && data.can_register_final && <p className="text-xs text-slate-600">El flete final se registra en el Cierre económico.{economicHref && <> <Link href={economicHref} className="font-semibold text-[#002855] underline">Ir al cierre económico</Link></>}</p>}
+      {canRegister && (
         <div className="rounded-lg border border-slate-200 bg-white p-3">
           <p className="text-xs font-bold text-slate-700">{data.final_pen == null ? 'Registrar flete final' : 'Corregir flete final'}</p>
           <div className="mt-2 grid gap-2 sm:grid-cols-3">
