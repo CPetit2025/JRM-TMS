@@ -397,7 +397,8 @@ export default function TorreControlPage() {
         const row = rows.find(r => r.dispatch_id === shown.dispatch_id && r.request_id === shown.request_id) || shown
         const leave = (next: () => void) => () => { close(); next() }
         const documentsHref = ['documentario', 'packing-list', 'planificacion'].some(module => canRead(module)) ? `/despacho/documentos?despacho=${row.dispatch_id}&vista=${row.state === 'PROGRAMADO' ? 'salida' : 'historial'}&desde=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(row.scheduled_departure))}` : undefined
-        return <DispatchDetailModal row={row} routeRows={rows} onSelect={select} onClose={close} documentsHref={documentsHref} onValidate={r => { close(); setReview(r) }} actions={<>
+        const economicHref = ['cierre-economico', 'despacho', 'documentario'].some(module => canRead(module)) ? `/despacho/documentos/economico?despacho=${row.dispatch_id}` : undefined
+        return <DispatchDetailModal row={row} routeRows={rows} onSelect={select} onClose={close} documentsHref={documentsHref} economicHref={economicHref} onValidate={r => { close(); setReview(r) }} actions={<>
           <ManualOperationalCloseButton dispatchId={row.dispatch_id} dispatchNumber={row.dispatch_number} status={dispatches.find(item => item.id === row.dispatch_id)?.status || row.state} onClosed={() => { close(); void fetchDispatches() }} />
           <button type="button" onClick={leave(() => setReview(row))} className="min-h-10 rounded-lg border border-slate-300 px-3 text-left text-sm font-semibold text-jrm-navy">Guía y conformidad</button>
           <button type="button" onClick={leave(() => setSelectedDispatch(dispatches.find(d => d.id === row.dispatch_id) || null))} className="min-h-10 rounded-lg border border-slate-300 px-3 text-left text-sm font-semibold text-jrm-navy">Expediente de la ruta {row.dispatch_number}</button>

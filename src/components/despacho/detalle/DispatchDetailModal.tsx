@@ -1,6 +1,6 @@
 'use client'
 import { useState, type ReactNode, type KeyboardEvent } from 'react'
-import { ArrowLeft, ArrowRight, Camera, CheckCircle2, ChevronDown, FileText, Files, History, MapPin } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Camera, CircleDollarSign, CheckCircle2, ChevronDown, FileText, Files, History, MapPin } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { conformityLabels, deliveryStatus, type DeliveryRow } from '@/lib/delivery'
@@ -12,10 +12,12 @@ import { HistorialTab } from './HistorialTab'
 import { DocumentosTab } from './DocumentosTab'
 import { EvidenciasTab } from './EvidenciasTab'
 import { useDispatchFiles } from './useDispatchFiles'
+import { CostosTab } from './CostosTab'
+import { useDispatchCosts } from './useDispatchCosts'
 
 const ICONS: Record<DetailTab, ReactNode> = {
   resumen: <FileText className="h-4 w-4" aria-hidden />, ruta: <MapPin className="h-4 w-4" aria-hidden />, documentos: <Files className="h-4 w-4" aria-hidden />,
-  evidencias: <Camera className="h-4 w-4" aria-hidden />, historial: <History className="h-4 w-4" aria-hidden />,
+  evidencias: <Camera className="h-4 w-4" aria-hidden />, costos: <CircleDollarSign className="h-4 w-4" aria-hidden />, historial: <History className="h-4 w-4" aria-hidden />,
 }
 const conformityTone = (c: DeliveryRow['conformity']) => c === 'VALIDADA' ? 'success' : c === 'OBSERVADA' || c === 'RECHAZADA' || c === 'RECHAZO_DESTINO' ? 'danger' : c === 'NO_APLICA' || c === 'HISTORICA' ? 'neutral' : 'warning'
 
@@ -23,9 +25,9 @@ const conformityTone = (c: DeliveryRow['conformity']) => c === 'VALIDADA' ? 'suc
  * Detalle de una parada (despacho × solicitud) en pestañas. Solo muestra registros reales y delega cada acción en
  * su flujo actual; ningún cierre (operativo, documentario o económico) se dispara desde aquí. «Finalizar» solo cierra.
  */
-export function DispatchDetailModal({ row, routeRows = [], onSelect, onClose, onValidate, actions, documentsHref }: {
+export function DispatchDetailModal({ row, routeRows = [], onSelect, onClose, onValidate, actions, documentsHref, economicHref }: {
   row: DeliveryRow; routeRows?: DeliveryRow[]; onSelect?: (row: DeliveryRow) => void; onClose: () => void
-  onValidate?: (row: DeliveryRow) => void; actions?: ReactNode; documentsHref?: string
+  onValidate?: (row: DeliveryRow) => void; actions?: ReactNode; documentsHref?: string; economicHref?: string
 }) {
   const [tab, setTab] = useState<DetailTab>('resumen'), [menu, setMenu] = useState(false)
   const { detail, error, loading, reload } = useDispatchDetail(row.dispatch_id, row.request_id)
@@ -33,6 +35,9 @@ export function DispatchDetailModal({ row, routeRows = [], onSelect, onClose, on
   const [filesWanted, setFilesWanted] = useState(false)
   const files = useDispatchFiles(row.dispatch_id, row.request_id, filesWanted || tab === 'documentos' || tab === 'evidencias')
   if (!filesWanted && (tab === 'documentos' || tab === 'evidencias')) setFilesWanted(true)
+  const [costsWanted, setCostsWanted] = useState(false)
+  const costs = useDispatchCosts(row.dispatch_id, costsWanted || tab === 'costos')
+  if (!costsWanted && tab === 'costos') setCostsWanted(true)
   const index = DETAIL_TABS.findIndex(t => t.key === tab), last = index === DETAIL_TABS.length - 1
   const move = (step: number) => setTab(DETAIL_TABS[Math.min(DETAIL_TABS.length - 1, Math.max(0, index + step))].key)
   const onTabKey = (e: KeyboardEvent) => { if (e.key === 'ArrowRight') move(1); else if (e.key === 'ArrowLeft') move(-1) }
@@ -75,6 +80,8 @@ export function DispatchDetailModal({ row, routeRows = [], onSelect, onClose, on
             : files.error || !files.files ? <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{files.error || 'No se pudieron cargar los documentos.'} <button type="button" onClick={files.reload} className="font-semibold underline">Reintentar</button></div>
             : tab === 'documentos' ? <DocumentosTab row={row} files={files.files} urls={files.urls} documentsHref={documentsHref} />
             : <EvidenciasTab files={files.files} route={files.route} urls={files.urls} servicesCount={detail.dispatch.services_count} />)
+          : tab === 'costos' ? (costs.loading || !costs.costs ? <p role="status" className="py-10 text-center text-sm text-slate-500">Cargando costos…</p>
+            : <CostosTab row={row} costs={costs.costs} economicHref={economicHref} />)
           : <HistorialTab row={row} detail={detail} onGo={setTab} />}
       </div>
     </div>

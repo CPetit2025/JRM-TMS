@@ -121,13 +121,13 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12,'0')}`
   assert.equal(f.can_view_documents, false); assert.deepEqual(f.documents, [], 'no document files without document access')
   await as(97)
   await assert.rejects(filesOf(id(70), id(30)), /Sin permiso/)
-  await assert.rejects(db.exec(read('supabase/tests/caja_c190_detalle_despacho_archivos.test.sql')), /CAJA C190 PASS/)
+  await assert.rejects(db.exec(read('supabase/tests/caja_c192_detalle_despacho_archivos.test.sql')), /CAJA C192 PASS/)
   await db.exec('ROLLBACK').catch(() => {})
 
-  await assert.rejects(db.exec(read('supabase/tests/caja_c189_detalle_despacho.test.sql')), /CAJA C189 FAIL: fuentes no legibles en producción: \["vehicle_incidents"\]/)
+  await assert.rejects(db.exec(read('supabase/tests/caja_c191_detalle_despacho.test.sql')), /CAJA C191 FAIL: fuentes no legibles en producción: \["vehicle_incidents"\]/)
   await db.exec('ROLLBACK').catch(() => {})
   await db.exec(`CREATE TABLE vehicle_incidents(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),incident_type text,severity text,dispatch_id uuid,occurred_at timestamptz,location text,description text,created_by uuid)`)
-  await assert.rejects(db.exec(read('supabase/tests/caja_c189_detalle_despacho.test.sql')), /CAJA C189 PASS/)
+  await assert.rejects(db.exec(read('supabase/tests/caja_c191_detalle_despacho.test.sql')), /CAJA C191 PASS/)
   await db.exec('ROLLBACK').catch(() => {})
   console.log('PASS detalle del despacho: hitos reales, GPS confirmado, historial por parada, permisos y fuentes ausentes informadas')
  } finally { await db.close() }
