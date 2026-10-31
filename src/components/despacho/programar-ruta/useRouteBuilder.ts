@@ -52,7 +52,7 @@ const extractDistrict = (address: string): string => {
  * Estado y reglas del armado de ruta («Armar ruta y programar unidad»). Las llamadas a la base (schedule_route_resources,
  * authorize_pickup_reference_freight, set_dispatch_freight_quote) son las mismas de siempre; la base vuelve a validar todo.
  */
-export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests, dispatches, vehicles, drivers, fetchData, canAddService, router, onLinkRequest }: {
+export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests, dispatches, vehicles, drivers, fetchData, canAddService, canAuthorizeFreight, router, onLinkRequest }: {
   supabase: SupabaseClient
   pendingRequests: TransportRequest[]
   setPendingRequests: SetState<SetStateAction<TransportRequest[]>>
@@ -61,6 +61,8 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
   drivers: PlanningDriver[]
   fetchData: () => Promise<void> | void
   canAddService: boolean
+  /** Supervisor de Transporte (despacho-aprobacion): autoriza el flete del tercero en servicios sin OT. */
+  canAuthorizeFreight: boolean
   router: Router
   onLinkRequest: (request: TransportRequest) => void
 }) {
@@ -139,26 +141,34 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
   const occupiedAssignment = newDispatch.document_type === 'GR' && modalidad === 'PROPIA'
     ? routeAssignment(dispatches, newDispatch.vehicle_plate, selectedDriver?.id) : null
   const openRouteAddition = (id: string) => { setIsModalOpen(false); setAddServiceId(id) }
-  const ownPickupOnly = modalidad === 'PROPIA' && selectedServices.length > 0 && selectedServices.every(r => r.request_type === 'RECOJO')
-  const valuedServices = selectedServices.filter(r => modalidad === 'TERCERO' || r.request_type !== 'RECOJO')
+  // Operación interna con flota propia: recojos y servicios sin OT (traslados, recojos con OC/OS/RQ) no llevan flete.
+  // Con OT el flete es costo logístico de su partida; con tercero todo servicio tiene costo (misma regla que la base).
+  const internalService = (r: TransportRequest) => modalidad === 'PROPIA' && (r.request_type === 'RECOJO' || !r.contract_id)
+  const ownInternalOnly = modalidad === 'PROPIA' && selectedServices.length > 0 && selectedServices.every(internalService)
+  const valuedServices = selectedServices.filter(r => !internalService(r))
   // El flete acordado se escribe siempre (propia o tercero); el tarifario solo se usa si el usuario lo elige.
   const freightTyped = manualFreightCost.trim() !== ''
-  const routeFreight = customerPickup || ownPickupOnly ? 0 : Math.max(Number(manualFreightCost) || 0, 0)
+  const routeFreight = customerPickup || ownInternalOnly ? 0 : Math.max(Number(manualFreightCost) || 0, 0)
   const defaultShares = splitFreight(routeFreight, valuedServices)
-  const serviceShare = (id: string) => modalidad === 'PROPIA' && selectedServices.some(r => r.id === id && r.request_type === 'RECOJO') ? 0 : Number(freightShares[id] ?? defaultShares.find(r => r.id === id)?.amount ?? 0)
+  const serviceShare = (id: string) => selectedServices.some(r => r.id === id && internalService(r)) ? 0 : Number(freightShares[id] ?? defaultShares.find(r => r.id === id)?.amount ?? 0)
   const allocationMatches = Math.round(selectedServices.reduce((sum, r) => sum + serviceShare(r.id), 0) * 100) === Math.round(routeFreight * 100)
   // Flete acordado vs. referencial (suma del costo de las solicitudes): si difieren se exige motivo, igual que el servidor.
-  // Sin motivo: recojos con flota propia y Nota de Salida sin flete.
-  const referentialFreight = selectedServices.reduce((sum, r) => sum + Number(r.service_cost || 0), 0)
-  const freightExempt = routeFreight === 0 && (newDispatch.document_type === 'NOTA_SALIDA' || customerPickup || ownPickupOnly)
+  // Solo cuentan los servicios que llevan flete. Sin motivo: operación interna con flota propia y Nota de Salida sin flete.
+  const referentialFreight = valuedServices.reduce((sum, r) => sum + Number(r.service_cost || 0), 0)
+  const freightExempt = routeFreight === 0 && (newDispatch.document_type === 'NOTA_SALIDA' || customerPickup || ownInternalOnly)
   const freightNeedsReason = selectedServices.length > 0 && !freightExempt && Math.round(routeFreight * 100) !== Math.round(referentialFreight * 100)
   // Un servicio de transporte de una OT no se programa sin costo, sea flota propia o tercero (misma regla que la base).
   // Excepciones: recojo por el cliente y recojo con flota propia (no se valoriza).
-  const costedOT = (r: TransportRequest) => !!r.contract_id && r.attention_mode !== 'RECOJO_CLIENTE' && !(modalidad === 'PROPIA' && r.request_type === 'RECOJO')
+  const costedOT = (r: TransportRequest) => !!r.contract_id && r.attention_mode !== 'RECOJO_CLIENTE' && !internalService(r)
+  // Tercero en un servicio sin OT: el Supervisor de Transporte autoriza el flete pactado contra la OC, OS o RQ al programar.
+  const externalFunding = newDispatch.document_type === 'GR' && modalidad === 'TERCERO'
+    ? selectedServices.filter(r => !r.contract_id && serviceShare(r.id) > 0 && serviceShare(r.id) + Number(r.unloading_estimate_pen || 0) > Number(r.operational_approved_pen || 0))
+    : []
+  const fundingLabel = externalFunding.map(r => `${r.request_number} S/ ${(serviceShare(r.id) + Number(r.unloading_estimate_pen || 0) - Number(r.operational_approved_pen || 0)).toFixed(2)}`).join(', ')
   // Con tercero el flete pactado con el proveedor es obligatorio, tenga o no OT (el proveedor siempre cobra).
   const terceroFreightMissing = newDispatch.document_type === 'GR' && modalidad === 'TERCERO' && selectedServices.length > 0 && !customerPickup && routeFreight <= 0
   // Con flota propia el flete se escribe (o se toma el tarifario con el botón): ya no se asume en silencio.
-  const ownFreightUntyped = newDispatch.document_type === 'GR' && modalidad === 'PROPIA' && selectedServices.length > 0 && !ownPickupOnly && !customerPickup && !freightTyped
+  const ownFreightUntyped = newDispatch.document_type === 'GR' && modalidad === 'PROPIA' && selectedServices.length > 0 && !ownInternalOnly && !customerPickup && !freightTyped
   const freightMissing = terceroFreightMissing || (newDispatch.document_type === 'GR' && selectedServices.some(costedOT) && routeFreight <= 0)
   const shareMissing = newDispatch.document_type === 'GR' && mixedOT && selectedServices.some(r => costedOT(r) && serviceShare(r.id) <= 0)
 
@@ -188,6 +198,8 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
     !terceroFreightMissing && !ownFreightUntyped && freightMissing && { key: 'flete-ot', label: 'Flete de la ruta: un servicio de OT no puede quedar sin costo', step: 2, level: 'block' },
     shareMissing && { key: 'flete-reparto', label: 'Flete de cada servicio de OT (ninguno en S/ 0)', step: 2, level: 'block' },
     mixedOT && !allocationMatches && { key: 'distribucion', label: 'Distribución del flete por servicio', step: 2, level: 'block' },
+    externalFunding.length > 0 && !canAuthorizeFreight && { key: 'autorizacion-tercero', label: `Flete del tercero sin cobertura de la OC, OS o RQ (falta ${fundingLabel}): lo autoriza el Supervisor de Transporte al programar`, step: 2, level: 'block' },
+    externalFunding.length > 0 && canAuthorizeFreight && { key: 'autorizacion-tercero', label: `Al programar se autoriza el flete del tercero sobre la OC, OS o RQ (${fundingLabel})`, step: 2, level: 'warn' },
     freightNeedsReason && freightReason.trim().length < 5 && { key: 'motivo-flete', label: 'Motivo del flete distinto al referencial', step: 2, level: 'block' },
     gr && capacityKg != null && declaredKg > capacityKg && { key: 'capacidad', label: `Exceso de capacidad: ${Math.round(declaredKg).toLocaleString('es-PE')} kg declarados para ${Math.round(capacityKg).toLocaleString('es-PE')} kg de la unidad`, step: 2, level: 'block' },
     gr && capacityKg != null && declaredKg <= capacityKg && cubicaje && cubicaje.kg > capacityKg && { key: 'capacidad-ref', label: 'El peso referencial del ERP supera la capacidad de la unidad: confirme la carga real', step: 2, level: 'warn' },
@@ -357,8 +369,8 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
         }
         const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
         const freightCost = routeFreight
-        const pickupFunding = selectedServices.filter(r => r.request_type === 'RECOJO' && !r.contract_id && serviceShare(r.id) > 0 && serviceShare(r.id) + Number(r.unloading_estimate_pen || 0) > Number(r.operational_approved_pen || 0))
-        if (pickupFunding.length && !window.confirm(`Autorizar el flete contratado de los recojos: ${pickupFunding.map(r => `${r.request_number} · ${referenceLabel(r)} · S/ ${serviceShare(r.id).toFixed(2)}`).join('; ')}. La descarga se añade al importe autorizado. Esta aprobación queda registrada aunque la programación deba reintentarse.`)) return
+        const pickupFunding = externalFunding
+        if (pickupFunding.length && !window.confirm(`Autorizar el flete contratado al tercero (sin OT):${pickupFunding.map(r => `${r.request_number} · ${referenceLabel(r)} · S/ ${serviceShare(r.id).toFixed(2)}`).join('; ')}. La descarga se añade al importe autorizado. Esta aprobación queda registrada aunque la programación deba reintentarse.`)) return
         if (pickupFunding.length) setFreightShares(Object.fromEntries(selectedServices.map(r => [r.id, serviceShare(r.id).toFixed(2)])))
         for (const request of pickupFunding) {
           const authorization = await supabase.rpc('authorize_pickup_reference_freight', {
@@ -587,7 +599,7 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
     assistants, assistantsLoading, assistantsError, fetchAssistants, auxiliares, setAuxiliares, forklift, setForklift, routeForklift, forkliftStops,
     specialServices, setSpecialServices, inheritedLines, newDispatch, setNewDispatch, freightShares, setFreightShares, freightReason, setFreightReason,
     notes, setNotes, cubicaje, setCubicaje, stockCorte, currentEligibility, selectedServices, selectedDates, customerPickup, selectedDriver, selectedVehicle,
-    occupiedAssignment, openRouteAddition, ownPickupOnly, routeFreight, serviceShare, allocationMatches, referentialFreight, freightNeedsReason,
+    occupiedAssignment, openRouteAddition, internalService, ownInternalOnly, routeFreight, serviceShare, allocationMatches, referentialFreight, freightNeedsReason,
     costedOT, terceroFreightMissing, freightMissing, mixedOT, capacityKg, capacityM3, declaredKg, late, checks, blockers, canAddService,
     handleProgramar, toggleRequestSelection, moveStop, changeVehicle, changeDriver, vehicles, drivers, dispatches, pendingRequests,
   }

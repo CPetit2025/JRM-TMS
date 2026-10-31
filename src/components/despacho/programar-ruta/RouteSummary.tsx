@@ -65,7 +65,7 @@ export function RouteSummary({ rb, onGo }: { rb: RouteBuilder; onGo: (s: RouteSt
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-lg border border-slate-200 p-2.5"><p className="text-[11px] text-slate-500">Servicios</p><p className="text-xl font-bold tabular-nums text-[#002855]">{services.length}</p><p className="text-[11px] text-slate-500">{services.length === 1 ? '1 parada' : `${services.length} paradas`}</p></div>
         <div className="rounded-lg border border-slate-200 p-2.5"><p className="flex items-center gap-1 text-[11px] text-slate-500"><Wallet className="h-3 w-3" />Flete acordado</p>
-          <p className="text-xl font-bold tabular-nums text-[#002855]">{!gr ? '—' : rb.ownPickupOnly ? 'S/ 0' : rb.manualFreightCost.trim() ? `S/ ${money(rb.routeFreight)}` : <span className="text-base text-amber-700">Pendiente</span>}</p>
+          <p className="text-xl font-bold tabular-nums text-[#002855]">{!gr ? '—' : rb.ownInternalOnly ? 'S/ 0' : rb.manualFreightCost.trim() ? `S/ ${money(rb.routeFreight)}` : <span className="text-base text-amber-700">Pendiente</span>}</p>
           {gr && <p className="text-[11px] text-slate-500">Ref.: S/ {money(rb.referentialFreight)}{diffPct != null && Math.abs(diffPct) >= 0.05 && rb.manualFreightCost.trim() && <b className={`ml-1 ${diffPct > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{diffPct > 0 ? '+' : ''}{diffPct.toFixed(1)}%</b>}</p>}
         </div>
       </div>
