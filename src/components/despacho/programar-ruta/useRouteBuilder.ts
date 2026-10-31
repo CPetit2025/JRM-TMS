@@ -307,6 +307,14 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
     setTercero(TERCERO_VACIO); setModalidad('PROPIA')
   }
 
+  // Detalle del tarifario de la ruta recién programada: si falla, la ruta ya existe; se avisa y se reintenta solo este paso
+  const saveQuote = async (dispatchId: string, quote: Record<string, unknown>): Promise<void> => {
+    const { error } = await supabase.rpc('set_dispatch_freight_quote', { p_dispatch_id: dispatchId, p_breakdown: quote })
+    if (error) toast.error('La ruta se programó, pero no se guardó el detalle del tarifario: ' + error.message, {
+      duration: 15000, action: { label: 'Reintentar', onClick: () => { void saveQuote(dispatchId, quote) } },
+    })
+  }
+
   // Observaciones operativas: se guardan en la ruta recién programada
   const saveNotes = async (dispatchId: string) => {
     if (!notes.trim()) return
@@ -374,7 +382,7 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
         } })
         if (error) throw error
         if (!isPickup && newDispatchId && freightQuote && detectedFreightRate?.rate && freightCost === detectedFreightRate.rate) {
-          await supabase.rpc('set_dispatch_freight_quote', { p_dispatch_id: newDispatchId, p_breakdown: freightQuote })
+          await saveQuote(newDispatchId as string, freightQuote)
         }
         if (newDispatchId) await saveNotes(newDispatchId as string)
         toast.success('Servicio programado. El acceso del proveedor está listo para compartir.')
@@ -450,7 +458,7 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
       if (error) throw error
       // Se guarda con qué tarifa se calculó el flete (si vino del tarifario)
       if (!isPickup && newDispatchId && freightQuote && detectedFreightRate?.rate && freightCost === detectedFreightRate.rate) {
-        await supabase.rpc('set_dispatch_freight_quote', { p_dispatch_id: newDispatchId, p_breakdown: freightQuote })
+        await saveQuote(newDispatchId as string, freightQuote)
       }
       if (newDispatchId) await saveNotes(newDispatchId as string)
       toast.success(isPickup ? 'Recojo por el cliente programado con Nota de Salida y sin flete JRM.' : 'Despacho programado y financiamiento validado.')

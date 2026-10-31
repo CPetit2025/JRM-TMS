@@ -46,6 +46,7 @@ jobs:
       - run: node scripts/test-ot-freight-required.cjs
       - run: node scripts/test-third-party-freight-required.cjs
       - run: node scripts/test-programming-notes.cjs
+      - run: node scripts/test-audit-commercial-fixes.cjs
       - run: node --test scripts/test-route-builder-checks.cjs
       - run: node --test scripts/test-route-builder-ui.cjs
       - run: node scripts/test-tower-route-crew.cjs
