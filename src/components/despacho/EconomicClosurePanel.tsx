@@ -276,7 +276,7 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
 
   if (!mounted) return null
   return createPortal(
-    <div className="fixed inset-0 z-[9998]" role="dialog" aria-modal="true" aria-label={data ? `Cierre económico ${data.dispatch_number}` : 'Cierre económico'}>
+    <div className="fixed inset-0 z-[10000]" role="dialog" aria-modal="true" aria-label={data ? `Cierre económico ${data.dispatch_number}` : 'Cierre económico'}>
       <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
       <aside className="absolute inset-y-0 right-0 flex w-full max-w-4xl flex-col bg-white shadow-2xl">
         <header className="border-b border-slate-200 px-4 py-3">

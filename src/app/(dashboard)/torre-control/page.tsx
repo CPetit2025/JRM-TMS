@@ -28,6 +28,8 @@ import { ManualOperationalCloseButton } from '@/components/despacho/ManualOperat
 import { ErpGuiasResumenCard, ErpOtReferencia } from '@/components/erp/ErpReferencia'
 import { ProgrammingNotes } from '@/components/despacho/programar-ruta/ProgrammingNotes'
 import { DispatchDetailModal } from '@/components/despacho/detalle/DispatchDetailModal'
+import { EconomicClosurePanel } from '@/components/despacho/EconomicClosurePanel'
+import { DispatchDocumentarySettlement } from '@/components/documentos/DispatchDocumentarySettlement'
 import { closureStage, ServiceClosure, type ClosureChecks } from '@/components/despacho/ServiceClosure'
 import { canAddRouteService } from '@/lib/route-assignment'
 
@@ -103,6 +105,8 @@ export default function TorreControlPage() {
   const requestedReview = useRef<string | null>(null)
   // ?liquidar=economica|documentaria (direcciones anteriores de Costos por ruta y de Documentación pendiente): abre esa liquidación del viaje
   const [liquidate, setLiquidate] = useState<{ id: string; what: string } | null>(null)
+  // Liquidaciones abiertas desde «Toda la ruta», encima del detalle (sin salir de la ventana)
+  const [routePanel, setRoutePanel] = useState<{ id: string; what: 'economico' | 'documentos' } | null>(null)
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('jrm:context', { detail: selectedDispatch ? { dispatchId: selectedDispatch.id } : {} }))
@@ -322,10 +326,11 @@ export default function TorreControlPage() {
               <div className="flex flex-wrap gap-2">
               <ManualOperationalCloseButton dispatchId={dispatch.id} dispatchNumber={dispatch.dispatch_number} status={dispatch.status} onClosed={() => { done(); void fetchDispatches() }} />
               {dispatch.status === 'CIERRE_OPERATIVO' && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">La ruta tiene cierre operativo. Las guías, conformidades y la liquidación financiera conservan su estado; consulta el motivo y el responsable en la bitácora.</p>}
-              {canAddService && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA'].includes(dispatch.status) && dispatch.vehicle_plate !== 'EXTERNO' && <button type="button" onClick={() => { setAddServiceId(dispatch.id); done() }} className="min-h-11 rounded-lg bg-jrm-navy px-4 text-sm font-semibold text-white">Agregar servicio a la ruta</button>}
+              {canAddService && ['PROGRAMADO', 'EN_CURSO', 'EN RUTA'].includes(dispatch.status) && dispatch.vehicle_plate !== 'EXTERNO' && <button type="button" onClick={() => setAddServiceId(dispatch.id)} className="min-h-11 rounded-lg bg-jrm-navy px-4 text-sm font-semibold text-white">Agregar servicio a la ruta</button>}
               <DispatchExecutionActions dispatch={{ ...dispatch, modalidad: rows.find(row => row.dispatch_id === dispatch.id)?.modalidad || dispatch.modalidad }} onChanged={async () => { done(); await fetchDispatches() }} />
-              {canWrite('despacho') && (dispatch.modalidad === 'TERCERO' || rows.some(row => row.dispatch_id === dispatch.id && row.modalidad === 'TERCERO')) && <button onClick={() => { setThirdId(dispatch.id); done() }} className="min-h-11 rounded-lg border border-violet-200 px-4 text-sm font-semibold text-violet-700">Compartir acceso GR · tercero</button>}
-              {['documentario', 'packing-list', 'planificacion'].some(module => canRead(module)) && <Link href={`/despacho/documentos?despacho=${dispatch.id}&vista=${dispatch.status === 'PROGRAMADO' ? 'salida' : 'historial'}&desde=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(dispatch.scheduled_departure))}`} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855]">Documentos del servicio</Link>}
+              {canWrite('despacho') && (dispatch.modalidad === 'TERCERO' || rows.some(row => row.dispatch_id === dispatch.id && row.modalidad === 'TERCERO')) && <button onClick={() => setThirdId(dispatch.id)} className="min-h-11 rounded-lg border border-violet-200 px-4 text-sm font-semibold text-violet-700">Compartir acceso GR · tercero</button>}
+              {['documentario', 'packing-list', 'planificacion'].some(module => canRead(module)) && dispatch.status !== 'PROGRAMADO' && <button type="button" onClick={() => setRoutePanel({ id: dispatch.id, what: 'documentos' })} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855]">Documentos del servicio</button>}
+              {['documentario', 'packing-list', 'planificacion'].some(module => canRead(module)) && dispatch.status === 'PROGRAMADO' && <Link href={`/despacho/documentos?despacho=${dispatch.id}&vista=${dispatch.status === 'PROGRAMADO' ? 'salida' : 'historial'}&desde=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(dispatch.scheduled_departure))}`} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855]">Documentos del servicio</Link>}
               {canWrite('despacho') && dispatch.status === 'PROGRAMADO' && <button type="button" onClick={() => void cancelDispatch(dispatch)} className="min-h-11 rounded-lg border border-red-200 px-4 text-sm font-semibold text-red-700 hover:bg-red-50">Cancelar despacho</button>}
               </div>
             </div>
@@ -470,11 +475,11 @@ export default function TorreControlPage() {
 
             <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <summary className="cursor-pointer font-bold text-slate-800">Flete: referencial, acordado y final (consulta)</summary>
-              <div className="mt-4"><DispatchFreightStages dispatchId={dispatch.id} readOnly economicHref={`/despacho/documentos/economico?despacho=${dispatch.id}`} /></div>
+              <div className="mt-4"><DispatchFreightStages dispatchId={dispatch.id} readOnly onEconomic={() => setRoutePanel({ id: dispatch.id, what: 'economico' })} /></div>
             </details>
             <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <summary className="cursor-pointer font-bold text-slate-800">Asignación de tripulación y costos de descarga</summary>
-              <div className="mt-4"><DispatchCrewUnloading dispatchId={dispatch.id} status={dispatch.status} canEdit={canWrite('despacho')} economicHref={`/despacho/documentos/economico?despacho=${dispatch.id}`}
+              <div className="mt-4"><DispatchCrewUnloading dispatchId={dispatch.id} status={dispatch.status} canEdit={canWrite('despacho')} onEconomic={() => setRoutePanel({ id: dispatch.id, what: 'economico' })}
                 stops={rows.filter(row => row.dispatch_id === dispatch.id).map(row => ({ request_id: row.request_id, request_number: row.request_number }))} /></div>
             </details>
             <div className="border-t pt-4">
@@ -612,17 +617,19 @@ export default function TorreControlPage() {
       <DeliveryTable showCrewDetails renderDetail={(shown, { close, select }) => {
         // Fila vigente tras cada actualización; las acciones abren sus flujos actuales y nunca cierran otros procesos
         const row = rows.find(r => r.dispatch_id === shown.dispatch_id && r.request_id === shown.request_id) || shown
-        const leave = (next: () => void) => () => { close(); next() }
         const documentsHref = ['documentario', 'packing-list', 'planificacion'].some(module => canRead(module)) ? `/despacho/documentos?despacho=${row.dispatch_id}&vista=${row.state === 'PROGRAMADO' ? 'salida' : 'historial'}&desde=${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(row.scheduled_departure))}` : undefined
         const economicHref = ['cierre-economico', 'despacho', 'documentario'].some(module => canRead(module)) ? `/despacho/documentos/economico?despacho=${row.dispatch_id}` : undefined
         const routeDispatch = dispatches.find(d => d.id === row.dispatch_id)  // pestaña «Toda la ruta» (antes, la ventana aparte del Expediente)
         return <DispatchDetailModal row={row} routeFile={routeDispatch ? routeFile(routeDispatch, close) : undefined} routeRows={rows} onSelect={select} onClose={close} documentsHref={documentsHref} economicHref={economicHref} onValidate={r => { close(); setReview(r) }} actions={<>
           <ManualOperationalCloseButton dispatchId={row.dispatch_id} dispatchNumber={row.dispatch_number} status={dispatches.find(item => item.id === row.dispatch_id)?.status || row.state} onClosed={() => { close(); void fetchDispatches() }} />
-          <button type="button" onClick={leave(() => setReview(row))} className="min-h-10 rounded-lg border border-slate-300 px-3 text-left text-sm font-semibold text-jrm-navy">Guía y conformidad</button>
-          {canAddService && canAddRouteService({ status: row.state, plate: row.plate, scheduled_departure: row.scheduled_departure }) && <button type="button" onClick={leave(() => setAddServiceId(row.dispatch_id))} className="min-h-10 rounded-lg border border-slate-300 px-3 text-left text-sm font-semibold text-jrm-navy">Agregar servicio a la ruta</button>}
-          {canWrite('despacho') && row.modalidad === 'TERCERO' && <button type="button" onClick={leave(() => setThirdId(row.dispatch_id))} className="min-h-10 rounded-lg border border-slate-300 px-3 text-left text-sm font-semibold text-violet-700">Compartir acceso GR · tercero</button>}
+          <button type="button" onClick={() => setReview(row)} className="min-h-10 rounded-lg border border-slate-300 px-3 text-left text-sm font-semibold text-jrm-navy">Guía y conformidad</button>
+          {canAddService && canAddRouteService({ status: row.state, plate: row.plate, scheduled_departure: row.scheduled_departure }) && <button type="button" onClick={() => setAddServiceId(row.dispatch_id)} className="min-h-10 rounded-lg border border-slate-300 px-3 text-left text-sm font-semibold text-jrm-navy">Agregar servicio a la ruta</button>}
+          {canWrite('despacho') && row.modalidad === 'TERCERO' && <button type="button" onClick={() => setThirdId(row.dispatch_id)} className="min-h-10 rounded-lg border border-slate-300 px-3 text-left text-sm font-semibold text-violet-700">Compartir acceso GR · tercero</button>}
         </>} />
       }} renderManualClose={(row, closeDetail) => <ManualOperationalCloseButton dispatchId={row.dispatch_id} dispatchNumber={row.dispatch_number} status={dispatches.find(item => item.id === row.dispatch_id)?.status || row.state} onClosed={() => { closeDetail(); setSelectedDispatch(null); void fetchDispatches() }} />} onShareRoutes={setShareRoutes} cancelableRoutes={dispatches.filter(d => d.status === 'PROGRAMADO').map(d => d.id)} onCancelRoute={canWrite('despacho') ? id => { const d = dispatches.find(x => x.id === id); if (d) void cancelDispatch(d) } : undefined} rows={rows.filter(row => filteredDispatches.some(d => d.id === row.dispatch_id))} loading={loading} error={loadError} refreshedAt={refreshedAt} onRefresh={() => void fetchDispatches()} onEvidence={setReview} onDispatch={row => setSelectedDispatch(dispatches.find(d => d.id === row.dispatch_id) || null)} onAddService={canAddService ? row => setAddServiceId(row.dispatch_id) : undefined} onProvider={canWrite('despacho') ? row => setThirdId(row.dispatch_id) : undefined} />
+      {routePanel?.what === 'economico' && <EconomicClosurePanel dispatchId={routePanel.id} initialTab="servicios" onClose={() => setRoutePanel(null)} onChanged={() => void fetchDispatches()} />}
+      {routePanel?.what === 'documentos' && <Modal isOpen onClose={() => setRoutePanel(null)} title="Liquidación documentaria del viaje" maxWidth="max-w-6xl">
+        <DispatchDocumentarySettlement dispatchId={routePanel.id} onChanged={() => void fetchDispatches()} /></Modal>}
       <AddRouteService dispatchId={addServiceId} onClose={() => setAddServiceId(null)} onChanged={() => { setSelectedDispatch(null); void fetchDispatches() }} />
       <DeliveryReview row={review} onClose={() => setReview(null)} onChanged={() => void fetchDispatches()} />
       <TerceroAvanceModal dispatchId={thirdId} onClose={() => setThirdId(null)} onChanged={() => void fetchDispatches()} />

@@ -24,6 +24,8 @@ function load(file) {
  m.require = name => {
   if (name === '@/lib/supabase/client') return { createClient: () => client }
   if (name === '@/hooks/usePermissions') return { usePermissions: () => ({ canWrite: () => true }) }
+  // El panel del cierre económico tiene sus propias pruebas: aquí solo se verifica que se abre en el lugar
+  if (name === '@/components/despacho/EconomicClosurePanel') return { EconomicClosurePanel: p => React.createElement('div', { role: 'dialog', 'aria-label': `Cierre económico ${p.dispatchId}`, 'data-tab': p.initialTab }) }
   if (name === '@/components/ui/modal') return { Modal: ({ isOpen, title, children, footer }) => isOpen ? React.createElement('div', { 'aria-label': title }, children, footer) : null }
   if (name === '@/components/ui/data-table') return { DataTable: ({ children, ...props }) => React.createElement('table', props, children) }
   if (name === 'react-dom') return { ...require('react-dom'), createPortal: node => node }
@@ -104,7 +106,10 @@ test('documents and evidence come from real sources, sign their files and offer 
  assert.ok(!view.root.findAllByType('input').some(i => i.props.type === 'checkbox'), 'checklist is read-only')
  await act(async () => view.root.findAllByProps({ 'aria-label': 'Ver Guía de remisión' })[0].props.onClick())
  assert.ok(view.root.findAllByType('iframe')[0].props.src.includes('dispatch_documents/d1/gr.pdf'), 'pdf preview from a signed url')
- assert.ok(view.root.findAllByType('a').some(a => a.props.href === '/despacho/documentos?despacho=d1'), 'add document opens the real flow')
+ // La ruta ya salió: «Agregar documento» abre la liquidación documentaria encima del detalle (sin salir de la ventana)
+ assert.ok(!view.root.findAllByType('a').some(a => a.props.href === '/despacho/documentos?despacho=d1'), 'no navigation away')
+ await act(async () => button(view, 'Agregar documento').props.onClick()); await act(flush)
+ assert.ok(view.root.findAllByProps({ 'aria-label': 'Liquidación documentaria del viaje' }).length, 'documentary settlement opens in place')
  await act(async () => tab(view, 'Fotos y evidencias').props.onClick()); await act(flush)
  assert.equal(calls.filter(c => c.name === 'get_dispatch_detail_files').length, 1, 'files are not reloaded between tabs')
  assert.ok(text(view).includes('Todas (4)')); assert.ok(text(view).includes('Llegada (2)')); assert.ok(text(view).includes('Descarga (1)')); assert.ok(text(view).includes('Unidad (1)'))
@@ -129,7 +134,10 @@ test('a consolidated route freight is never attributed to the request; route exp
  assert.ok(text(view).includes('Flete de la ruta completa (2 servicios)'))
  assert.ok(text(view).includes('Costo total de la solicitudS/ 48.00'), 'only the request service counts')
  assert.ok(text(view).includes('Combustible')); assert.ok(text(view).includes('no se atribuyen a una solicitud'))
- assert.ok(view.root.findAllByType('a').some(a => a.props.href === '/despacho/documentos/economico?despacho=d1'))
+ // «Editar» abre el cierre económico encima del detalle, en sus servicios
+ assert.ok(!view.root.findAllByType('a').some(a => String(a.props.href).includes('/despacho/documentos/economico')), 'no navigation away')
+ await act(async () => button(view, 'Editar').props.onClick()); await act(flush)
+ assert.equal(view.root.findAll(n => n.props.role === 'dialog' && String(n.props['aria-label']).startsWith('Cierre económico'))[0]?.props['data-tab'], 'servicios', 'economic panel opens in place on its services')
  await act(async () => view.unmount())
 })
 

@@ -20,7 +20,7 @@ export const Chip = ({ value }: { value: [string, string] }) => <span className=
 const GROUP_TAG: Record<DocumentRow['group'], string> = { SALIDA: 'Salida', RECEPCION: 'Recepción', OTROS: 'Otros' }
 
 /** Documentos de la parada y su ruta, checklist de conformidad y estado documentario (solo lectura). */
-export function DocumentosTab({ row, files, urls, documentsHref, onGo }: { row: DeliveryRow; files: DispatchFiles; urls: Record<string, string | null>; documentsHref?: string; onGo?: (tab: DetailTab) => void }) {
+export function DocumentosTab({ row, files, urls, documentsHref, onDocuments, onGo }: { row: DeliveryRow; files: DispatchFiles; urls: Record<string, string | null>; documentsHref?: string; onDocuments?: () => void; onGo?: (tab: DetailTab) => void }) {
   const [filter, setFilter] = useState<Filter>('TODOS'), [search, setSearch] = useState(''), [selected, setSelected] = useState<string | null>(null)
   const all = documentRows(files, row), checklist = conformityChecklist(files, row), progress = documentaryProgress(files)
   const needle = search.trim().toLocaleLowerCase('es-PE')
@@ -35,7 +35,9 @@ export function DocumentosTab({ row, files, urls, documentsHref, onGo }: { row: 
       <SourcesWarning failed={files.sources_failed} />
       <ServiceStrip row={row} icon={<FileText />} title={<span><span className="block text-sm font-normal text-slate-500">Referencia</span>Despacho {row.dispatch_number} · {row.request_number}</span>} />
       <DetailCard title="Documentos del despacho" icon={<FileText />}
-        actions={documentsHref && <Link href={documentsHref} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-jrm-navy hover:bg-slate-50"><Plus className="h-4 w-4" aria-hidden />Agregar documento</Link>}>
+        // Ruta que ya salió: la liquidación documentaria se abre encima; antes de salir, el Packing List se arma en Documentos
+        actions={onDocuments && row.state !== 'PROGRAMADO' ? <button type="button" onClick={onDocuments} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-jrm-navy hover:bg-slate-50"><Plus className="h-4 w-4" aria-hidden />Agregar documento</button>
+          : documentsHref && <Link href={documentsHref} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-jrm-navy hover:bg-slate-50"><Plus className="h-4 w-4" aria-hidden />Agregar documento</Link>}>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <div role="group" aria-label="Filtrar documentos" className="flex flex-wrap gap-2">{FILTERS.map(([key, label]) => <button key={key} type="button" aria-pressed={filter === key} onClick={() => setFilter(key)}
             className={`min-h-9 rounded-lg border px-3 text-sm font-semibold ${filter === key ? 'border-blue-200 bg-blue-50 text-jrm-navy' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}>{label} ({all.filter(d => key === 'TODOS' || d.group === key).length})</button>)}</div>

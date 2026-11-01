@@ -1,5 +1,4 @@
 'use client'
-import Link from 'next/link'
 import { CircleDollarSign, Download, FileText, Fuel, Info, Paperclip, Pencil, Plus, Receipt, Truck, Wrench } from 'lucide-react'
 import { money } from '@/lib/caja'
 import type { DeliveryRow } from '@/lib/delivery'
@@ -15,11 +14,11 @@ const title = (text: string) => text.replaceAll('_', ' ').toLowerCase().replace(
 const linkBtn = 'inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-jrm-navy hover:bg-slate-50'
 
 /**
- * Costos de la parada (solo lectura; se gestionan en la bandeja del cierre económico). En una ruta con varios servicios,
+ * Costos de la parada (se editan en el cierre económico, que se abre sobre este detalle). En una ruta con varios servicios,
  * el flete sin reparto por OT y los gastos de Caja son de la ruta: se muestran aparte y no se suman a esta solicitud.
  */
-export function CostosTab({ row, costs, files, urls, servicesCount, economicHref }: {
-  row: DeliveryRow; costs: DispatchCosts; files: DispatchFiles | null; urls: Record<string, string | null>; servicesCount: number; economicHref?: string
+export function CostosTab({ row, costs, files, urls, servicesCount, onEconomic }: {
+  row: DeliveryRow; costs: DispatchCosts; files: DispatchFiles | null; urls: Record<string, string | null>; servicesCount: number; onEconomic?: () => void
 }) {
   if (!costs.detail) return <div className="space-y-4"><ServiceStrip row={row} icon={<Truck />} />
     <p role="status" className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">{costs.error || 'Sin acceso al cierre económico de esta ruta.'}</p></div>
@@ -35,7 +34,7 @@ export function CostosTab({ row, costs, files, urls, servicesCount, economicHref
   return <div className="grid items-start gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1.75fr)_minmax(22rem,1fr)]">
     <div className="min-w-0 space-y-4 sm:space-y-5">
       <ServiceStrip row={row} icon={<Truck />} />
-      <DetailCard title="1. Flete y transporte" icon={<Truck />} actions={economicHref && <Link href={economicHref} className={linkBtn}><Pencil className="h-4 w-4" aria-hidden />Editar</Link>}>
+      <DetailCard title="1. Flete y transporte" icon={<Truck />} actions={onEconomic && <button type="button" onClick={onEconomic} className={linkBtn}><Pencil className="h-4 w-4" aria-hidden />Editar</button>}>
         <CellGrid cols="grid-cols-1 sm:grid-cols-3" items={[['Proveedor / modalidad', modalityLabel(row)], ['Unidad', row.plate || 'Sin placa'], ['Conductor', row.driver_name || 'Sin conductor']]} />
         {freight && isZeroClosed(freight) ? <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">Sin flete: operación interna con flota propia (no se valoriza).</p>
         : freight ? <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -50,7 +49,7 @@ export function CostosTab({ row, costs, files, urls, servicesCount, economicHref
           <p className="mt-2 flex items-center gap-2 text-xs text-slate-500">Estado {itemChip(freight.status)}{freight.final_pen != null && <>· Flete final {pen(freight.final_pen)}</>}</p>
         </div> : <p className="mt-3 text-sm text-slate-500">Sin flete registrado.</p>}
       </DetailCard>
-      <DetailCard title="2. Servicios adicionales" icon={<Wrench />} actions={economicHref && <Link href={economicHref} className={linkBtn}><Plus className="h-4 w-4" aria-hidden />Agregar servicio</Link>}>
+      <DetailCard title="2. Servicios adicionales" icon={<Wrench />} actions={onEconomic && <button type="button" onClick={onEconomic} className={linkBtn}><Plus className="h-4 w-4" aria-hidden />Agregar servicio</button>}>
         {!c.services.length ? <p className="text-sm text-slate-500">Sin servicios adicionales para esta solicitud.</p> : <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[44rem] text-left text-sm">
           <thead className="bg-slate-50 text-slate-600"><tr>{['Servicio', 'Proveedor', 'Parada / Servicio', 'Cantidad', 'Tarifa (S/)', 'Importe (S/)', 'Estado'].map(h => <th key={h} className="px-3 py-2.5 font-medium">{h}</th>)}</tr></thead>
           <tbody className="divide-y divide-slate-200">{c.services.map(s => { const svc = d.services?.find(x => x.id === s.id), qty = s.billable_qty ?? svc?.final_billable_qty ?? svc?.agreed_qty
