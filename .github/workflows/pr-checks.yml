@@ -54,6 +54,7 @@ jobs:
       - run: node scripts/test-operaciones-auditoria.cjs
       - run: node scripts/test-budget-movements.cjs
       - run: node scripts/test-caja-auditoria-criticos.cjs
+      - run: node scripts/test-caja-auditoria-5-9.cjs
       - run: node scripts/test-ot-freight-required.cjs
       - run: node scripts/test-third-party-freight-required.cjs
       - run: node scripts/test-programming-notes.cjs

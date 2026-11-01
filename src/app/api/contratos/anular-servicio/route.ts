@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient as createSessionClient } from '@/lib/supabase/server'
 import { createClient } from '@supabase/supabase-js'
+import { createHmac } from 'node:crypto'
 
 // Anulación de un gasto de OT (contract_services). Solo el Administrador o el Jefe de Distribución anulan.
 // Otro usuario de Servicios de Contrato puede anular si uno de ellos lo autoriza con su credencial (correo y
@@ -39,17 +40,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Se requiere la autorización del Administrador o del Jefe de Distribución.', needsAuthorization: true }, { status: 403 })
   }
 
+  // Máximo 5 credenciales por usuario cada 15 minutos: la autorización no sirve para probar contraseñas
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!key) return NextResponse.json({ error: 'Autorización temporalmente no disponible.' }, { status: 503 })
+  const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, key, { auth: { persistSession: false, autoRefreshToken: false } })
+  const quota = await admin.rpc('reserve_registration_attempt', { p_scope: 'authorizer', p_fingerprint: createHmac('sha256', key).update(`authorizer:${user.id}`).digest('hex') }) as Rpc
+  if (quota.error || typeof quota.data !== 'boolean') return NextResponse.json({ error: 'Autorización temporalmente no disponible.' }, { status: 503 })
+  if (!quota.data) return NextResponse.json({ error: 'Demasiados intentos. Intente nuevamente en 15 minutos.', needsAuthorization: true }, { status: 429 })
+
   const authorizer = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   })
   const signIn = await authorizer.auth.signInWithPassword({ email, password })
   if (signIn.error || !signIn.data.session) {
-    return NextResponse.json({ error: 'Credencial inválida.', needsAuthorization: true }, { status: 401 })
+    return NextResponse.json({ error: 'Credencial inválida o sin autorización para anular.', needsAuthorization: true }, { status: 401 })
   }
   try {
     const allowed = await authorizer.rpc('can_void_contract_service') as Rpc
     if (allowed.data !== true) {
-      return NextResponse.json({ error: 'La credencial no corresponde al Administrador ni al Jefe de Distribución.', needsAuthorization: true }, { status: 403 })
+      return NextResponse.json({ error: 'Credencial inválida o sin autorización para anular.', needsAuthorization: true }, { status: 401 })
     }
     return finish(await authorizer.rpc('void_contract_service', { p_service_id: serviceId, p_reason: reason, p_requested_by: user.id }) as Rpc)
   } finally {

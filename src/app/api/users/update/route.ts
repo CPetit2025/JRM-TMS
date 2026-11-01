@@ -67,8 +67,6 @@ export async function POST(request: Request) {
       },
     }
     if (password) authChanges.password = password
-    const { error: authError } = await adminClient.auth.admin.updateUserById(id, authChanges)
-    if (authError) return NextResponse.json({ error: authError.message }, { status: 400 })
 
     const profileChanges: Record<string, unknown> = {
       first_name: body.first_name?.trim() || '',
@@ -81,9 +79,17 @@ export async function POST(request: Request) {
     // Solo si el formulario la envía: una versión anterior de la pantalla no borra el área
     if (body.area !== undefined) profileChanges.area = isRequestArea(body.area) ? body.area : null
     if (isDriver) profileChanges.employee_type = 'CONDUCTOR'
+    // Primero el perfil (donde fallan los datos); si luego falla el acceso, el perfil vuelve a como estaba:
+    // nunca queda el correo o el rol cambiado en un lado y no en el otro.
+    const { data: before } = await adminClient.from('profiles').select('*').eq('id', id).maybeSingle()
     const { data: profile, error: profileError } = await adminClient
       .from('profiles').update(profileChanges).eq('id', id).select().single()
     if (profileError) return NextResponse.json({ error: profileError.message }, { status: 400 })
+    const { error: authError } = await adminClient.auth.admin.updateUserById(id, authChanges)
+    if (authError) {
+      if (before) await adminClient.from('profiles').update(Object.fromEntries(Object.keys(profileChanges).map(k => [k, before[k]]))).eq('id', id)
+      return NextResponse.json({ error: authError.message }, { status: 400 })
+    }
 
     return NextResponse.json({ success: true, profile })
   } catch (error) {
