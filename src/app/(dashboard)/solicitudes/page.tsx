@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 32684)
-Total output lines: 1594
-
 "use client"
 import { allPages } from '@/lib/analytics/model'
 import { TransportWorkflow, TorreControlButton } from '@/components/transport/TransportWorkflow'
@@ -997,7 +994,81 @@ export default function SolicitudesPage() {
       </>} />
       {referencesWithoutSupplier.length > 0 && <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         <span><strong>{referencesWithoutSupplier.length}</strong> referencia(s) OS/OC/RQ histórica(s) sin proveedor vinculado. Complete el dato desde la edición para que aparezca completo en el reporte.</span>
-        {canWrite('solicitudes') && …2684 tokens truncated…pan>}</td>
+        {canWrite('solicitudes') && <button type="button" onClick={() => { const request = referencesWithoutSupplier[0]; if (request) void openEditModal(request) }} className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold hover:bg-amber-100">Completar primera pendiente</button>}
+      </div>}
+      {autoApproval && (
+        <p role="status" className="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span><b>Aprobación automática activa:</b> las solicitudes con OT o con OC, OS o RQ sin OT registradas sin observaciones quedan aprobadas al enviarse.</span>
+        </p>
+      )}
+      {userRole === 'administrador de contratos' && contractsLoaded && contracts.length === 0 && (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <Briefcase className="h-5 w-5 shrink-0" aria-hidden="true" />
+          <p className="min-w-0 flex-1"><b>Aún no tienes OT asignadas.</b> Elige tus OT como Responsable de OT en Contratos y OTs para solicitar transporte con ellas, o registra una nueva desde «Nueva solicitud».</p>
+          <Link href="/contratos" className="inline-flex min-h-10 items-center rounded-lg bg-[#002855] px-3 font-semibold text-white hover:bg-[#001d3d]">Ir a Contratos y OTs</Link>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+      <TransportWorkflow current="solicitud" torre={false} />
+      <div className="ml-auto min-w-0"><InlineStatusBar label="Resumen por estado (filtra la tabla)" active={filterStatus} loading={loading} onChange={key => { setFilterStatus(key); setPage(1) }}
+        items={([{ key: 'TODOS', label: 'Todas', icon: <Layers />, tone: 'navy' }, { key: 'PENDIENTE', label: 'Pendientes', icon: <Clock />, tone: 'amber' },
+          { key: 'APROBADA', label: 'Aprobadas', icon: <CheckCircle2 />, tone: 'emerald' }, { key: 'ASIGNADA', label: 'Asignadas', icon: <Truck />, tone: 'blue' },
+          { key: 'REPROGRAMADA', label: 'Reprogramadas', icon: <CalendarClock />, tone: 'violet' }] as const).map(tab => ({ ...tab, count: requests.filter(r => matchesStatus(r.status, tab.key)).length }))} /></div>
+      </div>
+
+      <FilterToolbar compact label="Búsqueda y filtros de solicitudes" onClear={clearFilters}>
+        <label className="relative min-w-[15rem] flex-1 basis-60">
+          <span className="sr-only">Buscar solicitudes</span><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" aria-hidden="true" />
+          <input type="search" placeholder="Buscar OT, solicitud o dirección…" value={searchTerm}
+            onChange={event => { setSearchTerm(event.target.value); setPage(1) }}
+            className={`${filterControl} pl-9`} />
+        </label>
+        <FilterField inline label="Desde" className="w-48"><input aria-label="Atención desde" type="date" value={filterDateFrom}
+          onChange={event => { setFilterDateFrom(event.target.value); setPage(1) }} className={filterControl} /></FilterField>
+        <FilterField inline label="Hasta" className="w-48"><input aria-label="Atención hasta" type="date" min={filterDateFrom || undefined} value={filterDateTo}
+          onChange={event => { setFilterDateTo(event.target.value); setPage(1) }} className={filterControl} /></FilterField>
+        <FilterField inline label="Tipo de servicio" className="w-64"><select aria-label="Filtrar por tipo de servicio" value={filterService} onChange={e => { setFilterService(e.target.value); setPage(1) }} className={filterControl}>
+          <option value="TODOS">Todos</option>{(Object.keys(SERVICE_KINDS) as ServiceKind[]).map(kind => <option key={kind} value={kind}>{SERVICE_KINDS[kind].short}</option>)}
+        </select></FilterField>
+        <FilterField inline label="Estado" className="w-60"><select aria-label="Filtrar estado" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1) }} className={filterControl}>
+          <option value="TODOS">Todos los estados</option>{Array.from(new Set(['PENDIENTE', 'APROBADA', 'ASIGNADA', 'REPROGRAMADA', 'OBSERVADA', 'RECHAZADA', 'CANCELADA', ...requests.map(r => r.status).filter(status => status !== 'PENDIENTE DE APROBACIÓN' && status !== 'APROBADO')])).map(status => <option key={status} value={status}>{statusLabels[status] || status.replaceAll('_', ' ')}</option>)}
+          </select></FilterField>
+      </FilterToolbar>
+
+      <div className="flex min-h-0 flex-col overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card lg:flex-1">
+        <div role="region" aria-label="Tabla de solicitudes de transporte" tabIndex={0} className="min-h-0 overflow-auto lg:flex-1">
+          <DataTable dense className="block w-full table-fixed text-left lg:min-w-[940px] lg:table"><caption className="sr-only">Solicitud de Transporte: fechas, tipo de servicio, OT, punto de atención, estado y acciones</caption>
+            <thead className="sticky top-0 z-10 hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>
+              {[{ title: 'Solicitada', key: 'created_at', width: 'w-[10%]' }, { title: 'Atención', key: 'required_date', width: 'w-[10%]' }, { title: 'Servicio', key: 'service', width: 'w-[11%]' }, { title: 'OT / Ref.', key: 'ot', width: 'w-[7%]' }, { title: 'Solicitante', key: 'requester', width: 'w-[13%]' }, { title: 'Empresa', key: 'client', width: 'w-[14%] 2xl:w-[12%]' }, { title: 'Punto de atención', key: 'address', width: 'w-[13%] 2xl:w-[11%]' }, { title: 'Estado', key: 'status', width: 'w-[12%]' }, { title: 'Acciones', width: 'w-[10%] 2xl:w-[14%]' }].map(column => <th key={column.title} scope="col" className={column.width} aria-sort={column.key && sort.key === column.key ? sort.direction === 'asc' ? 'ascending' : 'descending' : undefined}>
+                {column.key ? <button type="button" onClick={() => changeSort(column.key as typeof sort.key)} aria-label={`Ordenar por ${column.title.toLowerCase()}`} className="flex min-h-8 items-center gap-1.5 text-left hover:text-[#002855]">{column.title}{sort.key === column.key ? sort.direction === 'asc' ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" /> : <ArrowUpDown className="h-3 w-3 shrink-0 text-slate-400" />}</button> : column.title}
+              </th>)}
+            </tr></thead>
+            <tbody className="block divide-y divide-slate-100 lg:table-row-group">
+              {loading || !visibleRequests.length ? <tr className="block lg:table-row"><td colSpan={7} className="p-8 text-center text-sm text-slate-500">{loading ? <><Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin" />Cargando solicitudes…</> : 'No hay solicitudes para estos filtros.'}</td></tr> : visibleRequests.map(req => {
+                const cell = 'min-w-0 text-sm'
+                const label = (value: string) => <p className="mb-1 text-xs font-medium text-slate-500 lg:hidden">{value}</p>
+                const addresses = serviceAddresses(req)
+                const editable = (canWrite('solicitudes') || canApprove || canReschedule) && ['PENDIENTE DE APROBACIÓN','PENDIENTE','REPROGRAMADA','APROBADA','OBSERVADA','ASIGNADA'].includes(req.status)
+                const actions: TableAction[] = [
+                  ...(['PENDIENTE DE APROBACIÓN','PENDIENTE','REPROGRAMADA'].includes(req.status) && canApprove ? [
+                    { id: 'approve', label: 'Aprobar solicitud', icon: <Check className="h-4 w-4" />, onSelect: () => { void updateStatus(req.id, 'APROBADA') } },
+                    { id: 'reject', label: 'Rechazar solicitud', icon: <X className="h-4 w-4" />, tone: 'danger' as const, onSelect: () => { void updateStatus(req.id, 'RECHAZADA') } },
+                  ] : []),
+                  ...(editable && canWrite('solicitudes') && req.status !== 'ASIGNADA' ? [{ id: 'edit', label: 'Editar solicitud', icon: <Edit2 className="h-4 w-4" />, onSelect: () => { void openEditModal(req) } }] : []),
+                  ...(canWrite('solicitudes') ? [{ id: 'duplicate', label: 'Duplicar como nueva', icon: <Copy className="h-4 w-4" />, onSelect: () => { if (contracts.length === 0) fetchContracts(); void openEditModal(req, true) } }] : []),
+                  ...(editable && canReschedule ? [{ id: 'reschedule', label: 'Reprogramar', icon: <CalendarClock className="h-4 w-4" />, onSelect: () => { setSelectedRequestId(req.id); setNewRescheduleDate(req.required_at ? limaInputParts(req.required_at).date : req.required_date.split('T')[0] || ''); setNewRescheduleTime(req.required_at ? limaInputParts(req.required_at).time : ''); setRescheduleZone(req.delivery_zone || 'LIMA'); void fetchLeadTimeSettings(); setIsRescheduleModalOpen(true) } }] : []),
+                  ...(editable ? [{ id: 'cancel', label: 'Cancelar servicio', icon: <Ban className="h-4 w-4" />, tone: 'danger' as const, onSelect: () => { void handleCancelRequest(req.id) } }] : []),
+                ]
+                return <tr key={req.id} className="grid grid-cols-2 hover:bg-slate-50/70 lg:table-row">
+                  <td className={cell}>{label('Solicitada')}<span className="whitespace-nowrap text-slate-700" title={fullDateTime(req.created_at)}>{cellDateTime(req.created_at)}</span></td>
+                  <td className={cell}>{label('Atención')}{(() => {
+                    const lead = req.request_type === 'DESPACHO' && req.attention_mode !== 'RECOJO_CLIENTE' ? requestLeadTime(req) : null
+                    const note = [req.status === 'REPROGRAMADA' ? 'Reprogramada' : '', !req.required_at ? 'Sin hora registrada' : lead && leadTimeLoaded ? formatLeadTimeStatus(lead.status) : ''].filter(Boolean).join(' · ')
+                    return <span title={note || undefined} className={`whitespace-nowrap ${lead?.enough === false ? 'font-semibold text-red-700' : req.status === 'REPROGRAMADA' ? 'font-semibold text-amber-700' : 'text-slate-700'}`}>{req.required_at ? cellDateTime(req.required_at) : serviceDate(req.required_date)}</span>
+                  })()}</td>
+                  <td className={cell}>{label('Servicio')}<ServiceTypeBadge request={req} /></td>
+                  <td className={cell}>{label('OT / Ref.')}<span className="whitespace-nowrap font-semibold text-[#002855]" title={[`Solicitud ${req.request_number}`, req.contracts?.code && referenceLabel(req)].filter(Boolean).join(' · ')}>{req.contracts?.code || (req.contract_id ? 'OT vinculada' : referenceLabel(req) || 'Sin OT')}</span>{req.reference_type && !req.reference_supplier_id && <span className="mt-1 block text-[11px] font-semibold text-amber-700">Proveedor de referencia pendiente</span>}</td>
                   <td className={cell}>{label('Solicitante')}<p className="truncate text-slate-700" title={[req.requester_name, req.department].filter(Boolean).join(' · ') || undefined}>{req.requester_name || 'Sin solicitante'}</p></td>
                   <td className={cell}>{label('Empresa')}{(() => { const party = partyName(req, (req.request_client?.business_name || req.contracts?.clients?.business_name), req.suppliers?.business_name); return <p className="truncate text-slate-700" title={party ? `${requiresSupplier(req) ? 'Proveedor' : 'Cliente'}: ${party}` : undefined}>{party || <button type="button" onClick={e => { e.stopPropagation(); setLinkRequest(req) }} className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-100" title="Sin esto no se puede programar">{requiresSupplier(req) ? 'Proveedor sin vincular' : 'Sin cliente'} · vincular</button>}</p> })()}</td>
                   <td className={`${cell} col-span-2`}>{label('Punto de atención')}<div title={addresses.map(place => `${place.label}: ${place.address}`).join(' → ')} className="text-slate-700">
