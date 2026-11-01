@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { PageHeader } from '@/components/ui/page-header'
 import { TransportWorkflow } from '@/components/transport/TransportWorkflow'
+import { ControlPresupuestalTabs } from '@/components/despacho/ControlPresupuestalTabs'
 import { KpiStatCard } from '@/components/ui/kpi-stat-card'
 import { TablePagination } from '@/components/ui/table-pagination'
 import { TableActions, type TableAction } from '@/components/ui/table-actions'
@@ -166,10 +167,11 @@ function CierreEconomico() {
 
   return (
     <div className="min-w-0 space-y-3">
-      <PageHeader showTitle title="Cierre económico" description="Costo final por servicio: referencial, acordado y final, con validación y aprobación"
+      <PageHeader showTitle title="Control presupuestal · Costos por ruta" description="Costo final por servicio: referencial, acordado y final. Lo que supera el umbral se resuelve en Desvíos."
         actions={<><button type="button" onClick={() => void load()} className="flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50"><RefreshCw className="h-4 w-4" />Actualizar</button>
           <Link href="/despacho/documentos" className="flex h-10 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cierre documentario</Link></>} />
       <TransportWorkflow current="economico" />
+      <ControlPresupuestalTabs active="rutas" />
       <p className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-[#002855]"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
         Solo se trabaja lo que se sale de lo acordado: «Conforme» cierra la ruta en un paso; dentro del umbral ({settings.deviation_pct}% o {money(Number(settings.deviation_pen))}) se cierra sin motivo ni aprobación; sobre el umbral pasa a «Por aprobar». Empieza al liberar la unidad.</p>
 

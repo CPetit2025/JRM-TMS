@@ -10,7 +10,7 @@ const stages = [
   { id: 'solicitud', label: 'Solicitud', hint: 'Registro de solicitud', href: '/solicitudes', modules: ['solicitudes'], icon: ClipboardList },
   { id: 'programacion', label: 'Programación y ruteo', hint: 'Planificación de servicios', href: '/despacho', modules: ['despacho'], icon: Route },
   { id: 'documentos', label: 'Documentos y conformidad', hint: 'Gestión de documentos', href: '/despacho/documentos', modules: ['documentario', 'packing-list', 'planificacion'], icon: FileCheck2 },
-  { id: 'economico', label: 'Cierre económico', hint: 'Costo final y aprobación por ruta', href: '/despacho/documentos/economico', modules: ['cierre-economico', 'despacho', 'documentario'], icon: Landmark },
+  { id: 'economico', label: 'Control presupuestal', hint: 'Costo final por ruta y partida por OT', href: '/despacho/documentos/economico', modules: ['cierre-economico', 'despacho', 'documentario'], icon: Landmark },
   { id: 'registro', label: 'Registro de servicios', hint: 'Consolidado de servicios y gastos', href: '/contratos/servicios', modules: ['contratos-servicios', 'clientes'], icon: Receipt },
 ] as const
 

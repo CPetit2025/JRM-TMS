@@ -213,3 +213,25 @@ Antes de construir, medir en producción:
 - El reparto por peso depende de la calidad del peso (D3); mostrar siempre la base usada.
 - El combustible estimado puede diferir del real: marcarlo y conciliar cuando lleguen las cargas.
 - Cambiar el disparador del saldo afecta a toda la operación: pruebas tipo producción con las restricciones reales.
+
+---
+
+## 11. Estado de implementación
+
+| Etapa | Migración | Prueba | Estado |
+|---|---|---|---|
+| 1 · Posición por OT | `20261125090000_control_presupuestal_posicion` | `test-budget-positions`, Caja C198 | En producción (#398) |
+| 2 · Imputación de Caja y combustible | `20261126090000_control_presupuestal_imputacion` | `test-budget-imputation`, Caja C199 | En producción (#399) |
+| 3 · Autorizaciones y bloqueo preventivo | `20261127090000_control_presupuestal_autorizaciones` | `test-budget-authorizations`, Caja C200 | PR #400 |
+| 4 · Desvíos | `20261128090000_control_presupuestal_desvios` | `test-budget-deviations`, Caja C201 | Con la etapa 5 |
+| 5 · Retiro del Cierre económico | (solo pantallas) | pruebas de UI existentes | Con la etapa 4 |
+
+Notas de diseño:
+- **Etapa 5:** la bandeja por ruta conserva su dirección (`/despacho/documentos/economico`, usada por enlaces con
+  `?despacho=`) y pasa a ser la pestaña «Costos por ruta» del Control presupuestal; el menú tiene una sola entrada.
+  Lo que supera el umbral se resuelve en Desvíos (aprobar imputa el costo; rechazar lo devuelve a corrección).
+- **Reparto por peso (D3):** primera versión con el peso declarado de la solicitud; con peso faltante, partes iguales.
+  Pendiente: peso de guía ERP y por componente cuando su vínculo sea confiable.
+- **Permisos (D6):** `control-presupuestal` (consulta), `control-presupuestal-recomendar` (Jefe de Distribución) y
+  `control-presupuestal-autorizar` (Gerencia de Operaciones) deben asignarse en Roles y Permisos.
+- **Activación (D7):** `economic_settings.budget_imputation_since` = fecha de la migración de la etapa 2.
