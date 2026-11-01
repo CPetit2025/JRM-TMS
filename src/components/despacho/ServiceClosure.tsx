@@ -1,6 +1,5 @@
 "use client"
 import { useCallback, useEffect, useState } from 'react'
-import Link from 'next/link'
 import { CheckCircle2, CircleDashed, Lock } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
@@ -8,6 +7,7 @@ import { errorMessage, money } from '@/lib/caja'
 import { EconomicClosurePanel } from '@/components/despacho/EconomicClosurePanel'
 import { DispatchDocumentarySettlement } from '@/components/documentos/DispatchDocumentarySettlement'
 import { Modal } from '@/components/ui/modal'
+import { TripExpenses } from '@/components/caja/ExpenseReview'
 
 // Cierre del servicio en Torre de Control: los cuatro procesos del viaje con su estado (dispatch_closure_status) y el
 // cierre final (dispatch_final_close). Cada estado es independiente: la documentación puede estar completa con lo
@@ -35,6 +35,7 @@ export function ServiceClosure({ dispatchId, openEconomic = false, openDocumenta
   const [state, setState] = useState<Status | null>(null)
   const [econ, setEcon] = useState(openEconomic)
   const [docs, setDocs] = useState(openDocumentary)
+  const [caja, setCaja] = useState(false)
   const [note, setNote] = useState('')
   const [mode, setMode] = useState<'exception' | 'reopen' | null>(null)
   const [busy, setBusy] = useState(false)
@@ -79,7 +80,7 @@ export function ServiceClosure({ dispatchId, openEconomic = false, openDocumenta
         {item(c.economico.ok, 'Liquidación económica', ECON[c.economico.status] || c.economico.status,
           <button type="button" onClick={() => setEcon(true)} className="font-semibold text-[#002855] underline">Abrir costos del servicio</button>)}
         {item(c.caja.ok, 'Caja del viaje', c.caja.ok ? 'Sin gastos por revisar' : `${c.caja.pending} gasto(s) por revisar · S/ ${money(Number(c.caja.pending_pen))}`,
-          !c.caja.ok && <Link href="/caja/gastos" className="font-semibold text-[#002855] underline">Revisar en Caja</Link>)}
+          !c.caja.ok && <button type="button" onClick={() => setCaja(true)} className="font-semibold text-[#002855] underline">Revisar gastos del viaje</button>)}
       </div>
       {c.final?.note && <p className="mt-2 text-xs text-slate-600">Motivo: {c.final.note}</p>}
 
@@ -105,6 +106,7 @@ export function ServiceClosure({ dispatchId, openEconomic = false, openDocumenta
       </div>}
       {docs && <Modal isOpen onClose={() => { setDocs(false); void load() }} title="Liquidación documentaria del viaje" maxWidth="max-w-6xl">
         <DispatchDocumentarySettlement dispatchId={dispatchId} finalClosed={!!c.final} onChanged={() => { void load(); onChanged?.() }} /></Modal>}
+      {caja && <TripExpenses dispatchId={dispatchId} onClose={() => { setCaja(false); void load() }} onChanged={() => { void load(); onChanged?.() }} />}
       {econ && <EconomicClosurePanel dispatchId={dispatchId} onClose={() => setEcon(false)} onChanged={() => { void load(); onChanged?.() }} />}
     </section>
   )

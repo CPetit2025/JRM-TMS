@@ -1,6 +1,5 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { Loader2, Save, Truck } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
@@ -24,8 +23,8 @@ const delta = (a: number, b: number) => {
   return <span className={d > 0 ? 'text-red-700' : 'text-emerald-700'}> ({d > 0 ? '+' : ''}{money(d)}; {d > 0 ? '+' : ''}{Math.round(d / a * 100)}%)</span>
 }
 
-export function DispatchFreightStages({ dispatchId, onSaved, settings = DEFAULT_SETTINGS, readOnly = false, economicHref }: {
-  dispatchId: string; onSaved?: () => void; settings?: EconSettings; readOnly?: boolean; economicHref?: string
+export function DispatchFreightStages({ dispatchId, onSaved, settings = DEFAULT_SETTINGS, readOnly = false, onEconomic }: {
+  dispatchId: string; onSaved?: () => void; settings?: EconSettings; readOnly?: boolean; onEconomic?: () => void
 }) {
   const supabase = useMemo(() => createClient(), [])
   const [data, setData] = useState<Summary | null>(null)
@@ -120,7 +119,7 @@ export function DispatchFreightStages({ dispatchId, onSaved, settings = DEFAULT_
           </table>
         </div>
       )}
-      {readOnly && data.can_register_final && <p className="text-xs text-slate-600">El flete final se registra en el Cierre económico.{economicHref && <> <Link href={economicHref} className="font-semibold text-[#002855] underline">Ir al cierre económico</Link></>}</p>}
+      {readOnly && data.can_register_final && <p className="text-xs text-slate-600">El flete final se registra en el Cierre económico.{onEconomic && <> <button type="button" onClick={onEconomic} className="font-semibold text-[#002855] underline">Ir al cierre económico</button></>}</p>}
       {canRegister && (
         <div className="rounded-lg border border-slate-200 bg-white p-3">
           <p className="text-xs font-bold text-slate-700">{data.final_pen == null ? 'Registrar flete final' : 'Corregir flete final'}</p>

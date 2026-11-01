@@ -2,7 +2,6 @@
 import { DataTable } from '@/components/ui/data-table'
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { Ban, History, Loader2, Plus, Save, Trash2, Users, Wrench } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
@@ -35,8 +34,8 @@ const STATUS_CLS: Record<string, string> = {
   ESTIMADO: 'bg-slate-100 text-slate-600', PLANIFICADO: 'bg-blue-100 text-blue-700', CONSUMIDO: 'bg-emerald-100 text-emerald-700', ANULADO: 'bg-red-50 text-red-600',
 }
 
-export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit, economicHref }: {
-  dispatchId: string; status: string; stops: Stop[]; canEdit: boolean; economicHref?: string
+export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit, onEconomic }: {
+  dispatchId: string; status: string; stops: Stop[]; canEdit: boolean; onEconomic?: () => void
 }) {
   const supabase = useMemo(() => createClient(), [])
   const programmed = status === 'PROGRAMADO'
@@ -179,7 +178,7 @@ export function DispatchCrewUnloading({ dispatchId, status, stops, canEdit, econ
         <p className="text-xs text-slate-500 mb-2">
           Lo planificado se reserva en la partida del contrato. El gasto aprobado en Caja (alquiler de equipo o cuadrilla/estiba) se
           muestra como real; el costo final de cada servicio se registra y aprueba solo en el Cierre económico.
-          {economicHref && <> <Link href={economicHref} className="font-semibold text-[#002855] underline">Ir al cierre económico</Link></>}
+          {onEconomic && <> <button type="button" onClick={onEconomic} className="font-semibold text-[#002855] underline">Ir al cierre económico</button></>}
         </p>
         {lines === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" /> : (
           <div className="overflow-x-auto">

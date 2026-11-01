@@ -14,6 +14,9 @@ import { EvidenciasTab } from './EvidenciasTab'
 import { CostosTab } from './CostosTab'
 import { HistorialTab } from './HistorialTab'
 import { ServiceClosure } from '@/components/despacho/ServiceClosure'
+import { EconomicClosurePanel } from '@/components/despacho/EconomicClosurePanel'
+import { DispatchDocumentarySettlement } from '@/components/documentos/DispatchDocumentarySettlement'
+import { Modal } from '@/components/ui/modal'
 
 // «Toda la ruta»: el expediente de la ruta completa (acciones de la ruta, tripulación, flete, notas), cuando Torre lo envía
 type Tab = DetailTab | 'expediente'
@@ -42,6 +45,8 @@ export function DispatchDetailModal({ row, routeRows = [], onSelect, onClose, on
   row: DeliveryRow; routeRows?: DeliveryRow[]; onSelect?: (row: DeliveryRow) => void; onClose: () => void
   onValidate?: (row: DeliveryRow) => void; actions?: ReactNode; documentsHref?: string; economicHref?: string; routeFile?: ReactNode
 }) {
+  // Liquidaciones encima del detalle: todo se resuelve sin salir de la ventana
+  const [panel, setPanel] = useState<'economico' | 'documentos' | null>(null)
   const [tab, setTab] = useState<Tab>('resumen'), [menu, setMenu] = useState(false), [mounted, setMounted] = useState(false)
   const body = useRef<HTMLDivElement>(null)
   const { detail, error, loading, reload } = useDispatchDetail(row.dispatch_id, row.request_id)
@@ -103,10 +108,10 @@ export function DispatchDetailModal({ row, routeRows = [], onSelect, onClose, on
           : tab === 'expediente' ? <div className="space-y-3"><p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-jrm-navy">Toda la ruta {row.dispatch_number}: las acciones de esta pestaña afectan a la ruta completa, no solo a esta entrega.</p>{routeFile}</div>
           : tab === 'resumen' ? <ResumenTab row={row} detail={detail} />
           : tab === 'ruta' ? <RutaTab row={row} detail={detail} />
-          : tab === 'documentos' ? filesPanel(() => <DocumentosTab row={row} files={files.files!} urls={files.urls} documentsHref={documentsHref} onGo={go} />)
+          : tab === 'documentos' ? filesPanel(() => <DocumentosTab row={row} files={files.files!} urls={files.urls} documentsHref={documentsHref} onDocuments={documentsHref ? () => setPanel('documentos') : undefined} onGo={go} />)
           : tab === 'evidencias' ? filesPanel(() => <EvidenciasTab row={row} files={files.files!} route={files.route} urls={files.urls} servicesCount={detail.dispatch.services_count} onChanged={files.reload} />)
           : tab === 'costos' ? (costs.loading || !costs.costs ? <p role="status" className="py-10 text-center text-sm text-slate-500">Cargando costos…</p>
-            : <CostosTab row={row} costs={costs.costs} files={files.files} urls={files.urls} servicesCount={detail.dispatch.services_count} economicHref={economicHref} />)
+            : <CostosTab row={row} costs={costs.costs} files={files.files} urls={files.urls} servicesCount={detail.dispatch.services_count} onEconomic={economicHref ? () => setPanel('economico') : undefined} />)
           : tab === 'cierre' ? <ServiceClosure dispatchId={row.dispatch_id} />
           : <HistorialTab row={row} detail={detail} onGo={go} />}
       </div>
@@ -122,5 +127,8 @@ export function DispatchDetailModal({ row, routeRows = [], onSelect, onClose, on
       </footer>
     </div>
   </div>
-  return mounted ? createPortal(dialog, document.body) : null
+  return mounted ? <>{createPortal(dialog, document.body)}
+    {panel === 'economico' && <EconomicClosurePanel dispatchId={row.dispatch_id} initialTab="servicios" onClose={() => { setPanel(null); costs.reload() }} onChanged={costs.reload} />}
+    {panel === 'documentos' && <Modal isOpen onClose={() => { setPanel(null); files.reload() }} title="Liquidación documentaria del viaje" maxWidth="max-w-6xl">
+      <DispatchDocumentarySettlement dispatchId={row.dispatch_id} onChanged={files.reload} /></Modal>}</> : null
 }
