@@ -28,6 +28,7 @@ import { ManualOperationalCloseButton } from '@/components/despacho/ManualOperat
 import { ErpGuiasResumenCard, ErpOtReferencia } from '@/components/erp/ErpReferencia'
 import { ProgrammingNotes } from '@/components/despacho/programar-ruta/ProgrammingNotes'
 import { DispatchDetailModal } from '@/components/despacho/detalle/DispatchDetailModal'
+import { closureStage, type ClosureChecks } from '@/components/despacho/ServiceClosure'
 import { canAddRouteService } from '@/lib/route-assignment'
 
 interface DispatchRequest {
@@ -110,6 +111,9 @@ export default function TorreControlPage() {
   const [statusFilter, setStatusFilter] = useState('ACTIVOS')
   const [dateFilter, setDateFilter] = useState('')
   const [onlyAlerts, setOnlyAlerts] = useState(false)
+  // Cierre del servicio de las rutas cerradas (dispatch_closure_status): filtra lo pendiente de liquidar o listo para cerrar
+  const [closure, setClosure] = useState<Record<string, ClosureChecks>>({})
+  const [closureFilter, setClosureFilter] = useState('')
   const [responsibleFilter, setResponsibleFilter] = useState('')
   const [responsibles, setResponsibles] = useState<Array<{ user_id: string, full_name: string }>>([])
 
@@ -158,7 +162,10 @@ export default function TorreControlPage() {
       // Números que vincula el Asistente Documentario (varios por servicio), en una sola consulta; sin acceso, se omiten
       const { data: refs } = list.length ? await supabase.rpc('get_dispatch_document_references_batch', { p_dispatches: list.map(d => d.id) }) : { data: [] }
       const numbers = documentNumbersByStop([...(docs || []), ...((refs || []) as { dispatch_id: string; request_id: string; doc_type: string; document_number: string }[])])
+      const closedIds = list.filter(d => ['LIQUIDADO', 'CERRADO'].includes(d.status)).map(d => d.id).slice(0, 500)
+      const { data: closureData } = closedIds.length ? await supabase.rpc('dispatch_closure_status', { p_dispatch_ids: closedIds }) : { data: null }
       if (version !== fetchVersion.current) return
+      setClosure(closureData?.success ? closureData.rows : {})
       setDispatches(list); setSelectedDispatch(current => current ? list.find(item => item.id === current.id) || null : null); setRows(((deliveries || []) as DeliveryRow[]).map(r => { const n = numbers.get(`${r.dispatch_id}/${r.request_id}`); return { ...r, ...types.get(r.request_id), guide_number: [...new Set([r.guide_number, ...(n?.guide || '').split(' · ')].filter(Boolean))].join(' · ') || null, note_number: n?.note || null } })); setRefreshedAt(new Date().toISOString()); setLoadError('')
       if (requestedDispatch.current) {
         const selected = list.find(item => item.id === requestedDispatch.current)
@@ -247,6 +254,7 @@ export default function TorreControlPage() {
 
       // Apply Filters
       if (onlyAlerts && !isAlert) return false
+      if (closureFilter && closureStage(closure[d.id]) !== closureFilter) return false
 
       const searchLower = searchTerm.toLowerCase()
       if (searchTerm && !(
@@ -262,7 +270,7 @@ export default function TorreControlPage() {
     })
 
     return { filteredDispatches: filtered, kpis: { kpiProgramados, kpiEnCurso, kpiCompletados, kpiAlertas } }
-  }, [dispatches, rows, searchTerm, onlyAlerts])
+  }, [dispatches, rows, searchTerm, onlyAlerts, closure, closureFilter])
 
 
   const getStatusBadge = (status: string) => {
@@ -573,6 +581,15 @@ export default function TorreControlPage() {
             <option value="PROGRAMADO">Solo Programados</option>
             <option value="RUTA">En ruta</option>
             <option value="POR_CERRAR">Cierre documental y financiero pendiente</option>
+          </select>
+          <select value={closureFilter} onChange={e => { setClosureFilter(e.target.value); if (e.target.value && !['HISTORIAL', 'TODOS'].includes(statusFilter)) setStatusFilter('HISTORIAL') }} aria-label="Cierre del servicio"
+            className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-600">
+            <option value="">Cierre del servicio: todos</option>
+            <option value="LISTO">Listo para el cierre final</option>
+            <option value="DOCUMENTARIO">Liquidación documentaria pendiente</option>
+            <option value="ECONOMICO">Liquidación económica pendiente</option>
+            <option value="CAJA">Gastos de Caja por revisar</option>
+            <option value="CERRADO">Servicio cerrado</option>
           </select>
           
           <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-100 transition-colors">
