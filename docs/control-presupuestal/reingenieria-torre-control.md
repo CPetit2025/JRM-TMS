@@ -191,8 +191,10 @@ ruta sigue como lista de trabajo.
 del servicio» muestra `GuidesClosureTab` (`DispatchDocumentarySettlement`, con las mismas consultas y permisos que la bandeja).
 `documentaryHref` y `/despacho/documentos?despacho=<id>&vista=liquidacion` llevan a `/torre-control?despacho=<id>&liquidar=documentaria`.
 La bandeja «Documentación pendiente» sigue como lista de trabajo. Anular un documento (con causa) sigue en la bandeja.
-Regla heredada: un viaje LIQUIDADO no admite liquidar documentos (`NOT_SETTLEABLE`), así que con documentos pendientes solo
-se cierra con excepción. Hay que decidir si se habilita la liquidación documentaria después de cerrar la ruta.
+**Decisión (01/11/2026): la liquidación documentaria sigue abierta con la ruta cerrada (LIQUIDADO) hasta el cierre final**
+(`20261209090000`): carga de documentos, validación de la guía y «dar por liquidado» admiten LIQUIDADO y se bloquean con
+cierre final vigente (se reabre en Torre). La bandeja «Documentación pendiente» sigue sin listar rutas LIQUIDADO (evita
+históricos); se encuentran en Torre con el filtro de Cierre del servicio.
 
 El retiro se hace recién cuando Torre cubre todo y dos semanas de uso no muestran regresiones. Las URL viejas redirigen. No se borra ningún dato.
 

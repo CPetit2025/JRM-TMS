@@ -57,6 +57,7 @@ jobs:
       - run: node scripts/test-caja-auditoria-5-9.cjs
       - run: node scripts/test-torre-cierre-final.cjs
       - run: node scripts/test-torre-liquidacion-documentaria.cjs
+      - run: node scripts/test-documentos-ruta-cerrada.cjs
       - run: node scripts/test-ot-freight-required.cjs
       - run: node scripts/test-third-party-freight-required.cjs
       - run: node scripts/test-programming-notes.cjs

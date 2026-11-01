@@ -20,7 +20,7 @@ type Data = { item: Item; types: Awaited<ReturnType<typeof fetchServiceTypes>>; 
 
 const limaDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
 
-export function DispatchDocumentarySettlement({ dispatchId, onChanged }: { dispatchId: string; onChanged?: () => void }) {
+export function DispatchDocumentarySettlement({ dispatchId, finalClosed = false, onChanged }: { dispatchId: string; finalClosed?: boolean; onChanged?: () => void }) {
   const supabase = useMemo(() => createClient(), [])
   const { canWrite, canRead, role, isLoaded } = usePermissions()
   const [data, setData] = useState<Data | null | 'missing'>(null)
@@ -57,7 +57,8 @@ export function DispatchDocumentarySettlement({ dispatchId, onChanged }: { dispa
   const canNumbers = canWrite('documentario')
   const canManual = ['admin', 'jefe de distribución', 'supervisor de transporte'].includes(role) || (role.includes('despach') && role !== 'auditor de despacho')
   const packingOnly = !canRead('documentario') && (canRead('packing-list') || canRead('planificacion'))
-  const canSettle = (canNumbers || canManual) && !packingOnly && !NOT_SETTLEABLE.includes(item.status)
+  // Con cierre final vigente solo se consulta: se reabre el cierre para cambiar la documentación (la base lo exige)
+  const canSettle = (canNumbers || canManual) && !packingOnly && !NOT_SETTLEABLE.includes(item.status) && !finalClosed
   const changed = async () => { await load(); onChanged?.() }
   const openDoc = async (path: string) => {
     const url = await receiptUrl(supabase, `${DOCS_BUCKET}/${path}`)

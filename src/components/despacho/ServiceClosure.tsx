@@ -104,7 +104,7 @@ export function ServiceClosure({ dispatchId, openEconomic = false, openDocumenta
         </div>
       </div>}
       {docs && <Modal isOpen onClose={() => { setDocs(false); void load() }} title="Liquidación documentaria del viaje" maxWidth="max-w-6xl">
-        <DispatchDocumentarySettlement dispatchId={dispatchId} onChanged={() => { void load(); onChanged?.() }} /></Modal>}
+        <DispatchDocumentarySettlement dispatchId={dispatchId} finalClosed={!!c.final} onChanged={() => { void load(); onChanged?.() }} /></Modal>}
       {econ && <EconomicClosurePanel dispatchId={dispatchId} onClose={() => setEcon(false)} onChanged={() => { void load(); onChanged?.() }} />}
     </section>
   )

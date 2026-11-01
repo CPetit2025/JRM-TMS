@@ -25,7 +25,7 @@ function load(file) {
   if (name === '@/lib/request-service') return { fetchServiceTypes: async () => new Map() }
   if (name === '@/components/documentos/GuidesClosureTab') return {
    GuidesClosureTab: p => { props = p; return React.createElement('div', { 'data-guides': p.stops.length }) },
-   NOT_SETTLEABLE: ['PROGRAMADO', 'CANCELADO', 'LIQUIDADO', 'CERRADO'], settlementKind: () => 'ENTREGA', knownNumbers: () => [] }
+   NOT_SETTLEABLE: ['PROGRAMADO', 'CANCELADO', 'CERRADO'], settlementKind: () => 'ENTREGA', knownNumbers: () => [] }
   if (name === '@/components/delivery/DeliveryReview') return { DeliveryReview: () => null }
   if (name === '@/components/despacho/DocumentNumberLinks') return { DocumentNumberLinks: () => null }
   if (name === '@/lib/caja') return { DOCS_BUCKET: 'docs', errorMessage: e => String(e?.message || e), receiptUrl: async () => null }
@@ -38,7 +38,7 @@ function load(file) {
 }
 const { DispatchDocumentarySettlement } = load('src/components/documentos/DispatchDocumentarySettlement.tsx')
 const stop = (id, ot) => ({ request_id: id, request_number: 'S-' + id, ot_code: ot, client: 'Cliente', delivery: 'Lima', sequence: 1 })
-const render = async () => { let r; await act(async () => { r = create(React.createElement(DispatchDocumentarySettlement, { dispatchId: 'd1' })) }); await act(async () => { await new Promise(res => setTimeout(res, 5)) }); return r }
+const render = async (extra = {}) => { let r; await act(async () => { r = create(React.createElement(DispatchDocumentarySettlement, { dispatchId: 'd1', ...extra })) }); await act(async () => { await new Promise(res => setTimeout(res, 5)) }); return r }
 
 test('toma el viaje de la bandeja y arma sus servicios con la lista de la base', async () => {
  queue = [{ id: 'd0', status: 'CIERRE_OPERATIVO', is_pickup: false, stops: [stop('r0', 'X')], documents: [] },
@@ -52,10 +52,13 @@ test('toma el viaje de la bandeja y arma sus servicios con la lista de la base',
  assert.deepEqual([props.canUpload, props.canManual, props.executed, props.canVoid], [true, true, true, false])
 })
 
-test('un viaje ya liquidado se consulta pero no se liquida (misma regla que la bandeja)', async () => {
+test('con la ruta cerrada (LIQUIDADO) se liquida; con cierre final vigente solo se consulta', async () => {
  queue = [{ id: 'd1', status: 'LIQUIDADO', is_pickup: false, stops: [stop('r1', 'OT-9')], documents: [] }]
  props = null
  await render()
+ assert.deepEqual([props.canUpload, props.canManual], [true, true])
+ props = null
+ await render({ finalClosed: true })
  assert.deepEqual([props.canUpload, props.canManual], [false, false])
 })
 
