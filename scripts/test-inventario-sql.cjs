@@ -69,6 +69,8 @@ try {
  const profile = process.env.INVENTORY_PLAN_LOG ? "LOAD 'auto_explain'; SET client_min_messages=log; SET auto_explain.log_min_duration='500ms'; SET auto_explain.log_nested_statements=on; SET auto_explain.log_analyze=on; SET auto_explain.log_timing=off;" : ''
  const t=Date.now(); const model=JSON.parse(sql(profile + "SET statement_timeout='120s'; SELECT inv_rebuild();").split('\n').at(-1));assert.equal(model.success,true)
  assert.equal(Number(sql('SELECT count(*) FROM inv_layers l LEFT JOIN (SELECT layer_id,sum(qty) qty FROM inv_allocations GROUP BY layer_id) a ON a.layer_id=l.id WHERE l.consumed IS DISTINCT FROM coalesce(a.qty,0);')),0,'every layer balance equals the detailed FIFO consumptions');
+ // Like the scheduled inv_rebuild_if_dirty: web reads come from the saved views, never computed live (20261020180000).
+ sql("SET statement_timeout='120s'; SELECT inv_cache_refresh();")
  const catTime=Date.now(); assert.match(sql(`SET request.jwt.claim.sub='00000000-0000-4000-8000-000000000002'; SET statement_timeout='8s'; SELECT inv_catalogs()->>'success';`),/true/)
  const catalogMilliseconds=Date.now()-catTime;
  for (const file of ['caja_c115_inventario_multialmacen.test.sql','caja_c117_inventory_real_history.test.sql']) {
