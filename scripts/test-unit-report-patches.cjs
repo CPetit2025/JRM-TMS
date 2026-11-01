@@ -40,8 +40,8 @@ try {
 
   const base = read('supabase/migrations/20261024090000_reporte_unidad_km_referencias.sql')
   sql(fn(base, 'unit_daily_report'))
-  sql(patch(read('supabase/migrations/20261209080000_referencia_proveedor_y_reporte_costos.sql'), '-- Agrega proveedor y origen'))
-  sql(patch(read('supabase/migrations/20261209100000_km_ruta_odometro_y_reporte.sql'), '-- Expone kilómetros por OT'))
+  sql(patch(read('supabase/migrations/20261209100000_referencia_proveedor_y_reporte_costos.sql'), '-- Agrega proveedor y origen'))
+  sql(patch(read('supabase/migrations/20261209110000_km_ruta_odometro_y_reporte.sql'), '-- Expone kilómetros por OT'))
 
   const definition = sql("SELECT pg_get_functiondef('public.unit_daily_report(text,date,date)'::regprocedure)")
   for (const token of ['reference_supplier', 'pickup_address', 'fuel_gallons', 'km_real_source', 'odo_reading', 'odo_photo']) {

@@ -5,7 +5,7 @@ const { PGlite } = require('@electric-sql/pglite')
 const uid = '00000000-0000-4000-8000-000000000001'
 const dispatch = '00000000-0000-4000-8000-000000000010'
 const request = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
-const migration = readFileSync('supabase/migrations/20261209100000_km_ruta_odometro_y_reporte.sql', 'utf8')
+const migration = readFileSync('supabase/migrations/20261209110000_km_ruta_odometro_y_reporte.sql', 'utf8')
 const start = migration.indexOf('CREATE OR REPLACE FUNCTION public.delivery_submit_driver_with_odometer(')
 const end = migration.indexOf('END $$;', start) + 'END $$;'.length
 assert.ok(start >= 0 && end > start, 'odometer RPC is present')

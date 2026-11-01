@@ -322,7 +322,7 @@ try {
  CREATE FUNCTION can_view_driver_evidence() RETURNS boolean LANGUAGE sql AS $$ SELECT false $$;`)
  sql(read('supabase/migrations/20261009120000_suppliers.sql'))
  sql(`ALTER TABLE transport_requests ADD COLUMN reference_supplier_id uuid REFERENCES suppliers(id) ON DELETE RESTRICT;`)
- sql(fn('supabase/migrations/20261209080000_referencia_proveedor_y_reporte_costos.sql','apply_request_supplier'))
+ sql(fn('supabase/migrations/20261209100000_referencia_proveedor_y_reporte_costos.sql','apply_request_supplier'))
  const c63=query(read('supabase/tests/caja_c63_proveedores.test.sql'))
  assert.notEqual(c63.status,0);assert.match(c63.stderr,/CAJA C63 PASS \(7\/7\)/)
  assert.equal(sql(`SELECT reference_number FROM transport_requests WHERE id='${pay.id}'`),'0042')
