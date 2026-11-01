@@ -98,7 +98,8 @@ export function ServicesOverview({ detail, dispatchId, onGuides }: { detail: Eco
   const icon = 'grid h-10 w-10 shrink-0 place-items-center rounded-lg'
   return <>
     <section aria-label="Resumen de costos de la ruta">
-      <h3 className="mb-3 text-[15px] font-bold text-[#002855]">Resumen de costos de la ruta</h3>
+      <h3 className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[15px] font-bold text-[#002855]">Resumen de costos de la ruta
+        <a href={`/torre-control?despacho=${dispatchId}`} className="text-xs font-semibold underline">Cierre del servicio en Torre de Control</a></h3>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className={`${card} border-blue-200 bg-blue-50/60`}><span className={`${icon} bg-white text-blue-600 ring-1 ring-blue-200`}><Info className="h-5 w-5" /></span>
           <div><p className="text-xs text-slate-600">Referencial</p><p className="text-lg font-bold tabular-nums text-slate-900">{soles(st.referential_pen)}</p></div></div>

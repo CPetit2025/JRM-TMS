@@ -28,7 +28,7 @@ import { ManualOperationalCloseButton } from '@/components/despacho/ManualOperat
 import { ErpGuiasResumenCard, ErpOtReferencia } from '@/components/erp/ErpReferencia'
 import { ProgrammingNotes } from '@/components/despacho/programar-ruta/ProgrammingNotes'
 import { DispatchDetailModal } from '@/components/despacho/detalle/DispatchDetailModal'
-import { closureStage, type ClosureChecks } from '@/components/despacho/ServiceClosure'
+import { closureStage, ServiceClosure, type ClosureChecks } from '@/components/despacho/ServiceClosure'
 import { canAddRouteService } from '@/lib/route-assignment'
 
 interface DispatchRequest {
@@ -630,6 +630,8 @@ export default function TorreControlPage() {
         maxWidth="max-w-7xl"
         footer={<div className="flex justify-end"><button type="button" onClick={() => setSelectedDispatch(null)} className="min-h-10 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-jrm-navy">Cerrar expediente</button></div>}
       >
+        {/* Abierto por enlace (?despacho=, p. ej. desde Costos por ruta o Documentos): el cierre del servicio va primero */}
+        {selectedDispatch && <div className="mb-4"><ServiceClosure dispatchId={selectedDispatch.id} onChanged={() => void fetchDispatches()} /></div>}
         {selectedDispatch && routeFile(selectedDispatch, () => setSelectedDispatch(null))}
       </Modal>
     </div>

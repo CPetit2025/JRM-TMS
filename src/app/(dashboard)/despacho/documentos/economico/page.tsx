@@ -162,6 +162,7 @@ function CierreEconomico() {
       { id: 'aprobar', label: 'Aprobar desviación', icon: <CheckCircle2 className="h-4 w-4" />, onSelect: () => act(r, 'APROBAR'), disabled: !perm.approve || !review },
       { id: 'observar', label: 'Observar', icon: <XCircle className="h-4 w-4" />, tone: 'danger', onSelect: () => act(r, 'OBSERVAR'), disabled: !perm.approve || !review },
       { id: 'documentario', label: 'Ir a cierre documentario', icon: <FileText className="h-4 w-4" />, onSelect: () => router.push(documentaryHref(r.dispatch_id)) },
+      { id: 'torre', label: 'Cierre del servicio (Torre de Control)', icon: <TowerControl className="h-4 w-4" />, onSelect: () => router.push(`/torre-control?despacho=${r.dispatch_id}`) },
     ]
   }
 

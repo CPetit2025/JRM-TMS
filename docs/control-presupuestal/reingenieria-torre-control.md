@@ -16,7 +16,7 @@ PR #407). Complementa: [especificación del control presupuestal](especificacion
 - Los desvíos de costo de un viaje son los ítems en revisión de su liquidación económica: el estado económico los cubre.
 - **Entrega 2** (Control presupuestal): detalle por OT `/despacho/control-presupuestal/[ot]` (Resumen, Viajes y costos,
   Por concepto, Desviaciones y alertas, Autorizaciones, Historial) sobre `budget_ot_detail`; ampliaciones (D4,
-  `budget_extensions`: solicita el Jefe, decide Gerencia y no la propia, suma al aporte propio con registro en
+  `transport_budget_extensions`: solicita el Jefe, decide Gerencia y no la propia, suma al aporte propio con registro en
   `contract_budget_adjustments`); D2 (pendiente «combustible en tarifa»), D3 (combustible de km adicionales directo a su
   OT) y D5 (el reverso de la tarifa propia sigue al flete final aprobado; lo ya aplicado antes se conserva).
   Los filtros de transportista y de unidad están en «Viajes y costos». El tablero no filtra por responsable de la OT:
@@ -106,7 +106,7 @@ Ciclo del dinero (ya implementado, se mantiene):
 | `dispatches.status = 'CERRADO'` como **cierre final** (el estado ya existe en `transition_dispatch_status`) + función `dispatch_final_close(dispatch, nota)` con validaciones y `dispatch_final_close_events` (quién, cuándo, excepciones aceptadas) | B1 sin estado nuevo; LIQUIDADO sigue significando «ruta cerrada operativamente y partida ejecutada» | Tabla de cierre paralela (otro estado más que sincronizar) |
 | Vista o función `dispatch_closure_status(dispatch)` → `{operativo, documentario, economico, caja, desvios, final}` calculada (sin columnas nuevas) | B2/B3, un solo cálculo para Torre y Control presupuestal | Guardar el rollup (se desincroniza) |
 | `budget_ot_detail(ot, desde, corte)` → agrupado por viaje y por concepto + serie del ejecutado por fecha, sobre `budget_movement_rows` | B4 sin otro libro | Agregar en el cliente (falla con >500 movimientos) |
-| `budget_extensions` (solicitud de ampliación: monto, motivo, evidencia, estado, Gerencia/Finanzas) que **al aprobarse** actualiza `contract_budgets.own_allocated_pen` y deja evento | B5 (≥100 %) | Usar autorizaciones (no cambian la partida, por diseño) |
+| `transport_budget_extensions` (solicitud de ampliación: monto, motivo, evidencia, estado, Gerencia/Finanzas) que **al aprobarse** actualiza `contract_budgets.own_allocated_pen` y deja evento | B5 (≥100 %) | Usar autorizaciones (no cambian la partida, por diseño) |
 | Disparador que registra todo cambio de `allocated_pen` en `contract_budget_adjustments` y lectura con `budget_can_read` | B5/B8 | — |
 | Vista `budget_ot_timeline(ot)`: unión de eventos de autorizaciones, desvíos, ajustes de partida, cierres documentarios/económicos/finales y movimientos | B8 sin duplicar | Tabla de auditoría nueva |
 | Pendiente `COMBUSTIBLE_EN_TARIFA` (tercero con gasto de combustible de Caja) en `budget_pending` | B6 (la regla depende de la decisión §11-D2) | — |
@@ -206,7 +206,7 @@ Toda acción se valida en la base de datos (RPC con `has_tms_permission` y la se
 | **1 Diagnóstico** | Este documento | — | — | Aprobación |
 | **2 Arquitectura** | `dispatch_closure_status`, decisiones D1–D5 | nueva función de lectura | Reglas mal definidas | PGlite: estados independientes (esc. 13, 14) |
 | **3 Torre de Control** | Pestañas del detalle, filtros, `dispatch_final_close` con eventos, etiqueta LIQUIDADO≠CERRADO | `torre-control/page.tsx`, componentes existentes; migración del cierre final | Romper el cierre actual; doble trabajo con las bandejas | Esc. 13, 14, 19, 20; Torre cierra un viaje sin abrir otra pantalla |
-| **4 Control presupuestal** | Tablero con filtros, detalle por OT (6 pestañas), `budget_ot_detail`, línea de tiempo, ampliaciones, pendiente de combustible en tarifa, reparto con km adicionales | `control-presupuestal/**`, nuevas RPC de lectura, `budget_extensions` | Rendimiento en OT grandes | Esc. 1–12, 15–18; totales iguales a la partida (conciliación 0) |
+| **4 Control presupuestal** | Tablero con filtros, detalle por OT (6 pestañas), `budget_ot_detail`, línea de tiempo, ampliaciones, pendiente de combustible en tarifa, reparto con km adicionales | `control-presupuestal/**`, nuevas RPC de lectura, `transport_budget_extensions` | Rendimiento en OT grandes | Esc. 1–12, 15–18; totales iguales a la partida (conciliación 0) |
 | **5 Integración y migración** | Las bandejas abren Torre; redirecciones; retiro progresivo | `documentos/**`, `navConfig.ts` | Enlaces rotos | Guardas de rutas; C-tests de redirección |
 | **6 Validación** | 20 escenarios + permisos + concurrencia | `scripts/test-*.cjs`, `supabase/tests/caja_c2xx` | Lo que PGlite no reproduce: dos sesiones | Todos los escenarios en CI |
 | **7 Despliegue** | Por fase, con verificación de Caja tras cada uno; la UI nueva convive con la anterior hasta el retiro | workflow existente | — | 0 FAIL en Caja; conciliación 0 |
