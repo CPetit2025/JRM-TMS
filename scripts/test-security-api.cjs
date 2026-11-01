@@ -13,7 +13,7 @@ function fixture(options={}) {
  const calls=[], user=options.public?null:{id:'actor'}
  const profile=options.profile||{is_active:true,roles:{name:'Administrador',permissions:[]}}
  const session={auth:{getUser:async()=>({data:{user}})},from:()=>({select:()=>({eq:()=>({single:async()=>({data:profile}),maybeSingle:async()=>({data:profile})})})}),storage:{from:bucket=>({createSignedUrl:async(key,ttl)=>{calls.push(['sign',bucket,key,ttl]);return options.denyFile?{error:{message:'Denied'}}:{data:{signedUrl:'https://db.example.test/private?token=fixture'}}}})}}
- const admin={auth:{admin:{createUser:async(body)=>{calls.push(['create',body]);return {data:{user:{id:'new-user'}},error:null}},deleteUser:async()=>({error:null})}},
+ const admin={auth:{signUp:async(body)=>{calls.push(['signup',body]);return {data:{user:{id:options.existing?'existing':'new-user',identities:options.existing?[]:[{}]}},error:null}},admin:{createUser:async(body)=>{calls.push(['create',body]);return {data:{user:{id:'new-user'}},error:null}},deleteUser:async()=>({error:null})}},
   from:table=>({select:()=>({eq:()=>({eq:()=>({maybeSingle:async()=>({data:{id:'carrier'}})}),maybeSingle:async()=>({data:table==='roles'?{id:'driver-role'}:{id:'carrier'}})})}),upsert:async(body)=>{calls.push(['profile',body]);return{error:null}}}),
   rpc:async(name,args)=>{calls.push([name,args]);return {data:options.quota===false?false:options.quota==='error'?null:true,error:options.quota==='error'?{message:'Offline'}:null}}
  }
@@ -38,10 +38,14 @@ const request=(data,headers={})=>({json:async()=>data,headers:new Headers(header
 test('registro público no asigna roles ni activa cuentas; una cuota denegada no crea autenticación',async()=>{
  const f=fixture({public:true}), api=f.load('src/app/api/users/create/route.ts')
  assert.equal((await api.POST(request(body))).body.success,true)
- assert.equal(f.calls.find(c=>c[0]==='create')[1].user_metadata.role_id,null)
+ // Registro público: signUp con confirmación de correo (nunca createUser con el correo ya confirmado)
+ assert.equal(f.calls.some(c=>c[0]==='create'),false)
+ assert.equal(f.calls.find(c=>c[0]==='signup')[1].options.data.role_id,null)
+ // Correo ya registrado: misma respuesta, sin perfil nuevo (no revela qué cuentas existen)
+ const dup=fixture({public:true,existing:true});assert.equal((await dup.load('src/app/api/users/create/route.ts').POST(request(body))).body.success,true);assert.equal(dup.calls.some(c=>c[0]==='profile'),false)
  const profile=f.calls.find(c=>c[0]==='profile')[1][0];assert.equal(profile.is_active,false);assert.equal(profile.role_id,null);assert.equal(profile.area,'Logística')
  for(const area of [undefined,'Área inventada']){const a=fixture({public:true});assert.equal((await a.load('src/app/api/users/create/route.ts').POST(request({...body,area}))).status,400);assert.equal(a.calls.length,0)}
- for(const quota of [false,'error']){const q=fixture({public:true,quota});assert.equal((await q.load('src/app/api/users/create/route.ts').POST(request(body))).status,quota===false?429:503);assert.equal(q.calls.some(c=>c[0]==='create'),false)}
+ for(const quota of [false,'error']){const q=fixture({public:true,quota});assert.equal((await q.load('src/app/api/users/create/route.ts').POST(request(body))).status,quota===false?429:503);assert.equal(q.calls.some(c=>['create','signup'].includes(c[0])),false)}
 })
 test('usuarios: una cuenta inactiva o con permiso usuarios sin rol administrador no puede crear privilegios',async()=>{
  for(const profile of [{is_active:false,roles:{name:'Administrador'}},{is_active:true,roles:{name:'Asistente',permissions:['usuarios']}}]){

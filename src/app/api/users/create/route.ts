@@ -99,25 +99,34 @@ export async function POST(request: Request) {
     }
     const is_active = isAdmin
 
-    // 1. Crear el usuario en auth.users
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email: email,
-      password: password,
-      email_confirm: true,
-      user_metadata: {
-        first_name,
-        last_name,
-        document_number,
-        role_id: isAdmin ? role_id : null
+    const metadata = { first_name, last_name, document_number, role_id: isAdmin ? role_id : null }
+    // 1. Crear el usuario en auth.users. El registro público confirma el correo (signUp envía el enlace): nadie
+    //    registra un correo corporativo que no es suyo. Errores genéricos para no revelar qué correos existen.
+    let userId: string
+    if (isAdmin) {
+      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email, password, email_confirm: true, user_metadata: metadata
+      })
+      if (authError) {
+        console.error('Error creating auth user:', authError)
+        return NextResponse.json({ error: authError.message }, { status: 400 })
       }
-    })
-
-    if (authError) {
-      console.error('Error creating auth user:', authError)
-      return NextResponse.json({ error: authError.message }, { status: 400 })
+      userId = authData.user.id
+    } else {
+      const publicClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+        auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false }
+      })
+      const { data: signUp, error: signUpError } = await publicClient.auth.signUp({
+        email, password, options: { data: metadata, emailRedirectTo: `${new URL(request.url).origin}/login` }
+      })
+      if (signUpError || !signUp.user) {
+        console.error('Error in public sign up:', signUpError)
+        return NextResponse.json({ error: 'No se pudo completar el registro. Si ya tiene cuenta, recupere su contraseña.' }, { status: 400 })
+      }
+      // Correo ya registrado: Supabase devuelve un usuario sin identidades; se responde igual que un registro nuevo
+      if (!signUp.user.identities?.length) return NextResponse.json({ success: true, pending: true })
+      userId = signUp.user.id
     }
-
-    const userId = authData.user.id
 
     // 2. Insertar en profiles
     const { error: profileError } = await supabaseAdmin

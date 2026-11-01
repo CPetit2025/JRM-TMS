@@ -42,7 +42,7 @@ export function PublicRegistrationModal({ isOpen, onClose }: PublicRegistrationM
         throw new Error(resData.error || 'Error al registrarse')
       }
 
-      toast.success('Registro exitoso. Tu cuenta está pendiente de aprobación por un administrador.')
+      toast.success('Registro recibido. Si te llega un correo de confirmación, ábrelo; luego un administrador aprobará tu cuenta.')
       onClose()
       
       // Reset form
