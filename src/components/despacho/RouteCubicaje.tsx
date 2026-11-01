@@ -1,14 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { AlertTriangle, Boxes, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { fmtDateTime } from '@/lib/apt/format'
 
 // Cubicaje de la ruta por familia de producto (kg y m³, sin LPN). Por parada: el peso estimado de la solicitud si existe,
 // repartido según la mezcla de familias de su OT; si no, lo «listo» de la OT en el ERP (pendiente con stock), una sola
-// vez por OT. m³ = kg / densidad de la familia (Cubicaje por familia). Solo informa: no bloquea la programación.
+// vez por OT. Solo informa: no bloquea la programación. El volumen (m³ por densidad de familia) se dio de baja: las
+// densidades no se mantenían y el resultado era parcial; los datos de cubicaje_familias se conservan.
 const supabase = createClient()
 
 type Familia = { familia: string; pendiente_kg: number; listo_kg: number; lineas_sin_peso: number; kg_por_m3: number | null; m3_listo: number | null }
@@ -19,7 +19,6 @@ type Fila = { familia: string; kg: number; densidad: number | null }
 // Igual que split_part(erp_key(ot), '-', 1) en la base
 const otKey = (ot: string) => ot.trim().toUpperCase().replace(/\s+/g, ' ').split('-')[0]
 const fmtKg = (v: number) => `${Math.round(v).toLocaleString('es-PE')} kg`
-const fmtM3 = (v: number) => `${v.toLocaleString('es-PE', { maximumFractionDigits: 2 })} m³`
 
 export function cubicajeRuta(stops: CubicajeStop[], ots: Respuesta['ots']) {
   const porOt = new Map(ots.map(o => [o.ot, o.familias]))
@@ -70,7 +69,7 @@ function Barra({ label, valor, capacidad, fmt, parcial }: { label: string; valor
   )
 }
 
-export function RouteCubicaje({ stops, capacidadKg, capacidadM3, onCalc }: { stops: CubicajeStop[]; capacidadKg?: number | null; capacidadM3?: number | null; onCalc?: (calc: { kg: number; m3: number; kgSinMedida: number } | null) => void }) {
+export function RouteCubicaje({ stops, capacidadKg, onCalc }: { stops: CubicajeStop[]; capacidadKg?: number | null; onCalc?: (calc: { kg: number; m3: number; kgSinMedida: number } | null) => void }) {
   const ots = useMemo(() => [...new Set(stops.map(s => s.ot).filter((o): o is string => Boolean(o)))].sort(), [stops])
   const key = ots.join('|')
   const [state, setState] = useState<{ key: string; data: Respuesta | null; error: boolean }>({ key: '', data: null, error: false })
@@ -94,29 +93,25 @@ export function RouteCubicaje({ stops, capacidadKg, capacidadM3, onCalc }: { sto
   return (
     <section aria-label="Carga de la ruta" className="rounded-xl border border-slate-200 bg-white p-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-sm font-bold text-slate-900"><Boxes className="h-4 w-4 text-[#002855]" aria-hidden="true" />Carga de la ruta (cubicaje)</p>
-        <Link href="/despacho/cubicaje" target="_blank" className="text-xs font-semibold text-[#002855] underline">Densidades por familia</Link>
+        <p className="flex items-center gap-1.5 text-sm font-bold text-slate-900"><Boxes className="h-4 w-4 text-[#002855]" aria-hidden="true" />Carga de la ruta (peso)</p>
       </div>
       {loading ? <p className="flex items-center gap-1 text-xs text-slate-500"><Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />Calculando carga…</p>
         : <>
           <div className="space-y-2">
             <Barra label="Peso" valor={calc.kg} capacidad={capacidadKg ?? null} fmt={fmtKg} />
-            <Barra label="Volumen" valor={calc.m3} capacidad={capacidadM3 ?? null} fmt={fmtM3} parcial={calc.kgSinMedida > 0} />
           </div>
           {calc.filas.length > 0 && <table className="mt-2 w-full text-xs">
-            <thead><tr className="text-left text-[11px] uppercase text-slate-500"><th className="py-1 font-semibold">Familia</th><th className="py-1 text-right font-semibold">kg</th><th className="py-1 text-right font-semibold">m³</th></tr></thead>
+            <thead><tr className="text-left text-[11px] uppercase text-slate-500"><th className="py-1 font-semibold">Familia</th><th className="py-1 text-right font-semibold">kg</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {calc.filas.map(f => <tr key={f.familia}>
                 <td className="py-1 pr-2 text-slate-800">{f.familia}</td>
                 <td className="py-1 text-right tabular-nums">{fmtKg(f.kg)}</td>
-                <td className="py-1 text-right tabular-nums">{f.densidad ? fmtM3(f.kg / f.densidad) : <span className="font-semibold text-amber-700">sin medida</span>}</td>
               </tr>)}
             </tbody>
           </table>}
-          {(calc.kgSinMedida > 0 || calc.sinOrigen > 0 || state.error) && <p className="mt-2 flex items-start gap-1.5 text-[11px] text-amber-800">
+          {(calc.sinOrigen > 0 || state.error) && <p className="mt-2 flex items-start gap-1.5 text-[11px] text-amber-800">
             <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
             <span>{state.error ? 'No se pudo leer la referencia del ERP; se usa solo el peso estimado de las solicitudes. ' : ''}
-              {calc.kgSinMedida > 0 ? `${fmtKg(calc.kgSinMedida)} sin densidad configurada: el volumen es parcial. ` : ''}
               {calc.sinOrigen > 0 ? `${calc.sinOrigen} parada(s) sin peso estimado ni stock listo en el ERP.` : ''}</span>
           </p>}
           <p className="mt-1.5 text-[11px] text-slate-500">Peso: estimado de la solicitud o, si falta, lo listo de la OT en el ERP{data?.corte_stock ? ` (stock al ${fmtDateTime(data.corte_stock)})` : ''}. Referencial: no bloquea la programación.</p>

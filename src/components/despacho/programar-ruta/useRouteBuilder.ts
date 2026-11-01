@@ -215,14 +215,12 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
     gr && capacityKg != null && declaredKg > capacityKg && { key: 'capacidad', label: `Exceso de capacidad: ${Math.round(declaredKg).toLocaleString('es-PE')} kg declarados para ${Math.round(capacityKg).toLocaleString('es-PE')} kg de la unidad`, step: 2, level: 'block' },
     gr && capacityKg != null && declaredKg <= capacityKg && cubicaje && cubicaje.kg > capacityKg && { key: 'capacidad-ref', label: 'El peso referencial del ERP supera la capacidad de la unidad: confirme la carga real', step: 2, level: 'warn' },
     gr && capacityKg != null && declaredKg <= capacityKg && declaredKg > capacityKg * 0.9 && { key: 'capacidad-90', label: 'La carga declarada supera el 90 % de la capacidad', step: 2, level: 'warn' },
-    gr && capacityM3 != null && cubicaje && cubicaje.m3 > capacityM3 && { key: 'volumen', label: 'El volumen estimado supera la capacidad de la unidad', step: 2, level: 'warn' },
     gr && modalidad === 'TERCERO' && capacityKg == null && { key: 'capacidad-tercero', label: 'Unidad del tercero sin capacidad registrada', step: 2, level: 'info' },
     has && !forkliftValid(routeForklift, forkliftStops) && { key: 'montacarga', label: 'Montacarga: parada, proveedor, montacarguista y tarifa por hora', step: 3, level: 'block' },
     has && forkliftValid(routeForklift, forkliftStops) && !!special.error && { key: 'adicionales', label: special.error, step: 3, level: 'block' },
     !newDispatch.scheduled_departure && { key: 'salida', label: 'Fecha y hora de salida', step: 4, level: 'block' },
     late.length > 0 && notes.trim().length < 5 && { key: 'salida-tarde', label: `La salida queda después de la atención requerida (${late.map(r => r.request_number).join(', ')}): indique el motivo en Observaciones`, step: 4, level: 'block' },
     has && stockCorte && stockCorte.estado !== 'VIGENTE' && { key: 'stock', label: stockCorte.estado === 'SIN_CARGA' ? 'Sin carga del stock del ERP' : 'Stock del ERP desactualizado: cargue el Excel «Stock Bodega Despacho»', step: 1, level: 'warn' },
-    gr && cubicaje && cubicaje.kgSinMedida > 0 && { key: 'volumen-parcial', label: 'Volumen parcial: hay productos sin densidad configurada', step: 1, level: 'info' },
   ])
   const blockers = blocking(checks)
 

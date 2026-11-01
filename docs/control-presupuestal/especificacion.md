@@ -230,8 +230,8 @@ Notas de diseño:
 - **Etapa 5:** la bandeja por ruta conserva su dirección (`/despacho/documentos/economico`, usada por enlaces con
   `?despacho=`) y pasa a ser la pestaña «Costos por ruta» del Control presupuestal; el menú tiene una sola entrada.
   Lo que supera el umbral se resuelve en Desvíos (aprobar imputa el costo; rechazar lo devuelve a corrección).
-- **Reparto por peso (D3):** primera versión con el peso declarado de la solicitud; con peso faltante, partes iguales.
-  Pendiente: peso de guía ERP y por componente cuando su vínculo sea confiable.
+- **Reparto por peso (D3):** guía de remisión cruzada con las salidas del ERP, luego peso por componente y peso declarado;
+  si alguna solicitud queda sin peso, partes iguales (`20261129090000_control_presupuestal_peso`).
 - **Permisos (D6):** `control-presupuestal` (consulta), `control-presupuestal-recomendar` (Jefe de Distribución) y
   `control-presupuestal-autorizar` (Gerencia de Operaciones) deben asignarse en Roles y Permisos.
 - **Activación (D7):** `economic_settings.budget_imputation_since` = fecha de la migración de la etapa 2.
