@@ -67,7 +67,6 @@ export const NAV_SECTIONS: NavSection[] = [
   { id: 'operacion', title: 'Operación', icon: Truck, groups: [{ items: [
     { href: '/torre-control', label: 'Torre de Control', icon: Radar, show: any('monitoreo', 'despacho', 'torre-control'), keywords: 'torre control vista' },
     { href: '/despacho', label: 'Programación y Ruteo', icon: PackageCheck, show: any('despacho'), keywords: 'despacho programacion ruta viaje unidad' },
-    { href: '/despacho/cubicaje', label: 'Cubicaje por familia', icon: Boxes, show: any('despacho'), keywords: 'cubicaje volumen m3 densidad kg familia carga capacidad unidad lpn' },
     { href: '/despacho/documentos', label: 'Documentos de Despacho', icon: FileText, show: any('documentario', 'packing-list', 'planificacion'), keywords: 'planificacion auditor guia packing nota documentario conformidad' },
     { href: '/despacho/control-presupuestal', label: 'Control presupuestal', icon: Gauge, show: any('control-presupuestal', 'control-presupuestal-recomendar', 'control-presupuestal-autorizar', 'cierre-economico', 'despacho', 'contratos-servicios', 'caja', 'ot'), keywords: 'control presupuestal partida ot presupuesto tope 80 alerta 70 comprometido ejecutado margen desvio autorizacion cierre economico costo final flete grua montacarga estiba' },
     { href: '/monitoreo', label: 'Monitoreo GPS', icon: MapIcon, show: any('monitoreo'), keywords: 'gps mapa seguimiento' },

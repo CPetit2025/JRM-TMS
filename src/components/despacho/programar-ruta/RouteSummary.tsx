@@ -74,7 +74,7 @@ export function RouteSummary({ rb, onGo }: { rb: RouteBuilder; onGo: (s: RouteSt
         <span className="min-w-0 flex-1 truncate"><b className="text-slate-900">{req.request_number}</b> <span className="text-slate-500">· {(req.request_type === 'RECOJO' || req.attention_mode === 'RECOJO_CLIENTE' ? districtOf(req.pickup_address, req.pickup_district) : districtOf(req.delivery_address, req.delivery_district)) || 'Sin distrito'}</span></span>
       </li>)}</ol>}
       {gr && <RouteCubicaje stops={services.map(r => ({ id: r.id, ot: r.contracts?.code ?? null, estimated_weight: r.estimated_weight }))}
-        capacidadKg={rb.capacityKg} capacidadM3={rb.capacityM3} onCalc={rb.setCubicaje} />}
+        capacidadKg={rb.capacityKg} onCalc={rb.setCubicaje} />}
       {services.length > 0 && <>
         <Block icon={<Truck className="h-4 w-4" />} title="Unidad y personal" step={2} onGo={onGo}>
           <Row label="Documento">{gr ? 'Guía de Remisión' : 'Nota de Salida'}</Row>
