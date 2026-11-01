@@ -156,7 +156,7 @@ export default function CajasPage() {
       {modal === 'box' && <BoxForm onClose={() => setModal(null)} onDone={() => { setModal(null); void loadBoxes() }} />}
       {modal === 'movement' && box && <MovementForm box={box} onClose={() => setModal(null)} onDone={() => { setModal(null); refresh() }} />}
       {modal === 'arqueo' && box && <ArqueoForm box={box} onClose={() => setModal(null)} onDone={() => { setModal(null); refresh() }} />}
-      {modal === 'reposicion' && box && <Reposicion box={box} movements={movements} onClose={() => setModal(null)} />}
+      {modal === 'reposicion' && box && <Reposicion box={box} onClose={() => setModal(null)} />}
     </div>
   )
 }
@@ -272,8 +272,29 @@ function ArqueoForm({ box, onClose, onDone }: { box: Row; onClose: () => void; o
   )
 }
 
-// Sustento de la reposición: vales y anticipos pagados desde la última reposición
-function Reposicion({ box, movements, onClose }: { box: Row; movements: Row[]; onClose: () => void }) {
+// Sustento de la reposición: vales y anticipos pagados desde la última reposición. Se leen todos los movimientos de
+// la caja desde entonces, sin el filtro de fechas ni el tope de la pantalla (si no, Finanzas recibía un monto menor).
+function Reposicion({ box, onClose }: { box: Row; onClose: () => void }) {
+  const [movements, setMovements] = useState<Row[] | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    void (async () => {
+      const { data: last } = await supabase.from('cash_movements').select('created_at').eq('box_id', box.box_id)
+        .in('movement_type', ['REPOSICION', 'APERTURA']).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      const rows: Row[] = []
+      // Supabase devuelve como máximo 1 000 filas por consulta: se lee por páginas
+      for (let from = 0; ; from += 1000) {
+        let q = supabase.from('cash_movements').select('*').eq('box_id', box.box_id).order('created_at', { ascending: false }).range(from, from + 999)
+        if (last) q = q.gte('created_at', last.created_at)
+        const { data, error } = await q
+        if (error) { toast.error(errorMessage(error)); setFailed(true); return }
+        rows.push(...(data || []))
+        if (!data || data.length < 1000) break
+      }
+      setMovements(rows)
+    })()
+  }, [box.box_id])
+  if (!movements) return <Modal isOpen onClose={onClose} title={`Solicitud de reposición · ${box.name}`}><p className="flex items-center gap-2 text-sm text-slate-500">{failed ? 'No se pudieron leer los movimientos de la caja: intente nuevamente.' : <><Loader2 className="h-4 w-4 animate-spin" />Cargando movimientos…</>}</p></Modal>
   const lastRepo = movements.find(m => m.movement_type === 'REPOSICION' || m.movement_type === 'APERTURA')
   const since = lastRepo ? new Date(lastRepo.created_at) : null
   const outs = movements.filter(m => m.direction === -1 && (!since || new Date(m.created_at) > since))
