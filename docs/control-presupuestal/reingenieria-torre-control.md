@@ -185,8 +185,14 @@ En la lista: filtros nuevos «Documentación pendiente», «Económico pendiente
 **Fase 5, primer paso (01/11/2026):** `/despacho/documentos/economico?despacho=<id>` redirige a Torre
 (`/torre-control?despacho=<id>&liquidar=economica`), que abre el viaje con su liquidación económica. Todos los enlaces existentes
 (Movimientos, Pendientes, Registro de Servicios, Documentos, Torre) llegan así a Torre sin cambiarlos. La bandeja de Costos por
-ruta sigue como lista de trabajo. La liquidación documentaria aún no está dentro de Torre: su bandeja y su enlace se mantienen
-hasta montar `GuidesClosureTab` en el viaje.
+ruta sigue como lista de trabajo.
+
+**Fase 5, segundo paso:** la liquidación documentaria también se trabaja en el viaje. En Cierre del servicio, «Abrir documentos
+del servicio» muestra `GuidesClosureTab` (`DispatchDocumentarySettlement`, con las mismas consultas y permisos que la bandeja).
+`documentaryHref` y `/despacho/documentos?despacho=<id>&vista=liquidacion` llevan a `/torre-control?despacho=<id>&liquidar=documentaria`.
+La bandeja «Documentación pendiente» sigue como lista de trabajo. Anular un documento (con causa) sigue en la bandeja.
+Regla heredada: un viaje LIQUIDADO no admite liquidar documentos (`NOT_SETTLEABLE`), así que con documentos pendientes solo
+se cierra con excepción. Hay que decidir si se habilita la liquidación documentaria después de cerrar la ruta.
 
 El retiro se hace recién cuando Torre cubre todo y dos semanas de uso no muestran regresiones. Las URL viejas redirigen. No se borra ningún dato.
 

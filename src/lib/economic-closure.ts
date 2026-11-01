@@ -148,4 +148,5 @@ export function daysPending(v: string | null | undefined, now = new Date()) {
   return Math.max(0, Math.round((Date.parse(day(now)) - Date.parse(day(new Date(v)))) / 86400000))
 }
 
-export const documentaryHref = (dispatchId: string) => `/despacho/documentos?despacho=${dispatchId}&vista=liquidacion`
+// La liquidación documentaria de un viaje se trabaja en Torre de Control (reingeniería, Fase 5)
+export const documentaryHref = (dispatchId: string) => `/torre-control?despacho=${dispatchId}&liquidar=documentaria`

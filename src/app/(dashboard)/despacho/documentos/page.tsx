@@ -10,7 +10,7 @@ import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ArrowRight, BadgeCheck, CalendarDays, ClipboardList, MapPin, CheckCircle2, ChevronRight, Clock, History, Info, Layers, FileCheck2, FileImage, FileSpreadsheet, FileText, Link2, ListTree, Loader2, RefreshCw, Save, Search, Trash2, Truck, Upload, User as UserIcon } from 'lucide-react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Modal } from '@/components/ui/modal'
 import { GuiaDetalleModal } from '@/components/guias/GuiaDetalleModal'
 import { ErpGuiasValidacion, ErpOtReferencia } from '@/components/erp/ErpReferencia'
@@ -23,14 +23,14 @@ import { conformityLabels, documentNumberLabel, type DeliveryRow } from '@/lib/d
 import { PACKING_ACCEPT, packingMime } from '@/lib/packing-list'
 import { DOCS_BUCKET, errorMessage, fmtDate, receiptUrl } from '@/lib/caja'
 import { districtOf } from '@/lib/address'
-import { DocumentNumberLinks, type KnownNumber } from '@/components/despacho/DocumentNumberLinks'
+import { DocumentNumberLinks } from '@/components/despacho/DocumentNumberLinks'
 import { referenceLabel } from '@/lib/suppliers'
 import { cellDateTime, fullDateTime } from '@/lib/table-format'
 import { fetchServiceTypes, serviceKind, type ServiceKind } from '@/lib/request-service'
 import { ServiceTypeBadge } from '@/components/ui/service-type-badge'
 import { DocumentaryBadge, type DocumentaryClosure } from '@/components/despacho/DocumentaryClosure'
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
-import { GuidesClosureTab } from '@/components/documentos/GuidesClosureTab'
+import { GuidesClosureTab, NOT_SETTLEABLE, knownNumbers, settlementKind } from '@/components/documentos/GuidesClosureTab'
 import { CostHistoryModal, FILE_CATEGORY, FilesSection, LiquidationDetail, MAX_FILE_MB, MAX_FILES, OtFilesModal, PendingDot, ServicesOverview, useEconomicDetail, useModalContext, type FileRow, type GuideRow } from '@/components/documentos/DispatchModalSections'
 
 // Auditor: Packing List. Asistente: confirmación documentaria y Nota de Despacho en recojos.
@@ -110,6 +110,9 @@ function DocumentaryQueue() {
   const [dateUntil, setDateUntil] = useState(limaDay)
   const [search, setSearch] = useState('')
   const dispatchParam = params.get('despacho')
+  // Dirección anterior de la liquidación de un viaje: ahora se trabaja en Torre de Control; la bandeja sigue como lista
+  const router = useRouter()
+  useEffect(() => { if (requestedPhase === 'liquidacion' && dispatchParam && /^[0-9a-f-]{36}$/i.test(dispatchParam)) router.replace(`/torre-control?despacho=${dispatchParam}&liquidar=documentaria`) }, [requestedPhase, dispatchParam, router])
   const [selection, setSelection] = useState<{ query: string | null; id: string | null } | null>(null)
   const selectedId = selection?.query === dispatchParam ? selection.id : dispatchParam
   const setSelectedId = (id: string | null) => setSelection({ query: dispatchParam, id })
@@ -299,13 +302,6 @@ function DocumentaryQueue() {
 }
 
 /** Números que el servicio ya tiene por otra vía, para que el modal muestre lo mismo que la columna «GR / Nota». */
-function knownNumbers(item: QueueItem, deliveries: DeliveryRow[]): KnownNumber[] {
-  const fromDelivery = deliveries.filter(row => row.dispatch_id === item.id && row.guide_number)
-    .map(row => ({ request_id: row.request_id, doc_type: 'GUIA_REMISION' as const, document_number: row.guide_number!, source: row.submission_id ? 'guía de entrega' : 'despacho' }))
-  const fromFiles = item.documents.filter(doc => doc.request_id && doc.document_number && (doc.doc_type === 'GUIA_REMISION' || doc.doc_type === 'NOTA_DESPACHO'))
-    .map(doc => ({ request_id: doc.request_id!, doc_type: doc.doc_type as KnownNumber['doc_type'], document_number: doc.document_number!, source: 'archivo cargado' }))
-  return [...fromDelivery, ...fromFiles]
-}
 
 /** El recojo del cliente tiene su Nota de Despacho (archivo o número vinculado). */
 function noteLinked(item: QueueItem, stop: Stop | null) {
@@ -711,18 +707,12 @@ function ForkliftTimeSettlement({ dispatchId, onSaved }: { dispatchId: string; o
 }
 
 // Liquidación por servicio: desde que la ruta sale (también en curso) hasta que se liquida
-const NOT_SETTLEABLE = ['PROGRAMADO', 'CANCELADO', 'LIQUIDADO', 'CERRADO']
 
 // Documentación pendiente: la oficina completa los documentos de un servicio cerrado según su tipo (misma regla que la
 // base, settlement_checklist). Documentos con número: primero el número (serie-correlativo); con el número válido se
 // activa la carga. Packing List sin correlativo: carga directa. La liquidación es automática al completar los
 // obligatorios; la GR cuenta cuando el Supervisor de Transporte la valida. El app del conductor no cambia.
 // Tipo de servicio para los documentos requeridos, con los datos de la solicitud (antes de tener la lista de la base)
-function settlementKind(info: Parameters<typeof serviceKind>[0], pickup: boolean): SettlementChecklist['kind'] {
-  const kind = serviceKind(info)
-  if (pickup || kind === 'RECOJO_CLIENTE') return 'RECOJO_CLIENTE'
-  return kind === 'RECOJO' ? 'RECOJO' : kind === 'PUNTO_A_PUNTO' ? 'TRASLADO' : 'ENTREGA'
-}
 type SettlementChecklist = {
   dispatch_id: string; request_id: string; kind: 'ENTREGA' | 'RECOJO' | 'TRASLADO' | 'RECOJO_CLIENTE' | 'RECHAZO'; complete: boolean
   missing: string[]; guide_state: string; note: boolean; packing: boolean; references: string[]
