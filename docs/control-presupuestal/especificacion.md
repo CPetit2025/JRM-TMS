@@ -1,6 +1,6 @@
 # Control presupuestal de transporte por OT — especificación para revisión
 
-Estado: **borrador para revisión** (31/10/2026). No hay código. Definición funcional aprobada:
+Estado: **aprobada** (31/10/2026): el usuario aprobó todas las recomendaciones D1–D7 de la sección 7. Definición funcional:
 [`docs/intent/control-presupuestal-transporte.md`](../intent/control-presupuestal-transporte.md).
 
 Fuente: revisión del código de `master` (PR #396) y sus migraciones. No se consultó la base de producción; los conteos
@@ -175,9 +175,9 @@ Orden: (1) se crea lo nuevo en paralelo y de solo lectura, (2) se valida con Fin
 
 ---
 
-## 7. Decisiones pendientes (necesito tu respuesta)
+## 7. Decisiones (aprobadas el 31/10/2026 según la recomendación)
 
-| # | Decisión | Mi recomendación |
+| # | Decisión | Decisión aprobada |
 |---|---|---|
 | **D1** | Flete **propio** con OT: hoy la OT consume una **tarifa interna**. Si además imputamos combustible/peajes reales, se duplica. ¿Qué consume la OT? | **Presupuestado = tarifa interna** (se compromete al programar); **ejecutado = costos variables reales** de la ruta (combustible real o estimado + peajes + viáticos + estacionamiento) al cerrar, en lugar de la tarifa. Así se ve si la flota propia cuesta más que su tarifa. |
 | **D2** | Combustible sin carga en la ruta | Estimado = km reales por parada (o estimados si no hay GPS) × precio / rendimiento de la unidad; marcado «estimado». |
