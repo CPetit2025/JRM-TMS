@@ -21,6 +21,8 @@ const { setupBudget, read, id, fn } = require('./fixtures/budget-setup.cjs')
    CREATE TABLE dispatch_service_additions(dispatch_id uuid, request_id uuid, extra_km numeric);
    CREATE TABLE documentary_closures(dispatch_id uuid, request_id uuid, status text);
    CREATE TABLE carriers(id uuid PRIMARY KEY, business_name text);
+   -- Tipo producción: tabla antigua de otro modelo con el mismo nombre (00002); la ampliación usa transport_budget_extensions
+   CREATE TABLE budget_extensions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), ot_budget_id uuid, extra_amount numeric, justification text);
    CREATE TABLE budget_deviation_reviews(key text PRIMARY KEY, contract_id uuid);
    CREATE TABLE budget_deviation_events(key text, action text, amount_pen numeric, note text, created_by uuid, created_at timestamptz DEFAULT now());
    CREATE TABLE dispatch_documents(dispatch_id uuid, doc_type text, document_number text, voided_at timestamptz);
@@ -61,7 +63,7 @@ const { setupBudget, read, id, fn } = require('./fixtures/budget-setup.cjs')
   for (let i = 0; i < 2; i++) await db.exec(read('supabase/migrations/20261206090000_control_presupuestal_reglas_d2_d3_d5.sql'))
   // Cierre final (historial de la OT) y detalle por OT con ampliaciones (idempotentes)
   await db.exec(fn('supabase/migrations/20261111110000_cierre_economico_bandeja.sql', 'economic_documentary_status'))
-  for (const m of ['20261205090000_torre_cierre_final.sql', '20261207090000_control_presupuestal_detalle_ot.sql']) for (let i = 0; i < 2; i++) await db.exec(read('supabase/migrations/' + m))
+  for (const m of ['20261205090000_torre_cierre_final.sql', '20261208090000_control_presupuestal_detalle_ot.sql']) for (let i = 0; i < 2; i++) await db.exec(read('supabase/migrations/' + m))
 
   const budget = (c, r, x) => db.query(`UPDATE contract_budgets SET reserved_pen = reserved_pen + $2, consumed_pen = consumed_pen + $3 WHERE contract_id = $1`, [c, r, x])
   const used = async c => (await db.query(`SELECT round(reserved_pen,2)::float r, round(consumed_pen,2)::float c FROM contract_budgets WHERE contract_id=$1`, [c])).rows[0]

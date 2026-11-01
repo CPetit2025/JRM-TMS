@@ -91,7 +91,8 @@ jobs:
           if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
             echo "::error::No se puede determinar el push anterior; ejecute manualmente con apply_all_pending"; exit 1
           fi
-          git diff --name-only --diff-filter=A "$BEFORE" "$AFTER" -- supabase/migrations | xargs -r -n1 basename | sort -u > incoming.txt
+          # --no-renames: una migración renombrada (p. ej. tras un despliegue fallido) cuenta como nueva
+          git diff --no-renames --name-only --diff-filter=A "$BEFORE" "$AFTER" -- supabase/migrations | xargs -r -n1 basename | sort -u > incoming.txt
           echo "Nuevas desde $BEFORE:"; cat incoming.txt
           unexpected=$(comm -23 pending.txt incoming.txt)
           if [ -n "$unexpected" ]; then

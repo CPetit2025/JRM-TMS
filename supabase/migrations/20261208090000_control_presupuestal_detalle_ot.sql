@@ -1,14 +1,15 @@
 -- Control presupuestal · detalle financiero por OT y ampliaciones (reingeniería, Fase 4; D4 aprobada el 01/11/2026).
+-- (Antes 20261207090000: no llegó a aplicarse porque budget_extensions ya existía en producción con otro modelo.)
 -- · budget_ot_detail: posición, viajes (planificado, comprometido, ejecutado, diferencia, guías, cierre), conceptos,
 --   evolución del ejecutado, ampliaciones e historial. Sale de budget_movement_rows (sin otro libro), así que suma lo
 --   mismo que Movimientos y que la partida.
--- · Ampliación (D4): el Jefe de Distribución la solicita con motivo y evidencia; Gerencia la aprueba o rechaza (no la
+-- · Ampliación (D4, tabla transport_budget_extensions: budget_extensions es una tabla antigua de otro modelo): el Jefe de Distribución la solicita con motivo y evidencia; Gerencia la aprueba o rechaza (no la
 --   propia). Al aprobarse suma al aporte propio de la OT raíz (own_allocated_pen; el disparador de saldo recalcula la
 --   familia) y queda en contract_budget_adjustments. Distinta de la autorización sobre el tope, que no cambia la partida.
 BEGIN;
 SET LOCAL lock_timeout = '60s';
 
-CREATE TABLE IF NOT EXISTS public.budget_extensions (
+CREATE TABLE IF NOT EXISTS public.transport_budget_extensions (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   contract_id   uuid NOT NULL REFERENCES public.contracts(id) ON DELETE CASCADE,
   amount_pen    numeric(15,2) NOT NULL CHECK (amount_pen > 0),
@@ -19,12 +20,12 @@ CREATE TABLE IF NOT EXISTS public.budget_extensions (
   decided_by    uuid, decided_at timestamptz, decision_note text
 );
 -- Regla C55: FK cubierta por un índice no parcial
-CREATE INDEX IF NOT EXISTS budget_extensions_contract_idx ON public.budget_extensions(contract_id);
-ALTER TABLE public.budget_extensions ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS security_active_account ON public.budget_extensions;
-CREATE POLICY security_active_account ON public.budget_extensions AS RESTRICTIVE FOR ALL TO authenticated
+CREATE INDEX IF NOT EXISTS transport_budget_extensions_contract_idx ON public.transport_budget_extensions(contract_id);
+ALTER TABLE public.transport_budget_extensions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS security_active_account ON public.transport_budget_extensions;
+CREATE POLICY security_active_account ON public.transport_budget_extensions AS RESTRICTIVE FOR ALL TO authenticated
   USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()));
-REVOKE ALL ON public.budget_extensions FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON public.transport_budget_extensions FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.budget_extension_request(p_contract_id uuid, p_amount numeric, p_reason text, p_evidence text DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -40,10 +41,10 @@ BEGIN
  IF NOT EXISTS (SELECT 1 FROM public.contract_budgets WHERE contract_id = v_root AND concept = 'PARTIDA_TRANSPORTE') THEN
   RETURN jsonb_build_object('success', false, 'error', 'La OT no tiene partida de transporte: regístrela en Contratos');
  END IF;
- IF EXISTS (SELECT 1 FROM public.budget_extensions WHERE contract_id = v_root AND status = 'SOLICITADA') THEN
+ IF EXISTS (SELECT 1 FROM public.transport_budget_extensions WHERE contract_id = v_root AND status = 'SOLICITADA') THEN
   RETURN jsonb_build_object('success', false, 'error', 'La OT ya tiene una ampliación pendiente de Gerencia');
  END IF;
- INSERT INTO public.budget_extensions(contract_id, amount_pen, reason, evidence, requested_by)
+ INSERT INTO public.transport_budget_extensions(contract_id, amount_pen, reason, evidence, requested_by)
  VALUES (v_root, p_amount, btrim(p_reason), NULLIF(btrim(COALESCE(p_evidence, '')), ''), auth.uid()) RETURNING id INTO v_id;
  RETURN jsonb_build_object('success', true, 'id', v_id);
 END $$;
@@ -52,7 +53,7 @@ GRANT EXECUTE ON FUNCTION public.budget_extension_request(uuid, numeric, text, t
 
 CREATE OR REPLACE FUNCTION public.budget_extension_action(p_id uuid, p_action text, p_note text DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
-DECLARE e public.budget_extensions%ROWTYPE; b public.contract_budgets%ROWTYPE; v_action text := upper(COALESCE(p_action, ''));
+DECLARE e public.transport_budget_extensions%ROWTYPE; b public.contract_budgets%ROWTYPE; v_action text := upper(COALESCE(p_action, ''));
  v_note text := NULLIF(btrim(COALESCE(p_note, '')), '');
 BEGIN
  IF auth.uid() IS NULL OR NOT public.is_active_tms_user()
@@ -60,7 +61,7 @@ BEGIN
   RETURN jsonb_build_object('success', false, 'error', 'Solo Gerencia de Operaciones decide una ampliación de partida');
  END IF;
  IF v_action NOT IN ('APROBAR','RECHAZAR') THEN RETURN jsonb_build_object('success', false, 'error', 'Acción inválida'); END IF;
- SELECT * INTO e FROM public.budget_extensions WHERE id = p_id FOR UPDATE;
+ SELECT * INTO e FROM public.transport_budget_extensions WHERE id = p_id FOR UPDATE;
  IF NOT FOUND OR public.budget_family(e.contract_id) IS NULL THEN RETURN jsonb_build_object('success', false, 'error', 'Ampliación no disponible'); END IF;
  IF e.status <> 'SOLICITADA' THEN RETURN jsonb_build_object('success', false, 'error', 'La ampliación ya fue decidida'); END IF;
  IF e.requested_by = auth.uid() AND NOT public.is_tms_admin() THEN RETURN jsonb_build_object('success', false, 'error', 'No puede decidir una ampliación que usted solicitó'); END IF;
@@ -74,7 +75,7 @@ BEGIN
   VALUES (b.id, e.contract_id, 'own_allocated_pen', COALESCE(b.own_allocated_pen, 0), COALESCE(b.own_allocated_pen, 0) + e.amount_pen,
    'Ampliación aprobada por Gerencia: ' || e.reason);
  END IF;
- UPDATE public.budget_extensions SET status = CASE v_action WHEN 'APROBAR' THEN 'APROBADA' ELSE 'RECHAZADA' END,
+ UPDATE public.transport_budget_extensions SET status = CASE v_action WHEN 'APROBAR' THEN 'APROBADA' ELSE 'RECHAZADA' END,
   decided_by = auth.uid(), decided_at = now(), decision_note = v_note WHERE id = p_id;
  RETURN jsonb_build_object('success', true);
 END $$;
@@ -129,7 +130,7 @@ BEGIN
   'contract', (SELECT jsonb_build_object('id', c.id, 'code', c.code, 'client', cl.business_name, 'status', to_jsonb(c)->>'status')
                FROM public.contracts c LEFT JOIN public.clients cl ON cl.id = c.client_id WHERE c.id = v_root),
   'position', (SELECT jsonb_build_object('allocated_pen', p.allocated, 'own_allocated_pen', p.own,
-     'extensions_pen', COALESCE((SELECT sum(e.amount_pen) FROM public.budget_extensions e WHERE e.contract_id = v_root AND e.status = 'APROBADA'), 0),
+     'extensions_pen', COALESCE((SELECT sum(e.amount_pen) FROM public.transport_budget_extensions e WHERE e.contract_id = v_root AND e.status = 'APROBADA'), 0),
      'reserved_pen', p.reserved, 'consumed_pen', p.consumed, 'used_pen', p.reserved + p.consumed,
      'used_pct', CASE WHEN p.allocated > 0 THEN round((p.reserved + p.consumed) / p.allocated * 100, 1) END,
      'cap_pen', round(p.allocated * v_cap / 100, 2), 'protected_pen', round(p.allocated * (100 - v_cap) / 100, 2),
@@ -168,7 +169,7 @@ BEGIN
   'extensions', COALESCE((SELECT jsonb_agg(jsonb_build_object('id', e.id, 'amount_pen', e.amount_pen, 'reason', e.reason, 'evidence', e.evidence, 'status', e.status,
      'requested_by', public.economic_user_name(e.requested_by), 'requested_at', e.requested_at, 'decided_by', public.economic_user_name(e.decided_by),
      'decided_at', e.decided_at, 'decision_note', e.decision_note) ORDER BY e.requested_at DESC)
-    FROM public.budget_extensions e WHERE e.contract_id = v_root), '[]'::jsonb),
+    FROM public.transport_budget_extensions e WHERE e.contract_id = v_root), '[]'::jsonb),
   'can_request_extension', public.is_tms_admin() OR public.has_tms_permission('control-presupuestal-recomendar'),
   'can_decide_extension', public.is_tms_admin() OR public.has_tms_permission('control-presupuestal-autorizar'),
   -- Historial de la OT: partida, ampliaciones, autorizaciones, desvíos y cierres finales de sus viajes (últimos 300)
@@ -177,9 +178,9 @@ BEGIN
       'old', a.old_value, 'new', a.new_value, 'by', NULL) AS h
      FROM public.contract_budget_adjustments a WHERE a.contract_id = ANY (v_budgets)
     UNION ALL SELECT jsonb_build_object('at', e.requested_at, 'kind', 'AMPLIACION', 'title', 'Ampliación solicitada: S/ ' || e.amount_pen, 'detail', e.reason,
-      'by', public.economic_user_name(e.requested_by)) FROM public.budget_extensions e WHERE e.contract_id = v_root
+      'by', public.economic_user_name(e.requested_by)) FROM public.transport_budget_extensions e WHERE e.contract_id = v_root
     UNION ALL SELECT jsonb_build_object('at', e.decided_at, 'kind', 'AMPLIACION', 'title', 'Ampliación ' || lower(e.status), 'detail', e.decision_note,
-      'by', public.economic_user_name(e.decided_by)) FROM public.budget_extensions e WHERE e.contract_id = v_root AND e.decided_at IS NOT NULL
+      'by', public.economic_user_name(e.decided_by)) FROM public.transport_budget_extensions e WHERE e.contract_id = v_root AND e.decided_at IS NOT NULL
     UNION ALL SELECT jsonb_build_object('at', ev.created_at, 'kind', 'AUTORIZACION', 'title', 'Autorización: ' || lower(ev.action) || COALESCE(' · S/ ' || ev.amount_pen, ''),
       'detail', ev.note, 'by', public.economic_user_name(ev.created_by))
      FROM public.budget_authorization_events ev JOIN public.budget_authorizations au ON au.id = ev.authorization_id WHERE au.contract_id = ANY (v_family)
