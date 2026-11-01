@@ -17,6 +17,8 @@ import { collectChecks, firstBlockedStep, blocking, lateStops, type RouteCheck, 
 
 type Router = { push: (href: string) => void }
 export type CubicajeCalc = { kg: number; m3: number; kgSinMedida: number }
+// Control presupuestal: consumo proyectado de cada OT con este compromiso (budget_preview)
+type BudgetPreview = { code: string; after_pct: number | null; level: string; allowed: boolean; needs_pen: number }
 type StockCorte = { estado: 'VIGENTE' | 'DESACTUALIZADO' | 'SIN_CARGA'; horas: number | null; max_horas: number }
 type NewDispatch = {
   selected_requests: { id: string, document_number: string }[],
@@ -105,6 +107,7 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
   // Observaciones operativas de la programación (obligatorias si la salida queda después de la atención requerida)
   const [notes, setNotes] = useState('')
   const [cubicaje, setCubicaje] = useState<CubicajeCalc | null>(null)
+  const [budget, setBudget] = useState<BudgetPreview[]>([])
   const [terceroCapacityKg, setTerceroCapacityKg] = useState<number | null>(null)
   const [stockCorte, setStockCorte] = useState<StockCorte | null>(null)
   const [eligibility, setEligibility] = useState<{ key: string; result: DispatchEligibilityResult | null }>({ key: '', result: null })
@@ -187,7 +190,13 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
 
   const has = newDispatch.selected_requests.length > 0
   const gr = has && newDispatch.document_type === 'GR'
+  const budgetAlert = (b: BudgetPreview): RouteCheck => ({ key: `partida-alerta-${b.code}`, label: `OT ${b.code}: la partida de transporte llegaría al ${b.after_pct} % (alerta)`, step: 2, level: 'warn' })
+  const budgetBlock = (b: BudgetPreview): RouteCheck => ({ key: `partida-${b.code}`, step: 2, level: 'block', label: Number(b.after_pct) > 100
+    ? `OT ${b.code}: superaría el 100 % de su partida (${b.after_pct} %): requiere ampliación presupuestal`
+    : `OT ${b.code}: superaría el tope de su partida (${b.after_pct} %): falta autorización de Gerencia por S/ ${Number(b.needs_pen).toFixed(2)} (Control presupuestal)` })
   const checks: RouteCheck[] = collectChecks([
+    ...budget.filter(b => b.allowed && b.level === 'ALERTA').map(budgetAlert),
+    ...budget.filter(b => !b.allowed).map(budgetBlock),
     !has && { key: 'servicios', label: 'Seleccionar al menos un servicio', step: 1, level: 'block' },
     gr && modalidad === 'PROPIA' && !newDispatch.vehicle_plate && { key: 'placa', label: 'Placa del vehículo', step: 2, level: 'block' },
     gr && modalidad === 'PROPIA' && !newDispatch.driver_name && { key: 'conductor', label: 'Conductor', step: 2, level: 'block' },
@@ -303,6 +312,15 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
     }, 0)
     return () => { alive = false; window.clearTimeout(t) }
   }, [supabase, tercero.supplier_vehicle_id])
+
+  // Consumo proyectado de la partida de cada OT con el flete y la descarga estimada (el servidor vuelve a validar)
+  const budgetKey = JSON.stringify(selectedServices.filter(costedOT).map(r => [r.contract_id, Math.round((serviceShare(r.id) + Number(r.unloading_estimate_pen || 0)) * 100) / 100]))
+  useEffect(() => {
+    let alive = true
+    const items = (JSON.parse(budgetKey) as [string, number][]).map(([contract_id, amount]) => ({ contract_id, amount }))
+    const t = window.setTimeout(() => { void supabase.rpc('budget_preview', { p_items: items }).then(({ data }) => { if (alive) setBudget(data?.success ? data.rows as BudgetPreview[] : []) }) }, 400)
+    return () => { alive = false; window.clearTimeout(t) }
+  }, [supabase, budgetKey])
 
   // Elegibilidad de unidad y conductor apenas se eligen (se vuelve a verificar al programar)
   useEffect(() => {
