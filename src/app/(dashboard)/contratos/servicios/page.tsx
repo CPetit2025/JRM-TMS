@@ -9,7 +9,7 @@ import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filte
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 import { TableActions } from '@/components/ui/table-actions'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Plus, Check, Ban, Loader2, Upload, Download, AlertCircle, Search, X, ArrowUp, ArrowDown, ArrowUpDown, RefreshCw, Scale, Info, Layers, Clock, CheckCircle2, FileEdit, CircleDollarSign } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -115,7 +115,8 @@ export default function ContractServicesPage() {
   const [reconcilingDispatch, setReconcilingDispatch] = useState<string | null>(null)
   // Ruta programada cuyo flete aún no tiene monto (flota propia sin tarifa): figura en el registro para valorizarla
   // N.º correlativo por orden de registro: no cambia al ordenar ni filtrar
-  const serialOf = new Map([...services].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)).map((x, i) => [x.id, i + 1]))
+  // shortcut: numera los servicios cargados (desde la fecha del filtro); si el N.º debe ser fijo entre filtros, numerarlo en la base
+  const serialOf = useMemo(() => new Map([...services].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)).map((x, i) => [x.id, i + 1])), [services])
   const sinValorizar = (s: ContractService) => s.service_type === 'FLETE' && !!s.dispatch_id && s.status !== 'ANULADO' && Number(s.amount_pen) === 0
   const stageOf = (s: ContractService): RegistryContext['stage'] => s.status === 'ANULADO' ? 'ANULADO' : registryContext[s.id]?.stage || (s.dispatch_id ? 'OTRA_SEDE' : 'REGISTRO_MANUAL')
   const [pesoApt, setPesoApt] = useState<Record<string, PesoApt>>({})

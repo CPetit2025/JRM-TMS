@@ -46,6 +46,8 @@ const { setupBudget, read, id, fn } = require('./fixtures/budget-setup.cjs')
   await db.exec(`UPDATE economic_settings SET budget_imputation_since = now() - interval '1 day'`)
   const migration = read('supabase/migrations/20261201090000_circuito_economico_movimientos.sql')
   await db.exec(migration); await db.exec(migration)
+  // Pendientes sin búsqueda cuadrática (auditoría, hallazgo 12): parche idempotente sobre budget_pending
+  for (let i = 0; i < 2; i++) await db.exec(read('supabase/migrations/20261204090000_pendientes_sin_busqueda_cuadratica.sql'))
 
   const budget = (c, r, x) => db.query(`UPDATE contract_budgets SET reserved_pen = reserved_pen + $2, consumed_pen = consumed_pen + $3 WHERE contract_id = $1`, [c, r, x])
   const used = async c => (await db.query(`SELECT round(reserved_pen,2)::float r, round(consumed_pen,2)::float c FROM contract_budgets WHERE contract_id=$1`, [c])).rows[0]
@@ -96,7 +98,7 @@ const { setupBudget, read, id, fn } = require('./fixtures/budget-setup.cjs')
   // Multi-OT propia con una solicitud sin OT: combustible estimado por partes iguales; la parte sin OT no se carga
   await close(id(61), [[id(10), 350], [id(20), 150]])
   pend = (await rpc('budget_pending()')).rows
-  assert.ok(pend.some(p => p.kind === 'COMBUSTIBLE_ESTIMADO' && p.dispatch_number === 'R-61'), 'estimated fuel pending substitution')
+  assert.ok(pend.some(p => p.kind === 'COMBUSTIBLE_ESTIMADO' && p.dispatch_number === 'R-61' && p.age_days === 0), 'estimated fuel pending substitution, aged from its application date')
   await expense(511, id(61), 'COMBUSTIBLE', 99); await approve(511)
   pend = (await rpc('budget_pending()')).rows
   assert.ok(!pend.some(p => p.kind === 'COMBUSTIBLE_ESTIMADO'), 'real fuel replaced the estimate')
