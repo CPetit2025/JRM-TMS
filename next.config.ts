@@ -5,6 +5,7 @@ const isCapacitor = process.env.CAPACITOR_BUILD === 'true';
 
 const nextConfig: NextConfig = {
   /* config options here */
+  experimental: { useTypeScriptCli: false },
   output: isCapacitor ? 'export' : undefined,
   images: isCapacitor ? { unoptimized: true } : undefined,
   async headers() {

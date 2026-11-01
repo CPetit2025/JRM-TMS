@@ -12,7 +12,7 @@ function sql(input) { const r=query(input);if(r.status)throw Error(r.stderr||r.s
 const staff = `SET ROLE authenticated; SET request.jwt.claim.sub='${id(2)}'; `
 function deny(input,pattern) {const r=query(input);assert.notEqual(r.status,0);assert.match(r.stderr,pattern)}
 const json = input => JSON.parse(sql(staff+'SELECT '+input+';'))
-function payload(extra={}) {return {department:'OT (Administración de Contratos)',contract_id:id(3),attention_mode:'RECOJO_CLIENTE',request_type:'DESPACHO',required_date:'2099-01-01',cargo_description:'Carga',pickup_address:'Planta',pickup_district:'Chilca',delivery_address:'Destino',delivery_district:'Callao',...extra}}
+function payload(extra={}) {const value={department:'OT (Administración de Contratos)',contract_id:id(3),attention_mode:'RECOJO_CLIENTE',request_type:'DESPACHO',required_date:'2099-01-01',cargo_description:'Carga',pickup_address:'Planta',pickup_district:'Chilca',delivery_address:'Destino',delivery_district:'Callao',...extra};if(value.reference_type)value.reference_supplier_id??=value.supplier_id||null;return value}
 const lit = value => "'"+JSON.stringify(value).replaceAll("'","''")+"'::jsonb"
 const comp = contract => [{contract_id:contract,weight_kg:100,volume_m3:2}]
 const save = (p,c=[],u=[],request=null) => json(`public.save_transport_request_attention(${request?"'"+request+"'":'NULL'},${lit(p)},${lit(c)},${lit(u)})`)
@@ -321,6 +321,8 @@ try {
  ALTER TABLE supplier_locations ADD CONSTRAINT supplier_locations_present CHECK (btrim(name)<>'' AND btrim(address)<>'');
  CREATE FUNCTION can_view_driver_evidence() RETURNS boolean LANGUAGE sql AS $$ SELECT false $$;`)
  sql(read('supabase/migrations/20261009120000_suppliers.sql'))
+ sql(`ALTER TABLE transport_requests ADD COLUMN reference_supplier_id uuid REFERENCES suppliers(id) ON DELETE RESTRICT;`)
+ sql(fn('supabase/migrations/20261209080000_referencia_proveedor_y_reporte_costos.sql','apply_request_supplier'))
  const c63=query(read('supabase/tests/caja_c63_proveedores.test.sql'))
  assert.notEqual(c63.status,0);assert.match(c63.stderr,/CAJA C63 PASS \(7\/7\)/)
  assert.equal(sql(`SELECT reference_number FROM transport_requests WHERE id='${pay.id}'`),'0042')

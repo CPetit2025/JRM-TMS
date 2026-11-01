@@ -21,8 +21,8 @@ BEGIN
  req:=public.save_transport_request(NULL,jsonb_build_object('department','Logística','request_type','TRASLADO',
   'attention_mode','TRANSPORTE_JRM','site_id',site,'required_date',current_date+7,'cargo_description','ZZ C94',
   'pickup_address','Origen prueba','pickup_district','CHILCA','delivery_address','Destino prueba','delivery_district','CALLAO',
-  'service_cost',100,'reference_type','OC','reference_number','ZZ-C94-OC','supplier_id',supplier),'[]');
- PERFORM public.apply_request_supplier(req,jsonb_build_object('supplier_id',supplier,'reference_type','OC','reference_number','ZZ-C94-OC'));
+  'service_cost',100,'reference_type','OC','reference_number','ZZ-C94-OC','supplier_id',supplier,'reference_supplier_id',supplier),'[]');
+ PERFORM public.apply_request_supplier(req,jsonb_build_object('supplier_id',supplier,'reference_type','OC','reference_number','ZZ-C94-OC','reference_supplier_id',supplier));
  SELECT COALESCE(service_cost,0)+COALESCE(unloading_estimate_pen,0) INTO cap FROM public.transport_requests WHERE id=req;
  IF NOT EXISTS(SELECT 1 FROM public.transport_requests t WHERE t.id=req AND public.is_reference_transport(t) AND public.can_access_site(t.site_id)) THEN
   RAISE EXCEPTION 'CAJA C94 FAIL: solicitud de prueba no conserva referencia y sede'; END IF;

@@ -1,14 +1,7 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
-import { AppLayout } from "@/components/layout/app-layout";
 import { webBuildId, webVersion } from "@/lib/app-version";
 import { LegacyAiKeyCleanup } from "@/components/LegacyAiKeyCleanup";
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Torre de Control - JRM | TMS",
@@ -24,7 +17,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" data-build-id={webBuildId} data-app-version={webVersion}>
-      <body className={`${inter.variable} font-sans antialiased min-h-dvh bg-slate-50`}>
+      <body className="font-sans antialiased min-h-dvh bg-slate-50">
         {children}
         <LegacyAiKeyCleanup />
         <Toaster richColors position="top-right" />

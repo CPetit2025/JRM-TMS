@@ -24,7 +24,7 @@ function fixture(options={}) {
   vm.runInNewContext(ts.transpileModule(readFileSync(path.join(__dirname,'../src/lib/route-point-sync.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,context)
   return{api:context.exports,calls,values}
 }
-const payload={dispatch_id:'d1',request_id:'r1',user_id:'u1',photos_base64:['data:image/jpeg;base64,AAA','data:image/jpeg;base64,BBB'],received_by:'Receptor',guide:'G1',note:'Firmada',captured_at:'2026-10-05T12:00:00Z'}
+const payload={dispatch_id:'d1',request_id:'r1',user_id:'u1',photos_base64:['data:image/jpeg;base64,AAA','data:image/jpeg;base64,BBB'],odometer:'12345.6',odometer_photo_base64:'data:image/jpeg;base64,ODO',received_by:'Receptor',guide:'G1',note:'Firmada',captured_at:'2026-10-05T12:00:00Z'}
 test('sin conexión conserva fotos y operación; nunca confirma una entrega local',async()=>{
   const {api,calls}=fixture({online:false});api.saveOfflineAction('delivery_submit_driver',payload,'op1')
   api.saveOfflineAction('delivery_submit_driver',payload,'op1')
@@ -35,11 +35,13 @@ test('sin conexión conserva fotos y operación; nunca confirma una entrega loca
 test('la recepción confirmada sube todas las fotos con rutas estables y conserva datos de captura',async()=>{
   const {api,calls}=fixture();api.saveOfflineAction('delivery_submit_driver',payload,'op1')
   assert.equal(await api.syncOfflineActions(),0)
-  assert.equal(calls.filter(c=>c[0]==='upload').length,2)
+  assert.equal(calls.filter(c=>c[0]==='upload').length,3)
   assert.equal(calls[0][1],'u1/d1/r1/op1-0.jpg');assert.equal(calls[0][2].upsert,false)
+  assert.equal(calls[2][1],'u1/d1/r1/op1-odometer.jpg')
   const args=calls.at(-1)[2]
   assert.equal(args.p_operation_id,'op1');assert.equal(args.p_payload.captured_at,payload.captured_at)
   assert.equal(args.p_payload.received_by,'Receptor');assert.equal(args.p_payload.photos.length,2)
+  assert.equal(args.p_payload.odometer,'12345.6');assert.equal(args.p_payload.odometer_photo,'u1/d1/r1/op1-odometer.jpg')
 })
 test('un fallo del servidor conserva la cola y muestra su motivo',async()=>{
   const {api}=fixture({rpcError:'GPS pendiente'});api.saveOfflineAction('delivery_submit_driver',payload,'op1')

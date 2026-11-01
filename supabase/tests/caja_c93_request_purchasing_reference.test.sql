@@ -25,7 +25,7 @@ BEGIN
     'attention_mode','TRANSPORTE_JRM','site_id',site,'required_date',current_date+7,
     'cargo_description','ZZ C93','pickup_address','Origen prueba','pickup_district','CHILCA',
     'delivery_address','Destino prueba','delivery_district','CALLAO','service_cost',1,
-    'reference_type',reference,'reference_number','  000123  ','supplier_id',supplier);
+    'reference_type',reference,'reference_number','  000123  ','supplier_id',supplier,'reference_supplier_id',supplier);
    req:=public.save_transport_request(NULL,payload,'[]');
    PERFORM public.apply_request_supplier(req,payload);
    IF NOT EXISTS(SELECT 1 FROM public.transport_requests WHERE id=req AND contract_id IS NULL

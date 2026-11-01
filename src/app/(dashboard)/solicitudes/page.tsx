@@ -77,6 +77,8 @@ interface TransportRequest {
   supplier_location_id?: string | null
   reference_type?: string | null
   reference_number?: string | null
+  reference_supplier_id?: string | null
+  reference_supplier?: { business_name: string } | null
   suppliers?: { business_name: string } | null
   client_id?: string | null
   request_client?: { business_name: string } | null
@@ -285,7 +287,7 @@ export default function SolicitudesPage() {
     estimated_weight: '',
     estimated_volume: '',
     service_cost: '',
-    purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: ''
+    purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: '', reference_supplier_id: ''
   })
   useEffect(() => { activeRequestRoot.current = newRequest.contract_id }, [newRequest.contract_id])
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
@@ -368,11 +370,12 @@ export default function SolicitudesPage() {
     setLoading(true)
     try {
       // Por páginas: la API entrega como máximo 1.000 filas por consulta
-      const data = await allPages<any>((o, n) => supabase
+      const data = await allPages<TransportRequest>((o, n) => supabase
         .from('transport_requests')
         .select(`
           *,
-          suppliers(business_name),
+          suppliers:suppliers!transport_requests_supplier_id_fkey(business_name),
+          reference_supplier:suppliers!transport_requests_reference_supplier_id_fkey(business_name),
           request_client:clients!client_id(business_name),
           transport_request_components(id, component_contract_id, requested_weight_kg, requested_volume_m3),
           contracts(
@@ -632,7 +635,8 @@ export default function SolicitudesPage() {
       service_cost: request.service_cost?.toString() || '',
       purchase_order: duplicate ? '' : request.purchase_order || '', supplier_id: request.supplier_id || '', supplier_location_id: request.supplier_location_id || '',
       client_id: request.contract_id ? '' : request.client_id || '',
-      reference_type: request.reference_type || '', reference_number: duplicate ? '' : request.reference_number || ''
+      reference_type: request.reference_type || '', reference_number: duplicate ? '' : request.reference_number || '',
+      reference_supplier_id: duplicate ? '' : request.reference_supplier_id || ''
     })
 
     void fetchLeadTimeSettings()
@@ -730,6 +734,10 @@ export default function SolicitudesPage() {
       toast.error(`Ingrese el número de ${newRequest.reference_type}.`)
       return
     }
+    if (newRequest.reference_type && !newRequest.reference_supplier_id) {
+      toast.error(`Seleccione el proveedor de la referencia ${newRequest.reference_type}.`)
+      return
+    }
     setIsSubmitting(true)
 
     try {
@@ -774,7 +782,7 @@ export default function SolicitudesPage() {
         estimated_weight: '',
         estimated_volume: '',
         service_cost: '',
-        purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: ''
+        purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: '', reference_supplier_id: ''
       }))
       setContractSearch('')
       setComponentOptions([])
@@ -925,8 +933,10 @@ export default function SolicitudesPage() {
     Boolean(requiredAt) && requiresDeliveryLeadTime && leadTimeEvaluation.enough === false && { label: 'Anticipación mínima', target: 'req-fecha' },
     !newRequest.cargo_description.trim() && { label: 'Glosa de la carga', target: 'req-carga' },
     Boolean(newRequest.reference_type) && !newRequest.reference_number.trim() && { label: `Número de ${newRequest.reference_type}`, target: 'req-carga' },
+    Boolean(newRequest.reference_type) && !newRequest.reference_supplier_id && { label: `Proveedor de ${newRequest.reference_type}`, target: 'req-carga' },
     !unloadingAnswer && { label: 'Descarga especial (Sí/No)', target: 'req-descarga' },
   ].filter(Boolean) as { label: string; target: string }[])
+  const referencesWithoutSupplier = requests.filter(request => request.reference_type && !request.reference_supplier_id)
 
   return (
     <div className="flex min-h-0 w-full flex-col gap-2.5 mx-auto lg:h-full">
@@ -969,7 +979,7 @@ export default function SolicitudesPage() {
                 estimated_weight: '',
                 estimated_volume: '',
                 service_cost: '',
-                purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: ''
+                purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: '', reference_supplier_id: ''
               })
               setDraftFound(readDraft()); setDraftMode(true)
               setIsModalOpen(true)
@@ -982,6 +992,10 @@ export default function SolicitudesPage() {
         )}
         <TorreControlButton />
       </>} />
+      {referencesWithoutSupplier.length > 0 && <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <span><strong>{referencesWithoutSupplier.length}</strong> referencia(s) OS/OC/RQ histórica(s) sin proveedor vinculado. Complete el dato desde la edición para que aparezca completo en el reporte.</span>
+        {canWrite('solicitudes') && <button type="button" onClick={() => { const request = referencesWithoutSupplier[0]; if (request) void openEditModal(request) }} className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold hover:bg-amber-100">Completar primera pendiente</button>}
+      </div>}
       {autoApproval && (
         <p role="status" className="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
           <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -1054,7 +1068,7 @@ export default function SolicitudesPage() {
                     return <span title={note || undefined} className={`whitespace-nowrap ${lead?.enough === false ? 'font-semibold text-red-700' : req.status === 'REPROGRAMADA' ? 'font-semibold text-amber-700' : 'text-slate-700'}`}>{req.required_at ? cellDateTime(req.required_at) : serviceDate(req.required_date)}</span>
                   })()}</td>
                   <td className={cell}>{label('Servicio')}<ServiceTypeBadge request={req} /></td>
-                  <td className={cell}>{label('OT / Ref.')}<span className="whitespace-nowrap font-semibold text-[#002855]" title={[`Solicitud ${req.request_number}`, req.contracts?.code && referenceLabel(req)].filter(Boolean).join(' · ')}>{req.contracts?.code || (req.contract_id ? 'OT vinculada' : referenceLabel(req) || 'Sin OT')}</span></td>
+                  <td className={cell}>{label('OT / Ref.')}<span className="whitespace-nowrap font-semibold text-[#002855]" title={[`Solicitud ${req.request_number}`, req.contracts?.code && referenceLabel(req)].filter(Boolean).join(' · ')}>{req.contracts?.code || (req.contract_id ? 'OT vinculada' : referenceLabel(req) || 'Sin OT')}</span>{req.reference_type && !req.reference_supplier_id && <span className="mt-1 block text-[11px] font-semibold text-amber-700">Proveedor de referencia pendiente</span>}</td>
                   <td className={cell}>{label('Solicitante')}<p className="truncate text-slate-700" title={[req.requester_name, req.department].filter(Boolean).join(' · ') || undefined}>{req.requester_name || 'Sin solicitante'}</p></td>
                   <td className={cell}>{label('Empresa')}{(() => { const party = partyName(req, (req.request_client?.business_name || req.contracts?.clients?.business_name), req.suppliers?.business_name); return <p className="truncate text-slate-700" title={party ? `${requiresSupplier(req) ? 'Proveedor' : 'Cliente'}: ${party}` : undefined}>{party || <button type="button" onClick={e => { e.stopPropagation(); setLinkRequest(req) }} className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-100" title="Sin esto no se puede programar">{requiresSupplier(req) ? 'Proveedor sin vincular' : 'Sin cliente'} · vincular</button>}</p> })()}</td>
                   <td className={`${cell} col-span-2`}>{label('Punto de atención')}<div title={addresses.map(place => `${place.label}: ${place.address}`).join(' → ')} className="text-slate-700">
@@ -1316,7 +1330,7 @@ export default function SolicitudesPage() {
                 <div>
                   <span className="mb-1 block text-sm font-medium text-slate-700">Documento de referencia {referenceRequired ? '(obligatorio: OC, OS o RQ)' : '(opcional)'}</span>
                   <div className="flex gap-2">
-                    <select required={referenceRequired} aria-label="Tipo de documento" value={newRequest.reference_type} onChange={e => setNewRequest({ ...newRequest, reference_type: e.target.value, reference_number: e.target.value ? newRequest.reference_number : '' })}
+                    <select required={referenceRequired} aria-label="Tipo de documento" value={newRequest.reference_type} onChange={e => setNewRequest({ ...newRequest, reference_type: e.target.value, reference_number: e.target.value ? newRequest.reference_number : '', reference_supplier_id: e.target.value === newRequest.reference_type ? newRequest.reference_supplier_id : '' })}
                       className="w-36 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:ring-2 focus:ring-[#002855]">
                       <option value="">{referenceRequired ? "Seleccione OC, OS o RQ" : "Sin documento"}</option>
                       {(Object.keys(REFERENCE_TYPES) as ReferenceType[]).map(k => <option key={k} value={k}>{k} · {REFERENCE_TYPES[k]}</option>)}
@@ -1325,6 +1339,13 @@ export default function SolicitudesPage() {
                       className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:ring-2 focus:ring-[#002855] disabled:bg-slate-100"
                       value={newRequest.reference_number} onChange={e => setNewRequest({ ...newRequest, reference_number: e.target.value })} />
                   </div>
+                  {newRequest.reference_type && <label className="mt-3 block text-sm font-medium text-slate-700">Proveedor de {newRequest.reference_type} *
+                    <select required value={newRequest.reference_supplier_id} onChange={e => setNewRequest({ ...newRequest, reference_supplier_id: e.target.value })} className={field}>
+                      <option value="">Seleccione el proveedor asociado a la referencia</option>
+                      {suppliers.map(s => <option key={s.id} value={s.id}>{s.business_name} · RUC {s.tax_id}</option>)}
+                    </select>
+                    <span className="mt-1 block text-xs font-normal text-slate-500">Se vincula al maestro de proveedores. Las direcciones de origen y destino se registran en la sección de ruta de esta solicitud.</span>
+                  </label>}
                 </div>
               {!isPickupRequest && <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -1460,10 +1481,8 @@ export default function SolicitudesPage() {
           <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-4">
             <div><span className="block text-xs text-slate-500">{selectedRequestDetails.contract_id ? 'OT madre' : 'Referencia del servicio'}</span><strong>{selectedRequestDetails.contract_id ? detailExecution?.ot_code || selectedRequestDetails.contracts?.code || 'OT vinculada sin código disponible' : referenceLabel(selectedRequestDetails) || 'Sin referencia'}</strong></div>
             <div><span className="block text-xs text-slate-500">Estado</span>{getStatusBadge(selectedRequestDetails.status)}</div>
-            <div><span className="block text-xs text-slate-500">Código / Emisión</span><strong>{selectedRequestDetails.request_number}</strong><p className="mt-1">{requestDate(selectedRequestDetails.created_at, true)}</p></div><div><span className="block text-xs text-slate-500">Tipo de servicio</span>{serviceLabel(selectedRequestDetails)}</div><div><span className="block text-xs text-slate-500">Cliente</span>{(selectedRequestDetails.request_client?.business_name || selectedRequestDetails.contracts?.clients?.business_name) || 'Sin cliente registrado'}</div><div><span className="block text-xs text-slate-500">Proveedor de origen</span>{selectedRequestDetails.suppliers?.business_name || (requiresSupplier(selectedRequestDetails) ? 'Proveedor sin vincular' : 'No aplica')}</div><div><span className="block text-xs text-slate-500">Documento de referencia</span>{referenceLabel(selectedRequestDetails) || 'Sin documento'}</div><div><span className="block text-xs text-slate-500">Área / Departamento</span>{selectedRequestDetails.department}</div><div><span className="block text-xs text-slate-500">Solicitante</span>{selectedRequestDetails.requester_name}</div>
+            <div><span className="block text-xs text-slate-500">Código / Emisión</span><strong>{selectedRequestDetails.request_number}</strong><p className="mt-1">{requestDate(selectedRequestDetails.created_at, true)}</p></div><div><span className="block text-xs text-slate-500">Tipo de servicio</span>{serviceLabel(selectedRequestDetails)}</div><div><span className="block text-xs text-slate-500">Cliente</span>{(selectedRequestDetails.request_client?.business_name || selectedRequestDetails.contracts?.clients?.business_name) || 'Sin cliente registrado'}</div><div><span className="block text-xs text-slate-500">Proveedor de origen</span>{selectedRequestDetails.suppliers?.business_name || (requiresSupplier(selectedRequestDetails) ? 'Proveedor sin vincular' : 'No aplica')}</div><div><span className="block text-xs text-slate-500">Documento de referencia</span>{referenceLabel(selectedRequestDetails) || 'Sin documento'}{selectedRequestDetails.reference_type && <p className="mt-1">Proveedor: {selectedRequestDetails.reference_supplier?.business_name || 'Pendiente de completar'}</p>}</div><div><span className="block text-xs text-slate-500">Origen</span>{[selectedRequestDetails.pickup_address, selectedRequestDetails.pickup_district, selectedRequestDetails.pickup_province, selectedRequestDetails.pickup_department].filter(Boolean).join(' · ') || 'Sin dirección'}</div><div><span className="block text-xs text-slate-500">Destino</span>{[selectedRequestDetails.delivery_address, selectedRequestDetails.delivery_district, selectedRequestDetails.delivery_province, selectedRequestDetails.delivery_department].filter(Boolean).join(' · ') || 'Sin dirección'}</div><div><span className="block text-xs text-slate-500">Área / Departamento</span>{selectedRequestDetails.department}</div><div><span className="block text-xs text-slate-500">Solicitante</span>{selectedRequestDetails.requester_name}</div>
             <div><span className="block text-xs text-slate-500">Fecha requerida</span>{selectedRequestDetails.required_at ? requestDate(selectedRequestDetails.required_at, true) : serviceDate(selectedRequestDetails.required_date)}{selectedRequestDetails.time_window && <p className="mt-1 flex items-center gap-1 text-xs"><Clock className="h-3 w-3" />{selectedRequestDetails.time_window}</p>}</div>
-            <div><span className="block text-xs text-slate-500">Origen</span>{selectedRequestDetails.pickup_address || 'Sin origen'}</div>
-            <div><span className="block text-xs text-slate-500">Destino</span>{selectedRequestDetails.delivery_address || 'Sin destino'}</div>
           </div>
           {selectedRequestDetails.request_type === 'DESPACHO' && selectedRequestDetails.attention_mode !== 'RECOJO_CLIENTE' && <div className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-slate-900">Anticipación de entrega</h3><p className="mt-2">{!selectedRequestDetails.required_at ? 'Sin evaluación: registro histórico sin fecha y hora precisas.' : !leadTimeLoaded ? 'Configuración no disponible.' : formatLeadTimeStatus(requestLeadTime(selectedRequestDetails).status)}</p>{leadTimeLoaded && selectedRequestDetails.required_at && requestLeadTime(selectedRequestDetails).minimumAt && <p className="mt-1 text-xs text-slate-500">Zona: {selectedRequestDetails.delivery_zone || 'Sin zona'} · Plazo: {requestLeadTime(selectedRequestDetails).hours} horas · Primera atención permitida: {firstAllowed(requestLeadTime(selectedRequestDetails).minimumAt)}</p>}</div>}
           <div className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-slate-900">Glosa / Detalle de carga</h3><p className="mt-2 whitespace-pre-wrap break-words">{selectedRequestDetails.cargo_description || 'Sin glosa registrada'}</p>{selectedRequestDetails.purchase_order && <p className="mt-2 text-xs">Orden de compra: {selectedRequestDetails.purchase_order}</p>}{selectedRequestDetails.budget_observation && <p className="mt-3 rounded-lg bg-rose-50 p-3 text-xs text-rose-800">Observación: {selectedRequestDetails.budget_observation}</p>}</div>

@@ -58,9 +58,9 @@ BEGIN
     denied := false; BEGIN PERFORM public.apply_request_supplier(v_req, jsonb_build_object('supplier_id', v_sup, 'reference_type', 'RQ')); EXCEPTION WHEN OTHERS THEN denied := true; END;
   END IF;
   IF denied THEN
-    PERFORM public.apply_request_supplier(v_req, jsonb_build_object('supplier_id', v_sup, 'supplier_location_id', v_loc, 'reference_type', 'rq', 'reference_number', ' 1203 '));
+    PERFORM public.apply_request_supplier(v_req, jsonb_build_object('supplier_id', v_sup, 'supplier_location_id', v_loc, 'reference_type', 'rq', 'reference_number', ' 1203 ', 'reference_supplier_id', v_sup));
     SELECT * INTO v_row FROM public.transport_requests WHERE id = v_req;
-    denied := v_row.supplier_id = v_sup AND v_row.supplier_location_id = v_loc AND v_row.reference_type = 'RQ' AND v_row.reference_number = '1203';
+    denied := v_row.supplier_id = v_sup AND v_row.supplier_location_id = v_loc AND v_row.reference_type = 'RQ' AND v_row.reference_number = '1203' AND v_row.reference_supplier_id = v_sup;
   END IF;
   IF denied THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T3 validación de proveedor/documento'::text; END IF;
 

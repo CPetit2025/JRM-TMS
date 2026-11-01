@@ -26,7 +26,7 @@ BEGIN
  payload:=jsonb_build_object('department','Logística','request_type','RECOJO','attention_mode','TRANSPORTE_JRM',
   'site_id',site,'required_date',current_date+7,'cargo_description','ZZ C99','pickup_address','Origen prueba',
   'pickup_district','CHILCA','delivery_address','Destino prueba','delivery_district','CALLAO','service_cost',999,
-  'reference_type','RQ','reference_number','ZZ-C99','supplier_id',supplier);
+  'reference_type','RQ','reference_number','ZZ-C99','supplier_id',supplier,'reference_supplier_id',supplier);
  saved:=public.save_transport_request_full(NULL,payload,'[]','[]'); req:=(saved->>'id')::uuid;
  IF req IS NULL OR (saved->>'service_cost')::numeric<>0 OR (saved->'quote'->>'freight_total')::numeric<>0 THEN
   RAISE EXCEPTION 'CAJA C99 FAIL: recojo genera flete automático'; END IF;

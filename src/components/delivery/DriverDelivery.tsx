@@ -29,8 +29,8 @@ async function deliveryPosition(): Promise<GeolocationPosition | null> {
 }
 
 const asBase64 = (file: File) => new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error('No se pudo guardar la foto en el dispositivo')); reader.readAsDataURL(file) })
-export function DriverDelivery({ dispatchId, requestId, driverId, userId, guide, documentaryOnly = false, onChanged }: {
-  dispatchId: string; requestId: string; driverId: string; userId: string; guide?: string; documentaryOnly?: boolean; onChanged: () => Promise<void>
+export function DriverDelivery({ dispatchId, requestId, driverId, userId, guide, documentaryOnly = false, requireOdometer = false, onChanged }: {
+  dispatchId: string; requestId: string; driverId: string; userId: string; guide?: string; documentaryOnly?: boolean; requireOdometer?: boolean; onChanged: () => Promise<void>
 }) {
   const db = useMemo(() => createClient(), [])
   const [detail, setDetail] = useState<DeliveryDetail | null>(null)
@@ -60,7 +60,8 @@ export function DriverDelivery({ dispatchId, requestId, driverId, userId, guide,
       // Primero guarda todas las fotos y la operación; nunca adelanta el estado local.
       const photos = await Promise.all(draft.files.map(asBase64))
       const packing = await Promise.all(draft.packingFiles.map(asBase64))
-      saveOfflineAction('delivery_submit_driver', { dispatch_id: dispatchId, request_id: requestId, user_id: userId, photos_base64: photos, packing_base64: packing, received_by: draft.receiver, guide: draft.guide, note: draft.note, captured_at: capturedAt }, draft.operation)
+      const odometerPhoto = draft.odometerPhoto ? await asBase64(draft.odometerPhoto) : null
+      saveOfflineAction('delivery_submit_driver', { dispatch_id: dispatchId, request_id: requestId, user_id: userId, photos_base64: photos, packing_base64: packing, odometer: draft.odometer, odometer_photo_base64: odometerPhoto, received_by: draft.receiver, guide: draft.guide, note: draft.note, captured_at: capturedAt }, draft.operation)
       setQueued(true)
       if (navigator.onLine) { await syncRoutePoints(); await syncOfflineActions() }
       await load(); await onChanged()
@@ -129,7 +130,7 @@ export function DriverDelivery({ dispatchId, requestId, driverId, userId, guide,
       {!documentaryOnly && detail?.arrived_at && <p className="text-xs text-slate-600">Llegada {deliveryTime(detail.arrived_at)} · {arrivalSourceLabel(detail.arrival_source)}{autoArrival && <button disabled={busy} onClick={() => void undoArrival()} className="ml-2 min-h-9 font-semibold text-blue-700 underline">Deshacer</button>}</p>}
       {rejection?.kind === 'PARCIAL' && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Rechazo parcial registrado: {rejection.reason}{rejection.note ? ` · ${rejection.note}` : ''}. Envía la guía firmada de lo que sí se entregó.</p>}
       {rejecting ? <RejectionForm busy={busy} onSubmit={reject} onCancel={() => setRejecting(false)} /> : <>
-        <EvidenceForm key={detail?.submissions[0]?.id || requestId} busy={busy} guide={guide} onSubmit={submit} />
+        <EvidenceForm key={detail?.submissions[0]?.id || requestId} busy={busy} guide={guide} requireOdometer={requireOdometer} onSubmit={submit} />
         {canReject && <button type="button" disabled={busy} onClick={() => setRejecting(true)} className="min-h-11 w-full rounded-lg border border-red-200 px-3 text-sm font-semibold text-red-800">¿No se pudo entregar? Registrar rechazo en destino</button>}
       </>}
     </>}
