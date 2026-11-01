@@ -38,7 +38,8 @@ export async function POST(request: Request) {
         .eq('document_number', driver.document_number)
         .maybeSingle()
       if (existingProfile?.id) {
-        if (existingProfile.employee_type && existingProfile.employee_type !== 'CONDUCTOR') {
+        // Solo se reutiliza un perfil de conductor: un DNI compartido con personal no convierte esa cuenta
+        if (existingProfile.employee_type !== 'CONDUCTOR') {
           return NextResponse.json({ error: 'El documento pertenece a un usuario administrativo' }, { status: 409 })
         }
         profileId = existingProfile.id
