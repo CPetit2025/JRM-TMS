@@ -126,8 +126,9 @@ jobs:
       - run: node scripts/test-production-security.cjs
       - run: node scripts/test-security-api.cjs
       - run: node scripts/test-security-workbooks.cjs
-      # Pruebas que antes no corrían en CI (auditoría 01/11/2026). Fuera por ahora: transport-flow-browser/dashboards (navegador),
-      # inventario-sql (desactualizada: su base no aplica las migraciones de inventario desde 20261020170000) y transport-flow-sql.
+      # Pruebas que antes no corrían en CI (auditoría 01/11/2026).
+      - run: node scripts/test-inventario-sql.cjs
+      - run: node scripts/test-transport-flow-sql.cjs
       - run: node scripts/test-dispatch-execution.cjs
       - run: node scripts/test-document-flow.cjs
       - run: node scripts/test-document-number-links.cjs

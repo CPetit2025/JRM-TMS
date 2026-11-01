@@ -11,7 +11,9 @@ const extension = `
   // New flow migrations are applied after historical regression fixtures, so the
   // mandatory lead-time policy does not invalidate unrelated legacy test input.
   const flowMigrations = require('node:fs').readdirSync(path.join(root,'supabase/migrations'))
-    .filter(file => /^20261009.*\\.sql$/.test(file)).sort();
+    // Only the flow under test (010000-060000) and its 4-character portal PIN (C57); later 20261009 migrations
+    // patch functions this fixture does not install.
+    .filter(file => /^(202610090[1-6]0000|20261011100000)_.*\\.sql$/.test(file)).sort();
   assert.ok(flowMigrations.length, 'Transport flow migrations exist');
   // Exercise existing projects whose pgcrypto was installed outside extensions.
   sql('CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;');
@@ -39,7 +41,8 @@ const extension = `
   const siteScope=read('supabase/migrations/000172_site_scopes.sql');
   const siteHelper=siteScope.indexOf('CREATE OR REPLACE FUNCTION public.can_access_site(');
   sql(siteScope.slice(siteHelper,siteScope.indexOf('$$;',siteHelper)+3).replaceAll('p_site_id','site'));
-  for(const file of flowMigrations){sql(read('supabase/migrations/'+file));console.log('APPLIED: '+file);}
+  // pgcrypto lives in public here, so 20261009020000 already requalified extensions.crypt; the PIN patch gets the same.
+  for(const file of flowMigrations){sql(file.startsWith('20261011100000')?read('supabase/migrations/'+file).replaceAll('extensions.','public.'):read('supabase/migrations/'+file));console.log('APPLIED: '+file);}
   const flowTests=require('node:fs').readdirSync(path.join(root,'supabase/tests'))
     .filter(file => /^caja_c(?:56|57|58|59)_.*\\.test\\.sql$/.test(file)).sort();
   assert.ok(flowTests.length>=4, 'Lead-time, permanent portal economic flow and historical documents SQL suites exist');

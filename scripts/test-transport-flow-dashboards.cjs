@@ -1,12 +1,12 @@
 // Requires the synthetic Supabase fixture used to build/start the app.
 const assert=require('node:assert/strict'),fs=require('node:fs')
-const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'/opt/codex/runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright')
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright')
 const origin=process.env.TRANSPORT_FLOW_ORIGIN||'http://127.0.0.1:3020'
 const uid='00000000-0000-4000-8000-000000000011', exp=Math.floor(Date.now()/1000)+3600
 const jwt=Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url')+'.'+Buffer.from(JSON.stringify({sub:uid,exp,role:'authenticated',aud:'authenticated'})).toString('base64url')+'.'+Buffer.alloc(32).toString('base64url')
 const session={access_token:jwt,refresh_token:'synthetic-ui-refresh',expires_at:exp,expires_in:3600,token_type:'bearer',user:{id:uid,email:'qa@example.test',aud:'authenticated',role:'authenticated',app_metadata:{},user_metadata:{}}}
 ;(async()=>{
- const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']})
+ const browser=await chromium.launch({executablePath:process.env.CHROMIUM_EXECUTABLE,args:['--no-sandbox']})
  try{
   const context=await browser.newContext({viewport:{width:1600,height:1000},timezoneId:'America/Lima'})
   await context.addCookies([{name:'sb-127-auth-token',value:'base64-'+Buffer.from(JSON.stringify(session)).toString('base64url'),domain:'127.0.0.1',path:'/'}])

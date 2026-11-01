@@ -2,7 +2,7 @@
 // synthetic data only, no writes or reads against an operational database.
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
-const playwright = process.env.PLAYWRIGHT_MODULE || '/opt/codex/runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright'
+const playwright = process.env.PLAYWRIGHT_MODULE || 'playwright'
 const { chromium } = require(playwright)
 const origin = process.env.TRANSPORT_FLOW_ORIGIN || 'http://127.0.0.1:3020'
 const token = '00000000-0000-4000-8000-000000000999'
@@ -13,7 +13,7 @@ const requests = [
  {id:'r3',request_number:'RT-QA-003',ot_code:'16525',created_at:'2026-10-07T22:45:00Z',required_date:'2026-10-09',required_at:null,request_type:'RECOJO',attention_mode:'TRANSPORTE_JRM',delivery_zone:null,lead_time_policy:null,pickup_address:'Obra',delivery_address:'Planta Chilca',status:'REPROGRAMADA'},
 ]
 ;(async()=>{
- const browser=await chromium.launch({executablePath:process.env.CHROMIUM_EXECUTABLE || '/usr/bin/chromium',args:['--no-sandbox']})
+ const browser=await chromium.launch({executablePath:process.env.CHROMIUM_EXECUTABLE,args:['--no-sandbox']})
  try{
   const context=await browser.newContext({viewport:{width:1600,height:1000},timezoneId:'America/Lima'})
   const page=await context.newPage(), errors=[],calls=[];let revoked=false
