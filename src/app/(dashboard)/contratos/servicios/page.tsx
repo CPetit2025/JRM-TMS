@@ -77,6 +77,15 @@ interface ContractService {
   }
 }
 
+// Fecha de hoy en Lima: después de las 19:00 la fecha UTC ya es mañana
+const limaToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' })
+const limaDaysAgo = (days: number) => new Date(Date.now() - days * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Lima' })
+// Una ruta ejecutada se corrige en Cierre económico (Control presupuestal · Costos por ruta)
+const OPEN_ROUTE = ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION', 'RETORNO']
+
+// Posición de la partida (control presupuestal): tope real de la OT, nivel y lo autorizado por Gerencia
+type BudgetPosition = { contract_id: string; cap_pen: number; level: string; authorized_over_cap_pen?: number }
+
 interface RegistryContext { service_id: string; dispatch_number: string | null; request_numbers: string[]; operation_state: string | null; stage: 'COMPROMETIDO' | 'REALIZADO' | 'ANULADO' | 'REGISTRO_MANUAL' }
 const stageLabels: Record<RegistryContext['stage'], string> = { COMPROMETIDO: 'Comprometido', REALIZADO: 'Realizado', ANULADO: 'Anulado', REGISTRO_MANUAL: 'Registro manual' }
 const stageTone: Record<RegistryContext['stage'], StatusTone> = { COMPROMETIDO: 'warning', REALIZADO: 'success', ANULADO: 'danger', REGISTRO_MANUAL: 'neutral' }
@@ -124,7 +133,8 @@ export default function ContractServicesPage() {
   // Filters
   const [searchTerm, setSearchTerm] = useState('')
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'fecha', dir: 'desc' })
-  const [filterDateFrom, setFilterDateFrom] = useState('')
+  // Por defecto los últimos 90 días: con todo el historial la pantalla se volvía lenta (vaciar «Desde» trae todo)
+  const [filterDateFrom, setFilterDateFrom] = useState(() => limaDaysAgo(90))
   const [filterDateTo, setFilterDateTo] = useState('')
   const [filterStatus, setFilterStatus] = useState('TODOS')
   // Acopio con el ERP: guías del servicio contra el Actualizable y actividad de la OT (solo lectura)
@@ -135,7 +145,7 @@ export default function ContractServicesPage() {
     service_type: 'FLETE',
     description: '',
     amount_pen: '',
-    service_date: new Date().toISOString().split('T')[0],
+    service_date: limaToday(),
     plate: '',
     driver_name: '',
     hours: '',
@@ -158,13 +168,22 @@ export default function ContractServicesPage() {
   const [authPassword, setAuthPassword] = useState('')
 
   // Partida que descuenta el gasto: la del contrato o la del contrato madre más cercano que la tenga
+  const contractById = new Map(contracts.map(c => [c.id, c]))
+  const [positions, setPositions] = useState<Map<string, BudgetPosition>>(new Map())
+  useEffect(() => {
+    void supabase.rpc('budget_positions').then(({ data }) => { if (data?.success) setPositions(new Map((data.rows as BudgetPosition[]).map(r => [r.contract_id, r]))) })
+  }, [supabase])
   const partidaOf = (contractId: string) => {
-    let current = contracts.find(c => c.id === contractId)
+    let current = contractById.get(contractId)
     for (let depth = 0; current && depth < 16; depth++) {
       const budget = current.contract_budgets?.find(b => (b.concept || 'PARTIDA_TRANSPORTE') === 'PARTIDA_TRANSPORTE')
-      if (budget && !current.parent_contract_id) return { balance: Number(budget.balance_pen || 0), operating: Number(budget.allocated_pen || 0) * 0.8, owner: current }
+      if (budget && !current.parent_contract_id) {
+        const pos = positions.get(current.id)
+        return { balance: Number(budget.balance_pen || 0), operating: pos ? Number(pos.cap_pen) : Number(budget.allocated_pen || 0) * 0.8,
+          authorized: Number(pos?.authorized_over_cap_pen || 0), level: pos?.level, owner: current }
+      }
       const parentId = current.parent_contract_id
-      current = parentId ? contracts.find(c => c.id === parentId) : undefined
+      current = parentId ? contractById.get(parentId) : undefined
     }
     return null
   }
@@ -228,6 +247,7 @@ export default function ContractServicesPage() {
               clients (business_name)
             )
           `)
+          .gte('service_date', filterDateFrom || '1900-01-01')
           .order('created_at', { ascending: false })
           .order('id', { ascending: true })
           .range(from, from + 999)
@@ -278,7 +298,7 @@ export default function ContractServicesPage() {
 
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [filterDateFrom])
 
   const handleSaveAmount = async () => {
     if (!viewingService) return
@@ -386,7 +406,7 @@ export default function ContractServicesPage() {
       service_type: 'FLETE',
       description: '',
       amount_pen: '',
-      service_date: new Date().toISOString().split('T')[0],
+      service_date: limaToday(),
       plate: '',
       driver_name: '',
       hours: '',
@@ -416,35 +436,40 @@ export default function ContractServicesPage() {
         const worksheet = workbook.Sheets[sheetName]
         const json = XLSX.utils.sheet_to_json(worksheet) as Array<Record<string, string | number>>
 
+        // Primero se revisan todas las filas: si alguna no sirve, no se registra nada y se indica cuál (fila de Excel)
+        const invalid: string[] = []
+        const valid = json.map((row, i) => {
+          const line = i + 2
+          const contractCodeUpload = String(row.Contrato || row.RUC_Contrato || row.Codigo_Contrato || '').replace(/^0+/, '')
+          const contract = contracts.find(c => c.code.replace(/^0+/, '') === contractCodeUpload)
+          if (!contract) { invalid.push(`fila ${line}: OT «${contractCodeUpload || 'vacía'}» no encontrada`); return null }
+          const rawDate = row.Fecha || row.Fecha_Servicio
+          let parsedDate = limaToday()
+          if (typeof rawDate === 'number') parsedDate = new Date(Math.round((rawDate - 25569) * 86400 * 1000)).toISOString().split('T')[0]  // fecha serial de Excel
+          else if (rawDate) {
+            const dmy = String(rawDate).trim().match(/^(d{1,2})[/-](d{1,2})[/-](d{4})$/)
+            const parsed = dmy ? new Date(Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]))) : new Date(String(rawDate))
+            if (Number.isNaN(parsed.getTime())) { invalid.push(`fila ${line}: fecha «${rawDate}» inválida (use dd/mm/aaaa)`); return null }
+            parsedDate = parsed.toISOString().split('T')[0]
+          }
+          const amount = parseFloat(String(row['Monto (PEN)'] || row.Monto))
+          if (!(amount >= 0)) { invalid.push(`fila ${line}: monto inválido`); return null }
+          return { line, row, contract, parsedDate, amount }
+        }).filter((x): x is NonNullable<typeof x> => x !== null)
+        if (invalid.length) {
+          toast.error(`No se registró nada: corrija ${invalid.length} fila(s). ${invalid.slice(0, 8).join('; ')}${invalid.length > 8 ? '…' : ''}`, { duration: 20000 })
+          return
+        }
+
         let successCount = 0
-        let errorCount = 0
         let duplicateCount = 0
-
-        for (const row of json) {
-          const contractCodeUpload = String(row.Contrato || row.RUC_Contrato || row.Codigo_Contrato || '').replace(/^0+/, '');
-          const contract = contracts.find(c => {
-             return c.code.replace(/^0+/, '') === contractCodeUpload;
-          })
-
-          if (!contract) {
-            errorCount++
-            continue
-          }
-
-          let parsedDate = new Date().toISOString().split('T')[0];
-          const rawDate = row.Fecha || row.Fecha_Servicio;
-          if (typeof rawDate === 'number') {
-            // Convert Excel serial date to JS Date
-            parsedDate = new Date(Math.round((rawDate - 25569) * 86400 * 1000)).toISOString().split('T')[0];
-          } else if (rawDate) {
-            parsedDate = new Date(rawDate).toISOString().split('T')[0];
-          }
-
+        const failed: string[] = []
+        for (const { line, row, contract, parsedDate, amount } of valid) {
           const { data: result, error } = await supabase.rpc('register_contract_service_checked', {
             p_contract_id: contract.id,
             p_service_type: row.Servicio || row.Tipo_Servicio || 'OTROS',
             p_description: row.KG || row.Descripcion || '',
-            p_amount_pen: parseFloat(String(row['Monto (PEN)'] || row.Monto)) || 0,
+            p_amount_pen: amount,
             p_service_date: parsedDate,
             p_plate: row.Placa || null,
             p_driver_name: row.Conductor || null,
@@ -454,17 +479,17 @@ export default function ContractServicesPage() {
             p_category: row.Categoria || 'Contrato',
             p_referral_guide: row['Guía de Remisión'] || row.Guia_Remision || row.guia_remision || null
           })
-
           if (error || !result?.success) {
             if (result?.duplicate) duplicateCount++
-            else errorCount++
+            else failed.push(`fila ${line}: ${error ? errorMessage(error) : result?.error || 'no registrada'}`)
           } else {
             successCount++
           }
         }
 
         // Los posibles duplicados no se registran en la carga masiva: se ingresan uno a uno con su motivo
-        toast.success(`Carga completada: ${successCount} exitosos, ${errorCount} errores${duplicateCount ? `, ${duplicateCount} omitidos por posible duplicado (regístrelos uno a uno con su motivo)` : ''}.`)
+        const summary = `Carga completada: ${successCount} registrados${failed.length ? `, ${failed.length} con error (${failed.slice(0, 5).join('; ')}${failed.length > 5 ? '…' : ''})` : ''}${duplicateCount ? `, ${duplicateCount} omitidos por posible duplicado (regístrelos uno a uno con su motivo)` : ''}.`
+        if (failed.length) toast.error(summary, { duration: 20000 }); else toast.success(summary)
         fetchData()
       } catch (err: unknown) {
         toast.error('Error procesando el archivo: ' + errorMessage(err))
@@ -639,9 +664,9 @@ export default function ContractServicesPage() {
         </select>
         {budgetContract ? (() => {
           const budget = partidaOf(budgetContract)
-          return <p className="text-sm text-slate-600" title="El saldo actual considera el margen operativo (80 % salvo ampliación) menos reservas y consumos. No es un saldo histórico por servicio.">{budget ? <>OT que financia: <strong>{budget.owner.code}</strong> · Disponible actual: <strong>S/ {budget.balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</strong></> : 'Sin partida de transporte disponible'}</p>
+          return <p className="text-sm text-slate-600" title="El saldo actual considera el tope operativo de la OT menos reservas y consumos (detalle en Control presupuestal). No es un saldo histórico por servicio.">{budget ? <>OT que financia: <strong>{budget.owner.code}</strong> · Disponible actual: <strong>S/ {budget.balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</strong></> : 'Sin partida de transporte disponible'}</p>
         })() : null}
-        <span className="inline-flex items-center gap-1 text-xs text-slate-500" title="El saldo actual considera el margen operativo (80 % salvo ampliación) menos reservas y consumos. No es un saldo histórico por servicio."><Info className="h-3.5 w-3.5" aria-hidden="true" />Margen operativo menos reservas y consumos</span>
+        <span className="inline-flex items-center gap-1 text-xs text-slate-500" title="El saldo actual considera el tope operativo de la OT menos reservas y consumos (detalle en Control presupuestal). No es un saldo histórico por servicio."><Info className="h-3.5 w-3.5" aria-hidden="true" />Margen operativo menos reservas y consumos</span>
       </div>
 
       {/* Lista de Servicios */}
@@ -743,7 +768,7 @@ export default function ContractServicesPage() {
                         // Saldo actual de la partida que paga el servicio (OT madre): margen operativo menos reservas y consumos
                         const partida = partidaOf(srv.contract_id)
                         if (!partida) return <span className="text-xs text-slate-400" title="La OT no tiene partida de transporte activa">Sin partida</span>
-                        const tone = partida.balance <= 0 ? 'text-red-700' : partida.operating > 0 && partida.balance < partida.operating * 0.1 ? 'text-amber-700' : 'text-emerald-700'
+                        const tone = partida.balance <= 0 || partida.level === 'BLOQUEO' || partida.level === 'EXCEDIDO' ? 'text-red-700' : partida.level === 'ALERTA' || (partida.operating > 0 && partida.balance < partida.operating * 0.1) ? 'text-amber-700' : 'text-emerald-700'
                         return <span title={`Disponible actual de la OT ${partida.owner.code}: margen operativo menos reservas y consumos. No es el saldo histórico del servicio.`}>
                           <span className={`font-bold ${tone}`}>{partida.balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
                           {partida.owner.id !== srv.contract_id && <span className="block text-[11px] text-slate-500">vía OT madre {partida.owner.code}</span>}
@@ -869,7 +894,7 @@ export default function ContractServicesPage() {
                 return (
                   <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-semibold ${partida.balance <= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                     {partida.balance <= 0 ? <Ban className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
-                    {partida.balance <= 0 ? 'Partida agotada o negativa' : 'Partida disponible'}: S/ {partida.balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                    {partida.balance <= 0 ? (partida.authorized > 0 ? `Sobre el tope; Gerencia autorizó S/ ${partida.authorized.toLocaleString('es-PE', { minimumFractionDigits: 2 })}. Saldo` : 'Partida agotada o negativa') : 'Partida disponible'}: S/ {partida.balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                     {inherited && <span className="font-normal text-slate-500">· descuenta la partida de {partida.owner.code}</span>}
                   </div>
                 )
@@ -1074,7 +1099,7 @@ export default function ContractServicesPage() {
 
       <Modal
         isOpen={!!viewingService}
-        onClose={() => setViewingService(null)}
+        onClose={() => { setViewingService(null); setIsEditingAmount(false); setVoidReason(''); setAuthPassword('') }}
         title="Detalles del Servicio Registrado"
         maxWidth="max-w-lg"
       >
@@ -1197,7 +1222,9 @@ export default function ContractServicesPage() {
               ) : (
                 <div className="flex items-center gap-3">
                   <span className={`font-bold text-lg ${viewingService.status === 'ANULADO' ? 'text-slate-400 line-through' : 'text-emerald-700'}`}>S/ {Number(viewingService.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
-                  {canEdit && viewingService.status !== 'ANULADO' && <button 
+                  {canEdit && viewingService.status !== 'ANULADO' && viewingService.dispatch_id && !OPEN_ROUTE.includes(registryContext[viewingService.id]?.operation_state || 'PROGRAMADO') &&
+                    <a href={`/despacho/documentos/economico?despacho=${viewingService.dispatch_id}`} className="px-2 py-1 text-xs font-medium text-[#002855] underline">Corregir en Costos por ruta</a>}
+                  {canEdit && viewingService.status !== 'ANULADO' && (!viewingService.dispatch_id || OPEN_ROUTE.includes(registryContext[viewingService.id]?.operation_state || 'PROGRAMADO')) && <button 
                     onClick={() => {
                       setEditAmountValue(viewingService.amount_pen.toString());
                       setIsEditingAmount(true);

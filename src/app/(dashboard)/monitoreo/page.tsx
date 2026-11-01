@@ -23,7 +23,7 @@ const Status = ({ row, compact = false }: { row: DriverMonitorRow; compact?: boo
 export default function MonitoreoPage() {
   const supabase = useMemo(() => createClient(), [])
   const { canWrite } = usePermissions()
-  const canRegister = canWrite('monitoreo') || canWrite('despacho') || canWrite('torre-control')
+  const canRegister = canWrite('monitoreo') || canWrite('despacho')
   const [rows, setRows] = useState<DriverMonitorRow[]>([])
   const [search, setSearch] = useState('')
   const [state, setState] = useState('all')
@@ -55,8 +55,10 @@ export default function MonitoreoPage() {
       finally { fetching = false }
     }
     void load()
-    const timer = window.setInterval(() => void load(), 15000)
-    return () => { stopped = true; window.clearInterval(timer) }
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void load() }, 15000)
+    const onVisible = () => { if (document.visibilityState === 'visible') void load() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { stopped = true; window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisible) }
   }, [supabase, version])
   // Expire snapshot flags even if the next poll fails; use server time to tolerate device clock skew.
   const serverNow = asOf ? Date.parse(asOf) + Math.max(0, now - loadedAt) : 0
@@ -77,7 +79,7 @@ export default function MonitoreoPage() {
       (connection === 'all' || (connection === 'connected' ? row.connected : connection === 'intermittent' ? row.level === 'intermittent' : row.level === 'offline')) && (!quick || quickMatch[quick](row))
   })
   const markers = filtered.map(monitorMarker).filter((row): row is NonNullable<typeof row> => !!row)
-  const selected = filtered.find(row => row.id === selectedId)
+  const selected = drivers.find(row => row.id === selectedId)
   const register = async (e: FormEvent) => {
     e.preventDefault(); if (!selected?.dispatch_id || busy || !canRegister) return
     setBusy(true)
@@ -138,7 +140,7 @@ export default function MonitoreoPage() {
           <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h2 className="truncate font-bold text-jrm-navy">{selected.driver}</h2><p className="truncate text-sm text-slate-600">{selected.plate || 'Sin unidad asignada'} · {selected.dispatch_number || 'Sin ruta asignada'}</p></div><div className="flex shrink-0 items-center gap-1"><Status row={selected} /><button type="button" onClick={() => setSelectedId(null)} aria-label="Cerrar detalle" className="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button></div></div>
           {clientHints(selected).length > 0 && <p className="text-xs text-slate-600">Teléfono: {clientHints(selected).join(' · ')}{selected.client?.device && ` · ${selected.client.device}`}</p>}
           <p className="text-xs text-slate-600">GPS: {gpsTime(selected.gps_at)}{selected.accuracy_m !== null && ` · precisión ±${Math.round(selected.accuracy_m)} m`}{selected.gps_fresh && selected.speed !== null && ` · ${Math.round(selected.speed)} km/h`} · Conexión: {gpsTime(selected.last_seen_at)}</p>
-          {selected.dispatch_id && <div className="flex flex-wrap gap-2">{canRegister && <button onClick={() => setEventOpen(true)} className="flex min-h-10 items-center gap-2 rounded-lg bg-jrm-navy px-3 text-sm font-semibold text-white hover:bg-jrm-navy-dark"><Plus className="h-4 w-4" />Registrar novedad</button>}<Link href="/torre-control" className="flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50">Revisar servicio y conformidad</Link></div>}
+          {selected.dispatch_id && <div className="flex flex-wrap gap-2">{canRegister && <button onClick={() => { setEventType('CHECKPOINT'); setDescription(''); setEventOpen(true) }} className="flex min-h-10 items-center gap-2 rounded-lg bg-jrm-navy px-3 text-sm font-semibold text-white hover:bg-jrm-navy-dark"><Plus className="h-4 w-4" />Registrar novedad</button>}<Link href={`/torre-control?despacho=${selected.dispatch_id}`} className="flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50">Revisar servicio y conformidad</Link></div>}
         </div>}
       </section>
     </div>
