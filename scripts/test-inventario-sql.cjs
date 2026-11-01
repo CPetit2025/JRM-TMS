@@ -16,7 +16,7 @@ try {
  sql(`CREATE ROLE authenticated; CREATE ROLE anon; CREATE ROLE service_role;
  CREATE SCHEMA auth;
  CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
- CREATE TABLE roles(id uuid PRIMARY KEY,name text); CREATE TABLE profiles(id uuid PRIMARY KEY,role_id uuid,is_active boolean);
+ CREATE TABLE roles(id uuid PRIMARY KEY,name text,permissions jsonb); CREATE TABLE profiles(id uuid PRIMARY KEY,role_id uuid,is_active boolean);
  INSERT INTO roles VALUES('00000000-0000-4000-8000-000000000001','Administrador');
  INSERT INTO profiles VALUES('00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000001',true);
  CREATE FUNCTION apt_can_load() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT auth.uid()='00000000-0000-4000-8000-000000000002'::uuid $$;
@@ -28,7 +28,7 @@ try {
  CREATE FUNCTION erp_active_import(p_kind text) RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT id FROM erp_imports WHERE kind=p_kind AND status='ACTIVA' $$;`)
  // Real APT helpers the inventory migrations call; latest definitions, as in production.
  const fn=(file,name)=>{const s=readFileSync('supabase/migrations/'+file,'utf8'),i=s.indexOf('CREATE OR REPLACE FUNCTION public.'+name+'(');assert.ok(i>=0,name);return s.slice(i,s.indexOf('$$;',s.indexOf('$$',i)+2)+3)}
- sql(fn('20261003160000_apt_familia_ot.sql','apt_ot_raiz')+fn('20261003160000_apt_familia_ot.sql','apt_raiz_parecida')+fn('20261003100000_apt_flujo_multialmacen.sql','apt_almacen'))
+ sql(fn('20261003160000_apt_familia_ot.sql','apt_ot_raiz')+fn('20261003160000_apt_familia_ot.sql','apt_raiz_parecida')+fn('20261003100000_apt_flujo_multialmacen.sql','apt_almacen')+fn('20261012100000_apt_cache_lecturas.sql','apt_read_cache_actor'))
  for(const file of ['20261020100000_inventario_multialmacen.sql','20261020110000_inventory_upload_performance.sql','20261020120000_inventory_rebuild_plans.sql',
   '20261020130000_inventario_recalculo_programado.sql','20261020140000_inventario_verificacion.sql','20261020150000_inventario_carga_sin_bloqueo.sql',
   '20261020160000_inventario_recalculo_rapido.sql','20261020170000_inventario_lecturas_rapidas.sql','20261020180000_inventario_lecturas_sin_sobrecarga.sql',
@@ -37,7 +37,8 @@ try {
  // Only part 2 (client of each OT in the APT) is inventory; part 1 is ERP contract onboarding.
  const clientes=readFileSync('supabase/migrations/20261101100000_erp_alta_automatica_cliente_apt.sql','utf8'); assert.ok(clientes.includes('-- ── 2.'))
  sql('BEGIN;\n'+clientes.slice(clientes.indexOf('-- ── 2.')))
- for(const file of ['caja_c115_inventario_multialmacen.test.sql','caja_c116_inventory_upload_retry.test.sql']) {
+ for(const file of ['caja_c115_inventario_multialmacen.test.sql','caja_c116_inventory_upload_retry.test.sql','caja_c117_inventario_verificacion.test.sql',
+  'caja_c118_inventario_carga_sin_bloqueo.test.sql','caja_c119_inventario_lecturas_cache.test.sql','caja_c122_inventario_estadia_contratos.test.sql']) {
   const r=query(readFileSync('supabase/tests/'+file,'utf8')); assert.match(r.stderr,/CAJA C\d+ PASS/); assert.doesNotMatch(r.stderr,/FAIL/); console.log(r.stderr.split('\n').find(s=>s.includes('PASS')))
  }
  // Fresh read statements follow the same timeout as authenticated requests. No upward timeout override for chunks.
