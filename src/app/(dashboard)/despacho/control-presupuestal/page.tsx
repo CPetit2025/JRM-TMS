@@ -100,7 +100,7 @@ export default function ControlPresupuestalPage() {
             </tbody>
           </table>}
       </div>
-      <p className="text-[11px] text-slate-500">Comprometido: flete y servicios reservados al programar. Ejecutado: lo consumido al cerrar la ruta, por Caja o por cargos registrados. Los gastos de Caja de combustible, peajes y viáticos se incorporan en la siguiente etapa.</p>
+      <p className="text-[11px] text-slate-500">Comprometido: flete y servicios reservados al programar. Ejecutado: lo consumido al cerrar la ruta, por Caja o por cargos registrados. En flota propia, al cerrar la ruta la tarifa se reemplaza por los costos reales (combustible —real o estimado—, peajes, viáticos, estacionamiento); los gastos de Caja se reparten entre las OT de la ruta por peso o en partes iguales.</p>
     </div>
   )
 }
