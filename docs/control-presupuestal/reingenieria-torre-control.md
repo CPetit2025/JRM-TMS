@@ -14,6 +14,13 @@ PR #407). Complementa: [especificación del control presupuestal](especificacion
 - **Sin permiso nuevo**: cierre normal con `despacho` o `cierre-economico`; excepción y reapertura con
   `control-presupuestal-recomendar` (Jefe de Distribución).
 - Los desvíos de costo de un viaje son los ítems en revisión de su liquidación económica: el estado económico los cubre.
+- **Entrega 2** (Control presupuestal): detalle por OT `/despacho/control-presupuestal/[ot]` (Resumen, Viajes y costos,
+  Por concepto, Desviaciones y alertas, Autorizaciones, Historial) sobre `budget_ot_detail`; ampliaciones (D4,
+  `budget_extensions`: solicita el Jefe, decide Gerencia y no la propia, suma al aporte propio con registro en
+  `contract_budget_adjustments`); D2 (pendiente «combustible en tarifa»), D3 (combustible de km adicionales directo a su
+  OT) y D5 (el reverso de la tarifa propia sigue al flete final aprobado; lo ya aplicado antes se conserva).
+  Los filtros de transportista y de unidad están en «Viajes y costos». El tablero no filtra por responsable de la OT:
+  ese dato no existe en la partida.
 
 Responsabilidades objetivo:
 
