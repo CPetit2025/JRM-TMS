@@ -86,9 +86,9 @@ const OPEN_ROUTE = ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION
 // Posición de la partida (control presupuestal): tope real de la OT, nivel y lo autorizado por Gerencia
 type BudgetPosition = { contract_id: string; cap_pen: number; level: string; authorized_over_cap_pen?: number }
 
-interface RegistryContext { service_id: string; dispatch_number: string | null; request_numbers: string[]; operation_state: string | null; stage: 'COMPROMETIDO' | 'REALIZADO' | 'ANULADO' | 'REGISTRO_MANUAL' }
-const stageLabels: Record<RegistryContext['stage'], string> = { COMPROMETIDO: 'Comprometido', REALIZADO: 'Realizado', ANULADO: 'Anulado', REGISTRO_MANUAL: 'Registro manual' }
-const stageTone: Record<RegistryContext['stage'], StatusTone> = { COMPROMETIDO: 'warning', REALIZADO: 'success', ANULADO: 'danger', REGISTRO_MANUAL: 'neutral' }
+interface RegistryContext { service_id: string; dispatch_number: string | null; request_numbers: string[]; operation_state: string | null; stage: 'COMPROMETIDO' | 'REALIZADO' | 'ANULADO' | 'REGISTRO_MANUAL' | 'OTRA_SEDE' }
+const stageLabels: Record<RegistryContext['stage'], string> = { COMPROMETIDO: 'Comprometido', REALIZADO: 'Realizado', ANULADO: 'Anulado', REGISTRO_MANUAL: 'Registro manual', OTRA_SEDE: 'Ruta de otra sede' }
+const stageTone: Record<RegistryContext['stage'], StatusTone> = { COMPROMETIDO: 'warning', REALIZADO: 'success', ANULADO: 'danger', REGISTRO_MANUAL: 'neutral', OTRA_SEDE: 'neutral' }
 
 type SortKey = 'fecha' | 'contrato' | 'cliente' | 'servicio' | 'placa' | 'guia' | 'ton' | 'monto' | 'saldo' | 'traza' | 'estado'
 
@@ -114,8 +114,10 @@ export default function ContractServicesPage() {
   const [budgetContract, setBudgetContract] = useState('')
   const [reconcilingDispatch, setReconcilingDispatch] = useState<string | null>(null)
   // Ruta programada cuyo flete aún no tiene monto (flota propia sin tarifa): figura en el registro para valorizarla
+  // N.º correlativo por orden de registro: no cambia al ordenar ni filtrar
+  const serialOf = new Map([...services].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)).map((x, i) => [x.id, i + 1]))
   const sinValorizar = (s: ContractService) => s.service_type === 'FLETE' && !!s.dispatch_id && s.status !== 'ANULADO' && Number(s.amount_pen) === 0
-  const stageOf = (s: ContractService): RegistryContext['stage'] => s.status === 'ANULADO' ? 'ANULADO' : registryContext[s.id]?.stage || (s.dispatch_id ? 'COMPROMETIDO' : 'REGISTRO_MANUAL')
+  const stageOf = (s: ContractService): RegistryContext['stage'] => s.status === 'ANULADO' ? 'ANULADO' : registryContext[s.id]?.stage || (s.dispatch_id ? 'OTRA_SEDE' : 'REGISTRO_MANUAL')
   const [pesoApt, setPesoApt] = useState<Record<string, PesoApt>>({})
   const [syncingPeso, setSyncingPeso] = useState(false)
   const [contracts, setContracts] = useState<Contract[]>([])
@@ -705,10 +707,10 @@ export default function ContractServicesPage() {
                   </td>
                 </tr>
               ) : (
-                sortedServices.map((srv, idx) => {
+                sortedServices.map((srv) => {
                   const stage = stageOf(srv);
                   const context = registryContext[srv.id];
-                  const correlative = filteredServices.length - idx;
+                  const correlative = serialOf.get(srv.id);
                   return (
                   <tr 
                     key={srv.id} 
@@ -1224,6 +1226,8 @@ export default function ContractServicesPage() {
                   <span className={`font-bold text-lg ${viewingService.status === 'ANULADO' ? 'text-slate-400 line-through' : 'text-emerald-700'}`}>S/ {Number(viewingService.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
                   {canEdit && viewingService.status !== 'ANULADO' && viewingService.dispatch_id && !OPEN_ROUTE.includes(registryContext[viewingService.id]?.operation_state || 'PROGRAMADO') &&
                     <a href={`/despacho/documentos/economico?despacho=${viewingService.dispatch_id}`} className="px-2 py-1 text-xs font-medium text-[#002855] underline">Corregir en Costos por ruta</a>}
+                  <a href={`/despacho/control-presupuestal/movimientos?ot=${viewingService.contract_id}&q=${encodeURIComponent(registryContext[viewingService.id]?.dispatch_number || viewingService.id)}`}
+                    className="px-2 py-1 text-xs font-medium text-[#002855] underline">Ver en Control presupuestal</a>
                   {canEdit && viewingService.status !== 'ANULADO' && (!viewingService.dispatch_id || OPEN_ROUTE.includes(registryContext[viewingService.id]?.operation_state || 'PROGRAMADO')) && <button 
                     onClick={() => {
                       setEditAmountValue(viewingService.amount_pen.toString());

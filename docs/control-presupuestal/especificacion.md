@@ -235,3 +235,5 @@ Notas de diseño:
 - **Permisos (D6):** `control-presupuestal` (consulta), `control-presupuestal-recomendar` (Jefe de Distribución) y
   `control-presupuestal-autorizar` (Gerencia de Operaciones) deben asignarse en Roles y Permisos.
 - **Activación (D7):** `economic_settings.budget_imputation_since` = fecha de la migración de la etapa 2.
+
+- Circuito económico (movimientos por OT, conciliación y pendientes): ver [circuito-economico.md](circuito-economico.md).

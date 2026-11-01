@@ -7,13 +7,11 @@ import { createClient } from '@/lib/supabase/client'
 import { PageHeader } from '@/components/ui/page-header'
 import { KpiStatCard } from '@/components/ui/kpi-stat-card'
 import { errorMessage, money } from '@/lib/caja'
-import { BudgetAuthorizations, type AuthorizationTarget } from '@/components/despacho/BudgetAuthorizations'
-import { BudgetDeviations } from '@/components/despacho/BudgetDeviations'
 import { ControlPresupuestalTabs } from '@/components/despacho/ControlPresupuestalTabs'
 
 // Control presupuestal de transporte por OT: consumo = comprometido + ejecutado sobre lo asignado, con los niveles aprobados
 // (docs/control-presupuestal/especificacion.md). La OT raíz suma sus subcontratos. Sobre el tope se compromete solo con
-// una autorización de Gerencia (panel de autorizaciones).
+// una autorización de Gerencia (Pendientes y autorizaciones). Cada importe abre los movimientos que lo componen.
 
 type Level = 'NORMAL' | 'ALERTA' | 'BLOQUEO' | 'EXCEDIDO' | 'SIN_PARTIDA'
 type Position = {
@@ -48,7 +46,6 @@ export default function ControlPresupuestalPage() {
   const [settings, setSettings] = useState<Settings>({ budget_alert_pct: 70, budget_cap_pct: 80 })
   const [level, setLevel] = useState<Level | ''>('')
   const [q, setQ] = useState('')
-  const [target, setTarget] = useState<AuthorizationTarget | null>(null)
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.rpc('budget_positions')
@@ -95,25 +92,21 @@ export default function ControlPresupuestalPage() {
                     {r.override && <span className="block text-[11px] text-slate-500" title={r.override.reason || undefined}>Margen pactado: {r.override.pct} % operativo</span>}</td>
                   <td className="px-3 py-2 text-xs">{r.client || '—'}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{money(Number(r.allocated_pen))}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{money(Number(r.reserved_pen))}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{money(Number(r.consumed_pen))}</td>
+                  <td className="px-3 py-2 text-right tabular-nums"><Link href={`/despacho/control-presupuestal/movimientos?ot=${r.contract_id}&efecto=COMPROMETIDO`} title="Ver lo comprometido" className="underline decoration-dotted hover:text-[#002855]">{money(Number(r.reserved_pen))}</Link></td>
+                  <td className="px-3 py-2 text-right tabular-nums"><Link href={`/despacho/control-presupuestal/movimientos?ot=${r.contract_id}&efecto=EJECUTADO`} title="Ver lo ejecutado" className="underline decoration-dotted hover:text-[#002855]">{money(Number(r.consumed_pen))}</Link></td>
                   <td className="px-3 py-2"><div className="flex items-center gap-2"><div className="h-2 w-28 rounded bg-slate-100" title={`Tope ${settings.budget_cap_pct} %`}>
                     <div className={`h-2 rounded ${LEVEL[r.level].bar}`} style={{ width: `${Math.min(100, pct)}%` }} /></div>
                     <span className="tabular-nums text-xs font-semibold">{r.used_pct == null ? '—' : `${pct} %`}</span></div></td>
                   <td className={`px-3 py-2 text-right tabular-nums ${Number(r.available_to_cap_pen) < 0 ? 'font-semibold text-red-700' : ''}`}>{money(Number(r.available_to_cap_pen))}</td>
                   <td className="px-3 py-2"><span className={`rounded px-2 py-0.5 text-[11px] font-semibold ${LEVEL[r.level].cls}`}>{LEVEL[r.level].label}</span>
                     {Number(r.authorized_over_cap_pen) > 0 && <span className="block text-[11px] text-slate-500">Autorizado sobre el tope: S/ {money(Number(r.authorized_over_cap_pen))}</span>}
-                    {Number(r.pending_authorizations) > 0 && <span className="block text-[11px] font-semibold text-amber-700">{r.pending_authorizations} solicitud(es) pendiente(s)</span>}</td>
-                  <td className="px-3 py-2 text-right">{['ALERTA', 'BLOQUEO'].includes(r.level) && <button type="button" onClick={() => setTarget({ contract_id: r.contract_id, code: r.code })}
-                    className="whitespace-nowrap rounded border border-[#002855] px-2 py-0.5 text-xs font-semibold text-[#002855] hover:bg-slate-50">Solicitar autorización</button>}</td>
+                    {Number(r.pending_authorizations) > 0 && <Link href="/despacho/control-presupuestal/pendientes" className="block text-[11px] font-semibold text-amber-700 underline">{r.pending_authorizations} solicitud(es) pendiente(s)</Link>}</td>
+                  <td className="px-3 py-2 text-right">{['ALERTA', 'BLOQUEO'].includes(r.level) && <Link href={`/despacho/control-presupuestal/pendientes?solicitar=${r.contract_id}&codigo=${encodeURIComponent(r.code)}`}
+                    className="whitespace-nowrap rounded border border-[#002855] px-2 py-0.5 text-xs font-semibold text-[#002855] hover:bg-slate-50">Solicitar autorización</Link>}</td>
                 </tr>
               })}
             </tbody>
           </table>}
-      </div>
-      <div className="grid items-start gap-3 xl:grid-cols-2">
-        <BudgetDeviations onChanged={() => void load()} />
-        <BudgetAuthorizations target={target} onTargetDone={() => setTarget(null)} onChanged={() => void load()} />
       </div>
       <p className="text-[11px] text-slate-500">Comprometido: flete y servicios reservados al programar. Ejecutado: lo consumido al cerrar la ruta, por Caja o por cargos registrados. En flota propia, al cerrar la ruta la tarifa se reemplaza por los costos reales (combustible —real o estimado—, peajes, viáticos, estacionamiento); los gastos de Caja se reparten entre las OT de la ruta por peso o en partes iguales.</p>
     </div>
