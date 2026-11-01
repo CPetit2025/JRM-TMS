@@ -69,10 +69,7 @@ export default function RutaActivaPage() {
           startLon = pos.coords.longitude
           startPosition = pos
         }
-      } catch {
-        throw new Error('No se pudo obtener GPS preciso para iniciar la ruta.')
-      }
-      if (startLat === null || startLon === null) throw new Error('GPS no disponible')
+      } catch { /* El odómetro del checklist permite comenzar y medir por parada si no hay GPS. */ }
 
       const { error } = await supabase.rpc('start_dispatch_route', {
         p_dispatch_id: dispatch.id, p_lat: startLat, p_lon: startLon
@@ -90,12 +87,12 @@ export default function RutaActivaPage() {
         if (firstPointError) toast.warning('Punto GPS inicial pendiente. Revisa la conexión.')
       }
 
-      toast.success('Ruta iniciada con éxito. Conduzca con cuidado.', { id: loadingToast })
+      toast.success(startPosition ? 'Ruta iniciada con éxito. Conduzca con cuidado.' : 'Ruta iniciada con odómetro. Registre lectura y foto en cada parada.', { id: loadingToast })
       if (nativeRouteTracker) {
         try { await nativeRouteTracker.start({ dispatchId: dispatch.id, driverId: driver.id }) }
         catch { toast.warning('Seguimiento nativo no disponible; mantén abierta la app para registrar GPS.') }
       }
-      setDispatch({ ...dispatch, status: 'EN RUTA', start_lat: startLat, start_lon: startLon })
+      setDispatch({ ...dispatch, status: 'EN RUTA', start_lat: startLat ?? undefined, start_lon: startLon ?? undefined })
       await refresh()
     } catch (err) {
       toast.error('Error al iniciar: ' + message(err), { id: loadingToast })
@@ -326,7 +323,7 @@ export default function RutaActivaPage() {
                   <h3 className={`mt-1 text-xs font-semibold ${isActive ? 'text-blue-800' : 'text-slate-500'}`}>Solicitud {ot.request_number}</h3>
                   <p className="text-xs text-slate-500 mt-1 line-clamp-2">{ot.delivery_address || ot.pickup_address}</p>
 
-                  {(['CIERRE_OPERATIVO','RETORNO_COMPLETADO'].includes(dispatch.status) || isActive || (isPast && ['EN RUTA','EN_CURSO','ESPERANDO_AUTORIZACION','RETORNO','RETORNO_COMPLETADO','ENTREGADO','CIERRE_OPERATIVO'].includes(dispatch.status))) && user && driver && <div className="mt-4 border-t pt-4"><DriverDelivery dispatchId={dispatch.id} requestId={req.transport_request_id} driverId={driver.id} userId={user.id} guide={req.document_number || ''} documentaryOnly={['CIERRE_OPERATIVO','RETORNO_COMPLETADO'].includes(dispatch.status)} onChanged={refresh} /></div>}
+                  {(['CIERRE_OPERATIVO','RETORNO_COMPLETADO'].includes(dispatch.status) || isActive || (isPast && ['EN RUTA','EN_CURSO','ESPERANDO_AUTORIZACION','RETORNO','RETORNO_COMPLETADO','ENTREGADO','CIERRE_OPERATIVO'].includes(dispatch.status))) && user && driver && <div className="mt-4 border-t pt-4"><DriverDelivery dispatchId={dispatch.id} requestId={req.transport_request_id} driverId={driver.id} userId={user.id} guide={req.document_number || ''} documentaryOnly={['CIERRE_OPERATIVO','RETORNO_COMPLETADO'].includes(dispatch.status)} requireOdometer={dispatch.modalidad !== 'TERCERO' && dispatch.vehicle_plate !== 'EXTERNO' && !['CIERRE_OPERATIVO','RETORNO_COMPLETADO'].includes(dispatch.status)} onChanged={refresh} /></div>}
                 </div>
               </div>
             )

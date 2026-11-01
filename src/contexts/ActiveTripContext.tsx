@@ -9,6 +9,7 @@ export type TripStop = {
   sequence_order: number | null
   conformity?: string
   status: string
+  modalidad?: string | null
   request_number: string | null
   request_type: string | null
   pickup_address: string | null
@@ -35,6 +36,7 @@ export type ActiveTrip = {
   dispatch_number: string
   vehicle_plate: string | null
   status: string
+  modalidad?: string | null
   scheduled_departure: string | null
   actual_distance_km: number | null
   return_actual_km?: number | null

@@ -6,6 +6,7 @@ import { Camera, CheckCircle2, DollarSign, FileText, Loader2, Receipt, Trash2 } 
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { useActiveTrip } from '@/contexts/ActiveTripContext'
+import { odometerPhotoPath, prepareOdometerPhoto, uploadOdometerPhoto } from '@/lib/odometer'
 
 // Cierre de ruta del conductor: odómetro de llegada, guías selladas y total de gastos declarados
 // (submit_post_route_checklist). Debajo, sus liquidaciones de caja para dar conformidad (Caja C2).
@@ -26,6 +27,7 @@ export default function LiquidacionPage() {
   const [advances, setAdvances] = useState<Row[]>([])
   const [settlements, setSettlements] = useState<Row[]>([])
   const [odometer, setOdometer] = useState('')
+  const [odometerPhoto, setOdometerPhoto] = useState<File | null>(null)
   const [guias, setGuias] = useState<{ file: File; preview: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
@@ -60,9 +62,16 @@ export default function LiquidacionPage() {
   const submit = async () => {
     if (!dispatch || !driver || !user) return
     if (!odometer || isNaN(Number(odometer))) return toast.error('Ingrese el odómetro de llegada')
+    if (dispatch.vehicle_plate !== 'EXTERNO' && dispatch.modalidad !== 'TERCERO' && !odometerPhoto) return toast.error('Tome una foto del odómetro final para cerrar la ruta')
     setSending(true)
     const uploaded: string[] = []
     try {
+      let odometerPhotoPathValue: string | null = null
+      if (odometerPhoto) {
+        const file = await prepareOdometerPhoto(odometerPhoto)
+        odometerPhotoPathValue = await uploadOdometerPhoto(supabase, odometerPhotoPath(user.id, `ruta-${dispatch.id}-${crypto.randomUUID()}`, file.type), file)
+        uploaded.push(odometerPhotoPathValue)
+      }
       for (const g of guias) {
         const path = `${user.id}/${dispatch.id}/guias/${crypto.randomUUID()}-${g.file.name.replace(/[^\w.-]/g, '')}`
         const { error } = await supabase.storage.from('driver_evidence').upload(path, g.file, { contentType: g.file.type })
@@ -73,13 +82,13 @@ export default function LiquidacionPage() {
         ? navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), { timeout: 5000 }) : resolve(null))
       const { data, error } = await supabase.rpc('submit_post_route_checklist', {
         p_dispatch_id: dispatch.id, p_vehicle_plate: dispatch.vehicle_plate, p_driver_id: driver.id, p_odometer: Number(odometer),
-        p_liquidation_data: { guias: uploaded, total_expenses: declared, expenses_count: expenses.filter(e => e.status !== 'RECHAZADO').length, notas: 'Cerrado desde app conductor' },
+        p_liquidation_data: { guias: uploaded.filter(path => path !== odometerPhotoPathValue), odometer_photo: odometerPhotoPathValue, total_expenses: declared, expenses_count: expenses.filter(e => e.status !== 'RECHAZADO').length, notas: 'Cerrado desde app conductor' },
         p_location: pos ? { lat: pos.coords.latitude, lon: pos.coords.longitude } : null,
       })
       if (error) throw error
       if (data && !data.success) throw new Error(data.message || 'No se pudo cerrar la ruta')
       toast.success('Cierre de ruta enviado. Caja revisará tus gastos y liquidará el viaje.')
-      setGuias([]); setOdometer('')
+      setGuias([]); setOdometer(''); setOdometerPhoto(null)
       await refresh(); await load()
     } catch (e) {
       if (uploaded.length) await supabase.storage.from('driver_evidence').remove(uploaded)
@@ -117,8 +126,9 @@ export default function LiquidacionPage() {
               <h3 className="font-bold text-slate-800 text-sm">Cierre de ruta</h3>
               <label className="block">
                 <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Odómetro de llegada (km)</span>
-                <input type="number" value={odometer} onChange={e => setOdometer(e.target.value)} className="w-full px-3 py-3 rounded-xl border-2 border-slate-200 focus:border-[#002855] outline-none font-bold" />
+                <input required type="number" min="0" step="0.1" value={odometer} onChange={e => setOdometer(e.target.value)} className="w-full px-3 py-3 rounded-xl border-2 border-slate-200 focus:border-[#002855] outline-none font-bold" />
               </label>
+              {dispatch.vehicle_plate !== 'EXTERNO' && dispatch.modalidad !== 'TERCERO' && <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#002855] px-3 text-sm font-semibold text-[#002855]"><Camera className="h-5 w-5" />{odometerPhoto ? 'Foto del tablero lista · cambiar' : 'Tomar foto del odómetro final'}<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="hidden" onChange={e => setOdometerPhoto(e.target.files?.[0] || null)} /></label>}
               <div>
                 <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Guías selladas (GRT / GRR)</span>
                 <div className="grid grid-cols-3 gap-2">

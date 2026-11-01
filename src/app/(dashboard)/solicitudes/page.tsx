@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 32684)
+Total output lines: 1594
+
 "use client"
 import { allPages } from '@/lib/analytics/model'
 import { TransportWorkflow, TorreControlButton } from '@/components/transport/TransportWorkflow'
@@ -77,6 +80,8 @@ interface TransportRequest {
   supplier_location_id?: string | null
   reference_type?: string | null
   reference_number?: string | null
+  reference_supplier_id?: string | null
+  reference_supplier?: { business_name: string } | null
   suppliers?: { business_name: string } | null
   client_id?: string | null
   request_client?: { business_name: string } | null
@@ -285,7 +290,7 @@ export default function SolicitudesPage() {
     estimated_weight: '',
     estimated_volume: '',
     service_cost: '',
-    purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: ''
+    purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: '', reference_supplier_id: ''
   })
   useEffect(() => { activeRequestRoot.current = newRequest.contract_id }, [newRequest.contract_id])
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
@@ -368,11 +373,12 @@ export default function SolicitudesPage() {
     setLoading(true)
     try {
       // Por páginas: la API entrega como máximo 1.000 filas por consulta
-      const data = await allPages<any>((o, n) => supabase
+      const data = await allPages<TransportRequest>((o, n) => supabase
         .from('transport_requests')
         .select(`
           *,
-          suppliers(business_name),
+          suppliers:suppliers!transport_requests_supplier_id_fkey(business_name),
+          reference_supplier:suppliers!transport_requests_reference_supplier_id_fkey(business_name),
           request_client:clients!client_id(business_name),
           transport_request_components(id, component_contract_id, requested_weight_kg, requested_volume_m3),
           contracts(
@@ -632,7 +638,8 @@ export default function SolicitudesPage() {
       service_cost: request.service_cost?.toString() || '',
       purchase_order: duplicate ? '' : request.purchase_order || '', supplier_id: request.supplier_id || '', supplier_location_id: request.supplier_location_id || '',
       client_id: request.contract_id ? '' : request.client_id || '',
-      reference_type: request.reference_type || '', reference_number: duplicate ? '' : request.reference_number || ''
+      reference_type: request.reference_type || '', reference_number: duplicate ? '' : request.reference_number || '',
+      reference_supplier_id: duplicate ? '' : request.reference_supplier_id || ''
     })
 
     void fetchLeadTimeSettings()
@@ -730,6 +737,10 @@ export default function SolicitudesPage() {
       toast.error(`Ingrese el número de ${newRequest.reference_type}.`)
       return
     }
+    if (newRequest.reference_type && !newRequest.reference_supplier_id) {
+      toast.error(`Seleccione el proveedor de la referencia ${newRequest.reference_type}.`)
+      return
+    }
     setIsSubmitting(true)
 
     try {
@@ -774,7 +785,7 @@ export default function SolicitudesPage() {
         estimated_weight: '',
         estimated_volume: '',
         service_cost: '',
-        purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: ''
+        purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: '', reference_supplier_id: ''
       }))
       setContractSearch('')
       setComponentOptions([])
@@ -925,8 +936,10 @@ export default function SolicitudesPage() {
     Boolean(requiredAt) && requiresDeliveryLeadTime && leadTimeEvaluation.enough === false && { label: 'Anticipación mínima', target: 'req-fecha' },
     !newRequest.cargo_description.trim() && { label: 'Glosa de la carga', target: 'req-carga' },
     Boolean(newRequest.reference_type) && !newRequest.reference_number.trim() && { label: `Número de ${newRequest.reference_type}`, target: 'req-carga' },
+    Boolean(newRequest.reference_type) && !newRequest.reference_supplier_id && { label: `Proveedor de ${newRequest.reference_type}`, target: 'req-carga' },
     !unloadingAnswer && { label: 'Descarga especial (Sí/No)', target: 'req-descarga' },
   ].filter(Boolean) as { label: string; target: string }[])
+  const referencesWithoutSupplier = requests.filter(request => request.reference_type && !request.reference_supplier_id)
 
   return (
     <div className="flex min-h-0 w-full flex-col gap-2.5 mx-auto lg:h-full">
@@ -969,7 +982,7 @@ export default function SolicitudesPage() {
                 estimated_weight: '',
                 estimated_volume: '',
                 service_cost: '',
-                purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: ''
+                purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: '', reference_supplier_id: ''
               })
               setDraftFound(readDraft()); setDraftMode(true)
               setIsModalOpen(true)
@@ -982,79 +995,9 @@ export default function SolicitudesPage() {
         )}
         <TorreControlButton />
       </>} />
-      {autoApproval && (
-        <p role="status" className="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-          <span><b>Aprobación automática activa:</b> las solicitudes con OT o con OC, OS o RQ sin OT registradas sin observaciones quedan aprobadas al enviarse.</span>
-        </p>
-      )}
-      {userRole === 'administrador de contratos' && contractsLoaded && contracts.length === 0 && (
-        <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          <Briefcase className="h-5 w-5 shrink-0" aria-hidden="true" />
-          <p className="min-w-0 flex-1"><b>Aún no tienes OT asignadas.</b> Elige tus OT como Responsable de OT en Contratos y OTs para solicitar transporte con ellas, o registra una nueva desde «Nueva solicitud».</p>
-          <Link href="/contratos" className="inline-flex min-h-10 items-center rounded-lg bg-[#002855] px-3 font-semibold text-white hover:bg-[#001d3d]">Ir a Contratos y OTs</Link>
-        </div>
-      )}
-      <div className="flex flex-wrap items-center gap-2">
-      <TransportWorkflow current="solicitud" torre={false} />
-      <div className="ml-auto min-w-0"><InlineStatusBar label="Resumen por estado (filtra la tabla)" active={filterStatus} loading={loading} onChange={key => { setFilterStatus(key); setPage(1) }}
-        items={([{ key: 'TODOS', label: 'Todas', icon: <Layers />, tone: 'navy' }, { key: 'PENDIENTE', label: 'Pendientes', icon: <Clock />, tone: 'amber' },
-          { key: 'APROBADA', label: 'Aprobadas', icon: <CheckCircle2 />, tone: 'emerald' }, { key: 'ASIGNADA', label: 'Asignadas', icon: <Truck />, tone: 'blue' },
-          { key: 'REPROGRAMADA', label: 'Reprogramadas', icon: <CalendarClock />, tone: 'violet' }] as const).map(tab => ({ ...tab, count: requests.filter(r => matchesStatus(r.status, tab.key)).length }))} /></div>
-      </div>
-
-      <FilterToolbar compact label="Búsqueda y filtros de solicitudes" onClear={clearFilters}>
-        <label className="relative min-w-[15rem] flex-1 basis-60">
-          <span className="sr-only">Buscar solicitudes</span><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" aria-hidden="true" />
-          <input type="search" placeholder="Buscar OT, solicitud o dirección…" value={searchTerm}
-            onChange={event => { setSearchTerm(event.target.value); setPage(1) }}
-            className={`${filterControl} pl-9`} />
-        </label>
-        <FilterField inline label="Desde" className="w-48"><input aria-label="Atención desde" type="date" value={filterDateFrom}
-          onChange={event => { setFilterDateFrom(event.target.value); setPage(1) }} className={filterControl} /></FilterField>
-        <FilterField inline label="Hasta" className="w-48"><input aria-label="Atención hasta" type="date" min={filterDateFrom || undefined} value={filterDateTo}
-          onChange={event => { setFilterDateTo(event.target.value); setPage(1) }} className={filterControl} /></FilterField>
-        <FilterField inline label="Tipo de servicio" className="w-64"><select aria-label="Filtrar por tipo de servicio" value={filterService} onChange={e => { setFilterService(e.target.value); setPage(1) }} className={filterControl}>
-          <option value="TODOS">Todos</option>{(Object.keys(SERVICE_KINDS) as ServiceKind[]).map(kind => <option key={kind} value={kind}>{SERVICE_KINDS[kind].short}</option>)}
-        </select></FilterField>
-        <FilterField inline label="Estado" className="w-60"><select aria-label="Filtrar estado" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1) }} className={filterControl}>
-          <option value="TODOS">Todos los estados</option>{Array.from(new Set(['PENDIENTE', 'APROBADA', 'ASIGNADA', 'REPROGRAMADA', 'OBSERVADA', 'RECHAZADA', 'CANCELADA', ...requests.map(r => r.status).filter(status => status !== 'PENDIENTE DE APROBACIÓN' && status !== 'APROBADO')])).map(status => <option key={status} value={status}>{statusLabels[status] || status.replaceAll('_', ' ')}</option>)}
-          </select></FilterField>
-      </FilterToolbar>
-
-      <div className="flex min-h-0 flex-col overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card lg:flex-1">
-        <div role="region" aria-label="Tabla de solicitudes de transporte" tabIndex={0} className="min-h-0 overflow-auto lg:flex-1">
-          <DataTable dense className="block w-full table-fixed text-left lg:min-w-[940px] lg:table"><caption className="sr-only">Solicitud de Transporte: fechas, tipo de servicio, OT, punto de atención, estado y acciones</caption>
-            <thead className="sticky top-0 z-10 hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>
-              {[{ title: 'Solicitada', key: 'created_at', width: 'w-[10%]' }, { title: 'Atención', key: 'required_date', width: 'w-[10%]' }, { title: 'Servicio', key: 'service', width: 'w-[11%]' }, { title: 'OT / Ref.', key: 'ot', width: 'w-[7%]' }, { title: 'Solicitante', key: 'requester', width: 'w-[13%]' }, { title: 'Empresa', key: 'client', width: 'w-[14%] 2xl:w-[12%]' }, { title: 'Punto de atención', key: 'address', width: 'w-[13%] 2xl:w-[11%]' }, { title: 'Estado', key: 'status', width: 'w-[12%]' }, { title: 'Acciones', width: 'w-[10%] 2xl:w-[14%]' }].map(column => <th key={column.title} scope="col" className={column.width} aria-sort={column.key && sort.key === column.key ? sort.direction === 'asc' ? 'ascending' : 'descending' : undefined}>
-                {column.key ? <button type="button" onClick={() => changeSort(column.key as typeof sort.key)} aria-label={`Ordenar por ${column.title.toLowerCase()}`} className="flex min-h-8 items-center gap-1.5 text-left hover:text-[#002855]">{column.title}{sort.key === column.key ? sort.direction === 'asc' ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" /> : <ArrowUpDown className="h-3 w-3 shrink-0 text-slate-400" />}</button> : column.title}
-              </th>)}
-            </tr></thead>
-            <tbody className="block divide-y divide-slate-100 lg:table-row-group">
-              {loading || !visibleRequests.length ? <tr className="block lg:table-row"><td colSpan={7} className="p-8 text-center text-sm text-slate-500">{loading ? <><Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin" />Cargando solicitudes…</> : 'No hay solicitudes para estos filtros.'}</td></tr> : visibleRequests.map(req => {
-                const cell = 'min-w-0 text-sm'
-                const label = (value: string) => <p className="mb-1 text-xs font-medium text-slate-500 lg:hidden">{value}</p>
-                const addresses = serviceAddresses(req)
-                const editable = (canWrite('solicitudes') || canApprove || canReschedule) && ['PENDIENTE DE APROBACIÓN','PENDIENTE','REPROGRAMADA','APROBADA','OBSERVADA','ASIGNADA'].includes(req.status)
-                const actions: TableAction[] = [
-                  ...(['PENDIENTE DE APROBACIÓN','PENDIENTE','REPROGRAMADA'].includes(req.status) && canApprove ? [
-                    { id: 'approve', label: 'Aprobar solicitud', icon: <Check className="h-4 w-4" />, onSelect: () => { void updateStatus(req.id, 'APROBADA') } },
-                    { id: 'reject', label: 'Rechazar solicitud', icon: <X className="h-4 w-4" />, tone: 'danger' as const, onSelect: () => { void updateStatus(req.id, 'RECHAZADA') } },
-                  ] : []),
-                  ...(editable && canWrite('solicitudes') && req.status !== 'ASIGNADA' ? [{ id: 'edit', label: 'Editar solicitud', icon: <Edit2 className="h-4 w-4" />, onSelect: () => { void openEditModal(req) } }] : []),
-                  ...(canWrite('solicitudes') ? [{ id: 'duplicate', label: 'Duplicar como nueva', icon: <Copy className="h-4 w-4" />, onSelect: () => { if (contracts.length === 0) fetchContracts(); void openEditModal(req, true) } }] : []),
-                  ...(editable && canReschedule ? [{ id: 'reschedule', label: 'Reprogramar', icon: <CalendarClock className="h-4 w-4" />, onSelect: () => { setSelectedRequestId(req.id); setNewRescheduleDate(req.required_at ? limaInputParts(req.required_at).date : req.required_date.split('T')[0] || ''); setNewRescheduleTime(req.required_at ? limaInputParts(req.required_at).time : ''); setRescheduleZone(req.delivery_zone || 'LIMA'); void fetchLeadTimeSettings(); setIsRescheduleModalOpen(true) } }] : []),
-                  ...(editable ? [{ id: 'cancel', label: 'Cancelar servicio', icon: <Ban className="h-4 w-4" />, tone: 'danger' as const, onSelect: () => { void handleCancelRequest(req.id) } }] : []),
-                ]
-                return <tr key={req.id} className="grid grid-cols-2 hover:bg-slate-50/70 lg:table-row">
-                  <td className={cell}>{label('Solicitada')}<span className="whitespace-nowrap text-slate-700" title={fullDateTime(req.created_at)}>{cellDateTime(req.created_at)}</span></td>
-                  <td className={cell}>{label('Atención')}{(() => {
-                    const lead = req.request_type === 'DESPACHO' && req.attention_mode !== 'RECOJO_CLIENTE' ? requestLeadTime(req) : null
-                    const note = [req.status === 'REPROGRAMADA' ? 'Reprogramada' : '', !req.required_at ? 'Sin hora registrada' : lead && leadTimeLoaded ? formatLeadTimeStatus(lead.status) : ''].filter(Boolean).join(' · ')
-                    return <span title={note || undefined} className={`whitespace-nowrap ${lead?.enough === false ? 'font-semibold text-red-700' : req.status === 'REPROGRAMADA' ? 'font-semibold text-amber-700' : 'text-slate-700'}`}>{req.required_at ? cellDateTime(req.required_at) : serviceDate(req.required_date)}</span>
-                  })()}</td>
-                  <td className={cell}>{label('Servicio')}<ServiceTypeBadge request={req} /></td>
-                  <td className={cell}>{label('OT / Ref.')}<span className="whitespace-nowrap font-semibold text-[#002855]" title={[`Solicitud ${req.request_number}`, req.contracts?.code && referenceLabel(req)].filter(Boolean).join(' · ')}>{req.contracts?.code || (req.contract_id ? 'OT vinculada' : referenceLabel(req) || 'Sin OT')}</span></td>
+      {referencesWithoutSupplier.length > 0 && <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <span><strong>{referencesWithoutSupplier.length}</strong> referencia(s) OS/OC/RQ histórica(s) sin proveedor vinculado. Complete el dato desde la edición para que aparezca completo en el reporte.</span>
+        {canWrite('solicitudes') && …2684 tokens truncated…pan>}</td>
                   <td className={cell}>{label('Solicitante')}<p className="truncate text-slate-700" title={[req.requester_name, req.department].filter(Boolean).join(' · ') || undefined}>{req.requester_name || 'Sin solicitante'}</p></td>
                   <td className={cell}>{label('Empresa')}{(() => { const party = partyName(req, (req.request_client?.business_name || req.contracts?.clients?.business_name), req.suppliers?.business_name); return <p className="truncate text-slate-700" title={party ? `${requiresSupplier(req) ? 'Proveedor' : 'Cliente'}: ${party}` : undefined}>{party || <button type="button" onClick={e => { e.stopPropagation(); setLinkRequest(req) }} className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-100" title="Sin esto no se puede programar">{requiresSupplier(req) ? 'Proveedor sin vincular' : 'Sin cliente'} · vincular</button>}</p> })()}</td>
                   <td className={`${cell} col-span-2`}>{label('Punto de atención')}<div title={addresses.map(place => `${place.label}: ${place.address}`).join(' → ')} className="text-slate-700">
@@ -1316,7 +1259,7 @@ export default function SolicitudesPage() {
                 <div>
                   <span className="mb-1 block text-sm font-medium text-slate-700">Documento de referencia {referenceRequired ? '(obligatorio: OC, OS o RQ)' : '(opcional)'}</span>
                   <div className="flex gap-2">
-                    <select required={referenceRequired} aria-label="Tipo de documento" value={newRequest.reference_type} onChange={e => setNewRequest({ ...newRequest, reference_type: e.target.value, reference_number: e.target.value ? newRequest.reference_number : '' })}
+                    <select required={referenceRequired} aria-label="Tipo de documento" value={newRequest.reference_type} onChange={e => setNewRequest({ ...newRequest, reference_type: e.target.value, reference_number: e.target.value ? newRequest.reference_number : '', reference_supplier_id: e.target.value === newRequest.reference_type ? newRequest.reference_supplier_id : '' })}
                       className="w-36 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:ring-2 focus:ring-[#002855]">
                       <option value="">{referenceRequired ? "Seleccione OC, OS o RQ" : "Sin documento"}</option>
                       {(Object.keys(REFERENCE_TYPES) as ReferenceType[]).map(k => <option key={k} value={k}>{k} · {REFERENCE_TYPES[k]}</option>)}
@@ -1325,6 +1268,13 @@ export default function SolicitudesPage() {
                       className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:ring-2 focus:ring-[#002855] disabled:bg-slate-100"
                       value={newRequest.reference_number} onChange={e => setNewRequest({ ...newRequest, reference_number: e.target.value })} />
                   </div>
+                  {newRequest.reference_type && <label className="mt-3 block text-sm font-medium text-slate-700">Proveedor de {newRequest.reference_type} *
+                    <select required value={newRequest.reference_supplier_id} onChange={e => setNewRequest({ ...newRequest, reference_supplier_id: e.target.value })} className={field}>
+                      <option value="">Seleccione el proveedor asociado a la referencia</option>
+                      {suppliers.map(s => <option key={s.id} value={s.id}>{s.business_name} · RUC {s.tax_id}</option>)}
+                    </select>
+                    <span className="mt-1 block text-xs font-normal text-slate-500">Se vincula al maestro de proveedores. Las direcciones de origen y destino se registran en la sección de ruta de esta solicitud.</span>
+                  </label>}
                 </div>
               {!isPickupRequest && <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -1460,10 +1410,8 @@ export default function SolicitudesPage() {
           <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-4">
             <div><span className="block text-xs text-slate-500">{selectedRequestDetails.contract_id ? 'OT madre' : 'Referencia del servicio'}</span><strong>{selectedRequestDetails.contract_id ? detailExecution?.ot_code || selectedRequestDetails.contracts?.code || 'OT vinculada sin código disponible' : referenceLabel(selectedRequestDetails) || 'Sin referencia'}</strong></div>
             <div><span className="block text-xs text-slate-500">Estado</span>{getStatusBadge(selectedRequestDetails.status)}</div>
-            <div><span className="block text-xs text-slate-500">Código / Emisión</span><strong>{selectedRequestDetails.request_number}</strong><p className="mt-1">{requestDate(selectedRequestDetails.created_at, true)}</p></div><div><span className="block text-xs text-slate-500">Tipo de servicio</span>{serviceLabel(selectedRequestDetails)}</div><div><span className="block text-xs text-slate-500">Cliente</span>{(selectedRequestDetails.request_client?.business_name || selectedRequestDetails.contracts?.clients?.business_name) || 'Sin cliente registrado'}</div><div><span className="block text-xs text-slate-500">Proveedor de origen</span>{selectedRequestDetails.suppliers?.business_name || (requiresSupplier(selectedRequestDetails) ? 'Proveedor sin vincular' : 'No aplica')}</div><div><span className="block text-xs text-slate-500">Documento de referencia</span>{referenceLabel(selectedRequestDetails) || 'Sin documento'}</div><div><span className="block text-xs text-slate-500">Área / Departamento</span>{selectedRequestDetails.department}</div><div><span className="block text-xs text-slate-500">Solicitante</span>{selectedRequestDetails.requester_name}</div>
+            <div><span className="block text-xs text-slate-500">Código / Emisión</span><strong>{selectedRequestDetails.request_number}</strong><p className="mt-1">{requestDate(selectedRequestDetails.created_at, true)}</p></div><div><span className="block text-xs text-slate-500">Tipo de servicio</span>{serviceLabel(selectedRequestDetails)}</div><div><span className="block text-xs text-slate-500">Cliente</span>{(selectedRequestDetails.request_client?.business_name || selectedRequestDetails.contracts?.clients?.business_name) || 'Sin cliente registrado'}</div><div><span className="block text-xs text-slate-500">Proveedor de origen</span>{selectedRequestDetails.suppliers?.business_name || (requiresSupplier(selectedRequestDetails) ? 'Proveedor sin vincular' : 'No aplica')}</div><div><span className="block text-xs text-slate-500">Documento de referencia</span>{referenceLabel(selectedRequestDetails) || 'Sin documento'}{selectedRequestDetails.reference_type && <p className="mt-1">Proveedor: {selectedRequestDetails.reference_supplier?.business_name || 'Pendiente de completar'}</p>}</div><div><span className="block text-xs text-slate-500">Origen</span>{[selectedRequestDetails.pickup_address, selectedRequestDetails.pickup_district, selectedRequestDetails.pickup_province, selectedRequestDetails.pickup_department].filter(Boolean).join(' · ') || 'Sin dirección'}</div><div><span className="block text-xs text-slate-500">Destino</span>{[selectedRequestDetails.delivery_address, selectedRequestDetails.delivery_district, selectedRequestDetails.delivery_province, selectedRequestDetails.delivery_department].filter(Boolean).join(' · ') || 'Sin dirección'}</div><div><span className="block text-xs text-slate-500">Área / Departamento</span>{selectedRequestDetails.department}</div><div><span className="block text-xs text-slate-500">Solicitante</span>{selectedRequestDetails.requester_name}</div>
             <div><span className="block text-xs text-slate-500">Fecha requerida</span>{selectedRequestDetails.required_at ? requestDate(selectedRequestDetails.required_at, true) : serviceDate(selectedRequestDetails.required_date)}{selectedRequestDetails.time_window && <p className="mt-1 flex items-center gap-1 text-xs"><Clock className="h-3 w-3" />{selectedRequestDetails.time_window}</p>}</div>
-            <div><span className="block text-xs text-slate-500">Origen</span>{selectedRequestDetails.pickup_address || 'Sin origen'}</div>
-            <div><span className="block text-xs text-slate-500">Destino</span>{selectedRequestDetails.delivery_address || 'Sin destino'}</div>
           </div>
           {selectedRequestDetails.request_type === 'DESPACHO' && selectedRequestDetails.attention_mode !== 'RECOJO_CLIENTE' && <div className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-slate-900">Anticipación de entrega</h3><p className="mt-2">{!selectedRequestDetails.required_at ? 'Sin evaluación: registro histórico sin fecha y hora precisas.' : !leadTimeLoaded ? 'Configuración no disponible.' : formatLeadTimeStatus(requestLeadTime(selectedRequestDetails).status)}</p>{leadTimeLoaded && selectedRequestDetails.required_at && requestLeadTime(selectedRequestDetails).minimumAt && <p className="mt-1 text-xs text-slate-500">Zona: {selectedRequestDetails.delivery_zone || 'Sin zona'} · Plazo: {requestLeadTime(selectedRequestDetails).hours} horas · Primera atención permitida: {firstAllowed(requestLeadTime(selectedRequestDetails).minimumAt)}</p>}</div>}
           <div className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-slate-900">Glosa / Detalle de carga</h3><p className="mt-2 whitespace-pre-wrap break-words">{selectedRequestDetails.cargo_description || 'Sin glosa registrada'}</p>{selectedRequestDetails.purchase_order && <p className="mt-2 text-xs">Orden de compra: {selectedRequestDetails.purchase_order}</p>}{selectedRequestDetails.budget_observation && <p className="mt-3 rounded-lg bg-rose-50 p-3 text-xs text-rose-800">Observación: {selectedRequestDetails.budget_observation}</p>}</div>

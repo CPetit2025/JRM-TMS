@@ -155,10 +155,21 @@ export function syncOfflineActions(): Promise<number> {
             if (error && String(error.statusCode) !== '409') throw error
             packingPaths.push(path)
           }
+          let odometerPhotoPath: string | null = null
+          const odometerPhoto = action.payload.odometer_photo_base64
+          if (odometerPhoto != null) {
+            const kind = photoKind(odometerPhoto)
+            if (!kind) throw new Error('Foto del odómetro no válida: use JPG, PNG o WEBP')
+            const blob = await (await fetch(odometerPhoto as string)).blob()
+            odometerPhotoPath = `${auth.user.id}/${action.payload.dispatch_id}/${action.payload.request_id}/${action.id}-odometer.${kind.ext}`
+            const { error } = await supabase.storage.from('driver_evidence').upload(odometerPhotoPath, blob, { upsert: false, contentType: kind.type })
+            if (error && String(error.statusCode) !== '409') throw error
+          }
           const { data, error } = await supabase.rpc('execute_driver_offline_action', {
             p_operation_id: action.id, p_action_type: action.type,
             p_payload: { dispatch_id: action.payload.dispatch_id, request_id: action.payload.request_id, photos: paths, packing_photos: packingPaths,
-              received_by: action.payload.received_by, guide: action.payload.guide, note: action.payload.note, captured_at: action.payload.captured_at },
+              received_by: action.payload.received_by, guide: action.payload.guide, note: action.payload.note, captured_at: action.payload.captured_at,
+              odometer: action.payload.odometer, odometer_photo: odometerPhotoPath },
           })
           if (error) throw error
           if (!data?.success) throw new Error(data?.error || 'El servidor no confirmó la guía')
