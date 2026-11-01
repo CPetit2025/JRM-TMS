@@ -18,6 +18,15 @@ const { setupBudget, read, id, fn } = require('./fixtures/budget-setup.cjs')
    ALTER TABLE dispatch_request_freight ADD COLUMN service_id uuid;
    ALTER TABLE dispatch_expenses ADD COLUMN created_at timestamptz DEFAULT now();
    CREATE TABLE dispatch_freight_stages(dispatch_id uuid PRIMARY KEY, final_applied_pen numeric);
+   CREATE TABLE dispatch_service_additions(dispatch_id uuid, request_id uuid, extra_km numeric);
+   CREATE TABLE documentary_closures(dispatch_id uuid, request_id uuid, status text);
+   CREATE TABLE carriers(id uuid PRIMARY KEY, business_name text);
+   CREATE TABLE budget_deviation_reviews(key text PRIMARY KEY, contract_id uuid);
+   CREATE TABLE budget_deviation_events(key text, action text, amount_pen numeric, note text, created_by uuid, created_at timestamptz DEFAULT now());
+   CREATE TABLE dispatch_documents(dispatch_id uuid, doc_type text, document_number text, voided_at timestamptz);
+   CREATE TABLE contract_budget_adjustments(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), budget_id uuid, contract_id uuid, field text, old_value numeric, new_value numeric, reason text, created_at timestamptz DEFAULT now());
+   ALTER TABLE transport_requests ADD COLUMN pickup_address text, ADD COLUMN delivery_address text;
+   ALTER TABLE dispatch_requests ADD COLUMN sequence_order int;
    CREATE TABLE dispatch_request_freight_stages(dispatch_id uuid, request_id uuid, final_applied_pen numeric, PRIMARY KEY (dispatch_id, request_id));
    CREATE TABLE contract_services(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), contract_id uuid, budget_contract_id uuid, service_type text, description text,
     amount_pen numeric, service_date date DEFAULT current_date, plate text, driver_name text, hours numeric, provider_ruc text, provider_name text, category text,
@@ -48,6 +57,11 @@ const { setupBudget, read, id, fn } = require('./fixtures/budget-setup.cjs')
   await db.exec(migration); await db.exec(migration)
   // Pendientes sin búsqueda cuadrática (auditoría, hallazgo 12): parche idempotente sobre budget_pending
   for (let i = 0; i < 2; i++) await db.exec(read('supabase/migrations/20261204090000_pendientes_sin_busqueda_cuadratica.sql'))
+  // Decisiones D2, D3 y D5 de la reingeniería (idempotente)
+  for (let i = 0; i < 2; i++) await db.exec(read('supabase/migrations/20261206090000_control_presupuestal_reglas_d2_d3_d5.sql'))
+  // Cierre final (historial de la OT) y detalle por OT con ampliaciones (idempotentes)
+  await db.exec(fn('supabase/migrations/20261111110000_cierre_economico_bandeja.sql', 'economic_documentary_status'))
+  for (const m of ['20261205090000_torre_cierre_final.sql', '20261207090000_control_presupuestal_detalle_ot.sql']) for (let i = 0; i < 2; i++) await db.exec(read('supabase/migrations/' + m))
 
   const budget = (c, r, x) => db.query(`UPDATE contract_budgets SET reserved_pen = reserved_pen + $2, consumed_pen = consumed_pen + $3 WHERE contract_id = $1`, [c, r, x])
   const used = async c => (await db.query(`SELECT round(reserved_pen,2)::float r, round(consumed_pen,2)::float c FROM contract_budgets WHERE contract_id=$1`, [c])).rows[0]
@@ -158,6 +172,62 @@ const { setupBudget, read, id, fn } = require('./fixtures/budget-setup.cjs')
   await close(id(65), [[id(10), 130]])
   assert.deepEqual([(await used(id(10))).r, await reconciled(id(10))], [0, [0, 0]], 'no orphan commitment after close')
 
+  // D5: flete final aprobado después del cierre en ruta propia: el reverso de la tarifa lo sigue (neto cero).
+  // El ajuste aprobado antes de esta regla (370 sobre 350, insertado arriba) quedó en el ejecutado y se conserva.
+  const before = (await used(id(10))).c
+  await db.exec(`UPDATE dispatch_request_freight_stages SET final_applied_pen = 380 WHERE dispatch_id='${id(61)}' AND request_id='${id(41)}'`); await budget(id(10), 0, 10)
+  assert.equal(Math.round(((await used(id(10))).c - before) * 100) / 100, -20, 'D5: net own-route freight back to zero (+10 adjustment, reversal 350 → 380)')
+  assert.deepEqual(await reconciled(id(10)), [0, 0], 'D5 reconciles')
+  // D3: ruta propia multi-OT con 20 km agregados por el servicio de OT-B: combustible estimado 100 km / 20 km/gal × 16 = 80;
+  // 16 por los km extra a OT-B y 64 por partes iguales → OT-A 32, OT-B 48
+  await db.exec(`INSERT INTO transport_requests(id,request_number,contract_id) VALUES ('${id(48)}','S-9','${id(10)}'),('${id(49)}','S-10','${id(20)}');
+   INSERT INTO dispatches(id,dispatch_number,status,contract_id,freight_cost,vehicle_plate,scheduled_departure,actual_distance_km,modalidad) VALUES ('${id(66)}','R-66','EN RUTA',NULL,200,'PRO-1',now(),100,'PROPIA');
+   INSERT INTO dispatch_requests VALUES ('${id(66)}','${id(48)}'),('${id(66)}','${id(49)}');
+   INSERT INTO dispatch_request_freight(dispatch_id,request_id,contract_id,amount_pen) VALUES ('${id(66)}','${id(48)}','${id(10)}',100),('${id(66)}','${id(49)}','${id(20)}',100);
+   INSERT INTO dispatch_service_additions VALUES ('${id(66)}','${id(49)}',20)`)
+  await budget(id(10), 100, 0); await budget(id(20), 100, 0)
+  await close(id(66), [[id(10), 100], [id(20), 100]])
+  const fuel = (await db.query(`SELECT request_id, amount_pen::float a, detail FROM cost_allocations WHERE dispatch_id=$1 AND kind='COMBUSTIBLE_ESTIMADO' ORDER BY request_id`, [id(66)])).rows
+  assert.deepEqual(fuel.map(f => [f.request_id, f.a]), [[id(48), 32], [id(49), 48]], 'D3: extra-km fuel goes to the OT that added them')
+  assert.equal(Number(fuel[1].detail.km_extra), 20)
+  assert.deepEqual([await reconciled(id(10)), await reconciled(id(20))], [[0, 0], [0, 0]], 'D3 reconciles')
+  // D2: combustible de Caja en ruta de tercero: se imputa y queda como posible duplicado con la tarifa
+  await expense(550, id(62), 'COMBUSTIBLE', 50); await approve(550)
+  pend = (await rpc('budget_pending()')).rows
+  assert.ok(pend.some(p => p.kind === 'COMBUSTIBLE_EN_TARIFA' && p.contract_code === 'OT-C' && Number(p.amount_pen) === 50 && p.dispatch_number === 'R-62'), 'D2 flagged')
+  assert.ok(!pend.some(p => p.kind === 'COMBUSTIBLE_EN_TARIFA' && p.dispatch_number !== 'R-62'), 'own-route fuel is not flagged')
+
+  // Detalle por OT: suma lo mismo que la partida (viajes + cargos sin ruta = ejecutado explicado; conceptos = total)
+  let det = await rpc('budget_ot_detail($1)', [id(20)]); assert.equal(det.success, true, det.error)
+  m = await moves(id(20))
+  const sum = (rows, k) => Math.round(rows.reduce((a, r) => a + Number(r[k]), 0) * 100) / 100
+  const noRoute = Math.round(m.rows.filter(r => !r.dispatch_id && r.has_budget).reduce((a, r) => a + Number(r.consumed_pen), 0) * 100) / 100
+  assert.equal(Math.round((sum(det.trips, 'consumed_pen') + noRoute) * 100) / 100, Number(m.explained.consumed_pen), 'trips + charges without route = executed')
+  assert.equal(sum(det.concepts, 'consumed_pen'), Number(m.explained.consumed_pen), 'concepts = executed (no double counting)')
+  assert.equal(sum(det.concepts, 'reserved_pen'), Number(m.explained.reserved_pen))
+  assert.ok(det.concepts.some(c => c.concept === 'Combustible') && det.concepts.some(c => c.concept === 'Estiba'))
+  assert.equal(det.series.at(-1).cumulative_pen, Number(m.explained.consumed_pen), 'series ends at the executed total')
+  const r66 = det.trips.find(t => t.number === 'R-66'); assert.deepEqual([Number(r66.planned_pen), r66.closure.economico], [100, 'PENDIENTE'])
+  assert.match((await rpc('budget_ot_detail($1,$2,$3)', [id(20), '2026-02-01', '2026-01-01'])).error, /posterior/)
+  // Ampliación (D4): solicita el Jefe, decide Gerencia (no la propia), suma al asignado y queda en el historial
+  await db.exec(`SELECT set_config('test.perms', 'despacho', false)`)
+  assert.match((await rpc('budget_extension_request($1,$2,$3)', [id(20), 200, 'Mayor volumen del cliente'])).error, /Solo el Jefe/)
+  await db.exec(`SELECT set_config('test.perms', 'control-presupuestal-recomendar,control-presupuestal-autorizar', false)`)
+  assert.match((await rpc('budget_extension_request($1,$2,$3)', [id(20), 200, 'corto'])).error, /mínimo 10/)
+  const ext = await rpc('budget_extension_request($1,$2,$3,$4)', [id(20), 200, 'Mayor volumen del cliente', 'Correo del cliente']); assert.equal(ext.success, true, ext.error)
+  assert.match((await rpc('budget_extension_request($1,$2,$3)', [id(20), 100, 'Otra ampliación más'])).error, /pendiente/)
+  assert.match((await rpc('budget_extension_action($1,$2)', [ext.id, 'APROBAR'])).error, /usted solicitó/)
+  await db.exec(`CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$SELECT '${id(98)}'::uuid$$`)
+  const allocated = Number((await db.query(`SELECT allocated_pen FROM contract_budgets WHERE contract_id=$1`, [id(20)])).rows[0].allocated_pen)
+  assert.equal((await rpc('budget_extension_action($1,$2,$3)', [ext.id, 'APROBAR', 'Aprobado'])).success, true)
+  assert.equal(Number((await db.query(`SELECT allocated_pen FROM contract_budgets WHERE contract_id=$1`, [id(20)])).rows[0].allocated_pen), allocated + 200)
+  assert.match((await rpc('budget_extension_action($1,$2)', [ext.id, 'RECHAZAR'])).error, /ya fue decidida/)
+  det = await rpc('budget_ot_detail($1)', [id(20)])
+  assert.deepEqual([Number(det.position.extensions_pen), det.extensions[0].status], [200, 'APROBADA'])
+  assert.ok(det.timeline.some(h => h.kind === 'AMPLIACION' && /aprobada/.test(h.title)) && det.timeline.some(h => h.kind === 'PARTIDA'))
+  assert.deepEqual(await reconciled(id(20)), [0, 0], 'an extension changes the allocation, not the movements')
+  await db.exec(`CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$SELECT '${id(99)}'::uuid$$; SELECT set_config('test.perms', 'contratos-servicios', false)`)
+
   // Período: ejecutado inicial + del período = al corte; filtros y paginación
   m = await moves(id(20), { from: '2000-01-01', to: '2100-01-01' })
   assert.equal(Number(m.period.closing_consumed_pen), Number(m.explained.consumed_pen))
@@ -177,6 +247,8 @@ const { setupBudget, read, id, fn } = require('./fixtures/budget-setup.cjs')
   assert.match((await rpc('budget_pending()')).error, /Sin acceso/)
 
   await assert.rejects(db.exec(read('supabase/tests/caja_c203_circuito_economico.test.sql')), /CAJA C203 PASS/)
+  await db.exec('ROLLBACK').catch(() => {})
+  await assert.rejects(db.exec(read('supabase/tests/caja_c207_reglas_d2_d3_d5.test.sql')), /CAJA C207 PASS/)
   await db.exec('ROLLBACK').catch(() => {})
   console.log('PASS circuito económico: movimientos explican comprometido y ejecutado sin doble conteo (propia, multi-OT, tercero, sin OT, descarga, Caja, combustible, cancelación, ajuste, cargos, componentes), diferencia histórica expuesta, pendientes, permisos, paginación y flete por OT editable')
  } finally { await db.close() }

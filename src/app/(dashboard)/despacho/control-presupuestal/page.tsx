@@ -88,7 +88,7 @@ export default function ControlPresupuestalPage() {
               {shown.map(r => {
                 const pct = Number(r.used_pct ?? 0)
                 return <tr key={r.contract_id} className="hover:bg-slate-50">
-                  <td className="px-3 py-2"><Link href={`/contratos/${r.contract_id}`} className="font-bold text-[#002855] underline">{r.code}</Link>
+                  <td className="px-3 py-2"><Link href={`/despacho/control-presupuestal/${r.contract_id}`} title="Análisis financiero de la OT" className="font-bold text-[#002855] underline">{r.code}</Link>
                     {r.override && <span className="block text-[11px] text-slate-500" title={r.override.reason || undefined}>Margen pactado: {r.override.pct} % operativo</span>}</td>
                   <td className="px-3 py-2 text-xs">{r.client || '—'}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{money(Number(r.allocated_pen))}</td>

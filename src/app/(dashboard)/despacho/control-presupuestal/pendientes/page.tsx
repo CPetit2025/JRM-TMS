@@ -20,7 +20,7 @@ type Pending = { kind: string; contract_id: string; contract_code: string; dispa
 const supabase = createClient()
 const KIND: Record<string, string> = {
   CONCILIACION: 'Diferencia de conciliación', SIN_IMPUTAR: 'Costo sin imputar', POR_IMPUTAR: 'Por imputar al cierre',
-  COMBUSTIBLE_ESTIMADO: 'Combustible estimado', SIN_SUSTENTO: 'Sin sustento', POSIBLE_DUPLICADO: 'Posible duplicado',
+  COMBUSTIBLE_ESTIMADO: 'Combustible estimado', COMBUSTIBLE_EN_TARIFA: 'Combustible en tarifa', SIN_SUSTENTO: 'Sin sustento', POSIBLE_DUPLICADO: 'Posible duplicado',
 }
 const link = (p: Pending) => p.dispatch_id ? { href: `/despacho/documentos/economico?despacho=${p.dispatch_id}`, label: `Abrir ruta ${p.dispatch_number || ''}` }
   : p.kind === 'CONCILIACION' ? { href: `/despacho/control-presupuestal/movimientos?ot=${p.contract_id}`, label: 'Ver movimientos' }
