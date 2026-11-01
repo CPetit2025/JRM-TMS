@@ -43,8 +43,9 @@ export default function CierreEconomicoPage() {
 
 function CierreEconomico() {
   const router = useRouter()
-  // ?despacho=<id> (desde Documentos de Despacho): abre directamente la validación de esa ruta
+  // ?despacho=<id>: el viaje se liquida en Torre de Control (reingeniería, Fase 5); la bandeja sigue siendo la lista de trabajo
   const linked = useSearchParams().get('despacho')
+  useEffect(() => { if (linked && /^[0-9a-f-]{36}$/i.test(linked)) router.replace(`/torre-control?despacho=${linked}&liquidar=economica`) }, [linked, router])
   const today = new Date()
   const [from, setFrom] = useState(limaDate(new Date(today.getFullYear(), today.getMonth(), 1)))
   const [to, setTo] = useState(limaDate(today))
@@ -52,17 +53,7 @@ function CierreEconomico() {
   const [perm, setPerm] = useState({ validate: false, approve: false })
   const [settings, setSettings] = useState<EconSettings>(DEFAULT_SETTINGS)
   const [view, setView] = useState<'bandeja' | 'indicadores'>('bandeja')
-  const [open, setOpen] = useState<{ id: string; tab: 'resumen' | 'servicios' } | null>(() => (linked && /^[0-9a-f-]{36}$/i.test(linked) ? { id: linked, tab: 'servicios' } : null))
-  // La bandeja incluye la fecha de la ruta enlazada aunque sea anterior al período por defecto
-  useEffect(() => {
-    if (!linked || !/^[0-9a-f-]{36}$/i.test(linked)) return
-    let alive = true
-    void supabase.from('dispatches').select('scheduled_departure').eq('id', linked).maybeSingle().then(({ data }) => {
-      const day = data?.scheduled_departure ? limaDate(new Date(data.scheduled_departure)) : null
-      if (alive && day) setFrom(current => (day < current ? day : current))
-    })
-    return () => { alive = false }
-  }, [linked])
+  const [open, setOpen] = useState<{ id: string; tab: 'resumen' | 'servicios' } | null>(null)
   const [f, setF] = useState({ q: '', econ: '', doc: '', supplier: '', concept: '', contract: '', plate: '', responsible: '', client: '', unit: '', route: '' })
   const [sort, setSort] = useState<Sort>('fecha')
   const [page, setPage] = useState(1)

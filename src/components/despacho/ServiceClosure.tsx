@@ -30,9 +30,9 @@ const DOC: Record<string, string> = { PENDIENTE: 'Pendiente', OBSERVADO: 'Observ
 export const closureStage = (c: ClosureChecks | undefined) => !c ? null : c.final ? 'CERRADO' : !c.operativo.ok ? null
   : c.ready ? 'LISTO' : !c.documentario.ok ? 'DOCUMENTARIO' : !c.economico.ok ? 'ECONOMICO' : 'CAJA'
 
-export function ServiceClosure({ dispatchId, onChanged }: { dispatchId: string; onChanged?: () => void }) {
+export function ServiceClosure({ dispatchId, openEconomic = false, onChanged }: { dispatchId: string; openEconomic?: boolean; onChanged?: () => void }) {
   const [state, setState] = useState<Status | null>(null)
-  const [econ, setEcon] = useState(false)
+  const [econ, setEcon] = useState(openEconomic)
   const [note, setNote] = useState('')
   const [mode, setMode] = useState<'exception' | 'reopen' | null>(null)
   const [busy, setBusy] = useState(false)

@@ -182,6 +182,12 @@ En la lista: filtros nuevos «Documentación pendiente», «Económico pendiente
 | Enlaces existentes `?despacho=` | Varias pantallas | Torre `?despacho=&tab=economica` | — | Monitoreo, Registro, Pendientes | La dirección vieja redirige | Bajo |
 | Bandeja documentaria `?vista=liquidacion` | Documentos | Torre · Liquidación documentaria | `documentary_closures` | `get_settlement_checklists` | Igual: primero convivir y después redirigir | Medio |
 
+**Fase 5, primer paso (01/11/2026):** `/despacho/documentos/economico?despacho=<id>` redirige a Torre
+(`/torre-control?despacho=<id>&liquidar=economica`), que abre el viaje con su liquidación económica. Todos los enlaces existentes
+(Movimientos, Pendientes, Registro de Servicios, Documentos, Torre) llegan así a Torre sin cambiarlos. La bandeja de Costos por
+ruta sigue como lista de trabajo. La liquidación documentaria aún no está dentro de Torre: su bandeja y su enlace se mantienen
+hasta montar `GuidesClosureTab` en el viaje.
+
 El retiro se hace recién cuando Torre cubre todo y dos semanas de uso no muestran regresiones. Las URL viejas redirigen. No se borra ningún dato.
 
 ## 9. Roles y autorizaciones
