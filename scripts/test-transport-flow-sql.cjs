@@ -11,7 +11,8 @@ const extension = `
   // New flow migrations are applied after historical regression fixtures, so the
   // mandatory lead-time policy does not invalidate unrelated legacy test input.
   const flowMigrations = require('node:fs').readdirSync(path.join(root,'supabase/migrations'))
-    .filter(file => /^20261009.*\\.sql$/.test(file)).sort();
+    // Only the flow under test (010000-060000); later 20261009 migrations patch functions this fixture does not install.
+    .filter(file => /^202610090[1-6]0000_.*\\.sql$/.test(file)).sort();
   assert.ok(flowMigrations.length, 'Transport flow migrations exist');
   // Exercise existing projects whose pgcrypto was installed outside extensions.
   sql('CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;');
