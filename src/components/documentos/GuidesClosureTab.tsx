@@ -30,7 +30,8 @@ export type DocInfo = {
   uploaded_at: string; signed?: boolean; category?: string | null; size?: number | null
 }
 // Compartido con la bandeja documentaria y con Torre de Control (liquidación documentaria del viaje)
-export const NOT_SETTLEABLE = ['PROGRAMADO', 'CANCELADO', 'LIQUIDADO', 'CERRADO']
+// Una ruta LIQUIDADO (cerrada) también se liquida documentariamente, hasta su cierre final (20261209090000)
+export const NOT_SETTLEABLE = ['PROGRAMADO', 'CANCELADO', 'CERRADO']
 // Tipo de servicio para los documentos requeridos, con los datos de la solicitud (antes de tener la lista de la base)
 export function settlementKind(info: Parameters<typeof serviceKind>[0], pickup: boolean): ServiceKind {
   const kind = serviceKind(info)
