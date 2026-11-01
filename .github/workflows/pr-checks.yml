@@ -109,6 +109,7 @@ jobs:
       - run: node scripts/test-request-reference.mjs
       - run: node scripts/test-reference-service-registry.cjs
       - run: node scripts/test-reference-finance.cjs
+      - run: node scripts/test-reference-supplier-index.cjs
       - run: node scripts/test-unit-report-patches.cjs
       - run: node scripts/test-public-tracking-session.cjs
       - run: node scripts/test-tracking-presence.cjs
