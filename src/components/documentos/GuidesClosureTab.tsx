@@ -9,6 +9,8 @@ import { Modal } from '@/components/ui/modal'
 import { TableActions, type TableAction } from '@/components/ui/table-actions'
 import { DOCUMENTARY_LABEL, DocumentaryBadge, type DocumentaryClosure, type DocumentaryStatus } from '@/components/despacho/DocumentaryClosure'
 import type { DeliveryRow } from '@/lib/delivery'
+import { serviceKind } from '@/lib/request-service'
+import type { KnownNumber } from '@/components/despacho/DocumentNumberLinks'
 
 // Pestaña «Guías y notas» del modal de Documentos (bosquejo aprobado):
 // 1. Guías de remisión y notas de despacho de la ruta (sin duplicar números) con ver, descargar, subir y vincular.
@@ -27,6 +29,23 @@ export type DocInfo = {
   id: string; request_id: string | null; doc_type: string; document_number: string | null; file_path: string; file_name: string | null
   uploaded_at: string; signed?: boolean; category?: string | null; size?: number | null
 }
+// Compartido con la bandeja documentaria y con Torre de Control (liquidación documentaria del viaje)
+export const NOT_SETTLEABLE = ['PROGRAMADO', 'CANCELADO', 'LIQUIDADO', 'CERRADO']
+// Tipo de servicio para los documentos requeridos, con los datos de la solicitud (antes de tener la lista de la base)
+export function settlementKind(info: Parameters<typeof serviceKind>[0], pickup: boolean): ServiceKind {
+  const kind = serviceKind(info)
+  if (pickup || kind === 'RECOJO_CLIENTE') return 'RECOJO_CLIENTE'
+  return kind === 'RECOJO' ? 'RECOJO' : kind === 'PUNTO_A_PUNTO' ? 'TRASLADO' : 'ENTREGA'
+}
+// Números de GR y nota ya conocidos de la ruta (guía de entrega o archivo cargado)
+export function knownNumbers(item: { id: string; documents: { request_id: string | null; doc_type: string; document_number: string | null }[] }, deliveries: DeliveryRow[]): KnownNumber[] {
+  const fromDelivery = deliveries.filter(row => row.dispatch_id === item.id && row.guide_number)
+    .map(row => ({ request_id: row.request_id, doc_type: 'GUIA_REMISION' as const, document_number: row.guide_number!, source: row.submission_id ? 'guía de entrega' : 'despacho' }))
+  const fromFiles = item.documents.filter(doc => doc.request_id && doc.document_number && (doc.doc_type === 'GUIA_REMISION' || doc.doc_type === 'NOTA_DESPACHO'))
+    .map(doc => ({ request_id: doc.request_id!, doc_type: doc.doc_type as KnownNumber['doc_type'], document_number: doc.document_number!, source: 'archivo cargado' }))
+  return [...fromDelivery, ...fromFiles]
+}
+
 type Props = {
   dispatchId: string; stops: StopInfo[]; documents: DocInfo[]; numberRefs: { request_id: string; doc_type: string; document_number: string }[]
   deliveries: DeliveryRow[]; executed: boolean; canUpload: boolean; canManual: boolean; canVoid: boolean; linking: React.ReactNode

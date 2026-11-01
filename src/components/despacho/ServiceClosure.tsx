@@ -5,8 +5,9 @@ import { CheckCircle2, CircleDashed, Lock } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { errorMessage, money } from '@/lib/caja'
-import { documentaryHref } from '@/lib/economic-closure'
 import { EconomicClosurePanel } from '@/components/despacho/EconomicClosurePanel'
+import { DispatchDocumentarySettlement } from '@/components/documentos/DispatchDocumentarySettlement'
+import { Modal } from '@/components/ui/modal'
 
 // Cierre del servicio en Torre de Control: los cuatro procesos del viaje con su estado (dispatch_closure_status) y el
 // cierre final (dispatch_final_close). Cada estado es independiente: la documentación puede estar completa con lo
@@ -30,9 +31,10 @@ const DOC: Record<string, string> = { PENDIENTE: 'Pendiente', OBSERVADO: 'Observ
 export const closureStage = (c: ClosureChecks | undefined) => !c ? null : c.final ? 'CERRADO' : !c.operativo.ok ? null
   : c.ready ? 'LISTO' : !c.documentario.ok ? 'DOCUMENTARIO' : !c.economico.ok ? 'ECONOMICO' : 'CAJA'
 
-export function ServiceClosure({ dispatchId, openEconomic = false, onChanged }: { dispatchId: string; openEconomic?: boolean; onChanged?: () => void }) {
+export function ServiceClosure({ dispatchId, openEconomic = false, openDocumentary = false, onChanged }: { dispatchId: string; openEconomic?: boolean; openDocumentary?: boolean; onChanged?: () => void }) {
   const [state, setState] = useState<Status | null>(null)
   const [econ, setEcon] = useState(openEconomic)
+  const [docs, setDocs] = useState(openDocumentary)
   const [note, setNote] = useState('')
   const [mode, setMode] = useState<'exception' | 'reopen' | null>(null)
   const [busy, setBusy] = useState(false)
@@ -73,7 +75,7 @@ export function ServiceClosure({ dispatchId, openEconomic = false, onChanged }: 
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {item(c.operativo.ok, 'Ruta y seguimiento', c.operativo.ok ? 'Ruta cerrada y partida ejecutada' : 'Falta cerrar la ruta (Acciones operativas)')}
         {item(c.documentario.ok, 'Liquidación documentaria', `${DOC[c.documentario.status] || c.documentario.status}${c.documentario.pending ? ` · ${c.documentario.pending} servicio(s) por completar` : ''}`,
-          <Link href={documentaryHref(dispatchId)} className="font-semibold text-[#002855] underline">Abrir documentos del servicio</Link>)}
+          <button type="button" onClick={() => setDocs(true)} className="font-semibold text-[#002855] underline">Abrir documentos del servicio</button>)}
         {item(c.economico.ok, 'Liquidación económica', ECON[c.economico.status] || c.economico.status,
           <button type="button" onClick={() => setEcon(true)} className="font-semibold text-[#002855] underline">Abrir costos del servicio</button>)}
         {item(c.caja.ok, 'Caja del viaje', c.caja.ok ? 'Sin gastos por revisar' : `${c.caja.pending} gasto(s) por revisar · S/ ${money(Number(c.caja.pending_pen))}`,
@@ -101,6 +103,8 @@ export function ServiceClosure({ dispatchId, openEconomic = false, onChanged }: 
           <button type="button" onClick={() => { setMode(null); setNote('') }} className="min-h-10 rounded-lg px-4 text-sm hover:bg-slate-100">Cancelar</button>
         </div>
       </div>}
+      {docs && <Modal isOpen onClose={() => { setDocs(false); void load() }} title="Liquidación documentaria del viaje" maxWidth="max-w-6xl">
+        <DispatchDocumentarySettlement dispatchId={dispatchId} onChanged={() => { void load(); onChanged?.() }} /></Modal>}
       {econ && <EconomicClosurePanel dispatchId={dispatchId} onClose={() => setEcon(false)} onChanged={() => { void load(); onChanged?.() }} />}
     </section>
   )

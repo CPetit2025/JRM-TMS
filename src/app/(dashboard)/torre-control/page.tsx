@@ -101,8 +101,8 @@ export default function TorreControlPage() {
   const requestedProvider = useRef(false)
   // ?despacho=<id>&revisar=<solicitud>: abre directamente la guía y conformidad por validar (enlace de JRM IA)
   const requestedReview = useRef<string | null>(null)
-  // ?liquidar=economica (p. ej. la dirección anterior de Costos por ruta): abre la liquidación económica del viaje
-  const [economicFor, setEconomicFor] = useState<string | null>(null)
+  // ?liquidar=economica|documentaria (direcciones anteriores de Costos por ruta y de Documentación pendiente): abre esa liquidación del viaje
+  const [liquidate, setLiquidate] = useState<{ id: string; what: string } | null>(null)
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('jrm:context', { detail: selectedDispatch ? { dispatchId: selectedDispatch.id } : {} }))
@@ -138,7 +138,8 @@ export default function TorreControlPage() {
     requestedReview.current = revisar && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(revisar) ? revisar : null
     const timer = window.setTimeout(() => {
       setStatusFilter('TODOS')
-      if (query.get('liquidar') === 'economica') setEconomicFor(id)
+      const what = query.get('liquidar')
+      if (what === 'economica' || what === 'documentaria') setLiquidate({ id, what })
       const day = query.get('fecha')
       if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) setDateFilter(day)
     }, 0)
@@ -634,7 +635,7 @@ export default function TorreControlPage() {
         footer={<div className="flex justify-end"><button type="button" onClick={() => setSelectedDispatch(null)} className="min-h-10 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-jrm-navy">Cerrar expediente</button></div>}
       >
         {/* Abierto por enlace (?despacho=, p. ej. desde Costos por ruta o Documentos): el cierre del servicio va primero */}
-        {selectedDispatch && <div className="mb-4"><ServiceClosure dispatchId={selectedDispatch.id} openEconomic={economicFor === selectedDispatch.id} onChanged={() => void fetchDispatches()} /></div>}
+        {selectedDispatch && <div className="mb-4"><ServiceClosure dispatchId={selectedDispatch.id} openEconomic={liquidate?.id === selectedDispatch.id && liquidate.what === 'economica'} openDocumentary={liquidate?.id === selectedDispatch.id && liquidate.what === 'documentaria'} onChanged={() => void fetchDispatches()} /></div>}
         {selectedDispatch && routeFile(selectedDispatch, () => setSelectedDispatch(null))}
       </Modal>
     </div>
