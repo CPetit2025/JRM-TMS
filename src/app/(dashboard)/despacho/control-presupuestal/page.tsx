@@ -8,6 +8,8 @@ import { PageHeader } from '@/components/ui/page-header'
 import { KpiStatCard } from '@/components/ui/kpi-stat-card'
 import { errorMessage, money } from '@/lib/caja'
 import { BudgetAuthorizations, type AuthorizationTarget } from '@/components/despacho/BudgetAuthorizations'
+import { BudgetDeviations } from '@/components/despacho/BudgetDeviations'
+import { ControlPresupuestalTabs } from '@/components/despacho/ControlPresupuestalTabs'
 
 // Control presupuestal de transporte por OT: consumo = comprometido + ejecutado sobre lo asignado, con los niveles aprobados
 // (docs/control-presupuestal/especificacion.md). La OT raíz suma sus subcontratos. Sobre el tope se compromete solo con
@@ -66,6 +68,7 @@ export default function ControlPresupuestalPage() {
         actions={<><button type="button" onClick={() => void load()} className="flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50"><RefreshCw className="h-4 w-4" />Actualizar</button>
           <button type="button" disabled={!shown.length} onClick={() => exportCsv(shown)} className="flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50 disabled:opacity-50"><Download className="h-4 w-4" />Exportar</button></>} />
 
+      <ControlPresupuestalTabs active="ot" />
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         <KpiStatCard label={`Normal (menos de ${settings.budget_alert_pct} %)`} value={count('NORMAL')} tone="emerald" icon={<CheckCircle2 className="h-5 w-5" />} loading={!rows} active={level === 'NORMAL'} onClick={() => toggle('NORMAL')} />
         <KpiStatCard label={`Alerta (${settings.budget_alert_pct}–${settings.budget_cap_pct} %)`} value={count('ALERTA')} tone="amber" icon={<AlertTriangle className="h-5 w-5" />} loading={!rows} active={level === 'ALERTA'} onClick={() => toggle('ALERTA')} />
@@ -108,7 +111,10 @@ export default function ControlPresupuestalPage() {
             </tbody>
           </table>}
       </div>
-      <BudgetAuthorizations target={target} onTargetDone={() => setTarget(null)} onChanged={() => void load()} />
+      <div className="grid items-start gap-3 xl:grid-cols-2">
+        <BudgetDeviations onChanged={() => void load()} />
+        <BudgetAuthorizations target={target} onTargetDone={() => setTarget(null)} onChanged={() => void load()} />
+      </div>
       <p className="text-[11px] text-slate-500">Comprometido: flete y servicios reservados al programar. Ejecutado: lo consumido al cerrar la ruta, por Caja o por cargos registrados. En flota propia, al cerrar la ruta la tarifa se reemplaza por los costos reales (combustible —real o estimado—, peajes, viáticos, estacionamiento); los gastos de Caja se reparten entre las OT de la ruta por peso o en partes iguales.</p>
     </div>
   )
