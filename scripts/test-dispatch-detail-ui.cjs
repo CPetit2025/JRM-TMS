@@ -72,7 +72,7 @@ test('tabs load the stop detail once and show real milestones, GPS and incidents
  await act(async () => { view = create(React.createElement(DispatchDetailModal, { row: row(), onClose: () => closed++, onValidate: r => { validated = r } })) }); await act(flush)
  assert.deepEqual(calls.filter(c => c.name === 'get_dispatch_detail').map(c => c.args), [{ p_dispatch: 'd1', p_request: 's1' }])
  assert.ok(view.root.findByProps({ 'aria-label': 'Detalle del despacho 10103 · RT-002314' }))
- assert.deepEqual(view.root.findAllByProps({ role: 'tab' }).map(t => t.props.children[1]), ['Resumen', 'Ruta y seguimiento', 'Documentos', 'Fotos y evidencias', 'Costos', 'Historial'])
+ assert.deepEqual(view.root.findAllByProps({ role: 'tab' }).map(t => t.props.children[1]), ['Resumen', 'Ruta y seguimiento', 'Documentos', 'Fotos y evidencias', 'Costos', 'Cierre del servicio', 'Historial'])
  assert.ok(!calls.some(c => c.name === 'get_dispatch_detail_files'), 'files load only when their tab opens')
  assert.ok(text(view).includes('45832165')); assert.ok(text(view).includes('Guía de entrega pendiente de validación'))
  await act(async () => button(view, 'Validar conformidad').props.onClick()); assert.equal(validated.request_id, 's1')
@@ -80,9 +80,9 @@ test('tabs load the stop detail once and show real milestones, GPS and incidents
  assert.ok(text(view).includes('Sin conexión'), 'stale presence is offline'); assert.ok(!text(view).includes('En línea'))
  assert.ok(text(view).includes('Tráfico')); assert.ok(text(view).includes('72 km'))
  assert.ok(text(view).includes('Sin estimar'), 'no invented estimated time')
- for (let i = 0; i < 4; i++) { await act(async () => button(view, 'Siguiente').props.onClick()); await act(flush) }
+ for (let i = 0; i < 5; i++) { await act(async () => button(view, 'Siguiente').props.onClick()); await act(flush) }
  assert.ok(!button(view, 'Siguiente')); await act(async () => button(view, 'Cerrar detalle').props.onClick()); assert.equal(closed, 1, 'Finalizar only closes')
- assert.deepEqual(calls.filter(c => !['get_dispatch_detail', 'get_tower_route_crew', 'get_dispatch_detail_files', 'get_dispatch_evidence', 'economic_closure_detail'].includes(c.name)), [], 'only reads')
+ assert.deepEqual(calls.filter(c => !['get_dispatch_detail', 'get_tower_route_crew', 'get_dispatch_detail_files', 'get_dispatch_evidence', 'economic_closure_detail', 'dispatch_closure_status'].includes(c.name)), [], 'only reads')
  await act(async () => view.unmount())
 })
 

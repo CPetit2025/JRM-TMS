@@ -1,9 +1,10 @@
-// Etiqueta visible del estado del despacho. El estado técnico LIQUIDADO es el cierre operativo de la ruta
-// (close_dispatch_route): se muestra como "CERRADO" para no confundirlo con la liquidación de Caja.
+// Etiqueta visible del estado del despacho. El estado técnico LIQUIDADO es el cierre de la ruta (close_dispatch_route):
+// se muestra como "RUTA CERRADA" para no confundirlo con la liquidación de Caja ni con el cierre final del servicio
+// (Torre de Control · Cierre del servicio, dispatch_final_close).
 export function dispatchStatusLabel(status: string | null | undefined): string {
   if (!status) return 'Desconocido'
   if (status === 'CIERRE_OPERATIVO') return 'Cierre operativo · documentación y cierre financiero pendientes'
-  if (status === 'LIQUIDADO' || status === 'CERRADO') return 'CERRADO'
+  if (status === 'LIQUIDADO' || status === 'CERRADO') return 'RUTA CERRADA'
   // Cierre operativo: unidad y conductor libres; falta la liquidación documentaria
   if (status === 'RETORNO_COMPLETADO') return 'UNIDAD LIBERADA'
   return status.replace(/_/g, ' ')

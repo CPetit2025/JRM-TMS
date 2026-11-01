@@ -86,7 +86,7 @@ export function gpsStatus(detail: DispatchDetail, row: Pick<DeliveryRow, 'modali
 
 export const DETAIL_TABS = [
   { key: 'resumen', label: 'Resumen' }, { key: 'ruta', label: 'Ruta y seguimiento' }, { key: 'documentos', label: 'Documentos' },
-  { key: 'evidencias', label: 'Fotos y evidencias' }, { key: 'costos', label: 'Costos' }, { key: 'historial', label: 'Historial' },
+  { key: 'evidencias', label: 'Fotos y evidencias' }, { key: 'costos', label: 'Costos' }, { key: 'cierre', label: 'Cierre del servicio' }, { key: 'historial', label: 'Historial' },
 ] as const
 export type DetailTab = typeof DETAIL_TABS[number]['key']
 

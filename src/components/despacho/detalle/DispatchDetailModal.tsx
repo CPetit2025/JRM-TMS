@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef, useState, type ReactNode, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertCircle, ArrowLeft, ArrowRight, Camera, CheckCircle2, ChevronDown, CircleDollarSign, MoreHorizontal, FileText, Files, History, MapPin, Printer, Route, X } from 'lucide-react'
+import { AlertCircle, ArrowLeft, ArrowRight, Camera, CheckCircle2, ChevronDown, CircleDollarSign, MoreHorizontal, FileText, Files, History, Lock, MapPin, Printer, Route, X } from 'lucide-react'
 import { conformityLabels, deliveryStatus, type DeliveryRow } from '@/lib/delivery'
 import { DETAIL_TABS, type DetailTab } from '@/lib/dispatch-detail'
 import { useDispatchDetail } from './useDispatchDetail'
@@ -13,13 +13,14 @@ import { DocumentosTab } from './DocumentosTab'
 import { EvidenciasTab } from './EvidenciasTab'
 import { CostosTab } from './CostosTab'
 import { HistorialTab } from './HistorialTab'
+import { ServiceClosure } from '@/components/despacho/ServiceClosure'
 
 // «Toda la ruta»: el expediente de la ruta completa (acciones de la ruta, tripulación, flete, notas), cuando Torre lo envía
 type Tab = DetailTab | 'expediente'
 const ICONS: Record<Tab, ReactNode> = {
   expediente: <Route className="h-5 w-5" aria-hidden />,
   resumen: <FileText className="h-5 w-5" aria-hidden />, ruta: <MapPin className="h-5 w-5" aria-hidden />, documentos: <Files className="h-5 w-5" aria-hidden />,
-  evidencias: <Camera className="h-5 w-5" aria-hidden />, costos: <CircleDollarSign className="h-5 w-5" aria-hidden />, historial: <History className="h-5 w-5" aria-hidden />,
+  evidencias: <Camera className="h-5 w-5" aria-hidden />, costos: <CircleDollarSign className="h-5 w-5" aria-hidden />, historial: <History className="h-5 w-5" aria-hidden />, cierre: <Lock className="h-5 w-5" aria-hidden />,
 }
 const CHIP = { warning: 'bg-amber-100 text-amber-800', danger: 'bg-rose-100 text-rose-800', success: 'bg-emerald-100 text-emerald-800', info: 'bg-blue-100 text-jrm-navy' }
 /** Estado principal de la cabecera (como «Conformidad pendiente» del bosquejo): conformidad si hay guía, si no el operativo. */
@@ -106,6 +107,7 @@ export function DispatchDetailModal({ row, routeRows = [], onSelect, onClose, on
           : tab === 'evidencias' ? filesPanel(() => <EvidenciasTab row={row} files={files.files!} route={files.route} urls={files.urls} servicesCount={detail.dispatch.services_count} onChanged={files.reload} />)
           : tab === 'costos' ? (costs.loading || !costs.costs ? <p role="status" className="py-10 text-center text-sm text-slate-500">Cargando costos…</p>
             : <CostosTab row={row} costs={costs.costs} files={files.files} urls={files.urls} servicesCount={detail.dispatch.services_count} economicHref={economicHref} />)
+          : tab === 'cierre' ? <ServiceClosure dispatchId={row.dispatch_id} />
           : <HistorialTab row={row} detail={detail} onGo={go} />}
       </div>
       <footer className="print-hide flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 bg-white px-3 py-3 sm:px-8 sm:py-4">
