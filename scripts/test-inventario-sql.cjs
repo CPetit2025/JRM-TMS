@@ -22,8 +22,21 @@ try {
  CREATE FUNCTION apt_can_load() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT auth.uid()='00000000-0000-4000-8000-000000000002'::uuid $$;
  CREATE FUNCTION apt_can_view() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT coalesce(apt_can_load(),false) $$;
  CREATE FUNCTION is_active_tms_user() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT coalesce(apt_can_load(),false) $$;
- CREATE FUNCTION apt_id(text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT regexp_replace($1,'\\.0+$','') $$;`)
- for(const file of ['20261020100000_inventario_multialmacen.sql','20261020110000_inventory_upload_performance.sql','20261020120000_inventory_rebuild_plans.sql']) sql(readFileSync('supabase/migrations/'+file,'utf8'))
+ CREATE FUNCTION apt_id(text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT regexp_replace($1,'\\.0+$','') $$;
+ CREATE TABLE clients(id uuid PRIMARY KEY,business_name text); CREATE TABLE contracts(id uuid PRIMARY KEY,code text,client_id uuid,parent_contract_id uuid);
+ CREATE TABLE erp_imports(id uuid PRIMARY KEY,kind text,status text); CREATE TABLE erp_contract_lines(import_id uuid,ot text,cliente text);
+ CREATE FUNCTION erp_active_import(p_kind text) RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT id FROM erp_imports WHERE kind=p_kind AND status='ACTIVA' $$;`)
+ // Real APT helpers the inventory migrations call; latest definitions, as in production.
+ const fn=(file,name)=>{const s=readFileSync('supabase/migrations/'+file,'utf8'),i=s.indexOf('CREATE OR REPLACE FUNCTION public.'+name+'(');assert.ok(i>=0,name);return s.slice(i,s.indexOf('$$;',s.indexOf('$$',i)+2)+3)}
+ sql(fn('20261003160000_apt_familia_ot.sql','apt_ot_raiz')+fn('20261003160000_apt_familia_ot.sql','apt_raiz_parecida')+fn('20261003100000_apt_flujo_multialmacen.sql','apt_almacen'))
+ for(const file of ['20261020100000_inventario_multialmacen.sql','20261020110000_inventory_upload_performance.sql','20261020120000_inventory_rebuild_plans.sql',
+  '20261020130000_inventario_recalculo_programado.sql','20261020140000_inventario_verificacion.sql','20261020150000_inventario_carga_sin_bloqueo.sql',
+  '20261020160000_inventario_recalculo_rapido.sql','20261020170000_inventario_lecturas_rapidas.sql','20261020180000_inventario_lecturas_sin_sobrecarga.sql',
+  '20261020190000_inventario_pruebas_livianas.sql','20261020200000_inventario_tablas_derivadas_sin_wal.sql','20261020230000_inventario_apt_contratos.sql',
+  '20261021010000_inventario_estadia_contratos.sql','20261023120000_apt_vinculacion_estado.sql','20261024140000_inventario_descartar_foto_stock.sql']) sql(readFileSync('supabase/migrations/'+file,'utf8'))
+ // Only part 2 (client of each OT in the APT) is inventory; part 1 is ERP contract onboarding.
+ const clientes=readFileSync('supabase/migrations/20261101100000_erp_alta_automatica_cliente_apt.sql','utf8'); assert.ok(clientes.includes('-- ── 2.'))
+ sql('BEGIN;\n'+clientes.slice(clientes.indexOf('-- ── 2.')))
  for(const file of ['caja_c115_inventario_multialmacen.test.sql','caja_c116_inventory_upload_retry.test.sql']) {
   const r=query(readFileSync('supabase/tests/'+file,'utf8')); assert.match(r.stderr,/CAJA C\d+ PASS/); assert.doesNotMatch(r.stderr,/FAIL/); console.log(r.stderr.split('\n').find(s=>s.includes('PASS')))
  }
