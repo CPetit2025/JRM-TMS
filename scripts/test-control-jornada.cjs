@@ -51,7 +51,7 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
   await db.exec(patch(read('supabase/migrations/20261209110000_km_ruta_odometro_y_reporte.sql'), '-- Expone kilómetros por OT'))
   await db.exec(patch(read('supabase/migrations/20261210100000_seguimiento_despachos_datos.sql'), '-- Alcance por sede'))
   await db.exec(read('supabase/migrations/20261211090000_ahorro_consolidacion.sql'))
-  const migration = read('supabase/migrations/20261212090000_control_jornada_datos.sql')
+  const migration = read('supabase/migrations/20261214090000_control_jornada_datos.sql')
   await db.exec(migration); await db.exec(migration)
   const def = async f => (await db.query(`SELECT pg_get_functiondef('${f}'::regprocedure) d`)).rows[0].d
   assert.ok((await def('consolidation_savings(date,date,uuid,uuid)')).includes("WHEN f.hours_cost_missing THEN 'COSTO_HORA_PENDIENTE'"), 'D2 installed')
