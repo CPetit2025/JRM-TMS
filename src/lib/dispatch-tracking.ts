@@ -232,7 +232,7 @@ export function buildDispatchDashboard(
 
     for (const route of group.routes) for (const stop of route.stops) {
       const isComplete = ['ENTREGADO', 'LIQUIDADO', 'CERRADO', 'COMPLETADO'].includes((stop.status || '').toUpperCase())
-      if (route.modalidad !== 'TERCERO' && isComplete && (!stop.odo_photo || stop.odo_reading == null)) group.alerts.add('EVIDENCIA_INCOMPLETA')
+      if (route.modalidad !== 'TERCERO' && isComplete && stop.odo_reading == null) group.alerts.add('EVIDENCIA_INCOMPLETA')
       if (stop.km_source === 'GPS_PARCIAL') group.alerts.add('GPS_PARCIAL')
       if (stop.odo_flag) group.alerts.add(stop.odo_flag === 'SALTO' ? 'ODOMETRO_SALTO' : stop.odo_flag)
     }

@@ -7,7 +7,7 @@ export type Stop = { request_id?: string; sequence: number; status: string; requ
 export type Dispatch = { id?: string; dispatch_number: string; status: string; driver: string | null; modalidad: string | null; departure: string; km_gps: number | null; km_real_source: 'GPS' | 'ODOMETRO' | null
   km_real: number | null; km_est: number | null; cost_total: number; cost_applied: number; cost_pending: number
   costs?: Array<{ kind: string; amount_pen: number; basis: string; status: string; request_number: string | null; ot: string | null; expense_type: string | null; fuel_gallons: number | null; fuel_odometer: number | null; estimated: boolean }>; stops: Stop[] }
-export type Reading = { kind: 'INICIO' | 'CIERRE'; odometer: number; at: string; photo: string; flag: string | null }
+export type Reading = { kind: 'INICIO' | 'CIERRE'; odometer: number; at: string; photo: string | null; flag: string | null }
 export type Day = { date: string; drivers: string[] | null; checklists: number; operative: boolean | null; odo_start: number | null; odo_end: number | null
   end_source: 'CIERRE' | 'SIGUIENTE_INICIO' | null; km_odo: number | null; km_gps: number | null; km_real: number | null; km_est: number | null; routes: number; services: number; ots: number; clients: number
   cost_total: number; cost_applied: number; cost_pending: number; tn: number | null; tn_apt: number | null; readings: Reading[]; dispatches: Dispatch[]; alerts: string[] }

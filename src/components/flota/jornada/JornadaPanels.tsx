@@ -145,7 +145,7 @@ export function JornadaExpand({ r, savingsAvailable, openPhoto }: { r: JornadaRo
       {tab === 'costos' && <div className="grid gap-3 lg:grid-cols-2"><CostPanel r={r} savingsAvailable={savingsAvailable} /><RouteSources r={r} tab="costos" /></div>}
       {tab === 'documentos' && <RouteSources r={r} tab="documentos" />}
       {tab === 'evidencias' && <div className="space-y-2">
-        {r.readings.length > 0 && <div className="flex flex-wrap gap-2 text-xs">{r.readings.map((x, i) => <button key={i} type="button" onClick={() => void openPhoto(x.photo)}
+        {r.readings.length > 0 && <div className="flex flex-wrap gap-2 text-xs">{r.readings.map((x, i) => <button key={i} type="button" disabled={!x.photo} onClick={() => x.photo && void openPhoto(x.photo)}
           className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-semibold text-[#0b2a4a] hover:bg-slate-50">
           <Camera className="h-4 w-4" />Odómetro {x.kind === 'INICIO' ? 'inicio' : 'cierre'} · {fmtTime(x.at)}</button>)}</div>}
         <RouteSources r={r} tab="evidencias" /></div>}

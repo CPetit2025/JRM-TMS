@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Camera, Loader2, X } from 'lucide-react'
 import { deliveryPhoto } from '@/lib/delivery'
 
-export type EvidenceDraft = { operation: string; capturedAt: string; files: File[]; packingFiles: File[]; receiver: string; guide: string; note: string; odometer: string; odometerPhoto: File | null }
+export type EvidenceDraft = { operation: string; capturedAt: string; files: File[]; packingFiles: File[]; receiver: string; guide: string; note: string; odometer: string }
 export function EvidenceForm({ busy, guide: initialGuide = '', requireOdometer = false, onSubmit, onCancel }: {
   busy?: boolean; guide?: string; requireOdometer?: boolean; onSubmit: (draft: EvidenceDraft) => Promise<void>; onCancel?: () => void
 }) {
@@ -14,7 +14,6 @@ export function EvidenceForm({ busy, guide: initialGuide = '', requireOdometer =
   const [guide, setGuide] = useState(initialGuide)
   const [note, setNote] = useState('')
   const [odometer, setOdometer] = useState('')
-  const [odometerPhoto, setOdometerPhoto] = useState<File | null>(null)
   const [error, setError] = useState('')
   const [preparing, setPreparing] = useState(false)
   const [operation, setOperation] = useState(() => crypto.randomUUID())
@@ -60,11 +59,10 @@ export function EvidenceForm({ busy, guide: initialGuide = '', requireOdometer =
       if (!/^[A-Z0-9]{3,4}-[0-9]{1,10}$/.test(guide.trim().toUpperCase())) throw new Error('Escriba la guía con serie y correlativo, por ejemplo T001-6591 (sin espacios).')
       const photos = await Promise.all(files.map(deliveryPhoto))
       const packingPhotos = await Promise.all(packing.map(deliveryPhoto))
-      if (requireOdometer && !(Number(odometer.replace(',', '.')) > 0)) throw new Error('Ingrese el odómetro que marca el tablero.')
-      if (requireOdometer && !odometerPhoto) throw new Error('Tome una foto del tablero para validar el odómetro.')
+      const km = Number(odometer.replace(',', '.'))
+      if (requireOdometer && !(km > 0 && km < 5000000)) throw new Error('Ingrese el odómetro (km) que marca el tablero.')
       if ([...photos, ...packingPhotos].reduce((sum, photo) => sum + photo.size, 0) > 4 * 1024 * 1024) throw new Error('Las fotos superan 4 MB. Reduzca la cantidad o resolución.')
-      if (odometerPhoto && odometerPhoto.size > 4 * 1024 * 1024) throw new Error('La foto del odómetro supera 4 MB. Reduzca la resolución.')
-      await onSubmit({ operation, capturedAt: new Date().toISOString(), files: photos, packingFiles: packingPhotos, receiver, guide: guide.trim().toUpperCase(), note, odometer, odometerPhoto })
+      await onSubmit({ operation, capturedAt: new Date().toISOString(), files: photos, packingFiles: packingPhotos, receiver, guide: guide.trim().toUpperCase(), note, odometer: requireOdometer ? String(km) : '' })
     } catch (err) { setError(err instanceof Error ? err.message : (err as { message?: string } | null)?.message || 'No se pudo enviar la guía. Revise la conexión e intente de nuevo.') }
     finally { setPreparing(false) }
   }}>
@@ -80,9 +78,7 @@ export function EvidenceForm({ busy, guide: initialGuide = '', requireOdometer =
     <label className="block text-sm">Número de guía * <span className="text-xs text-slate-500">serie-correlativo</span><input required maxLength={19} value={guide} placeholder="T001-6591" autoCapitalize="characters" spellCheck={false} onChange={e => { setGuide(e.target.value.toUpperCase().replace(/\s+/g, '')); setOperation(crypto.randomUUID()) }} className="mt-1 w-full rounded-lg border bg-white p-3 font-mono" /></label>
     {requireOdometer && <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
       <p className="text-sm font-semibold text-[#002855]">Kilometraje de esta parada (obligatorio para unidad propia)</p>
-      <label className="block text-sm">Odómetro que marca el tablero (km)<input required inputMode="decimal" value={odometer} onChange={e => { setOdometer(e.target.value.replace(/[^0-9.,]/g, '')); setOperation(crypto.randomUUID()) }} className="mt-1 w-full rounded-lg border bg-white p-3" /></label>
-      <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#002855] bg-white px-3 text-sm font-semibold text-[#002855]"><Camera className="h-5 w-5" />{odometerPhoto ? 'Foto del tablero lista · cambiar' : 'Tomar foto del tablero'}<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="hidden" onChange={e => { setOdometerPhoto(e.target.files?.[0] || null); setOperation(crypto.randomUUID()) }} /></label>
-      {odometerPhoto && <p className="text-xs text-slate-600">{odometerPhoto.name}</p>}
+      <label className="block text-sm">Odómetro que marca el tablero (km)<input required inputMode="decimal" placeholder="Ej.: 125430" value={odometer} onChange={e => { setOdometer(e.target.value.replace(/[^0-9.,]/g, '')); setOperation(crypto.randomUUID()) }} className="mt-1 w-full rounded-lg border bg-white p-3" /></label>
     </div>}
     <label className="block text-sm">Observación<textarea maxLength={1000} value={note} onChange={e => { setNote(e.target.value); setOperation(crypto.randomUUID()) }} className="mt-1 w-full rounded-lg border bg-white p-3" rows={2} /></label>
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
