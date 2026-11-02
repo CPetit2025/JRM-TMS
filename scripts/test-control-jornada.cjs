@@ -54,7 +54,7 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
   const migration = read('supabase/migrations/20261214090000_control_jornada_datos.sql')
   await db.exec(migration); await db.exec(migration)
   // Fase 3: id de ruta y de solicitud para abrir el detalle del despacho (idempotente)
-  for (let i = 0; i < 2; i++) await db.exec(read('supabase/migrations/20261213090000_control_jornada_ids.sql'))
+  for (let i = 0; i < 2; i++) await db.exec(read('supabase/migrations/20261215090000_control_jornada_ids.sql'))
   const def = async f => (await db.query(`SELECT pg_get_functiondef('${f}'::regprocedure) d`)).rows[0].d
   assert.ok((await def('consolidation_savings(date,date,uuid,uuid)')).includes("WHEN f.hours_cost_missing THEN 'COSTO_HORA_PENDIENTE'"), 'D2 installed')
   assert.equal((await def('unit_daily_report(text,date,date)')).split('DISTINCT ON (public.apt_guia_key(s.guide))').length, 2, 'tn patch idempotent')
