@@ -39,13 +39,13 @@ async function main() {
       CREATE FUNCTION public.can_view_unit_report() RETURNS boolean LANGUAGE sql AS $$ SELECT true $$;
       CREATE FUNCTION public.can_access_site(uuid) RETURNS boolean LANGUAGE sql AS $$ SELECT true $$;
       CREATE FUNCTION public.apt_guia_key(text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT $1 $$;`)
-    const platesMigration = read('supabase/migrations/20261209130000_seguimiento_despachos_datos.sql')
+    const platesMigration = read('supabase/migrations/20261210100000_seguimiento_despachos_datos.sql')
     const platesFn = platesMigration.slice(platesMigration.indexOf('CREATE OR REPLACE FUNCTION public.unit_report_plates()'), platesMigration.indexOf('END $$;', platesMigration.indexOf('CREATE OR REPLACE FUNCTION public.unit_report_plates()')) + 'END $$;'.length)
     await db.exec(platesFn)
     await db.exec(base)
     await db.exec(patch(read('supabase/migrations/20261209100000_referencia_proveedor_y_reporte_costos.sql'), '-- Agrega proveedor y origen'))
     await db.exec(patch(read('supabase/migrations/20261209110000_km_ruta_odometro_y_reporte.sql'), '-- Expone kilómetros por OT'))
-    await db.exec(patch(read('supabase/migrations/20261209130000_seguimiento_despachos_datos.sql'), '-- Alcance por sede'))
+    await db.exec(patch(read('supabase/migrations/20261210100000_seguimiento_despachos_datos.sql'), '-- Alcance por sede'))
     const { rows } = await db.query("SELECT pg_get_functiondef('public.unit_daily_report(text,date,date)'::regprocedure) AS def")
     for (const token of ['reference_supplier', 'pickup_address', 'fuel_gallons', 'km_real_source', 'odo_reading', 'odo_photo', 'closed_at', 'odo_start', 'odo_end', 'odo_end_photo']) {
       assert.ok(rows[0].def.includes(token), `patched report includes ${token}`)
