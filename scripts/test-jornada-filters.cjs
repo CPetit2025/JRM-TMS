@@ -5,7 +5,7 @@ const file = path.resolve(__dirname, '../src/lib/jornada.ts')
 const m = new Module(file, module); m.paths = module.paths
 m.require = name => name === '@/lib/odometer' ? { formatKm: v => `${v} km` } : require(name)
 m._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, file)
-const { applyFilters, filtersFrom, monthWeeks, monthlySummary } = m.exports
+const { applyFilters, filtersFrom, monthWeeks, monthlySummary, rowAlerts } = m.exports
 const row = (plate, date, status, extra = {}) => ({ plate, date, status, drivers: ['ANA'], km_odo: null, tn: null, saving: null, refs: { OT: [], OC: [], OS: [], RQ: [] }, ...extra })
 const rows = [row('A-1', '2026-10-29', 'CERRADA', { km_odo: 100, refs: { OT: ['16544'], OC: ['57954'], OS: [], RQ: [] } }), row('A-1', '2026-10-30', 'EN_REVISION', { km_odo: 300 }),
  row('B-2', '2026-10-30', 'ABIERTA', { drivers: ['LUIS'] }), row('B-2', '2026-10-28', 'SIN_OPERACION', { drivers: [] })]
@@ -35,4 +35,9 @@ assert.deepEqual([sm.totals.routes, sm.weeks.reduce((s2, w) => s2 + w.routes, 0)
 assert.deepEqual([sm.totals.activeUnits, sm.totals.availableUnits, sm.totals.incidents, sm.totals.closed, sm.totals.jornadas], [2, 2, 1, 2, 4], 'one incident counted once; C-3 out of service')
 assert.deepEqual(sm.units.map(u => [u.plate, u.status]), [['A-1', 'CERRADA'], ['B-2', 'CON_INCIDENCIAS'], ['C-3', 'SIN_OPERACION']])
 assert.deepEqual([sm.topKm.plate, sm.topDriver[0], sm.alerts[0][0], sm.alerts[0][1].length], ['A-1', 'ANA', 'GPS_INCOMPLETO', 1])
+// Columna Estado: «Sin cierre» lo dice el estado Abierta; checklist con observaciones, fin inferido e incidencias se suman como alertas
+assert.deepEqual(rowAlerts({ status: 'ABIERTA', alerts: ['SIN_CIERRE', 'GPS_INCOMPLETO'], operative: true, end_source: null, incidents: [] }).map(a => a.key), ['GPS_INCOMPLETO'])
+assert.deepEqual(rowAlerts({ status: 'EN_REVISION', alerts: ['SIN_CIERRE'], operative: false, end_source: 'SIGUIENTE_INICIO', incidents: [inc, inc] }).map(a => a.label),
+  ['Sin cierre', 'Checklist con observaciones', 'Odómetro fin inferido (inicio del día siguiente)', '2 incidencia(s)'])
+assert.deepEqual(applyFilters([...rows], f('orden=conductor:asc')).map(r => r.drivers[0]), ['ANA', 'ANA', 'LUIS'])
 console.log('PASS control de jornada: filtros combinados, sin operación oculta para la flota, búsqueda, enlace ?plate=, orden y resumen mensual (semanas, totales, incidencias, estados)')

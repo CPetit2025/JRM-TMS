@@ -124,7 +124,7 @@ export const sourceText = (p: Period) => (Object.entries(p.bySource) as Array<[K
 export type JornadaStatus = 'SIN_OPERACION' | 'ABIERTA' | 'EN_REVISION' | 'CERRADA'
 export const STATUS: Record<JornadaStatus, { label: string; tone: string; row: string }> = {
   CERRADA: { label: 'Cerrada', tone: 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200', row: '' },
-  ABIERTA: { label: 'Jornada abierta', tone: 'bg-blue-100 text-blue-800 ring-1 ring-blue-200', row: '' },
+  ABIERTA: { label: 'Abierta', tone: 'bg-blue-100 text-blue-800 ring-1 ring-blue-200', row: '' },
   EN_REVISION: { label: 'En revisión', tone: 'bg-amber-100 text-amber-900 ring-1 ring-amber-200', row: '' },
   SIN_OPERACION: { label: 'Sin operación', tone: 'bg-slate-100 text-slate-600', row: 'text-slate-400' },
 }
@@ -142,7 +142,8 @@ export const filtersFrom = (p: URLSearchParams): JornadaFilters => ({ conductor:
   estado: p.get('estado') || '', q: (p.get('q') || '').toLowerCase(), orden: p.get('orden') || 'fecha:desc' })
 const SORTS: Record<string, (r: JornadaRow) => number | string> = {
   fecha: r => r.date, km: r => Number(r.km_odo ?? -1), carga: r => Number(r.tn ?? -1), costo: r => Number(r.saving?.marginal ?? -1),
-  ahorro: r => Number(r.saving?.saving ?? -1e12), estado: r => ['ABIERTA', 'EN_REVISION', 'CERRADA', 'SIN_OPERACION'].indexOf(r.status || 'SIN_OPERACION'),
+  ahorro: r => Number(r.saving?.saving ?? -1e12), conductor: r => (r.drivers || [])[0] || '', gps: r => Number(r.km_gps ?? -1), rutas: r => r.routes,
+  apt: r => Number(r.tn_apt ?? -1), estado: r => ['ABIERTA', 'EN_REVISION', 'CERRADA', 'SIN_OPERACION'].indexOf(r.status || 'SIN_OPERACION'),
 }
 export function applyFilters(rows: JornadaRow[], f: JornadaFilters) {
   // Sin operación solo con una unidad elegida o si se pide ese estado (con toda la flota sería ruido)
@@ -152,6 +153,15 @@ export function applyFilters(rows: JornadaRow[], f: JornadaFilters) {
     && (!f.q || [r.plate, ...(r.drivers || []), ...r.refs.OT, ...r.refs.OC, ...r.refs.OS, ...r.refs.RQ].join(' ').toLowerCase().includes(f.q)))
   const [key, dir] = f.orden.split(':'); const get = SORTS[key] || SORTS.fecha; const sign = dir === 'asc' ? 1 : -1
   return list.sort((a, b) => { const x = get(a), y = get(b); return (x < y ? -1 : x > y ? 1 : 0) * sign || a.plate.localeCompare(b.plate) })
+}
+/** Alertas de la columna Estado: las de fleet_workdays más checklist con observaciones, fin inferido e incidencias.
+ *  «Sin cierre» con la jornada abierta ya lo dice el estado. El resultado del checklist no es el cierre de la jornada. */
+export function rowAlerts(r: JornadaRow) {
+  const out = r.alerts.filter(a => !(a === 'SIN_CIERRE' && r.status === 'ABIERTA')).map(a => ({ key: a, label: ALERTS[a]?.label || a }))
+  if (r.operative === false) out.push({ key: 'CHECKLIST_OBS', label: 'Checklist con observaciones' })
+  if (r.end_source === 'SIGUIENTE_INICIO') out.push({ key: 'FIN_INFERIDO', label: 'Odómetro fin inferido (inicio del día siguiente)' })
+  if (r.incidents.length) out.push({ key: 'INCIDENCIAS', label: `${r.incidents.length} incidencia(s)` })
+  return out
 }
 export const jornadaKey = (r: { plate: string; date: string }) => `${r.plate}/${r.date}`
 /** Una unidad en períodos mayores a 3 meses: el reporte por unidad (sin estado ni ahorro) */

@@ -3,13 +3,14 @@
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { ArrowDownUp, BarChart3, Box, CalendarDays, ChevronDown, ChevronRight, Coins, Download, ExternalLink, Gauge, LayoutGrid, List, Loader2, Navigation, Route, Scale, Search, Truck, User } from 'lucide-react'
+import { AlertTriangle, ArrowDownUp, BarChart3, Box, CalendarDays, ChevronDown, ChevronRight, ClipboardCheck, ClipboardX, Clock, Coins, Download, ExternalLink, Gauge, LayoutGrid, List, Loader2, Navigation,
+  Route, Scale, Search, Truck, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { exportAptXlsx } from '@/lib/apt/export'
 import { receiptUrl } from '@/lib/caja'
 import { formatKm } from '@/lib/odometer'
-import { ALERTS, KM_SOURCE, STATUS, TYPE, applyFilters, bestKm, filtersFrom, fmtDate, fmtTime, fromUnitReport, iso, jornadaKey, references, shortDate, soles,
+import { ALERTS, KM_SOURCE, STATUS, TYPE, applyFilters, bestKm, filtersFrom, fmtDate, fmtTime, fromUnitReport, iso, jornadaKey, references, rowAlerts, shortDate, soles,
   sourceText, summarize, tn, type Fleet, type JornadaRow, type JornadaStatus, type Period, type Ref, type View } from '@/lib/jornada'
 import { JornadaExpand, StatusBadge } from '@/components/flota/jornada/JornadaPanels'
 
@@ -20,6 +21,12 @@ import { JornadaExpand, StatusBadge } from '@/components/flota/jornada/JornadaPa
 const addDays = (d: string, n: number) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10) }
 const days = (from: string, to: string) => (Date.parse(to) - Date.parse(from)) / 864e5
 const n = (v: number | null | undefined) => v == null ? '—' : Number(v).toLocaleString('es-PE', { maximumFractionDigits: 1 })
+// Ícono de cada alerta de la columna Estado (rowAlerts); con más de una se muestra el contador
+const ALERT_ICON: Record<string, [LucideIcon, string]> = {
+  SIN_CHECKLIST: [ClipboardX, 'text-red-600'], CHECKLIST_OBS: [ClipboardX, 'text-red-600'], SIN_ODOMETRO: [Gauge, 'text-amber-600'], FIN_INFERIDO: [Gauge, 'text-amber-600'],
+  ODOMETRO_RETROCEDE: [Gauge, 'text-red-600'], ODOMETRO_SALTO: [Gauge, 'text-red-600'], GPS_INCOMPLETO: [Navigation, 'text-amber-600'], KM_SIN_RUTA: [Route, 'text-orange-600'],
+  SIN_CIERRE: [Clock, 'text-blue-600'], INCIDENCIAS: [AlertTriangle, 'text-red-600'],
+}
 
 export default function ControlJornadaPage() {
   return <Suspense fallback={null}><ControlJornada /></Suspense>
@@ -143,11 +150,13 @@ function ControlJornada() {
   ]
   const STATES: JornadaStatus[] = ['ABIERTA', 'EN_REVISION', 'CERRADA', 'SIN_OPERACION']
   const shortLong = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })
-  const idCol = 'bg-[#0b2a4a] px-3 text-left align-middle text-sm font-bold text-white'
   const sortIcon = (k: string) => <ArrowDownUp className={`ml-1 inline h-3.5 w-3.5 ${f.orden.startsWith(`${k}:`) ? 'opacity-100' : 'opacity-40'}`} aria-hidden />
-  const sub = (label: string, tone: string, k?: string) => <th key={label} className={`border-l border-white/60 px-2 py-2 text-center text-xs font-semibold ${tone}`}>
-    {k ? <button type="button" onClick={() => sortBy(k)} className="font-semibold">{label}{sortIcon(k)}</button> : label}</th>
-  const cell = 'whitespace-nowrap border-l border-slate-100 px-2 py-3 text-center tabular-nums'
+  const sortBtn = (label: string, k: string) => <button type="button" onClick={() => sortBy(k)} className="font-bold">{label}{sortIcon(k)}</button>
+  const ariaSort = (...ks: string[]) => { const hit = ks.find(k => f.orden.startsWith(`${k}:`)); return hit ? f.orden.endsWith(':asc') ? 'ascending' as const : 'descending' as const : undefined }
+  // Anchos por contenido: las columnas angostas se ajustan a su dato (w-px) y Conductor / Unidad toma el resto
+  const head = (label: React.ReactNode, cls = 'w-px', ...ks: string[]) => <th scope="col" aria-sort={ariaSort(...ks)}
+    className={`sticky top-0 z-20 bg-[#0b2a4a] px-2 py-2.5 text-xs font-bold text-white ${cls}`}>{label}</th>
+  const numCell = 'w-px whitespace-nowrap px-2 text-right tabular-nums'
   const sel = 'h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900'
 
   return <div className="min-w-0 space-y-4">
@@ -212,46 +221,60 @@ function ControlJornada() {
             {[p.ot, p.os, p.oc, p.rq].map((s, i) => <td key={i} className="max-w-56 px-3 py-3 text-xs">{s.size ? [...s].join(', ') : '—'}</td>)}</tr>)}</tbody>
         </table></div>
       : <div className="max-h-[72vh] overflow-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full min-w-[104rem] border-collapse text-sm">
-          <thead className="sticky top-0 z-20"><tr>
-            <th rowSpan={2} className={`${idCol} w-10`}><span className="sr-only">Desplegar</span></th>
-            <th rowSpan={2} className={`${idCol} w-44`}><button type="button" onClick={() => sortBy('fecha')} className="font-bold">Fecha{sortIcon('fecha')}</button></th>
-            <th rowSpan={2} className={`${idCol} w-56`}>Conductor / Unidad</th><th rowSpan={2} className={`${idCol} w-24 text-center`}>OT</th><th rowSpan={2} className={`${idCol} w-36 text-center`}>OC / OS / RQ</th>
-            <th colSpan={5} className="border-l border-white/60 bg-blue-600 py-2 text-center text-base font-bold text-white">Kilometraje (km)</th>
-            <th colSpan={3} className="border-l border-white/60 bg-violet-200 py-2 text-center text-base font-bold text-violet-900">Operación</th>
-            <th colSpan={3} className="border-l border-white/60 bg-emerald-300 py-2 text-center text-base font-bold text-emerald-950">Costos (S/)</th>
-            <th rowSpan={2} className={`${idCol} w-44 border-l border-white/60 text-center`}><button type="button" onClick={() => sortBy('estado')} className="font-bold">Estado{sortIcon('estado')}</button></th></tr>
-            <tr>{sub('Inicio', 'bg-blue-100 text-blue-950')}{sub('Fin', 'bg-blue-100 text-blue-950')}{sub('Recorrido', 'bg-blue-100 text-blue-950', 'km')}{sub('GPS', 'bg-blue-100 text-blue-950')}{sub('Est. ruta', 'bg-blue-100 text-blue-950')}
-              {sub('Rutas', 'bg-violet-100 text-violet-950')}{sub('Carga (t)', 'bg-violet-100 text-violet-950', 'carga')}{sub('APT (t)', 'bg-violet-100 text-violet-950')}
-              {sub('Valor referencial', 'bg-emerald-100 text-emerald-950')}{sub('Costo real', 'bg-emerald-100 text-emerald-950', 'costo')}{sub('Ahorro', 'bg-emerald-100 text-emerald-950', 'ahorro')}</tr></thead>
-          <tbody className="divide-y divide-slate-200">
-            {!rows.length && <tr><td colSpan={17} className="p-10 text-center text-slate-500">No hay jornadas para los filtros seleccionados.</td></tr>}
-            {rows.map(d => {
-              const k = jornadaKey(d), isOpen = open[k], idle = d.status === 'SIN_OPERACION', s = d.saving
-              const refs2 = [...d.refs.OC, ...d.refs.OS, ...d.refs.RQ]
+        <table className="w-full border-collapse text-sm">
+          <thead><tr>
+            {head(<span className="sr-only">Desplegar</span>, 'w-px pl-2 pr-1')}
+            {head(sortBtn('Fecha', 'fecha'), 'w-px text-left', 'fecha')}
+            {head(sortBtn('Conductor / Unidad', 'conductor'), 'min-w-[11rem] text-left', 'conductor')}
+            {head('Referencias', 'w-px text-left')}
+            {head(sortBtn('Km recorridos', 'km'), 'w-px text-right', 'km')}
+            {head(sortBtn('Km GPS', 'gps'), 'hidden w-px text-right min-[1400px]:table-cell', 'gps')}
+            {head(sortBtn('Rutas', 'rutas'), 'w-px text-right', 'rutas')}
+            {head(sortBtn('Carga (t)', 'carga'), 'w-px text-right', 'carga')}
+            {head(sortBtn('APT (t)', 'apt'), 'hidden w-px text-right min-[1400px]:table-cell', 'apt')}
+            {head(<span className="inline-flex gap-1.5">{sortBtn('Costo', 'costo')}{sortBtn('Ahorro', 'ahorro')}</span>, 'w-px text-right', 'costo', 'ahorro')}
+            {head(sortBtn('Estado', 'estado'), 'w-px text-left', 'estado')}</tr></thead>
+          <tbody>
+            {!rows.length && <tr><td colSpan={11} className="p-10 text-center text-slate-500">No hay jornadas para los filtros seleccionados.</td></tr>}
+            {rows.map((d, i) => {
+              const k = jornadaKey(d), isOpen = open[k], idle = d.status === 'SIN_OPERACION', s = d.saving, alerts = rowAlerts(d), drivers = d.drivers || []
+              const refList = (['OT', 'OC', 'OS', 'RQ'] as const).flatMap(t => d.refs[t].map(x => `${t} ${x}`))
+              const toggle = () => setOpen(o => ({ ...o, [k]: !o[k] }))
+              const costTip = !fleet.savings_available ? 'El ahorro requiere acceso al control presupuestal'
+                : [`Valor referencial: ${s?.valued ? `S/ ${soles(s.value)}` : '—'}`, `Costo real (marginal): ${s?.valued ? `S/ ${soles(s.marginal)}` : '—'}`, `Ahorro: ${s?.valued ? `S/ ${soles(s.saving)}` : '—'}`,
+                  s?.pending ? `${s.pending} servicio(s) sin valorizar` : '', `Costo de rutas: S/ ${soles(d.cost_total)}`].filter(Boolean).join('\n')
+              const [AlertIcon, alertTone] = alerts.length === 1 ? ALERT_ICON[alerts[0].key] || [AlertTriangle, 'text-amber-600'] : [AlertTriangle, 'text-amber-700']
               return <Fragment key={k}>
-                <tr className={isOpen ? 'bg-blue-50' : idle ? 'bg-slate-50/70 text-slate-500' : 'bg-white hover:bg-slate-50'}>
-                  <td className="px-2 py-3 text-center"><button type="button" aria-label={isOpen ? 'Ocultar detalle' : 'Ver detalle'} onClick={() => setOpen(o => ({ ...o, [k]: !o[k] }))}
-                    className="grid h-8 w-8 place-items-center rounded-lg text-[#0b2a4a] hover:bg-slate-100">{isOpen ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}</button></td>
-                  <td className="px-3 py-3"><span className="flex items-center gap-2 text-base font-bold text-slate-900"><CalendarDays className="h-5 w-5 text-slate-500" />{fmtDate(d.date)}</span>
-                    {d.alerts.length > 0 && <span className="mt-1 flex flex-wrap gap-1 pl-7">{d.alerts.map(a => <span key={a} className={`rounded-md px-2 py-0.5 text-xs font-semibold ${ALERTS[a]?.tone || 'bg-slate-100'}`}>{ALERTS[a]?.label || a}</span>)}</span>}</td>
-                  <td className="px-3 py-3">{idle && !(d.drivers || []).length ? <span className="text-slate-500">Sin operación</span> : <>
-                    <span className="flex items-start gap-2 font-bold uppercase leading-tight text-slate-900"><User className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />{(d.drivers || []).join(', ') || '—'}</span>
-                    <span className="mt-1 flex items-center gap-2 font-semibold text-slate-700"><Truck className="h-4 w-4 text-slate-500" />{d.plate}</span></>}
-                    {d.checklists > 0 && <span className={`mt-0.5 block pl-6 text-xs font-semibold ${d.operative === false ? 'text-red-700' : 'text-emerald-700'}`}>Checklist {d.operative === false ? 'con observaciones' : 'operativa'}</span>}</td>
-                  <td className={`${cell} font-semibold`}>{d.refs.OT.join(', ') || '—'}</td>
-                  <td className={`${cell} whitespace-normal font-semibold`}>{refs2.join(', ') || '—'}</td>
-                  <td className={cell}>{n(d.odo_start)}</td>
-                  <td className={cell}>{n(d.odo_end)}{d.end_source === 'SIGUIENTE_INICIO' && <span className="block text-[11px] font-semibold text-amber-700">inferido</span>}</td>
-                  <td className={`${cell} font-bold text-slate-900`}>{n(d.km_odo)}</td><td className={cell}>{n(d.km_gps)}</td><td className={cell}>{n(d.km_est)}</td>
-                  <td className={`${cell} font-bold`}>{d.routes || '—'}</td><td className={cell}>{d.tn ? n(d.tn) : '—'}</td><td className={cell}>{d.tn_apt ? n(d.tn_apt) : '—'}</td>
-                  <td className={cell}>{s?.valued ? `S/ ${soles(s.value)}` : '—'}</td><td className={cell}>{s?.valued ? `S/ ${soles(s.marginal)}` : '—'}</td>
-                  <td className={`${cell} font-bold ${Number(s?.saving) < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{s?.valued ? `S/ ${soles(s.saving)}` : s?.pending ? <span className="text-xs font-semibold text-amber-700">Pendiente</span> : '—'}</td>
-                  <td className="border-l border-slate-100 px-2 py-3 text-center"><span className="inline-flex items-center gap-1.5"><StatusBadge status={d.status} />
-                    {!idle && d.status && <Link href={detailHref(d)} aria-label="Abrir detalle de la jornada" title="Abrir detalle" className="text-[#0b2a4a]"><ExternalLink className="h-4 w-4" /></Link>}</span>
-                    {d.incidents.length > 0 && <span className="mt-1 block text-xs font-bold text-red-700">{d.incidents.length} incidencia(s)</span>}</td>
+                <tr className={`border-b border-slate-100 ${isOpen ? 'bg-blue-50' : i % 2 ? 'bg-slate-50/70' : 'bg-white'} ${idle ? 'text-slate-500' : 'text-slate-800'} hover:bg-blue-50/60`}>
+                  <td className="w-px py-2.5 pl-2 pr-1"><button type="button" aria-expanded={!!isOpen} aria-label={isOpen ? 'Ocultar detalle' : 'Ver detalle'} onClick={toggle}
+                    className="grid h-7 w-7 place-items-center rounded-md text-[#0b2a4a] hover:bg-slate-200/70">{isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button></td>
+                  <td className="w-px whitespace-nowrap px-2 font-semibold text-slate-900">{fmtDate(d.date)}</td>
+                  <td className="w-full max-w-0 px-2"><div className="flex min-w-0 items-center gap-2">
+                    <span className="min-w-0 truncate font-semibold uppercase" title={drivers.join(', ') || undefined}>{drivers[0] || (idle ? 'Sin operación' : '—')}</span>
+                    {drivers.length > 1 && <span className="shrink-0 text-xs font-semibold text-slate-500" title={drivers.join(', ')}>+{drivers.length - 1}</span>}
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-bold text-slate-700 ring-1 ring-slate-200" title={d.unit_type ? `${d.plate} · ${d.unit_type}` : d.plate}>
+                      <Truck className="h-3.5 w-3.5 text-slate-500" aria-hidden />{d.plate}</span>
+                    {d.checklists > 0 && <span role="img" className="shrink-0" title={`Checklist (${d.checklists}): ${d.operative === false ? 'con observaciones' : 'operativa'}`} aria-label={`Checklist ${d.operative === false ? 'con observaciones' : 'operativa'}`}>
+                      {d.operative === false ? <ClipboardX className="h-4 w-4 text-red-600" /> : <ClipboardCheck className="h-4 w-4 text-emerald-600" />}</span>}</div></td>
+                  <td className="w-px px-2"><span className="block max-w-[8rem] truncate text-xs font-semibold text-slate-700" title={refList.join(', ') || undefined}>{refList.join(' · ') || '—'}</span></td>
+                  <td className={`${numCell} font-bold text-slate-900`}>{n(d.km_odo)}</td>
+                  <td className={`${numCell} hidden min-[1400px]:table-cell`}>{n(d.km_gps)}</td>
+                  <td className={numCell}>{d.routes || '—'}</td>
+                  <td className={numCell}>{d.tn ? n(d.tn) : '—'}</td>
+                  <td className={`${numCell} hidden min-[1400px]:table-cell`}>{d.tn_apt ? n(d.tn_apt) : '—'}</td>
+                  <td className={numCell} title={costTip}>{s?.valued ? <><span>S/ {soles(s.marginal)}</span>
+                    <span className={`ml-1.5 text-xs font-bold ${s.saving < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{s.saving < 0 ? '−' : '+'}{soles(Math.abs(s.saving))}</span>
+                    {s.pending ? <span className="ml-1 text-amber-600" aria-label={`${s.pending} servicio(s) sin valorizar`}>•</span> : null}</>
+                    : s?.pending ? <span className="text-xs font-semibold text-amber-700">Pendiente</span> : '—'}</td>
+                  <td className="w-px whitespace-nowrap px-2"><div className="flex items-center gap-1.5">
+                    <span className="inline-flex w-[5.75rem]"><StatusBadge status={d.status} compact /></span>
+                    <span className="inline-flex w-9 justify-center">{alerts.length > 0 && <button type="button" onClick={toggle} title={alerts.map(a => a.label).join('\n')}
+                      aria-label={`${alerts.length === 1 ? 'Alerta' : `${alerts.length} alertas`}: ${alerts.map(a => a.label).join(', ')}. Ver detalle`}
+                      className={alerts.length === 1 ? `grid h-7 w-7 place-items-center rounded-md hover:bg-slate-200/70 ${alertTone}` : 'inline-flex h-6 items-center gap-0.5 rounded-md bg-amber-50 px-1.5 text-xs font-bold text-amber-800 ring-1 ring-amber-200 hover:bg-amber-100'}>
+                      <AlertIcon className={alerts.length === 1 ? 'h-4 w-4' : 'h-3.5 w-3.5'} aria-hidden />{alerts.length > 1 && alerts.length}</button>}</span>
+                    {d.status && !idle ? <Link href={detailHref(d)} aria-label="Abrir detalle de la jornada" title="Abrir detalle" className="text-[#0b2a4a]"><ExternalLink className="h-4 w-4" /></Link> : <span className="w-4" />}</div></td>
                 </tr>
-                {isOpen && <tr className="bg-blue-50/40"><td colSpan={17} className="px-5 py-4"><JornadaExpand r={d} savingsAvailable={!!fleet.savings_available} openPhoto={openPhoto} /></td></tr>}
+                {isOpen && <tr className="border-b border-slate-200 bg-blue-50/40"><td colSpan={11} className="px-5 py-4"><JornadaExpand r={d} savingsAvailable={!!fleet.savings_available} openPhoto={openPhoto} /></td></tr>}
               </Fragment>
             })}
           </tbody>
@@ -276,6 +299,6 @@ function ControlJornada() {
             <td className="whitespace-nowrap px-3 py-2">{r.first === r.last ? shortDate(r.first) : `${shortDate(r.first)} – ${shortDate(r.last)}`}</td>
             <td className="whitespace-nowrap px-3 py-2 text-right">{r.kg ? `${Math.round(r.kg).toLocaleString('es-PE')} kg` : '—'}</td></tr>)}</tbody></table></div>}
     </div>}
-    <p className="text-xs text-slate-600"><b>Estado:</b> Jornada abierta (inicio sin cierre) · En revisión (fin inferido del día siguiente, o alertas de odómetro, GPS, km sin ruta o checklist) · Cerrada (cierre registrado sin alertas). <b>Carga:</b> APT validado por guía (una guía compartida cuenta una vez) o el peso declarado. <b>Ahorro:</b> solo servicios valorizados; no es el margen de la partida.</p>
+    <p className="text-xs text-slate-600"><b>Estado:</b> Abierta (inicio sin cierre) · En revisión (fin inferido del día siguiente, o alertas de odómetro, GPS, km sin ruta o checklist) · Cerrada (cierre registrado sin alertas). <b>Carga:</b> APT validado por guía (una guía compartida cuenta una vez) o el peso declarado. <b>Ahorro:</b> solo servicios valorizados; no es el margen de la partida.</p>
   </div>
 }
