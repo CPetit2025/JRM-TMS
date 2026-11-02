@@ -176,10 +176,40 @@ function fn(file, name) {
   assert.equal(await scalar(`SELECT status AS value FROM transport_unloading_costs WHERE transport_request_id=$1`,[id(34)]),'ESTIMADO')
   assert.equal(await scalar(`SELECT count(*)::int AS value FROM dispatch_events WHERE dispatch_id=$1 AND event_type='DESCARGA_NO_HEREDADA'`,[unfunded]),1)
 
+  // --- Flete referencial manual sin tarifa (20261212090000): con motivo, solo si el tarifario da 0 ---
+  await db.exec(`CREATE OR REPLACE FUNCTION quote_transport(c uuid,s jsonb,w numeric,vc text,p text,u jsonb) RETURNS jsonb LANGUAGE sql AS $$
+    SELECT CASE WHEN s->0->>'district'='Pachacamac' THEN jsonb_build_object('freight_total',0,'unloading_total',0,'lines','[]'::jsonb,'missing',jsonb_build_array('Sin tarifa de flete a PACHACAMAC'))
+     ELSE jsonb_build_object('freight_total',300,'unloading_total',0,'lines',jsonb_build_array(jsonb_build_object('concept','FLETE','unit_rate',300)),'missing','[]'::jsonb) END $$;
+   CREATE FUNCTION save_transport_request_full(p_request_id uuid,p_payload jsonb,p_components jsonb,p_unloading jsonb) RETURNS jsonb LANGUAGE plpgsql AS $$
+    BEGIN RETURN apply_request_tariff(p_request_id) || jsonb_build_object('id',p_request_id); END $$;
+   INSERT INTO transport_requests(id,contract_id,request_number,delivery_district,site_id) VALUES
+    ('${id(35)}','${id(20)}','S-11','Pachacamac',primary_site_id()),('${id(36)}','${id(20)}','S-12','Callao',primary_site_id());
+   INSERT INTO transport_requests(id,contract_id,request_number,delivery_district,site_id,request_type) VALUES('${id(37)}','${id(20)}','S-13','Pachacamac',primary_site_id(),'RECOJO');`)
+  const manualMigration = read('supabase/migrations/20261212090000_flete_referencial_manual.sql')
+  assert.doesNotMatch(manualMigration, /replace\(\s*(def|source)/i, 'functions are rewritten in full, never patched with replace()')
+  await db.exec(manualMigration)
+  await db.exec(manualMigration) // reaplicable: no vuelve a renombrar la versión envuelta
+  const saveFreight = (req, payload) => rpc(`save_transport_request_full($1,$2::jsonb,'[]'::jsonb,'[]'::jsonb)`,[req,JSON.stringify(payload)])
+  const freight = async req => (await db.query('SELECT service_cost::float AS cost,cost_source AS source,cost_override_reason AS reason FROM transport_requests WHERE id=$1',[req])).rows[0]
+  await assert.rejects(saveFreight(id(35),{freight_manual_pen:450,freight_manual_reason:' '}),/motivo/)
+  await assert.rejects(saveFreight(id(35),{freight_manual_pen:-1,freight_manual_reason:'Cotización'}),/negativo/)
+  await saveFreight(id(35),{freight_manual_pen:450,freight_manual_reason:'Cotización del transportista'})
+  assert.deepEqual(await freight(id(35)),{cost:450,source:'MANUAL',reason:'Cotización del transportista'},'manual freight without tariff is saved with its reason')
+  await rpc('apply_request_tariff($1)',[id(35)])
+  assert.deepEqual(await freight(id(35)),{cost:450,source:'MANUAL',reason:'Cotización del transportista'},'a later tariff pass keeps the manual freight')
+  await saveFreight(id(35),{freight_manual_pen:''})
+  assert.deepEqual(await freight(id(35)),{cost:0,source:'TARIFARIO',reason:null},'saving without manual amount leaves it "por cotizar"')
+  await saveFreight(id(36),{freight_manual_pen:450,freight_manual_reason:'No aplica: hay tarifa'})
+  assert.deepEqual(await freight(id(36)),{cost:300,source:'TARIFARIO',reason:null},'with a tariff the tariff wins')
+  await saveFreight(id(37),{freight_manual_pen:450,freight_manual_reason:'Recojo con flota propia'})
+  assert.equal((await freight(id(37))).cost,0,'pickups are never valued')
+
   assert.equal(await scalar("SELECT has_function_privilege('authenticated','inherit_route_unloading(uuid)','EXECUTE') AS value"),false)
   assert.equal(await scalar("SELECT has_function_privilege('anon','schedule_route_resources(jsonb)','EXECUTE') AS value"),false)
   await assert.rejects(db.exec(read('supabase/tests/caja_c170_special_services_inheritance.test.sql')),/CAJA C170 PASS/)
   await db.exec('ROLLBACK')
-  console.log('PASS: inherited request unloading without duplicates on double save, forklift linked to its line, origin SOLICITUD/PROGRAMACION/CAJA, manual cost without tariff kept')
+  await assert.rejects(db.exec(read('supabase/tests/caja_c210_flete_referencial_manual.test.sql')),/CAJA C210 PASS/)
+  await db.exec('ROLLBACK')
+  console.log('PASS: inherited request unloading without duplicates on double save, forklift linked to its line, origin SOLICITUD/PROGRAMACION/CAJA, manual cost without tariff kept, manual referential freight without tariff')
  } finally { await db.close() }
 })().catch(error => { console.error(error); process.exitCode=1 })
