@@ -18,7 +18,7 @@ export type Report = { success: boolean; error?: string; plate: string; type: st
 export const ALERTS: Record<string, { label: string; tone: string }> = {
   SIN_CHECKLIST: { label: 'Ruta sin checklist', tone: 'bg-red-100 text-red-800' },
   SIN_ODOMETRO: { label: 'Sin odómetro', tone: 'bg-amber-100 text-amber-800' },
-  SIN_CIERRE: { label: 'Sin cierre de jornada', tone: 'bg-slate-100 text-slate-700' },
+  SIN_CIERRE: { label: 'Sin cierre', tone: 'bg-blue-100 text-blue-800' },
   KM_SIN_RUTA: { label: 'Km sin ruta', tone: 'bg-orange-100 text-orange-800' },
   GPS_INCOMPLETO: { label: 'GPS incompleto', tone: 'bg-amber-100 text-amber-800' },
   ODOMETRO_RETROCEDE: { label: 'Odómetro retrocede', tone: 'bg-red-100 text-red-800' },
@@ -123,9 +123,9 @@ export const sourceText = (p: Period) => (Object.entries(p.bySource) as Array<[K
 // ---- Control de Jornada (fleet_workdays) ----
 export type JornadaStatus = 'SIN_OPERACION' | 'ABIERTA' | 'EN_REVISION' | 'CERRADA'
 export const STATUS: Record<JornadaStatus, { label: string; tone: string; row: string }> = {
-  CERRADA: { label: 'Cerrada', tone: 'bg-emerald-100 text-emerald-800', row: '' },
-  ABIERTA: { label: 'Jornada abierta', tone: 'bg-blue-100 text-blue-800', row: '' },
-  EN_REVISION: { label: 'En revisión', tone: 'bg-amber-100 text-amber-800', row: 'bg-amber-50/30' },
+  CERRADA: { label: 'Cerrada', tone: 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200', row: '' },
+  ABIERTA: { label: 'Jornada abierta', tone: 'bg-blue-100 text-blue-800 ring-1 ring-blue-200', row: '' },
+  EN_REVISION: { label: 'En revisión', tone: 'bg-amber-100 text-amber-900 ring-1 ring-amber-200', row: '' },
   SIN_OPERACION: { label: 'Sin operación', tone: 'bg-slate-100 text-slate-600', row: 'text-slate-400' },
 }
 export type Incident = { source: 'EVENTO' | 'RECHAZO' | 'UNIDAD'; id: string; type: string; at: string; detail: string | null; dispatch_number: string | null }
