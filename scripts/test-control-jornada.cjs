@@ -121,7 +121,7 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
   assert.deepEqual([...new Set(one.rows.map(x => x.plate))], ['AAA-2'])
   assert.match((await db.query(`SELECT fleet_workdays('2026-10-01','2027-01-31') v`)).rows[0].v.error, /hasta 3 meses/)
 
-  await assert.rejects(db.exec(read('supabase/tests/caja_c210_control_jornada.test.sql')), /CAJA C210 PASS/)
+  await assert.rejects(db.exec(read('supabase/tests/caja_c211_control_jornada.test.sql')), /CAJA C211 PASS/)
   console.log('PASS control de jornada (fase 2): toneladas APT sin duplicar, alerta única, estados de jornada, referencias, incidencias, ahorro valorizado, mantenimiento y sede')
  } finally { await db.close() }
 })().catch(e => { console.error(e); process.exit(1) })
