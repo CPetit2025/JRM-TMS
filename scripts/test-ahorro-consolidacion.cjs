@@ -53,6 +53,10 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
   const grouped = read('supabase/migrations/20261216090000_ahorro_recojos_viaje_conjunto.sql')
   assert.doesNotMatch(grouped, /replace\(\s*def/i, 'consolidation_savings is rewritten in full')
   await db.exec(grouped); await db.exec(grouped)
+  // Vigente: tarifario normalizado una vez (rendimiento); mismos resultados que con tariff_pick (se compara al final)
+  const fast = read('supabase/migrations/20261217090000_ahorro_consolidacion_rapido.sql')
+  assert.doesNotMatch(fast, /tariff_pick\('FLETE'/, 'freight tariffs come from the normalized CTE')
+  await db.exec(fast); await db.exec(fast)
   const rpc = async (sql, params = []) => (await db.query(`SELECT ${sql} AS v`, params)).rows[0].v
 
   // Tarifario: 4T y 1T con capacidad; tarifa de placa para la clase de la unidad propia
@@ -142,6 +146,13 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
   await rpc(`consolidation_hour_cost_set('ROL:AUXILIAR', NULL)`)
   const miss = await rpc(`consolidation_savings('2026-11-01','2026-11-01')`)
   assert.deepEqual([miss.hours_cost_missing, Number(miss.rows.find(x => x.request_number === 'S-2').hours_pen)], [true, 0])
+  // Equivalencia: la versión con tariff_pick por fila y la normalizada dan exactamente lo mismo sobre todos los casos
+  const all = async () => JSON.stringify((await rpc(`consolidation_savings('2026-10-01','2026-11-30')`)).rows)
+  const fastRows = await all()
+  await db.exec(grouped)
+  assert.equal(await all(), fastRows, 'normalized tariff lookup matches tariff_pick')
+  await db.exec(fast)
+
   // Validaciones y permisos
   assert.match((await rpc(`consolidation_savings('2026-11-02','2026-11-01')`)).error, /período válido/)
   assert.match((await rpc(`consolidation_hour_cost_set('ROL:CONDUCTOR', 1.234)`)).error, /dos decimales/)

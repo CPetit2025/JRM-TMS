@@ -32,6 +32,8 @@ BEGIN
    WHERE t.status IN ('PENDIENTE','PENDIENTE DE APROBACIÓN','REPROGRAMADA','APROBADA','OBSERVADA') ORDER BY t.id) t
  LEFT JOIN public.dispatches d ON d.id = t.dispatch_id;
 
+ -- La pantalla corre con statement_timeout 8 s (authenticated): sobre 7 s el Control de Jornada queda al borde del error 500
+ IF v_err IS NULL AND ms_fleet > 7000 THEN v_err := 'fleet_workdays tarda ' || ms_fleet || ' ms (límite de la pantalla 8 s)'; END IF;
  IF v_err IS NOT NULL OR v_linked IS NOT NULL THEN
   RAISE EXCEPTION 'CAJA C213 FAIL: % | editables con ruta vinculada: % | ms ahorro % jornada %', COALESCE(v_err, 'ahorro y jornada OK'), COALESCE(left(v_linked, 900), 'ninguna'), ms_sav, ms_fleet;
  END IF;
