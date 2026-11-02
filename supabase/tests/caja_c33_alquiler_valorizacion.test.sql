@@ -2,8 +2,9 @@
 --   T1 contrato con los factores del Excel (mensual 3.676,92, 3.900 km, km adicional 1,9428, base 26 días, garantía 2.000,
 --   km por ruta); T2 agosto = Excel (4.293 km, exceso 393, S/ 763,52, subtotal 4.440,44); T3 setiembre = Excel (3.981 km,
 --   exceso 81, S/ 157,37, subtotal 3.834,29) con el GPS como control (km fuera de ruta); T4 liquidaciones de agosto y
---   setiembre registradas; T5 89 viajes y 30 días de GPS cargados; T6 octubre en adelante sale de las rutas del sistema;
---   T7 un contrato por odómetro sigue igual que antes; T8 sin permiso no se calcula. Solo lectura (se revierte).
+--   setiembre registradas; T5 89 viajes y 30 días de GPS cargados; T6 octubre usa solo el Excel del cierre CJS716;
+--   T7 noviembre en adelante sale de las rutas del sistema y un contrato por odómetro sigue igual que antes;
+--   T8 sin permiso no se calcula. Solo lectura (se revierte).
 CREATE FUNCTION pg_temp.as_user(p_user uuid) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
   PERFORM set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true);
@@ -15,7 +16,7 @@ END $$;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
 
 DO $test$
-DECLARE v_user uuid; r_p uuid; r_n uuid; c record; r jsonb; ago jsonb; sep jsonb; v_fail text[] := '{}'; v_pass int := 0; n int; v_rep text;
+DECLARE v_user uuid; r_p uuid; r_n uuid; c record; r jsonb; ago jsonb; sep jsonb; v_fail text[] := '{}'; v_pass int := 0; n int; v_rep text; v_provider text;
 BEGIN
   SELECT id INTO v_user FROM public.profiles WHERE id IN (SELECT u2.id FROM auth.users u2)
     AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) ORDER BY id LIMIT 1;
@@ -26,11 +27,13 @@ BEGIN
   SELECT k.* INTO c FROM public.vehicle_lease_contracts k JOIN public.vehicles v ON v.id = k.vehicle_id
   WHERE public.fe_code(v.plate) = 'CJS 716' AND k.status = 'ACTIVO' ORDER BY k.start_date DESC LIMIT 1;
   IF c.id IS NULL THEN RAISE EXCEPTION 'CAJA C33 FAIL (0/8): no hay contrato activo de CJS716'; END IF;
+  SELECT business_name INTO v_provider FROM public.carriers WHERE id = c.provider_id;
   INSERT INTO public.user_site_access (user_id, site_id) VALUES (v_user, c.site_id) ON CONFLICT DO NOTHING;
 
   -- T1
   IF c.rate_type = 'MENSUAL' AND c.rate_amount = 3676.92 AND c.included_km = 3900 AND c.excess_km_rate_exact = 1.9428
      AND c.days_base = 26 AND c.guarantee_amount = 2000 AND c.km_source = 'RUTA' AND c.start_date = DATE '2026-08-01'
+     AND upper(v_provider) LIKE '%VALERIANI%'
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T1 contrato'::text; END IF;
 
   -- T2 y T3
@@ -59,9 +62,17 @@ BEGIN
      AND jsonb_array_length(ago -> 'viajes') + jsonb_array_length(sep -> 'viajes') = 89
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T5 carga'::text; END IF;
 
-  -- T6
-  PERFORM pg_temp.as_user(v_user); r := public.calculate_lease_settlement(c.id, DATE '2026-10-01', DATE '2026-10-31'); PERFORM pg_temp.as_user(NULL);
-  IF (r ->> 'success')::boolean AND r ->> 'km_fuente' = 'RUTA' AND (r ->> 'base_amount')::numeric = 3676.92 THEN v_pass := v_pass + 1;
+  -- T6: octubre solo usa las 31 filas de CJS716 del Excel, sin mezclar las otras placas ni rutas del sistema.
+  SELECT detail INTO r FROM public.lease_settlements
+  WHERE contract_id = c.id AND period_start = DATE '2026-10-01' AND status <> 'ANULADA'
+    AND km_used = 2833.48 AND subtotal = 3676.92 AND tax = 661.85 AND total = 4338.77
+  ORDER BY created_at DESC LIMIT 1;
+  IF (r ->> 'success')::boolean AND r ->> 'km_fuente' = 'VALORIZACION' AND (r ->> 'km_used')::numeric = 2833.48
+     AND (r ->> 'base_amount')::numeric = 3676.92 AND (r ->> 'subtotal')::numeric = 3676.92
+     AND jsonb_array_length(r -> 'viajes') = 31
+     AND (SELECT count(*) FROM public.lease_usage_records WHERE vehicle_id = c.vehicle_id AND fecha BETWEEN DATE '2026-10-01' AND DATE '2026-10-31'
+          AND fuente = 'VALORIZACION_EXCEL_CIERRE_OCT_2026' AND km IS NULL) = 15
+  THEN v_pass := v_pass + 1;
   ELSE v_fail := v_fail || ('T6 octubre: ' || left(r::text, 200)); END IF;
   v_rep := 'ago ' || (ago ->> 'subtotal') || ' (' || (ago ->> 'km_used') || ' km), set ' || (sep ->> 'subtotal') || ' (' || (sep ->> 'km_used')
         || ' km, GPS ' || (sep ->> 'km_gps') || ', fuera de ruta ' || (sep ->> 'km_fuera_de_ruta') || '), oct a la fecha '
@@ -69,7 +80,7 @@ BEGIN
 
   -- T7
   UPDATE public.vehicle_lease_contracts SET km_source = 'ODOMETRO' WHERE id = c.id;
-  PERFORM pg_temp.as_user(v_user); r := public.calculate_lease_settlement(c.id, DATE '2026-10-01', DATE '2026-10-31'); PERFORM pg_temp.as_user(NULL);
+  PERFORM pg_temp.as_user(v_user); r := public.calculate_lease_settlement(c.id, DATE '2026-11-01', DATE '2026-11-30'); PERFORM pg_temp.as_user(NULL);
   IF (r ->> 'success')::boolean AND r ->> 'km_fuente' = 'ODOMETRO' AND (r ->> 'km_used')::numeric = (r ->> 'km_odometro')::numeric
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T7 odómetro: ' || left(r::text, 200)); END IF;
 
