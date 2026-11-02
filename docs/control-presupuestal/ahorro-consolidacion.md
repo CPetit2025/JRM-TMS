@@ -35,7 +35,7 @@ consume presupuesto ni cambia el control presupuestal. La partida sigue registra
 |---|---|---|
 | Tarifa por destino y clase de unidad | `freight_rates` + `quote_transport` (contrato > cliente > general) | Se busca por **distrito**. |
 | Clase de unidad que habría hecho falta | `quote_transport` sugiere la clase menor que cubre el peso de la solicitud | Sin peso, se usa la clase de la unidad real de la ruta. No se usa el referencial guardado de la solicitud: ese toma la tarifa **más baja** y en recojos vale 0. |
-| Km directos de cada servicio | `dispatch_route_estimates` (OSRM, origen → destino por solicitud) | Existe desde el 22/11/2026. Las rutas anteriores no lo tienen. |
+| Km directos de cada servicio | `dispatch_route_estimates` (OSRM, origen → destino por solicitud) | Se guarda desde el 31/10/2026 (PR #389; el nombre de la migración, 20261122…, solo ordena). Las rutas anteriores no lo tienen. |
 | Km reales de la ruta | `dispatches.actual_distance_km` (GPS u odómetro) | Si falta, se usa lo estimado y queda marcado como estimado. |
 | Km extra de un servicio agregado en ruta | `dispatch_service_additions.extra_km` | Se registra al agregarlo. |
 | Duración directa / real | `dispatch_route_estimates.duration_min` / `departure_time` → `returned_at` | |
@@ -73,7 +73,7 @@ un segundo libro.
 |---|---|---|
 | P1 | **Costo por hora** de unidad (por clase) y de tripulación (conductor, auxiliar) | Configurable en «Control presupuestal», con un valor por clase de unidad y otro por rol, cargados por Finanzas. Mientras no estén cargados, las horas no suman y el reporte lo indica. |
 | P2 | **Retornos con carga** | Hoy no existen en el sistema. Para medirlos, la carga de vuelta debe registrarse como una solicitud (traslado o recojo) dentro de la ruta. Así cuenta como servicio aprovechado. |
-| P3 | **Desde cuándo** | Desde el 22/11/2026, cuando empezaron a guardarse los km directos. Lo anterior queda «sin dato». |
+| P3 | **Desde cuándo** | Desde el 31/10/2026, cuando empezaron a guardarse los km directos al armar la ruta. Lo anterior queda «sin dato». |
 | P4 | **Peajes extra** | No entraron en la decisión 2. Propuesta: incluirlos cuando haya un gasto de Caja de peaje imputado al servicio. |
 
 ## Riesgos
