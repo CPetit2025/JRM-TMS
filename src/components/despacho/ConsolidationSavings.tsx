@@ -13,7 +13,7 @@ export type SavingRow = {
   dispatch_id: string; dispatch_number: string; date: string; modalidad: string; request_id: string; request_number: string; request_type: string
   contract_id: string | null; contract_code: string | null; root_id: string | null; root_code: string | null; client: string | null
   district: string | null; weight_kg: number | null; vehicle_class: string | null; class_by_weight: boolean
-  principal: boolean; added: boolean; state: 'PRINCIPAL' | 'VALORIZADO' | 'SIN_TARIFA' | 'SIN_KM'; standalone_pen: number | null
+  principal: boolean; added: boolean; state: 'PRINCIPAL' | 'VALORIZADO' | 'SIN_TARIFA' | 'SIN_KM' | 'COSTO_HORA_PENDIENTE'; standalone_pen: number | null
   direct_km: number | null; extra_km: number | null; extra_hours: number | null; km_estimated: boolean
   fuel_pen: number; hours_pen: number; hours_cost_missing: boolean; tolls_pen: number; freight_paid_pen: number | null
   marginal_pen: number | null; saving_pen: number | null
@@ -24,6 +24,8 @@ const supabase = createClient()
 const STATE: Record<SavingRow['state'], { label: string; cls: string }> = {
   PRINCIPAL: { label: 'Principal de la ruta', cls: 'bg-slate-100 text-slate-600' }, VALORIZADO: { label: 'Aprovechado', cls: 'bg-emerald-100 text-emerald-800' },
   SIN_TARIFA: { label: 'Sin tarifa', cls: 'bg-amber-100 text-amber-800' }, SIN_KM: { label: 'Sin km directos', cls: 'bg-amber-100 text-amber-800' },
+  // Costos por hora sin cargar: no se presenta un ahorro inflado (D2 del Control de Jornada)
+  COSTO_HORA_PENDIENTE: { label: 'Pendiente: costo por hora', cls: 'bg-amber-100 text-amber-800' },
 }
 const TYPE: Record<string, string> = { DESPACHO: 'Entrega', RECOJO: 'Recojo', TRASLADO: 'Traslado' }
 const pen = (v: number | null | undefined) => v == null ? '—' : money(Number(v))
