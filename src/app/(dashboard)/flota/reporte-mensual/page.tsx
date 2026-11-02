@@ -3,10 +3,11 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { AlertTriangle, ArrowLeft, Box, Coins, FileDown, FileSpreadsheet, Gauge, Loader2, Navigation, Scale, Trophy, Truck, Wrench } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, FileDown, FileSpreadsheet, Loader2, Trophy, Wrench } from 'lucide-react'
 import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
+import { PageHeader } from '@/components/ui/page-header'
 import { exportAptXlsx } from '@/lib/apt/export'
 import { formatKm } from '@/lib/odometer'
 import { ALERTS, MONTH, STATUS, iso, monthlySummary, soles, tn, type Fleet, type UnitMonth, type UnitMonthStatus } from '@/lib/jornada'
@@ -88,36 +89,38 @@ function ReporteMensual() {
     pdf.save(`Reporte_mensual_flota_${month}.pdf`)
   }
 
-  const kpis: Array<[string, string, React.ReactNode, string?]> = t ? [
-    ['Unidades activas', String(t.activeUnits), <Truck key="i" className="h-5 w-5" />, `de ${t.availableUnits} disponibles`], ['Rutas ejecutadas', String(t.routes), <Navigation key="i" className="h-5 w-5" />],
-    ['Km odómetro', formatKm(t.km_odo), <Gauge key="i" className="h-5 w-5" />], ['Km GPS', formatKm(t.km_gps), <Navigation key="i" className="h-5 w-5" />],
-    ['Ton transportadas', tn(t.tn), <Box key="i" className="h-5 w-5" />], ['Toneladas APT', tn(t.tn_apt), <Scale key="i" className="h-5 w-5" />],
-    ['Ahorro acumulado', fleet?.savings_available ? `S/ ${soles(t.saving)}` : '—', <Coins key="i" className="h-5 w-5" />, t.savingPending ? `${t.savingPending} servicio(s) sin valorizar` : undefined],
-    ['Incidencias', String(t.incidents), <AlertTriangle key="i" className="h-5 w-5" />],
+  const kpis: Array<[string, string, string?, string?]> = t ? [
+    ['Unidades activas', String(t.activeUnits), `de ${t.availableUnits} disponibles`], ['Rutas ejecutadas', String(t.routes)],
+    ['Km odómetro', formatKm(t.km_odo)], ['Km GPS', formatKm(t.km_gps)],
+    ['Ton transportadas', tn(t.tn)], ['Toneladas APT', tn(t.tn_apt)],
+    ['Ahorro acumulado', fleet?.savings_available ? `S/ ${soles(t.saving)}` : '—', t.savingPending ? `${t.savingPending} servicio(s) sin valorizar` : undefined],
+    ['Incidencias', String(t.incidents)],
   ] : []
   const sortTh = (k: keyof UnitMonth, children: React.ReactNode, right = false) => <th key={k} className={`px-2 py-2 ${right ? 'text-right' : ''}`}>
     <button type="button" onClick={() => setSort(s => ({ key: k, dir: s.key === k ? (s.dir * -1) as 1 | -1 : -1 }))} className="font-semibold uppercase">{children}{sort.key === k ? (sort.dir < 0 ? ' ↓' : ' ↑') : ''}</button></th>
 
+  const control = 'h-9 rounded-md border border-slate-300 bg-white px-2.5 text-sm text-slate-800 outline-none focus:border-[#002855] focus:ring-1 focus:ring-[#002855]'
   return <div className="min-w-0 space-y-3">
-    <header className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#002855] px-4 py-3 text-white">
-      <div className="flex items-center gap-3"><Link href={tableHref()} aria-label="Control de jornada" className="grid h-9 w-9 place-items-center rounded-lg border border-white/40"><ArrowLeft className="h-4 w-4" /></Link>
-        <div><h1 className="text-xl font-bold">Reporte mensual de flota · {title}</h1><p className="text-sm text-white/80">Resumen operativo, kilometraje, carga y costos de toda la flota</p></div></div>
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="text-xs">Mes<input type="month" value={month} onChange={e => e.target.value && router.replace(`${path}?mes=${e.target.value}`)} className="ml-1 rounded-md px-2 py-1 text-sm text-slate-900" /></label>
-        <button type="button" disabled={!m} onClick={() => void exportPdf()} className="inline-flex items-center gap-1.5 rounded-lg border border-white/50 px-3 py-1.5 text-sm font-semibold hover:bg-white/10 disabled:opacity-50"><FileDown className="h-4 w-4" />Exportar PDF</button>
-        <button type="button" disabled={!m} onClick={exportExcel} className="inline-flex items-center gap-1.5 rounded-lg border border-white/50 px-3 py-1.5 text-sm font-semibold hover:bg-white/10 disabled:opacity-50"><FileSpreadsheet className="h-4 w-4" />Descargar Excel</button>
-      </div>
-    </header>
+    <PageHeader showTitle title={`Reporte mensual de flota · ${title}`} description="Resumen operativo, kilometraje, carga y costos de toda la flota"
+      actions={<>
+        <Link href={tableHref()} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 hover:bg-slate-50"><ArrowLeft className="h-4 w-4" />Control de jornada</Link>
+        <label className="text-[11px] font-medium text-slate-500">Mes<input aria-label="Mes del reporte" type="month" value={month} onChange={e => e.target.value && router.replace(`${path}?mes=${e.target.value}`)} className={`${control} ml-1`} /></label>
+        <button type="button" disabled={!m} onClick={() => void exportPdf()} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"><FileDown className="h-4 w-4" />PDF</button>
+        <button type="button" disabled={!m} onClick={exportExcel} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"><FileSpreadsheet className="h-4 w-4" />Excel</button>
+      </>} />
 
-    {loading && !m ? <p className="flex items-center justify-center gap-2 p-10 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />Cargando el mes…</p> : !m || !t ? null : <>
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">{kpis.map(([label, value, icon, hint]) => <div key={label} className="rounded-xl border border-slate-200 bg-white p-3">
-        <span className="flex items-center gap-2 text-xs font-semibold text-slate-600"><span className="text-[#002855]">{icon}</span>{label}</span>
-        <span className={`block text-lg font-bold ${label === 'Ahorro acumulado' ? 'text-emerald-700' : label === 'Incidencias' && t.incidents ? 'text-red-700' : 'text-slate-900'}`}>{value}</span>
-        {hint && <span className="block text-[11px] text-slate-500">{hint}</span>}</div>)}</div>
+    {loading && !m ? <p className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white p-8 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />Cargando el mes…</p> : !m || !t ? null : <>
+      <section aria-label="Indicadores del mes" className="grid grid-cols-2 divide-x divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white sm:grid-cols-4 sm:divide-y-0 xl:grid-cols-8">
+        {kpis.map(([label, value, hint]) => <div key={label} className="min-w-0 px-2.5 py-2">
+          <span className="block truncate text-[10px] font-medium text-slate-500">{label}</span>
+          <span className={`block truncate text-base font-semibold tabular-nums ${label === 'Ahorro acumulado' ? 'text-emerald-800' : label === 'Incidencias' && t.incidents ? 'text-red-700' : 'text-slate-900'}`}>{value}</span>
+          {hint && <span className="block truncate text-[10px] text-slate-500" title={hint}>{hint}</span>}
+        </div>)}
+      </section>
 
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-        <section className="rounded-xl border border-slate-200 bg-white p-3"><h2 className="mb-2 text-sm font-bold text-slate-800">Resumen del mes</h2>
-          <div ref={chart} className="h-64 bg-white"><ResponsiveContainer width="100%" height="100%">
+        <section className="rounded-lg border border-slate-200 bg-white p-2.5"><h2 className="mb-1.5 text-sm font-semibold text-slate-800">Resumen del mes</h2>
+          <div ref={chart} className="h-56 bg-white"><ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={m.weeks.map(w => ({ ...w, name: `${w.label} (${Number(w.from.slice(8))}–${Number(w.to.slice(8))})` }))} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" tick={{ fontSize: 11 }} />
               <YAxis yAxisId="r" allowDecimals={false} tick={{ fontSize: 11 }} label={{ value: 'Rutas', angle: -90, position: 'insideLeft', fontSize: 11 }} />
@@ -128,7 +131,7 @@ function ReporteMensual() {
             </ComposedChart></ResponsiveContainer></div>
           <p className="text-[11px] text-slate-500">Semanas de lunes a domingo recortadas al mes: su suma es el total del mes.</p></section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-3 text-sm"><h2 className="mb-2 text-sm font-bold text-slate-800">Hallazgos del mes</h2>
+        <section className="rounded-lg border border-slate-200 bg-white p-2.5 text-sm"><h2 className="mb-1.5 text-sm font-semibold text-slate-800">Hallazgos del mes</h2>
           <p className="border-b border-slate-100 py-1.5"><span className="text-slate-500">Unidad con mayor kilometraje:</span> <b>{m.topKm ? `${m.topKm.plate} (${formatKm(m.topKm.km_odo)}, ${tn(m.topKm.tn)}, ${m.topKm.incidents} incidencia(s))` : '—'}</b></p>
           <p className="border-b border-slate-100 py-1.5"><span className="text-slate-500">Conductor con mayor actividad:</span> <b>{m.topDriver ? `${m.topDriver[0]} (${m.topDriver[1].routes} rutas, ${formatKm(Math.round(m.topDriver[1].km))})` : '—'}</b></p>
           <p className="border-b border-slate-100 py-1.5"><span className="text-slate-500">Jornadas cerradas:</span> <b className="text-emerald-700">{t.jornadas ? `${Math.round(1000 * t.closed / t.jornadas) / 10} %` : '—'}</b> ({t.closed} de {t.jornadas})</p>
@@ -136,29 +139,29 @@ function ReporteMensual() {
           <p className="text-[11px] text-slate-500">El kilometraje mide actividad, no eficiencia.</p></section>
       </div>
 
-      <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white"><h2 className="px-3 pt-3 text-sm font-bold text-slate-800">Desempeño por unidad</h2>
-        <table className="mt-2 min-w-[72rem] text-sm"><thead className="bg-slate-50 text-left text-[11px] uppercase text-slate-500"><tr>
+      <section className="overflow-x-auto rounded-lg border border-slate-200 bg-white"><div className="px-2.5 pt-2.5 text-sm font-semibold text-slate-800">Desempeño por unidad</div>
+        <table className="mt-1.5 min-w-[72rem] text-xs"><thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-600"><tr>
           {sortTh('plate', 'Unidad')}{sortTh('driver', 'Conductor principal')}{sortTh('routes', 'Rutas', true)}{sortTh('km_odo', 'Km odómetro', true)}{sortTh('km_gps', 'Km GPS', true)}
           {sortTh('tn', 'Carga', true)}{sortTh('tn_apt', 'APT', true)}{sortTh('cost', 'Costo real', true)}{sortTh('saving', 'Ahorro', true)}{sortTh('status', 'Estado')}{sortTh('incidents', 'Incidencias', true)}</tr></thead>
           <tbody className="divide-y divide-slate-100">{!units.length && <tr><td colSpan={11} className="p-6 text-center text-slate-500">Sin unidades con operación en el mes.</td></tr>}
             {units.map(u => <tr key={u.plate} className="hover:bg-slate-50">
-              <td className="px-2 py-2 font-bold"><Link href={tableHref(u.plate)} className="text-[#002855] underline">{u.plate}</Link>{u.maintenance > 0 && <span className="ml-1 inline-flex items-center text-amber-700" title="Mantenimiento pendiente"><Wrench className="h-3.5 w-3.5" /></span>}</td>
-              <td className="px-2 py-2 text-xs">{u.driver || '—'}</td><td className="px-2 py-2 text-right">{u.routes}</td>
-              <td className="px-2 py-2 text-right tabular-nums">{formatKm(u.km_odo)}</td><td className="px-2 py-2 text-right tabular-nums">{formatKm(u.km_gps)}</td>
-              <td className="px-2 py-2 text-right">{tn(u.tn)}</td><td className="px-2 py-2 text-right">{tn(u.tn_apt)}</td>
-              <td className="px-2 py-2 text-right tabular-nums">S/ {soles(u.cost)}</td><td className="px-2 py-2 text-right font-semibold tabular-nums text-emerald-700">{u.savingValued ? `S/ ${soles(u.saving)}` : '—'}</td>
+              <td className="px-2 py-1.5 font-semibold"><Link href={tableHref(u.plate)} className="text-[#002855] underline">{u.plate}</Link>{u.maintenance > 0 && <span className="ml-1 inline-flex items-center text-amber-700" title="Mantenimiento pendiente"><Wrench className="h-3.5 w-3.5" /></span>}</td>
+              <td className="px-2 py-1.5">{u.driver || '—'}</td><td className="px-2 py-1.5 text-right tabular-nums">{u.routes}</td>
+              <td className="px-2 py-1.5 text-right tabular-nums">{formatKm(u.km_odo)}</td><td className="px-2 py-1.5 text-right tabular-nums">{formatKm(u.km_gps)}</td>
+              <td className="px-2 py-1.5 text-right tabular-nums">{tn(u.tn)}</td><td className="px-2 py-1.5 text-right tabular-nums">{tn(u.tn_apt)}</td>
+              <td className="px-2 py-1.5 text-right tabular-nums">S/ {soles(u.cost)}</td><td className="px-2 py-1.5 text-right font-semibold tabular-nums text-emerald-700">{u.savingValued ? `S/ ${soles(u.saving)}` : '—'}</td>
               <td className="px-2 py-2"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${UNIT_STATUS[u.status].tone}`}>{UNIT_STATUS[u.status].label}</span></td>
               <td className={`px-2 py-2 text-right ${u.incidents ? 'font-semibold text-red-700' : ''}`}>{u.incidents}</td></tr>)}</tbody></table>
-        <p className="px-3 pb-3 text-[11px] text-slate-500">Estado del mes: con incidencias si hubo alguna; en proceso si tiene jornadas abiertas o en revisión; cerrada si todas sus jornadas están cerradas.</p></section>
+        <p className="px-2.5 pb-2.5 pt-1 text-[10px] text-slate-500">Estado del mes: con incidencias si hubo alguna; en proceso si tiene jornadas abiertas o en revisión; cerrada si todas sus jornadas están cerradas.</p></section>
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-        <section className="rounded-xl border border-slate-200 bg-white p-3"><h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-800"><Trophy className="h-4 w-4" />Top 5</h2>
-          <div className="mb-2 flex flex-wrap gap-1">{(Object.keys(RANK) as RankKey[]).map(k => <button key={k} type="button" onClick={() => setRank(k)} aria-pressed={rank === k}
-            className={`rounded-full px-3 py-1 text-xs font-semibold ${rank === k ? 'bg-[#002855] text-white' : 'bg-slate-100 text-slate-700'}`}>{RANK[k]}</button>)}</div>
+        <section className="rounded-lg border border-slate-200 bg-white p-2.5"><h2 className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-800"><Trophy className="h-4 w-4" />Top 5</h2>
+          <div className="mb-1.5 flex flex-wrap gap-1">{(Object.keys(RANK) as RankKey[]).map(k => <button key={k} type="button" onClick={() => setRank(k)} aria-pressed={rank === k}
+            className={`rounded-md px-2.5 py-1 text-xs font-semibold ${rank === k ? 'bg-[#002855] text-white' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}>{RANK[k]}</button>)}</div>
           {!ranking.length ? <p className="text-sm text-slate-500">{rank === 'saving' ? 'Sin ahorro valorizado en el mes.' : 'Sin datos.'}</p>
             : <ol className="space-y-1 text-sm">{ranking.map((u, i) => <li key={u.plate} className="flex justify-between border-b border-slate-100 py-1"><span>{i + 1}. <b>{u.plate}</b></span><span className="tabular-nums">{fmtRank(rank, u)}</span></li>)}</ol>}</section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-3"><h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-800"><AlertTriangle className="h-4 w-4" />Alertas y observaciones</h2>
+        <section className="rounded-lg border border-slate-200 bg-white p-2.5"><h2 className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-800"><AlertTriangle className="h-4 w-4" />Alertas y observaciones</h2>
           {!m.alerts.length && !t.incidents && !m.operating.some(u => u.maintenance) ? <p className="text-sm text-emerald-700">Sin alertas en el mes.</p> : <ul className="space-y-2 text-sm">
             {m.alerts.map(([a, list]) => <li key={a}><b>{ALERTS[a]?.label || a} ({list.length})</b>
               <span className="block text-xs text-slate-600">{list.map(x => <Link key={`${x.plate}/${x.date}`} href={`/flota/reporte-unidad/${encodeURIComponent(x.plate)}/${x.date}?desde=${first}&hasta=${last}`} className="mr-2 underline">{x.plate} {x.date.slice(8)}/{x.date.slice(5, 7)}</Link>)}</span></li>)}
@@ -167,9 +170,6 @@ function ReporteMensual() {
           </ul>}</section>
       </div>
 
-      <section className="grid gap-2 rounded-xl bg-[#002855] p-3 text-white sm:grid-cols-4 xl:grid-cols-8">{([['Unidades activas', t.activeUnits], ['Rutas', t.routes], ['Km odómetro', formatKm(t.km_odo)], ['Km GPS', formatKm(t.km_gps)],
-        ['Ton transportadas', tn(t.tn)], ['Toneladas APT', tn(t.tn_apt)], ['Costo real', `S/ ${soles(t.cost)}`], ['Ahorro acumulado', fleet?.savings_available ? `S/ ${soles(t.saving)}` : '—']] as const).map(([k, v]) =>
-        <div key={k}><p className="text-[11px] text-white/70">{k}</p><p className="font-bold">{v}</p></div>)}</section>
       <p className="text-xs text-slate-500">Unidades activas: con al menos una jornada con operación; disponibles: propias de sus sedes, sin las fuera de servicio. Costo real: costos imputados a las OT (Caja y combustible). El ahorro suma solo servicios valorizados.</p>
     </>}
   </div>
