@@ -140,6 +140,7 @@ jobs:
       - run: node scripts/test-preuse-reports.cjs
       - run: node scripts/test-table-sort.cjs
       - run: node scripts/test-transport-lead-time.cjs
+      - run: node scripts/test-dispatch-tracking.cjs
       - run: npm run check:guards
       - run: npm run typecheck
 
