@@ -50,7 +50,7 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
   const migration = read('supabase/migrations/20261211090000_ahorro_consolidacion.sql')
   await db.exec(migration); await db.exec(migration)
   // Vigente: reescritura completa con recojos en viaje conjunto (incluye D2); todo lo de abajo corre sobre ella
-  const grouped = read('supabase/migrations/20261215090000_ahorro_recojos_viaje_conjunto.sql')
+  const grouped = read('supabase/migrations/20261216090000_ahorro_recojos_viaje_conjunto.sql')
   assert.doesNotMatch(grouped, /replace\(\s*def/i, 'consolidation_savings is rewritten in full')
   await db.exec(grouped); await db.exec(grouped)
   const rpc = async (sql, params = []) => (await db.query(`SELECT ${sql} AS v`, params)).rows[0].v
