@@ -39,7 +39,7 @@ que la valorización no cobra. La liquidación los muestra como "km fuera de rut
 
 ## Octubre 2026: excepción de fuente Excel
 
-La migración `20261219090000_cjs716_octubre_excel.sql` filtra exclusivamente `CJS716`, importa su detalle de octubre,
+La migración `20261219091000_cjs716_octubre_excel.sql` filtra exclusivamente `CJS716`, importa su detalle de octubre,
 asocia el contrato `ALQ-261004-1DC1` con Transportes Valeriani (según el archivo), anula con trazabilidad un borrador
 previo si existe y crea la liquidación corregida en borrador. Con 2.833,48 km frente a 3.900 km incluidos, no hay exceso; el importe es el alquiler
 mensual pactado de S/ 3.676,92 antes de IGV. Los fletes al cliente no se cargan al alquiler.
