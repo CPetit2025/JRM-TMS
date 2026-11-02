@@ -73,7 +73,7 @@ export default function DespachoPage() {
         .from('transport_requests')
         .select(`
           *,
-          suppliers(business_name),
+          suppliers!transport_requests_supplier_id_fkey(business_name),
           request_client:clients!client_id(business_name),
           transport_request_items (
             weight,
