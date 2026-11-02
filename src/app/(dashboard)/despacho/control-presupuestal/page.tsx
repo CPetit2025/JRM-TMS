@@ -137,15 +137,15 @@ export default function ControlPresupuestalPage() {
       {statusFilter('BLOQUEO', `Sobre el límite · > ${settings.budget_cap_pct}–100 %`, count('BLOQUEO'), 'text-orange-800')}
       {statusFilter('EXCEDIDO', 'Presupuesto excedido · > 100 %', count('EXCEDIDO'), 'text-red-700')}
       <button type="button" onClick={() => router.push('/despacho/control-presupuestal/ahorro')} className="min-w-0 border-b-2 border-transparent px-2.5 py-2 text-left hover:bg-slate-50">
-        <span className="block truncate text-[11px] font-medium text-slate-500">Ahorro validado · período</span><span className="block truncate text-lg font-semibold tabular-nums text-emerald-800">{filteredSaving == null ? '—' : `S/ ${money(Number(filteredSaving))}`}</span></button>
+        <span className="block truncate text-[11px] font-medium text-slate-500">Ahorro validado · período</span><span className="block truncate text-lg font-semibold tabular-nums text-emerald-800">{filteredSaving == null ? '—' : `${money(Number(filteredSaving))}`}</span></button>
     </section>
 
     <section aria-label="Resumen monetario" className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 sm:grid-cols-3 lg:grid-cols-6">
       {[
         ['Presupuesto vigente', sum('allocated_pen')], ['Límite operativo', sum('cap_pen')], ['Ejecutado acumulado', sum('consumed_pen')],
         ['Comprometido vigente', sum('reserved_pen')], ['Disponible hasta el límite', sum('available_to_cap_pen')],
-      ].map(([label, value]) => <div key={String(label)} className="min-w-0"><p className="truncate text-[10px] font-medium text-slate-500">{label}</p><p className="truncate text-sm font-semibold tabular-nums text-slate-900">S/ {money(Number(value))}</p></div>)}
-      <div className="min-w-0"><p className="truncate text-[10px] font-medium text-slate-500">Ejecutado en período</p><p className="truncate text-sm font-semibold tabular-nums text-slate-900">{periodExecuted == null ? '—' : `S/ ${money(shown.reduce((total, row) => total + (byOt.get(row.contract_id) || 0), 0))}`}</p></div>
+      ].map(([label, value]) => <div key={String(label)} className="min-w-0"><p className="truncate text-[10px] font-medium text-slate-500">{label}</p><p className="truncate text-sm font-semibold tabular-nums text-slate-900">{money(Number(value))}</p></div>)}
+      <div className="min-w-0"><p className="truncate text-[10px] font-medium text-slate-500">Ejecutado en período</p><p className="truncate text-sm font-semibold tabular-nums text-slate-900">{periodExecuted == null ? '—' : `${money(shown.reduce((total, row) => total + (byOt.get(row.contract_id) || 0), 0))}`}</p></div>
     </section>
 
     <div className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-2.5">
@@ -165,9 +165,9 @@ export default function ControlPresupuestalPage() {
       {rows === null ? <p className="p-8 text-center text-sm text-slate-500">Cargando cartera…</p> : !shown.length ? <p className="p-8 text-center text-sm text-slate-500">No hay OT para los filtros seleccionados.</p> : <>
         <div className="space-y-2 p-2 lg:hidden">{shown.map(r => <article key={r.contract_id} className="rounded-md border border-slate-200 p-2.5">
           <div className="flex items-start justify-between gap-3"><div className="min-w-0"><Link href={`/despacho/control-presupuestal/${r.contract_id}`} className="font-semibold text-[#002855] underline">{r.code}</Link><p className="truncate text-xs text-slate-600">{r.client || 'Sin cliente'}</p></div><span className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold ${LEVEL[r.level].cls}`}>{LEVEL[r.level].label}</span></div>
-          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:grid-cols-3"><span className="text-slate-500">Presupuesto <b className="float-right text-slate-800">S/ {money(Number(r.allocated_pen))}</b></span><span className="text-slate-500">Límite <b className="float-right text-slate-800">S/ {money(Number(r.cap_pen))}</b></span>
-            <span className="text-slate-500">Ejecutado <b className="float-right text-slate-800">S/ {money(Number(r.consumed_pen))}</b></span><span className="text-slate-500">Comprometido <b className="float-right text-slate-800">S/ {money(Number(r.reserved_pen))}</b></span>
-            <span className="text-slate-500">Disponible al límite <b className={`float-right ${Number(r.available_to_cap_pen) < 0 ? 'text-red-700' : 'text-slate-800'}`}>S/ {money(Number(r.available_to_cap_pen))}</b></span><span className="text-slate-500">Consumo <b className="float-right text-slate-800">{r.used_pct == null ? '—' : `${r.used_pct} %`}</b></span></div>
+          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:grid-cols-3"><span className="text-slate-500">Presupuesto <b className="float-right text-slate-800">{money(Number(r.allocated_pen))}</b></span><span className="text-slate-500">Límite <b className="float-right text-slate-800">{money(Number(r.cap_pen))}</b></span>
+            <span className="text-slate-500">Ejecutado <b className="float-right text-slate-800">{money(Number(r.consumed_pen))}</b></span><span className="text-slate-500">Comprometido <b className="float-right text-slate-800">{money(Number(r.reserved_pen))}</b></span>
+            <span className="text-slate-500">Disponible al límite <b className={`float-right ${Number(r.available_to_cap_pen) < 0 ? 'text-red-700' : 'text-slate-800'}`}>{money(Number(r.available_to_cap_pen))}</b></span><span className="text-slate-500">Consumo <b className="float-right text-slate-800">{r.used_pct == null ? '—' : `${r.used_pct} %`}</b></span></div>
           {['ALERTA', 'BLOQUEO'].includes(r.level) && <Link href={`/despacho/control-presupuestal/pendientes?solicitar=${r.contract_id}&codigo=${encodeURIComponent(r.code)}`} className="mt-2 inline-block text-xs font-semibold text-[#002855] underline">Solicitar autorización</Link>}
         </article>)}</div>
         <div className="hidden overflow-x-auto lg:block"><table className="w-full table-fixed text-xs">
@@ -186,7 +186,7 @@ export default function ControlPresupuestalPage() {
             <td className={cell}><Link href={`/despacho/control-presupuestal/movimientos?ot=${r.contract_id}&efecto=COMPROMETIDO`} className="underline decoration-dotted">{money(Number(r.reserved_pen))}</Link></td>
             <td className={`${cell} ${Number(r.available_to_cap_pen) < 0 ? 'font-semibold text-red-700' : ''}`}>{money(Number(r.available_to_cap_pen))}</td>
             <td className={cell}>{r.used_pct == null ? '—' : `${r.used_pct} %`}</td><td className="px-2.5 py-2"><span className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-semibold ${LEVEL[r.level].cls}`}>{LEVEL[r.level].label}</span>
-              {Number(r.authorized_over_cap_pen) > 0 && <span className="mt-1 block text-[9px] text-slate-500">Autorizado S/ {money(Number(r.authorized_over_cap_pen))}</span>}{Number(r.pending_authorizations) > 0 && <Link href="/despacho/control-presupuestal/pendientes" className="mt-1 block text-[9px] font-semibold text-amber-800 underline">{r.pending_authorizations} pendiente(s)</Link>}</td>
+              {Number(r.authorized_over_cap_pen) > 0 && <span className="mt-1 block text-[9px] text-slate-500">Autorizado {money(Number(r.authorized_over_cap_pen))}</span>}{Number(r.pending_authorizations) > 0 && <Link href="/despacho/control-presupuestal/pendientes" className="mt-1 block text-[9px] font-semibold text-amber-800 underline">{r.pending_authorizations} pendiente(s)</Link>}</td>
             <td className="px-2.5 py-2 text-right"><Link href={`/despacho/control-presupuestal/${r.contract_id}`} className="font-semibold text-[#002855] underline">Analizar</Link>
               {['ALERTA', 'BLOQUEO'].includes(r.level) && <Link href={`/despacho/control-presupuestal/pendientes?solicitar=${r.contract_id}&codigo=${encodeURIComponent(r.code)}`} className="mt-1 block text-[9px] text-slate-600 underline">Autorizar</Link>}</td>
           </tr>)}</tbody></table></div>

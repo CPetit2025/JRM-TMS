@@ -108,12 +108,12 @@ export default function OtDetailPage({ params }: { params: Promise<{ ot: string 
 
         {tab === 'resumen' && <div className="space-y-3">
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            {card('Presupuesto vigente', `S/ ${n(p.allocated_pen)}`, Number(p.extensions_pen) ? `Incluye ampliaciones por S/ ${n(p.extensions_pen)}` : 'Partida original')}
-            {card(`Tope operativo (${data.settings.budget_cap_pct} %)`, `S/ ${n(p.cap_pen)}`, `Margen protegido: S/ ${n(p.protected_pen)}`)}
-            {card('Consumo', `S/ ${n(p.used_pen)}`, `${p.used_pct ?? '—'} % · ${LEVEL[p.level]}`)}
-            {card('Disponible hasta el tope', `S/ ${n(p.available_to_cap_pen)}`, Number(p.authorized_over_cap_pen) ? `Incluye S/ ${n(p.authorized_over_cap_pen)} autorizados por Gerencia` : undefined)}
-            {card('Ejecutado', `S/ ${n(p.consumed_pen)}`)}
-            {card('Comprometido vigente', `S/ ${n(p.reserved_pen)}`)}
+            {card('Presupuesto vigente', `${n(p.allocated_pen)}`, Number(p.extensions_pen) ? `Incluye ampliaciones por ${n(p.extensions_pen)}` : 'Partida original')}
+            {card(`Tope operativo (${data.settings.budget_cap_pct} %)`, `${n(p.cap_pen)}`, `Margen protegido: ${n(p.protected_pen)}`)}
+            {card('Consumo', `${n(p.used_pen)}`, `${p.used_pct ?? '—'} % · ${LEVEL[p.level]}`)}
+            {card('Disponible hasta el tope', `${n(p.available_to_cap_pen)}`, Number(p.authorized_over_cap_pen) ? `Incluye ${n(p.authorized_over_cap_pen)} autorizados por Gerencia` : undefined)}
+            {card('Ejecutado', `${n(p.consumed_pen)}`)}
+            {card('Comprometido vigente', `${n(p.reserved_pen)}`)}
             {card('Viajes', String(data.trips_total))}
             {card('Pendientes', String(pending.length), pending.length ? 'Ver «Desviaciones y alertas»' : undefined)}
           </div>
@@ -125,10 +125,10 @@ export default function OtDetailPage({ params }: { params: Promise<{ ot: string 
                 {!pending.length && !data.trips.some(t => t.has_estimate) && <span className="rounded bg-slate-200 px-2 py-1 font-semibold text-slate-700">Sin pendientes detectados</span>}</div>
             </div>
             <div className="mt-2 grid grid-cols-2 gap-3 border-t border-slate-200 pt-2 sm:grid-cols-4">
-              <div><p className="text-[10px] text-slate-500">Ejecutado acumulado</p><p className="text-sm font-semibold tabular-nums">S/ {n(p.consumed_pen)}</p></div>
-              <div><p className="text-[10px] text-slate-500">Comprometido vigente</p><p className="text-sm font-semibold tabular-nums">S/ {n(p.reserved_pen)}</p></div>
-              <div><p className="text-[10px] text-slate-500">Proyección conocida</p><p className="text-sm font-semibold tabular-nums">S/ {n(Number(p.consumed_pen) + Number(p.reserved_pen))}</p></div>
-              <div><p className="text-[10px] text-slate-500">Disponible al límite</p><p className={`text-sm font-semibold tabular-nums ${Number(p.available_to_cap_pen) < 0 ? 'text-red-700' : ''}`}>S/ {n(p.available_to_cap_pen)}</p></div>
+              <div><p className="text-[10px] text-slate-500">Ejecutado acumulado</p><p className="text-sm font-semibold tabular-nums">{n(p.consumed_pen)}</p></div>
+              <div><p className="text-[10px] text-slate-500">Comprometido vigente</p><p className="text-sm font-semibold tabular-nums">{n(p.reserved_pen)}</p></div>
+              <div><p className="text-[10px] text-slate-500">Proyección conocida</p><p className="text-sm font-semibold tabular-nums">{n(Number(p.consumed_pen) + Number(p.reserved_pen))}</p></div>
+              <div><p className="text-[10px] text-slate-500">Disponible al límite</p><p className={`text-sm font-semibold tabular-nums ${Number(p.available_to_cap_pen) < 0 ? 'text-red-700' : ''}`}>{n(p.available_to_cap_pen)}</p></div>
             </div>
           </section>
           <section className="rounded-xl border border-slate-200 bg-white p-3">
@@ -137,7 +137,7 @@ export default function OtDetailPage({ params }: { params: Promise<{ ot: string 
               {data.series.map(s => <div key={s.month} className="flex items-center gap-2 text-xs">
                 <span className="w-16 tabular-nums">{s.month}</span>
                 <div className="h-3 flex-1 rounded bg-slate-100"><div className="h-3 rounded bg-[#002855]" style={{ width: `${Math.max(1, Number(s.cumulative_pen) / maxSeries * 100)}%` }} /></div>
-                <span className="w-40 text-right tabular-nums">S/ {n(s.cumulative_pen)} <span className="text-slate-500">(+{n(s.consumed_pen)})</span></span></div>)}
+                <span className="w-40 text-right tabular-nums">{n(s.cumulative_pen)} <span className="text-slate-500">(+{n(s.consumed_pen)})</span></span></div>)}
             </div>}
             <p className="mt-2 text-[11px] text-slate-500">El comprometido es un estado vigente: no tiene historia por fecha.</p>
           </section>
@@ -181,7 +181,7 @@ export default function OtDetailPage({ params }: { params: Promise<{ ot: string 
           {!pending.length ? <p className="text-sm text-slate-500">Sin pendientes en la partida de esta OT.</p> : <ul className="divide-y divide-slate-100">
             {pending.map((r, i) => <li key={i} className="flex flex-wrap items-start justify-between gap-2 py-2 text-sm">
               <span><span className="font-semibold">{r.cause}</span><span className="block text-xs text-slate-500">{r.action}{r.age_days != null ? ` · ${r.age_days} día(s)` : ''}</span></span>
-              <span className="text-right"><span className="tabular-nums">S/ {n(r.amount_pen)}</span>
+              <span className="text-right"><span className="tabular-nums">{n(r.amount_pen)}</span>
                 {r.dispatch_id && <Link href={`/torre-control?despacho=${r.dispatch_id}`} className="block text-xs font-semibold text-[#002855] underline">Abrir {r.dispatch_number}</Link>}</span></li>)}
           </ul>}
           <p className="text-xs text-slate-600">Desvíos de costo, sustentos del Supervisor y decisiones: <Link href="/despacho/control-presupuestal/pendientes" className="font-semibold text-[#002855] underline">Pendientes y autorizaciones</Link>.</p>
@@ -199,7 +199,7 @@ export default function OtDetailPage({ params }: { params: Promise<{ ot: string 
           </form>}
           {!data.extensions.length ? <p className="text-sm text-slate-500">Sin ampliaciones.</p> : <ul className="divide-y divide-slate-100">
             {data.extensions.map(x => <li key={x.id} className="flex flex-wrap items-start justify-between gap-2 py-2 text-sm">
-              <span><span className="font-semibold">S/ {n(x.amount_pen)} · {x.status.toLowerCase()}</span>
+              <span><span className="font-semibold">{n(x.amount_pen)} · {x.status.toLowerCase()}</span>
                 <span className="block text-xs text-slate-600">{x.reason}{x.evidence ? ` · ${x.evidence}` : ''}</span>
                 <span className="block text-[11px] text-slate-500">Solicitó {x.requested_by || '—'} el {day(x.requested_at)}{x.decided_at ? ` · decidió ${x.decided_by || '—'} el ${day(x.decided_at)}${x.decision_note ? `: ${x.decision_note}` : ''}` : ''}</span></span>
               {x.status === 'SOLICITADA' && data.can_decide_extension && <span className="flex gap-2">
@@ -212,7 +212,7 @@ export default function OtDetailPage({ params }: { params: Promise<{ ot: string 
         {tab === 'ahorro' && <section className="space-y-2 rounded-xl border border-slate-200 bg-white">
           {!savings ? <p className="p-6 text-center text-sm text-slate-500">Cargando…</p> : <>
             <div className="flex flex-wrap items-center justify-between gap-2 p-3 pb-0 text-sm">
-              <p>Ahorro atribuido: <b className="text-emerald-700">S/ {money(savings.rows.filter(r => !r.principal).reduce((s, r) => s + Number(r.saving_pen || 0), 0))}</b> · {savings.rows.filter(r => !r.principal).length} servicio(s) aprovechado(s){range.from || range.to ? '' : ' · últimos 12 meses'}</p>
+              <p>Ahorro atribuido: <b className="text-emerald-700">{money(savings.rows.filter(r => !r.principal).reduce((s, r) => s + Number(r.saving_pen || 0), 0))}</b> · {savings.rows.filter(r => !r.principal).length} servicio(s) aprovechado(s){range.from || range.to ? '' : ' · últimos 12 meses'}</p>
               <button type="button" disabled={!savings.rows.length} onClick={() => exportSavingsCsv(savings.rows, `ahorro-${data.contract.code}`)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold disabled:opacity-50">Exportar</button></div>
             <SavingsTable rows={savings.rows} />
             <p className="px-3 pb-3 text-[11px] text-slate-500">Indicador de eficiencia: no consume la partida. Detalle completo en la pestaña Ahorro por consolidación.</p></>}
@@ -220,7 +220,7 @@ export default function OtDetailPage({ params }: { params: Promise<{ ot: string 
         {tab === 'historial' && <section className="rounded-xl border border-slate-200 bg-white p-3">
           {!data.timeline.length ? <p className="text-sm text-slate-500">Sin eventos.</p> : <ol className="space-y-2">
             {data.timeline.map((h, i) => <li key={i} className="border-l-2 border-slate-200 pl-3 text-sm">
-              <p className="font-semibold">{h.title}{h.old != null && h.new != null ? `: S/ ${n(h.old)} → S/ ${n(h.new)}` : ''}</p>
+              <p className="font-semibold">{h.title}{h.old != null && h.new != null ? `: ${n(h.old)} → ${n(h.new)}` : ''}</p>
               <p className="text-xs text-slate-500">{new Date(h.at).toLocaleString('es-PE', { timeZone: 'America/Lima' })}{h.by ? ` · ${h.by}` : ''}{h.detail ? ` · ${h.detail}` : ''}</p></li>)}
           </ol>}
           <p className="mt-2 text-[11px] text-slate-500">Compromisos y gastos por fecha: pestaña Movimientos.</p>
