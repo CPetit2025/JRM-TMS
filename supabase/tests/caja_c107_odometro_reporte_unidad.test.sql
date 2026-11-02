@@ -1,4 +1,4 @@
--- CAJA C107 — Odómetro diario con foto (checklist y «Cerrar jornada») y reporte diario por unidad. Siempre se revierte.
+-- CAJA C107 — Odómetro diario (checklist y «Cerrar jornada»; foto opcional desde C215) y reporte diario por unidad. Siempre se revierte.
 BEGIN;
 CREATE FUNCTION pg_temp.odo(p_user uuid, p_km numeric) RETURNS jsonb LANGUAGE plpgsql AS $odo$
 DECLARE v_path text := p_user::text || '/odometro/' || gen_random_uuid()::text || '.jpg';
