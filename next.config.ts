@@ -2,6 +2,12 @@ import type { NextConfig } from "next";
 import packageJson from './package.json';
 
 const isCapacitor = process.env.CAPACITOR_BUILD === 'true';
+// Cada despliegue tiene su versión: mayor.menor de package.json + fecha y hora (Lima) de compilación, p. ej. 0.2.20261101.1530.
+// Numérica para que la comparación con la versión mínima siga funcionando.
+const buildTime = new Date();
+const limaStamp = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+  .format(buildTime).replace(/\D/g, '');
+const appVersion = `${packageJson.version.split('.').slice(0, 2).join('.')}.${limaStamp.slice(0, 8)}.${limaStamp.slice(8)}`;
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -49,9 +55,9 @@ const nextConfig: NextConfig = {
   },
   // Versión visible en el login: versión, commit y fecha/hora del despliegue (fijadas al compilar).
   env: {
-    APP_VERSION: packageJson.version,
+    APP_VERSION: appVersion,
     APP_BUILD_SHA: process.env.VERCEL_GIT_COMMIT_SHA || process.env.APP_BUILD_ID || 'local',
-    APP_BUILD_TIME: new Date().toISOString(),
+    APP_BUILD_TIME: buildTime.toISOString(),
   },
 };
 
