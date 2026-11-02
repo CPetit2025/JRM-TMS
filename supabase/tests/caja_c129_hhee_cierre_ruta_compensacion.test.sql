@@ -102,7 +102,10 @@ BEGIN
     -- (el app cierra hasta 16 h después del inicio: la prueba ubica el inicio hace 2 h)
     -- Este subcaso legacy desplaza artificialmente el reloj años: apartar su fotografía, restaurada antes de T4.
     SELECT jsonb_object_agg(id::text,gp_plan) INTO v_test_plans FROM public.hhee_lines WHERE request_id=v_id;
+    -- El horario artificial (ahora −2 h) puede solaparse con una solicitud real del mismo colaborador: el guard se suspende solo aquí (se revierte).
+    IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'gp_plan_overlap' AND tgrelid = 'public.hhee_lines'::regclass) THEN ALTER TABLE public.hhee_lines DISABLE TRIGGER gp_plan_overlap; END IF;
     UPDATE public.hhee_lines SET gp_plan=NULL, planned_start = now() - interval '2 hours',planned_end=now()+interval '1 hour' WHERE request_id = v_id;
+    IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'gp_plan_overlap' AND tgrelid = 'public.hhee_lines'::regclass) THEN ALTER TABLE public.hhee_lines ENABLE TRIGGER gp_plan_overlap; END IF;
     PERFORM set_config('request.jwt.claim.sub', d.driver_profile::text, true);
     PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', d.driver_profile, 'role', 'authenticated')::text, true);
     r := public.hhee_driver_close(v_id);
