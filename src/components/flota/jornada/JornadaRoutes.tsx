@@ -3,7 +3,7 @@ import { Image as ImageIcon } from 'lucide-react'
 import { formatKm } from '@/lib/odometer'
 import { TYPE, fmtTime, type Day } from '@/lib/jornada'
 
-// Rutas y paradas de una jornada: lecturas de odómetro con foto, cada ruta con sus costos imputados y sus paradas
+// Rutas y paradas de una jornada: lecturas de odómetro (foto si existe), cada ruta con sus costos imputados y sus paradas
 // (km del tramo y su fuente, odómetro de parada, peso y su fuente). Lo usan la tabla de jornadas y el detalle.
 export function JornadaRoutes({ d, openPhoto }: { d: Day; openPhoto: (path: string) => void | Promise<void> }) {
   return <>
