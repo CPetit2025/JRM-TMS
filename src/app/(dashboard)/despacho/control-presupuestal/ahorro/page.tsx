@@ -1,7 +1,7 @@
 "use client"
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { AlertTriangle, Download, Layers, PiggyBank, Percent, RefreshCw, Search } from 'lucide-react'
+import { AlertTriangle, Download, Layers, PiggyBank, RefreshCw, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { PageHeader } from '@/components/ui/page-header'
@@ -31,7 +31,7 @@ function Ahorro() {
     router.replace(`${path}?${next.toString()}`, { scroll: false })
   }, [params, path, router])
   const load = useCallback(async () => {
-    const { data: d, error } = await supabase.rpc('consolidation_savings', { p_from: from, p_to: to })
+    const { data: d, error } = await supabase.rpc('consolidation_savings_classified', { p_from: from, p_to: to })
     if (error || !d?.success) { toast.error(error ? errorMessage(error) : d?.error); setData(null); return }
     setData(d as SavingsResult)
   }, [from, to])
@@ -41,7 +41,8 @@ function Ahorro() {
   const rows = useMemo(() => (data?.rows || []).filter(r => (!type || r.request_type === type)
     && (!q || `${r.dispatch_number} ${r.request_number} ${r.contract_code || ''} ${r.root_code || ''} ${r.client || ''} ${r.district || ''}`.toLowerCase().includes(q))), [data, type, q])
   const leveraged = rows.filter(r => !r.principal)
-  const total = leveraged.reduce((s, r) => s + Number(r.saving_pen || 0), 0)
+  const validatedTotal = leveraged.filter(r => r.valuation_status === 'VALIDADO').reduce((s, r) => s + Number(r.saving_pen || 0), 0)
+  const estimatedTotal = leveraged.filter(r => r.valuation_status === 'ESTIMADO').reduce((s, r) => s + Number(r.saving_pen || 0), 0)
   const rate = data?.services_total ? Math.round(1000 * data.leveraged / data.services_total) / 10 : null
 
   return (
@@ -62,10 +63,11 @@ function Ahorro() {
       </div>
 
       <div className="grid gap-2 sm:grid-cols-3">
-        <KpiStatCard label="Ahorro del período (filtrado)" value={data ? `S/ ${money(total)}` : '—'} tone="emerald" icon={<PiggyBank className="h-5 w-5" />} loading={!data} />
+        <KpiStatCard label="Ahorro validado (filtrado)" value={data ? `S/ ${money(validatedTotal)}` : '—'} tone="emerald" icon={<PiggyBank className="h-5 w-5" />} loading={!data} />
         <KpiStatCard label="Servicios aprovechados" value={leveraged.length} tone="navy" icon={<Layers className="h-5 w-5" />} loading={!data} />
-        <KpiStatCard label="Tasa de aprovechamiento (período)" value={rate == null ? '—' : `${rate} %`} tone="amber" icon={<Percent className="h-5 w-5" />} loading={!data} />
+        <KpiStatCard label="Ahorro estimado · validar" value={data ? `S/ ${money(estimatedTotal)}` : '—'} tone="amber" icon={<AlertTriangle className="h-5 w-5" />} loading={!data} />
       </div>
+      {data && <p className="text-xs text-slate-500">La tasa de aprovechamiento del período es {rate == null ? '—' : `${rate} %`}. Solo rutas cerradas con datos y costos finales completos cuentan como ahorro validado.</p>}
       {data?.hours_cost_missing && <p className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"><AlertTriangle className="h-4 w-4" />
         Faltan costos por hora: las horas extra de esos servicios no suman al costo marginal (el ahorro sale mayor). Cárguelos abajo.</p>}
 
