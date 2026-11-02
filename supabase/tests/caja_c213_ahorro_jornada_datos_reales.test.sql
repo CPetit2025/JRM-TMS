@@ -3,7 +3,7 @@
 BEGIN;
 DO $$
 DECLARE actor uuid; v jsonb; v_from date := (now() AT TIME ZONE 'America/Lima')::date - 30; v_to date := (now() AT TIME ZONE 'America/Lima')::date;
- v_err text; v_linked text;
+ v_err text; v_linked text; t0 timestamptz; ms_sav int; ms_fleet int; v_timeout text := current_setting('statement_timeout');
 BEGIN
  FOR actor IN SELECT p.id FROM public.profiles p JOIN auth.users u ON u.id = p.id WHERE p.is_active LOOP
   PERFORM set_config('request.jwt.claim.sub', actor::text, true);
@@ -13,13 +13,13 @@ BEGIN
  IF actor IS NULL THEN RAISE EXCEPTION 'CAJA C213 FAIL: falta administrador activo'; END IF;
 
  BEGIN
-  v := public.consolidation_savings(v_from, v_to);
+  t0 := clock_timestamp(); v := public.consolidation_savings(v_from, v_to); ms_sav := extract(epoch FROM clock_timestamp() - t0) * 1000;
   IF NOT COALESCE((v->>'success')::boolean, false) THEN v_err := 'consolidation_savings: ' || COALESCE(v->>'error', '?'); END IF;
  EXCEPTION WHEN OTHERS THEN v_err := 'consolidation_savings: ' || SQLERRM;
  END;
  IF v_err IS NULL THEN
   BEGIN
-   v := public.fleet_workdays(v_from, v_to);
+   t0 := clock_timestamp(); v := public.fleet_workdays(v_from, v_to); ms_fleet := extract(epoch FROM clock_timestamp() - t0) * 1000;
    IF NOT COALESCE((v->>'success')::boolean, false) THEN v_err := 'fleet_workdays: ' || COALESCE(v->>'error', '?'); END IF;
   EXCEPTION WHEN OTHERS THEN v_err := 'fleet_workdays: ' || SQLERRM;
   END;
@@ -33,8 +33,10 @@ BEGIN
  LEFT JOIN public.dispatches d ON d.id = t.dispatch_id;
 
  IF v_err IS NOT NULL OR v_linked IS NOT NULL THEN
-  RAISE EXCEPTION 'CAJA C213 FAIL: % | editables con ruta vinculada: %', COALESCE(v_err, 'ahorro y jornada OK'), COALESCE(left(v_linked, 900), 'ninguna');
+  RAISE EXCEPTION 'CAJA C213 FAIL: % | editables con ruta vinculada: % | ms ahorro % jornada %', COALESCE(v_err, 'ahorro y jornada OK'), COALESCE(left(v_linked, 900), 'ninguna'), ms_sav, ms_fleet;
  END IF;
- RAISE EXCEPTION 'CAJA C213 PASS: ahorro y jornada corren con datos reales; sin solicitudes editables bloqueadas por ruta';
+ -- Medición: la pantalla corre con el statement_timeout de authenticated; aquí se informa la duración real del mes
+ RAISE EXCEPTION 'CAJA C213 PASS: ahorro y jornada corren con datos reales (ms ahorro %, jornada %; timeout sesión %, authenticated %); sin solicitudes editables bloqueadas por ruta',
+  ms_sav, ms_fleet, v_timeout, COALESCE((SELECT array_to_string(r.rolconfig, ',') FROM pg_roles r WHERE r.rolname = 'authenticated'), 'sin config');
 END $$;
 ROLLBACK;
