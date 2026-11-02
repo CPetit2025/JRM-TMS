@@ -1,6 +1,6 @@
 # Ahorro por consolidación de servicios
 
-Propuesta para aprobación. **No se modificó código.** Mide cuánto se ahorra al atender, en una misma ruta, servicios que
+**Aprobada el 01/11/2026 e implementada** (`20261211090000_ahorro_consolidacion.sql`, `consolidation_savings`, prueba `test-ahorro-consolidacion`, Caja C209). Mide cuánto se ahorra al atender, en una misma ruta, servicios que
 de otro modo habrían requerido su propio viaje: recojos, traslados y entregas aprovechados.
 
 ## Decisiones tomadas (01/11/2026)
@@ -82,3 +82,16 @@ un segundo libro.
   que cubre el peso real y el reporte muestra la base usada en cada caso.
 - **Distritos sin tarifa**: el servicio queda «sin valorizar» y no suma ni resta.
 - La atribución a la OT es informativa: no afecta su saldo ni sus niveles 70/80/100.
+
+## Implementación (01/11/2026)
+
+- **Rutas de tercero**: no hay combustible ni horas propias. El costo marginal es el flete pagado por ese servicio
+  (renglón por OT, o su final aprobado) más los peajes.
+- **Costos por hora**: los carga el Administrador o Gerencia (`control-presupuestal-autorizar`) en la pestaña Ahorro.
+  Sin algún costo, las horas de ese servicio suman 0 y el reporte lo avisa.
+- **Peso**: se usa el peso estimado de la solicitud. Sin peso, se toma la clase de la unidad de la ruta.
+- **Dónde se ve**:
+  - Control presupuestal: pestaña «Ahorro por consolidación», con filtros, exportación y configuración.
+  - Resumen por OT: tarjeta con el ahorro del mes.
+  - Detalle de la OT: pestaña de ahorro.
+  - Torre de Control: Costos del viaje.

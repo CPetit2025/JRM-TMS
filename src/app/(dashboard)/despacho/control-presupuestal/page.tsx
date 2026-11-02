@@ -1,7 +1,8 @@
 "use client"
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, Ban, CheckCircle2, Download, OctagonAlert, RefreshCw, Search } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { AlertTriangle, Ban, CheckCircle2, Download, OctagonAlert, PiggyBank, RefreshCw, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { PageHeader } from '@/components/ui/page-header'
@@ -47,7 +48,12 @@ export default function ControlPresupuestalPage() {
   const [level, setLevel] = useState<Level | ''>('')
   const [q, setQ] = useState('')
 
+  const router = useRouter()
+  // Ahorro por consolidación del mes (indicador aparte; no toca la partida)
+  const [saving, setSaving] = useState<number | null>(null)
   const load = useCallback(async () => {
+    const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+    void supabase.rpc('consolidation_savings', { p_from: `${day.slice(0, 8)}01`, p_to: day }).then(({ data: s }) => setSaving(s?.success ? Number(s.saving_total) : null))
     const { data, error } = await supabase.rpc('budget_positions')
     if (error || !data?.success) { toast.error(error ? errorMessage(error) : data?.error); setRows([]); return }
     setRows(data.rows as Position[]); if (data.settings) setSettings(data.settings as Settings)
@@ -66,11 +72,12 @@ export default function ControlPresupuestalPage() {
           <button type="button" disabled={!shown.length} onClick={() => exportCsv(shown)} className="flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50 disabled:opacity-50"><Download className="h-4 w-4" />Exportar</button></>} />
 
       <ControlPresupuestalTabs active="ot" />
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
         <KpiStatCard label={`Normal (menos de ${settings.budget_alert_pct} %)`} value={count('NORMAL')} tone="emerald" icon={<CheckCircle2 className="h-5 w-5" />} loading={!rows} active={level === 'NORMAL'} onClick={() => toggle('NORMAL')} />
         <KpiStatCard label={`Alerta (${settings.budget_alert_pct}–${settings.budget_cap_pct} %)`} value={count('ALERTA')} tone="amber" icon={<AlertTriangle className="h-5 w-5" />} loading={!rows} active={level === 'ALERTA'} onClick={() => toggle('ALERTA')} />
         <KpiStatCard label={`Sobre el tope (${settings.budget_cap_pct}–100 %)`} value={count('BLOQUEO')} tone="rose" icon={<OctagonAlert className="h-5 w-5" />} loading={!rows} active={level === 'BLOQUEO'} onClick={() => toggle('BLOQUEO')} />
         <KpiStatCard label="Excedidas (más de 100 %)" value={count('EXCEDIDO')} tone="rose" icon={<Ban className="h-5 w-5" />} loading={!rows} active={level === 'EXCEDIDO'} onClick={() => toggle('EXCEDIDO')} />
+        <KpiStatCard label="Ahorro por consolidación (mes)" value={saving == null ? '—' : `S/ ${money(saving)}`} tone="emerald" icon={<PiggyBank className="h-5 w-5" />} onClick={() => router.push('/despacho/control-presupuestal/ahorro')} />
       </div>
 
       <label className="relative block max-w-md"><span className="sr-only">Buscar OT o cliente</span><Search aria-hidden className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
