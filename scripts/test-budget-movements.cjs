@@ -64,6 +64,7 @@ const { setupBudget, read, id, fn } = require('./fixtures/budget-setup.cjs')
   // Cierre final (historial de la OT) y detalle por OT con ampliaciones (idempotentes)
   await db.exec(fn('supabase/migrations/20261111110000_cierre_economico_bandeja.sql', 'economic_documentary_status'))
   for (const m of ['20261205090000_torre_cierre_final.sql', '20261208090000_control_presupuestal_detalle_ot.sql']) for (let i = 0; i < 2; i++) await db.exec(read('supabase/migrations/' + m))
+  await db.exec(read('supabase/migrations/20261209140000_control_presupuestal_antiguedad_lima.sql'))
 
   const budget = (c, r, x) => db.query(`UPDATE contract_budgets SET reserved_pen = reserved_pen + $2, consumed_pen = consumed_pen + $3 WHERE contract_id = $1`, [c, r, x])
   const used = async c => (await db.query(`SELECT round(reserved_pen,2)::float r, round(consumed_pen,2)::float c FROM contract_budgets WHERE contract_id=$1`, [c])).rows[0]
