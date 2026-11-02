@@ -1,10 +1,10 @@
 'use client'
 import { useState, type ReactNode } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, ArrowRight, Box, Camera, CheckCircle2, ClipboardList, Coins, FileText, Flag, Gauge, Image as ImageIcon, MapPin, Receipt, Route, TrendingUp, Truck } from 'lucide-react'
+import { AlertTriangle, Box, Camera, CheckCircle2, ClipboardList, Coins, FileText, Flag, Gauge, Image as ImageIcon, MapPin, Receipt, Route, TrendingUp, Truck } from 'lucide-react'
 import { formatKm } from '@/lib/odometer'
 import type { DetailTab } from '@/lib/dispatch-detail'
-import { ALERTS, STATUS, TYPE, fmtDate, fmtTime, soles, tn, type JornadaRow } from '@/lib/jornada'
+import { ALERTS, STATUS, TYPE, fmtDate, fmtTime, rowAlerts, soles, tn, type JornadaRow } from '@/lib/jornada'
 import { JornadaRoutes } from './JornadaRoutes'
 import { JornadaDispatchDetail } from './JornadaDispatchDetail'
 
@@ -14,8 +14,8 @@ import { JornadaDispatchDetail } from './JornadaDispatchDetail'
 const km = (v: number | null | undefined) => v == null ? '—' : formatKm(v)
 const list = (v: string[]) => v.length ? v.join(', ') : '—'
 
-export const StatusBadge = ({ status }: { status: JornadaRow['status'] }) => status
-  ? <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2.5 py-1 text-xs font-bold ${STATUS[status].tone}`}>
+export const StatusBadge = ({ status, compact = false }: { status: JornadaRow['status']; compact?: boolean }) => status
+  ? <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-lg text-xs font-bold ${compact ? 'px-2 py-0.5' : 'px-2.5 py-1'} ${STATUS[status].tone}`}>
     {status === 'CERRADA' && <CheckCircle2 className="h-4 w-4" aria-hidden />}{STATUS[status].label}</span>
   : <span className="text-slate-400">—</span>
 
@@ -102,7 +102,8 @@ const Tile = ({ label, value, tone }: { label: string; value: ReactNode; tone: s
 
 function InfoTable({ r }: { r: JornadaRow }) {
   const rowsKV: Array<[string, ReactNode]> = [['Fecha', fmtDate(r.date)], ['Conductor', (r.drivers || []).join(', ') || '—'], ['Unidad', r.plate], ['Rutas', r.routes || '—'],
-    ['OT', list(r.refs.OT)], ['OC / OS / RQ', list([...r.refs.OC, ...r.refs.OS, ...r.refs.RQ])], ['Carga transportada', r.tn ? tn(r.tn) : '—'], ['Carga APT', r.tn_apt ? tn(r.tn_apt) : '—']]
+    ['OT', list(r.refs.OT)], ['OC / OS / RQ', list([...r.refs.OC, ...r.refs.OS, ...r.refs.RQ])], ['Carga transportada', r.tn ? tn(r.tn) : '—'], ['Carga APT', r.tn_apt ? tn(r.tn_apt) : '—'],
+    ['Checklist', r.checklists ? <span className={r.operative === false ? 'font-semibold text-red-700' : 'text-emerald-700'}>{r.checklists} · {r.operative === false ? 'con observaciones' : 'operativa'}</span> : '—']]
   return <section><h4 className="mb-2 flex items-center gap-2 text-base font-bold text-[#0b2a4a]"><ClipboardList className="h-5 w-5" />Información general</h4>
     <div className="overflow-hidden rounded-xl border border-slate-200">{rowsKV.map(([k, v], i) => <div key={k} className={`grid grid-cols-[9rem_minmax(0,1fr)] gap-3 px-4 py-1.5 text-sm ${i % 2 ? 'bg-white' : 'bg-slate-50'}`}>
       <span className="font-semibold text-slate-800">{k}:</span><span className="text-slate-700">{v}</span></div>)}</div></section>
@@ -111,8 +112,8 @@ function KmCost({ r, savingsAvailable }: { r: JornadaRow; savingsAvailable: bool
   const s = r.saving
   return <section className="space-y-4">
     <div><h4 className="mb-2 flex items-center gap-2 text-base font-bold text-[#0b2a4a]"><Route className="h-5 w-5" />Recorrido y kilometraje</h4>
-      <div className="grid gap-2 sm:grid-cols-[1fr_auto_1fr_1fr_1fr_1fr] sm:items-center">
-        <Tile label="Inicio" value={km(r.odo_start)} tone="bg-slate-100 text-slate-900" /><ArrowRight className="mx-auto hidden h-5 w-5 text-slate-500 sm:block" />
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] gap-2">
+        <Tile label="Inicio" value={km(r.odo_start)} tone="bg-slate-100 text-slate-900" />
         <Tile label={r.end_source === 'SIGUIENTE_INICIO' ? 'Fin (inferido)' : 'Fin'} value={km(r.odo_end)} tone="bg-slate-100 text-slate-900" />
         <Tile label="Recorrido" value={km(r.km_odo)} tone="bg-blue-100 text-blue-900" /><Tile label="GPS" value={km(r.km_gps)} tone="bg-violet-100 text-violet-900" />
         <Tile label="Est. ruta" value={km(r.km_est)} tone="bg-slate-100 text-slate-900" /></div></div>
@@ -131,12 +132,14 @@ const TABS = [['jornada', 'Detalle de la jornada', FileText], ['rutas', 'Rutas y
 /** Desplegable de una fila de la tabla: los mismos datos y paneles que la vista de detalle */
 export function JornadaExpand({ r, savingsAvailable, openPhoto }: { r: JornadaRow; savingsAvailable: boolean; openPhoto: (path: string) => void | Promise<void> }) {
   const [tab, setTab] = useState<typeof TABS[number][0]>('jornada')
+  const alerts = rowAlerts(r)
   return <div className="grid gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
     <nav className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 lg:flex-col" aria-label="Secciones de la jornada">{TABS.map(([k, label, Icon]) =>
       <button key={k} type="button" onClick={() => setTab(k)} aria-pressed={tab === k}
         className={`flex items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2.5 text-left text-sm font-semibold ${tab === k ? 'bg-[#0b2a4a] text-white' : 'text-slate-700 hover:bg-slate-100'}`}>
         <Icon className="h-5 w-5" />{label}</button>)}</nav>
     <div className="min-w-0">
+      {alerts.length > 0 && <p className="mb-3 flex flex-wrap gap-1" aria-label="Alertas de la jornada">{alerts.map(a => <span key={a.key} className={`rounded-md px-2 py-0.5 text-xs font-semibold ${ALERTS[a.key]?.tone || 'bg-amber-100 text-amber-800'}`}>{a.label}</span>)}</p>}
       {tab === 'jornada' && <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] xl:divide-x xl:divide-slate-200"><InfoTable r={r} /><div className="xl:pl-4"><KmCost r={r} savingsAvailable={savingsAvailable} /></div></div>}
       {tab === 'rutas' && <div className="space-y-3"><Timeline r={r} /><JornadaRoutes d={r} openPhoto={openPhoto} /></div>}
       {tab === 'costos' && <div className="grid gap-3 lg:grid-cols-2"><CostPanel r={r} savingsAvailable={savingsAvailable} /><RouteSources r={r} tab="costos" /></div>}
@@ -146,7 +149,6 @@ export function JornadaExpand({ r, savingsAvailable, openPhoto }: { r: JornadaRo
           className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-semibold text-[#0b2a4a] hover:bg-slate-50">
           <Camera className="h-4 w-4" />Odómetro {x.kind === 'INICIO' ? 'inicio' : 'cierre'} · {fmtTime(x.at)}</button>)}</div>}
         <RouteSources r={r} tab="evidencias" /></div>}
-      {r.alerts.length > 0 && <p className="mt-3 flex flex-wrap gap-1">{r.alerts.map(a => <span key={a} className={`rounded-md px-2 py-0.5 text-xs font-semibold ${ALERTS[a]?.tone || 'bg-slate-100'}`}>{ALERTS[a]?.label || a}</span>)}</p>}
     </div>
   </div>
 }
