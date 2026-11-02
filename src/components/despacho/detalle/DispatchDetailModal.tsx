@@ -41,13 +41,13 @@ const btn = 'flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 tex
  * registros reales y delega cada acción en su flujo actual; ningún cierre (operativo, documentario o económico) se dispara
  * desde aquí. «Cerrar detalle» solo cierra la ventana (no cierra la ruta); «Imprimir» imprime la pestaña visible. En móvil ocupa toda la pantalla.
  */
-export function DispatchDetailModal({ row, routeRows = [], onSelect, onClose, onValidate, actions, documentsHref, economicHref, routeFile }: {
+export function DispatchDetailModal({ row, routeRows = [], onSelect, onClose, onValidate, actions, documentsHref, economicHref, routeFile, initialTab = 'resumen' }: {
   row: DeliveryRow; routeRows?: DeliveryRow[]; onSelect?: (row: DeliveryRow) => void; onClose: () => void
-  onValidate?: (row: DeliveryRow) => void; actions?: ReactNode; documentsHref?: string; economicHref?: string; routeFile?: ReactNode
+  onValidate?: (row: DeliveryRow) => void; actions?: ReactNode; documentsHref?: string; economicHref?: string; routeFile?: ReactNode; initialTab?: DetailTab
 }) {
   // Liquidaciones encima del detalle: todo se resuelve sin salir de la ventana
   const [panel, setPanel] = useState<'economico' | 'documentos' | null>(null)
-  const [tab, setTab] = useState<Tab>('resumen'), [menu, setMenu] = useState(false), [mounted, setMounted] = useState(false)
+  const [tab, setTab] = useState<Tab>(initialTab), [menu, setMenu] = useState(false), [mounted, setMounted] = useState(false)
   const body = useRef<HTMLDivElement>(null)
   const { detail, error, loading, reload } = useDispatchDetail(row.dispatch_id, row.request_id)
   // Documentos y evidencias (también los archivos de soporte de Costos) se piden la primera vez que se abre su pestaña

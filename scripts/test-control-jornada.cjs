@@ -53,6 +53,8 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
   await db.exec(read('supabase/migrations/20261211090000_ahorro_consolidacion.sql'))
   const migration = read('supabase/migrations/20261214090000_control_jornada_datos.sql')
   await db.exec(migration); await db.exec(migration)
+  // Fase 3: id de ruta y de solicitud para abrir el detalle del despacho (idempotente)
+  for (let i = 0; i < 2; i++) await db.exec(read('supabase/migrations/20261215090000_control_jornada_ids.sql'))
   const def = async f => (await db.query(`SELECT pg_get_functiondef('${f}'::regprocedure) d`)).rows[0].d
   assert.ok((await def('consolidation_savings(date,date,uuid,uuid)')).includes("WHEN f.hours_cost_missing THEN 'COSTO_HORA_PENDIENTE'"), 'D2 installed')
   assert.equal((await def('unit_daily_report(text,date,date)')).split('DISTINCT ON (public.apt_guia_key(s.guide))').length, 2, 'tn patch idempotent')
@@ -93,6 +95,8 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
   const day = d => ud.days.find(x => x.date === d)
   assert.deepEqual([Number(day('2026-10-29').tn_apt), Number(day('2026-10-29').tn)], [2, 2], 'APT of a shared guide counted once')
   assert.deepEqual(day('2026-10-31').alerts.filter(a => a === 'ODOMETRO_RETROCEDE').length, 1, 'alert not repeated')
+  const route = day('2026-10-29').dispatches[0]
+  assert.deepEqual([route.id, route.stops.map(x => x.request_id)], [id(61), [id(41), id(42)]], 'ids exposed for the dispatch detail')
 
   const r = (await db.query(`SELECT fleet_workdays('2026-10-28','2026-10-31') v`)).rows[0].v
   assert.equal(r.success, true, r.error)
@@ -117,7 +121,7 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
   assert.deepEqual([...new Set(one.rows.map(x => x.plate))], ['AAA-2'])
   assert.match((await db.query(`SELECT fleet_workdays('2026-10-01','2027-01-31') v`)).rows[0].v.error, /hasta 3 meses/)
 
-  await assert.rejects(db.exec(read('supabase/tests/caja_c210_control_jornada.test.sql')), /CAJA C210 PASS/)
+  await assert.rejects(db.exec(read('supabase/tests/caja_c211_control_jornada.test.sql')), /CAJA C211 PASS/)
   console.log('PASS control de jornada (fase 2): toneladas APT sin duplicar, alerta única, estados de jornada, referencias, incidencias, ahorro valorizado, mantenimiento y sede')
  } finally { await db.close() }
 })().catch(e => { console.error(e); process.exit(1) })
