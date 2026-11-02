@@ -35,13 +35,13 @@ BEGIN
    'answers', jsonb_agg(jsonb_build_object('code', i.code, 'response', 'B', 'comment', ''))) INTO data
  FROM public.checklist_items i JOIN public.checklist_templates t ON t.id = i.template_id WHERE t.code = 'FR_DT007';
 
- -- T1: el checklist exige odómetro y foto del tablero
+ -- T1: el checklist exige odómetro; una foto inexistente se rechaza (la foto es opcional desde C215)
  BEGIN PERFORM public.submit_driver_preuse(gen_random_uuid(), (unit->>'revision')::uuid, now(), data); bad := NULL;
  EXCEPTION WHEN raise_exception THEN bad := SQLERRM; END;
  IF bad LIKE 'Ingrese el odómetro%' THEN pass := pass + 1; ELSE fails := fails || ('T1 sin odómetro: ' || COALESCE(bad, 'aceptado')); END IF;
  BEGIN PERFORM public.submit_driver_preuse(gen_random_uuid(), (unit->>'revision')::uuid, now(), data || jsonb_build_object('odometer', '1500', 'odometer_photo', actor::text || '/odometro/no-existe.jpg')); bad := NULL;
  EXCEPTION WHEN raise_exception THEN bad := SQLERRM; END;
- IF bad NOT LIKE 'Tome la foto%' OR bad IS NULL THEN fails := fails || ('T1 sin foto: ' || COALESCE(bad, 'aceptado')); END IF;
+ IF bad NOT LIKE 'La foto del odómetro no se encontró%' OR bad IS NULL THEN fails := fails || ('T1 foto inexistente: ' || COALESCE(bad, 'aceptado')); END IF;
 
  -- T2: con odómetro y foto registra el inicio y actualiza el odómetro de la unidad
  r := public.submit_driver_preuse(op, (unit->>'revision')::uuid, now(), data || pg_temp.odo(actor, 1500));
