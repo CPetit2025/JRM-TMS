@@ -86,7 +86,7 @@ function JornadaDetail({ plate, date }: { plate: string; date: string }) {
     <div className="grid gap-3 xl:grid-cols-[22rem_minmax(0,1fr)]">
       <section className={box}><h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-800"><FileText className="h-4 w-4" />Documentos y soporte</h2>
         <p className="mb-2 text-xs text-slate-500">OT {r.refs.OT.join(', ') || '—'} · OC {r.refs.OC.join(', ') || '—'} · OS {r.refs.OS.join(', ') || '—'} · RQ {r.refs.RQ.join(', ') || '—'}</p>
-        {r.readings.length > 0 && <div className="mb-2 flex flex-wrap gap-1.5">{r.readings.map((x, k) => <button key={k} type="button" onClick={() => void openPhoto(x.photo)} className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-[#002855] hover:bg-slate-50">
+        {r.readings.length > 0 && <div className="mb-2 flex flex-wrap gap-1.5">{r.readings.map((x, k) => <button key={k} type="button" disabled={!x.photo} onClick={() => x.photo && void openPhoto(x.photo)} className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-[#002855] hover:bg-slate-50">
           Foto odómetro {x.kind === 'INICIO' ? 'inicio' : 'cierre'} {fmtTime(x.at)}</button>)}</div>}
         <p className="mb-1 text-xs text-slate-500">Guías, notas, checklist y fotos de cada servicio (abre el documento original):</p>
         <RouteSources r={r} tab="documentos" /></section>

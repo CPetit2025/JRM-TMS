@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Camera, ClipboardCheck, Gauge, Loader2, RefreshCw } from 'lucide-react'
+import { ClipboardCheck, Gauge, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { useActiveTrip } from '@/contexts/ActiveTripContext'
@@ -12,7 +12,7 @@ import { db, type OfflinePreuse } from '@/lib/offline/db'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { syncOwnPreuse } from '@/lib/offline/preuse-runtime'
 import { errorMessage } from '@/lib/caja'
-import { fileToDataUrl, formatKm, odometerPhotoPath, prepareOdometerPhoto, uploadOdometerPhoto } from '@/lib/odometer'
+import { formatKm } from '@/lib/odometer'
 
 type Draft = { odometer: string; answers: PreuseAnswer[]; license: string; soat_expiration: string; technical_review_expiration: string; vehicle_operational: boolean | null; observation: string; inspector_name: string; signature: SignaturePoint[][] }
 export default function ChecklistPage() {
@@ -22,8 +22,8 @@ export default function ChecklistPage() {
  const [plate, setPlate] = useState(''), [revision, setRevision] = useState<string | null>(null), [busy, setBusy] = useState(false)
  const [draft, setDraft] = useState<Draft>({ odometer: '', answers: blankPreuseAnswers(), license: '', soat_expiration: '', technical_review_expiration: '', vehicle_operational: null, observation: '', inspector_name: '', signature: [] })
  const [retry, setRetry] = useState<{ operation: string; captured: string } | null>(null)
- // Odómetro del tablero con foto (obligatorio): la foto no se guarda en el borrador, se toma al registrar
- const [odoPhoto, setOdoPhoto] = useState<File | null>(null), [lastOdo, setLastOdo] = useState<number | null>(null)
+ // Odómetro del tablero: ingreso manual obligatorio (se compara con la última lectura de la unidad)
+ const [lastOdo, setLastOdo] = useState<number | null>(null)
  const pending = useLiveQuery<OfflinePreuse[]>(() => context?.driver?.profile_id ? db.preuse.where('profile_id').equals(context.driver.profile_id).filter(row => row.synced === 0).toArray() : Promise.resolve([]), [context?.driver?.profile_id])
  const plateKey = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, '')
  const existing = context?.daily_record && plateKey(context.daily_record.vehicle_plate) === plateKey(plate) && context.daily_record.operation_date === context.operation_date ? context.daily_record : null
@@ -65,7 +65,7 @@ export default function ChecklistPage() {
     PREUSE_FORMAT.items.every((item,i) => candidate.answers[i]?.code === item.code && typeof candidate.answers[i]?.comment === 'string') &&
     ['license','soat_expiration','technical_review_expiration','observation','inspector_name'].every(key => typeof candidate[key as keyof Draft] === 'string') &&
     Array.isArray(candidate.signature) && (!candidate.signature.length || validPreuseSignature(candidate.signature)) && (candidate.vehicle_operational === null || typeof candidate.vehicle_operational === 'boolean')
-   setDraft(validDraft ? { ...candidate, odometer: typeof candidate.odometer === 'string' ? candidate.odometer : '' } : initial); setOdoPhoto(null)
+   setDraft(validDraft ? { ...candidate, odometer: typeof candidate.odometer === 'string' ? candidate.odometer : '' } : initial)
    supabase.rpc('get_unit_last_odometer', { p_plate: data.vehicle_plate }).then(({ data: last }) => setLastOdo(last?.odometer != null ? Number(last.odometer) : null)); setRetry(validDraft && saved?.retry?.operation && saved.retry.captured ? saved.retry : null); setPlate(data.vehicle_plate); setContext(current => current ? { ...current, unit: data, operation_date: data.operation_date } : current); setRevision(data.revision)
   } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
  }
@@ -76,17 +76,13 @@ export default function ChecklistPage() {
   if (draft.vehicle_operational === null || !validPreuseSignature(draft.signature)) { toast.error('Indique Vehículo Operativo y registre la firma de quien inspecciona.'); return }
   const km = Number(draft.odometer.replace(',', '.'))
   if (!(km > 0 && km < 5000000)) { toast.error('Ingrese el odómetro (km) que marca el tablero.'); return }
-  if (!odoPhoto) { toast.error('Tome la foto del odómetro (tablero).'); return }
   if (lastOdo != null && km < lastOdo && !window.confirm(`El odómetro ingresado (${formatKm(km)}) es menor que la última lectura de la unidad (${formatKm(lastOdo)}). ¿Está seguro? Revise el tablero.`)) return
   if (lastOdo != null && km - lastOdo > 1500 && !window.confirm(`El odómetro ingresado (${formatKm(km)}) supera en más de 1 500 km la última lectura (${formatKm(lastOdo)}). ¿Está seguro?`)) return
   const operation = retry || { operation: crypto.randomUUID(), captured: new Date().toISOString() }
   setRetry(operation); setBusy(true)
   const base = { ...draft, odometer: String(km), format_code: PREUSE_FORMAT.code, format_version: PREUSE_FORMAT.version }
   try {
-   const photo = await prepareOdometerPhoto(odoPhoto)
-   let data: Record<string, unknown> = base
-   if (!navigator.onLine) data = { ...base, odometer_photo_data: await fileToDataUrl(photo) }
-   else data = { ...base, odometer_photo: await uploadOdometerPhoto(supabase, odometerPhotoPath(context.driver.profile_id, operation.operation, photo.type), photo) }
+   const data: Record<string, unknown> = base
    if (!navigator.onLine) {
     await db.preuse.put({ operation_id: operation.operation, profile_id: context.driver.profile_id, unit_revision: revision, vehicle_plate: plate, operation_date: context.operation_date, captured_at: operation.captured, data, synced: 0, created_at: new Date().toISOString() })
     window.dispatchEvent(new Event('jrm:preuse-queue-changed'))
@@ -98,7 +94,7 @@ export default function ChecklistPage() {
     else toast[result.can_operate ? 'success' : 'warning'](result.can_operate ? 'Inspección registrada. La ruta se inicia por separado.' : 'Inspección registrada. La unidad no está habilitada para operar; revisa las observaciones y Mantenimiento.')
    }
    if (storageKey) localStorage.removeItem(storageKey)
-   setRevision(null); setRetry(null); setOdoPhoto(null); await refresh(); await load()
+   setRevision(null); setRetry(null); await refresh(); await load()
   } catch (e) { toast.error('No se pudo registrar: ' + errorMessage(e)) } finally { setBusy(false) }
  }
  const set = <K extends keyof Draft>(key: K, value: Draft[K]) => { setDraft(current => ({ ...current, [key]: value })); setRetry(null) }
@@ -127,7 +123,6 @@ export default function ChecklistPage() {
       <p className="flex items-center gap-2 text-sm font-bold text-[#002855]"><Gauge className="h-4 w-4" />Odómetro de inicio (obligatorio)</p>
       <label className="block text-sm">Kilometraje que marca el tablero<input required inputMode="decimal" value={draft.odometer} onChange={e => set('odometer', e.target.value.replace(/[^0-9.,]/g, ''))} placeholder={lastOdo != null ? `Última lectura: ${formatKm(lastOdo)}` : 'Ej.: 125430'} className={input} /></label>
       {lastOdo != null && <p className="text-xs text-slate-600">Última lectura registrada de la unidad: <b>{formatKm(lastOdo)}</b></p>}
-      <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#002855] bg-white px-3 text-sm font-semibold text-[#002855]"><Camera className="h-5 w-5" />{odoPhoto ? 'Foto del tablero lista · cambiar' : 'Tomar foto del tablero'}<input type="file" accept="image/*" capture="environment" className="hidden" onChange={e => setOdoPhoto(e.target.files?.[0] || null)} /></label>
      </div>
      <label className="text-sm">Brevete (Clase/catg)<input required maxLength={120} value={draft.license} onChange={e => set('license',e.target.value)} className={input} /></label>
      <label className="text-sm">Fecha de vencimiento SOAT<input required type="date" value={draft.soat_expiration} onChange={e => set('soat_expiration',e.target.value)} className={input} /></label>

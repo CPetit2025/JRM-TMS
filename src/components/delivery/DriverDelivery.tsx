@@ -60,8 +60,7 @@ export function DriverDelivery({ dispatchId, requestId, driverId, userId, guide,
       // Primero guarda todas las fotos y la operación; nunca adelanta el estado local.
       const photos = await Promise.all(draft.files.map(asBase64))
       const packing = await Promise.all(draft.packingFiles.map(asBase64))
-      const odometerPhoto = draft.odometerPhoto ? await asBase64(draft.odometerPhoto) : null
-      saveOfflineAction('delivery_submit_driver', { dispatch_id: dispatchId, request_id: requestId, user_id: userId, photos_base64: photos, packing_base64: packing, odometer: draft.odometer, odometer_photo_base64: odometerPhoto, received_by: draft.receiver, guide: draft.guide, note: draft.note, captured_at: capturedAt }, draft.operation)
+      saveOfflineAction('delivery_submit_driver', { dispatch_id: dispatchId, request_id: requestId, user_id: userId, photos_base64: photos, packing_base64: packing, odometer: draft.odometer, received_by: draft.receiver, guide: draft.guide, note: draft.note, captured_at: capturedAt }, draft.operation)
       setQueued(true)
       if (navigator.onLine) { await syncRoutePoints(); await syncOfflineActions() }
       await load(); await onChanged()
