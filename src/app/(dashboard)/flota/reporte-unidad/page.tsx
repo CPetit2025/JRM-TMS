@@ -99,6 +99,30 @@ function references(days: Day[]) {
   const order = { OT: 0, OS: 1, OC: 2, RQ: 3 }
   return [...refs.values()].sort((a, b) => order[a.kind] - order[b.kind] || a.number.localeCompare(b.number, 'es', { numeric: true }))
 }
+// OT, OC, OS y RQ atendidas en el día (de los servicios de sus rutas)
+function dayRefs(d: Day) {
+  const r = { OT: new Set<string>(), OC: new Set<string>(), OS: new Set<string>(), RQ: new Set<string>() }
+  for (const x of d.dispatches) for (const s of x.stops) { if (s.ot) r.OT.add(s.ot); if (s.ref_type && s.ref_number) r[s.ref_type]?.add(s.ref_number) }
+  return r
+}
+// Ahorro por consolidación (consolidation_savings, el mismo de Control presupuestal): solo servicios aprovechados valorizados
+type Saving = { value: number; marginal: number; saving: number }
+type SavingRow = { dispatch_number: string; state: string; standalone_pen: number | null; marginal_pen: number | null; saving_pen: number | null }
+function savingsByRoute(rows: SavingRow[]) {
+  const m = new Map<string, Saving>()
+  for (const r of rows) if (r.state === 'VALORIZADO') {
+    const x = m.get(r.dispatch_number) || { value: 0, marginal: 0, saving: 0 }
+    x.value += Number(r.standalone_pen || 0); x.marginal += Number(r.marginal_pen || 0); x.saving += Number(r.saving_pen || 0)
+    m.set(r.dispatch_number, x)
+  }
+  return m
+}
+const daySaving = (d: Day, m: Map<string, Saving> | null) => !m ? null : d.dispatches.reduce<Saving | null>((acc, x) => {
+  const v = m.get(x.dispatch_number); if (!v) return acc
+  return { value: (acc?.value || 0) + v.value, marginal: (acc?.marginal || 0) + v.marginal, saving: (acc?.saving || 0) + v.saving }
+}, null)
+const soles = (v: number | null | undefined) => v == null ? '—' : Number(v).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
 const sourceText = (p: Period) => (Object.entries(p.bySource) as Array<[KmSource, number]>).filter(([, km]) => km > 0)
   .map(([s, km]) => `${KM_SOURCE[s]} ${formatKm(Math.round(km * 10) / 10)}`).join(' · ')
 
@@ -113,6 +137,8 @@ export default function ReporteUnidadPage() {
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [view, setView] = useState<View>('DIA')
   const [refKind, setRefKind] = useState<'TODAS' | Ref['kind']>('TODAS')
+  // null: sin acceso al control presupuestal o período mayor a 366 días (las columnas de ahorro muestran «—»)
+  const [savings, setSavings] = useState<Map<string, Saving> | null>(null)
   const periods = useMemo(() => report && view !== 'DIA' ? summarize(report.days, view) : [], [report, view])
   const refs = useMemo(() => report ? references(report.days) : [], [report])
   const totalKm = useMemo(() => report ? report.days.reduce((sum, d) => sum + (bestKm(d)?.km || 0), 0) : 0, [report])
@@ -125,6 +151,8 @@ export default function ReporteUnidadPage() {
     setLoading(false)
     if (error || !data?.success) { toast.error(data?.error || error?.message || 'No se pudo cargar el reporte'); return }
     setReport(data as Report); setOpen({})
+    const { data: sv } = await supabase.rpc('consolidation_savings', { p_from: f, p_to: t })
+    setSavings(sv?.success ? savingsByRoute(sv.rows as SavingRow[]) : null)
   }, [supabase])
 
   useEffect(() => {
@@ -170,7 +198,9 @@ export default function ReporteUnidadPage() {
         Fecha: d.date, Conductores: (d.drivers || []).join(', '), Checklists: d.checklists, 'Operativa': d.operative == null ? '' : d.operative ? 'Sí' : 'No',
         'Odómetro inicio': d.odo_start, 'Odómetro fin': d.odo_end, 'Fuente fin': d.end_source === 'SIGUIENTE_INICIO' ? 'Inicio del día siguiente' : d.end_source === 'CIERRE' ? 'Cierre de jornada' : '',
         'Km por ruta': bestKm(d)?.km ?? null, 'Fuente km ruta': bestKm(d) ? KM_SOURCE[bestKm(d)!.source] : '',
-        'Km odómetro': d.km_odo, 'Km GPS': d.km_gps, 'Km real rutas': d.km_real, 'Km estimado rutas': d.km_est, Rutas: d.routes, Servicios: d.services, OT: d.ots, Clientes: d.clients, 'Toneladas': d.tn, 'Toneladas APT': d.tn_apt,
+        'Km odómetro': d.km_odo, 'Km GPS': d.km_gps, 'Km real rutas': d.km_real, 'Km estimado rutas': d.km_est, Rutas: d.routes, Servicios: d.services, 'N° OT': d.ots, Clientes: d.clients, 'Toneladas': d.tn, 'Toneladas APT': d.tn_apt,
+        ...(() => { const r = dayRefs(d), sv = daySaving(d, savings); return { OT: [...r.OT].join(', '), OC: [...r.OC].join(', '), OS: [...r.OS].join(', '), RQ: [...r.RQ].join(', '),
+          'Valor independiente referencial (S/)': sv?.value ?? null, 'Costo marginal real (S/)': sv?.marginal ?? null, 'Ahorro (S/)': sv?.saving ?? null } })(),
         'Costo rutas (S/)': d.cost_total, 'Costo aplicado (S/)': d.cost_applied, 'Costo pendiente (S/)': d.cost_pending,
         Alertas: d.alerts.map(a => ALERTS[a]?.label || a).join(', '),
       })),
@@ -214,7 +244,8 @@ export default function ReporteUnidadPage() {
         {[
           ['Km por ruta', formatKm(Math.round(totalKm * 10) / 10), `GPS ${formatKm(t?.km_gps)} · odómetro diario ${formatKm(t?.km_odo)}`], ['Días operando', t?.days_active, `${t?.checklists || 0} checklist(s)`],
           ['Rutas', t?.routes], ['Servicios', t?.services], ['OT atendidas', t?.ots], ['OS · OC · RQ', `${refCount('OS')} · ${refCount('OC')} · ${refCount('RQ')}`, 'Referencias de compra atendidas'],
-          ['Peso transportado', tn(t?.tn), `APT validado: ${tn(t?.tn_apt)}`], ['Odómetro', `${t?.days_with_odo || 0} día(s)`, 'con lectura completa'],
+          ['Peso transportado', tn(t?.tn), `APT validado: ${tn(t?.tn_apt)}`],
+          ['Ahorro por consolidación', savings ? `S/ ${soles(report.days.reduce((sum, d) => sum + (daySaving(d, savings)?.saving || 0), 0))}` : '—', savings ? 'Servicios aprovechados en sus rutas' : 'Sin acceso al control presupuestal o período mayor a 366 días'], ['Odómetro', `${t?.days_with_odo || 0} día(s)`, 'con lectura completa'],
           ['Costo de rutas', `S/ ${Number(t?.cost_total || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}`, `Aplicado S/ ${Number(t?.cost_applied || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })} · pendiente S/ ${Number(t?.cost_pending || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}`],
         ].map(([label, value, hint]) => <div key={String(label)} className={card}><p className="text-xs text-slate-500">{label}</p><p className="text-lg font-bold text-slate-900">{value ?? '—'}</p>{hint && <p className="text-[11px] text-slate-500">{hint}</p>}</div>)}
       </div>
@@ -246,28 +277,37 @@ export default function ReporteUnidadPage() {
       </div> : <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr>
-            <th className="px-3 py-2" /><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Conductor(es)</th><th className="px-3 py-2">Checklist</th>
-            <th className="px-3 py-2">Odómetro</th><th className="px-3 py-2 text-right">Km recorridos</th><th className="px-3 py-2 text-right">Km GPS</th>
-            <th className="px-3 py-2 text-right">Rutas</th><th className="px-3 py-2 text-right">Servicios</th><th className="px-3 py-2 text-right">OT</th><th className="px-3 py-2 text-right">Peso</th><th className="px-3 py-2">Alertas</th>
+            <th className="px-3 py-2" /><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Conductores</th><th className="px-3 py-2">OT</th><th className="px-3 py-2">OC</th><th className="px-3 py-2">OS</th><th className="px-3 py-2">RQ</th>
+            <th className="px-3 py-2 text-right">Odómetro inicio</th><th className="px-3 py-2 text-right">Odómetro fin</th><th className="px-3 py-2 text-right">Km odómetro</th><th className="px-3 py-2 text-right">Km GPS</th>
+            <th className="px-3 py-2 text-right">Km estimado rutas</th><th className="px-3 py-2 text-right">Rutas</th><th className="px-3 py-2 text-right">Ton transportada</th><th className="px-3 py-2 text-right">Toneladas APT</th>
+            <th className="px-3 py-2 text-right">Valor independiente referencial (S/)</th><th className="px-3 py-2 text-right">Costo marginal real (S/)</th><th className="px-3 py-2 text-right">Ahorro (S/)</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-100">
             {report.days.map(d => {
               const idle = !d.routes && !d.checklists && !d.readings.length
               const isOpen = open[d.date]
+              const refsOf = dayRefs(d), sv = daySaving(d, savings)
               return <Fragment key={d.date}>
                 <tr className={idle ? 'text-slate-400' : 'hover:bg-slate-50'}>
                   <td className="px-3 py-2">{!idle && <button type="button" aria-label={isOpen ? 'Ocultar detalle' : 'Ver detalle'} onClick={() => setOpen(o => ({ ...o, [d.date]: !o[d.date] }))}>{isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button>}</td>
-                  <td className="whitespace-nowrap px-3 py-2 font-medium">{fmtDate(d.date)}</td>
-                  <td className="px-3 py-2">{idle ? 'Sin operación' : (d.drivers || []).join(', ') || '—'}</td>
-                  <td className="px-3 py-2">{d.checklists ? <span className={d.operative === false ? 'text-red-700' : 'text-emerald-700'}>{d.checklists} · {d.operative === false ? 'con observaciones' : 'operativa'}</span> : '—'}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{d.odo_start != null ? formatKm(d.odo_start) : '—'} → {d.odo_end != null ? formatKm(d.odo_end) : '—'}{d.end_source === 'SIGUIENTE_INICIO' && <span className="block text-[11px] text-slate-500">fin = inicio del día siguiente</span>}</td>
-                  <td className="px-3 py-2 text-right font-semibold">{(() => { const k = bestKm(d); return k ? <>{formatKm(k.km)}<span className="block text-[11px] font-normal text-slate-500">{KM_SOURCE[k.source].toLowerCase()}</span></> : '—' })()}</td>
-                  <td className="px-3 py-2 text-right">{d.km_gps != null ? formatKm(d.km_gps) : '—'}</td>
-                  <td className="px-3 py-2 text-right">{d.routes || '—'}</td><td className="px-3 py-2 text-right">{d.services || '—'}</td><td className="px-3 py-2 text-right">{d.ots || '—'}</td>
+                  <td className="whitespace-nowrap px-3 py-2 font-medium">{fmtDate(d.date)}
+                    {d.alerts.length > 0 && <div className="mt-0.5 flex flex-wrap gap-1">{d.alerts.map(a => <span key={a} className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${ALERTS[a]?.tone || 'bg-slate-100'}`}>{ALERTS[a]?.label || a}</span>)}</div>}</td>
+                  <td className="px-3 py-2">{idle ? 'Sin operación' : (d.drivers || []).join(', ') || '—'}
+                    {d.checklists > 0 && <span className={`block text-[11px] ${d.operative === false ? 'text-red-700' : 'text-emerald-700'}`}>Checklist: {d.checklists} · {d.operative === false ? 'con observaciones' : 'operativa'}</span>}</td>
+                  {(['OT', 'OC', 'OS', 'RQ'] as const).map(k => <td key={k} className="px-3 py-2 text-xs">{[...refsOf[k]].join(', ') || '—'}</td>)}
+                  <td className="whitespace-nowrap px-3 py-2 text-right">{d.odo_start != null ? formatKm(d.odo_start) : '—'}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right">{d.odo_end != null ? formatKm(d.odo_end) : '—'}{d.end_source === 'SIGUIENTE_INICIO' && <span className="block text-[11px] text-slate-500">inicio del día siguiente</span>}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right">{d.km_odo != null ? formatKm(d.km_odo) : '—'}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right">{d.km_gps != null ? formatKm(d.km_gps) : '—'}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right">{d.km_est != null ? formatKm(d.km_est) : '—'}</td>
+                  <td className="px-3 py-2 text-right">{d.routes || '—'}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right">{d.tn ? tn(d.tn) : '—'}</td>
-                  <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{d.alerts.map(a => <span key={a} className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${ALERTS[a]?.tone || 'bg-slate-100'}`}>{ALERTS[a]?.label || a}</span>)}</div></td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right">{d.tn_apt ? tn(d.tn_apt) : '—'}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{soles(sv?.value)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{soles(sv?.marginal)}</td>
+                  <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums ${Number(sv?.saving) < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{soles(sv?.saving)}</td>
                 </tr>
-                {isOpen && <tr><td colSpan={12} className="bg-slate-50 px-6 py-3">
+                {isOpen && <tr><td colSpan={18} className="bg-slate-50 px-6 py-3">
                   {d.readings.length > 0 && <div className="mb-3 flex flex-wrap gap-2 text-xs">{d.readings.map((r, i) => <button key={i} type="button" onClick={() => void openPhoto(r.photo)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 hover:bg-slate-100">
                     <ImageIcon className="h-3.5 w-3.5" />{r.kind === 'INICIO' ? 'Inicio' : 'Cierre'} {fmtTime(r.at)} · {formatKm(r.odometer)}{r.flag && <b className="text-red-700"> · {r.flag === 'RETROCESO' ? 'retrocede' : 'salto'}</b>}</button>)}</div>}
                   {d.dispatches.length === 0 ? <p className="text-xs text-slate-500">Sin rutas este día.</p> : d.dispatches.map(x => <div key={x.dispatch_number} className="mb-3">
