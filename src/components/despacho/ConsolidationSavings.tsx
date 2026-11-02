@@ -17,6 +17,8 @@ export type SavingRow = {
   direct_km: number | null; extra_km: number | null; extra_hours: number | null; km_estimated: boolean
   fuel_pen: number; hours_pen: number; hours_cost_missing: boolean; tolls_pen: number; freight_paid_pen: number | null
   marginal_pen: number | null; saving_pen: number | null
+  // Recojos aprovechados de la ruta valorizados como un solo viaje: standalone_pen es su parte del viaje conjunto
+  pickup_group?: number | null; group_value_pen?: number | null; group_class?: string | null; individual_pen?: number | null
 }
 export type SavingsResult = { success: boolean; error?: string; services_total: number; leveraged: number; saving_total: number; hours_cost_missing: boolean | null; rows: SavingRow[] }
 
@@ -32,7 +34,8 @@ const pen = (v: number | null | undefined) => v == null ? '—' : money(Number(v
 
 /** Base del cálculo en una línea: tarifa, clase y costo marginal */
 export const savingBasis = (r: SavingRow) => r.principal ? 'La ruta existe por este servicio: no genera ahorro'
-  : `Tarifa ${r.district || '—'} · ${r.vehicle_class || 'sin clase'}${r.class_by_weight ? ` (por ${Number(r.weight_kg)} kg)` : ' (unidad de la ruta)'} · `
+  : (r.pickup_group ? `Viaje conjunto de ${r.pickup_group} recojos S/ ${pen(r.group_value_pen)} (${r.group_class || 'sin clase'}, tarifa mayor + paradas) · parte de ${r.district || '—'} S/ ${pen(r.standalone_pen)} · `
+    : `Tarifa ${r.district || '—'} · ${r.vehicle_class || 'sin clase'}${r.class_by_weight ? ` (por ${Number(r.weight_kg)} kg)` : ' (unidad de la ruta)'} · `)
     + (r.modalidad === 'TERCERO' ? `flete pagado S/ ${pen(r.freight_paid_pen)}` : `${Number(r.extra_km ?? 0)} km y ${Number(r.extra_hours ?? 0)} h extra${r.added ? ' (agregado en ruta)' : ''}`)
     + (Number(r.tolls_pen) ? ` · peajes S/ ${pen(r.tolls_pen)}` : '') + (r.km_estimated ? ' · km estimados' : '') + (r.hours_cost_missing ? ' · horas sin costo cargado' : '')
 
@@ -58,7 +61,8 @@ export function SavingsTable({ rows, showOt = true }: { rows: SavingRow[]; showO
       <td className="whitespace-nowrap px-3 py-2 text-xs">{r.date.split('-').reverse().join('/')}<Link href={`/torre-control?despacho=${r.dispatch_id}`} className="block font-semibold text-[#002855] underline">{r.dispatch_number}</Link>
         <span className="text-slate-500">{r.modalidad === 'TERCERO' ? 'Tercero' : 'Flota propia'}</span></td>
       <td className="px-3 py-2 text-xs"><b>{r.request_number}</b> · {TYPE[r.request_type] || r.request_type}
-        <span className={`mt-0.5 block w-fit rounded px-1.5 text-[10px] font-semibold ${STATE[r.state].cls}`}>{STATE[r.state].label}</span></td>
+        <span className={`mt-0.5 block w-fit rounded px-1.5 text-[10px] font-semibold ${STATE[r.state].cls}`}>{STATE[r.state].label}</span>
+        {r.pickup_group ? <span className="mt-0.5 block text-[10px] text-slate-500">Viaje conjunto de recojos ({r.pickup_group})</span> : null}</td>
       {showOt && <td className="px-3 py-2 text-xs">{r.contract_code || 'Operación general'}{r.root_code && r.root_code !== r.contract_code && <span className="block text-slate-500">OT {r.root_code}</span>}
         <span className="block text-slate-500">{r.client || '—'}</span></td>}
       <td className="px-3 py-2 text-xs text-slate-600">{savingBasis(r)}</td>
@@ -86,7 +90,7 @@ export function TripSaving({ dispatchId, requestId }: { dispatchId: string; requ
     <p className="flex items-center gap-2 font-bold text-emerald-900"><PiggyBank className="h-4 w-4" aria-hidden />Ahorro por consolidación</p>
     {row.principal ? <p className="mt-1 text-slate-600">{savingBasis(row)}.</p> : <>
       <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-800">{row.saving_pen == null ? '—' : `S/ ${pen(row.saving_pen)}`}</p>
-      <p className="text-xs text-slate-600">Valor independiente S/ {pen(row.standalone_pen)} − costo marginal S/ {pen(row.marginal_pen)}</p>
+      <p className="text-xs text-slate-600">{row.pickup_group ? 'Parte del viaje conjunto de recojos' : 'Valor independiente'} S/ {pen(row.standalone_pen)} − costo marginal S/ {pen(row.marginal_pen)}</p>
       <p className="mt-1 text-xs text-slate-500">{savingBasis(row)}</p></>}
     <p className="mt-1 text-[11px] text-slate-500">Indicador de eficiencia: no consume la partida de la OT.</p>
   </section>
