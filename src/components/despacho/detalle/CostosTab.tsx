@@ -6,6 +6,7 @@ import { ECON_STATUS, ITEM_LABEL, ITEM_STATUS, econKey, isZeroClosed } from '@/l
 import { detailTime, downloadUrl, stopCosts, type DispatchCosts, type DispatchFiles } from '@/lib/dispatch-detail'
 import { Callout, CellGrid, DetailCard, IconButton, MilestoneStepper, ServiceStrip } from './DetailParts'
 import { modalityLabel } from './ResumenTab'
+import { TripSaving } from '@/components/despacho/ConsolidationSavings'
 
 const pen = (v: number | null | undefined) => v == null ? '—' : money(Number(v))
 const itemChip = (status: string) => { const s = ITEM_STATUS[status]; return <span className={`inline-flex whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold ${s?.cls || 'bg-slate-100 text-slate-600'}`}>{s?.label || status}</span> }
@@ -96,6 +97,7 @@ export function CostosTab({ row, costs, files, urls, servicesCount, onEconomic }
           {s.url && <IconButton label={`Descargar ${s.name}`} href={downloadUrl(s.url)} download><Download className="h-4 w-4" /></IconButton>}
         </li>)}</ul>}
       </DetailCard>
+      <TripSaving dispatchId={row.dispatch_id} requestId={row.request_id} />
     </div>
   </div>
 }

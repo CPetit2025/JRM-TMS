@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { PageHeader } from '@/components/ui/page-header'
 import { errorMessage, money } from '@/lib/caja'
 import { ControlPresupuestalTabs } from '@/components/despacho/ControlPresupuestalTabs'
+import { SavingsTable, exportSavingsCsv, type SavingsResult } from '@/components/despacho/ConsolidationSavings'
 
 // Detalle financiero de una OT (budget_ot_detail): resumen, viajes, conceptos, alertas, ampliaciones e historial.
 // Todo sale de los mismos movimientos que la partida; los viajes se liquidan y cierran en Torre de Control.
@@ -32,7 +33,7 @@ type Pending = { kind: string; contract_id: string; dispatch_id: string | null; 
 
 const supabase = createClient()
 const TABS = [['resumen', 'Resumen'], ['viajes', 'Viajes y costos'], ['conceptos', 'Por concepto'], ['alertas', 'Desviaciones y alertas'],
-  ['autorizaciones', 'Autorizaciones'], ['historial', 'Historial']] as const
+  ['autorizaciones', 'Autorizaciones'], ['ahorro', 'Ahorro por consolidación'], ['historial', 'Historial']] as const
 type Tab = typeof TABS[number][0]
 const LEVEL: Record<Level, string> = { NORMAL: 'Normal', ALERTA: 'Alerta', BLOQUEO: 'Sobre el tope', EXCEDIDO: 'Excedido', SIN_PARTIDA: 'Sin partida' }
 const n = (v: number | null | undefined) => money(Number(v ?? 0))
@@ -46,6 +47,7 @@ export default function OtDetailPage({ params }: { params: Promise<{ ot: string 
   const [range, setRange] = useState({ from: '', to: '' })
   const [form, setForm] = useState({ amount: '', reason: '', evidence: '' })
   const [busy, setBusy] = useState(false)
+  const [savings, setSavings] = useState<SavingsResult | null>(null)
 
   const load = useCallback(async () => {
     const [d, p] = await Promise.all([
@@ -57,6 +59,15 @@ export default function OtDetailPage({ params }: { params: Promise<{ ot: string 
     setPending(p.data?.success ? (p.data.rows as Pending[]).filter(r => r.contract_id === (d.data as Detail).contract.id) : [])
   }, [ot, range])
   useEffect(() => { const t = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(t) }, [load])
+  // Ahorro atribuido a la OT (sus servicios aprovechados): el período elegido o los últimos 12 meses
+  useEffect(() => {
+    if (tab !== 'ahorro') return
+    const day = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
+    let alive = true
+    void supabase.rpc('consolidation_savings', { p_from: range.from || day(new Date(Date.now() - 365 * 864e5)), p_to: range.to || day(new Date()), p_contract: ot })
+      .then(({ data: s, error }) => { if (!alive) return; if (error || !s?.success) { toast.error(error ? errorMessage(error) : s?.error); return } setSavings(s as SavingsResult) })
+    return () => { alive = false }
+  }, [tab, ot, range])
 
   const call = async (rpc: string, args: Record<string, unknown>, ok: string) => {
     setBusy(true)
@@ -90,7 +101,7 @@ export default function OtDetailPage({ params }: { params: Promise<{ ot: string 
             {label}{key === 'alertas' && pending.length ? ` (${pending.length})` : ''}</button>)}
         </nav>
 
-        {(tab === 'viajes' || tab === 'conceptos') && <div className="flex flex-wrap items-end gap-2 text-xs font-semibold text-slate-600">
+        {(tab === 'viajes' || tab === 'conceptos' || tab === 'ahorro') && <div className="flex flex-wrap items-end gap-2 text-xs font-semibold text-slate-600">
           <label>Desde<input type="date" value={range.from} onChange={e => setRange(r => ({ ...r, from: e.target.value }))} className="mt-1 block h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm" /></label>
           <label>Fecha de corte<input type="date" value={range.to} onChange={e => setRange(r => ({ ...r, to: e.target.value }))} className="mt-1 block h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm" /></label>
         </div>}
@@ -184,6 +195,14 @@ export default function OtDetailPage({ params }: { params: Promise<{ ot: string 
           </ul>}
         </section>}
 
+        {tab === 'ahorro' && <section className="space-y-2 rounded-xl border border-slate-200 bg-white">
+          {!savings ? <p className="p-6 text-center text-sm text-slate-500">Cargando…</p> : <>
+            <div className="flex flex-wrap items-center justify-between gap-2 p-3 pb-0 text-sm">
+              <p>Ahorro atribuido: <b className="text-emerald-700">S/ {money(savings.rows.filter(r => !r.principal).reduce((s, r) => s + Number(r.saving_pen || 0), 0))}</b> · {savings.rows.filter(r => !r.principal).length} servicio(s) aprovechado(s){range.from || range.to ? '' : ' · últimos 12 meses'}</p>
+              <button type="button" disabled={!savings.rows.length} onClick={() => exportSavingsCsv(savings.rows, `ahorro-${data.contract.code}`)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold disabled:opacity-50">Exportar</button></div>
+            <SavingsTable rows={savings.rows} />
+            <p className="px-3 pb-3 text-[11px] text-slate-500">Indicador de eficiencia: no consume la partida. Detalle completo en la pestaña Ahorro por consolidación.</p></>}
+        </section>}
         {tab === 'historial' && <section className="rounded-xl border border-slate-200 bg-white p-3">
           {!data.timeline.length ? <p className="text-sm text-slate-500">Sin eventos.</p> : <ol className="space-y-2">
             {data.timeline.map((h, i) => <li key={i} className="border-l-2 border-slate-200 pl-3 text-sm">
