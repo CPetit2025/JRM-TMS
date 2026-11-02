@@ -35,10 +35,10 @@ const pen = (v: number | null | undefined) => v == null ? '—' : money(Number(v
 
 /** Base del cálculo en una línea: tarifa, clase y costo marginal */
 export const savingBasis = (r: SavingRow) => r.principal ? 'La ruta existe por este servicio: no genera ahorro'
-  : (r.pickup_group ? `Viaje conjunto de ${r.pickup_group} recojos S/ ${pen(r.group_value_pen)} (${r.group_class || 'sin clase'}, tarifa mayor + paradas) · parte de ${r.district || '—'} S/ ${pen(r.standalone_pen)} · `
+  : (r.pickup_group ? `Viaje conjunto de ${r.pickup_group} recojos ${pen(r.group_value_pen)} (${r.group_class || 'sin clase'}, tarifa mayor + paradas) · parte de ${r.district || '—'} ${pen(r.standalone_pen)} · `
     : `Tarifa ${r.district || '—'} · ${r.vehicle_class || 'sin clase'}${r.class_by_weight ? ` (por ${Number(r.weight_kg)} kg)` : ' (unidad de la ruta)'} · `)
-    + (r.modalidad === 'TERCERO' ? `flete pagado S/ ${pen(r.freight_paid_pen)}` : `${Number(r.extra_km ?? 0)} km y ${Number(r.extra_hours ?? 0)} h extra${r.added ? ' (agregado en ruta)' : ''}`)
-    + (Number(r.tolls_pen) ? ` · peajes S/ ${pen(r.tolls_pen)}` : '') + (r.km_estimated ? ' · km estimados' : '') + (r.hours_cost_missing ? ' · horas sin costo cargado' : '')
+    + (r.modalidad === 'TERCERO' ? `flete pagado ${pen(r.freight_paid_pen)}` : `${Number(r.extra_km ?? 0)} km y ${Number(r.extra_hours ?? 0)} h extra${r.added ? ' (agregado en ruta)' : ''}`)
+    + (Number(r.tolls_pen) ? ` · peajes ${pen(r.tolls_pen)}` : '') + (r.km_estimated ? ' · km estimados' : '') + (r.hours_cost_missing ? ' · horas sin costo cargado' : '')
 
 export function exportSavingsCsv(rows: SavingRow[], name = 'ahorro-consolidacion') {
   const head = ['Fecha', 'Ruta', 'Modalidad', 'Solicitud', 'Tipo', 'OT', 'OT raíz', 'Cliente', 'Distrito', 'Clase', 'Estado', 'Valor independiente', 'Km extra', 'Horas extra',
@@ -91,9 +91,9 @@ export function TripSaving({ dispatchId, requestId }: { dispatchId: string; requ
   return <section aria-label="Ahorro por consolidación" className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 text-sm">
     <p className="flex items-center gap-2 font-bold text-emerald-900"><PiggyBank className="h-4 w-4" aria-hidden />Ahorro por consolidación</p>
     {row.principal ? <p className="mt-1 text-slate-600">{savingBasis(row)}.</p> : <>
-      <p className={`mt-1 text-2xl font-bold tabular-nums ${row.valuation_status === 'VALIDADO' ? 'text-emerald-800' : 'text-amber-800'}`}>{row.saving_pen == null ? '—' : `S/ ${pen(row.saving_pen)}`}</p>
+      <p className={`mt-1 text-2xl font-bold tabular-nums ${row.valuation_status === 'VALIDADO' ? 'text-emerald-800' : 'text-amber-800'}`}>{row.saving_pen == null ? '—' : `${pen(row.saving_pen)}`}</p>
       {row.valuation_status && <p className="text-xs font-semibold text-slate-700">{row.valuation_status === 'VALIDADO' ? 'Ahorro validado' : row.valuation_status === 'ESTIMADO' ? 'Estimación pendiente de validación' : 'Pendiente de valorizar'}</p>}
-      <p className="text-xs text-slate-600">{row.pickup_group ? 'Parte del viaje conjunto de recojos' : 'Valor independiente'} S/ {pen(row.standalone_pen)} − costo marginal S/ {pen(row.marginal_pen)}</p>
+      <p className="text-xs text-slate-600">{row.pickup_group ? 'Parte del viaje conjunto de recojos' : 'Valor independiente'} {pen(row.standalone_pen)} − costo marginal {pen(row.marginal_pen)}</p>
       <p className="mt-1 text-xs text-slate-500">{savingBasis(row)}</p></>}
     <p className="mt-1 text-[11px] text-slate-500">Indicador de eficiencia: no consume la partida de la OT.</p>
   </section>

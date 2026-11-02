@@ -100,16 +100,16 @@ function Movimientos() {
         : !data ? <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">{loading ? 'Cargando…' : 'Sin datos.'}</p>
         : <>
           <section aria-label="Posición de la OT" className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
-            <div><p className="text-xs text-slate-500">OT</p><p className="font-bold text-[#002855]">{data.contract.code}</p><p className="text-xs text-slate-500">{data.contract.client || '—'} · asignado S/ {money(Number(data.position.allocated_pen))}</p></div>
-            <div><p className="text-xs text-slate-500">Comprometido vigente</p><p className="font-bold tabular-nums">S/ {money(Number(data.position.reserved_pen))}</p>
+            <div><p className="text-xs text-slate-500">OT</p><p className="font-bold text-[#002855]">{data.contract.code}</p><p className="text-xs text-slate-500">{data.contract.client || '—'} · asignado {money(Number(data.position.allocated_pen))}</p></div>
+            <div><p className="text-xs text-slate-500">Comprometido vigente</p><p className="font-bold tabular-nums">{money(Number(data.position.reserved_pen))}</p>
               <p className="text-xs text-slate-500">Estado actual (no tiene historia por fecha)</p></div>
-            <div><p className="text-xs text-slate-500">Ejecutado {to ? `al ${to}` : 'acumulado'}</p><p className="font-bold tabular-nums">S/ {money(Number(data.period.closing_consumed_pen))}</p>
-              {from && <p className="text-xs text-slate-500">Inicial S/ {money(Number(data.period.opening_consumed_pen))} + período S/ {money(Number(data.period.period_consumed_pen))}</p>}
-              {!from && !to && <p className="text-xs text-slate-500">Explicado por movimientos; en la partida: S/ {money(Number(data.position.consumed_pen))}</p>}</div>
+            <div><p className="text-xs text-slate-500">Ejecutado {to ? `al ${to}` : 'acumulado'}</p><p className="font-bold tabular-nums">{money(Number(data.period.closing_consumed_pen))}</p>
+              {from && <p className="text-xs text-slate-500">Inicial {money(Number(data.period.opening_consumed_pen))} + período {money(Number(data.period.period_consumed_pen))}</p>}
+              {!from && !to && <p className="text-xs text-slate-500">Explicado por movimientos; en la partida: {money(Number(data.position.consumed_pen))}</p>}</div>
             <div><p className="text-xs text-slate-500">Conciliación</p>
               {diff < 0.01 ? <p className="font-bold text-emerald-700">Cuadra con la partida</p>
                 : <><p className="flex items-center gap-1 font-bold text-amber-700"><AlertTriangle className="h-4 w-4" />Diferencia sin movimiento</p>
-                  <p className="text-xs text-slate-600">Comprometido S/ {money(Number(data.difference.reserved_pen))} · ejecutado S/ {money(Number(data.difference.consumed_pen))}. Registros anteriores sin rastro: se revisa, no se ajusta solo.</p></>}
+                  <p className="text-xs text-slate-600">Comprometido {money(Number(data.difference.reserved_pen))} · ejecutado {money(Number(data.difference.consumed_pen))}. Registros anteriores sin rastro: se revisa, no se ajusta solo.</p></>}
               {data.without_budget > 0 && <p className="text-xs text-amber-700">{data.without_budget} movimiento(s) de un contrato sin partida propia</p>}</div>
           </section>
 

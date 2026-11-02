@@ -63,9 +63,9 @@ function Ahorro() {
       </div>
 
       <div className="grid gap-2 sm:grid-cols-3">
-        <KpiStatCard label="Ahorro validado (filtrado)" value={data ? `S/ ${money(validatedTotal)}` : '—'} tone="emerald" icon={<PiggyBank className="h-5 w-5" />} loading={!data} />
+        <KpiStatCard label="Ahorro validado (filtrado)" value={data ? `${money(validatedTotal)}` : '—'} tone="emerald" icon={<PiggyBank className="h-5 w-5" />} loading={!data} />
         <KpiStatCard label="Servicios aprovechados" value={leveraged.length} tone="navy" icon={<Layers className="h-5 w-5" />} loading={!data} />
-        <KpiStatCard label="Ahorro estimado · validar" value={data ? `S/ ${money(estimatedTotal)}` : '—'} tone="amber" icon={<AlertTriangle className="h-5 w-5" />} loading={!data} />
+        <KpiStatCard label="Ahorro estimado · validar" value={data ? `${money(estimatedTotal)}` : '—'} tone="amber" icon={<AlertTriangle className="h-5 w-5" />} loading={!data} />
       </div>
       {data && <p className="text-xs text-slate-500">La tasa de aprovechamiento del período es {rate == null ? '—' : `${rate} %`}. Solo rutas cerradas con datos y costos finales completos cuentan como ahorro validado.</p>}
       {data?.hours_cost_missing && <p className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"><AlertTriangle className="h-4 w-4" />
