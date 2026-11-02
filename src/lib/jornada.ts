@@ -159,3 +159,61 @@ export const fromUnitReport = (plate: string, type: string | null, days: Day[]):
   const r = dayRefs(d)
   return { ...d, plate, unit_type: type, status: null, refs: { OT: [...r.OT], OC: [...r.OC], OS: [...r.OS], RQ: [...r.RQ] }, incidents: [], saving: null }
 })
+
+// ---- Reporte mensual de flota (Vista 3): todo sale de las mismas filas que la tabla ----
+export type UnitMonthStatus = 'CERRADA' | 'EN_PROCESO' | 'CON_INCIDENCIAS' | 'SIN_OPERACION'
+export type UnitMonth = { plate: string; type: string | null; driver: string | null; routes: number; km_odo: number; km_gps: number; tn: number; tn_apt: number
+  cost: number; saving: number; savingValued: boolean; jornadas: number; closed: number; incidents: number; status: UnitMonthStatus; maintenance: number }
+export type MonthWeek = { label: string; from: string; to: string; routes: number; tn: number }
+const sumOf = <T,>(xs: T[], get: (x: T) => number | null | undefined) => xs.reduce((s, x) => s + Number(get(x) || 0), 0)
+const r2 = (v: number) => Math.round(v * 100) / 100
+
+/** Semanas de lunes a domingo recortadas al mes: la suma de las semanas es el total del mes */
+export function monthWeeks(month: string): MonthWeek[] {
+  const first = `${month}-01`, next = new Date(`${first}T12:00:00Z`); next.setUTCMonth(next.getUTCMonth() + 1)
+  const last = addDays(next.toISOString().slice(0, 10), -1), out: MonthWeek[] = []
+  for (let from = first, i = 1; from <= last; i++) {
+    const to = [addDays(from, 6 - ((new Date(`${from}T12:00:00Z`).getUTCDay() + 6) % 7)), last].sort()[0]
+    out.push({ label: `Sem. ${i}`, from, to, routes: 0, tn: 0 }); from = addDays(to, 1)
+  }
+  return out
+}
+
+export function monthlySummary(fleet: Fleet, month: string) {
+  const rows = fleet.rows.filter(r => r.date.startsWith(month))
+  const active = rows.filter(r => r.status !== 'SIN_OPERACION')
+  const weeks = monthWeeks(month)
+  for (const r of active) { const w = weeks.find(x => r.date >= x.from && r.date <= x.to); if (w) { w.routes += r.routes; w.tn = r2(w.tn + Number(r.tn || 0)) } }
+  // Incidencias: cada una una vez por su registro de origen
+  const incidentKeys = new Set(rows.flatMap(r => r.incidents.map(i => `${i.source}:${i.id}`)))
+  const units: UnitMonth[] = fleet.units.map(u => {
+    const ur = active.filter(r => r.plate === u.plate)
+    const drivers = new Map<string, number>(); for (const r of ur) for (const d of r.drivers || []) drivers.set(d, (drivers.get(d) || 0) + 1)
+    const incidents = new Set(ur.flatMap(r => r.incidents.map(i => `${i.source}:${i.id}`))).size
+    const closed = ur.filter(r => r.status === 'CERRADA').length
+    // Estado del mes (D3): con incidencias > en proceso (abiertas o en revisión) > cerrada
+    const status: UnitMonthStatus = !ur.length ? 'SIN_OPERACION' : incidents ? 'CON_INCIDENCIAS' : closed < ur.length ? 'EN_PROCESO' : 'CERRADA'
+    return { plate: u.plate, type: u.type, driver: [...drivers.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null,
+      routes: sumOf(ur, r => r.routes), km_odo: r2(sumOf(ur, r => r.km_odo)), km_gps: r2(sumOf(ur, r => r.km_gps)), tn: r2(sumOf(ur, r => r.tn)), tn_apt: r2(sumOf(ur, r => r.tn_apt)),
+      cost: r2(sumOf(ur, r => r.cost_total)), saving: r2(sumOf(ur, r => r.saving?.valued ? r.saving.saving : 0)), savingValued: ur.some(r => r.saving?.valued),
+      jornadas: ur.length, closed, incidents, status, maintenance: u.maintenance.length }
+  })
+  // Conductor con más actividad: rutas que manejó (y sus km por ruta)
+  const byDriver = new Map<string, { routes: number; km: number }>()
+  for (const r of active) for (const x of r.dispatches) if (x.driver) {
+    const d = byDriver.get(x.driver) || { routes: 0, km: 0 }; d.routes += 1; d.km += Number(x.km_real ?? x.km_gps ?? 0); byDriver.set(x.driver, d)
+  }
+  const alerts = new Map<string, Array<{ plate: string; date: string }>>()
+  for (const r of active) for (const a of r.alerts) alerts.set(a, [...(alerts.get(a) || []), { plate: r.plate, date: r.date }])
+  const operating = units.filter(u => u.jornadas)
+  return {
+    rows, weeks, units, operating,
+    totals: { activeUnits: operating.length, availableUnits: fleet.units.filter(u => u.status !== 'FUERA_DE_SERVICIO').length,
+      routes: sumOf(active, r => r.routes), km_odo: r2(sumOf(active, r => r.km_odo)), km_gps: r2(sumOf(active, r => r.km_gps)), tn: r2(sumOf(active, r => r.tn)),
+      tn_apt: r2(sumOf(active, r => r.tn_apt)), cost: r2(sumOf(active, r => r.cost_total)), saving: r2(sumOf(active, r => r.saving?.valued ? r.saving.saving : 0)),
+      savingPending: sumOf(active, r => r.saving?.pending), incidents: incidentKeys.size, jornadas: active.length, closed: active.filter(r => r.status === 'CERRADA').length },
+    topKm: [...operating].sort((a, b) => b.km_odo - a.km_odo)[0] || null,
+    topDriver: [...byDriver.entries()].sort((a, b) => b[1].routes - a[1].routes)[0] || null,
+    alerts: [...alerts.entries()].sort((a, b) => b[1].length - a[1].length),
+  }
+}

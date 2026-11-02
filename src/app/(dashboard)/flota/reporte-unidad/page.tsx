@@ -87,7 +87,7 @@ function ControlJornada() {
     setView(kind === 'ANIO' ? 'MES' : 'DIA'); set({ desde: a, hasta: b })
   }
   const sortBy = (key: string) => set({ orden: f.orden === `${key}:desc` ? `${key}:asc` : `${key}:desc` })
-  const SortTh = ({ k, children, className = '' }: { k: string; children: React.ReactNode; className?: string }) => <th className={`px-2 py-2 ${className}`}>
+  const sortTh = (k: string, children: React.ReactNode, className = '') => <th key={k} className={`px-2 py-2 ${className}`}>
     <button type="button" onClick={() => sortBy(k)} className="inline-flex items-center gap-1 font-semibold uppercase">{children}<ArrowDownUp className={`h-3 w-3 ${f.orden.startsWith(`${k}:`) ? 'text-white' : 'text-white/40'}`} /></button></th>
 
   const openPhoto = async (p: string) => {
@@ -195,11 +195,11 @@ function ControlJornada() {
       : <div className="max-h-[70vh] overflow-auto rounded-xl border border-slate-200 bg-white">
         <table className="min-w-[96rem] text-sm">
           <thead className="sticky top-0 z-10"><tr>
-            <th rowSpan={2} className={th} /><SortTh k="fecha" className={th}>Fecha</SortTh><th rowSpan={2} className={th}>Conductor / unidad</th><th rowSpan={2} className={th}>OT</th><th rowSpan={2} className={th}>OC / OS / RQ</th>
+            <th rowSpan={2} className={th} />{sortTh('fecha', 'Fecha', th)}<th rowSpan={2} className={th}>Conductor / unidad</th><th rowSpan={2} className={th}>OT</th><th rowSpan={2} className={th}>OC / OS / RQ</th>
             <th colSpan={5} className="bg-blue-700 px-2 py-1 text-center text-xs font-bold text-white">Kilometraje (km)</th>
             <th colSpan={3} className="bg-violet-200 px-2 py-1 text-center text-xs font-bold text-violet-900">Operación</th>
             <th colSpan={3} className="bg-emerald-300 px-2 py-1 text-center text-xs font-bold text-emerald-950">Costos (S/)</th>
-            <SortTh k="estado" className={th}>Estado</SortTh></tr>
+            {sortTh('estado', 'Estado', th)}</tr>
             <tr className="bg-slate-100 text-[11px] uppercase text-slate-600">
               <th /><th className="px-2 py-1 text-right">Inicio</th><th className="px-2 py-1 text-right">Fin</th>
               <th className="px-2 py-1 text-right"><button type="button" onClick={() => sortBy('km')} className="uppercase">Recorrido ↕</button></th><th className="px-2 py-1 text-right">GPS</th><th className="px-2 py-1 text-right">Est. ruta</th>
