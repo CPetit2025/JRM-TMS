@@ -287,7 +287,8 @@ export default function SolicitudesPage() {
     estimated_weight: '',
     estimated_volume: '',
     service_cost: '',
-    purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: '', reference_supplier_id: ''
+    purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: '', reference_supplier_id: '',
+    freight_manual_pen: '', freight_manual_reason: ''
   })
   useEffect(() => { activeRequestRoot.current = newRequest.contract_id }, [newRequest.contract_id])
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
@@ -311,7 +312,11 @@ export default function SolicitudesPage() {
   const referenceComplete = orderReferenceComplete(newRequest.reference_type, newRequest.reference_number)
   const isCustomerPickup = newRequest.attention_mode === 'RECOJO_CLIENTE'
   const isPickupRequest = newRequest.request_type === 'RECOJO'
-  const estimatedCost = ((isCustomerPickup || isPickupRequest) ? 0 : Number(newRequest.service_cost || 0)) + unloadingTotal
+  // Sin tarifa de flete (cotizado en 0): se puede indicar un flete referencial manual con motivo
+  const freightMissing = Boolean(quote) && !quoting && !isCustomerPickup && !isPickupRequest && !(Number(quote?.freight_total) > 0)
+  const manualFreight = freightMissing ? Number(newRequest.freight_manual_pen) || 0 : 0
+  const manualFreightInvalid = manualFreight > 0 && newRequest.freight_manual_reason.trim().length < 3
+  const estimatedCost = ((isCustomerPickup || isPickupRequest) ? 0 : Number(newRequest.service_cost || 0) + manualFreight) + unloadingTotal
 
 
   const editingRequest = requests.find(request => request.id === editingRequestId)
@@ -508,7 +513,7 @@ export default function SolicitudesPage() {
     return () => { cancel = true; window.clearTimeout(t) }
   }, [supabase, isModalOpen, newRequest.contract_id, newRequest.delivery_district, newRequest.delivery_province, newRequest.delivery_department, requestedWeight, newRequest.estimated_weight, isCustomerPickup, isPickupRequest, unloadingKey, setNewRequest])
 
-  const quoteFreight = (isCustomerPickup || isPickupRequest) ? 0 : Number(quote?.freight_total || 0)
+  const quoteFreight = (isCustomerPickup || isPickupRequest) ? 0 : Number(quote?.freight_total || 0) || manualFreight
 
   const applyUnloadingReference = (h: UnloadingHistory) => {
     const lines = (h.lines || []).map(l => ({
@@ -636,7 +641,9 @@ export default function SolicitudesPage() {
       purchase_order: duplicate ? '' : request.purchase_order || '', supplier_id: request.supplier_id || '', supplier_location_id: request.supplier_location_id || '',
       client_id: request.contract_id ? '' : request.client_id || '',
       reference_type: request.reference_type || '', reference_number: duplicate ? '' : request.reference_number || '',
-      reference_supplier_id: duplicate ? '' : request.reference_supplier_id || ''
+      reference_supplier_id: duplicate ? '' : request.reference_supplier_id || '',
+      freight_manual_pen: request.cost_source === 'MANUAL' && Number(request.service_cost) > 0 ? String(request.service_cost) : '',
+      freight_manual_reason: request.cost_source === 'MANUAL' ? request.cost_override_reason || '' : ''
     })
 
     void fetchLeadTimeSettings()
@@ -726,6 +733,10 @@ export default function SolicitudesPage() {
       toast.error('Seleccione el proveedor del recojo o traslado. Si no existe, use «Nuevo proveedor» en la misma solicitud.')
       return
     }
+    if (manualFreightInvalid) {
+      toast.error('Indique el motivo del flete referencial manual (sin tarifa).')
+      return
+    }
     if (referenceRequired && !referenceComplete) {
       toast.error('El recojo o traslado requiere una OC, OS o RQ con su número. La OT es opcional.')
       return
@@ -743,7 +754,7 @@ export default function SolicitudesPage() {
     try {
       const { data: saved, error } = await supabase.rpc('save_transport_request_full', {
         p_request_id: editingRequestId,
-        p_payload: { ...newRequest, reference_supplier_id: newRequest.reference_type ? referenceSupplierId : '', purchase_order: newRequest.reference_type === 'OC' ? newRequest.reference_number : newRequest.reference_type ? '' : newRequest.purchase_order, required_at: requiredAt, delivery_zone: requiresDeliveryLeadTime ? newRequest.delivery_zone : null, contract_id: newRequest.contract_id || null, service_cost: (isCustomerPickup || isPickupRequest) ? 0 : newRequest.service_cost, destination_acknowledged: destinationAcknowledged },
+        p_payload: { ...newRequest, freight_manual_pen: manualFreight > 0 ? manualFreight : '', freight_manual_reason: manualFreight > 0 ? newRequest.freight_manual_reason.trim() : '', reference_supplier_id: newRequest.reference_type ? referenceSupplierId : '', purchase_order: newRequest.reference_type === 'OC' ? newRequest.reference_number : newRequest.reference_type ? '' : newRequest.purchase_order, required_at: requiredAt, delivery_zone: requiresDeliveryLeadTime ? newRequest.delivery_zone : null, contract_id: newRequest.contract_id || null, service_cost: (isCustomerPickup || isPickupRequest) ? 0 : newRequest.service_cost, destination_acknowledged: destinationAcknowledged },
         p_unloading: unloadingAnswer === 'SI' ? unloading.map(x => ({ concept: x.concept, estimated_pen: Number(x.estimated_pen) || 0, description: x.description || null,
           estimated_source: x.source === 'MANUAL' ? 'MANUAL' : null, manual_reason: x.source === 'MANUAL' ? (x.manual_reason || '').trim() : null })) : [],
         p_components: selected.map(c => ({
@@ -782,7 +793,8 @@ export default function SolicitudesPage() {
         estimated_weight: '',
         estimated_volume: '',
         service_cost: '',
-        purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: '', reference_supplier_id: ''
+        purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: '', reference_supplier_id: '',
+    freight_manual_pen: '', freight_manual_reason: ''
       }))
       setContractSearch('')
       setComponentOptions([])
@@ -934,6 +946,7 @@ export default function SolicitudesPage() {
     !requiredAt && { label: 'Fecha y hora de atención', target: 'req-fecha' },
     Boolean(requiredAt) && requiresDeliveryLeadTime && leadTimeEvaluation.enough === false && { label: 'Anticipación mínima', target: 'req-fecha' },
     !newRequest.cargo_description.trim() && { label: 'Glosa de la carga', target: 'req-carga' },
+    manualFreightInvalid && { label: 'Motivo del flete manual', target: 'req-carga' },
     Boolean(newRequest.reference_type) && !newRequest.reference_number.trim() && { label: `Número de ${newRequest.reference_type}`, target: 'req-carga' },
     Boolean(newRequest.reference_type) && !needsSupplier && !newRequest.reference_supplier_id && { label: `Proveedor de ${newRequest.reference_type}`, target: 'req-carga' },
     !unloadingAnswer && { label: 'Descarga especial (Sí/No)', target: 'req-descarga' },
@@ -981,7 +994,8 @@ export default function SolicitudesPage() {
                 estimated_weight: '',
                 estimated_volume: '',
                 service_cost: '',
-                purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: '', reference_supplier_id: ''
+                purchase_order: '', supplier_id: '', supplier_location_id: '', client_id: '', reference_type: '', reference_number: '', reference_supplier_id: '',
+    freight_manual_pen: '', freight_manual_reason: ''
               })
               setDraftFound(readDraft()); setDraftMode(true)
               setIsModalOpen(true)
@@ -1353,11 +1367,19 @@ export default function SolicitudesPage() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Costo referencial del flete {quoting && <Loader2 className="ml-1 inline h-3 w-3 animate-spin" />}
                 </label>
-                <div className="w-full px-3 py-2 bg-slate-50 text-slate-900 border border-slate-200 rounded-lg font-semibold tabular-nums">
+                {freightMissing ? <div className="space-y-2">
+                  <input type="number" min="0.01" step="0.01" aria-label="Flete referencial manual (sin tarifa)" placeholder="Sin tarifa · S/ manual (opcional)"
+                    title="No hay tarifa: puede indicar un flete referencial manual con su motivo, o dejarlo vacío (por cotizar)"
+                    className={`${field} font-semibold tabular-nums`} value={newRequest.freight_manual_pen}
+                    onChange={e => setNewRequest({ ...newRequest, freight_manual_pen: e.target.value })} />
+                  {manualFreight > 0 && <input type="text" maxLength={500} aria-label="Motivo del flete referencial manual"
+                    placeholder="Motivo del flete manual (sin tarifa) *" className={field} value={newRequest.freight_manual_reason}
+                    onChange={e => setNewRequest({ ...newRequest, freight_manual_reason: e.target.value })} />}
+                </div> : <div className="w-full px-3 py-2 bg-slate-50 text-slate-900 border border-slate-200 rounded-lg font-semibold tabular-nums">
                   S/ {quoteFreight.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </div>
+                </div>}
                 <p className="text-xs text-slate-500 mt-1">
-                  {isCustomerPickup ? 'El cliente gestiona el transporte: no se cotiza ni reserva flete JRM.' : referenceRequired && !newRequest.contract_id ? 'Costo referencial según tarifario. El supervisor aprueba los costos contra la OC, OS o RQ; la ruta debe respetar el monto autorizado.' : 'Costo referencial según tarifario: no condiciona la solicitud ni su aprobación. El tipo de unidad y el flete real se definen al armar la ruta, donde se valida el saldo de la partida.'}
+                  {isCustomerPickup ? 'El cliente gestiona el transporte: no se cotiza ni reserva flete JRM.' : freightMissing ? 'Sin tarifa de flete: indique un monto referencial con su motivo o déjelo vacío para cotizarlo después. Es referencial: el flete real se define al armar la ruta.' : referenceRequired && !newRequest.contract_id ? 'Costo referencial según tarifario. El supervisor aprueba los costos contra la OC, OS o RQ; la ruta debe respetar el monto autorizado.' : 'Costo referencial según tarifario: no condiciona la solicitud ni su aprobación. El tipo de unidad y el flete real se definen al armar la ruta, donde se valida el saldo de la partida.'}
                 </p>
                 {!isCustomerPickup && (() => {
                   const range = quote?.freight_range as { min?: number; max?: number } | null | undefined
