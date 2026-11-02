@@ -49,6 +49,10 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
   const fam = circuit.indexOf('CREATE OR REPLACE FUNCTION public.budget_family('); await db.exec(circuit.slice(fam, circuit.indexOf('END $$;', fam) + 7))
   const migration = read('supabase/migrations/20261211090000_ahorro_consolidacion.sql')
   await db.exec(migration); await db.exec(migration)
+  // Vigente: reescritura completa con recojos en viaje conjunto (incluye D2); todo lo de abajo corre sobre ella
+  const grouped = read('supabase/migrations/20261215090000_ahorro_recojos_viaje_conjunto.sql')
+  assert.doesNotMatch(grouped, /replace\(\s*def/i, 'consolidation_savings is rewritten in full')
+  await db.exec(grouped); await db.exec(grouped)
   const rpc = async (sql, params = []) => (await db.query(`SELECT ${sql} AS v`, params)).rows[0].v
 
   // Tarifario: 4T y 1T con capacidad; tarifa de placa para la clase de la unidad propia
@@ -98,6 +102,36 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
   assert.equal(row('S-9'), undefined)
   assert.deepEqual([r.services_total, r.leveraged, Number(r.saving_total), r.hours_cost_missing], [9, 5, 216.6 + 267.9 + 271.55 + 250, false])
 
+  // Recojos en viaje conjunto (ejemplo aprobado): entrega OT a Puente Piedra + recojos Callao (OS, 2 t) y Comas (OC, 3 t).
+  // Un solo viaje para ambos: 5 t → 6T; Comas 650 + 1 parada 150 = 800, repartido 450:480 → 387.10 y 412.90.
+  // Extra: 120 − 95 = 25 km y 6 − 4.5 = 1.5 h, por km directos 30:20 → Callao 15 km / 0.9 h, Comas 10 km / 0.6 h; 100 por hora.
+  await db.exec(`INSERT INTO freight_rates(vehicle_class, district, rate, capacity_ton) VALUES ('3T','Callao',450,3),('3T','Comas',480,3),('6T','Callao',600,6),('6T','Comas',650,6),
+    ('10T','Puente Piedra',1500,10); INSERT INTO freight_rates(vehicle_class, plate_number, district, rate) VALUES ('10T','PRO-2','Puente Piedra',1500);
+   INSERT INTO freight_rates(concept, vehicle_class, rate) VALUES ('PARADA_ADICIONAL','6T',150);
+   INSERT INTO transport_requests VALUES ('${id(81)}','S-10','${id(10)}','DESPACHO',NULL,'Puente Piedra',NULL,7000),('${id(82)}','S-11',NULL,'RECOJO',NULL,'Planta','Callao',2000),
+    ('${id(83)}','S-12',NULL,'RECOJO',NULL,'Planta','Comas',3000);
+   INSERT INTO dispatches(id,dispatch_number,status,vehicle_plate,driver_id,modalidad,scheduled_departure,departure_time,returned_at,actual_distance_km) VALUES
+    ('${id(65)}','R-5','LIQUIDADO','PRO-2','${id(7)}','PROPIA','2026-11-02 13:00+00','2026-11-02 13:00+00','2026-11-02 19:00+00',120);
+   INSERT INTO dispatch_requests VALUES ('${id(65)}','${id(81)}',1),('${id(65)}','${id(82)}',2),('${id(65)}','${id(83)}',3);
+   INSERT INTO dispatch_route_estimates VALUES ('${id(65)}','${id(81)}',95,270),('${id(65)}','${id(82)}',30,60),('${id(65)}','${id(83)}',20,40);
+   INSERT INTO dispatch_crew VALUES ('${id(65)}','${id(8)}','AUXILIAR',NULL);
+   INSERT INTO dispatch_expenses(dispatch_id,transport_request_id,expense_type,amount,status) VALUES ('${id(65)}','${id(83)}','PEAJE',6,'APROBADO');`)
+  assert.equal((await rpc('consolidation_hour_cost_set($1,$2)', ['UNIDAD:10T', 75])).success, true)
+  const trip = async () => (await rpc(`consolidation_savings(NULL,NULL,NULL,$1)`, [id(65)])).rows
+  const g = (rows, n) => { const x = rows.find(y => y.request_number === n); return [x.state, x.standalone_pen == null ? null : Number(x.standalone_pen), x.marginal_pen == null ? null : Number(x.marginal_pen),
+    x.saving_pen == null ? null : Number(x.saving_pen), x.pickup_group, x.group_value_pen == null ? null : Number(x.group_value_pen), x.group_class] }
+  let t = await trip()
+  assert.deepEqual(g(t, 'S-10').slice(0, 2), ['PRINCIPAL', 1500])
+  assert.deepEqual(g(t, 'S-11'), ['VALORIZADO', 387.1, 114, 273.1, 2, 800, '6T'], 'Callao: share of one joint trip, not its own 450 trip')
+  assert.deepEqual(g(t, 'S-12'), ['VALORIZADO', 412.9, 82, 330.9, 2, 800, '6T'], 'Comas: share of one joint trip, not its own 480 trip')
+  assert.equal(Number(t.find(y => y.request_number === 'S-11').individual_pen), 450)
+  assert.equal(Math.round((273.1 + 330.9) * 100), 60400, 'saving 604, not 734 (two separate trips)')
+  // Sin tarifa de parada adicional: el grupo queda sin tarifa (no se vuelve a sumar viajes sueltos)
+  await db.exec(`UPDATE freight_rates SET is_active = false WHERE concept = 'PARADA_ADICIONAL'`)
+  t = await trip()
+  assert.deepEqual([g(t, 'S-11')[0], g(t, 'S-12')[0], g(t, 'S-11')[3]], ['SIN_TARIFA', 'SIN_TARIFA', null])
+  await db.exec(`UPDATE freight_rates SET is_active = true WHERE concept = 'PARADA_ADICIONAL'`)
+
   // Filtro por OT (familia): solo sus servicios; la tasa cuenta las rutas donde participa
   const b = await rpc(`consolidation_savings('2026-11-01','2026-11-01',$1)`, [id(20)])
   assert.deepEqual(b.rows.map(x => x.request_number).sort(), ['S-3', 'S-7', 'S-8'])
@@ -117,7 +151,8 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
   await db.exec(`SELECT set_config('test.read', 'no', false)`)
   assert.match((await rpc(`consolidation_savings('2026-11-01','2026-11-01')`)).error, /Sin acceso/)
 
-  await assert.rejects(db.exec(read('supabase/tests/caja_c209_ahorro_consolidacion.test.sql')), /CAJA C209 PASS/)
-  console.log('PASS ahorro por consolidación: principal, programados juntos, agregado en ruta, tercero, sin tarifa, filtro por OT, costos por hora y permisos')
+  await assert.rejects(db.exec(read('supabase/tests/caja_c209_ahorro_consolidacion.test.sql')), /CAJA C209 PASS/); await db.exec('ROLLBACK')
+  await assert.rejects(db.exec(read('supabase/tests/caja_c212_ahorro_recojos_viaje_conjunto.test.sql')), /CAJA C212 PASS/)
+  console.log('PASS ahorro por consolidación: principal, programados juntos, agregado en ruta, tercero, sin tarifa, filtro por OT, costos por hora, permisos y recojos en viaje conjunto')
  } finally { await db.close() }
 })().catch(e => { console.error(e); process.exit(1) })

@@ -208,7 +208,7 @@ function fn(file, name) {
   assert.equal(await scalar("SELECT has_function_privilege('anon','schedule_route_resources(jsonb)','EXECUTE') AS value"),false)
   await assert.rejects(db.exec(read('supabase/tests/caja_c170_special_services_inheritance.test.sql')),/CAJA C170 PASS/)
   await db.exec('ROLLBACK')
-  await assert.rejects(db.exec(read('supabase/tests/caja_c210_flete_referencial_manual.test.sql')),/CAJA C210 PASS/)
+  await assert.rejects(db.exec(read('supabase/tests/caja_c211_flete_referencial_manual.test.sql')),/CAJA C211 PASS/)
   await db.exec('ROLLBACK')
   console.log('PASS: inherited request unloading without duplicates on double save, forklift linked to its line, origin SOLICITUD/PROGRAMACION/CAJA, manual cost without tariff kept, manual referential freight without tariff')
  } finally { await db.close() }

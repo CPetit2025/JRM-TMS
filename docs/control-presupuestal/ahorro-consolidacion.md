@@ -26,6 +26,28 @@ Costo marginal = combustible de sus km extra + horas extra × (costo hora de uni
 Si el costo marginal supera al valor independiente, el ahorro es negativo y se muestra así, sin ocultarlo. Eso
 indica que aprovechar ese servicio no convino.
 
+### Recojos aprovechados: un solo viaje (aprobado el 01/11/2026)
+
+Dos o más recojos aprovechados en una misma ruta se habrían hecho en **un** viaje dedicado, no en uno por recojo.
+Por eso se valorizan juntos:
+
+```
+Viaje conjunto = tarifa del recojo de mayor valor + parada adicional × (recojos − 1)
+Parte de cada recojo = viaje conjunto × su tarifa individual / suma de tarifas individuales
+Ahorro de cada recojo = su parte − su costo marginal
+```
+
+- La clase de unidad es la menor que cubre el **peso sumado** de los recojos y tiene tarifa a todos sus distritos. Sin
+  peso en alguno, se usa la unidad de la ruta.
+- Sin tarifa a algún distrito del grupo o sin tarifa de parada adicional, el grupo queda «sin tarifa»: no vuelve a
+  sumar viajes sueltos (eso inflaría el ahorro).
+- Un solo recojo aprovechado, las entregas y los traslados no cambian.
+
+Ejemplo (montos hipotéticos): entrega OT a Puente Piedra (principal) + recojos Callao (OS, 2 t) y Comas (OC, 3 t).
+Tarifas 3T: Callao 450, Comas 480; 6T: Comas 650, parada adicional 150. Viaje conjunto 5 t → 6T: 650 + 150 = 800,
+repartido 387.10 / 412.90. Costo marginal 114 y 82 → ahorro 273.10 + 330.90 = **604** (antes se contaban dos viajes:
+450 + 480 − 196 = 734).
+
 **El ahorro no toca la partida.** Es un costo sombra que sirve para medir eficiencia. No se suma al ejecutado, no
 consume presupuesto ni cambia el control presupuestal. La partida sigue registrando solo lo real.
 
