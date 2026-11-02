@@ -19,6 +19,7 @@ type Release = {
   minimum_supported_build: number | null
   installer_url: string | null
   artifact_sha256: string | null
+  web_build_id?: string | null
 }
 
 function validInstallerUrl(value: string | null) {
@@ -115,11 +116,15 @@ export function AppUpdateNotice({ placement = 'floating' }: { placement?: 'heade
           Date.now() >= new Date(webRelease.mandatory_after).getTime())
         setCurrent(installedBuild.slice(0, 8))
         setPlatform('web')
-        setRelease(webRelease || {
-          id: data.webBuildId, version: data.webVersion, build_number: null,
-          release_notes: 'Hay una nueva versión de JRM-TMS.', mandatory: false,
-          mandatory_after: null, minimum_supported_version: null, minimum_supported_build: null, installer_url: null,
-          artifact_sha256: null,
+        // La versión es la del despliegue en curso; la fila publicada aporta la política (obligatoria, mínima)
+        // y sus notas solo si corresponden a este mismo build.
+        const sameBuild = webRelease?.web_build_id === data.webBuildId
+        setRelease({
+          id: data.webBuildId, build_number: null, mandatory: false, mandatory_after: null,
+          minimum_supported_version: null, minimum_supported_build: null, installer_url: null, artifact_sha256: null,
+          ...webRelease,
+          version: data.webVersion,
+          release_notes: sameBuild && webRelease?.release_notes ? webRelease.release_notes : 'Hay una nueva versión de JRM-TMS.',
         })
         const installedVersion = document.documentElement.dataset.appVersion || ''
         const required = Boolean(overdue || belowMinimumVersion(installedVersion, webRelease?.minimum_supported_version || null))
