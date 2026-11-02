@@ -64,7 +64,7 @@ export default function OtDetailPage({ params }: { params: Promise<{ ot: string 
     if (tab !== 'ahorro') return
     const day = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
     let alive = true
-    void supabase.rpc('consolidation_savings', { p_from: range.from || day(new Date(Date.now() - 365 * 864e5)), p_to: range.to || day(new Date()), p_contract: ot })
+    void supabase.rpc('consolidation_savings_classified', { p_from: range.from || day(new Date(Date.now() - 365 * 864e5)), p_to: range.to || day(new Date()), p_contract: ot })
       .then(({ data: s, error }) => { if (!alive) return; if (error || !s?.success) { toast.error(error ? errorMessage(error) : s?.error); return } setSavings(s as SavingsResult) })
     return () => { alive = false }
   }, [tab, ot, range])
@@ -117,6 +117,20 @@ export default function OtDetailPage({ params }: { params: Promise<{ ot: string 
             {card('Viajes', String(data.trips_total))}
             {card('Pendientes', String(pending.length), pending.length ? 'Ver «Desviaciones y alertas»' : undefined)}
           </div>
+          <section aria-label="Proyección presupuestal al cierre" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+            <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="text-sm font-semibold text-slate-900">Proyección al cierre</h3>
+              <p className="text-[11px] text-slate-600">Solo suma montos registrados: ejecutado + compromisos vigentes. No estima costos que aún no se capturaron.</p></div>
+              <div className="flex flex-wrap gap-1.5 text-[10px]">{data.trips.some(t => t.has_estimate) && <span className="rounded bg-amber-100 px-2 py-1 font-semibold text-amber-900">Incluye combustible estimado</span>}
+                {pending.length > 0 && <span className="rounded bg-amber-100 px-2 py-1 font-semibold text-amber-900">{pending.length} pendiente(s) de regularización</span>}
+                {!pending.length && !data.trips.some(t => t.has_estimate) && <span className="rounded bg-slate-200 px-2 py-1 font-semibold text-slate-700">Sin pendientes detectados</span>}</div>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-3 border-t border-slate-200 pt-2 sm:grid-cols-4">
+              <div><p className="text-[10px] text-slate-500">Ejecutado acumulado</p><p className="text-sm font-semibold tabular-nums">S/ {n(p.consumed_pen)}</p></div>
+              <div><p className="text-[10px] text-slate-500">Comprometido vigente</p><p className="text-sm font-semibold tabular-nums">S/ {n(p.reserved_pen)}</p></div>
+              <div><p className="text-[10px] text-slate-500">Proyección conocida</p><p className="text-sm font-semibold tabular-nums">S/ {n(Number(p.consumed_pen) + Number(p.reserved_pen))}</p></div>
+              <div><p className="text-[10px] text-slate-500">Disponible al límite</p><p className={`text-sm font-semibold tabular-nums ${Number(p.available_to_cap_pen) < 0 ? 'text-red-700' : ''}`}>S/ {n(p.available_to_cap_pen)}</p></div>
+            </div>
+          </section>
           <section className="rounded-xl border border-slate-200 bg-white p-3">
             <h3 className="mb-2 text-sm font-bold">Evolución del ejecutado (acumulado por mes)</h3>
             {!data.series.length ? <p className="text-sm text-slate-500">Sin gastos ejecutados.</p> : <div className="space-y-1">

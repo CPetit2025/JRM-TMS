@@ -10,6 +10,8 @@ const { setupBudget, read, id, fn } = require('./fixtures/budget-setup.cjs')
  try {
   const rpc = async (sql, params = []) => (await db.query(`SELECT ${sql} AS v`, params)).rows[0].v
   await db.exec(`ALTER TABLE contracts ADD COLUMN site_id uuid, ADD COLUMN client_id uuid, ADD COLUMN type text DEFAULT 'CONTRATO', ADD COLUMN created_at timestamptz DEFAULT now();
+   CREATE TABLE sites(id uuid PRIMARY KEY);
+   INSERT INTO sites VALUES ('${id(6)}');
    CREATE TABLE clients(id uuid PRIMARY KEY, business_name text);
    CREATE TABLE transport_margin_overrides(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), scope text, contract_id uuid, client_id uuid, operating_pct numeric,
     reason text, active boolean DEFAULT true, valid_until date);
@@ -65,7 +67,7 @@ const { setupBudget, read, id, fn } = require('./fixtures/budget-setup.cjs')
   for (let i = 0; i < 2; i++) await db.exec(read('supabase/migrations/20261210090000_pendientes_antiguedad_lima.sql'))
   // Cierre final (historial de la OT) y detalle por OT con ampliaciones (idempotentes)
   await db.exec(fn('supabase/migrations/20261111110000_cierre_economico_bandeja.sql', 'economic_documentary_status'))
-  for (const m of ['20261205090000_torre_cierre_final.sql', '20261208090000_control_presupuestal_detalle_ot.sql']) for (let i = 0; i < 2; i++) await db.exec(read('supabase/migrations/' + m))
+  for (const m of ['20261205090000_torre_cierre_final.sql', '20261208090000_control_presupuestal_detalle_ot.sql', '20261218090000_control_presupuestal_portfolio_360.sql']) for (let i = 0; i < 2; i++) await db.exec(read('supabase/migrations/' + m))
 
   const budget = (c, r, x) => db.query(`UPDATE contract_budgets SET reserved_pen = reserved_pen + $2, consumed_pen = consumed_pen + $3 WHERE contract_id = $1`, [c, r, x])
   const used = async c => (await db.query(`SELECT round(reserved_pen,2)::float r, round(consumed_pen,2)::float c FROM contract_budgets WHERE contract_id=$1`, [c])).rows[0]
@@ -233,8 +235,17 @@ const { setupBudget, read, id, fn } = require('./fixtures/budget-setup.cjs')
   await db.exec(`CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$SELECT '${id(99)}'::uuid$$; SELECT set_config('test.perms', 'contratos-servicios', false)`)
 
   // Período: ejecutado inicial + del período = al corte; filtros y paginación
-  m = await moves(id(20), { from: '2000-01-01', to: '2100-01-01' })
+  const periodTo = (await db.query('SELECT current_date::text AS d')).rows[0].d
+  const periodFromDate = new Date(`${periodTo}T00:00:00.000Z`); periodFromDate.setUTCDate(periodFromDate.getUTCDate() - 365)
+  const periodFrom = periodFromDate.toISOString().slice(0, 10)
+  m = await moves(id(20), { from: periodFrom, to: periodTo })
   assert.equal(Number(m.period.closing_consumed_pen), Number(m.explained.consumed_pen))
+  const portfolio = await rpc('budget_portfolio_period($1,$2)', [periodFrom, periodTo])
+  assert.equal(portfolio.success, true, portfolio.error)
+  assert.equal(Number(portfolio.rows.find(r => r.contract_id === id(20)).executed_pen), Number(m.explained.consumed_pen), 'portfolio period matches the OT movement ledger')
+  assert.equal(Number(portfolio.executed_total_pen), portfolio.rows.reduce((sum, row) => sum + Number(row.executed_pen), 0))
+  assert.match((await rpc('budget_portfolio_period($1,$2)', ['2026-02-01', '2026-01-01'])).error, /Período inválido/)
+  assert.match((await rpc('budget_portfolio_period($1,$2)', ['2020-01-01', '2022-01-02'])).error, /máximo 366 días/)
   const page1 = await moves(id(20), { limit: 2 }), page2 = await moves(id(20), { limit: 2, offset: 2 })
   assert.deepEqual([page1.rows.length, page2.rows.length, page1.total], [2, 2, m.total])
   assert.notDeepEqual(page1.rows.map(r => r.id), page2.rows.map(r => r.id))
@@ -248,11 +259,14 @@ const { setupBudget, read, id, fn } = require('./fixtures/budget-setup.cjs')
   assert.deepEqual((await rpc('budget_pending()')).rows, [], 'pending list limited to accessible sites')
   await db.exec(`CREATE OR REPLACE FUNCTION has_tms_read_permission(text) RETURNS boolean LANGUAGE sql STABLE AS $$SELECT false$$; SELECT set_config('test.perms', '', false)`)
   assert.match((await moves(id(20))).error, /Sin acceso/)
+  assert.match((await rpc('budget_portfolio_period($1,$2)', [periodFrom, periodTo])).error, /Sin acceso/)
   assert.match((await rpc('budget_pending()')).error, /Sin acceso/)
 
   await assert.rejects(db.exec(read('supabase/tests/caja_c203_circuito_economico.test.sql')), /CAJA C203 PASS/)
   await db.exec('ROLLBACK').catch(() => {})
   await assert.rejects(db.exec(read('supabase/tests/caja_c207_reglas_d2_d3_d5.test.sql')), /CAJA C207 PASS/)
+  await db.exec('ROLLBACK').catch(() => {})
+  await assert.rejects(db.exec(read('supabase/tests/caja_c214_control_presupuestal_cartera.test.sql')), /CAJA C214 PASS/)
   await db.exec('ROLLBACK').catch(() => {})
   console.log('PASS circuito económico: movimientos explican comprometido y ejecutado sin doble conteo (propia, multi-OT, tercero, sin OT, descarga, Caja, combustible, cancelación, ajuste, cargos, componentes), diferencia histórica expuesta, pendientes, permisos, paginación y flete por OT editable')
  } finally { await db.close() }
