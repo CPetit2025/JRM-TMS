@@ -7,6 +7,7 @@ import { AlertTriangle, ArrowDownUp, BarChart3, Box, CalendarDays, ChevronDown, 
   Route, Scale, Search, Truck, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
+import { PageHeader } from '@/components/ui/page-header'
 import { exportAptXlsx } from '@/lib/apt/export'
 import { receiptUrl } from '@/lib/caja'
 import { formatKm } from '@/lib/odometer'
@@ -155,19 +156,17 @@ function ControlJornada() {
   const ariaSort = (...ks: string[]) => { const hit = ks.find(k => f.orden.startsWith(`${k}:`)); return hit ? f.orden.endsWith(':asc') ? 'ascending' as const : 'descending' as const : undefined }
   // Anchos por contenido: las columnas angostas se ajustan a su dato (w-px) y Conductor / Unidad toma el resto
   const head = (label: React.ReactNode, cls = 'w-px', ...ks: string[]) => <th scope="col" aria-sort={ariaSort(...ks)}
-    className={`sticky top-0 z-20 bg-[#0b2a4a] px-2 py-2.5 text-xs font-bold text-white ${cls}`}>{label}</th>
+    className={`sticky top-0 z-20 bg-slate-50 px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-600 ${cls}`}>{label}</th>
   const numCell = 'w-px whitespace-nowrap px-2 text-right tabular-nums'
-  const sel = 'h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900'
+  const sel = 'h-9 rounded-md border border-slate-300 bg-white px-2.5 text-sm text-slate-800 outline-none focus:border-[#002855] focus:ring-1 focus:ring-[#002855]'
 
-  return <div className="min-w-0 space-y-4">
-    <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#0b2a4a] px-5 py-4 text-white shadow">
-      <div className="flex items-center gap-4"><Truck className="h-11 w-11" aria-hidden /><div><h1 className="text-2xl font-bold leading-tight">Control de Jornada de Transporte</h1>
-        <p className="text-base text-white/85">Seguimiento de unidades, recorridos, carga y costos</p></div></div>
-      <div className="flex flex-wrap items-center gap-2">
+  return <div className="min-w-0 space-y-3">
+    <PageHeader showTitle title="Control de Jornada de Transporte" description="Seguimiento de unidades, recorridos, carga y costos"
+      actions={<>
         <div className="relative">
-          <button type="button" onClick={() => setRangeOpen(o => !o)} aria-expanded={rangeOpen} className="inline-flex h-11 items-center gap-3 rounded-xl bg-white px-4 text-base font-medium text-slate-900 shadow-sm">
-            <CalendarDays className="h-5 w-5 text-[#0b2a4a]" />{shortLong(from)} – {shortLong(to)}<ChevronDown className="h-4 w-4 text-slate-500" /></button>
-          {rangeOpen && <div className="absolute right-0 z-30 mt-2 w-80 space-y-3 rounded-xl border border-slate-200 bg-white p-4 text-slate-900 shadow-xl">
+          <button type="button" onClick={() => setRangeOpen(o => !o)} aria-expanded={rangeOpen} className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 hover:bg-slate-50">
+            <CalendarDays className="h-4 w-4 text-[#002855]" />{shortLong(from)} – {shortLong(to)}<ChevronDown className="h-3.5 w-3.5 text-slate-500" /></button>
+          {rangeOpen && <div className="absolute right-0 z-30 mt-2 w-80 space-y-3 rounded-lg border border-slate-200 bg-white p-3 text-slate-900 shadow-lg">
             <div className="grid grid-cols-2 gap-2">
               <label className="text-xs font-semibold text-slate-600">Desde<input type="date" value={from} max={to} onChange={e => set({ desde: e.target.value })} className={`${sel} mt-1 w-full`} /></label>
               <label className="text-xs font-semibold text-slate-600">Hasta<input type="date" value={to} min={from} onChange={e => set({ hasta: e.target.value })} className={`${sel} mt-1 w-full`} /></label></div>
@@ -175,52 +174,53 @@ function ControlJornada() {
               <button key={k} type="button" onClick={() => { preset(k); setRangeOpen(false) }} className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold hover:bg-slate-50">{label}</button>)}</div>
             <p className="text-[11px] text-slate-500">Toda la flota: hasta 3 meses. Con una unidad: hasta 13 meses.</p></div>}
         </div>
-        <Link href="/flota/reporte-mensual" className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/60 px-4 text-base font-semibold hover:bg-white/10"><BarChart3 className="h-5 w-5" />Reporte mensual</Link>
-        <button type="button" disabled={!rows.length} onClick={exportXlsx} className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/60 px-4 text-base font-semibold hover:bg-white/10 disabled:opacity-50"><Download className="h-5 w-5" />Exportar</button>
-      </div>
-    </header>
+        <Link href="/flota/reporte-mensual" className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 hover:bg-slate-50"><BarChart3 className="h-4 w-4" />Reporte mensual</Link>
+        <button type="button" disabled={!rows.length} onClick={exportXlsx} className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"><Download className="h-4 w-4" />Exportar</button>
+      </>} />
 
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">{kpis.map(k => <div key={k.label} className={`flex items-center gap-4 rounded-2xl border border-slate-200 p-4 shadow-sm ${k.card || 'bg-white'}`}>
-      <span className={`grid h-14 w-14 shrink-0 place-items-center rounded-full ${k.tone}`}>{k.icon}</span>
-      <span className="min-w-0"><span className="block text-sm font-bold text-slate-800">{k.label}</span>
-        <span className={`block text-2xl font-extrabold leading-tight ${k.valueTone || 'text-[#0b2a4a]'}`}>{loading ? '…' : k.value}</span>
-        {k.hint && <span className="block text-[11px] text-slate-500">{k.hint}</span>}</span></div>)}</div>
+    <section aria-label="Indicadores de jornada" className="grid grid-cols-2 divide-x divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white sm:grid-cols-3 sm:divide-y-0 xl:grid-cols-6">
+      {kpis.map(k => <div key={k.label} className="min-w-0 px-2.5 py-2">
+        <span className="block truncate text-[11px] font-medium text-slate-500">{k.label}</span>
+        <span className={`block truncate text-lg font-semibold tabular-nums ${k.valueTone || 'text-slate-900'}`}>{loading ? '…' : k.value}</span>
+        {k.hint && <span className="block truncate text-[10px] text-slate-500" title={k.hint}>{k.hint}</span>}
+      </div>)}
+    </section>
 
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-      <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">Conductor<select value={f.conductor} onChange={e => set({ conductor: e.target.value })} className={`${sel} w-48`}>
+    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-2.5">
+      <label className="text-xs font-semibold text-slate-600">Conductor<select value={f.conductor} onChange={e => set({ conductor: e.target.value })} className={`${sel} mt-1 block w-48`}>
         <option value="">Todos</option>{drivers.map(d => <option key={d} value={d}>{d}</option>)}</select></label>
-      <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">Unidad<select value={f.unidad} onChange={e => set({ unidad: e.target.value })} className={`${sel} w-40`}>
+      <label className="text-xs font-semibold text-slate-600">Unidad<select value={f.unidad} onChange={e => set({ unidad: e.target.value })} className={`${sel} mt-1 block w-40`}>
         <option value="">Todas</option>{plates.map(p => <option key={p.plate} value={p.plate}>{p.plate}{p.type ? ` · ${p.type}` : ''}</option>)}</select></label>
-      <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">Estado<select value={f.estado} onChange={e => set({ estado: e.target.value })} className={`${sel} w-44`}>
+      <label className="text-xs font-semibold text-slate-600">Estado<select value={f.estado} onChange={e => set({ estado: e.target.value })} className={`${sel} mt-1 block w-44`}>
         <option value="">Todos</option>{STATES.map(s => <option key={s} value={s}>{STATUS[s].label}</option>)}</select></label>
-      <label className="relative block w-80 max-w-full"><span className="sr-only">Buscar</span><Search aria-hidden className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por OT, OC, OS, RQ, conductor o placa…" className={`${sel} w-full pl-9`} /></label>
+      <label className="relative block w-80 max-w-full"><span className="sr-only">Buscar</span><Search aria-hidden className="absolute left-3 top-[1.35rem] h-4 w-4 text-slate-400" />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por OT, OC, OS, RQ, conductor o placa…" className={`${sel} mt-1 w-full pl-9`} /></label>
       <div className="ml-auto flex items-center gap-2">
-        <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">Agrupar<select value={view} onChange={e => setView(e.target.value as View)} className="h-10 rounded-lg border border-slate-300 bg-white px-2 text-sm">
+        <label className="text-xs font-semibold text-slate-600">Agrupar<select value={view} onChange={e => setView(e.target.value as View)} className={`${sel} mt-1 block`}>
           <option value="DIA">Por día</option><option value="SEMANA">Por semana</option><option value="MES">Por mes</option></select></label>
-        <div className="inline-flex overflow-hidden rounded-xl border border-slate-300 bg-white">
-          <button type="button" onClick={() => setView('DIA')} aria-pressed className="inline-flex h-10 items-center gap-2 bg-[#0b2a4a] px-4 text-sm font-semibold text-white"><LayoutGrid className="h-4 w-4" />Tabla</button>
-          <button type="button" disabled={!rows.length} onClick={() => rows[0] && router.push(detailHref(rows[0]))} className="inline-flex h-10 items-center gap-2 px-4 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50"><List className="h-4 w-4" />Detalle</button></div>
+        <div className="inline-flex self-end overflow-hidden rounded-md border border-slate-300 bg-white">
+          <button type="button" onClick={() => setView('DIA')} aria-pressed={view === 'DIA'} className={`inline-flex h-9 items-center gap-1.5 px-3 text-sm font-medium ${view === 'DIA' ? 'bg-[#002855] text-white' : 'text-slate-700 hover:bg-slate-50'}`}><LayoutGrid className="h-4 w-4" />Tabla</button>
+          <button type="button" disabled={!rows.length} onClick={() => rows[0] && router.push(detailHref(rows[0]))} className="inline-flex h-9 items-center gap-1.5 border-l border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"><List className="h-4 w-4" />Detalle</button></div>
       </div>
     </div>
 
-    {long && !f.unidad ? <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-600">Para toda la flota el período es de hasta 3 meses. Elija una unidad para ver un período mayor.</p>
-      : loading && !fleet ? <p className="flex items-center justify-center gap-2 rounded-xl bg-white p-10 text-sm text-slate-600"><Loader2 className="h-4 w-4 animate-spin" />Cargando jornadas…</p>
+    {long && !f.unidad ? <p className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-center text-sm text-slate-600">Para toda la flota el período es de hasta 3 meses. Elija una unidad para ver un período mayor.</p>
+      : loading && !fleet ? <p className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white p-8 text-sm text-slate-600"><Loader2 className="h-4 w-4 animate-spin" />Cargando jornadas…</p>
       : !fleet ? null
-      : view !== 'DIA' ? <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+      : view !== 'DIA' ? <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="min-w-full text-sm">
-          <thead className="bg-[#0b2a4a] text-left text-xs font-bold uppercase text-white"><tr>
-            <th className="px-3 py-3">{view === 'MES' ? 'Mes' : 'Semana'}</th><th className="px-3 py-3 text-right">Km recorridos</th><th className="px-3 py-3">Fuente</th>
-            <th className="px-3 py-3 text-right">Jornadas</th><th className="px-3 py-3 text-right">Rutas</th><th className="px-3 py-3 text-right">Servicios</th><th className="px-3 py-3 text-right">Peso</th>
-            <th className="px-3 py-3">OT</th><th className="px-3 py-3">OS</th><th className="px-3 py-3">OC</th><th className="px-3 py-3">RQ</th></tr></thead>
+          <thead className="bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-600"><tr>
+            <th className="px-2.5 py-2">{view === 'MES' ? 'Mes' : 'Semana'}</th><th className="px-2.5 py-2 text-right">Km recorridos</th><th className="px-2.5 py-2">Fuente</th>
+            <th className="px-2.5 py-2 text-right">Jornadas</th><th className="px-2.5 py-2 text-right">Rutas</th><th className="px-2.5 py-2 text-right">Servicios</th><th className="px-2.5 py-2 text-right">Peso</th>
+            <th className="px-2.5 py-2">OT</th><th className="px-2.5 py-2">OS</th><th className="px-2.5 py-2">OC</th><th className="px-2.5 py-2">RQ</th></tr></thead>
           <tbody className="divide-y divide-slate-100">{periods.map(p => <tr key={p.key} className={p.days ? 'align-top hover:bg-slate-50' : 'align-top text-slate-400'}>
-            <td className="whitespace-nowrap px-3 py-3 font-bold text-[#0b2a4a]">{p.label}</td><td className="px-3 py-3 text-right font-semibold">{p.km ? formatKm(Math.round(p.km * 10) / 10) : '—'}</td>
-            <td className="px-3 py-3 text-xs text-slate-600">{sourceText(p) || '—'}{p.daysNoKm > 0 && <span className="block text-amber-700">{p.daysNoKm} jornada(s) operando sin km</span>}</td>
-            <td className="px-3 py-3 text-right">{p.days || '—'}</td><td className="px-3 py-3 text-right">{p.routes || '—'}</td><td className="px-3 py-3 text-right">{p.services || '—'}</td>
-            <td className="whitespace-nowrap px-3 py-3 text-right">{p.tn ? tn(p.tn) : '—'}</td>
-            {[p.ot, p.os, p.oc, p.rq].map((s, i) => <td key={i} className="max-w-56 px-3 py-3 text-xs">{s.size ? [...s].join(', ') : '—'}</td>)}</tr>)}</tbody>
+            <td className="whitespace-nowrap px-2.5 py-2 font-semibold text-[#002855]">{p.label}</td><td className="px-2.5 py-2 text-right font-semibold tabular-nums">{p.km ? formatKm(Math.round(p.km * 10) / 10) : '—'}</td>
+            <td className="px-2.5 py-2 text-xs text-slate-600">{sourceText(p) || '—'}{p.daysNoKm > 0 && <span className="block text-amber-700">{p.daysNoKm} jornada(s) operando sin km</span>}</td>
+            <td className="px-2.5 py-2 text-right tabular-nums">{p.days || '—'}</td><td className="px-2.5 py-2 text-right tabular-nums">{p.routes || '—'}</td><td className="px-2.5 py-2 text-right tabular-nums">{p.services || '—'}</td>
+            <td className="whitespace-nowrap px-2.5 py-2 text-right tabular-nums">{p.tn ? tn(p.tn) : '—'}</td>
+            {[p.ot, p.os, p.oc, p.rq].map((s, i) => <td key={i} className="max-w-56 px-2.5 py-2 text-xs">{s.size ? [...s].join(', ') : '—'}</td>)}</tr>)}</tbody>
         </table></div>
-      : <div className="max-h-[72vh] overflow-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+      : <div className="max-h-[72vh] overflow-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full border-collapse text-sm">
           <thead><tr>
             {head(<span className="sr-only">Desplegar</span>, 'w-px pl-2 pr-1')}
@@ -246,18 +246,18 @@ function ControlJornada() {
               const [AlertIcon, alertTone] = alerts.length === 1 ? ALERT_ICON[alerts[0].key] || [AlertTriangle, 'text-amber-600'] : [AlertTriangle, 'text-amber-700']
               return <Fragment key={k}>
                 <tr className={`border-b border-slate-100 ${isOpen ? 'bg-blue-50' : i % 2 ? 'bg-slate-50/70' : 'bg-white'} ${idle ? 'text-slate-500' : 'text-slate-800'} hover:bg-blue-50/60`}>
-                  <td className="w-px py-2.5 pl-2 pr-1"><button type="button" aria-expanded={!!isOpen} aria-label={isOpen ? 'Ocultar detalle' : 'Ver detalle'} onClick={toggle}
+                  <td className="w-px py-1.5 pl-2 pr-1"><button type="button" aria-expanded={!!isOpen} aria-label={isOpen ? 'Ocultar detalle' : 'Ver detalle'} onClick={toggle}
                     className="grid h-7 w-7 place-items-center rounded-md text-[#0b2a4a] hover:bg-slate-200/70">{isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button></td>
-                  <td className="w-px whitespace-nowrap px-2 font-semibold text-slate-900">{fmtDate(d.date)}</td>
-                  <td className="w-full max-w-0 px-2"><div className="flex min-w-0 items-center gap-2">
+                  <td className="w-px whitespace-nowrap px-2 py-1.5 font-semibold text-slate-900">{fmtDate(d.date)}</td>
+                  <td className="w-full max-w-0 px-2 py-1.5"><div className="flex min-w-0 items-center gap-2">
                     <span className="min-w-0 truncate font-semibold uppercase" title={drivers.join(', ') || undefined}>{drivers[0] || (idle ? 'Sin operación' : '—')}</span>
                     {drivers.length > 1 && <span className="shrink-0 text-xs font-semibold text-slate-500" title={drivers.join(', ')}>+{drivers.length - 1}</span>}
                     <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-bold text-slate-700 ring-1 ring-slate-200" title={d.unit_type ? `${d.plate} · ${d.unit_type}` : d.plate}>
                       <Truck className="h-3.5 w-3.5 text-slate-500" aria-hidden />{d.plate}</span>
                     {d.checklists > 0 && <span role="img" className="shrink-0" title={`Checklist (${d.checklists}): ${d.operative === false ? 'con observaciones' : 'operativa'}`} aria-label={`Checklist ${d.operative === false ? 'con observaciones' : 'operativa'}`}>
                       {d.operative === false ? <ClipboardX className="h-4 w-4 text-red-600" /> : <ClipboardCheck className="h-4 w-4 text-emerald-600" />}</span>}</div></td>
-                  <td className="w-px px-2"><span className="block max-w-[8rem] truncate text-xs font-semibold text-slate-700" title={refList.join(', ') || undefined}>{refList.join(' · ') || '—'}</span></td>
-                  <td className={`${numCell} font-bold text-slate-900`}>{n(d.km_odo)}</td>
+                  <td className="w-px px-2 py-1.5"><span className="block max-w-[8rem] truncate text-xs font-semibold text-slate-700" title={refList.join(', ') || undefined}>{refList.join(' · ') || '—'}</span></td>
+                  <td className={`${numCell} py-1.5 font-bold text-slate-900`}>{n(d.km_odo)}</td>
                   <td className={`${numCell} hidden min-[1400px]:table-cell`}>{n(d.km_gps)}</td>
                   <td className={numCell}>{d.routes || '—'}</td>
                   <td className={numCell}>{d.tn ? n(d.tn) : '—'}</td>
@@ -280,24 +280,24 @@ function ControlJornada() {
           </tbody>
         </table></div>}
 
-    {fleet && <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-[#0b2a4a] px-4 py-2.5 text-white">
-        <h2 className="text-base font-bold">OT, OS, OC y RQ atendidas</h2>
+    {fleet && <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2">
+        <h2 className="text-sm font-semibold text-slate-800">OT, OS, OC y RQ atendidas</h2>
         <div className="flex flex-wrap gap-1">{(['TODAS', 'OT', 'OS', 'OC', 'RQ'] as const).map(k => <button key={k} type="button" onClick={() => setRefKind(k)} aria-pressed={refKind === k}
-          className={`rounded-full px-3 py-1 text-xs font-semibold ${refKind === k ? 'bg-white text-[#0b2a4a]' : 'bg-white/15 text-white hover:bg-white/25'}`}>{k === 'TODAS' ? `Todas (${refs.length})` : `${k} (${refs.filter(r => r.kind === k).length})`}</button>)}</div>
+          className={`rounded-md px-2.5 py-1 text-xs font-semibold ${refKind === k ? 'bg-[#002855] text-white' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}>{k === 'TODAS' ? `Todas (${refs.length})` : `${k} (${refs.filter(r => r.kind === k).length})`}</button>)}</div>
       </div>
       {refs.filter(r => refKind === 'TODAS' || r.kind === refKind).length === 0 ? <p className="p-4 text-sm text-slate-500">Sin {refKind === 'TODAS' ? 'OT ni referencias' : refKind} en el período.</p> :
         <div className="overflow-x-auto"><table className="min-w-full text-sm">
-          <thead className="bg-slate-100 text-left text-xs font-bold uppercase text-slate-700"><tr><th className="px-3 py-2">Tipo</th><th className="px-3 py-2">Número</th><th className="px-3 py-2">Cliente</th>
-            <th className="px-3 py-2">OT</th><th className="px-3 py-2 text-right">Servicios</th><th className="px-3 py-2 text-right">Rutas</th><th className="px-3 py-2 text-right">Km medidos</th><th className="px-3 py-2 text-right">Costos S/</th><th className="px-3 py-2">Fechas</th><th className="px-3 py-2 text-right">Peso</th></tr></thead>
+          <thead className="bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-600"><tr><th className="px-2.5 py-2">Tipo</th><th className="px-2.5 py-2">Número</th><th className="px-2.5 py-2">Cliente</th>
+            <th className="px-2.5 py-2">OT</th><th className="px-2.5 py-2 text-right">Servicios</th><th className="px-2.5 py-2 text-right">Rutas</th><th className="px-2.5 py-2 text-right">Km medidos</th><th className="px-2.5 py-2 text-right">Costos S/</th><th className="px-2.5 py-2">Fechas</th><th className="px-2.5 py-2 text-right">Peso</th></tr></thead>
           <tbody className="divide-y divide-slate-100">{refs.filter(r => refKind === 'TODAS' || r.kind === refKind).map(r => <tr key={`${r.kind}:${r.number}`} className="hover:bg-slate-50">
-            <td className="px-3 py-2"><span className="rounded-md bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-800">{r.kind}</span></td>
-            <td className="px-3 py-2 font-bold text-slate-900">{r.number}</td><td className="px-3 py-2">{[...r.clients].join(', ') || '—'}</td>
-            <td className="px-3 py-2 text-xs">{r.kind === 'OT' ? '—' : [...r.ots].join(', ') || '—'}</td>
-            <td className="px-3 py-2 text-right">{r.services}</td><td className="px-3 py-2 text-right">{r.routes.size}</td>
-            <td className="px-3 py-2 text-right">{r.km ? formatKm(r.km) : '—'}</td><td className="px-3 py-2 text-right">{r.cost ? `S/ ${r.cost.toLocaleString('es-PE', { minimumFractionDigits: 2 })}` : '—'}</td>
-            <td className="whitespace-nowrap px-3 py-2">{r.first === r.last ? shortDate(r.first) : `${shortDate(r.first)} – ${shortDate(r.last)}`}</td>
-            <td className="whitespace-nowrap px-3 py-2 text-right">{r.kg ? `${Math.round(r.kg).toLocaleString('es-PE')} kg` : '—'}</td></tr>)}</tbody></table></div>}
+            <td className="px-2.5 py-1.5"><span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-700">{r.kind}</span></td>
+            <td className="px-2.5 py-1.5 font-semibold text-slate-900">{r.number}</td><td className="px-2.5 py-1.5">{[...r.clients].join(', ') || '—'}</td>
+            <td className="px-2.5 py-1.5 text-xs">{r.kind === 'OT' ? '—' : [...r.ots].join(', ') || '—'}</td>
+            <td className="px-2.5 py-1.5 text-right tabular-nums">{r.services}</td><td className="px-2.5 py-1.5 text-right tabular-nums">{r.routes.size}</td>
+            <td className="px-2.5 py-1.5 text-right tabular-nums">{r.km ? formatKm(r.km) : '—'}</td><td className="px-2.5 py-1.5 text-right tabular-nums">{r.cost ? `S/ ${r.cost.toLocaleString('es-PE', { minimumFractionDigits: 2 })}` : '—'}</td>
+            <td className="whitespace-nowrap px-2.5 py-1.5">{r.first === r.last ? shortDate(r.first) : `${shortDate(r.first)} – ${shortDate(r.last)}`}</td>
+            <td className="whitespace-nowrap px-2.5 py-1.5 text-right tabular-nums">{r.kg ? `${Math.round(r.kg).toLocaleString('es-PE')} kg` : '—'}</td></tr>)}</tbody></table></div>}
     </div>}
     <p className="text-xs text-slate-600"><b>Estado:</b> Abierta (inicio sin cierre) · En revisión (fin inferido del día siguiente, o alertas de odómetro, GPS, km sin ruta o checklist) · Cerrada (cierre registrado sin alertas). <b>Carga:</b> APT validado por guía (una guía compartida cuenta una vez) o el peso declarado. <b>Ahorro:</b> solo servicios valorizados; no es el margen de la partida.</p>
   </div>
