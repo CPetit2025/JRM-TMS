@@ -16,6 +16,7 @@ DECLARE
   v_missing_km integer;
   v_settlement_id uuid;
   v_status text;
+  v_decision jsonb;
   v_detail jsonb;
   v_tax numeric := 661.85;
   v_subtotal numeric := 3676.92;
@@ -127,39 +128,29 @@ BEGIN
     RAISE EXCEPTION 'La liquidación de octubre ya está aprobada; requiere reversa autorizada antes de reemplazarla';
   END IF;
 
-  IF v_settlement_id IS NULL THEN
-    INSERT INTO public.lease_settlements
-      (contract_id, vehicle_id, period_start, period_end, days, hours_used, km_used, downtime_days,
-       base_amount, excess_km, excess_km_amount, excess_hours, excess_hours_amount, downtime_discount,
-       other_discounts, penalties, consumptions, additional_costs, subtotal, tax, total, status, detail, notes)
-    VALUES
-      (v_contract, v_vehicle, DATE '2026-10-01', DATE '2026-10-31', 31, 0, v_km, 0,
-       3676.92, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-       v_subtotal, v_tax, v_subtotal + v_tax, 'BORRADOR',
-       jsonb_build_object('success', true, 'vehicle_plate', 'CJS716', 'period_start', '2026-10-01',
-         'period_end', '2026-10-31', 'days', 31, 'km_used', v_km, 'base_amount', v_subtotal,
-         'included_km', 3900, 'excess_km', 0, 'excess_km_amount', 0,
-         'dias_laborados', 16, 'viajes_sin_km', 15,
-         'downtime_days', 0, 'downtime_discount', 0, 'km_fuente', 'VALORIZACION',
-         'viajes', v_detail, 'archivo_fuente', 'VALORIZACION ALQUILER CJS716 H100 - CIERRE OCTUBRE v1.xlsx'),
-       'Octubre 2026: exclusivamente hoja BD CJS716 del Excel adjunto. 31 filas; 2,833.48 km informados; 15 filas sin km.');
-  ELSE
-    UPDATE public.lease_settlements SET
-      period_end = DATE '2026-10-31', days = 31, hours_used = 0, km_used = v_km, downtime_days = 0,
-      base_amount = v_subtotal, excess_km = 0, excess_km_amount = 0,
-      excess_hours = 0, excess_hours_amount = 0, downtime_discount = 0,
-      other_discounts = 0, penalties = 0, consumptions = 0, additional_costs = 0,
-      subtotal = v_subtotal, tax = v_tax, total = v_subtotal + v_tax,
-      detail = jsonb_build_object('success', true, 'vehicle_plate', 'CJS716', 'period_start', '2026-10-01',
-        'period_end', '2026-10-31', 'days', 31, 'km_used', v_km, 'base_amount', v_subtotal,
-        'included_km', 3900, 'excess_km', 0, 'excess_km_amount', 0,
-        'dias_laborados', 16, 'viajes_sin_km', 15,
-        'downtime_days', 0, 'downtime_discount', 0, 'km_fuente', 'VALORIZACION',
-        'viajes', v_detail, 'archivo_fuente', 'VALORIZACION ALQUILER CJS716 H100 - CIERRE OCTUBRE v1.xlsx'),
-      notes = concat_ws(E'\n', notes,
-        'Octubre 2026 corregido: exclusivamente hoja BD CJS716 del Excel adjunto. 31 filas; 2,833.48 km informados; 15 filas sin km.')
-    WHERE id = v_settlement_id;
+  IF v_settlement_id IS NOT NULL THEN
+    v_decision := public.decide_lease_settlement(v_settlement_id, 'ANULADA',
+      'Reemplazada por la valorización del Excel de octubre 2026, filtrada exclusivamente para CJS716.');
+    IF NOT COALESCE((v_decision ->> 'success')::boolean, false) THEN
+      RAISE EXCEPTION 'No se pudo anular el borrador previo de octubre: %', v_decision ->> 'error';
+    END IF;
   END IF;
+
+  INSERT INTO public.lease_settlements
+    (contract_id, vehicle_id, period_start, period_end, days, hours_used, km_used, downtime_days,
+     base_amount, excess_km, excess_km_amount, excess_hours, excess_hours_amount, downtime_discount,
+     other_discounts, penalties, consumptions, additional_costs, subtotal, tax, total, status, detail, notes)
+  VALUES
+    (v_contract, v_vehicle, DATE '2026-10-01', DATE '2026-10-31', 31, 0, v_km, 0,
+     3676.92, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     v_subtotal, v_tax, v_subtotal + v_tax, 'BORRADOR',
+     jsonb_build_object('success', true, 'vehicle_plate', 'CJS716', 'period_start', '2026-10-01',
+       'period_end', '2026-10-31', 'days', 31, 'km_used', v_km, 'base_amount', v_subtotal,
+       'included_km', 3900, 'excess_km', 0, 'excess_km_amount', 0,
+       'dias_laborados', 16, 'viajes_sin_km', 15,
+       'downtime_days', 0, 'downtime_discount', 0, 'km_fuente', 'VALORIZACION',
+       'viajes', v_detail, 'archivo_fuente', 'VALORIZACION ALQUILER CJS716 H100 - CIERRE OCTUBRE v1.xlsx'),
+     'Octubre 2026: exclusivamente hoja BD CJS716 del Excel adjunto. 31 filas; 2,833.48 km informados; 15 filas sin km.');
 END $$;
 
 COMMIT;
