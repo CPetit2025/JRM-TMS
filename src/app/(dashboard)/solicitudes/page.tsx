@@ -734,7 +734,7 @@ export default function SolicitudesPage() {
       toast.error(`Ingrese el número de ${newRequest.reference_type}.`)
       return
     }
-    if (newRequest.reference_type && !newRequest.reference_supplier_id) {
+    if (newRequest.reference_type && !referenceSupplierId) {
       toast.error(`Seleccione el proveedor de la referencia ${newRequest.reference_type}.`)
       return
     }
@@ -743,7 +743,7 @@ export default function SolicitudesPage() {
     try {
       const { data: saved, error } = await supabase.rpc('save_transport_request_full', {
         p_request_id: editingRequestId,
-        p_payload: { ...newRequest, purchase_order: newRequest.reference_type === 'OC' ? newRequest.reference_number : newRequest.reference_type ? '' : newRequest.purchase_order, required_at: requiredAt, delivery_zone: requiresDeliveryLeadTime ? newRequest.delivery_zone : null, contract_id: newRequest.contract_id || null, service_cost: (isCustomerPickup || isPickupRequest) ? 0 : newRequest.service_cost, destination_acknowledged: destinationAcknowledged },
+        p_payload: { ...newRequest, reference_supplier_id: newRequest.reference_type ? referenceSupplierId : '', purchase_order: newRequest.reference_type === 'OC' ? newRequest.reference_number : newRequest.reference_type ? '' : newRequest.purchase_order, required_at: requiredAt, delivery_zone: requiresDeliveryLeadTime ? newRequest.delivery_zone : null, contract_id: newRequest.contract_id || null, service_cost: (isCustomerPickup || isPickupRequest) ? 0 : newRequest.service_cost, destination_acknowledged: destinationAcknowledged },
         p_unloading: unloadingAnswer === 'SI' ? unloading.map(x => ({ concept: x.concept, estimated_pen: Number(x.estimated_pen) || 0, description: x.description || null,
           estimated_source: x.source === 'MANUAL' ? 'MANUAL' : null, manual_reason: x.source === 'MANUAL' ? (x.manual_reason || '').trim() : null })) : [],
         p_components: selected.map(c => ({
@@ -901,6 +901,8 @@ export default function SolicitudesPage() {
   }, [requests, selectedClient])
 
   const needsSupplier = requiresSupplier({ request_type: newRequest.request_type, attention_mode: newRequest.attention_mode })
+  // En recojo y punto a punto el proveedor de la OC/OS/RQ es el proveedor de origen (paso 3): no se pide dos veces.
+  const referenceSupplierId = needsSupplier ? newRequest.supplier_id : newRequest.reference_supplier_id
   const changeRequestType = (type: string) => {
     if (type === newRequest.request_type) return
     if (type === 'DESPACHO') {
@@ -933,7 +935,7 @@ export default function SolicitudesPage() {
     Boolean(requiredAt) && requiresDeliveryLeadTime && leadTimeEvaluation.enough === false && { label: 'Anticipación mínima', target: 'req-fecha' },
     !newRequest.cargo_description.trim() && { label: 'Glosa de la carga', target: 'req-carga' },
     Boolean(newRequest.reference_type) && !newRequest.reference_number.trim() && { label: `Número de ${newRequest.reference_type}`, target: 'req-carga' },
-    Boolean(newRequest.reference_type) && !newRequest.reference_supplier_id && { label: `Proveedor de ${newRequest.reference_type}`, target: 'req-carga' },
+    Boolean(newRequest.reference_type) && !needsSupplier && !newRequest.reference_supplier_id && { label: `Proveedor de ${newRequest.reference_type}`, target: 'req-carga' },
     !unloadingAnswer && { label: 'Descarga especial (Sí/No)', target: 'req-descarga' },
   ].filter(Boolean) as { label: string; target: string }[])
   const referencesWithoutSupplier = requests.filter(request => request.reference_type && !request.reference_supplier_id)
@@ -1339,7 +1341,7 @@ export default function SolicitudesPage() {
                       className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:ring-2 focus:ring-[#002855] disabled:bg-slate-100"
                       value={newRequest.reference_number} onChange={e => setNewRequest({ ...newRequest, reference_number: e.target.value })} />
                   </div>
-                  {newRequest.reference_type && <label className="mt-3 block text-sm font-medium text-slate-700">Proveedor de {newRequest.reference_type} *
+                  {newRequest.reference_type && !needsSupplier && <label className="mt-3 block text-sm font-medium text-slate-700">Proveedor de {newRequest.reference_type} *
                     <select required value={newRequest.reference_supplier_id} onChange={e => setNewRequest({ ...newRequest, reference_supplier_id: e.target.value })} className={field}>
                       <option value="">Seleccione el proveedor asociado a la referencia</option>
                       {suppliers.map(s => <option key={s.id} value={s.id}>{s.business_name} · RUC {s.tax_id}</option>)}
