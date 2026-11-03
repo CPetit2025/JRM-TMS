@@ -194,7 +194,7 @@ El módulo Contratos usa el Actualizable y el Stock como fuente de verificación
   (`erp_contract_altas`) y se avisa a Contratos y OTs (categoría Cumplimiento). En esa lista, «Dar de alta
   automáticamente ahora» muestra cuántas se crearán y pide confirmación.
 - **Peso de la OT**: el peso de cada documento (OT madre, subcontrato o error) es la suma de cantidad del contrato ×
-  peso unitario del SKU (del Stock o, si falta, del inventario) en sus líneas con peso. Se completa en la OT cuando no
+  peso unitario del SKU (ver «Peso y volumen por SKU») en sus líneas con peso. Se completa en la OT cuando no
   tiene peso o el valor es automático; un peso escrito a mano no se reemplaza. Si algunas líneas no tienen peso unitario,
   el peso es parcial. Se recalcula con cada Actualizable o Stock nuevo.
 - **Alta asistida**: «ERP sin alta» lista los documentos del ERP que no existen en el TMS (por defecto de OT activas) y
@@ -211,3 +211,20 @@ Funciones: `erp_ref_contratos` (por lotes de hasta 5.000 códigos), `erp_ref_doc
 `erp_cliente_correccion_aplicar_cerradas`, `erp_cliente_correccion_revertir`, `erp_contratos_config_json` y
 `erp_contratos_config_set`. Tablas: `erp_contract_settings`, `contract_client_corrections`; columna
 `contracts.garantia_id`, `erp_contract_altas`, `erp_contract_pesos`. Pruebas: C146, C149 y C151.
+
+## Peso y volumen por SKU
+
+- **Peso**: cada Stock cargado actualiza el último peso unitario conocido de sus SKU. Si un SKU ya no está en bodega, se
+  sigue usando ese peso; si nunca vino en un Stock, el del inventario.
+- **Volumen (m³)**: por SKU se leen largo × ancho × alto de la descripción y del código (el último tramo del código es el
+  largo en mm; «3 X 3» sin unidad son pulgadas; en «5 X 3 X 4.5MM» la sección va en pulgadas y el espesor en mm). Es la
+  envolvente de la pieza: sirve para el espacio en la unidad, no para el material. Solo cuenta si el SKU es por unidad y
+  la densidad que resulta con su peso está entre 50 y 7.900 kg/m³ (el acero es 7.850): así se descartan las medidas mal
+  leídas de la descripción, que es texto libre. Sin peso no se puede comprobar y el SKU queda sin m³.
+- **Volumen de la OT**: suma de cantidad del contrato × m³ por unidad (sin servicios). Se completa en la OT como el peso,
+  sin pisar un volumen escrito a mano; si hay líneas sin m³ el volumen es parcial.
+- **Densidad sugerida por familia** (Programación › Cubicaje): mediana de kg/m³ de los SKU de la familia con m³
+  confiable. Es una referencia para fijar la densidad de la familia («Usar» la copia; se guarda con «Guardar»).
+
+Tablas `erp_sku_medidas` y `erp_contract_volumenes`. Pruebas: C217 y `scripts/test-erp-sku-medidas.cjs` (PGlite, con
+descripciones reales).

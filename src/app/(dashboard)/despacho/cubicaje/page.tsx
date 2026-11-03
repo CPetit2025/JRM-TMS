@@ -10,7 +10,9 @@ import { fmtDateTime } from '@/lib/apt/format'
 
 // Densidad de carga (kg por m³) por familia de producto del ERP. Con ella «Armar ruta» convierte el peso de cada OT en
 // volumen y lo compara con la capacidad de la unidad. El LPN estándar por familia queda pendiente.
-type Familia = { familia: string; kg_por_m3: number | null; notas: string | null; updated_at: string | null; kg_stock: number; en_erp: boolean }
+// kg_por_m3_sugerido: mediana de los SKU de la familia con m³ confiable (medidas del ERP comprobadas con su peso)
+type Familia = { familia: string; kg_por_m3: number | null; notas: string | null; updated_at: string | null; kg_stock: number; en_erp: boolean
+  kg_por_m3_sugerido?: number | null; skus_medidos?: number }
 type Lista = { success: true; puede_editar: boolean; familias: Familia[] }
 
 const supabase = createClient()
@@ -78,7 +80,10 @@ export default function CubicajePage() {
                   <td className="px-3 py-2">{data?.puede_editar
                     ? <input type="number" min="0" step="0.01" inputMode="decimal" aria-label={`kg por m³ de ${f.familia}`} value={value.kg_por_m3} onChange={ev => set({ kg_por_m3: ev.target.value })} placeholder="Sin medida"
                         className="w-32 rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#002855]" />
-                    : f.kg_por_m3 ?? <span className="font-semibold text-amber-700">Sin medida</span>}</td>
+                    : f.kg_por_m3 ?? <span className="font-semibold text-amber-700">Sin medida</span>}
+                    {f.kg_por_m3_sugerido != null && <p className="mt-1 text-xs text-slate-500">Sugerida: {f.kg_por_m3_sugerido.toLocaleString('es-PE')} ({f.skus_medidos} SKU con medidas)
+                      {data?.puede_editar && String(f.kg_por_m3_sugerido) !== value.kg_por_m3 && <button type="button" onClick={() => set({ kg_por_m3: String(f.kg_por_m3_sugerido) })}
+                        className="ml-1 font-semibold text-[#002855] underline">Usar</button>}</p>}</td>
                   <td className="px-3 py-2">{data?.puede_editar
                     ? <input type="text" aria-label={`Notas de ${f.familia}`} value={value.notas} onChange={ev => set({ notas: ev.target.value })} placeholder="Opcional"
                         className="w-full min-w-40 rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#002855]" />
