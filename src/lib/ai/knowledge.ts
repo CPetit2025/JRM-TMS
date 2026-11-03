@@ -7,7 +7,7 @@ import { HOME_ITEM, NAV_SECTIONS, SEGUIMIENTO_ITEM, normalize, type Has } from '
 // La documentación técnica (infraestructura, despliegue, auditorías de seguridad, diseño) queda fuera.
 
 const DOCS_DIR = path.join(process.cwd(), 'docs')
-const EXCLUDED = [/^infra-connections\.md$/, /^configurar-openai-vercel\.md$/, /^despliegue-automatico\.md$/, /^auditorias\//, /^ui\//,
+const EXCLUDED = [/^infra-connections\.md$/, /^configurar-openai-vercel\.md$/, /^despliegue-automatico\.md$/, /^carga-erp-automatica\.md$/, /^auditorias\//, /^ui\//,
   /^cmms\/00-auditoria-actual\.md$/, /^cmms\/99-auditoria-final\.md$/]
 const STOP = new Set(('como que cual cuales donde cuando para por con sin una uno unos unas los las del de la el en y o a al se su sus es son '
   + 'esta este esto estos estas hay hace hacer puedo puede quiero necesito tengo ver veo mas muy le lo me mi mis ya si no tambien sobre entre').split(' '))
