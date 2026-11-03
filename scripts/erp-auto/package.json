@@ -1,0 +1,9 @@
+{
+  "name": "jrm-tms-erp-auto",
+  "private": true,
+  "type": "module",
+  "description": "Carga automática de los Excel del ERP a /apt/datos (ver docs/carga-erp-automatica.md)",
+  "dependencies": {
+    "playwright-core": "1.56.1"
+  }
+}
