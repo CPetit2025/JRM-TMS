@@ -71,6 +71,7 @@ BEGIN
     AND km_used = 4148.90 AND subtotal = 4160.48 AND tax = 748.89 AND total = 4909.37
   ORDER BY created_at DESC LIMIT 1;
   IF r IS NOT NULL AND jsonb_array_length(r -> 'viajes') = 56
+     AND (r ->> 'excess_km_rate')::numeric = 1.9428 AND (r ->> 'dias_laborados')::integer = 26
      AND (SELECT count(*) FROM public.lease_usage_records WHERE vehicle_id = c.vehicle_id AND fecha BETWEEN DATE '2026-10-01' AND DATE '2026-10-31'
           AND fuente = 'VALORIZACION_EXCEL_CIERRE_2026' AND km IS NULL) = 17
   THEN v_pass := v_pass + 1;
