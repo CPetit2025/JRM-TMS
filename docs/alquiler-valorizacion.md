@@ -11,7 +11,7 @@ Del Excel `VALORIZACION_ALQUILER_CJS716_H100_-_AGOSTO_SETIEMBRE.xlsx`:
 | Hoja BD CJS716 (145 viajes: guía, OT/OC, área, conductor, cliente, zona, destino, km) | `lease_usage_records` |
 | GPS diario de setiembre (30 días: km, odómetro, tiempo, paradas) | `lease_gps_days` |
 | Condiciones del contrato | `vehicle_lease_contracts` (contrato de CJS716 desde 01/08/2026) |
-| Liquidaciones | `lease_settlements` de agosto, setiembre y octubre en **BORRADOR** |
+| Liquidaciones | `lease_settlements`; los períodos sin aprobación quedan en **BORRADOR** y los cierres aprobados se conservan |
 
 La recarga trae las 145 filas de `BD CJS716` con placa CJS716: 37 viajes en agosto, 52 en setiembre y 56 en octubre.
 Agosto y setiembre conservan los mismos totales de km de las liquidaciones previas; octubre corrige una carga parcial
@@ -40,10 +40,12 @@ que la valorización no cobra. La liquidación los muestra como "km fuera de rut
 ## Octubre 2026: excepción de fuente Excel
 
 La migración `20261220100000_cjs716_valorizacion_excel_ago_oct.sql` recarga los tres meses desde Excel y filtra las 145 filas
-de `BD CJS716` cuya placa es CJS716. Conserva trazabilidad anulando los borradores anteriores y crea tres liquidaciones
-actualizadas en estado borrador, considerando 26 días laborados para cada periodo. El cálculo considera 4.148,90 km, 248,90 km adicionales
+de `BD CJS716` cuya placa es CJS716. Conserva trazabilidad anulando los borradores anteriores y crea o actualiza liquidaciones en borrador, considerando 26 días
+laborados para cada periodo no aprobado. Las liquidaciones APROBADAS no se modifican ni duplican; se conserva su instantánea
+aprobada y las filas importadas quedan disponibles como valorización del Excel para consultas y cálculos posteriores. El cálculo considera 4.148,90 km, 248,90 km adicionales
 a 1,9428 (S/ 483,56), alquiler mensual S/ 3.676,92, subtotal S/ 4.160,48 e IGV S/ 748,89; total S/ 4.909,37.
-Los 17 kilometrajes vacíos permanecen faltantes y los fletes al cliente no se cargan al alquiler.
+Los 17 kilometrajes vacíos permanecen faltantes y los fletes al cliente no se cargan al alquiler. El anexo PDF enumera los 56 viajes
+en páginas continuas e incluye guía y OT/OC por fila, además del cliente, destino, conductor y km disponibles en la fuente.
 
 ## Desde noviembre: km por rutas del sistema
 
@@ -60,7 +62,7 @@ El GPS del arrendador o las lecturas de odómetro quedan como control (km fuera 
 ## Pendientes
 
 - Completar el RUC de Transportes Valeriani en Maestros › Proveedores logísticos. Se creó con `PEND-VALERIANI`.
-- Aprobar las liquidaciones de agosto, setiembre y octubre. Debe hacerlo un usuario distinto al que las registró, en
+- Aprobar las liquidaciones que sigan en borrador (setiembre y octubre, si no están aprobadas). Debe hacerlo un usuario distinto al que las registró, en
   Flota › Liquidaciones de alquiler.
 
 ## Documento, envío por correo y alerta del día 1
