@@ -2,7 +2,7 @@
 
 Migración `20261005120000_alquiler_valorizacion.sql` · prueba `supabase/tests/caja_c33_alquiler_valorizacion.test.sql`.
 
-## Qué se cargó (solo agosto y setiembre 2026)
+## Qué se cargó (agosto, setiembre y octubre 2026)
 
 Del Excel `VALORIZACION_ALQUILER_CJS716_H100_-_AGOSTO_SETIEMBRE.xlsx`:
 
