@@ -13,7 +13,11 @@ Del Excel `VALORIZACION_ALQUILER_CJS716_H100_-_AGOSTO_SETIEMBRE.xlsx`:
 | Condiciones del contrato | `vehicle_lease_contracts` (contrato de CJS716 desde 01/08/2026) |
 | Liquidaciones | `lease_settlements` de agosto y setiembre en **BORRADOR** |
 
-Estos registros se usan **solo** para agosto y setiembre. Desde octubre los km salen del sistema.
+Estos registros se usan para agosto y setiembre. Para octubre de 2026 se usa una excepción de cierre: solo las 31 filas
+de CJS716 en la hoja `BD CJS716` del archivo `VALORIZACION ALQUILER CJS716 H100 - CIERRE OCTUBRE v1.xlsx`.
+Esas filas contienen 2.833,48 km informados y 15 filas sin kilometraje; los vacíos se conservan como faltantes y no
+se completan con rutas, GPS u odómetros del sistema. La pestaña `Liquidación` del Excel suma varias placas y no se usa
+como total de CJS716. Desde noviembre de 2026 la fuente vuelve a ser el sistema.
 
 ## Factores del Excel
 
@@ -33,7 +37,14 @@ Estos registros se usan **solo** para agosto y setiembre. Desde octubre los km s
 **Observación:** en setiembre el GPS del arrendador registra 4.727,38 km. Hay 746,38 km en días sin viaje registrado,
 que la valorización no cobra. La liquidación los muestra como "km fuera de ruta" para revisarlos con el arrendador.
 
-## Desde octubre: km por rutas del sistema
+## Octubre 2026: excepción de fuente Excel
+
+La migración `20261219091000_cjs716_octubre_excel.sql` filtra exclusivamente `CJS716`, importa su detalle de octubre,
+asocia el contrato `ALQ-261004-1DC1` con Transportes Valeriani (según el archivo), anula con trazabilidad un borrador
+previo si existe y crea la liquidación corregida en borrador. Con 2.833,48 km frente a 3.900 km incluidos, no hay exceso; el importe es el alquiler
+mensual pactado de S/ 3.676,92 antes de IGV. Los fletes al cliente no se cargan al alquiler.
+
+## Desde noviembre: km por rutas del sistema
 
 El contrato tiene `km_source = 'RUTA'`. `calculate_lease_settlement` toma los km así:
 
