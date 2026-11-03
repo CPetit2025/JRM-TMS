@@ -76,8 +76,11 @@ BEGIN
 
  -- La programación genera compromisos, no servicios realizados ni pagos.
  SELECT array_agg(id) INTO old_services FROM public.contract_services WHERE dispatch_id=route;
+ INSERT INTO public.dispatch_document_references(dispatch_id,request_id,doc_type,document_number,created_by)
+ VALUES(route,req,'GUIA_REMISION','ZZ58-100',actor),(route,req2,'GUIA_REMISION','ZZ58-200',actor),(route,req3,'GUIA_REMISION','ZZ58-300',actor);
  result_context:=public.get_service_registry_context(old_services);
- IF jsonb_array_length(result_context)<>3 OR EXISTS(SELECT 1 FROM jsonb_array_elements(result_context) e WHERE e->>'stage'<>'COMPROMETIDO' OR jsonb_array_length(e->'request_numbers')<>1) THEN RAISE EXCEPTION 'CAJA C58 FAIL: estado/identidad de ruta mixta'; END IF;
+ IF jsonb_array_length(result_context)<>3 OR EXISTS(SELECT 1 FROM jsonb_array_elements(result_context) e WHERE e->>'stage'<>'COMPROMETIDO' OR jsonb_array_length(e->'request_numbers')<>1 OR jsonb_array_length(e->'guide_numbers')<>1) THEN RAISE EXCEPTION 'CAJA C58 FAIL: estado/identidad/guía de ruta mixta'; END IF;
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(result_context) e WHERE NOT (e->'guide_numbers' @> jsonb_build_array(CASE (SELECT request_id FROM public.dispatch_request_freight WHERE service_id=(e->>'service_id')::uuid) WHEN req THEN 'ZZ58-100' WHEN req2 THEN 'ZZ58-200' ELSE 'ZZ58-300' END))) THEN RAISE EXCEPTION 'CAJA C58 FAIL: la guía de otra parada/OT se mezcla con el servicio'; END IF;
  SELECT jsonb_agg(to_jsonb(b) ORDER BY contract_id) INTO budget_before FROM public.contract_budgets b WHERE contract_id IN(ct,ct2);
  -- Simulación de vínculo perdido: se restituye sin descontar de nuevo la reserva.
  UPDATE public.dispatch_request_freight SET service_id=NULL WHERE dispatch_id=route;
