@@ -47,6 +47,7 @@ try {
   $env:TMS_USUARIO = $cred.UserName
   $env:TMS_CLAVE = $cred.GetNetworkCredential().Password
   $extra = @(); if ($Revisar) { $extra = @('--revisar') }
+  [Console]::OutputEncoding = [Text.Encoding]::UTF8  # Node escribe UTF-8; sin esto los acentos salen rotos en el log
   & $node (Join-Path $PSScriptRoot 'cargar.mjs') @extra $cfg.actualizable $cfg.stock 2>&1 | ForEach-Object { "$_" }
   if ($LASTEXITCODE) { throw 'La carga en el TMS falló' }
   $codigo = 0
