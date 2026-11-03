@@ -9,6 +9,9 @@ BEGIN
  IF v_err IS NULL AND position('Adjunte la foto del tablero' IN pg_get_functiondef(
      'public.delivery_submit_driver_with_odometer(uuid,uuid,text[],text,text,text,uuid,timestamptz,numeric,text)'::regprocedure)) > 0 THEN
   v_err := 'la parada aún exige foto del odómetro'; END IF;
+ -- Cerrar jornada envía p_photo NULL: la función solo delega en unit_odometer_record
+ IF v_err IS NULL AND pg_get_functiondef('public.close_driver_workday(uuid,text,text,timestamptz)'::regprocedure) ~* '(p_photo IS NULL|foto)' THEN
+  v_err := 'close_driver_workday aún exige foto'; END IF;
  IF v_err IS NULL AND position('inicial con foto' IN pg_get_functiondef('public.start_dispatch_route(uuid,numeric,numeric)'::regprocedure)) > 0 THEN
   v_err := 'el inicio sin GPS aún pide foto'; END IF;
 
