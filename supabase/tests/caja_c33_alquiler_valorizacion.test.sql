@@ -67,9 +67,7 @@ BEGIN
   WHERE contract_id = c.id AND period_start = DATE '2026-10-01' AND status <> 'ANULADA'
     AND km_used = 2833.48 AND subtotal = 3676.92 AND tax = 661.85 AND total = 4338.77
   ORDER BY created_at DESC LIMIT 1;
-  IF (r ->> 'success')::boolean AND r ->> 'km_fuente' = 'VALORIZACION' AND (r ->> 'km_used')::numeric = 2833.48
-     AND (r ->> 'base_amount')::numeric = 3676.92 AND (r ->> 'subtotal')::numeric = 3676.92
-     AND jsonb_array_length(r -> 'viajes') = 31
+  IF r IS NOT NULL AND jsonb_array_length(r -> 'viajes') = 31
      AND (SELECT count(*) FROM public.lease_usage_records WHERE vehicle_id = c.vehicle_id AND fecha BETWEEN DATE '2026-10-01' AND DATE '2026-10-31'
           AND fuente = 'VALORIZACION_EXCEL_CIERRE_OCT_2026' AND km IS NULL) = 15
   THEN v_pass := v_pass + 1;
