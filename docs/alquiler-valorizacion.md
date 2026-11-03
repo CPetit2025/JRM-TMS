@@ -41,7 +41,7 @@ que la valorización no cobra. La liquidación los muestra como "km fuera de rut
 
 La migración `20261220100000_cjs716_valorizacion_excel_ago_oct.sql` recarga los tres meses desde Excel y filtra las 145 filas
 de `BD CJS716` cuya placa es CJS716. Conserva trazabilidad anulando los borradores anteriores y crea tres liquidaciones
-actualizadas en estado borrador. El cálculo considera 4.148,90 km, 248,90 km adicionales
+actualizadas en estado borrador, considerando 26 días laborados para cada periodo. El cálculo considera 4.148,90 km, 248,90 km adicionales
 a 1,9428 (S/ 483,56), alquiler mensual S/ 3.676,92, subtotal S/ 4.160,48 e IGV S/ 748,89; total S/ 4.909,37.
 Los 17 kilometrajes vacíos permanecen faltantes y los fletes al cliente no se cargan al alquiler.
 
