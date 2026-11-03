@@ -54,7 +54,8 @@ BEGIN
   SELECT count(*) INTO n FROM public.lease_settlements
   WHERE contract_id = c.id AND status <> 'ANULADA'
     AND ((period_start = DATE '2026-08-01' AND subtotal = 4440.44) OR (period_start = DATE '2026-09-01' AND subtotal = 3834.29));
-  IF n = 2 THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T4 liquidaciones: ' || n); END IF;
+  IF n = 2 AND (SELECT count(*) FROM public.lease_settlements WHERE contract_id = c.id AND period_start IN (DATE '2026-08-01', DATE '2026-09-01', DATE '2026-10-01') AND status <> 'ANULADA' AND detail ->> 'dias_laborados' = '26') = 3
+  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T4 liquidaciones/días (ago-set/oct): ' || n); END IF;
 
   -- T5
   IF (SELECT count(*) FROM public.lease_usage_records WHERE vehicle_id = c.vehicle_id AND fecha BETWEEN DATE '2026-08-01' AND DATE '2026-09-30' AND fuente = 'VALORIZACION_EXCEL_CIERRE_2026') = 89
