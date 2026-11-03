@@ -91,7 +91,7 @@ export default function ChecklistPage() {
     const { data: result, error } = await supabase.rpc('submit_driver_preuse', { p_operation: operation.operation, p_revision: revision, p_captured_at: operation.captured, p_data: data })
     if (error || !result?.success) throw error || new Error(result?.error || 'No se pudo guardar la inspección')
     if (result.already_registered) toast.warning('Ya existía un checklist para esta unidad y día. Se conserva el registro original.')
-    else toast[result.can_operate ? 'success' : 'warning'](result.can_operate ? 'Inspección registrada. La ruta se inicia por separado.' : 'Inspección registrada. La unidad no está habilitada para operar; revisa las observaciones y Mantenimiento.')
+    else toast[result.can_operate ? 'success' : 'warning'](result.can_operate ? 'Inspección registrada. La ruta se inicia por separado.' : 'Inspección registrada. La unidad no está habilitada para operar: Mantenimiento recibió el aviso y, al resolverlo, podrás reinspeccionar.')
    }
    if (storageKey) localStorage.removeItem(storageKey)
    setRevision(null); setRetry(null); await refresh(); await load()
