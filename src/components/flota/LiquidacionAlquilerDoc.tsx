@@ -297,7 +297,10 @@ export function LiquidacionDocumento({ d }: { d: Doc }) {
                 {rows.map((v, j) => (
                   <tr key={j} style={{ background: j % 2 ? '#fafbfc' : '#fff' }}>
                     <Td muted>{i * VIAJES_POR_PAGINA + j + 1}</Td><Td clip>{fecha(v.fecha)}</Td>
-                    <Td clip>{v.ref && v.ref !== v.tipo ? v.ref : /RECOJO/i.test(v.tipo || '') ? 'Recojo OC' : v.ref || '—'}</Td>
+                    <Td clip>
+                      <div>{v.guia || (v.ref && v.ref !== v.tipo ? v.ref : /RECOJO/i.test(v.tipo || '') ? 'Recojo OC' : v.ref) || '—'}</div>
+                      {v.ot_oc && <div style={{ color: MUTED, fontSize: 8.5 }}>OT/OC: {v.ot_oc}</div>}
+                    </Td>
                     <Td clip>{v.cliente || (v.tipo ? cap(String(v.tipo).toLowerCase()) : '—')}</Td><Td clip>{v.destino ? titulo(String(v.destino)) : '—'}</Td>
                     <Td muted clip>{v.conductor ? titulo(String(v.conductor)) : '—'}</Td><Td right>{v.km != null ? km(v.km) : '—'}</Td>
                   </tr>
