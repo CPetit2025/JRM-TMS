@@ -8,16 +8,16 @@ Del Excel `VALORIZACION_ALQUILER_CJS716_H100_-_AGOSTO_SETIEMBRE.xlsx`:
 
 | Dato | Destino |
 |---|---|
-| Hoja BD CJS716 (89 viajes: guía, OT/OC, área, conductor, cliente, zona, destino, km) | `lease_usage_records` |
+| Hoja BD CJS716 (145 viajes: guía, OT/OC, área, conductor, cliente, zona, destino, km) | `lease_usage_records` |
 | GPS diario de setiembre (30 días: km, odómetro, tiempo, paradas) | `lease_gps_days` |
 | Condiciones del contrato | `vehicle_lease_contracts` (contrato de CJS716 desde 01/08/2026) |
-| Liquidaciones | `lease_settlements` de agosto y setiembre en **BORRADOR** |
+| Liquidaciones | `lease_settlements` de agosto, setiembre y octubre en **BORRADOR** |
 
-Los 89 registros de agosto y setiembre ya coinciden con la hoja `BD CJS716` del Excel de cierre (37 viajes en agosto y
-52 en setiembre). Para octubre se corrigió una carga parcial que había omitido viajes del 1 al 10: se importan las 56 filas
-de octubre cuyo campo `PLACA DE VEHICULO` es CJS716, con 4.148,90 km informados y 17 filas sin kilometraje. Los vacíos
-se conservan como faltantes y no se completan con rutas, GPS u odómetros del sistema. La pestaña `Liquidación` del Excel
-se usa solo como referencia; la suma de sus fórmulas abarca otras unidades. Desde noviembre de 2026 la fuente vuelve al sistema.
+La recarga trae las 145 filas de `BD CJS716` con placa CJS716: 37 viajes en agosto, 52 en setiembre y 56 en octubre.
+Agosto y setiembre conservan los mismos totales de km de las liquidaciones previas; octubre corrige una carga parcial
+que había omitido viajes del 1 al 10. En octubre hay 4.148,90 km informados y 17 filas sin kilometraje. Los vacíos se
+conservan como faltantes y no se completan con rutas, GPS u odómetros del sistema. La pestaña `Liquidación` se usa como
+referencia de cálculo; su agregado no reemplaza el filtro de placa por fila. Desde noviembre la fuente vuelve al sistema.
 
 ## Factores del Excel
 
@@ -39,9 +39,9 @@ que la valorización no cobra. La liquidación los muestra como "km fuera de rut
 
 ## Octubre 2026: excepción de fuente Excel
 
-La migración `20261220100000_cjs716_octubre_excel_completo.sql` reemplaza solo el detalle de octubre etiquetado como
-importación Excel y filtra las 56 filas de `BD CJS716` cuya placa es CJS716. Conserva trazabilidad anulando el borrador
-parcial anterior y crea una liquidación corregida en estado borrador. El cálculo considera 4.148,90 km, 248,90 km adicionales
+La migración `20261220100000_cjs716_valorizacion_excel_ago_oct.sql` recarga los tres meses desde Excel y filtra las 145 filas
+de `BD CJS716` cuya placa es CJS716. Conserva trazabilidad anulando los borradores anteriores y crea tres liquidaciones
+actualizadas en estado borrador. El cálculo considera 4.148,90 km, 248,90 km adicionales
 a 1,9428 (S/ 483,56), alquiler mensual S/ 3.676,92, subtotal S/ 4.160,48 e IGV S/ 748,89; total S/ 4.909,37.
 Los 17 kilometrajes vacíos permanecen faltantes y los fletes al cliente no se cargan al alquiler.
 
@@ -60,7 +60,7 @@ El GPS del arrendador o las lecturas de odómetro quedan como control (km fuera 
 ## Pendientes
 
 - Completar el RUC de Transportes Valeriani en Maestros › Proveedores logísticos. Se creó con `PEND-VALERIANI`.
-- Aprobar las liquidaciones de agosto y setiembre. Debe hacerlo un usuario distinto al que las registró, en
+- Aprobar las liquidaciones de agosto, setiembre y octubre. Debe hacerlo un usuario distinto al que las registró, en
   Flota › Liquidaciones de alquiler.
 
 ## Documento, envío por correo y alerta del día 1
