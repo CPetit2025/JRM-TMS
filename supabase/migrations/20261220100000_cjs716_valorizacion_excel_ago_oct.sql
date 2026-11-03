@@ -1,4 +1,5 @@
 -- Reimporta agosto, setiembre y octubre 2026 exclusivamente desde la hoja BD CJS716 del Excel de cierre.
+-- Los cierres APROBADOS permanecen inmutables; solo se reemplazan borradores y se crean liquidaciones donde no hay cierre aprobado.
 -- 145 filas (37/52/56), km 4,293/3,981/4,148.90. Octubre incluye los viajes del 1 al 10 omitidos en la carga parcial.
 BEGIN;
 
@@ -43,13 +44,14 @@ BEGIN
     WHERE contract_id = v_contract AND period_start IN (DATE '2026-08-01', DATE '2026-09-01', DATE '2026-10-01')
       AND status <> 'ANULADA' ORDER BY period_start
   LOOP
-    IF v_period.status <> 'BORRADOR' THEN
-      RAISE EXCEPTION 'La liquidación % está en estado %; requiere reversa autorizada antes de recargar Excel', v_period.period_start, v_period.status;
-    END IF;
-    v_decision := public.decide_lease_settlement(v_period.id, 'ANULADA',
-      'Reemplazada por la recarga de la hoja BD CJS716 del Excel de cierre 2026.');
-    IF NOT COALESCE((v_decision ->> 'success')::boolean, false) THEN
-      RAISE EXCEPTION 'No se pudo anular el borrador de %: %', v_period.period_start, v_decision ->> 'error';
+    IF v_period.status = 'BORRADOR' THEN
+      v_decision := public.decide_lease_settlement(v_period.id, 'ANULADA',
+        'Reemplazada por la recarga de la hoja BD CJS716 del Excel de cierre 2026.');
+      IF NOT COALESCE((v_decision ->> 'success')::boolean, false) THEN
+        RAISE EXCEPTION 'No se pudo anular el borrador de %: %', v_period.period_start, v_decision ->> 'error';
+      END IF;
+    ELSIF v_period.status <> 'APROBADA' THEN
+      RAISE EXCEPTION 'Estado de liquidación inesperado para %: %', v_period.period_start, v_period.status;
     END IF;
   END LOOP;
 
@@ -229,14 +231,20 @@ BEGIN
     (DATE '2026-10-01', DATE '2026-10-31', 31, 26)
   ) AS p(period_start, period_end, days, labor_days)
   LOOP
+    -- No crear una segunda liquidación ni modificar la instantánea aprobada de ese mes.
+    IF EXISTS (SELECT 1 FROM public.lease_settlements WHERE contract_id=v_contract AND period_start=v_period.period_start AND status='APROBADA') THEN
+      CONTINUE;
+    END IF;
     SELECT count(*), sum(km), count(*) FILTER (WHERE km IS NULL)
     INTO v_count, v_km, v_missing FROM public.lease_usage_records
     WHERE vehicle_id=v_vehicle AND fecha BETWEEN v_period.period_start AND v_period.period_end
       AND fuente='VALORIZACION_EXCEL_CIERRE_2026';
     SELECT COALESCE(jsonb_agg(jsonb_build_object(
-      'fecha', fecha, 'ref', COALESCE(guia, tipo_operacion), 'ot_oc', ot_oc,
-      'cliente', cliente, 'destino', destino, 'tipo', tipo_operacion, 'conductor', conductor,
-      'km', km, 'km_fuente', 'VALORIZACION_EXCEL_CIERRE_2026'
+      'fecha', fecha, 'guia', guia, 'ref', COALESCE(guia, tipo_operacion), 'ot_oc', ot_oc,
+      'area', area, 'cliente', cliente, 'zona', zona, 'destino', destino,
+      'tipo', tipo_operacion, 'conductor', conductor, 'licencia', licencia,
+      'km', km, 'km_entrega', km_entrega, 'propiedad', propiedad,
+      'observaciones', observaciones, 'km_fuente', 'VALORIZACION_EXCEL_CIERRE_2026'
     ) ORDER BY fecha, guia NULLS LAST, ot_oc NULLS LAST), '[]'::jsonb)
     INTO v_detail FROM public.lease_usage_records
     WHERE vehicle_id=v_vehicle AND fecha BETWEEN v_period.period_start AND v_period.period_end

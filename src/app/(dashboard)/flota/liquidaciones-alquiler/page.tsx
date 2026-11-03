@@ -249,11 +249,11 @@ function Valorizacion({ s }: { s: Row }) {
           <div className="max-h-80 overflow-auto print:max-h-none">
             <DataTable className="w-full text-xs">
               <thead className="sticky top-0 bg-slate-50 text-slate-500"><tr>
-                <th className="p-2 text-left">Fecha</th><th className="p-2 text-left">Guía / viaje</th><th className="p-2 text-left">Cliente / destino</th><th className="p-2 text-right">Km</th><th className="p-2 text-left">Fuente</th>
+                <th className="p-2 text-left">Fecha</th><th className="p-2 text-left">Guía / viaje · OT/OC</th><th className="p-2 text-left">Cliente / destino</th><th className="p-2 text-right">Km</th><th className="p-2 text-left">Fuente</th>
               </tr></thead>
               <tbody className="divide-y">{viajes.map((v, i) => (
                 <tr key={i}>
-                  <td className="p-2 whitespace-nowrap">{v.fecha}</td><td className="p-2">{v.ref || '—'}</td>
+                  <td className="p-2 whitespace-nowrap">{v.fecha}</td><td className="p-2"><div>{v.guia || v.ref || '—'}</div>{v.ot_oc && <div className="text-xs text-slate-500">OT/OC: {v.ot_oc}</div>}</td>
                   <td className="p-2">{[v.cliente, v.destino].filter(Boolean).join(' · ') || '—'}</td>
                   <td className="p-2 text-right">{v.km != null ? km(v.km) : '—'}</td><td className="p-2">{v.km_fuente}</td>
                 </tr>))}

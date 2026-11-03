@@ -16,7 +16,7 @@ END $$;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_temp TO authenticated;
 
 DO $test$
-DECLARE v_user uuid; r_p uuid; r_n uuid; c record; r jsonb; ago jsonb; sep jsonb; v_fail text[] := '{}'; v_pass int := 0; n int; v_rep text; v_provider text;
+DECLARE v_user uuid; r_p uuid; r_n uuid; c record; r jsonb; ago jsonb; sep jsonb; oct jsonb; v_fail text[] := '{}'; v_pass int := 0; n int; v_rep text; v_provider text;
 BEGIN
   SELECT id INTO v_user FROM public.profiles WHERE id IN (SELECT u2.id FROM auth.users u2)
     AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) ORDER BY id LIMIT 1;
@@ -54,8 +54,7 @@ BEGIN
   SELECT count(*) INTO n FROM public.lease_settlements
   WHERE contract_id = c.id AND status <> 'ANULADA'
     AND ((period_start = DATE '2026-08-01' AND subtotal = 4440.44) OR (period_start = DATE '2026-09-01' AND subtotal = 3834.29));
-  IF n = 2 AND (SELECT count(*) FROM public.lease_settlements WHERE contract_id = c.id AND period_start IN (DATE '2026-08-01', DATE '2026-09-01', DATE '2026-10-01') AND status <> 'ANULADA' AND detail ->> 'dias_laborados' = '26') = 3
-  THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T4 liquidaciones/días (ago-set/oct): ' || n); END IF;
+  IF n = 2 THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T4 liquidaciones: ' || n); END IF;
 
   -- T5
   IF (SELECT count(*) FROM public.lease_usage_records WHERE vehicle_id = c.vehicle_id AND fecha BETWEEN DATE '2026-08-01' AND DATE '2026-09-30' AND fuente = 'VALORIZACION_EXCEL_CIERRE_2026') = 89
@@ -70,15 +69,19 @@ BEGIN
   WHERE contract_id = c.id AND period_start = DATE '2026-10-01' AND status <> 'ANULADA'
     AND km_used = 4148.90 AND subtotal = 4160.48 AND tax = 748.89 AND total = 4909.37
   ORDER BY created_at DESC LIMIT 1;
+  oct := r;
   IF r IS NOT NULL AND jsonb_array_length(r -> 'viajes') = 56
      AND (r ->> 'excess_km_rate')::numeric = 1.9428 AND (r ->> 'dias_laborados')::integer = 26
+     AND EXISTS (SELECT 1 FROM jsonb_array_elements(r -> 'viajes') v
+                 WHERE v ->> 'fecha' = '2026-10-01' AND v ->> 'guia' = 'T005-0199194'
+                   AND v ->> 'ot_oc' = '57700' AND v ? 'licencia' AND v ? 'km_entrega')
      AND (SELECT count(*) FROM public.lease_usage_records WHERE vehicle_id = c.vehicle_id AND fecha BETWEEN DATE '2026-10-01' AND DATE '2026-10-31'
           AND fuente = 'VALORIZACION_EXCEL_CIERRE_2026' AND km IS NULL) = 17
   THEN v_pass := v_pass + 1;
   ELSE v_fail := v_fail || ('T6 octubre: ' || left(r::text, 200)); END IF;
   v_rep := 'ago ' || (ago ->> 'subtotal') || ' (' || (ago ->> 'km_used') || ' km), set ' || (sep ->> 'subtotal') || ' (' || (sep ->> 'km_used')
         || ' km, GPS ' || (sep ->> 'km_gps') || ', fuera de ruta ' || (sep ->> 'km_fuera_de_ruta') || '), oct a la fecha '
-        || COALESCE(r ->> 'km_used', '?') || ' km en ' || COALESCE(jsonb_array_length(r -> 'viajes')::text, '?') || ' viajes';
+        || COALESCE(oct ->> 'km_used', '?') || ' km en ' || COALESCE(jsonb_array_length(oct -> 'viajes')::text, '?') || ' viajes';
 
   -- T7
   UPDATE public.vehicle_lease_contracts SET km_source = 'ODOMETRO' WHERE id = c.id;
