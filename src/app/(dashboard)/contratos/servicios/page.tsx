@@ -86,7 +86,12 @@ const OPEN_ROUTE = ['PROGRAMADO', 'EN_CURSO', 'EN RUTA', 'ESPERANDO_AUTORIZACION
 // Posición de la partida (control presupuestal): tope real de la OT, nivel y lo autorizado por Gerencia
 type BudgetPosition = { contract_id: string; cap_pen: number; level: string; authorized_over_cap_pen?: number }
 
-interface RegistryContext { service_id: string; dispatch_number: string | null; request_numbers: string[]; operation_state: string | null; stage: 'COMPROMETIDO' | 'REALIZADO' | 'ANULADO' | 'REGISTRO_MANUAL' | 'OTRA_SEDE' }
+interface RegistryContext { service_id: string; dispatch_number: string | null; request_numbers: string[]; guide_numbers: string[]; operation_state: string | null; stage: 'COMPROMETIDO' | 'REALIZADO' | 'ANULADO' | 'REGISTRO_MANUAL' | 'OTRA_SEDE' }
+function serviceGuides(service: Pick<ContractService, 'id' | 'referral_guide'>, registry: Record<string, RegistryContext>) {
+  const values = [...(service.referral_guide || '').split(','), ...(registry[service.id]?.guide_numbers || [])]
+    .map(value => value.trim()).filter(Boolean)
+  return values.filter((value, index) => values.findIndex(candidate => candidate.toLocaleUpperCase('es-PE') === value.toLocaleUpperCase('es-PE')) === index)
+}
 const stageLabels: Record<RegistryContext['stage'], string> = { COMPROMETIDO: 'Comprometido', REALIZADO: 'Realizado', ANULADO: 'Anulado', REGISTRO_MANUAL: 'Registro manual', OTRA_SEDE: 'Ruta de otra sede' }
 const stageTone: Record<RegistryContext['stage'], StatusTone> = { COMPROMETIDO: 'warning', REALIZADO: 'success', ANULADO: 'danger', REGISTRO_MANUAL: 'neutral', OTRA_SEDE: 'neutral' }
 
@@ -522,7 +527,7 @@ export default function ContractServicesPage() {
     fetchData()
   }
 
-  const erpGuias = useErpGuiasLote(services.map(srv => ({ id: srv.id, ot: srv.contracts?.code, guias: srv.referral_guide })))
+  const erpGuias = useErpGuiasLote(services.map(srv => ({ id: srv.id, ot: srv.contracts?.code, guias: serviceGuides(srv, registryContext).join(',') })))
   const erpOts = useErpContratos(services.map(srv => srv.contracts?.code || ''))
   const erpMatches = (srv: ContractService) => {
     if (filterErp === 'TODOS') return true
@@ -537,7 +542,7 @@ export default function ContractServicesPage() {
     }
   }
   const filteredServices = services.filter(srv => {
-    const searchString = `${srv.contracts?.code} ${srv.contracts?.clients?.business_name} ${srv.service_type} ${srv.category} ${srv.description} ${srv.plate} ${srv.driver_name} ${srv.provider_name} ${srv.provider_ruc} ${srv.referral_guide || ''}`.toLowerCase()
+    const searchString = `${srv.contracts?.code} ${srv.contracts?.clients?.business_name} ${srv.service_type} ${srv.category} ${srv.description} ${srv.plate} ${srv.driver_name} ${srv.provider_name} ${srv.provider_ruc} ${serviceGuides(srv, registryContext).join(' ')}`.toLowerCase()
     const matchesSearch = searchTerm ? searchString.includes(searchTerm.toLowerCase()) : true
     
     const srvDate = new Date(srv.service_date)
@@ -565,7 +570,7 @@ export default function ContractServicesPage() {
       case 'cliente': return srv.contracts?.clients?.business_name || ''
       case 'servicio': return srv.service_type || ''
       case 'placa': return srv.plate || ''
-      case 'guia': return srv.referral_guide || ''
+      case 'guia': return serviceGuides(srv, registryContext).join(', ')
       case 'ton': return tonInfo(srv, pesoApt[srv.id]).ton ?? -1
       case 'monto': return Number(srv.amount_pen || 0)
       case 'saldo': return partidaOf(srv.contract_id)?.balance ?? Number.NEGATIVE_INFINITY
@@ -736,8 +741,8 @@ export default function ContractServicesPage() {
                       {srv.plate || '-'}
                     </td>
                     <td className="text-sm text-slate-700">
-                      {srv.referral_guide ? (() => {
-                        const guias = srv.referral_guide.split(',').map(g => g.trim()).filter(Boolean)
+                      {serviceGuides(srv, registryContext).length ? (() => {
+                        const guias = serviceGuides(srv, registryContext)
                         return <span className="inline-flex items-center gap-1 whitespace-nowrap">
                           <button type="button" title="Ver los SKUs de la guía" onClick={e => { e.stopPropagation(); setGuiaAbierta(guias[0]) }}
                             className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-xs font-semibold text-blue-700 underline-offset-2 hover:bg-blue-100 hover:underline">{guias[0]}</button>
@@ -1131,23 +1136,23 @@ export default function ContractServicesPage() {
 
             <div className="bg-white p-3 rounded border border-slate-200">
               <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Guías de Remisión</span>
-              {viewingService.referral_guide ? (
+              {serviceGuides(viewingService, registryContext).length ? (
                 <div className="flex flex-wrap gap-2 mt-1">
-                  {viewingService.referral_guide.split(',').map((gr: string, idx: number) => (
+                  {serviceGuides(viewingService, registryContext).map((gr: string, idx: number) => (
                     <button key={idx} type="button" onClick={() => setGuiaAbierta(gr.trim())} title="Ver los SKUs de la guía"
                       className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded text-sm font-semibold hover:bg-blue-100 hover:underline">
                       {gr.trim()}
                     </button>
                   ))}
-                  {viewingService.referral_guide.split(',').filter((x: string) => x.trim()).length > 1 && (
-                    <button type="button" onClick={() => setGuiaAbierta(viewingService.referral_guide || null)}
+                  {serviceGuides(viewingService, registryContext).length > 1 && (
+                    <button type="button" onClick={() => setGuiaAbierta(serviceGuides(viewingService, registryContext).join(','))}
                       className="px-2 py-1 rounded text-sm font-bold text-[#002855] hover:underline">Ver todas</button>
                   )}
                 </div>
               ) : (
                 <span className="text-slate-400 text-sm italic">Sin guías registradas</span>
               )}
-              {viewingService.referral_guide && <div className="mt-2"><ErpGuiasValidacion guias={viewingService.referral_guide.split(',')} ot={viewingService.contracts?.code} /></div>}
+              {serviceGuides(viewingService, registryContext).length > 0 && <div className="mt-2"><ErpGuiasValidacion guias={serviceGuides(viewingService, registryContext)} ot={viewingService.contracts?.code} /></div>}
             </div>
             {viewingService.contracts?.code && <ErpOtReferencia ot={viewingService.contracts.code} />}
 
