@@ -137,3 +137,9 @@ test('a saved checklist unlocks the new operating day when the driver leaves the
  assert.equal(tree.root.findAllByType('button').find(b=>text(b)==='Confirmar unidad e iniciar inspección').props.disabled,false)
  await act(async()=>tree.unmount())
 })
+test('item ranking counts Malo before Regular and lists the affected units once',()=>{
+ const mark=(row,code,response)=>({...row,answers:row.answers.map(a=>a.code===code?{...a,response}:a)})
+ const items=preuse.PREUSE_FORMAT.items
+ const ranked=helpers.preuseItemRanking([mark(rows[0],'i11','R'),mark(mark(rows[1],'i01','M'),'i11','M'),mark(rows[0],'i11','M')],items)
+ assert.deepEqual(ranked.map(r=>[r.code,r.bad,r.regular,r.plates.join()]),[['i11',2,1,'BDJ-943,F3R838'],['i01',1,0,'F3R838']])
+})

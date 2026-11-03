@@ -22,3 +22,11 @@ export function sortPreuse(rows: PreuseInspection[], sort: PreuseSort) {
     return direction * collator.compare(sort.key === 'result' ? preuseResult(a) : a[sort.key], sort.key === 'result' ? preuseResult(b) : b[sort.key])
   })
 }
+// Ítems con más respuestas Malo / Regular en los registros consultados (recurrencia por unidad)
+export function preuseItemRanking(rows: PreuseInspection[], items: { code: string; text: string }[], limit = 5) {
+  return items.map(item => {
+    const hits = rows.filter(row => row.answers.some(a => a.code === item.code && (a.response === 'M' || a.response === 'R')))
+    return { ...item, bad: hits.filter(row => row.answers.some(a => a.code === item.code && a.response === 'M')).length, regular: hits.filter(row => row.answers.some(a => a.code === item.code && a.response === 'R')).length,
+      plates: [...new Set(hits.map(row => row.vehicle_plate))].sort() }
+  }).filter(item => item.bad + item.regular > 0).sort((a, b) => b.bad - a.bad || b.regular - a.regular).slice(0, limit)
+}
