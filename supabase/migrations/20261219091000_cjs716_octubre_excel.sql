@@ -64,7 +64,7 @@ BEGIN
      cliente, zona, destino, km, km_entrega, propiedad, observaciones)
   SELECT v_vehicle, x.fecha, 'VALORIZACION_EXCEL_CIERRE_OCT_2026', x.tipo, x.guia, x.ot_oc,
          x.area, x.conductor, x.licencia, x.cliente, x.zona, x.destino,
-         x.km, x.km_entrega, x.propiedad,
+         x.km, x.km_entrega::numeric, x.propiedad,
          CASE WHEN x.km IS NULL THEN concat_ws(' · ', x.observaciones, 'KM vacío en el Excel') ELSE x.observaciones END
   FROM (VALUES
       (DATE '2026-10-12', 'RECOJO DE ORDENES DE COMPRA', 'TE01-0928', 'OC57724', 'Compras', 'CAYTUIRO  TAPIA ALVARO', 'Q43501327', NULL, NULL, 'CHILCA', 180, NULL, 'TERCERO', NULL),
