@@ -19,7 +19,7 @@ Los scripts están en `scripts/erp-auto/`.
 - Que en esa PC Excel ya actualice los dos libros a mano (**Datos › Actualizar todo**) sin pedir credenciales.
 - Un usuario del TMS para el robot, con permiso de carga del ERP (`apt-carga`, Administrador o Jefe de Distribución) y
   de alta de OT desde el ERP. Conviene un usuario propio («carga ERP») para distinguir sus cargas en el registro.
-- Los dos Excel en una carpeta fija (no en Descargas) y **cerrados** a la hora programada.
+- Los dos Excel en una carpeta fija (no en Descargas) y **cerrados** mientras corre la carga (unos minutos de cada hora).
 
 ## Instalar (una vez)
 
@@ -31,7 +31,7 @@ powershell -ExecutionPolicy Bypass -File scripts\erp-auto\ejecutar.ps1 -Instalar
 
 Copia los scripts a `%LOCALAPPDATA%\JRM-TMS\erp-auto`, instala `playwright-core` y pide el usuario y la contraseña
 del TMS. Se guardan cifrados con DPAPI: solo ese usuario de Windows, en ese equipo, puede leerlos. Además registra la
-tarea **JRM-TMS carga ERP** (lunes a sábado a la hora indicada). La tarea corre solo con la sesión de Windows
+tarea **JRM-TMS carga ERP**: cada hora, todos los días, desde la hora indicada. Cada ejecución tiene 55 minutos como máximo y no se superpone con la siguiente; volver a cargar el mismo día recalcula ese día sin duplicar. La tarea corre solo con la sesión de Windows
 iniciada, porque Excel la necesita; si la PC estaba apagada, corre al encenderla.
 
 Probar sin aplicar nada (refresca los Excel, entra al TMS y lee los archivos en la pantalla):
@@ -45,7 +45,7 @@ tareas.
 
 ## Revisar
 
-- Log de cada ejecución: `%LOCALAPPDATA%\JRM-TMS\erp-auto\logs` (se guardan las últimas 60). La línea `OK …` repite
+- Log de cada ejecución: `%LOCALAPPDATA%\JRM-TMS\erp-auto\logs` (se guardan las últimas 400, unas dos semanas). La línea `OK …` repite
   el mensaje verde de la pantalla; `ERROR …` dice en qué paso falló.
 - Programador de tareas › **JRM-TMS carga ERP** › «Resultado de la última ejecución»: `0` = bien, `1` = falló.
 - En el TMS: `/apt/erp` › Cargas.

@@ -1,5 +1,5 @@
 ﻿# Carga automática del ERP a /apt/datos: refresca los dos Excel y los sube con el robot. Ver docs/carga-erp-automatica.md.
-#   Instalar (una vez):  .\ejecutar.ps1 -Instalar -Actualizable <ruta> -Stock <ruta> [-Hora 07:00]
+#   Instalar (una vez):  .\ejecutar.ps1 -Instalar -Actualizable <ruta> -Stock <ruta> [-Hora 07:00] (primera; luego cada hora)
 #   Ejecutar ahora:      & "$env:LOCALAPPDATA\JRM-TMS\erp-auto\ejecutar.ps1" [-Revisar]
 param(
   [switch]$Instalar,
@@ -23,18 +23,19 @@ if ($Instalar) {
   # Usuario del TMS para el robot: queda cifrado con DPAPI (solo este usuario de Windows en este equipo puede leerlo)
   Get-Credential -Message 'Usuario y contraseña del TMS para la carga automática del ERP' | Export-Clixml (Join-Path $destino 'credencial.xml')
   $accion = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$destino\ejecutar.ps1`""
-  $cuando = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday, Saturday -At $Hora
+  # Cada hora desde -Hora, todos los días (sin fin)
+  $cuando = New-ScheduledTaskTrigger -Once -At $Hora -RepetitionInterval (New-TimeSpan -Hours 1)
   # Excel necesita la sesión de Windows iniciada: la tarea corre solo con el usuario conectado
   $quien = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive
-  $ajustes = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2) -MultipleInstances IgnoreNew
+  $ajustes = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 55) -MultipleInstances IgnoreNew
   Register-ScheduledTask -TaskName 'JRM-TMS carga ERP' -Action $accion -Trigger $cuando -Principal $quien -Settings $ajustes -Force | Out-Null
-  Write-Output "Instalado en $destino; tarea «JRM-TMS carga ERP» de lunes a sábado a las $Hora. Pruebe con: & `"$destino\ejecutar.ps1`" -Revisar"
+  Write-Output "Instalado en $destino; tarea «JRM-TMS carga ERP» cada hora desde las $Hora. Pruebe con: & `"$destino\ejecutar.ps1`" -Revisar"
   exit 0
 }
 
 $log = Join-Path $PSScriptRoot "logs\$(Get-Date -Format 'yyyy-MM-dd_HHmm').log"
 New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
-Get-ChildItem (Split-Path $log) -Filter *.log | Sort-Object Name -Descending | Select-Object -Skip 60 | Remove-Item
+Get-ChildItem (Split-Path $log) -Filter *.log | Sort-Object Name -Descending | Select-Object -Skip 400 | Remove-Item
 Start-Transcript $log | Out-Null
 try {
   $cfg = Get-Content (Join-Path $PSScriptRoot 'config.json') -Raw | ConvertFrom-Json
