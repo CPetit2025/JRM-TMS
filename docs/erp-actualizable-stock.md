@@ -24,6 +24,8 @@ entonces solo se usan los dos archivos. Una bodega que no viene en el Stock (hoy
 un día, los cambios entran juntos con la fecha de la carga siguiente (las guías conservan su fecha). «Generar
 movimientos del día» reintenta la generación sin volver a subir los archivos.
 
+Los pasos 1 y 2 pueden correr solos cada día desde una PC de la red: ver [carga-erp-automatica.md](carga-erp-automatica.md).
+
 ## OT pendientes (reglas v1)
 
 Por OT: contratado, despachado, avance, pendiente (unidades y toneladas) y **listo en stock**: lo pendiente que ya
