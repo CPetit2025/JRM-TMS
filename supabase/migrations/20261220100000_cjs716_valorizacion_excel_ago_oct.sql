@@ -223,8 +223,8 @@ BEGIN
 
   FOR v_period IN SELECT * FROM (VALUES
     (DATE '2026-08-01', DATE '2026-08-31', 31, 26),
-    (DATE '2026-09-01', DATE '2026-09-30', 30, 27),
-    (DATE '2026-10-01', DATE '2026-10-31', 31, 27)
+    (DATE '2026-09-01', DATE '2026-09-30', 30, 26),
+    (DATE '2026-10-01', DATE '2026-10-31', 31, 26)
   ) AS p(period_start, period_end, days, labor_days)
   LOOP
     SELECT count(*), sum(km), count(*) FILTER (WHERE km IS NULL)
