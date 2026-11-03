@@ -46,6 +46,10 @@ const DRIVER = id(1), MECHANIC = id(2), DRIVER_PROFILE = id(3)
           AND (mr.status IN ('PENDIENTE', 'OBSERVADO') OR mr.severity IN ('ALTA', 'CRITICA')) $$;
       INSERT INTO public.vehicles VALUES ('AAA-111','DISPONIBLE'),('BBB-222','DISPONIBLE'),('CCC-333','BLOQUEADA'),('DDD-444','DISPONIBLE'),('EEE-555','EN_OPERACION');`)
     await db.exec(readFileSync('supabase/migrations/20261222090000_preuso_no_apto_mantenimiento.sql', 'utf8'))
+    await db.exec(readFileSync('supabase/migrations/20261222093000_preuso_fk_indice.sql', 'utf8'))
+    // Caja C55: la FK nueva queda cubierta por un índice completo
+    assert.equal((await db.query(`SELECT count(*)::int n FROM pg_constraint c WHERE c.conrelid='public.maintenance_requests'::regclass AND c.contype='f'
+      AND NOT EXISTS(SELECT 1 FROM pg_index i WHERE i.indrelid=c.conrelid AND i.indisvalid AND i.indpred IS NULL AND (i.indkey::smallint[])[0:cardinality(c.conkey)-1] @> c.conkey)`)).rows[0].n, 0)
 
     const today = (await db.query(`SELECT (now() AT TIME ZONE 'America/Lima')::date::text d`)).rows[0].d
     let seq = 100
