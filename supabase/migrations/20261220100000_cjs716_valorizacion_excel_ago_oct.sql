@@ -14,6 +14,8 @@ DECLARE
   v_count integer;
   v_km numeric;
   v_missing integer;
+  v_km_gps numeric;
+  v_km_fuera numeric;
   v_detail jsonb;
   v_days integer;
   v_labor_days integer;
@@ -244,6 +246,9 @@ BEGIN
     v_labor_days := v_period.labor_days;
     v_excess := GREATEST(v_km-v_included,0);
     v_excess_amount := round(v_excess*v_rate,2);
+    SELECT sum(km) INTO v_km_gps FROM public.lease_gps_days
+    WHERE vehicle_id=v_vehicle AND fecha BETWEEN v_period.period_start AND v_period.period_end;
+    v_km_fuera := CASE WHEN v_km_gps IS NULL THEN NULL ELSE round(GREATEST(v_km_gps-v_km,0),2) END;
     v_subtotal := v_base+v_excess_amount;
     v_tax := round(v_subtotal*0.18,2);
 
@@ -256,9 +261,10 @@ BEGIN
        v_base, v_excess, v_excess_amount, 0, 0, 0, 0, 0, 0, 0, v_subtotal, v_tax, v_subtotal+v_tax, 'BORRADOR',
        jsonb_build_object('success',true,'vehicle_plate','CJS716','period_start',v_period.period_start,
          'period_end',v_period.period_end,'days',v_days,'km_used',v_km,'base_amount',v_base,
-         'included_km',v_included,'excess_km',v_excess,'excess_km_amount',v_excess_amount,
-         'dias_laborados',v_labor_days,'viajes_sin_km',v_missing,'downtime_days',0,'downtime_discount',0,
-         'km_fuente','VALORIZACION','viajes',v_detail,
+         'included_km',v_included,'excess_km',v_excess,'excess_km_rate',v_rate,'excess_km_amount',v_excess_amount,
+         'dias_laborados',v_labor_days,'dias_base',26,'costo_diario',round(v_base/26,2),'garantia',2000,
+         'viajes_sin_km',v_missing,'downtime_days',0,'downtime_discount',0,
+         'km_fuente','VALORIZACION','km_gps',v_km_gps,'km_fuera_de_ruta',v_km_fuera,'viajes',v_detail,
          'archivo_fuente','VALORIZACION ALQUILER CJS716 H100 - CIERRE OCTUBRE v1.xlsx'),
        'Recargada desde BD CJS716 del Excel de cierre 2026. Filtrado por placa CJS716.');
   END LOOP;
