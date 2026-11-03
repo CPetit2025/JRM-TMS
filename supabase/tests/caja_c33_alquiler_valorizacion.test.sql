@@ -2,7 +2,7 @@
 --   T1 contrato con los factores del Excel (mensual 3.676,92, 3.900 km, km adicional 1,9428, base 26 días, garantía 2.000,
 --   km por ruta); T2 agosto = Excel (4.293 km, exceso 393, S/ 763,52, subtotal 4.440,44); T3 setiembre = Excel (3.981 km,
 --   exceso 81, S/ 157,37, subtotal 3.834,29) con el GPS como control (km fuera de ruta); T4 liquidaciones de agosto y
---   setiembre registradas; T5 89 viajes y 30 días de GPS cargados; T6 octubre usa las 56 filas completas del Excel del cierre CJS716;
+--   setiembre registradas; T5 89 viajes Excel (37 agosto y 52 setiembre) y 30 días de GPS cargados; T6 octubre usa las 56 filas completas del Excel del cierre CJS716;
 --   T7 noviembre en adelante sale de las rutas del sistema y un contrato por odómetro sigue igual que antes;
 --   T8 sin permiso no se calcula. Solo lectura (se revierte).
 CREATE FUNCTION pg_temp.as_user(p_user uuid) RETURNS void LANGUAGE plpgsql AS $$
@@ -57,7 +57,9 @@ BEGIN
   IF n = 2 THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T4 liquidaciones: ' || n); END IF;
 
   -- T5
-  IF (SELECT count(*) FROM public.lease_usage_records WHERE vehicle_id = c.vehicle_id AND fecha BETWEEN DATE '2026-08-01' AND DATE '2026-09-30') = 89
+  IF (SELECT count(*) FROM public.lease_usage_records WHERE vehicle_id = c.vehicle_id AND fecha BETWEEN DATE '2026-08-01' AND DATE '2026-09-30' AND fuente = 'VALORIZACION_EXCEL_CIERRE_2026') = 89
+     AND (SELECT count(*) FROM public.lease_usage_records WHERE vehicle_id = c.vehicle_id AND fecha BETWEEN DATE '2026-08-01' AND DATE '2026-08-31' AND fuente = 'VALORIZACION_EXCEL_CIERRE_2026') = 37
+     AND (SELECT count(*) FROM public.lease_usage_records WHERE vehicle_id = c.vehicle_id AND fecha BETWEEN DATE '2026-09-01' AND DATE '2026-09-30' AND fuente = 'VALORIZACION_EXCEL_CIERRE_2026') = 52
      AND (SELECT count(*) FROM public.lease_gps_days WHERE vehicle_id = c.vehicle_id AND fecha BETWEEN DATE '2026-09-01' AND DATE '2026-09-30') = 30
      AND jsonb_array_length(ago -> 'viajes') + jsonb_array_length(sep -> 'viajes') = 89
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T5 carga'::text; END IF;
@@ -69,7 +71,7 @@ BEGIN
   ORDER BY created_at DESC LIMIT 1;
   IF r IS NOT NULL AND jsonb_array_length(r -> 'viajes') = 56
      AND (SELECT count(*) FROM public.lease_usage_records WHERE vehicle_id = c.vehicle_id AND fecha BETWEEN DATE '2026-10-01' AND DATE '2026-10-31'
-          AND fuente = 'VALORIZACION_EXCEL_CIERRE_OCT_2026' AND km IS NULL) = 17
+          AND fuente = 'VALORIZACION_EXCEL_CIERRE_2026' AND km IS NULL) = 17
   THEN v_pass := v_pass + 1;
   ELSE v_fail := v_fail || ('T6 octubre: ' || left(r::text, 200)); END IF;
   v_rep := 'ago ' || (ago ->> 'subtotal') || ' (' || (ago ->> 'km_used') || ' km), set ' || (sep ->> 'subtotal') || ' (' || (sep ->> 'km_used')
