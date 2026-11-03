@@ -62,7 +62,7 @@ BEGIN
      AND jsonb_array_length(ago -> 'viajes') + jsonb_array_length(sep -> 'viajes') = 89
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || 'T5 carga'::text; END IF;
 
-  -- T6: octubre solo usa las 31 filas de CJS716 del Excel, sin mezclar las otras placas ni rutas del sistema.
+  -- T6: octubre usa las 56 filas de CJS716 del Excel, sin mezclar las otras placas ni rutas del sistema.
   SELECT detail INTO r FROM public.lease_settlements
   WHERE contract_id = c.id AND period_start = DATE '2026-10-01' AND status <> 'ANULADA'
     AND km_used = 4148.90 AND subtotal = 4160.48 AND tax = 748.89 AND total = 4909.37
