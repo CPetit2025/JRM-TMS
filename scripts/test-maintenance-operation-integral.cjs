@@ -52,6 +52,19 @@ const noBudgetOrder = '00000000-0000-4000-8000-000000000005'
       SELECT set_config('request.jwt.claim.sub','${uid}',false);
     `)
     await db.exec(readFileSync('supabase/migrations/20261225090000_mantenimiento_operacion_integral.sql', 'utf8'))
+    await db.exec(readFileSync('supabase/migrations/20261225091000_mantenimiento_budget_view_privileges.sql', 'utf8'))
+
+    const viewPrivileges = (await db.query(`SELECT
+      has_table_privilege('anon', 'public.vw_work_order_budget_status', 'TRUNCATE') AS anon_truncate,
+      has_table_privilege('authenticated', 'public.vw_work_order_budget_status', 'TRUNCATE') AS authenticated_truncate,
+      has_table_privilege('anon', 'public.vw_work_order_budget_status', 'TRIGGER') AS anon_trigger,
+      has_table_privilege('authenticated', 'public.vw_work_order_budget_status', 'TRIGGER') AS authenticated_trigger,
+      has_table_privilege('authenticated', 'public.vw_work_order_budget_status', 'SELECT') AS authenticated_select`)).rows[0]
+    assert.equal(viewPrivileges.anon_truncate, false)
+    assert.equal(viewPrivileges.authenticated_truncate, false)
+    assert.equal(viewPrivileges.anon_trigger, false)
+    assert.equal(viewPrivileges.authenticated_trigger, false)
+    assert.equal(viewPrivileges.authenticated_select, true)
 
     const request = (await db.query(`SELECT public.request_work_order_budget($1,100,'Prueba de presupuesto inicial') AS value`, [order])).rows[0].value
     assert.equal(request.success, true)
