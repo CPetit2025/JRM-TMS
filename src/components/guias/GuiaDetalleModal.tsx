@@ -12,7 +12,7 @@ import { exportAptXlsx } from '@/lib/apt/export'
 // Almacén APT (apt_guia_detalle). Se usa desde cualquier pantalla que muestre números de guía.
 
 type Item = {
-  producto: string; glosa: string | null; familia: string | null; cantidad: number | null; unidad: string | null
+  producto: string; glosa: string | null; glosa_recuperada?: boolean; familia: string | null; cantidad: number | null; unidad: string | null
   peso_unitario: number | null; kg: number; lote: string | null; numrel: string | null; docrel: string | null; fecha_entrega: string | null
 }
 type Guia = {
@@ -83,7 +83,7 @@ export function GuiaDetalleModal({ guias, onClose }: { guias: string | null; onC
     if (!data) return
     exportAptXlsx(`Guias_${(data.guias.map(x => x.documento).join('_') || 'detalle').slice(0, 60)}`, Object.fromEntries(data.guias.map(x => [x.documento,
       x.items.map(i => ({ Guía: x.documento, Fecha: x.fecha, Cliente: x.cliente, Lote: i.lote, NumRel: i.numrel, Tipo: i.docrel, Producto: i.producto,
-        Glosa: i.glosa, Cantidad: i.cantidad, Unidad: i.unidad, 'Peso unit. (kg)': i.peso_unitario, 'Peso (kg)': i.kg, 'Fecha entrega': i.fecha_entrega }))])))
+        Glosa: i.glosa, 'Origen descripción': i.glosa_recuperada ? 'Mismo producto en APT' : i.glosa?.trim() ? 'SALIDA de la guía' : 'Sin descripción en APT', Cantidad: i.cantidad, Unidad: i.unidad, 'Peso unit. (kg)': i.peso_unitario, 'Peso (kg)': i.kg, 'Fecha entrega': i.fecha_entrega }))])))
   }
 
   const title = guias ? `Guía de remisión · ${guias}` : 'Guía de remisión'
@@ -196,7 +196,10 @@ export function GuiaDetalleModal({ guias, onClose }: { guias: string | null; onC
                       <tr key={`${i.producto}-${n}`} className="hover:bg-slate-50">
                         <td className="px-3 py-2 tabular-nums text-slate-400">{n + 1}</td>
                         <td className="whitespace-nowrap px-3 py-2 font-mono font-semibold text-slate-800">{i.producto}</td>
-                        <td className="px-3 py-2 text-slate-700">{i.glosa || '—'}</td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {i.glosa?.trim() || <span className="text-slate-400">Sin descripción en APT</span>}
+                          {i.glosa_recuperada && <span className="mt-1 block text-[10px] text-slate-500">Descripción del mismo producto en APT</span>}
+                        </td>
                         <td className="whitespace-nowrap px-3 py-2">
                           <span className="font-mono font-semibold text-[#002855]">{i.lote || '—'}</span>
                           {i.numrel && i.numrel !== i.lote && <span className="ml-1 text-[10px] text-slate-400">({i.numrel})</span>}

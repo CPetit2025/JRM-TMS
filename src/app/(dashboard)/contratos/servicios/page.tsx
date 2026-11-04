@@ -97,10 +97,10 @@ const stageTone: Record<RegistryContext['stage'], StatusTone> = { COMPROMETIDO: 
 
 type SortKey = 'fecha' | 'contrato' | 'cliente' | 'servicio' | 'placa' | 'guia' | 'ton' | 'monto' | 'saldo' | 'traza' | 'estado'
 
-// Peso de las guías según la SALIDA cargada en Almacén APT (tabla contract_service_peso_apt, migración 20261006130000)
+// Peso actual de las guías visibles según la SALIDA cargada en Almacén APT.
 interface PesoApt { service_id: string; guias: string; kg: number | null; encontradas: number; faltan: string | null; calculado_at: string }
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String((error as { message?: string } | null)?.message || error)
-const fmtTon = (kg: number) => (kg / 1000).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtTon = (kg: number) => (kg / 1000).toLocaleString('es-PE', { minimumFractionDigits: 3, maximumFractionDigits: 3 })
 // TON a mostrar: el de APT si hay; si no, el KG escrito a mano en la descripción
 const tonInfo = (srv: { description?: string }, p?: PesoApt): { ton: number | null; fuente: 'APT' | 'MANUAL' | null } => {
   if (p?.kg != null) return { ton: Number(p.kg) / 1000, fuente: 'APT' }
@@ -272,10 +272,14 @@ export default function ContractServicesPage() {
       }
       setRegistryContext(Object.fromEntries(contexts.map(c => [c.service_id, c])))
       setServices(rows)
-      // Peso según APT (si la tabla aún no existe, la columna usa el KG manual)
-      const pData = await allPages<PesoApt>((o, n) => supabase.from('contract_service_peso_apt').select('*').order('service_id')
-        .range(o, o + n - 1), 1000).catch(() => [] as PesoApt[])
-      setPesoApt(Object.fromEntries(((pData as PesoApt[]) || []).map(p => [p.service_id, p])))
+      // Leer APT en vivo: el caché puede faltar o no incluir guías documentarias.
+      const weights: PesoApt[] = []
+      for (let offset = 0; offset < rows.length; offset += 200) {
+        const { data, error } = await supabase.rpc('get_service_registry_weight', { p_services: rows.slice(offset, offset + 200).map(s => s.id) })
+        if (error) throw error
+        weights.push(...((data as PesoApt[]) || []))
+      }
+      setPesoApt(Object.fromEntries(weights.map(p => [p.service_id, p])))
 
       // Por páginas: la API entrega como máximo 1.000 filas por consulta y hay miles de OT
       const cData = await allPages<unknown>((o, n) => supabase
