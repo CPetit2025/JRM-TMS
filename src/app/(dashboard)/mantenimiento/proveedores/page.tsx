@@ -42,6 +42,9 @@ export default function ProveedoresPage() {
   const [search, setSearch] = useState('')
   const [editing, setEditing] = useState<Row | 'new' | null>(null)
   const [modal, setModal] = useState<'rate' | 'quote' | null>(null)
+  const [quoteDecision, setQuoteDecision] = useState<{ quote: Row; decision: 'APROBADA' | 'RECHAZADA' } | null>(null)
+  const [quoteDecisionNotes, setQuoteDecisionNotes] = useState('')
+  const [savingDecision, setSavingDecision] = useState(false)
 
   const apply = useCallback(([p, pr, r, q, w, wo]: Awaited<ReturnType<typeof loadAll>>) => {
     if (p.error) toast.error('Error al cargar proveedores: ' + p.error.message)
@@ -53,12 +56,15 @@ export default function ProveedoresPage() {
 
   const filtered = useMemo(() => perf.filter(p => !search || `${p.business_name} ${p.ruc} ${p.specialty || ''}`.toLowerCase().includes(search.toLowerCase())), [perf, search])
 
-  const decide = async (q: Row, decision: 'APROBADA' | 'RECHAZADA') => {
-    const notes = decision === 'RECHAZADA' ? prompt('Motivo del rechazo:') : prompt('Comentario de la aprobación (opcional):')
-    if (decision === 'RECHAZADA' && !notes?.trim()) return
-    const { data, error } = await supabase.rpc('decide_service_quote', { p_quote_id: q.id, p_decision: decision, p_notes: notes || null })
+  const decide = async () => {
+    if (!quoteDecision) return
+    if (quoteDecision.decision === 'RECHAZADA' && !quoteDecisionNotes.trim()) return toast.error('El motivo del rechazo es obligatorio')
+    setSavingDecision(true)
+    const { data, error } = await supabase.rpc('decide_service_quote', { p_quote_id: quoteDecision.quote.id, p_decision: quoteDecision.decision, p_notes: quoteDecisionNotes.trim() || null })
+    setSavingDecision(false)
     if (error || !data?.success) return toast.error(error?.message || data?.error)
-    toast.success(decision === 'APROBADA' ? 'Cotización aprobada: el proveedor quedó asignado a la OT' : 'Cotización rechazada'); refresh()
+    toast.success(quoteDecision.decision === 'APROBADA' ? 'Cotización aprobada: el proveedor quedó asignado a la OT' : 'Cotización rechazada')
+    setQuoteDecision(null); setQuoteDecisionNotes(''); refresh()
   }
 
   return (
@@ -110,8 +116,8 @@ export default function ProveedoresPage() {
                 ['Proveedor', r => r.maintenance_providers?.business_name], ['Monto', r => money(r.amount)], ['Válida hasta', r => r.valid_until || '—'],
                 ['Estado', r => r.status], ['', r => r.status === 'PENDIENTE' ? (
                   <div className="flex gap-1 justify-end">
-                    <button title="Aprobar" onClick={() => decide(r, 'APROBADA')} className="p-1.5 border rounded-lg text-emerald-700"><Check className="w-4 h-4" /></button>
-                    <button title="Rechazar" onClick={() => decide(r, 'RECHAZADA')} className="p-1.5 border rounded-lg text-red-600"><X className="w-4 h-4" /></button>
+                    <button title="Aprobar" onClick={() => { setQuoteDecision({ quote: r, decision: 'APROBADA' }); setQuoteDecisionNotes('') }} className="p-1.5 border rounded-lg text-emerald-700"><Check className="w-4 h-4" /></button>
+                    <button title="Rechazar" onClick={() => { setQuoteDecision({ quote: r, decision: 'RECHAZADA' }); setQuoteDecisionNotes('') }} className="p-1.5 border rounded-lg text-red-600"><X className="w-4 h-4" /></button>
                   </div>) : <span className="text-xs text-slate-400">{r.decision_notes}</span>]]} />
             </div>
           )}
@@ -127,6 +133,13 @@ export default function ProveedoresPage() {
       {editing && <ProviderModal provider={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh() }} />}
       {modal === 'rate' && <RateModal providers={providers.filter(p => p.status === 'ACTIVO')} onClose={() => setModal(null)} onSaved={() => { setModal(null); refresh() }} />}
       {modal === 'quote' && <QuoteModal providers={providers.filter(p => p.status === 'ACTIVO')} workOrders={openWos} onClose={() => setModal(null)} onSaved={() => { setModal(null); refresh() }} />}
+      {quoteDecision && <Modal isOpen onClose={() => setQuoteDecision(null)} title={quoteDecision.decision === 'APROBADA' ? 'Aprobar cotización' : 'Rechazar cotización'}>
+        <div className="space-y-4 text-sm">
+          <div className="rounded-lg bg-slate-50 p-3"><b>{quoteDecision.quote.maintenance_providers?.business_name}</b><div>OT {quoteDecision.quote.maintenance_work_orders?.ot_code} · {money(quoteDecision.quote.amount)}</div></div>
+          <label className="block space-y-1"><span>{quoteDecision.decision === 'RECHAZADA' ? 'Motivo del rechazo *' : 'Observación (opcional)'}</span><textarea autoFocus rows={3} className={field} value={quoteDecisionNotes} onChange={e => setQuoteDecisionNotes(e.target.value)} placeholder={quoteDecision.decision === 'RECHAZADA' ? 'Explique por qué no se aprueba' : 'Agregar contexto para la aprobación'} /></label>
+          <div className="flex justify-end gap-2"><button type="button" className="rounded-lg border px-3 py-1.5" onClick={() => setQuoteDecision(null)}>Cancelar</button><button type="button" disabled={savingDecision || (quoteDecision.decision === 'RECHAZADA' && !quoteDecisionNotes.trim())} onClick={() => void decide()} className="rounded-lg bg-[#002855] px-3 py-1.5 text-white disabled:opacity-50">{savingDecision ? 'Guardando…' : quoteDecision.decision === 'APROBADA' ? 'Confirmar aprobación' : 'Confirmar rechazo'}</button></div>
+        </div>
+      </Modal>}
     </div>
   )
 }

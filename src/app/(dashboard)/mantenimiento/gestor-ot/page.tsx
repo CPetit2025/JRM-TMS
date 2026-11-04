@@ -8,9 +8,10 @@ import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
+import { buildMaintenanceWorkOrderReport, type MaintenanceReportKind } from '@/lib/maintenance/work-order-report'
 import {
   Loader2, Plus, RefreshCw, Wrench, CheckCircle2, PlayCircle, PauseCircle, Flag, ShieldCheck, XCircle,
-  Lock, Trash2, Upload, ClipboardList, Package,
+  Lock, Trash2, Upload, ClipboardList, Package, FileText,
 } from 'lucide-react'
 
 const supabase = createClient()
@@ -35,6 +36,7 @@ interface WorkOrder {
   notes: string | null
   vehicle_id: string
   vehicle_plate: string
+  vehicle_type?: string
   vehicle_status: string
   plan_name: string | null
   provider_id: string | null
@@ -67,6 +69,9 @@ interface ActiveWarranty { id: string; warranty_kind: 'REPUESTO' | 'SERVICIO'; s
 interface CostLine { id: string; cost_type: string; amount: number; quantity: number | null; description: string | null; document_number: string | null; created_at: string }
 interface SparePart { id: string; internal_code: string; name: string; current_stock: number | null; available: number | null }
 interface Option { id: string; label: string }
+interface WorkOrderReport { id: string; report_type: MaintenanceReportKind; version: number; storage_bucket: string; storage_path: string; created_at: string; sha256: string | null }
+interface WorkOrderEvent { id: number; evento: string; estado_anterior: string | null; estado_nuevo: string | null; detalle: string | null; metadata: Record<string, unknown>; created_at: string; created_by: string | null }
+interface BudgetStatus { approved_budget: number | null; approved_version: number | null; actual_cost: number; remaining_budget: number | null; pending_request_id: string | null; pending_budget: number | null; pending_reason: string | null; over_budget: boolean }
 
 const STATUS_STYLE: Record<WoStatus, string> = {
   BORRADOR: 'bg-slate-100 text-slate-700',
@@ -313,11 +318,19 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
   const [costs, setCosts] = useState<CostLine[]>([])
   const [parts, setParts] = useState<SparePart[]>([])
   const [busy, setBusy] = useState(false)
+  const [activeTab, setActiveTab] = useState<'resumen' | 'alcance' | 'trabajos' | 'costos' | 'documentos' | 'historial'>('resumen')
+  const [reports, setReports] = useState<WorkOrderReport[]>([])
+  const [events, setEvents] = useState<WorkOrderEvent[]>([])
+  const [budget, setBudget] = useState<BudgetStatus | null>(null)
+  const [transitionForm, setTransitionForm] = useState<{ status: WoStatus | null; notes: string }>({ status: null, notes: '' })
   const [diagnostic, setDiagnostic] = useState(order.diagnostic || '')
   const [tasks, setTasks] = useState(order.tasks || [])
   const [newTask, setNewTask] = useState('')
   const [costForm, setCostForm] = useState({ cost_type: 'MANO_OBRA', amount: '', description: '', document_number: '' })
   const [partForm, setPartForm] = useState({ part_id: '', quantity: '1' })
+  const [budgetForm, setBudgetForm] = useState({ amount: '', reason: '' })
+  const [budgetDecisionNotes, setBudgetDecisionNotes] = useState('')
+  const [costToRemove, setCostToRemove] = useState<CostLine | null>(null)
   const locked = order.status === 'CERRADA' || order.status === 'CANCELADA'
 
   const loadCosts = useCallback(() => supabase.from('work_order_costs').select('id, cost_type, amount, quantity, description, document_number, created_at')
@@ -327,6 +340,23 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
     loadCosts()
     supabase.from('vw_spare_parts_stock').select('id, internal_code, name, current_stock, available').eq('is_active', true).order('name').then(({ data }) => setParts((data || []) as SparePart[]))
   }, [loadCosts])
+
+  const loadReports = useCallback(() => supabase.from('maintenance_work_order_reports')
+    .select('id, report_type, version, storage_bucket, storage_path, created_at, sha256')
+    .eq('work_order_id', order.id).order('report_type').order('version', { ascending: false })
+    .then(({ data, error }) => {
+      if (error) toast.error(`No se pudieron cargar los informes: ${error.message}`)
+      else setReports((data || []) as WorkOrderReport[])
+    }), [order.id])
+
+  useEffect(() => { void loadReports() }, [loadReports])
+
+  const loadBudget = useCallback(() => supabase.from('vw_work_order_budget_status').select('*').eq('work_order_id', order.id).maybeSingle()
+    .then(({ data, error }) => { if (error) toast.error(`No se pudo cargar el presupuesto: ${error.message}`); else setBudget(data as BudgetStatus | null) }), [order.id])
+  const loadEvents = useCallback(() => supabase.from('maintenance_work_order_events').select('id, evento, estado_anterior, estado_nuevo, detalle, metadata, created_at, created_by')
+    .eq('work_order_id', order.id).order('created_at', { ascending: false }).limit(200)
+    .then(({ data, error }) => { if (error) toast.error(`No se pudo cargar la bitácora: ${error.message}`); else setEvents((data || []) as WorkOrderEvent[]) }), [order.id])
+  useEffect(() => { void loadBudget(); void loadEvents() }, [loadBudget, loadEvents])
 
   const [warrantyReview, setWarrantyReview] = useState<ActiveWarranty[] | null>(null)
 
@@ -349,18 +379,51 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
     return true
   }
 
-  const transition = (status: WoStatus) => {
-    let notes: string | null = null
-    if (status === 'CANCELADA') { notes = prompt('Motivo de la cancelación (obligatorio):'); if (!notes?.trim()) return }
-    if (status === 'TERMINADA') { notes = prompt('Actividades realizadas (obligatorio):', order.activities_performed || ''); if (!notes?.trim()) return }
-    if (status === 'VALIDACION' || status === 'EN_ESPERA') notes = prompt(status === 'EN_ESPERA' ? 'Motivo de la espera (repuesto, proveedor…):' : 'Observaciones de la validación:') || null
-    rpc('transition_work_order', { p_work_order_id: order.id, p_new_status: status, p_notes: notes }, `OT ${order.ot_code} → ${status}`)
+  const transition = (status: WoStatus) => setTransitionForm({ status, notes: status === 'TERMINADA' ? order.activities_performed || '' : '' })
+
+  const submitTransition = async () => {
+    const status = transitionForm.status
+    if (!status) return
+    const needsNote = ['CANCELADA', 'TERMINADA', 'EN_ESPERA'].includes(status)
+    if (needsNote && !transitionForm.notes.trim()) return toast.error(status === 'CANCELADA' ? 'El motivo de cancelación es obligatorio' : status === 'TERMINADA' ? 'Registre las actividades realizadas' : 'Registre el motivo de espera')
+    let success = false
+    if (status === 'CERRADA') {
+      success = await rpc('complete_maintenance_order', { p_order_id: order.id, p_used_parts: [], p_closing_notes: transitionForm.notes.trim() || null }, 'OT cerrada; se validó la elegibilidad de la unidad')
+    } else {
+      success = await rpc('transition_work_order', { p_work_order_id: order.id, p_new_status: status, p_notes: transitionForm.notes.trim() || null }, `OT ${order.ot_code} → ${status}`)
+    }
+    if (success) setTransitionForm({ status: null, notes: '' })
   }
 
-  const close = () => {
-    if (!confirm('¿Cerrar la OT? Se validará la elegibilidad de la unidad antes de liberarla.')) return
-    const notes = prompt('Notas de cierre:') || null
-    rpc('complete_maintenance_order', { p_order_id: order.id, p_used_parts: [], p_closing_notes: notes })
+  const generateReport = async (kind: MaintenanceReportKind) => {
+    if (kind === 'CIERRE' && order.status !== 'CERRADA') return toast.error('El informe de cierre se emite después de cerrar la OT')
+    if (kind === 'PREVIO' && locked) return toast.error('La OT ya finalizó; no se emite informe previo')
+    setBusy(true)
+    try {
+      const { blob, snapshot } = await buildMaintenanceWorkOrderReport(order, costs, kind)
+      const fileName = `${kind.toLowerCase()}-${Date.now()}-${crypto.randomUUID()}.pdf`
+      const storagePath = `ot/${order.id}/reports/${kind}/${fileName}`
+      const { error: uploadError } = await supabase.storage.from('evidence').upload(storagePath, blob, { contentType: 'application/pdf', upsert: false })
+      if (uploadError) throw new Error(uploadError.message)
+      const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())
+      const sha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+      const { data, error } = await supabase.rpc('register_maintenance_work_order_report', {
+        p_work_order_id: order.id, p_report_type: kind, p_storage_path: storagePath, p_content_snapshot: snapshot, p_sha256: sha256,
+      })
+      if (error || data?.success === false) throw new Error(error?.message || data?.error || 'No se pudo registrar la versión')
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = `${order.ot_code}-${kind}-v${data.version}.pdf`
+      link.click()
+      URL.revokeObjectURL(link.href)
+      toast.success(`Informe ${kind.toLowerCase()} v${data.version} emitido y guardado en el expediente`)
+      await loadReports()
+      onChanged()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo generar el informe')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const saveTechnical = async () => {
@@ -388,14 +451,26 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
     })
     if (error) return toast.error(error.message)
     setCostForm({ cost_type: 'MANO_OBRA', amount: '', description: '', document_number: '' })
-    loadCosts(); onChanged()
+    loadCosts(); loadBudget(); onChanged()
   }
 
   const removeCost = async (line: CostLine) => {
-    if (!confirm('¿Eliminar la línea de costo?')) return
     const { error } = await supabase.from('work_order_costs').delete().eq('id', line.id)
     if (error) return toast.error(error.message)
-    loadCosts(); onChanged()
+    setCostToRemove(null); loadCosts(); loadBudget(); onChanged()
+  }
+
+  const requestBudget = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const result = await rpc('request_work_order_budget', { p_work_order_id: order.id, p_budget_amount: Number(budgetForm.amount), p_reason: budgetForm.reason }, 'Solicitud de presupuesto enviada a aprobación')
+    if (result) { setBudgetForm({ amount: '', reason: '' }); await loadBudget(); await loadEvents() }
+  }
+
+  const decideBudget = async (decision: 'APROBADA' | 'RECHAZADA') => {
+    if (!budget?.pending_request_id) return
+    if (decision === 'RECHAZADA' && !budgetDecisionNotes.trim()) return toast.error('Indique el motivo del rechazo')
+    const result = await rpc('decide_work_order_budget', { p_request_id: budget.pending_request_id, p_decision: decision, p_notes: budgetDecisionNotes.trim() || null }, decision === 'APROBADA' ? 'Presupuesto aprobado' : 'Solicitud rechazada')
+    if (result) { setBudgetDecisionNotes(''); await loadBudget(); await loadEvents() }
   }
 
   const consumePart = async (e: React.FormEvent) => {
@@ -436,7 +511,11 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
           <span className="text-slate-500">{order.order_type} · prioridad {order.priority} · origen {order.source_type || 'MANUAL'}{order.plan_name ? ` · plan ${order.plan_name}` : ''}</span>
           {order.linked_requests > 0 && <span className="text-slate-500">· {order.linked_requests} falla(s) vinculada(s)</span>}
         </div>
-        <p className="text-slate-800">{order.description}</p>
+        <nav className="flex flex-wrap gap-1 border-b" aria-label="Secciones de la orden de trabajo">
+          {([['resumen', 'Resumen'], ['alcance', 'Taller y programación'], ['trabajos', 'Diagnóstico y trabajos'], ['costos', 'Costos y aprobaciones'], ['documentos', 'Evidencias e informes'], ['historial', 'Historial y cierre']] as const).map(([key, title]) => (
+            <button key={key} type="button" onClick={() => setActiveTab(key)} className={`border-b-2 px-3 py-2 text-xs font-medium ${activeTab === key ? 'border-[#002855] text-[#002855]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{title}</button>
+          ))}
+        </nav>
 
         {!locked && (
           <div className="flex flex-wrap gap-2">
@@ -447,45 +526,58 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
               </button>
             ))}
             {(order.status === 'TERMINADA' || order.status === 'VALIDACION') && (
-              <button disabled={busy} onClick={close} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm flex items-center gap-1">
+              <button disabled={busy} onClick={() => transition('CERRADA')} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm flex items-center gap-1">
                 <Lock className="w-4 h-4" /> Cerrar OT
               </button>
             )}
           </div>
         )}
 
-        {order.status === 'CERRADA' && order.release_result?.eligibility && (
+        {transitionForm.status && <div className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <div className="font-semibold text-blue-950">{transitionForm.status === 'CERRADA' ? 'Cierre técnico de la OT' : `Confirmar transición a ${transitionForm.status.replace(/_/g, ' ')}`}</div>
+          <p className="text-xs text-blue-900">{transitionForm.status === 'CERRADA' ? 'El sistema verificará elegibilidad y liberación de la unidad. El informe de cierre se emitirá después de confirmar.' : 'El motivo o las actividades quedarán en la bitácora de la orden.'}</p>
+          <textarea rows={3} className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm" value={transitionForm.notes} onChange={e => setTransitionForm({ ...transitionForm, notes: e.target.value })}
+            placeholder={transitionForm.status === 'CANCELADA' ? 'Motivo obligatorio de cancelación' : transitionForm.status === 'TERMINADA' ? 'Actividades realizadas' : transitionForm.status === 'EN_ESPERA' ? 'Motivo de la espera' : 'Observación de la transición (opcional)'} />
+          <div className="flex justify-end gap-2"><button type="button" className="rounded-lg border bg-white px-3 py-1.5" onClick={() => setTransitionForm({ status: null, notes: '' })}>Volver</button><button type="button" disabled={busy} onClick={() => void submitTransition()} className="rounded-lg bg-[#002855] px-3 py-1.5 text-white disabled:opacity-50">{busy ? 'Procesando…' : transitionForm.status === 'CERRADA' ? 'Confirmar cierre' : 'Confirmar cambio'}</button></div>
+        </div>}
+
+        {activeTab === 'resumen' && order.status === 'CERRADA' && order.release_result?.eligibility && (
           <div className={`rounded-lg p-3 text-sm ${order.release_result.eligibility.status === 'NO_APTO' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
             Elegibilidad al cierre: <b>{order.release_result.eligibility.status}</b>
             {order.release_result.eligibility.motives?.length ? ` — ${order.release_result.eligibility.motives.join('; ')}` : ''}
           </div>
         )}
-        {order.cancel_reason && <div className="rounded-lg p-3 bg-red-50 text-red-700">Cancelada: {order.cancel_reason}</div>}
-        {(order.rework_count > 0 || order.warranty_decision) && (
+        {activeTab === 'resumen' && order.cancel_reason && <div className="rounded-lg p-3 bg-red-50 text-red-700">Cancelada: {order.cancel_reason}</div>}
+        {activeTab === 'resumen' && (order.rework_count > 0 || order.warranty_decision) && (
           <div className="text-xs text-slate-600 flex flex-wrap gap-3">
             {order.rework_count > 0 && <span className="text-amber-700 font-semibold">Retrabajos: {order.rework_count}</span>}
             {order.warranty_decision && <span>Garantías: {order.warranty_decision.replace(/_/g, ' ')}{order.warranty_notes ? ` — ${order.warranty_notes}` : ''}</span>}
           </div>
         )}
-        {warrantyReview && (
+        {warrantyReview && activeTab === 'resumen' && (
           <WarrantyReview warranties={warrantyReview} onCancel={() => setWarrantyReview(null)}
             onDecide={async (decision, notes, w) => {
               const ok = await rpc('review_work_order_warranty', { p_work_order_id: order.id, p_decision: decision, p_notes: notes, p_warranty_kind: w?.warranty_kind ?? null, p_warranty_id: w?.id ?? null }, 'Garantías revisadas')
               if (ok) { setWarrantyReview(null); rpc('transition_work_order', { p_work_order_id: order.id, p_new_status: 'APROBADA', p_notes: null }, `OT ${order.ot_code} aprobada`) }
             }} />
         )}
-        {order.status === 'CERRADA' && order.provider_id && !order.evaluated_at && (
+        {activeTab === 'resumen' && order.status === 'CERRADA' && order.provider_id && !order.evaluated_at && (
           <ProviderEvaluation onEvaluate={(score, notes) => rpc('evaluate_provider_work', { p_work_order_id: order.id, p_score: score, p_notes: notes }, 'Evaluación del proveedor registrada')} />
         )}
-        {order.evaluated_at && <div className="text-xs text-slate-600">Evaluación del proveedor: {order.provider_evaluation_score}/5</div>}
+        {activeTab === 'resumen' && order.evaluated_at && <div className="text-xs text-slate-600">Evaluación del proveedor: {order.provider_evaluation_score}/5</div>}
 
+        {activeTab === 'resumen' && <>
+        <p className="whitespace-pre-wrap text-slate-800">{order.description}</p>
         <div className="grid md:grid-cols-4 gap-3">
           <Info label="Inicio indisponibilidad" value={order.downtime_start ? format(new Date(order.downtime_start), 'dd/MM/yyyy HH:mm') : '—'} />
           <Info label="Fin indisponibilidad" value={order.downtime_end ? format(new Date(order.downtime_end), 'dd/MM/yyyy HH:mm') : '—'} />
           <Info label="Horas fuera de servicio" value={order.downtime_hours != null ? Number(order.downtime_hours).toFixed(1) : '—'} />
           <Info label="Aprobada" value={order.approved_at ? format(new Date(order.approved_at), 'dd/MM/yyyy HH:mm') : '—'} />
         </div>
+        </>}
 
+        {activeTab === 'alcance' && <section className="space-y-4">
+        <h3 className="font-semibold">Responsables, proveedor y programación</h3>
         <div className="grid md:grid-cols-3 gap-3">
           {([['responsible_id', 'Responsable', people, order.responsible_name], ['mechanic_id', 'Mecánico', people, order.mechanic_name], ['provider_id', 'Proveedor', providers, order.provider_name]] as const).map(([key, label, opts, current]) => (
             <label key={key} className="text-xs text-slate-500">{label}
@@ -497,8 +589,10 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
             </label>
           ))}
         </div>
+        <div className="grid gap-3 md:grid-cols-3"><Info label="Fecha de inicio" value={order.start_date || '—'} /><Info label="Fin estimado" value={order.estimated_end_date || '—'} /><Info label="Proveedor asignado" value={order.provider_name || 'Taller propio / no asignado'} /></div>
+        </section>}
 
-        <section className="space-y-2">
+        {activeTab === 'trabajos' && <section className="space-y-2">
           <h3 className="font-semibold flex items-center gap-2"><Wrench className="w-4 h-4" />Diagnóstico y tareas</h3>
           <textarea disabled={locked} className={`${field} w-full`} rows={2} value={diagnostic} onChange={e => setDiagnostic(e.target.value)} placeholder="Diagnóstico técnico" />
           <ul className="space-y-1">
@@ -517,10 +611,27 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
             </div>
           )}
           {order.activities_performed && <p className="text-slate-600"><b>Actividades:</b> {order.activities_performed}</p>}
-        </section>
+        </section>}
 
-        <section className="space-y-2">
-          <h3 className="font-semibold">Costos</h3>
+        {activeTab === 'costos' && <section className="space-y-3">
+          <h3 className="font-semibold">Presupuesto aprobado y costos ejecutados</h3>
+          <div className={`grid grid-cols-2 gap-2 rounded-lg border p-3 md:grid-cols-4 ${budget?.over_budget ? 'border-red-300 bg-red-50' : 'bg-slate-50'}`}>
+            <Info label="Presupuesto aprobado" value={budget?.approved_budget == null ? 'Pendiente' : money(budget.approved_budget)} />
+            <Info label="Costo real" value={money(budget?.actual_cost ?? order.total_cost)} />
+            <Info label="Disponible" value={budget?.remaining_budget == null ? '—' : money(budget.remaining_budget)} />
+            <Info label="Solicitud pendiente" value={budget?.pending_budget == null ? 'Ninguna' : money(budget.pending_budget)} />
+          </div>
+          {budget?.pending_request_id && <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <p className="text-sm"><b>Revisión requerida:</b> {budget.pending_reason}</p>
+            <textarea className={`${field} bg-white`} rows={2} placeholder="Observación de aprobación o motivo obligatorio de rechazo" value={budgetDecisionNotes} onChange={e => setBudgetDecisionNotes(e.target.value)} />
+            <div className="flex gap-2"><button type="button" disabled={busy} onClick={() => void decideBudget('APROBADA')} className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm text-white">Aprobar presupuesto</button><button type="button" disabled={busy || !budgetDecisionNotes.trim()} onClick={() => void decideBudget('RECHAZADA')} className="rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-700">Rechazar</button></div>
+          </div>}
+          {!locked && <form onSubmit={requestBudget} className="flex flex-wrap gap-2 rounded-lg border p-3">
+            <input required type="number" min={0} step="0.01" className={`${field} w-36`} placeholder="Monto S/" value={budgetForm.amount} onChange={e => setBudgetForm({ ...budgetForm, amount: e.target.value })} />
+            <input required className={`${field} min-w-48 flex-1`} placeholder="Sustento del presupuesto o ampliación" value={budgetForm.reason} onChange={e => setBudgetForm({ ...budgetForm, reason: e.target.value })} />
+            <button disabled={busy} className="rounded-lg bg-[#002855] px-3 py-1.5 text-sm text-white">Solicitar aprobación</button>
+          </form>}
+          <p className="text-xs text-slate-500">La OT requiere presupuesto aprobado para autorizarse. Al registrar costos, el sistema impide exceder el monto vigente y solicita una ampliación.</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <Info label="Mano de obra" value={money(order.labor_cost)} /><Info label="Repuestos" value={money(order.parts_cost)} />
             <Info label="Servicios" value={money(order.services_cost)} /><Info label="Total" value={money(order.total_cost)} />
@@ -533,7 +644,7 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
                   <td className="py-1.5 text-slate-600">{c.description}{c.quantity ? ` (x${c.quantity})` : ''}{c.document_number ? ` · doc ${c.document_number}` : ''}</td>
                   <td className="py-1.5 text-right">{money(c.amount)}</td>
                   <td className="py-1.5 text-right w-8">
-                    {!locked && c.cost_type !== 'REPUESTOS' && <button onClick={() => removeCost(c)} className="text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>}
+                    {!locked && c.cost_type !== 'REPUESTOS' && <button onClick={() => setCostToRemove(c)} className="text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>}
                   </td>
                 </tr>
               ))}
@@ -565,10 +676,10 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
               </form>
             </>
           )}
-        </section>
+        </section>}
 
-        <section className="space-y-2">
-          <h3 className="font-semibold">Evidencias</h3>
+        {activeTab === 'documentos' && <section className="space-y-4">
+          <div className="space-y-2"><h3 className="font-semibold">Evidencias de la orden</h3>
           <div className="flex flex-wrap gap-2">
             {(order.evidence_urls || []).map(url => (
               <a key={url} href={protectedFileHref(url)} target="_blank" rel="noreferrer" className="text-xs text-blue-600 underline break-all">{url.split('/').pop()}</a>
@@ -581,12 +692,26 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
               <input type="file" className="hidden" accept="image/*,application/pdf" onChange={e => e.target.files?.[0] && uploadEvidence(e.target.files[0])} />
             </label>
           )}
-        </section>
+          </div>
+          <div className="space-y-3 border-t pt-4">
+            <div><h3 className="font-semibold">Informes técnicos PDF versionados</h3><p className="mt-1 text-xs text-slate-500">Cada emisión conserva una versión inmutable en el expediente de esta OT.</p></div>
+            <div className="flex flex-wrap gap-2">
+              {!locked && <button disabled={busy} onClick={() => void generateReport('PREVIO')} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-50"><FileText className="h-4 w-4" />Emitir informe previo</button>}
+              {order.status === 'CERRADA' && <button disabled={busy} onClick={() => void generateReport('CIERRE')} className="inline-flex items-center gap-2 rounded-lg bg-[#002855] px-3 py-2 text-sm text-white disabled:opacity-50"><FileText className="h-4 w-4" />Emitir informe de cierre</button>}
+            </div>
+            {reports.length ? <DataTable className="w-full text-xs"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="p-2">Tipo</th><th className="p-2">Versión</th><th className="p-2">Emitido</th><th className="p-2">Archivo</th></tr></thead><tbody className="divide-y">{reports.map(report => {
+              const objectUrl = supabase.storage.from(report.storage_bucket).getPublicUrl(report.storage_path).data.publicUrl
+              return <tr key={report.id}><td className="p-2">{report.report_type === 'PREVIO' ? 'Informe previo' : 'Informe de cierre'}</td><td className="p-2">v{report.version}</td><td className="p-2">{format(new Date(report.created_at), 'dd/MM/yyyy HH:mm')}</td><td className="p-2"><a href={protectedFileHref(objectUrl)} target="_blank" rel="noreferrer" className="text-blue-700 underline">Abrir PDF</a></td></tr>
+            })}</tbody></DataTable> : <div className="rounded-lg border border-dashed p-5 text-center text-xs text-slate-500">Aún no se han emitido informes PDF.</div>}
+          </div>
+        </section>}
 
-        {order.notes && (
-          <section><h3 className="font-semibold">Bitácora</h3><pre className="whitespace-pre-wrap text-xs text-slate-600 bg-slate-50 rounded-lg p-3">{order.notes}</pre></section>
-        )}
+        {activeTab === 'historial' && <section className="space-y-3"><div><h3 className="font-semibold">Bitácora de la OT</h3><p className="text-xs text-slate-500">Estados, asignaciones, programación, presupuesto y cambios técnicos.</p></div>
+          {events.length ? <ol className="space-y-2">{events.map(event => <li key={event.id} className="rounded-lg border p-3"><div className="flex flex-wrap justify-between gap-2"><b>{event.evento.replace(/_/g, ' ')}</b><time className="text-xs text-slate-500">{format(new Date(event.created_at), 'dd/MM/yyyy HH:mm')}</time></div>{(event.estado_anterior || event.estado_nuevo) && <div className="mt-1 text-xs text-slate-600">{event.estado_anterior || 'Inicio'} → {event.estado_nuevo || '—'}</div>}{event.detalle && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{event.detalle}</p>}</li>)}</ol> : <div className="rounded-lg border border-dashed p-5 text-center text-xs text-slate-500">Sin eventos registrados todavía.</div>}
+          {order.notes && <details><summary className="cursor-pointer text-xs text-slate-500">Ver notas heredadas</summary><pre className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-xs text-slate-600">{order.notes}</pre></details>}
+        </section>}
       </div>
+      {costToRemove && <Modal isOpen onClose={() => setCostToRemove(null)} title="Eliminar costo" maxWidth="max-w-md"><div className="space-y-4 text-sm"><p>¿Confirma eliminar <b>{costToRemove.cost_type.replace(/_/g, ' ')}</b> por {money(costToRemove.amount)}? Esta acción quedará en el total actualizado de la OT.</p><div className="flex justify-end gap-2"><button type="button" className="rounded-lg border px-3 py-1.5" onClick={() => setCostToRemove(null)}>Volver</button><button type="button" className="rounded-lg bg-red-700 px-3 py-1.5 text-white" onClick={() => void removeCost(costToRemove)}>Eliminar costo</button></div></div></Modal>}
     </Modal>
   )
 }
