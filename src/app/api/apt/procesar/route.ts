@@ -16,6 +16,10 @@ function fallo(p: Paso, etapa: string) {
   return null
 }
 
+// Estadía o flujo que exceden el límite: la tarea programada de la base (apt_models_ensure_current_core, cada minuto y con
+// 5 min) los deja al día sola; no es un error que el usuario deba resolver
+const enCurso = (p: Paso) => !!p.error && /statement timeout/i.test(p.error.message)
+
 export async function POST(request: Request) {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!serviceRoleKey) {
@@ -55,11 +59,13 @@ export async function POST(request: Request) {
   }
   if (accion === 'estadia') {
     const model = await admin.rpc('apt_rebuild') as Paso
+    if (enCurso(model)) return NextResponse.json({ success: true, pending: true })
     const err = fallo(model, 'Recalcular la estadía')
     if (err) return NextResponse.json({ success: false, error: err }, { status: 500 })
     return NextResponse.json({ success: true, model: model.data })
   }
   const flow = await admin.rpc('apt_flow_rebuild_core') as Paso
+  if (enCurso(flow)) return NextResponse.json({ success: true, pending: true })
   const err = fallo(flow, 'Recalcular el flujo multi-almacén')
   if (err) return NextResponse.json({ success: false, error: err }, { status: 500 })
   return NextResponse.json({ success: true, flow: flow.data })
