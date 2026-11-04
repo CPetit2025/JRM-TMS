@@ -86,7 +86,7 @@ const STATUS_STYLE: Record<WoStatus, string> = {
 }
 const ORDER_TYPES = ['CORRECTIVA', 'PREVENTIVA', 'EMERGENCIA', 'INSPECCION', 'MEJORA']
 const PRIORITIES = ['BAJA', 'NORMAL', 'ALTA', 'CRITICA']
-const OPEN_STATUSES: WoStatus[] = ['BORRADOR', 'APROBADA', 'PROGRAMADA', 'EN_PROCESO', 'EN_ESPERA', 'TERMINADA', 'VALIDACION']
+const OPEN_STATUSES: WoStatus[] = ['APROBADA', 'PROGRAMADA', 'EN_PROCESO', 'EN_ESPERA', 'TERMINADA', 'VALIDACION']
 const money = (n: number | null | undefined) => `S/ ${Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 function queryWorkOrders() {
@@ -140,6 +140,7 @@ export default function GestorOT() {
     const closed30 = orders.filter(o => o.status === 'CERRADA' && o.closed_at && loadedAt - new Date(o.closed_at).getTime() <= 30 * 86_400_000 && o.downtime_hours != null)
     return {
       open: orders.filter(o => OPEN_STATUSES.includes(o.status)).length,
+      drafts: orders.filter(o => o.status === 'BORRADOR').length,
       inProgress: orders.filter(o => o.status === 'EN_PROCESO' || o.status === 'EN_ESPERA').length,
       toValidate: orders.filter(o => o.status === 'TERMINADA' || o.status === 'VALIDACION').length,
       costMonth: orders.filter(o => new Date(o.created_at) >= monthStart && o.status !== 'CANCELADA').reduce((s, o) => s + Number(o.total_cost || 0), 0),
@@ -162,9 +163,10 @@ export default function GestorOT() {
         </div>
 </>} />
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         {[
-          ['OT abiertas', kpis.open],
+          ['OT abiertas (sin borrador)', kpis.open],
+          ['Borradores', kpis.drafts],
           ['En ejecución', kpis.inProgress],
           ['Por validar/cerrar', kpis.toValidate],
           ['Costo del mes', money(kpis.costMonth)],
@@ -182,6 +184,7 @@ export default function GestorOT() {
           className="border rounded-lg px-3 py-2 text-sm w-64" />
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
           <option value="ABIERTAS">Abiertas</option>
+          <option value="BORRADOR">Borradores</option>
           <option value="TODOS">Todas</option>
           {(Object.keys(STATUS_STYLE) as WoStatus[]).map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
         </select>

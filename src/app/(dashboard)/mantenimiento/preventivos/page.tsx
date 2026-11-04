@@ -132,7 +132,7 @@ export default function PreventivosPage() {
       <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
         {(['VENCIDO', 'URGENTE', 'PRÓXIMO', 'NORMAL'] as Alert[]).map(a => (
           <button key={a} onClick={() => { setTab('proyeccion'); setAlertFilter(a) }} className={`rounded-xl p-3 text-left ${ALERT_STYLE[a]}`}>
-            <div className="text-xs font-semibold">{a}</div><div className="text-2xl font-bold">{counts[a]}</div>
+            <div className="text-xs font-semibold">{a === 'VENCIDO' ? 'PLANES ACTIVOS VENCIDOS' : a}</div><div className="text-2xl font-bold">{counts[a]}</div>
           </button>
         ))}
         {([['30', counts.d30], ['60', counts.d60], ['90', counts.d90]] as const).map(([b, c]) => (
