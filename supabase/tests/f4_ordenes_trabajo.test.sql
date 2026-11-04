@@ -15,6 +15,7 @@ DECLARE
   v_wo2     uuid;
   v_req     uuid;
   v_disp    uuid;
+  v_budget  uuid;
   v_fail    text[] := '{}';
   v_pass    int := 0;
   r         jsonb;
@@ -63,6 +64,12 @@ BEGIN
   ELSE v_fail := v_fail || ('T2 transición inválida/directa: ' || r::text); END IF;
 
   -- T3: aprobación registra quién y cuándo
+  r := public.request_work_order_budget(v_wo, 500, 'Presupuesto inicial de prueba F4');
+  v_budget := (r->>'id')::uuid;
+  IF NOT COALESCE((r->>'success')::boolean, false)
+     OR NOT COALESCE((public.decide_work_order_budget(v_budget, 'APROBADA', 'Aprobación de prueba') ->> 'success')::boolean, false) THEN
+    v_fail := v_fail || ('T3 presupuesto: ' || COALESCE(r::text, 'sin respuesta'));
+  END IF;
   r := public.transition_work_order(v_wo, 'APROBADA');
   IF (r->>'success')::boolean AND EXISTS (SELECT 1 FROM public.maintenance_work_orders WHERE id = v_wo AND approved_by = v_admin AND approved_at IS NOT NULL)
   THEN v_pass := v_pass + 1; ELSE v_fail := v_fail || ('T3 aprobación: ' || r::text); END IF;
@@ -147,6 +154,9 @@ BEGIN
   INSERT INTO public.maintenance_requests (vehicle_plate, description, severity, status, reported_at)
   VALUES ('ZZF4B1', 'Fuga de aire en frenos', 'CRITICA', 'REPORTADA', now() - interval '5 hours') RETURNING id INTO v_req;
   v_wo2 := public.convert_request_to_wo(v_req, v_admin);
+  r := public.request_work_order_budget(v_wo2, 200, 'Reparación de manguera y validación');
+  v_budget := (r->>'id')::uuid;
+  PERFORM public.decide_work_order_budget(v_budget, 'APROBADA', 'Aprobación de prueba');
   PERFORM public.transition_work_order(v_wo2, 'APROBADA');
   PERFORM public.transition_work_order(v_wo2, 'EN_PROCESO');
   SELECT downtime_start INTO w FROM public.maintenance_work_orders WHERE id = v_wo2;

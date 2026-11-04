@@ -35,7 +35,7 @@ async function main() {
     await db.exec(guideMigration.match(/CREATE OR REPLACE FUNCTION public\.apt_guia_key[\s\S]*?\$\$;/)[0])
     await db.exec(original.match(/CREATE OR REPLACE FUNCTION public\.apt_guias_peso\(p_guias text\)[\s\S]*?\$\$;/)[0])
     await db.exec(readFileSync('supabase/migrations/20261224120000_servicios_peso_actual.sql', 'utf8'))
-    await db.exec(readFileSync('supabase/migrations/20261224140000_servicios_peso_consulta_lote.sql', 'utf8'))
+    await db.exec(readFileSync('supabase/migrations/20261225100000_servicios_peso_consulta_lote.sql', 'utf8'))
     const ids = [1, 2, 3, 4].map(n => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`)
     const query = () => db.query('SELECT service_id, kg::text, encontradas, faltan FROM get_service_registry_weight($1::uuid[]) ORDER BY service_id', [ids])
     assert.deepEqual((await query()).rows, [
@@ -58,7 +58,7 @@ async function main() {
     const batchRows = (await db.query('SELECT kg::text FROM get_service_registry_weight($1::uuid[])', [batch])).rows
     assert.equal(batchRows.length,200)
     assert.ok(batchRows.every(r=>r.kg==='11231'))
-    const migration = readFileSync('supabase/migrations/20261224140000_servicios_peso_consulta_lote.sql','utf8')
+    const migration = readFileSync('supabase/migrations/20261225100000_servicios_peso_consulta_lote.sql','utf8')
     const queryBody = migration.split('AS $$')[1].split('$$;')[0].replaceAll('p_services','$1::uuid[]')
     const plan = (await db.query('EXPLAIN (ANALYZE, FORMAT JSON) '+queryBody,[batch])).rows[0]['QUERY PLAN'][0].Plan
     const scans=[]
