@@ -88,6 +88,7 @@ jobs:
       - run: node scripts/test-app-session.cjs
       - run: node scripts/test-service-registry-weight.cjs
       - run: node scripts/test-service-registry-loading.cjs
+      - run: node scripts/test-maintenance-release-permissions.cjs
       - run: node scripts/test-guide-descriptions.cjs
       - run: node scripts/test-apt-upload.cjs
       - run: node scripts/test-apt-safeupdate.cjs
