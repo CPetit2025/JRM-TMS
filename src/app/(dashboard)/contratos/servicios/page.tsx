@@ -125,6 +125,7 @@ export default function ContractServicesPage() {
   const sinValorizar = (s: ContractService) => s.service_type === 'FLETE' && !!s.dispatch_id && s.status !== 'ANULADO' && Number(s.amount_pen) === 0
   const stageOf = (s: ContractService): RegistryContext['stage'] => s.status === 'ANULADO' ? 'ANULADO' : registryContext[s.id]?.stage || (s.dispatch_id ? 'OTRA_SEDE' : 'REGISTRO_MANUAL')
   const [pesoApt, setPesoApt] = useState<Record<string, PesoApt>>({})
+  const [pesoAptError, setPesoAptError] = useState<string | null>(null)
   const [syncingPeso, setSyncingPeso] = useState(false)
   const [contracts, setContracts] = useState<Contract[]>([])
   const [orphanDispatches, setOrphanDispatches] = useState<Dispatch[]>([])
@@ -273,13 +274,20 @@ export default function ContractServicesPage() {
       setRegistryContext(Object.fromEntries(contexts.map(c => [c.service_id, c])))
       setServices(rows)
       // Leer APT en vivo: el caché puede faltar o no incluir guías documentarias.
-      const weights: PesoApt[] = []
-      for (let offset = 0; offset < rows.length; offset += 200) {
-        const { data, error } = await supabase.rpc('get_service_registry_weight', { p_services: rows.slice(offset, offset + 200).map(s => s.id) })
-        if (error) throw error
-        weights.push(...((data as PesoApt[]) || []))
+      setPesoApt({})
+      setPesoAptError(null)
+      try {
+        const weights: PesoApt[] = []
+        for (let offset = 0; offset < rows.length; offset += 200) {
+          const { data, error } = await supabase.rpc('get_service_registry_weight', { p_services: rows.slice(offset, offset + 200).map(s => s.id) })
+          if (error) throw error
+          weights.push(...((data as PesoApt[]) || []))
+        }
+        setPesoApt(Object.fromEntries(weights.map(p => [p.service_id, p])))
+      } catch (error: unknown) {
+        setPesoAptError(errorMessage(error))
+        toast.error('No se pudo consultar el tonelaje APT: ' + errorMessage(error))
       }
-      setPesoApt(Object.fromEntries(weights.map(p => [p.service_id, p])))
 
       // Por páginas: la API entrega como máximo 1.000 filas por consulta y hay miles de OT
       const cData = await allPages<unknown>((o, n) => supabase
@@ -759,6 +767,7 @@ export default function ContractServicesPage() {
                       umbral={erpOts.config?.umbral_dias} /></td>
                     <td className="text-right text-sm font-medium text-slate-800">
                       {(() => {
+                        if (pesoAptError) return <span className="text-[11px] text-amber-600" title={pesoAptError}>Peso no disponible</span>
                         const p = pesoApt[srv.id]
                         const t = tonInfo(srv, p)
                         if (t.fuente === 'APT') return (
