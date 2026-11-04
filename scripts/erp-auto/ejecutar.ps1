@@ -50,7 +50,10 @@ try {
   $env:TMS_CLAVE = $cred.GetNetworkCredential().Password
   $extra = @(); if ($Revisar) { $extra = @('--revisar') }
   [Console]::OutputEncoding = [Text.Encoding]::UTF8  # Node escribe UTF-8; sin esto los acentos salen rotos en el log
+  # Lo que Node escribe en stderr es parte del log, no un error de PowerShell (con Stop cortaba la salida)
+  $ErrorActionPreference = 'Continue'
   & $node (Join-Path $PSScriptRoot 'cargar.mjs') @extra $cfg.actualizable $cfg.stock 2>&1 | ForEach-Object { "$_" }
+  $ErrorActionPreference = 'Stop'
   if ($LASTEXITCODE) { throw 'La carga en el TMS falló' }
   $codigo = 0
 } catch {

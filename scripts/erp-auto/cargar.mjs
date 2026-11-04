@@ -18,8 +18,8 @@ if (archivos.length !== 2 || !usuario || !clave) {
 
 const MIN = 60_000
 const browser = await chromium.launch({ channel: 'msedge', headless: true })
+const page = await browser.newPage()
 try {
-  const page = await browser.newPage()
   await page.goto(`${url}/login`)
   await page.locator('#login-username').fill(usuario)
   await page.locator('#login-password').fill(clave)
@@ -53,7 +53,9 @@ try {
   if (await error.isVisible()) throw new Error(`Carga: ${await error.innerText()}`)
   console.log(`OK ${await listo.innerText()}`)
 } catch (e) {
-  console.error(`ERROR ${e instanceof Error ? e.message : e}`)
+  // En qué paso quedó la pantalla (el texto que acompaña al indicador de carga)
+  const paso = await page.locator('p:has(svg.animate-spin)').first().innerText({ timeout: 2000 }).catch(() => '')
+  console.error(`ERROR ${e instanceof Error ? e.message : e}${paso ? ` · último paso: ${paso}` : ''}`)
   process.exitCode = 1
 } finally {
   await browser.close()
