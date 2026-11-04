@@ -76,6 +76,21 @@ async function main() {
     scans.length=0
     visit((await db.query('EXPLAIN (ANALYZE, FORMAT JSON) '+queryBody,[batch])).rows[0]['QUERY PLAN'][0].Plan)
     assert.ok(scans.every(node=>node['Node Type']!=='Seq Scan'), 'Distinct guides must use indexed lookups, not full SALIDA scans')
+    await db.exec(readFileSync('supabase/migrations/20261225102000_apt_peso_busqueda_indexada.sql','utf8'))
+    const legacy = await db.query("SELECT kg::text,encontradas,faltan FROM apt_guias_peso('T001-00006820,6820,T001-9999')")
+    assert.deepEqual(legacy.rows,[{kg:'11231',encontradas:2,faltan:'T001-9999'}])
+    const legacySource=readFileSync('supabase/migrations/20261225102000_apt_peso_busqueda_indexada.sql','utf8')
+    const legacyQuery=legacySource.split('AS $$')[1].split('$$;')[0].replaceAll('p_guias','$1::text')
+    scans.length=0
+    visit((await db.query('EXPLAIN (ANALYZE, FORMAT JSON) '+legacyQuery,['T001-6820,6820,T001-9999'])).rows[0]['QUERY PLAN'][0].Plan)
+    assert.ok(scans.every(node=>node['Node Type']!=='Seq Scan'), 'Historical sync must use indexed APT lookups')
+    assert.equal((await db.query("SELECT has_function_privilege('authenticated','apt_guias_peso(text)','EXECUTE') AS allowed")).rows[0].allowed,false)
+    await db.exec(`INSERT INTO apt_movements(documento,peso_kg) VALUES ('NOGUION',123);
+      INSERT INTO contract_services VALUES ('00000000-0000-0000-0000-000000000300','NOGUION');
+      INSERT INTO registry_context VALUES ('00000000-0000-0000-0000-000000000300','[]');`)
+    assert.equal((await db.query("SELECT kg::text FROM apt_guias_peso('NOGUION')")).rows[0].kg,'123')
+    assert.equal((await db.query("SELECT kg::text FROM get_service_registry_weight(ARRAY['00000000-0000-0000-0000-000000000300']::uuid[])")).rows[0].kg,'123')
+    console.log('PASS: historical APT helper preserves weight and missing guides with indexed lookups and private permissions')
     await db.exec(`ALTER TABLE contract_services ADD COLUMN created_at timestamptz DEFAULT now();
       CREATE SCHEMA auth;
       CREATE TABLE auth.users(id uuid PRIMARY KEY);
