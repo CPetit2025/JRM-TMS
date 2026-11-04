@@ -16,6 +16,10 @@ function Com([scriptblock]$Paso) {
 }
 
 $excel = New-Object -ComObject Excel.Application
+# Proceso de este Excel oculto: si Quit no lo cierra, queda vivo y el siguiente archivo que abra el usuario cae en él
+Add-Type -Name W -Namespace ErpAuto -MemberDefinition '[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(System.IntPtr h, out uint p);'
+[uint32]$excelPid = 0
+[void][ErpAuto.W]::GetWindowThreadProcessId([IntPtr]$excel.Hwnd, [ref]$excelPid)
 $excel.Visible = $false
 $excel.DisplayAlerts = $false
 $excel.AskToUpdateLinks = $false
@@ -48,8 +52,11 @@ try {
     } finally { Com { $wb.Close($false) } }
   }
 } finally {
-  $excel.Quit()
+  Com { $excel.Quit() }
   [void][Runtime.InteropServices.Marshal]::ReleaseComObject($excel)
   [GC]::Collect()
+  # Si sigue vivo y sin ventana (nadie lo está usando), se cierra; con ventana es del usuario y no se toca
+  $p = Get-Process -Id $excelPid -ErrorAction SilentlyContinue
+  if ($p -and -not $p.WaitForExit(30000) -and $p.MainWindowHandle -eq 0) { Stop-Process -Id $excelPid -Force }
 }
 if ($fallos) { exit 1 }
