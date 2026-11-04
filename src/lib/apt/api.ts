@@ -112,7 +112,7 @@ async function procesar(body: { accion: 'aplicar' | 'estadia' | 'flujo'; upload_
   } catch {
     throw new Error(`Se perdió la conexión al ${PASO[body.accion]}. Revise el historial antes de repetir la carga.`)
   }
-  const out = await res.json().catch(() => null) as { success?: boolean; error?: string; summary?: unknown; model?: unknown; flow?: unknown } | null
+  const out = await res.json().catch(() => null) as { success?: boolean; error?: string; summary?: unknown; model?: unknown; flow?: unknown; pending?: boolean } | null
   if (res.status === 404 || (res.status === 503 && !out?.success)) {
     throw new Error('El procesamiento de APT en el servidor no está disponible. No se intentó aplicar desde el navegador. Contacte al administrador para revisar la configuración del servidor.')
   }
@@ -127,10 +127,12 @@ async function rebuildModels() {
     // Mantiene una petición por paso para no competir por recursos ni sumar sus tiempos de consulta.
     let model: unknown
     let flow: unknown
+    let pending = false  // el servidor lo termina solo (tarea programada)
     const failures: string[] = []
     for (const accion of ['estadia', 'flujo'] as const) {
       try {
         const result = await procesar({ accion })
+        pending ||= !!result.pending
         if (accion === 'estadia') model = result.model
         else flow = result.flow
       } catch (error) {
@@ -138,7 +140,7 @@ async function rebuildModels() {
       }
     }
     if (failures.length) throw new Error(failures.join(' · '))
-    return { model, flow }
+    return { model, flow, pending }
   } finally { clearAptCache() }
 }
 

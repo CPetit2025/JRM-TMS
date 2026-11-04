@@ -63,3 +63,32 @@ test('failed retry attempts both independent steps, reports both failures and ne
   assert.deepEqual(f.calls,['estadia','flujo'])
   assert.deepEqual(f.rpc,[])
 })
+
+test('a flow that the scheduled job finishes is pending, not a failure', async () => {
+  const f = fixture([{success: true, summary: {}}, {success: true, model: 1}, {success: true, pending: true}])
+  const result = await f.api.uploadApply('upload')
+  assert.equal(result.warning, null)
+  assert.equal(result.pending, true)
+  assert.deepEqual(f.calls, ['aplicar', 'estadia', 'flujo'])
+})
+
+// Ruta del servidor: estadía o flujo cortados por el límite de 120 s quedan «pendientes» (los termina la tarea programada)
+async function route(rpcResult) {
+  const source = ts.transpileModule(readFileSync(path.join(__dirname, '../src/app/api/apt/procesar/route.ts'), 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS}}).outputText
+  const json = (body, init) => ({status: init?.status || 200, body})
+  const mods = {
+    'next/server': {NextResponse: {json}},
+    '@/lib/supabase/server': {createClient: async () => ({auth: {getUser: async () => ({data: {user: {id: 'u'}}})}, rpc: async () => ({data: {success: true, can_load: true}})})},
+    '@supabase/supabase-js': {createClient: () => ({rpc: async () => rpcResult})},
+  }
+  const context = {exports: {}, process: {env: {SUPABASE_SERVICE_ROLE_KEY: 'k', NEXT_PUBLIC_SUPABASE_URL: 'u'}}, require: n => mods[n]}
+  vm.runInNewContext(source, context)
+  return accion => context.exports.POST({json: async () => ({accion})})
+}
+test('server route reports a timed-out rebuild as pending and other errors as failures', async () => {
+  const timeout = await route({error: {message: 'canceling statement due to statement timeout'}, data: null})
+  for (const accion of ['estadia', 'flujo']) assert.deepEqual({...(await timeout(accion)).body}, {success: true, pending: true})
+  const broken = await route({error: {message: 'relation does not exist'}, data: null})
+  const r = await broken('flujo')
+  assert.equal(r.status, 500); assert.equal(r.body.success, false)
+})

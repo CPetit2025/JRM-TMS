@@ -96,6 +96,7 @@ export async function syncLegacyApt(files: File[], onProgress: (m: string) => vo
     }
   }
   onProgress('Servicios y guías: recalculando estadía y flujo…')
+  // Si queda «pending», la base termina la estadía y el flujo sola en unos minutos: no es un aviso para el usuario
   try { await aptApi.rebuildModels() } catch (e) {
     return `la carga quedó aplicada; el recálculo quedó pendiente (${e instanceof Error ? e.message : 'error del servidor'}). Use «Recalcular y vincular todo».`
   }
