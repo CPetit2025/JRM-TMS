@@ -28,7 +28,7 @@ export function HistorialResumen() {
   const items: Array<[string, string, boolean]> = [
     ['Gasto 12 meses', soles(r.total), false],
     ['Correctivo', r.pct_correctivo != null ? `${r.pct_correctivo} %` : '—', (r.pct_correctivo ?? 0) > r.meta_correctivo],
-    ['Preventivos vencidos', fmt(r.vencidos), r.vencidos > 0],
+    ['Servicios vencidos (historial)', fmt(r.vencidos), r.vencidos > 0],
     ['Próximos 30 días', fmt(r.proximos_30), false],
     ['Unidades en riesgo alto', fmt(alto.length), alto.length > 0],
     ['Planes sin activar', fmt(r.planes?.por_validar ?? 0), (r.planes?.por_validar ?? 0) > 0],
@@ -43,7 +43,8 @@ export function HistorialResumen() {
         {items.map(([k, v, bad]) => <div key={k}><div className="text-xs text-slate-500">{k}</div><div className={`truncate text-lg font-bold ${bad ? 'text-[#cf152d]' : 'text-slate-900'}`}>{v}</div></div>)}
       </div>
       {alto.length > 0 && <p className="mt-1 text-xs text-slate-600">Riesgo alto: {alto.join(', ')}</p>}
-      {r.historial_hasta && <p className="mt-2 text-[11px] text-slate-400">El historial del Excel llega hasta {new Date(`${r.historial_hasta}T12:00:00`).toLocaleDateString('es-PE')}. Los indicadores de abajo solo cuentan OT, fallas y costos registrados en el sistema.</p>}
+      <p className="mt-2 text-[11px] text-slate-500">Proyección estimada con historial Excel, OT y Caja; no equivale al conteo de planes activos de Planificación preventiva.</p>
+      {r.historial_hasta && <p className="text-[11px] text-slate-400">El historial del Excel llega hasta {new Date(`${r.historial_hasta}T12:00:00`).toLocaleDateString('es-PE')}. Los indicadores de abajo solo cuentan OT, fallas y costos registrados en el sistema.</p>}
     </div>
   )
 }
