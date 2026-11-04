@@ -41,7 +41,14 @@ Start-Transcript $log | Out-Null
 try {
   $cfg = Get-Content (Join-Path $PSScriptRoot 'config.json') -Raw | ConvertFrom-Json
   # Primero el Stock: el Actualizable tiene un vínculo a ese libro
-  & (Join-Path $PSScriptRoot 'refrescar.ps1') -Archivos $cfg.stock, $cfg.actualizable
+  # Se trabaja sobre una copia: los originales pueden estar abiertos por el usuario (con cambios) y no se tocan
+  $trabajo = Join-Path $PSScriptRoot 'trabajo'
+  New-Item -ItemType Directory -Force $trabajo | Out-Null
+  $stock = Join-Path $trabajo (Split-Path $cfg.stock -Leaf)
+  $actualizable = Join-Path $trabajo (Split-Path $cfg.actualizable -Leaf)
+  Copy-Item $cfg.stock $stock -Force
+  Copy-Item $cfg.actualizable $actualizable -Force
+  & (Join-Path $PSScriptRoot 'refrescar.ps1') -Archivos $stock, $actualizable
   if ($LASTEXITCODE) { throw 'No se refrescaron los Excel; no se cargó nada' }
   $credencial = Join-Path $PSScriptRoot 'credencial.xml'
   if (-not (Test-Path $credencial)) { throw 'Falta el usuario del TMS del robot: repita la instalación (-Instalar)' }
@@ -52,7 +59,7 @@ try {
   [Console]::OutputEncoding = [Text.Encoding]::UTF8  # Node escribe UTF-8; sin esto los acentos salen rotos en el log
   # Lo que Node escribe en stderr es parte del log, no un error de PowerShell (con Stop cortaba la salida)
   $ErrorActionPreference = 'Continue'
-  & $node (Join-Path $PSScriptRoot 'cargar.mjs') @extra $cfg.actualizable $cfg.stock 2>&1 | ForEach-Object { "$_" }
+  & $node (Join-Path $PSScriptRoot 'cargar.mjs') @extra $actualizable $stock 2>&1 | ForEach-Object { "$_" }
   $ErrorActionPreference = 'Stop'
   if ($LASTEXITCODE) { throw 'La carga en el TMS falló' }
   $codigo = 0

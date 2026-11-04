@@ -19,7 +19,8 @@ Los scripts están en `scripts/erp-auto/`.
 - Que en esa PC Excel ya actualice los dos libros a mano (**Datos › Actualizar todo**) sin pedir credenciales.
 - Un usuario del TMS para el robot, con permiso de carga del ERP (`apt-carga`, Administrador o Jefe de Distribución) y
   de alta de OT desde el ERP. Conviene un usuario propio («carga ERP») para distinguir sus cargas en el registro.
-- Los dos Excel en una carpeta fija (no en Descargas) y **cerrados** mientras corre la carga (unos minutos a las 07, 10, 13, 16 y 19 h).
+- Los dos Excel en una carpeta fija (no en Descargas). Pueden estar abiertos: el robot copia los dos libros a
+  `%LOCALAPPDATA%JRM-TMSerp-auto	rabajo`, refresca y sube esas copias, y no toca los originales.
 
 ## Instalar (una vez)
 
@@ -56,7 +57,6 @@ tareas.
 
 | Mensaje | Qué hacer |
 |---|---|
-| `El archivo está abierto o bloqueado` | Cerrar el Excel; la próxima ejecución lo toma. |
 | `Consulta1 no se actualizó` / quedó vacía | Abrir el Excel y actualizar a mano: si pide credenciales, volver a escribirlas en **Datos › Obtener datos › Configuración de origen de datos**. |
 | `No se pudo iniciar sesión` | Cambió la contraseña del usuario del robot: repetir la instalación. |
 | `el usuario no tiene permiso de carga del ERP` | Darle el permiso al usuario del robot. |
