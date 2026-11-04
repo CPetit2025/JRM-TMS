@@ -76,6 +76,17 @@ async function main() {
     scans.length=0
     visit((await db.query('EXPLAIN (ANALYZE, FORMAT JSON) '+queryBody,[batch])).rows[0]['QUERY PLAN'][0].Plan)
     assert.ok(scans.every(node=>node['Node Type']!=='Seq Scan'), 'Distinct guides must use indexed lookups, not full SALIDA scans')
+    await db.exec(`ALTER TABLE contract_services ADD COLUMN created_at timestamptz DEFAULT now();
+      CREATE SCHEMA auth;
+      CREATE TABLE auth.users(id uuid PRIMARY KEY);
+      CREATE TABLE roles(id uuid PRIMARY KEY,name text);
+      CREATE TABLE profiles(id uuid PRIMARY KEY,role_id uuid,is_active boolean);
+      INSERT INTO auth.users VALUES ('00000000-0000-0000-0000-000000009999');
+      INSERT INTO roles VALUES ('00000000-0000-0000-0000-000000009999','Administrador');
+      INSERT INTO profiles VALUES ('00000000-0000-0000-0000-000000009999','00000000-0000-0000-0000-000000009999',true);`)
+    await assert.rejects(db.exec(readFileSync('supabase/tests/caja_c58_service_weight_performance.test.sql','utf8')), /CAJA C58 PASS/)
+    await db.exec('ROLLBACK')
+    console.log('PASS: production performance test executes and rolls back correctly')
     console.log('PASS: 200 different guides also resolve correctly against 50,000 SALIDA lines')
     console.log('PASS: 200 services sharing a guide resolve APT once with 50,000 unrelated rows; numeric aliases do not double weight')
     console.log('PASS: current APT weight, document-only guides, normalized deduplication, missing guides, service scope and batch limit')
