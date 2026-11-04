@@ -9,7 +9,7 @@ DECLARE actor uuid; ids uuid[]; context jsonb; result jsonb; started timestamptz
 BEGIN
  SELECT p.id INTO actor FROM public.profiles p JOIN public.roles r ON r.id=p.role_id JOIN auth.users u ON u.id=p.id
  WHERE p.is_active AND r.name='Administrador' ORDER BY p.id LIMIT 1;
- IF actor IS NULL THEN RAISE EXCEPTION 'CAJA C58 FAIL: falta cuenta administradora para verificar tonelaje'; END IF;
+ IF actor IS NULL THEN RAISE EXCEPTION 'CAJA C218 FAIL: falta cuenta administradora para verificar tonelaje'; END IF;
  PERFORM set_config('request.jwt.claim.sub',actor::text,true);
  PERFORM set_config('request.jwt.claims',json_build_object('sub',actor,'role','authenticated')::text,true);
  SELECT ARRAY(SELECT s.id FROM public.contract_services s ORDER BY s.created_at DESC,s.id LIMIT 200) INTO ids;
@@ -22,9 +22,9 @@ BEGIN
  elapsed_ms:=round((extract(epoch FROM clock_timestamp()-started)*1000)::numeric,1);
  actual:=jsonb_array_length(result);
  SELECT count(DISTINCT e->>'service_id') INTO unique_services FROM jsonb_array_elements(result) e;
- IF actual<>expected OR actual<>unique_services THEN RAISE EXCEPTION 'CAJA C58 FAIL: peso incompleto o servicios duplicados (% / %)',actual,expected; END IF;
- IF elapsed_ms>=8000 THEN RAISE EXCEPTION 'CAJA C58 FAIL: tonelaje supera presupuesto web: % ms',elapsed_ms; END IF;
- IF has_function_privilege('anon','public.get_service_registry_weight(uuid[])','EXECUTE') THEN RAISE EXCEPTION 'CAJA C58 FAIL: tonelaje expuesto a anon'; END IF;
- RAISE EXCEPTION 'CAJA C58 PASS: tonelaje real por lote privado y completo; servicios %, con guía %, tiempo % ms',cardinality(ids),actual,elapsed_ms;
+ IF actual<>expected OR actual<>unique_services THEN RAISE EXCEPTION 'CAJA C218 FAIL: peso incompleto o servicios duplicados (% / %)',actual,expected; END IF;
+ IF elapsed_ms>=8000 THEN RAISE EXCEPTION 'CAJA C218 FAIL: tonelaje supera presupuesto web: % ms',elapsed_ms; END IF;
+ IF has_function_privilege('anon','public.get_service_registry_weight(uuid[])','EXECUTE') THEN RAISE EXCEPTION 'CAJA C218 FAIL: tonelaje expuesto a anon'; END IF;
+ RAISE EXCEPTION 'CAJA C218 PASS: tonelaje real por lote privado y completo; servicios %, con guía %, tiempo % ms',cardinality(ids),actual,elapsed_ms;
 END $test$;
 ROLLBACK;
