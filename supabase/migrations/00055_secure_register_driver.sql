@@ -15,6 +15,14 @@ END $$;
 -- Define the public tracking endpoint only after daily_tracking_links exists.
 -- The legacy numbered migrations are applied lexicographically, so 000162
 -- precedes 00049 on a fresh database.
+ALTER TABLE public.dispatches ADD COLUMN IF NOT EXISTS vehicle_plate text;
+ALTER TABLE public.dispatches ADD COLUMN IF NOT EXISTS driver_name text;
+ALTER TABLE public.dispatches ADD COLUMN IF NOT EXISTS scheduled_departure timestamptz;
+UPDATE public.dispatches SET scheduled_departure = scheduled_date
+WHERE scheduled_departure IS NULL AND scheduled_date IS NOT NULL;
+UPDATE public.dispatches d SET driver_name = trim(concat_ws(' ', dr.first_name, dr.last_name))
+FROM public.drivers dr WHERE d.driver_id = dr.id AND coalesce(d.driver_name, '') = '';
+
 CREATE OR REPLACE FUNCTION public.get_public_daily_tracking_locations(p_token uuid, p_pin text)
 RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
   SELECT coalesce(jsonb_agg(jsonb_build_object(
