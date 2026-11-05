@@ -151,7 +151,6 @@ BEGIN
     EXECUTE 'REVOKE ALL ON FUNCTION public.register_driver(varchar,varchar,varchar,varchar,varchar,varchar,varchar,date) FROM PUBLIC, anon, authenticated';
   END IF;
 END $$;
-GRANT EXECUTE ON FUNCTION public.register_driver(uuid,text,text,text,text,text,text,uuid) TO service_role;
 CREATE OR REPLACE FUNCTION public.register_driver(
   p_auth_user_id uuid, p_dni text, p_first_name text, p_last_name text,
   p_phone text, p_license_number text, p_pin text, p_carrier_id uuid
@@ -170,6 +169,7 @@ BEGIN
   ) RETURNING id INTO v_id;
   RETURN v_id;
 END $$;
+GRANT EXECUTE ON FUNCTION public.register_driver(uuid,text,text,text,text,text,text,uuid) TO service_role;
 
 ALTER TABLE public.dispatches ADD COLUMN IF NOT EXISTS driver_id uuid REFERENCES public.drivers(id);
 ALTER TABLE public.dispatches ADD COLUMN IF NOT EXISTS start_lat numeric(10,7);
