@@ -15,7 +15,7 @@ export function isDispatchAuditorRole(name: string | null | undefined, permissio
 }
 
 export function dispatchAuditorPathAllowed(path: string): boolean {
-  return ['/despacho/planificacion', '/despacho/documentos', '/perfil'].includes(path)
+  return ['/despacho/planificacion', '/despacho/documentos', '/despacho/hallazgos', '/perfil'].includes(path)
 }
 
 // Rutas que un rol no ve aunque algún permiso las habilite (p. ej. /reportes se abre con APT o Torre de Control).

@@ -22,9 +22,9 @@ function fixture(profile={is_active:true,employee_type:'ADMINISTRATIVO',roles:{n
  })
 }
 const request=pathname=>({url:'https://jrm.example'+pathname,nextUrl:{pathname,clone:()=>new URL('https://jrm.example'+pathname)},cookies:{getAll:()=>[],set(){}}})
-test('auditor accede a planificación, Packing List y su perfil; rutas administrativas y operativas redirigen',async()=>{
+test('auditor accede a planificación, Packing List, hallazgos y su perfil; rutas administrativas y operativas redirigen',async()=>{
  const api=fixture()
- for(const pathname of ['/despacho/planificacion','/despacho/documentos','/perfil'])assert.equal((await api.proxy(request(pathname))).kind,'next')
+ for(const pathname of ['/despacho/planificacion','/despacho/documentos','/despacho/hallazgos','/perfil'])assert.equal((await api.proxy(request(pathname))).kind,'next')
  for(const pathname of ['/','/login','/caja','/despacho','/app','/usuarios','/mantenimiento/flota'])assert.equal((await api.proxy(request(pathname))).pathname,'/despacho/documentos')
 })
 test('la restricción no concede acceso a cuentas inactivas ni altera al administrador',async()=>{
