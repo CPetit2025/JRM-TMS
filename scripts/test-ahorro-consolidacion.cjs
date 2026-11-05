@@ -57,6 +57,8 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
   const fast = read('supabase/migrations/20261217090000_ahorro_consolidacion_rapido.sql')
   assert.doesNotMatch(fast, /tariff_pick\('FLETE'/, 'freight tariffs come from the normalized CTE')
   await db.exec(fast); await db.exec(fast)
+  const cachedMigration = read('supabase/migrations/20261226130000_ahorro_cache_paradas.sql')
+  await db.exec(cachedMigration); await db.exec(cachedMigration)
   const rpc = async (sql, params = []) => (await db.query(`SELECT ${sql} AS v`, params)).rows[0].v
 
   // Tarifario: 4T y 1T con capacidad; tarifa de placa para la clase de la unidad propia
@@ -152,6 +154,36 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
   await db.exec(grouped)
   assert.equal(await all(), fastRows, 'normalized tariff lookup matches tariff_pick')
   await db.exec(fast)
+
+  // Medir llamadas reales: la tarifa por clase/fecha se comparte entre recojos.
+  await db.exec(`CREATE SEQUENCE test_tariff_calls;
+   ALTER FUNCTION tariff_pick(text,text,text,text,uuid,uuid,date) RENAME TO tariff_pick_fixture_impl;
+   CREATE FUNCTION tariff_pick(p_concept text,p_class text,p_plate text,p_district text,p_client uuid,p_contract uuid,p_date date DEFAULT CURRENT_DATE)
+   RETURNS jsonb LANGUAGE plpgsql STABLE AS $$BEGIN
+    PERFORM nextval('test_tariff_calls');
+    RETURN tariff_pick_fixture_impl(p_concept,p_class,p_plate,p_district,p_client,p_contract,p_date);
+   END$$;
+   ALTER FUNCTION consolidation_savings(date,date,uuid,uuid) SET jit=off;`)
+  const properties = async () => (await db.query(`SELECT proacl,proowner,prosecdef,proconfig FROM pg_proc
+   WHERE oid='consolidation_savings(date,date,uuid,uuid)'::regprocedure`)).rows[0]
+  const beforeProps = await properties()
+  const callCount = async () => Number((await db.query('SELECT CASE WHEN is_called THEN last_value ELSE 0 END n FROM test_tariff_calls')).rows[0].n)
+  await db.exec("SELECT setval('test_tariff_calls',1,false)")
+  const uncached = await rpc(`consolidation_savings('2026-10-01','2026-11-30')`)
+  const beforeCalls = await callCount()
+  await db.exec(cachedMigration); await db.exec(cachedMigration)
+  assert.deepEqual(await properties(), beforeProps, 'El cache conserva ACL, propietario, SECURITY DEFINER y configuración instalada')
+  await db.exec("SELECT setval('test_tariff_calls',1,false)")
+  const cached = await rpc(`consolidation_savings('2026-10-01','2026-11-30')`)
+  const afterCalls = await callCount()
+  assert.deepEqual(cached.rows, uncached.rows, 'Cada importe y estado se conserva exactamente')
+  for (const key of ['saving_total','services_total','leveraged','hours_cost_missing']) assert.deepEqual(cached[key],uncached[key],key)
+  assert.ok(afterCalls > 0 && afterCalls < beforeCalls, `Llamadas repetidas eliminadas: ${beforeCalls} → ${afterCalls}`)
+  console.log(`Cache de tarifas de parada: ${beforeCalls} → ${afterCalls} llamadas; importes y permisos idénticos`)
+  // También funciona si la definición instalada conserva saltos de línea de Windows.
+  await db.exec(fast.replace(/\r?\n/g, '\r\n'))
+  await db.exec(cachedMigration)
+  assert.deepEqual((await rpc(`consolidation_savings('2026-10-01','2026-11-30')`)).rows, cached.rows)
 
   // Validaciones y permisos
   assert.match((await rpc(`consolidation_savings('2026-11-02','2026-11-01')`)).error, /período válido/)
