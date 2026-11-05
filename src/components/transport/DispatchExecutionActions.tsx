@@ -7,6 +7,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { createClient } from '@/lib/supabase/client'
 import { errorMessage } from '@/lib/caja'
 import { dispatchClosureMessage, dispatchExecutionAction } from '@/lib/dispatch-execution'
+import { AuditFindingReleaseBadge } from '@/components/despacho/AuditFindingReleaseBadge'
 
 export function DispatchExecutionActions({ dispatch, onChanged }: {
   dispatch: { id: string; status: string; modalidad?: string | null }
@@ -49,9 +50,9 @@ export function DispatchExecutionActions({ dispatch, onChanged }: {
     }
   }
 
-  return <button type="button" disabled={busy} onClick={() => void execute()}
+  return <>{action.nextStatus === 'EN_CURSO' && <AuditFindingReleaseBadge dispatchId={dispatch.id} status={dispatch.status} />}<button type="button" disabled={busy} onClick={() => void execute()}
     className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white hover:bg-[#001d3d] disabled:opacity-50">
     {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : action.rpc === 'close_dispatch_route' ? <CheckCircle2 className="h-4 w-4" /> : <PlayCircle className="h-4 w-4" />}
     {action.label}
-  </button>
+  </button></>
 }

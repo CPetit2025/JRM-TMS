@@ -46,6 +46,10 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     { id: 'monitoreo', label: 'Monitoreo GPS' },
     { id: 'planificacion', label: 'Planificación de despachos (consulta del auditor)' },
     { id: 'packing-list', label: 'Carga de Packing List (auditor)' },
+    { id: 'hallazgos', label: 'Hallazgos de auditoría de despacho (registro y seguimiento)' },
+    { id: 'hallazgos-validar', label: 'Hallazgos: validar correcciones, anular evidencias y corregir fechas', mode: 'toggle' },
+    { id: 'hallazgos-excepcion', label: 'Hallazgos: excepción formal de salida (Jefe de Distribución)', mode: 'toggle' },
+    { id: 'hallazgos-categorias', label: 'Hallazgos: administrar categorías', mode: 'toggle' },
   ] },
   { title: 'Almacén APT', modules: [
     { id: 'apt', label: 'Estadía de inventario y trazabilidad' },
