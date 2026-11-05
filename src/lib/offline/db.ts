@@ -41,10 +41,22 @@ export interface OfflinePreuse {
   last_error?: string;
 }
 
+export interface WarehouseScanOutbox {
+  client_event_id: string;
+  profile_id: string;
+  task_id: string;
+  scanned_code: string;
+  event_type: 'PICK' | 'PACK' | 'LOAD';
+  payload: Record<string, unknown>;
+  created_at: string;
+  last_error?: string;
+}
+
 export class AppDB extends Dexie {
   expenses!: Table<OfflineExpense>;
   checklists!: Table<OfflineChecklist>;
   preuse!: Table<OfflinePreuse, string>;
+  warehouseScans!: Table<WarehouseScanOutbox, string>;
 
   constructor() {
     super('jrm-offline-db');
@@ -56,6 +68,12 @@ export class AppDB extends Dexie {
       expenses: '++id, dispatch_id, driver_id, synced, created_at',
       checklists: '++id, dispatch_id, vehicle_plate, driver_id, synced, created_at',
       preuse: 'operation_id, profile_id, unit_revision, synced, created_at'
+    });
+    this.version(4).stores({
+      expenses: '++id, dispatch_id, driver_id, synced, created_at',
+      checklists: '++id, dispatch_id, vehicle_plate, driver_id, synced, created_at',
+      preuse: 'operation_id, profile_id, unit_revision, synced, created_at',
+      warehouseScans: 'client_event_id, profile_id, task_id, scanned_code, event_type, created_at'
     });
   }
 }

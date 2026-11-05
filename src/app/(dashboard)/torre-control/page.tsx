@@ -550,7 +550,7 @@ export default function TorreControlPage() {
       </div>
 
       {/* Referencia del ERP (solo lectura): guías del ERP sin ruta, guías de rutas que el ERP no muestra y desfases de fecha */}
-      <ErpGuiasResumenCard canOpenErp={['apt', 'apt-carga'].some(module => canRead(module))} />
+      <ErpGuiasResumenCard canOpenErp={['apt', 'apt-carga','almacen-lectura','almacen-supervisor','almacen-carga'].some(module => canRead(module))} />
 
       {/* Advanced Filters */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-4">

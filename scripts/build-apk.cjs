@@ -11,6 +11,16 @@ if (!existsSync(process.env.JRM_KEYSTORE_PATH)) throw new Error('No se encontró
 const root = path.resolve(__dirname, '..');
 const android = path.join(root, 'android');
 const capacitor = path.join(root, 'node_modules', '@capacitor', 'cli', 'bin', 'capacitor');
+const warehouse = process.argv.includes('--warehouse');
+const flavor = warehouse ? 'almacen' : 'tms';
+const appId = warehouse ? 'com.jrm.almacen' : 'com.jrm.tms';
+const appPrefix = warehouse ? 'jrm-almacen' : 'jrm-tms';
+const variantTask = `assemble${warehouse ? 'Almacen' : 'Tms'}Release`;
+process.env.CAPACITOR_APP = warehouse ? 'warehouse' : 'tms';
+if (warehouse) {
+  process.env.JRM_ANDROID_VERSION_NAME = process.env.JRM_WAREHOUSE_VERSION_NAME || '1.0.0';
+  process.env.JRM_ANDROID_VERSION_CODE = process.env.JRM_WAREHOUSE_VERSION_CODE || '1';
+}
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -27,20 +37,22 @@ mkdirSync(path.join(android, 'app', 'src', 'main', 'assets'), { recursive: true 
 run(process.execPath, [capacitor, 'sync', 'android']);
 const syncedConfig = JSON.parse(readFileSync(
   path.join(android, 'app', 'src', 'main', 'assets', 'capacitor.config.json'), 'utf8'));
-if (!syncedConfig.server?.url?.startsWith('https://') || !syncedConfig.server?.appStartPath) {
-  throw new Error('La configuración Android debe incluir server.url HTTPS y server.appStartPath.');
+const expectedStartPath = warehouse ? '/almacen/login' : '/app/login';
+if (syncedConfig.appId !== appId || !syncedConfig.server?.url?.startsWith('https://') || syncedConfig.server?.appStartPath !== expectedStartPath) {
+  throw new Error(`La configuración Android debe ser ${appId}, server.url HTTPS y appStartPath ${expectedStartPath}.`);
 }
 if (process.platform === 'win32') {
-  run('gradlew.bat', ['assembleRelease'], { cwd: android, shell: true });
+  run('gradlew.bat', [variantTask], { cwd: android, shell: true });
 } else {
-  run('bash', ['./gradlew', 'assembleRelease'], { cwd: android });
+  run('bash', ['./gradlew', variantTask], { cwd: android });
 }
 
 const version = process.env.JRM_ANDROID_VERSION_NAME || '1.0.5';
 const build = process.env.JRM_ANDROID_VERSION_CODE || '6';
-const source = path.join(android, 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
-const metadata = JSON.parse(readFileSync(path.join(android, 'app', 'build', 'outputs', 'apk', 'release', 'output-metadata.json'), 'utf8'));
-if (metadata.applicationId !== 'com.jrm.tms' || metadata.variantName !== 'release' ||
+const outputDir = path.join(android, 'app', 'build', 'outputs', 'apk', flavor, 'release');
+const metadata = JSON.parse(readFileSync(path.join(outputDir, 'output-metadata.json'), 'utf8'));
+const actualSource = path.join(outputDir, metadata.elements?.[0]?.outputFile || '');
+if (metadata.applicationId !== appId || metadata.variantName !== `${flavor}Release` ||
     metadata.elements?.[0]?.versionCode !== Number(build) || metadata.elements?.[0]?.versionName !== version) {
   throw new Error('La identidad o versión del APK release no coincide con la configuración.');
 }
@@ -59,11 +71,11 @@ const java = process.env.JAVA_HOME
   ? path.join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'java.exe' : 'java')
   : 'java';
 run(java, ['-jar', path.join(buildTools, toolsVersion, 'lib', 'apksigner.jar'),
-  'verify', '--print-certs', source]);
-const outputDir = path.join(root, 'artifacts', 'android');
-mkdirSync(outputDir, { recursive: true });
-const target = path.join(outputDir, `jrm-tms-${version}-${build}.apk`);
-copyFileSync(source, target);
+  'verify', '--print-certs', actualSource]);
+const artifactDir = path.join(root, 'artifacts', 'android');
+mkdirSync(artifactDir, { recursive: true });
+const target = path.join(artifactDir, `${appPrefix}-${version}-${build}.apk`);
+copyFileSync(actualSource, target);
 const sha256 = createHash('sha256').update(readFileSync(target)).digest('hex');
 writeFileSync(`${target}.sha256`, `${sha256}  ${path.basename(target)}\n`);
 console.log(`APK release: ${target}\nSHA-256: ${sha256}`);
