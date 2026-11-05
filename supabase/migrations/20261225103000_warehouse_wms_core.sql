@@ -23,7 +23,7 @@ CREATE INDEX wh_tasks_dispatch_idx ON public.wh_tasks(dispatch_id) WHERE dispatc
 CREATE INDEX wh_tasks_load_override_by_idx ON public.wh_tasks(load_override_by) WHERE load_override_by IS NOT NULL;
 CREATE TABLE public.wh_task_lines (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), task_id uuid NOT NULL REFERENCES public.wh_tasks(id),
- transport_request_item_id uuid REFERENCES public.transport_request_items(id) ON DELETE SET NULL, contract_id uuid REFERENCES public.contracts(id),
+ transport_request_item_id uuid, contract_id uuid REFERENCES public.contracts(id),
  product_code text, description text NOT NULL, lot text, requested_qty numeric(14,3), picked_qty numeric(14,3) NOT NULL DEFAULT 0,
  packed_qty numeric(14,3) NOT NULL DEFAULT 0, loaded_qty numeric(14,3) NOT NULL DEFAULT 0,
  remaining_qty numeric(14,3) GENERATED ALWAYS AS (greatest(coalesce(requested_qty,0)-loaded_qty,0)) STORED,
@@ -125,10 +125,6 @@ GRANT EXECUTE ON FUNCTION public.wh_has_permission(text[]) TO authenticated;
 DROP POLICY IF EXISTS warehouse_transport_requests_read ON public.transport_requests;
 CREATE POLICY warehouse_transport_requests_read ON public.transport_requests FOR SELECT TO authenticated
  USING(public.can_access_site(site_id) AND public.wh_has_permission(ARRAY['almacen-lectura','almacen-supervisor','almacen-picking','almacen-packing','almacen-carga','almacen-etiquetado']));
-DROP POLICY IF EXISTS warehouse_transport_request_items_read ON public.transport_request_items;
-CREATE POLICY warehouse_transport_request_items_read ON public.transport_request_items FOR SELECT TO authenticated
- USING(EXISTS(SELECT 1 FROM public.transport_requests r WHERE r.id=transport_request_id AND public.can_access_site(r.site_id)
-   AND public.wh_has_permission(ARRAY['almacen-lectura','almacen-supervisor','almacen-picking','almacen-packing','almacen-carga','almacen-etiquetado'])));
 CREATE OR REPLACE FUNCTION public.wh_receipt_candidates(p_query text) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE q text:=trim(coalesce(p_query,'')); result jsonb;
@@ -287,12 +283,6 @@ BEGIN
  ON CONFLICT(transport_request_id) DO NOTHING;
  SELECT id INTO v_id FROM public.wh_tasks WHERE transport_request_id=NEW.id;
  IF v_id IS NOT NULL THEN
-  IF v_state IS NOT NULL THEN
-   INSERT INTO public.wh_task_lines(task_id,transport_request_item_id,contract_id,product_code,description,requested_qty,unit,weight_kg,source)
-   SELECT v_id,i.id,NEW.contract_id,coalesce(i.sku,''),coalesce(i.description,'Producto'),i.quantity,'UNIDAD',i.weight,'REQUEST'
-   FROM public.transport_request_items i WHERE i.transport_request_id=NEW.id
-   ON CONFLICT(task_id,transport_request_item_id) DO UPDATE SET requested_qty=excluded.requested_qty,description=excluded.description,product_code=excluded.product_code,weight_kg=excluded.weight_kg;
-  END IF;
   UPDATE public.wh_tasks SET request_status=NEW.status,updated_by=auth.uid(),
    status=CASE WHEN status IN ('LOADED','RECONCILED') THEN status WHEN v_state='PAUSED' THEN 'PAUSED' WHEN v_state='CANCELLED' THEN 'CANCELLED' WHEN v_state='PENDING' AND status='PAUSED' THEN 'PENDING' ELSE status END,
    paused_reason=CASE WHEN v_state='PAUSED' THEN 'Solicitud observada' WHEN v_state='PENDING' THEN NULL ELSE paused_reason END,
@@ -322,10 +312,6 @@ BEGIN
   SELECT 'WH-'||r.request_number,r.id,r.site_id,r.contract_id,r.created_by,r.status,
    (SELECT dr.dispatch_id FROM public.dispatch_requests dr WHERE dr.transport_request_id=r.id ORDER BY dr.created_at DESC LIMIT 1)
   ON CONFLICT(transport_request_id) DO NOTHING;
-  INSERT INTO public.wh_task_lines(task_id,transport_request_item_id,contract_id,product_code,description,requested_qty,unit,weight_kg,source)
-   SELECT t.id,i.id,t.contract_id,coalesce(i.sku,''),coalesce(i.description,'Producto'),i.quantity,'UNIDAD',i.weight,'REQUEST'
-   FROM public.wh_tasks t JOIN public.transport_request_items i ON i.transport_request_id=t.transport_request_id WHERE t.transport_request_id=v_request
-  ON CONFLICT(task_id,transport_request_item_id) DO NOTHING;
   END IF;
  END IF;
  RETURN NULL;
@@ -349,22 +335,6 @@ END $$;
 CREATE TRIGGER wh_dispatch_request_sync AFTER INSERT OR UPDATE OR DELETE ON public.dispatch_requests
  FOR EACH ROW EXECUTE FUNCTION public.wh_sync_dispatch_request();
 REVOKE ALL ON FUNCTION public.wh_sync_dispatch_request() FROM PUBLIC,anon,authenticated;
-CREATE OR REPLACE FUNCTION public.wh_sync_request_item() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE v_request uuid; v_task uuid; v_contract uuid;
-BEGIN
- v_request:=CASE WHEN TG_OP='DELETE' THEN OLD.transport_request_id ELSE NEW.transport_request_id END;
- SELECT id,contract_id INTO v_task,v_contract FROM public.wh_tasks WHERE transport_request_id=v_request AND status NOT IN ('CANCELLED','LOADED','RECONCILED');
- IF v_task IS NULL THEN RETURN NULL; END IF;
- IF TG_OP='DELETE' THEN UPDATE public.wh_task_lines SET transport_request_item_id=NULL,requested_qty=0 WHERE task_id=v_task AND transport_request_item_id=OLD.id;
- ELSE INSERT INTO public.wh_task_lines(task_id,transport_request_item_id,contract_id,product_code,description,requested_qty,unit,weight_kg,source)
-      VALUES(v_task,NEW.id,v_contract,coalesce(NEW.sku,''),coalesce(NEW.description,'Producto'),NEW.quantity,'UNIDAD',NEW.weight,'REQUEST')
-      ON CONFLICT(task_id,transport_request_item_id) DO UPDATE SET requested_qty=excluded.requested_qty,description=excluded.description,product_code=excluded.product_code,weight_kg=excluded.weight_kg;
- END IF;
- RETURN NULL;
-END $$;
-CREATE TRIGGER wh_transport_request_item_sync AFTER INSERT OR UPDATE OR DELETE ON public.transport_request_items FOR EACH ROW EXECUTE FUNCTION public.wh_sync_request_item();
-REVOKE ALL ON FUNCTION public.wh_sync_request_item() FROM PUBLIC,anon,authenticated;
-
 -- Bring existing operational requests into WMS without duplicating one task per request.
 INSERT INTO public.wh_tasks(task_code,transport_request_id,site_id,contract_id,created_by,request_status,dispatch_id)
 SELECT 'WH-'||r.request_number,r.id,r.site_id,r.contract_id,r.created_by,r.status,
@@ -373,10 +343,7 @@ FROM public.transport_requests r
 WHERE r.status NOT IN ('CANCELADA','RECHAZADA')
  AND upper(coalesce(r.request_type,'DESPACHO')) NOT IN ('RECOJO','TRASLADO')
 ON CONFLICT(transport_request_id) DO NOTHING;
-INSERT INTO public.wh_task_lines(task_id,transport_request_item_id,contract_id,product_code,description,requested_qty,unit,weight_kg,source)
-SELECT t.id,i.id,t.contract_id,coalesce(i.sku,''),coalesce(i.description,'Producto'),i.quantity,'UNIDAD',i.weight,'REQUEST'
-FROM public.wh_tasks t JOIN public.transport_request_items i ON i.transport_request_id=t.transport_request_id
-ON CONFLICT(task_id,transport_request_item_id) DO NOTHING;
+-- Las líneas se incorporan desde paquetes APT al iniciar picking; las solicitudes no tienen detalle de producto en este esquema.
 
 CREATE OR REPLACE FUNCTION public.wh_task_action(p_task_id uuid,p_action text,p_reason text DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
