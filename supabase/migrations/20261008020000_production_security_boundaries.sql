@@ -72,7 +72,7 @@ DO $$ DECLARE p record; BEGIN
   EXECUTE format('DROP POLICY %I ON %I.%I',p.policyname,p.schemaname,p.tablename);
  END LOOP;
 END $$;
-CREATE POLICY carriers_public_names ON public.carriers FOR SELECT TO anon USING(is_active=true);
+CREATE POLICY carriers_public_names ON public.carriers FOR SELECT TO anon USING(upper(COALESCE(status, ''))='ACTIVE');
 CREATE POLICY carriers_scoped_read ON public.carriers FOR SELECT TO authenticated USING(
  public.has_tms_read_permission('tarifas') OR public.has_tms_read_permission('mantenimiento-flota')
  OR public.has_tms_read_permission('despacho') OR public.has_tms_read_permission('planificacion')
