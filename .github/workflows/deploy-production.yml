@@ -39,7 +39,9 @@ permissions:
   actions: read
 
 concurrency:
-  group: deploy-production
+  # La medición de jornada solo lee y revierte su tabla temporal; no espera a
+  # un despliegue largo para diagnosticar el rendimiento. Las escrituras siguen serializadas.
+  group: ${{ inputs.audit_only && inputs.audit_scope == 'fleet-performance' && format('fleet-performance-{0}', github.run_id) || 'deploy-production' }}
   cancel-in-progress: false
 
 jobs:
