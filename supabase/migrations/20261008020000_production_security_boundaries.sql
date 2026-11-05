@@ -123,15 +123,21 @@ CREATE POLICY maintenance_invoices_scoped ON public.maintenance_invoices FOR ALL
  (orden_trabajo_id IS NULL OR EXISTS(SELECT 1 FROM public.maintenance_work_orders w WHERE w.id=orden_trabajo_id AND public.can_access_site(w.site_id)))) WITH CHECK(
  (public.has_cmms_permission('ot') OR public.has_tms_permission('mantenimiento-finanzas')) AND
  (orden_trabajo_id IS NULL OR EXISTS(SELECT 1 FROM public.maintenance_work_orders w WHERE w.id=orden_trabajo_id AND public.can_access_site(w.site_id))));
-CREATE POLICY operations_shifts_read ON public.operaciones_turnos FOR SELECT TO authenticated USING(
- profile_id=auth.uid() OR public.has_tms_read_permission('operaciones-live') OR public.has_tms_read_permission('operaciones-revision') OR public.has_tms_read_permission('operaciones-kpis') OR public.has_tms_read_permission('tareo') OR public.has_tms_read_permission('maestros-trabajadores'));
-CREATE POLICY operations_shifts_write ON public.operaciones_turnos FOR ALL TO authenticated USING(
- profile_id=auth.uid() OR public.has_tms_permission('operaciones-revision') OR public.has_tms_permission('tareo')) WITH CHECK(profile_id=auth.uid() OR public.has_tms_permission('operaciones-revision') OR public.has_tms_permission('tareo'));
-CREATE POLICY operations_activities_read ON public.operaciones_actividades FOR SELECT TO authenticated USING(
- EXISTS(SELECT 1 FROM public.operaciones_turnos t WHERE t.id=turno_id));
-CREATE POLICY operations_activities_write ON public.operaciones_actividades FOR ALL TO authenticated USING(
- EXISTS(SELECT 1 FROM public.operaciones_turnos t WHERE t.id=turno_id AND (t.profile_id=auth.uid() OR public.has_tms_permission('operaciones-revision') OR public.has_tms_permission('tareo')))) WITH CHECK(
- EXISTS(SELECT 1 FROM public.operaciones_turnos t WHERE t.id=turno_id AND (t.profile_id=auth.uid() OR public.has_tms_permission('operaciones-revision') OR public.has_tms_permission('tareo'))));
+DO $$ BEGIN
+ IF to_regclass('public.operaciones_turnos') IS NOT NULL THEN
+  EXECUTE $policy$CREATE POLICY operations_shifts_read ON public.operaciones_turnos FOR SELECT TO authenticated USING(
+   profile_id=auth.uid() OR public.has_tms_read_permission('operaciones-live') OR public.has_tms_read_permission('operaciones-revision') OR public.has_tms_read_permission('operaciones-kpis') OR public.has_tms_read_permission('tareo') OR public.has_tms_read_permission('maestros-trabajadores'))$policy$;
+  EXECUTE $policy$CREATE POLICY operations_shifts_write ON public.operaciones_turnos FOR ALL TO authenticated USING(
+   profile_id=auth.uid() OR public.has_tms_permission('operaciones-revision') OR public.has_tms_permission('tareo')) WITH CHECK(profile_id=auth.uid() OR public.has_tms_permission('operaciones-revision') OR public.has_tms_permission('tareo'))$policy$;
+ END IF;
+ IF to_regclass('public.operaciones_actividades') IS NOT NULL AND to_regclass('public.operaciones_turnos') IS NOT NULL THEN
+  EXECUTE $policy$CREATE POLICY operations_activities_read ON public.operaciones_actividades FOR SELECT TO authenticated USING(
+   EXISTS(SELECT 1 FROM public.operaciones_turnos t WHERE t.id=turno_id))$policy$;
+  EXECUTE $policy$CREATE POLICY operations_activities_write ON public.operaciones_actividades FOR ALL TO authenticated USING(
+   EXISTS(SELECT 1 FROM public.operaciones_turnos t WHERE t.id=turno_id AND (t.profile_id=auth.uid() OR public.has_tms_permission('operaciones-revision') OR public.has_tms_permission('tareo')))) WITH CHECK(
+   EXISTS(SELECT 1 FROM public.operaciones_turnos t WHERE t.id=turno_id AND (t.profile_id=auth.uid() OR public.has_tms_permission('operaciones-revision') OR public.has_tms_permission('tareo'))))$policy$;
+ END IF;
+END $$;
 
 -- A deactivated account cannot keep using a cached JWT to access operational tables.
 -- profiles remains readable under its existing own/admin policies to explain the login rejection.
@@ -241,7 +247,11 @@ BEGIN
  END IF;
  RETURN NEW;
 END $$;
-CREATE TRIGGER security_shift_review BEFORE INSERT OR UPDATE ON public.operaciones_turnos FOR EACH ROW EXECUTE FUNCTION public.security_guard_shift_review();
+DO $$ BEGIN
+ IF to_regclass('public.operaciones_turnos') IS NOT NULL THEN
+  CREATE TRIGGER security_shift_review BEFORE INSERT OR UPDATE ON public.operaciones_turnos FOR EACH ROW EXECUTE FUNCTION public.security_guard_shift_review();
+ END IF;
+END $$;
 REVOKE ALL ON FUNCTION public.security_guard_shift_review() FROM PUBLIC,anon,authenticated;
 
 CREATE FUNCTION public.security_assert_vehicle(p_plate text,p_write boolean DEFAULT false) RETURNS void
