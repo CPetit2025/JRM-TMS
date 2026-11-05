@@ -11,6 +11,9 @@ CREATE TABLE public.user_site_access (
   site_id uuid NOT NULL REFERENCES public.sites(id) ON DELETE CASCADE,
   PRIMARY KEY (user_id, site_id)
 );
+-- The profile employee type is introduced by migration 00037, but this
+-- 16.x migration sorts before it on a fresh database.
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS employee_type varchar(50);
 INSERT INTO public.user_site_access(user_id, site_id)
 SELECT p.id, s.id FROM public.profiles p
 JOIN auth.users u ON u.id = p.id CROSS JOIN public.sites s
