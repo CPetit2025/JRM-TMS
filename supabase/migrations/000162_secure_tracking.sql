@@ -219,6 +219,7 @@ CREATE INDEX IF NOT EXISTS route_track_points_dispatch_time
 CREATE INDEX IF NOT EXISTS route_track_points_dispatch_leg
   ON public.route_track_points(dispatch_id, leg_order);
 ALTER TABLE public.route_track_points ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.drivers ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
 GRANT SELECT, INSERT ON public.route_track_points TO authenticated;
 CREATE POLICY route_track_read ON public.route_track_points FOR SELECT TO authenticated
   USING (EXISTS (SELECT 1 FROM public.drivers d WHERE d.id = driver_id AND d.profile_id = auth.uid())
