@@ -22,6 +22,7 @@ const [SAFE, SAFETY] = [21, 22].map(id), [JEFE, RESP, DRIVER] = [31, 32, 33].map
       ${['dispatches', 'dispatch_events'].map(table).join('\n')}
       CREATE UNIQUE INDEX dispatch_one_active_driver ON dispatches(driver_id) WHERE driver_id IS NOT NULL AND status IN('PROGRAMADO','EN_CURSO','EN RUTA','ESPERANDO_AUTORIZACION','RETORNO');
       CREATE UNIQUE INDEX dispatch_one_active_vehicle ON dispatches(vehicle_plate) WHERE vehicle_plate IS NOT NULL AND vehicle_plate<>'EXTERNO' AND status IN('PROGRAMADO','EN_CURSO','EN RUTA','ESPERANDO_AUTORIZACION','RETORNO');
+      ALTER TABLE dispatches ADD CONSTRAINT dispatches_modalidad_chk CHECK (modalidad IN ('PROPIA','TERCERO'));
       CREATE TABLE audit_finding_categories(id uuid PRIMARY KEY,code text UNIQUE,name text,is_safety boolean NOT NULL DEFAULT false,active boolean DEFAULT true,sort int);
       CREATE TABLE audit_findings(id uuid PRIMARY KEY,number text UNIQUE,contract_id uuid,dispatch_id uuid REFERENCES dispatches(id),
         severity text NOT NULL,status text NOT NULL,responsible_id uuid,auditor_id uuid);
@@ -35,7 +36,7 @@ const [SAFE, SAFETY] = [21, 22].map(id), [JEFE, RESP, DRIVER] = [31, 32, 33].map
 
     const as = user => db.query("SELECT set_config('test.user',$1,false)", [user || ''])
     const one = async (sql, p = []) => (await db.query(sql, p)).rows[0]
-    const route = (d, n, mod = 'PROPIO', driver = null, plate = 'P-' + n) => db.query(
+    const route = (d, n, mod = 'PROPIA', driver = null, plate = 'P-' + n) => db.query(
       "INSERT INTO dispatches(id,dispatch_number,status,modalidad,driver_id,vehicle_plate,scheduled_departure) VALUES($1,$2,'PROGRAMADO',$3,$4,$5,now())", [d, 'R-' + n, mod, driver, plate])
     const finding = async (f, n, d, sev, status = 'ABIERTO', cat = SAFE) => {
       await db.query('INSERT INTO audit_findings(id,number,dispatch_id,severity,status,responsible_id) VALUES($1,$2,$3,$4,$5,$6)', [f, n, d, sev, status, RESP])
@@ -50,7 +51,7 @@ const [SAFE, SAFETY] = [21, 22].map(id), [JEFE, RESP, DRIVER] = [31, 32, 33].map
     }
 
     // Dos rutas de la misma OT: el hallazgo solo bloquea la ruta vinculada (D1), no D2.
-    await route(D1, 1, 'PROPIO', DRIVER); await route(D2, 2); await route(D3, 3, 'TERCERO', null, 'EXTERNO'); await route(D4, 4)
+    await route(D1, 1, 'PROPIA', DRIVER); await route(D2, 2); await route(D3, 3, 'TERCERO', null, 'EXTERNO'); await route(D4, 4)
     await finding(F1, 'HAL-2026-00001', D1, 'MAYOR')
     await finding(F2, 'HAL-2026-00002', D3, 'CRITICO', 'PENDIENTE_VALIDACION', SAFETY)
     await finding(F3, 'HAL-2026-00003', D4, 'MENOR')
@@ -130,6 +131,11 @@ END $f$;`)
     const f1 = readFileSync('supabase/migrations/20261226090000_hallazgos_auditoria.sql', 'utf8')
     const f3 = readFileSync('supabase/migrations/20261226100000_hallazgos_bloqueo_salida.sql', 'utf8')
     await db.exec(f1); await db.exec(f3); await db.exec(f3) // reaplicable
+    await db.exec(readFileSync('supabase/migrations/20261226110000_hallazgos_indices_fk.sql', 'utf8'))
+    // C55: cada FK de hallazgos con índice válido y no parcial que la cubra
+    const uncovered = await db.query(`SELECT c.conname FROM pg_constraint c WHERE c.contype='f' AND c.conrelid::regclass::text LIKE 'audit_%'
+      AND NOT EXISTS(SELECT 1 FROM pg_index i WHERE i.indrelid=c.conrelid AND i.indisvalid AND i.indpred IS NULL AND (i.indkey::smallint[])[0:cardinality(c.conkey)-1] @> c.conkey)`)
+    assert.deepEqual(uncovered.rows, [], 'FK de hallazgos sin índice (C55)')
     await db.exec(`INSERT INTO roles(id,name,permissions) VALUES('${id(201)}','Auditor de Despacho','[]'),('${id(203)}','Jefe de Distribución','[]');
       INSERT INTO profiles(id,role_id,first_name,last_name) VALUES('${id(41)}','${id(201)}','Ana','Auditora'),('${id(43)}','${id(203)}','Jefa','Distribución');
       INSERT INTO user_site_access(user_id,site_id) SELECT u,primary_site_id() FROM unnest(ARRAY['${id(41)}','${id(43)}']::uuid[]) u;
