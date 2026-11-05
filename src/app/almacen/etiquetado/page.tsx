@@ -157,7 +157,12 @@ export default function WarehouseLabelingPage() {
       if (rpcError) { setError(rpcError.message); return }
       setLabelsPrinted(true)
     }
-    const fallbackPrint = () => {\n      setPrintTarget(targetLabels.length === 1 ? targetLabels[0].package_code : null)\n      window.addEventListener('afterprint', () => setPrintTarget(null), { once: true })\n      window.setTimeout(() => window.print(), 80)\n    }\n    const browser = (window as Window & { BrowserPrint?: BrowserPrintApi }).BrowserPrint
+    const fallbackPrint = () => {
+      setPrintTarget(targetLabels.length === 1 ? targetLabels[0].package_code : null)
+      window.addEventListener('afterprint', () => setPrintTarget(null), { once: true })
+      window.setTimeout(() => window.print(), 80)
+    }
+    const browser = (window as Window & { BrowserPrint?: BrowserPrintApi }).BrowserPrint
     if (browser?.getDefaultDevice) {
       browser.getDefaultDevice('printer', device => {
         const clean = (value: string) => value.replace(/[\^~]/g, ' ')
