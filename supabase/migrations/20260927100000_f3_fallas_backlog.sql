@@ -759,6 +759,10 @@ BEGIN
     RAISE EXCEPTION 'vehicle_failures tiene datos: migrarlos a maintenance_requests antes de eliminarla';
   END IF;
 END $$;
+-- La OT heredada conserva failure_id como dato histórico, pero ya no depende de
+-- la entidad retirada. Eliminar la FK antes de la tabla evita bloquear el bootstrap.
+ALTER TABLE public.maintenance_work_orders
+  DROP CONSTRAINT IF EXISTS maintenance_work_orders_failure_id_fkey;
 DROP TABLE IF EXISTS public.vehicle_failures;
 
 NOTIFY pgrst, 'reload schema';
