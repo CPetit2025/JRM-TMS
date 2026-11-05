@@ -290,7 +290,7 @@ CREATE POLICY expense_audit_finance_insert ON public.expense_audit_logs FOR INSE
 DROP POLICY IF EXISTS "Enable all for authenticated on expense_records" ON public.expense_records;
 CREATE POLICY expenses_portfolio_read ON public.expense_records FOR SELECT TO authenticated
   USING (public.is_tms_admin() OR
-    (public.is_contract_administrator() AND public.has_assigned_expense(contract_id,transport_request_id,trip_id)) OR
+    (public.is_contract_administrator() AND public.has_assigned_expense(contract_id,NULL,trip_id)) OR
     (NOT public.is_contract_administrator() AND (public.has_tms_read_permission('caja') OR
       public.has_tms_read_permission('caja-gastos') OR public.has_tms_read_permission('caja-liquidaciones'))));
 CREATE POLICY expenses_finance_write ON public.expense_records FOR ALL TO authenticated
