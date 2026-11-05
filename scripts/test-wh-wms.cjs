@@ -8,6 +8,7 @@ const sql = readFileSync(path.join(root, 'supabase/migrations/20261225103000_war
 const labeling = readFileSync(path.join(root, 'src/app/almacen/etiquetado/page.tsx'), 'utf8')
 const reconciliation = readFileSync(path.join(root, 'src/app/almacen/conciliacion/page.tsx'), 'utf8')
 const apt = readFileSync(path.join(root, 'src/app/almacen/apt/datos/page.tsx'), 'utf8')
+const layout = readFileSync(path.join(root, 'src/app/almacen/layout.tsx'), 'utf8')
 const task = readFileSync(path.join(root, 'src/app/almacen/tareas/[id]/page.tsx'), 'utf8')
 const uuidBootstrap = readFileSync(path.join(root, 'supabase/migrations/00000_supabase_uuid_compat.sql'), 'utf8')
 const legacyCarrierAcl = readFileSync(path.join(root, 'supabase/migrations/000162_secure_tracking.sql'), 'utf8')
@@ -16,6 +17,8 @@ const checks = [
   ['fresh Supabase staging exposes the UUID function required by legacy baseline migrations', /CREATE OR REPLACE FUNCTION public\.uuid_generate_v4\(\)[\s\S]*?SELECT gen_random_uuid\(\)/.test(uuidBootstrap)],
   ['fresh TMS schema applies legacy cleanup only when its optional columns and RPCs exist', /CREATE POLICY carriers_public_names[\s\S]*?USING \(status = 'ACTIVE'\)/.test(legacyCarrierAcl) && /information_schema\.columns[\s\S]*?column_name = 'mock_password'[\s\S]*?UPDATE public\.profiles SET mock_password/.test(legacyCarrierAcl) && /column_name = 'pin'[\s\S]*?UPDATE public\.drivers SET pin/.test(legacyCarrierAcl) && /to_regprocedure\('public\.register_driver/.test(legacyCarrierAcl) && /table_name = 'dispatches' AND column_name = 'driver_name'[\s\S]*?UPDATE public\.dispatches d SET driver_id/.test(legacyCarrierAcl) && /ALTER TABLE public\.drivers ADD COLUMN IF NOT EXISTS is_active/.test(legacyCarrierAcl)],
   ['later legacy driver RPC grants cannot reopen anonymous registration', /REVOKE ALL ON FUNCTION public\.register_driver\(uuid,text,text,text,text,text,text,uuid\)[\s\S]*?FROM PUBLIC, anon, authenticated/.test(legacyDriverRpcAcl)],
+  ['WMS menu orders Actualizable APT before the IPT receipt step', layout.indexOf("label: '01 · Actualizar Excel APT'") >= 0 && layout.indexOf("label: '02 · Recepción por IPT'") > layout.indexOf("label: '01 · Actualizar Excel APT'")],
+  ['IPT selection opens an accessible dialog sized for phone and tablet with Escape dismissal', /role="dialog" aria-modal="true"/.test(labeling) && /max-h-\\[100dvh\\][\\s\\S]*?sm:max-h-\\[92dvh\\]/.test(labeling) && /event.key === 'Escape'[\\s\\S]*?document.body.style.overflow = 'hidden'/.test(labeling)],
   ['receipts use active ERP APT ingress', /inv_movements m WHERE m\.active AND m\.side='E' AND public\.apt_almacen\(m\.bodega\) IS NOT NULL/.test(sql)],
   ['outbound reconciliation uses active ERP APT egress', /inv_movements m WHERE m\.active AND m\.side='S' AND public\.apt_almacen\(m\.bodega\) IS NOT NULL/.test(sql)],
   ['labels cannot be issued from manually typed source data', /wh_label_package\(p_receipt_key text,p_package_count integer/.test(sql) && !/p_source\s*:/.test(labeling)],
