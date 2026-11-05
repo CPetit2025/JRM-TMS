@@ -1,5 +1,36 @@
 BEGIN;
 
+-- The original schema names driver identity `document_id` and does not keep
+-- phone/username on profiles. Add the normalized fields expected by the sync
+-- triggers, preserving the existing identity and email values.
+ALTER TABLE public.drivers ADD COLUMN IF NOT EXISTS document_number varchar(20);
+UPDATE public.drivers SET document_number = document_id WHERE document_number IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS drivers_document_number_unique
+  ON public.drivers(document_number) WHERE document_number IS NOT NULL;
+CREATE OR REPLACE FUNCTION public.sync_driver_document_identity()
+RETURNS trigger LANGUAGE plpgsql SET search_path = public, pg_temp AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    NEW.document_number := coalesce(nullif(trim(NEW.document_number), ''), NEW.document_id);
+    NEW.document_id := coalesce(nullif(trim(NEW.document_id), ''), NEW.document_number);
+  ELSIF NEW.document_number IS DISTINCT FROM OLD.document_number AND NEW.document_number IS NOT NULL THEN
+    NEW.document_id := NEW.document_number;
+  ELSIF NEW.document_id IS DISTINCT FROM OLD.document_id THEN
+    NEW.document_number := NEW.document_id;
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS drivers_sync_document_identity ON public.drivers;
+CREATE TRIGGER drivers_sync_document_identity BEFORE INSERT OR UPDATE OF document_id, document_number
+  ON public.drivers FOR EACH ROW EXECUTE FUNCTION public.sync_driver_document_identity();
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS document_number varchar(20),
+  ADD COLUMN IF NOT EXISTS phone varchar(50),
+  ADD COLUMN IF NOT EXISTS username varchar(255);
+UPDATE public.profiles SET document_number = document_id
+  WHERE document_number IS NULL AND document_id IS NOT NULL;
+UPDATE public.profiles SET username = email WHERE coalesce(username, '') = '';
+
 -- The system administrator is already the only role allowed to mutate roles
 -- through RLS. Remove the additional trigger that prevented that administrator
 -- from managing the built-in roles.
