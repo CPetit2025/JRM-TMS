@@ -20,6 +20,7 @@ BEGIN;
 -- 1. Esquema de OT
 -- ------------------------------------------------------------
 ALTER TABLE public.maintenance_work_orders
+  ADD COLUMN IF NOT EXISTS downtime_hours numeric(10,2) NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS approved_at timestamptz,
   ADD COLUMN IF NOT EXISTS validated_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS validated_at timestamptz,
