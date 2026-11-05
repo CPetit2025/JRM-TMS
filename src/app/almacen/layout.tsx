@@ -12,13 +12,13 @@ import { NotificationBell } from '@/components/layout/NotificationBell'
 import { createClient } from '@/lib/supabase/client'
 
 const links = [
-  { href: '/almacen', label: 'Inicio', icon: Boxes, permission: 'almacen-lectura', group: 'Operación' },
-  { href: '/almacen/tareas', label: 'Tareas', icon: ClipboardList, permission: 'almacen-picking', group: 'Operación' },
-  { href: '/almacen/etiquetado', label: 'Recepción', icon: ScanLine, permission: 'almacen-etiquetado', group: 'Operación' },
-  { href: '/almacen/paquetes', label: 'Paquetes y LPN', icon: PackageCheck, permission: 'almacen-packing', group: 'Operación' },
+  { href: '/almacen', label: 'Centro WMS', icon: Boxes, permission: 'almacen-lectura', group: 'Inicio' },
+  { href: '/almacen/apt/datos', label: '01 · Actualizar Excel APT', icon: Warehouse, permission: 'apt', group: 'Recepción' },
+  { href: '/almacen/etiquetado', label: '02 · Recepción por IPT', icon: ScanLine, permission: 'almacen-etiquetado', group: 'Recepción' },
+  { href: '/almacen/tareas', label: 'Tareas', icon: ClipboardList, permission: 'almacen-picking', group: 'Operación posterior' },
+  { href: '/almacen/paquetes', label: 'Paquetes y LPN', icon: PackageCheck, permission: 'almacen-packing', group: 'Operación posterior' },
   { href: '/almacen/conciliacion', label: 'Conciliación', icon: Waypoints, permission: 'almacen-carga', group: 'Control' },
   { href: '/almacen/maestros/embalajes', label: 'Embalajes', icon: Settings2, permission: 'almacen-supervisor', group: 'Configuración' },
-  { href: '/almacen/apt/datos', label: 'Actualizable APT', icon: Warehouse, permission: 'apt', group: 'Control' },
 ]
 
 export default function WarehouseLayout({ children }: { children: React.ReactNode }) {
@@ -70,7 +70,7 @@ export default function WarehouseLayout({ children }: { children: React.ReactNod
         <button onClick={closeMenu} className="grid h-10 w-10 place-items-center rounded-lg text-blue-200 hover:bg-white/10 lg:hidden" aria-label="Cerrar navegación"><X size={17}/></button>
       </div>
       <nav aria-label="Menú de Almacén" className="min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-3">
-        {(['Operación','Control','Configuración'] as const).map(group => {
+        {(['Inicio','Recepción','Operación posterior','Control','Configuración'] as const).map(group => {
           const items = visible.filter(x => x.group === group)
           if (!items.length) return null
           return <section key={group} className="mb-3">
