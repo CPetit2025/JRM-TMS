@@ -58,6 +58,13 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
   const def = async f => (await db.query(`SELECT pg_get_functiondef('${f}'::regprocedure) d`)).rows[0].d
   assert.ok((await def('consolidation_savings(date,date,uuid,uuid)')).includes("WHEN f.hours_cost_missing THEN 'COSTO_HORA_PENDIENTE'"), 'D2 installed')
   assert.equal((await def('unit_daily_report(text,date,date)')).split('DISTINCT ON (public.apt_guia_key(s.guide))').length, 2, 'tn patch idempotent')
+  const reportOids = `ARRAY['consolidation_savings(date,date,uuid,uuid)'::regprocedure,'fleet_workdays(date,date,text[])'::regprocedure,'unit_daily_report(text,date,date)'::regprocedure]::oid[]`
+  const definitions = async () => (await db.query(`SELECT oid,prosrc,proacl,proowner,prosecdef FROM pg_proc WHERE oid=ANY(${reportOids}) ORDER BY oid`)).rows
+  const beforeJit = await definitions()
+  const noJit = read('supabase/migrations/20261226120000_reportes_jornada_sin_jit.sql')
+  await db.exec(noJit); await db.exec(noJit)
+  assert.deepEqual(await definitions(), beforeJit, 'La configuración JIT conserva cuerpos, ACL, propietarios y SECURITY DEFINER')
+  assert.equal(Number((await db.query(`SELECT count(*) n FROM pg_proc WHERE oid=ANY(${reportOids}) AND proconfig @> ARRAY['jit=off']`)).rows[0].n),3)
   // Ahorro: se simula la respuesta de consolidation_savings (su cálculo tiene su propia prueba)
   await db.exec(`CREATE OR REPLACE FUNCTION public.consolidation_savings(p_from date DEFAULT NULL, p_to date DEFAULT NULL, p_contract uuid DEFAULT NULL, p_dispatch uuid DEFAULT NULL)
    RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT '{"success":true,"rows":[
