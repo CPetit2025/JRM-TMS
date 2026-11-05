@@ -64,6 +64,9 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Some legacy initial schemas create dispatches without its physical vehicle field.
+ALTER TABLE public.dispatches ADD COLUMN IF NOT EXISTS vehicle_plate text;
+
 -- A driver and vehicle cannot be assigned to two live routes concurrently.
 CREATE UNIQUE INDEX IF NOT EXISTS dispatch_one_active_driver ON public.dispatches(driver_id)
   WHERE driver_id IS NOT NULL AND status IN ('PROGRAMADO','EN_CURSO','EN RUTA','ESPERANDO_AUTORIZACION','RETORNO');
