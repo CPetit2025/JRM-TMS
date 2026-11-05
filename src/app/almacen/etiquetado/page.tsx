@@ -250,7 +250,7 @@ export default function WarehouseLabelingPage() {
           <div className="mt-4 grid gap-2 sm:grid-cols-3"><div className="rounded-lg bg-blue-50 p-3 text-sm"><span className="text-slate-600">Etiquetas previstas</span><b className="block text-xl text-[#002855]">{planCount}</b></div><div className="rounded-lg bg-blue-50 p-3 text-sm"><span className="text-slate-600">Unidades físicas</span><b className="block text-xl text-[#002855]">{planQuantity} {selected.unit || ''}</b></div><div className="rounded-lg bg-blue-50 p-3 text-sm"><span className="text-slate-600">Saldo de distribución</span><b className="block text-xl text-[#002855]">{planRemaining} {selected.unit || ''}</b></div></div>
           {plannedPackages.length > 0 && <div className="mt-3 max-h-56 overflow-auto rounded-lg border"><table className="w-full text-left text-sm"><thead className="sticky top-0 bg-slate-50"><tr><th className="p-2">Bulto</th><th className="p-2">Cantidad</th><th className="p-2">Tipo</th></tr></thead><tbody>{plannedPackages.map(row => <tr key={row.sequence} className="border-t"><td className="p-2">{row.sequence}</td><td className="p-2">{row.quantity} {selected.unit || ''}</td><td className="p-2">{row.kind}</td></tr>)}</tbody></table></div>}
         </>}
-      </section>
+      </section>}
         </div>
         <footer className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
           <p className="text-xs text-slate-500">Conteo físico → distribución → LPN → impresión</p>
