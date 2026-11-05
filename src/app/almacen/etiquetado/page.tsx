@@ -33,6 +33,7 @@ export default function WarehouseLabelingPage() {
   const [capacity, setCapacity] = useState('')
   const [labels, setLabels] = useState<Label[]>([])
   const [labelsPrinted, setLabelsPrinted] = useState(false)
+  const [printTarget, setPrintTarget] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState('')
@@ -142,28 +143,28 @@ export default function WarehouseLabelingPage() {
     setBusy(false)
   }
 
-  const print = async () => {
+  const print = async (targetLabels: Label[] = labels) => {
     setError('')
     if (labelsPrinted) {
-      const reason = window.prompt('Motivo de reimpresión del lote de etiquetas:')
+      const reason = window.prompt('Motivo de reimpresión de etiquetas:')
       if (!reason?.trim()) return
-      for (const label of labels) {
+      for (const label of targetLabels) {
         const { error: rpcError } = await createClient().rpc('wh_reprint_label', { p_package_code: label.package_code, p_reason: reason })
         if (rpcError) { setError(rpcError.message); return }
       }
     } else {
-      const { error: rpcError } = await createClient().rpc('wh_print_labels', { p_package_codes: labels.map(label => label.package_code) })
+      const { error: rpcError } = await createClient().rpc('wh_print_labels', { p_package_codes: targetLabels.map(label => label.package_code) })
       if (rpcError) { setError(rpcError.message); return }
       setLabelsPrinted(true)
     }
-    const browser = (window as Window & { BrowserPrint?: BrowserPrintApi }).BrowserPrint
+    const fallbackPrint = () => {\n      setPrintTarget(targetLabels.length === 1 ? targetLabels[0].package_code : null)\n      window.addEventListener('afterprint', () => setPrintTarget(null), { once: true })\n      window.setTimeout(() => window.print(), 80)\n    }\n    const browser = (window as Window & { BrowserPrint?: BrowserPrintApi }).BrowserPrint
     if (browser?.getDefaultDevice) {
       browser.getDefaultDevice('printer', device => {
         const clean = (value: string) => value.replace(/[\^~]/g, ' ')
-        const zpl = labels.map(label => `^XA^PW800^LL400^FO30,18^A0N,27,27^FD${clean(label.source_product_code)}^FS^FO30,52^A0N,21,21^FD${clean(label.description).slice(0, 45)}^FS^FO30,82^BY2,2,72^BCN,72,Y,N,N^FD${label.package_code}^FS^FO30,175^A0N,20,20^FD${label.package_code}^FS^FO30,208^A0N,18,18^FDERP ${clean(label.source_document_no)} Lote ${clean(label.source_lot || '-')}^FS^FO30,237^A0N,17,17^FDOT ${clean(label.contract_code || '-')} Cliente ${clean(label.customer_name).slice(0, 38)}^FS^FO30,260^A0N,17,17^FDBodega ${clean(label.source_warehouse)} ${label.source_date}^FS^FO30,285^A0N,21,21^FD${label.quantity} ${clean(label.unit || '')} ${label.weight_kg === null ? 'Peso por registrar' : `${label.weight_kg} kg`} ${label.sequence_no}/${label.sequence_total}^FS^XZ`).join('')
-        device.send(zpl, () => setMessage('Etiquetas enviadas a Zebra.'), error => { setError(String(error?.message || error)); window.print() })
-      }, () => { setError('No se detectó Zebra Browser Print; se abrirá la impresión PDF del navegador.'); window.print() })
-    } else window.print()
+        const zpl = targetLabels.map(label => `^XA^PW800^LL400^FO30,18^A0N,27,27^FD${clean(label.source_product_code)}^FS^FO30,52^A0N,21,21^FD${clean(label.description).slice(0, 45)}^FS^FO30,82^BY2,2,72^BCN,72,Y,N,N^FD${label.package_code}^FS^FO30,175^A0N,20,20^FD${label.package_code}^FS^FO30,208^A0N,18,18^FDERP ${clean(label.source_document_no)} Lote ${clean(label.source_lot || '-')}^FS^FO30,237^A0N,17,17^FDOT ${clean(label.contract_code || '-')} Cliente ${clean(label.customer_name).slice(0, 38)}^FS^FO30,260^A0N,17,17^FDBodega ${clean(label.source_warehouse)} ${label.source_date}^FS^FO30,285^A0N,21,21^FD${label.quantity} ${clean(label.unit || '')} ${label.weight_kg === null ? 'Peso por registrar' : `${label.weight_kg} kg`} ${label.sequence_no}/${label.sequence_total}^FS^XZ`).join('')
+        device.send(zpl, () => setMessage('Etiquetas enviadas a Zebra.'), error => { setError(String(error?.message || error)); fallbackPrint() })
+      }, () => { setError('No se detectó Zebra Browser Print; se abrirá la impresión PDF del navegador.'); fallbackPrint() })
+    } else fallbackPrint()
   }
 
   const requiresVarianceReason = selected && Number(physicalQuantity) !== Number(selected.quantity)
@@ -259,7 +260,7 @@ export default function WarehouseLabelingPage() {
       </div>
     </div>}
 
-    {labels.length > 0 && <section className="rounded-xl border border-slate-200 bg-white p-5"><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold text-[#002855]">Etiquetas generadas · {labels.length}</h2><p className="text-xs text-slate-500">100 × 50 mm · Code 128 · Zebra Browser Print/ZPL o PDF del navegador</p></div><button onClick={() => void print()} className="inline-flex items-center gap-2 rounded-lg bg-[#002855] px-4 py-2.5 text-sm font-bold text-white"><Printer size={16} />{labelsPrinted ? 'Reimprimir lote' : 'Imprimir lote'}</button></div><div className="grid gap-3 sm:grid-cols-2 print:grid-cols-1">{labels.map(label => <article key={label.package_code} className="wh-label rounded border-2 border-dashed border-slate-300 bg-white p-4 text-black"><b className="block text-lg">{label.source_product_code}</b><span className="text-sm">{label.description}</span><Code128Barcode value={label.package_code} height={56} className="my-2 w-full" /><b className="block text-center font-mono text-base">{label.package_code}</b><div className="mt-1 text-xs">IPT {label.source_document_no} · OT {label.contract_code || '—'} · {label.customer_name}</div><div className="mt-1 flex justify-between text-xs"><span>Lote {label.source_lot || '—'} · {label.source_warehouse}</span><span>{label.sequence_no}/{label.sequence_total}</span></div><div className="mt-1 flex justify-between text-xs"><span>{label.source_date}</span><b>{label.quantity} {label.unit} · {label.weight_kg === null ? 'Peso por registrar' : `${label.weight_kg} kg`}</b></div></article>)}</div></section>}
+    {labels.length > 0 && <section className="rounded-xl border border-slate-200 bg-white p-5"><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold text-[#002855]">Etiquetas generadas · {labels.length}</h2><p className="text-xs text-slate-500">100 × 50 mm · Code 128 · Zebra Browser Print/ZPL o PDF del navegador</p></div><button onClick={() => void print()} className="inline-flex items-center gap-2 rounded-lg bg-[#002855] px-4 py-2.5 text-sm font-bold text-white"><Printer size={16} />{labelsPrinted ? 'Reimprimir lote' : 'Imprimir lote'}</button></div><div className="grid gap-3 sm:grid-cols-2 print:grid-cols-1">{labels.filter(label => printTarget === null || label.package_code === printTarget).map(label => <article key={label.package_code} className="wh-label rounded border-2 border-dashed border-slate-300 bg-white p-4 text-black"><div className="mb-2 flex items-center justify-between gap-2"><b className="text-lg">{label.source_product_code}</b><button type="button" onClick={() => void print([label])} className="print:hidden rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-bold text-[#002855]">Imprimir etiqueta</button></div><span className="text-sm">{label.description}</span><Code128Barcode value={label.package_code} height={56} className="my-2 w-full" /><b className="block text-center font-mono text-base">{label.package_code}</b><div className="mt-1 text-xs">IPT {label.source_document_no} · OT {label.contract_code || '—'} · {label.customer_name}</div><div className="mt-1 flex justify-between text-xs"><span>Lote {label.source_lot || '—'} · {label.source_warehouse}</span><span>{label.sequence_no}/{label.sequence_total}</span></div><div className="mt-1 flex justify-between text-xs"><span>{label.source_date}</span><b>{label.quantity} {label.unit} · {label.weight_kg === null ? 'Peso por registrar' : `${label.weight_kg} kg`}</b></div></article>)}</div></section>}
     <style jsx global>{`@media print{@page{size:100mm 50mm;margin:2mm}body *{visibility:hidden}.wh-label,.wh-label *{visibility:visible}.wh-label{position:relative;break-after:page;width:96mm;height:46mm;border:0!important;padding:3mm!important;margin:0!important}.wh-label:last-child{break-after:auto}}`}</style>
   </div>
 }
