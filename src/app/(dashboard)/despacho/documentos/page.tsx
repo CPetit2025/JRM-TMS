@@ -32,6 +32,8 @@ import { DocumentaryBadge, type DocumentaryClosure } from '@/components/despacho
 import { dispatchStatusLabel } from '@/lib/dispatch-status'
 import { GuidesClosureTab, NOT_SETTLEABLE, knownNumbers, settlementKind } from '@/components/documentos/GuidesClosureTab'
 import { CostHistoryModal, FILE_CATEGORY, FilesSection, LiquidationDetail, MAX_FILE_MB, MAX_FILES, OtFilesModal, PendingDot, ServicesOverview, useEconomicDetail, useModalContext, type FileRow, type GuideRow } from '@/components/documentos/DispatchModalSections'
+import { FindingForm, type FindingPreset } from '@/components/hallazgos/FindingForm'
+import { useFindingAbilities } from '@/components/hallazgos/useFindingAbilities'
 
 // Auditor: Packing List. Asistente: confirmación documentaria y Nota de Despacho en recojos.
 // La guía de entrega obligatoria procede del app/proveedor; solo Transporte valida la conformidad.
@@ -132,6 +134,8 @@ function DocumentaryQueue() {
   const [serviceTypes, setServiceTypes] = useState<Awaited<ReturnType<typeof fetchServiceTypes>>>(new Map())
   const [review, setReview] = useState<DeliveryReviewTarget | null>(null)
   const [statusOf, setStatusOf] = useState<{ item: QueueItem; stop: Stop | null; delivery?: DeliveryRow } | null>(null)
+  const findingCan = useFindingAbilities()
+  const [finding, setFinding] = useState<FindingPreset | null>(null)
   const load = useCallback(async () => { setReload(n => n + 1) }, [])
 
   useEffect(() => {
@@ -280,7 +284,7 @@ function DocumentaryQueue() {
       {items === null && !queueError ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
         : !visible.length ? <p className="text-slate-500 text-sm p-6 text-center border border-slate-200 rounded-xl bg-white">{queueError && !items ? 'La bandeja no está disponible.' : phase === 'salida' && !packingOnly ? 'No hay servicios por salir. Los servicios ya cerrados con documentación pendiente están en «Documentación pendiente».' : phase === 'liquidacion' ? 'No hay servicios cerrados con documentación pendiente.' : 'No hay solicitudes para estos filtros.'}</p>
         : <section aria-label="Control documentario por OT" className="overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
-          <div className="overflow-x-auto"><DataTable dense className="block w-full text-left text-sm lg:table"><caption className="sr-only">Solicitudes y OT asociadas, Packing List, guía de entrega y conformidad</caption><thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['Salida', 'Servicio', 'OT / OC / OS / RQ', 'Placa', 'Empresa', 'Destino', 'GR / Nota', 'Estado', 'Acciones'].map((label, i) => <th key={label} scope="col" className={`whitespace-nowrap px-3 py-2.5 font-semibold ${i === 8 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead><tbody className="block divide-y divide-slate-200 lg:table-row-group">{visible.map(({ item, stop }) => <DocumentRow key={`${item.id}/${stop?.request_id || 'empty'}`} item={item} stop={stop} kind={stop && serviceTypes.has(stop.request_id) ? serviceKind(serviceTypes.get(stop.request_id)) : item.is_pickup ? 'RECOJO_CLIENTE' : null} info={stop ? serviceTypes.get(stop.request_id) : undefined} delivery={deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)} canEdit={canNumbers || canPacking} packingOnly={packingOnly} onManage={() => openService(item.id, stop?.request_id || null)} onStatus={() => setStatusOf({ item, stop, delivery: deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id) })} />)}</tbody></DataTable></div>
+          <div className="overflow-x-auto"><DataTable dense className="block w-full text-left text-sm lg:table"><caption className="sr-only">Solicitudes y OT asociadas, Packing List, guía de entrega y conformidad</caption><thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['Salida', 'Servicio', 'OT / OC / OS / RQ', 'Placa', 'Empresa', 'Destino', 'GR / Nota', 'Estado', 'Acciones'].map((label, i) => <th key={label} scope="col" className={`whitespace-nowrap px-3 py-2.5 font-semibold ${i === 8 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead><tbody className="block divide-y divide-slate-200 lg:table-row-group">{visible.map(({ item, stop }) => <DocumentRow key={`${item.id}/${stop?.request_id || 'empty'}`} item={item} stop={stop} kind={stop && serviceTypes.has(stop.request_id) ? serviceKind(serviceTypes.get(stop.request_id)) : item.is_pickup ? 'RECOJO_CLIENTE' : null} info={stop ? serviceTypes.get(stop.request_id) : undefined} delivery={deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id)} canEdit={canNumbers || canPacking} packingOnly={packingOnly} onFinding={findingCan.write && stop?.ot_code ? () => setFinding({ otCode: stop.ot_code, dispatchId: item.id, requestId: stop.request_id }) : undefined} onManage={() => openService(item.id, stop?.request_id || null)} onStatus={() => setStatusOf({ item, stop, delivery: deliveries.find(row => row.dispatch_id === item.id && row.request_id === stop?.request_id) })} />)}</tbody></DataTable></div>
         </section>}
       <Modal isOpen={!!selected} onClose={() => setSelectedId(null)} title={`Documentos · ${selected?.dispatch_number || ''}${focused && selected?.stops[0] ? ` · ${selected.stops[0].ot_code ? `OT ${selected.stops[0].ot_code}` : referenceLabel(serviceTypes.get(selected.stops[0].request_id)) || selected.stops[0].request_number}` : ''}`} maxWidth="max-w-[1440px]"
 >
@@ -296,6 +300,7 @@ function DocumentaryQueue() {
       </Modal>
       <DocumentStatusModal reference={statusOf?.stop ? referenceLabel(serviceTypes.get(statusOf.stop.request_id)) : null} target={statusOf} packingOnly={packingOnly} canEdit={canNumbers || canPacking} onClose={() => setStatusOf(null)} onManage={id => openService(id, statusOf?.stop?.request_id || null)} onEvidence={setReview} />
       {!packingOnly && <DeliveryReview row={review} onClose={() => setReview(null)} onChanged={() => void load()} />}
+      {finding && <FindingForm findingId={null} preset={finding} can={findingCan} onClose={() => setFinding(null)} />}
       {anulando && <AnularModal doc={anulando} onClose={() => setAnulando(null)} onDone={() => { setAnulando(null); void load() }} />}
     </div>
   )
@@ -364,8 +369,8 @@ function documentState(item: QueueItem, stop: Stop | null, delivery: DeliveryRow
   return { label: 'Guía pendiente', tone: 'warning', steps }
 }
 
-function DocumentRow({ item, stop, kind, info, delivery, canEdit, packingOnly, onManage, onStatus }: {
-  item: QueueItem; stop: Stop | null; kind: ServiceKind | null; info?: { supplier_name: string | null; reference_type: string | null; reference_number: string | null }; delivery?: DeliveryRow; canEdit: boolean; packingOnly: boolean; onManage: () => void; onStatus: () => void
+function DocumentRow({ item, stop, kind, info, delivery, canEdit, packingOnly, onManage, onStatus, onFinding }: {
+  item: QueueItem; stop: Stop | null; kind: ServiceKind | null; info?: { supplier_name: string | null; reference_type: string | null; reference_number: string | null }; delivery?: DeliveryRow; canEdit: boolean; packingOnly: boolean; onManage: () => void; onStatus: () => void; onFinding?: () => void
 }) {
   const state = documentState(item, stop, delivery, packingOnly)
   const urgent = !['LISTO', 'SALIO'].includes(item.doc_status) && (hoursLeft(item.scheduled_departure) ?? Infinity) < 2
@@ -382,7 +387,7 @@ function DocumentRow({ item, stop, kind, info, delivery, canEdit, packingOnly, o
     <td className={cell}>{label(kind === 'RECOJO' ? 'Origen' : 'Destino')}<p className="truncate text-slate-700 lg:max-w-32 xl:max-w-40" title={point || undefined}>{point ? districtOf(point) : 'Sin dirección'}</p></td>
     <td className={cell}>{label('GR / Nota')}{(n => <span title={n.title} className={`whitespace-nowrap ${n.pending ? 'text-xs font-semibold text-amber-700' : 'text-sm font-semibold text-slate-800'}`}>{n.text}</span>)(stopNumbers(item, stop, delivery))}</td>
     <td className={cell}>{label('Estado')}<button type="button" onClick={onStatus} title="Ver Packing List, guía y conformidad" className="inline-flex items-center gap-1 rounded-full focus-visible:outline-2 focus-visible:outline-jrm-navy"><StatusBadge tone={state.tone}>{state.label}</StatusBadge><ChevronRight aria-hidden className="h-3.5 w-3.5 text-slate-400" /></button></td>
-    <td className={`${cell} lg:text-right`}>{label('Acciones')}<button type="button" onClick={onManage} className="min-h-11 whitespace-nowrap rounded-lg bg-jrm-navy px-3 text-xs font-semibold text-white hover:bg-jrm-navy-dark lg:min-h-8">{canEdit ? packingOnly ? 'Cargar Packing List' : 'Vincular / ver documentos' : 'Ver documentos'}</button></td>
+    <td className={`${cell} lg:text-right`}>{label('Acciones')}<button type="button" onClick={onManage} className="min-h-11 whitespace-nowrap rounded-lg bg-jrm-navy px-3 text-xs font-semibold text-white hover:bg-jrm-navy-dark lg:min-h-8">{canEdit ? packingOnly ? 'Cargar Packing List' : 'Vincular / ver documentos' : 'Ver documentos'}</button>{onFinding && <button type="button" onClick={onFinding} className="ml-1.5 min-h-11 whitespace-nowrap rounded-lg border border-rose-300 bg-white px-3 text-xs font-semibold text-rose-700 hover:bg-rose-50 lg:min-h-8">Registrar hallazgo</button>}</td>
   </tr>
 }
 

@@ -118,7 +118,10 @@ async function decodePhoto(file: File): Promise<{ source: CanvasImageSource; wid
   } catch (error) { URL.revokeObjectURL(url); throw error }
 }
 
-export async function deliveryPhoto(file: File): Promise<File> {
+export const deliveryPhoto = (file: File) => compressPhoto(file)
+
+/** Reduce la foto a JPEG 0,8 con el lado mayor en `maxSide` px (guías: 1280; hallazgos: 2000). */
+export async function compressPhoto(file: File, maxSide = 1280): Promise<File> {
   if (!file.size) throw Error('La foto llegó vacía. Vuelva a tomarla o elíjala nuevamente de la galería.')
   const type = photoType(file)
   // Sin poder reducirla en el teléfono, se envía tal cual (JPG, PNG, WEBP o HEIC de hasta 3,5 MB)
@@ -131,7 +134,7 @@ export async function deliveryPhoto(file: File): Promise<File> {
   let decoded: Awaited<ReturnType<typeof decodePhoto>>
   try { decoded = await decodePhoto(file) } catch { return original() }
   try {
-    const ratio = Math.min(1, 1280 / Math.max(decoded.width, decoded.height))
+    const ratio = Math.min(1, maxSide / Math.max(decoded.width, decoded.height))
     const canvas = document.createElement('canvas')
     canvas.width = Math.round(decoded.width * ratio); canvas.height = Math.round(decoded.height * ratio)
     const context = canvas.getContext('2d')
