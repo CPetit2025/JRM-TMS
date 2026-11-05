@@ -9,6 +9,7 @@ import { EVIDENCE_GROUPS, EVIDENCE_MAX_MB, EVIDENCE_STAGES, EVIDENCE_TYPES, deta
   type DetailEvidence, type DispatchFiles, type EvidenceGroup, type EvidenceStage, type RouteEvidence } from '@/lib/dispatch-detail'
 import { zipFiles, zipName } from '@/lib/zip'
 import { DetailCard, ServiceStrip, SourcesWarning, Img } from './DetailParts'
+import { HallazgosDespachoCard } from '@/components/hallazgos/HallazgosDespachoCard'
 
 const TONE: Record<EvidenceGroup, string> = {
   RECOJO: 'bg-blue-50 text-jrm-navy', TRANSITO: 'bg-sky-50 text-sky-800', LLEGADA: 'bg-emerald-50 text-emerald-800', DESCARGA: 'bg-emerald-50 text-emerald-800',
@@ -86,6 +87,7 @@ export function EvidenciasTab({ row, files, route, urls, servicesCount, onChange
       </DetailCard>
     </div>
     <div className="min-w-0 space-y-4 sm:space-y-5">
+      {row.contract_id && <HallazgosDespachoCard contractId={row.contract_id} dispatchId={row.dispatch_id} />}
       <DetailCard title="Resumen de evidencias" icon={<Images />}>
         <dl className="divide-y divide-slate-100 text-sm">
           <div className="flex justify-between py-2"><dt className="text-slate-700">Total de evidencias</dt><dd className="font-semibold tabular-nums">{all.length}</dd></div>

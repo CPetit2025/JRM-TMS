@@ -29,6 +29,7 @@ jobs:
       - run: node scripts/test-gestion-personal.cjs
       - run: node --test scripts/test-gestion-personal-ui.cjs
       - run: node --test scripts/test-hhee-worker-search.cjs
+      - run: node --test scripts/test-audit-findings-pdf.cjs
       - run: node scripts/test-route-operations.cjs
       - run: node scripts/test-forklift-stop.cjs
       - run: node scripts/test-special-services-inheritance.cjs

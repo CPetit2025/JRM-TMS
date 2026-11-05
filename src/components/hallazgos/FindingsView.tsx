@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase/client'
 import { errorMessage, fmtDate } from '@/lib/caja'
 import { SEVERITY, STATUS, callRpc, findingActions, type FindingRow, type Kpis } from '@/lib/audit-findings'
 import { FindingForm } from './FindingForm'
+import { HallazgosOtPdfButton } from './HallazgosOtPdfButton'
 import { useFindingAbilities } from './useFindingAbilities'
 
 const limaDay = (date = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
@@ -117,6 +118,7 @@ export function FindingsView() {
               <td className={`${cell} lg:text-right`}>{label('Acciones')}<span className="inline-flex flex-wrap gap-1.5 lg:justify-end">
                 <button type="button" onClick={() => setOpen({ id: r.id })} className={`${btn} border border-slate-300 bg-white text-jrm-navy hover:bg-slate-50`}>Ver</button>
                 {a.edit && <button type="button" onClick={() => setOpen({ id: r.id })} className={`${btn} border border-slate-300 bg-white text-jrm-navy hover:bg-slate-50`}>Editar</button>}
+                <HallazgosOtPdfButton contractId={r.contract_id} className={`${btn} border border-slate-300 bg-white text-jrm-navy hover:bg-slate-50`} />
                 {a.validate && <button type="button" onClick={() => setOpen({ id: r.id, tab: 'correccion' })} className={`${btn} bg-jrm-navy text-white hover:bg-jrm-navy-dark`}>Validar</button>}
               </span></td>
             </tr>
