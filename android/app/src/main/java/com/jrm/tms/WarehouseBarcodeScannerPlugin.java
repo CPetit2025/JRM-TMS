@@ -5,8 +5,8 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import com.google.android.gms.mlkit.vision.codescanner.GmsBarcodeScanning;
-import com.google.android.gms.mlkit.vision.codescanner.GmsBarcodeScannerOptions;
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning;
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions;
 
 @CapacitorPlugin(name = "WarehouseBarcodeScanner")
 public class WarehouseBarcodeScannerPlugin extends Plugin {
