@@ -131,11 +131,26 @@ BEGIN
     UPDATE public.profiles SET mock_password = NULL WHERE mock_password IS NOT NULL;
   END IF;
 END $$;
-UPDATE public.drivers SET pin = NULL WHERE pin IS NOT NULL;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'drivers' AND column_name = 'pin'
+  ) THEN
+    UPDATE public.drivers SET pin = NULL WHERE pin IS NOT NULL;
+  END IF;
+END $$;
 
 -- The former SECURITY DEFINER RPC allowed anonymous takeover of a driver by DNI.
-REVOKE ALL ON FUNCTION public.register_driver(uuid,text,text,text,text,text,text,uuid) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.register_driver(varchar,varchar,varchar,varchar,varchar,varchar,varchar,date) FROM PUBLIC, anon, authenticated;
+DO $$
+BEGIN
+  IF to_regprocedure('public.register_driver(uuid,text,text,text,text,text,text,uuid)') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.register_driver(uuid,text,text,text,text,text,text,uuid) FROM PUBLIC, anon, authenticated';
+  END IF;
+  IF to_regprocedure('public.register_driver(character varying,character varying,character varying,character varying,character varying,character varying,character varying,date)') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.register_driver(varchar,varchar,varchar,varchar,varchar,varchar,varchar,date) FROM PUBLIC, anon, authenticated';
+  END IF;
+END $$;
 GRANT EXECUTE ON FUNCTION public.register_driver(uuid,text,text,text,text,text,text,uuid) TO service_role;
 CREATE OR REPLACE FUNCTION public.register_driver(
   p_auth_user_id uuid, p_dni text, p_first_name text, p_last_name text,
