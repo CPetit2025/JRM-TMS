@@ -30,7 +30,7 @@ BEGIN
         CREATE POLICY "Conductores ven sus propias solicitudes" 
         ON public.maintenance_requests FOR SELECT 
         TO authenticated 
-        USING (driver_id IN (SELECT id FROM public.drivers WHERE user_id = auth.uid()));
+        USING (driver_id IN (SELECT id FROM public.drivers WHERE profile_id = auth.uid()));
     END IF;
 
     IF NOT EXISTS (
