@@ -1,9 +1,7 @@
 -- 20260924151505_cmms_schema_reconciliation.sql
--- Concilia el esquema real de producción con el que asumen las funciones CMMS (Fases 4-11).
--- maintenance_work_orders en producción usa ot_code / vehicle_id; las funciones nuevas
--- (convert_request_to_wo, generate_preventive_wo, cierre de OT, trigger de inventario)
--- usan ot_number / vehicle_plate / type / plan_id. Se agregan columnas de compatibilidad
--- y un trigger que mantiene ambas representaciones sincronizadas.
+-- Concilia las funciones CMMS (Fases 4-11) con la tabla real de mantenimiento.
+-- maintenance_work_orders usa vehicle_plate; ot_code existe en esquemas previos,
+-- mientras las funciones nuevas usan ot_number / type / plan_id.
 
 BEGIN;
 
@@ -12,9 +10,13 @@ BEGIN;
 -- ------------------------------------------------------------
 ALTER TABLE public.maintenance_work_orders
   ADD COLUMN IF NOT EXISTS ot_number VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS ot_code VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS vehicle_id UUID REFERENCES public.vehicles(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS vehicle_plate TEXT,
   ADD COLUMN IF NOT EXISTS type VARCHAR(50),
-  ADD COLUMN IF NOT EXISTS plan_id UUID REFERENCES public.maintenance_plans(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS plan_id UUID REFERENCES public.maintenance_plans(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS source_type TEXT,
+  ADD COLUMN IF NOT EXISTS description TEXT;
 
 CREATE OR REPLACE FUNCTION public.sync_work_order_identity()
 RETURNS TRIGGER
@@ -25,10 +27,10 @@ BEGIN
   NEW.ot_code   := COALESCE(NEW.ot_code, NEW.ot_number);
   NEW.ot_number := COALESCE(NEW.ot_number, NEW.ot_code);
 
-  IF NEW.vehicle_id IS NULL AND NEW.vehicle_plate IS NOT NULL THEN
-    SELECT id INTO NEW.vehicle_id FROM public.vehicles WHERE plate = NEW.vehicle_plate;
-  ELSIF NEW.vehicle_plate IS NULL AND NEW.vehicle_id IS NOT NULL THEN
+  IF NEW.vehicle_id IS NOT NULL AND NEW.vehicle_plate IS NULL THEN
     SELECT plate INTO NEW.vehicle_plate FROM public.vehicles WHERE id = NEW.vehicle_id;
+  ELSIF NEW.vehicle_id IS NULL AND NEW.vehicle_plate IS NOT NULL THEN
+    SELECT id INTO NEW.vehicle_id FROM public.vehicles WHERE plate = NEW.vehicle_plate;
   END IF;
 
   NEW.source_type := COALESCE(NEW.source_type, NEW.type);
@@ -48,10 +50,14 @@ EXECUTE FUNCTION public.sync_work_order_identity();
 -- Backfill (la tabla puede tener datos en otros entornos)
 UPDATE public.maintenance_work_orders wo
 SET ot_number = COALESCE(wo.ot_number, wo.ot_code),
-    vehicle_plate = COALESCE(wo.vehicle_plate, v.plate)
+    ot_code = COALESCE(wo.ot_code, wo.ot_number),
+    vehicle_id = COALESCE(wo.vehicle_id, v.id),
+    vehicle_plate = COALESCE(wo.vehicle_plate, v.plate),
+    source_type = COALESCE(wo.source_type, wo.type),
+    description = COALESCE(wo.description, wo.diagnostic, 'OT ' || COALESCE(wo.ot_code, wo.ot_number))
 FROM public.vehicles v
-WHERE v.id = wo.vehicle_id
-  AND (wo.ot_number IS NULL OR wo.vehicle_plate IS NULL);
+WHERE v.plate = wo.vehicle_plate
+  AND (wo.ot_number IS NULL OR wo.ot_code IS NULL OR wo.vehicle_id IS NULL OR wo.source_type IS NULL OR wo.description IS NULL);
 
 CREATE INDEX IF NOT EXISTS idx_mwo_vehicle_plate ON public.maintenance_work_orders(vehicle_plate);
 CREATE INDEX IF NOT EXISTS idx_mwo_plan_id ON public.maintenance_work_orders(plan_id);
