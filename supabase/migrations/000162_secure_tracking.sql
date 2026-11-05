@@ -122,7 +122,15 @@ REVOKE ALL ON FUNCTION public.generate_tracking_link(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.generate_tracking_link(uuid) TO authenticated;
 
 -- Remove credentials that were stored in ordinary application rows.
-UPDATE public.profiles SET mock_password = NULL WHERE mock_password IS NOT NULL;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'mock_password'
+  ) THEN
+    UPDATE public.profiles SET mock_password = NULL WHERE mock_password IS NOT NULL;
+  END IF;
+END $$;
 UPDATE public.drivers SET pin = NULL WHERE pin IS NOT NULL;
 
 -- The former SECURITY DEFINER RPC allowed anonymous takeover of a driver by DNI.
