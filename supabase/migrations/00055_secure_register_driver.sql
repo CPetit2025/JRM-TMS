@@ -47,3 +47,16 @@ DROP POLICY IF EXISTS contract_service_staff ON public.contract_services;
 CREATE POLICY contract_service_staff ON public.contract_services FOR ALL TO authenticated
   USING (public.has_tms_permission('despacho') OR public.has_tms_permission('clientes'))
   WITH CHECK (public.has_tms_permission('despacho') OR public.has_tms_permission('clientes'));
+
+-- These legacy financial RPCs are created by the wallet/service migrations.
+DO $$ BEGIN
+  IF to_regprocedure('public.reserve_transport_budget(uuid,numeric)') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.reserve_transport_budget(uuid,numeric) FROM PUBLIC, anon, authenticated';
+  END IF;
+  IF to_regprocedure('public.liquidate_transport_budget(uuid,numeric,numeric)') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.liquidate_transport_budget(uuid,numeric,numeric) FROM PUBLIC, anon, authenticated';
+  END IF;
+  IF to_regprocedure('public.register_contract_service(uuid,character varying,text,numeric,date,character varying,character varying,numeric,character varying,character varying,character varying)') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.register_contract_service(uuid,character varying,text,numeric,date,character varying,character varying,numeric,character varying,character varying,character varying) FROM PUBLIC, anon, authenticated';
+  END IF;
+END $$;

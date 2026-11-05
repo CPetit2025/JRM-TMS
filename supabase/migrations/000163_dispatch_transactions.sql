@@ -254,11 +254,15 @@ REVOKE ALL ON FUNCTION public.close_dispatch_route(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.close_dispatch_route(uuid) TO authenticated;
 
 -- Obsolete financial RPCs allowed double charging or direct unvalidated changes.
-REVOKE ALL ON FUNCTION public.reserve_transport_budget(uuid,numeric) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.liquidate_transport_budget(uuid,numeric,numeric) FROM PUBLIC, anon, authenticated;
 DO $$
 DECLARE fn record;
 BEGIN
+  IF to_regprocedure('public.reserve_transport_budget(uuid,numeric)') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.reserve_transport_budget(uuid,numeric) FROM PUBLIC, anon, authenticated';
+  END IF;
+  IF to_regprocedure('public.liquidate_transport_budget(uuid,numeric,numeric)') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.liquidate_transport_budget(uuid,numeric,numeric) FROM PUBLIC, anon, authenticated';
+  END IF;
   FOR fn IN SELECT oid::regprocedure AS signature FROM pg_proc
     WHERE pronamespace = 'public'::regnamespace AND proname = 'register_contract_service'
   LOOP
