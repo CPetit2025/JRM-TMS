@@ -129,7 +129,9 @@ CREATE OR REPLACE FUNCTION public.schedule_dispatch(
 DECLARE v_dispatch_id uuid;
 DECLARE v_driver_name text;
 DECLARE v_number text;
-DECLARE v_budget public.contract_budgets%ROWTYPE;
+-- Use a generic record because the wallet table is created by migration 00028,
+-- which is applied later on a fresh database.
+DECLARE v_budget record;
 DECLARE v_request jsonb;
 DECLARE v_request_id uuid;
 DECLARE v_order integer := 0;
