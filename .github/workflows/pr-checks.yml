@@ -48,6 +48,7 @@ jobs:
       - run: node scripts/test-economic-always-closes.cjs
       - run: node scripts/test-budget-positions.cjs
       - run: node --test scripts/test-budget-portfolio-ui.cjs
+      - run: node --test scripts/test-contract-budget-editor.cjs
       - run: node scripts/test-budget-imputation.cjs
       - run: node scripts/test-budget-authorizations.cjs
       - run: node scripts/test-budget-deviations.cjs

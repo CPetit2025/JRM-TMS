@@ -3,25 +3,30 @@ import { DataTable } from '@/components/ui/data-table'
 
 import { operatingFromBalance } from '@/lib/transport-budget'
 import { TransportMarginPanel } from '@/components/contratos/TransportMarginPanel'
+import { TransportBudgetEditor, type TransportBudgetTarget } from '@/components/contratos/TransportBudgetEditor'
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Briefcase, Layers, FileWarning, DollarSign, MapPin, Send, Receipt } from 'lucide-react'
+import { ArrowLeft, Briefcase, Layers, FileWarning, DollarSign, MapPin, Send, Receipt, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { createClient } from '@/lib/supabase/client'
 import { MAX_TONS, checkVolume, kgHint, tonsToKg } from '@/lib/contract-weight'
+import { usePermissions } from '@/hooks/usePermissions'
 import Link from 'next/link'
 
 export default function ContratoDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const unwrappedParams = use(params)
   const router = useRouter()
   const supabase = createClient()
+  const { canWrite } = usePermissions()
+  const canEditBudget = canWrite('ot')
   const [contract, setContract] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('info')
   const [childrenContracts, setChildrenContracts] = useState<any[]>([])
   const [requests, setRequests] = useState<any[]>([])
   const [expenses, setExpenses] = useState<any[]>([])
+  const [budgetToEdit, setBudgetToEdit] = useState<TransportBudgetTarget | null>(null)
   
   // Modals state
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -383,6 +388,7 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
                       <th className="px-4 py-3 font-semibold">Código</th>
                       <th className="px-4 py-3 font-semibold text-right">Partida de transporte (S/)</th>
                       <th className="px-4 py-3 font-semibold">Estado</th>
+                      {canEditBudget && <th className="px-4 py-3 font-semibold text-right">Acciones</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -398,6 +404,16 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
                             {child.status}
                           </span>
                         </td>
+                        {canEditBudget && (
+                          <td className="px-4 py-3 text-right">
+                            <button type="button" onClick={() => setBudgetToEdit({ id: child.id, code: child.code, allocated_pen: child.allocated_pen })}
+                              disabled={['ANULADO', 'CANCELADO', 'CERRADO'].includes(child.status) || ['ANULADO', 'CANCELADO', 'CERRADO'].includes(contract.status)}
+                              aria-label={`Editar monto de ${child.code}`}
+                              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-[#002855] hover:border-[#002855]/30 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40">
+                              <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> Editar monto
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -559,6 +575,14 @@ export default function ContratoDetallePage({ params }: { params: Promise<{ id: 
           </div>
         )}
       </div>
+
+      {budgetToEdit && (
+        <TransportBudgetEditor target={budgetToEdit} onClose={() => setBudgetToEdit(null)} onSaved={amount => {
+          setChildrenContracts(previous => previous.map(child => child.id === budgetToEdit.id ? { ...child, allocated_pen: amount } : child))
+          setBudgetToEdit(null)
+          void fetchContractDetails()
+        }} />
+      )}
 
       <Modal 
         isOpen={isModalOpen} 
