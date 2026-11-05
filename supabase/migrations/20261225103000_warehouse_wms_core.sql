@@ -81,6 +81,13 @@ CREATE TABLE public.wh_reconciliation (
  UNIQUE(site_id,package_code,source_batch)
 );
 CREATE INDEX wh_reconciliation_dispatch_idx ON public.wh_reconciliation(dispatch_id) WHERE dispatch_id IS NOT NULL;
+CREATE TABLE public.wh_receipt_validations (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), source_movement_key text NOT NULL, site_id uuid NOT NULL REFERENCES public.sites(id),
+ erp_quantity numeric(14,3) NOT NULL CHECK(erp_quantity>=0), physical_quantity numeric(14,3) NOT NULL CHECK(physical_quantity>=0),
+ variance numeric(14,3) GENERATED ALWAYS AS (physical_quantity-erp_quantity) STORED,
+ variance_reason text, manual_customer_name text, validated_by uuid NOT NULL REFERENCES public.profiles(id), validated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX wh_receipt_validations_latest_idx ON public.wh_receipt_validations(source_movement_key,validated_at DESC);
 CREATE TABLE public.wh_pack_sizes (
  product_code text PRIMARY KEY, units_per_package numeric(14,3) NOT NULL CHECK(units_per_package>0), unit text, updated_by uuid REFERENCES public.profiles(id), updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -131,23 +138,65 @@ BEGIN
  IF length(q)<2 THEN RAISE EXCEPTION 'Ingrese dos o más caracteres para buscar'; END IF;
  SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.fecha DESC,x.document_no,x.product_code),'[]'::jsonb) INTO result FROM (
   WITH receipts AS (
-   SELECT encode(extensions.digest(convert_to(jsonb_build_array(m.fecha::text,m.numero,coalesce(m.lote,''),m.producto,coalesce(m.unidad,''),m.bodega,coalesce(m.glosa,''),coalesce(m.ot,m.contrato,''))::text,'UTF8'),'sha256'),'hex') AS receipt_key,
+   SELECT encode(extensions.digest(convert_to(jsonb_build_array(m.fecha::text,m.numero,coalesce(m.lote,''),m.producto,coalesce(m.unidad,''),m.bodega,coalesce(m.glosa,''),coalesce(m.razon_social,''),coalesce(m.ot,m.contrato,nullif(m.num_rel,''),m.lote))::text,'UTF8'),'sha256'),'hex') AS receipt_key,
     m.numero AS document_no,m.fecha,m.lote,m.producto AS product_code,m.glosa AS description,m.unidad AS unit,m.bodega,
-    coalesce(m.ot,m.contrato) AS contract_code,round(sum(abs(m.cantidad)),3) AS quantity,round(sum(coalesce(abs(m.peso_kg),0)),3) AS weight_kg
+    coalesce(m.ot,m.contrato,nullif(m.num_rel,''),m.lote) AS contract_code,m.razon_social,
+    round(sum(abs(m.cantidad)),3) AS quantity,round(sum(abs(m.peso_kg)),3) AS weight_kg
    FROM public.inv_movements m WHERE m.active AND m.side='E' AND public.apt_almacen(m.bodega) IS NOT NULL
-   GROUP BY m.fecha,m.numero,m.lote,m.producto,m.unidad,m.bodega,m.glosa,m.ot,m.contrato
+   GROUP BY m.fecha,m.numero,m.lote,m.producto,m.unidad,m.bodega,m.glosa,m.ot,m.contrato,m.num_rel,m.razon_social
   )
-  SELECT r.*,c.id AS contract_id,coalesce(p.label_count,0) AS label_count,coalesce(p.labeled_qty,0) AS labeled_qty,
+  SELECT r.*,c.id AS contract_id,
+   coalesce(nullif(r.razon_social,''),public.inv_ot_cliente(public.inv_ot(r.contract_code)),v.manual_customer_name) AS customer_name,
+   CASE WHEN nullif(r.razon_social,'') IS NOT NULL OR nullif(public.inv_ot_cliente(public.inv_ot(r.contract_code)),'') IS NOT NULL THEN 'ERP/OT'
+    WHEN nullif(v.manual_customer_name,'') IS NOT NULL THEN 'MANUAL' ELSE NULL END AS customer_source,
+   v.physical_quantity, v.variance, v.variance_reason,
+   CASE WHEN v.id IS NULL THEN 'PENDING' WHEN v.erp_quantity<>r.quantity THEN 'STALE' ELSE 'VALIDATED' END AS validation_status,
+   coalesce(p.label_count,0) AS label_count,coalesce(p.labeled_qty,0) AS labeled_qty,
    CASE WHEN coalesce(p.label_count,0)=0 THEN 'NOT_LABELED'
-    WHEN p.labeled_qty=r.quantity AND p.expected_count=p.label_count THEN 'MATCH' ELSE 'DIFFERENCE' END AS label_status
+    WHEN p.labeled_qty=coalesce(v.physical_quantity,r.quantity) AND p.expected_count=p.label_count THEN 'MATCH' ELSE 'DIFFERENCE' END AS label_status
   FROM receipts r LEFT JOIN public.contracts c ON regexp_replace(regexp_replace(upper(c.code::text),'[^A-Z0-9]','','g'),'^OT','')=regexp_replace(regexp_replace(upper(r.contract_code),'[^A-Z0-9]','','g'),'^OT','')
+  LEFT JOIN LATERAL (SELECT rv.* FROM public.wh_receipt_validations rv WHERE rv.source_movement_key=r.receipt_key ORDER BY rv.validated_at DESC,rv.id DESC LIMIT 1) v ON true
   LEFT JOIN LATERAL (SELECT count(*)::integer AS label_count,round(sum(quantity),3) AS labeled_qty,max(source_expected_count) AS expected_count
    FROM public.wh_packages WHERE source_movement_key=r.receipt_key AND status<>'VOID') p ON true
   WHERE r.document_no ILIKE '%'||q||'%' OR coalesce(r.lote,'') ILIKE '%'||q||'%' OR r.product_code ILIKE '%'||q||'%'
    OR coalesce(r.description,'') ILIKE '%'||q||'%' OR coalesce(r.contract_code,'') ILIKE '%'||q||'%'
-  ORDER BY r.fecha DESC,r.document_no,r.product_code LIMIT 200
+  ORDER BY (r.document_no=q) DESC,r.fecha DESC,r.document_no,r.product_code LIMIT 500
  ) x;
  RETURN result;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.wh_validate_receipt(p_receipt_key text,p_physical_quantity numeric,p_variance_reason text DEFAULT NULL,p_manual_customer_name text DEFAULT NULL) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE v_site uuid:=public.primary_site_id(); v_receipt record; v_customer text; v_reason text:=nullif(trim(p_variance_reason),''); v_manual text:=nullif(trim(p_manual_customer_name),'');
+BEGIN
+ PERFORM public.security_assert_active_session();
+ IF NOT public.wh_has_permission(ARRAY['almacen-etiquetado','almacen-supervisor']) THEN RAISE EXCEPTION 'Sin permiso para validar la recepción APT' USING ERRCODE='42501'; END IF;
+ IF v_site IS NULL OR NOT public.can_access_site(v_site) OR p_physical_quantity IS NULL OR p_physical_quantity<0 OR nullif(trim(p_receipt_key),'') IS NULL THEN
+  RAISE EXCEPTION 'Cantidad física o ingreso IPT inválido';
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(p_receipt_key,0));
+ SELECT encode(extensions.digest(convert_to(jsonb_build_array(m.fecha::text,m.numero,coalesce(m.lote,''),m.producto,coalesce(m.unidad,''),m.bodega,coalesce(m.glosa,''),coalesce(m.razon_social,''),coalesce(m.ot,m.contrato,nullif(m.num_rel,''),m.lote))::text,'UTF8'),'sha256'),'hex') AS receipt_key,
+  m.numero AS document_no,m.fecha,m.lote,m.producto AS product_code,m.glosa AS description,m.unidad AS unit,m.bodega,
+  coalesce(m.ot,m.contrato,nullif(m.num_rel,''),m.lote) AS contract_code,m.razon_social,
+  round(sum(abs(m.cantidad)),3) AS quantity
+ INTO v_receipt
+ FROM public.inv_movements m WHERE m.active AND m.side='E' AND public.apt_almacen(m.bodega) IS NOT NULL
+ GROUP BY m.fecha,m.numero,m.lote,m.producto,m.unidad,m.bodega,m.glosa,m.ot,m.contrato,m.num_rel,m.razon_social
+ HAVING encode(extensions.digest(convert_to(jsonb_build_array(m.fecha::text,m.numero,coalesce(m.lote,''),m.producto,coalesce(m.unidad,''),m.bodega,coalesce(m.glosa,''),coalesce(m.razon_social,''),coalesce(m.ot,m.contrato,nullif(m.num_rel,''),m.lote))::text,'UTF8'),'sha256'),'hex')=p_receipt_key
+ LIMIT 1;
+ IF NOT FOUND OR v_receipt.quantity<=0 THEN RAISE EXCEPTION 'El IPT no existe en el actualizable APT vigente'; END IF;
+ IF EXISTS(SELECT 1 FROM public.wh_packages WHERE source_movement_key=p_receipt_key AND status<>'VOID') THEN RAISE EXCEPTION 'La recepción ya tiene etiquetas; no se puede volver a validar sin anularlas'; END IF;
+ v_customer:=coalesce(nullif(v_receipt.razon_social,''),nullif(public.inv_ot_cliente(public.inv_ot(v_receipt.contract_code)),''));
+ IF v_customer IS NULL AND v_manual IS NULL THEN RAISE EXCEPTION 'No se encontró el cliente por OT, contrato o lote. Registre el nombre del cliente para continuar'; END IF;
+ IF p_physical_quantity<>v_receipt.quantity AND v_reason IS NULL THEN RAISE EXCEPTION 'Registre el motivo de la diferencia entre el ERP y el conteo físico'; END IF;
+ INSERT INTO public.wh_receipt_validations(source_movement_key,site_id,erp_quantity,physical_quantity,variance_reason,manual_customer_name,validated_by)
+ VALUES(p_receipt_key,v_site,v_receipt.quantity,p_physical_quantity,v_reason,CASE WHEN v_customer IS NULL THEN v_manual END,auth.uid());
+ INSERT INTO public.wh_scan_events(site_id,event_type,scanned_code,payload,operator_id,client_event_id)
+ VALUES(v_site,'RECEIPT_VALIDATED',v_receipt.document_no,jsonb_build_object('receipt_key',p_receipt_key,'erp_quantity',v_receipt.quantity,
+  'physical_quantity',p_physical_quantity,'variance_reason',v_reason,'customer_source',CASE WHEN v_customer IS NULL THEN 'MANUAL' ELSE 'ERP/OT' END),auth.uid(),gen_random_uuid());
+ RETURN jsonb_build_object('receipt_key',p_receipt_key,'document_no',v_receipt.document_no,'erp_quantity',v_receipt.quantity,
+  'physical_quantity',p_physical_quantity,'variance',p_physical_quantity-v_receipt.quantity,'customer_name',coalesce(v_customer,v_manual),
+  'customer_source',CASE WHEN v_customer IS NULL THEN 'MANUAL' ELSE 'ERP/OT' END,'validated',true);
 END $$;
 
 CREATE OR REPLACE FUNCTION public.wh_touch_updated_at() RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$ BEGIN NEW.updated_at=now(); RETURN NEW; END $$;
@@ -155,6 +204,7 @@ CREATE TRIGGER wh_tasks_touch BEFORE UPDATE ON public.wh_tasks FOR EACH ROW EXEC
 CREATE TRIGGER wh_packages_touch BEFORE UPDATE ON public.wh_packages FOR EACH ROW EXECUTE FUNCTION public.wh_touch_updated_at();
 CREATE OR REPLACE FUNCTION public.wh_reject_scan_mutation() RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$ BEGIN RAISE EXCEPTION 'Las lecturas de almacén son inmutables'; END $$;
 CREATE TRIGGER wh_scan_immutable BEFORE UPDATE OR DELETE ON public.wh_scan_events FOR EACH ROW EXECUTE FUNCTION public.wh_reject_scan_mutation();
+CREATE TRIGGER wh_receipt_validation_immutable BEFORE UPDATE OR DELETE ON public.wh_receipt_validations FOR EACH ROW EXECUTE FUNCTION public.wh_reject_scan_mutation();
 
 ALTER TABLE public.wh_tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.wh_task_lines ENABLE ROW LEVEL SECURITY;
@@ -163,6 +213,7 @@ ALTER TABLE public.wh_lpns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.wh_locations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.wh_scan_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.wh_reconciliation ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.wh_receipt_validations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.wh_pack_sizes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.wh_operator_badges ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.wh_tasks FROM PUBLIC,anon,authenticated;
@@ -172,9 +223,10 @@ REVOKE ALL ON public.wh_lpns FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON public.wh_locations FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON public.wh_scan_events FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON public.wh_reconciliation FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON public.wh_receipt_validations FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON public.wh_pack_sizes FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON public.wh_operator_badges FROM PUBLIC,anon,authenticated;
-GRANT SELECT ON public.wh_tasks,public.wh_task_lines,public.wh_packages,public.wh_lpns,public.wh_locations,public.wh_scan_events,public.wh_reconciliation,public.wh_pack_sizes TO authenticated;
+GRANT SELECT ON public.wh_tasks,public.wh_task_lines,public.wh_packages,public.wh_lpns,public.wh_locations,public.wh_scan_events,public.wh_reconciliation,public.wh_receipt_validations,public.wh_pack_sizes TO authenticated;
 CREATE POLICY security_active_account ON public.wh_tasks AS RESTRICTIVE FOR ALL TO authenticated USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()));
 CREATE POLICY security_active_account ON public.wh_task_lines AS RESTRICTIVE FOR ALL TO authenticated USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()));
 CREATE POLICY security_active_account ON public.wh_packages AS RESTRICTIVE FOR ALL TO authenticated USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()));
@@ -182,15 +234,17 @@ CREATE POLICY security_active_account ON public.wh_lpns AS RESTRICTIVE FOR ALL T
 CREATE POLICY security_active_account ON public.wh_locations AS RESTRICTIVE FOR ALL TO authenticated USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()));
 CREATE POLICY security_active_account ON public.wh_scan_events AS RESTRICTIVE FOR ALL TO authenticated USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()));
 CREATE POLICY security_active_account ON public.wh_reconciliation AS RESTRICTIVE FOR ALL TO authenticated USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()));
+CREATE POLICY security_active_account ON public.wh_receipt_validations AS RESTRICTIVE FOR ALL TO authenticated USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()));
 CREATE POLICY security_active_account ON public.wh_pack_sizes AS RESTRICTIVE FOR ALL TO authenticated USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()));
 CREATE POLICY security_active_account ON public.wh_operator_badges AS RESTRICTIVE FOR ALL TO authenticated USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()));
 CREATE POLICY wh_tasks_read ON public.wh_tasks FOR SELECT TO authenticated USING(public.can_access_site(site_id) AND public.wh_has_permission(ARRAY['almacen-lectura','almacen-supervisor','almacen-picking','almacen-packing','almacen-carga','almacen-etiquetado','apt']));
 CREATE POLICY wh_task_lines_read ON public.wh_task_lines FOR SELECT TO authenticated USING(EXISTS(SELECT 1 FROM public.wh_tasks t WHERE t.id=task_id AND public.can_access_site(t.site_id) AND public.wh_has_permission(ARRAY['almacen-lectura','almacen-supervisor','almacen-picking','almacen-packing','almacen-carga'])));
-CREATE POLICY wh_packages_read ON public.wh_packages FOR SELECT TO authenticated USING(public.can_access_site(site_id) AND public.wh_has_permission(ARRAY['almacen-lectura','almacen-supervisor','almacen-picking','almacen-packing','almacen-etiquetado']));
+CREATE POLICY wh_packages_read ON public.wh_packages FOR SELECT TO authenticated USING(public.can_access_site(site_id) AND public.wh_has_permission(ARRAY['almacen-lectura','almacen-supervisor','almacen-picking','almacen-packing','almacen-carga','almacen-etiquetado']));
 CREATE POLICY wh_lpns_read ON public.wh_lpns FOR SELECT TO authenticated USING(public.can_access_site(site_id) AND public.wh_has_permission(ARRAY['almacen-lectura','almacen-supervisor','almacen-packing','almacen-carga']));
 CREATE POLICY wh_locations_read ON public.wh_locations FOR SELECT TO authenticated USING(public.can_access_site(site_id) AND public.wh_has_permission(ARRAY['almacen-lectura','almacen-supervisor']));
 CREATE POLICY wh_scans_read ON public.wh_scan_events FOR SELECT TO authenticated USING(public.can_access_site(site_id) AND public.wh_has_permission(ARRAY['almacen-supervisor','almacen-lectura']));
 CREATE POLICY wh_reconciliation_read ON public.wh_reconciliation FOR SELECT TO authenticated USING(public.can_access_site(site_id) AND public.wh_has_permission(ARRAY['almacen-supervisor','almacen-carga','almacen-lectura','apt-carga']));
+CREATE POLICY wh_receipt_validations_read ON public.wh_receipt_validations FOR SELECT TO authenticated USING(public.can_access_site(site_id) AND public.wh_has_permission(ARRAY['almacen-etiquetado','almacen-supervisor','almacen-lectura']));
 CREATE POLICY wh_pack_sizes_read ON public.wh_pack_sizes FOR SELECT TO authenticated USING(public.wh_has_permission(ARRAY['almacen-lectura','almacen-etiquetado','almacen-supervisor']));
 
 -- Warehouse-produced packing lists remain visible in the existing dispatch document center.
@@ -224,6 +278,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.wh_sync_transport_request() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE v_site uuid; v_state text; v_id uuid;
 BEGIN
+ IF upper(coalesce(NEW.request_type,'DESPACHO')) IN ('RECOJO','TRASLADO') THEN RETURN NEW; END IF;
  v_state:=public.wh_task_status_for_request(NEW.status);
  v_site:=NEW.site_id;
  INSERT INTO public.wh_tasks(task_code,transport_request_id,site_id,contract_id,created_by,request_status,dispatch_id)
@@ -254,7 +309,7 @@ BEGIN
  END IF;
  RETURN NEW;
 END $$;
-CREATE TRIGGER wh_transport_request_sync AFTER INSERT OR UPDATE OF status ON public.transport_requests FOR EACH ROW EXECUTE FUNCTION public.wh_sync_transport_request();
+CREATE TRIGGER wh_transport_request_sync AFTER INSERT OR UPDATE OF status,request_type ON public.transport_requests FOR EACH ROW EXECUTE FUNCTION public.wh_sync_transport_request();
 REVOKE ALL ON FUNCTION public.wh_sync_transport_request() FROM PUBLIC,anon,authenticated;
 CREATE OR REPLACE FUNCTION public.wh_sync_request_components() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE v_request uuid; r public.transport_requests%ROWTYPE;
@@ -262,6 +317,7 @@ BEGIN
  v_request:=CASE WHEN TG_OP='DELETE' THEN OLD.request_id ELSE NEW.request_id END;
  SELECT * INTO r FROM public.transport_requests WHERE id=v_request;
  IF FOUND THEN
+  IF upper(coalesce(r.request_type,'DESPACHO')) NOT IN ('RECOJO','TRASLADO') THEN
   INSERT INTO public.wh_tasks(task_code,transport_request_id,site_id,contract_id,created_by,request_status,dispatch_id)
   SELECT 'WH-'||r.request_number,r.id,r.site_id,r.contract_id,r.created_by,r.status,
    (SELECT dr.dispatch_id FROM public.dispatch_requests dr WHERE dr.transport_request_id=r.id ORDER BY dr.created_at DESC LIMIT 1)
@@ -270,6 +326,7 @@ BEGIN
    SELECT t.id,i.id,t.contract_id,coalesce(i.sku,''),coalesce(i.description,'Producto'),i.quantity,'UNIDAD',i.weight,'REQUEST'
    FROM public.wh_tasks t JOIN public.transport_request_items i ON i.transport_request_id=t.transport_request_id WHERE t.transport_request_id=v_request
   ON CONFLICT(task_id,transport_request_item_id) DO NOTHING;
+  END IF;
  END IF;
  RETURN NULL;
 END $$;
@@ -314,6 +371,7 @@ SELECT 'WH-'||r.request_number,r.id,r.site_id,r.contract_id,r.created_by,r.statu
  (SELECT dr.dispatch_id FROM public.dispatch_requests dr WHERE dr.transport_request_id=r.id ORDER BY dr.created_at DESC LIMIT 1)
 FROM public.transport_requests r
 WHERE r.status NOT IN ('CANCELADA','RECHAZADA')
+ AND upper(coalesce(r.request_type,'DESPACHO')) NOT IN ('RECOJO','TRASLADO')
 ON CONFLICT(transport_request_id) DO NOTHING;
 INSERT INTO public.wh_task_lines(task_id,transport_request_item_id,contract_id,product_code,description,requested_qty,unit,weight_kg,source)
 SELECT t.id,i.id,t.contract_id,coalesce(i.sku,''),coalesce(i.description,'Producto'),i.quantity,'UNIDAD',i.weight,'REQUEST'
@@ -379,7 +437,9 @@ CREATE OR REPLACE FUNCTION public.wh_block_dispatch_without_wh_load() RETURNS tr
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 BEGIN
  IF upper(coalesce(NEW.status,'')) IN ('EN RUTA','EN_RUTA','EN_CURSO','EN TRANSITO','EN_TRANSITO') AND NEW.status IS DISTINCT FROM OLD.status AND EXISTS(
-  SELECT 1 FROM public.wh_tasks t WHERE t.dispatch_id=NEW.id AND t.status NOT IN ('LOADED','RECONCILED','CANCELLED')
+  SELECT 1 FROM public.wh_tasks t JOIN public.transport_requests r ON r.id=t.transport_request_id
+   WHERE t.dispatch_id=NEW.id AND upper(coalesce(r.request_type,'DESPACHO')) NOT IN ('RECOJO','TRASLADO')
+   AND t.status NOT IN ('LOADED','RECONCILED','CANCELLED')
    AND NOT (t.status='PARTIAL' AND nullif(trim(t.load_override_reason),'') IS NOT NULL AND t.load_override_at IS NOT NULL AND EXISTS(
     SELECT 1 FROM public.profiles p JOIN public.roles r ON r.id=p.role_id WHERE p.id=t.load_override_by AND p.is_active=true
      AND (r.name='Administrador' OR r.permissions ? 'almacen-supervisor')))
@@ -401,19 +461,23 @@ BEGIN
  IF nullif(trim(p_code),'') IS NULL OR p_client_event_id IS NULL THEN RAISE EXCEPTION 'Lea un código válido; se requiere identificador de operación'; END IF;
  IF upper(p_event)='PICK' AND t.request_status NOT IN ('APROBADA','APROBADO','ASIGNADA') THEN RAISE EXCEPTION 'La solicitud aún no está aprobada para iniciar el picking'; END IF;
  IF upper(p_event)='LOAD' AND t.dispatch_id IS NULL THEN RAISE EXCEPTION 'Programe la solicitud en un despacho antes de confirmar carga'; END IF;
- IF EXISTS(SELECT 1 FROM public.wh_scan_events WHERE site_id=t.site_id AND client_event_id=p_client_event_id AND scanned_code=trim(p_code) AND event_type=upper(p_event) AND task_id=t.id) THEN
+ IF EXISTS(SELECT 1 FROM public.wh_scan_events WHERE site_id=t.site_id AND client_event_id=p_client_event_id AND scanned_code=trim(p_code)
+   AND event_type IN (upper(p_event),CASE WHEN upper(p_event)='LOAD' THEN 'LOAD_LPN' ELSE upper(p_event) END) AND task_id=t.id) THEN
   RETURN jsonb_build_object('success',true,'duplicate_retry',true,'code',trim(p_code),'event',upper(p_event));
  ELSIF EXISTS(SELECT 1 FROM public.wh_scan_events WHERE site_id=t.site_id AND client_event_id=p_client_event_id) THEN RAISE EXCEPTION 'El identificador de lectura ya se usó para otra operación'; END IF;
  IF upper(p_event)='LOAD' THEN
   SELECT * INTO l FROM public.wh_lpns WHERE lpn_code=trim(p_code) FOR UPDATE;
   IF FOUND THEN
    IF l.task_id IS DISTINCT FROM t.id OR l.site_id<>t.site_id OR l.status<>'CLOSED' OR t.status<>'READY_FOR_LOAD' THEN RAISE EXCEPTION 'LPN no está cerrado para esta tarea'; END IF;
-   UPDATE public.wh_packages SET status='LOADED',dispatch_id=t.dispatch_id WHERE lpn_id=l.id AND task_id=t.id AND status='PACKED';
-   GET DIAGNOSTICS v_count=ROW_COUNT;
+   SELECT count(*)::integer INTO v_count FROM public.wh_packages WHERE lpn_id=l.id AND task_id=t.id AND status='PACKED';
    IF v_count=0 THEN RAISE EXCEPTION 'El LPN no contiene paquetes listos para cargar'; END IF;
-   UPDATE public.wh_task_lines tl SET loaded_qty=loaded_qty+x.qty FROM (
-    SELECT task_line_id,sum(quantity) AS qty FROM public.wh_packages WHERE lpn_id=l.id AND task_id=t.id AND status='LOADED' AND task_line_id IS NOT NULL GROUP BY task_line_id
-   ) x WHERE tl.id=x.task_line_id;
+   WITH moved AS (
+    UPDATE public.wh_packages SET status='LOADED',dispatch_id=t.dispatch_id
+     WHERE lpn_id=l.id AND task_id=t.id AND status='PACKED' RETURNING task_line_id,quantity
+   ), totals AS (
+    SELECT task_line_id,sum(quantity) AS qty FROM moved WHERE task_line_id IS NOT NULL GROUP BY task_line_id
+   )
+   UPDATE public.wh_task_lines tl SET loaded_qty=loaded_qty+x.qty FROM totals x WHERE tl.id=x.task_line_id;
    UPDATE public.wh_lpns SET status='LOADED' WHERE id=l.id;
    INSERT INTO public.wh_scan_events(site_id,task_id,lpn_id,event_type,scanned_code,payload,operator_id,client_event_id)
     VALUES(t.site_id,t.id,l.id,'LOAD_LPN',l.lpn_code,jsonb_build_object('package_count',v_count),auth.uid(),p_client_event_id);
@@ -613,21 +677,26 @@ END $$;
 CREATE OR REPLACE FUNCTION public.wh_label_package(p_receipt_key text,p_package_count integer,p_units_per_package numeric DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE v_site uuid:=public.primary_site_id(); v_i int; v_key text; v_id uuid; v_codes jsonb:='[]'::jsonb; v_code text;
- v_total numeric; v_qty numeric; v_remaining numeric; v_weight numeric; v_receipt record; v_version integer;
+ v_total numeric; v_qty numeric; v_remaining numeric; v_weight numeric; v_receipt record; v_validation record; v_version integer;
 BEGIN
  PERFORM public.security_assert_active_session(); IF NOT public.wh_has_permission(ARRAY['almacen-etiquetado','almacen-supervisor']) THEN RAISE EXCEPTION 'Sin permiso de etiquetado' USING ERRCODE='42501'; END IF;
  IF v_site IS NULL OR NOT public.can_access_site(v_site) OR p_package_count NOT BETWEEN 1 AND 100 OR nullif(trim(p_receipt_key),'') IS NULL OR
     (p_units_per_package IS NOT NULL AND p_units_per_package<=0) THEN RAISE EXCEPTION 'Datos de etiqueta inválidos'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(p_receipt_key,0));
  SELECT r.* INTO v_receipt FROM (
-  SELECT encode(extensions.digest(convert_to(jsonb_build_array(m.fecha::text,m.numero,coalesce(m.lote,''),m.producto,coalesce(m.unidad,''),m.bodega,coalesce(m.glosa,''),coalesce(m.ot,m.contrato,''))::text,'UTF8'),'sha256'),'hex') AS receipt_key,
+  SELECT encode(extensions.digest(convert_to(jsonb_build_array(m.fecha::text,m.numero,coalesce(m.lote,''),m.producto,coalesce(m.unidad,''),m.bodega,coalesce(m.glosa,''),coalesce(m.razon_social,''),coalesce(m.ot,m.contrato,nullif(m.num_rel,''),m.lote))::text,'UTF8'),'sha256'),'hex') AS receipt_key,
    m.numero AS document_no,m.fecha,m.lote,m.producto AS product_code,m.glosa AS description,m.unidad AS unit,m.bodega,
-   coalesce(m.ot,m.contrato) AS contract_code,c.id AS contract_id,round(sum(abs(m.cantidad)),3) AS quantity,round(sum(coalesce(abs(m.peso_kg),0)),3) AS weight_kg
-  FROM public.inv_movements m LEFT JOIN public.contracts c ON regexp_replace(regexp_replace(upper(c.code::text),'[^A-Z0-9]','','g'),'^OT','')=regexp_replace(regexp_replace(upper(coalesce(m.ot,m.contrato)),'[^A-Z0-9]','','g'),'^OT','')
+   coalesce(m.ot,m.contrato,nullif(m.num_rel,''),m.lote) AS contract_code,c.id AS contract_id,round(sum(abs(m.cantidad)),3) AS quantity,round(sum(abs(m.peso_kg)),3) AS weight_kg
+  FROM public.inv_movements m LEFT JOIN public.contracts c ON regexp_replace(regexp_replace(upper(c.code::text),'[^A-Z0-9]','','g'),'^OT','')=regexp_replace(regexp_replace(upper(coalesce(m.ot,m.contrato,nullif(m.num_rel,''),m.lote)),'[^A-Z0-9]','','g'),'^OT','')
   WHERE m.active AND m.side='E' AND public.apt_almacen(m.bodega) IS NOT NULL
-  GROUP BY m.fecha,m.numero,m.lote,m.producto,m.unidad,m.bodega,m.glosa,m.ot,m.contrato,c.id
+  GROUP BY m.fecha,m.numero,m.lote,m.producto,m.unidad,m.bodega,m.glosa,m.ot,m.contrato,m.num_rel,c.id
  ) r WHERE r.receipt_key=p_receipt_key;
  IF NOT FOUND OR v_receipt.quantity<=0 THEN RAISE EXCEPTION 'El ingreso APT no existe o ya no está activo; actualice las entradas del ERP'; END IF;
- v_total:=v_receipt.quantity; v_remaining:=v_total; v_weight:=coalesce(v_receipt.weight_kg,0);
+ SELECT * INTO v_validation FROM public.wh_receipt_validations WHERE source_movement_key=p_receipt_key ORDER BY validated_at DESC,id DESC LIMIT 1;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Confirme la cantidad física del ingreso antes de generar etiquetas'; END IF;
+ IF v_validation.erp_quantity<>v_receipt.quantity THEN RAISE EXCEPTION 'El IPT cambió en el actualizable APT; valide de nuevo antes de etiquetar'; END IF;
+ v_total:=v_validation.physical_quantity; v_remaining:=v_total; v_weight:=v_receipt.weight_kg;
+ IF v_total<=0 THEN RAISE EXCEPTION 'El conteo físico es cero; no hay bultos para etiquetar'; END IF;
  IF p_units_per_package IS NOT NULL AND ceil(v_total/p_units_per_package)::integer<>p_package_count THEN RAISE EXCEPTION 'El número de paquetes no coincide con la capacidad estándar'; END IF;
  SELECT max(source_label_version) INTO v_version FROM public.wh_packages WHERE source_movement_key=p_receipt_key AND status<>'VOID';
  IF v_version IS NOT NULL AND EXISTS(SELECT 1 FROM public.wh_packages WHERE source_movement_key=p_receipt_key AND status='VOID' AND source_label_version=v_version) THEN RAISE EXCEPTION 'Hay etiquetas anuladas y activas en la misma versión; anule primero todas las etiquetas activas'; END IF;
@@ -642,7 +711,7 @@ BEGIN
    ELSE least(p_units_per_package,v_remaining) END;
   IF v_qty<=0 THEN RAISE EXCEPTION 'La división produce un paquete vacío'; END IF;
   INSERT INTO public.wh_packages(id,package_code,source_document_no,source_contract_code,source_lot,source_product_code,source_unit,source_warehouse,source_date,source_movement_key,source_label_version,source_key,site_id,contract_id,description,quantity,unit,weight_kg,sequence_no,sequence_total,source_qty_snapshot,source_expected_total,source_expected_count,created_by)
-  VALUES(v_id,'PKG-'||to_char(v_receipt.fecha,'YYMMDD')||'-'||upper(substr(replace(v_id::text,'-',''),1,8)),v_receipt.document_no,v_receipt.contract_code,coalesce(v_receipt.lote,''),v_receipt.product_code,coalesce(v_receipt.unit,''),v_receipt.bodega,v_receipt.fecha,p_receipt_key,v_version,v_key,v_site,v_receipt.contract_id,v_receipt.description,v_qty,nullif(v_receipt.unit,''),CASE WHEN v_total>0 THEN round(v_weight*v_qty/v_total,3) END,v_i,p_package_count,v_qty,v_total,p_package_count,auth.uid())
+  VALUES(v_id,'PKG-'||to_char(v_receipt.fecha,'YYMMDD')||'-'||upper(substr(replace(v_id::text,'-',''),1,8)),v_receipt.document_no,v_receipt.contract_code,coalesce(v_receipt.lote,''),v_receipt.product_code,coalesce(v_receipt.unit,''),v_receipt.bodega,v_receipt.fecha,p_receipt_key,v_version,v_key,v_site,v_receipt.contract_id,v_receipt.description,v_qty,nullif(v_receipt.unit,''),CASE WHEN v_weight IS NOT NULL AND v_receipt.quantity>0 THEN round(v_weight*v_qty/v_receipt.quantity,3) END,v_i,p_package_count,v_qty,v_total,p_package_count,auth.uid())
   ON CONFLICT(source_key) DO UPDATE SET source_qty_snapshot=excluded.source_qty_snapshot,source_expected_total=excluded.source_expected_total,source_expected_count=excluded.source_expected_count,
     quantity=CASE WHEN wh_packages.status='AVAILABLE' AND wh_packages.label_print_count=0 THEN excluded.quantity ELSE wh_packages.quantity END,
     sequence_total=CASE WHEN wh_packages.status='AVAILABLE' AND wh_packages.label_print_count=0 THEN excluded.sequence_total ELSE wh_packages.sequence_total END,
@@ -694,6 +763,12 @@ BEGIN
  PERFORM public.security_assert_active_session(); IF NOT public.wh_has_permission(ARRAY['almacen-supervisor']) OR nullif(trim(p_reason),'') IS NULL THEN RAISE EXCEPTION 'Anulación requiere supervisión y motivo'; END IF;
  SELECT * INTO p FROM public.wh_packages WHERE package_code=trim(p_package_code) FOR UPDATE;
  IF NOT FOUND OR NOT public.can_access_site(p.site_id) OR p.status IN ('LOADED','VOID') THEN RAISE EXCEPTION 'Paquete no se puede anular'; END IF;
+ IF p.task_line_id IS NOT NULL AND p.task_id IS NOT NULL THEN
+  UPDATE public.wh_task_lines SET
+   picked_qty=greatest(0,picked_qty-CASE WHEN p.status IN ('PICKED','PACKED') THEN p.quantity ELSE 0 END),
+   packed_qty=greatest(0,packed_qty-CASE WHEN p.status='PACKED' THEN p.quantity ELSE 0 END)
+   WHERE id=p.task_line_id AND task_id=p.task_id;
+ END IF;
  IF p.lpn_id IS NOT NULL THEN
   UPDATE public.wh_packages SET lpn_id=NULL WHERE lpn_id=p.lpn_id AND id<>p.id AND status='PACKED';
   UPDATE public.wh_lpns SET status='VOID',void_reason=trim(p_reason),package_count=0,quantity=0,weight_kg=0 WHERE id=p.lpn_id AND status IN ('OPEN','CLOSED');
@@ -705,6 +780,6 @@ BEGIN
 END $$;
 
 -- All state changes go through the audited RPC layer; clients cannot directly mutate operational tables.
-REVOKE ALL ON FUNCTION public.wh_task_action(uuid,text,text),public.wh_record_scan(uuid,text,text,uuid,jsonb),public.wh_create_lpn(uuid),public.wh_add_package_to_lpn(uuid,text),public.wh_close_lpn(uuid),public.wh_reconcile_batch(jsonb,text),public.wh_reconcile_apt_outflows(date,date,text),public.wh_resolve_reconciliation(uuid,text),public.wh_label_package(text,integer,numeric),public.wh_pack_size_upsert(text,numeric,text),public.wh_pack_size_delete(text),public.wh_print_labels(text[]),public.wh_reprint_label(text,text),public.wh_reprint_lpn_label(text,text),public.wh_void_package(text,text),public.wh_register_packing_list(uuid,uuid,text,text,bigint,text),public.wh_receipt_candidates(text) FROM PUBLIC,anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.wh_task_action(uuid,text,text),public.wh_record_scan(uuid,text,text,uuid,jsonb),public.wh_create_lpn(uuid),public.wh_add_package_to_lpn(uuid,text),public.wh_close_lpn(uuid),public.wh_reconcile_batch(jsonb,text),public.wh_reconcile_apt_outflows(date,date,text),public.wh_resolve_reconciliation(uuid,text),public.wh_label_package(text,integer,numeric),public.wh_pack_size_upsert(text,numeric,text),public.wh_pack_size_delete(text),public.wh_print_labels(text[]),public.wh_reprint_label(text,text),public.wh_reprint_lpn_label(text,text),public.wh_void_package(text,text),public.wh_register_packing_list(uuid,uuid,text,text,bigint,text),public.wh_receipt_candidates(text) TO authenticated;
+REVOKE ALL ON FUNCTION public.wh_task_action(uuid,text,text),public.wh_record_scan(uuid,text,text,uuid,jsonb),public.wh_create_lpn(uuid),public.wh_add_package_to_lpn(uuid,text),public.wh_close_lpn(uuid),public.wh_reconcile_batch(jsonb,text),public.wh_reconcile_apt_outflows(date,date,text),public.wh_resolve_reconciliation(uuid,text),public.wh_label_package(text,integer,numeric),public.wh_validate_receipt(text,numeric,text,text),public.wh_pack_size_upsert(text,numeric,text),public.wh_pack_size_delete(text),public.wh_print_labels(text[]),public.wh_reprint_label(text,text),public.wh_reprint_lpn_label(text,text),public.wh_void_package(text,text),public.wh_register_packing_list(uuid,uuid,text,text,bigint,text),public.wh_receipt_candidates(text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.wh_task_action(uuid,text,text),public.wh_record_scan(uuid,text,text,uuid,jsonb),public.wh_create_lpn(uuid),public.wh_add_package_to_lpn(uuid,text),public.wh_close_lpn(uuid),public.wh_reconcile_batch(jsonb,text),public.wh_reconcile_apt_outflows(date,date,text),public.wh_resolve_reconciliation(uuid,text),public.wh_label_package(text,integer,numeric),public.wh_validate_receipt(text,numeric,text,text),public.wh_pack_size_upsert(text,numeric,text),public.wh_pack_size_delete(text),public.wh_print_labels(text[]),public.wh_reprint_label(text,text),public.wh_reprint_lpn_label(text,text),public.wh_void_package(text,text),public.wh_register_packing_list(uuid,uuid,text,text,bigint,text),public.wh_receipt_candidates(text) TO authenticated;
 COMMIT;

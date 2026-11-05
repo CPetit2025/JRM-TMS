@@ -2,13 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Boxes, ClipboardList, PackageCheck, ScanLine, ShieldCheck, Truck, Waypoints, Settings2 } from 'lucide-react'
+import { Boxes, ClipboardList, PackageCheck, ScanLine, ShieldCheck, Waypoints, Settings2 } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
 
 const links = [
   { href: '/almacen', label: 'Inicio', icon: Boxes, permission: 'almacen-lectura' },
   { href: '/almacen/tareas', label: 'Tareas', icon: ClipboardList, permission: 'almacen-picking' },
-  { href: '/almacen/etiquetado', label: 'Etiquetado', icon: ScanLine, permission: 'almacen-etiquetado' },
+  { href: '/almacen/etiquetado', label: 'Recepción', icon: ScanLine, permission: 'almacen-etiquetado' },
   { href: '/almacen/paquetes', label: 'Paquetes y LPN', icon: PackageCheck, permission: 'almacen-packing' },
   { href: '/almacen/conciliacion', label: 'Conciliación', icon: Waypoints, permission: 'almacen-carga' },
   { href: '/almacen/maestros/embalajes', label: 'Embalajes', icon: Settings2, permission: 'almacen-supervisor' },
