@@ -9,6 +9,9 @@
 -- Reglas del negocio: solo se cancela un despacho PROGRAMADO (en ruta ya no: la partida se consume al cerrar).
 BEGIN;
 
+ALTER TABLE public.contract_services
+  ADD COLUMN IF NOT EXISTS dispatch_id uuid REFERENCES public.dispatches(id) ON DELETE SET NULL;
+
 -- ------------------------------------------------------------
 -- 1. Cambio de estado del despacho
 -- ------------------------------------------------------------
