@@ -10,8 +10,10 @@ const reconciliation = readFileSync(path.join(root, 'src/app/almacen/conciliacio
 const apt = readFileSync(path.join(root, 'src/app/almacen/apt/datos/page.tsx'), 'utf8')
 const task = readFileSync(path.join(root, 'src/app/almacen/tareas/[id]/page.tsx'), 'utf8')
 const uuidBootstrap = readFileSync(path.join(root, 'supabase/migrations/00000_supabase_uuid_compat.sql'), 'utf8')
+const legacyCarrierAcl = readFileSync(path.join(root, 'supabase/migrations/000162_secure_tracking.sql'), 'utf8')
 const checks = [
   ['fresh Supabase staging exposes the UUID function required by legacy baseline migrations', /CREATE OR REPLACE FUNCTION public\.uuid_generate_v4\(\)[\s\S]*?SELECT gen_random_uuid\(\)/.test(uuidBootstrap)],
+  ['fresh TMS schema applies the carrier public policy against the existing status column', /CREATE POLICY carriers_public_names[\s\S]*?USING \(status = 'ACTIVE'\)/.test(legacyCarrierAcl)],
   ['receipts use active ERP APT ingress', /inv_movements m WHERE m\.active AND m\.side='E' AND public\.apt_almacen\(m\.bodega\) IS NOT NULL/.test(sql)],
   ['outbound reconciliation uses active ERP APT egress', /inv_movements m WHERE m\.active AND m\.side='S' AND public\.apt_almacen\(m\.bodega\) IS NOT NULL/.test(sql)],
   ['labels cannot be issued from manually typed source data', /wh_label_package\(p_receipt_key text,p_package_count integer/.test(sql) && !/p_source\s*:/.test(labeling)],

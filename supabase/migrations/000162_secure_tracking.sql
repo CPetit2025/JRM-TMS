@@ -20,7 +20,7 @@ REVOKE ALL ON public.profiles, public.drivers, public.vehicles,
   public.transport_budgets, public.clients, public.budget_extensions,
   public.carriers, public.roles, public.work_orders FROM anon;
 GRANT SELECT (id, business_name) ON public.carriers TO anon;
-CREATE POLICY carriers_public_names ON public.carriers FOR SELECT TO anon USING (is_active = true);
+CREATE POLICY carriers_public_names ON public.carriers FOR SELECT TO anon USING (status = 'ACTIVE');
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
