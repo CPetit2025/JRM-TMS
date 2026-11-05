@@ -86,10 +86,11 @@ BEGIN
  d4 := pg_temp.ins('dispatches', jsonb_build_object('dispatch_number', 'ZZ-C220-4', 'status', 'PROGRAMADO', 'site_id', site, 'scheduled_departure', now(), 'docs_required', false, 'modalidad', 'PROPIO'));
  finding_cols := jsonb_build_object('contract_id', ct, 'site_id', site, 'client_id', client, 'ot_code', 'ZZ-C220', 'client_name', 'Cliente C220',
    'destination', 'Destino C220', 'process_area', 'DESPACHO', 'auditor_id', admin_id, 'description', 'Hallazgo de prueba C220', 'status', 'ABIERTO');
- f1 := pg_temp.ins('audit_findings', finding_cols || jsonb_build_object('dispatch_id', d1, 'severity', 'MAYOR'));
- f_safety := pg_temp.ins('audit_findings', finding_cols || jsonb_build_object('dispatch_id', d3, 'severity', 'CRITICO', 'status', 'PENDIENTE_VALIDACION'));
- f3 := pg_temp.ins('audit_findings', finding_cols || jsonb_build_object('dispatch_id', d4, 'severity', 'MENOR'));
- PERFORM pg_temp.ins('audit_findings', finding_cols || jsonb_build_object('dispatch_id', d2, 'severity', 'CRITICO', 'status', 'CERRADO', 'closed_at', now()));
+ -- audit_findings.number lo asigna el RPC de F1; aquí se da explícito y único dentro de la transacción.
+ f1 := pg_temp.ins('audit_findings', finding_cols || jsonb_build_object('number', 'ZZ-C220-' || plate || '-1', 'dispatch_id', d1, 'severity', 'MAYOR'));
+ f_safety := pg_temp.ins('audit_findings', finding_cols || jsonb_build_object('number', 'ZZ-C220-' || plate || '-2', 'dispatch_id', d3, 'severity', 'CRITICO', 'status', 'PENDIENTE_VALIDACION'));
+ f3 := pg_temp.ins('audit_findings', finding_cols || jsonb_build_object('number', 'ZZ-C220-' || plate || '-3', 'dispatch_id', d4, 'severity', 'MENOR'));
+ PERFORM pg_temp.ins('audit_findings', finding_cols || jsonb_build_object('number', 'ZZ-C220-' || plate || '-4', 'dispatch_id', d2, 'severity', 'CRITICO', 'status', 'CERRADO', 'closed_at', now()));
  INSERT INTO public.audit_finding_category_links(finding_id, category_id) VALUES (f1, safe), (f_safety, safety), (f3, safe);
 
  -- 1. Cada camino de salida se rechaza

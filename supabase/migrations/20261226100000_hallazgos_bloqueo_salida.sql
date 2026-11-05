@@ -15,8 +15,6 @@ CREATE TABLE IF NOT EXISTS public.audit_finding_release_exceptions (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS audit_finding_release_exceptions_active
   ON public.audit_finding_release_exceptions(finding_id, dispatch_id) WHERE revoked_at IS NULL;
-CREATE INDEX IF NOT EXISTS audit_findings_dispatch_blocking
-  ON public.audit_findings(dispatch_id) WHERE dispatch_id IS NOT NULL AND status <> 'CERRADO';
 
 ALTER TABLE public.audit_finding_release_exceptions ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS security_active_account ON public.audit_finding_release_exceptions;
