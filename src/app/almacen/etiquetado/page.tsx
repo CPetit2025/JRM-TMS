@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Printer, RotateCcw, ScanLine, ClipboardCheck } from 'lucide-react'
+import { Printer, RotateCcw, ScanLine, ClipboardCheck, X } from 'lucide-react'
 import { Code128Barcode } from '@/components/warehouse/Code128Barcode'
 
 type Receipt = {
@@ -37,6 +37,15 @@ export default function WarehouseLabelingPage() {
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    if (!selected) return
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setSelected(null) }
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', onKeyDown)
+    return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', onKeyDown) }
+  }, [selected])
 
   useEffect(() => {
     void (async () => {
@@ -197,7 +206,15 @@ export default function WarehouseLabelingPage() {
       </div>}
     </section>
 
-    {selected && <>
+    {selected && <div className="fixed inset-0 z-[80] flex items-end justify-center bg-slate-950/55 sm:items-center sm:p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby="wms-receipt-dialog-title" className="flex max-h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-slate-50 shadow-2xl sm:max-h-[92dvh] sm:rounded-2xl">
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+          <div className="min-w-0"><p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-blue-700">Recepción APT · Validación y etiquetado</p><h2 id="wms-receipt-dialog-title" className="mt-1 truncate text-lg font-black text-[#002855] sm:text-xl">IPT {selected.document_no} · {selected.product_code}</h2><p className="mt-0.5 truncate text-xs text-slate-500 sm:text-sm">{selected.description || 'Producto'} · {selected.fecha} · Lote {selected.lote || '—'}</p></div>
+          <button type="button" onClick={() => setSelected(null)} aria-label="Cerrar recepción" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-[#002855]"><X size={20}/></button>
+        </header>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3 sm:p-5">
+          {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
+          {message && <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">{message}</p>}
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div><p className="text-xs font-bold uppercase tracking-wide text-blue-700">2. Ingreso seleccionado</p><h2 className="mt-1 text-xl font-bold text-[#002855]">IPT {selected.document_no} · {selected.product_code}</h2><p className="mt-1 text-sm text-slate-600">{selected.description || 'Producto'} · {selected.fecha} · Bodega {selected.bodega} · Lote {selected.lote || '—'} · OT/Contrato {selected.contract_code || '—'}</p></div>
@@ -233,8 +250,14 @@ export default function WarehouseLabelingPage() {
           <div className="mt-4 grid gap-2 sm:grid-cols-3"><div className="rounded-lg bg-blue-50 p-3 text-sm"><span className="text-slate-600">Etiquetas previstas</span><b className="block text-xl text-[#002855]">{planCount}</b></div><div className="rounded-lg bg-blue-50 p-3 text-sm"><span className="text-slate-600">Unidades físicas</span><b className="block text-xl text-[#002855]">{planQuantity} {selected.unit || ''}</b></div><div className="rounded-lg bg-blue-50 p-3 text-sm"><span className="text-slate-600">Saldo de distribución</span><b className="block text-xl text-[#002855]">{planRemaining} {selected.unit || ''}</b></div></div>
           {plannedPackages.length > 0 && <div className="mt-3 max-h-56 overflow-auto rounded-lg border"><table className="w-full text-left text-sm"><thead className="sticky top-0 bg-slate-50"><tr><th className="p-2">Bulto</th><th className="p-2">Cantidad</th><th className="p-2">Tipo</th></tr></thead><tbody>{plannedPackages.map(row => <tr key={row.sequence} className="border-t"><td className="p-2">{row.sequence}</td><td className="p-2">{row.quantity} {selected.unit || ''}</td><td className="p-2">{row.kind}</td></tr>)}</tbody></table></div>}
         </>}
-      </section>}
-    </>}
+      </section>
+        </div>
+        <footer className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <p className="text-xs text-slate-500">Conteo físico → distribución → LPN → impresión</p>
+          <div className="flex gap-2"><button type="button" onClick={() => setSelected(null)} className="min-h-10 flex-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 sm:flex-none">Cerrar</button><button type="button" disabled={!labels.length} onClick={() => void print()} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"><Printer size={16}/>{labelsPrinted ? 'Reimprimir lote' : 'Imprimir lote'}</button></div>
+        </footer>
+      </div>
+    </div>}
 
     {labels.length > 0 && <section className="rounded-xl border border-slate-200 bg-white p-5"><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold text-[#002855]">Etiquetas generadas · {labels.length}</h2><p className="text-xs text-slate-500">100 × 50 mm · Code 128 · Zebra Browser Print/ZPL o PDF del navegador</p></div><button onClick={() => void print()} className="inline-flex items-center gap-2 rounded-lg bg-[#002855] px-4 py-2.5 text-sm font-bold text-white"><Printer size={16} />{labelsPrinted ? 'Reimprimir lote' : 'Imprimir lote'}</button></div><div className="grid gap-3 sm:grid-cols-2 print:grid-cols-1">{labels.map(label => <article key={label.package_code} className="wh-label rounded border-2 border-dashed border-slate-300 bg-white p-4 text-black"><b className="block text-lg">{label.source_product_code}</b><span className="text-sm">{label.description}</span><Code128Barcode value={label.package_code} height={56} className="my-2 w-full" /><b className="block text-center font-mono text-base">{label.package_code}</b><div className="mt-1 text-xs">IPT {label.source_document_no} · OT {label.contract_code || '—'} · {label.customer_name}</div><div className="mt-1 flex justify-between text-xs"><span>Lote {label.source_lot || '—'} · {label.source_warehouse}</span><span>{label.sequence_no}/{label.sequence_total}</span></div><div className="mt-1 flex justify-between text-xs"><span>{label.source_date}</span><b>{label.quantity} {label.unit} · {label.weight_kg === null ? 'Peso por registrar' : `${label.weight_kg} kg`}</b></div></article>)}</div></section>}
     <style jsx global>{`@media print{@page{size:100mm 50mm;margin:2mm}body *{visibility:hidden}.wh-label,.wh-label *{visibility:visible}.wh-label{position:relative;break-after:page;width:96mm;height:46mm;border:0!important;padding:3mm!important;margin:0!important}.wh-label:last-child{break-after:auto}}`}</style>
