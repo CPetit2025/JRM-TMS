@@ -184,12 +184,20 @@ ALTER TABLE public.dispatch_requests ADD COLUMN IF NOT EXISTS arrival_lat numeri
 ALTER TABLE public.dispatch_requests ADD COLUMN IF NOT EXISTS arrival_lon numeric(10,7);
 
 -- Backfill only names that uniquely identify one driver.
-WITH unique_names AS (
-  SELECT min(id::text)::uuid AS id, trim(first_name || ' ' || last_name) AS full_name
-  FROM public.drivers GROUP BY trim(first_name || ' ' || last_name) HAVING count(*) = 1
-)
-UPDATE public.dispatches d SET driver_id = n.id FROM unique_names n
-WHERE d.driver_id IS NULL AND d.driver_name = n.full_name;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'dispatches' AND column_name = 'driver_name'
+  ) THEN
+    WITH unique_names AS (
+      SELECT min(id::text)::uuid AS id, trim(first_name || ' ' || last_name) AS full_name
+      FROM public.drivers GROUP BY trim(first_name || ' ' || last_name) HAVING count(*) = 1
+    )
+    UPDATE public.dispatches d SET driver_id = n.id FROM unique_names n
+    WHERE d.driver_id IS NULL AND d.driver_name = n.full_name;
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.route_track_points (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
