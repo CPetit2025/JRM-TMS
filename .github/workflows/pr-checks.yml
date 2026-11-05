@@ -70,6 +70,7 @@ jobs:
       - run: node scripts/test-audit-commercial-fixes.cjs
       - run: node scripts/test-manual-charge-duplicates.cjs
       - run: node scripts/test-audit-findings-sql.cjs
+      - run: node scripts/test-audit-findings-release.cjs
       - run: node --test scripts/test-route-builder-checks.cjs
       - run: node --test scripts/test-route-builder-ui.cjs
       - run: node scripts/test-tower-route-crew.cjs
