@@ -28,8 +28,7 @@ DO $test$
 DECLARE actor uuid; assistant uuid; audit_role uuid; doc_role uuid; site uuid; foreign_site uuid; d uuid; other_d uuid; req uuid;
  path text; pending_path text; doc_id uuid; r jsonb; q jsonb; mime text; ext text; denied boolean; removed integer; n integer:=0;
 BEGIN
- -- C81 limita al auditor a Documentos. Hallazgos F1 agrega registro y validación
- -- de auditorías, sin habilitar los demás módulos de operación.
+ -- «solo-documentos» (C81) limita al auditor a Documentos y Hallazgos (C219: registra y valida hallazgos); no amplía otro acceso.
  SELECT id INTO audit_role FROM public.roles WHERE lower(trim(name))='auditor de despacho';
  IF audit_role IS NULL OR ((SELECT permissions FROM public.roles WHERE id=audit_role) - ARRAY['solo-documentos','hallazgos:write','hallazgos-validar']) IS DISTINCT FROM '["planificacion:read","packing-list:write"]'::jsonb THEN
    RAISE EXCEPTION 'CAJA C53 FAIL: perfil del auditor no limitado'; END IF;
