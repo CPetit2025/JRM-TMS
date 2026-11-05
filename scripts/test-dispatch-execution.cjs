@@ -22,6 +22,7 @@ function fixture({ status = 'PROGRAMADO', modalidad, writable = true, response =
     if (name === '@/lib/supabase/client') return { createClient: () => ({ rpc: async (rpc, args) => { calls.push({ rpc, args }); return response } }) }
     if (name === '@/lib/caja') return { errorMessage: error => error.message }
     if (name === '@/lib/dispatch-execution') return rules
+    if (name === '@/components/despacho/AuditFindingReleaseBadge') return { AuditFindingReleaseBadge: () => null } // F3: consulta propia, fuera de esta prueba
     if (name === 'sonner') return { toast: { success: message => success.push(message), error: message => errors.push(message) } }
     if (name === 'lucide-react') return { CheckCircle2: () => null, Loader2: () => null, PlayCircle: () => null }
     return require(name)
