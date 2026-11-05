@@ -87,12 +87,16 @@ CREATE POLICY cost_centers_scoped_read ON public.cost_centers FOR SELECT TO auth
 CREATE POLICY cost_centers_scoped_write ON public.cost_centers FOR ALL TO authenticated USING(
  public.has_tms_permission('configuracion') OR public.has_tms_permission('caja-tarifario')) WITH CHECK(
  public.has_tms_permission('configuracion') OR public.has_tms_permission('caja-tarifario'));
-CREATE POLICY products_scoped_read ON public.products FOR SELECT TO authenticated USING(
- public.has_tms_read_permission('apt') OR public.has_tms_read_permission('apt-carga')
- OR public.has_tms_read_permission('solicitudes') OR public.has_tms_read_permission('despacho'));
-CREATE POLICY products_scoped_write ON public.products FOR ALL TO authenticated USING(
- public.has_tms_permission('apt-carga') OR public.has_tms_permission('configuracion')) WITH CHECK(
- public.has_tms_permission('apt-carga') OR public.has_tms_permission('configuracion'));
+DO $$ BEGIN
+ IF to_regclass('public.products') IS NOT NULL THEN
+  EXECUTE $policy$CREATE POLICY products_scoped_read ON public.products FOR SELECT TO authenticated USING(
+   public.has_tms_read_permission('apt') OR public.has_tms_read_permission('apt-carga')
+   OR public.has_tms_read_permission('solicitudes') OR public.has_tms_read_permission('despacho'))$policy$;
+  EXECUTE $policy$CREATE POLICY products_scoped_write ON public.products FOR ALL TO authenticated USING(
+   public.has_tms_permission('apt-carga') OR public.has_tms_permission('configuracion')) WITH CHECK(
+   public.has_tms_permission('apt-carga') OR public.has_tms_permission('configuracion'))$policy$;
+ END IF;
+END $$;
 CREATE POLICY work_order_items_scoped_read ON public.work_order_items FOR SELECT TO authenticated USING(
  public.has_tms_read_permission('ot') AND EXISTS(SELECT 1 FROM public.work_orders w WHERE w.id=work_order_id
  AND (NOT public.is_contract_administrator() OR w.contract_administrator_id=auth.uid())));
