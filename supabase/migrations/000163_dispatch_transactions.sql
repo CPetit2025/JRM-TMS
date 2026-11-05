@@ -42,12 +42,19 @@ CREATE POLICY vehicles_read ON public.vehicles FOR SELECT TO authenticated
 CREATE POLICY vehicles_staff_write ON public.vehicles FOR ALL TO authenticated
   USING (public.has_tms_permission('flota') OR public.has_tms_permission('mantenimiento-flota'))
   WITH CHECK (public.has_tms_permission('flota') OR public.has_tms_permission('mantenimiento-flota'));
-CREATE POLICY contract_budget_read ON public.contract_budgets FOR SELECT TO authenticated
-  USING (public.has_tms_permission('dashboard') OR public.has_tms_permission('clientes')
-    OR public.has_tms_permission('despacho'));
-CREATE POLICY contract_budget_staff_write ON public.contract_budgets FOR ALL TO authenticated
-  USING (public.has_tms_permission('clientes') OR public.has_tms_permission('despacho'))
-  WITH CHECK (public.has_tms_permission('clientes') OR public.has_tms_permission('despacho'));
+-- The contracts wallet is introduced by migration 00028, which is ordered
+-- after this 16.x security migration on a fresh database. Apply its policies
+-- here when available; 00055 installs them after the wallet migration.
+DO $$ BEGIN
+  IF to_regclass('public.contract_budgets') IS NOT NULL THEN
+    EXECUTE $policy$CREATE POLICY contract_budget_read ON public.contract_budgets FOR SELECT TO authenticated
+      USING (public.has_tms_permission('dashboard') OR public.has_tms_permission('clientes')
+        OR public.has_tms_permission('despacho'))$policy$;
+    EXECUTE $policy$CREATE POLICY contract_budget_staff_write ON public.contract_budgets FOR ALL TO authenticated
+      USING (public.has_tms_permission('clientes') OR public.has_tms_permission('despacho'))
+      WITH CHECK (public.has_tms_permission('clientes') OR public.has_tms_permission('despacho'))$policy$;
+  END IF;
+END $$;
 CREATE POLICY contract_service_staff ON public.contract_services FOR ALL TO authenticated
   USING (public.has_tms_permission('despacho') OR public.has_tms_permission('clientes'))
   WITH CHECK (public.has_tms_permission('despacho') OR public.has_tms_permission('clientes'));

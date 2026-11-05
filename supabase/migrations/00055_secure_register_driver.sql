@@ -29,3 +29,14 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_
 $$;
 REVOKE ALL ON FUNCTION public.get_public_daily_tracking_locations(uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_public_daily_tracking_locations(uuid,text) TO anon, authenticated;
+
+-- Re-apply wallet policies after 00028 creates the contract budget table.
+DROP POLICY IF EXISTS "Enable all for authenticated users on contract_budgets" ON public.contract_budgets;
+DROP POLICY IF EXISTS contract_budget_read ON public.contract_budgets;
+DROP POLICY IF EXISTS contract_budget_staff_write ON public.contract_budgets;
+CREATE POLICY contract_budget_read ON public.contract_budgets FOR SELECT TO authenticated
+  USING (public.has_tms_permission('dashboard') OR public.has_tms_permission('clientes')
+    OR public.has_tms_permission('despacho'));
+CREATE POLICY contract_budget_staff_write ON public.contract_budgets FOR ALL TO authenticated
+  USING (public.has_tms_permission('clientes') OR public.has_tms_permission('despacho'))
+  WITH CHECK (public.has_tms_permission('clientes') OR public.has_tms_permission('despacho'));
