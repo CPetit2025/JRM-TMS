@@ -16,7 +16,8 @@ ALTER TABLE public.maintenance_work_orders
   ADD COLUMN IF NOT EXISTS type VARCHAR(50),
   ADD COLUMN IF NOT EXISTS plan_id UUID REFERENCES public.maintenance_plans(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS source_type TEXT,
-  ADD COLUMN IF NOT EXISTS description TEXT;
+  ADD COLUMN IF NOT EXISTS description TEXT,
+  ADD COLUMN IF NOT EXISTS downtime_hours NUMERIC(10,2) NOT NULL DEFAULT 0;
 
 CREATE OR REPLACE FUNCTION public.sync_work_order_identity()
 RETURNS TRIGGER
