@@ -39,6 +39,20 @@ END $f$;`)
   assert.doesNotMatch(migration, /UPDATE public\.(dispatch_request_freight|transport_requests|dispatches|contracts) /i, 'never updates existing business tables')
   await db.exec(migration); await db.exec(migration) // reaplicable
 
+  // La tabla de F3 tiene FK reales aun cuando sus índices operativos sean parciales.
+  const release = read('supabase/migrations/20261226100000_hallazgos_bloqueo_salida.sql')
+  const releaseStart = release.indexOf('CREATE TABLE IF NOT EXISTS public.audit_finding_release_exceptions')
+  assert.ok(releaseStart >= 0)
+  await db.exec(release.slice(releaseStart, release.indexOf(');', releaseStart) + 2))
+  const uncovered = async () => (await db.query(`SELECT c.conname FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace
+    JOIN pg_class t ON t.oid=c.conrelid WHERE n.nspname='public' AND t.relname LIKE 'audit_find%' AND c.contype='f'
+    AND (NOT c.convalidated OR NOT EXISTS(SELECT 1 FROM pg_index i WHERE i.indrelid=c.conrelid AND i.indisvalid AND i.indpred IS NULL
+      AND (i.indkey::smallint[])[0:cardinality(c.conkey)-1] @> c.conkey))`)).rows
+  assert.ok((await uncovered()).length > 0, 'La regresión reproduce las FK sin índice de apoyo')
+  const indices = read('supabase/migrations/20261226110000_hallazgos_indices_fk.sql')
+  await db.exec(indices); await db.exec(indices)
+  assert.deepEqual(await uncovered(), [], 'Todas las FK de hallazgos quedan cubiertas, incluidas filas cerradas')
+
   // Personas: auditor (sede principal), responsable (solo lectura), validador, otro auditor de otra sede, conductor.
   const site2 = id(900)
   await db.exec(`INSERT INTO sites(id,code,name) VALUES('${site2}','NORTE','Norte');
@@ -58,6 +72,11 @@ END $f$;`)
   await db.exec(migration)
   const perms = async name => (await db.query(`SELECT permissions FROM roles WHERE name=$1`, [name])).rows[0].permissions
   assert.ok((await perms('Auditor de Despacho')).includes('hallazgos-validar'))
+  const allowedAudit = `ARRAY['solo-documentos','hallazgos:write','hallazgos-validar']`
+  const auditorPermissions = await db.query(`SELECT permissions - ${allowedAudit} AS remaining,
+    (permissions || '["ot:write"]'::jsonb) - ${allowedAudit} AS excessive FROM roles WHERE name='Auditor de Despacho'`)
+  assert.deepEqual(auditorPermissions.rows[0].remaining, ['planificacion:read','packing-list:write'])
+  assert.notDeepEqual(auditorPermissions.rows[0].excessive, ['planificacion:read','packing-list:write'], 'C53 sigue rechazando módulos ajenos al auditor')
   assert.ok((await perms('Jefe de Distribución')).includes('hallazgos-excepcion'))
   assert.ok((await perms('Supervisor de Transporte')).includes('hallazgos:read'))
   assert.equal((await perms('Conductor')).length, 0)
