@@ -17,7 +17,7 @@ const FILTERS0 = { from: limaDay(new Date(Date.now() - 30 * 864e5)), to: limaDay
 
 /** Indicadores de las filas visibles (se usan cuando el filtro de texto de OT o cliente recorta la lista). */
 export const countKpis = (rows: FindingRow[]): Kpis => ({
-  abiertos: rows.filter(r => r.status === 'ABIERTO' || r.status === 'EN_CORRECCION').length,
+  abiertos: rows.filter(r => r.status !== 'CERRADO').length,
   vencidos: rows.filter(r => r.overdue && r.status !== 'CERRADO').length,
   pendientes_validacion: rows.filter(r => r.status === 'PENDIENTE_VALIDACION').length,
   cerrados: rows.filter(r => r.status === 'CERRADO').length,
@@ -49,7 +49,7 @@ export function FindingsView() {
   useEffect(() => {
     if (!isLoaded) return
     let cancel = false
-    const p = Object.fromEntries(Object.entries({ from: from && `${from}T00:00:00-05:00`, to: to && `${to}T23:59:59.999-05:00`, severity, status, responsible_id, auditor_id }).filter(([, v]) => v))
+    const p = Object.fromEntries(Object.entries({ from, to, severity, status, responsible_id, auditor_id }).filter(([, v]) => v))
     callRpc<{ rows?: FindingRow[]; items?: FindingRow[]; kpis?: Kpis }>(supabase, 'audit_finding_list', { p_filters: p })
       .then(data => { if (cancel) return; setRows(data?.rows || data?.items || []); setServerKpis(data?.kpis || null); setError('') })
       .catch(e => { if (!cancel) setError(errorMessage(e)) })

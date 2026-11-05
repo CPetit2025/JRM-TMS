@@ -36,6 +36,7 @@ export type Finding = FindingRow & {
   dispatch_id: string | null; transport_request_id: string | null; site_id: string | null; destination: string | null; process_area: string | null
   description: string | null; material_code: string | null; material_description: string | null; quantity: number | null; unit: string | null
   location: string | null; observations: string | null; required_action: string | null; responsible_area: string | null; attended_at: string | null; closed_at: string | null
+  can_edit?: boolean; can_assign?: boolean; can_correct?: boolean; can_validate?: boolean; can_upload_before?: boolean
 }
 export type Category = { id: string; code?: string; name: string; is_safety?: boolean }
 export type Detail = { finding: Finding; categories: Category[]; evidence: Evidence[]; corrections: Correction[]; events: FindingEvent[] }
@@ -59,7 +60,7 @@ export const currentRound = (d: Pick<Detail, 'corrections'>) => [...d.correction
 /** Fotos DESPUÉS vigentes de la ronda en curso (las sin ronda aún se asignan a la que se envía). */
 export const afterPhotos = (d: Pick<Detail, 'corrections' | 'evidence'>) => {
   const round = currentRound(d)
-  return d.evidence.filter(e => e.phase === 'DESPUES' && !e.voided_at && (!e.correction_id || e.correction_id === round?.id))
+  return d.evidence.filter(e => e.phase === 'DESPUES' && !e.voided_at && (!e.correction_id || (e.correction_id === round?.id && !round?.result)))
 }
 
 /** Cerrar como Conforme exige foto DESPUÉS de la ronda o un motivo de «no requiere foto». */
@@ -68,15 +69,16 @@ export const canCloseConforme = (d: Pick<Detail, 'corrections' | 'evidence'>, no
 
 export type Abilities = { write: boolean; validate: boolean; admin: boolean; userId: string | null }
 /** Acciones visibles según permiso y estado (separación de funciones: quien corrigió no valida). */
-export function findingActions(f: Pick<Finding, 'status' | 'responsible_id'>, can: Abilities, lastCorrectorId: string | null = null) {
+/** En el detalle manda lo que calcula la base (`can_*`); en la lista se estima con permiso y estado. */
+export function findingActions(f: Pick<Finding, 'status' | 'responsible_id'> & Partial<Pick<Finding, 'can_edit' | 'can_assign' | 'can_correct' | 'can_validate' | 'can_upload_before'>>, can: Abilities, lastCorrectorId: string | null = null) {
   const responsible = !!can.userId && f.responsible_id === can.userId
   return {
-    edit: can.write && f.status === 'ABIERTO',
-    assign: can.write && (f.status === 'ABIERTO' || f.status === 'EN_CORRECCION'),
-    before: can.write && f.status !== 'CERRADO',
-    after: (responsible || can.admin) && f.status === 'EN_CORRECCION',
-    correct: (responsible || can.admin) && f.status === 'EN_CORRECCION',
-    validate: can.validate && f.status === 'PENDIENTE_VALIDACION' && (!lastCorrectorId || lastCorrectorId !== can.userId),
+    edit: f.can_edit ?? (can.write && f.status === 'ABIERTO'),
+    assign: f.can_assign ?? (can.write && (f.status === 'ABIERTO' || f.status === 'EN_CORRECCION')),
+    before: f.can_upload_before ?? (can.write && f.status !== 'CERRADO'),
+    after: f.can_correct ?? ((responsible || can.admin) && f.status === 'EN_CORRECCION'),
+    correct: f.can_correct ?? ((responsible || can.admin) && f.status === 'EN_CORRECCION'),
+    validate: f.can_validate ?? (can.validate && f.status === 'PENDIENTE_VALIDACION' && (!lastCorrectorId || lastCorrectorId !== can.userId)),
     fixDate: can.validate || can.admin,
   }
 }

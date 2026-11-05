@@ -77,7 +77,7 @@ test('indicadores del servidor y filtros: estado/criticidad viajan al RPC; OT y 
   assert.equal(lastList().status, 'ABIERTO'); assert.equal(lastList().severity, 'CRITICO'); assert.equal(lastList().responsible_id, 'u-resp')
   await act(async () => view.root.findByProps({ 'aria-label': 'Cliente' }).props.onChange({ target: { value: 'sur' } }))
   assert.equal(view.root.findAllByType('tr').length - 1, 1, 'solo la fila del cliente Sur')
-  assert.deepEqual(['Abiertos', 'Vencidos', 'Pendientes de validación', 'Cerrados'].map(l => kpi(view, l)), ['0', '1', '1', '0'])
+  assert.deepEqual(['Abiertos', 'Vencidos', 'Pendientes de validación', 'Cerrados'].map(l => kpi(view, l)), ['1', '1', '1', '0'])
   await act(async () => view.root.findByProps({ 'aria-label': 'Cliente' }).props.onChange({ target: { value: '' } }))
   await act(async () => view.root.findByProps({ 'aria-label': 'OT' }).props.onChange({ target: { value: '243' } }))
   assert.equal(view.root.findAllByType('tr').length - 1, 1)
