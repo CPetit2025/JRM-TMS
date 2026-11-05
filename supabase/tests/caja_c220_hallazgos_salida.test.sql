@@ -40,6 +40,7 @@ DECLARE admin_id uuid; actor uuid; driver uuid; site uuid; carrier uuid; client 
  plate text := 'ZZ220' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 4));
  finding_cols jsonb;
 BEGIN
+ BEGIN -- cualquier error inesperado se informa como FAIL (nunca «sin resultado»)
  IF to_regclass('public.audit_finding_release_exceptions') IS NULL OR to_regprocedure('public.audit_finding_grant_exception(uuid,uuid,text)') IS NULL THEN
    RAISE EXCEPTION 'CAJA C220 FAIL: falta la migración de bloqueo de salida'; END IF;
  IF has_table_privilege('authenticated', 'public.audit_finding_release_exceptions', 'INSERT')
@@ -80,10 +81,10 @@ BEGIN
  -- Una OT con dos rutas propias (d1 con el hallazgo, d2 libre), un tercero (d3) y una ruta con un Menor (d4)
  ct := pg_temp.ins('contracts', jsonb_build_object('code', 'ZZ-C220', 'type', 'CONTRATO', 'status', 'ACTIVO', 'site_id', site, 'client_id', client));
  d1 := pg_temp.ins('dispatches', jsonb_build_object('dispatch_number', 'ZZ-C220-1', 'driver_id', driver, 'vehicle_plate', plate, 'status', 'PROGRAMADO',
-   'site_id', site, 'scheduled_departure', now(), 'docs_required', false, 'modalidad', 'PROPIO'));
- d2 := pg_temp.ins('dispatches', jsonb_build_object('dispatch_number', 'ZZ-C220-2', 'status', 'PROGRAMADO', 'site_id', site, 'scheduled_departure', now(), 'docs_required', false, 'modalidad', 'PROPIO'));
+   'site_id', site, 'scheduled_departure', now(), 'docs_required', false, 'modalidad', 'PROPIA'));
+ d2 := pg_temp.ins('dispatches', jsonb_build_object('dispatch_number', 'ZZ-C220-2', 'status', 'PROGRAMADO', 'site_id', site, 'scheduled_departure', now(), 'docs_required', false, 'modalidad', 'PROPIA'));
  d3 := pg_temp.ins('dispatches', jsonb_build_object('dispatch_number', 'ZZ-C220-3', 'vehicle_plate', 'EXTERNO', 'status', 'PROGRAMADO', 'site_id', site, 'scheduled_departure', now(), 'docs_required', false, 'modalidad', 'TERCERO'));
- d4 := pg_temp.ins('dispatches', jsonb_build_object('dispatch_number', 'ZZ-C220-4', 'status', 'PROGRAMADO', 'site_id', site, 'scheduled_departure', now(), 'docs_required', false, 'modalidad', 'PROPIO'));
+ d4 := pg_temp.ins('dispatches', jsonb_build_object('dispatch_number', 'ZZ-C220-4', 'status', 'PROGRAMADO', 'site_id', site, 'scheduled_departure', now(), 'docs_required', false, 'modalidad', 'PROPIA'));
  finding_cols := jsonb_build_object('contract_id', ct, 'site_id', site, 'client_id', client, 'ot_code', 'ZZ-C220', 'client_name', 'Cliente C220',
    'destination', 'Destino C220', 'process_area', 'DESPACHO', 'auditor_id', admin_id, 'description', 'Hallazgo de prueba C220', 'status', 'ABIERTO');
  -- audit_findings.number lo asigna el RPC de F1; aquí se da explícito y único dentro de la transacción.
@@ -144,6 +145,8 @@ BEGIN
    IF r ->> 'success' IS DISTINCT FROM 'true' THEN v_err := 'hallazgo cerrado sigue bloqueando: ' || r::text; END IF;
  END IF;
 
+ EXCEPTION WHEN OTHERS THEN v_err := replace(SQLERRM, 'CAJA C220 FAIL: ', '');
+ END;
  IF v_err IS NOT NULL THEN RAISE EXCEPTION 'CAJA C220 FAIL: %', v_err; END IF;
  RAISE EXCEPTION 'CAJA C220 PASS: salida bloqueada en Torre, app, tercero y UPDATE directo; libera Menor, cerrado, otra ruta y excepción (no en seguridad)';
 END $test$;
