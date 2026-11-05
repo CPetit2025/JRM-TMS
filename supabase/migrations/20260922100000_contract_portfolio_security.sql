@@ -227,16 +227,6 @@ CREATE POLICY portfolio_component ON public.transport_request_components AS REST
   USING (NOT public.is_contract_administrator() OR public.has_assigned_request(request_id));
 CREATE POLICY portfolio_request_event ON public.transport_request_events AS RESTRICTIVE FOR SELECT TO authenticated
   USING (NOT public.is_contract_administrator() OR public.has_assigned_request(request_id));
-CREATE POLICY portfolio_request_item ON public.transport_request_items AS RESTRICTIVE FOR ALL TO authenticated
-  USING (NOT public.is_contract_administrator() OR public.has_assigned_request(transport_request_id))
-  WITH CHECK (NOT public.is_contract_administrator() OR public.has_assigned_request(transport_request_id,true));
-REVOKE INSERT,UPDATE,DELETE ON public.transport_request_items FROM authenticated;
-DROP POLICY IF EXISTS "Permitir lectura de items a usuarios autenticados" ON public.transport_request_items;
-DROP POLICY IF EXISTS "Permitir insercion de items a usuarios autenticados" ON public.transport_request_items;
-DROP POLICY IF EXISTS "Permitir actualizacion de items a usuarios autenticados" ON public.transport_request_items;
-DROP POLICY IF EXISTS "Permitir eliminacion de items a usuarios autenticados" ON public.transport_request_items;
-CREATE POLICY request_items_read ON public.transport_request_items FOR SELECT TO authenticated
-  USING (EXISTS (SELECT 1 FROM public.transport_requests r WHERE r.id=transport_request_id));
 CREATE POLICY portfolio_dispatch ON public.dispatches AS RESTRICTIVE FOR ALL TO authenticated
   USING (NOT public.is_contract_administrator() OR public.has_assigned_dispatch(id))
   WITH CHECK (NOT public.is_contract_administrator() OR public.has_assigned_dispatch(id));
