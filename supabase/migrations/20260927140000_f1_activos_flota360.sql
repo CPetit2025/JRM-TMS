@@ -16,6 +16,10 @@ BEGIN;
 -- ------------------------------------------------------------
 -- 1. Datos del maestro
 -- ------------------------------------------------------------
+ALTER TABLE public.vehicles
+  ADD COLUMN IF NOT EXISTS capacity_weight numeric(10,2),
+  ADD COLUMN IF NOT EXISTS capacity_volume numeric(10,2);
+
 UPDATE public.vehicles SET
   current_odometer = COALESCE(current_odometer, current_mileage, 0),
   weight_capacity  = COALESCE(weight_capacity, capacity_weight),
