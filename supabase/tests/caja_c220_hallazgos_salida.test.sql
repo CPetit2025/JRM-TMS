@@ -75,15 +75,15 @@ BEGIN
    JOIN public.checklist_templates t ON t.id = i.template_id WHERE t.code = 'FR_DT007';
  r := public.submit_driver_preuse(gen_random_uuid(), (unit ->> 'revision')::uuid, now(), data || pg_temp.odo(actor, 1500));
  IF r ->> 'can_operate' IS DISTINCT FROM 'true' THEN RAISE EXCEPTION 'CAJA C220 FAIL: no se habilitó al conductor: %', r; END IF;
- PERFORM pg_temp.as_user(NULL);
+ PERFORM pg_temp.as_user(admin_id);
 
  -- Una OT con dos rutas propias (d1 con el hallazgo, d2 libre), un tercero (d3) y una ruta con un Menor (d4)
  ct := pg_temp.ins('contracts', jsonb_build_object('code', 'ZZ-C220', 'type', 'CONTRATO', 'status', 'ACTIVO', 'site_id', site, 'client_id', client));
  d1 := pg_temp.ins('dispatches', jsonb_build_object('dispatch_number', 'ZZ-C220-1', 'driver_id', driver, 'vehicle_plate', plate, 'status', 'PROGRAMADO',
-   'site_id', site, 'scheduled_departure', now(), 'docs_required', false, 'modalidad', 'PROPIO'));
- d2 := pg_temp.ins('dispatches', jsonb_build_object('dispatch_number', 'ZZ-C220-2', 'status', 'PROGRAMADO', 'site_id', site, 'scheduled_departure', now(), 'docs_required', false, 'modalidad', 'PROPIO'));
+   'site_id', site, 'scheduled_departure', now(), 'docs_required', false, 'modalidad', 'PROPIA'));
+ d2 := pg_temp.ins('dispatches', jsonb_build_object('dispatch_number', 'ZZ-C220-2', 'status', 'PROGRAMADO', 'site_id', site, 'scheduled_departure', now(), 'docs_required', false, 'modalidad', 'PROPIA'));
  d3 := pg_temp.ins('dispatches', jsonb_build_object('dispatch_number', 'ZZ-C220-3', 'vehicle_plate', 'EXTERNO', 'status', 'PROGRAMADO', 'site_id', site, 'scheduled_departure', now(), 'docs_required', false, 'modalidad', 'TERCERO'));
- d4 := pg_temp.ins('dispatches', jsonb_build_object('dispatch_number', 'ZZ-C220-4', 'status', 'PROGRAMADO', 'site_id', site, 'scheduled_departure', now(), 'docs_required', false, 'modalidad', 'PROPIO'));
+ d4 := pg_temp.ins('dispatches', jsonb_build_object('dispatch_number', 'ZZ-C220-4', 'status', 'PROGRAMADO', 'site_id', site, 'scheduled_departure', now(), 'docs_required', false, 'modalidad', 'PROPIA'));
  finding_cols := jsonb_build_object('contract_id', ct, 'site_id', site, 'client_id', client, 'ot_code', 'ZZ-C220', 'client_name', 'Cliente C220',
    'destination', 'Destino C220', 'process_area', 'DESPACHO', 'auditor_id', admin_id, 'description', 'Hallazgo de prueba C220', 'status', 'ABIERTO');
  -- audit_findings.number lo asigna el RPC de F1; aquí se da explícito y único dentro de la transacción.
@@ -102,7 +102,7 @@ BEGIN
  IF v_err IS NULL THEN
    PERFORM pg_temp.as_user(actor);
    IF NOT pg_temp.blocked(format('SELECT public.start_dispatch_route(%L, -12, -77)', d1), d1) THEN v_err := 'app del conductor (start_dispatch_route) no se bloqueó'; END IF;
-   PERFORM pg_temp.as_user(NULL);
+   PERFORM pg_temp.as_user(admin_id);
  END IF;
 
  -- 2. Pasa: otra ruta de la misma OT (con un hallazgo cerrado) y una ruta con un Menor; cancelar no se bloquea
@@ -138,7 +138,7 @@ BEGIN
  END IF;
  -- 4. Cerrar el hallazgo libera la salida (tercero)
  IF v_err IS NULL THEN
-   PERFORM pg_temp.as_user(NULL);
+   PERFORM pg_temp.as_user(admin_id);
    UPDATE public.audit_findings SET status = 'CERRADO' WHERE id = f_safety;
    r := public.tercero_salida_core(d3, now(), 'CAJA');
    IF r ->> 'success' IS DISTINCT FROM 'true' THEN v_err := 'hallazgo cerrado sigue bloqueando: ' || r::text; END IF;

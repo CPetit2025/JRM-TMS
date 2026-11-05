@@ -20,6 +20,7 @@ const [SAFE, SAFETY] = [21, 22].map(id), [JEFE, RESP, DRIVER] = [31, 32, 33].map
       CREATE FUNCTION has_tms_permission(text) RETURNS boolean LANGUAGE sql STABLE AS $$SELECT auth.uid()='${JEFE}'::uuid$$;
       CREATE FUNCTION has_tms_read_permission(text) RETURNS boolean LANGUAGE sql STABLE AS $$SELECT auth.uid() IS NOT NULL$$;
       ${['dispatches', 'dispatch_events'].map(table).join('\n')}
+      ALTER TABLE dispatches ADD CONSTRAINT fixture_dispatches_modalidad_chk CHECK (modalidad IN ('PROPIA','TERCERO'));
       CREATE UNIQUE INDEX dispatch_one_active_driver ON dispatches(driver_id) WHERE driver_id IS NOT NULL AND status IN('PROGRAMADO','EN_CURSO','EN RUTA','ESPERANDO_AUTORIZACION','RETORNO');
       CREATE UNIQUE INDEX dispatch_one_active_vehicle ON dispatches(vehicle_plate) WHERE vehicle_plate IS NOT NULL AND vehicle_plate<>'EXTERNO' AND status IN('PROGRAMADO','EN_CURSO','EN RUTA','ESPERANDO_AUTORIZACION','RETORNO');
       CREATE TABLE audit_finding_categories(id uuid PRIMARY KEY,code text UNIQUE,name text,is_safety boolean NOT NULL DEFAULT false,active boolean DEFAULT true,sort int);
@@ -35,7 +36,7 @@ const [SAFE, SAFETY] = [21, 22].map(id), [JEFE, RESP, DRIVER] = [31, 32, 33].map
 
     const as = user => db.query("SELECT set_config('test.user',$1,false)", [user || ''])
     const one = async (sql, p = []) => (await db.query(sql, p)).rows[0]
-    const route = (d, n, mod = 'PROPIO', driver = null, plate = 'P-' + n) => db.query(
+    const route = (d, n, mod = 'PROPIA', driver = null, plate = 'P-' + n) => db.query(
       "INSERT INTO dispatches(id,dispatch_number,status,modalidad,driver_id,vehicle_plate,scheduled_departure) VALUES($1,$2,'PROGRAMADO',$3,$4,$5,now())", [d, 'R-' + n, mod, driver, plate])
     const finding = async (f, n, d, sev, status = 'ABIERTO', cat = SAFE) => {
       await db.query('INSERT INTO audit_findings(id,number,dispatch_id,severity,status,responsible_id) VALUES($1,$2,$3,$4,$5,$6)', [f, n, d, sev, status, RESP])
@@ -50,7 +51,7 @@ const [SAFE, SAFETY] = [21, 22].map(id), [JEFE, RESP, DRIVER] = [31, 32, 33].map
     }
 
     // Dos rutas de la misma OT: el hallazgo solo bloquea la ruta vinculada (D1), no D2.
-    await route(D1, 1, 'PROPIO', DRIVER); await route(D2, 2); await route(D3, 3, 'TERCERO', null, 'EXTERNO'); await route(D4, 4)
+    await route(D1, 1, 'PROPIA', DRIVER); await route(D2, 2); await route(D3, 3, 'TERCERO', null, 'EXTERNO'); await route(D4, 4)
     await finding(F1, 'HAL-2026-00001', D1, 'MAYOR')
     await finding(F2, 'HAL-2026-00002', D3, 'CRITICO', 'PENDIENTE_VALIDACION', SAFETY)
     await finding(F3, 'HAL-2026-00003', D4, 'MENOR')
