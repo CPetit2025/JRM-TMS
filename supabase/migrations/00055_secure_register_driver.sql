@@ -11,3 +11,21 @@ BEGIN
     EXECUTE 'REVOKE ALL ON FUNCTION public.register_driver(varchar,varchar,varchar,varchar,varchar,varchar,varchar,date) FROM PUBLIC, anon, authenticated';
   END IF;
 END $$;
+
+-- Define the public tracking endpoint only after daily_tracking_links exists.
+-- The legacy numbered migrations are applied lexicographically, so 000162
+-- precedes 00049 on a fresh database.
+CREATE OR REPLACE FUNCTION public.get_public_daily_tracking_locations(p_token uuid, p_pin text)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+  SELECT coalesce(jsonb_agg(jsonb_build_object(
+    'dispatch_id', d.id, 'driver_name', d.driver_name, 'vehicle_plate', d.vehicle_plate,
+    'lat', d.last_lat, 'lng', d.last_lon, 'last_gps_at', d.last_gps_at,
+    'actual_distance_km', d.actual_distance_km
+  )), '[]'::jsonb)
+  FROM public.daily_tracking_links l JOIN public.dispatches d
+    ON d.scheduled_departure::date = l.planning_date
+  WHERE l.tracking_token = p_token AND l.tracking_pin = p_pin
+    AND l.expires_at > now() AND d.last_gps_at > now() - interval '15 minutes';
+$$;
+REVOKE ALL ON FUNCTION public.get_public_daily_tracking_locations(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_public_daily_tracking_locations(uuid,text) TO anon, authenticated;

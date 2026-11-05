@@ -372,22 +372,6 @@ CREATE POLICY driver_stops_read ON public.route_stops_log FOR SELECT TO authenti
   USING (EXISTS (SELECT 1 FROM public.drivers d WHERE d.id = driver_id AND d.profile_id = auth.uid())
     OR public.has_tms_permission('despacho'));
 
--- Validated public links may see only the latest fix for that planning day.
-CREATE OR REPLACE FUNCTION public.get_public_daily_tracking_locations(p_token uuid, p_pin text)
-RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
-  SELECT coalesce(jsonb_agg(jsonb_build_object(
-    'dispatch_id', d.id, 'driver_name', d.driver_name, 'vehicle_plate', d.vehicle_plate,
-    'lat', d.last_lat, 'lng', d.last_lon, 'last_gps_at', d.last_gps_at,
-    'actual_distance_km', d.actual_distance_km
-  )), '[]'::jsonb)
-  FROM public.daily_tracking_links l JOIN public.dispatches d
-    ON d.scheduled_departure::date = l.planning_date
-  WHERE l.tracking_token = p_token AND l.tracking_pin = p_pin
-    AND l.expires_at > now() AND d.last_gps_at > now() - interval '15 minutes';
-$$;
-REVOKE ALL ON FUNCTION public.get_public_daily_tracking_locations(uuid,text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.get_public_daily_tracking_locations(uuid,text) TO anon, authenticated;
-
 INSERT INTO storage.buckets(id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('driver_evidence', 'driver_evidence', false, 10485760,
   ARRAY['image/jpeg', 'image/png', 'image/webp'])
