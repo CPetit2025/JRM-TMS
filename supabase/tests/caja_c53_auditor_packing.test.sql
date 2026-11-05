@@ -65,7 +65,7 @@ BEGIN
    IF r->>'success' IS DISTINCT FROM 'true' THEN RAISE EXCEPTION 'CAJA C53 FAIL: formato %: %',mime,r; END IF;
    doc_id:=(r->>'id')::uuid;
    IF NOT EXISTS(SELECT 1 FROM public.dispatch_documents WHERE id=doc_id AND uploaded_by=actor AND auditor_signature_confirmed)
-     OR public.packing_object_unregistered(path) THEN RAISE EXCEPTION 'CAJA C53 FAIL: trazabilidad o limpieza de archivo registrado'; END IF;
+     OR public.packing_object_unregistered(path) THEN RAISE EXCEPTION 'CAJA C53 FAIL: trazabilidad o limpieza de archivo registrado (doc %, path %, row %, unregistered %, result %)',doc_id,path,(SELECT jsonb_build_object('id',id,'file_path',file_path,'uploaded_by',uploaded_by,'signed',auditor_signature_confirmed) FROM public.dispatch_documents WHERE id=doc_id),public.packing_object_unregistered(path),r; END IF;
    r:=public.register_signed_packing_list(d,NULL,path,'packing.'||ext,mime,1000,'Auditor C53',(now() AT TIME ZONE 'America/Lima')::date,true);
    IF r->>'duplicate' IS DISTINCT FROM 'true' OR r->>'id'<>doc_id::text THEN RAISE EXCEPTION 'CAJA C53 FAIL: reintento duplica la versión'; END IF;
  END LOOP;
