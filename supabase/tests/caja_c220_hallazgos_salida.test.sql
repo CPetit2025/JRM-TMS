@@ -40,6 +40,7 @@ DECLARE admin_id uuid; actor uuid; driver uuid; site uuid; carrier uuid; client 
  plate text := 'ZZ220' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 4));
  finding_cols jsonb;
 BEGIN
+ BEGIN -- cualquier error inesperado se informa como FAIL (nunca «sin resultado»)
  IF to_regclass('public.audit_finding_release_exceptions') IS NULL OR to_regprocedure('public.audit_finding_grant_exception(uuid,uuid,text)') IS NULL THEN
    RAISE EXCEPTION 'CAJA C220 FAIL: falta la migración de bloqueo de salida'; END IF;
  IF has_table_privilege('authenticated', 'public.audit_finding_release_exceptions', 'INSERT')
@@ -75,7 +76,7 @@ BEGIN
    JOIN public.checklist_templates t ON t.id = i.template_id WHERE t.code = 'FR_DT007';
  r := public.submit_driver_preuse(gen_random_uuid(), (unit ->> 'revision')::uuid, now(), data || pg_temp.odo(actor, 1500));
  IF r ->> 'can_operate' IS DISTINCT FROM 'true' THEN RAISE EXCEPTION 'CAJA C220 FAIL: no se habilitó al conductor: %', r; END IF;
- PERFORM pg_temp.as_user(admin_id);
+ PERFORM pg_temp.as_user(NULL);
 
  -- Una OT con dos rutas propias (d1 con el hallazgo, d2 libre), un tercero (d3) y una ruta con un Menor (d4)
  ct := pg_temp.ins('contracts', jsonb_build_object('code', 'ZZ-C220', 'type', 'CONTRATO', 'status', 'ACTIVO', 'site_id', site, 'client_id', client));
@@ -102,7 +103,7 @@ BEGIN
  IF v_err IS NULL THEN
    PERFORM pg_temp.as_user(actor);
    IF NOT pg_temp.blocked(format('SELECT public.start_dispatch_route(%L, -12, -77)', d1), d1) THEN v_err := 'app del conductor (start_dispatch_route) no se bloqueó'; END IF;
-   PERFORM pg_temp.as_user(admin_id);
+   PERFORM pg_temp.as_user(NULL);
  END IF;
 
  -- 2. Pasa: otra ruta de la misma OT (con un hallazgo cerrado) y una ruta con un Menor; cancelar no se bloquea
@@ -138,12 +139,14 @@ BEGIN
  END IF;
  -- 4. Cerrar el hallazgo libera la salida (tercero)
  IF v_err IS NULL THEN
-   PERFORM pg_temp.as_user(admin_id);
+   PERFORM pg_temp.as_user(NULL);
    UPDATE public.audit_findings SET status = 'CERRADO' WHERE id = f_safety;
    r := public.tercero_salida_core(d3, now(), 'CAJA');
    IF r ->> 'success' IS DISTINCT FROM 'true' THEN v_err := 'hallazgo cerrado sigue bloqueando: ' || r::text; END IF;
  END IF;
 
+ EXCEPTION WHEN OTHERS THEN v_err := replace(SQLERRM, 'CAJA C220 FAIL: ', '');
+ END;
  IF v_err IS NOT NULL THEN RAISE EXCEPTION 'CAJA C220 FAIL: %', v_err; END IF;
  RAISE EXCEPTION 'CAJA C220 PASS: salida bloqueada en Torre, app, tercero y UPDATE directo; libera Menor, cerrado, otra ruta y excepción (no en seguridad)';
 END $test$;

@@ -20,9 +20,9 @@ const [SAFE, SAFETY] = [21, 22].map(id), [JEFE, RESP, DRIVER] = [31, 32, 33].map
       CREATE FUNCTION has_tms_permission(text) RETURNS boolean LANGUAGE sql STABLE AS $$SELECT auth.uid()='${JEFE}'::uuid$$;
       CREATE FUNCTION has_tms_read_permission(text) RETURNS boolean LANGUAGE sql STABLE AS $$SELECT auth.uid() IS NOT NULL$$;
       ${['dispatches', 'dispatch_events'].map(table).join('\n')}
-      ALTER TABLE dispatches ADD CONSTRAINT fixture_dispatches_modalidad_chk CHECK (modalidad IN ('PROPIA','TERCERO'));
       CREATE UNIQUE INDEX dispatch_one_active_driver ON dispatches(driver_id) WHERE driver_id IS NOT NULL AND status IN('PROGRAMADO','EN_CURSO','EN RUTA','ESPERANDO_AUTORIZACION','RETORNO');
       CREATE UNIQUE INDEX dispatch_one_active_vehicle ON dispatches(vehicle_plate) WHERE vehicle_plate IS NOT NULL AND vehicle_plate<>'EXTERNO' AND status IN('PROGRAMADO','EN_CURSO','EN RUTA','ESPERANDO_AUTORIZACION','RETORNO');
+      ALTER TABLE dispatches ADD CONSTRAINT dispatches_modalidad_chk CHECK (modalidad IN ('PROPIA','TERCERO'));
       CREATE TABLE audit_finding_categories(id uuid PRIMARY KEY,code text UNIQUE,name text,is_safety boolean NOT NULL DEFAULT false,active boolean DEFAULT true,sort int);
       CREATE TABLE audit_findings(id uuid PRIMARY KEY,number text UNIQUE,contract_id uuid,dispatch_id uuid REFERENCES dispatches(id),
         severity text NOT NULL,status text NOT NULL,responsible_id uuid,auditor_id uuid);
@@ -131,6 +131,11 @@ END $f$;`)
     const f1 = readFileSync('supabase/migrations/20261226090000_hallazgos_auditoria.sql', 'utf8')
     const f3 = readFileSync('supabase/migrations/20261226100000_hallazgos_bloqueo_salida.sql', 'utf8')
     await db.exec(f1); await db.exec(f3); await db.exec(f3) // reaplicable
+    await db.exec(readFileSync('supabase/migrations/20261226110000_hallazgos_indices_fk.sql', 'utf8'))
+    // C55: cada FK de hallazgos con índice válido y no parcial que la cubra
+    const uncovered = await db.query(`SELECT c.conname FROM pg_constraint c WHERE c.contype='f' AND c.conrelid::regclass::text LIKE 'audit_%'
+      AND NOT EXISTS(SELECT 1 FROM pg_index i WHERE i.indrelid=c.conrelid AND i.indisvalid AND i.indpred IS NULL AND (i.indkey::smallint[])[0:cardinality(c.conkey)-1] @> c.conkey)`)
+    assert.deepEqual(uncovered.rows, [], 'FK de hallazgos sin índice (C55)')
     await db.exec(`INSERT INTO roles(id,name,permissions) VALUES('${id(201)}','Auditor de Despacho','[]'),('${id(203)}','Jefe de Distribución','[]');
       INSERT INTO profiles(id,role_id,first_name,last_name) VALUES('${id(41)}','${id(201)}','Ana','Auditora'),('${id(43)}','${id(203)}','Jefa','Distribución');
       INSERT INTO user_site_access(user_id,site_id) SELECT u,primary_site_id() FROM unnest(ARRAY['${id(41)}','${id(43)}']::uuid[]) u;
