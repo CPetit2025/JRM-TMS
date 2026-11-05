@@ -44,9 +44,9 @@ jobs:
       - name: Preview all pending schema migrations
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: supabase db push --linked --include-all --dry-run
+        run: supabase db push --linked --include-all --dry-run --yes
 
       - name: Apply schema migrations to staging
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: supabase db push --linked --include-all
+        run: supabase db push --linked --include-all --yes
