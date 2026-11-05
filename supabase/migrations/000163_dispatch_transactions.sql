@@ -64,8 +64,15 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- Some legacy initial schemas create dispatches without its physical vehicle field.
+-- Some legacy initial schemas create dispatches without the operational fields
+-- used by the route and tracking RPCs.
 ALTER TABLE public.dispatches ADD COLUMN IF NOT EXISTS vehicle_plate text;
+ALTER TABLE public.dispatches ADD COLUMN IF NOT EXISTS driver_name text;
+ALTER TABLE public.dispatches ADD COLUMN IF NOT EXISTS scheduled_departure timestamptz;
+UPDATE public.dispatches SET scheduled_departure = scheduled_date
+WHERE scheduled_departure IS NULL AND scheduled_date IS NOT NULL;
+UPDATE public.dispatches d SET driver_name = trim(concat_ws(' ', dr.first_name, dr.last_name))
+FROM public.drivers dr WHERE d.driver_id = dr.id AND coalesce(d.driver_name, '') = '';
 
 -- A driver and vehicle cannot be assigned to two live routes concurrently.
 CREATE UNIQUE INDEX IF NOT EXISTS dispatch_one_active_driver ON public.dispatches(driver_id)
