@@ -40,3 +40,10 @@ CREATE POLICY contract_budget_read ON public.contract_budgets FOR SELECT TO auth
 CREATE POLICY contract_budget_staff_write ON public.contract_budgets FOR ALL TO authenticated
   USING (public.has_tms_permission('clientes') OR public.has_tms_permission('despacho'))
   WITH CHECK (public.has_tms_permission('clientes') OR public.has_tms_permission('despacho'));
+
+-- contract_services is introduced after the 16.x security migration too.
+DROP POLICY IF EXISTS "Enable all for authenticated users on contract_services" ON public.contract_services;
+DROP POLICY IF EXISTS contract_service_staff ON public.contract_services;
+CREATE POLICY contract_service_staff ON public.contract_services FOR ALL TO authenticated
+  USING (public.has_tms_permission('despacho') OR public.has_tms_permission('clientes'))
+  WITH CHECK (public.has_tms_permission('despacho') OR public.has_tms_permission('clientes'));

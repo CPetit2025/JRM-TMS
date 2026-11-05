@@ -55,9 +55,14 @@ DO $$ BEGIN
       WITH CHECK (public.has_tms_permission('clientes') OR public.has_tms_permission('despacho'))$policy$;
   END IF;
 END $$;
-CREATE POLICY contract_service_staff ON public.contract_services FOR ALL TO authenticated
-  USING (public.has_tms_permission('despacho') OR public.has_tms_permission('clientes'))
-  WITH CHECK (public.has_tms_permission('despacho') OR public.has_tms_permission('clientes'));
+-- contract_services is introduced later by migration 00052.
+DO $$ BEGIN
+  IF to_regclass('public.contract_services') IS NOT NULL THEN
+    EXECUTE $policy$CREATE POLICY contract_service_staff ON public.contract_services FOR ALL TO authenticated
+      USING (public.has_tms_permission('despacho') OR public.has_tms_permission('clientes'))
+      WITH CHECK (public.has_tms_permission('despacho') OR public.has_tms_permission('clientes'))$policy$;
+  END IF;
+END $$;
 
 -- A driver and vehicle cannot be assigned to two live routes concurrently.
 CREATE UNIQUE INDEX IF NOT EXISTS dispatch_one_active_driver ON public.dispatches(driver_id)
