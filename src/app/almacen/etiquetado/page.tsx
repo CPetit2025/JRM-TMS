@@ -225,6 +225,8 @@ export default function WarehouseLabelingPage() {
   const labelsPrinted = labels.length > 0 && labels.every(label => printedLabelCodes.includes(label.package_code))
   const hasPrintedLabels = labels.some(label => printedLabelCodes.includes(label.package_code))
   const selectedIptReceipts = selected ? receipts.filter(receipt => receipt.document_no === selected.document_no) : []
+  const iptErpTotal = selectedIptReceipts.reduce((sum, receipt) => sum + Number(receipt.quantity || 0), 0)
+  const iptPendingCount = selectedIptReceipts.filter(receipt => receipt.validation_status !== 'VALIDATED').length
   const requiresVarianceReason = selected && physicalToValidate !== Number(selected.quantity)
   const canGenerate = selected?.validation_status === 'VALIDATED' && Number(selected.physical_quantity) > 0 && !['DIFFERENCE','MATCH','PENDING_PRINT'].includes(selected.label_status)
   const planQuantity = Number(selected?.physical_quantity || 0)
@@ -281,8 +283,33 @@ export default function WarehouseLabelingPage() {
           <div className="min-w-0"><p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-blue-700">Recepción APT · Validación y etiquetado</p><h2 id="wms-receipt-dialog-title" className="mt-1 truncate text-lg font-black text-[#002855] sm:text-xl">IPT {selected.document_no} · {selected.product_code}</h2><p className="mt-0.5 truncate text-xs text-slate-500 sm:text-sm">{selected.description || 'Producto'} · {selected.fecha} · Lote {selected.lote || '—'} · {selected.document_type || '—'} · Color {selected.color || '—'}</p></div>
           <button type="button" onClick={() => setSelected(null)} aria-label="Cerrar recepción" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-[#002855]"><X size={20}/></button>
         </header>
-        {selectedIptReceipts.length > 1 && <nav aria-label={`Productos del IPT ${selected.document_no}`} className="shrink-0 border-b border-slate-200 bg-white px-3 py-2 sm:px-5"><div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{selectedIptReceipts.length} líneas de producto en este IPT · seleccione una para validar y etiquetar</div><div className="flex gap-2 overflow-x-auto pb-1">{selectedIptReceipts.map((receipt, index) => <button key={receipt.receipt_key} type="button" onClick={() => select(receipt)} aria-current={receipt.receipt_key === selected.receipt_key ? 'true' : undefined} className={`min-w-48 shrink-0 rounded-lg border px-3 py-2 text-left text-xs ${receipt.receipt_key === selected.receipt_key ? 'border-[#002855] bg-blue-50 text-[#002855]' : 'border-slate-200 bg-white text-slate-700'}`}><span className="block font-bold">{index + 1}. {receipt.product_code}</span><span className="block truncate">{receipt.description || 'Producto'} · {receipt.contract_code || 'Sin OT'}</span><span className="mt-1 block font-semibold">{receipt.quantity} {receipt.unit || ''} · {receipt.label_status === 'NOT_LABELED' ? 'Sin etiqueta' : receipt.label_status}</span></button>)}</div></nav>}
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-2 sm:p-4">
+          {selectedIptReceipts.length > 1 && <section aria-label={'Ítems recibidos del IPT ' + selected.document_no} className="rounded-xl border border-blue-100 bg-white p-3 sm:p-4">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-bold text-[#002855]">Ítems recibidos</h3>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="rounded-lg bg-blue-50 px-3 py-2 font-semibold text-blue-900">{selectedIptReceipts.length} ítems recibidos</span>
+                <span className="rounded-lg bg-blue-50 px-3 py-2 font-semibold text-blue-900">Total ERP: {iptErpTotal} {selected.unit || 'UND'}</span>
+                <span className="rounded-lg bg-amber-50 px-3 py-2 font-semibold text-amber-950">{iptPendingCount} pendiente(s) de validar</span>
+              </div>
+            </div>
+            <div className="max-h-56 overflow-auto rounded-lg border border-slate-200">
+              <table className="w-full min-w-[900px] text-left text-xs">
+                <thead className="sticky top-0 bg-slate-50 text-slate-600"><tr><th className="w-10 p-2"></th><th className="p-2">#</th><th className="p-2">IPT / Código</th><th className="p-2">Descripción</th><th className="p-2">Lote</th><th className="p-2">Cliente</th><th className="p-2 text-right">ERP</th><th className="p-2">Estado</th></tr></thead>
+                <tbody>{selectedIptReceipts.map((receipt, index) => <tr key={receipt.receipt_key} className={receipt.receipt_key === selected.receipt_key ? 'border-t border-blue-200 bg-blue-50' : 'border-t border-slate-200'}>
+                  <td className="p-2"><button type="button" onClick={() => select(receipt)} aria-label={'Seleccionar ' + receipt.product_code} aria-pressed={receipt.receipt_key === selected.receipt_key} className={receipt.receipt_key === selected.receipt_key ? 'grid h-6 w-6 place-items-center rounded-full border border-blue-700 bg-blue-700 text-white' : 'grid h-6 w-6 place-items-center rounded-full border border-slate-400 bg-white text-transparent'}>●</button></td>
+                  <td className="p-2">{index + 1}</td>
+                  <td className="p-2 font-semibold text-[#002855]">{receipt.document_no}<span className="block font-normal">{receipt.product_code} · {receipt.contract_code || '—'}</span></td>
+                  <td className="max-w-72 p-2">{receipt.description || receipt.product_code}</td>
+                  <td className="p-2">{receipt.lote || '—'}</td>
+                  <td className="max-w-52 p-2">{receipt.customer_name || 'Por ingresar'}</td>
+                  <td className="p-2 text-right font-bold text-blue-800">{receipt.quantity} {receipt.unit || ''}</td>
+                  <td className="p-2"><span className={receipt.validation_status === 'VALIDATED' ? 'whitespace-nowrap rounded-full bg-emerald-100 px-2 py-1 text-emerald-900' : 'whitespace-nowrap rounded-full bg-amber-100 px-2 py-1 text-amber-950'}>{receipt.validation_status === 'VALIDATED' ? 'Validado' : 'Pendiente'}</span></td>
+                </tr>)}</tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-[11px] text-slate-500">Seleccione un ítem para validar su conteo físico y emitir sus etiquetas por separado.</p>
+          </section>}
           {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
           {message && <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">{message}</p>}
       <section className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
@@ -298,7 +325,8 @@ export default function WarehouseLabelingPage() {
         {selected.label_status === 'DIFFERENCE' && <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">La suma de etiquetas existentes no coincide con el conteo físico validado. No se generarán etiquetas adicionales.</p>}
         <div className="mt-4 border-t pt-4">
           <h3 className="font-bold text-[#002855]">3. Validación física de recepción</h3>
-          <div className="mt-3 space-y-3">
+<div className="mt-3 space-y-3">
+            {physicalQuantity !== '' && Number(physicalQuantity) !== Number(selected.quantity) && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><b>Revisión de cantidad física:</b> el ERP conserva su cantidad original. Si el conteo recibido difiere, indique el motivo; el ajuste quedará auditado en esta recepción.</p>}
             <div className="inline-flex rounded-lg bg-slate-100 p-1 text-xs font-semibold">
               <button type="button" disabled={selected.validation_status === 'VALIDATED'} onClick={() => setPackageMode('PACKAGES')} className={`rounded-md px-3 py-2 ${packageMode === 'PACKAGES' ? 'bg-white text-[#002855] shadow-sm' : 'text-slate-600'}`}>Paquetes completos + saldo</button>
               <button type="button" disabled={selected.validation_status === 'VALIDATED'} onClick={() => setPackageMode('TOTAL')} className={`rounded-md px-3 py-2 ${packageMode === 'TOTAL' ? 'bg-white text-[#002855] shadow-sm' : 'text-slate-600'}`}>Solo cantidad total</button>
