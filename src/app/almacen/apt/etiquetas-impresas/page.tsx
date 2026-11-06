@@ -259,18 +259,18 @@ export default function AptReceiptControlPage() {
           </tbody>
         </table>
       </div>
-      <p className="mt-3 text-xs text-slate-500">Cada línea agrupa sus etiquetas del mismo ítem de ingreso. Los bultos pendientes de impresión permanecen en «02 · Recepción por IPT».</p>
+      <p className="mt-3 text-xs text-slate-500">Cada fila representa un ítem ingresado en el IPT. Sus bultos pendientes de impresión permanecen en «02 · Recepción por IPT».</p>
     </section>
 
     {detail && <div className="fixed inset-0 z-[2147483000] flex items-center justify-center bg-slate-950/60 p-2 sm:p-4" onMouseDown={event => { if (event.target === event.currentTarget) setDetail(null) }}>
       <section role="dialog" aria-modal="true" aria-labelledby="apt-receipt-detail-title" className="flex max-h-[96dvh] w-full max-w-7xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-blue-50 px-4 py-3 sm:px-6">
-          <div><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Detalle de recepción</p><h2 id="apt-receipt-detail-title" className="text-xl font-black text-[#002855]">IPT {detail.documentNo}</h2></div>
+          <div><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Detalle de recepción</p><h2 id="apt-receipt-detail-title" className="text-xl font-black text-[#002855]">{detail.lot || '—'} · IPT {detail.documentNo} · {detail.productCode}</h2></div>
           <button type="button" aria-label="Cerrar detalle" onClick={() => setDetail(null)} className="grid h-10 w-10 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><X size={20}/></button>
         </header>
         <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4 sm:p-5">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Contrato(s)</small><b className="text-sm text-[#002855]">{detail.contracts.join(', ') || '—'}</b></div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+            <div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Contrato</small><b className="text-sm text-[#002855]">{detail.contractCode || '—'}</b></div><div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Cliente</small><b className="text-sm text-[#002855]">{detail.customerName || 'Por registrar'}</b></div>
             <div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Recepcionado por</small><b className="text-sm text-[#002855]">{receiverNames(detail).join(', ') || 'Registro de validación no disponible'}</b></div>
             <div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Fecha de recepción</small><b className="text-sm text-[#002855]">{detail.validations[0] ? new Date(detail.validations[0].validated_at).toLocaleString('es-PE') : '—'}</b></div>
             <div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Bultos · Reimpresiones</small><b className="text-sm text-[#002855]">{detail.packages.length} · {detail.reprints}</b></div>
@@ -290,7 +290,7 @@ export default function AptReceiptControlPage() {
             </table>
           </div>
         </div>
-        <footer className="flex shrink-0 justify-between border-t border-slate-200 bg-white px-4 py-3"><span className="self-center text-xs text-slate-500">Bodega: {detail.packages[0]?.source_warehouse || '—'} · La reimpresión conserva el código original.</span><button type="button" onClick={() => setDetail(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-[#002855]">Cerrar</button></footer>
+        <footer className="flex shrink-0 justify-between border-t border-slate-200 bg-white px-4 py-3"><span className="self-center text-xs text-slate-500">La reimpresión conserva el código de barras original.</span><button type="button" onClick={() => setDetail(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-[#002855]">Cerrar</button></footer>
       </section>
     </div>}
 
