@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Printer, RotateCcw, ScanLine, ClipboardCheck, X } from 'lucide-react'
+import { Printer, RotateCcw, ScanLine, ClipboardCheck, X, RefreshCw } from 'lucide-react'
 import { Code128Barcode } from '@/components/warehouse/Code128Barcode'
 
 type Receipt = {
@@ -10,7 +10,7 @@ type Receipt = {
   product_code: string; description: string | null; unit: string | null; contract_code: string | null
   quantity: number; weight_kg: number | null; customer_name: string | null; customer_source: 'ERP/OT' | 'MANUAL' | null
   physical_quantity: number | null; variance: number | null; variance_reason: string | null
-  validation_status: 'PENDING' | 'STALE' | 'VALIDATED'; label_count: number; labeled_qty: number; label_status: string
+  validation_status: 'PENDING' | 'STALE' | 'VALIDATED'; label_count: number; labeled_qty: number; unprinted_count: number; pending_labels: Label[]; label_status: string
 }
 type BrowserPrinter = { send: (data: string, onSuccess: () => void, onError: (error?: { message?: string }) => void) => void }
 type BrowserPrintApi = { getDefaultDevice: (kind: string, onSuccess: (device: BrowserPrinter) => void, onError: () => void) => void }
@@ -27,6 +27,11 @@ export default function WarehouseLabelingPage() {
   const [selected, setSelected] = useState<Receipt | null>(null)
   const [sizes, setSizes] = useState<Record<string, { units_per_package: number; unit: string | null }>>({})
   const [physicalQuantity, setPhysicalQuantity] = useState('')
+  const [packageMode, setPackageMode] = useState<'TOTAL' | 'PACKAGES'>('TOTAL')
+  const [completePackages, setCompletePackages] = useState('0')
+  const [balanceQuantity, setBalanceQuantity] = useState('0')
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [showPreview, setShowPreview] = useState(false)
   const [varianceReason, setVarianceReason] = useState('')
   const [manualCustomer, setManualCustomer] = useState('')
   const [count, setCount] = useState('1')
@@ -66,6 +71,7 @@ export default function WarehouseLabelingPage() {
     else {
       const rows = (data || []) as Receipt[]
       setReceipts(rows)
+      setLastUpdated(new Date())
       if (selectKey) {
         const next = rows.find(row => row.receipt_key === selectKey)
         if (next) setSelected(next)
@@ -75,42 +81,62 @@ export default function WarehouseLabelingPage() {
   }, [query])
 
   useEffect(() => {
+    if (query.trim()) return
     let live = true
-    setSearching(true)
-    void createClient().rpc('wh_receipt_candidates', { p_query: '' }).then(({ data, error: rpcError }) => {
+    const refresh = async (showLoading: boolean) => {
+      if (showLoading) setSearching(true)
+      const { data, error: rpcError } = await createClient().rpc('wh_receipt_candidates', { p_query: '' })
       if (!live) return
-      if (rpcError) setError(rpcError.message)
-      else setReceipts((data || []) as Receipt[])
-      setSearching(false)
-    }).catch(error => { if (live) { setError(error instanceof Error ? error.message : 'No se pudieron cargar los ingresos'); setSearching(false) } })
-    return () => { live = false }
-  }, [])
+      if (rpcError) {
+        if (showLoading) setError(rpcError.message)
+      } else {
+        setReceipts((data || []) as Receipt[])
+        setLastUpdated(new Date())
+        if (showLoading) setError('')
+      }
+      if (showLoading) setSearching(false)
+    }
+    void refresh(true)
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh(false)
+    }, 30000)
+    return () => { live = false; window.clearInterval(timer) }
+  }, [query])
+
 
   const select = (receipt: Receipt) => {
-    setSelected(receipt); setLabels([]); setLabelsPrinted(false); setMessage(''); setError('')
+    setSelected(receipt); setLabels(receipt.pending_labels || []); setLabelsPrinted(false); setShowPreview(false); setMessage(''); setError('')
     const physical = receipt.physical_quantity ?? Number(receipt.quantity)
     setPhysicalQuantity(String(physical))
     setVarianceReason(receipt.variance_reason || '')
     setManualCustomer(receipt.customer_source === 'MANUAL' ? receipt.customer_name || '' : '')
     const standard = sizes[receipt.product_code.toUpperCase()]
-    if (standard) { setCapacity(String(standard.units_per_package)); setCount(String(Math.ceil(physical / standard.units_per_package))) }
-    else { setCapacity(''); setCount('1') }
+    if (standard) {
+      const units = standard.units_per_package
+      setCapacity(String(units)); setCount(String(Math.ceil(physical / units)))
+      setPackageMode('PACKAGES')
+      setCompletePackages(String(Math.floor(physical / units)))
+      setBalanceQuantity(String(Number((physical % units).toFixed(3))))
+    } else {
+      setCapacity(''); setCount('1'); setPackageMode('TOTAL'); setCompletePackages('0'); setBalanceQuantity('0')
+    }
   }
 
   const validateReceipt = async () => {
     if (!selected) return
+    const verifiedQuantity = packageMode === 'PACKAGES' ? Number(completePackages) * Number(capacity) + Number(balanceQuantity) : Number(physicalQuantity)
     setBusy(true); setError(''); setMessage('')
     const { data, error: rpcError } = await createClient().rpc('wh_validate_receipt', {
       p_receipt_key: selected.receipt_key,
-      p_physical_quantity: Number(physicalQuantity),
+      p_physical_quantity: verifiedQuantity,
       p_variance_reason: varianceReason.trim() || null,
       p_manual_customer_name: manualCustomer.trim() || null,
     })
     if (rpcError) { setError(rpcError.message); setBusy(false); return }
     const next: Receipt = {
       ...selected,
-      physical_quantity: Number(physicalQuantity),
-      variance: Number(physicalQuantity) - Number(selected.quantity),
+      physical_quantity: verifiedQuantity,
+      variance: verifiedQuantity - Number(selected.quantity),
       variance_reason: varianceReason.trim() || null,
       validation_status: 'VALIDATED',
       customer_name: data?.customer_name || selected.customer_name || manualCustomer.trim() || null,
@@ -118,7 +144,8 @@ export default function WarehouseLabelingPage() {
     }
     setSelected(next)
     setReceipts(rows => rows.map(row => row.receipt_key === next.receipt_key ? next : row))
-    setCount(capacity ? String(Math.ceil(Number(physicalQuantity) / Number(capacity))) : count)
+    setPhysicalQuantity(String(verifiedQuantity))
+    setCount(capacity ? String(Math.ceil(verifiedQuantity / Number(capacity))) : count)
     setMessage('Recepción validada y auditada. Ya puede distribuir la cantidad física en bultos.')
     setBusy(false)
   }
@@ -150,7 +177,7 @@ export default function WarehouseLabelingPage() {
         contract_code: selected.contract_code, customer_name: selected.customer_name || 'Cliente por registrar',
       }
     })
-    setLabels(generated); setLabelsPrinted(false)
+    setLabels(generated); setLabelsPrinted(false); setShowPreview(false)
     setMessage(`${codes.length} etiqueta(s) únicas generadas desde el conteo físico del IPT ${selected.document_no}.`)
     setBusy(false)
   }
@@ -184,8 +211,10 @@ export default function WarehouseLabelingPage() {
     } else fallbackPrint()
   }
 
-  const requiresVarianceReason = selected && Number(physicalQuantity) !== Number(selected.quantity)
-  const canGenerate = selected?.validation_status === 'VALIDATED' && Number(selected.physical_quantity) > 0 && selected.label_status !== 'DIFFERENCE'
+  const physicalToValidate = packageMode === 'PACKAGES' ? Number(completePackages) * Number(capacity) + Number(balanceQuantity) : Number(physicalQuantity)
+  const packageBreakdownValid = packageMode !== 'PACKAGES' || (Number.isInteger(Number(completePackages)) && Number(completePackages) >= 0 && Number(capacity) > 0 && Number(balanceQuantity) >= 0 && Number(balanceQuantity) < Number(capacity) && Number(completePackages) + (Number(balanceQuantity) > 0 ? 1 : 0) <= 100)
+  const requiresVarianceReason = selected && physicalToValidate !== Number(selected.quantity)
+  const canGenerate = selected?.validation_status === 'VALIDATED' && Number(selected.physical_quantity) > 0 && !['DIFFERENCE','MATCH','PENDING_PRINT'].includes(selected.label_status)
   const planQuantity = Number(selected?.physical_quantity || 0)
   const planCount = Math.min(100, Math.max(0, Number(count) || 0))
   const planCapacity = Number(capacity) > 0 ? Number(capacity) : null
