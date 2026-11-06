@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Printer, RotateCcw, ScanLine, ClipboardCheck, X, RefreshCw } from 'lucide-react'
+import { Printer, RotateCcw, ScanLine, ClipboardCheck, X, RefreshCw, UserRound, Weight, Package } from 'lucide-react'
 import { Code128Barcode } from '@/components/warehouse/Code128Barcode'
 
 type Receipt = {
@@ -285,9 +285,9 @@ export default function WarehouseLabelingPage() {
         </header>
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-2 sm:space-y-3 sm:p-4">
           <section aria-label="Datos principales del ingreso" className="grid gap-2 sm:grid-cols-3">
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2"><span className="text-xl text-blue-700">♙</span><div className="min-w-0"><span className="block text-[11px] text-slate-600">Cliente</span><b className="block truncate text-sm leading-tight text-[#002855]">{selected.customer_name || manualCustomer || 'Por registrar'}</b></div></div>
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2"><span className="text-xl text-blue-700">⚖</span><div><span className="block text-[11px] text-slate-600">Peso de origen</span><b className="block text-lg leading-tight text-[#002855]">{selected.weight_kg === null ? 'Por registrar' : selected.weight_kg + ' kg'}</b></div></div>
-            <div className="flex min-h-16 items-center gap-3 rounded-xl bg-gradient-to-r from-blue-700 to-blue-900 px-3 py-2 text-white"><span className="text-xl">▣</span><div><span className="block text-[11px] text-blue-100">Total ERP (ítem seleccionado)</span><b className="block text-lg leading-tight">{selected.quantity} {selected.unit || 'UND'}</b></div></div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2"><span className="text-blue-700"><UserRound size={23}/></span><div className="min-w-0"><span className="block text-[11px] text-slate-600">Cliente</span><b className="block truncate text-sm leading-tight text-[#002855]">{selected.customer_name || manualCustomer || 'Por registrar'}</b></div></div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2"><span className="text-blue-700"><Weight size={23}/></span><div><span className="block text-[11px] text-slate-600">Peso de origen</span><b className="block text-lg leading-tight text-[#002855]">{selected.weight_kg === null ? 'Por registrar' : selected.weight_kg + ' kg'}</b></div></div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl bg-gradient-to-r from-blue-700 to-blue-900 px-3 py-2 text-white"><span><Package size={23}/></span><div><span className="block text-[11px] text-blue-100">Total ERP (ítem seleccionado)</span><b className="block text-lg leading-tight">{selected.quantity} {selected.unit || 'UND'}</b></div></div>
           </section>
           <section className="rounded-xl border border-slate-200 bg-white px-3 py-2 sm:px-4">
             <p className="text-[10px] font-extrabold uppercase tracking-wide text-blue-700">Recepción APT · Validación y etiquetado</p>
