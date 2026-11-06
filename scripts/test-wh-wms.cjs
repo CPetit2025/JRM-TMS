@@ -68,7 +68,7 @@ checks.push(
 )
 checks.push(
   ['WMS printed label follows the JRM reference with official logo, lot/customer lineage, LPN barcode and quantity/weight', labeling.includes('src="/logo-jrm.png"') && labeling.includes('Cliente:') && labeling.includes('OT:') && labeling.includes('Lote:') && labeling.includes('<Code128Barcode value={label.package_code}') && labeling.includes('wh-label-quantity') && labeling.includes('IPT:') && labeling.includes('Fecha:')],
-  ['WMS label print isolates and reveals only labels on standard 4 x 6 in landscape stock after render', labeling.includes('@page{size:152.4mm 101.6mm') && labeling.includes('width:152.4mm;height:101.6mm') && labeling.includes('.wh-label-barcode{height:22mm') && labeling.includes('#wms-label-preview,#wms-label-preview *{visibility:visible!important}') && labeling.includes('wms-label-list') && labeling.includes('requestAnimationFrame(() => window.requestAnimationFrame(() => window.print()))')],
+  ['WMS label print isolates and reveals only labels on standard 4 x 6 in landscape stock after render', labeling.includes('@page{size:152.4mm 101.6mm') && labeling.includes('width:152.4mm!important;height:101.6mm!important') && labeling.includes('.wh-label-barcode{height:22mm') && labeling.includes('#wms-label-preview,#wms-label-preview *{visibility:visible!important}') && labeling.includes('wms-label-list') && labeling.includes('requestAnimationFrame(() => window.requestAnimationFrame(() => window.print()))')],
 )
 const failures = checks.filter(([, ok]) => !ok)
 if (failures.length) {
