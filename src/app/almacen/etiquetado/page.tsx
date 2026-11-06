@@ -344,7 +344,7 @@ export default function WarehouseLabelingPage() {
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-6 print:overflow-visible print:p-0">
           <div className="grid gap-3 sm:grid-cols-2 print:block">{labels.filter(label => printTarget === null || label.package_code === printTarget).map(label => (
-            <article key={label.package_code} className="wh-label flex aspect-[2/1] min-w-0 flex-col overflow-hidden rounded-lg border-2 border-dashed border-slate-500 bg-white p-2.5 text-black sm:p-3">
+            <article key={label.package_code} className="wh-label flex aspect-[3/2] min-w-0 flex-col overflow-hidden rounded-lg border-2 border-dashed border-slate-500 bg-white p-2.5 text-black sm:p-3">
               <div className="wh-label-head flex min-h-0 items-center gap-2 border-b-4 border-[#002855] pb-1">
                 <div className="flex h-full w-[22%] shrink-0 items-center justify-center border-r border-slate-400 bg-[#002855] p-1">
                   <img src="/logo-jrm.png" alt="JRM Soluciones Integrales de Almacenamiento" className="max-h-full max-w-full object-contain" />
@@ -357,7 +357,7 @@ export default function WarehouseLabelingPage() {
               </div>
               <b className="wh-label-sku mt-1 max-w-[52%] truncate rounded-r-md bg-[#002855] px-2 py-1 text-base text-white sm:text-2xl">{label.source_product_code}</b>
               <div className="wh-label-description mt-1 line-clamp-2 min-h-0 flex-1 overflow-hidden text-xs leading-tight sm:text-base">{label.description}</div>
-              <Code128Barcode value={label.package_code} height={34} className="wh-label-barcode mx-auto my-0.5 h-9 w-[92%] shrink-0" />
+              <Code128Barcode value={label.package_code} height={84} className="wh-label-barcode mx-auto my-0.5 h-9 w-[92%] shrink-0" />
               <b className="wh-label-lpn block shrink-0 text-center font-mono text-sm sm:text-xl">{label.package_code}</b>
               <div className="wh-label-footer grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 border-t border-slate-400 pt-1">
                 <div className="min-w-0 text-[9px] leading-tight sm:text-xs"><div className="truncate"><b className="text-[#002855]">IPT:</b> {label.source_document_no}</div><div><b className="text-[#002855]">Fecha:</b> {label.source_date}</div></div>
@@ -370,17 +370,17 @@ export default function WarehouseLabelingPage() {
       </section>
     </div>}
     <style jsx global>{`@media print{
-      @page{size:100mm 50mm;margin:1mm}
+      @page{size:152.4mm 101.6mm;margin:0}
       body *{visibility:hidden}
       .wh-label,.wh-label *{visibility:visible}
-      .wh-label{box-sizing:border-box;position:relative;display:flex;flex-direction:column;break-after:page;width:98mm;height:48mm;aspect-ratio:auto;border:1px dashed #6b8198!important;border-radius:0!important;padding:1.5mm!important;margin:0!important;overflow:hidden}
-      .wh-label-head{height:8mm!important;min-height:8mm!important;flex:none!important}
-      .wh-label-sku{height:5mm!important;max-height:5mm!important;margin-top:1mm!important;padding:0 2mm!important;font-size:4mm!important;line-height:5mm!important}
-      .wh-label-description{height:7mm!important;max-height:7mm!important;margin-top:1mm!important;font-size:3mm!important;line-height:3.4mm!important}
-      .wh-label-barcode{height:9mm!important;max-height:9mm!important;min-height:9mm!important;margin:0 auto!important}
-      .wh-label-lpn{height:5mm!important;font-size:3.8mm!important;line-height:5mm!important}
-      .wh-label-footer{height:7mm!important;min-height:7mm!important;margin-top:1mm!important;padding-top:1mm!important;border-top:0.3mm solid #7a8793!important}
-      .wh-label-quantity{font-size:6mm!important;line-height:1!important}
+      .wh-label{box-sizing:border-box;position:relative;display:flex;flex-direction:column;break-after:page;width:152.4mm;height:101.6mm;aspect-ratio:auto;border:1px dashed #6b8198!important;border-radius:0!important;padding:2mm!important;margin:0!important;overflow:hidden}
+      .wh-label-head{height:18mm!important;min-height:18mm!important;flex:none!important}
+      .wh-label-sku{height:9mm!important;max-height:9mm!important;margin-top:2mm!important;padding:0 2mm!important;font-size:7mm!important;line-height:9mm!important}
+      .wh-label-description{height:19mm!important;max-height:19mm!important;margin-top:2mm!important;font-size:5mm!important;line-height:5.4mm!important}
+      .wh-label-barcode{height:22mm!important;max-height:22mm!important;min-height:22mm!important;margin:0 auto!important}
+      .wh-label-lpn{height:10mm!important;font-size:7.2mm!important;line-height:10mm!important}
+      .wh-label-footer{height:13mm!important;min-height:13mm!important;margin-top:2mm!important;padding-top:2mm!important;border-top:0.3mm solid #7a8793!important}
+      .wh-label-quantity{font-size:10mm!important;line-height:1!important}
       .wh-label:last-child{break-after:auto}
     `}</style>
   </div>
