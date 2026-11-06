@@ -120,9 +120,11 @@ BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended(p_receipt_key,0));
  SELECT s.source_key AS receipt_key,s.document_no,s.source_date AS fecha,s.lot AS lote,s.product_code,s.description,s.unit,s.warehouse AS bodega,
    coalesce(nullif(s.contract_code,''),nullif(s.origin_number,''),s.lot) AS contract_code,c.id AS contract_id,s.quantity,s.total_weight AS weight_kg
-  FROM public.wh_receipt_sources s LEFT JOIN public.contracts c
+ INTO v_receipt FROM public.wh_receipt_sources s LEFT JOIN public.contracts c
    ON regexp_replace(regexp_replace(upper(c.code::text),'[^A-Z0-9]','','g'),'^OT','')=regexp_replace(regexp_replace(upper(coalesce(nullif(s.contract_code,''),nullif(s.origin_number,''),s.lot)),'[^A-Z0-9]','','g'),'^OT','')
-  WHERE s.source_key=p_receipt_key AND s.active SELECT * INTO v_validation FROM public.wh_receipt_validations WHERE source_movement_key=p_receipt_key ORDER BY validated_at DESC,id DESC LIMIT 1;
+  WHERE s.source_key=p_receipt_key AND s.active;
+ IF NOT FOUND OR v_receipt.quantity<=0 THEN RAISE EXCEPTION 'El ingreso APT no existe o ya no está activo; actualice la fuente WMS'; END IF;
+ SELECT * INTO v_validation FROM public.wh_receipt_validations WHERE source_movement_key=p_receipt_key ORDER BY validated_at DESC,id DESC LIMIT 1;
  IF NOT FOUND THEN RAISE EXCEPTION 'Confirme la cantidad física del ingreso antes de generar etiquetas'; END IF;
  IF v_validation.erp_quantity<>v_receipt.quantity THEN RAISE EXCEPTION 'El IPT cambió en el actualizable APT; valide de nuevo antes de etiquetar'; END IF;
  v_total:=v_validation.physical_quantity; v_remaining:=v_total; v_weight:=v_receipt.weight_kg;
