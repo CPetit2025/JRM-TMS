@@ -40,7 +40,7 @@ const checks = [
   ['receipt inbox defaults to all unprinted or not-yet-labeled entries and refreshes every 30 seconds', /coalesce\(p\.label_count,0\)=0 OR coalesce\(p\.unprinted_count,0\)>0/.test(receiptInbox) && /setInterval[\s\S]*?30000/.test(labeling) && labeling.includes('Actualizar bandeja')],
   ['receipt customer lookup checks the lot OT against inventory and contracts', /inv_ot_cliente\(nullif\(public\.apt_ot_raiz\(r\.lote\),''\)\)/.test(receiptInbox) && /inv_ot_cliente\(nullif\(public\.inv_ot\(r\.contract_code\),''\)\)/.test(receiptInbox)],
   ['unprinted generated LPNs can be resumed and previewed without generating duplicate codes', /PENDING_PRINT/.test(receiptInbox) && labeling.includes('pending_labels') && labeling.includes('Vista previa') && labeling.includes('no se generarán códigos duplicados')],
-  ['physical receipt supports full packages plus a remainder with a derived total', labeling.includes('Paquetes completos + saldo') && labeling.includes('Cantidad física total calculada') && labeling.includes('packageBreakdownValid')],
+  ['physical receipt defaults to full packages plus a remainder and derives its balance automatically', labeling.includes("useState<'TOTAL' | 'PACKAGES'>('PACKAGES')") && labeling.includes('Paquetes completos + saldo') && labeling.includes('packageBalance = Number((physicalToValidate - Number(capacity) * Number(completePackages))') && labeling.includes('Unidades en el saldo · automático') && labeling.includes('packageBreakdownValid')],
   ['Windows robot targets only WMS receipt import and is preview-locked', /git-feature-warehouse-wms-portal/.test(receiptRobot) && receiptRobot.includes('/almacen/apt/etiquetado') && !receiptRobot.toLowerCase().includes('salida.xlsx')],
   ['legacy inventory APT upload route cannot overwrite receipt source', apt.includes("redirect('/almacen/apt/etiquetado')") || apt.includes('redirect("/almacen/apt/etiquetado")')],
   ['partial delivery retains an outstanding balance and requires a supervisor', /LOAD_PARTIAL/.test(sql) && /remaining_qty/.test(task) && /Autorizar carga parcial/.test(task)],
@@ -65,6 +65,10 @@ checks.push(
 checks.push(
   ['WMS label preview is an accessible responsive modal with Escape and backdrop dismissal', labeling.includes('id="wms-label-preview" role="dialog" aria-modal="true"') && labeling.includes('fixed inset-0') && labeling.includes('max-h-[96dvh]') && labeling.includes('overflow-y-auto') && labeling.includes("event.key === 'Escape'") && labeling.includes('if (showPreview) setShowPreview(false)') && labeling.includes('onClick={() => setShowPreview(false)}')],
   ['WMS modal preserves individual and batch label printing', labeling.includes('Imprimir etiqueta') && labeling.includes('Imprimir lote') && labeling.includes('print:contents')],
+)
+checks.push(
+  ['same-IPT product lines can be selected in the wide, compact receipt modal', labeling.includes('max-w-7xl') && labeling.includes('selectedIptReceipts.length > 1') && labeling.includes('seleccione una para validar y etiquetar') && labeling.includes('receipt.document_no === selected.document_no')],
+  ['individual print state is tracked per LPN and Zebra uses 4 x 6 inch dimensions', labeling.includes('printedLabelCodes.includes(label.package_code)') && labeling.includes("'Reimprimir etiqueta' : 'Imprimir etiqueta'") && labeling.includes('^PW1218^LL812')],
 )
 checks.push(
   ['WMS printed label follows the JRM reference with official logo, lot/customer lineage, LPN barcode and quantity/weight', labeling.includes('src="/logo-jrm.png"') && labeling.includes('Cliente:') && labeling.includes('OT:') && labeling.includes('Lote:') && labeling.includes('<Code128Barcode value={label.package_code}') && labeling.includes('wh-label-quantity') && labeling.includes('IPT:') && labeling.includes('Fecha:')],
