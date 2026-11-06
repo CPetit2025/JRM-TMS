@@ -27,9 +27,8 @@ export default function WarehouseLabelingPage() {
   const [selected, setSelected] = useState<Receipt | null>(null)
   const [sizes, setSizes] = useState<Record<string, { units_per_package: number; unit: string | null }>>({})
   const [physicalQuantity, setPhysicalQuantity] = useState('')
-  const [packageMode, setPackageMode] = useState<'TOTAL' | 'PACKAGES'>('TOTAL')
+  const [packageMode, setPackageMode] = useState<'TOTAL' | 'PACKAGES'>('PACKAGES')
   const [completePackages, setCompletePackages] = useState('0')
-  const [balanceQuantity, setBalanceQuantity] = useState('0')
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [showPreview, setShowPreview] = useState(false)
   const [varianceReason, setVarianceReason] = useState('')
@@ -37,7 +36,7 @@ export default function WarehouseLabelingPage() {
   const [count, setCount] = useState('1')
   const [capacity, setCapacity] = useState('')
   const [labels, setLabels] = useState<Label[]>([])
-  const [labelsPrinted, setLabelsPrinted] = useState(false)
+  const [printedLabelCodes, setPrintedLabelCodes] = useState<string[]>([])
   const [printTarget, setPrintTarget] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [searching, setSearching] = useState(false)
@@ -110,7 +109,7 @@ export default function WarehouseLabelingPage() {
 
 
   const select = (receipt: Receipt) => {
-    setSelected(receipt); setLabels(receipt.pending_labels || []); setLabelsPrinted(false); setShowPreview(false); setMessage(''); setError('')
+    setSelected(receipt); setLabels(receipt.pending_labels || []); setPrintedLabelCodes([]); setShowPreview(false); setMessage(''); setError('')
     const physical = receipt.physical_quantity ?? Number(receipt.quantity)
     setPhysicalQuantity(String(physical))
     setVarianceReason(receipt.variance_reason || '')
@@ -121,15 +120,14 @@ export default function WarehouseLabelingPage() {
       setCapacity(String(units)); setCount(String(Math.ceil(physical / units)))
       setPackageMode('PACKAGES')
       setCompletePackages(String(Math.floor(physical / units)))
-      setBalanceQuantity(String(Number((physical % units).toFixed(3))))
     } else {
-      setCapacity(''); setCount('1'); setPackageMode('TOTAL'); setCompletePackages('0'); setBalanceQuantity('0')
+      setCapacity(''); setCount('1'); setPackageMode('PACKAGES'); setCompletePackages('0')
     }
   }
 
   const validateReceipt = async () => {
     if (!selected) return
-    const verifiedQuantity = packageMode === 'PACKAGES' ? Number(completePackages) * Number(capacity) + Number(balanceQuantity) : Number(physicalQuantity)
+    const verifiedQuantity = Number(physicalQuantity)
     setBusy(true); setError(''); setMessage('')
     const { data, error: rpcError } = await createClient().rpc('wh_validate_receipt', {
       p_receipt_key: selected.receipt_key,
@@ -182,25 +180,29 @@ export default function WarehouseLabelingPage() {
         contract_code: selected.contract_code, customer_name: selected.customer_name || 'Cliente por registrar',
       }
     })
-    setLabels(generated); setLabelsPrinted(false); setShowPreview(false)
+    setLabels(generated); setPrintedLabelCodes([]); setShowPreview(false)
     setMessage(`${codes.length} etiqueta(s) únicas generadas desde el conteo físico del IPT ${selected.document_no}.`)
     setBusy(false)
   }
 
   const print = async (targetLabels: Label[] = labels) => {
     setError('')
-    if (labelsPrinted) {
+    if (!targetLabels.length) return
+    const alreadyPrinted = targetLabels.filter(label => printedLabelCodes.includes(label.package_code))
+    const newLabels = targetLabels.filter(label => !printedLabelCodes.includes(label.package_code))
+    if (alreadyPrinted.length) {
       const reason = window.prompt('Motivo de reimpresión de etiquetas:')
       if (!reason?.trim()) return
-      for (const label of targetLabels) {
-        const { error: rpcError } = await createClient().rpc('wh_reprint_label', { p_package_code: label.package_code, p_reason: reason })
+      for (const label of alreadyPrinted) {
+        const { error: rpcError } = await createClient().rpc('wh_reprint_label', { p_package_code: label.package_code, p_reason: reason.trim() })
         if (rpcError) { setError(rpcError.message); return }
       }
-    } else {
-      const { error: rpcError } = await createClient().rpc('wh_print_labels', { p_package_codes: targetLabels.map(label => label.package_code) })
-      if (rpcError) { setError(rpcError.message); return }
-      setLabelsPrinted(true)
     }
+    if (newLabels.length) {
+      const { error: rpcError } = await createClient().rpc('wh_print_labels', { p_package_codes: newLabels.map(label => label.package_code) })
+      if (rpcError) { setError(rpcError.message); return }
+    }
+    setPrintedLabelCodes(current => [...new Set([...current, ...targetLabels.map(label => label.package_code)])])
     const fallbackPrint = () => {
       setPrintTarget(targetLabels.length === 1 ? targetLabels[0].package_code : null)
       window.addEventListener('afterprint', () => setPrintTarget(null), { once: true })
