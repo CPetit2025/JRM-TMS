@@ -45,13 +45,18 @@ export default function WarehouseLabelingPage() {
   const [message, setMessage] = useState('')
 
   useEffect(() => {
-    if (!selected) return
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setSelected(null) }
+    if (!selected && !showPreview) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (showPreview) setShowPreview(false)
+        else setSelected(null)
+      }
+    }
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     window.addEventListener('keydown', onKeyDown)
     return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', onKeyDown) }
-  }, [selected])
+  }, [selected, showPreview])
 
   useEffect(() => {
     void (async () => {
@@ -322,12 +327,26 @@ export default function WarehouseLabelingPage() {
         </div>
         <footer className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
           <p className="text-xs text-slate-500">Conteo físico → distribución → LPN → impresión</p>
-          <div className="flex gap-2">{labels.length > 0 && <button type="button" onClick={() => { setSelected(null); setShowPreview(true); window.setTimeout(() => document.getElementById('wms-label-preview')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }} className="min-h-10 flex-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855] sm:flex-none">Vista previa</button>}<button type="button" onClick={() => setSelected(null)} className="min-h-10 flex-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 sm:flex-none">Cerrar</button><button type="button" disabled={!labels.length} onClick={() => void print()} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"><Printer size={16}/>{labelsPrinted ? 'Reimprimir lote' : 'Imprimir lote'}</button></div>
+          <div className="flex gap-2">{labels.length > 0 && <button type="button" onClick={() => { setSelected(null); setShowPreview(true) }} className="min-h-10 flex-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855] sm:flex-none">Vista previa</button>}<button type="button" onClick={() => setSelected(null)} className="min-h-10 flex-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 sm:flex-none">Cerrar</button><button type="button" disabled={!labels.length} onClick={() => void print()} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"><Printer size={16}/>{labelsPrinted ? 'Reimprimir lote' : 'Imprimir lote'}</button></div>
         </footer>
       </div>
     </div>}
 
-    {labels.length > 0 && showPreview && <section id="wms-label-preview" className="rounded-xl border border-slate-200 bg-white p-5"><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold text-[#002855]">Vista previa de etiquetas · {labels.length}</h2><p className="text-xs text-slate-500">Revise cada bulto, cantidad y código LPN antes de imprimir.</p></div><div className="flex gap-2"><button onClick={() => setShowPreview(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">Cerrar vista previa</button><button onClick={() => void print()} className="inline-flex items-center gap-2 rounded-lg bg-[#002855] px-4 py-2.5 text-sm font-bold text-white"><Printer size={16} />{labelsPrinted ? 'Reimprimir lote' : 'Imprimir lote'}</button></div></div><div className="grid gap-3 sm:grid-cols-2 print:grid-cols-1">{labels.filter(label => printTarget === null || label.package_code === printTarget).map(label => <article key={label.package_code} className="wh-label rounded border-2 border-dashed border-slate-300 bg-white p-4 text-black"><div className="mb-2 flex items-center justify-between gap-2"><b className="text-lg">{label.source_product_code}</b><button type="button" onClick={() => void print([label])} className="print:hidden rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-bold text-[#002855]">Imprimir etiqueta</button></div><span className="text-sm">{label.description}</span><Code128Barcode value={label.package_code} height={56} className="my-2 w-full" /><b className="block text-center font-mono text-base">{label.package_code}</b><div className="mt-1 text-xs">IPT {label.source_document_no} · OT {label.contract_code || '—'} · {label.customer_name}</div><div className="mt-1 flex justify-between text-xs"><span>Lote {label.source_lot || '—'} · {label.source_warehouse}</span><span>{label.sequence_no}/{label.sequence_total}</span></div><div className="mt-1 flex justify-between text-xs"><span>{label.source_date}</span><b>{label.quantity} {label.unit} · {label.weight_kg === null ? 'Peso por registrar' : `${label.weight_kg} kg`}</b></div></article>)}</div></section>}
+    {labels.length > 0 && showPreview && <div id="wms-label-preview" role="dialog" aria-modal="true" aria-labelledby="wms-label-preview-title" className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-2 sm:p-5 print:static print:block print:bg-transparent print:p-0" onClick={() => setShowPreview(false)}>
+      <section className="flex max-h-[96dvh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl print:contents" onClick={event => event.stopPropagation()}>
+        <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-6">
+          <div><h2 id="wms-label-preview-title" className="font-bold text-[#002855]">Vista previa de etiquetas · {labels.length}</h2><p className="text-xs text-slate-500">Revise cada bulto, cantidad y código LPN antes de imprimir.</p></div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setShowPreview(false)} className="min-h-10 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">Cerrar vista previa</button>
+            <button type="button" onClick={() => void print()} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#002855] px-4 py-2.5 text-sm font-bold text-white"><Printer size={16} />{labelsPrinted ? 'Reimprimir lote' : 'Imprimir lote'}</button>
+            <button type="button" aria-label="Cerrar vista previa" onClick={() => setShowPreview(false)} className="grid h-10 w-10 place-items-center rounded-lg border border-slate-300 text-slate-600"><X size={18}/></button>
+          </div>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-6 print:overflow-visible print:p-0">
+          <div className="grid gap-3 sm:grid-cols-2 print:grid-cols-1">{labels.filter(label => printTarget === null || label.package_code === printTarget).map(label => <article key={label.package_code} className="wh-label rounded border-2 border-dashed border-slate-300 bg-white p-4 text-black"><div className="mb-2 flex items-center justify-between gap-2"><b className="text-lg">{label.source_product_code}</b><button type="button" onClick={() => void print([label])} className="print:hidden rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-bold text-[#002855]">Imprimir etiqueta</button></div><span className="text-sm">{label.description}</span><Code128Barcode value={label.package_code} height={56} className="my-2 w-full" /><b className="block text-center font-mono text-base">{label.package_code}</b><div className="mt-1 text-xs">IPT {label.source_document_no} · OT {label.contract_code || '—'} · {label.customer_name}</div><div className="mt-1 flex justify-between text-xs"><span>Lote {label.source_lot || '—'} · {label.source_warehouse}</span><span>{label.sequence_no}/{label.sequence_total}</span></div><div className="mt-1 flex justify-between text-xs"><span>{label.source_date}</span><b>{label.quantity} {label.unit} · {label.weight_kg === null ? 'Peso por registrar' : label.weight_kg + ' kg'}</b></div></article>)}</div>
+        </div>
+      </section>
+    </div>}
     <style jsx global>{`@media print{@page{size:100mm 50mm;margin:2mm}body *{visibility:hidden}.wh-label,.wh-label *{visibility:visible}.wh-label{position:relative;break-after:page;width:96mm;height:46mm;border:0!important;padding:3mm!important;margin:0!important}.wh-label:last-child{break-after:auto}}`}</style>
   </div>
 }
