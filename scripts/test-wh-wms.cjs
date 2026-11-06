@@ -64,7 +64,7 @@ checks.push(
 )
 checks.push(
   ['direct print from the receipt modal opens the label portal before invoking browser print', labeling.includes('const fallbackPrint = () => {') && labeling.includes('setSelected(null)\n      setShowPreview(true)') && labeling.includes('requestAnimationFrame(() => window.requestAnimationFrame(() => window.print()))')],
-  ['label quantity is explicitly bold and weight remains black at the same size', labeling.includes('wh-label-quantity text-xl font-extrabold') && labeling.includes('.wh-label-quantity{font-weight:800!important}') && labeling.includes('wh-label-weight text-xl leading-none text-black sm:text-3xl') && labeling.includes('.wh-label-quantity,.wh-label-weight{font-size:10mm')],
+  ['label quantity is explicitly bold and weight remains black at the same size', labeling.includes('wh-label-quantity text-xl font-extrabold') && labeling.includes('.wh-label-quantity,.wh-label-weight{font-weight:800!important}') && labeling.includes('wh-label-weight text-xl font-extrabold leading-none text-black sm:text-3xl') && labeling.includes('.wh-label-quantity,.wh-label-weight{font-size:10mm')],
   ['print uses 4x6 page size and starts new pages only between labels', labeling.includes('@page{size:152.4mm 101.6mm;margin:0}\n    @media print{') && labeling.includes('.wh-label+.wh-label{break-before:page!important;page-break-before:always!important}') && labeling.includes('break-after:auto!important;page-break-after:auto!important') && !labeling.includes('break-after:page;page-break-after:always')],
 )
 checks.push(
