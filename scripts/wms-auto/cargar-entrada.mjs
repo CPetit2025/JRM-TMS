@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 
 const args=process.argv.slice(2), revisar=args.includes('--revisar')
 const files=args.filter(x=>x!=='--revisar').map(x=>resolve(x))
-const url=(process.env.WMS_URL||'').replace(/\\/$/,'')
+const url=(process.env.WMS_URL||'').replace(/\/$/,'')
 const {WMS_USUARIO:user,WMS_CLAVE:password}=process.env
 if(files.length!==1||!url||!user||!password){console.error('Uso: node cargar-entrada.mjs [--revisar] <entrada.xlsx> (WMS_URL, WMS_USUARIO y WMS_CLAVE)');process.exit(2)}
 const host=new URL(url).hostname
