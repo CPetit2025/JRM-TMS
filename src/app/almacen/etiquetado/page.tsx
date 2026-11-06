@@ -343,10 +343,45 @@ export default function WarehouseLabelingPage() {
           </div>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-6 print:overflow-visible print:p-0">
-          <div className="grid gap-3 sm:grid-cols-2 print:grid-cols-1">{labels.filter(label => printTarget === null || label.package_code === printTarget).map(label => <article key={label.package_code} className="wh-label rounded border-2 border-dashed border-slate-300 bg-white p-4 text-black"><div className="mb-2 flex items-center justify-between gap-2"><b className="text-lg">{label.source_product_code}</b><button type="button" onClick={() => void print([label])} className="print:hidden rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-bold text-[#002855]">Imprimir etiqueta</button></div><span className="text-sm">{label.description}</span><Code128Barcode value={label.package_code} height={56} className="my-2 w-full" /><b className="block text-center font-mono text-base">{label.package_code}</b><div className="mt-1 text-xs">IPT {label.source_document_no} · OT {label.contract_code || '—'} · {label.customer_name}</div><div className="mt-1 flex justify-between text-xs"><span>Lote {label.source_lot || '—'} · {label.source_warehouse}</span><span>{label.sequence_no}/{label.sequence_total}</span></div><div className="mt-1 flex justify-between text-xs"><span>{label.source_date}</span><b>{label.quantity} {label.unit} · {label.weight_kg === null ? 'Peso por registrar' : label.weight_kg + ' kg'}</b></div></article>)}</div>
+          <div className="grid gap-3 sm:grid-cols-2 print:grid-cols-1">{labels.filter(label => printTarget === null || label.package_code === printTarget).map(label => (
+            <article key={label.package_code} className="wh-label flex aspect-[2/1] min-w-0 flex-col overflow-hidden rounded-lg border-2 border-dashed border-slate-500 bg-white p-2.5 text-black sm:p-3">
+              <div className="wh-label-head flex min-h-0 items-center gap-2 border-b-4 border-[#002855] pb-1">
+                <div className="flex h-full w-[22%] shrink-0 items-center justify-center border-r border-slate-400 bg-[#002855] p-1">
+                  <img src="/logo-jrm.png" alt="JRM Soluciones Integrales de Almacenamiento" className="max-h-full max-w-full object-contain" />
+                </div>
+                <div className="grid min-w-0 flex-1 grid-cols-2 gap-x-2 gap-y-1 leading-tight">
+                  <div className="col-span-2 truncate text-sm sm:text-lg"><b className="text-[#002855]">Cliente:</b> <span className="font-bold">{label.customer_name || 'Por registrar'}</span></div>
+                  <div className="truncate text-xs sm:text-base"><b className="text-[#002855]">OT:</b> <span className="font-bold">{label.contract_code || '—'}</span></div>
+                  <div className="truncate text-xs sm:text-base"><b className="text-[#002855]">Lote:</b> <span className="font-bold">{label.source_lot || '—'} · {label.source_warehouse}</span></div>
+                </div>
+              </div>
+              <b className="wh-label-sku mt-1 max-w-[52%] truncate rounded-r-md bg-[#002855] px-2 py-1 text-base text-white sm:text-2xl">{label.source_product_code}</b>
+              <div className="wh-label-description mt-1 line-clamp-2 min-h-0 flex-1 overflow-hidden text-xs leading-tight sm:text-base">{label.description}</div>
+              <Code128Barcode value={label.package_code} height={34} className="wh-label-barcode mx-auto my-0.5 h-9 w-[92%] shrink-0" />
+              <b className="wh-label-lpn block shrink-0 text-center font-mono text-sm sm:text-xl">{label.package_code}</b>
+              <div className="wh-label-footer grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 border-t border-slate-400 pt-1">
+                <div className="min-w-0 text-[9px] leading-tight sm:text-xs"><div className="truncate"><b className="text-[#002855]">IPT:</b> {label.source_document_no}</div><div><b className="text-[#002855]">Fecha:</b> {label.source_date}</div></div>
+                <div className="flex min-w-0 items-baseline justify-center gap-1 whitespace-nowrap"><b className="wh-label-quantity text-xl leading-none sm:text-3xl">{label.quantity} {label.unit || ''}</b><span className="text-[9px] sm:text-sm">· {label.weight_kg === null ? 'Peso por registrar' : label.weight_kg + ' kg'}</span></div>
+                <div className="text-right text-[10px] sm:text-sm">{label.sequence_no}/{label.sequence_total}<button type="button" onClick={() => void print([label])} className="print:hidden mt-1 block rounded-md border border-slate-300 px-2 py-1 text-[10px] font-bold text-[#002855]">Imprimir etiqueta</button></div>
+              </div>
+            </article>
+          ))}</div>
         </div>
       </section>
     </div>}
-    <style jsx global>{`@media print{@page{size:100mm 50mm;margin:2mm}body *{visibility:hidden}.wh-label,.wh-label *{visibility:visible}.wh-label{position:relative;break-after:page;width:96mm;height:46mm;border:0!important;padding:3mm!important;margin:0!important}.wh-label:last-child{break-after:auto}}`}</style>
+    <style jsx global>{`@media print{
+      @page{size:100mm 50mm;margin:1mm}
+      body *{visibility:hidden}
+      .wh-label,.wh-label *{visibility:visible}
+      .wh-label{box-sizing:border-box;position:relative;display:flex;flex-direction:column;break-after:page;width:98mm;height:48mm;aspect-ratio:auto;border:1px dashed #6b8198!important;border-radius:0!important;padding:1.5mm!important;margin:0!important;overflow:hidden}
+      .wh-label-head{height:8mm!important;min-height:8mm!important;flex:none!important}
+      .wh-label-sku{height:5mm!important;max-height:5mm!important;margin-top:1mm!important;padding:0 2mm!important;font-size:4mm!important;line-height:5mm!important}
+      .wh-label-description{height:7mm!important;max-height:7mm!important;margin-top:1mm!important;font-size:3mm!important;line-height:3.4mm!important}
+      .wh-label-barcode{height:9mm!important;max-height:9mm!important;min-height:9mm!important;margin:0 auto!important}
+      .wh-label-lpn{height:5mm!important;font-size:3.8mm!important;line-height:5mm!important}
+      .wh-label-footer{height:7mm!important;min-height:7mm!important;margin-top:1mm!important;padding-top:1mm!important;border-top:0.3mm solid #7a8793!important}
+      .wh-label-quantity{font-size:6mm!important;line-height:1!important}
+      .wh-label:last-child{break-after:auto}
+    `}</style>
   </div>
 }
