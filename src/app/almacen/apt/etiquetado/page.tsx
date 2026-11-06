@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -75,6 +75,7 @@ async function parseReceiptBook(file: File): Promise<ReceiptRow[]> {
 }
 
 export default function WmsReceiptImportPage() {
+  const fileInputRef = useRef<HTMLInputElement|null>(null)
   const [file,setFile]=useState<File|null>(null), [busy,setBusy]=useState(false), [error,setError]=useState(''), [done,setDone]=useState('')
   const importFile=async()=>{
     if(!file||busy)return
@@ -94,14 +95,21 @@ export default function WmsReceiptImportPage() {
     {error&&<p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900"><AlertTriangle className="mr-2 inline h-4 w-4"/>{error}</p>}
     {done&&<p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900"><CheckCircle2 className="mr-2 inline h-4 w-4"/>{done}</p>}
     <section className="rounded-xl border border-slate-200 bg-white p-5">
-      <h2 className="font-bold text-[#002855]">Importar C:\WMS\entrada.xlsx</h2><p className="mt-1 text-xs text-slate-500">Se conserva el historial de recepciones y etiquetas. Repetir el mismo archivo no genera duplicados.</p>
-      <label className="mt-4 flex min-h-36 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-5 text-center">
-        <FileSpreadsheet className="h-8 w-8 text-slate-400"/><span className="text-sm font-semibold">{file?.name||'Seleccionar libro de entradas APT'}</span><span className="text-xs text-slate-500">Excel .xlsx o .xls · hoja Entrada ALM PT</span>
-        <input type="file" accept=".xlsx,.xls" className="sr-only" onChange={e=>{setFile(e.target.files?.[0]||null);setError('');setDone('')}}/>
-      </label>
-      <button type="button" disabled={!file||busy} onClick={()=>void importFile()} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#cf152d] px-5 text-sm font-bold text-white disabled:opacity-50">
-        {busy?<Loader2 className="h-4 w-4 animate-spin"/>:<Upload className="h-4 w-4"/>}{busy?'Importando…':'Importar ingresos para etiquetado'}
-      </button>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><h2 className="font-bold text-[#002855]">Actualizar ingresos WMS</h2><p className="mt-1 text-xs text-slate-500">La actualización manual importa el Excel que seleccione y conserva el historial de recepciones y etiquetas. Si el archivo ya fue importado, no duplica registros.</p></div>
+        <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-900">Origen del robot: C:\\WMS\\entrada.xlsx</span>
+      </div>
+      <input ref={fileInputRef} id="wms-receipt-file" type="file" accept=".xlsx,.xls" className="sr-only" onChange={e=>{setFile(e.target.files?.[0]||null);setError('');setDone('')}}/>
+      <div className="mt-4 flex flex-col gap-3 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3"><FileSpreadsheet className="h-8 w-8 shrink-0 text-slate-400"/><div className="min-w-0"><span className="block truncate text-sm font-semibold">{file?.name||'No hay archivo seleccionado'}</span><span className="text-xs text-slate-500">Excel .xlsx o .xls · hoja Entrada ALM PT</span></div></div>
+        <button type="button" onClick={()=>fileInputRef.current?.click()} className="min-h-10 shrink-0 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-[#002855]">Seleccionar Excel</button>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button type="button" disabled={!file||busy} onClick={()=>void importFile()} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#cf152d] px-5 text-sm font-bold text-white disabled:opacity-50">
+          {busy?<Loader2 className="h-4 w-4 animate-spin"/>:<Upload className="h-4 w-4"/>}{busy?'Actualizando…':'Actualizar manualmente'}
+        </button>
+        <p className="text-xs text-slate-500">La carga automática del archivo local la ejecuta el robot de Windows; el navegador no puede leer C:\\WMS directamente.</p>
+      </div>
     </section>
   </div>
 }
