@@ -53,13 +53,15 @@ try {
     throw new Error(`El portal no confirmó la hoja «Entrada ALM PT» de ${nombre}. Revise la vista previa; no se aplicó nada.`)
   }
   console.log(`Leído: ${resumen.replace(/\s+/g, ' ').slice(0, 240)}`)
-  if (revisar) { console.log('Revisión OK: login y lectura correctos; no se aplicó la carga.'); process.exit(0) }
-
-  await boton.click()
-  const listo = page.locator('p.bg-emerald-50').filter({ hasText: /filas aplicadas|cargad|actualizad/i }).first()
-  await listo.or(alerta).first().waitFor({ timeout: 45 * MIN })
-  if (await alerta.isVisible()) throw new Error(`Carga WMS: ${await alerta.innerText()}`)
-  console.log(`OK ${await listo.innerText()}`)
+  if (revisar) {
+    console.log('Revisión OK: login y lectura correctos; no se aplicó la carga.')
+  } else {
+    await boton.click()
+    const listo = page.locator('p.bg-emerald-50').filter({ hasText: /filas aplicadas|cargad|actualizad/i }).first()
+    await listo.or(alerta).first().waitFor({ timeout: 45 * MIN })
+    if (await alerta.isVisible()) throw new Error(`Carga WMS: ${await alerta.innerText()}`)
+    console.log(`OK ${await listo.innerText()}`)
+  }
 } catch (error) {
   const paso = await page.locator('p:has(svg.animate-spin)').first().innerText({ timeout: 2000 }).catch(() => '')
   console.error(`ERROR ${error instanceof Error ? error.message : error}${paso ? ` · último paso: ${paso}` : ''}`)
