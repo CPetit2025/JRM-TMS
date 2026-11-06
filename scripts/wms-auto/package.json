@@ -1,8 +1,0 @@
-{
-  "name": "jrm-wms-apt-robot",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "playwright-core": "1.56.1"
-  }
-}
