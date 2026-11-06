@@ -66,6 +66,10 @@ checks.push(
   ['WMS label preview is an accessible responsive modal with Escape and backdrop dismissal', labeling.includes('id="wms-label-preview" role="dialog" aria-modal="true"') && labeling.includes('fixed inset-0') && labeling.includes('max-h-[96dvh]') && labeling.includes('overflow-y-auto') && labeling.includes("event.key === 'Escape'") && labeling.includes('if (showPreview) setShowPreview(false)') && labeling.includes('onClick={() => setShowPreview(false)}')],
   ['WMS modal preserves individual and batch label printing', labeling.includes('Imprimir etiqueta') && labeling.includes('Imprimir lote') && labeling.includes('print:contents')],
 )
+checks.push(
+  ['WMS printed label follows the JRM reference with official logo, lot/customer lineage, LPN barcode and quantity/weight', labeling.includes('src="/logo-jrm.png"') && labeling.includes('Cliente:') && labeling.includes('OT:') && labeling.includes('Lote:') && labeling.includes('<Code128Barcode value={label.package_code}') && labeling.includes('wh-label-quantity') && labeling.includes('IPT:') && labeling.includes('Fecha:')],
+  ['WMS label print is set to a 100 x 50 mm landscape stock with fitted content', labeling.includes('@page{size:100mm 50mm') && labeling.includes('width:98mm;height:48mm') && labeling.includes('.wh-label-barcode{height:9mm')],
+)
 const failures = checks.filter(([, ok]) => !ok)
 if (failures.length) {
   for (const [name] of failures) process.stderr.write(`FALLÓ: ${name}\n`)
