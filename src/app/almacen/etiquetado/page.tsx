@@ -59,7 +59,7 @@ export default function WarehouseLabelingPage() {
   }, [])
 
   const search = useCallback(async (selectKey?: string) => {
-    if (query.trim().length < 2) { setError('Ingrese un IPT, OT/contrato o lote para buscar.'); return }
+    if (query.trim() && query.trim().length < 2) { setError('Ingrese al menos dos caracteres para buscar.'); return }
     setSearching(true); setError(''); setMessage('')
     const { data, error: rpcError } = await createClient().rpc('wh_receipt_candidates', { p_query: query.trim() })
     if (rpcError) setError(rpcError.message)
@@ -73,6 +73,18 @@ export default function WarehouseLabelingPage() {
     }
     setSearching(false)
   }, [query])
+
+  useEffect(() => {
+    let live = true
+    setSearching(true)
+    void createClient().rpc('wh_receipt_candidates', { p_query: '' }).then(({ data, error: rpcError }) => {
+      if (!live) return
+      if (rpcError) setError(rpcError.message)
+      else setReceipts((data || []) as Receipt[])
+      setSearching(false)
+    }).catch(error => { if (live) { setError(error instanceof Error ? error.message : 'No se pudieron cargar los ingresos'); setSearching(false) } })
+    return () => { live = false }
+  }, [])
 
   const select = (receipt: Receipt) => {
     setSelected(receipt); setLabels([]); setLabelsPrinted(false); setMessage(''); setError('')
@@ -188,28 +200,38 @@ export default function WarehouseLabelingPage() {
     <header>
       <p className="text-xs font-bold uppercase tracking-widest text-blue-700">WMS · Recepción APT</p>
       <h1 className="mt-1 text-3xl font-black text-[#002855]">Recepción, validación y etiquetado</h1>
-      <p className="mt-1 text-sm text-slate-600">Busque el IPT por Nro_Documento o encuentre el ingreso por OT, contrato o lote. Confirme lo recibido antes de generar las etiquetas.</p>
+      <p className="mt-1 text-sm text-slate-600">Bandeja de ingresos pendientes de etiqueta. Busque por IPT, OT, contrato o lote; valide lo recibido y genere etiquetas por bulto.</p>
     </header>
     {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
     {message && <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">{message}</p>}
 
     <section className="rounded-xl border border-slate-200 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><h2 className="font-bold text-[#002855]">1. Buscar ingreso vigente del actualizable APT</h2><p className="mt-1 text-xs text-slate-500">El IPT puede incluir varias líneas; el sistema mantiene cada producto y lote por separado.</p></div>
-        <a href="/almacen/apt/datos" className="rounded-lg border px-3 py-2 text-sm font-semibold text-[#002855]">Actualizar APT</a>
+        <div><h2 className="font-bold text-[#002855]">Ingresos sin etiqueta impresa</h2><p className="mt-1 text-xs text-slate-500">Cada producto/lote del IPT aparece como una línea independiente.</p></div>
+        <a href="/almacen/apt/etiquetado" className="rounded-lg border px-3 py-2 text-sm font-semibold text-[#002855]">Actualizar Excel de ingresos</a>
       </div>
       <div className="mt-3 flex gap-2">
         <input value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void search() } }} placeholder="IPT (Nro_Documento), OT/contrato o lote…" className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
-        <button disabled={searching || query.trim().length < 2} onClick={() => void search()} className="rounded-lg bg-[#002855] px-4 text-sm font-bold text-white disabled:opacity-50">{searching ? 'Buscando…' : 'Buscar'}</button>
+        <button disabled={searching || query.trim().length < 2} onClick={() => void search()} className="rounded-lg bg-[#002855] px-4 text-sm font-bold text-white disabled:opacity-50">{searching ? 'Buscando…' : 'Buscar IPT'}</button>
       </div>
-      {receipts.length > 0 && <div className="mt-3 max-h-96 divide-y overflow-auto rounded-lg border">
-        {receipts.map(receipt => <button type="button" key={receipt.receipt_key} onClick={() => select(receipt)} className={`grid w-full gap-2 px-3 py-3 text-left text-sm hover:bg-blue-50 md:grid-cols-[1.1fr_2fr_1.4fr_auto] ${selected?.receipt_key === receipt.receipt_key ? 'bg-blue-50' : ''}`}>
-          <span><b className="text-[#002855]">IPT {receipt.document_no}</b><small className="block text-slate-500">{receipt.fecha} · Bodega {receipt.bodega}</small></span>
-          <span>{receipt.product_code} · {receipt.description || '—'}<small className="block text-slate-500">Lote {receipt.lote || '—'} · OT/Contrato {receipt.contract_code || '—'}</small></span>
-          <span>Cliente: <b>{receipt.customer_name || 'Por ingresar'}</b><small className="block text-slate-500">{receipt.quantity} {receipt.unit || ''} ERP · {receipt.validation_status === 'VALIDATED' ? `${receipt.physical_quantity} físico` : 'Pendiente de validar'}</small></span>
-          <span className="text-right"><b>{receipt.label_count} etiqueta(s)</b><small className="block text-slate-500">{receipt.label_status}</small></span>
-        </button>)}
-      </div>}
+      <div className="mt-3 overflow-x-auto rounded-lg border">
+        <table className="w-full min-w-[900px] text-left text-sm">
+          <thead className="sticky top-0 bg-slate-50 text-xs text-slate-600"><tr>
+            <th className="p-3">IPT · Fecha</th><th className="p-3">OT · Contrato</th><th className="p-3">Producto</th><th className="p-3">Lote</th>
+            <th className="p-3 text-right">Cantidad ERP</th><th className="p-3">Cliente</th><th className="p-3">Estado</th><th className="p-3"></th>
+          </tr></thead>
+          <tbody className="divide-y">{receipts.map(receipt => <tr key={receipt.receipt_key} className="hover:bg-blue-50">
+            <td className="p-3 font-semibold text-[#002855]">{receipt.document_no}<small className="block font-normal text-slate-500">{receipt.fecha} · {receipt.bodega}</small></td>
+            <td className="p-3">{receipt.contract_code || '—'}</td><td className="p-3">{receipt.product_code}<small className="block text-slate-500">{receipt.description || '—'}</small></td>
+            <td className="p-3">{receipt.lote || '—'}</td><td className="p-3 text-right tabular-nums">{receipt.quantity} {receipt.unit || ''}</td>
+            <td className="p-3">{receipt.customer_name || 'Por ingresar'}</td><td className="p-3 text-xs">{receipt.validation_status === 'VALIDATED' ? 'Validado' : 'Pendiente'} · {receipt.label_status === 'NOT_LABELED' ? 'Sin etiqueta' : receipt.label_status}</td>
+            <td className="p-3"><button type="button" onClick={() => select(receipt)} className="rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white">Recibir</button></td>
+          </tr>)}
+          {!searching && receipts.length===0 && <tr><td colSpan={8} className="p-8 text-center text-sm text-slate-500">{query.trim()?'No se encontraron ingresos para el criterio indicado.':'No hay ingresos pendientes de etiqueta en la última carga.'}</td></tr>}
+          {searching && <tr><td colSpan={8} className="p-8 text-center text-sm text-slate-500">Cargando ingresos…</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </section>
 
     {selected && <div className="fixed inset-0 z-[80] flex items-end justify-center bg-slate-950/55 sm:items-center sm:p-4">
