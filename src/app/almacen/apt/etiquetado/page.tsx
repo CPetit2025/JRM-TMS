@@ -58,11 +58,15 @@ async function parseReceiptBook(file: File): Promise<ReceiptRow[]> {
     if (!document || !product || !sourceDate || !warehouse || qty === null || qty <= 0) throw new Error(`Fila ${matrix.indexOf(row)+1}: requiere IPT, fecha, bodega, producto y cantidad positiva.`)
     const lot=text(get(row,'lote')), unit=text(get(row,'unidad')), description=text(get(row,'producto'))
     const originNumber=text(get(row,'nroorigen')), contract=text(get(row,'contrato'))
+    // Column Z is the confirmed customer field in the APT workbook; keep header aliases
+    // for future workbook versions and legacy Razon_Social as a final fallback.
+    const customerName = text(row[25]) ?? text(get(row,'cliente')) ?? text(get(row,'nombrecliente'))
+      ?? text(get(row,'razonsocial')) ?? text(get(row,'clientetms'))
     const identity=JSON.stringify([document,sourceDate,warehouse,product,lot,unit,originNumber,contract])
     const occurrence=(identityCounts.get(identity)||0)+1; identityCounts.set(identity,occurrence)
     const source_key=await sha256(`${identity}#${occurrence}`)
     result.push({
-      source_key, document_no:document, source_date:sourceDate, document_type:text(get(row,'tipodocumento')), warehouse, ruc:text(get(row,'ruc')), customer_name:text(get(row,'razonsocial')),
+      source_key, document_no:document, source_date:sourceDate, document_type:text(get(row,'tipodocumento')), warehouse, ruc:text(get(row,'ruc')), customer_name:customerName,
       product_code:product, description, color:text(get(row,'color')), quantity:qty, unit, lot, origin_doc:text(get(row,'docorigen')), origin_number:originNumber,
       delivery_date:date(get(row,'fechaentrega')), contract_code:contract, ref_doc_type:text(get(row,'reftipodocumento')),
       ref_correlation:text(get(row,'refcorrelativo')), ref_number:text(get(row,'refnumero')), ref_date:date(get(row,'reffecha')),
@@ -82,7 +86,9 @@ export default function WmsReceiptImportPage() {
     setBusy(true);setError('');setDone('')
     try{
       const [rows,bytes]=await Promise.all([parseReceiptBook(file),file.arrayBuffer()])
-      const hash=await sha256(bytes)
+      const fileHash=await sha256(bytes)
+      // Bump the importer version so an already-imported workbook is reprocessed once with column Z.
+      const hash=await sha256(`${fileHash}:customer-column-z-v1`)
       const {data,error:rpcError}=await createClient().rpc('wh_import_receipt_snapshot',{p_file_name:file.name,p_file_hash:hash,p_rows:rows})
       if(rpcError)throw rpcError
       setDone(data?.duplicate?'Este archivo ya estaba importado; no se duplicaron ingresos.':`${Number(data?.rows||rows.length)} líneas importadas para Recepción y etiquetado. No se modificó el inventario multi‑almacén.`)
