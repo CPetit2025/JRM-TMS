@@ -67,8 +67,9 @@ checks.push(
   ['WMS modal preserves individual and batch label printing', labeling.includes('Imprimir etiqueta') && labeling.includes('Imprimir lote') && labeling.includes('print:contents')],
 )
 checks.push(
-  ['same-IPT product lines can be selected in the wide, compact receipt modal', labeling.includes('max-w-7xl') && labeling.includes('selectedIptReceipts.length > 1') && labeling.includes('seleccione una para validar y etiquetar') && labeling.includes('receipt.document_no === selected.document_no')],
+  ['same-IPT product lines can be selected in the wide, compact receipt modal', labeling.includes('max-w-7xl') && labeling.includes('selectedIptReceipts.length > 1') && labeling.includes('Ítems recibidos') && labeling.includes('IPT / Código') && labeling.includes('Total ERP: ') && labeling.includes('receipt.document_no === selected.document_no')],
   ['individual print state is tracked per LPN and Zebra uses 4 x 6 inch dimensions', labeling.includes('printedLabelCodes.includes(label.package_code)') && labeling.includes("'Reimprimir etiqueta' : 'Imprimir etiqueta'") && labeling.includes('^PW1218^LL812')],
+  ['changing physical quantity displays an audit and variance warning', labeling.includes('role="alert"') && labeling.includes('el ERP conserva su cantidad original') && labeling.includes('el ajuste quedará auditado')],
 )
 checks.push(
   ['WMS printed label follows the JRM reference with official logo, lot/customer lineage, LPN barcode and quantity/weight', labeling.includes('src="/logo-jrm.png"') && labeling.includes('Cliente:') && labeling.includes('OT:') && labeling.includes('Lote:') && labeling.includes('<Code128Barcode value={label.package_code}') && labeling.includes('wh-label-quantity') && labeling.includes('IPT:') && labeling.includes('Fecha:')],
