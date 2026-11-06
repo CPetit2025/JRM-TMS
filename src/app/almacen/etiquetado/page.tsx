@@ -407,7 +407,7 @@ export default function WarehouseLabelingPage() {
               <b className="wh-label-lpn block shrink-0 text-center font-mono text-sm sm:text-xl">{label.package_code}</b>
               <div className="wh-label-footer grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 border-t border-slate-400 pt-1">
                 <div className="min-w-0 text-[9px] leading-tight sm:text-xs"><div className="truncate"><b className="text-[#002855]">IPT:</b> {label.source_document_no}</div><div><b className="text-[#002855]">Fecha:</b> {label.source_date}</div></div>
-                <div className="flex min-w-0 items-baseline justify-center gap-1 whitespace-nowrap"><b className="wh-label-quantity text-xl leading-none sm:text-3xl">{label.quantity} {label.unit || ''}</b><span className="text-[9px] sm:text-sm">· {label.weight_kg === null ? 'Peso por registrar' : label.weight_kg + ' kg'}</span></div>
+                <div className="flex min-w-0 items-baseline justify-center gap-1 whitespace-nowrap"><b className="wh-label-quantity text-xl leading-none sm:text-3xl">{label.quantity} {label.unit || ''}</b><span className="wh-label-quantity text-xl leading-none text-black sm:text-3xl">· {label.weight_kg === null ? 'Peso por registrar' : label.weight_kg + ' kg'}</span></div>
                 <div className="text-right text-[10px] sm:text-sm">{label.sequence_no}/{label.sequence_total}<button type="button" onClick={() => void print([label])} className="print:hidden mt-1 block rounded-md border border-slate-300 px-2 py-1 text-[10px] font-bold text-[#002855]">{printedLabelCodes.includes(label.package_code) ? 'Reimprimir etiqueta' : 'Imprimir etiqueta'}</button></div>
               </div>
             </article>
