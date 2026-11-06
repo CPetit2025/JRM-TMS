@@ -7,11 +7,11 @@ CREATE TABLE public.wh_receipt_import_runs (
 );
 CREATE TABLE public.wh_receipt_sources (
  source_key text PRIMARY KEY, site_id uuid NOT NULL REFERENCES public.sites(id), document_no text NOT NULL,
- source_date date NOT NULL, warehouse text NOT NULL, ruc text, customer_name text, product_code text NOT NULL,
- description text, quantity numeric(14,3) NOT NULL CHECK(quantity>=0), unit text, lot text, origin_doc text,
+ source_date date NOT NULL, document_type text, warehouse text NOT NULL, ruc text, customer_name text, product_code text NOT NULL,
+ description text, color text, quantity numeric(14,3) NOT NULL CHECK(quantity>=0), unit text, lot text, origin_doc text,
  origin_number text, delivery_date date, contract_code text, ref_doc_type text, ref_correlation text,
  ref_number text, ref_date date, comment text, unit_weight numeric(14,3), total_weight numeric(14,3),
- cost_center text, source_import_hash text NOT NULL REFERENCES public.wh_receipt_import_runs(file_hash),
+ cost_center text, source_updated_at timestamptz, source_import_hash text NOT NULL REFERENCES public.wh_receipt_import_runs(file_hash),
  active boolean NOT NULL DEFAULT true, imported_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX wh_receipt_sources_lookup_idx ON public.wh_receipt_sources(document_no,source_date DESC);
@@ -41,22 +41,22 @@ BEGIN
  INSERT INTO public.wh_receipt_import_runs(file_name,file_hash,row_count,imported_by)
  VALUES(trim(p_file_name),p_file_hash,jsonb_array_length(p_rows),auth.uid()) ON CONFLICT(file_hash) DO NOTHING;
  IF NOT FOUND THEN RETURN jsonb_build_object('success',true,'duplicate',true,'rows',0); END IF;
- INSERT INTO public.wh_receipt_sources(source_key,site_id,document_no,source_date,warehouse,ruc,customer_name,product_code,description,quantity,unit,lot,
-  origin_doc,origin_number,delivery_date,contract_code,ref_doc_type,ref_correlation,ref_number,ref_date,comment,unit_weight,total_weight,cost_center,source_import_hash)
- SELECT r.source_key,v_site,trim(r.document_no),r.source_date,trim(r.warehouse),nullif(trim(r.ruc),''),nullif(trim(r.customer_name),''),trim(r.product_code),
-  nullif(trim(r.description),''),r.quantity,nullif(trim(r.unit),''),nullif(trim(r.lot),''),nullif(trim(r.origin_doc),''),nullif(trim(r.origin_number),''),
+ INSERT INTO public.wh_receipt_sources(source_key,site_id,document_no,source_date,document_type,warehouse,ruc,customer_name,product_code,description,color,quantity,unit,lot,
+  origin_doc,origin_number,delivery_date,contract_code,ref_doc_type,ref_correlation,ref_number,ref_date,comment,unit_weight,total_weight,cost_center,source_updated_at,source_import_hash)
+ SELECT r.source_key,v_site,trim(r.document_no),r.source_date,nullif(trim(r.document_type),''),trim(r.warehouse),nullif(trim(r.ruc),''),nullif(trim(r.customer_name),''),trim(r.product_code),
+  nullif(trim(r.description),''),nullif(trim(r.color),''),r.quantity,nullif(trim(r.unit),''),nullif(trim(r.lot),''),nullif(trim(r.origin_doc),''),nullif(trim(r.origin_number),''),
   r.delivery_date,nullif(trim(r.contract_code),''),nullif(trim(r.ref_doc_type),''),nullif(trim(r.ref_correlation),''),nullif(trim(r.ref_number),''),r.ref_date,
-  nullif(trim(r.comment),''),r.unit_weight,r.total_weight,nullif(trim(r.cost_center),''),p_file_hash
- FROM jsonb_to_recordset(p_rows) AS r(source_key text,document_no text,source_date date,warehouse text,ruc text,customer_name text,product_code text,
-  description text,quantity numeric,unit text,lot text,origin_doc text,origin_number text,delivery_date date,contract_code text,ref_doc_type text,
-  ref_correlation text,ref_number text,ref_date date,comment text,unit_weight numeric,total_weight numeric,cost_center text)
+  nullif(trim(r.comment),''),r.unit_weight,r.total_weight,nullif(trim(r.cost_center),''),r.source_updated_at,p_file_hash
+ FROM jsonb_to_recordset(p_rows) AS r(source_key text,document_no text,source_date date,document_type text,warehouse text,ruc text,customer_name text,product_code text,
+  description text,color text,quantity numeric,unit text,lot text,origin_doc text,origin_number text,delivery_date date,contract_code text,ref_doc_type text,
+  ref_correlation text,ref_number text,ref_date date,comment text,unit_weight numeric,total_weight numeric,cost_center text,source_updated_at timestamptz)
  WHERE nullif(trim(r.source_key),'') IS NOT NULL AND nullif(trim(r.document_no),'') IS NOT NULL AND r.source_date IS NOT NULL
   AND nullif(trim(r.warehouse),'') IS NOT NULL AND nullif(trim(r.product_code),'') IS NOT NULL AND r.quantity>0
- ON CONFLICT(source_key) DO UPDATE SET document_no=excluded.document_no,source_date=excluded.source_date,warehouse=excluded.warehouse,ruc=excluded.ruc,
-  customer_name=excluded.customer_name,product_code=excluded.product_code,description=excluded.description,quantity=excluded.quantity,unit=excluded.unit,lot=excluded.lot,
+ ON CONFLICT(source_key) DO UPDATE SET document_no=excluded.document_no,source_date=excluded.source_date,document_type=excluded.document_type,warehouse=excluded.warehouse,ruc=excluded.ruc,
+  customer_name=excluded.customer_name,product_code=excluded.product_code,description=excluded.description,color=excluded.color,quantity=excluded.quantity,unit=excluded.unit,lot=excluded.lot,
   origin_doc=excluded.origin_doc,origin_number=excluded.origin_number,delivery_date=excluded.delivery_date,contract_code=excluded.contract_code,
   ref_doc_type=excluded.ref_doc_type,ref_correlation=excluded.ref_correlation,ref_number=excluded.ref_number,ref_date=excluded.ref_date,comment=excluded.comment,
-  unit_weight=excluded.unit_weight,total_weight=excluded.total_weight,cost_center=excluded.cost_center,source_import_hash=excluded.source_import_hash,
+  unit_weight=excluded.unit_weight,total_weight=excluded.total_weight,cost_center=excluded.cost_center,source_updated_at=excluded.source_updated_at,source_import_hash=excluded.source_import_hash,
   active=true,updated_at=now();
  GET DIAGNOSTICS v_inserted=ROW_COUNT;
  IF v_inserted<>jsonb_array_length(p_rows) THEN RAISE EXCEPTION 'El archivo contiene filas inválidas (%/%); no se aplicó la importación',v_inserted,jsonb_array_length(p_rows); END IF;
@@ -79,7 +79,7 @@ BEGIN
    CASE WHEN v.id IS NULL THEN 'PENDING' WHEN v.erp_quantity<>r.quantity THEN 'STALE' ELSE 'VALIDATED' END AS validation_status,
    coalesce(p.label_count,0) AS label_count,coalesce(p.labeled_qty,0) AS labeled_qty,
    CASE WHEN coalesce(p.label_count,0)=0 THEN 'NOT_LABELED' WHEN p.labeled_qty=coalesce(v.physical_quantity,r.quantity) AND p.expected_count=p.label_count THEN 'MATCH' ELSE 'DIFFERENCE' END AS label_status
-  FROM (SELECT s.source_key AS receipt_key,s.document_no,s.source_date AS fecha,s.lot AS lote,s.product_code,s.description,s.unit,s.warehouse AS bodega,
+  FROM (SELECT s.source_key AS receipt_key,s.document_no,s.source_date AS fecha,s.document_type,s.color,s.source_updated_at,s.lot AS lote,s.product_code,s.description,s.unit,s.warehouse AS bodega,
     coalesce(nullif(s.contract_code,''),nullif(s.origin_number,''),s.lot) AS contract_code,s.customer_name,s.quantity,s.total_weight AS weight_kg
    FROM public.wh_receipt_sources s WHERE s.active) r
   LEFT JOIN public.contracts c ON regexp_replace(regexp_replace(upper(c.code::text),'[^A-Z0-9]','','g'),'^OT','')=regexp_replace(regexp_replace(upper(r.contract_code),'[^A-Z0-9]','','g'),'^OT','')
