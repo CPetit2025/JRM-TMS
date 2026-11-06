@@ -27,11 +27,10 @@ type ReceiptPackage = {
 
 type Validation = {
   source_movement_key: string
-  physical_quantity: number
   validated_by: string
   validated_at: string
 }
-type Profile = { id: string; first_name: string | null; last_name: string | null; username: string | null }
+type OperatorValidation = Validation & { first_name: string | null; last_name: string | null; username: string | null }
 type ReceiptGroup = {
   documentNo: string
   packages: ReceiptPackage[]
@@ -87,29 +86,23 @@ export default function AptReceiptControlPage() {
     setRows(packages)
     const movementKeys = [...new Set(packages.map(row => row.source_movement_key))]
     const validationChunks = await Promise.all(Array.from({ length: Math.ceil(movementKeys.length / 100) }, (_, i) =>
-      client.from('wh_receipt_validations')
-        .select('source_movement_key,physical_quantity,validated_by,validated_at')
-        .in('source_movement_key', movementKeys.slice(i * 100, (i + 1) * 100))
-        .order('validated_at', { ascending: false }),
+      client.rpc('wh_receipt_control_operators', { p_source_movement_keys: movementKeys.slice(i * 100, (i + 1) * 100) }),
     ))
     const latestByMovement = new Map<string, Validation>()
-    const validationRows = validationChunks.flatMap(result => {
+    const operatorRows = validationChunks.flatMap(result => {
       if (result.error) return []
-      return (result.data || []) as Validation[]
+      return (result.data || []) as OperatorValidation[]
     })
+    const validationRows = operatorRows as Validation[]
     validationRows.sort((a, b) => new Date(b.validated_at).getTime() - new Date(a.validated_at).getTime())
     for (const row of validationRows) if (!latestByMovement.has(row.source_movement_key)) latestByMovement.set(row.source_movement_key, row)
     const validationMap = Object.fromEntries(latestByMovement)
     setValidations(validationMap)
 
-    const operatorIds = [...new Set(validationRows.map(row => row.validated_by))]
-    const profileChunks = await Promise.all(Array.from({ length: Math.ceil(operatorIds.length / 100) }, (_, i) =>
-      client.from('profiles').select('id,first_name,last_name,username').in('id', operatorIds.slice(i * 100, (i + 1) * 100)),
-    ))
     const names: Record<string, string> = {}
-    for (const result of profileChunks) for (const profile of (result.data || []) as Profile[]) {
-      const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim()
-      names[profile.id] = fullName || profile.username || `Usuario ${profile.id.slice(0, 8)}`
+    for (const row of operatorRows) {
+      const fullName = [row.first_name, row.last_name].filter(Boolean).join(' ').trim()
+      names[row.validated_by] = fullName || row.username || `Usuario ${row.validated_by.slice(0, 8)}`
     }
     setProfiles(names)
     setLastUpdated(new Date())
