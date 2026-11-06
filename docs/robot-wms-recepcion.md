@@ -20,10 +20,10 @@ Se pide una cuenta WMS con permiso de carga; la credencial queda cifrada con DPA
 & "$env:LOCALAPPDATA\\JRM-TMS\\wms-auto\\ejecutar.ps1" -Revisar
 ```
 
-Esta revisión valida cuenta, acceso a la pantalla y lectura del archivo sin importarlo. Para importar ahora, ejecute el mismo comando sin `-Revisar`. Solo después de validar los registros en Recepción, habilite la tarea cada 3 horas:
+Esta revisión valida cuenta, acceso a la pantalla y lectura del archivo sin importarlo. Para importar ahora, ejecute el mismo comando sin `-Revisar`. Solo después de validar los registros en Recepción, programe la tarea diaria a la hora elegida:
 
 ```powershell
 & "$env:LOCALAPPDATA\\JRM-TMS\\wms-auto\\ejecutar.ps1" -Programar -Hora 07:00
 ```
 
-Si el archivo no cambió, el robot no lo vuelve a subir. Una nueva versión del mismo contenido es idempotente en la base WMS. La tarea no toca `salida.xlsx`; ese libro queda para la fase posterior de conciliación. Los logs se guardan en `%LOCALAPPDATA%\\JRM-TMS\\wms-auto\\logs`. La sesión de Windows debe permanecer iniciada.
+Si el archivo no cambió, el robot no lo vuelve a subir. Una nueva versión del mismo contenido es idempotente en la base WMS. La tarea no toca `salida.xlsx`; ese libro queda para la fase posterior de conciliación. Los logs se guardan en `%LOCALAPPDATA%\\JRM-TMS\\wms-auto\\logs`. La tarea corre una vez al día y requiere que la sesión de Windows esté iniciada. El archivo de salida no se lee ni modifica.
