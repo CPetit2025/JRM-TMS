@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { PackageCheck, Printer, RefreshCw, Search } from 'lucide-react'
+import { ClipboardList, PackageCheck, Printer, RefreshCw, Search, X } from 'lucide-react'
 import { Code128Barcode } from '@/components/warehouse/Code128Barcode'
 
 type ReceiptPackage = {
@@ -19,22 +19,41 @@ type ReceiptPackage = {
   weight_kg: number | null
   sequence_no: number
   sequence_total: number
+  source_movement_key: string
   label_print_count: number
   status: string
   created_at: string
 }
 
-const errorText = (error: { message: string }) => error.message
-const statusLabel: Record<string, string> = {
-  AVAILABLE: 'Recepcionado',
-  RESERVED: 'Reservado',
-  PICKED: 'Recolectado',
-  PACKED: 'Empacado',
-  LOADED: 'Despachado',
+type Validation = {
+  source_movement_key: string
+  physical_quantity: number
+  validated_by: string
+  validated_at: string
 }
+type Profile = { id: string; first_name: string | null; last_name: string | null; username: string | null }
+type ReceiptGroup = {
+  documentNo: string
+  packages: ReceiptPackage[]
+  contracts: string[]
+  lots: string[]
+  products: string[]
+  units: number
+  weightKg: number
+  reprints: number
+  validations: Validation[]
+}
+const errorText = (error: { message: string }) => error.message
+const numberFmt = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 3 })
+const weightText = (kg: number) => kg >= 1000
+  ? `${numberFmt.format(kg / 1000)} TN`
+  : `${numberFmt.format(kg)} kg`
+const unitIsPiece = (unit: string | null) => !unit || /^(UND|UNID|UNIDAD|UNIDADES|PZA|PCS)\.?$/i.test(unit.trim())
 
 export default function AptReceiptControlPage() {
   const [rows, setRows] = useState<ReceiptPackage[]>([])
+  const [validations, setValidations] = useState<Record<string, Validation>>({})
+  const [profiles, setProfiles] = useState<Record<string, string>>({})
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -42,24 +61,58 @@ export default function AptReceiptControlPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [printingCode, setPrintingCode] = useState<string | null>(null)
   const [printLabel, setPrintLabel] = useState<ReceiptPackage | null>(null)
+  const [detail, setDetail] = useState<ReceiptGroup | null>(null)
 
   const load = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true)
     setError('')
-    const { data, error: queryError } = await createClient()
+    const client = createClient()
+    const { data, error: queryError } = await client
       .from('wh_packages')
-      .select('package_code,source_document_no,source_contract_code,source_lot,source_product_code,source_warehouse,source_date,description,quantity,unit,weight_kg,sequence_no,sequence_total,label_print_count,status,created_at')
+      .select('package_code,source_document_no,source_contract_code,source_lot,source_product_code,source_warehouse,source_date,description,quantity,unit,weight_kg,sequence_no,sequence_total,source_movement_key,label_print_count,status,created_at')
       .eq('source_system', 'ERP')
       .gt('label_print_count', 0)
       .neq('status', 'VOID')
       .order('created_at', { ascending: false })
       .limit(2000)
 
-    if (queryError) setError(errorText(queryError))
-    else {
-      setRows((data || []) as ReceiptPackage[])
-      setLastUpdated(new Date())
+    if (queryError) {
+      setError(errorText(queryError))
+      setLoading(false)
+      setRefreshing(false)
+      return
     }
+
+    const packages = (data || []) as ReceiptPackage[]
+    setRows(packages)
+    const movementKeys = [...new Set(packages.map(row => row.source_movement_key))]
+    const validationChunks = await Promise.all(Array.from({ length: Math.ceil(movementKeys.length / 100) }, (_, i) =>
+      client.from('wh_receipt_validations')
+        .select('source_movement_key,physical_quantity,validated_by,validated_at')
+        .in('source_movement_key', movementKeys.slice(i * 100, (i + 1) * 100))
+        .order('validated_at', { ascending: false }),
+    ))
+    const latestByMovement = new Map<string, Validation>()
+    const validationRows = validationChunks.flatMap(result => {
+      if (result.error) return []
+      return (result.data || []) as Validation[]
+    })
+    validationRows.sort((a, b) => new Date(b.validated_at).getTime() - new Date(a.validated_at).getTime())
+    for (const row of validationRows) if (!latestByMovement.has(row.source_movement_key)) latestByMovement.set(row.source_movement_key, row)
+    const validationMap = Object.fromEntries(latestByMovement)
+    setValidations(validationMap)
+
+    const operatorIds = [...new Set(validationRows.map(row => row.validated_by))]
+    const profileChunks = await Promise.all(Array.from({ length: Math.ceil(operatorIds.length / 100) }, (_, i) =>
+      client.from('profiles').select('id,first_name,last_name,username').in('id', operatorIds.slice(i * 100, (i + 1) * 100)),
+    ))
+    const names: Record<string, string> = {}
+    for (const result of profileChunks) for (const profile of (result.data || []) as Profile[]) {
+      const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim()
+      names[profile.id] = fullName || profile.username || `Usuario ${profile.id.slice(0, 8)}`
+    }
+    setProfiles(names)
+    setLastUpdated(new Date())
     setLoading(false)
     setRefreshing(false)
   }, [])
@@ -70,32 +123,68 @@ export default function AptReceiptControlPage() {
       if (document.visibilityState === 'visible') void load()
     }, 30000)
     const afterPrint = () => { setPrintLabel(null); setPrintingCode(null) }
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setDetail(null) }
     window.addEventListener('afterprint', afterPrint)
-    return () => { window.clearInterval(timer); window.removeEventListener('afterprint', afterPrint) }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('afterprint', afterPrint)
+      window.removeEventListener('keydown', onKeyDown)
+    }
   }, [load])
+
+  const groups = useMemo(() => {
+    const byIpt = new Map<string, ReceiptGroup>()
+    for (const row of rows) {
+      const key = row.source_document_no.trim().toLocaleUpperCase()
+      let group = byIpt.get(key)
+      if (!group) {
+        group = { documentNo: row.source_document_no, packages: [], contracts: [], lots: [], products: [], units: 0, weightKg: 0, reprints: 0, validations: [] }
+        byIpt.set(key, group)
+      }
+      group.packages.push(row)
+      if (row.source_contract_code && !group.contracts.includes(row.source_contract_code)) group.contracts.push(row.source_contract_code)
+      if (row.source_lot && !group.lots.includes(row.source_lot)) group.lots.push(row.source_lot)
+      if (!group.products.includes(row.source_product_code)) group.products.push(row.source_product_code)
+      if (unitIsPiece(row.unit)) group.units += Number(row.quantity || 0)
+      group.weightKg += Number(row.weight_kg || 0)
+      group.reprints += Math.max(0, Number(row.label_print_count || 0) - 1)
+    }
+    for (const group of byIpt.values()) {
+      const latest = new Map<string, Validation>()
+      for (const row of group.packages) {
+        const validation = validations[row.source_movement_key]
+        if (validation && !latest.has(validation.source_movement_key)) latest.set(validation.source_movement_key, validation)
+      }
+      group.validations = [...latest.values()].sort((a, b) => new Date(b.validated_at).getTime() - new Date(a.validated_at).getTime())
+    }
+    return [...byIpt.values()].sort((a, b) => a.documentNo.localeCompare(b.documentNo, 'es', { numeric: true }))
+  }, [rows, validations])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase()
-    if (!q) return rows
-    return rows.filter(row => [
-      row.package_code, row.source_document_no, row.source_contract_code, row.source_lot,
-      row.source_product_code, row.source_warehouse, row.description,
-    ].some(value => String(value || '').toLocaleLowerCase().includes(q)))
-  }, [query, rows])
+    if (!q) return groups
+    return groups.filter(group => [
+      group.documentNo, ...group.contracts, ...group.lots, ...group.products,
+      ...group.packages.map(row => row.package_code),
+    ].some(value => value.toLocaleLowerCase().includes(q)))
+  }, [groups, query])
 
+  const receiverNames = (group: ReceiptGroup) => [...new Set(group.validations.map(row =>
+    profiles[row.validated_by] || `Usuario ${row.validated_by.slice(0, 8)}`,
+  ))]
   const printExistingPackage = async (row: ReceiptPackage) => {
     if (printingCode) return
-    let reason: string | null = null
-    if (row.label_print_count > 0) {
-      reason = window.prompt('Motivo de reimpresión de la etiqueta:')
-      if (!reason?.trim()) return
-    }
+    const reason = window.prompt('Motivo de reimpresión de la etiqueta:')
+    if (!reason?.trim()) return
     setPrintingCode(row.package_code)
     setError('')
-    const client = createClient()
-    const result = await client.rpc('wh_reprint_label', { p_package_code: row.package_code, p_reason: reason!.trim() })
-    if (result.error) {
-      setError(errorText(result.error))
+    const { error: rpcError } = await createClient().rpc('wh_reprint_label', {
+      p_package_code: row.package_code,
+      p_reason: reason.trim(),
+    })
+    if (rpcError) {
+      setError(errorText(rpcError))
       setPrintingCode(null)
       return
     }
@@ -106,16 +195,12 @@ export default function AptReceiptControlPage() {
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => window.print()))
   }
 
-  const statusClass = (status: string) => status === 'AVAILABLE'
-    ? 'bg-emerald-50 text-emerald-800'
-    : status === 'VOID' ? 'bg-rose-50 text-rose-800' : 'bg-blue-50 text-blue-800'
-
   return <div className="w-full min-w-0 space-y-5">
     <header className="flex flex-wrap items-end justify-between gap-3">
       <div>
         <p className="text-xs font-bold uppercase tracking-widest text-blue-700">APT · Control de recepción</p>
         <h1 className="mt-1 text-3xl font-black text-[#002855]">Control de recepcionados</h1>
-        <p className="mt-1 text-sm text-slate-600">Control de bultos recepcionados con etiqueta impresa, cantidad y estado WMS. Se actualiza cada 30 segundos.</p>
+        <p className="mt-1 text-sm text-slate-600">Una fila por IPT. Consulte sus contratos y bultos; las reimpresiones conservan el código original.</p>
       </div>
       <button type="button" disabled={refreshing} onClick={() => void load(true)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-[#002855] disabled:opacity-50">
         <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''}/>Actualizar control
@@ -128,56 +213,86 @@ export default function AptReceiptControlPage() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="grid h-11 w-11 place-items-center rounded-xl bg-blue-50 text-blue-800"><PackageCheck size={22}/></span>
-          <div><h2 className="font-bold text-[#002855]">Bultos recepcionados</h2><p className="text-xs text-slate-500">{filtered.length} de {rows.length} registros</p></div>
+          <div><h2 className="font-bold text-[#002855]">Ingresos recepcionados</h2><p className="text-xs text-slate-500">{filtered.length} de {groups.length} IPT</p></div>
         </div>
         <p className="text-xs text-slate-400">{lastUpdated ? `Actualizado: ${lastUpdated.toLocaleTimeString('es-PE')}` : 'Consultando…'}</p>
       </div>
 
       <label className="relative mb-4 block">
         <Search size={16} className="absolute left-3 top-3 text-slate-400"/>
-        <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar por código de bulto, IPT, contrato, lote o producto" className="w-full rounded-lg border border-slate-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500"/>
+        <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar por IPT, contrato, lote o producto" className="w-full rounded-lg border border-slate-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500"/>
       </label>
 
       <div className="w-full overflow-x-auto rounded-lg border border-slate-200">
-        <table className="w-full min-w-[1180px] text-left text-sm">
+        <table className="w-full min-w-[1050px] text-left text-sm">
           <thead className="bg-slate-50 text-xs font-semibold text-slate-600"><tr>
-            <th className="p-3">Bulto / código de barras</th><th className="p-3">IPT · OT/Contrato</th><th className="p-3">Producto</th>
-            <th className="p-3">Lote · Bodega</th><th className="p-3 text-right">Recepcionado</th><th className="p-3">Estado WMS</th><th className="p-3">Etiqueta</th><th className="p-3">Acciones</th>
+            <th className="p-3">Contrato</th><th className="p-3">IPT</th><th className="p-3">Productos</th>
+            <th className="p-3">Lote</th><th className="p-3 text-right">UND</th><th className="p-3 text-right">Kg / TN</th>
+            <th className="p-3 text-right">Bultos</th><th className="p-3 text-right">Reimpresiones</th><th className="p-3">Acciones</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-200">
-            {filtered.map(row => <tr key={row.package_code} className="hover:bg-blue-50/60">
-              <td className="p-3"><span className="font-mono font-bold text-[#002855]">{row.package_code}</span><small className="block text-slate-500">Bulto {row.sequence_no}/{row.sequence_total}</small></td>
-              <td className="p-3 font-medium">{row.source_document_no}<small className="block text-slate-500">{row.source_contract_code || 'Sin contrato'}</small></td>
-              <td className="p-3">{row.source_product_code}<small className="block max-w-[260px] truncate text-slate-500" title={row.description}>{row.description}</small></td>
-              <td className="p-3">{row.source_lot || '—'}<small className="block text-slate-500">{row.source_warehouse}</small></td>
-              <td className="p-3 text-right tabular-nums">{row.quantity} {row.unit || ''}{row.weight_kg !== null && <small className="block text-slate-500">{row.weight_kg} kg</small>}</td>
-              <td className="p-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(row.status)}`}>{statusLabel[row.status] || row.status}</span></td>
-              <td className="p-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${row.label_print_count > 0 ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>{row.label_print_count > 0 ? 'Impresa' : 'Pendiente'}</span>{row.label_print_count > 1 && <small className="mt-1 block text-slate-500">{row.label_print_count - 1} reimpresión(es)</small>}</td>
-              <td className="p-3"><button type="button" disabled={printingCode !== null} onClick={() => void printExistingPackage(row)} className="inline-flex min-h-9 items-center gap-2 whitespace-nowrap rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Printer size={14}/>{printingCode === row.package_code ? 'Preparando…' : 'Reimprimir etiqueta'}</button></td>
+            {filtered.map(group => <tr key={group.documentNo.toLocaleUpperCase()} className="hover:bg-blue-50/60">
+              <td className="max-w-48 p-3">{group.contracts.length ? group.contracts.map((value, i) => <span key={value} className={i ? 'block text-xs text-slate-500' : 'block'}>{value}</span>) : '—'}</td>
+              <td className="p-3 font-bold text-[#002855]">{group.documentNo}</td>
+              <td className="max-w-64 p-3">{group.products.slice(0, 2).join(', ')}{group.products.length > 2 && <small className="block text-slate-500">+{group.products.length - 2} productos</small>}</td>
+              <td className="max-w-48 p-3">{group.lots.join(', ') || '—'}</td>
+              <td className="p-3 text-right tabular-nums">{group.units ? numberFmt.format(group.units) : '—'}</td>
+              <td className="p-3 text-right tabular-nums">{group.weightKg ? weightText(group.weightKg) : '—'}</td>
+              <td className="p-3 text-right tabular-nums">{group.packages.length}</td>
+              <td className="p-3 text-right tabular-nums">{group.reprints}</td>
+              <td className="p-3"><button type="button" onClick={() => setDetail(group)} className="inline-flex min-h-9 items-center gap-2 whitespace-nowrap rounded-lg border border-[#002855] px-3 py-2 text-xs font-bold text-[#002855] hover:bg-blue-50"><ClipboardList size={14}/>Ver detalle</button></td>
             </tr>)}
-            {!loading && filtered.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-sm text-slate-500">{query ? 'No hay recepciones que coincidan con la búsqueda.' : 'Todavía no hay bultos recepcionados en el APT.'}</td></tr>}
-            {loading && <tr><td colSpan={8} className="p-10 text-center text-sm text-slate-500">Cargando recepciones…</td></tr>}
+            {!loading && filtered.length === 0 && <tr><td colSpan={9} className="p-10 text-center text-sm text-slate-500">{query ? 'No hay IPT recepcionados que coincidan con la búsqueda.' : 'Todavía no hay ingresos recepcionados en el APT.'}</td></tr>}
+            {loading && <tr><td colSpan={9} className="p-10 text-center text-sm text-slate-500">Cargando recepciones…</td></tr>}
           </tbody>
         </table>
       </div>
-      <p className="mt-3 text-xs text-slate-500">Los bultos pendientes de impresión permanecen en «02 · Recepción por IPT». Aquí cada reimpresión utiliza el mismo paquete y código de barras, requiere motivo y queda auditada.</p>
+      <p className="mt-3 text-xs text-slate-500">Los IPT pendientes de impresión permanecen en «02 · Recepción por IPT»; cada IPT aparece una sola vez en este control.</p>
     </section>
+
+    {detail && <div className="fixed inset-0 z-[2147483000] flex items-center justify-center bg-slate-950/60 p-2 sm:p-4" onMouseDown={event => { if (event.target === event.currentTarget) setDetail(null) }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="apt-receipt-detail-title" className="flex max-h-[96dvh] w-full max-w-7xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-blue-50 px-4 py-3 sm:px-6">
+          <div><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Detalle de recepción</p><h2 id="apt-receipt-detail-title" className="text-xl font-black text-[#002855]">IPT {detail.documentNo}</h2></div>
+          <button type="button" aria-label="Cerrar detalle" onClick={() => setDetail(null)} className="grid h-10 w-10 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><X size={20}/></button>
+        </header>
+        <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4 sm:p-5">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Contrato(s)</small><b className="text-sm text-[#002855]">{detail.contracts.join(', ') || '—'}</b></div>
+            <div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Recepcionado por</small><b className="text-sm text-[#002855]">{receiverNames(detail).join(', ') || 'Registro de validación no disponible'}</b></div>
+            <div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Fecha de recepción</small><b className="text-sm text-[#002855]">{detail.validations[0] ? new Date(detail.validations[0].validated_at).toLocaleString('es-PE') : '—'}</b></div>
+            <div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Bultos · Reimpresiones</small><b className="text-sm text-[#002855]">{detail.packages.length} · {detail.reprints}</b></div>
+            <div className="rounded-lg bg-blue-700 p-3 text-white"><small className="block text-blue-100">UND · Peso</small><b>{numberFmt.format(detail.units)} UND · {weightText(detail.weightKg)}</b></div>
+          </div>
+
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="w-full min-w-[1080px] text-left text-sm">
+              <thead className="bg-slate-50 text-xs font-semibold text-slate-600"><tr><th className="p-3">Producto · descripción</th><th className="p-3">Lote</th><th className="p-3 text-right">UND</th><th className="p-3 text-right">Kg</th><th className="p-3">Código de barras</th><th className="p-3">Acción</th></tr></thead>
+              <tbody className="divide-y divide-slate-200">{detail.packages.map(row => <tr key={row.package_code}>
+                <td className="p-3">{row.source_product_code}<small className="block max-w-xs truncate text-slate-500" title={row.description}>{row.description}</small></td>
+                <td className="p-3">{row.source_lot || '—'}</td><td className="p-3 text-right tabular-nums">{unitIsPiece(row.unit) ? numberFmt.format(row.quantity) : '—'}</td>
+                <td className="p-3 text-right tabular-nums">{row.weight_kg === null ? '—' : numberFmt.format(row.weight_kg)}</td>
+                <td className="p-3"><div className="w-48"><Code128Barcode value={row.package_code} height={48} className="h-9 w-full"/><span className="font-mono text-xs font-bold text-[#002855]">{row.package_code}</span></div></td>
+                <td className="p-3"><button type="button" disabled={printingCode !== null} onClick={() => void printExistingPackage(row)} className="inline-flex min-h-9 items-center gap-2 whitespace-nowrap rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Printer size={14}/>{printingCode === row.package_code ? 'Preparando…' : 'Reimprimir'}</button><small className="mt-1 block text-slate-500">{Math.max(0, row.label_print_count - 1)} reimpresión(es)</small></td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+        </div>
+        <footer className="flex shrink-0 justify-between border-t border-slate-200 bg-white px-4 py-3"><span className="self-center text-xs text-slate-500">Bodega: {detail.packages[0]?.source_warehouse || '—'} · La reimpresión conserva el código original.</span><button type="button" onClick={() => setDetail(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-[#002855]">Cerrar</button></footer>
+      </section>
+    </div>}
 
     {printLabel && <div id="apt-reprint-root" aria-hidden="true">
       <article className="wh-label">
         <div className="wh-label-head">
           <div className="wh-logo"><img src="/logo-jrm.png" alt="JRM"/></div>
-          <div className="wh-label-meta">
-            <div><b>IPT:</b> {printLabel.source_document_no}</div>
-            <div><b>OT/Contrato:</b> {printLabel.source_contract_code || '—'}</div>
-            <div><b>Lote:</b> {printLabel.source_lot || '—'} · {printLabel.source_warehouse}</div>
-          </div>
+          <div className="wh-label-meta"><div><b>IPT:</b> {printLabel.source_document_no}</div><div><b>OT/Contrato:</b> {printLabel.source_contract_code || '—'}</div><div><b>Lote:</b> {printLabel.source_lot || '—'} · {printLabel.source_warehouse}</div></div>
         </div>
         <b className="wh-sku">{printLabel.source_product_code}</b>
         <div className="wh-description">{printLabel.description}</div>
         <Code128Barcode value={printLabel.package_code} height={84} className="wh-barcode"/>
         <b className="wh-code">{printLabel.package_code}</b>
-        <div className="wh-footer"><span><b>IPT:</b> {printLabel.source_document_no}<br/><b>Fecha:</b> {printLabel.source_date}</span><strong>{printLabel.quantity} {printLabel.unit || ''} · {printLabel.weight_kg === null ? 'Peso por registrar' : `${printLabel.weight_kg} kg`}</strong><span>{printLabel.sequence_no}/{printLabel.sequence_total}</span></div>
+        <div className="wh-footer"><span><b>IPT:</b> {printLabel.source_document_no}<br/><b>Fecha:</b> {printLabel.source_date}</span><strong>{numberFmt.format(printLabel.quantity)} {printLabel.unit || ''} · {printLabel.weight_kg === null ? 'Peso por registrar' : `${numberFmt.format(printLabel.weight_kg)} kg`}</strong><span>{printLabel.sequence_no}/{printLabel.sequence_total}</span></div>
       </article>
     </div>}
 
