@@ -6,6 +6,7 @@ const path = require('node:path')
 const root = path.resolve(__dirname, '..')
 const sql = readFileSync(path.join(root, 'supabase/migrations/20261225103000_warehouse_wms_core.sql'), 'utf8')
 const receiptSource = readFileSync(path.join(root, 'supabase/migrations/20261225104000_wms_receipt_source_import.sql'), 'utf8')
+const receiptInbox = readFileSync(path.join(root, 'supabase/migrations/20261225105000_wms_receipt_inbox_refresh_customer_lookup.sql'), 'utf8')
 const receiptImport = readFileSync(path.join(root, 'src/app/almacen/apt/etiquetado/page.tsx'), 'utf8')
 const receiptRobot = readFileSync(path.join(root, 'scripts/wms-auto/cargar-entrada.mjs'), 'utf8')
 const labeling = readFileSync(path.join(root, 'src/app/almacen/etiquetado/page.tsx'), 'utf8')
@@ -35,6 +36,10 @@ const checks = [
   ['WMS receipt import uses its own source and does not write TMS inventory movements', receiptSource.includes('CREATE TABLE public.wh_receipt_sources') && receiptSource.includes('FROM public.wh_receipt_sources s WHERE s.active') && !receiptSource.includes('INSERT INTO public.inv_movements')],
   ['WMS importer maps IPT, warehouse, date and product from Entrada ALM PT', /entradaalmpt/.test(receiptImport) && /nrodocumento/.test(receiptImport) && /bodega/.test(receiptImport) && /codproducto/.test(receiptImport)],
   ['WMS importer offers manual file selection and a manual refresh action', receiptImport.includes('Actualizar manualmente') && receiptImport.includes('Seleccionar Excel') && receiptImport.includes('el navegador no puede leer')],
+  ['receipt inbox defaults to all unprinted or not-yet-labeled entries and refreshes every 30 seconds', /coalesce\(p\.label_count,0\)=0 OR coalesce\(p\.unprinted_count,0\)>0/.test(receiptInbox) && /setInterval[\s\S]*?30000/.test(labeling) && labeling.includes('Actualizar bandeja')],
+  ['receipt customer lookup checks the lot OT against inventory and contracts', /inv_ot_cliente\(nullif\(public\.apt_ot_raiz\(r\.lote\),''\)\)/.test(receiptInbox) && /inv_ot_cliente\(nullif\(public\.inv_ot\(r\.contract_code\),''\)\)/.test(receiptInbox)],
+  ['unprinted generated LPNs can be resumed and previewed without generating duplicate codes', /PENDING_PRINT/.test(receiptInbox) && labeling.includes('pending_labels') && labeling.includes('Vista previa') && labeling.includes('no se generarán códigos duplicados')],
+  ['physical receipt supports full packages plus a remainder with a derived total', labeling.includes('Paquetes completos + saldo') && labeling.includes('Cantidad física total calculada') && labeling.includes('packageBreakdownValid')],
   ['Windows robot targets only WMS receipt import and is preview-locked', /git-feature-warehouse-wms-portal/.test(receiptRobot) && receiptRobot.includes('/almacen/apt/etiquetado') && !receiptRobot.toLowerCase().includes('salida.xlsx')],
   ['legacy inventory APT upload route cannot overwrite receipt source', apt.includes("redirect('/almacen/apt/etiquetado')") || apt.includes('redirect("/almacen/apt/etiquetado")')],
   ['partial delivery retains an outstanding balance and requires a supervisor', /LOAD_PARTIAL/.test(sql) && /remaining_qty/.test(task) && /Autorizar carga parcial/.test(task)],
