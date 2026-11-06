@@ -6,11 +6,11 @@ import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Upload } from 'l
 import { createClient } from '@/lib/supabase/client'
 
 type ReceiptRow = {
-  source_key: string; document_no: string; source_date: string; warehouse: string; ruc: string | null; customer_name: string | null
-  product_code: string; description: string | null; quantity: number; unit: string | null; lot: string | null
+  source_key: string; document_no: string; source_date: string; document_type: string | null; warehouse: string; ruc: string | null; customer_name: string | null
+  product_code: string; description: string | null; color: string | null; quantity: number; unit: string | null; lot: string | null
   origin_doc: string | null; origin_number: string | null; delivery_date: string | null; contract_code: string | null
   ref_doc_type: string | null; ref_correlation: string | null; ref_number: string | null; ref_date: string | null
-  comment: string | null; unit_weight: number | null; total_weight: number | null; cost_center: string | null
+  comment: string | null; unit_weight: number | null; total_weight: number | null; cost_center: string | null; source_updated_at: string | null
 }
 const keyOf = (value: unknown) => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s_./-]+/g, '').toLowerCase()
 const text = (value: unknown) => value === null || value === undefined || String(value).trim() === '' ? null : String(value).trim()
@@ -21,6 +21,12 @@ function date(value: unknown): string | null {
   if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0,10)
   const m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
   return m ? `${m[3]}-${String(+m[2]).padStart(2,'0')}-${String(+m[1]).padStart(2,'0')}` : null
+}
+function dateTime(value: unknown): string | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString()
+  if (typeof value === 'number') { const d = XLSX.SSF.parse_date_code(value); return d?.y ? new Date(Date.UTC(d.y,d.m-1,d.d,d.H,d.M,Math.floor(d.S))).toISOString() : null }
+  const v = String(value ?? '').trim(); if (!v) return null
+  const parsed = new Date(v); return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString()
 }
 const number = (value: unknown) => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null
@@ -56,12 +62,12 @@ async function parseReceiptBook(file: File): Promise<ReceiptRow[]> {
     const occurrence=(identityCounts.get(identity)||0)+1; identityCounts.set(identity,occurrence)
     const source_key=await sha256(`${identity}#${occurrence}`)
     result.push({
-      source_key, document_no:document, source_date:sourceDate, warehouse, ruc:text(get(row,'ruc')), customer_name:text(get(row,'razonsocial')),
-      product_code:product, description, quantity:qty, unit, lot, origin_doc:text(get(row,'docorigen')), origin_number:originNumber,
+      source_key, document_no:document, source_date:sourceDate, document_type:text(get(row,'tipodocumento')), warehouse, ruc:text(get(row,'ruc')), customer_name:text(get(row,'razonsocial')),
+      product_code:product, description, color:text(get(row,'color')), quantity:qty, unit, lot, origin_doc:text(get(row,'docorigen')), origin_number:originNumber,
       delivery_date:date(get(row,'fechaentrega')), contract_code:contract, ref_doc_type:text(get(row,'reftipodocumento')),
       ref_correlation:text(get(row,'refcorrelativo')), ref_number:text(get(row,'refnumero')), ref_date:date(get(row,'reffecha')),
       comment:text(get(row,'comentario')), unit_weight:number(get(row,'pesounitario')), total_weight:number(get(row,'pesototal')),
-      cost_center:text(get(row,'ccostojrm')),
+      cost_center:text(get(row,'ccostojrm')), source_updated_at:dateTime(get(row,'fechaactualizacion')),
     })
   }
   if (!result.length) throw new Error('El libro no contiene ingresos con cantidad positiva.')
