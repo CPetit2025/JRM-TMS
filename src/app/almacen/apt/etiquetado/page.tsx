@@ -42,7 +42,10 @@ async function parseReceiptBook(file: File): Promise<ReceiptRow[]> {
   const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
   const sheetName = workbook.SheetNames.find(name => keyOf(name) === 'entradaalmpt')
   if (!sheetName) throw new Error('No se encontró la hoja «Entrada ALM PT».')
-  const matrix = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, defval: null, raw: true, blankrows: false })
+  const sheet = workbook.Sheets[sheetName]
+  const sourceRange = XLSX.utils.decode_range(sheet['!ref'] || 'A1')
+  const columnZIndex = 25 - sourceRange.s.c
+  const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, raw: true, blankrows: false })
   const headerIndex = matrix.slice(0,10).findIndex(row => {
     const headers = new Set(row.map(keyOf))
     return headers.has('nrodocumento') && headers.has('codproducto') && headers.has('cantidad') && headers.has('fecha')
@@ -60,7 +63,7 @@ async function parseReceiptBook(file: File): Promise<ReceiptRow[]> {
     const originNumber=text(get(row,'nroorigen')), contract=text(get(row,'contrato'))
     // Column Z is the confirmed customer field in the APT workbook; keep header aliases
     // for future workbook versions and legacy Razon_Social as a final fallback.
-    const customerName = text(row[25]) ?? text(get(row,'cliente')) ?? text(get(row,'nombrecliente'))
+    const customerName = text(row[columnZIndex]) ?? text(get(row,'cliente')) ?? text(get(row,'nombrecliente'))
       ?? text(get(row,'razonsocial')) ?? text(get(row,'clientetms'))
     const identity=JSON.stringify([document,sourceDate,warehouse,product,lot,unit,originNumber,contract])
     const occurrence=(identityCounts.get(identity)||0)+1; identityCounts.set(identity,occurrence)
@@ -91,7 +94,9 @@ export default function WmsReceiptImportPage() {
       const hash=await sha256(`${fileHash}:customer-column-z-v1`)
       const {data,error:rpcError}=await createClient().rpc('wh_import_receipt_snapshot',{p_file_name:file.name,p_file_hash:hash,p_rows:rows})
       if(rpcError)throw rpcError
-      setDone(data?.duplicate?'Este archivo ya estaba importado; no se duplicaron ingresos.':`${Number(data?.rows||rows.length)} líneas importadas para Recepción y etiquetado. No se modificó el inventario multi‑almacén.`)
+      const customerRows=rows.filter(row=>row.customer_name).length
+      const customerSummary=`Clientes detectados en columna Z o encabezado equivalente: ${customerRows} de ${rows.length}.`
+      setDone(data?.duplicate?`Este archivo ya estaba importado; no se duplicaron ingresos. ${customerSummary}`:`${Number(data?.rows||rows.length)} líneas importadas para Recepción y etiquetado. ${customerSummary} No se modificó el inventario multi‑almacén.`)
     }catch(e){setError(e instanceof Error?e.message:'No se pudo importar el Excel de ingresos.')}
     finally{setBusy(false)}
   }
@@ -107,7 +112,7 @@ export default function WmsReceiptImportPage() {
       </div>
       <input ref={fileInputRef} id="wms-receipt-file" type="file" accept=".xlsx,.xls" className="sr-only" onChange={e=>{setFile(e.target.files?.[0]||null);setError('');setDone('')}}/>
       <div className="mt-4 flex flex-col gap-3 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-center gap-3"><FileSpreadsheet className="h-8 w-8 shrink-0 text-slate-400"/><div className="min-w-0"><span className="block truncate text-sm font-semibold">{file?.name||'No hay archivo seleccionado'}</span><span className="text-xs text-slate-500">Excel .xlsx o .xls · hoja Entrada ALM PT</span></div></div>
+        <div className="flex min-w-0 items-center gap-3"><FileSpreadsheet className="h-8 w-8 shrink-0 text-slate-400"/><div className="min-w-0"><span className="block truncate text-sm font-semibold">{file?.name||'No hay archivo seleccionado'}</span><span className="text-xs text-slate-500">Excel .xlsx o .xls · hoja Entrada ALM PT · cliente en columna Z</span></div></div>
         <button type="button" onClick={()=>fileInputRef.current?.click()} className="min-h-10 shrink-0 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-[#002855]">Seleccionar Excel</button>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-3">
