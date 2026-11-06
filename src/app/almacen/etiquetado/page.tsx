@@ -6,7 +6,7 @@ import { Printer, RotateCcw, ScanLine, ClipboardCheck, X } from 'lucide-react'
 import { Code128Barcode } from '@/components/warehouse/Code128Barcode'
 
 type Receipt = {
-  receipt_key: string; document_no: string; fecha: string; bodega: string; lote: string | null
+  receipt_key: string; document_no: string; fecha: string; document_type: string | null; color: string | null; source_updated_at: string | null; bodega: string; lote: string | null
   product_code: string; description: string | null; unit: string | null; contract_code: string | null
   quantity: number; weight_kg: number | null; customer_name: string | null; customer_source: 'ERP/OT' | 'MANUAL' | null
   physical_quantity: number | null; variance: number | null; variance_reason: string | null
@@ -221,7 +221,7 @@ export default function WarehouseLabelingPage() {
             <th className="p-3 text-right">Cantidad ERP</th><th className="p-3">Cliente</th><th className="p-3">Estado</th><th className="p-3"></th>
           </tr></thead>
           <tbody className="divide-y">{receipts.map(receipt => <tr key={receipt.receipt_key} className="hover:bg-blue-50">
-            <td className="p-3 font-semibold text-[#002855]">{receipt.document_no}<small className="block font-normal text-slate-500">{receipt.fecha} · {receipt.bodega}</small></td>
+            <td className="p-3 font-semibold text-[#002855]">{receipt.document_no}<small className="block font-normal text-slate-500">{receipt.fecha} · {receipt.bodega}</small><small className="block font-normal text-slate-500">{receipt.document_type || '—'} · {receipt.color || '—'} · Actualizado {receipt.source_updated_at ? new Date(receipt.source_updated_at).toLocaleString('es-PE') : '—'}</small></td>
             <td className="p-3">{receipt.contract_code || '—'}</td><td className="p-3">{receipt.product_code}<small className="block text-slate-500">{receipt.description || '—'}</small></td>
             <td className="p-3">{receipt.lote || '—'}</td><td className="p-3 text-right tabular-nums">{receipt.quantity} {receipt.unit || ''}</td>
             <td className="p-3">{receipt.customer_name || 'Por ingresar'}</td><td className="p-3 text-xs">{receipt.validation_status === 'VALIDATED' ? 'Validado' : 'Pendiente'} · {receipt.label_status === 'NOT_LABELED' ? 'Sin etiqueta' : receipt.label_status}</td>
@@ -237,7 +237,7 @@ export default function WarehouseLabelingPage() {
     {selected && <div className="fixed inset-0 z-[80] flex items-end justify-center bg-slate-950/55 sm:items-center sm:p-4">
       <div role="dialog" aria-modal="true" aria-labelledby="wms-receipt-dialog-title" className="flex max-h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-slate-50 shadow-2xl sm:max-h-[92dvh] sm:rounded-2xl">
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
-          <div className="min-w-0"><p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-blue-700">Recepción APT · Validación y etiquetado</p><h2 id="wms-receipt-dialog-title" className="mt-1 truncate text-lg font-black text-[#002855] sm:text-xl">IPT {selected.document_no} · {selected.product_code}</h2><p className="mt-0.5 truncate text-xs text-slate-500 sm:text-sm">{selected.description || 'Producto'} · {selected.fecha} · Lote {selected.lote || '—'}</p></div>
+          <div className="min-w-0"><p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-blue-700">Recepción APT · Validación y etiquetado</p><h2 id="wms-receipt-dialog-title" className="mt-1 truncate text-lg font-black text-[#002855] sm:text-xl">IPT {selected.document_no} · {selected.product_code}</h2><p className="mt-0.5 truncate text-xs text-slate-500 sm:text-sm">{selected.description || 'Producto'} · {selected.fecha} · Lote {selected.lote || '—'} · {selected.document_type || '—'} · Color {selected.color || '—'}</p></div>
           <button type="button" onClick={() => setSelected(null)} aria-label="Cerrar recepción" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-[#002855]"><X size={20}/></button>
         </header>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3 sm:p-5">
