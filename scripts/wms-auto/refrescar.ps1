@@ -28,6 +28,18 @@ function To-DateTime($value) {
   return $null
 }
 
+function ColumnValues($range, [int]$rowCount) {
+  $raw = Com { $range.Value2 }
+  if ($rowCount -eq 1) { return ,@($raw) }
+  if ($raw -is [Array] -and $raw.Rank -eq 2) {
+    $values = New-Object 'System.Collections.Generic.List[object]'
+    $r0 = $raw.GetLowerBound(0); $c0 = $raw.GetLowerBound(1)
+    for ($i = 0; $i -lt $rowCount; $i++) { $values.Add($raw.GetValue($r0 + $i, $c0)) }
+    return ,$values.ToArray()
+  }
+  return ,@($raw)
+}
+
 $ruta = (Resolve-Path $Archivo).Path
 $excel = New-Object -ComObject Excel.Application
 Add-Type -Name W -Namespace WmsAuto -MemberDefinition '[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(System.IntPtr h, out uint p);'
@@ -57,26 +69,29 @@ try {
   Com { $excel.CalculateUntilAsyncQueriesDone() }
   $rows = [int](Com { $table.ListRows.Count })
   if ($rows -lt 1) { throw 'Consulta1 no tiene ingresos.' }
-  $documents = Com { $table.ListColumns.Item('Nro_Documento').DataBodyRange.Value2 }
-  $updates = Com { $table.ListColumns.Item('Fecha_Actualizacion').DataBodyRange.Value2 }
-  $documentValues = @($documents | ForEach-Object { $_ } | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+  $documentRange = Com { $table.ListColumns.Item('Nro_Documento').DataBodyRange }
+  $updateRange = Com { $table.ListColumns.Item('Fecha_Actualizacion').DataBodyRange }
+  $documents = ColumnValues $documentRange $rows
+  $updates = ColumnValues $updateRange $rows
+  $documentValues = @($documents | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
   if ($documentValues.Count -lt 1) { throw 'No hay ningún Nro_Documento/IPT en el archivo.' }
-  $dateValues = @($updates | ForEach-Object { $_ } | Where-Object { $null -ne $_ })
-  if ($dateValues.Count -eq 0) { throw 'Fecha_Actualizacion está vacía; no se cargará un libro sin validar su vigencia.' }
-  $latest = $null
-  foreach ($value in $dateValues) {
+  $dateValues = @()
+  foreach ($value in $updates) {
     $parsed = To-DateTime $value
-    if ($parsed -and (-not $latest -or $parsed -gt $latest)) { $latest = $parsed }
+    if (-not $parsed) { throw 'Fecha_Actualizacion está vacía o no es válida en una fila; no se cargará el libro.' }
+    $dateValues += $parsed
   }
-  if (-not $latest) { throw 'No se pudo interpretar Fecha_Actualizacion.' }
-  $ageHours = ((Get-Date) - $latest).TotalHours
+  $oldest = ($dateValues | Measure-Object -Minimum).Minimum
+  $latest = ($dateValues | Measure-Object -Maximum).Maximum
+  $ageHours = ((Get-Date) - $oldest).TotalHours
   if ($ageHours -lt -1) { throw "Fecha_Actualizacion es futura ($latest); revise el reloj del origen." }
-  if ($ageHours -gt $MaxHoras) { throw "Actualizable APT vencido: Fecha_Actualizacion $latest tiene $([math]::Round($ageHours,1)) h (máximo $MaxHoras h). No se cargó." }
+  if ($ageHours -gt $MaxHoras) { throw "Actualizable APT vencido: la fila más antigua tiene Fecha_Actualizacion $oldest ($([math]::Round($ageHours,1)) h; máximo $MaxHoras h). No se cargó." }
   Com { $wb.Save() }
+  $iptCount = @($documentValues | Select-Object -Unique).Count
   if ($connections -eq 0) {
-    Write-Output "OK $rows filas; $($documentValues.Count) IPT informados; actualización validada hace $([math]::Round($ageHours,1)) h. El libro no tiene conexiones de Excel: se validó su Fecha_Actualizacion sin inventar un refresco de origen."
+    Write-Output "OK $rows filas; $iptCount IPT; actualización validada hace $([math]::Round($ageHours,1)) h. El libro no tiene conexiones de Excel: se validó su Fecha_Actualizacion sin inventar un refresco de origen."
   } else {
-    Write-Output "OK $rows filas; $($documentValues.Count) IPT informados; conexiones de Excel refrescadas; actualización hace $([math]::Round($ageHours,1)) h."
+    Write-Output "OK $rows filas; $iptCount IPT; conexiones de Excel refrescadas; actualización hace $([math]::Round($ageHours,1)) h."
   }
 } finally {
   try {
