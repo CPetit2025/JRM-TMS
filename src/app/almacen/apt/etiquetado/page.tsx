@@ -97,7 +97,7 @@ export default function WmsReceiptImportPage() {
     <section className="rounded-xl border border-slate-200 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h2 className="font-bold text-[#002855]">Actualizar ingresos WMS</h2><p className="mt-1 text-xs text-slate-500">La actualización manual importa el Excel que seleccione y conserva el historial de recepciones y etiquetas. Si el archivo ya fue importado, no duplica registros.</p></div>
-        <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-900">Origen del robot: C:\\WMS\\entrada.xlsx</span>
+        <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-900">Origen del robot: C:\WMS\entrada.xlsx</span>
       </div>
       <input ref={fileInputRef} id="wms-receipt-file" type="file" accept=".xlsx,.xls" className="sr-only" onChange={e=>{setFile(e.target.files?.[0]||null);setError('');setDone('')}}/>
       <div className="mt-4 flex flex-col gap-3 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -108,7 +108,7 @@ export default function WmsReceiptImportPage() {
         <button type="button" disabled={!file||busy} onClick={()=>void importFile()} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#cf152d] px-5 text-sm font-bold text-white disabled:opacity-50">
           {busy?<Loader2 className="h-4 w-4 animate-spin"/>:<Upload className="h-4 w-4"/>}{busy?'Actualizando…':'Actualizar manualmente'}
         </button>
-        <p className="text-xs text-slate-500">La carga automática del archivo local la ejecuta el robot de Windows; el navegador no puede leer C:\\WMS directamente.</p>
+        <p className="text-xs text-slate-500">La carga automática del archivo local la ejecuta el robot de Windows; el navegador no puede leer C:\WMS directamente.</p>
       </div>
     </section>
   </div>
