@@ -5,6 +5,9 @@ const { readFileSync } = require('node:fs')
 const path = require('node:path')
 const root = path.resolve(__dirname, '..')
 const sql = readFileSync(path.join(root, 'supabase/migrations/20261225103000_warehouse_wms_core.sql'), 'utf8')
+const receiptSource = readFileSync(path.join(root, 'supabase/migrations/20261225104000_wms_receipt_source_import.sql'), 'utf8')
+const receiptImport = readFileSync(path.join(root, 'src/app/almacen/apt/etiquetado/page.tsx'), 'utf8')
+const receiptRobot = readFileSync(path.join(root, 'scripts/wms-auto/cargar-entrada.mjs'), 'utf8')
 const labeling = readFileSync(path.join(root, 'src/app/almacen/etiquetado/page.tsx'), 'utf8')
 const reconciliation = readFileSync(path.join(root, 'src/app/almacen/conciliacion/page.tsx'), 'utf8')
 const apt = readFileSync(path.join(root, 'src/app/almacen/apt/datos/page.tsx'), 'utf8')
@@ -17,7 +20,7 @@ const checks = [
   ['fresh Supabase staging exposes the UUID function required by legacy baseline migrations', /CREATE OR REPLACE FUNCTION public\.uuid_generate_v4\(\)[\s\S]*?SELECT gen_random_uuid\(\)/.test(uuidBootstrap)],
   ['fresh TMS schema applies legacy cleanup only when its optional columns and RPCs exist', /CREATE POLICY carriers_public_names[\s\S]*?USING \(status = 'ACTIVE'\)/.test(legacyCarrierAcl) && /information_schema\.columns[\s\S]*?column_name = 'mock_password'[\s\S]*?UPDATE public\.profiles SET mock_password/.test(legacyCarrierAcl) && /column_name = 'pin'[\s\S]*?UPDATE public\.drivers SET pin/.test(legacyCarrierAcl) && /to_regprocedure\('public\.register_driver/.test(legacyCarrierAcl) && /table_name = 'dispatches' AND column_name = 'driver_name'[\s\S]*?UPDATE public\.dispatches d SET driver_id/.test(legacyCarrierAcl) && /ALTER TABLE public\.drivers ADD COLUMN IF NOT EXISTS is_active/.test(legacyCarrierAcl)],
   ['later legacy driver RPC grants cannot reopen anonymous registration', /REVOKE ALL ON FUNCTION public\.register_driver\(uuid,text,text,text,text,text,text,uuid\)[\s\S]*?FROM PUBLIC, anon, authenticated/.test(legacyDriverRpcAcl)],
-  ['WMS menu orders Actualizable APT before the IPT receipt step', layout.indexOf("label: '01 · Actualizar Excel APT'") >= 0 && layout.indexOf("label: '02 · Recepción por IPT'") > layout.indexOf("label: '01 · Actualizar Excel APT'")],
+  ['WMS menu orders the dedicated receipt-source import before IPT labeling', layout.indexOf("label: '01 · Actualizar ingresos WMS'") >= 0 && layout.indexOf("label: '02 · Recepción por IPT'") > layout.indexOf("label: '01 · Actualizar ingresos WMS'") && layout.includes("/almacen/apt/etiquetado")],
   ['IPT selection opens an accessible dialog sized for phone and tablet with Escape dismissal', /role="dialog" aria-modal="true"/.test(labeling) && /max-h-\[100dvh\][\s\S]*?sm:max-h-\[92dvh\]/.test(labeling) && /event.key === 'Escape'[\s\S]*?document.body.style.overflow = 'hidden'/.test(labeling)],
   ['receipts use active ERP APT ingress', /inv_movements m WHERE m\.active AND m\.side='E' AND public\.apt_almacen\(m\.bodega\) IS NOT NULL/.test(sql)],
   ['outbound reconciliation uses active ERP APT egress', /inv_movements m WHERE m\.active AND m\.side='S' AND public\.apt_almacen\(m\.bodega\) IS NOT NULL/.test(sql)],
@@ -29,7 +32,10 @@ const checks = [
   ['dispatch departure is blocked until WMS load or approved exception', /CREATE TRIGGER wh_dispatch_load_guard BEFORE UPDATE OF status ON public\.dispatches/.test(sql) && /load_override_reason/.test(sql)],
   ['duplicate scan retries are idempotent and conflicting IDs are rejected', /duplicate_retry/.test(sql) && /ya se usó para otra operación/.test(sql)],
   ['scan history is immutable', /CREATE TRIGGER wh_scan_immutable BEFORE UPDATE OR DELETE ON public\.wh_scan_events/.test(sql)],
-  ['APT upload automatically refreshes outbound reconciliation', /Conciliación WMS actualizada/.test(apt)],
+  ['WMS receipt import uses its own source and does not write TMS inventory movements', /CREATE TABLE public\\.wh_receipt_sources/.test(receiptSource) && /FROM public\\.wh_receipt_sources s WHERE s\\.active/.test(receiptSource) && !/INSERT INTO public\\.inv_movements/.test(receiptSource)],
+  ['WMS importer maps IPT, warehouse, date and product from Entrada ALM PT', /entradaalmpt/.test(receiptImport) && /nrodocumento/.test(receiptImport) && /bodega/.test(receiptImport) && /codproducto/.test(receiptImport)],
+  ['Windows robot targets only WMS receipt import and is preview-locked', /git-feature-warehouse-wms-portal/.test(receiptRobot) && /almacen\\/apt\\/etiquetado/.test(receiptRobot) && !/salida\\.xlsx/i.test(receiptRobot)],
+  ['legacy inventory APT upload route cannot overwrite receipt source', /redirect\\('\\/almacen\\/apt\\/etiquetado'\\)/.test(apt) || /redirect\\(\\"\\/almacen\\/apt\\/etiquetado\\"\\)/.test(apt)],
   ['partial delivery retains an outstanding balance and requires a supervisor', /LOAD_PARTIAL/.test(sql) && /remaining_qty/.test(task) && /Autorizar carga parcial/.test(task)],
   ['RECOJO and TRASLADO do not create warehouse pick tasks', /upper\(coalesce\(NEW\.request_type,'DESPACHO'\)\) IN \('RECOJO','TRASLADO'\) THEN RETURN NEW/.test(sql) && /upper\(coalesce\(r\.request_type,'DESPACHO'\)\) NOT IN \('RECOJO','TRASLADO'\)/.test(sql)],
   ['legacy RECOJO and TRASLADO tasks cannot block dispatch departure', /JOIN public\.transport_requests r ON r\.id=t\.transport_request_id[\s\S]{0,180}upper\(coalesce\(r\.request_type,'DESPACHO'\)\) NOT IN \('RECOJO','TRASLADO'\)/.test(sql)],
