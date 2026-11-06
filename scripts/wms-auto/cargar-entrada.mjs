@@ -1,0 +1,36 @@
+// Carga únicamente C:\\WMS\\entrada.xlsx en la fuente de Recepción WMS.
+// Usa la página dedicada de etiquetas; no accede a Inventario multi-almacén.
+import { chromium } from 'playwright-core'
+import { resolve } from 'node:path'
+
+const args=process.argv.slice(2), revisar=args.includes('--revisar')
+const files=args.filter(x=>x!=='--revisar').map(x=>resolve(x))
+const url=(process.env.WMS_URL||'').replace(/\\/$/,'')
+const {WMS_USUARIO:user,WMS_CLAVE:password}=process.env
+if(files.length!==1||!url||!user||!password){console.error('Uso: node cargar-entrada.mjs [--revisar] <entrada.xlsx> (WMS_URL, WMS_USUARIO y WMS_CLAVE)');process.exit(2)}
+const host=new URL(url).hostname
+if(!host.includes('git-feature-warehouse-wms-portal')||!host.endsWith('.vercel.app')||host==='jrm-tms.vercel.app'){
+ console.error('Por seguridad, el robot solo permite el preview de feature/warehouse-wms-portal.');process.exit(2)
+}
+const {chromium}=await import('playwright-core')
+const browser=await chromium.launch({channel:'msedge',headless:true}), page=await browser.newPage()
+try{
+ await page.goto(url+'/almacen/login',{waitUntil:'domcontentloaded'})
+ await page.locator('#login-username').fill(user);await page.locator('#login-password').fill(password);await page.locator('button[type=submit]').click()
+ await page.waitForURL(u=>!u.pathname.endsWith('/login'),{timeout:60000}).catch(()=>{throw new Error('No se pudo iniciar sesión WMS; verifique cuenta aprobada y permisos.')})
+ await page.goto(url+'/almacen/apt/etiquetado',{waitUntil:'domcontentloaded'})
+ const input=page.locator('input[type=file]').first();await input.waitFor({state:'attached',timeout:60000})
+ await input.setInputFiles(files[0])
+ if(revisar){console.log('Revisión OK: acceso a la importación de ingresos WMS. No se aplicaron cambios.');process.exitCode=0}
+ else{
+  const button=page.getByRole('button',{name:'Importar ingresos para etiquetado'})
+  await button.waitFor({state:'visible',timeout:60000});await button.click()
+  const status=page.locator('[role=status]'),alert=page.locator('[role=alert]')
+  await status.or(alert).first().waitFor({timeout:10*60000})
+  if(await alert.isVisible())throw new Error(await alert.innerText())
+  const message=await status.innerText()
+  if(!/importad|ya estaba importado/i.test(message))throw new Error('La pantalla no confirmó la importación: '+message)
+  console.log('OK '+message)
+ }
+}catch(e){console.error('ERROR '+(e instanceof Error?e.message:e));process.exitCode=1}
+finally{await browser.close()}
