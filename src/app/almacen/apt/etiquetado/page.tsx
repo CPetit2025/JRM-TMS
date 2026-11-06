@@ -42,7 +42,7 @@ async function parseReceiptBook(file: File): Promise<ReceiptRow[]> {
     return headers.has('nrodocumento') && headers.has('codproducto') && headers.has('cantidad') && headers.has('fecha')
   })
   if (headerIndex < 0) throw new Error('Faltan las columnas Nro_Documento, Cod_Producto, Cantidad o Fecha.')
-  const headers = new Map((matrix[headerIndex] || []).map((value,index)=>[keyOf(value),index]))
+  const headers = new Map((matrix[headerIndex] || []).map((value,index)=>[keyOf(value),index] as const))
   const get = (row: unknown[], key: string) => row[headers.get(key) ?? -1]
   const identityCounts = new Map<string,number>(), result: ReceiptRow[] = []
   for (const row of matrix.slice(headerIndex+1)) {
