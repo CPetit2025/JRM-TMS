@@ -302,7 +302,7 @@ export default function WarehouseLabelingPage() {
           </section>
           {selectedIptReceipts.length > 1 && <section aria-label={'Ítems recibidos del IPT ' + selected.document_no} className="rounded-xl border border-blue-100 bg-white p-3 sm:p-4">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="font-bold text-[#002855]">Ítems recibidos</h3>
+              <h3 className="font-bold text-[#002855]">2. Ítems recibidos</h3>
               <div className="flex flex-wrap gap-2 text-xs">
                 <span className="rounded-lg bg-blue-50 px-3 py-2 font-semibold text-blue-900">{selectedIptReceipts.length} ítems recibidos</span>
                 <span className="rounded-lg bg-blue-50 px-3 py-2 font-semibold text-blue-900">Total ERP: {iptErpTotal} {selected.unit || 'UND'}</span>
