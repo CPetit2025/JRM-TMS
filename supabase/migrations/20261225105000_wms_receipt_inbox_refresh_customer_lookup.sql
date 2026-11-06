@@ -27,7 +27,7 @@ BEGIN
     ELSE 'DIFFERENCE'
    END AS label_status
   FROM (
-   SELECT s.source_key AS receipt_key,s.document_no,s.source_date AS fecha,s.document_type,s.color,s.source_updated_at,
+   SELECT s.source_key AS receipt_key,s.document_no,s.source_date AS fecha,(to_jsonb(s)->>'document_type') AS document_type,s.color,s.source_updated_at,
     s.lot AS lote,s.product_code,s.description,s.unit,s.warehouse AS bodega,
     coalesce(nullif(s.contract_code,''),nullif(s.origin_number,''),s.lot) AS contract_code,
     s.customer_name,s.quantity,s.total_weight AS weight_kg
