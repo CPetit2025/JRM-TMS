@@ -2,12 +2,11 @@
 // de la pantalla. --revisar valida login y lectura sin mutar la base.
 // Uso: node cargar.mjs [--revisar] <entrada.xlsx>
 // Variables: WMS_URL, WMS_USUARIO y WMS_CLAVE.
-import { chromium } from 'playwright-core'
 import { basename, resolve } from 'node:path'
 
 const args = process.argv.slice(2)
 const revisar = args.includes('--revisar')
-const archivos = args.filter(arg => arg !== '--revisar').map(resolve)
+const archivos = args.filter(arg => arg !== '--revisar').map(arg => resolve(arg))
 const url = (process.env.WMS_URL || '').replace(/\/$/, '')
 const { WMS_USUARIO: usuario, WMS_CLAVE: clave } = process.env
 if (archivos.length !== 1 || !usuario || !clave || !url) {
@@ -21,6 +20,7 @@ if (parsedUrl.protocol !== 'https:' || parsedUrl.hostname === 'jrm-tms.vercel.ap
   process.exit(2)
 }
 
+const { chromium } = await import('playwright-core')
 const MIN = 60_000
 const browser = await chromium.launch({ channel: 'msedge', headless: true })
 const page = await browser.newPage()
