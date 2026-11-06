@@ -7,6 +7,7 @@ const root = path.resolve(__dirname, '..')
 const sql = readFileSync(path.join(root, 'supabase/migrations/20261225103000_warehouse_wms_core.sql'), 'utf8')
 const receiptSource = readFileSync(path.join(root, 'supabase/migrations/20261225104000_wms_receipt_source_import.sql'), 'utf8')
 const receiptInbox = readFileSync(path.join(root, 'supabase/migrations/20261225105000_wms_receipt_inbox_refresh_customer_lookup.sql'), 'utf8')
+const receiptCustomerZ = readFileSync(path.join(root, 'supabase/migrations/20261225105500_wms_receipt_customer_column_z.sql'), 'utf8')
 const receiptImport = readFileSync(path.join(root, 'src/app/almacen/apt/etiquetado/page.tsx'), 'utf8')
 const receiptRobot = readFileSync(path.join(root, 'scripts/wms-auto/cargar-entrada.mjs'), 'utf8')
 const labeling = readFileSync(path.join(root, 'src/app/almacen/etiquetado/page.tsx'), 'utf8')
@@ -55,6 +56,11 @@ const checks = [
   ['client fallback can be entered and is retained in the immutable receipt audit', /manual_customer_name text/.test(sql) && /v_customer IS NULL AND v_manual IS NULL THEN RAISE EXCEPTION/.test(sql)],
   ['missing ERP weight stays unknown instead of becoming a fabricated zero', /round\(sum\(abs\(m\.peso_kg\)\),3\) AS weight_kg/.test(sql) && /CASE WHEN v_weight IS NOT NULL AND v_receipt\.quantity>0 THEN round\(v_weight\*v_qty\/v_receipt\.quantity,3\) END/.test(sql)],
 ]
+checks.push(
+  ['WMS import reads customer from Excel column Z and known customer header aliases', /text\\(row\\[25\\]\\)[\\s\\S]*?get\\(row,'cliente'\\)[\\s\\S]*?get\\(row,'razonsocial'\\)/.test(receiptImport) && /customer_name:customerName/.test(receiptImport)],
+  ['WMS import version reprocesses an already-loaded workbook to refresh customer data', /customer-column-z-v1/.test(receiptImport) && /const fileHash=await sha256\\(bytes\\)/.test(receiptImport)],
+  ['Excel customer from column Z takes precedence over TMS contract lookup in inbox and validation', /coalesce\\(nullif\\(r\\.customer_name,''\\),nullif\\(c\\.customer_name,''\\)/.test(receiptCustomerZ) && /coalesce\\(nullif\\(v_receipt\\.customer_name,''\\),v_customer/.test(receiptCustomerZ) && /THEN 'EXCEL'/.test(receiptCustomerZ)],
+)
 const failures = checks.filter(([, ok]) => !ok)
 if (failures.length) {
   for (const [name] of failures) process.stderr.write(`FALLÓ: ${name}\n`)
