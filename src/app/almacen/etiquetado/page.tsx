@@ -277,13 +277,29 @@ export default function WarehouseLabelingPage() {
       </div>
     </section>
 
-    {selected && <div className="fixed inset-0 z-[80] flex items-end justify-center bg-slate-950/55 sm:items-center sm:p-4">
-      <div role="dialog" aria-modal="true" aria-labelledby="wms-receipt-dialog-title" className="flex max-h-[100dvh] w-full max-w-7xl flex-col overflow-hidden bg-slate-50 shadow-2xl sm:max-h-[92dvh] sm:rounded-2xl">
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
-          <div className="min-w-0"><p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-blue-700">Recepción APT · Validación y etiquetado</p><h2 id="wms-receipt-dialog-title" className="mt-1 truncate text-lg font-black text-[#002855] sm:text-xl">IPT {selected.document_no} · {selected.product_code}</h2><p className="mt-0.5 truncate text-xs text-slate-500 sm:text-sm">{selected.description || 'Producto'} · {selected.fecha} · Lote {selected.lote || '—'} · {selected.document_type || '—'} · Color {selected.color || '—'}</p></div>
-          <button type="button" onClick={() => setSelected(null)} aria-label="Cerrar recepción" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-[#002855]"><X size={20}/></button>
+    {selected && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-2 sm:p-3">
+      <div role="dialog" aria-modal="true" aria-labelledby="wms-receipt-dialog-title" className="flex h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] w-full max-w-[1600px] flex-col overflow-hidden rounded-xl bg-slate-50 shadow-2xl sm:h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-1.5rem)] sm:rounded-2xl">
+        <header className="flex h-11 shrink-0 items-center justify-between border-b border-blue-100 bg-gradient-to-r from-blue-50 to-white px-4 sm:px-6">
+          <h2 id="wms-receipt-dialog-title" className="flex items-center gap-2 text-sm font-black uppercase tracking-wide text-[#002855]"><span className="grid h-7 w-7 place-items-center rounded-md bg-blue-100 text-blue-800"><ClipboardCheck size={17}/></span>WMS · Recepción APT</h2>
+          <button type="button" onClick={() => setSelected(null)} aria-label="Cerrar recepción" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-[#002855]"><X size={20}/></button>
         </header>
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-2 sm:p-4">
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-2 sm:space-y-3 sm:p-4">
+          <section aria-label="Datos principales del ingreso" className="grid gap-2 sm:grid-cols-3">
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2"><span className="text-xl text-blue-700">♙</span><div className="min-w-0"><span className="block text-[11px] text-slate-600">Cliente</span><b className="block truncate text-sm leading-tight text-[#002855]">{selected.customer_name || manualCustomer || 'Por registrar'}</b></div></div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2"><span className="text-xl text-blue-700">⚖</span><div><span className="block text-[11px] text-slate-600">Peso de origen</span><b className="block text-lg leading-tight text-[#002855]">{selected.weight_kg === null ? 'Por registrar' : selected.weight_kg + ' kg'}</b></div></div>
+            <div className="flex min-h-16 items-center gap-3 rounded-xl bg-gradient-to-r from-blue-700 to-blue-900 px-3 py-2 text-white"><span className="text-xl">▣</span><div><span className="block text-[11px] text-blue-100">Total ERP (ítem seleccionado)</span><b className="block text-lg leading-tight">{selected.quantity} {selected.unit || 'UND'}</b></div></div>
+          </section>
+          <section className="rounded-xl border border-slate-200 bg-white px-3 py-2 sm:px-4">
+            <p className="text-[10px] font-extrabold uppercase tracking-wide text-blue-700">Recepción APT · Validación y etiquetado</p>
+            <h3 className="truncate text-lg font-black leading-tight text-[#002855] sm:text-xl">IPT {selected.document_no} · {selected.product_code}</h3>
+            <p className="truncate text-xs text-slate-600">{selected.description || 'Producto'}</p>
+            <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px] sm:grid-cols-4">
+              <span className="truncate rounded-lg bg-blue-50 px-2 py-1.5"><b>Fecha:</b> {selected.fecha}</span>
+              <span className="truncate rounded-lg bg-blue-50 px-2 py-1.5"><b>Lote:</b> {selected.lote || '—'}</span>
+              <span className="truncate rounded-lg bg-blue-50 px-2 py-1.5"><b>Bodega:</b> {selected.bodega}</span>
+              <span className="truncate rounded-lg bg-blue-50 px-2 py-1.5"><b>OT/Contrato:</b> {selected.contract_code || '—'}</span>
+            </div>
+          </section>
           {selectedIptReceipts.length > 1 && <section aria-label={'Ítems recibidos del IPT ' + selected.document_no} className="rounded-xl border border-blue-100 bg-white p-3 sm:p-4">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <h3 className="font-bold text-[#002855]">Ítems recibidos</h3>
@@ -313,17 +329,9 @@ export default function WarehouseLabelingPage() {
           {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
           {message && <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">{message}</p>}
       <section className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><p className="text-xs font-bold uppercase tracking-wide text-blue-700">2. Ingreso seleccionado</p><h2 className="mt-1 text-xl font-bold text-[#002855]">IPT {selected.document_no} · {selected.product_code}</h2><p className="mt-1 text-sm text-slate-600">{selected.description || 'Producto'} · {selected.fecha} · Bodega {selected.bodega} · Lote {selected.lote || '—'} · OT/Contrato {selected.contract_code || '—'}</p></div>
-          <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-900">{selected.quantity} {selected.unit || ''} según ERP</span>
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg bg-slate-50 p-3"><span className="text-xs text-slate-500">Cliente encontrado</span><p className="font-semibold text-[#002855]">{selected.customer_name || 'No se encontró por OT/contrato/lote'}</p><small className="text-slate-500">{selected.customer_source === 'ERP/OT' ? 'Dato del ERP o la OT' : selected.customer_source === 'MANUAL' ? 'Registrado manualmente y auditado' : 'Si no aparece, ingrese el nombre para esta recepción'}</small></div>
-          <div className="rounded-lg bg-slate-50 p-3"><span className="text-xs text-slate-500">Peso de origen</span><p className="font-semibold text-[#002855]">{selected.weight_kg === null ? 'Por registrar' : `${selected.weight_kg} kg`}</p><small className="text-slate-500">No se genera un peso estimado si el actualizable no lo trae.</small></div>
-        </div>
-        {selected.validation_status === 'STALE' && <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">El ingreso del ERP cambió después de la última validación. Revise el historial de etiquetas y coordine su anulación antes de validar otra vez.</p>}
+{selected.validation_status === 'STALE' && <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">El ingreso del ERP cambió después de la última validación. Revise el historial de etiquetas y coordine su anulación antes de validar otra vez.</p>}
         {selected.label_status === 'DIFFERENCE' && <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">La suma de etiquetas existentes no coincide con el conteo físico validado. No se generarán etiquetas adicionales.</p>}
-        <div className="mt-4 border-t pt-4">
+        <div className="mt-2 border-t pt-2">
           <h3 className="font-bold text-[#002855]">3. Validación física de recepción</h3>
 <div className="mt-3 space-y-3">
             {physicalQuantity !== '' && Number(physicalQuantity) !== Number(selected.quantity) && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><b>Revisión de cantidad física:</b> el ERP conserva su cantidad original. Si el conteo recibido difiere, indique el motivo; el ajuste quedará auditado en esta recepción.</p>}
@@ -331,7 +339,7 @@ export default function WarehouseLabelingPage() {
               <button type="button" disabled={selected.validation_status === 'VALIDATED'} onClick={() => setPackageMode('PACKAGES')} className={`rounded-md px-3 py-2 ${packageMode === 'PACKAGES' ? 'bg-white text-[#002855] shadow-sm' : 'text-slate-600'}`}>Paquetes completos + saldo</button>
               <button type="button" disabled={selected.validation_status === 'VALIDATED'} onClick={() => setPackageMode('TOTAL')} className={`rounded-md px-3 py-2 ${packageMode === 'TOTAL' ? 'bg-white text-[#002855] shadow-sm' : 'text-slate-600'}`}>Solo cantidad total</button>
             </div>
-            {packageMode === 'PACKAGES' ? <div className="grid gap-3 rounded-lg border border-blue-100 bg-blue-50/50 p-3 sm:grid-cols-2 xl:grid-cols-4">
+            {packageMode === 'PACKAGES' ? <div className="grid gap-2 rounded-lg border border-blue-100 bg-blue-50/50 p-2 sm:grid-cols-2 xl:grid-cols-4">
               <label className="text-sm font-semibold">Unidades por paquete/pallet<input type="number" min="0.001" step="0.001" value={capacity} onChange={event => setCapacity(event.target.value)} disabled={selected.validation_status === 'VALIDATED'} placeholder="Ej. 100" className="mt-1 w-full rounded-lg border px-3 py-2.5 font-normal disabled:bg-slate-100" /></label>
               <label className="text-sm font-semibold">Paquetes/pallets completos<input type="number" min="0" step="1" value={completePackages} onChange={event => setCompletePackages(event.target.value)} disabled={selected.validation_status === 'VALIDATED'} className="mt-1 w-full rounded-lg border px-3 py-2.5 font-normal disabled:bg-slate-100" /></label>
               <label className="text-sm font-semibold">Cantidad física total recibida<input type="number" min="0" step="0.001" value={physicalQuantity} onChange={event => setPhysicalQuantity(event.target.value)} disabled={selected.validation_status === 'VALIDATED'} className="mt-1 w-full rounded-lg border px-3 py-2.5 font-normal disabled:bg-slate-100" /></label>
@@ -362,8 +370,8 @@ export default function WarehouseLabelingPage() {
         </>}
       </section>}
         </div>
-        <footer className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-          <p className="text-xs text-slate-500">Conteo físico → distribución → LPN → impresión</p>
+        <footer className="flex shrink-0 flex-col gap-1.5 border-t border-slate-200 bg-white p-2 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+          <p className="hidden text-xs text-slate-500 sm:block">Conteo físico → distribución → LPN → impresión</p>
           <div className="flex gap-2">{labels.length > 0 && <button type="button" onClick={() => { setSelected(null); setShowPreview(true) }} className="min-h-10 flex-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855] sm:flex-none">Vista previa</button>}<button type="button" onClick={() => setSelected(null)} className="min-h-10 flex-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 sm:flex-none">Cerrar</button><button type="button" disabled={!labels.length} onClick={() => void print()} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"><Printer size={16}/>{labelsPrinted ? 'Reimprimir lote' : hasPrintedLabels ? 'Imprimir pendientes' : 'Imprimir lote'}</button></div>
         </footer>
       </div>
