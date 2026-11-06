@@ -1,6 +1,5 @@
 // Carga únicamente C:\\WMS\\entrada.xlsx en la fuente de Recepción WMS.
 // Usa la página dedicada de etiquetas; no accede a Inventario multi-almacén.
-import { chromium } from 'playwright-core'
 import { resolve } from 'node:path'
 
 const args=process.argv.slice(2), revisar=args.includes('--revisar')
@@ -12,7 +11,7 @@ const host=new URL(url).hostname
 if(!host.includes('git-feature-warehouse-wms-portal')||!host.endsWith('.vercel.app')||host==='jrm-tms.vercel.app'){
  console.error('Por seguridad, el robot solo permite el preview de feature/warehouse-wms-portal.');process.exit(2)
 }
-const {chromium}=await import('playwright-core')
+const { chromium } = await import('playwright-core')
 const browser=await chromium.launch({channel:'msedge',headless:true}), page=await browser.newPage()
 try{
  await page.goto(url+'/almacen/login',{waitUntil:'domcontentloaded'})
