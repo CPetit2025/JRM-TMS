@@ -63,7 +63,7 @@ checks.push(
   ['Excel customer from column Z takes precedence over TMS contract lookup in inbox and validation', receiptCustomerZ.includes("coalesce(nullif(r.customer_name,''),nullif(c.customer_name,'')") && receiptCustomerZ.includes("coalesce(nullif(v_receipt.customer_name,''),v_customer") && receiptCustomerZ.includes("THEN 'EXCEL'")],
 )
 checks.push(
-  ['WMS label preview is an accessible responsive modal with Escape and backdrop dismissal', /id="wms-label-preview" role="dialog" aria-modal="true"/.test(labeling) && /fixed inset-0[\\s\\S]*?max-h-\\[96dvh\\][\\s\\S]*?overflow-y-auto/.test(labeling) && /event.key === 'Escape'[\\s\\S]*?setShowPreview\\(false\\)/.test(labeling) && labeling.includes('onClick={() => setShowPreview(false)}')],
+  ['WMS label preview is an accessible responsive modal with Escape and backdrop dismissal', labeling.includes('id="wms-label-preview" role="dialog" aria-modal="true"') && labeling.includes('fixed inset-0') && labeling.includes('max-h-[96dvh]') && labeling.includes('overflow-y-auto') && labeling.includes("event.key === 'Escape'") && labeling.includes('if (showPreview) setShowPreview(false)') && labeling.includes('onClick={() => setShowPreview(false)}')],
   ['WMS modal preserves individual and batch label printing', labeling.includes('Imprimir etiqueta') && labeling.includes('Imprimir lote') && labeling.includes('print:contents')],
 )
 const failures = checks.filter(([, ok]) => !ok)
