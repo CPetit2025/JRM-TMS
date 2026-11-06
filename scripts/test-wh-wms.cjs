@@ -68,7 +68,7 @@ checks.push(
 )
 checks.push(
   ['WMS printed label follows the JRM reference with official logo, lot/customer lineage, LPN barcode and quantity/weight', labeling.includes('src="/logo-jrm.png"') && labeling.includes('Cliente:') && labeling.includes('OT:') && labeling.includes('Lote:') && labeling.includes('<Code128Barcode value={label.package_code}') && labeling.includes('wh-label-quantity') && labeling.includes('IPT:') && labeling.includes('Fecha:')],
-  ['WMS label print is set to a 100 x 50 mm landscape stock with fitted content', labeling.includes('@page{size:100mm 50mm') && labeling.includes('width:98mm;height:48mm') && labeling.includes('.wh-label-barcode{height:9mm')],
+  ['WMS label print is set to a 100 x 50 mm landscape stock with fitted content', labeling.includes('@page{size:100mm 50mm') && labeling.includes('width:98mm;height:48mm') && labeling.includes('.wh-label-barcode{height:9mm') && labeling.includes('print:block')],
 )
 const failures = checks.filter(([, ok]) => !ok)
 if (failures.length) {
