@@ -50,6 +50,7 @@ export default function AptReceiptControlPage() {
       .from('wh_packages')
       .select('package_code,source_document_no,source_contract_code,source_lot,source_product_code,source_warehouse,source_date,description,quantity,unit,weight_kg,sequence_no,sequence_total,label_print_count,status,created_at')
       .eq('source_system', 'ERP')
+      .gt('label_print_count', 0)
       .neq('status', 'VOID')
       .order('created_at', { ascending: false })
       .limit(2000)
@@ -92,9 +93,7 @@ export default function AptReceiptControlPage() {
     setPrintingCode(row.package_code)
     setError('')
     const client = createClient()
-    const result = row.label_print_count > 0
-      ? await client.rpc('wh_reprint_label', { p_package_code: row.package_code, p_reason: reason!.trim() })
-      : await client.rpc('wh_print_labels', { p_package_codes: [row.package_code] })
+    const result = await client.rpc('wh_reprint_label', { p_package_code: row.package_code, p_reason: reason!.trim() })
     if (result.error) {
       setError(errorText(result.error))
       setPrintingCode(null)
@@ -116,7 +115,7 @@ export default function AptReceiptControlPage() {
       <div>
         <p className="text-xs font-bold uppercase tracking-widest text-blue-700">APT · Control de recepción</p>
         <h1 className="mt-1 text-3xl font-black text-[#002855]">Control de recepcionados</h1>
-        <p className="mt-1 text-sm text-slate-600">Seguimiento de bultos recibidos desde el APT, sus cantidades, estado y etiquetas. Se actualiza cada 30 segundos.</p>
+        <p className="mt-1 text-sm text-slate-600">Control de bultos recepcionados con etiqueta impresa, cantidad y estado WMS. Se actualiza cada 30 segundos.</p>
       </div>
       <button type="button" disabled={refreshing} onClick={() => void load(true)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-[#002855] disabled:opacity-50">
         <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''}/>Actualizar control
@@ -154,14 +153,14 @@ export default function AptReceiptControlPage() {
               <td className="p-3 text-right tabular-nums">{row.quantity} {row.unit || ''}{row.weight_kg !== null && <small className="block text-slate-500">{row.weight_kg} kg</small>}</td>
               <td className="p-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(row.status)}`}>{statusLabel[row.status] || row.status}</span></td>
               <td className="p-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${row.label_print_count > 0 ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>{row.label_print_count > 0 ? 'Impresa' : 'Pendiente'}</span>{row.label_print_count > 1 && <small className="mt-1 block text-slate-500">{row.label_print_count - 1} reimpresión(es)</small>}</td>
-              <td className="p-3"><button type="button" disabled={printingCode !== null} onClick={() => void printExistingPackage(row)} className="inline-flex min-h-9 items-center gap-2 whitespace-nowrap rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Printer size={14}/>{printingCode === row.package_code ? 'Preparando…' : row.label_print_count > 0 ? 'Reimprimir' : 'Imprimir etiqueta'}</button></td>
+              <td className="p-3"><button type="button" disabled={printingCode !== null} onClick={() => void printExistingPackage(row)} className="inline-flex min-h-9 items-center gap-2 whitespace-nowrap rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Printer size={14}/>{printingCode === row.package_code ? 'Preparando…' : 'Reimprimir etiqueta'}</button></td>
             </tr>)}
             {!loading && filtered.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-sm text-slate-500">{query ? 'No hay recepciones que coincidan con la búsqueda.' : 'Todavía no hay bultos recepcionados en el APT.'}</td></tr>}
             {loading && <tr><td colSpan={8} className="p-10 text-center text-sm text-slate-500">Cargando recepciones…</td></tr>}
           </tbody>
         </table>
       </div>
-      <p className="mt-3 text-xs text-slate-500">Cada acción utiliza el paquete existente y conserva su código de barras. Las reimpresiones requieren motivo y quedan auditadas.</p>
+      <p className="mt-3 text-xs text-slate-500">Los bultos pendientes de impresión permanecen en «02 · Recepción por IPT». Aquí cada reimpresión utiliza el mismo paquete y código de barras, requiere motivo y queda auditada.</p>
     </section>
 
     {printLabel && <div id="apt-reprint-root" aria-hidden="true">
