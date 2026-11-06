@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { Printer, RotateCcw, ScanLine, ClipboardCheck, X, RefreshCw, UserRound, Weight, Package } from 'lucide-react'
 import { Code128Barcode } from '@/components/warehouse/Code128Barcode'
@@ -277,7 +278,7 @@ export default function WarehouseLabelingPage() {
       </div>
     </section>
 
-    {selected && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-2 sm:p-3">
+    {selected && typeof document !== 'undefined' && createPortal(<div className="fixed inset-0 z-[2147483000] flex items-center justify-center bg-slate-950/60 p-2 sm:p-3">
       <div role="dialog" aria-modal="true" aria-labelledby="wms-receipt-dialog-title" className="flex h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] w-full max-w-[1600px] flex-col overflow-hidden rounded-xl bg-slate-50 shadow-2xl sm:h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-1.5rem)] sm:rounded-2xl">
         <header className="flex h-11 shrink-0 items-center justify-between border-b border-blue-100 bg-gradient-to-r from-blue-50 to-white px-4 sm:px-6">
           <h2 id="wms-receipt-dialog-title" className="flex items-center gap-2 text-sm font-black uppercase tracking-wide text-[#002855]"><span className="grid h-7 w-7 place-items-center rounded-md bg-blue-100 text-blue-800"><ClipboardCheck size={17}/></span>WMS · Recepción APT</h2>
@@ -374,10 +375,9 @@ export default function WarehouseLabelingPage() {
           <p className="hidden text-xs text-slate-500 sm:block">Conteo físico → distribución → LPN → impresión</p>
           <div className="flex gap-2">{labels.length > 0 && <button type="button" onClick={() => { setSelected(null); setShowPreview(true) }} className="min-h-10 flex-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855] sm:flex-none">Vista previa</button>}<button type="button" onClick={() => setSelected(null)} className="min-h-10 flex-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 sm:flex-none">Cerrar</button><button type="button" disabled={!labels.length} onClick={() => void print()} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"><Printer size={16}/>{labelsPrinted ? 'Reimprimir lote' : hasPrintedLabels ? 'Imprimir pendientes' : 'Imprimir lote'}</button></div>
         </footer>
-      </div>
-    </div>}
+      </div>, document.body)}
 
-    {labels.length > 0 && showPreview && <div id="wms-label-preview" role="dialog" aria-modal="true" aria-labelledby="wms-label-preview-title" className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-2 sm:p-5 print:static print:block print:bg-transparent print:p-0" onClick={() => setShowPreview(false)}>
+    {labels.length > 0 && showPreview && typeof document !== 'undefined' && createPortal(<div id="wms-label-preview" role="dialog" aria-modal="true" aria-labelledby="wms-label-preview-title" className="fixed inset-0 z-[2147483001] flex items-center justify-center bg-slate-950/60 p-2 sm:p-5 print:static print:block print:bg-transparent print:p-0" onClick={() => setShowPreview(false)}>
       <section className="flex max-h-[96dvh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl print:contents" onClick={event => event.stopPropagation()}>
         <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-6">
           <div><h2 id="wms-label-preview-title" className="font-bold text-[#002855]">Vista previa de etiquetas · {labels.length}</h2><p className="text-xs text-slate-500">Revise cada bulto, cantidad y código LPN antes de imprimir.</p></div>
@@ -413,7 +413,7 @@ export default function WarehouseLabelingPage() {
           ))}</div>
         </div>
       </section>
-    </div>}
+    </div>, document.body)}
     <style jsx global>{`@media print{
       @page{size:152.4mm 101.6mm;margin:0}
       html,body{width:152.4mm!important;min-width:0!important;margin:0!important;padding:0!important}
