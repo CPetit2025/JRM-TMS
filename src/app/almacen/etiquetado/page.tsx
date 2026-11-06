@@ -343,7 +343,7 @@ export default function WarehouseLabelingPage() {
           </div>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-6 print:overflow-visible print:p-0">
-          <div className="grid gap-3 sm:grid-cols-2 print:grid-cols-1">{labels.filter(label => printTarget === null || label.package_code === printTarget).map(label => (
+          <div className="grid gap-3 sm:grid-cols-2 print:block">{labels.filter(label => printTarget === null || label.package_code === printTarget).map(label => (
             <article key={label.package_code} className="wh-label flex aspect-[2/1] min-w-0 flex-col overflow-hidden rounded-lg border-2 border-dashed border-slate-500 bg-white p-2.5 text-black sm:p-3">
               <div className="wh-label-head flex min-h-0 items-center gap-2 border-b-4 border-[#002855] pb-1">
                 <div className="flex h-full w-[22%] shrink-0 items-center justify-center border-r border-slate-400 bg-[#002855] p-1">
