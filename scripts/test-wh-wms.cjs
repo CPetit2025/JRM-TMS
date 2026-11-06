@@ -57,9 +57,9 @@ const checks = [
   ['missing ERP weight stays unknown instead of becoming a fabricated zero', /round\(sum\(abs\(m\.peso_kg\)\),3\) AS weight_kg/.test(sql) && /CASE WHEN v_weight IS NOT NULL AND v_receipt\.quantity>0 THEN round\(v_weight\*v_qty\/v_receipt\.quantity,3\) END/.test(sql)],
 ]
 checks.push(
-  ['WMS import reads customer from Excel column Z and known customer header aliases', /text\\(row\\[25\\]\\)[\\s\\S]*?get\\(row,'cliente'\\)[\\s\\S]*?get\\(row,'razonsocial'\\)/.test(receiptImport) && /customer_name:customerName/.test(receiptImport)],
-  ['WMS import version reprocesses an already-loaded workbook to refresh customer data', /customer-column-z-v1/.test(receiptImport) && /const fileHash=await sha256\\(bytes\\)/.test(receiptImport)],
-  ['Excel customer from column Z takes precedence over TMS contract lookup in inbox and validation', /coalesce\\(nullif\\(r\\.customer_name,''\\),nullif\\(c\\.customer_name,''\\)/.test(receiptCustomerZ) && /coalesce\\(nullif\\(v_receipt\\.customer_name,''\\),v_customer/.test(receiptCustomerZ) && /THEN 'EXCEL'/.test(receiptCustomerZ)],
+  ['WMS import reads customer from Excel column Z and known customer header aliases', receiptImport.includes('text(row[25])') && receiptImport.includes("get(row,'cliente')") && receiptImport.includes("get(row,'razonsocial')") && receiptImport.includes('customer_name:customerName')],
+  ['WMS import version reprocesses an already-loaded workbook to refresh customer data', receiptImport.includes('customer-column-z-v1') && receiptImport.includes('const fileHash=await sha256(bytes)')],
+  ['Excel customer from column Z takes precedence over TMS contract lookup in inbox and validation', receiptCustomerZ.includes("coalesce(nullif(r.customer_name,''),nullif(c.customer_name,'')") && receiptCustomerZ.includes("coalesce(nullif(v_receipt.customer_name,''),v_customer") && receiptCustomerZ.includes("THEN 'EXCEL'")],
 )
 const failures = checks.filter(([, ok]) => !ok)
 if (failures.length) {
