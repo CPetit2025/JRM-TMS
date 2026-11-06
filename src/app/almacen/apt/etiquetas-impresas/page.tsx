@@ -29,14 +29,22 @@ type Validation = {
   source_movement_key: string
   validated_by: string
   validated_at: string
+  customer_name: string | null
+  first_name: string | null
+  last_name: string | null
+  username: string | null
 }
-type OperatorValidation = Validation & { first_name: string | null; last_name: string | null; username: string | null }
+type OperatorValidation = Validation
 type ReceiptGroup = {
+  sourceMovementKey: string
   documentNo: string
+  contractCode: string | null
+  lot: string
+  customerName: string | null
+  productCode: string
+  description: string
+  unit: string | null
   packages: ReceiptPackage[]
-  contracts: string[]
-  lots: string[]
-  products: string[]
   units: number
   weightKg: number
   reprints: number
@@ -127,39 +135,51 @@ export default function AptReceiptControlPage() {
   }, [load])
 
   const groups = useMemo(() => {
-    const byIpt = new Map<string, ReceiptGroup>()
+    const byItem = new Map<string, ReceiptGroup>()
     for (const row of rows) {
-      const key = row.source_document_no.trim().toLocaleUpperCase()
-      let group = byIpt.get(key)
+      const key = row.source_movement_key
+      let group = byItem.get(key)
       if (!group) {
-        group = { documentNo: row.source_document_no, packages: [], contracts: [], lots: [], products: [], units: 0, weightKg: 0, reprints: 0, validations: [] }
-        byIpt.set(key, group)
+        group = {
+          sourceMovementKey: key,
+          documentNo: row.source_document_no,
+          contractCode: row.source_contract_code,
+          lot: row.source_lot,
+          customerName: validations[key]?.customer_name || null,
+          productCode: row.source_product_code,
+          description: row.description,
+          unit: row.unit,
+          packages: [],
+          units: 0,
+          weightKg: 0,
+          reprints: 0,
+          validations: [],
+        }
+        byItem.set(key, group)
       }
       group.packages.push(row)
-      if (row.source_contract_code && !group.contracts.includes(row.source_contract_code)) group.contracts.push(row.source_contract_code)
-      if (row.source_lot && !group.lots.includes(row.source_lot)) group.lots.push(row.source_lot)
-      if (!group.products.includes(row.source_product_code)) group.products.push(row.source_product_code)
       if (unitIsPiece(row.unit)) group.units += Number(row.quantity || 0)
       group.weightKg += Number(row.weight_kg || 0)
       group.reprints += Math.max(0, Number(row.label_print_count || 0) - 1)
     }
-    for (const group of byIpt.values()) {
-      const latest = new Map<string, Validation>()
-      for (const row of group.packages) {
-        const validation = validations[row.source_movement_key]
-        if (validation && !latest.has(validation.source_movement_key)) latest.set(validation.source_movement_key, validation)
-      }
-      group.validations = [...latest.values()].sort((a, b) => new Date(b.validated_at).getTime() - new Date(a.validated_at).getTime())
+    for (const group of byItem.values()) {
+      const validation = validations[group.sourceMovementKey]
+      group.validations = validation ? [validation] : []
+      group.customerName = validation?.customer_name || group.customerName
     }
-    return [...byIpt.values()].sort((a, b) => a.documentNo.localeCompare(b.documentNo, 'es', { numeric: true }))
+    return [...byItem.values()].sort((a, b) =>
+      a.documentNo.localeCompare(b.documentNo, 'es', { numeric: true }) ||
+      a.productCode.localeCompare(b.productCode, 'es', { numeric: true }) ||
+      a.lot.localeCompare(b.lot, 'es', { numeric: true }),
+    )
   }, [rows, validations])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase()
     if (!q) return groups
     return groups.filter(group => [
-      group.documentNo, ...group.contracts, ...group.lots, ...group.products,
-      ...group.packages.map(row => row.package_code),
+      group.documentNo, group.contractCode || '', group.lot, group.productCode,
+      group.customerName || '', ...group.packages.map(row => row.package_code),
     ].some(value => value.toLocaleLowerCase().includes(q)))
   }, [groups, query])
 
@@ -193,7 +213,7 @@ export default function AptReceiptControlPage() {
       <div>
         <p className="text-xs font-bold uppercase tracking-widest text-blue-700">APT · Control de recepción</p>
         <h1 className="mt-1 text-3xl font-black text-[#002855]">Control de recepcionados</h1>
-        <p className="mt-1 text-sm text-slate-600">Una fila por IPT. Consulte sus contratos y bultos; las reimpresiones conservan el código original.</p>
+        <p className="mt-1 text-sm text-slate-600">Una fila por línea de producto ingresada. Cada fila consolida sus bultos y conserva el IPT de origen.</p>
       </div>
       <button type="button" disabled={refreshing} onClick={() => void load(true)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-[#002855] disabled:opacity-50">
         <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''}/>Actualizar control
@@ -206,14 +226,14 @@ export default function AptReceiptControlPage() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="grid h-11 w-11 place-items-center rounded-xl bg-blue-50 text-blue-800"><PackageCheck size={22}/></span>
-          <div><h2 className="font-bold text-[#002855]">Ingresos recepcionados</h2><p className="text-xs text-slate-500">{filtered.length} de {groups.length} IPT</p></div>
+          <div><h2 className="font-bold text-[#002855]">Ingresos recepcionados</h2><p className="text-xs text-slate-500">{filtered.length} de {groups.length} líneas de ingreso</p></div>
         </div>
         <p className="text-xs text-slate-400">{lastUpdated ? `Actualizado: ${lastUpdated.toLocaleTimeString('es-PE')}` : 'Consultando…'}</p>
       </div>
 
       <label className="relative mb-4 block">
         <Search size={16} className="absolute left-3 top-3 text-slate-400"/>
-        <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar por IPT, contrato, lote o producto" className="w-full rounded-lg border border-slate-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500"/>
+        <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar por lote, IPT, cliente o descripción" className="w-full rounded-lg border border-slate-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500"/>
       </label>
 
       <div className="w-full overflow-x-auto rounded-lg border border-slate-200">
