@@ -37,6 +37,8 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   { title: 'Operación', modules: [
     { id: 'torre-control', label: 'Torre de Control' },
     { id: 'despacho', label: 'Programación y Ruteo' },
+    { id: 'compras-tercerizaciones', label: 'Compras: gestionar tercerizaciones y cotizaciones' },
+    { id: 'compras-aprobar', label: 'Compras: aprobar adjudicaciones' },
     { id: 'despacho-aprobacion', label: 'Aprobar solicitudes de transporte' },
     { id: 'documentario', label: 'Documentos de Despacho (Asistente Documentario)' },
     { id: 'cierre-economico', label: 'Cierre económico (aprobar costos finales y reabrir)' },

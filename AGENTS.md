@@ -7,3 +7,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+# Delivery preference
+
+The user requires migration and deployment as part of completing changes. Apply the migrations belonging to the task to the verified TMS database, deploy the resulting code to the existing TMS production project, and verify both. Preserve the separate WMS target and unrelated migrations. Do not stop at local implementation when connected deployment tools are available.

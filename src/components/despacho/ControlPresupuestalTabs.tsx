@@ -12,6 +12,7 @@ export function ControlPresupuestalTabs({ active, ot }: { active: Tab; ot?: stri
     {tab('movimientos', `/despacho/control-presupuestal/movimientos${keep}`, 'Movimientos')}
     {tab('pendientes', '/despacho/control-presupuestal/pendientes', 'Pendientes y autorizaciones')}
     {tab('ahorro', '/despacho/control-presupuestal/ahorro', 'Ahorro por consolidación')}
+    <Link href="/despacho/tercerizaciones" className="min-h-9 whitespace-nowrap rounded-md px-3 py-2 text-sm font-semibold text-slate-600">Tercerizaciones</Link>
     {tab('rutas', '/despacho/documentos/economico', 'Costos por ruta')}
   </nav>
 }

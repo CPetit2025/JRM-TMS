@@ -23,6 +23,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { errorMessage } from '@/lib/caja'
 import { serviceDate, wasRescheduled, withRescheduling } from '@/lib/request-schedule'
 import { ReportarFallaButton } from '@/components/mantenimiento/ReportarFalla'
+import { OutsourcingRequest } from '@/components/despacho/OutsourcingRequest'
 import { AddRouteService } from '@/components/despacho/AddRouteService'
 import { OCCUPIED_DISPATCH_STATUSES } from '@/lib/route-assignment'
 import { useRouteBuilder } from '@/components/despacho/programar-ruta/useRouteBuilder'
@@ -46,7 +47,9 @@ export default function DespachoPage() {
   const canAddService = canWrite('despacho') && ['admin', 'supervisor de transporte'].includes(role)
   const supabase = useMemo(() => createClient(), [])
   const [pendingRequests, setPendingRequests] = useState<TransportRequest[]>([])
+  const [outsourcingRequest, setOutsourcingRequest] = useState<TransportRequest | null>(null)
   const [linkRequest, setLinkRequest] = useState<TransportRequest | null>(null)
+  const closeOutsourcing = useCallback(() => setOutsourcingRequest(null), [])
   const [dispatches, setDispatches] = useState<Dispatch[]>([])
   const [vehicles, setVehicles] = useState<PlanningVehicle[]>([])
   const [drivers, setDrivers] = useState<PlanningDriver[]>([])
@@ -197,6 +200,7 @@ export default function DespachoPage() {
             Armar Ruta
           </button>
         )}
+        <Link href="/despacho/tercerizaciones" className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold text-jrm-navy">Tercerizaciones · Compras</Link>
         <TorreControlButton />
       </>} />
       <div className="flex flex-wrap items-center gap-2">
@@ -272,6 +276,7 @@ export default function DespachoPage() {
                             : <span className="text-slate-400">—</span>}
                       </td>
                       <td className="text-right">
+                        {canWrite('despacho') && <button type="button" onClick={() => setOutsourcingRequest(req)} className="mr-2 rounded-lg border border-jrm-navy px-3 py-2 text-xs font-semibold text-jrm-navy">Solicitar tercerización</button>}
                         {canWrite('despacho') && (
                           <button type="button" onClick={() => { rb.setIsModalOpen(true); if (!selected) void rb.toggleRequestSelection(req.id, req.pickup_address, req.delivery_address) }}
                             aria-label={`Asignar ${req.request_number}`}
@@ -289,6 +294,7 @@ export default function DespachoPage() {
         </div>
       </section>
 
+      {outsourcingRequest && <OutsourcingRequest request={outsourcingRequest} onClose={closeOutsourcing} />}
       <RouteBuilderModal rb={rb} onLink={setLinkRequest} />
       {linkRequest && <LinkPartyModal request={linkRequest} onClose={() => setLinkRequest(null)} onLinked={() => void fetchData()} />}
       <AddRouteService dispatchId={rb.addServiceId} initialRequestId={rb.newDispatch.selected_requests[0]?.id} onClose={() => { rb.setAddServiceId(null); rb.setIsModalOpen(true) }} onChanged={requestId => { rb.setNewDispatch(previous => ({ ...previous, selected_requests: previous.selected_requests.filter(request => request.id !== requestId) })); void fetchData() }} />
