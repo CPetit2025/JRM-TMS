@@ -5,7 +5,7 @@ name: Deploy production (Supabase + Vercel)
 # Vercel no despliega master por Git (vercel.json → git.deploymentEnabled.master = false): así el frontend
 # nunca llega a producción antes que el esquema que necesita. Las vistas previas de ramas siguen igual.
 # Secretos: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_ID, SUPABASE_DB_PASSWORD, VERCEL_DEPLOY_HOOK_URL
-# (docs/despliegue-automatico.md).
+# (docs/despliegue-automatico.md). WMS se despliega aparte, con su propia base: deploy-wms.yml.
 
 on:
   push:
@@ -62,6 +62,10 @@ jobs:
           for v in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_ID SUPABASE_DB_PASSWORD; do
             if [ -z "${!v}" ]; then echo "::error::Falta el secreto $v (ver docs/despliegue-automatico.md)"; exit 1; fi
           done
+
+      # Separación TMS / WMS: esta base debe ser la de TMS, nunca una de WMS (docs/despliegue-wms.md).
+      - name: Guard TMS target
+        run: SUPABASE_PROJECT_REF="$SUPABASE_PROJECT_ID" SUPABASE_TARGET_STRICT=1 JRM_APP=tms node scripts/check-supabase-target.cjs
 
       - uses: supabase/setup-cli@v1
         with:

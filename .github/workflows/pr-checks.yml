@@ -24,6 +24,7 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - run: node --test scripts/test-supabase-target.cjs
       - run: node scripts/test-tracking-email.cjs
       - run: node scripts/test-hhee.cjs
       - run: node scripts/test-gestion-personal.cjs

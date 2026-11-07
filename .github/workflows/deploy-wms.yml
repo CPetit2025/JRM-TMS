@@ -1,0 +1,131 @@
+name: Deploy WMS (Supabase + Vercel)
+
+# WMS se despliega aparte de TMS, con su propia base y su propio proyecto Vercel por entorno
+# (docs/despliegue-wms.md). Cada ejecución:
+# 1) verifica que la base y el proyecto Vercel del entorno elegido sean de WMS y nunca de TMS,
+# 2) aplica las migraciones a la base WMS de ese entorno, 3) despliega el código WMS en su proyecto Vercel.
+# Secretos y variables viven en los entornos de GitHub `wms-staging` y `wms-production`, no en el repositorio:
+# así nada de TMS (deploy-production.yml) se usa aquí.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Entorno WMS
+        type: choice
+        options: [staging, production]
+        default: staging
+      skip_migrations:
+        description: Solo desplegar en Vercel (sin migraciones)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  # Rama con el código WMS; cambiarla aquí cuando WMS llegue a master.
+  WMS_BRANCH: feature/warehouse-wms-portal
+  JRM_APP: wms-${{ inputs.target }}
+  SUPABASE_TARGET_STRICT: '1'
+
+concurrency:
+  # Comparte grupo con wms-staging-db.yml para no aplicar migraciones de Staging en paralelo.
+  group: ${{ inputs.target == 'staging' && 'wms-staging-database' || 'wms-production-database' }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: ${{ !inputs.skip_migrations }}
+    runs-on: ubuntu-24.04
+    environment: wms-${{ inputs.target }}
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+    steps:
+      # La guarda sale de este commit; el esquema, de la rama WMS.
+      - uses: actions/checkout@v4
+
+      - name: Check secrets
+        run: |
+          for v in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_REF; do
+            if [ -z "${!v}" ]; then echo "::error::Falta $v en el entorno $JRM_APP (docs/despliegue-wms.md)"; exit 1; fi
+          done
+
+      - name: Guard WMS database (never TMS)
+        run: node scripts/check-supabase-target.cjs
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.WMS_BRANCH }}
+          path: wms
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.118.0
+
+      - name: Link WMS project
+        working-directory: wms
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Preview pending migrations
+        working-directory: wms
+        run: supabase db push --linked --include-all --dry-run --yes | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply migrations to WMS database
+        working-directory: wms
+        run: supabase db push --linked --include-all --yes
+
+  deploy:
+    needs: migrate
+    if: ${{ always() && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    environment: wms-${{ inputs.target }}
+    env:
+      VERCEL_TOKEN: ${{ secrets.WMS_VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ vars.WMS_VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.WMS_VERCEL_PROJECT_ID }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.WMS_BRANCH }}
+          path: wms
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check secrets
+        run: |
+          for v in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID SUPABASE_PROJECT_REF; do
+            if [ -z "${!v}" ]; then echo "::error::Falta $v en el entorno $JRM_APP (docs/despliegue-wms.md)"; exit 1; fi
+          done
+
+      # Lee las variables de producción del proyecto Vercel WMS y comprueba que su URL de Supabase sea la base
+      # WMS de este entorno (no la de TMS) y que JRM_APP active la guarda también en la compilación de Vercel.
+      - name: Guard WMS Vercel project (never TMS)
+        working-directory: wms
+        run: |
+          npx --yes vercel@61.1.0 pull --yes --environment=production --token="$VERCEL_TOKEN" > /dev/null
+          envfile=.vercel/.env.production.local
+          get() { grep -E "^$1=" "$envfile" | head -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//'; }
+          url=$(get NEXT_PUBLIC_SUPABASE_URL); app=$(get JRM_APP)
+          rm -f "$envfile"
+          if [ "$app" != "$JRM_APP" ]; then
+            echo "::error::El proyecto Vercel debe tener JRM_APP=$JRM_APP (tiene '${app}'). ¿Es el proyecto de TMS?"; exit 1
+          fi
+          NEXT_PUBLIC_SUPABASE_URL="$url" SUPABASE_PROJECT_REF= node ../scripts/check-supabase-target.cjs
+          ref=$(node -e "console.log(require('../scripts/check-supabase-target.cjs').refFromUrl(process.argv[1]))" "$url")
+          if [ "$ref" != "$SUPABASE_PROJECT_REF" ]; then
+            echo "::error::El proyecto Vercel apunta a $ref y las migraciones a $SUPABASE_PROJECT_REF"; exit 1
+          fi
+
+      - name: Deploy to Vercel (WMS)
+        working-directory: wms
+        run: |
+          url=$(npx --yes vercel@61.1.0 deploy --prod --yes --token="$VERCEL_TOKEN")
+          echo "WMS $JRM_APP desplegado: $url" | tee -a "$GITHUB_STEP_SUMMARY"
