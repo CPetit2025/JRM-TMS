@@ -1,6 +1,5 @@
 'use client'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Image from 'next/image'
 import { createPortal } from 'react-dom'
 import { CalendarCheck, ChevronLeft, ChevronRight, ClipboardList, FileText, Flag, Info, Loader2, MapPin, Save, Send, ShoppingCart, Truck, UserRound, Warehouse, Wrench, X, Clock } from 'lucide-react'
 import { toast } from 'sonner'
@@ -143,7 +142,8 @@ export function OutsourcingRequest({request:initialRequest,outsourcingId,onClose
  const Icon=step===0?Info:STEP_ICONS[step]
  if(typeof document==='undefined')return null
  return createPortal(<div className="ow-backdrop"><div ref={dialogRef} className="ow-modal" role="dialog" aria-modal="true" aria-labelledby="outsourcing-title" aria-busy={busy}>
-  <header className="ow-header"><div className="ow-brand"><Image src="/jrm-wordmark.svg" alt="JRM" width={150} height={78} unoptimized/><div className="ow-brand-separator"/><div><h2 id="outsourcing-title">Solicitud de tercerización</h2><p>Registro y envío de requerimiento a Compras</p></div></div><div className="ow-header-actions"><span className="ow-status"><FileText/>{status}</span><button type="button" className="ow-close" aria-label="Cerrar solicitud de tercerización" onClick={requestClose} disabled={busy}><X/></button></div></header>
+  <header className="ow-header"><div className="ow-brand">{/* eslint-disable-next-line @next/next/no-img-element */}
+  <img src="/logo-jrm.png" alt="JRM" className="h-7 w-auto shrink-0 object-contain"/><div className="ow-brand-separator"/><div><h2 id="outsourcing-title">Solicitud de tercerización</h2><p>Registro y envío de requerimiento a Compras</p></div></div><div className="ow-header-actions"><span className="ow-status"><FileText/>{status}</span><button type="button" className="ow-close" aria-label="Cerrar solicitud de tercerización" onClick={requestClose} disabled={busy}><X/></button></div></header>
   <div className="ow-scroll" ref={contentRef}>
    <section className="ow-identity" aria-label="Identificación del requerimiento">
     <div className="ow-identity-item"><CalendarCheck/><div><strong>{identity.request}</strong><span>N° Solicitud</span></div></div>
