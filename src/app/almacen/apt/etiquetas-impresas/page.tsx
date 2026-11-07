@@ -60,6 +60,7 @@ const unitIsPiece = (unit: string | null) => !unit || /^(UND|UNID|UNIDAD|UNIDADE
 export default function AptReceiptControlPage() {
   const [rows, setRows] = useState<ReceiptPackage[]>([])
   const [validations, setValidations] = useState<Record<string, Validation>>({})
+  const [customers, setCustomers] = useState<Record<string, string>>({})
   const [profiles, setProfiles] = useState<Record<string, string>>({})
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
@@ -93,9 +94,11 @@ export default function AptReceiptControlPage() {
     const packages = (data || []) as ReceiptPackage[]
     setRows(packages)
     const movementKeys = [...new Set(packages.map(row => row.source_movement_key))]
-    const validationChunks = await Promise.all(Array.from({ length: Math.ceil(movementKeys.length / 100) }, (_, i) =>
-      client.rpc('wh_receipt_control_operators', { p_source_movement_keys: movementKeys.slice(i * 100, (i + 1) * 100) }),
-    ))
+    const chunks = Array.from({ length: Math.ceil(movementKeys.length / 100) }, (_, i) => movementKeys.slice(i * 100, (i + 1) * 100))
+    const [validationChunks, customerChunks] = await Promise.all([
+      Promise.all(chunks.map(p_source_movement_keys => client.rpc('wh_receipt_control_operators', { p_source_movement_keys }))),
+      Promise.all(chunks.map(p_source_movement_keys => client.rpc('wh_receipt_control_customers', { p_source_movement_keys }))),
+    ])
     const latestByMovement = new Map<string, Validation>()
     const operatorRows = validationChunks.flatMap(result => {
       if (result.error) return []
@@ -106,6 +109,10 @@ export default function AptReceiptControlPage() {
     for (const row of validationRows) if (!latestByMovement.has(row.source_movement_key)) latestByMovement.set(row.source_movement_key, row)
     const validationMap = Object.fromEntries(latestByMovement)
     setValidations(validationMap)
+    const customerRows = customerChunks.flatMap(result => result.error ? [] : (result.data || []) as { source_movement_key: string; customer_name: string | null }[])
+    setCustomers(Object.fromEntries(customerRows.filter(row => row.customer_name?.trim()).map(row => [row.source_movement_key, row.customer_name!.trim()])))
+    const lookupError = [...validationChunks, ...customerChunks].find(result => result.error)?.error
+    if (lookupError) setError(`No se pudieron cargar los datos de cliente/recepción: ${lookupError.message}`)
 
     const names: Record<string, string> = {}
     for (const row of operatorRows) {
@@ -145,7 +152,7 @@ export default function AptReceiptControlPage() {
           documentNo: row.source_document_no,
           contractCode: row.source_contract_code,
           lot: row.source_lot,
-          customerName: validations[key]?.customer_name || null,
+          customerName: customers[key] || validations[key]?.customer_name || null,
           productCode: row.source_product_code,
           description: row.description,
           unit: row.unit,
@@ -165,14 +172,14 @@ export default function AptReceiptControlPage() {
     for (const group of byItem.values()) {
       const validation = validations[group.sourceMovementKey]
       group.validations = validation ? [validation] : []
-      group.customerName = validation?.customer_name || group.customerName
+      group.customerName = customers[group.sourceMovementKey] || validation?.customer_name || group.customerName
     }
     return [...byItem.values()].sort((a, b) =>
       a.documentNo.localeCompare(b.documentNo, 'es', { numeric: true }) ||
       a.productCode.localeCompare(b.productCode, 'es', { numeric: true }) ||
       a.lot.localeCompare(b.lot, 'es', { numeric: true }),
     )
-  }, [rows, validations])
+  }, [rows, validations, customers])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase()
@@ -237,15 +244,16 @@ export default function AptReceiptControlPage() {
       </label>
 
       <div className="w-full overflow-x-auto rounded-lg border border-slate-200">
-        <table className="w-full min-w-[1120px] text-left text-sm">
+        <table className="w-full min-w-[1280px] text-left text-sm">
           <thead className="bg-slate-50 text-xs font-semibold text-slate-600"><tr>
-            <th className="p-3">Lote · IPT</th><th className="p-3">Cliente</th><th className="p-3">Descripción</th>
+            <th className="p-3">Lote</th><th className="p-3">IPT</th><th className="p-3">Cliente</th><th className="p-3">Descripción</th>
             <th className="p-3 text-right">UND</th><th className="p-3 text-right">Kg / TN</th><th className="p-3 text-right">Bultos</th>
             <th className="p-3 text-right">Reimpresiones</th><th className="p-3">Acciones</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-200">
             {filtered.map(group => <tr key={group.sourceMovementKey} className="hover:bg-blue-50/60">
-              <td className="p-3"><b className="block text-[#002855]">{group.lot || '—'}</b><small className="text-slate-500">IPT {group.documentNo}</small></td>
+              <td className="p-3">{group.lot || '—'}</td>
+              <td className="p-3 font-semibold text-[#002855]">{group.documentNo}</td>
               <td className="max-w-56 p-3">{group.customerName || 'Por registrar'}</td>
               <td className="max-w-[420px] p-3"><b className="block text-[#002855]">{group.productCode}</b><span className="block text-xs text-slate-500">{group.description || '—'}</span></td>
               <td className="p-3 text-right tabular-nums">{group.units ? numberFmt.format(group.units) : '—'}</td>
@@ -254,8 +262,8 @@ export default function AptReceiptControlPage() {
               <td className="p-3 text-right tabular-nums">{group.reprints}</td>
               <td className="p-3"><button type="button" onClick={() => setDetail(group)} className="inline-flex min-h-9 items-center gap-2 whitespace-nowrap rounded-lg border border-[#002855] px-3 py-2 text-xs font-bold text-[#002855] hover:bg-blue-50"><ClipboardList size={14}/>Ver detalle</button></td>
             </tr>)}
-            {!loading && filtered.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-sm text-slate-500">{query ? 'No hay líneas recepcionadas que coincidan con la búsqueda.' : 'Todavía no hay ingresos recepcionados en el APT.'}</td></tr>}
-            {loading && <tr><td colSpan={8} className="p-10 text-center text-sm text-slate-500">Cargando recepciones…</td></tr>}
+            {!loading && filtered.length === 0 && <tr><td colSpan={9} className="p-10 text-center text-sm text-slate-500">{query ? 'No hay líneas recepcionadas que coincidan con la búsqueda.' : 'Todavía no hay ingresos recepcionados en el APT.'}</td></tr>}
+            {loading && <tr><td colSpan={9} className="p-10 text-center text-sm text-slate-500">Cargando recepciones…</td></tr>}
           </tbody>
         </table>
       </div>
