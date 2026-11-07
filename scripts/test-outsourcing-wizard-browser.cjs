@@ -60,6 +60,22 @@ const server=http.createServer(async(req,res)=>{
   await page.screenshot({path:out+'/01-informacion-general.png',fullPage:true,style:'nextjs-portal{display:none}'})
   const geometry=await page.evaluate(()=>{const g=s=>{const r=document.querySelector(s).getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height}};return{modal:g('.ow-modal'),left:g('.ow-form-card'),right:g('.ow-summary'),footer:g('.ow-footer'),tabs:g('.ow-tabs'),header:g('.ow-header'),title:g('.ow-brand h2'),logo:g('.ow-brand img')}})
   fs.writeFileSync(out+'/geometry.json',JSON.stringify(geometry,null,2));assert.ok(geometry.right.x>geometry.left.x+geometry.left.width);assert.ok(Math.abs(geometry.left.y-geometry.right.y)<2);assert.equal(await page.locator('.ow-tabs>button').count(),5)
+  const compactGeometry=[]
+  for(const viewport of [{width:1536,height:864},{width:1366,height:768},{width:1280,height:720},{width:1366,height:650},{width:1100,height:650}]) {
+   await page.setViewportSize(viewport)
+   const fit=await page.evaluate(()=>{
+    const rect=s=>document.querySelector(s).getBoundingClientRect(),modal=rect('.ow-modal'),footer=rect('.ow-footer'),info=rect('.ow-important'),progress=rect('.ow-progress'),scroll=document.querySelector('.ow-scroll')
+    return {width:innerWidth,height:innerHeight,modal:{x:modal.x,y:modal.y,width:modal.width,height:modal.height},footerBottom:footer.bottom,infoBottom:info.bottom,progressBottom:progress.bottom,scrollOverflow:scroll.scrollHeight-scroll.clientHeight,zoom:visualViewport.scale}
+   })
+   compactGeometry.push(fit)
+   assert.equal(fit.zoom,1,'browser zoom remains 100%')
+   assert.ok(fit.modal.width<=1240 && fit.modal.x>=30,'dialog has desktop margins')
+   assert.ok(fit.modal.y>=19 && fit.footerBottom<=viewport.height-19,'whole dialog and footer fit the viewport')
+   assert.ok(fit.scrollOverflow<=2,`first step fits without scrolling at ${viewport.width}x${viewport.height}: ${fit.scrollOverflow}px overflow`)
+   await page.screenshot({path:out+`/compact-${viewport.width}x${viewport.height}.png`,fullPage:true,style:'nextjs-portal{display:none}'})
+  }
+  fs.writeFileSync(out+'/compact-geometry.json',JSON.stringify(compactGeometry,null,2))
+  await page.setViewportSize({width:1536,height:1024})
   await page.getByLabel('Prioridad de la solicitud').selectOption('ALTA');await page.locator('.ow-summary').getByText('Alta',{exact:true}).waitFor();acceptDialog=false;await page.getByRole('button',{name:'Cerrar solicitud de tercerización'}).click();assert.equal(await page.getByRole('dialog').count(),1,'discard rejected retains edits');acceptDialog=true
   await page.getByLabel('Puntos intermedios',{exact:true}).selectOption('points');await page.getByLabel('Punto intermedio 1',{exact:true}).fill('Obra intermedia A');await page.getByRole('button',{name:'Agregar punto',exact:true}).click();await page.getByLabel('Punto intermedio 2',{exact:true}).fill('Obra intermedia B');await page.getByRole('button',{name:'Subir punto 2'}).click()
   await step(1);await field({key:'unit_type',type:'select'},'Plataforma');await field({key:'unit_count'},'1.5');await page.getByRole('button',{name:'Guardar borrador',exact:true}).click();await page.getByText('Borrador guardado.',{exact:false}).waitFor()

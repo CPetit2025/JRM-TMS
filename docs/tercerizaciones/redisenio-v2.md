@@ -68,3 +68,9 @@ Aplicar mediante el pipeline aprobado a la base TMS `eojfsbogysifxrlrnjvx`, nunc
 La migración no destruye tablas ni información anterior. Ante un problema se prefiere corregir hacia adelante; una restauración de frontend debe mantener las columnas y auditoría nuevas, y los cambios de funciones deben realizarse mediante una migración correctiva. No ejecutar una eliminación de columnas o revisiones como rollback si ya existen solicitudes v2.
 
 Limitaciones deliberadas: no verifica automáticamente documentos declarados ni viabilidad técnica; no envía correo externo, no adjudica ni compromete presupuesto desde el asistente; la recepción real es la bandeja de Compras y la campana existente. La bandeja mantiene el límite previo de 500 registros recientes. La cancelación posterior a confirmación requiere resolver el despacho y sus compromisos por el proceso existente.
+
+## Ajuste posterior: modal compacto al 100 % de zoom
+
+La referencia de 1536 × 1024 no representaba el alto útil de un navegador de portátil con barras y escalado de Windows. El modal de escritorio pasa a ancho máximo 1240 px, altura natural con límite de viewport y márgenes exteriores. Se compactan encabezado, identificación, pestañas, tarjetas, controles, resumen y acciones; las ventanas bajas reciben una densidad adicional. No se aplica `zoom` ni una transformación para reducir el contenido.
+
+La regresión de navegador comprueba el primer paso completo sin desplazamiento interno al 100 % de zoom, los márgenes del modal, el resumen y el pie visible en 1536 × 864, 1366 × 768, 1280 × 720, 1366 × 650 y 1100 × 650. Los pasos largos conservan desplazamiento central y las acciones accesibles. Este ajuste es exclusivamente visual: no añade migraciones ni cambia datos o permisos.

@@ -14,3 +14,107 @@
 @media(min-width:901px){.ow-summary{position:sticky;top:0;align-self:start;min-height:505px}}
 .ow-priority-picker{position:relative}.ow-priority-picker select{padding-left:32px}.ow-priority-dot{position:absolute;left:13px;top:24px;width:10px;height:10px;border-radius:50%;background:#0053be;pointer-events:none}.ow-priority-picker[data-priority=ALTA] .ow-priority-dot{background:#b57900}.ow-priority-picker[data-priority=URGENTE] .ow-priority-dot{background:#cf152d}
 @media(max-width:560px){.ow-priority-dot{top:20px;width:8px;height:8px}}
+
+/* Densidad de escritorio: el tamaño del bosquejo no debe exigir reducir el zoom. */
+@media (min-width: 901px) {
+  .ow-backdrop { padding: 32px; background: rgb(15 35 65 / 28%); }
+  .ow-modal { max-width: 1240px; height: auto; max-height: min(740px, calc(100dvh - 64px)); border-radius: 16px; }
+  .ow-header { min-height: 0; padding: 12px 18px; }
+  .ow-brand { gap: 16px; }
+  .ow-brand img { width: 94px; height: 49px; }
+  .ow-brand-separator { height: 40px; margin-right: 0; }
+  .ow-brand h2 { margin-bottom: 3px; font-size: 25px; letter-spacing: -.6px; }
+  .ow-brand p { font-size: 14px; }
+  .ow-header-actions { gap: 16px; transform: none; }
+  .ow-status { gap: 8px; padding: 7px 12px; font-size: 13px; line-height: 1.25; transform: none; }
+  .ow-status svg { width: 17px; height: 17px; }
+  .ow-close { width: 36px; height: 36px; border-radius: 8px; }
+  .ow-close svg { width: 22px; height: 22px; }
+  .ow-scroll { padding: 0 16px 14px; }
+  .ow-identity { min-height: 70px; gap: 10px; padding: 12px 14px; border-radius: 10px; }
+  .ow-identity-item { gap: 8px; }
+  .ow-identity-item > svg { width: 22px; height: 22px; margin-top: 1px; }
+  .ow-identity-item strong { font-size: 15px; line-height: 1.3; white-space: nowrap; }
+  .ow-identity-item span, .ow-identity-item .ow-normal, .ow-identity label { font-size: 12px; line-height: 1.3; }
+  .ow-identity-item .ow-normal { margin-top: 3px; }
+  .ow-identity-separated { padding-left: 14px; }
+  .ow-identity select { margin-top: 5px; padding: 6px 9px 6px 27px; font-size: 12px; border-radius: 7px; }
+  .ow-priority-dot { left: 11px; top: 18px; width: 8px; height: 8px; }
+  .ow-tabs { gap: 8px; margin: 16px 0; }
+  .ow-tabs > button { min-width: 0; min-height: 44px; gap: 8px; padding: 7px 9px; font-size: 12px; letter-spacing: 0; }
+  .ow-tabs > button > span:last-child { min-width: 0; white-space: normal; line-height: 1.2; }
+  .ow-tabs > button > svg { width: 18px; height: 18px; }
+  .ow-step-number { width: 27px; height: 27px; font-size: 14px; box-shadow: none; }
+  .ow-columns { gap: 16px; }
+  .ow-card { padding: 14px; border-radius: 10px; }
+  .ow-form-card:has(.ow-general-fields), .ow-summary { min-height: 0; }
+  .ow-card-heading { gap: 10px; margin-bottom: 14px; padding-bottom: 12px; }
+  .ow-heading-icon { width: 36px; height: 36px; }
+  .ow-heading-icon svg { width: 23px; height: 23px; }
+  .ow-card-heading h3 { font-size: 20px; letter-spacing: -.3px; }
+  .ow-card-heading p { margin-top: 2px; font-size: 13px; }
+  .ow-fields, .ow-general-fields { gap: 12px 18px; }
+  .ow-general-fields { padding: 0; }
+  .ow-field > label { margin-bottom: 5px; font-size: 13px; }
+  .ow-control { min-height: 36px; padding: 7px 10px; font-size: 14px; border-radius: 7px; }
+  .ow-general-fields input, .ow-date-readable, .ow-date-readable.has-icon { font-size: 14px; }
+  .ow-with-icon { padding-left: 38px; }
+  .ow-field-icon { top: 9px; left: 12px; }
+  .ow-field-icon svg { width: 18px; height: 18px; }
+  .ow-date-readable { left: 11px; }
+  .ow-date-readable.has-icon { left: 38px; }
+  .ow-important { gap: 10px; margin-top: 16px; padding: 10px 12px; }
+  .ow-important > svg { width: 22px; height: 22px; }
+  .ow-important strong { font-size: 15px; line-height: 1.3; }
+  .ow-important p { margin-top: 4px; font-size: 12px; line-height: 1.35; }
+  .ow-summary h3 { gap: 8px; padding-bottom: 10px; font-size: 17px; letter-spacing: -.3px; }
+  .ow-summary h3 > svg { width: 21px; height: 21px; }
+  .ow-summary > dl { gap: 8px; margin: 12px 0 16px; }
+  .ow-summary > dl > div { grid-template-columns: 95px minmax(0, 1fr); gap: 10px; font-size: 13px; line-height: 1.35; }
+  .ow-summary dt { gap: 8px; }
+  .ow-summary dt svg { width: 16px; height: 16px; }
+  .ow-priority, .ow-summary-status { padding: 4px 9px; }
+  .ow-progress { padding: 11px 13px; border-radius: 9px; }
+  .ow-progress > strong { font-size: 14px; }
+  .ow-progress-row { gap: 14px; margin: 8px 0 4px; }
+  .ow-progress-row > div { height: 10px; }
+  .ow-progress-row > b { min-width: 35px; font-size: 14px; }
+  .ow-progress > p, .ow-summary-hint { font-size: 12px; }
+  .ow-summary-hint { margin-top: 12px; }
+  .ow-footer { min-height: 0; padding: 11px 16px; }
+  .ow-footer-right { gap: 12px; }
+  .ow-button { min-height: 38px; min-width: 0; gap: 8px; padding: 8px 16px; font-size: 14px; border-radius: 8px; }
+  .ow-button svg { width: 18px; height: 18px; }
+  .ow-block-title { margin: 16px 0 10px; font-size: 15px; }
+  .ow-service-select { padding: 12px; font-size: 14px; }
+  .ow-service-fields { padding: 12px; }
+}
+
+/* La altura disponible incluye las barras del navegador y el escalado de Windows. */
+@media (min-width: 901px) and (max-height: 760px) {
+  .ow-backdrop { padding: 20px 32px; }
+  .ow-modal { max-height: calc(100dvh - 40px); }
+  .ow-header { padding: 9px 16px; }
+  .ow-brand img { width: 84px; height: 42px; }
+  .ow-brand h2 { font-size: 22px; }
+  .ow-brand p { font-size: 12px; }
+  .ow-identity { min-height: 60px; padding: 9px 12px; }
+  .ow-tabs { margin: 11px 0; }
+  .ow-tabs > button { min-height: 39px; padding-top: 5px; padding-bottom: 5px; }
+  .ow-card { padding: 12px; }
+  .ow-card-heading { margin-bottom: 10px; padding-bottom: 10px; }
+  .ow-card-heading h3 { font-size: 18px; }
+  .ow-card-heading p { font-size: 12px; }
+  .ow-fields, .ow-general-fields { gap: 9px 16px; }
+  .ow-control { min-height: 33px; padding-top: 5px; padding-bottom: 5px; }
+  .ow-field > label { font-size: 12px; margin-bottom: 4px; }
+  .ow-field-icon { top: 7px; }
+  .ow-important { margin-top: 12px; padding: 8px 10px; }
+  .ow-important p { font-size: 11px; }
+  .ow-summary > dl { gap: 6px; margin: 10px 0 12px; }
+  .ow-progress { padding: 9px 11px; }
+  .ow-footer { padding: 9px 16px; }
+}
+@media (min-width: 901px) and (max-height: 760px) {
+  .ow-scroll { padding-bottom: 10px; }
+}
