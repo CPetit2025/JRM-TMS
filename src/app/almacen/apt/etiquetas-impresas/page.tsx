@@ -248,7 +248,7 @@ export default function AptReceiptControlPage() {
           <thead className="bg-slate-50 text-xs font-semibold text-slate-600"><tr>
             <th className="p-3">Lote</th><th className="p-3">IPT</th><th className="p-3">Cliente</th><th className="p-3">Descripción</th>
             <th className="p-3 text-right">UND</th><th className="p-3 text-right">Kg / TN</th><th className="p-3 text-right">Bultos</th>
-            <th className="p-3 text-right">Reimpresiones</th><th className="p-3">Acciones</th>
+            <th className="p-3">Acciones</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-200">
             {filtered.map(group => <tr key={group.sourceMovementKey} className="hover:bg-blue-50/60">
@@ -259,11 +259,10 @@ export default function AptReceiptControlPage() {
               <td className="p-3 text-right tabular-nums">{group.units ? numberFmt.format(group.units) : '—'}</td>
               <td className="p-3 text-right tabular-nums">{group.weightKg ? weightText(group.weightKg) : '—'}</td>
               <td className="p-3 text-right tabular-nums">{group.packages.length}</td>
-              <td className="p-3 text-right tabular-nums">{group.reprints}</td>
               <td className="p-3"><button type="button" onClick={() => setDetail(group)} className="inline-flex min-h-9 items-center gap-2 whitespace-nowrap rounded-lg border border-[#002855] px-3 py-2 text-xs font-bold text-[#002855] hover:bg-blue-50"><ClipboardList size={14}/>Ver detalle</button></td>
             </tr>)}
-            {!loading && filtered.length === 0 && <tr><td colSpan={9} className="p-10 text-center text-sm text-slate-500">{query ? 'No hay líneas recepcionadas que coincidan con la búsqueda.' : 'Todavía no hay ingresos recepcionados en el APT.'}</td></tr>}
-            {loading && <tr><td colSpan={9} className="p-10 text-center text-sm text-slate-500">Cargando recepciones…</td></tr>}
+            {!loading && filtered.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-sm text-slate-500">{query ? 'No hay líneas recepcionadas que coincidan con la búsqueda.' : 'Todavía no hay ingresos recepcionados en el APT.'}</td></tr>}
+            {loading && <tr><td colSpan={8} className="p-10 text-center text-sm text-slate-500">Cargando recepciones…</td></tr>}
           </tbody>
         </table>
       </div>
@@ -277,11 +276,11 @@ export default function AptReceiptControlPage() {
           <button type="button" aria-label="Cerrar detalle" onClick={() => setDetail(null)} className="grid h-10 w-10 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><X size={20}/></button>
         </header>
         <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4 sm:p-5">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
             <div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Contrato</small><b className="text-sm text-[#002855]">{detail.contractCode || '—'}</b></div><div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Cliente</small><b className="text-sm text-[#002855]">{detail.customerName || 'Por registrar'}</b></div>
             <div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Recepcionado por</small><b className="text-sm text-[#002855]">{receiverNames(detail).join(', ') || 'Registro de validación no disponible'}</b></div>
             <div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Fecha de recepción</small><b className="text-sm text-[#002855]">{detail.validations[0] ? new Date(detail.validations[0].validated_at).toLocaleString('es-PE') : '—'}</b></div>
-            <div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Bultos · Reimpresiones</small><b className="text-sm text-[#002855]">{detail.packages.length} · {detail.reprints}</b></div>
+            <div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Bultos recepcionados</small><b className="text-sm text-[#002855]">{detail.packages.length}</b></div><div className="rounded-lg bg-amber-50 p-3"><small className="block text-amber-800">Reimpresiones totales</small><b className="text-sm text-[#002855]">{detail.reprints}</b></div>
             <div className="rounded-lg bg-blue-700 p-3 text-white"><small className="block text-blue-100">UND · Peso</small><b>{numberFmt.format(detail.units)} UND · {weightText(detail.weightKg)}</b></div>
           </div>
 
