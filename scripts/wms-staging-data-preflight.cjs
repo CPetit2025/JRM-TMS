@@ -12,28 +12,32 @@ function requireEnv(name) {
   return value
 }
 
-function sourceConnection() {
-  const raw = requireEnv('SUPABASE_PRODUCTION_DB_URL')
-  const url = new URL(raw)
-  const username = decodeURIComponent(url.username)
-  if (!username.startsWith(`staging_export.${PRODUCTION_REF}`)) {
-    throw new Error('Source URI must use the read-only staging_export role and the approved production project ref.')
+function parsePoolerUrl(envName, expectedUserPrefix) {
+  const raw = requireEnv(envName).trim()
+  let url
+  try {
+    url = new URL(raw)
+  } catch {
+    throw new Error(`${envName} must be a complete PostgreSQL URI copied from Supabase Connect.`)
   }
-  if (!url.hostname.endsWith('supabase.com') && !url.hostname.endsWith('supabase.co')) {
-    throw new Error('Source URI host is not a Supabase database host.')
+  const username = decodeURIComponent(url.username)
+  if (!username.startsWith(expectedUserPrefix)) {
+    throw new Error(`${envName} uses an unexpected database role.`)
+  }
+  if (!url.hostname.endsWith('.pooler.supabase.com') || url.port !== '6543') {
+    throw new Error(`${envName} must use Supabase Transaction Pooler (pooler.supabase.com:6543) for IPv4 access.`)
   }
   return { connectionString: raw, ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 15000 }
+}
+
+function sourceConnection() {
+  return parsePoolerUrl('SUPABASE_PRODUCTION_DB_URL', `staging_export.${PRODUCTION_REF}`)
 }
 
 function targetConnection() {
   const ref = requireEnv('SUPABASE_PROJECT_REF')
   if (ref !== EXPECTED_STAGING_REF) throw new Error('Refusing to inspect a target other than the WMS staging project.')
-  const password = encodeURIComponent(requireEnv('SUPABASE_DB_PASSWORD'))
-  return {
-    connectionString: `postgresql://postgres:${password}@db.${ref}.supabase.co:5432/postgres?sslmode=require`,
-    ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 15000,
-  }
+  return parsePoolerUrl('SUPABASE_STAGING_DB_URL', `postgres.${EXPECTED_STAGING_REF}`)
 }
 
 async function tableMetadata(client, table) {
