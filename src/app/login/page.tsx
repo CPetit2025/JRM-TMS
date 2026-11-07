@@ -10,11 +10,13 @@ import { PublicRegistrationModal } from '@/components/forms/PublicRegistrationMo
 import { Download } from 'lucide-react'
 import { isDispatchAuditorRole, normalizeRoleName } from '@/lib/roles'
 import { hasWebAccess } from '@/lib/nav/web-access'
+import { loginSystemForDatabase, remoteLoginUrl, type LoginSystem } from '@/lib/login-system'
 
 export default function LoginPage() {
   const router = useRouter()
   const pathname = usePathname()
   const warehouseLogin = pathname === '/almacen/login'
+  const localSystem = loginSystemForDatabase(process.env.NEXT_PUBLIC_SUPABASE_URL)
   const [isLoading, setIsLoading] = useState(false)
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
   const [androidInstallerUrl, setAndroidInstallerUrl] = useState<string | null>(null)
@@ -30,7 +32,8 @@ export default function LoginPage() {
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [selectedSystem, setSelectedSystem] = useState<'tms' | 'almacen'>(warehouseLogin ? 'almacen' : 'tms')
+  const [selectedSystem, setSelectedSystem] = useState<LoginSystem>(warehouseLogin ? 'almacen' : localSystem || 'tms')
+  const localLogin = selectedSystem === localSystem
 
   const supabase = createClient()
   const [resetOpen, setResetOpen] = useState(false)
@@ -40,6 +43,7 @@ export default function LoginPage() {
   // «¿Olvidaste tu contraseña?»: Supabase envía al correo un enlace que abre /login/restablecer para crear una nueva
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!localLogin) return
     const rawUser = username.toLowerCase().trim()
     if (!rawUser) { toast.error('Escribe tu usuario o correo corporativo'); return }
     const email = rawUser.includes('@') ? rawUser : `${rawUser}@jrmsac.com.pe`
@@ -54,6 +58,17 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // Switch sites before authentication. Never forward credentials or sessions.
+    if (!localLogin) {
+      try {
+        if (!localSystem) throw new Error('No se pudo identificar el sistema. Contacta al administrador.')
+        const origin = selectedSystem === 'tms' ? process.env.NEXT_PUBLIC_TMS_ORIGIN : process.env.NEXT_PUBLIC_WMS_ORIGIN
+        window.location.assign(remoteLoginUrl(selectedSystem, origin, window.location.origin))
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'No se pudo abrir el sistema.')
+      }
+      return
+    }
     setIsLoading(true)
     
     try {
@@ -151,7 +166,7 @@ export default function LoginPage() {
           <p className="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-blue-200 sm:text-sm">JRM · Ecosistema logístico</p>
           <h1 className="mb-3 text-2xl font-bold leading-tight sm:text-3xl lg:mb-5 lg:text-4xl">Una plataforma para toda la operación</h1>
           <p className="max-w-lg text-sm leading-relaxed text-blue-100 sm:text-base lg:text-lg">
-            Accede a las herramientas de transporte y almacén con una sola cuenta corporativa.
+            Accede a las herramientas de transporte y almacén desde un mismo punto de acceso.
           </p>
           <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:mt-9">
             <div className={`rounded-xl border p-4 ${selectedSystem === 'tms' ? 'border-white/50 bg-white/15' : 'border-white/20 bg-[#001f43]/35'}`}>
@@ -206,12 +221,19 @@ export default function LoginPage() {
           </form> : <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
             <div>
               <label htmlFor="login-system" className="mb-2 block text-sm font-medium text-slate-700">Sistema al que deseas ingresar</label>
-              <select id="login-system" value={selectedSystem} onChange={event => setSelectedSystem(event.target.value as 'tms' | 'almacen')}
+              <select id="login-system" disabled={isLoading} value={selectedSystem} onChange={event => {
+                setSelectedSystem(event.target.value as LoginSystem)
+                setUsername('')
+                setPassword('')
+                setResetOpen(false)
+                setResetSent(false)
+              }}
                 className="min-h-12 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none transition-all focus:border-[#002855] focus:ring-2 focus:ring-[#002855]">
                 <option value="tms">TMS · Transporte y despacho</option>
                 <option value="almacen">Almacén · Operación WMS</option>
               </select>
             </div>
+            {localLogin ? <>
             <div>
               <label htmlFor="login-username" className="block text-sm font-medium text-slate-700 mb-2">Usuario</label>
               <input 
@@ -248,6 +270,10 @@ export default function LoginPage() {
               <button type="button" onClick={() => setResetOpen(true)} className="inline-flex min-h-11 items-center text-sm text-[#002855] hover:text-[#cf152d] font-medium transition-colors">¿Olvidaste tu contraseña?</button>
             </div>
 
+            </> : <p role="status" className="rounded-lg bg-blue-50 p-4 text-sm text-slate-700">
+              Continúa al acceso de {selectedSystem === 'tms' ? 'TMS' : 'Almacén'} para ingresar con tu cuenta de ese sistema.
+            </p>}
+
             <button 
               type="submit" 
               disabled={isLoading}
@@ -259,12 +285,12 @@ export default function LoginPage() {
                   Iniciando sesión...
                 </>
               ) : (
-                'Ingresar'
+                localLogin ? 'Ingresar' : `Continuar a ${selectedSystem === 'tms' ? 'TMS' : 'Almacén'}`
               )}
             </button>
           </form>}
 
-          <div className="mt-5 text-center text-sm text-slate-600 sm:mt-8">
+          {localLogin && <div className="mt-5 text-center text-sm text-slate-600 sm:mt-8">
             ¿No tienes cuenta?{' '}
             <button 
               onClick={() => setIsRegisterModalOpen(true)}
@@ -273,7 +299,7 @@ export default function LoginPage() {
             >
               Regístrate aquí
             </button>
-          </div>
+          </div>}
 
           <div className="mt-6 pt-6 border-t border-slate-200">
             {androidInstallerUrl ? (
