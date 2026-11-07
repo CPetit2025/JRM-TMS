@@ -161,7 +161,7 @@ export default function WarehouseTasksPage() {
                       <button type="button" disabled={busyId === task.id || unavailable || (Boolean(task.assigned_picker) && !assignedToMe)} onClick={() => void assign(task)} className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50" title={task.assigned_picker && !assignedToMe ? 'Ya está asignada a otro usuario' : 'Asignar la tarea a tu usuario'}>
                         <UserRoundCheck size={14}/>{busyId === task.id ? 'Asignando…' : assignedToMe ? 'Asignada a mí' : task.assigned_picker ? 'Asignada' : 'Asignar Tarea'}
                       </button>
-                      <span title={`Urgencia según fecha de atención: ${level.label}`} className={`inline-flex min-w-[88px] justify-center rounded-lg border px-2.5 py-2 text-xs font-extrabold ${level.style}`}>Prioridad · {level.label}</span>
+                      <button type="button" aria-label={`Prioridad: ${level.label}`} title={`Urgencia calculada según la fecha de atención: ${level.label}`} className={`inline-flex min-w-[104px] cursor-default justify-center rounded-lg border px-2.5 py-2 text-xs font-extrabold ${level.style}`}>Prioridad · {level.label}</button>
                     </div>
                     {!assignedToMe && task.assigned_picker && <Link href={`/almacen/tareas/${task.id}`} className="mt-1 block text-right text-[11px] font-semibold text-blue-800 underline">Ver tarea</Link>}
                     {assignedToMe && <Link href={`/almacen/tareas/${task.id}`} className="mt-1 block text-right text-[11px] font-semibold text-blue-800 underline">Abrir tarea</Link>}
