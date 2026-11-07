@@ -68,23 +68,21 @@ Cargue en **cada entorno** (no a nivel de repositorio, para no mezclarse con TMS
 | Tipo | Nombre | `wms-staging` | `wms-production` |
 |---|---|---|---|
 | Variable | `SUPABASE_PROJECT_REF` | `rquujukgtturdlkuzgdc` (ya existe) | referencia de WMS Producción |
-| Secreto | `WMS_SUPABASE_ACCESS_TOKEN` | ya existe | token de la cuenta Supabase dueña de WMS Producción |
-| Secreto | `WMS_SUPABASE_DB_PASSWORD` | ya existe | contraseña de la base WMS Producción |
+| Secreto | `WMS_SUPABASE_ACCESS_TOKEN` | configurar token con alcance Staging | configurar token con alcance WMS Producción |
+| Secreto | `WMS_SUPABASE_DB_PASSWORD` | configurar contraseña de la base Staging | configurar contraseña de la base WMS Producción |
 | Secreto | `WMS_VERCEL_TOKEN` | token de Vercel | token de Vercel |
 | Variable | `WMS_VERCEL_ORG_ID` | Team ID | Team ID |
 | Variable | `WMS_VERCEL_PROJECT_ID` | Project ID de `jrm-wms-staging` | Project ID de `jrm-wms` |
 
 ### 4. Primer despliegue
 
-GitHub → Actions → *Deploy WMS (Supabase + Vercel)* → *Run workflow* (rama `master`) → `staging`; para Staging. Producción requiere una aprobación final expresa posterior a las pruebas, evidencia del mismo SHA y recuperación verificada. La primera ejecución en producción instala el esquema completo
+GitHub → Actions → *Deploy WMS (Supabase + Vercel)* → *Run workflow*, seleccionando la rama que contiene esta versión del workflow y el SHA completo revisado en `candidate_sha`, destino `staging`. La candidata de auditoría también dispara Staging por push. Producción requiere una aprobación final expresa posterior a las pruebas, evidencia del mismo SHA y recuperación verificada. La primera ejecución en producción instala el esquema completo
 (`supabase db push --include-all`) en la base nueva. Revise el paso *Preview pending migrations* del resumen.
 
 ## Notas
 
-- El workflow toma el código de `WMS_BRANCH` (`feature/warehouse-wms-portal`). Cuando WMS llegue a `master`,
-  cambie esa variable en `deploy-wms.yml`.
-- La guarda dentro de `npm run build` llega a la compilación de Vercel WMS cuando la rama WMS incorpore `master`;
-  mientras tanto la cubre el paso *Guard WMS Vercel project* del workflow, que revisa las variables del proyecto.
+- El workflow usa exclusivamente el SHA congelado, no una variable WMS_BRANCH mutable.
+- La candidata incorpora la guarda antes de `npm run build` y verifica las variables del proyecto dedicado antes de migrar.
 - `wms-staging-db.yml` se conserva sólo como comprobación manual de destino; ya no aplica migraciones.
 - Las vistas previas de la rama WMS en el proyecto `jrm-tms` usan las variables de vista previa de TMS. Para
   probar WMS use `jrm-wms-staging`.
