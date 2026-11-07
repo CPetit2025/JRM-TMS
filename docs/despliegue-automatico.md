@@ -14,6 +14,9 @@ Workflow: `.github/workflows/deploy-production.yml`. Cada push a `master` (por e
 frontend nunca llega a producción antes que el esquema que necesita. Las vistas previas de las ramas y los PR
 siguen igual.
 
+WMS (almacén) se despliega aparte, con su propia base y sus propios proyectos Vercel: ver
+`docs/despliegue-wms.md`. El paso *Guard TMS target* detiene este workflow si `SUPABASE_PROJECT_ID` no es la base de TMS.
+
 ## Secretos (GitHub → Settings → Secrets and variables → Actions → New repository secret)
 
 | Secreto | Dónde se obtiene |
