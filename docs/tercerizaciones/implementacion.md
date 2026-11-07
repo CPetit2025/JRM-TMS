@@ -56,3 +56,7 @@ La plantilla HTML es descargable. Destinatarios: rruesta@jrmsac.com.pe y dramire
 **Límite actual:** falta autorizar la conexión Microsoft 365. No se ejecuta envío de correo ni se adjunta automáticamente un PDF a un mensaje externo. El PDF está disponible para previsualizar y descargar. «Enviar a Compras» conserva su función de registro y notificación interna. El futuro envío debe usar el mismo generador de PDF y la plantilla sobre la revisión persistida, con autorización delegada y estado de entrega real. Este cambio no requiere migración de base de datos.
 
 Verificación: `node scripts/test-outsourcing-document.cjs` (requiere `pdftotext`), `node scripts/test-outsourcing-wizard-browser.cjs`, typecheck y lint. Los ejemplos de pruebas son fixtures locales; no representan datos consultados en producción.
+
+### Rediseño ejecutivo y preparación manual (vigente)
+
+La vista por pasos y la vista previa de correo de la entrega anterior se sustituyen por las cuatro tarjetas y la preparación manual descritas en [redisenio-ejecutivo.md](./redisenio-ejecutivo.md). El PDF principal pasa a A4 horizontal de una página, con anexo técnico separado. «Enviar a Compras» prepara documentos y correo; únicamente una declaración manual posterior y explícita ejecuta la recepción interna. No hay envío automático, migración ni cambios en el esquema de producción.

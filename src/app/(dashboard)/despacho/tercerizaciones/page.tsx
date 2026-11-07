@@ -8,12 +8,12 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { errorMessage, money } from '@/lib/caja'
 import { OUTSOURCING_STAGES, OUTSOURCING_SERVICES, SPEC_FIELDS, SERVICE_FIELDS, nextPermission, type Outsourcing, type OutsourcingQuote, type OutsourcingService } from '@/lib/outsourcing'
 import { OutsourcingRequest } from '@/components/despacho/OutsourcingRequest'
-import { workflowLabel } from '@/lib/outsourcing-form'
+import { workflowLabel, type Preparation } from '@/lib/outsourcing-form'
 import { cellDateTime } from '@/lib/table-format'
 
 type Row = Outsourcing & { client: string | null; transport_requests: { request_number: string; contract_id: string | null; contracts: { code: string } | null } }
 type Supplier = { id: string; business_name: string }
-type Event = { id: string; stage: number; actor_name: string; created_at: string; note: string; evidence: string | null; snapshot?: { action?: string } }
+type Event = { id: string; stage: number; actor_name: string; created_at: string; note: string; evidence: string | null; snapshot?: { action?: string; preparation?: Preparation } }
 const control = 'w-full rounded-lg border border-slate-300 bg-white p-2 text-sm'
 const button = 'rounded-lg bg-jrm-navy px-4 py-2 text-sm font-semibold text-white disabled:opacity-50'
 export default function OutsourcingPage() {
@@ -118,7 +118,7 @@ export default function OutsourcingPage() {
    </section>
    {row ? <section key={row.id} className="min-w-0 space-y-4 rounded-xl border bg-white p-4">
     <h2 className="text-xl font-bold text-jrm-navy">ST-{row.number} · {workflowLabel(row)} · {OUTSOURCING_STAGES[row.stage]}</h2>
-    <button type="button" className={button} onClick={()=>setModalId(row.id)}>{row.stage===0 && row.review_status!=='CANCELLED' && canWrite('despacho') ? 'Abrir asistente / corregir ficha' : 'Consultar ficha completa'}</button>
+    <button type="button" className={button} onClick={()=>setModalId(row.id)}>{row.stage===0 && row.review_status!=='CANCELLED' && canWrite('despacho') ? 'Abrir / corregir ficha' : 'Consultar ficha completa'}</button>
     <ol className="flex flex-wrap gap-2" aria-label="Avance de la solicitud">{OUTSOURCING_STAGES.map((s,i) => <li key={s} aria-current={i===row.stage ? 'step' : undefined} className={`rounded-full px-3 py-1 text-xs ${i<=row.stage ? 'bg-blue-100 text-blue-900' : 'bg-slate-100 text-slate-500'}`}>{i+1}. {s}</li>)}</ol>
     <div className="flex flex-wrap gap-3 text-sm"><span>Solicitud: {row.transport_requests.request_number}</span><span>Cliente: {row.client || 'Sin cliente'}</span><span>Prioridad: {String(row.specification.priority)}</span>{row.transport_requests.contract_id && <Link className="text-blue-700 underline" href={`/despacho/control-presupuestal/movimientos?ot=${row.transport_requests.contract_id}`}>Presupuesto y movimientos de la OT</Link>}{row.dispatch_id && <Link className="text-blue-700 underline" href={`/despacho/documentos/economico?despacho=${row.dispatch_id}`}>Cierre económico del despacho</Link>}</div>
     <details open><summary className="cursor-pointer font-semibold">Ficha técnica y operativa</summary>{SPEC_FIELDS.map(([section,fields]) => <div key={section} className="mt-3"><h3 className="font-medium text-jrm-navy">{section}</h3><dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">{fields.map(([key,label]) => <div key={key}><dt className="text-slate-500">{label}</dt><dd className="whitespace-pre-wrap break-words">{key==='required_at' && row.specification[key] ? cellDateTime(String(row.specification[key])) : String(row.specification[key] || '—')}</dd></div>)}</dl></div>)}{row.specification.services.map(s => <p className="mt-3 text-sm" key={s.kind}><strong>{OUTSOURCING_SERVICES[s.kind]}:</strong> {s.requirements}{(SERVICE_FIELDS[s.kind] || []).map(([key,label]) => <span className="block text-slate-600" key={key}>{label}: {s.details?.[key] || '—'}</span>)}</p>)}</details>
@@ -136,7 +136,7 @@ export default function OutsourcingPage() {
      <button disabled={busy} className={button}>{busy ? 'Guardando…' : OUTSOURCING_STAGES[row.stage+1]}</button>
     </form>}
     {row.review_status!=='CANCELLED' && row.stage<5 && canWrite(row.stage===0?'despacho':row.stage<=2?'compras-tercerizaciones':'compras-aprobar') && <section className="space-y-3 rounded-lg border border-amber-200 p-3"><h3 className="font-semibold">Revisión del requerimiento</h3><label className="block text-sm">Motivo de observación o cancelación<textarea className={control} value={note} onChange={e=>setNote(e.target.value)} /></label><div className="flex flex-wrap gap-3">{row.stage>0&&row.stage<=3&&<button disabled={busy} className="rounded-lg border px-3 py-2 text-sm" onClick={()=>void review('OBSERVE')}>Observar ficha técnica</button>}<button disabled={busy} className="rounded-lg border border-red-300 px-3 py-2 text-sm text-red-700" onClick={()=>void review('CANCEL')}>Cancelar solicitud</button></div></section>}
-    <section className="space-y-3 border-t pt-3"><h3 className="font-semibold">Historial y evidencias</h3>{events.map(e=><div className="border-l-2 border-blue-200 pl-3 text-sm" key={e.id}><p className="font-semibold">{e.snapshot?.action==='OBSERVE' ? 'Observada' : e.snapshot?.action==='CANCEL' ? 'Cancelada' : OUTSOURCING_STAGES[e.stage]} · {cellDateTime(e.created_at)}</p><p>{e.actor_name} · {e.note}</p>{e.evidence && <button className="text-blue-700 underline" onClick={()=>void view(e.evidence!)}>Ver evidencia</button>}</div>)}</section>
+    <section className="space-y-3 border-t pt-3"><h3 className="font-semibold">Historial y evidencias</h3>{events.map(e=><div className="border-l-2 border-blue-200 pl-3 text-sm" key={e.id}><p className="font-semibold">{e.snapshot?.action==='OBSERVE' ? 'Observada' : e.snapshot?.action==='CANCEL' ? 'Cancelada' : e.snapshot?.preparation?.state==='PREPARED' ? 'Preparada para envío' : OUTSOURCING_STAGES[e.stage]} · {cellDateTime(e.created_at)}</p><p>{e.actor_name} · {e.note}</p>{e.evidence && <button className="text-blue-700 underline" onClick={()=>void view(e.evidence!)}>Ver evidencia</button>}</div>)}</section>
    </section> : <p className="p-6 text-slate-500">Seleccione una solicitud para revisar el detalle y gestionar su avance.</p>}
   </div>
   {modalId&&<OutsourcingRequest outsourcingId={modalId} onClose={closeModal} onChanged={()=>{void load();void detail()}}/>}

@@ -1,3 +1,3 @@
-// Conserva el comando de regresión original. El asistente sustituye el envío desde la ficha plana;
-// la suite v2 verifica también el punto de entrada original y la consulta en la bandeja de Compras.
+// Conserva el comando de regresión original: formulario 2x2, preparación manual,
+// punto de entrada de Programación y consulta en la bandeja de Compras.
 require('./test-outsourcing-wizard-browser.cjs')

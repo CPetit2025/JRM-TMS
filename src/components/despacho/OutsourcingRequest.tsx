@@ -1,19 +1,19 @@
 'use client'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { CalendarCheck, ChevronLeft, ChevronRight, ClipboardList, FileText, Flag, Info, Loader2, MapPin, Save, Send, ShoppingCart, Truck, UserRound, Warehouse, Wrench, X, Clock } from 'lucide-react'
+import { CalendarCheck, FileText, Flag, Info, Loader2, Save, Send, ShoppingCart, UserRound, Warehouse, Wrench, Truck, ClipboardList, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { errorMessage } from '@/lib/caja'
 import type { TransportRequest } from './programar-ruta/types'
-import { OUTSOURCING_SERVICES, type Outsourcing } from '@/lib/outsourcing'
-import { normalizeSpec, serializeSpec, validateWizard, wizardProgress, workflowLabel, WIZARD_STEPS, WIZARD_SUBTITLES, type WizardSpec, type OutsourcingAttachment } from '@/lib/outsourcing-form'
-import { GeneralStep, TransportStep, ServicesStep, OperationsStep, ReviewStep } from './outsourcing/WizardSteps'
-import { buildOutsourcingDocument } from '@/lib/outsourcing-document'
+import { type Outsourcing } from '@/lib/outsourcing'
+import { normalizeSpec, serializeSpec, validateWizard, workflowLabel, isoLima, localDate, type WizardSpec, type OutsourcingAttachment, type Preparation } from '@/lib/outsourcing-form'
+import { GeneralSection, TransportSection, ServicesSection, OperationsSection } from './outsourcing/RequestSections'
+import { EmailPreparation, type MailDraft, type PreparedView } from './outsourcing/EmailPreparation'
+import { buildOutsourcingDocument, outsourcingEmailTemplate } from '@/lib/outsourcing-document'
 import './outsourcing/wizard.css'
 
-const STEP_ICONS=[FileText,Truck,Wrench,ClipboardList,Send]
 type Context={record:Outsourcing;request:TransportRequest;observation?:string}
 export function OutsourcingRequest({request:initialRequest,outsourcingId,onClose,onChanged}:{request?:TransportRequest;outsourcingId?:string;onClose:()=>void;onChanged?:()=>void}) {
  const db=useMemo(()=>createClient(),[])
@@ -26,7 +26,9 @@ export function OutsourcingRequest({request:initialRequest,outsourcingId,onClose
  const [loading,setLoading]=useState(true)
  const [loadError,setLoadError]=useState('')
  const [busy,setBusy]=useState(false)
- const [step,setStep]=useState(0)
+ const [preparedView,setPreparedView]=useState<PreparedView|null>(null)
+ const [mailBaseline,setMailBaseline]=useState('')
+ const [mailDraft,setMailDraft]=useState<MailDraft>({to:'',cc:'',subject:'',text:''})
  const [showErrors,setShowErrors]=useState(false)
  const [observation,setObservation]=useState('')
  const [receipt,setReceipt]=useState('')
@@ -35,15 +37,17 @@ export function OutsourcingRequest({request:initialRequest,outsourcingId,onClose
  const actionRef=useRef(false)
  const closeRef=useRef<()=>void>(()=>{})
  const dirty=JSON.stringify(spec)!==baseline||files.length>0
+ const mailDirty=!!preparedView&&JSON.stringify(mailDraft)!==mailBaseline
  const editable=(!record||record.stage===0)&&record?.review_status!=='CANCELLED'&&canWrite('despacho')
  const disabled=busy||!editable
  const identity=useMemo(()=>({request:request?.request_number || '—',ot:request?.contracts?.code || 'Sin OT',client:request?.request_client?.business_name || request?.contracts?.clients?.business_name || 'Sin cliente'}),[request])
- const issues=useMemo(()=>validateWizard(spec,!!request?.contract_id,identity.client!=='Sin cliente'),[spec,request,identity.client])
- const progress=wizardProgress(issues)
- const status=workflowLabel(record)
- const documentModel=useMemo(()=>buildOutsourcingDocument(identity,spec,record,new Date().toISOString(),files.map(f=>f.name)),[identity,spec,record,files])
+ const issues=useMemo(()=>validateWizard({...spec,attachments:[...spec.attachments,...files.map(f=>({name:f.name,path:'pending'}))]},!!request?.contract_id,identity.client!=='Sin cliente'),[spec,files,request,identity.client])
+ const status=workflowLabel(record?{...record,specification:spec}:null)
+ const updateSpec=(fn:(p:WizardSpec)=>WizardSpec)=>setSpec(p=>{const next=fn(p);delete next.preparation;delete next.mail_draft;return next})
+ useEffect(()=>()=>{if(preparedView){URL.revokeObjectURL(preparedView.pdfUrl);URL.revokeObjectURL(preparedView.annexUrl)}},[preparedView])
  const requestClose=useCallback(()=>{if(busy)return;if(dirty&&!window.confirm('Hay cambios sin guardar. ¿Desea cerrar y descartarlos?'))return;onClose()},[busy,dirty,onClose])
- useEffect(()=>{closeRef.current=requestClose},[requestClose])
+ useEffect(()=>{closeRef.current=preparedView?()=>{void closePreparation()}:requestClose})
+ useEffect(()=>{if(preparedView)dialogRef.current?.querySelector<HTMLInputElement>('input')?.focus()},[preparedView])
  useEffect(()=>{
   let alive=true
   async function load() {
@@ -79,7 +83,7 @@ export function OutsourcingRequest({request:initialRequest,outsourcingId,onClose
   function keyboard(e:KeyboardEvent) {
    if(e.key==='Escape'){e.preventDefault();closeRef.current()}
    if(e.key!=='Tab')return
-   const nodes=Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]') || [])
+   const nodes=Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),summary,[tabindex="0"]') || []).filter(el=>el.getClientRects().length>0)
    const first=nodes[0],last=nodes.at(-1)
    if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}
    else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}
@@ -88,14 +92,19 @@ export function OutsourcingRequest({request:initialRequest,outsourcingId,onClose
   return()=>{document.body.style.overflow=overflow;document.removeEventListener('keydown',keyboard);previous?.focus()}
  },[])
  useEffect(()=>{
-  if(!dirty)return
+  if(!dirty&&!mailDirty)return
   const prevent=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue=''}
   window.addEventListener('beforeunload',prevent);return()=>window.removeEventListener('beforeunload',prevent)
- },[dirty])
- function navigate(next:number) {setStep(next);contentRef.current?.scrollTo({top:0,behavior:'instant'})}
+ },[dirty,mailDirty])
+ function focusIssue(field:string) {
+  const el=document.getElementById(`out-${field}`)
+  if(el){let parent=el.parentElement;while(parent){if(parent instanceof HTMLDetailsElement)parent.open=true;parent=parent.parentElement}el.scrollIntoView({block:'center'});el.focus()}
+ }
+ function failValidation() {setShowErrors(true);toast.error('Revise los campos señalados antes de preparar la solicitud.');setTimeout(()=>focusIssue(issues[0]?.field||''),0)}
  function selectFiles(next:File[]) {
   if(next.some(f=>f.size>10485760||!['application/pdf','image/png','image/jpeg'].includes(f.type))){toast.error('Adjunte únicamente PDF, PNG o JPG de hasta 10 MB por archivo.');return}
   setFiles(next)
+  setSpec(p=>({...p,preparation:undefined,mail_draft:undefined}))
  }
  async function saveRecord(value:WizardSpec,current:Outsourcing|null) {
   const {data,error}=await db.rpc('outsourcing_save',{p_request:request!.id,p_spec:serializeSpec(value),p_version:current?.version ?? null})
@@ -104,72 +113,114 @@ export function OutsourcingRequest({request:initialRequest,outsourcingId,onClose
   if(result.error)throw result.error
   setRecord(result.data);return result.data as Outsourcing
  }
- async function persist(send=false) {
+ async function verifyReferences(value:WizardSpec) {
+  if(!value.attachments.length)return
+  const {data,error}=await db.storage.from('outsourcing').createSignedUrls(value.attachments.map(a=>a.path),60)
+  if(error)throw error
+  await Promise.all(value.attachments.map(async(a,i)=>{const signed=data?.[i];if(!signed?.signedUrl||signed.error)throw new Error(`Archivo no disponible: ${a.name}`);const result=await fetch(signed.signedUrl,{method:'HEAD'});if(!result.ok)throw new Error(`Archivo no disponible: ${a.name}`)}))
+ }
+ async function openPreparation(value:WizardSpec,current:Outsourcing,persistState:boolean) {
+  await verifyReferences(value)
+  const candidate=persistState?{...value,preparation:{state:'PREPARED',revision:current.revision||1,prepared_at:current.updated_at} satisfies Preparation}:value
+  const model=buildOutsourcingDocument(identity,candidate,current,new Date().toISOString())
+  const pdfModule=await import('@/lib/outsourcing-pdf')
+  const bundle=await pdfModule.createOutsourcingPdfBundle(model)
+  const saved=persistState?await saveRecord(candidate,current):current
+  const mail=outsourcingEmailTemplate(model,true)
+  const stored=candidate.mail_draft as MailDraft|undefined
+  const initialMail=stored||{to:mail.to.join('; '),cc:mail.cc.join('; '),subject:mail.subject,text:mail.text}
+  setMailDraft(initialMail);setMailBaseline(JSON.stringify(initialMail))
+  setPreparedView({model,pdfUrl:URL.createObjectURL(bundle.executive),annexUrl:URL.createObjectURL(bundle.annex),annexName:pdfModule.annexFilename(model)})
+  setRecord(saved);setSpec(candidate);setBaseline(JSON.stringify(candidate));setFiles([])
+  contentRef.current?.scrollTo({top:0})
+ }
+ async function persist(prepare=false) {
   if(actionRef.current||!request||!editable)return
-  setShowErrors(send)
-  if(send&&issues.length){navigate(4);toast.error('Revise los campos pendientes antes de enviar a Compras.');return}
-  if(send&&!window.confirm('¿Enviar este requerimiento a Compras? La ficha técnica quedará registrada para su gestión.'))return
+  if(prepare&&issues.length){failValidation();return}
   actionRef.current=true;setBusy(true)
   let working=spec,current=record
   try {
    if(files.length) {
     current=await saveRecord(working,current)
-    const uploaded:OutsourcingAttachment[]=[]
     for(const file of files) {
      const path=`${current.id}/${crypto.randomUUID()}.${file.type==='application/pdf'?'pdf':file.type==='image/png'?'png':'jpg'}`
      const {error}=await db.storage.from('outsourcing').upload(path,file)
      if(error)throw error
-     uploaded.push({name:file.name,path})
-     working={...working,attachments:[...spec.attachments,...uploaded]};setSpec(working)
+     const attachment:OutsourcingAttachment={name:file.name,path}
+     working={...working,attachments:[...working.attachments,attachment]};setSpec(working)
      setFiles(p=>p.filter(f=>f!==file))
     }
    }
-   if(send) {
-    const {data,error}=await db.rpc('outsourcing_submit',{p_request:request.id,p_spec:serializeSpec(working),p_version:current?.version ?? null,p_note:'Requerimiento técnico revisado y enviado a Compras desde el asistente.'})
-    if(error)throw error
-    current=data as Outsourcing
-    setReceipt(`ST-${current.number} enviada a la bandeja de Compras. Fecha y responsable registrados en el historial.`)
-   } else current=await saveRecord(working,current)
-   setRecord(current);setSpec(working);setBaseline(JSON.stringify(working));setFiles([])
-   toast.success(send?'Solicitud enviada a Compras.':'Borrador guardado. Puede continuar y reabrirlo sin perder datos.')
+   current=await saveRecord(working,current)
+   setSpec(working);setBaseline(JSON.stringify(working))
+   if(prepare)await openPreparation(working,current,true)
+   else toast.success('Borrador guardado. Puede reabrirlo sin perder datos.')
    onChanged?.()
   } catch(e) {toast.error(errorMessage(e))} finally {actionRef.current=false;setBusy(false)}
+ }
+ async function reopenPreparation() {
+  if(!record||actionRef.current||dirty)return
+  if(issues.length){failValidation();return}
+  actionRef.current=true;setBusy(true)
+  try{await openPreparation(spec,record,false)}catch(e){toast.error(errorMessage(e))}finally{actionRef.current=false;setBusy(false)}
+ }
+ async function closePreparation() {
+  if(busy||actionRef.current)return
+  if(editable&&record) {
+   actionRef.current=true;setBusy(true)
+   try{const next={...spec,mail_draft:mailDraft};await saveRecord(next,record);setSpec(next);setBaseline(JSON.stringify(next));setPreparedView(null);onChanged?.()}
+   catch(e){toast.error(errorMessage(e))}finally{actionRef.current=false;setBusy(false)}
+  } else setPreparedView(null)
+ }
+ async function confirmManual(at:string,reference:string) {
+  if(actionRef.current||!request||!record||!editable)return
+  if(!Number.isFinite(Date.parse(isoLima(at)))||localDate(new Date(Date.parse(isoLima(at))).toISOString())!==at||Date.parse(isoLima(at))>Date.now()){toast.error('Indique una fecha y hora de envío válidas, sin fechas futuras.');return}
+  const prep=spec.preparation as Preparation|undefined
+  if(issues.length||prep?.state!=='PREPARED'||prep.revision!==(record.revision||1)||reference.trim().length<5){toast.error('Prepare primero la revisión vigente y registre la referencia del envío.');return}
+  if(!window.confirm('¿Registrar su confirmación de envío manual? No se verificará técnicamente la entrega del correo.'))return
+  actionRef.current=true;setBusy(true)
+  try {
+   await verifyReferences(spec)
+   const next={...spec,mail_draft:mailDraft,preparation:{...prep,state:'MANUAL_SENT',confirmed_at:new Date().toISOString(),sent_at:isoLima(at),reference:reference.trim(),confirmation_kind:'USER_ATTESTED'}}
+   const {data,error}=await db.rpc('outsourcing_submit',{p_request:request.id,p_spec:serializeSpec(next),p_version:record.version,p_note:`Confirmación manual declarada por el usuario; sin verificación técnica de entrega. Fecha declarada: ${isoLima(at)}. Referencia: ${reference.trim()}`})
+   if(error)throw error
+   setRecord(data as Outsourcing);setSpec(next);setBaseline(JSON.stringify(next));setPreparedView(null)
+   setReceipt('Confirmación manual registrada en el historial. No acredita entrega ni lectura del correo. La solicitud está disponible en la bandeja de Compras.');onChanged?.()
+  } catch(e){toast.error(errorMessage(e))}finally{actionRef.current=false;setBusy(false)}
  }
  async function view(path:string) {
   const {data,error}=await db.storage.from('outsourcing').createSignedUrl(path,120)
   if(error){toast.error(errorMessage(error));return}
   window.open(data.signedUrl,'_blank','noopener,noreferrer')
  }
- const common={spec,setSpec,issues:showErrors?issues:[],disabled}
- const Icon=step===0?Info:STEP_ICONS[step]
+ const common={spec,setSpec:updateSpec,issues:showErrors?issues:[],disabled}
  if(typeof document==='undefined')return null
  return createPortal(<div className="ow-backdrop"><div ref={dialogRef} className="ow-modal" role="dialog" aria-modal="true" aria-labelledby="outsourcing-title" aria-busy={busy}>
   <header className="ow-header"><div className="ow-brand">{/* eslint-disable-next-line @next/next/no-img-element */}
-  <img src="/logo-jrm.png" alt="JRM" className="h-7 w-auto shrink-0 object-contain"/><div className="ow-brand-separator"/><div><h2 id="outsourcing-title">Solicitud de tercerización</h2><p>Registro y envío de requerimiento a Compras</p></div></div><div className="ow-header-actions"><span className="ow-status"><FileText/>{status}</span><button type="button" className="ow-close" aria-label="Cerrar solicitud de tercerización" onClick={requestClose} disabled={busy}><X/></button></div></header>
+  <img src="/logo-jrm.png" alt="JRM" className="h-7 w-auto shrink-0 object-contain"/><div className="ow-brand-separator"/><div><h2 id="outsourcing-title">{preparedView?'Preparar correo para Compras':'Solicitud de tercerización'}</h2><p>Transporte y Distribución | Requerimiento a Compras</p></div></div><div className="ow-header-actions"><span className="ow-status"><FileText/>{status}</span><button type="button" className="ow-close" aria-label="Cerrar solicitud de tercerización" onClick={()=>preparedView?void closePreparation():requestClose()} disabled={busy}><X/></button></div></header>
   <div className="ow-scroll" ref={contentRef}>
-   <section className="ow-identity" aria-label="Identificación del requerimiento">
+   {!preparedView&&<section className="ow-identity" aria-label="Identificación del requerimiento">
     <div className="ow-identity-item"><CalendarCheck/><div><strong>{identity.request}</strong><span>N° Solicitud</span></div></div>
     <div className="ow-identity-item"><FileText/><div><strong>{request?.contracts?.code?`OT ${identity.ot}`:identity.ot}</strong><span>Orden de Trabajo</span></div></div>
     <div className="ow-identity-item ow-client"><Warehouse/><div><strong title={identity.client}>{identity.client}</strong><span>Cliente</span></div></div>
     <div className="ow-identity-item ow-identity-separated"><UserRound/><div><span>Responsable</span><strong className="ow-normal" title={String(spec.responsible || '')}>{String(spec.responsible || 'Por definir')}</strong></div></div>
     <div className="ow-identity-item ow-identity-separated"><ShoppingCart/><div><span>Dirigida a</span><strong className="ow-normal">Compras</strong></div></div>
-    <div className="ow-identity-item ow-identity-separated"><Flag/><label>Prioridad<div className="ow-priority-picker" data-priority={String(spec.priority)}><span aria-hidden="true" className="ow-priority-dot"/><select aria-label="Prioridad de la solicitud" value={String(spec.priority)} disabled={disabled} onChange={e=>setSpec(p=>({...p,priority:e.target.value}))}><option value="NORMAL">NORMAL</option><option value="ALTA">ALTA</option><option value="URGENTE">URGENTE</option></select></div></label></div>
-   </section>
-   <nav className="ow-tabs" aria-label="Secciones de la solicitud">{WIZARD_STEPS.map((name,i)=>{const TabIcon=STEP_ICONS[i];return <button type="button" key={name} aria-current={step===i?'step':undefined} aria-label={`${i+1}. ${name}${progress.complete[i]?', completa':', pendiente'}`} className={step===i?'is-active':''} onClick={()=>navigate(i)} disabled={busy}><span className="ow-step-number">{i+1}</span><TabIcon/><span>{name}</span></button>})}</nav>
-   {loading||!isLoaded?<div className="ow-loading" role="status"><Loader2/>Recuperando solicitud y permisos…</div>:loadError?<div className="ow-loading ow-error" role="alert">{loadError}</div>:<div className="ow-columns">
-    <main className="ow-card ow-form-card"><div className="ow-card-heading"><span className="ow-heading-icon"><Icon/></span><div><h3>{WIZARD_STEPS[step]}</h3><p>{WIZARD_SUBTITLES[step]}</p></div></div>
-     {record?.review_status==='OBSERVED'&&<p className="ow-notice">Compras observó esta solicitud: {observation || 'Revise el historial de observaciones.'} Corrija la ficha y vuelva a enviarla.</p>}
-     {receipt&&<p className="ow-success" role="status">{receipt}</p>}
-     {!editable&&<p className="ow-notice">Consulta de la ficha registrada. El avance, responsables y evidencias están en la bandeja de Tercerizaciones · Compras.</p>}
-     {step===0&&<GeneralStep {...common}/>}{step===1&&<TransportStep {...common}/>}{step===2&&<ServicesStep {...common}/>}{step===3&&<OperationsStep {...common}/>}{step===4&&<ReviewStep spec={spec} issues={issues} onEdit={navigate} files={files} onFiles={selectFiles} onRemoveAttachment={path=>setSpec(p=>({...p,attachments:p.attachments.filter(a=>a.path!==path)}))} onView={path=>void view(path)} disabled={disabled} identity={identity} documentModel={documentModel}/>}
-     {showErrors&&step<4&&issues.some(i=>i.step===step)&&<div className="ow-step-issues" role="alert"><strong>Revise esta sección</strong><ul>{issues.filter(i=>i.step===step).map((i,n)=><li key={n}>{i.message}</li>)}</ul></div>}
-    </main>
-    <aside className="ow-card ow-summary"><h3><FileText/>Resumen de la solicitud</h3><dl>{[[Warehouse,'Cliente',identity.client],[ClipboardList,'OT',identity.ot],[Flag,'Prioridad',<span key="priority" className="ow-priority">{String(spec.priority)==='NORMAL'?'Normal':String(spec.priority)==='ALTA'?'Alta':'Urgente'}</span>],[MapPin,'Origen',String(spec.pickup||'No definido')],[MapPin,'Destino',String(spec.delivery||'No definido')],[Wrench,'Servicios',spec.services.length?spec.services.map(s=>OUTSOURCING_SERVICES[s.kind]).join(', '):spec.services_confirmed==='true'?'No requeridos':'No definido'],[Clock,'Estado',<span key="status" className="ow-summary-status">{status}</span>]].map(([RowIcon,label,value])=>{const Row=RowIcon as typeof FileText;return <div key={String(label)}><dt><Row/>{String(label)}</dt><dd>{value as React.ReactNode}</dd></div>})}</dl>
-     <div className="ow-progress"><strong>Avance del registro</strong><div className="ow-progress-row"><div role="progressbar" aria-label="Avance del registro" aria-valuenow={progress.percent} aria-valuemin={0} aria-valuemax={100}><span style={{width:`${progress.percent}%`}}/></div><b>{progress.percent} %</b></div><p>{progress.count} de 5 secciones completadas</p></div>
-     {step!==4&&issues.some(i=>i.step===step)&&<p className="ow-summary-hint">Puede avanzar y guardar parcialmente. Los datos pendientes se validan antes del envío.</p>}
-    </aside>
-   </div>}
+    <div className="ow-identity-item ow-identity-separated"><Flag/><label>Prioridad<div className="ow-priority-picker" data-priority={String(spec.priority)}><span aria-hidden="true" className="ow-priority-dot"/><select aria-label="Prioridad de la solicitud" value={String(spec.priority)} disabled={disabled} onChange={e=>updateSpec(p=>({...p,priority:e.target.value}))}><option value="NORMAL">NORMAL</option><option value="ALTA">ALTA</option><option value="URGENTE">URGENTE</option></select></div></label></div>
+   </section>}
+   {loading||!isLoaded?<div className="ow-loading" role="status"><Loader2/>Recuperando solicitud y permisos…</div>:loadError?<div className="ow-loading ow-error" role="alert">{loadError}</div>:preparedView?<EmailPreparation view={preparedView} draft={mailDraft} onChange={setMailDraft} busy={busy} canConfirm={editable} onClose={()=>void closePreparation()} onConfirm={(at,ref)=>void confirmManual(at,ref)}/>:<>
+    {record?.review_status==='OBSERVED'&&<p className="ow-notice">Compras observó esta solicitud: {observation || 'Revise el historial.'} Corrija la ficha y vuelva a prepararla.</p>}
+    {receipt&&<p className="ow-success" role="status">{receipt}</p>}
+    {record&&!dirty&&<p className="ow-saved-state">{status} · Revisión {record.revision||1}. <button type="button" className="ow-text-button" disabled={busy||issues.length>0} onClick={()=>void reopenPreparation()}>Preparar copia de correo y PDF</button></p>}
+    {showErrors&&issues.length>0&&<div className="ow-error-summary" role="alert"><strong>Revise {issues.length} campos señalados.</strong><ul>{issues.map((i,n)=><li key={n}><button type="button" onClick={()=>focusIssue(i.field)}>{i.message}</button></li>)}</ul></div>}
+    <div className="ow-section-grid">
+     <section className="ow-card" aria-labelledby="out-general-title"><h3 id="out-general-title"><Info/>Información general</h3><GeneralSection {...common}/></section>
+     <section className="ow-card" aria-labelledby="out-transport-title"><h3 id="out-transport-title"><Truck/>Transporte y carga</h3><TransportSection {...common}/></section>
+     <section className="ow-card" aria-labelledby="out-services-title"><h3 id="out-services-title"><Wrench/>Servicios complementarios</h3><ServicesSection {...common}/></section>
+     <section className="ow-card" aria-labelledby="out-operations-title"><h3 id="out-operations-title"><ClipboardList/>Condiciones operativas</h3><OperationsSection {...common} files={files} onFiles={selectFiles} onRemoveAttachment={path=>updateSpec(p=>({...p,attachments:p.attachments.filter(a=>a.path!==path)}))} onView={path=>void view(path)}/></section>
+    </div>
+    <div className="ow-important"><Info/><p><strong>Importante:</strong> Complete los requisitos para Lima o provincias. Use “No aplica” cuando corresponda. El envío valida todos los campos obligatorios.</p></div>
+   </>}
   </div>
-  <footer className="ow-footer"><button type="button" className="ow-button ow-cancel" onClick={requestClose} disabled={busy}><X/>Cancelar</button><div className="ow-footer-right"><button type="button" className="ow-button ow-save" disabled={busy||!editable||loading||!!loadError} onClick={()=>void persist()}><Save/>{busy?'Guardando…':'Guardar borrador'}</button><button type="button" className="ow-button ow-previous" disabled={step===0||busy||loading} onClick={()=>navigate(step-1)}><ChevronLeft/>Anterior</button>{step<4?<button type="button" className="ow-button ow-primary" disabled={busy||loading||!!loadError} onClick={()=>navigate(step+1)}>Siguiente<ChevronRight/></button>:<button type="button" className="ow-button ow-primary" disabled={busy||!editable||loading||!!loadError} onClick={()=>void persist(true)}><Send/>Enviar a Compras</button>}</div></footer>
+  {!preparedView&&<footer className="ow-footer"><button type="button" className="ow-button ow-cancel" onClick={requestClose} disabled={busy}><X/>Cancelar</button><div className="ow-footer-right"><button type="button" className="ow-button ow-save" disabled={busy||!editable||loading||!!loadError} onClick={()=>void persist()}><Save/>{busy?'Procesando…':'Guardar borrador'}</button><button type="button" className="ow-button ow-primary" disabled={busy||!editable||loading||!!loadError} onClick={()=>void persist(true)}><Send/>Enviar a Compras</button></div></footer>}
  </div></div>,document.body)
 }

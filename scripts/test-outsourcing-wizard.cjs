@@ -36,7 +36,19 @@ const model=m.exports,clone=x=>JSON.parse(JSON.stringify(x))
   await db.exec("SELECT set_config('test.permission','reader',false)");await assert.rejects(submit(model.serializeSpec(spec)),/Sin permiso/,'read-only cannot submit');await db.exec("SELECT set_config('test.permission','admin',false)");
   await assert.rejects(submit({...model.serializeSpec(spec),attachments:[{name:'otro.pdf',path:'otro-requerimiento/archivo.pdf'}]}),/Adjunto inválido/,'cannot reference foreign attachment');
   await db.exec(`UPDATE contracts SET client_id=NULL WHERE id='${id(9)}'`);await assert.rejects(submit(model.serializeSpec(spec)),/cliente real/,'real linked client required');await db.exec(`UPDATE contracts SET client_id='${id(10)}' WHERE id='${id(9)}'`);
-  let row=(await submit(model.serializeSpec(spec))).rows[0].row
+  const preparedSpec={...model.serializeSpec(spec),preparation:{state:'PREPARED',revision:1},mail_draft:{subject:'Asunto editado',text:'Mensaje editado'}}
+  const preparedId=(await db.query('SELECT outsourcing_save($1,$2,NULL) AS id',[id(2),preparedSpec])).rows[0].id
+  let prepared=(await db.query('SELECT * FROM transport_outsourcing WHERE id=$1',[preparedId])).rows[0]
+  assert.equal(prepared.stage,0,'preparation stays in the existing draft stage')
+  assert.equal((await db.query('SELECT count(*)::int AS n FROM test_notifications')).rows[0].n,0,'no notification or submission merely by preparing')
+  const preparationEvent=(await db.query('SELECT * FROM transport_outsourcing_events WHERE outsourcing_id=$1 ORDER BY created_at DESC LIMIT 1',[preparedId])).rows[0]
+  assert.equal(preparationEvent.snapshot.preparation.state,'PREPARED');assert.ok(preparationEvent.actor_id);assert.ok(preparationEvent.created_at)
+  await db.query('SELECT outsourcing_save($1,$2,$3)',[id(2),{...preparedSpec,mail_draft:{subject:'Edición conservada',text:'Preparación manual'}},prepared.version])
+  prepared=(await db.query('SELECT * FROM transport_outsourcing WHERE id=$1',[preparedId])).rows[0]
+  assert.equal(prepared.specification.mail_draft.subject,'Edición conservada')
+  const declared={...preparedSpec,preparation:{state:'MANUAL_SENT',revision:1,confirmation_kind:'USER_ATTESTED',reference:'Referencia declarada por usuario'}}
+  let row=(await submit(declared,prepared.version)).rows[0].row
+  assert.equal(row.id,preparedId,'manual confirmation uses the same linked record')
   assert.equal(row.stage,1);assert.equal(row.review_status,'ACTIVE')
   assert.equal((await db.query('SELECT count(*)::int AS n FROM test_notifications')).rows[0].n,1,'real receipt notification recorded once')
   await assert.rejects(submit(model.serializeSpec(spec)),/cambió/,'double submit cannot duplicate')
@@ -70,6 +82,6 @@ const model=m.exports,clone=x=>JSON.parse(JSON.stringify(x))
   await assert.rejects(db.query('SELECT outsourcing_form_context($1)',[row.id]),/Sin acceso/)
   const grants=await db.query("SELECT has_function_privilege('anon','outsourcing_submit(uuid,jsonb,integer,text)','EXECUTE') AS anon,has_function_privilege('authenticated','outsourcing_transition_v1(uuid,integer,integer,text,text,uuid[],uuid)','EXECUTE') AS legacy")
   assert.deepEqual(grants.rows[0],{anon:false,legacy:false})
-  console.log('PASS wizard v2: partial progress, five resources, numeric/date/capacity/package validation, Lima roundtrip, legacy preservation, atomic receipt, duplicates, observation/resubmission, quote revisions, cancellation and permissions')
+  console.log('PASS ficha: preparation stays draft with actor/date snapshot, edited mail persists, manual confirmation reuses identity; partial progress, five resources, numeric/date/capacity/package validation, Lima roundtrip, legacy preservation, atomic receipt, duplicates, observation/resubmission, quote revisions, cancellation and permissions')
  }finally{await db.close()}
 })().catch(e=>{console.error(e);process.exitCode=1})

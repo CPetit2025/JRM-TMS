@@ -8,7 +8,7 @@ export function WizardFieldControl({field,value,onChange,error,disabled=false,ic
  const id=`out-${field.key}`
  const dateParts=field.type==='datetime-local' ? localDate(value).split('T') : []
  const dateText=dateParts[0] ? `${dateParts[0].slice(8,10)}/${dateParts[0].slice(5,7)}/${dateParts[0].slice(0,4)} ${dateParts[1]}` : 'dd/mm/aaaa hh:mm'
- const props={id,'aria-label':field.label,value:String(value ?? ''),disabled,'aria-invalid':!!error,'aria-describedby':error ? `${id}-error` : undefined,onChange:(e:{target:{value:string}})=>onChange(e.target.value),className:`ow-control ${icon ? 'ow-with-icon' : ''} ${field.type==='datetime-local'?'ow-date':''}`}
+ const props={id,'aria-label':field.label,value:String(value ?? ''),disabled,'aria-invalid':!!error,'aria-describedby':error ? `${id}-error` : undefined,onChange:(e:{target:{value:string}})=>{const v=e.target.value;if(field.type==='number'&&v&&(Number(v)<0||(field.integer&&!/^\d+$/.test(v))))return;onChange(v)},className:`ow-control ${icon ? 'ow-with-icon' : ''} ${field.type==='datetime-local'?'ow-date':''}`}
  return <div className={`ow-field ${field.type==='textarea' ? 'ow-wide' : ''}`}>
   <label htmlFor={id}>{field.label}{!field.optional && <span className="ow-required"> *</span>}</label>
   <div className="ow-input-wrap">{icon && <span className="ow-field-icon" aria-hidden="true">{icon}</span>}

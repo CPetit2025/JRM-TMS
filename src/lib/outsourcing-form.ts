@@ -5,7 +5,7 @@ export type CargoPackage = { id: string; kind: string; quantity: string; length_
 export type IntermediateStop = { id: string; address: string }
 export type OutsourcingAttachment = { name: string; path: string }
 export type WizardSpec = Omit<Specification, 'services'> & {
- services: ServiceRequirement[]; packages: CargoPackage[]; intermediate_stops: IntermediateStop[]; attachments: OutsourcingAttachment[]
+ service_drafts?: ServiceRequirement[]; services: ServiceRequirement[]; packages: CargoPackage[]; intermediate_stops: IntermediateStop[]; attachments: OutsourcingAttachment[]
 }
 export type WizardField = { key: string; label: string; type?: 'number' | 'datetime-local' | 'textarea' | 'select'; options?: string[]; optional?: boolean; integer?: boolean }
 export type FormIssue = { step: number; field: string; message: string }
@@ -136,17 +136,38 @@ export function validateWizard(spec:WizardSpec,hasContract=true,hasClient=true):
   if(at && start && end && (at<start || at>end))add(2,`service.${service.kind}.at`,`${service.kind}: la atención debe estar dentro de las ventanas operativas de su lugar de operación.`)
  })
  if(spec.max_access_height && Number(spec.height_m)>Number(spec.max_access_height))add(3,'max_access_height','El alto útil de la unidad excede la altura de acceso declarada. Revise las dimensiones totales del vehículo con el proveedor.')
+ if(spec.references_required==='true'&&!spec.attachments.length)add(3,'attachments','Adjunte los documentos de referencia obligatorios antes de preparar la solicitud.')
+ if(disproportionateUnits(spec)&&String(spec.unit_justification||'').trim().length<10)add(1,'unit_justification','Justifique la cantidad de unidades solicitadas (mínimo 10 caracteres).')
  return issues
 }
 export function wizardProgress(issues:FormIssue[]) {
  const complete=[0,1,2,3].map(step=>!issues.some(i=>i.step===step));complete.push(complete.every(Boolean))
  return {complete,count:complete.filter(Boolean).length,percent:complete.filter(Boolean).length*20}
 }
-export function workflowLabel(o:Pick<Outsourcing,'stage'|'review_status'> | null) {
+export function workflowLabel(o:(Pick<Outsourcing,'stage'|'review_status'> & Partial<Pick<Outsourcing,'specification'|'revision'>>) | null) {
  if(o?.review_status==='CANCELLED')return 'Cancelada'
+ const prep=o?.specification?.preparation as Preparation | undefined
+ if(o?.stage===0&&prep?.state==='PREPARED'&&prep.revision===(o.revision||1))return 'Preparada para envío'
  if(o?.review_status==='OBSERVED')return 'Observada'
  if(!o || o.stage===0)return 'Borrador'
- if(o.stage===1)return 'Enviada'
+ if(o.stage===1)return prep?.state==='MANUAL_SENT'?'Enviada · confirmación manual':'Recibida en bandeja de Compras'
  if(o.stage===7)return 'Cerrada'
  return o.stage>=5 ? 'Confirmada' : 'En gestión'
+}
+
+export type Preparation={state:'PREPARED'|'MANUAL_SENT';revision:number;prepared_at?:string;confirmed_at?:string;reference?:string;confirmation_kind?:'USER_ATTESTED'}
+/** Advertencia orientativa: no sustituye la validación técnica de capacidad o cubicaje. */
+export function disproportionateUnits(s:WizardSpec) {
+ const units=Number(s.unit_count),capacity=Number(s.capacity_t),weight=Number(s.cargo_weight_kg)
+ const usable=Number(s.length_m)*Number(s.width_m)*Number(s.height_m),volume=Number(s.volume_m3)
+ return units>=2&&capacity>0&&weight>0&&usable>0&&volume>0&&weight/(units*capacity*1000)<0.2&&volume/(units*usable)<0.2
+}
+export function toggleOutsourcingService(s:WizardSpec,kind:OutsourcingService,checked:boolean):WizardSpec {
+ const cache=s.service_drafts||[],existing=s.services.find(x=>x.kind===kind)
+ return checked?{...s,services_confirmed:'false',services:existing?s.services:[...s.services,cache.find(x=>x.kind===kind)||{kind,requirements:'',details:{}}],service_drafts:cache.filter(x=>x.kind!==kind)}
+  :{...s,services:s.services.filter(x=>x.kind!==kind),service_drafts:existing?[...cache.filter(x=>x.kind!==kind),existing]:cache}
+}
+export function windowSummary(start:unknown,end:unknown) {
+ const a=localDate(start),b=localDate(end)
+ return a&&b?`${a.replace('T',' ')} a ${b.replace('T',' ')} (Lima)`:''
 }
