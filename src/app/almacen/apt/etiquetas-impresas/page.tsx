@@ -269,14 +269,14 @@ export default function AptReceiptControlPage() {
       <p className="mt-3 text-xs text-slate-500">Cada fila representa un ítem ingresado en el IPT. Sus bultos pendientes de impresión permanecen en «02 · Recepción por IPT».</p>
     </section>
 
-    {detail && <div className="fixed inset-0 z-[2147483000] flex items-center justify-center bg-slate-950/60 p-2 sm:p-4" onMouseDown={event => { if (event.target === event.currentTarget) setDetail(null) }}>
-      <section role="dialog" aria-modal="true" aria-labelledby="apt-receipt-detail-title" className="flex max-h-[96dvh] w-full max-w-7xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
-        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-blue-50 px-4 py-3 sm:px-6">
-          <div><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Detalle de recepción</p><h2 id="apt-receipt-detail-title" className="text-xl font-black text-[#002855]">{detail.lot || '—'} · IPT {detail.documentNo} · {detail.productCode}</h2></div>
+    {detail && <div className="fixed inset-0 z-[2147483000] flex items-start justify-center overflow-y-auto bg-slate-950/60 p-2 sm:items-center sm:p-3" onMouseDown={event => { if (event.target === event.currentTarget) setDetail(null) }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="apt-receipt-detail-title" className="flex max-h-[calc(100dvh-1rem)] w-full max-w-[96vw] flex-col overflow-hidden rounded-xl bg-white shadow-2xl sm:max-h-[calc(100dvh-1.5rem)] 2xl:max-w-[1440px]">
+        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-blue-50 px-3 py-2 sm:px-4 sm:py-2.5">
+          <div><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Detalle de recepción</p><h2 id="apt-receipt-detail-title" className="max-w-[75vw] truncate text-lg font-black text-[#002855] sm:max-w-none">{detail.lot || '—'} · IPT {detail.documentNo} · {detail.productCode}</h2></div>
           <button type="button" aria-label="Cerrar detalle" onClick={() => setDetail(null)} className="grid h-10 w-10 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><X size={20}/></button>
         </header>
-        <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4 sm:p-5">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
+        <div className="min-h-0 flex-1 space-y-2 overflow-auto p-2 sm:space-y-3 sm:p-3">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-7">
             <div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Contrato</small><b className="text-sm text-[#002855]">{detail.contractCode || '—'}</b></div><div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Cliente</small><b className="text-sm text-[#002855]">{detail.customerName || 'Por registrar'}</b></div>
             <div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Recepcionado por</small><b className="text-sm text-[#002855]">{receiverNames(detail).join(', ') || 'Registro de validación no disponible'}</b></div>
             <div className="rounded-lg bg-blue-50 p-3"><small className="block text-slate-500">Fecha de recepción</small><b className="text-sm text-[#002855]">{detail.validations[0] ? new Date(detail.validations[0].validated_at).toLocaleString('es-PE') : '—'}</b></div>
@@ -284,9 +284,9 @@ export default function AptReceiptControlPage() {
             <div className="rounded-lg bg-blue-700 p-3 text-white"><small className="block text-blue-100">UND · Peso</small><b>{numberFmt.format(detail.units)} UND · {weightText(detail.weightKg)}</b></div>
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full min-w-[1080px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs font-semibold text-slate-600"><tr><th className="p-3">Producto · descripción</th><th className="p-3">Lote</th><th className="p-3 text-right">UND</th><th className="p-3 text-right">Kg</th><th className="p-3">Código de barras</th><th className="p-3">Acción</th></tr></thead>
+          <div className="max-h-[min(36dvh,420px)] overflow-auto rounded-lg border border-slate-200">
+            <table className="w-full min-w-[920px] text-left text-sm">
+              <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold text-slate-600"><tr><th className="p-2">Producto · descripción</th><th className="p-3">Lote</th><th className="p-3 text-right">UND</th><th className="p-3 text-right">Kg</th><th className="p-3">Código de barras</th><th className="p-3">Acción</th></tr></thead>
               <tbody className="divide-y divide-slate-200">{detail.packages.map(row => <tr key={row.package_code}>
                 <td className="p-3">{row.source_product_code}<small className="block max-w-xs truncate text-slate-500" title={row.description}>{row.description}</small></td>
                 <td className="p-3">{row.source_lot || '—'}</td><td className="p-3 text-right tabular-nums">{unitIsPiece(row.unit) ? numberFmt.format(row.quantity) : '—'}</td>
@@ -297,7 +297,7 @@ export default function AptReceiptControlPage() {
             </table>
           </div>
         </div>
-        <footer className="flex shrink-0 justify-between border-t border-slate-200 bg-white px-4 py-3"><span className="self-center text-xs text-slate-500">La reimpresión conserva el código de barras original.</span><button type="button" onClick={() => setDetail(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-[#002855]">Cerrar</button></footer>
+        <footer className="flex shrink-0 justify-between border-t border-slate-200 bg-white px-3 py-2"><span className="self-center text-xs text-slate-500">La reimpresión conserva el código de barras original.</span><button type="button" onClick={() => setDetail(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-[#002855]">Cerrar</button></footer>
       </section>
     </div>}
 
