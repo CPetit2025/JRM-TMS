@@ -106,6 +106,7 @@ export function validateWizard(spec:WizardSpec,hasContract=true,hasClient=true):
  if(!['NORMAL','ALTA','URGENTE'].includes(String(spec.priority)))add(0,'priority','Seleccione una prioridad válida.')
  if(!String(spec.intermediate_points || '').trim() && !spec.intermediate_stops.length)add(0,'intermediate_points','Indique puntos intermedios o No aplica.')
  spec.intermediate_stops.forEach((s,i)=>{if(!s.address.trim())add(0,`stop.${s.id}`,`Complete el punto intermedio ${i+1}.`)})
+ if(spec.transport_required!=='false') {
  fields(TRANSPORT_FIELDS,spec,1)
  if(spec.unit_type==='Otros' && !String(spec.unit_other || '').trim())add(1,'unit_other','Especifique el otro tipo de unidad.')
  const capacity=Number(spec.capacity_t)*Number(spec.unit_count)*1000
@@ -116,6 +117,8 @@ export function validateWizard(spec:WizardSpec,hasContract=true,hasClient=true):
  if(spec.packages.length && Math.abs(totals.quantity-Number(spec.cargo_quantity))>0.001)add(1,'cargo_quantity','La cantidad consolidada no coincide con el detalle de bultos.')
  if(spec.packages.length && Math.abs(totals.weight-Number(spec.cargo_weight_kg))>Math.max(0.01,Number(spec.cargo_weight_kg)*0.01))add(1,'cargo_weight_kg','El peso consolidado no coincide con los bultos (tolerancia 1 %).')
  if(spec.packages.length && Math.abs(totals.volume-Number(spec.volume_m3))>Math.max(0.001,Number(spec.volume_m3)*0.01))add(1,'volume_m3','El volumen consolidado no coincide con los bultos (tolerancia 1 %).')
+ }
+ if(spec.transport_required==='false'&&!spec.services.length)add(2,'services','Seleccione al menos un servicio sin transporte.')
  if(!spec.services.length && spec.services_confirmed!=='true')add(2,'services_confirmed','Seleccione recursos o confirme que no requiere servicios complementarios.')
  spec.services.forEach(s=>{
   fields(WIZARD_SERVICE_FIELDS[s.kind] || [],s.details || {},2,`service.${s.kind}.`)
@@ -135,9 +138,9 @@ export function validateWizard(spec:WizardSpec,hasContract=true,hasClient=true):
   const start=String(spec[place==='Descarga'?'unloading_start':'loading_start'] || ''),end=String(spec[place==='Carga'?'loading_end':'unloading_end'] || '')
   if(at && start && end && (at<start || at>end))add(2,`service.${service.kind}.at`,`${service.kind}: la atención debe estar dentro de las ventanas operativas de su lugar de operación.`)
  })
- if(spec.max_access_height && Number(spec.height_m)>Number(spec.max_access_height))add(3,'max_access_height','El alto útil de la unidad excede la altura de acceso declarada. Revise las dimensiones totales del vehículo con el proveedor.')
+ if(spec.transport_required!=='false' && spec.max_access_height && Number(spec.height_m)>Number(spec.max_access_height))add(3,'max_access_height','El alto útil de la unidad excede la altura de acceso declarada. Revise las dimensiones totales del vehículo con el proveedor.')
  if(spec.references_required==='true'&&!spec.attachments.length)add(3,'attachments','Adjunte los documentos de referencia obligatorios antes de preparar la solicitud.')
- if(disproportionateUnits(spec)&&String(spec.unit_justification||'').trim().length<10)add(1,'unit_justification','Justifique la cantidad de unidades solicitadas (mínimo 10 caracteres).')
+ if(spec.transport_required!=='false'&&disproportionateUnits(spec)&&String(spec.unit_justification||'').trim().length<10)add(1,'unit_justification','Justifique la cantidad de unidades solicitadas (mínimo 10 caracteres).')
  return issues
 }
 export function wizardProgress(issues:FormIssue[]) {

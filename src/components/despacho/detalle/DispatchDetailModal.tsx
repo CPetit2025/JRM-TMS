@@ -16,6 +16,7 @@ import { HistorialTab } from './HistorialTab'
 import { ServiceClosure } from '@/components/despacho/ServiceClosure'
 import { EconomicClosurePanel } from '@/components/despacho/EconomicClosurePanel'
 import { DispatchDocumentarySettlement } from '@/components/documentos/DispatchDocumentarySettlement'
+import { RouteResources } from '@/components/despacho/outsourcing/RouteResources'
 import { Modal } from '@/components/ui/modal'
 
 // «Toda la ruta»: el expediente de la ruta completa (acciones de la ruta, tripulación, flete, notas), cuando Torre lo envía
@@ -103,6 +104,7 @@ export function DispatchDetailModal({ row, routeRows = [], onSelect, onClose, on
           En escritorio cae bajo «Más acciones»; en móvil se abre sobre el pie. */}
       {actions && <div role="menu" onClick={() => setMenu(false)} className={`print-hide ${menu ? 'flex' : 'hidden'} absolute inset-x-3 bottom-20 z-30 flex-col gap-1.5 rounded-xl border border-slate-200 bg-white p-2 shadow-xl md:inset-x-auto md:bottom-auto md:right-24 md:top-[4.5rem] md:w-72 [&>*]:w-full [&>*]:justify-start`}>{actions}</div>}
       <div ref={body} role="tabpanel" id="detalle-panel" aria-labelledby={`detalle-tab-${tab}`} className="detail-body min-h-0 flex-1 overflow-y-auto bg-slate-50/70 p-3 sm:p-6">
+        <RouteResources dispatchId={row.dispatch_id}/>
         {loading ? <p role="status" className="py-10 text-center text-sm text-slate-500">Cargando detalle del despacho…</p>
           : error || !detail ? <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error || 'No se pudo cargar el detalle.'} <button type="button" onClick={reload} className="font-semibold underline">Reintentar</button></div>
           : tab === 'expediente' ? <div className="space-y-3"><p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-jrm-navy">Toda la ruta {row.dispatch_number}: las acciones de esta pestaña afectan a la ruta completa, no solo a esta entrega.</p>{routeFile}</div>
