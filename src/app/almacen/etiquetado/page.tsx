@@ -409,7 +409,7 @@ export default function WarehouseLabelingPage() {
               <b className="wh-label-lpn block shrink-0 text-center font-mono text-sm sm:text-xl">{label.package_code}</b>
               <div className="wh-label-footer grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 border-t border-slate-400 pt-1">
                 <div className="min-w-0 text-[9px] leading-tight sm:text-xs"><div className="truncate"><b className="text-[#002855]">IPT:</b> {label.source_document_no}</div><div><b className="text-[#002855]">Fecha:</b> {label.source_date}</div></div>
-                <div className="flex min-w-0 items-baseline justify-center gap-1 whitespace-nowrap"><b className="wh-label-quantity text-xl font-extrabold leading-none sm:text-3xl">{label.quantity} {label.unit || ''}</b><span className="wh-label-weight text-xl font-extrabold leading-none text-black sm:text-3xl">· {label.weight_kg === null ? 'Peso por registrar' : label.weight_kg + ' kg'}</span></div>
+                <div className="flex min-w-0 items-baseline justify-center gap-1 whitespace-nowrap"><b className="wh-label-quantity text-lg font-extrabold leading-none sm:text-2xl">{label.quantity} {label.unit || ''}</b><span className="wh-label-weight text-lg font-extrabold leading-none text-black sm:text-2xl">· {label.weight_kg === null ? 'Peso por registrar' : label.weight_kg + ' kg'}</span></div>
                 <div className="text-right text-[10px] sm:text-sm">{label.sequence_no}/{label.sequence_total}<button type="button" onClick={() => void print([label])} className="print:hidden mt-1 block rounded-md border border-slate-300 px-2 py-1 text-[10px] font-bold text-[#002855]">{printedLabelCodes.includes(label.package_code) ? 'Reimprimir etiqueta' : 'Imprimir etiqueta'}</button></div>
               </div>
             </article>
@@ -417,17 +417,18 @@ export default function WarehouseLabelingPage() {
         </div>
       </section>
     </div>, document.body)}
-    <style jsx global>{`@page{size:152.4mm 101.6mm;margin:0}
+    <style jsx global>{`@page{size:6in 4in;margin:0}
     @media print{
-      html,body{width:152.4mm!important;min-width:0!important;margin:0!important;padding:0!important}
+      html,body{width:6in!important;height:4in!important;min-width:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
+      body>:not(#wms-label-preview){display:none!important}
       body *{visibility:hidden!important}
       #wms-label-preview,#wms-label-preview *{visibility:visible!important}
-      #wms-label-preview{position:absolute!important;inset:0 auto auto 0!important;z-index:auto!important;display:block!important;width:152.4mm!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:0!important;background:#fff!important}
-      #wms-label-preview>section{display:block!important;width:auto!important;max-width:none!important;height:auto!important;max-height:none!important;overflow:visible!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+      #wms-label-preview{position:absolute!important;inset:0 auto auto 0!important;z-index:auto!important;display:block!important;width:6in!important;height:4in!important;max-width:none!important;max-height:none!important;overflow:hidden!important;margin:0!important;padding:0!important;background:#fff!important}
+      #wms-label-preview>section{display:block!important;width:6in!important;max-width:none!important;height:4in!important;max-height:none!important;overflow:hidden!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
       #wms-label-preview header{display:none!important}
-      #wms-label-preview .wms-label-list{display:block!important;width:152.4mm!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:0!important}
+      #wms-label-preview .wms-label-list{display:block!important;width:6in!important;height:4in!important;max-height:none!important;overflow:hidden!important;margin:0!important;padding:0!important}
       #wms-label-preview button{display:none!important}
-      .wh-label{box-sizing:border-box;position:relative;display:flex!important;flex-direction:column;break-after:auto!important;page-break-after:auto!important;width:152.4mm!important;height:101.6mm!important;aspect-ratio:auto;border:1px dashed #6b8198!important;border-radius:0!important;padding:2mm!important;margin:0!important;overflow:hidden!important}
+      .wh-label{box-sizing:border-box;position:relative;display:flex!important;flex-direction:column;break-inside:avoid!important;page-break-inside:avoid!important;break-after:auto!important;page-break-after:auto!important;width:6in!important;height:4in!important;max-width:6in!important;max-height:4in!important;aspect-ratio:auto;border:1px dashed #6b8198!important;border-radius:0!important;padding:2mm!important;margin:0!important;overflow:hidden!important}
       .wh-label+.wh-label{break-before:page!important;page-break-before:always!important}
       .wh-label-head{height:18mm!important;min-height:18mm!important;flex:none!important}
       .wh-label-sku{height:9mm!important;max-height:9mm!important;margin-top:2mm!important;padding:0 2mm!important;font-size:7mm!important;line-height:9mm!important}
@@ -435,8 +436,7 @@ export default function WarehouseLabelingPage() {
       .wh-label-barcode{height:22mm!important;max-height:22mm!important;min-height:22mm!important;margin:0 auto!important}
       .wh-label-lpn{height:10mm!important;font-size:7.2mm!important;line-height:10mm!important}
       .wh-label-footer{height:13mm!important;min-height:13mm!important;margin-top:2mm!important;padding-top:2mm!important;border-top:0.3mm solid #7a8793!important}
-      .wh-label-quantity,.wh-label-weight{font-size:10mm!important;line-height:1!important}
-      .wh-label-quantity,.wh-label-weight{font-weight:800!important}
+      .wh-label-quantity,.wh-label-weight{font-size:8mm!important;line-height:1!important;font-weight:800!important}
     }`}</style>
   </div>
 }
