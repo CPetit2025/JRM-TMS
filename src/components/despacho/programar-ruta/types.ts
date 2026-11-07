@@ -38,7 +38,7 @@ export interface TransportRequest {
   unloading_estimate_pen?: number | null
   unloading_required?: boolean | null
   operational_approved_pen?: number | null
-  transport_request_items?: Array<{ weight?: number | null; volume_m3?: number | null; quantity?: number | null }>
+  transport_request_items?: Array<{ description?: string | null; weight?: number | null; volume_m3?: number | null; quantity?: number | null }>
   contracts?: {
     id: string
     code: string

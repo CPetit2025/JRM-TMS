@@ -35,6 +35,8 @@ jobs:
       - run: node scripts/test-forklift-stop.cjs
       - run: node scripts/test-special-services-inheritance.cjs
       - run: node scripts/test-special-services-agreements.cjs
+      - run: node scripts/test-transport-outsourcing.cjs
+      - run: node scripts/test-outsourcing-wizard.cjs
       - run: node scripts/test-freight-stages.cjs
       - run: node scripts/test-economic-closure.cjs
       - run: node scripts/test-documents-modal-context.cjs

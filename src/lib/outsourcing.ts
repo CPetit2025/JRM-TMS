@@ -2,9 +2,9 @@ export const OUTSOURCING_STAGES = ['Solicitud generada', 'Enviada a Compras', 'E
 export const OUTSOURCING_SERVICES = { FLETE: 'Transporte', MONTACARGAS: 'Montacargas', GRUA: 'Grúa', STOCKA: 'Stocka / transpaleta', ESTIBA: 'Estiba y desestiba', OTROS: 'Otros recursos' } as const
 export type OutsourcingService = keyof typeof OUTSOURCING_SERVICES
 export type ServiceRequirement = { kind: OutsourcingService; requirements: string; details?: Record<string,string> }
-export type Specification = Record<string, string | ServiceRequirement[]> & { services: ServiceRequirement[] }
-export type Outsourcing = { id: string; number: number; request_id: string; dispatch_id: string | null; stage: number; version: number; specification: Specification; updated_at: string }
-export type OutsourcingQuote = { id: string; service: OutsourcingService; supplier_id: string; amount_pen: number; terms: string; evidence: string; selected: boolean }
+export type Specification = { [key: string]: unknown; services: ServiceRequirement[] }
+export type Outsourcing = { id: string; number: number; request_id: string; dispatch_id: string | null; stage: number; version: number; review_status?: 'ACTIVE' | 'OBSERVED' | 'CANCELLED'; revision?: number; specification: Specification; updated_at: string }
+export type OutsourcingQuote = { id: string; service: OutsourcingService; supplier_id: string; amount_pen: number; terms: string; evidence: string; selected: boolean; spec_revision?: number }
 export const SPEC_FIELDS = [
  ['Información general', [
   ['required_at', 'Fecha y hora requeridas (Lima)', 'datetime-local'], ['pickup', 'Lugar de recojo'], ['delivery', 'Lugar de entrega'],
