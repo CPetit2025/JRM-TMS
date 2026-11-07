@@ -16,8 +16,8 @@ const links = [
   { href: '/almacen/apt/etiquetado', label: '01 · Actualizar ingresos WMS', icon: Warehouse, permission: 'almacen-carga', group: 'Recepción' },
   { href: '/almacen/etiquetado', label: '02 · Recepción por IPT', icon: ScanLine, permission: 'almacen-etiquetado', group: 'Recepción' },
   { href: '/almacen/apt/etiquetas-impresas', label: '03 · Control de recepción', icon: PackageCheck, permission: 'almacen-etiquetado', group: 'Recepción' },
-  { href: '/almacen/tareas', label: 'Tareas', icon: ClipboardList, permission: 'almacen-picking', group: 'Operación posterior' },
-  { href: '/almacen/paquetes', label: 'Paquetes y LPN', icon: PackageCheck, permission: 'almacen-packing', group: 'Operación posterior' },
+  { href: '/almacen/tareas', label: 'Tareas', icon: ClipboardList, permission: 'almacen-picking', group: 'Despacho' },
+  { href: '/almacen/paquetes', label: 'Paquetes y LPN', icon: PackageCheck, permission: 'almacen-packing', group: 'Despacho' },
   { href: '/almacen/conciliacion', label: 'Conciliación', icon: Waypoints, permission: 'almacen-carga', group: 'Control' },
   { href: '/almacen/maestros/embalajes', label: 'Embalajes', icon: Settings2, permission: 'almacen-supervisor', group: 'Configuración' },
 ]
@@ -71,7 +71,7 @@ export default function WarehouseLayout({ children }: { children: React.ReactNod
         <button onClick={closeMenu} className="grid h-10 w-10 place-items-center rounded-lg text-blue-200 hover:bg-white/10 lg:hidden" aria-label="Cerrar navegación"><X size={17}/></button>
       </div>
       <nav aria-label="Menú de Almacén" className="min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-3">
-        {(['Inicio','Recepción','Operación posterior','Control','Configuración'] as const).map(group => {
+        {(['Inicio','Recepción','Despacho','Control','Configuración'] as const).map(group => {
           const items = visible.filter(x => x.group === group)
           if (!items.length) return null
           return <section key={group} className="mb-3">
