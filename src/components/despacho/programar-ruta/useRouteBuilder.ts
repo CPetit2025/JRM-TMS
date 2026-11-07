@@ -1,5 +1,7 @@
 'use client'
 import { useState, useEffect, useRef, useCallback, type Dispatch as SetState, type SetStateAction } from 'react'
+import type { AssignedResource } from '@/lib/outsourcing-resources'
+import { localDate } from '@/lib/outsourcing-form'
 import { toast } from 'sonner'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { EMPTY_FORKLIFT, forkliftValid, forkliftForStops } from '@/components/despacho/ForkliftFields'
@@ -101,6 +103,11 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
   const [inheritedLines, setInheritedLines] = useState<InheritedLine[]>([])
   const autoForklift = useRef<Set<string>>(new Set())
   const [newDispatch, setNewDispatch] = useState<NewDispatch>(EMPTY_DISPATCH)
+  const [outsourcingResources,setOutsourcingResources]=useState<AssignedResource[]>([])
+  const [outsourcingAssignment,setOutsourcingAssignment]=useState('')
+  const [outsourcingRequest,setOutsourcingRequest]=useState<TransportRequest|null>(null)
+  const [outsourcingSupports,setOutsourcingSupports]=useState<string[]>([])
+  const [outsourcingError,setOutsourcingError]=useState('')
   const [freightShares, setFreightShares] = useState<Record<string, string>>({})
   // Motivo cuando el flete de la ruta difiere del referencial de las solicitudes
   const [freightReason, setFreightReason] = useState('')
@@ -112,10 +119,42 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
   const [stockCorte, setStockCorte] = useState<StockCorte | null>(null)
   const [eligibility, setEligibility] = useState<{ key: string; result: DispatchEligibilityResult | null }>({ key: '', result: null })
 
-  const selectedServices = newDispatch.selected_requests.map(selected => pendingRequests.find(r => r.id === selected.id)).filter((r): r is TransportRequest => !!r)
+  const selectedResourceRequests=newDispatch.selected_requests.map(r=>r.id).sort().join(',')
+  useEffect(()=>{
+    if(!isModalOpen || !selectedResourceRequests)return
+    let live=true
+    void supabase.rpc('outsourcing_route_resources',{p_requests:selectedResourceRequests.split(',')}).then(({data,error})=>{
+      if(live){setOutsourcingError(error?errorMessage(error):'');setOutsourcingResources(data||[])}
+    })
+    return()=>{live=false}
+  },[supabase,isModalOpen,selectedResourceRequests])
+  const selectOutsourcingResource=useCallback(async(resourceId:string)=>{
+    if(!resourceId){setOutsourcingAssignment('');setOutsourcingRequest(null);return}
+    const {data,error}=await supabase.rpc('outsourcing_route_context',{p_id:resourceId})
+    if(error){toast.error(errorMessage(error));return}
+    const a=data.resource as AssignedResource,request=data.request as TransportRequest
+    if(!a){toast.error('El recurso ya no está disponible');return}
+    setPendingRequests(current=>[...current.filter(r=>r.id!==request.id),request])
+    setNewDispatch(prev=>({...prev,selected_requests:[{id:request.id,document_number:prev.selected_requests.find(r=>r.id===request.id)?.document_number||''}],scheduled_departure:localDate(a.starts_at)}))
+    if(a.service==='FLETE'){
+      setOutsourcingRequest(request);setOutsourcingAssignment(a.id);setModalidad('TERCERO');setManualFreightCost(String(a.amount_pen));setFreightReason('Asignación confirmada de Compras '+a.id)
+      setTercero({carrier_id:a.carrier_id||'',supplier_vehicle_id:'',supplier_personnel_id:'',placa:a.resource.plate,conductor:a.resource.driver,telefono:a.resource.phone,doc:a.resource.document,license_number:a.resource.license,license_expiration:a.resource.license_expiration})
+    }else setOutsourcingSupports(current=>current.includes(a.id)?current:[...current,a.id])
+    setIsModalOpen(true);setStep(2)
+  },[supabase,setPendingRequests,setOutsourcingAssignment,setOutsourcingRequest,setNewDispatch,setModalidad,setManualFreightCost,setFreightReason,setTercero,setOutsourcingSupports,setIsModalOpen,setStep])
+  useEffect(()=>{
+    const resourceId=new URLSearchParams(window.location.search).get('asignacion')
+    if(!resourceId)return
+    const timer=setTimeout(()=>{window.history.replaceState(null,'',window.location.pathname);void selectOutsourcingResource(resourceId)},0)
+    return()=>clearTimeout(timer)
+  },[selectOutsourcingResource])
+
+  const selectedServices = newDispatch.selected_requests.map(selected => (outsourcingRequest?.id===selected.id?outsourcingRequest:pendingRequests.find(r => r.id === selected.id))).filter((r): r is TransportRequest => !!r)
   const forkliftStops = selectedServices.map(request => ({ id: request.id,
     label: `${request.request_number} · ${request.delivery_address || request.delivery_district || 'Destino sin dirección'}` }))
-  const routeForklift = forkliftForStops(forklift, forkliftStops)
+  const managedSupport=outsourcingResources.filter(r=>outsourcingSupports.includes(r.id))
+  const managedConcepts=new Set<string>(managedSupport.map(r=>r.service==='STOCKA'?'OTROS':r.service))
+  const routeForklift = forkliftForStops(managedConcepts.has('MONTACARGAS')?EMPTY_FORKLIFT:forklift, forkliftStops)
   const selectedIdsKey = newDispatch.selected_requests.map(r => r.id).join(',')
   useEffect(() => {
     let cancel = false
@@ -179,11 +218,11 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
 
   // Capacidad: el peso declarado en las solicitudes es dato del usuario y bloquea si supera la capacidad registrada;
   // el cubicaje con el stock del ERP es referencial y solo advierte.
-  const capacityKg = newDispatch.document_type !== 'GR' ? null : modalidad === 'PROPIA' ? Number(selectedVehicle?.weight_capacity) || null : terceroCapacityKg
+  const capacityKg = newDispatch.document_type !== 'GR' ? null : modalidad === 'PROPIA' ? Number(selectedVehicle?.weight_capacity) || null : Number(outsourcingResources.find(r=>r.id===outsourcingAssignment)?.resource.capacity_t)*1000 || terceroCapacityKg
   const capacityM3 = newDispatch.document_type === 'GR' && modalidad === 'PROPIA' ? Number(selectedVehicle?.volume_capacity) || null : null
   const declaredKg = selectedServices.reduce((sum, r) => sum + Number(r.estimated_weight || 0), 0)
   const late = lateStops(selectedServices, newDispatch.scheduled_departure)
-  const special = specialServicesPayload(specialServices, inheritedLines, routeForklift)
+  const special = specialServicesPayload(specialServices, inheritedLines.filter(l=>!managedConcepts.has(l.concept)), routeForklift)
   const eligibilityKey = newDispatch.document_type === 'GR' && modalidad === 'PROPIA' && selectedVehicle && selectedDriver ? `${selectedVehicle.plate}|${selectedDriver.id}` : ''
   const currentEligibility = eligibility.key === eligibilityKey ? eligibility.result : null
   const terceroIncomplete = !tercero.carrier_id || !tercero.placa.trim() || !tercero.conductor.trim() || !tercero.telefono.trim() || !tercero.doc.trim()
@@ -330,6 +369,7 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
   }, [eligibilityKey])
 
   const reset = () => {
+    setOutsourcingRequest(null);setOutsourcingAssignment('');setOutsourcingSupports([]);setOutsourcingResources([])
     setStep(1); setAutoDeparture(''); setAuxiliares([])
     setForklift(EMPTY_FORKLIFT); setSpecialServices(EMPTY_SPECIAL_SERVICES)
     setNewDispatch(EMPTY_DISPATCH)
@@ -429,7 +469,7 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
           const authorizedFreight = serviceShare(request.id)
           setPendingRequests(current => current.map(r => r.id === request.id ? { ...r, service_cost: authorizedFreight, operational_approved_pen: Math.round((authorizedFreight + Number(r.unloading_estimate_pen || 0)) * 100) / 100 } : r))
         }
-        const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { mode: 'TERCERO', forklift: routeForklift.enabled ? routeForklift : null, auxiliaries: [], special_services: special.value, freight_reason,
+        const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { outsourcing_assignment_id:outsourcingAssignment||null,outsourcing_support_ids:outsourcingSupports,mode: 'TERCERO', forklift: routeForklift.enabled ? routeForklift : null, auxiliaries: [], special_services: special.value, freight_reason,
           p_carrier_id: tercero.carrier_id, p_plate: tercero.placa, p_conductor: tercero.conductor, p_telefono: tercero.telefono,
           p_supplier_vehicle_id: tercero.supplier_vehicle_id || null, p_supplier_personnel_id: tercero.supplier_personnel_id || null,
           p_doc: tercero.doc || null, p_tercero_license_number: tercero.license_number || null,
@@ -501,7 +541,7 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
 
       const firstReq = pendingRequests.find(r => r.id === newDispatch.selected_requests[0].id)
       const freightCost = routeFreight
-      const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { mode: 'PROPIA', forklift: routeForklift.enabled ? routeForklift : null, auxiliaries: isPickup ? [] : auxiliares, special_services: special.value, freight_reason,
+      const { data: newDispatchId, error } = await supabase.rpc('schedule_route_resources', { p: { outsourcing_support_ids:outsourcingSupports,mode: 'PROPIA', forklift: routeForklift.enabled ? routeForklift : null, auxiliaries: isPickup ? [] : auxiliares, special_services: special.value, freight_reason,
         p_driver_id: isPickup ? null : matches[0]?.id || null,
         p_vehicle_plate: isPickup ? 'EXTERNO' : newDispatch.vehicle_plate,
         p_departure: new Date(newDispatch.scheduled_departure).toISOString(),
@@ -638,6 +678,7 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
   }
 
   return {
+    outsourcingResources,outsourcingAssignment,outsourcingSupports,setOutsourcingSupports,outsourcingError,selectOutsourcingResource,
     isModalOpen, setIsModalOpen, addServiceId, setAddServiceId, step, setStep, isSubmitting, calculatingDistance, autoDeparture,
     detectedFreightRate, loadingRate, manualFreightCost, setManualFreightCost, freightQuote, modalidad, changeModalidad, tercero, setTercero,
     assistants, assistantsLoading, assistantsError, fetchAssistants, auxiliares, setAuxiliares, forklift, setForklift, routeForklift, forkliftStops,

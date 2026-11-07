@@ -1,4 +1,5 @@
 'use client'
+import { OUTSOURCING_SERVICES } from '@/lib/outsourcing'
 import Link from 'next/link'
 import { CheckCircle2, Loader2, ShieldAlert } from 'lucide-react'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
@@ -30,14 +31,14 @@ function FreightPanel({ rb }: { rb: RouteBuilder }) {
         <div className="rounded-lg bg-slate-50 p-2"><p className="text-[11px] text-slate-500">Tarifario</p>
           <p className="font-semibold tabular-nums text-slate-800">{rb.loadingRate ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : rb.detectedFreightRate ? `S/ ${money(rb.detectedFreightRate.rate)}` : <span className="font-normal text-slate-400">Sin tarifa</span>}</p></div>
         <label className="sm:col-span-1"><span className={label}>{tercero ? 'Flete pactado con el proveedor' : 'Flete acordado'} (S/) <span className="text-red-700">*</span></span>
-          <input type="number" min="0" step="0.01" required aria-label={tercero ? 'Flete pactado con el proveedor' : 'Flete de la ruta'} value={rb.manualFreightCost} onChange={e => rb.setManualFreightCost(e.target.value)}
+          <input type="number" min="0" step="0.01" required disabled={!!rb.outsourcingAssignment} aria-label={tercero ? 'Flete pactado con el proveedor' : 'Flete de la ruta'} value={rb.manualFreightCost} onChange={e => rb.setManualFreightCost(e.target.value)}
             placeholder="Monto acordado" className={`${control} ${missing ? 'border-red-400' : 'border-slate-300'}`} /></label>
         <div className="rounded-lg bg-slate-50 p-2"><p className="text-[11px] text-slate-500">Diferencia vs. referencial</p>
           <p className={`font-semibold tabular-nums ${Math.abs(diff) < 0.005 ? 'text-slate-800' : diff > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{Math.abs(diff) < 0.005 ? '—' : `${diff > 0 ? '+' : ''}S/ ${money(diff)}`}</p></div>
       </div>
       <div className="flex flex-wrap gap-3 text-xs">
-        {rb.detectedFreightRate && <button type="button" onClick={() => rb.setManualFreightCost(String(rb.detectedFreightRate!.rate))} className="font-semibold text-blue-700 hover:underline">Usar el tarifario (S/ {money(rb.detectedFreightRate.rate)})</button>}
-        {rb.referentialFreight > 0 && <button type="button" onClick={() => rb.setManualFreightCost(rb.referentialFreight.toFixed(2))} className="font-semibold text-blue-700 hover:underline">Usar el referencial (S/ {money(rb.referentialFreight)})</button>}
+        {!rb.outsourcingAssignment && rb.detectedFreightRate && <button type="button" onClick={() => rb.setManualFreightCost(String(rb.detectedFreightRate!.rate))} className="font-semibold text-blue-700 hover:underline">Usar el tarifario (S/ {money(rb.detectedFreightRate.rate)})</button>}
+        {!rb.outsourcingAssignment && rb.referentialFreight > 0 && <button type="button" onClick={() => rb.setManualFreightCost(rb.referentialFreight.toFixed(2))} className="font-semibold text-blue-700 hover:underline">Usar el referencial (S/ {money(rb.referentialFreight)})</button>}
       </div>
       {missing && <p className="text-xs font-semibold text-red-700">{rb.checks.find(c => c.key.startsWith('flete-'))?.label}</p>}
       {rb.freightQuote && !rb.loadingRate && <details className="text-xs"><summary className="cursor-pointer font-semibold text-slate-600">Detalle del tarifario</summary><div className="mt-2"><QuoteBreakdown quote={rb.freightQuote} compact /></div></details>}
@@ -75,13 +76,19 @@ export function StepTransporte({ rb }: { rb: RouteBuilder }) {
   const cap = rb.capacityKg
   return (
     <div className="space-y-4">
+      <section className="space-y-2 rounded-xl border border-blue-200 bg-blue-50 p-3"><h4 className="text-sm font-semibold">Recursos confirmados de Compras</h4>
+      {rb.outsourcingError?<p role="alert" className="text-sm text-red-700">{rb.outsourcingError}</p>:!rb.outsourcingResources.length?<p className="text-xs text-slate-600">Sin asignaciones confirmadas disponibles para estas solicitudes.</p>:<>
+      <label className="block text-xs">Unidad tercerizada<select aria-label="Unidad tercerizada" className={control} value={rb.outsourcingAssignment} onChange={e=>void rb.selectOutsourcingResource(e.target.value)}><option value="">Seleccione unidad confirmada</option>{rb.outsourcingResources.filter(r=>r.service==='FLETE').map(r=><option key={r.id} value={r.id}>{r.resource.plate} · {r.supplier_name} · S/ {r.amount_pen}</option>)}</select></label>
+      {rb.outsourcingResources.filter(r=>r.service!=='FLETE').map(r=><label key={r.id} className="flex gap-2 text-sm"><input type="checkbox" checked={rb.outsourcingSupports.includes(r.id)} onChange={e=>rb.setOutsourcingSupports(current=>e.target.checked?[...current,r.id]:current.filter(id=>id!==r.id))}/>{OUTSOURCING_SERVICES[r.service]} · {r.resource.equipment||r.quantity} · {r.supplier_name} · S/ {r.amount_pen}</label>)}
+      <p className="text-xs text-blue-900">Los datos y costos confirmados se verifican nuevamente al programar. Cada unidad conserva la solicitud y su asignación original.</p></>}
+      </section>
       <div className="grid max-w-sm grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-white p-1 text-xs font-semibold">
         {(['PROPIA', 'TERCERO'] as const).map(m => (
-          <button key={m} type="button" onClick={() => rb.changeModalidad(m)} aria-pressed={rb.modalidad === m}
+          <button key={m} type="button" disabled={!!rb.outsourcingAssignment} onClick={() => rb.changeModalidad(m)} aria-pressed={rb.modalidad === m}
             className={`rounded-md py-1.5 ${rb.modalidad === m ? 'bg-[#002855] text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{m === 'PROPIA' ? 'Unidad propia' : 'Tercero'}</button>
         ))}
       </div>
-      {rb.modalidad === 'TERCERO' ? <TerceroFields value={rb.tercero} onChange={rb.setTercero} /> : (
+      {rb.modalidad === 'TERCERO' ? <fieldset disabled={!!rb.outsourcingAssignment}><TerceroFields value={rb.tercero} onChange={rb.setTercero}/>{rb.outsourcingAssignment&&<p className="mt-2 text-xs text-blue-900">Datos confirmados por Compras. Para sustituirlos, rectifique la asignación en Tercerizaciones.</p>}</fieldset> : (
         <div className="grid gap-3 md:grid-cols-2">
           <div>
             <span className={label}>Placa del vehículo *</span>

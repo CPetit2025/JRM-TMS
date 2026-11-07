@@ -24,7 +24,7 @@ export function TransportSection({spec,setSpec,issues,disabled}:Props) {
   return <WizardFieldControl key={key} field={{...f,label:label||f.label,type:f.type==='textarea'?undefined:f.type}} value={spec[key]} onChange={v=>update(key,v)} disabled={disabled} error={issues.find(i=>i.field===key)?.message}/>
  }
  const extraIssues=issues.some(i=>i.step===1&&!['unit_type','unit_count','length_m','width_m','height_m','capacity_t','cargo_weight_kg','volume_m3','cargo_quantity','cargo','packaging','unit_justification'].includes(i.field))
- return <>
+ return <><label className="ow-none-service"><input type="checkbox" disabled={disabled} checked={spec.transport_required!=='false'} onChange={e=>update('transport_required',String(e.target.checked))}/>Requiere transporte</label>{spec.transport_required==='false'?<p className="ow-hint">Solicitud de equipos o personal sin unidad de transporte. Complete los servicios complementarios.</p>:<>
  <div className="ow-transport-first">{control('unit_type')}<div className="ow-unit-count">{control('unit_count','Cantidad de unidades')}<div className="ow-count-actions"><button type="button" aria-label="Reducir unidades" disabled={disabled||Number(spec.unit_count)<=1} onClick={()=>update('unit_count',String(Math.max(1,Number(spec.unit_count||1)-1)))}><Minus/></button><button type="button" aria-label="Aumentar unidades" disabled={disabled} onClick={()=>update('unit_count',String(Math.max(1,Math.floor(Number(spec.unit_count)||0)+1)))}><Plus/></button></div></div></div>
  <div className="ow-dimensions">{control('length_m','Largo útil (m)')}{control('width_m','Ancho útil (m)')}{control('height_m','Alto útil (m)')}{control('capacity_t','Capacidad por unidad (t)')}</div>
  <div className="ow-cargo-totals">{control('cargo_weight_kg','Peso total (kg)')}{control('volume_m3','Volumen (m³)')}{control('cargo_quantity','Total de bultos')}</div>
@@ -37,7 +37,7 @@ export function TransportSection({spec,setSpec,issues,disabled}:Props) {
  {issues.find(i=>i.field==='packages')&&<p className="ow-error">{issues.find(i=>i.field==='packages')!.message}</p>}
  <p className="ow-hint">Calculado: {totals.quantity} bultos · {totals.weight.toFixed(2)} kg · {totals.volume.toFixed(3)} m³.</p><button type="button" className="ow-text-button" disabled={disabled||!spec.packages.length} onClick={()=>{if(window.confirm('¿Reemplazar los totales por los calculados del detalle de bultos?'))setSpec(p=>({...p,cargo_quantity:String(totals.quantity),cargo_weight_kg:totals.weight.toFixed(2),volume_m3:totals.volume.toFixed(3)}))}}>Usar totales calculados</button>
  <WizardFields fields={TRANSPORT_FIELDS.slice(12)} spec={spec} setValue={update} issues={issues} disabled={disabled}/>
- </details></>
+ </details></>}</>
 }
 const PRIMARY_SERVICE_KEYS:Record<string,string[]>={MONTACARGAS:['quantity','capacity','type','operation_place'],GRUA:['quantity','capacity','type','reach'],STOCKA:['quantity','type','capacity'],ESTIBA:['workers','activities','operation_place'],OTROS:['resource','quantity']}
 const SHORT_LABELS:Record<string,string>={quantity:'Cant.',capacity:'Capacidad (t)',type:'Tipo',operation_place:'Uso / lugar',reach:'Alcance (m)',workers:'Personas',activities:'Actividad',resource:'Descripción'}
