@@ -244,22 +244,23 @@ export default function AptReceiptControlPage() {
       </label>
 
       <div className="w-full overflow-x-auto rounded-lg border border-slate-200">
-        <table className="w-full min-w-[1280px] text-left text-sm">
+        <table className="w-full min-w-[980px] table-fixed text-left text-sm lg:min-w-0">
+          <colgroup><col style={{ width: "9%" }}/><col style={{ width: "10%" }}/><col style={{ width: "17%" }}/><col style={{ width: "29%" }}/><col style={{ width: "7%" }}/><col style={{ width: "10%" }}/><col style={{ width: "8%" }}/><col style={{ width: "10%" }}/></colgroup>
           <thead className="bg-slate-50 text-xs font-semibold text-slate-600"><tr>
-            <th className="p-3">Lote</th><th className="p-3">IPT</th><th className="p-3">Cliente</th><th className="p-3">Descripción</th>
-            <th className="p-3 text-right">UND</th><th className="p-3 text-right">Kg / TN</th><th className="p-3 text-right">Bultos</th>
-            <th className="p-3">Acciones</th>
+            <th className="p-2">Lote</th><th className="p-2">IPT</th><th className="p-2">Cliente</th><th className="p-2">Descripción</th>
+            <th className="p-2 text-right">UND</th><th className="p-2 text-right">Kg / TN</th><th className="p-2 text-right">Bultos</th>
+            <th className="p-2">Acciones</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-200">
             {filtered.map(group => <tr key={group.sourceMovementKey} className="hover:bg-blue-50/60">
-              <td className="p-3">{group.lot || '—'}</td>
-              <td className="p-3 font-semibold text-[#002855]">{group.documentNo}</td>
-              <td className="max-w-56 p-3">{group.customerName || 'Por registrar'}</td>
-              <td className="max-w-[420px] p-3"><b className="block text-[#002855]">{group.productCode}</b><span className="block text-xs text-slate-500">{group.description || '—'}</span></td>
-              <td className="p-3 text-right tabular-nums">{group.units ? numberFmt.format(group.units) : '—'}</td>
-              <td className="p-3 text-right tabular-nums">{group.weightKg ? weightText(group.weightKg) : '—'}</td>
-              <td className="p-3 text-right tabular-nums">{group.packages.length}</td>
-              <td className="p-3"><button type="button" onClick={() => setDetail(group)} className="inline-flex min-h-9 items-center gap-2 whitespace-nowrap rounded-lg border border-[#002855] px-3 py-2 text-xs font-bold text-[#002855] hover:bg-blue-50"><ClipboardList size={14}/>Ver detalle</button></td>
+              <td className="break-words p-2">{group.lot || '—'}</td>
+              <td className="whitespace-nowrap p-2 font-semibold text-[#002855]">{group.documentNo}</td>
+              <td className="break-words p-2">{group.customerName || 'Por registrar'}</td>
+              <td className="break-words p-2"><b className="block break-all text-[#002855]">{group.productCode}</b><span className="block text-xs text-slate-500">{group.description || '—'}</span></td>
+              <td className="whitespace-nowrap p-2 text-right tabular-nums">{group.units ? numberFmt.format(group.units) : '—'}</td>
+              <td className="whitespace-nowrap p-2 text-right tabular-nums">{group.weightKg ? weightText(group.weightKg) : '—'}</td>
+              <td className="whitespace-nowrap p-2 text-right tabular-nums">{group.packages.length}</td>
+              <td className="p-2"><button type="button" onClick={() => setDetail(group)} className="inline-flex min-h-9 items-center gap-2 whitespace-nowrap rounded-lg border border-[#002855] px-3 py-2 text-xs font-bold text-[#002855] hover:bg-blue-50"><ClipboardList size={14}/>Ver detalle</button></td>
             </tr>)}
             {!loading && filtered.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-sm text-slate-500">{query ? 'No hay líneas recepcionadas que coincidan con la búsqueda.' : 'Todavía no hay ingresos recepcionados en el APT.'}</td></tr>}
             {loading && <tr><td colSpan={8} className="p-10 text-center text-sm text-slate-500">Cargando recepciones…</td></tr>}
