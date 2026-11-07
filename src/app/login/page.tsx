@@ -290,7 +290,7 @@ export default function LoginPage() {
             </button>
           </form>}
 
-          {localLogin && <div className="mt-5 text-center text-sm text-slate-600 sm:mt-8">
+          {localLogin && process.env.NEXT_PUBLIC_DEPLOYMENT_SYSTEM !== 'wms' && <div className="mt-5 text-center text-sm text-slate-600 sm:mt-8">
             ¿No tienes cuenta?{' '}
             <button 
               onClick={() => setIsRegisterModalOpen(true)}

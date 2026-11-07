@@ -4,7 +4,7 @@ import { webBuildId, webVersion } from "@/lib/app-version";
 import { LegacyAiKeyCleanup } from "@/components/LegacyAiKeyCleanup";
 
 export const metadata: Metadata = {
-  title: "Torre de Control - JRM | TMS",
+  title: process.env.NEXT_PUBLIC_DEPLOYMENT_SYSTEM === 'wms' ? "JRM | WMS Almacén" : "Torre de Control - JRM | TMS",
   description: "Plataforma Integral de Gestión de Despacho y Transporte",
 };
 
