@@ -42,15 +42,37 @@ CREATE POLICY vehicles_read ON public.vehicles FOR SELECT TO authenticated
 CREATE POLICY vehicles_staff_write ON public.vehicles FOR ALL TO authenticated
   USING (public.has_tms_permission('flota') OR public.has_tms_permission('mantenimiento-flota'))
   WITH CHECK (public.has_tms_permission('flota') OR public.has_tms_permission('mantenimiento-flota'));
-CREATE POLICY contract_budget_read ON public.contract_budgets FOR SELECT TO authenticated
-  USING (public.has_tms_permission('dashboard') OR public.has_tms_permission('clientes')
-    OR public.has_tms_permission('despacho'));
-CREATE POLICY contract_budget_staff_write ON public.contract_budgets FOR ALL TO authenticated
-  USING (public.has_tms_permission('clientes') OR public.has_tms_permission('despacho'))
-  WITH CHECK (public.has_tms_permission('clientes') OR public.has_tms_permission('despacho'));
-CREATE POLICY contract_service_staff ON public.contract_services FOR ALL TO authenticated
-  USING (public.has_tms_permission('despacho') OR public.has_tms_permission('clientes'))
-  WITH CHECK (public.has_tms_permission('despacho') OR public.has_tms_permission('clientes'));
+-- The contracts wallet is introduced by migration 00028, which is ordered
+-- after this 16.x security migration on a fresh database. Apply its policies
+-- here when available; 00055 installs them after the wallet migration.
+DO $$ BEGIN
+  IF to_regclass('public.contract_budgets') IS NOT NULL THEN
+    EXECUTE $policy$CREATE POLICY contract_budget_read ON public.contract_budgets FOR SELECT TO authenticated
+      USING (public.has_tms_permission('dashboard') OR public.has_tms_permission('clientes')
+        OR public.has_tms_permission('despacho'))$policy$;
+    EXECUTE $policy$CREATE POLICY contract_budget_staff_write ON public.contract_budgets FOR ALL TO authenticated
+      USING (public.has_tms_permission('clientes') OR public.has_tms_permission('despacho'))
+      WITH CHECK (public.has_tms_permission('clientes') OR public.has_tms_permission('despacho'))$policy$;
+  END IF;
+END $$;
+-- contract_services is introduced later by migration 00052.
+DO $$ BEGIN
+  IF to_regclass('public.contract_services') IS NOT NULL THEN
+    EXECUTE $policy$CREATE POLICY contract_service_staff ON public.contract_services FOR ALL TO authenticated
+      USING (public.has_tms_permission('despacho') OR public.has_tms_permission('clientes'))
+      WITH CHECK (public.has_tms_permission('despacho') OR public.has_tms_permission('clientes'))$policy$;
+  END IF;
+END $$;
+
+-- Some legacy initial schemas create dispatches without the operational fields
+-- used by the route and tracking RPCs.
+ALTER TABLE public.dispatches ADD COLUMN IF NOT EXISTS vehicle_plate text;
+ALTER TABLE public.dispatches ADD COLUMN IF NOT EXISTS driver_name text;
+ALTER TABLE public.dispatches ADD COLUMN IF NOT EXISTS scheduled_departure timestamptz;
+UPDATE public.dispatches SET scheduled_departure = scheduled_date
+WHERE scheduled_departure IS NULL AND scheduled_date IS NOT NULL;
+UPDATE public.dispatches d SET driver_name = trim(concat_ws(' ', dr.first_name, dr.last_name))
+FROM public.drivers dr WHERE d.driver_id = dr.id AND coalesce(d.driver_name, '') = '';
 
 -- A driver and vehicle cannot be assigned to two live routes concurrently.
 CREATE UNIQUE INDEX IF NOT EXISTS dispatch_one_active_driver ON public.dispatches(driver_id)
@@ -114,7 +136,9 @@ CREATE OR REPLACE FUNCTION public.schedule_dispatch(
 DECLARE v_dispatch_id uuid;
 DECLARE v_driver_name text;
 DECLARE v_number text;
-DECLARE v_budget public.contract_budgets%ROWTYPE;
+-- Use a generic record because the wallet table is created by migration 00028,
+-- which is applied later on a fresh database.
+DECLARE v_budget record;
 DECLARE v_request jsonb;
 DECLARE v_request_id uuid;
 DECLARE v_order integer := 0;
@@ -237,11 +261,15 @@ REVOKE ALL ON FUNCTION public.close_dispatch_route(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.close_dispatch_route(uuid) TO authenticated;
 
 -- Obsolete financial RPCs allowed double charging or direct unvalidated changes.
-REVOKE ALL ON FUNCTION public.reserve_transport_budget(uuid,numeric) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.liquidate_transport_budget(uuid,numeric,numeric) FROM PUBLIC, anon, authenticated;
 DO $$
 DECLARE fn record;
 BEGIN
+  IF to_regprocedure('public.reserve_transport_budget(uuid,numeric)') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.reserve_transport_budget(uuid,numeric) FROM PUBLIC, anon, authenticated';
+  END IF;
+  IF to_regprocedure('public.liquidate_transport_budget(uuid,numeric,numeric)') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.liquidate_transport_budget(uuid,numeric,numeric) FROM PUBLIC, anon, authenticated';
+  END IF;
   FOR fn IN SELECT oid::regprocedure AS signature FROM pg_proc
     WHERE pronamespace = 'public'::regnamespace AND proname = 'register_contract_service'
   LOOP

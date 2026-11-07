@@ -72,7 +72,7 @@ DO $$ DECLARE p record; BEGIN
   EXECUTE format('DROP POLICY %I ON %I.%I',p.policyname,p.schemaname,p.tablename);
  END LOOP;
 END $$;
-CREATE POLICY carriers_public_names ON public.carriers FOR SELECT TO anon USING(is_active=true);
+CREATE POLICY carriers_public_names ON public.carriers FOR SELECT TO anon USING(upper(COALESCE(status, ''))='ACTIVE');
 CREATE POLICY carriers_scoped_read ON public.carriers FOR SELECT TO authenticated USING(
  public.has_tms_read_permission('tarifas') OR public.has_tms_read_permission('mantenimiento-flota')
  OR public.has_tms_read_permission('despacho') OR public.has_tms_read_permission('planificacion')
@@ -87,12 +87,16 @@ CREATE POLICY cost_centers_scoped_read ON public.cost_centers FOR SELECT TO auth
 CREATE POLICY cost_centers_scoped_write ON public.cost_centers FOR ALL TO authenticated USING(
  public.has_tms_permission('configuracion') OR public.has_tms_permission('caja-tarifario')) WITH CHECK(
  public.has_tms_permission('configuracion') OR public.has_tms_permission('caja-tarifario'));
-CREATE POLICY products_scoped_read ON public.products FOR SELECT TO authenticated USING(
- public.has_tms_read_permission('apt') OR public.has_tms_read_permission('apt-carga')
- OR public.has_tms_read_permission('solicitudes') OR public.has_tms_read_permission('despacho'));
-CREATE POLICY products_scoped_write ON public.products FOR ALL TO authenticated USING(
- public.has_tms_permission('apt-carga') OR public.has_tms_permission('configuracion')) WITH CHECK(
- public.has_tms_permission('apt-carga') OR public.has_tms_permission('configuracion'));
+DO $$ BEGIN
+ IF to_regclass('public.products') IS NOT NULL THEN
+  EXECUTE $policy$CREATE POLICY products_scoped_read ON public.products FOR SELECT TO authenticated USING(
+   public.has_tms_read_permission('apt') OR public.has_tms_read_permission('apt-carga')
+   OR public.has_tms_read_permission('solicitudes') OR public.has_tms_read_permission('despacho'))$policy$;
+  EXECUTE $policy$CREATE POLICY products_scoped_write ON public.products FOR ALL TO authenticated USING(
+   public.has_tms_permission('apt-carga') OR public.has_tms_permission('configuracion')) WITH CHECK(
+   public.has_tms_permission('apt-carga') OR public.has_tms_permission('configuracion'))$policy$;
+ END IF;
+END $$;
 CREATE POLICY work_order_items_scoped_read ON public.work_order_items FOR SELECT TO authenticated USING(
  public.has_tms_read_permission('ot') AND EXISTS(SELECT 1 FROM public.work_orders w WHERE w.id=work_order_id
  AND (NOT public.is_contract_administrator() OR w.contract_administrator_id=auth.uid())));
@@ -119,15 +123,21 @@ CREATE POLICY maintenance_invoices_scoped ON public.maintenance_invoices FOR ALL
  (orden_trabajo_id IS NULL OR EXISTS(SELECT 1 FROM public.maintenance_work_orders w WHERE w.id=orden_trabajo_id AND public.can_access_site(w.site_id)))) WITH CHECK(
  (public.has_cmms_permission('ot') OR public.has_tms_permission('mantenimiento-finanzas')) AND
  (orden_trabajo_id IS NULL OR EXISTS(SELECT 1 FROM public.maintenance_work_orders w WHERE w.id=orden_trabajo_id AND public.can_access_site(w.site_id))));
-CREATE POLICY operations_shifts_read ON public.operaciones_turnos FOR SELECT TO authenticated USING(
- profile_id=auth.uid() OR public.has_tms_read_permission('operaciones-live') OR public.has_tms_read_permission('operaciones-revision') OR public.has_tms_read_permission('operaciones-kpis') OR public.has_tms_read_permission('tareo') OR public.has_tms_read_permission('maestros-trabajadores'));
-CREATE POLICY operations_shifts_write ON public.operaciones_turnos FOR ALL TO authenticated USING(
- profile_id=auth.uid() OR public.has_tms_permission('operaciones-revision') OR public.has_tms_permission('tareo')) WITH CHECK(profile_id=auth.uid() OR public.has_tms_permission('operaciones-revision') OR public.has_tms_permission('tareo'));
-CREATE POLICY operations_activities_read ON public.operaciones_actividades FOR SELECT TO authenticated USING(
- EXISTS(SELECT 1 FROM public.operaciones_turnos t WHERE t.id=turno_id));
-CREATE POLICY operations_activities_write ON public.operaciones_actividades FOR ALL TO authenticated USING(
- EXISTS(SELECT 1 FROM public.operaciones_turnos t WHERE t.id=turno_id AND (t.profile_id=auth.uid() OR public.has_tms_permission('operaciones-revision') OR public.has_tms_permission('tareo')))) WITH CHECK(
- EXISTS(SELECT 1 FROM public.operaciones_turnos t WHERE t.id=turno_id AND (t.profile_id=auth.uid() OR public.has_tms_permission('operaciones-revision') OR public.has_tms_permission('tareo'))));
+DO $$ BEGIN
+ IF to_regclass('public.operaciones_turnos') IS NOT NULL THEN
+  EXECUTE $policy$CREATE POLICY operations_shifts_read ON public.operaciones_turnos FOR SELECT TO authenticated USING(
+   profile_id=auth.uid() OR public.has_tms_read_permission('operaciones-live') OR public.has_tms_read_permission('operaciones-revision') OR public.has_tms_read_permission('operaciones-kpis') OR public.has_tms_read_permission('tareo') OR public.has_tms_read_permission('maestros-trabajadores'))$policy$;
+  EXECUTE $policy$CREATE POLICY operations_shifts_write ON public.operaciones_turnos FOR ALL TO authenticated USING(
+   profile_id=auth.uid() OR public.has_tms_permission('operaciones-revision') OR public.has_tms_permission('tareo')) WITH CHECK(profile_id=auth.uid() OR public.has_tms_permission('operaciones-revision') OR public.has_tms_permission('tareo'))$policy$;
+ END IF;
+ IF to_regclass('public.operaciones_actividades') IS NOT NULL AND to_regclass('public.operaciones_turnos') IS NOT NULL THEN
+  EXECUTE $policy$CREATE POLICY operations_activities_read ON public.operaciones_actividades FOR SELECT TO authenticated USING(
+   EXISTS(SELECT 1 FROM public.operaciones_turnos t WHERE t.id=turno_id))$policy$;
+  EXECUTE $policy$CREATE POLICY operations_activities_write ON public.operaciones_actividades FOR ALL TO authenticated USING(
+   EXISTS(SELECT 1 FROM public.operaciones_turnos t WHERE t.id=turno_id AND (t.profile_id=auth.uid() OR public.has_tms_permission('operaciones-revision') OR public.has_tms_permission('tareo')))) WITH CHECK(
+   EXISTS(SELECT 1 FROM public.operaciones_turnos t WHERE t.id=turno_id AND (t.profile_id=auth.uid() OR public.has_tms_permission('operaciones-revision') OR public.has_tms_permission('tareo'))))$policy$;
+ END IF;
+END $$;
 
 -- A deactivated account cannot keep using a cached JWT to access operational tables.
 -- profiles remains readable under its existing own/admin policies to explain the login rejection.
@@ -237,7 +247,11 @@ BEGIN
  END IF;
  RETURN NEW;
 END $$;
-CREATE TRIGGER security_shift_review BEFORE INSERT OR UPDATE ON public.operaciones_turnos FOR EACH ROW EXECUTE FUNCTION public.security_guard_shift_review();
+DO $$ BEGIN
+ IF to_regclass('public.operaciones_turnos') IS NOT NULL THEN
+  CREATE TRIGGER security_shift_review BEFORE INSERT OR UPDATE ON public.operaciones_turnos FOR EACH ROW EXECUTE FUNCTION public.security_guard_shift_review();
+ END IF;
+END $$;
 REVOKE ALL ON FUNCTION public.security_guard_shift_review() FROM PUBLIC,anon,authenticated;
 
 CREATE FUNCTION public.security_assert_vehicle(p_plate text,p_write boolean DEFAULT false) RETURNS void

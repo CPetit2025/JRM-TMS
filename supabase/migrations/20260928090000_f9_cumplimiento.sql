@@ -22,9 +22,12 @@ ALTER TABLE public.vehicle_documents ADD CONSTRAINT vehicle_documents_document_t
   ('SOAT', 'REVISION_TECNICA', 'POLIZA_SEGURO', 'TARJETA_PROPIEDAD', 'PERMISO_CIRCULACION',
    'CERTIFICADO_HABILITACION', 'CERTIFICADO_MATPEL', 'CERTIFICADO_GNV', 'OTRO'));
 ALTER TABLE public.vehicle_documents
+  ADD COLUMN IF NOT EXISTS vehicle_id uuid REFERENCES public.vehicles(id) ON DELETE CASCADE,
   ADD COLUMN IF NOT EXISTS issuer text,
   ADD COLUMN IF NOT EXISTS notes text,
   ADD COLUMN IF NOT EXISTS created_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL;
+UPDATE public.vehicle_documents d SET vehicle_id = v.id
+FROM public.vehicles v WHERE v.plate = d.vehicle_plate AND d.vehicle_id IS NULL;
 
 CREATE OR REPLACE FUNCTION public.normalize_vehicle_document()
 RETURNS trigger

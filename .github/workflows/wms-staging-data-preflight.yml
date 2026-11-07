@@ -1,0 +1,38 @@
+name: WMS staging data preflight
+
+on:
+  push:
+    branches: [feature/warehouse-wms-portal]
+    paths:
+      - 'scripts/wms-staging-data-preflight.cjs'
+      - '.github/workflows/wms-staging-data-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wms-staging-data-preflight
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    if: github.ref == 'refs/heads/feature/warehouse-wms-portal'
+    runs-on: ubuntu-latest
+    environment: wms-staging
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Inspect source and staging schema without reading row values
+        env:
+          SUPABASE_PRODUCTION_DB_URL: ${{ secrets.SUPABASE_PRODUCTION_DB_URL }}
+          SUPABASE_STAGING_DB_URL: ${{ secrets.SUPABASE_STAGING_DB_URL }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: |
+          npm install --no-save pg@8
+          node scripts/wms-staging-data-preflight.cjs

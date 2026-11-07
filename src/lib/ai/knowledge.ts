@@ -55,6 +55,7 @@ function screens(has: Has) {
   for (const section of NAV_SECTIONS) for (const group of section.groups) for (const item of group.items) {
     out.push({ label: item.label, ruta: item.href, seccion: [section.title, group.title].filter(Boolean).join(' › '), acceso: item.show(has), keywords: item.keywords || '' })
   }
+  out.push({ label: 'Actualizable APT', ruta: '/almacen/apt/datos', seccion: 'Almacén WMS', acceso: has('apt') || has('almacen-etiquetado') || has('almacen-supervisor'), keywords: 'actualizable APT almacén cargar actualizar entradas salidas ERP bodega' })
   return out
 }
 

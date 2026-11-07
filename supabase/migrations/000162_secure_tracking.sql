@@ -20,7 +20,7 @@ REVOKE ALL ON public.profiles, public.drivers, public.vehicles,
   public.transport_budgets, public.clients, public.budget_extensions,
   public.carriers, public.roles, public.work_orders FROM anon;
 GRANT SELECT (id, business_name) ON public.carriers TO anon;
-CREATE POLICY carriers_public_names ON public.carriers FOR SELECT TO anon USING (is_active = true);
+CREATE POLICY carriers_public_names ON public.carriers FOR SELECT TO anon USING (status = 'ACTIVE');
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
@@ -122,13 +122,35 @@ REVOKE ALL ON FUNCTION public.generate_tracking_link(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.generate_tracking_link(uuid) TO authenticated;
 
 -- Remove credentials that were stored in ordinary application rows.
-UPDATE public.profiles SET mock_password = NULL WHERE mock_password IS NOT NULL;
-UPDATE public.drivers SET pin = NULL WHERE pin IS NOT NULL;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'mock_password'
+  ) THEN
+    UPDATE public.profiles SET mock_password = NULL WHERE mock_password IS NOT NULL;
+  END IF;
+END $$;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'drivers' AND column_name = 'pin'
+  ) THEN
+    UPDATE public.drivers SET pin = NULL WHERE pin IS NOT NULL;
+  END IF;
+END $$;
 
 -- The former SECURITY DEFINER RPC allowed anonymous takeover of a driver by DNI.
-REVOKE ALL ON FUNCTION public.register_driver(uuid,text,text,text,text,text,text,uuid) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.register_driver(varchar,varchar,varchar,varchar,varchar,varchar,varchar,date) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.register_driver(uuid,text,text,text,text,text,text,uuid) TO service_role;
+DO $$
+BEGIN
+  IF to_regprocedure('public.register_driver(uuid,text,text,text,text,text,text,uuid)') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.register_driver(uuid,text,text,text,text,text,text,uuid) FROM PUBLIC, anon, authenticated';
+  END IF;
+  IF to_regprocedure('public.register_driver(character varying,character varying,character varying,character varying,character varying,character varying,character varying,date)') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.register_driver(varchar,varchar,varchar,varchar,varchar,varchar,varchar,date) FROM PUBLIC, anon, authenticated';
+  END IF;
+END $$;
 CREATE OR REPLACE FUNCTION public.register_driver(
   p_auth_user_id uuid, p_dni text, p_first_name text, p_last_name text,
   p_phone text, p_license_number text, p_pin text, p_carrier_id uuid
@@ -147,6 +169,7 @@ BEGIN
   ) RETURNING id INTO v_id;
   RETURN v_id;
 END $$;
+GRANT EXECUTE ON FUNCTION public.register_driver(uuid,text,text,text,text,text,text,uuid) TO service_role;
 
 ALTER TABLE public.dispatches ADD COLUMN IF NOT EXISTS driver_id uuid REFERENCES public.drivers(id);
 ALTER TABLE public.dispatches ADD COLUMN IF NOT EXISTS start_lat numeric(10,7);
@@ -161,12 +184,20 @@ ALTER TABLE public.dispatch_requests ADD COLUMN IF NOT EXISTS arrival_lat numeri
 ALTER TABLE public.dispatch_requests ADD COLUMN IF NOT EXISTS arrival_lon numeric(10,7);
 
 -- Backfill only names that uniquely identify one driver.
-WITH unique_names AS (
-  SELECT min(id::text)::uuid AS id, trim(first_name || ' ' || last_name) AS full_name
-  FROM public.drivers GROUP BY trim(first_name || ' ' || last_name) HAVING count(*) = 1
-)
-UPDATE public.dispatches d SET driver_id = n.id FROM unique_names n
-WHERE d.driver_id IS NULL AND d.driver_name = n.full_name;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'dispatches' AND column_name = 'driver_name'
+  ) THEN
+    WITH unique_names AS (
+      SELECT min(id::text)::uuid AS id, trim(first_name || ' ' || last_name) AS full_name
+      FROM public.drivers GROUP BY trim(first_name || ' ' || last_name) HAVING count(*) = 1
+    )
+    UPDATE public.dispatches d SET driver_id = n.id FROM unique_names n
+    WHERE d.driver_id IS NULL AND d.driver_name = n.full_name;
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.route_track_points (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -188,6 +219,7 @@ CREATE INDEX IF NOT EXISTS route_track_points_dispatch_time
 CREATE INDEX IF NOT EXISTS route_track_points_dispatch_leg
   ON public.route_track_points(dispatch_id, leg_order);
 ALTER TABLE public.route_track_points ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.drivers ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
 GRANT SELECT, INSERT ON public.route_track_points TO authenticated;
 CREATE POLICY route_track_read ON public.route_track_points FOR SELECT TO authenticated
   USING (EXISTS (SELECT 1 FROM public.drivers d WHERE d.id = driver_id AND d.profile_id = auth.uid())
@@ -339,22 +371,6 @@ DROP POLICY IF EXISTS "Permitir lectura y escritura a route_stops" ON public.rou
 CREATE POLICY driver_stops_read ON public.route_stops_log FOR SELECT TO authenticated
   USING (EXISTS (SELECT 1 FROM public.drivers d WHERE d.id = driver_id AND d.profile_id = auth.uid())
     OR public.has_tms_permission('despacho'));
-
--- Validated public links may see only the latest fix for that planning day.
-CREATE OR REPLACE FUNCTION public.get_public_daily_tracking_locations(p_token uuid, p_pin text)
-RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
-  SELECT coalesce(jsonb_agg(jsonb_build_object(
-    'dispatch_id', d.id, 'driver_name', d.driver_name, 'vehicle_plate', d.vehicle_plate,
-    'lat', d.last_lat, 'lng', d.last_lon, 'last_gps_at', d.last_gps_at,
-    'actual_distance_km', d.actual_distance_km
-  )), '[]'::jsonb)
-  FROM public.daily_tracking_links l JOIN public.dispatches d
-    ON d.scheduled_departure::date = l.planning_date
-  WHERE l.tracking_token = p_token AND l.tracking_pin = p_pin
-    AND l.expires_at > now() AND d.last_gps_at > now() - interval '15 minutes';
-$$;
-REVOKE ALL ON FUNCTION public.get_public_daily_tracking_locations(uuid,text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.get_public_daily_tracking_locations(uuid,text) TO anon, authenticated;
 
 INSERT INTO storage.buckets(id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('driver_evidence', 'driver_evidence', false, 10485760,

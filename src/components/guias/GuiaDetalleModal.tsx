@@ -7,6 +7,7 @@ import { AlertTriangle, ArrowDownUp, Boxes, CalendarDays, Download, Factory, Fil
 import { Modal } from '@/components/ui/modal'
 import { createClient } from '@/lib/supabase/client'
 import { exportAptXlsx } from '@/lib/apt/export'
+import { usePermissions } from '@/hooks/usePermissions'
 
 // Detalle de una o varias guías de remisión con todos sus SKUs, tomado de la hoja SALIDA del ERP que se carga en
 // Almacén APT (apt_guia_detalle). Se usa desde cualquier pantalla que muestre números de guía.
@@ -39,6 +40,8 @@ const ORIGEN: Record<string, string> = {
 type SortKey = 'producto' | 'glosa' | 'lote' | 'cantidad' | 'kg'
 
 export function GuiaDetalleModal({ guias, onClose }: { guias: string | null; onClose: () => void }) {
+  const { hasAccess } = usePermissions()
+  const canOpenApt = ['apt','apt-carga','almacen-lectura','almacen-supervisor','almacen-etiquetado','almacen-carga'].some(hasAccess)
   const [data, setData] = useState<Resp | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState(0)
@@ -161,15 +164,15 @@ export function GuiaDetalleModal({ guias, onClose }: { guias: string | null; onC
                     className="h-9 w-full rounded-lg border border-slate-200 pl-8 pr-3 text-sm outline-none focus:border-[#002855]" />
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {(g.lotes || []).map(l => (
+                  {canOpenApt && (g.lotes || []).map(l => (
                     <Link key={l} href={`/apt/trazabilidad?q=${encodeURIComponent(l)}`} title="Ver la línea de tiempo del lote"
                       className="rounded-full border border-[#002855]/20 bg-[#002855]/5 px-2 py-1 font-mono text-[11px] font-bold text-[#002855] hover:bg-[#002855]/10">{l}</Link>
                   ))}
                 </div>
-                <Link href={`/apt/trazabilidad?q=${encodeURIComponent(g.documento)}`}
+                {canOpenApt && <Link href={`/apt/trazabilidad?q=${encodeURIComponent(g.documento)}`}
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-600 hover:bg-slate-50">
                   <Route className="h-3.5 w-3.5" /> Trazabilidad
-                </Link>
+                </Link>}
                 <button type="button" onClick={exportar}
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-700">
                   <Download className="h-3.5 w-3.5" /> Excel

@@ -1,5 +1,20 @@
 BEGIN;
 
+CREATE TABLE IF NOT EXISTS public.vehicle_status_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  vehicle_plate text NOT NULL REFERENCES public.vehicles(plate) ON DELETE CASCADE,
+  old_status text,
+  new_status text NOT NULL,
+  reason text,
+  changed_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.vehicle_status_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS vehicle_status_logs_read ON public.vehicle_status_logs;
+CREATE POLICY vehicle_status_logs_read ON public.vehicle_status_logs FOR SELECT TO authenticated
+  USING (public.has_tms_permission('mantenimiento-flota') OR public.has_tms_permission('despacho'));
+
 -- ==============================================================================
 -- B1: transition_vehicle_status sin validación de permisos & B2: maintenance_orders tabla/columna incorrecta
 -- ==============================================================================
@@ -18,7 +33,7 @@ DECLARE
   v_current_status text;
   v_open_mo_count int := 0;
   v_is_admin boolean := has_tms_permission('admin') OR has_tms_permission('mantenimiento') OR has_tms_permission('despacho');
-  v_is_driver boolean := EXISTS (SELECT 1 FROM public.drivers WHERE user_id = auth.uid());
+  v_is_driver boolean := EXISTS (SELECT 1 FROM public.drivers WHERE profile_id = auth.uid());
 BEGIN
   -- Permission check (B1)
   -- Solo admin puede pasar a DISPONIBLE desde MANTENIMIENTO o BLOQUEADA
@@ -48,9 +63,8 @@ BEGIN
   -- B2: Fix maintenance_orders query to handle uuid vs text plate, and catch undefined_table
   BEGIN
     SELECT count(*) INTO v_open_mo_count
-    FROM public.maintenance_orders mo
-    JOIN public.vehicles v ON v.id = mo.vehicle_id
-    WHERE v.plate = p_vehicle_plate 
+    FROM public.maintenance_work_orders mo
+    WHERE mo.vehicle_plate = p_vehicle_plate
       AND mo.status NOT IN ('COMPLETADO', 'CANCELADO', 'FINALIZADO');
   EXCEPTION WHEN undefined_table THEN
     v_open_mo_count := 0;
@@ -112,7 +126,7 @@ BEGIN
         CREATE POLICY "Conductores insertan sus reportes"
         ON public.maintenance_requests FOR INSERT
         TO authenticated
-        WITH CHECK (driver_id IN (SELECT id FROM public.drivers WHERE user_id = auth.uid()));
+        WITH CHECK (driver_id IN (SELECT id FROM public.drivers WHERE profile_id = auth.uid()));
     END IF;
 END $$;
 

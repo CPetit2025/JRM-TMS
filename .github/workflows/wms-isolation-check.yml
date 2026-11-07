@@ -1,0 +1,23 @@
+name: WMS deployment isolation
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [feature/warehouse-wms-portal]
+    paths:
+      - 'src/lib/deployment-isolation.*'
+      - 'src/proxy.ts'
+      - 'next.config.ts'
+      - 'scripts/test-wms-isolation.mjs'
+      - '.github/workflows/wms-isolation-check.yml'
+permissions:
+  contents: read
+jobs:
+  isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node scripts/test-wms-isolation.mjs

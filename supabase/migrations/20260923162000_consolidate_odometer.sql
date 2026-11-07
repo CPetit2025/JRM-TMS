@@ -1,5 +1,10 @@
 BEGIN;
 
+-- Keep the legacy mileage mirror available for route closeout and older
+-- reports while current_odometer remains the maintenance source of truth.
+ALTER TABLE public.vehicles
+  ADD COLUMN IF NOT EXISTS current_mileage numeric(12,2) NOT NULL DEFAULT 0;
+
 DO $$
 BEGIN
     IF EXISTS (

@@ -21,6 +21,15 @@ const STOCK_ALIASES: Record<string, string> = {
   cantidad: 'Cantidad', saldo: 'Cantidad', stock: 'Cantidad', existencia: 'Cantidad', stockactual: 'Cantidad', saldofinal: 'Cantidad',
   peso: 'Peso', pesokg: 'Peso', pesototal: 'Peso', kg: 'Peso', pesototalproduccido: 'Peso',
 }
+// Export de recepción del APT (una línea por producto/lote del IPT). En este libro
+// `Producto` es la descripción y `Cod_Producto` el código: no se deben intercambiar.
+const APT_RECEIPT_ALIASES: Record<string, string> = {
+  tipodocumento: 'TIPODOCTO', nrodocumento: 'Numero', fecha: 'Fecha', ruc: 'CodLegal', razonsocial: 'RazonSocial',
+  codproducto: 'Producto', producto: 'GLOSA', cantidad: 'Cantidad', unidad: 'UNIDAD', lote: 'Lote',
+  docorigen: 'DocRel', nroorigen: 'NumRel', fechaentrega: 'FechaEntrega', contrato: 'Contrato',
+  reftipodocumento: 'RefTipoDocto', refcorrelativo: 'RefCorrelativo', refnumero: 'RefNumero', reffecha: 'RefFecha',
+  color: 'Color', comentario: 'Comentario', pesounitario: 'PesoUnitario', pesototal: 'PesoTotalProduccido', ccostojrm: 'CCostoJRM',
+}
 
 export type InvRow = Record<string, string | number> & { __row: number }
 
@@ -52,6 +61,9 @@ export const ERP_SHEET = 'ERP'
 export function isErpExport(aoa: unknown[][]) {
   return aoa.slice(0, 10).some(r => {
     const k = new Set((r || []).map(normKey))
+    // El reporte de movimientos APT también contiene Nro_Documento, pero no es
+    // Actualizable Despacho: tiene Tipo_Documento, Fecha y cantidad de recepción.
+    if (k.has('tipodocumento') && k.has('nrodocumento') && k.has('codproducto') && k.has('cantidad')) return false
     return (k.has('nrodocumento') && k.has('cantpendiente'))
       || (k.has('codproducto') && k.has('stock') && k.has('lote') && (k.has('stockcomprometido') || k.has('fechaactualizacion')))
   })
@@ -100,7 +112,7 @@ function findHeader(aoa: unknown[][]): { row: number; kind: 'MOV' | 'STOCK' } | 
   for (let i = 0; i < Math.min(15, aoa.length); i++) {
     const cells = new Set((aoa[i] || []).map(normKey))
     if (!['producto', 'codigo', 'codproducto'].some(k => cells.has(k)) || !(cells.has('bodega') || cells.has('almacen'))) continue
-    if (cells.has('tipodocto') && cells.has('fecha') && cells.has('cantidad')) return { row: i, kind: 'MOV' }
+    if ((cells.has('tipodocto') || cells.has('tipodocumento')) && cells.has('fecha') && cells.has('cantidad')) return { row: i, kind: 'MOV' }
     if (['cantidad', 'saldo', 'stock', 'existencia', 'stockactual', 'saldofinal'].some(k => cells.has(k))) return { row: i, kind: 'STOCK' }
   }
   return null
@@ -114,10 +126,12 @@ export function parseInventorySheet(aoa: unknown[][], fileName: string, sheetNam
   if (isErpExport(aoa)) return { skip: ERP_SHEET }
   const h = findHeader(aoa)
   if (!h) return { skip: 'No tiene las columnas BODEGA, Producto y (TIPODOCTO, Fecha, Cantidad) o un saldo de stock' }
+  const rawHeaderKeys = new Set((aoa[h.row] || []).map(normKey))
+  const aptReceiptExport = h.kind === 'MOV' && rawHeaderKeys.has('tipodocumento') && rawHeaderKeys.has('nrodocumento') && rawHeaderKeys.has('codproducto')
   const headers = (aoa[h.row] || []).map(c => {
     const k = normKey(c)
     if (!k) return null
-    return h.kind === 'STOCK' ? (STOCK_ALIASES[k] ?? null) : (CANON.get(k) ?? null)
+    return h.kind === 'STOCK' ? (STOCK_ALIASES[k] ?? null) : aptReceiptExport ? (APT_RECEIPT_ALIASES[k] ?? CANON.get(k) ?? null) : (CANON.get(k) ?? null)
   })
   const parts = new Map<InvSide, InvParsedPart>()
   const bodegas = new Map<InvSide, Set<string>>()

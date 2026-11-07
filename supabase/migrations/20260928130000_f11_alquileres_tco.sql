@@ -16,6 +16,30 @@ BEGIN;
 -- ------------------------------------------------------------
 -- 1. Contratos
 -- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.vehicle_lease_contracts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  vehicle_id uuid NOT NULL REFERENCES public.vehicles(id) ON DELETE RESTRICT,
+  provider_id uuid REFERENCES public.maintenance_providers(id) ON DELETE RESTRICT,
+  contract_type text NOT NULL DEFAULT 'SECO',
+  rate_type text NOT NULL DEFAULT 'MENSUAL',
+  rate_amount numeric(12,2),
+  monthly_base_fee numeric(12,2) NOT NULL DEFAULT 0,
+  included_km numeric(12,2),
+  excess_km_rate numeric(12,4) NOT NULL DEFAULT 0,
+  guaranteed_km numeric(12,2),
+  included_hours numeric(10,2),
+  excess_hour_rate numeric(12,2),
+  discount_downtime boolean NOT NULL DEFAULT true,
+  penalty_terms text,
+  conditions text,
+  start_date date NOT NULL,
+  end_date date,
+  status text NOT NULL DEFAULT 'ACTIVO',
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 ALTER TABLE public.vehicle_lease_contracts
   ADD COLUMN IF NOT EXISTS contract_code text,
   ADD COLUMN IF NOT EXISTS rate_type text NOT NULL DEFAULT 'MENSUAL',

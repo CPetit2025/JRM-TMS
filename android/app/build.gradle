@@ -16,6 +16,11 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    flavorDimensions += "portal"
+    productFlavors {
+        tms { dimension "portal"; applicationId "com.jrm.tms" }
+        almacen { dimension "portal"; applicationId "com.jrm.almacen" }
+    }
     testOptions { unitTests.includeAndroidResources = true }
     signingConfigs {
         release {
@@ -46,6 +51,8 @@ dependencies {
     implementation "androidx.biometric:biometric:1.1.0"
     // Ubicación de Google (GPS + Wi-Fi + antenas) para el seguimiento de ruta; sin Play Services se usa la del sistema
     implementation "com.google.android.gms:play-services-location:21.3.0"
+    // Google ML Kit scanner activity for the separate JRM Almacén APK.
+    implementation "com.google.android.gms:play-services-code-scanner:16.1.0"
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"

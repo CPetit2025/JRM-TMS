@@ -30,7 +30,10 @@ DECLARE
 BEGIN
   SELECT id INTO v_vehicle FROM public.vehicles
   WHERE public.fe_code(plate) = 'CJS 716' ORDER BY id LIMIT 1;
-  IF v_vehicle IS NULL THEN RAISE EXCEPTION 'No se encontró CJS716'; END IF;
+  IF v_vehicle IS NULL THEN
+    RAISE NOTICE 'Se omite la valorización histórica de CJS716: la unidad no está registrada en este entorno';
+    RETURN;
+  END IF;
 
   SELECT id INTO v_contract FROM public.vehicle_lease_contracts
   WHERE vehicle_id = v_vehicle AND status = 'ACTIVO'

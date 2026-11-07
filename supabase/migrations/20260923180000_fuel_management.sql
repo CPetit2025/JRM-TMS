@@ -36,19 +36,19 @@ BEGIN
         RAISE EXCEPTION 'El odómetro no puede ser negativo.';
     END IF;
 
-    -- b) Obtener vehicle_id y plate desde public.dispatches
-    SELECT vehicle_id INTO v_vehicle_id
+    -- b) Obtener placa desde public.dispatches (la relación usa placa, no vehicle_id).
+    SELECT vehicle_plate INTO v_plate
     FROM public.dispatches
     WHERE id = p_dispatch_id;
 
-    IF NOT FOUND THEN
+    IF NOT FOUND OR v_plate IS NULL OR v_plate = 'EXTERNO' THEN
         RAISE EXCEPTION 'Despacho con ID % no encontrado.', p_dispatch_id;
     END IF;
 
     -- Obtener odómetro actual del vehículo
-    SELECT plate, current_odometer INTO v_plate, v_current_odometer
+    SELECT id, current_odometer INTO v_vehicle_id, v_current_odometer
     FROM public.vehicles
-    WHERE id = v_vehicle_id;
+    WHERE plate = v_plate;
 
     -- c) Insertar en dispatch_expenses
     INSERT INTO public.dispatch_expenses (
@@ -73,13 +73,13 @@ BEGIN
 
     -- d) Registrar el nuevo odómetro en la fuente de verdad (vehicle_odometer_logs)
     INSERT INTO public.vehicle_odometer_logs (
-        vehicle_id, 
+        vehicle_plate,
         dispatch_id, 
         driver_id, 
         odometer_value, 
         source_event
     ) VALUES (
-        v_vehicle_id, 
+        v_plate,
         p_dispatch_id, 
         p_driver_id, 
         p_odometer, 
@@ -91,7 +91,7 @@ BEGIN
         UPDATE public.vehicles
         SET current_odometer = p_odometer,
             updated_at = now()
-        WHERE id = v_vehicle_id;
+        WHERE plate = v_plate;
     END IF;
 END;
 $$;
@@ -110,12 +110,12 @@ WITH fuel_logs AS (
         de.fuel_gallons,
         de.fuel_odometer,
         de.created_at,
-        d.vehicle_id,
+        v.id AS vehicle_id,
         v.plate,
-        LAG(de.fuel_odometer) OVER (PARTITION BY d.vehicle_id ORDER BY de.created_at) as prev_odometer
+        LAG(de.fuel_odometer) OVER (PARTITION BY v.id ORDER BY de.created_at) as prev_odometer
     FROM public.dispatch_expenses de
     JOIN public.dispatches d ON de.dispatch_id = d.id
-    JOIN public.vehicles v ON d.vehicle_id = v.id
+    JOIN public.vehicles v ON d.vehicle_plate = v.plate
     WHERE de.expense_type = 'COMBUSTIBLE' 
       AND de.fuel_gallons IS NOT NULL 
       AND de.fuel_odometer IS NOT NULL

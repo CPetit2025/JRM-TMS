@@ -18,7 +18,7 @@ const build = Number(process.env.JRM_ANDROID_VERSION_CODE || '6')
 const bucket = 'jrm-android-installers'
 const name = `jrm-tms-${version}-${build}.apk`
 const file = path.join(root, 'artifacts', 'android', name)
-const metadataFile = path.join(root, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'output-metadata.json')
+const metadataFile = path.join(root, 'android', 'app', 'build', 'outputs', 'apk', 'tms', 'release', 'output-metadata.json')
 
 async function main() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -32,7 +32,7 @@ async function main() {
   }
   const metadata = JSON.parse(fs.readFileSync(metadataFile, 'utf8'))
   const output = metadata.elements?.[0]
-  if (metadata.applicationId !== 'com.jrm.tms' || metadata.variantName !== 'release' ||
+  if (metadata.applicationId !== 'com.jrm.tms' || metadata.variantName !== 'tmsRelease' ||
       output?.versionCode !== build || output?.versionName !== version) {
     throw new Error('La versión real del APK no coincide con la versión a publicar.')
   }

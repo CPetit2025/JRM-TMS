@@ -130,7 +130,8 @@ test('sidebar opens one section, closes the previous section and follows navigat
  assert.equal(sections().filter(b => b.props['aria-expanded']).length, 1)
  await act(async () => sections().find(b => b.props['aria-expanded']).props.onClick())
  assert.equal(sections().filter(b => b.props['aria-expanded']).length, 0)
- pathname = '/apt'
+ // Use a real route from another sidebar section; /apt is no longer a TMS menu route.
+ pathname = '/mantenimiento'
  await act(async () => tree.update(React.createElement(Sidebar)))
  assert.equal(sections().filter(b => b.props['aria-expanded']).length, 1)
  assert.equal(sections().find(b => b.props['aria-expanded']).props.title, 'Estás en esta sección')
