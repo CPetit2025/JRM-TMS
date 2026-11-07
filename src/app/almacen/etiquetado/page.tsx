@@ -24,6 +24,9 @@ type Label = {
 
 export default function WarehouseLabelingPage() {
   const [query, setQuery] = useState('')
+  const [fromDate,setFromDate]=useState('')
+  const [untilDate,setUntilDate]=useState('')
+  const [validationFilter,setValidationFilter]=useState('')
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [selected, setSelected] = useState<Receipt | null>(null)
   const [sizes, setSizes] = useState<Record<string, { units_per_package: number; unit: string | null }>>({})
@@ -36,9 +39,11 @@ export default function WarehouseLabelingPage() {
   const [manualCustomer, setManualCustomer] = useState('')
   const [count, setCount] = useState('1')
   const [capacity, setCapacity] = useState('')
+  const [customDistribution, setCustomDistribution] = useState('')
   const [labels, setLabels] = useState<Label[]>([])
   const [printedLabelCodes, setPrintedLabelCodes] = useState<string[]>([])
   const [printTarget, setPrintTarget] = useState<string | null>(null)
+  const [printAttempt, setPrintAttempt] = useState<{labels:Label[];reason:string|null;eventId:string}|null>(null)
   const [busy, setBusy] = useState(false)
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState('')
@@ -110,6 +115,8 @@ export default function WarehouseLabelingPage() {
 
 
   const select = (receipt: Receipt) => {
+    if(printAttempt){setError('Confirme o cancele la impresión anterior antes de abrir otro ingreso.');return}
+    setCustomDistribution('')
     setSelected(receipt); setLabels(receipt.pending_labels || []); setPrintedLabelCodes([]); setShowPreview(false); setMessage(''); setError('')
     const physical = receipt.physical_quantity ?? Number(receipt.quantity)
     setPhysicalQuantity(String(physical))
@@ -122,7 +129,7 @@ export default function WarehouseLabelingPage() {
       setPackageMode('PACKAGES')
       setCompletePackages(String(Math.floor(physical / units)))
     } else {
-      setCapacity(''); setCount('1'); setPackageMode('PACKAGES'); setCompletePackages('0')
+      setCapacity(''); setCount('1'); setPackageMode('PACKAGES'); setCompletePackages('0'); setCustomDistribution('')
     }
   }
 
@@ -155,33 +162,19 @@ export default function WarehouseLabelingPage() {
   }
 
   const generate = async () => {
-    if (!selected || selected.validation_status !== 'VALIDATED') return
+    if (!selected || busy || selected.validation_status !== 'VALIDATED') return
     setBusy(true); setError(''); setMessage('')
-    const per = capacity ? Number(capacity) : null
-    const packageCount = Number(count)
-    const physical = Number(selected.physical_quantity)
-    const { data, error: rpcError } = await createClient().rpc('wh_label_package', {
+    if (!distributionValid) { setError('La distribución debe asignar exactamente la cantidad física en bultos positivos.'); setBusy(false); return }
+    const { data, error: rpcError } = await createClient().rpc('wh_label_packages', {
       p_receipt_key: selected.receipt_key,
-      p_package_count: packageCount,
-      p_units_per_package: per,
+      p_quantities: plannedPackages.map(row => row.quantity),
     })
     if (rpcError) { setError(rpcError.message); setBusy(false); return }
-    const codes = (data?.package_codes || []) as string[]
-    let remaining = physical
-    const generated = codes.map((package_code, index): Label => {
-      const quantity = per ? Math.min(per, remaining) : index === codes.length - 1 ? remaining : Math.round(physical / packageCount * 1000) / 1000
-      remaining -= quantity
-      const weight = selected.weight_kg !== null && selected.weight_kg !== undefined && Number(selected.quantity) > 0
-        ? Number((selected.weight_kg * quantity / Number(selected.quantity)).toFixed(3)) : null
-      return {
-        package_code, source_document_no: selected.document_no, source_lot: selected.lote || '',
-        source_product_code: selected.product_code, description: selected.description || selected.product_code,
-        quantity, weight_kg: weight, unit: selected.unit, sequence_no: index + 1,
-        sequence_total: codes.length, source_warehouse: selected.bodega, source_date: selected.fecha,
-        contract_code: selected.contract_code, customer_name: selected.customer_name || 'Cliente por registrar',
-      }
-    })
+    const generated = (data?.labels || []) as Label[]
+    const codes = generated.map(label => label.package_code)
+    if (!generated.length) { setError('El servidor no devolvió etiquetas persistidas. Actualice la bandeja antes de reintentar.'); setBusy(false); return }
     setLabels(generated); setPrintedLabelCodes([]); setShowPreview(false)
+    await search(selected.receipt_key)
     setMessage(`${codes.length} etiqueta(s) únicas generadas desde el conteo físico del IPT ${selected.document_no}.`)
     setBusy(false)
   }
@@ -189,21 +182,11 @@ export default function WarehouseLabelingPage() {
   const print = async (targetLabels: Label[] = labels) => {
     setError('')
     if (!targetLabels.length) return
-    const alreadyPrinted = targetLabels.filter(label => printedLabelCodes.includes(label.package_code))
-    const newLabels = targetLabels.filter(label => !printedLabelCodes.includes(label.package_code))
-    if (alreadyPrinted.length) {
-      const reason = window.prompt('Motivo de reimpresión de etiquetas:')
-      if (!reason?.trim()) return
-      for (const label of alreadyPrinted) {
-        const { error: rpcError } = await createClient().rpc('wh_reprint_label', { p_package_code: label.package_code, p_reason: reason.trim() })
-        if (rpcError) { setError(rpcError.message); return }
-      }
-    }
-    if (newLabels.length) {
-      const { error: rpcError } = await createClient().rpc('wh_print_labels', { p_package_codes: newLabels.map(label => label.package_code) })
-      if (rpcError) { setError(rpcError.message); return }
-    }
-    setPrintedLabelCodes(current => [...new Set([...current, ...targetLabels.map(label => label.package_code)])])
+    if (printAttempt) { setError('Confirme o cancele la impresión anterior antes de iniciar otra.'); return }
+    const alreadyPrinted = targetLabels.some(label => printedLabelCodes.includes(label.package_code))
+    const reason = alreadyPrinted ? window.prompt('Motivo de reimpresión de etiquetas:')?.trim() || null : null
+    if (alreadyPrinted && !reason) return
+    setPrintAttempt({labels:targetLabels,reason,eventId:crypto.randomUUID()})
     const fallbackPrint = () => {
       setSelected(null)
       setShowPreview(true)
@@ -213,13 +196,23 @@ export default function WarehouseLabelingPage() {
       window.requestAnimationFrame(() => window.requestAnimationFrame(() => window.print()))
     }
     const browser = (window as Window & { BrowserPrint?: BrowserPrintApi }).BrowserPrint
-    if (browser?.getDefaultDevice) {
+    if (browser?.getDefaultDevice && process.env.NEXT_PUBLIC_WMS_ZEBRA_VERIFIED_DPI === '203') {
       browser.getDefaultDevice('printer', device => {
         const clean = (value: string) => value.replace(/[\^~]/g, ' ')
         const zpl = targetLabels.map(label => `^XA^PW1218^LL812^FO45,35^A0N,52,52^FD${clean(label.source_product_code)}^FS^FO45,105^A0N,38,38^FD${clean(label.description).slice(0, 62)}^FS^FO45,190^BY3,3,210^BCN,210,Y,N,N^FD${label.package_code}^FS^FO45,430^A0N,42,42^FD${label.package_code}^FS^FO45,505^A0N,32,32^FDIPT ${clean(label.source_document_no)}  Fecha ${clean(label.source_date)}^FS^FO45,565^A0N,32,32^FDOT ${clean(label.contract_code || '-')}  Lote ${clean(label.source_lot || '-')}^FS^FO45,625^A0N,30,30^FD${clean(label.customer_name).slice(0, 42)}  ${clean(label.source_warehouse)}^FS^FO45,700^A0N,48,48^FD${label.quantity} ${clean(label.unit || '')}  ${label.weight_kg === null ? 'Peso por registrar' : `${label.weight_kg} kg`}  ${label.sequence_no}/${label.sequence_total}^FS^XZ`).join('')
         device.send(zpl, () => setMessage('Etiquetas enviadas a Zebra.'), error => { setError(String(error?.message || error)); fallbackPrint() })
       }, () => { setError('No se detectó Zebra Browser Print; se abrirá la impresión PDF del navegador.'); fallbackPrint() })
     } else fallbackPrint()
+  }
+
+  const confirmPrint = async () => {
+    if (!printAttempt || busy) return
+    setBusy(true); setError('')
+    const {error:rpcError}=await createClient().rpc('wh_confirm_label_print',{p_package_codes:printAttempt.labels.map(label=>label.package_code),p_reason:printAttempt.reason,p_event_id:printAttempt.eventId})
+    if(rpcError){setError(rpcError.message);setBusy(false);return}
+    setPrintedLabelCodes(current=>[...new Set([...current,...printAttempt.labels.map(label=>label.package_code)])])
+    setPrintAttempt(null);setSelected(null);setBusy(false);await search()
+    setMessage('Impresión confirmada y registrada en el control de recepción.')
   }
 
   const physicalToValidate = Number(physicalQuantity)
@@ -230,17 +223,21 @@ export default function WarehouseLabelingPage() {
   const selectedIptReceipts = selected ? receipts.filter(receipt => receipt.document_no === selected.document_no) : []
   const iptErpTotal = selectedIptReceipts.reduce((sum, receipt) => sum + Number(receipt.quantity || 0), 0)
   const iptPendingCount = selectedIptReceipts.filter(receipt => receipt.validation_status !== 'VALIDATED').length
-  const requiresVarianceReason = selected && physicalToValidate !== Number(selected.quantity)
+  const requiresVarianceReason = selected && (physicalToValidate !== Number(selected.quantity) || (selected.physical_quantity !== null && physicalToValidate !== Number(selected.physical_quantity)))
   const canGenerate = selected?.validation_status === 'VALIDATED' && Number(selected.physical_quantity) > 0 && !['DIFFERENCE','MATCH','PENDING_PRINT'].includes(selected.label_status)
   const planQuantity = Number(selected?.physical_quantity || 0)
-  const planCount = Math.min(100, Math.max(0, Number(count) || 0))
+  const customQuantities = customDistribution.trim() ? customDistribution.trim().split(/[\s,;]+/).map(Number) : null
+  const planCount = customQuantities ? customQuantities.length : Math.min(100, Math.max(0, Number(count) || 0))
   const planCapacity = Number(capacity) > 0 ? Number(capacity) : null
   let planRemaining = planQuantity
   const plannedPackages = selected?.validation_status === 'VALIDATED' ? Array.from({ length: planCount }, (_, index) => {
-    const quantity = planCapacity ? Math.min(planCapacity, planRemaining) : index === planCount - 1 ? planRemaining : Math.round(planQuantity / (planCount || 1) * 1000) / 1000
-    planRemaining = Math.max(0, Number((planRemaining - quantity).toFixed(3)))
+    const quantity = customQuantities ? customQuantities[index] : planCapacity ? Math.min(planCapacity, planRemaining) : index === planCount - 1 ? planRemaining : Math.round(planQuantity / (planCount || 1) * 1000) / 1000
+    planRemaining = Number((planRemaining - quantity).toFixed(3))
     return { sequence: index + 1, quantity, kind: planCapacity && quantity < planCapacity ? 'Saldo' : 'Completo' }
   }) : []
+
+  const visibleReceipts=receipts.filter(receipt=>(!fromDate||receipt.fecha>=fromDate)&&(!untilDate||receipt.fecha<=untilDate)&&(!validationFilter||receipt.validation_status===validationFilter))
+  const distributionValid = planCount >= 1 && planCount <= 100 && planRemaining === 0 && plannedPackages.every(row => Number.isFinite(row.quantity) && row.quantity > 0 && Number(row.quantity.toFixed(3)) === row.quantity)
 
   return <div className="mx-auto max-w-6xl space-y-5">
     <header>
@@ -257,23 +254,29 @@ export default function WarehouseLabelingPage() {
         <button type="button" disabled={searching} onClick={() => void search()} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-[#002855] disabled:opacity-50"><RefreshCw size={15} className={searching ? 'animate-spin' : ''}/>Actualizar bandeja</button>
       </div>
       <div className="mt-3 flex gap-2">
-        <input value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void search() } }} placeholder="IPT (Nro_Documento), OT/contrato o lote…" className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
+        <input value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void search() } }} placeholder="IPT, OT/contrato, lote, cliente o producto…" className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
         <button disabled={searching || query.trim().length < 2} onClick={() => void search()} className="rounded-lg bg-[#002855] px-4 text-sm font-bold text-white disabled:opacity-50">{searching ? 'Buscando…' : 'Buscar IPT'}</button>
       </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <label className="text-xs font-semibold">Desde<input type="date" value={fromDate} onChange={event=>setFromDate(event.target.value)} className="mt-1 w-full rounded-lg border p-2" /></label>
+        <label className="text-xs font-semibold">Hasta<input type="date" min={fromDate||undefined} value={untilDate} onChange={event=>setUntilDate(event.target.value)} className="mt-1 w-full rounded-lg border p-2" /></label>
+        <label className="text-xs font-semibold">Validación<select value={validationFilter} onChange={event=>setValidationFilter(event.target.value)} className="mt-1 w-full rounded-lg border p-2"><option value="">Todas</option><option value="PENDING">Pendiente</option><option value="VALIDATED">Validada</option><option value="STALE">Origen actualizado</option></select></label>
+      </div>
+      <p className="mt-2 text-xs text-slate-500">{visibleReceipts.length} de {receipts.length} ingresos consultados (máximo 5000). Los filtros se aplican a esta consulta.</p>
       <div className="mt-3 overflow-x-auto rounded-lg border">
         <table className="w-full min-w-[900px] text-left text-sm">
           <thead className="sticky top-0 bg-slate-50 text-xs text-slate-600"><tr>
             <th className="p-3">IPT · Fecha</th><th className="p-3">OT · Contrato</th><th className="p-3">Producto</th><th className="p-3">Lote</th>
             <th className="p-3 text-right">Cantidad ERP</th><th className="p-3">Cliente</th><th className="p-3">Estado</th><th className="p-3"></th>
           </tr></thead>
-          <tbody className="divide-y">{receipts.map(receipt => <tr key={receipt.receipt_key} className="hover:bg-blue-50">
+          <tbody className="divide-y">{visibleReceipts.map(receipt => <tr key={receipt.receipt_key} className="hover:bg-blue-50">
             <td className="p-3 font-semibold text-[#002855]">{receipt.document_no}<small className="block font-normal text-slate-500">{receipt.fecha} · {receipt.bodega}</small><small className="block font-normal text-slate-500">{receipt.document_type || '—'} · {receipt.color || '—'} · Actualizado {receipt.source_updated_at ? new Date(receipt.source_updated_at).toLocaleString('es-PE') : '—'}</small></td>
             <td className="p-3">{receipt.contract_code || '—'}</td><td className="p-3">{receipt.product_code}<small className="block text-slate-500">{receipt.description || '—'}</small></td>
-            <td className="p-3">{receipt.lote || '—'}</td><td className="p-3 text-right tabular-nums">{receipt.quantity} {receipt.unit || ''}</td>
-            <td className="p-3">{receipt.customer_name || 'Por ingresar'}</td><td className="p-3 text-xs">{receipt.validation_status === 'VALIDATED' ? 'Validado' : 'Pendiente'} · {receipt.label_status === 'NOT_LABELED' ? 'Sin etiqueta' : receipt.label_status === 'PENDING_PRINT' ? `${receipt.unprinted_count} por imprimir` : receipt.label_status}</td>
+            <td className="p-3">{receipt.lote || '—'}</td><td className="p-3 text-right tabular-nums">{receipt.quantity} {receipt.unit || ''}<small className="block text-slate-500">Físico: {receipt.physical_quantity ?? 'Pendiente'} · Diferencia: {receipt.variance ?? '—'}</small></td>
+            <td className="p-3">{receipt.customer_name || 'Por ingresar'}</td><td className="p-3 text-xs">{receipt.validation_status === 'VALIDATED' ? 'Validado' : receipt.validation_status === 'STALE' ? 'Origen actualizado' : 'Pendiente'} · {receipt.label_status === 'NOT_LABELED' ? 'Sin etiqueta' : receipt.label_status === 'PENDING_PRINT' ? `${receipt.unprinted_count} por imprimir` : receipt.label_status}</td>
             <td className="p-3"><button type="button" onClick={() => select(receipt)} className="rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white">{receipt.label_status === 'PENDING_PRINT' ? 'Imprimir pendientes' : 'Recibir'}</button></td>
           </tr>)}
-          {!searching && receipts.length===0 && <tr><td colSpan={8} className="p-8 text-center text-sm text-slate-500">{query.trim()?'No se encontraron ingresos para el criterio indicado.':'No hay ingresos pendientes de etiqueta en la última carga.'}</td></tr>}
+          {!searching && visibleReceipts.length===0 && <tr><td colSpan={8} className="p-8 text-center text-sm text-slate-500">{query.trim()?'No se encontraron ingresos para el criterio indicado.':'No hay ingresos pendientes de etiqueta en la última carga.'}</td></tr>}
           {searching && <tr><td colSpan={8} className="p-8 text-center text-sm text-slate-500">Cargando ingresos…</td></tr>}
           </tbody>
         </table>
@@ -322,8 +325,8 @@ export default function WarehouseLabelingPage() {
                   <td className="max-w-72 p-2">{receipt.description || receipt.product_code}</td>
                   <td className="p-2">{receipt.lote || '—'}</td>
                   <td className="max-w-52 p-2">{receipt.customer_name || 'Por ingresar'}</td>
-                  <td className="p-2 text-right font-bold text-blue-800">{receipt.quantity} {receipt.unit || ''}</td>
-                  <td className="p-2"><span className={receipt.validation_status === 'VALIDATED' ? 'whitespace-nowrap rounded-full bg-emerald-100 px-2 py-1 text-emerald-900' : 'whitespace-nowrap rounded-full bg-amber-100 px-2 py-1 text-amber-950'}>{receipt.validation_status === 'VALIDATED' ? 'Validado' : 'Pendiente'}</span></td>
+                  <td className="p-2 text-right font-bold text-blue-800">{receipt.quantity} {receipt.unit || ''}<small className="block text-slate-500">Físico: {receipt.physical_quantity ?? 'Pendiente'} · Diferencia: {receipt.variance ?? '—'}</small></td>
+                  <td className="p-2"><span className={receipt.validation_status === 'VALIDATED' ? 'whitespace-nowrap rounded-full bg-emerald-100 px-2 py-1 text-emerald-900' : 'whitespace-nowrap rounded-full bg-amber-100 px-2 py-1 text-amber-950'}>{receipt.validation_status === 'VALIDATED' ? 'Validado' : receipt.validation_status === 'STALE' ? 'Origen actualizado' : 'Pendiente'}</span></td>
                 </tr>)}</tbody>
               </table>
             </div>
@@ -365,8 +368,12 @@ export default function WarehouseLabelingPage() {
         {selected.label_status === 'PENDING_PRINT' ? <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{labels.length} etiqueta(s) LPN ya generadas siguen pendientes de impresión. Use Vista previa para revisarlas y luego imprímalas; no se generarán códigos duplicados.</div> : selected.label_status === 'MATCH' ? <div className="mt-3 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-950">Este ingreso ya tiene todas sus etiquetas impresas.</div> : <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <label className="text-sm font-semibold">Unidades por bulto (opcional)<input type="number" min="0.001" step="0.001" value={capacity} onChange={event => { setCapacity(event.target.value); if (event.target.value) setCount(String(Math.ceil(Number(selected.physical_quantity) / Number(event.target.value)))) }} placeholder={sizes[selected.product_code.toUpperCase()] ? String(sizes[selected.product_code.toUpperCase()].units_per_package) : 'Sin estándar'} className="mt-1 w-full rounded-lg border px-3 py-2.5 font-normal" /></label>
           <label className="text-sm font-semibold">Bultos a generar<input type="number" min="1" max="100" value={count} onChange={event => setCount(event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2.5 font-normal" /><small className="mt-1 block font-normal text-slate-500">Embalaje estándar: {sizes[selected.product_code.toUpperCase()] ? `${sizes[selected.product_code.toUpperCase()].units_per_package} ${sizes[selected.product_code.toUpperCase()].unit || selected.unit || ''}` : 'no configurado'}</small></label>
-          <div className="flex items-end"><button disabled={busy || !canGenerate || Number(count) < 1 || Number(count) > 100} onClick={() => void generate()} className="inline-flex items-center gap-2 rounded-lg bg-[#002855] px-4 py-2.5 font-bold text-white disabled:opacity-50">{busy ? <RotateCcw className="animate-spin" size={17} /> : <ScanLine size={17} />}Generar bultos y LPN</button></div>
+          <div className="flex items-end"><button disabled={busy || !canGenerate || !distributionValid} onClick={() => void generate()} className="inline-flex items-center gap-2 rounded-lg bg-[#002855] px-4 py-2.5 font-bold text-white disabled:opacity-50">{busy ? <RotateCcw className="animate-spin" size={17} /> : <ScanLine size={17} />}Generar bultos y LPN</button></div>
         </div>}
+        {canGenerate && <label className="mt-3 block text-sm font-semibold">Cantidades diferentes por bulto (opcional)
+          <textarea value={customDistribution} onChange={event => setCustomDistribution(event.target.value)} placeholder="Ejemplo: 100, 100, 100, 100, 100, 100, 100, 100, 75, 25" className="mt-1 w-full rounded-lg border p-2 font-normal" />
+          <small className="block font-normal text-slate-500">Una cantidad por bulto, separada por coma o salto de línea. Use punto para decimales. Al completar este campo se utiliza esta distribución.</small>
+        </label>}
         {Number(selected.physical_quantity) === 0 ? <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">La recepción quedó registrada con cantidad cero; no hay bultos para etiquetar.</p> : <>
           <div className="mt-4 grid gap-2 sm:grid-cols-3"><div className="rounded-lg bg-blue-50 p-3 text-sm"><span className="text-slate-600">Etiquetas previstas</span><b className="block text-xl text-[#002855]">{planCount}</b></div><div className="rounded-lg bg-blue-50 p-3 text-sm"><span className="text-slate-600">Unidades físicas</span><b className="block text-xl text-[#002855]">{planQuantity} {selected.unit || ''}</b></div><div className="rounded-lg bg-blue-50 p-3 text-sm"><span className="text-slate-600">Saldo de distribución</span><b className="block text-xl text-[#002855]">{planRemaining} {selected.unit || ''}</b></div></div>
           {plannedPackages.length > 0 && <div className="mt-3 max-h-56 overflow-auto rounded-lg border"><table className="w-full text-left text-sm"><thead className="sticky top-0 bg-slate-50"><tr><th className="p-2">Bulto</th><th className="p-2">Cantidad</th><th className="p-2">Tipo</th></tr></thead><tbody>{plannedPackages.map(row => <tr key={row.sequence} className="border-t"><td className="p-2">{row.sequence}</td><td className="p-2">{row.quantity} {selected.unit || ''}</td><td className="p-2">{row.kind}</td></tr>)}</tbody></table></div>}
@@ -380,6 +387,10 @@ export default function WarehouseLabelingPage() {
       </div>
     </div>, document.body)}
 
+    {printAttempt && typeof document !== 'undefined' && createPortal(<div role="alertdialog" aria-modal="true" aria-labelledby="wms-print-confirm-title" className="fixed inset-x-2 bottom-2 z-[2147483002] mx-auto max-w-xl rounded-xl border border-blue-300 bg-white p-4 shadow-2xl print:hidden">
+      <h2 id="wms-print-confirm-title" className="font-bold text-[#002855]">¿Las etiquetas salieron correctamente?</h2><p className="mt-1 text-sm">La recepción seguirá pendiente hasta confirmar la impresión de {printAttempt.labels.length} etiqueta(s).</p>
+      <div className="mt-3 flex gap-2"><button disabled={busy} onClick={()=>void confirmPrint()} className="rounded-lg bg-[#002855] p-2 text-sm font-bold text-white">Confirmar impresión</button><button disabled={busy} onClick={()=>setPrintAttempt(null)} className="rounded-lg border p-2 text-sm">Cancelar registro</button></div>
+    </div>,document.body)}
     {labels.length > 0 && showPreview && typeof document !== 'undefined' && createPortal(<div id="wms-label-preview" role="dialog" aria-modal="true" aria-labelledby="wms-label-preview-title" className="fixed inset-0 z-[2147483001] flex items-center justify-center bg-slate-950/60 p-2 sm:p-5 print:static print:block print:bg-transparent print:p-0" onClick={() => setShowPreview(false)}>
       <section className="flex max-h-[96dvh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl print:contents" onClick={event => event.stopPropagation()}>
         <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-6">
@@ -417,17 +428,19 @@ export default function WarehouseLabelingPage() {
         </div>
       </section>
     </div>, document.body)}
-    <style jsx global>{`@page{size:6in 4in;margin:0}
+    <style jsx global>{`.wh-label-quantity,.wh-label-weight{font-weight:800!important}
+    @page{size:6in 4in;margin:0}
     @media print{
-      html,body{width:6in!important;height:4in!important;min-width:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
+      html,body{width:6in!important;height:auto!important;min-height:0!important;min-width:0!important;margin:0!important;padding:0!important;overflow:visible!important}
       body>:not(#wms-label-preview){display:none!important}
       body *{visibility:hidden!important}
       #wms-label-preview,#wms-label-preview *{visibility:visible!important}
-      #wms-label-preview{position:absolute!important;inset:0 auto auto 0!important;z-index:auto!important;display:block!important;width:6in!important;height:4in!important;max-width:none!important;max-height:none!important;overflow:hidden!important;margin:0!important;padding:0!important;background:#fff!important}
-      #wms-label-preview>section{display:block!important;width:6in!important;max-width:none!important;height:4in!important;max-height:none!important;overflow:hidden!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+      #wms-label-preview{position:static!important;inset:0 auto auto 0!important;z-index:auto!important;display:block!important;width:6in!important;height:auto!important;max-width:none!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:0!important;background:#fff!important}
+      #wms-label-preview>section{display:block!important;width:6in!important;max-width:none!important;height:auto!important;max-height:none!important;overflow:visible!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
       #wms-label-preview header{display:none!important}
-      #wms-label-preview .wms-label-list{display:block!important;width:6in!important;height:4in!important;max-height:none!important;overflow:hidden!important;margin:0!important;padding:0!important}
+      #wms-label-preview .wms-label-list{display:block!important;width:6in!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:0!important}
       #wms-label-preview button{display:none!important}
+      #wms-label-preview .wms-label-list>div{display:block!important}
       .wh-label{box-sizing:border-box;position:relative;display:flex!important;flex-direction:column;break-inside:avoid!important;page-break-inside:avoid!important;break-after:auto!important;page-break-after:auto!important;width:6in!important;height:4in!important;max-width:6in!important;max-height:4in!important;aspect-ratio:auto;border:1px dashed #6b8198!important;border-radius:0!important;padding:2mm!important;margin:0!important;overflow:hidden!important}
       .wh-label+.wh-label{break-before:page!important;page-break-before:always!important}
       .wh-label-head{height:18mm!important;min-height:18mm!important;flex:none!important}

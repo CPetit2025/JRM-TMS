@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -84,20 +84,44 @@ async function parseReceiptBook(file: File): Promise<ReceiptRow[]> {
 export default function WmsReceiptImportPage() {
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const [file,setFile]=useState<File|null>(null), [busy,setBusy]=useState(false), [error,setError]=useState(''), [done,setDone]=useState('')
+  const [history,setHistory]=useState<{id:string;file_name:string;row_count:number;imported_at:string}[]>([])
+  const [historyError,setHistoryError]=useState('')
+  const loadHistory=useCallback(async()=>{
+    const {data,error}=await createClient().from('wh_receipt_import_runs').select('id,file_name,row_count,imported_at').order('imported_at',{ascending:false}).limit(25)
+    if(error)setHistoryError('No se pudo consultar el historial de importaciones.');else{setHistory(data||[]);setHistoryError('')}
+  },[])
+  useEffect(()=>{const timer=window.setTimeout(()=>void loadHistory(),0);return()=>window.clearTimeout(timer)},[loadHistory])
   const importFile=async()=>{
     if(!file||busy)return
     setBusy(true);setError('');setDone('')
+    const attemptId=crypto.randomUUID()
+    let fileHash:string|null=null, importHash:string|null=null, rowsRead:number|null=null
+    const recordAttempt=async(status:'ACCEPTED'|'DUPLICATE'|'REJECTED',reason:string|null=null)=>{
+      try{
+        const audit=await createClient().rpc('wh_record_import_attempt',{p_attempt_id:attemptId,p_file_name:file.name,p_file_hash:fileHash,p_import_hash:importHash,p_status:status,p_rows_read:rowsRead,p_error:reason})
+        if(audit.error)setHistoryError('No se pudo registrar el intento en auditoría. Conserve el resultado y avise a supervisión.')
+      }catch{setHistoryError('No se pudo registrar el intento en auditoría. Conserve el resultado y avise a supervisión.')}
+    }
     try{
-      const [rows,bytes]=await Promise.all([parseReceiptBook(file),file.arrayBuffer()])
-      const fileHash=await sha256(bytes)
+      const bytes=await file.arrayBuffer()
+      fileHash=await sha256(bytes)
+      const rows=await parseReceiptBook(file)
+      rowsRead=rows.length
       // Bump the importer version so an already-imported workbook is reprocessed once with column Z.
       const hash=await sha256(`${fileHash}:customer-column-z-v1`)
+      importHash=hash
       const {data,error:rpcError}=await createClient().rpc('wh_import_receipt_snapshot',{p_file_name:file.name,p_file_hash:hash,p_rows:rows})
       if(rpcError)throw rpcError
+      await loadHistory()
+      await recordAttempt(data?.duplicate?'DUPLICATE':'ACCEPTED')
       const customerRows=rows.filter(row=>row.customer_name).length
       const customerSummary=`Clientes detectados en columna Z o encabezado equivalente: ${customerRows} de ${rows.length}.`
       setDone(data?.duplicate?`Este archivo ya estaba importado; no se duplicaron ingresos. ${customerSummary}`:`${Number(data?.rows||rows.length)} líneas importadas para Recepción y etiquetado. ${customerSummary} No se modificó el inventario multi‑almacén.`)
-    }catch(e){setError(e instanceof Error?e.message:'No se pudo importar el Excel de ingresos.')}
+    }catch(e){
+      const reason=e instanceof Error?e.message:typeof e==='object'&&e&&'message' in e?String(e.message):'No se pudo importar el Excel de ingresos.'
+      setError(reason)
+      await recordAttempt('REJECTED',reason)
+    }
     finally{setBusy(false)}
   }
   return <div className="mx-auto max-w-4xl space-y-5">
@@ -121,6 +145,12 @@ export default function WmsReceiptImportPage() {
         </button>
         <p className="text-xs text-slate-500">La carga automática del archivo local la ejecuta el robot de Windows; el navegador no puede leer C:\WMS directamente.</p>
       </div>
+    </section>
+    <section className="rounded-xl border bg-white p-5"><h2 className="font-bold text-[#002855]">Historial de importaciones</h2>
+      {historyError ? <p className="mt-2 text-sm text-rose-800">{historyError}</p> : <div className="mt-3 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th className="p-2">Archivo</th><th className="p-2">Registros aceptados</th><th className="p-2">Fecha de importación</th></tr></thead><tbody>
+        {history.map(run=><tr key={run.id} className="border-t"><td className="p-2">{run.file_name}</td><td className="p-2">{run.row_count}</td><td className="p-2">{new Date(run.imported_at).toLocaleString('es-PE')}</td></tr>)}
+        {!history.length&&<tr><td colSpan={3} className="p-3 text-slate-500">Sin importaciones registradas.</td></tr>}
+      </tbody></table></div>}
     </section>
   </div>
 }

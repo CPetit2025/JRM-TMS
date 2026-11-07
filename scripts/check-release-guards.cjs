@@ -11,7 +11,7 @@ const root = path.resolve(__dirname, '..')
 const errors = []
 
 const capacitor = readFileSync(path.join(root, 'capacitor.config.ts'), 'utf8')
-if (!/server\s*:\s*\{[^}]*url\s*:\s*['"]https:\/\/jrm-tms\.vercel\.app['"]/s.test(capacitor) ||
+if (!/url\s*:\s*warehouseApp\s*\?[\s\S]*?['"]https:\/\/jrm-wms-staging\.vercel\.app['"][\s\S]*?['"]https:\/\/jrm-wms\.vercel\.app['"][\s\S]*?:\s*['"]https:\/\/jrm-tms\.vercel\.app['"]/s.test(capacitor) ||
     !/appStartPath\s*:\s*warehouseApp\s*\?\s*['"]\/almacen\/login['"]\s*:\s*['"]\/app\/login['"]/.test(capacitor) ||
     !/appId\s*:\s*warehouseApp\s*\?\s*['"]com\.jrm\.almacen['"]\s*:\s*['"]com\.jrm\.tms['"]/.test(capacitor)) {
   errors.push("capacitor.config.ts debe conservar TMS y definir la identidad JRM Almacén con su appStartPath independiente.")

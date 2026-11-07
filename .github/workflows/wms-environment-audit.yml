@@ -1,0 +1,39 @@
+name: WMS environment metadata audit
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/wms-integration-audit]
+    paths:
+      - '.github/workflows/wms-environment-audit.yml'
+      - 'scripts/wms-environment-audit.cjs'
+permissions:
+  contents: read
+jobs:
+  audit:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [staging, production]
+    runs-on: ubuntu-latest
+    environment: wms-${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check dedicated WMS metadata only
+        run: node scripts/wms-environment-audit.cjs
+        env:
+          AUDIT_TARGET: ${{ matrix.target }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          WMS_VERCEL_TOKEN: ${{ secrets.WMS_VERCEL_TOKEN }}
+          WMS_VERCEL_PROJECT_ID: ${{ vars.WMS_VERCEL_PROJECT_ID }}
+          WMS_VERCEL_ORG_ID: ${{ vars.WMS_VERCEL_ORG_ID }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wms-environment-${{ matrix.target }}
+          path: wms-environment-*.json
+          retention-days: 7

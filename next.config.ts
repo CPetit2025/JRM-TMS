@@ -2,7 +2,10 @@ import type { NextConfig } from "next";
 import packageJson from './package.json';
 import { assertDeploymentIsolation } from './src/lib/deployment-isolation.mjs';
 
-assertDeploymentIsolation(process.env.NEXT_PUBLIC_DEPLOYMENT_SYSTEM, process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.VERCEL_ENV);
+const wmsApp = process.env.JRM_APP?.startsWith('wms-') ? process.env.JRM_APP : undefined;
+const deploymentSystem = wmsApp ? 'wms' : process.env.NEXT_PUBLIC_DEPLOYMENT_SYSTEM;
+const wmsEnvironment = wmsApp === 'wms-staging' ? 'staging' : wmsApp === 'wms-production' ? 'production' : process.env.VERCEL_ENV;
+assertDeploymentIsolation(deploymentSystem, process.env.NEXT_PUBLIC_SUPABASE_URL, wmsEnvironment);
 
 const isCapacitor = process.env.CAPACITOR_BUILD === 'true';
 // Cada despliegue tiene su versión: mayor.menor de package.json + fecha y hora (Lima) de compilación, p. ej. 0.2.20261101.1530.
@@ -23,6 +26,7 @@ const nextConfig: NextConfig = {
       {
         source: '/:path*',
         headers: [
+          ...(deploymentSystem === 'wms' ? [{ key: 'X-JRM-System', value: 'wms' }, { key: 'X-JRM-Build', value: process.env.APP_BUILD_ID || process.env.VERCEL_GIT_COMMIT_SHA || 'local' }] : []),
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
@@ -58,6 +62,8 @@ const nextConfig: NextConfig = {
   },
   // Versión visible en el login: versión, commit y fecha/hora del despliegue (fijadas al compilar).
   env: {
+    NEXT_PUBLIC_DEPLOYMENT_SYSTEM: deploymentSystem || 'tms',
+    NEXT_PUBLIC_WMS_ENVIRONMENT: wmsEnvironment || '',
     APP_VERSION: appVersion,
     APP_BUILD_SHA: process.env.VERCEL_GIT_COMMIT_SHA || process.env.APP_BUILD_ID || 'local',
     APP_BUILD_TIME: buildTime.toISOString(),

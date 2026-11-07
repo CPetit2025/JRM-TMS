@@ -52,3 +52,6 @@ next-env.d.ts
 # graphify: grafo de conocimiento local (se regenera con `graphify update .`)
 graphify-out/
 /scripts/erp-auto/node_modules
+
+/artifacts/wms-audit/
+/wms-environment-*.json

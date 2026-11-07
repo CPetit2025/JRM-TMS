@@ -19,6 +19,7 @@ const links = [
   { href: '/almacen/tareas', label: 'Tareas', icon: ClipboardList, permission: 'almacen-picking', group: 'Despacho' },
   { href: '/almacen/paquetes', label: 'Paquetes y LPN', icon: PackageCheck, permission: 'almacen-packing', group: 'Despacho' },
   { href: '/almacen/conciliacion', label: 'Conciliación', icon: Waypoints, permission: 'almacen-carga', group: 'Control' },
+  { href: '/almacen/auditoria', label: 'Auditoría de recepción', icon: ShieldCheck, permission: 'almacen-supervisor', group: 'Control' },
   { href: '/almacen/maestros/embalajes', label: 'Embalajes', icon: Settings2, permission: 'almacen-supervisor', group: 'Configuración' },
 ]
 
@@ -39,7 +40,7 @@ export default function WarehouseLayout({ children }: { children: React.ReactNod
             : hasAccess(x.permission)
   ), [hasAccess])
   const current = visible.find(x => x.href === pathname) || [...visible].filter(x => pathname.startsWith(x.href + '/')).sort((a,b) => b.href.length-a.href.length)[0]
-  const hasTmsAccess = ['dashboard','reportes','clientes','ot','solicitudes','despacho','torre-control','mantenimiento-dashboard','caja','usuarios'].some(hasAccess)
+  const hasTmsAccess = process.env.NEXT_PUBLIC_DEPLOYMENT_SYSTEM !== 'wms' && ['dashboard','reportes','clientes','ot','solicitudes','despacho','torre-control','mantenimiento-dashboard','caja','usuarios'].some(hasAccess)
 
   useEffect(() => {
     if (pathname === '/almacen/login') return

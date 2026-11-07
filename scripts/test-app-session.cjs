@@ -16,14 +16,15 @@ const load = (file, modules) => {
 const navExports = load('../src/lib/nav/navConfig.ts', { 'lucide-react': new Proxy({}, { get: () => () => null }) })
 const webAccessExports = load('../src/lib/nav/web-access.ts', { '@/lib/roles': roleContext.exports, '@/lib/nav/navConfig': navExports })
 
-function fixture({ user = { id: 'user1' }, profile = { is_active: true, employee_type: 'CONDUCTOR' }, driver = { is_active: true }, refresh = true } = {}) {
+function fixture({ user = { id: 'user1' }, profile = { is_active: true, employee_type: 'CONDUCTOR' }, driver = { is_active: true }, refresh = true, env = {} } = {}) {
   const queries = []
   const response = (location) => ({ location, cookies: { items: [], set(cookie, value, options) { this.items.push(typeof cookie === 'string' ? { name: cookie, value, ...options } : cookie) }, getAll() { return this.items } } })
   const source = ts.transpileModule(readFileSync(path.join(__dirname, '../src/proxy.ts'), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText
-  const context = { exports: {}, process: { env: {} }, URL, require(name) {
-    if (name === 'next/server') return { NextResponse: { next: () => response(), redirect: url => response(url.pathname) } }
+  const context = { exports: {}, process: { env }, URL, require(name) {
+    if (name === 'next/server') return { NextResponse: { next: () => response(), redirect: url => response(url.pathname), json: (body,options) => ({body,status:options.status}) } }
+    if (name === '@/lib/deployment-isolation.mjs') return require('../src/lib/deployment-isolation.mjs')
     if (name === '@/lib/roles') return roleContext.exports
     if (name === '@/lib/nav/web-access') return webAccessExports
     if (name === '@supabase/ssr') return { createServerClient: (_, __, options) => ({
@@ -36,10 +37,10 @@ function fixture({ user = { id: 'user1' }, profile = { is_active: true, employee
     throw Error(name)
   } }
   vm.runInNewContext(source, context)
-  return { queries, request: async (pathname) => {
+  return { queries, request: async (pathname, method='GET') => {
     const url = new URL(`https://jrm-tms.vercel.app${pathname}`)
     url.clone = () => new URL(url)
-    return context.exports.proxy({ url: url.href, nextUrl: url, cookies: { getAll: () => [], set() {} } })
+    return context.exports.proxy({ method, url: url.href, nextUrl: url, cookies: { getAll: () => [], set() {} } })
   } }
 }
 
@@ -85,13 +86,13 @@ test('web access accepts module permissions with level and rejects roles without
   assert.equal((await web(['despacho-aprobacion:write'])).location, '/login')
   assert.equal((await web(['dashboard:read'], 'CONDUCTOR')).location, '/login')
 })
-test('contract administrator reaches contracts and control tower; legacy APT enters WMS and /reportes stays denied', async () => {
+test('contract administrator reaches contracts and control tower; TMS APT stays in TMS and /reportes stays denied', async () => {
   const profile = { is_active: true, employee_type: 'OPERARIO', roles: { name: 'Administrador de Contratos',
     permissions: ['clientes:read', 'ot:write', 'contratos-servicios:read', 'solicitudes:write', 'torre-control:read', 'apt:read'] } }
   for (const path of ['/', '/contratos', '/contratos/servicios', '/torre-control']) {
     assert.equal((await fixture({ profile }).request(path)).location, undefined, path)
   }
-  assert.equal((await fixture({ profile }).request('/apt')).location, '/almacen/apt')
+  assert.equal((await fixture({ profile }).request('/apt')).location, undefined)
   assert.equal((await fixture({ profile }).request('/reportes')).location, '/')
   assert.equal((await fixture({ profile }).request('/reportes/x')).location, '/')
   const admin = { is_active: true, employee_type: 'OPERARIO', roles: { name: 'Administrador', permissions: [] } }
@@ -126,4 +127,23 @@ test('special permissions replace the role-name rules', async () => {
   assert.equal((await fixture({ profile: portfolio }).request('/reportes')).location, '/')
   // Sin el permiso especial, el mismo rol sí abre /reportes
   assert.equal((await fixture({ profile: profile('Coordinador de Proyectos', ['ot:write', 'apt:read']) }).request('/reportes')).location, undefined)
+})
+
+test('WMS blocks TMS API routes before reading auth or profiles and keeps its own login', async()=>{
+ const env={NEXT_PUBLIC_DEPLOYMENT_SYSTEM:'wms',NEXT_PUBLIC_WMS_ENVIRONMENT:'production',NEXT_PUBLIC_SUPABASE_URL:'https://glecgvomkaqmkfkhtxhi.supabase.co'}
+ const client=fixture({env,user:null})
+ assert.equal((await client.request('/api/users/create','POST')).status,404)
+ assert.deepEqual(client.queries,[])
+ assert.equal((await client.request('/contratos')).location,'/almacen')
+ assert.equal((await client.request('/almacen/etiquetado')).location,'/almacen/login')
+ const inactive=fixture({env,profile:{is_active:false}})
+ assert.equal((await inactive.request('/almacen')).location,'/almacen/login')
+ assert.equal((await inactive.request('/almacen/login')).location,undefined)
+})
+
+test('TMS deployment cannot render WMS routes against its database',async()=>{
+ const client=fixture({user:null})
+ assert.equal((await client.request('/almacen/etiquetado')).status,404)
+ assert.deepEqual(client.queries,[])
+ assert.equal((await client.request('/apt')).location,'/login')
 })

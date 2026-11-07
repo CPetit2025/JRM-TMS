@@ -1,0 +1,49 @@
+name: WMS candidate validation
+on:
+  push:
+    branches: [codex/wms-integration-audit]
+  pull_request:
+    branches: [feature/warehouse-wms-portal]
+permissions:
+  contents: read
+jobs:
+  validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      JRM_APP: wms-staging
+      NEXT_PUBLIC_SUPABASE_URL: https://rquujukgtturdlkuzgdc.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: build-only-not-a-live-credential
+      SUPABASE_SERVICE_ROLE_KEY: build-only-not-a-live-credential
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: node --test scripts/test-supabase-target.cjs scripts/test-app-session.cjs
+      - run: node scripts/test-wms-isolation.mjs
+      - run: node scripts/test-wms-capacitor.cjs
+      - run: node scripts/test-wms-robot.mjs
+      - run: node scripts/test-wh-wms.cjs
+      - run: node scripts/test-wms-receipt-excel.cjs
+      - run: node scripts/test-wms-receipt-transactions.cjs
+      - run: node scripts/check-wms-migrations.cjs
+      - run: node --test scripts/test-wms-migration-scope.cjs
+      - run: node scripts/test-inventario-parse.cjs && node scripts/test-erp-parse.cjs
+      - run: npm run check:guards
+      - run: npm run typecheck
+      - run: npx eslint src/app/almacen/etiquetado/page.tsx src/app/almacen/apt/etiquetado/page.tsx src/app/almacen/apt/etiquetas-impresas/page.tsx src/app/almacen/auditoria/page.tsx src/proxy.ts src/app/login/page.tsx src/app/layout.tsx src/app/almacen/layout.tsx next.config.ts
+      - name: PDF tools
+        run: sudo apt-get update -qq && sudo apt-get install -y poppler-utils
+      - run: node scripts/test-wms-print.cjs
+        env:
+          WMS_TEST_CHROMIUM: /usr/bin/google-chrome
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wms-candidate-evidence-${{ github.sha }}
+          path: artifacts/wms-audit/
+          retention-days: 14

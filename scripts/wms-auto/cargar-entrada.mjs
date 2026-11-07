@@ -1,16 +1,15 @@
 // Carga únicamente C:\\WMS\\entrada.xlsx en la fuente de Recepción WMS.
 // Usa la página dedicada de etiquetas; no accede a Inventario multi-almacén.
-import { resolve } from 'node:path'
+import { resolve, basename } from 'node:path'
+import { validateWmsTarget } from './targets.mjs'
 
 const args=process.argv.slice(2), revisar=args.includes('--revisar')
 const files=args.filter(x=>x!=='--revisar').map(x=>resolve(x))
 const url=(process.env.WMS_URL||'').replace(/\/$/,'')
 const {WMS_USUARIO:user,WMS_CLAVE:password}=process.env
 if(files.length!==1||!url||!user||!password){console.error('Uso: node cargar-entrada.mjs [--revisar] <entrada.xlsx> (WMS_URL, WMS_USUARIO y WMS_CLAVE)');process.exit(2)}
-const host=new URL(url).hostname
-if(!host.includes('git-feature-warehouse-wms-portal')||!host.endsWith('.vercel.app')||host==='jrm-tms.vercel.app'){
- console.error('Por seguridad, el robot solo permite el preview de feature/warehouse-wms-portal.');process.exit(2)
-}
+try { validateWmsTarget(url); if (basename(files[0]).toLowerCase() !== 'entrada.xlsx') throw new Error('Solo se admite entrada.xlsx') }
+catch (error) { console.error(error.message); process.exit(2) }
 const { chromium } = await import('playwright-core')
 const browser=await chromium.launch({channel:'msedge',headless:true}), page=await browser.newPage()
 try{
@@ -22,7 +21,7 @@ try{
  await input.setInputFiles(files[0])
  if(revisar){console.log('Revisión OK: acceso a la importación de ingresos WMS. No se aplicaron cambios.');process.exitCode=0}
  else{
-  const button=page.getByRole('button',{name:'Importar ingresos para etiquetado'})
+  const button=page.getByRole('button',{name:'Actualizar manualmente',exact:true})
   await button.waitFor({state:'visible',timeout:60000});await button.click()
   const status=page.locator('[role=status]'),alert=page.locator('[role=alert]')
   await status.or(alert).first().waitFor({timeout:10*60000})

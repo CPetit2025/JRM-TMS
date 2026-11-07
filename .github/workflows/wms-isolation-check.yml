@@ -21,3 +21,5 @@ jobs:
         with:
           node-version: '22'
       - run: node scripts/test-wms-isolation.mjs
+      - run: node scripts/check-wms-migrations.cjs
+      - run: node --test scripts/test-wms-migration-scope.cjs
