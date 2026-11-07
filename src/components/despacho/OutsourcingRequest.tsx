@@ -10,6 +10,7 @@ import type { TransportRequest } from './programar-ruta/types'
 import { OUTSOURCING_SERVICES, type Outsourcing } from '@/lib/outsourcing'
 import { normalizeSpec, serializeSpec, validateWizard, wizardProgress, workflowLabel, WIZARD_STEPS, WIZARD_SUBTITLES, type WizardSpec, type OutsourcingAttachment } from '@/lib/outsourcing-form'
 import { GeneralStep, TransportStep, ServicesStep, OperationsStep, ReviewStep } from './outsourcing/WizardSteps'
+import { buildOutsourcingDocument } from '@/lib/outsourcing-document'
 import './outsourcing/wizard.css'
 
 const STEP_ICONS=[FileText,Truck,Wrench,ClipboardList,Send]
@@ -36,10 +37,11 @@ export function OutsourcingRequest({request:initialRequest,outsourcingId,onClose
  const dirty=JSON.stringify(spec)!==baseline||files.length>0
  const editable=(!record||record.stage===0)&&record?.review_status!=='CANCELLED'&&canWrite('despacho')
  const disabled=busy||!editable
- const identity={request:request?.request_number || '—',ot:request?.contracts?.code || 'Sin OT',client:request?.request_client?.business_name || request?.contracts?.clients?.business_name || 'Sin cliente'}
- const issues=useMemo(()=>validateWizard(spec,!!request?.contract_id,identity.client!=='Sin cliente'),[spec,request?.contract_id,identity.client])
+ const identity=useMemo(()=>({request:request?.request_number || '—',ot:request?.contracts?.code || 'Sin OT',client:request?.request_client?.business_name || request?.contracts?.clients?.business_name || 'Sin cliente'}),[request])
+ const issues=useMemo(()=>validateWizard(spec,!!request?.contract_id,identity.client!=='Sin cliente'),[spec,request,identity.client])
  const progress=wizardProgress(issues)
  const status=workflowLabel(record)
+ const documentModel=useMemo(()=>buildOutsourcingDocument(identity,spec,record,new Date().toISOString(),files.map(f=>f.name)),[identity,spec,record,files])
  const requestClose=useCallback(()=>{if(busy)return;if(dirty&&!window.confirm('Hay cambios sin guardar. ¿Desea cerrar y descartarlos?'))return;onClose()},[busy,dirty,onClose])
  useEffect(()=>{closeRef.current=requestClose},[requestClose])
  useEffect(()=>{
@@ -159,7 +161,7 @@ export function OutsourcingRequest({request:initialRequest,outsourcingId,onClose
      {record?.review_status==='OBSERVED'&&<p className="ow-notice">Compras observó esta solicitud: {observation || 'Revise el historial de observaciones.'} Corrija la ficha y vuelva a enviarla.</p>}
      {receipt&&<p className="ow-success" role="status">{receipt}</p>}
      {!editable&&<p className="ow-notice">Consulta de la ficha registrada. El avance, responsables y evidencias están en la bandeja de Tercerizaciones · Compras.</p>}
-     {step===0&&<GeneralStep {...common}/>}{step===1&&<TransportStep {...common}/>}{step===2&&<ServicesStep {...common}/>}{step===3&&<OperationsStep {...common}/>}{step===4&&<ReviewStep spec={spec} issues={issues} onEdit={navigate} files={files} onFiles={selectFiles} onRemoveAttachment={path=>setSpec(p=>({...p,attachments:p.attachments.filter(a=>a.path!==path)}))} onView={path=>void view(path)} disabled={disabled} identity={identity}/>}
+     {step===0&&<GeneralStep {...common}/>}{step===1&&<TransportStep {...common}/>}{step===2&&<ServicesStep {...common}/>}{step===3&&<OperationsStep {...common}/>}{step===4&&<ReviewStep spec={spec} issues={issues} onEdit={navigate} files={files} onFiles={selectFiles} onRemoveAttachment={path=>setSpec(p=>({...p,attachments:p.attachments.filter(a=>a.path!==path)}))} onView={path=>void view(path)} disabled={disabled} identity={identity} documentModel={documentModel}/>}
      {showErrors&&step<4&&issues.some(i=>i.step===step)&&<div className="ow-step-issues" role="alert"><strong>Revise esta sección</strong><ul>{issues.filter(i=>i.step===step).map((i,n)=><li key={n}>{i.message}</li>)}</ul></div>}
     </main>
     <aside className="ow-card ow-summary"><h3><FileText/>Resumen de la solicitud</h3><dl>{[[Warehouse,'Cliente',identity.client],[ClipboardList,'OT',identity.ot],[Flag,'Prioridad',<span key="priority" className="ow-priority">{String(spec.priority)==='NORMAL'?'Normal':String(spec.priority)==='ALTA'?'Alta':'Urgente'}</span>],[MapPin,'Origen',String(spec.pickup||'No definido')],[MapPin,'Destino',String(spec.delivery||'No definido')],[Wrench,'Servicios',spec.services.length?spec.services.map(s=>OUTSOURCING_SERVICES[s.kind]).join(', '):spec.services_confirmed==='true'?'No requeridos':'No definido'],[Clock,'Estado',<span key="status" className="ow-summary-status">{status}</span>]].map(([RowIcon,label,value])=>{const Row=RowIcon as typeof FileText;return <div key={String(label)}><dt><Row/>{String(label)}</dt><dd>{value as React.ReactNode}</dd></div>})}</dl>

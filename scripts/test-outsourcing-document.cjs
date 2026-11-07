@@ -1,0 +1,32 @@
+// Correo + PDF reales sobre datos de ejemplo. No consulta ni envía a servicios externos.
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),ts=require('typescript'),{execFileSync}=require('node:child_process')
+const cache=new Map()
+function load(file){file=path.resolve(file);if(cache.has(file))return cache.get(file);const m={exports:{}};cache.set(file,m.exports);const req=name=>name.startsWith('.')?load(path.resolve(path.dirname(file),name+'.ts')):require(name);new Function('exports','module','require',ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText)(m.exports,m,req);return m.exports}
+const {buildOutsourcingDocument,outsourcingEmailTemplate}=load('src/lib/outsourcing-document.ts'),{renderOutsourcingPdf}=load('src/lib/outsourcing-pdf.ts')
+const {spec,services}=require('./fixtures/outsourcing-wizard-data.cjs')
+const identity={request:'RT-001970',ot:'16516',client:'INKA CROPS S.A.'}
+const record={id:'00000000-0000-4000-8000-000000000002',number:1,stage:0,revision:2,review_status:'ACTIVE',dispatch_id:null}
+const input={...spec,services,attachments:[{name:'Plano de maniobra.pdf',path:'private/do-not-leak.pdf'}]}
+const original=JSON.stringify(input),d=buildOutsourcingDocument(identity,input,record,'2026-10-25T15:30:00Z',['Foto pendiente.jpg']),mail=outsourcingEmailTemplate(d)
+assert.equal(JSON.stringify(input),original,'no mutation')
+assert.equal(d.requiredAt,'28/10/2026 08:00 (Lima)');assert.equal(d.revision,2);assert.equal(d.draft,true)
+assert.deepEqual(mail.to,['rruesta@jrmsac.com.pe','dramirez@jrmsac.com.pe']);assert.equal(mail.cc.length,3)
+assert.match(mail.subject,/BORRADOR/);assert.match(mail.html,/Rosa y David/);assert.match(mail.html,/No se ha enviado/)
+assert.ok(!mail.html.includes('private/'));assert.ok(!JSON.stringify(d).includes('private/'),'no private storage URL/path')
+assert.ok(d.sections.some(s=>s.rows.some(r=>r[1]==='Foto pendiente.jpg')))
+const sent=buildOutsourcingDocument(identity,input,{...record,stage:1},'2026-10-25T15:30:00Z')
+assert.equal(sent.draft,false);assert.ok(!outsourcingEmailTemplate(sent).subject.includes('BORRADOR'))
+const hostile=outsourcingEmailTemplate(buildOutsourcingDocument({...identity,client:'<script>alert(1)</script>'},{...input,responsible:'<img src=x onerror=alert(1)>'},record,'2026-10-25T15:30:00Z'))
+assert.ok(!hostile.html.includes('<script>'));assert.ok(!hostile.html.includes('<img src=x'));assert.match(hostile.html,/&lt;script&gt;/)
+assert.equal(buildOutsourcingDocument(identity,spec,null,'2026-10-25T15:30:00Z').number,'Sin número · borrador')
+assert.equal(buildOutsourcingDocument(identity,spec,{...record,review_status:'CANCELLED'},'2026-10-25T15:30:00Z').status,'Cancelada')
+const out=process.env.OUTSOURCING_PREVIEW_DIR||'/tmp/tms-outsourcing-document';fs.mkdirSync(out,{recursive:true})
+const logo='data:image/png;base64,'+fs.readFileSync('public/logo-jrm.png').toString('base64')
+const doc=renderOutsourcingPdf(d,logo);fs.writeFileSync(out+'/'+d.filename,Buffer.from(doc.output('arraybuffer')))
+fs.writeFileSync(out+'/correo-tercerizacion.html',mail.html);fs.writeFileSync(out+'/correo-tercerizacion.txt',`Para: ${mail.to.join('; ')}\nCC: ${mail.cc.join('; ')}\nAsunto: ${mail.subject}\n\n${mail.text}`)
+const text=execFileSync('pdftotext',[out+'/'+d.filename,'-'],{encoding:'utf8'})
+for(const s of ['INKA CROPS','16516','BORRADOR','Revisión 2','Transporte y carga','Detalle de bultos','Montacargas','Grúa','Stocka','Estiba','Otros recursos','Condiciones operativas','SOAT','Plano de maniobra.pdf','Foto pendiente.jpg','Alcance y control','Página 1 de'])assert.ok(text.includes(s),`PDF contains ${s}`)
+const long=buildOutsourcingDocument(identity,{...input,notes:Array.from({length:700},(_,i)=>`Línea ${i+1}: instrucción técnica extensa de operación segura.`).join('\n')},record,'2026-10-25T15:30:00Z')
+const longPdf=renderOutsourcingPdf(long,logo);fs.writeFileSync(out+'/long.pdf',Buffer.from(longPdf.output('arraybuffer')))
+const longText=execFileSync('pdftotext',[out+'/long.pdf','-'],{encoding:'utf8'});assert.ok(longText.includes('Línea 700:'));assert.ok(longText.includes('Alcance y control'));assert.ok(longPdf.getNumberOfPages()>10)
+console.log(`PASS document: recipients, escaping, snapshot, Lima times, revisions, draft/cancelled, complete PDF, logo, ${doc.getNumberOfPages()} pages, long-text pagination; artifacts ${out}`)

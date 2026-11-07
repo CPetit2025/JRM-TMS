@@ -118,3 +118,25 @@
 @media (min-width: 901px) and (max-height: 760px) {
   .ow-scroll { padding-bottom: 10px; }
 }
+
+/* Vista previa contenida en el modal compacto; no modifica el estado del requerimiento. */
+.ow-preview-toolbar,.ow-preview-toolbar>div,.ow-preview-tabs{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.ow-preview-toolbar{justify-content:space-between;margin-bottom:14px}
+.ow-preview-toolbar .ow-button{min-width:0;font-size:12px;min-height:34px;padding:7px 10px;text-decoration:none;border:1px solid #c9d7ee;background:#fff;color:#003b83;display:inline-flex;align-items:center;gap:6px;border-radius:7px}
+.ow-preview-tabs{border-bottom:1px solid #dce4ef;margin-bottom:12px}
+.ow-preview-tabs button{display:flex;align-items:center;gap:8px;background:transparent;border:0;border-bottom:3px solid transparent;padding:10px;font-size:13px;color:#526581}
+.ow-preview-tabs button[aria-selected=true]{border-bottom-color:#003b83;color:#003b83;font-weight:700}
+.ow-preview-notice{background:#fff5dc;color:#735000;padding:10px 12px;border-radius:7px;font-size:12px;line-height:1.5;margin:0 0 12px}
+.ow-mail-envelope{margin:0 0 12px;padding:12px;background:#f1f5fb;border:1px solid #dce4ef;border-radius:8px}
+.ow-mail-envelope>div{display:grid;grid-template-columns:95px minmax(0,1fr);gap:8px;margin-bottom:8px;font-size:12px;line-height:1.5}
+.ow-mail-envelope dt{font-weight:700;color:#526581}.ow-mail-envelope dd{margin:0;overflow-wrap:anywhere}
+.ow-document-frame{display:block;width:100%;height:560px;border:1px solid #dce4ef;border-radius:8px;background:#eef2f7}
+.ow-email-frame{height:660px}
+.ow-review-card .ow-section-heading{flex-wrap:wrap;gap:12px}
+@media(max-width:600px){.ow-mail-envelope>div{grid-template-columns:1fr;gap:2px}.ow-document-frame{height:480px}.ow-preview-toolbar>div{width:100%}.ow-email-frame{height:600px}}
+
+.ow-columns:has(.ow-document-preview){grid-template-columns:minmax(0,1fr)}
+.ow-columns:has(.ow-document-preview)>.ow-summary,.ow-form-card:has(.ow-document-preview)>.ow-card-heading{display:none}
+.ow-envelope-details{margin:0 0 12px;font-size:12px;color:#526581}
+.ow-envelope-details summary{cursor:pointer;padding:8px 0;font-weight:700;color:#003b83}
+.ow-envelope-details .ow-mail-envelope{margin-top:8px}

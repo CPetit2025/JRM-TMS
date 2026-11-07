@@ -1,4 +1,7 @@
 'use client'
+import { useState } from 'react'
+import type { OutsourcingDocument } from '@/lib/outsourcing-document'
+import { DocumentPreview } from './DocumentPreview'
 import { ArrowDown, ArrowUp, Plus, Trash2, Info, Paperclip } from 'lucide-react'
 import { OUTSOURCING_SERVICES, type OutsourcingService } from '@/lib/outsourcing'
 import { GENERAL_FIELDS, TRANSPORT_FIELDS, OPERATION_FIELDS, WIZARD_SERVICE_FIELDS, WIZARD_STEPS, packageTotals, type WizardSpec, type FormIssue } from '@/lib/outsourcing-form'
@@ -45,8 +48,11 @@ export function OperationsStep({spec,setSpec,issues,disabled}:Props) {
  <h3 className="ow-block-title">Documentación requerida</h3><p className="ow-hint">Estos campos declaran requisitos. La documentación no se considera verificada hasta su revisión en el proceso operativo y de Compras.</p><WizardFields fields={OPERATION_FIELDS.slice(18,24)} spec={spec} setValue={update} issues={issues} disabled={disabled}/>
  <h3 className="ow-block-title">Seguridad e instrucciones</h3><WizardFields fields={OPERATION_FIELDS.slice(24)} spec={spec} setValue={update} issues={issues} disabled={disabled}/></>
 }
-export function ReviewStep({spec,issues,onEdit,files,onFiles,onRemoveAttachment,onView,disabled,identity}:{spec:WizardSpec;issues:FormIssue[];onEdit:(step:number)=>void;files:File[];onFiles:(files:File[])=>void;onRemoveAttachment:(path:string)=>void;onView:(path:string)=>void;disabled:boolean;identity:{request:string;ot:string;client:string}}) {
+export function ReviewStep({spec,issues,onEdit,files,onFiles,onRemoveAttachment,onView,disabled,identity,documentModel}:{spec:WizardSpec;issues:FormIssue[];onEdit:(step:number)=>void;files:File[];onFiles:(files:File[])=>void;onRemoveAttachment:(path:string)=>void;onView:(path:string)=>void;disabled:boolean;identity:{request:string;ot:string;client:string};documentModel:OutsourcingDocument}) {
+ const [preview,setPreview]=useState(false)
+ if(preview)return <DocumentPreview document={documentModel} onClose={()=>setPreview(false)}/>
  return <div className="ow-review">
+ <section className="ow-review-card"><div className="ow-section-heading"><div><h3>Correo y ficha técnica PDF</h3><p className="ow-hint">Revise la plantilla dirigida a Compras y descargue el PDF completo de esta solicitud.</p></div><button type="button" className="ow-button ow-primary" onClick={()=>setPreview(true)}>Vista previa de correo y PDF</button></div></section>
  <div className="ow-validation" role="status"><strong>{issues.length?`${issues.length} datos pendientes de corrección`:'El requerimiento está completo para enviar'}</strong><p>La solicitud técnica no autoriza costos ni adjudica proveedores.</p>{issues.length>0&&<ul>{issues.map((issue,i)=><li key={`${issue.field}-${i}`}><button type="button" onClick={()=>onEdit(issue.step)}>{WIZARD_STEPS[issue.step]}: {issue.message}</button></li>)}</ul>}</div>
  {[GENERAL_FIELDS,TRANSPORT_FIELDS,[],OPERATION_FIELDS].map((fields,step)=><section className="ow-review-card" key={step}><div className="ow-section-heading"><h3>{WIZARD_STEPS[step]}</h3><button type="button" className="ow-text-button" onClick={()=>onEdit(step)}>Editar</button></div>
  {step===0&&<dl className="ow-review-values"><div><dt>Solicitud</dt><dd>{identity.request}</dd></div><div><dt>OT</dt><dd>{identity.ot}</dd></div><div><dt>Cliente</dt><dd>{identity.client}</dd></div><div><dt>Prioridad</dt><dd>{String(spec.priority)}</dd></div><div><dt>Puntos intermedios</dt><dd>{spec.intermediate_stops.length?spec.intermediate_stops.map(s=>s.address).join(' → '):String(spec.intermediate_points)}</dd></div></dl>}

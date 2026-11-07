@@ -46,3 +46,13 @@ Verificación local, sin conexión a producción:
 - `npm run typecheck`, ESLint de archivos nuevos y `npm run check:guards`.
 
 La verificación del navegador simula Auth, consultas y RPC. La prueba SQL ejecuta las funciones reales sobre un esquema aislado. La migración, Storage, Realtime y permisos deben verificarse en el entorno de despliegue; estas pruebas no demuestran que ya estén habilitados en producción.
+
+### Vista previa de correo y ficha técnica PDF
+
+En **Revisión y envío → Vista previa de correo y PDF** se revisa la plantilla profesional y se descarga el PDF generado con los datos actuales de la ficha. La vista previa es de consulta: no guarda, envía ni cambia la etapa. Un borrador se identifica como tal; los campos faltantes se muestran como pendientes. El documento incluye número de tercerización si existe, solicitud de transporte, OT, cliente, revisión, estado, vínculo al despacho, especificación completa, bultos, servicios, condiciones operativas y relación de archivos. No representa aprobación ni una orden de compra. Los archivos de referencia se enumeran, no se fusionan al PDF ni se exponen con rutas de Storage o enlaces públicos.
+
+La plantilla HTML es descargable. Destinatarios: rruesta@jrmsac.com.pe y dramirez@jrmsac.com.pe. Copias: cpetit@jrmsac.com.pe, acamargo@jrmsac.com.pe y rsolis@jrmsac.com.pe. El remitente previsto es la cuenta Microsoft 365 autorizada del usuario que ejecute el envío; la vista no inventa una cuenta ni afirma haber enviado un correo.
+
+**Límite actual:** falta autorizar la conexión Microsoft 365. No se ejecuta envío de correo ni se adjunta automáticamente un PDF a un mensaje externo. El PDF está disponible para previsualizar y descargar. «Enviar a Compras» conserva su función de registro y notificación interna. El futuro envío debe usar el mismo generador de PDF y la plantilla sobre la revisión persistida, con autorización delegada y estado de entrega real. Este cambio no requiere migración de base de datos.
+
+Verificación: `node scripts/test-outsourcing-document.cjs` (requiere `pdftotext`), `node scripts/test-outsourcing-wizard-browser.cjs`, typecheck y lint. Los ejemplos de pruebas son fixtures locales; no representan datos consultados en producción.
