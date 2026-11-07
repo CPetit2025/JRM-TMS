@@ -2,8 +2,16 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { isDispatchAuditorRole, dispatchAuditorPathAllowed, roleDeniesPath } from '@/lib/roles'
 import { canOpenPath, hasWebAccess } from '@/lib/nav/web-access'
+import { assertDeploymentIsolation, wmsRouteAllowed } from '@/lib/deployment-isolation.mjs'
 
 export async function proxy(request: NextRequest) {
+  if (process.env.NEXT_PUBLIC_DEPLOYMENT_SYSTEM === 'wms') {
+    assertDeploymentIsolation('wms', process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.VERCEL_ENV)
+    if (!wmsRouteAllowed(request.nextUrl.pathname, request.method)) {
+      if (request.nextUrl.pathname.startsWith('/api')) return NextResponse.json({ error: 'Ruta no disponible en WMS' }, { status: 404 })
+      return NextResponse.redirect(new URL('/almacen', request.url))
+    }
+  }
   let supabaseResponse = NextResponse.next({
     request,
   })
@@ -73,7 +81,7 @@ export async function proxy(request: NextRequest) {
       .eq('id', user.id).maybeSingle()
     if (!profile?.is_active) {
       const url = request.nextUrl.clone()
-      url.pathname = isDriverRoute ? '/app/login' : '/login'
+      url.pathname = process.env.NEXT_PUBLIC_DEPLOYMENT_SYSTEM === 'wms' ? '/almacen/login' : isDriverRoute ? '/app/login' : '/login'
       if (request.nextUrl.pathname !== url.pathname) return redirect(url)
       return supabaseResponse
     }
