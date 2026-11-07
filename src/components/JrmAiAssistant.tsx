@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import { Capacitor } from '@capacitor/core'
 import { toWav16k } from '@/lib/audio-wav'
 import { AiRichText } from '@/components/ai/AiRichText'
+import { usePermissions } from '@/hooks/usePermissions'
 
 type Context = {
   contractId?: string; vehiclePlate?: string; dispatchId?: string; status?: string; activeStep?: number
@@ -34,6 +35,8 @@ type SpeechRecognitionConstructor = new () => SpeechRecognitionLike
 
 export function JrmAiAssistant() {
   const path = usePathname()
+  const { hasAccess } = usePermissions()
+  const canOpenApt = ['apt','apt-carga','almacen-lectura','almacen-supervisor','almacen-etiquetado','almacen-carga'].some(hasAccess)
   const [enabled, setEnabled] = useState(false)
   const [profile, setProfile] = useState<{ name: string | null; isDriver: boolean }>({ name: null, isDriver: false })
   const router = useRouter()
@@ -447,7 +450,7 @@ export function JrmAiAssistant() {
             {item.evidence && <div className="mt-3 border-t border-slate-300 pt-2 text-xs text-slate-600">
               <p>Fuente: resumen operativo APT · corte {item.evidence.summary?.meta?.cutoff || 'no informado'}{item.evidence.summary?.meta?.model_fresh === false ? ' · recálculo pendiente' : ''}</p>
               {item.evidence.sampleTruncated && <p>El detalle consultado es una muestra; los indicadores corresponden al alcance filtrado.</p>}
-              <button type="button" className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 font-semibold text-[#002855]" onClick={() => router.push('/apt')}>Ver evidencia y generar reporte</button>
+              {canOpenApt && <button type="button" className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 font-semibold text-[#002855]" onClick={() => router.push('/almacen/apt')}>Ver evidencia y generar reporte</button>}
             </div>}
           </div>)}
           {proposals.map(item => {

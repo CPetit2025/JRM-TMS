@@ -10,6 +10,9 @@
 BEGIN;
 SET LOCAL lock_timeout='60s';
 
+ALTER TABLE public.contract_services
+  ADD COLUMN IF NOT EXISTS referral_guide text;
+
 -- 1. Filas de movimiento de un conjunto de contratos (interna, sin permisos: la llaman las funciones de lectura)
 CREATE OR REPLACE FUNCTION public.budget_movement_rows(p_contracts uuid[])
 RETURNS TABLE(id text, source text, concept text, budget_contract_id uuid, ref_contract_id uuid, dispatch_id uuid, request_id uuid,

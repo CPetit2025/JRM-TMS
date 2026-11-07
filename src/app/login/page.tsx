@@ -2,7 +2,7 @@
 
 import { AppVersionInfo } from '@/components/AppVersionInfo'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
@@ -10,9 +10,13 @@ import { PublicRegistrationModal } from '@/components/forms/PublicRegistrationMo
 import { Download } from 'lucide-react'
 import { isDispatchAuditorRole, normalizeRoleName } from '@/lib/roles'
 import { hasWebAccess } from '@/lib/nav/web-access'
+import { loginSystemForDatabase, remoteLoginUrl, type LoginSystem } from '@/lib/login-system'
 
 export default function LoginPage() {
   const router = useRouter()
+  const pathname = usePathname()
+  const warehouseLogin = pathname === '/almacen/login'
+  const localSystem = loginSystemForDatabase(process.env.NEXT_PUBLIC_SUPABASE_URL)
   const [isLoading, setIsLoading] = useState(false)
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
   const [androidInstallerUrl, setAndroidInstallerUrl] = useState<string | null>(null)
@@ -28,6 +32,8 @@ export default function LoginPage() {
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [selectedSystem, setSelectedSystem] = useState<LoginSystem>(warehouseLogin ? 'almacen' : localSystem || 'tms')
+  const localLogin = selectedSystem === localSystem
 
   const supabase = createClient()
   const [resetOpen, setResetOpen] = useState(false)
@@ -37,6 +43,7 @@ export default function LoginPage() {
   // «¿Olvidaste tu contraseña?»: Supabase envía al correo un enlace que abre /login/restablecer para crear una nueva
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!localLogin) return
     const rawUser = username.toLowerCase().trim()
     if (!rawUser) { toast.error('Escribe tu usuario o correo corporativo'); return }
     const email = rawUser.includes('@') ? rawUser : `${rawUser}@jrmsac.com.pe`
@@ -51,6 +58,17 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // Switch sites before authentication. Never forward credentials or sessions.
+    if (!localLogin) {
+      try {
+        if (!localSystem) throw new Error('No se pudo identificar el sistema. Contacta al administrador.')
+        const origin = selectedSystem === 'tms' ? process.env.NEXT_PUBLIC_TMS_ORIGIN : process.env.NEXT_PUBLIC_WMS_ORIGIN
+        window.location.assign(remoteLoginUrl(selectedSystem, origin, window.location.origin))
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'No se pudo abrir el sistema.')
+      }
+      return
+    }
     setIsLoading(true)
     
     try {
@@ -107,9 +125,11 @@ export default function LoginPage() {
            permissions = roleObj?.permissions || []
         }
 
-        if (profileData?.employee_type === 'CONDUCTOR' || (!hasWebAccess(roleName, permissions) && !isDispatchAuditorRole(roleName, permissions))) {
+        const hasWarehouseAccess = roleName === 'Administrador' || permissions.some(p => ['almacen-lectura', 'almacen-etiquetado', 'almacen-picking', 'almacen-packing', 'almacen-carga', 'almacen-supervisor', 'apt', 'apt-carga'].some(key => p === key || p.startsWith(`${key}:`)))
+        const wantsWarehouse = selectedSystem === 'almacen'
+        if (profileData?.employee_type === 'CONDUCTOR' || (wantsWarehouse ? !hasWarehouseAccess : !hasWebAccess(roleName, permissions) && !isDispatchAuditorRole(roleName, permissions))) {
           await supabase.auth.signOut()
-          throw new Error('Esta cuenta pertenece al Portal Operativo. Ingresa desde /app/login.')
+          throw new Error(wantsWarehouse ? 'Tu usuario no tiene acceso al Portal de Almacén. Solicita el permiso al administrador.' : 'Tu usuario no tiene acceso al TMS. Solicita el permiso al administrador.')
         }
         
         // Guardar en localStorage para UI (Sidebar)
@@ -117,7 +137,7 @@ export default function LoginPage() {
         localStorage.setItem('userPermissions', JSON.stringify(permissions))
         
         toast.success('Sesión iniciada correctamente')
-        router.push('/')
+        router.push(wantsWarehouse ? '/almacen' : '/')
       }
     } catch (err: any) {
       toast.error(err.message)
@@ -143,15 +163,26 @@ export default function LoginPage() {
             />
             <span className="shrink-0 text-[10px] font-semibold tracking-wider text-blue-200 sm:text-xs lg:hidden">JRM S.A.C.</span>
           </div>
-          <h1 className="mb-3 text-2xl font-bold leading-tight sm:text-3xl lg:mb-6 lg:text-4xl">Sistemas de Almacenamiento</h1>
-          <p className="max-w-lg text-sm leading-relaxed text-blue-100 sm:text-base lg:text-xl">
-            Gestión inteligente de despachos, transporte y entregas. Torre de control operativa para optimizar toda tu cadena de suministro.
+          <p className="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-blue-200 sm:text-sm">JRM · Ecosistema logístico</p>
+          <h1 className="mb-3 text-2xl font-bold leading-tight sm:text-3xl lg:mb-5 lg:text-4xl">Una plataforma para toda la operación</h1>
+          <p className="max-w-lg text-sm leading-relaxed text-blue-100 sm:text-base lg:text-lg">
+            Accede a las herramientas de transporte y almacén desde un mismo punto de acceso.
           </p>
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:mt-9">
+            <div className={`rounded-xl border p-4 ${selectedSystem === 'tms' ? 'border-white/50 bg-white/15' : 'border-white/20 bg-[#001f43]/35'}`}>
+              <p className="text-sm font-bold sm:text-base">TMS</p>
+              <p className="mt-1 text-xs leading-relaxed text-blue-100 sm:text-sm">Transporte, despacho y seguimiento de entregas</p>
+            </div>
+            <div className={`rounded-xl border p-4 ${selectedSystem === 'almacen' ? 'border-white/50 bg-white/15' : 'border-white/20 bg-[#001f43]/35'}`}>
+              <p className="text-sm font-bold sm:text-base">Almacén</p>
+              <p className="mt-1 text-xs leading-relaxed text-blue-100 sm:text-sm">Recepción, inventario y preparación de pedidos</p>
+            </div>
+          </div>
           <div className="mt-5 flex items-start gap-3 lg:mt-12 lg:gap-4">
             <div aria-hidden="true" className="mt-1.5 h-1 w-8 shrink-0 bg-[#cf152d] lg:mt-2 lg:w-16"></div>
             <div className="min-w-0 space-y-1.5">
-              <p className="text-[10px] font-semibold uppercase tracking-widest sm:text-xs lg:text-sm">TORRE DE CONTROL TMS</p>
-              <p className="text-[10px] font-medium uppercase tracking-widest text-blue-200 sm:text-xs lg:text-sm">GERENCIA DE LOGISTICA</p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest sm:text-xs lg:text-sm">PLATAFORMA LOGÍSTICA JRM</p>
+              <p className="text-[10px] font-medium uppercase tracking-widest text-blue-200 sm:text-xs lg:text-sm">TRANSPORTE · ALMACÉN · DISTRIBUCIÓN</p>
             </div>
           </div>
         </div>
@@ -166,7 +197,7 @@ export default function LoginPage() {
         <div className="w-full max-w-md">
           <div className="mb-6 text-center lg:mb-10">
             <h2 className="text-2xl font-bold text-slate-800 sm:text-3xl">{resetOpen ? 'Recuperar contraseña' : 'Iniciar Sesión'}</h2>
-            <p className="mt-2 text-sm text-slate-500 sm:text-base">{resetOpen ? 'Te enviamos un enlace a tu correo corporativo' : 'Ingresa tus credenciales para acceder a la plataforma'}</p>
+            <p className="mt-2 text-sm text-slate-500 sm:text-base">{resetOpen ? 'Te enviamos un enlace a tu correo corporativo' : 'Elige el sistema y accede con tu cuenta corporativa'}</p>
           </div>
 
           {resetOpen ? <form onSubmit={handleReset} className="space-y-4 sm:space-y-6">
@@ -188,6 +219,21 @@ export default function LoginPage() {
             <p className="text-xs text-slate-500">¿No llega el correo? El Administrador del sistema puede asignarte una contraseña nueva desde Usuarios.</p>
             <button type="button" onClick={() => { setResetOpen(false); setResetSent(false) }} className="min-h-11 w-full text-sm font-medium text-[#002855] hover:text-[#cf152d]">Volver a iniciar sesión</button>
           </form> : <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+            <div>
+              <label htmlFor="login-system" className="mb-2 block text-sm font-medium text-slate-700">Sistema al que deseas ingresar</label>
+              <select id="login-system" disabled={isLoading} value={selectedSystem} onChange={event => {
+                setSelectedSystem(event.target.value as LoginSystem)
+                setUsername('')
+                setPassword('')
+                setResetOpen(false)
+                setResetSent(false)
+              }}
+                className="min-h-12 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none transition-all focus:border-[#002855] focus:ring-2 focus:ring-[#002855]">
+                <option value="tms">TMS · Transporte y despacho</option>
+                <option value="almacen">Almacén · Operación WMS</option>
+              </select>
+            </div>
+            {localLogin ? <>
             <div>
               <label htmlFor="login-username" className="block text-sm font-medium text-slate-700 mb-2">Usuario</label>
               <input 
@@ -224,6 +270,10 @@ export default function LoginPage() {
               <button type="button" onClick={() => setResetOpen(true)} className="inline-flex min-h-11 items-center text-sm text-[#002855] hover:text-[#cf152d] font-medium transition-colors">¿Olvidaste tu contraseña?</button>
             </div>
 
+            </> : <p role="status" className="rounded-lg bg-blue-50 p-4 text-sm text-slate-700">
+              Continúa al acceso de {selectedSystem === 'tms' ? 'TMS' : 'Almacén'} para ingresar con tu cuenta de ese sistema.
+            </p>}
+
             <button 
               type="submit" 
               disabled={isLoading}
@@ -235,12 +285,12 @@ export default function LoginPage() {
                   Iniciando sesión...
                 </>
               ) : (
-                'Ingresar'
+                localLogin ? 'Ingresar' : `Continuar a ${selectedSystem === 'tms' ? 'TMS' : 'Almacén'}`
               )}
             </button>
           </form>}
 
-          <div className="mt-5 text-center text-sm text-slate-600 sm:mt-8">
+          {localLogin && process.env.NEXT_PUBLIC_DEPLOYMENT_SYSTEM !== 'wms' && <div className="mt-5 text-center text-sm text-slate-600 sm:mt-8">
             ¿No tienes cuenta?{' '}
             <button 
               onClick={() => setIsRegisterModalOpen(true)}
@@ -249,7 +299,7 @@ export default function LoginPage() {
             >
               Regístrate aquí
             </button>
-          </div>
+          </div>}
 
           <div className="mt-6 pt-6 border-t border-slate-200">
             {androidInstallerUrl ? (

@@ -1,5 +1,8 @@
 import type { NextConfig } from "next";
 import packageJson from './package.json';
+import { assertDeploymentIsolation } from './src/lib/deployment-isolation.mjs';
+
+assertDeploymentIsolation(process.env.NEXT_PUBLIC_DEPLOYMENT_SYSTEM, process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.VERCEL_ENV);
 
 const isCapacitor = process.env.CAPACITOR_BUILD === 'true';
 // Cada despliegue tiene su versión: mayor.menor de package.json + fecha y hora (Lima) de compilación, p. ej. 0.2.20261101.1530.

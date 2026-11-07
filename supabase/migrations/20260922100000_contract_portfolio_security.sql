@@ -227,16 +227,6 @@ CREATE POLICY portfolio_component ON public.transport_request_components AS REST
   USING (NOT public.is_contract_administrator() OR public.has_assigned_request(request_id));
 CREATE POLICY portfolio_request_event ON public.transport_request_events AS RESTRICTIVE FOR SELECT TO authenticated
   USING (NOT public.is_contract_administrator() OR public.has_assigned_request(request_id));
-CREATE POLICY portfolio_request_item ON public.transport_request_items AS RESTRICTIVE FOR ALL TO authenticated
-  USING (NOT public.is_contract_administrator() OR public.has_assigned_request(transport_request_id))
-  WITH CHECK (NOT public.is_contract_administrator() OR public.has_assigned_request(transport_request_id,true));
-REVOKE INSERT,UPDATE,DELETE ON public.transport_request_items FROM authenticated;
-DROP POLICY IF EXISTS "Permitir lectura de items a usuarios autenticados" ON public.transport_request_items;
-DROP POLICY IF EXISTS "Permitir insercion de items a usuarios autenticados" ON public.transport_request_items;
-DROP POLICY IF EXISTS "Permitir actualizacion de items a usuarios autenticados" ON public.transport_request_items;
-DROP POLICY IF EXISTS "Permitir eliminacion de items a usuarios autenticados" ON public.transport_request_items;
-CREATE POLICY request_items_read ON public.transport_request_items FOR SELECT TO authenticated
-  USING (EXISTS (SELECT 1 FROM public.transport_requests r WHERE r.id=transport_request_id));
 CREATE POLICY portfolio_dispatch ON public.dispatches AS RESTRICTIVE FOR ALL TO authenticated
   USING (NOT public.is_contract_administrator() OR public.has_assigned_dispatch(id))
   WITH CHECK (NOT public.is_contract_administrator() OR public.has_assigned_dispatch(id));
@@ -300,7 +290,7 @@ CREATE POLICY expense_audit_finance_insert ON public.expense_audit_logs FOR INSE
 DROP POLICY IF EXISTS "Enable all for authenticated on expense_records" ON public.expense_records;
 CREATE POLICY expenses_portfolio_read ON public.expense_records FOR SELECT TO authenticated
   USING (public.is_tms_admin() OR
-    (public.is_contract_administrator() AND public.has_assigned_expense(contract_id,transport_request_id,trip_id)) OR
+    (public.is_contract_administrator() AND public.has_assigned_expense(contract_id,NULL,trip_id)) OR
     (NOT public.is_contract_administrator() AND (public.has_tms_read_permission('caja') OR
       public.has_tms_read_permission('caja-gastos') OR public.has_tms_read_permission('caja-liquidaciones'))));
 CREATE POLICY expenses_finance_write ON public.expense_records FOR ALL TO authenticated

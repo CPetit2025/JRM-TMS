@@ -16,6 +16,12 @@ BEGIN;
 -- ------------------------------------------------------------
 -- 1. Planes
 -- ------------------------------------------------------------
+ALTER TABLE public.maintenance_plans
+  ADD COLUMN IF NOT EXISTS activity_description text,
+  ADD COLUMN IF NOT EXISTS vehicle_type text,
+  ADD COLUMN IF NOT EXISTS last_performed_odometer numeric(12,2),
+  ADD COLUMN IF NOT EXISTS next_due_odometer numeric(12,2);
+
 ALTER TABLE public.maintenance_plans DROP CONSTRAINT IF EXISTS maintenance_plans_frequencies_check;
 ALTER TABLE public.maintenance_plans ADD CONSTRAINT maintenance_plans_frequencies_check CHECK (
   (frequency_km IS NULL OR frequency_km > 0) AND (frequency_days IS NULL OR frequency_days > 0)

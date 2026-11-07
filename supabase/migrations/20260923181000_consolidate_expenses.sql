@@ -61,7 +61,9 @@ LEFT JOIN (
   -- Subquery para Gastos Operativos
   SELECT
     COALESCE(
-      (SELECT vehicle_id FROM public.dispatches WHERE id = de.dispatch_id LIMIT 1),
+      (SELECT v_dispatch.id FROM public.dispatches d
+        JOIN public.vehicles v_dispatch ON v_dispatch.plate = d.vehicle_plate
+        WHERE d.id = de.dispatch_id LIMIT 1),
       (SELECT vehicle_id FROM public.routes WHERE dispatch_id = de.dispatch_id LIMIT 1)
     ) AS vehicle_id,
     SUM(de.amount) AS total_operating_cost

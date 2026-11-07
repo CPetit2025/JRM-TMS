@@ -12,9 +12,12 @@ const errors = []
 
 const capacitor = readFileSync(path.join(root, 'capacitor.config.ts'), 'utf8')
 if (!/server\s*:\s*\{[^}]*url\s*:\s*['"]https:\/\/jrm-tms\.vercel\.app['"]/s.test(capacitor) ||
-    !/appStartPath\s*:\s*['"]\/app\/login['"]/.test(capacitor)) {
-  errors.push("capacitor.config.ts debe tener server.url 'https://jrm-tms.vercel.app' y server.appStartPath '/app/login'.")
+    !/appStartPath\s*:\s*warehouseApp\s*\?\s*['"]\/almacen\/login['"]\s*:\s*['"]\/app\/login['"]/.test(capacitor) ||
+    !/appId\s*:\s*warehouseApp\s*\?\s*['"]com\.jrm\.almacen['"]\s*:\s*['"]com\.jrm\.tms['"]/.test(capacitor)) {
+  errors.push("capacitor.config.ts debe conservar TMS y definir la identidad JRM Almacén con su appStartPath independiente.")
 }
+const androidGradle = readFileSync(path.join(root,'android','app','build.gradle'),'utf8')
+if (!/applicationId\s+['"]com\.jrm\.tms['"]/.test(androidGradle) || !/applicationId\s+['"]com\.jrm\.almacen['"]/.test(androidGradle)) errors.push('Android debe mantener las identidades independientes com.jrm.tms y com.jrm.almacen.')
 
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
@@ -57,12 +60,14 @@ const accessText = readFileSync(path.join(root, 'src', 'lib', 'nav', 'web-access
 const openPaths = [...(accessText.match(/OPEN_PATHS = \[([^\]]*)\]/)?.[1] || '').matchAll(/'([^']+)'/g)].map(m => m[1])
 const aliases = [...(accessText.match(/PATH_ALIASES[^=]*= \{([^}]*)\}/)?.[1] || '').matchAll(/'([^']+)':/g)].map(m => m[1])
 const menuHrefs = [...navText.matchAll(/href: '([^']+)'/g)].map(m => m[1])
+const proxyText = readFileSync(path.join(root, 'src', 'proxy.ts'), 'utf8')
+const legacyAptRedirect = /isLegacyAptPath[\s\S]{0,220}url\.pathname\s*=\s*`\/almacen\$\{request\.nextUrl\.pathname\}`/.test(proxyText)
 const dashDir = path.join(root, 'src', 'app', '(dashboard)')
 for (const file of walk(dashDir).filter(f => f.endsWith(`${path.sep}page.tsx`))) {
   const route = '/' + path.relative(dashDir, path.dirname(file)).split(path.sep).filter(Boolean).join('/')
   const covered = openPaths.some(p => route === p || (p !== '/' && route.startsWith(p + '/'))) || aliases.includes(route) ||
     menuHrefs.some(h => h !== '/' && (route === h || route.startsWith(h + '/')))
-  if (!covered) errors.push(`La página ${route} no tiene regla de acceso: agréguela al menú (navConfig) o a OPEN_PATHS en web-access.ts.`)
+  if (!covered && !((route === '/apt' || route.startsWith('/apt/')) && legacyAptRedirect)) errors.push(`La página ${route} no tiene regla de acceso: agréguela al menú (navConfig) o a OPEN_PATHS en web-access.ts.`)
 }
 
 // 5. Tablas nuevas con las barreras que exige C55 (incidente: role_permission_changes falló en producción dos veces):

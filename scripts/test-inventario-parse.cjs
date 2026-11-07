@@ -85,6 +85,29 @@ test('hojas que se contienen (ENTRADA TOTAL con todo, SALIDA TOTAL con una parte
   assert.ok(res.warnings.some(w => /se omitieron 1 fila/.test(w)))
 })
 
+test('exporte de ingresos APT por IPT reconoce Nro_Documento y conserva código, descripción, lote, contrato y peso', () => {
+  const head = ['Tipo_Documento','Bodega','Nro_Documento','Fecha','RUC','Razon_Social','Cod_Producto','Producto','Cantidad','Unidad','Lote','Color','Doc_Origen','Nro_Origen','Fecha_Entrega','Contrato','Ref_Tipo_Documento','Ref_Correlativo','Ref_Numero','Ref_Fecha','Comentario','Peso_Unitario','Peso_Total','CCosto_JRM','Fecha_Actualizacion']
+  const rows = [head,
+    ['P/E PRODUCCION ACT.','647-04 ALM PT','140450',new Date(2026,10,5),'','', 'PT.001','PRODUCTO TERMINADO A',900,'UND','LOTE-77','','ORDEN DE PRODUCCION','OT16544',null,'16544','','0','0000000000',null,'',2.5,2250,'APT',new Date(2026,10,5)],
+    ['P/E PRODUCCION ACT.','647-04 ALM PT','140450',new Date(2026,10,5),'','', 'PT.002','PRODUCTO TERMINADO B',120,'UND','LOTE-78','','ORDEN DE PRODUCCION','OT16544',null,'16544','','0','0000000000',null,'',1.25,150,'APT',new Date(2026,10,5)],
+  ]
+  const result = parseInventoryWorkbooks([{name:'entrada.xlsx',data:book({'Entrada ALM PT':rows})}])
+  assert.equal(result.erpFiles.length,0)
+  assert.equal(result.parts.length,1)
+  const part = result.parts[0]
+  assert.equal(part.side,'E')
+  assert.equal(part.rows.length,2,'cada línea de producto del mismo IPT se conserva')
+  assert.equal(part.rows[0].Numero,'140450')
+  assert.equal(part.rows[0].Producto,'PT.001')
+  assert.equal(part.rows[0].GLOSA,'PRODUCTO TERMINADO A')
+  assert.equal(part.rows[0].TIPODOCTO,'P/E PRODUCCION ACT.')
+  assert.equal(part.rows[0].NumRel,'OT16544')
+  assert.equal(part.rows[0].Contrato,'16544')
+  assert.equal(part.rows[0].PesoTotalProduccido,2250)
+  assert.equal(part.rows[0].Fecha,'2026-11-05')
+  assert.equal(part.rows[1].Lote,'LOTE-78')
+})
+
 test('libro con hojas SALIDA y ENTRADA (formato del ERP): ambas se reconocen; un nombre que contradice el signo avisa', () => {
   const head = ['TipoDocto', 'Bodega', 'Numero', 'Fecha', 'CodLegal', 'RazonSocial', 'Producto', 'GLOSA', 'Cantidad', 'UNIDAD', 'DocRel', 'NumRel', 'Lote']
   const sal = [head, ['DESPACHO VENTAS', '647-04  ALM PT', 'T001-00006471', 46258, null, null, 'E.PL', 'PLACA', -1, 'UND', null, '16373-S006', '16373-S006'],

@@ -2,8 +2,9 @@ import { reserveRegistration } from '@/lib/server/registration-limit'
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
-// Admin client uses service_role key - bypasses email confirmation
-const supabaseAdmin = createClient(
+// Initialize only for a validated TMS request; WMS builds need no privileged key.
+function createAdminClient() {
+  return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
   {
@@ -12,9 +13,11 @@ const supabaseAdmin = createClient(
       persistSession: false
     }
   }
-)
+  )
+}
 
 export async function POST(request: Request) {
+  if (process.env.NEXT_PUBLIC_DEPLOYMENT_SYSTEM === 'wms') return NextResponse.json({ error: 'Ruta no disponible en WMS' }, { status: 404 })
   try {
     const { dni, firstName, lastName, phone, licenseNumber, pin, carrierId } = await request.json()
 
@@ -27,6 +30,7 @@ export async function POST(request: Request) {
         !/^[0-9a-f-]{36}$/i.test(carrierId) || (phone != null && (typeof phone !== 'string' || phone.length > 30))) {
       return NextResponse.json({ error: 'Datos de registro inválidos' }, { status: 400 })
     }
+    const supabaseAdmin = createAdminClient()
     const quota = await reserveRegistration(request, supabaseAdmin, 'driver')
     if (quota !== 'allowed') return NextResponse.json({ error: quota === 'limited' ? 'Demasiados intentos. Intente nuevamente en 15 minutos.' : 'Registro temporalmente no disponible' }, { status: quota === 'limited' ? 429 : 503 })
     const { data: carrier } = await supabaseAdmin.from('carriers').select('id').eq('id', carrierId).eq('is_active', true).maybeSingle()

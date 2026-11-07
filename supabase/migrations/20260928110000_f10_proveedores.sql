@@ -21,6 +21,7 @@ DROP TRIGGER IF EXISTS trigger_recalculate_provider_sla ON public.maintenance_wo
 DROP FUNCTION IF EXISTS public.trg_recalculate_provider_sla();
 
 ALTER TABLE public.maintenance_providers
+  ADD COLUMN IF NOT EXISTS status text,
   ADD COLUMN IF NOT EXISTS provider_type text NOT NULL DEFAULT 'TALLER',
   ADD COLUMN IF NOT EXISTS email text,
   ADD COLUMN IF NOT EXISTS sla_hours numeric(8,2),
@@ -36,6 +37,7 @@ ALTER TABLE public.maintenance_providers
   DROP COLUMN IF EXISTS sla_score, DROP COLUMN IF EXISTS total_services_completed, DROP COLUMN IF EXISTS sla_rating,
   DROP COLUMN IF EXISTS avg_response_time_hours, DROP COLUMN IF EXISTS provider_status, DROP COLUMN IF EXISTS rating;
 ALTER TABLE public.maintenance_providers ALTER COLUMN status SET DEFAULT 'ACTIVO';
+ALTER TABLE public.maintenance_providers ALTER COLUMN status SET NOT NULL;
 ALTER TABLE public.maintenance_providers DROP CONSTRAINT IF EXISTS maintenance_providers_checks;
 ALTER TABLE public.maintenance_providers ADD CONSTRAINT maintenance_providers_checks CHECK (
   status IN ('ACTIVO', 'SUSPENDIDO', 'INACTIVO')

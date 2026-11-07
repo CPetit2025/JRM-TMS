@@ -56,6 +56,14 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     { id: 'apt-carga', label: 'Carga diaria ENTRADA/SALIDA y parámetros', mode: 'toggle' },
     { id: 'apt-admin', label: 'Administrar la analítica APT (áreas, clases, unidades y metodología)', mode: 'toggle' },
   ] },
+  { title: 'Portal de Almacén (WMS)', hint: 'Permisos independientes del TMS para operación de almacén y tareas móviles.', modules: [
+    { id: 'almacen-lectura', label: 'Portal de Almacén (consulta)' },
+    { id: 'almacen-etiquetado', label: 'Recepción y etiquetado' },
+    { id: 'almacen-picking', label: 'Picking' },
+    { id: 'almacen-packing', label: 'Packing y LPN' },
+    { id: 'almacen-carga', label: 'Carga y conciliación' },
+    { id: 'almacen-supervisor', label: 'Supervisión de almacén' },
+  ] },
   { title: 'Eficiencia de Flota', modules: [
     { id: 'flota-eficiencia', label: 'Costo, uso y decisión de reemplazo' },
     { id: 'flota-eficiencia-carga', label: 'Carga de historia, horómetro y parámetros', mode: 'toggle' },

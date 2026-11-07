@@ -30,7 +30,7 @@ test('responde «cómo hago» con la documentación y la pantalla correctas', ()
 
 test('ubica la carga del ERP del Almacén APT', () => {
   const r = kb.searchHelp('cargar entradas y salidas del ERP', all)
-  assert.equal(r.pantallas[0].ruta, '/apt/datos')
+  assert.equal(r.pantallas[0].ruta, '/almacen/apt/datos')
   assert.ok(r.documentos.some(d => /inventario/i.test(d.titulo)))
 })
 

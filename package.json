@@ -10,6 +10,7 @@
     "lint:fix": "eslint --fix",
     "typecheck": "tsc --noEmit",
     "build:apk": "node scripts/build-apk.cjs",
+    "build:apk:almacen": "node scripts/build-apk.cjs --warehouse",
     "publish:apk": "node scripts/publish-apk.cjs",
     "brand:assets": "node scripts/generate-brand-assets.cjs",
     "check:supabase": "node scripts/check-supabase-connection.cjs",
@@ -17,6 +18,7 @@
     "check:ai-config": "node scripts/check-ai-config.cjs",
     "check:guards": "node scripts/check-release-guards.cjs",
     "check:infra": "npm run check:supabase && npm run check:vercel",
+    "test:wms": "node scripts/test-wh-wms.cjs",
     "build:capacitor": "cross-env CAPACITOR_BUILD=true next build"
   },
   "dependencies": {

@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict'
+import { assertDeploymentIsolation, wmsRouteAllowed } from '../src/lib/deployment-isolation.mjs'
+
+const prod = 'https://glecgvomkaqmkfkhtxhi.supabase.co'
+const staging = 'https://rquujukgtturdlkuzgdc.supabase.co'
+assert.doesNotThrow(() => assertDeploymentIsolation('wms', prod, 'production'))
+assert.doesNotThrow(() => assertDeploymentIsolation('wms', staging, 'preview'))
+for (const url of [undefined, staging, 'https://tms.supabase.co', prod + '.evil.test', 'http://glecgvomkaqmkfkhtxhi.supabase.co']) {
+  assert.throws(() => assertDeploymentIsolation('wms', url, 'production'))
+}
+assert.doesNotThrow(() => assertDeploymentIsolation(undefined, 'https://existing-tms.supabase.co', 'production'))
+assert.throws(() => assertDeploymentIsolation('warehouse', prod, 'production'))
+for (const path of ['/api/users/create', '/api/erp/aplicar', '/api/inventario/procesar', '/api/contratos/anular-servicio', '/solicitudes', '/contratos']) {
+  assert.equal(wmsRouteAllowed(path, 'POST'), false, path)
+}
+assert.equal(wmsRouteAllowed('/api/app-version', 'POST'), false)
+assert.equal(wmsRouteAllowed('/api/app-version', 'GET'), true)
+assert.equal(wmsRouteAllowed('/almacen/etiquetado', 'GET'), true)
+assert.equal(wmsRouteAllowed('/almacen-malicioso', 'GET'), false)
+console.log('PASS: WMS production rejects other databases and blocks TMS routes/API mutations; TMS mode is unchanged.')
