@@ -67,6 +67,7 @@ const extract = (file, name) => {
       ),
     );
     await db.exec(fs.readFileSync('supabase/migrations/20261228090005_outsourcing_booking_guards.sql','utf8'));
+    await db.exec(fs.readFileSync('supabase/migrations/20261228090006_outsourcing_active_account_policy.sql','utf8'));
     const parent = (
       await db.query("SELECT outsourcing_save($1,$2) id", [
         id(2),
