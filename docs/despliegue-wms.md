@@ -68,8 +68,8 @@ Cargue en **cada entorno** (no a nivel de repositorio, para no mezclarse con TMS
 | Tipo | Nombre | `wms-staging` | `wms-production` |
 |---|---|---|---|
 | Variable | `SUPABASE_PROJECT_REF` | `rquujukgtturdlkuzgdc` (ya existe) | referencia de WMS Producción |
-| Secreto | `SUPABASE_ACCESS_TOKEN` | ya existe | token de la cuenta Supabase dueña de WMS Producción |
-| Secreto | `SUPABASE_DB_PASSWORD` | ya existe | contraseña de la base WMS Producción |
+| Secreto | `WMS_SUPABASE_ACCESS_TOKEN` | ya existe | token de la cuenta Supabase dueña de WMS Producción |
+| Secreto | `WMS_SUPABASE_DB_PASSWORD` | ya existe | contraseña de la base WMS Producción |
 | Secreto | `WMS_VERCEL_TOKEN` | token de Vercel | token de Vercel |
 | Variable | `WMS_VERCEL_ORG_ID` | Team ID | Team ID |
 | Variable | `WMS_VERCEL_PROJECT_ID` | Project ID de `jrm-wms-staging` | Project ID de `jrm-wms` |
@@ -96,3 +96,5 @@ El workflow de esta rama congela un SHA de 40 caracteres, verifica primero los p
 Se retira el trigger automático de wms-staging-db.yml para que un cambio SQL no evite las verificaciones previas del pipeline completo. No ejecutar ese workflow legado para esta candidata.
 
 Las migraciones propias están en `supabase/wms/migrations/`; no pertenecen al plan de TMS. El paso `prepare-wms-migrations.cjs` las combina en el runner WMS después de validar el destino y antes de `supabase link`. Se conservan los nombres/versiones ya aplicados en WMS Staging. No copiar esos archivos al directorio de TMS para confirmarlos en Git. La guarda específica rechaza ese cruce y las colisiones de versiones.
+
+Los secretos de GitHub de la candidata son WMS_SUPABASE_ACCESS_TOKEN y WMS_SUPABASE_DB_PASSWORD. No se acepta fallback a SUPABASE_ACCESS_TOKEN/SUPABASE_DB_PASSWORD del repositorio: pueden pertenecer a TMS. Cada token WMS debe tener alcance únicamente a su proyecto. Vercel mantiene sus nombres de cliente habituales dentro de cada proyecto independiente.

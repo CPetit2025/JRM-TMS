@@ -6,12 +6,12 @@ const refs = { staging: 'rquujukgtturdlkuzgdc', production: 'glecgvomkaqmkfkhtxh
 async function main() {
  if (!refs[target]) throw Error('Invalid audit target')
  const report = { configured_ref_matches: process.env.SUPABASE_PROJECT_REF === refs[target], target, expected_ref: refs[target], missing: [], supabase: 'not checked', vercel: 'not checked' }
- for (const name of ['SUPABASE_ACCESS_TOKEN','SUPABASE_DB_PASSWORD','WMS_VERCEL_TOKEN','WMS_VERCEL_PROJECT_ID','WMS_VERCEL_ORG_ID','SUPABASE_PROJECT_REF']) {
+ for (const name of ['WMS_SUPABASE_ACCESS_TOKEN','WMS_SUPABASE_DB_PASSWORD','WMS_VERCEL_TOKEN','WMS_VERCEL_PROJECT_ID','WMS_VERCEL_ORG_ID','SUPABASE_PROJECT_REF']) {
    if (!process.env[name]) report.missing.push(name)
  }
  if (process.env.SUPABASE_PROJECT_REF && process.env.SUPABASE_PROJECT_REF !== refs[target]) report.supabase = 'configured project ref mismatch'
- if (process.env.SUPABASE_ACCESS_TOKEN) {
-   const response = await fetch(`https://api.supabase.com/v1/projects/${refs[target]}`, { headers: { Authorization: `Bearer ${process.env.SUPABASE_ACCESS_TOKEN}` }, signal: AbortSignal.timeout(20000) })
+ if (process.env.WMS_SUPABASE_ACCESS_TOKEN) {
+   const response = await fetch(`https://api.supabase.com/v1/projects/${refs[target]}`, { headers: { Authorization: `Bearer ${process.env.WMS_SUPABASE_ACCESS_TOKEN}` }, signal: AbortSignal.timeout(20000) })
    report.supabase = `HTTP ${response.status}`
    if (response.ok) {
      const project = await response.json()

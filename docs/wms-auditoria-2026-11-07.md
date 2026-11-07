@@ -59,4 +59,32 @@ Ante fallo transaccional, se conserva el estado anterior. Ante fallo de desplieg
 
 No declarar Staging validado por un build o smoke HTTP. Faltan inicio de sesión con cuenta WMS real, importación operativa autorizada, confirmación física, prueba de dispositivo/Windows y regresión remota. El workflow conserva por separado el smoke de despliegue del mismo SHA y exige aprobación expresa y evidencia Staging antes de habilitar Producción. La aprobación no debe otorgarse hasta completar todas las pruebas y recuperación pendientes.
 
-Estado de esta candidata antes de CI y auditoría remota: EN DESARROLLO. Actualizar con los resultados concretos de los workflows de esta ejecución antes de cerrar la entrega.
+## Resultado de esta ejecución (A–F)
+
+### A. Resultado ejecutivo
+
+Implementación y pruebas automatizadas completadas en PR #486, candidata `61e8f6ef41c355244771b40fab0bdff1f31b1439`, seguida del endurecimiento de secretos exclusivos WMS. No se aplicó una migración remota ni se publicó una nueva versión. TMS no recibió escrituras ni cambios de configuración. La separación, recepción transaccional y correcciones de impresión quedan disponibles para revisión.
+
+### B. Antes y después
+
+Las diferencias por componente y evidencia constan en la matriz anterior. La validación remota de CI ahora confirma también compilación completa Next, TypeScript, ESLint, pruebas PostgreSQL descartables y PDFs. No equivale a validación operativa del entorno Staging.
+
+### C. Entrega revisable
+
+PR: https://github.com/CPetit2025/JRM-TMS/pull/486, base `feature/warehouse-wms-portal`. Las migraciones WMS están separadas físicamente; el workflow de Producción TMS no se modifica. Manual: `docs/manual-wms.md`. Procedimiento: `docs/despliegue-wms.md`.
+
+### D. Verificación ejecutada
+
+CI https://github.com/CPetit2025/JRM-TMS/actions/runs/42370488304 y https://github.com/CPetit2025/JRM-TMS/actions/runs/42370520012: todos los pasos exitosos, incluido `npm run build` y publicación de artefactos PDF. Pruebas y límites descritos arriba. Faltan prueba remota autenticada, concurrencia entre sesiones reales, bootstrap completo, equipo Windows, impresora/escáner y recuperación de respaldo.
+
+### E. Dependencias externas concretas
+
+El preflight https://github.com/CPetit2025/JRM-TMS/actions/runs/42370488275 detuvo el flujo; validación dependiente, migración y despliegue fueron omitidos. La auditoría https://github.com/CPetit2025/JRM-TMS/actions/runs/42370488336 encontró HTTP 403 en acceso Supabase y ausencia de configuración dedicada Vercel; Producción carecía de referencia configurada. Se sustituyen nombres genéricos por exclusivos WMS para evitar heredar credenciales TMS del repositorio. Los valores anteriores presentes no prueban que existan credenciales exclusivas WMS.
+
+Responsable: administrador de Supabase/Vercel/GitHub. En cada environment `wms-staging` y `wms-production`, configurar secretos `WMS_SUPABASE_ACCESS_TOKEN`, `WMS_SUPABASE_DB_PASSWORD`, `WMS_VERCEL_TOKEN`; variables `WMS_VERCEL_PROJECT_ID`, `WMS_VERCEL_ORG_ID` y `SUPABASE_PROJECT_REF`. Esta última debe ser `rquujukgtturdlkuzgdc` en Staging y `glecgvomkaqmkfkhtxhi` en Producción. Tokens deben autorizar únicamente su proyecto WMS; no reemplazar secretos TMS. Configurar los proyectos dedicados Vercel sin despliegue Git automático y con su propia URL y claves Supabase. No publicar secretos en mensajes ni logs.
+
+Tras completar acceso, ejecutar primero Staging con el SHA revisado y realizar prueba operativa autorizada. Antes de Producción: respaldo/restore verificado, evidencia Staging del mismo SHA y nueva aprobación expresa. No se solicita esa aprobación mientras falte esta evidencia. La sincronización TMS→WMS y la producción del Excel desde ERP siguen siendo dependencias de integración explícitas, no funciones declaradas como entregadas.
+
+### F. Estado único
+
+**EN DESARROLLO**: candidata compila y supera pruebas automatizadas; instalación e integración operativa remotas pendientes. No se declara Staging validado ni Producción desplegada.

@@ -1,9 +1,6 @@
 name: WMS production access check
 
 on:
-  push:
-    branches: [feature/warehouse-wms-portal]
-    paths: ['.github/workflows/wms-production-access.yml']
   workflow_dispatch:
 
 permissions:
@@ -12,11 +9,11 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    environment: wms-staging
+    environment: wms-production
     steps:
       - name: Verify access to dedicated WMS production project
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.WMS_SUPABASE_ACCESS_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail

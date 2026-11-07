@@ -1,38 +1,24 @@
-name: WMS staging data preflight
-
+name: WMS legacy data preflight (metadata only)
 on:
-  push:
-    branches: [feature/warehouse-wms-portal]
-    paths:
-      - 'scripts/wms-staging-data-preflight.cjs'
-      - '.github/workflows/wms-staging-data-preflight.yml'
   workflow_dispatch:
-
 permissions:
   contents: read
-
-concurrency:
-  group: wms-staging-data-preflight
-  cancel-in-progress: false
-
 jobs:
-  inspect:
-    if: github.ref == 'refs/heads/feature/warehouse-wms-portal'
+  metadata:
     runs-on: ubuntu-latest
     environment: wms-staging
-    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - name: Install PostgreSQL client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
-      - name: Inspect source and staging schema without reading row values
+          node-version: '22'
+      - name: Verify isolated WMS metadata without TMS credentials or row exports
+        run: node scripts/wms-environment-audit.cjs
         env:
-          SUPABASE_PRODUCTION_DB_URL: ${{ secrets.SUPABASE_PRODUCTION_DB_URL }}
-          SUPABASE_STAGING_DB_URL: ${{ secrets.SUPABASE_STAGING_DB_URL }}
+          AUDIT_TARGET: staging
+          WMS_SUPABASE_ACCESS_TOKEN: ${{ secrets.WMS_SUPABASE_ACCESS_TOKEN }}
+          WMS_SUPABASE_DB_PASSWORD: ${{ secrets.WMS_SUPABASE_DB_PASSWORD }}
           SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
-        run: |
-          npm install --no-save pg@8
-          node scripts/wms-staging-data-preflight.cjs
+          WMS_VERCEL_TOKEN: ${{ secrets.WMS_VERCEL_TOKEN }}
+          WMS_VERCEL_PROJECT_ID: ${{ vars.WMS_VERCEL_PROJECT_ID }}
+          WMS_VERCEL_ORG_ID: ${{ vars.WMS_VERCEL_ORG_ID }}

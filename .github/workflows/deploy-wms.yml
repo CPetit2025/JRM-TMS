@@ -43,8 +43,8 @@ jobs:
       sha: ${{ steps.candidate.outputs.sha }}
     env:
       AUDIT_TARGET: ${{ inputs.target || 'staging' }}
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      WMS_SUPABASE_ACCESS_TOKEN: ${{ secrets.WMS_SUPABASE_ACCESS_TOKEN }}
+      WMS_SUPABASE_DB_PASSWORD: ${{ secrets.WMS_SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
       WMS_VERCEL_TOKEN: ${{ secrets.WMS_VERCEL_TOKEN }}
       WMS_VERCEL_PROJECT_ID: ${{ vars.WMS_VERCEL_PROJECT_ID }}
@@ -134,8 +134,8 @@ jobs:
     runs-on: ubuntu-24.04
     environment: wms-${{ inputs.target || 'staging' }}
     env:
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.WMS_SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.WMS_SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
     steps:
       - uses: actions/checkout@v4
