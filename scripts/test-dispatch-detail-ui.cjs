@@ -9,10 +9,10 @@ const noop = () => {}
 global.document = { addEventListener: noop, removeEventListener: noop, body: { style: {} }, getElementById: () => null }
 global.window = { setTimeout, clearTimeout }
 const cache = new Map(), calls = []
-let detail, files, econ, expenses = { data: [], error: null }, track = { data: [], error: null }
+let assignedResources = [], detail, files, econ, expenses = { data: [], error: null }, track = { data: [], error: null }
 const query = { select: () => query, eq: () => query, order: () => Object.assign(Promise.resolve(expenses), { limit: async () => track }), maybeSingle: async () => ({ data: { programming_notes: null }, error: null }) }
 const client = {
- rpc: async (name, args) => { calls.push({ name, args }); return name === 'get_dispatch_detail' ? { data: detail, error: null } : name === 'get_dispatch_detail_files' ? { data: files, error: null } : name === 'economic_closure_detail' ? { data: econ, error: null }
+ rpc: async (name, args) => { calls.push({ name, args }); return name === 'outsourcing_route_resources' ? { data: assignedResources, error:null } : name === 'get_dispatch_detail' ? { data: detail, error: null } : name === 'get_dispatch_detail_files' ? { data: files, error: null } : name === 'economic_closure_detail' ? { data: econ, error: null }
   : name === 'get_dispatch_evidence' ? { data: [{ kind: 'CHECKLIST', label: 'Checklist de la unidad', path: 'u/check.jpg', taken_at: '2026-10-30T20:50:00Z' }], error: null } : { data: { success: true, people: [], manual_closure: null }, error: null } },
  storage: { from: bucket => ({ createSignedUrl: async path => ({ data: { signedUrl: `https://x.supabase.co/storage/v1/object/sign/${bucket}/${path}?token=t` } }) }) },
  from: () => query,
@@ -73,6 +73,7 @@ test('tabs load the stop detail once and show real milestones, GPS and incidents
  calls.length = 0; detail = base(); let view, closed = 0, validated = null
  await act(async () => { view = create(React.createElement(DispatchDetailModal, { row: row(), onClose: () => closed++, onValidate: r => { validated = r } })) }); await act(flush)
  assert.deepEqual(calls.filter(c => c.name === 'get_dispatch_detail').map(c => c.args), [{ p_dispatch: 'd1', p_request: 's1' }])
+ assert.deepEqual(calls.filter(c=>c.name==='outsourcing_route_resources').map(c=>c.args),[{p_dispatch:'d1'}],'resources read only for this dispatch')
  assert.ok(view.root.findByProps({ 'aria-label': 'Detalle del despacho 10103 · RT-002314' }))
  assert.deepEqual(view.root.findAllByProps({ role: 'tab' }).map(t => t.props.children[1]), ['Resumen', 'Ruta y seguimiento', 'Documentos', 'Fotos y evidencias', 'Costos', 'Cierre del servicio', 'Historial'])
  assert.ok(!calls.some(c => c.name === 'get_dispatch_detail_files'), 'files load only when their tab opens')
@@ -84,7 +85,7 @@ test('tabs load the stop detail once and show real milestones, GPS and incidents
  assert.ok(text(view).includes('Sin estimar'), 'no invented estimated time')
  for (let i = 0; i < 5; i++) { await act(async () => button(view, 'Siguiente').props.onClick()); await act(flush) }
  assert.ok(!button(view, 'Siguiente')); await act(async () => button(view, 'Cerrar detalle').props.onClick()); assert.equal(closed, 1, 'Finalizar only closes')
- assert.deepEqual(calls.filter(c => !['get_dispatch_detail', 'get_tower_route_crew', 'get_dispatch_detail_files', 'get_dispatch_evidence', 'economic_closure_detail', 'dispatch_closure_status'].includes(c.name)), [], 'only reads')
+ assert.deepEqual(calls.filter(c => !['outsourcing_route_resources', 'get_dispatch_detail', 'get_tower_route_crew', 'get_dispatch_detail_files', 'get_dispatch_evidence', 'economic_closure_detail', 'dispatch_closure_status'].includes(c.name)), [], 'only reads')
  await act(async () => view.unmount())
 })
 
@@ -259,4 +260,14 @@ test('services closed at S/ 0 (internal own-fleet work) are not listed nor summe
  const view = await openCosts({})
  assert.ok(text(view).includes('Sin flete: operación interna con flota propia (no se valoriza).'))
  await act(async () => view.unmount())
+})
+
+
+test('confirmed outsourced support remains visible in the operational dispatch detail',async()=>{
+ detail=base();assignedResources=[{id:'assignment-crane',service:'GRUA',supplier_name:'Gruista QA',quantity:1,amount_pen:300,resource:{equipment:'GR-001',operator:'Operador QA'},dispatch_id:'d1'}];let view;
+ try{
+ await act(async()=>{view=create(React.createElement(DispatchDetailModal,{row:row(),onClose(){}}))});await act(flush);
+ assert.ok(text(view).includes('Recursos tercerizados vinculados'));
+ assert.ok(text(view).includes('Gruista QA'));assert.ok(text(view).includes('GR-001'));assert.ok(text(view).includes('Operador QA'));assert.ok(text(view).includes('300.00'));
+ }finally{assignedResources=[];if(view)await act(async()=>view.unmount())}
 })
