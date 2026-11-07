@@ -73,7 +73,7 @@ BEGIN
   UPDATE public.transport_outsourcing SET specification=p_spec,version=version+1,updated_at=now() WHERE id=o.id RETURNING id INTO v_id;
  END IF;
  INSERT INTO public.transport_outsourcing_events(outsourcing_id,stage,actor_id,actor_name,note,snapshot)
- VALUES(v_id,0,auth.uid(),coalesce((SELECT full_name FROM public.profiles WHERE id=auth.uid()),auth.uid()::text),'Ficha guardada',p_spec);
+ VALUES(v_id,0,auth.uid(),coalesce((SELECT coalesce(to_jsonb(p)->>'full_name',to_jsonb(p)->>'name',nullif(concat_ws(' ',to_jsonb(p)->>'first_name',to_jsonb(p)->>'last_name'),'')) FROM public.profiles p WHERE p.id=auth.uid()),auth.uid()::text),'Ficha guardada',p_spec);
  RETURN v_id;
 END $$;
 
@@ -152,7 +152,7 @@ BEGIN
  IF p_next=7 AND public.economic_closure_status(o.dispatch_id) IS DISTINCT FROM 'CERRADO' THEN RAISE EXCEPTION 'Complete primero el cierre económico del despacho'; END IF;
  UPDATE public.transport_outsourcing SET stage=p_next,version=version+1,updated_at=now() WHERE id=p_id;
  INSERT INTO public.transport_outsourcing_events(outsourcing_id,stage,actor_id,actor_name,note,evidence,snapshot)
- VALUES(p_id,p_next,auth.uid(),coalesce((SELECT full_name FROM public.profiles WHERE id=auth.uid()),auth.uid()::text),p_note,p_evidence,
+ VALUES(p_id,p_next,auth.uid(),coalesce((SELECT coalesce(to_jsonb(p)->>'full_name',to_jsonb(p)->>'name',nullif(concat_ws(' ',to_jsonb(p)->>'first_name',to_jsonb(p)->>'last_name'),'')) FROM public.profiles p WHERE p.id=auth.uid()),auth.uid()::text),p_note,p_evidence,
  jsonb_build_object('specification',s,'quotes',(SELECT coalesce(jsonb_agg(to_jsonb(z)),'[]') FROM public.transport_outsourcing_quotes z WHERE outsourcing_id=p_id AND selected),'dispatch_id',CASE WHEN p_next=5 THEN d.id ELSE o.dispatch_id END));
 END $$;
 
@@ -172,7 +172,7 @@ BEGIN
  VALUES(p_id,p_service,p_supplier,p_amount,p_terms,p_evidence,auth.uid()) RETURNING id INTO v_id;
  UPDATE public.transport_outsourcing SET version=version+1,updated_at=now() WHERE id=p_id;
  INSERT INTO public.transport_outsourcing_events(outsourcing_id,stage,actor_id,actor_name,note,evidence,snapshot)
- VALUES(p_id,2,auth.uid(),coalesce((SELECT full_name FROM public.profiles WHERE id=auth.uid()),auth.uid()::text),'Cotización registrada',p_evidence,jsonb_build_object('quote_id',v_id,'amount_pen',p_amount,'supplier_id',p_supplier,'service',p_service));
+ VALUES(p_id,2,auth.uid(),coalesce((SELECT coalesce(to_jsonb(p)->>'full_name',to_jsonb(p)->>'name',nullif(concat_ws(' ',to_jsonb(p)->>'first_name',to_jsonb(p)->>'last_name'),'')) FROM public.profiles p WHERE p.id=auth.uid()),auth.uid()::text),'Cotización registrada',p_evidence,jsonb_build_object('quote_id',v_id,'amount_pen',p_amount,'supplier_id',p_supplier,'service',p_service));
  RETURN v_id;
 END $$;
 REVOKE ALL ON FUNCTION public.outsourcing_can_read(uuid),public.outsourcing_save(uuid,jsonb,integer),public.outsourcing_transition(uuid,integer,integer,text,text,uuid[],uuid),public.outsourcing_add_quote(uuid,text,uuid,numeric,text,text) FROM PUBLIC,anon;

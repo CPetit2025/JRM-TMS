@@ -7,7 +7,7 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12,'0')}`
  const db = new PGlite()
  try {
   await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE SCHEMA auth; CREATE SCHEMA storage; GRANT USAGE ON SCHEMA auth TO authenticated;
-   CREATE TABLE auth.users(id uuid PRIMARY KEY); CREATE TABLE profiles(id uuid,full_name text);
+   CREATE TABLE auth.users(id uuid PRIMARY KEY); CREATE TABLE profiles(id uuid,first_name text,last_name text);
    CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('test.user',true),'')::uuid $$;
    CREATE FUNCTION is_active_tms_user() RETURNS boolean LANGUAGE sql STABLE AS $$SELECT auth.uid() IS NOT NULL$$;
    CREATE FUNCTION can_access_site(uuid) RETURNS boolean LANGUAGE sql STABLE AS $$SELECT coalesce(current_setting('test.site',true),'yes')<>'no'$$;
@@ -23,7 +23,7 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12,'0')}`
    CREATE FUNCTION economic_closure_status(uuid) RETURNS text LANGUAGE sql STABLE AS $$SELECT current_setting('test.closure',true)$$;
    CREATE TABLE storage.buckets(id text PRIMARY KEY,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
    CREATE TABLE storage.objects(bucket_id text,name text); ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
-   INSERT INTO auth.users VALUES('${id(1)}'); INSERT INTO profiles VALUES('${id(1)}','Responsable prueba');
+   INSERT INTO auth.users VALUES('${id(1)}'); INSERT INTO profiles VALUES('${id(1)}','Responsable','prueba');
    INSERT INTO clients VALUES('${id(10)}','Cliente QA'); INSERT INTO contracts VALUES('${id(9)}','OT-QA','${id(10)}');
    INSERT INTO transport_requests VALUES('${id(2)}','${id(3)}','${id(9)}','RT-1');
    INSERT INTO suppliers VALUES('${id(4)}',true,'TRANSPORTE','Transportista'),('${id(8)}',true,'GRUA','Gruista');
