@@ -35,7 +35,7 @@ type Catalog = {
   [key: string]: string | number | boolean | null;
 };
 type Context = {
-  outsourcing: { specification: Record<string, unknown>; revision: number };
+  outsourcing: { specification: Record<string, unknown>; revision: number;stage:number;review_status:string };
   requirements: { service: OutsourcingService; quantity: number }[];
   assignments: AssignedResource[];
   suppliers: Supplier[];
@@ -98,6 +98,8 @@ export function ResourceManager({
     supplier = context?.suppliers.find((s) => s.id === form.supplier_id);
   const required =
     context?.requirements.find((r) => r.service === service)?.quantity || 0;
+  const requested = service==='FLETE' ? context?.outsourcing.specification : (context?.outsourcing.specification.services as {kind:string;details?:Record<string,string>}[]|undefined)?.find(s=>s.kind===service)?.details;
+  const assignable=context?.outsourcing.review_status==='ACTIVE'&&context.outsourcing.stage>0&&context.outsourcing.stage<6;
   const assigned = assignments
     .filter((a) => a.state !== "CANCELLED")
     .reduce((s, a) => s + Number(a.quantity), 0);
@@ -214,7 +216,7 @@ export function ResourceManager({
         {canWrite("compras-tercerizaciones") && (
           <button
             className={button}
-            disabled={busy || assigned >= required}
+            disabled={busy || assigned >= required || !assignable}
             onClick={() => open(null)}
           >
             Asignar proveedor / recurso
@@ -353,6 +355,7 @@ export function ResourceManager({
               void save();
             }}
           >
+            <details open className="rounded-lg border border-blue-200 bg-blue-50 p-3"><summary className="cursor-pointer text-sm font-semibold">Requerimiento original · Cantidad {required}</summary><dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">{RESOURCE_FIELDS[service].filter(([key])=>requested?.[key]!=null&&requested[key]!=='').map(([key,label])=><div key={key}><dt className="text-slate-500">{label}</dt><dd>{String(requested?.[key])}</dd></div>)}</dl><p className="mt-2 text-xs">Registre abajo las características ofrecidas por el proveedor. La aprobación verifica los mínimos técnicos.</p></details>
             <div className="grid gap-3 sm:grid-cols-2">
               <label>
                 Proveedor
