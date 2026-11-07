@@ -66,6 +66,7 @@ const extract = (file, name) => {
         "utf8",
       ),
     );
+    await db.exec(fs.readFileSync('supabase/migrations/20261228090005_outsourcing_booking_guards.sql','utf8'));
     const parent = (
       await db.query("SELECT outsourcing_save($1,$2) id", [
         id(2),
@@ -163,6 +164,12 @@ const extract = (file, name) => {
           },
         ])
       ).rows[0].id;
+    await db.query("UPDATE transport_outsourcing_assignments SET state='DRAFT' WHERE id=ANY($1::uuid[])",[[a,b]]);
+    await assert.rejects(schedule(null),/Confirme y seleccione/,'pending procurement cannot be bypassed');
+    await db.query("UPDATE transport_outsourcing_assignments SET state='CONFIRMED' WHERE id=ANY($1::uuid[])",[[a,b]]);
+    await db.query("UPDATE transport_requests SET status='ASIGNADA' WHERE id=$1",[id(2)]);
+    await assert.rejects(schedule(a),/ya asignada/,'cannot adopt unrelated manual dispatch with second-unit exception');
+    await db.query("UPDATE transport_requests SET status='APROBADA' WHERE id=$1",[id(2)]);
     const crane=(await db.query('SELECT outsourcing_assignment_save($1,$2,$3,null,null,$4) id',[parent,'GRUA',{supplier_id:id(8),quantity:1,starts_at:'2026-12-01T08:00:00-05:00',ends_at:'2026-12-01T20:00:00-05:00',quoted_amount:300,confirmed_amount:300,currency:'PEN',exchange_rate:1,terms:'Servicio completo con operador',resource:{equipment:'GR-001',capacity:'100',reach:'100',operator:'Gruista',operator_document:'22222222',certificates:'Vigentes',location:'Obra',maneuver_review:'Ingeniero QA: tabla, radio y accesorios revisados para maniobra',documents_verified:'true'}},'Grúa para operación'])).rows[0].id;
     await db.query("SELECT outsourcing_assignment_action($1,1,'APPROVE','Evaluación de grúa y costo')",[crane]);await db.query("SELECT outsourcing_assignment_action($1,2,'CONFIRM','Grúa confirmada por proveedor')",[crane]);
     const d1 = await schedule(a,[crane]);
