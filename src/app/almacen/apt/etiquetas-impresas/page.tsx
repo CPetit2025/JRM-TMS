@@ -1,5 +1,6 @@
 'use client'
 
+import { createPortal } from 'react-dom'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ClipboardList, PackageCheck, Printer, RefreshCw, Search, X } from 'lucide-react'
@@ -7,6 +8,7 @@ import { Code128Barcode } from '@/components/warehouse/Code128Barcode'
 
 type ReceiptPackage = {
   package_code: string
+  source_customer_name: string | null
   source_document_no: string
   source_contract_code: string | null
   source_lot: string
@@ -69,6 +71,8 @@ export default function AptReceiptControlPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [printingCode, setPrintingCode] = useState<string | null>(null)
   const [printLabel, setPrintLabel] = useState<ReceiptPackage | null>(null)
+  const [confirmation,setConfirmation]=useState<{row:ReceiptPackage;reason:string;eventId:string}|null>(null)
+  const [confirming,setConfirming]=useState(false)
   const [detail, setDetail] = useState<ReceiptGroup | null>(null)
 
   const load = useCallback(async (manual = false) => {
@@ -77,7 +81,7 @@ export default function AptReceiptControlPage() {
     const client = createClient()
     const { data, error: queryError } = await client
       .from('wh_packages')
-      .select('package_code,source_document_no,source_contract_code,source_lot,source_product_code,source_warehouse,source_date,description,quantity,unit,weight_kg,sequence_no,sequence_total,source_movement_key,label_print_count,status,created_at')
+      .select('source_customer_name,package_code,source_document_no,source_contract_code,source_lot,source_product_code,source_warehouse,source_date,description,quantity,unit,weight_kg,sequence_no,sequence_total,source_movement_key,label_print_count,status,created_at')
       .eq('source_system', 'ERP')
       .gt('label_print_count', 0)
       .neq('status', 'VOID')
@@ -126,7 +130,7 @@ export default function AptReceiptControlPage() {
   }, [])
 
   useEffect(() => {
-    void load()
+    const initialLoad = window.setTimeout(() => void load(), 0)
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') void load()
     }, 30000)
@@ -135,6 +139,7 @@ export default function AptReceiptControlPage() {
     window.addEventListener('afterprint', afterPrint)
     window.addEventListener('keydown', onKeyDown)
     return () => {
+      window.clearTimeout(initialLoad)
       window.clearInterval(timer)
       window.removeEventListener('afterprint', afterPrint)
       window.removeEventListener('keydown', onKeyDown)
@@ -152,7 +157,7 @@ export default function AptReceiptControlPage() {
           documentNo: row.source_document_no,
           contractCode: row.source_contract_code,
           lot: row.source_lot,
-          customerName: customers[key] || validations[key]?.customer_name || null,
+          customerName: row.source_customer_name || customers[key] || validations[key]?.customer_name || null,
           productCode: row.source_product_code,
           description: row.description,
           unit: row.unit,
@@ -172,7 +177,7 @@ export default function AptReceiptControlPage() {
     for (const group of byItem.values()) {
       const validation = validations[group.sourceMovementKey]
       group.validations = validation ? [validation] : []
-      group.customerName = customers[group.sourceMovementKey] || validation?.customer_name || group.customerName
+      group.customerName = group.packages[0]?.source_customer_name || customers[group.sourceMovementKey] || validation?.customer_name || group.customerName
     }
     return [...byItem.values()].sort((a, b) =>
       a.documentNo.localeCompare(b.documentNo, 'es', { numeric: true }) ||
@@ -194,25 +199,22 @@ export default function AptReceiptControlPage() {
     profiles[row.validated_by] || `Usuario ${row.validated_by.slice(0, 8)}`,
   ))]
   const printExistingPackage = async (row: ReceiptPackage) => {
-    if (printingCode) return
+    if (printingCode || confirmation) return
     const reason = window.prompt('Motivo de reimpresión de la etiqueta:')
     if (!reason?.trim()) return
     setPrintingCode(row.package_code)
     setError('')
-    const { error: rpcError } = await createClient().rpc('wh_reprint_label', {
-      p_package_code: row.package_code,
-      p_reason: reason.trim(),
-    })
-    if (rpcError) {
-      setError(errorText(rpcError))
-      setPrintingCode(null)
-      return
-    }
-    setRows(current => current.map(item => item.package_code === row.package_code
-      ? { ...item, label_print_count: item.label_print_count + 1 }
-      : item))
+    setConfirmation({row,reason:reason.trim(),eventId:crypto.randomUUID()})
     setPrintLabel(row)
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => window.print()))
+  }
+
+  const confirmReprint=async()=>{
+    if(!confirmation||confirming)return
+    setConfirming(true)
+    const {error:rpcError}=await createClient().rpc('wh_confirm_label_print',{p_package_codes:[confirmation.row.package_code],p_reason:confirmation.reason,p_event_id:confirmation.eventId})
+    if(rpcError){setError(errorText(rpcError));setConfirming(false);return}
+    setConfirmation(null);setConfirming(false);await load()
   }
 
   return <div className="w-full min-w-0 space-y-5">
@@ -302,11 +304,12 @@ export default function AptReceiptControlPage() {
       </section>
     </div>}
 
-    {printLabel && <div id="apt-reprint-root" aria-hidden="true">
+    {confirmation && <div role="alertdialog" aria-modal="true" aria-labelledby="wms-reprint-confirm" className="fixed inset-x-2 bottom-2 z-[2147483002] mx-auto max-w-xl rounded-xl border bg-white p-4 shadow-2xl print:hidden"><h2 id="wms-reprint-confirm" className="font-bold">¿La etiqueta se reimprimió correctamente?</h2><p className="text-sm">El código de barras se conserva. Confirme para registrar la reimpresión.</p><div className="mt-3 flex gap-2"><button disabled={confirming} onClick={()=>void confirmReprint()} className="rounded bg-[#002855] p-2 text-white">Confirmar reimpresión</button><button disabled={confirming} onClick={()=>{setConfirmation(null);setPrintingCode(null)}} className="rounded border p-2">Cancelar registro</button></div></div>}
+    {printLabel && typeof document !== 'undefined' && createPortal(<div id="apt-reprint-root" aria-hidden="true">
       <article className="wh-label">
         <div className="wh-label-head">
           <div className="wh-logo"><img src="/logo-jrm.png" alt="JRM"/></div>
-          <div className="wh-label-meta"><div><b>IPT:</b> {printLabel.source_document_no}</div><div><b>OT/Contrato:</b> {printLabel.source_contract_code || '—'}</div><div><b>Lote:</b> {printLabel.source_lot || '—'} · {printLabel.source_warehouse}</div></div>
+          <div className="wh-label-meta"><div><b>Cliente:</b> {printLabel.source_customer_name || customers[printLabel.source_movement_key] || 'Por registrar'}</div><div><b>IPT:</b> {printLabel.source_document_no}</div><div><b>OT/Contrato:</b> {printLabel.source_contract_code || '—'}</div><div><b>Lote:</b> {printLabel.source_lot || '—'} · {printLabel.source_warehouse}</div></div>
         </div>
         <b className="wh-sku">{printLabel.source_product_code}</b>
         <div className="wh-description">{printLabel.description}</div>
@@ -314,16 +317,17 @@ export default function AptReceiptControlPage() {
         <b className="wh-code">{printLabel.package_code}</b>
         <div className="wh-footer"><span><b>IPT:</b> {printLabel.source_document_no}<br/><b>Fecha:</b> {printLabel.source_date}</span><strong>{numberFmt.format(printLabel.quantity)} {printLabel.unit || ''} · {printLabel.weight_kg === null ? 'Peso por registrar' : `${numberFmt.format(printLabel.weight_kg)} kg`}</strong><span>{printLabel.sequence_no}/{printLabel.sequence_total}</span></div>
       </article>
-    </div>}
+    </div>,document.body)}
 
     <style jsx global>{`
       #apt-reprint-root{display:none}
       @page{size:152.4mm 101.6mm;margin:0}
       @media print{
         html,body{width:152.4mm!important;min-width:0!important;margin:0!important;padding:0!important}
+        body>:not(#apt-reprint-root){display:none!important}
         body *{visibility:hidden!important}
         #apt-reprint-root,#apt-reprint-root *{visibility:visible!important}
-        #apt-reprint-root{display:block!important;position:absolute!important;inset:0 auto auto 0!important;width:152.4mm!important;height:101.6mm!important;margin:0!important;padding:0!important;background:#fff!important}
+        #apt-reprint-root{display:block!important;position:static!important;width:152.4mm!important;height:auto!important;margin:0!important;padding:0!important;background:#fff!important}
         .wh-label{box-sizing:border-box;display:flex!important;width:152.4mm!important;height:101.6mm!important;flex-direction:column;overflow:hidden!important;padding:2mm!important;border:1px dashed #6b8198!important;background:white!important;color:black!important}
         .wh-label-head{display:flex;height:18mm;min-height:18mm;gap:2mm;border-bottom:1mm solid #002855;padding-bottom:1mm}
         .wh-logo{display:flex;width:27mm;flex:none;align-items:center;justify-content:center;background:#002855;padding:1mm}

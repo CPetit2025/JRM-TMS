@@ -4,7 +4,7 @@ param(
   [switch]$Instalar,
   [switch]$Programar,
   [string]$Entrada = 'C:\WMS\entrada.xlsx',
-  [string]$Url = 'https://jrm-tms-git-feature-warehouse-wms-portal-cpetit2025s-projects.vercel.app',
+  [string]$Url = 'https://jrm-wms-staging.vercel.app',
   [string]$Hora = '07:00',
   [switch]$Revisar
 )
@@ -29,9 +29,9 @@ function Register-WmsTask {
 
 if ($Instalar) {
   if (-not (Test-Path -LiteralPath $Entrada -PathType Leaf)) { throw "No existe $Entrada" }
-  $hostWms = ([Uri]$Url).Host
-  if ($hostWms -notlike '*git-feature-warehouse-wms-portal*' -or $hostWms -notlike '*.vercel.app' -or $hostWms -eq 'jrm-tms.vercel.app') {
-    throw 'La instalación solo admite el preview WMS; producción queda bloqueada.'
+  $uriWms = [Uri]$Url
+  if ($uriWms.Scheme -ne 'https' -or $uriWms.Host -notin @('jrm-wms-staging.vercel.app','jrm-wms.vercel.app') -or $uriWms.UserInfo -or $uriWms.Query -or $uriWms.Fragment -or $uriWms.AbsolutePath -ne '/' -or -not $uriWms.IsDefaultPort) {
+    throw 'La instalación requiere el sitio independiente de WMS Staging o WMS Producción.'
   }
   if (-not (Test-Path $node)) { throw 'Instale Node.js LTS y vuelva a ejecutar.' }
   New-Item -ItemType Directory -Force (Join-Path $destino 'logs'), (Join-Path $destino 'trabajo') | Out-Null
@@ -62,7 +62,7 @@ try {
   $work = Join-Path $destino 'trabajo'
   $file = Join-Path $work 'entrada.xlsx'
   Copy-Item -LiteralPath $cfg.entrada -Destination $file -Force
-  $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+  $hash = $cfg.url + '|' + (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
   $state = Join-Path $destino 'ultimo-hash.txt'
   if (-not $Revisar -and (Test-Path $state) -and (Get-Content $state -Raw).Trim() -eq $hash) {
     Write-Output 'Sin cambios en C:\WMS\entrada.xlsx; no se volvió a cargar.'
@@ -74,8 +74,13 @@ try {
     $env:WMS_CLAVE = $cred.GetNetworkCredential().Password
     $extra = @()
     if ($Revisar) { $extra = @('--revisar') }
-    & $node (Join-Path $destino 'cargar-entrada.mjs') @extra $file
-    if ($LASTEXITCODE -ne 0) { throw 'Falló la carga WMS; revise el log.' }
+    $ok = $false
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+      & $node (Join-Path $destino 'cargar-entrada.mjs') @extra $file
+      if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+      if ($attempt -lt 3) { Start-Sleep -Seconds (5 * $attempt) }
+    }
+    if (-not $ok) { throw 'Falló la carga WMS tras tres intentos; revise el log.' }
     if (-not $Revisar) { $hash | Set-Content $state -NoNewline }
     $code = 0
   }

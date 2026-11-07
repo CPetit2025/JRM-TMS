@@ -5,7 +5,8 @@
   "outputDirectory": ".next",
   "git": {
     "deploymentEnabled": {
-      "master": false
+      "master": false,
+      "codex/wms-integration-audit": false
     }
   }
 }

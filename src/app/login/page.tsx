@@ -14,7 +14,8 @@ import { hasWebAccess } from '@/lib/nav/web-access'
 export default function LoginPage() {
   const router = useRouter()
   const pathname = usePathname()
-  const warehouseLogin = pathname === '/almacen/login'
+  const wmsDeployment = process.env.NEXT_PUBLIC_DEPLOYMENT_SYSTEM === 'wms'
+  const warehouseLogin = wmsDeployment || pathname === '/almacen/login'
   const [isLoading, setIsLoading] = useState(false)
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
   const [androidInstallerUrl, setAndroidInstallerUrl] = useState<string | null>(null)
@@ -105,13 +106,13 @@ export default function LoginPage() {
         let permissions: string[] = []
         
         if (profileData && profileData.roles) {
-           const roleObj = Array.isArray(profileData.roles) ? profileData.roles[0] : (profileData.roles as any)
+           const roleObj = Array.isArray(profileData.roles) ? profileData.roles[0] : (profileData.roles as {name?:string;permissions?:string[]}|null)
            roleName = roleObj?.name || 'operador'
            permissions = roleObj?.permissions || []
         }
 
         const hasWarehouseAccess = roleName === 'Administrador' || permissions.some(p => ['almacen-lectura', 'almacen-etiquetado', 'almacen-picking', 'almacen-packing', 'almacen-carga', 'almacen-supervisor', 'apt', 'apt-carga'].some(key => p === key || p.startsWith(`${key}:`)))
-        const wantsWarehouse = selectedSystem === 'almacen'
+        const wantsWarehouse = wmsDeployment
         if (profileData?.employee_type === 'CONDUCTOR' || (wantsWarehouse ? !hasWarehouseAccess : !hasWebAccess(roleName, permissions) && !isDispatchAuditorRole(roleName, permissions))) {
           await supabase.auth.signOut()
           throw new Error(wantsWarehouse ? 'Tu usuario no tiene acceso al Portal de Almacén. Solicita el permiso al administrador.' : 'Tu usuario no tiene acceso al TMS. Solicita el permiso al administrador.')
@@ -124,8 +125,8 @@ export default function LoginPage() {
         toast.success('Sesión iniciada correctamente')
         router.push(wantsWarehouse ? '/almacen' : '/')
       }
-    } catch (err: any) {
-      toast.error(err.message)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo iniciar sesión.')
       setIsLoading(false)
     }
   }
@@ -149,19 +150,19 @@ export default function LoginPage() {
             <span className="shrink-0 text-[10px] font-semibold tracking-wider text-blue-200 sm:text-xs lg:hidden">JRM S.A.C.</span>
           </div>
           <p className="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-blue-200 sm:text-sm">JRM · Ecosistema logístico</p>
-          <h1 className="mb-3 text-2xl font-bold leading-tight sm:text-3xl lg:mb-5 lg:text-4xl">Una plataforma para toda la operación</h1>
+          <h1 className="mb-3 text-2xl font-bold leading-tight sm:text-3xl lg:mb-5 lg:text-4xl">{wmsDeployment ? 'Recepción y almacén' : 'Una plataforma para toda la operación'}</h1>
           <p className="max-w-lg text-sm leading-relaxed text-blue-100 sm:text-base lg:text-lg">
-            Accede a las herramientas de transporte y almacén con una sola cuenta corporativa.
+            {wmsDeployment ? 'Ingresa con tu cuenta de WMS para validar ingresos y controlar sus unidades logísticas.' : 'Gestiona transporte, despacho y seguimiento con tu cuenta de TMS.'}
           </p>
           <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:mt-9">
-            <div className={`rounded-xl border p-4 ${selectedSystem === 'tms' ? 'border-white/50 bg-white/15' : 'border-white/20 bg-[#001f43]/35'}`}>
+            {!wmsDeployment && <div className={`rounded-xl border p-4 ${selectedSystem === 'tms' ? 'border-white/50 bg-white/15' : 'border-white/20 bg-[#001f43]/35'}`}>
               <p className="text-sm font-bold sm:text-base">TMS</p>
               <p className="mt-1 text-xs leading-relaxed text-blue-100 sm:text-sm">Transporte, despacho y seguimiento de entregas</p>
-            </div>
-            <div className={`rounded-xl border p-4 ${selectedSystem === 'almacen' ? 'border-white/50 bg-white/15' : 'border-white/20 bg-[#001f43]/35'}`}>
+            </div>}
+            {wmsDeployment && <div className={`rounded-xl border p-4 ${selectedSystem === 'almacen' ? 'border-white/50 bg-white/15' : 'border-white/20 bg-[#001f43]/35'}`}>
               <p className="text-sm font-bold sm:text-base">Almacén</p>
               <p className="mt-1 text-xs leading-relaxed text-blue-100 sm:text-sm">Recepción, inventario y preparación de pedidos</p>
-            </div>
+            </div>}
           </div>
           <div className="mt-5 flex items-start gap-3 lg:mt-12 lg:gap-4">
             <div aria-hidden="true" className="mt-1.5 h-1 w-8 shrink-0 bg-[#cf152d] lg:mt-2 lg:w-16"></div>
@@ -182,7 +183,7 @@ export default function LoginPage() {
         <div className="w-full max-w-md">
           <div className="mb-6 text-center lg:mb-10">
             <h2 className="text-2xl font-bold text-slate-800 sm:text-3xl">{resetOpen ? 'Recuperar contraseña' : 'Iniciar Sesión'}</h2>
-            <p className="mt-2 text-sm text-slate-500 sm:text-base">{resetOpen ? 'Te enviamos un enlace a tu correo corporativo' : 'Elige el sistema y accede con tu cuenta corporativa'}</p>
+            <p className="mt-2 text-sm text-slate-500 sm:text-base">{resetOpen ? 'Te enviamos un enlace a tu correo corporativo' : wmsDeployment ? 'Accede con tu cuenta de WMS' : 'Elige el sistema y accede con tu cuenta corporativa'}</p>
           </div>
 
           {resetOpen ? <form onSubmit={handleReset} className="space-y-4 sm:space-y-6">
@@ -208,8 +209,8 @@ export default function LoginPage() {
               <label htmlFor="login-system" className="mb-2 block text-sm font-medium text-slate-700">Sistema al que deseas ingresar</label>
               <select id="login-system" value={selectedSystem} onChange={event => setSelectedSystem(event.target.value as 'tms' | 'almacen')}
                 className="min-h-12 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none transition-all focus:border-[#002855] focus:ring-2 focus:ring-[#002855]">
-                <option value="tms">TMS · Transporte y despacho</option>
-                <option value="almacen">Almacén · Operación WMS</option>
+                {!wmsDeployment && <option value="tms">TMS · Transporte y despacho</option>}
+                {wmsDeployment && <option value="almacen">Almacén · Operación WMS</option>}
               </select>
             </div>
             <div>
@@ -267,7 +268,7 @@ export default function LoginPage() {
           <div className="mt-5 text-center text-sm text-slate-600 sm:mt-8">
             ¿No tienes cuenta?{' '}
             <button 
-              onClick={() => setIsRegisterModalOpen(true)}
+              onClick={() => { if (wmsDeployment) toast.info('Solicita tu cuenta al administrador de WMS.'); else setIsRegisterModalOpen(true) }}
               type="button"
               className="min-h-11 text-[#cf152d] hover:text-red-700 font-semibold hover:underline"
             >
@@ -296,7 +297,7 @@ export default function LoginPage() {
       </main>
 
       <PublicRegistrationModal 
-        isOpen={isRegisterModalOpen}
+        isOpen={!wmsDeployment && isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
       />
     </div>

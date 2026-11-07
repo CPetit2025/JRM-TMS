@@ -4,10 +4,10 @@
 const { readFileSync } = require('node:fs')
 const path = require('node:path')
 const root = path.resolve(__dirname, '..')
-const sql = readFileSync(path.join(root, 'supabase/migrations/20261225103000_warehouse_wms_core.sql'), 'utf8')
-const receiptSource = readFileSync(path.join(root, 'supabase/migrations/20261225104000_wms_receipt_source_import.sql'), 'utf8')
-const receiptInbox = readFileSync(path.join(root, 'supabase/migrations/20261225105000_wms_receipt_inbox_refresh_customer_lookup.sql'), 'utf8')
-const receiptCustomerZ = readFileSync(path.join(root, 'supabase/migrations/20261225105500_wms_receipt_customer_column_z.sql'), 'utf8')
+const sql = readFileSync(path.join(root, 'supabase/wms/migrations/20261225103000_warehouse_wms_core.sql'), 'utf8')
+const receiptSource = readFileSync(path.join(root, 'supabase/wms/migrations/20261225104000_wms_receipt_source_import.sql'), 'utf8')
+const receiptInbox = readFileSync(path.join(root, 'supabase/wms/migrations/20261225105000_wms_receipt_inbox_refresh_customer_lookup.sql'), 'utf8')
+const receiptCustomerZ = readFileSync(path.join(root, 'supabase/wms/migrations/20261225105500_wms_receipt_customer_column_z.sql'), 'utf8')
 const receiptImport = readFileSync(path.join(root, 'src/app/almacen/apt/etiquetado/page.tsx'), 'utf8')
 const receiptRobot = readFileSync(path.join(root, 'scripts/wms-auto/cargar-entrada.mjs'), 'utf8')
 const labeling = readFileSync(path.join(root, 'src/app/almacen/etiquetado/page.tsx'), 'utf8')
@@ -41,7 +41,7 @@ const checks = [
   ['receipt customer lookup checks the lot OT against inventory and contracts', /inv_ot_cliente\(nullif\(public\.apt_ot_raiz\(r\.lote\),''\)\)/.test(receiptInbox) && /inv_ot_cliente\(nullif\(public\.inv_ot\(r\.contract_code\),''\)\)/.test(receiptInbox)],
   ['unprinted generated LPNs can be resumed and previewed without generating duplicate codes', /PENDING_PRINT/.test(receiptInbox) && labeling.includes('pending_labels') && labeling.includes('Vista previa') && labeling.includes('no se generarán códigos duplicados')],
   ['physical receipt defaults to full packages plus a remainder and derives its balance automatically', labeling.includes("useState<'TOTAL' | 'PACKAGES'>('PACKAGES')") && labeling.includes('Paquetes completos + saldo') && labeling.includes('packageBalance = Number((physicalToValidate - Number(capacity) * Number(completePackages))') && labeling.includes('Unidades en el saldo · automático') && labeling.includes('packageBreakdownValid')],
-  ['Windows robot targets only WMS receipt import and is preview-locked', /git-feature-warehouse-wms-portal/.test(receiptRobot) && receiptRobot.includes('/almacen/apt/etiquetado') && !receiptRobot.toLowerCase().includes('salida.xlsx')],
+  ['Windows robot targets only dedicated WMS receipt import', receiptRobot.includes('validateWmsTarget(url)') && receiptRobot.includes('/almacen/apt/etiquetado') && !receiptRobot.toLowerCase().includes('salida.xlsx')],
   ['legacy inventory APT upload route cannot overwrite receipt source', apt.includes("redirect('/almacen/apt/etiquetado')") || apt.includes('redirect("/almacen/apt/etiquetado")')],
   ['partial delivery retains an outstanding balance and requires a supervisor', /LOAD_PARTIAL/.test(sql) && /remaining_qty/.test(task) && /Autorizar carga parcial/.test(task)],
   ['RECOJO and TRASLADO do not create warehouse pick tasks', /upper\(coalesce\(NEW\.request_type,'DESPACHO'\)\) IN \('RECOJO','TRASLADO'\) THEN RETURN NEW/.test(sql) && /upper\(coalesce\(r\.request_type,'DESPACHO'\)\) NOT IN \('RECOJO','TRASLADO'\)/.test(sql)],
@@ -59,7 +59,7 @@ const checks = [
 checks.push(
   ['WMS import reads absolute Excel column Z and known customer header aliases', receiptImport.includes('const columnZIndex = 25 - sourceRange.s.c') && receiptImport.includes('text(row[columnZIndex])') && receiptImport.includes("get(row,'cliente')") && receiptImport.includes("get(row,'razonsocial')") && receiptImport.includes('customer_name:customerName')],
   ['WMS importer reports how many Excel clients were detected after upload', receiptImport.includes('Clientes detectados en columna Z') && receiptImport.includes('customerRows')],
-  ['WMS import version reprocesses an already-loaded workbook to refresh customer data', receiptImport.includes('customer-column-z-v1') && receiptImport.includes('const fileHash=await sha256(bytes)')],
+  ['WMS import version reprocesses an already-loaded workbook to refresh customer data', receiptImport.includes('customer-column-z-v1') && receiptImport.includes('fileHash=await sha256(bytes)')],
   ['Excel customer from column Z takes precedence over TMS contract lookup in inbox and validation', receiptCustomerZ.includes("coalesce(nullif(r.customer_name,''),nullif(c.customer_name,'')") && receiptCustomerZ.includes("coalesce(nullif(v_receipt.customer_name,''),v_customer") && receiptCustomerZ.includes("THEN 'EXCEL'")],
 )
 checks.push(

@@ -1,0 +1,195 @@
+name: Deploy WMS (Supabase + Vercel)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Entorno WMS
+        type: choice
+        options: [staging, production]
+        default: staging
+      candidate_sha:
+        description: SHA completo de la versión candidata revisada
+        type: string
+        required: true
+      production_approved:
+        description: Aprobación expresa final del propietario para Producción
+        type: boolean
+        default: false
+      staging_evidence_run:
+        description: Run exitoso de este workflow con evidencia Staging del mismo SHA (solo Producción)
+        type: string
+        default: ''
+  push:
+    branches: [codex/wms-integration-audit]
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  JRM_APP: wms-${{ inputs.target || 'staging' }}
+  SUPABASE_TARGET_STRICT: '1'
+
+concurrency:
+  group: ${{ inputs.target == 'production' && 'wms-production-database' || 'wms-staging-database' }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    environment: wms-${{ inputs.target || 'staging' }}
+    outputs:
+      sha: ${{ steps.candidate.outputs.sha }}
+    env:
+      AUDIT_TARGET: ${{ inputs.target || 'staging' }}
+      WMS_SUPABASE_ACCESS_TOKEN: ${{ secrets.WMS_SUPABASE_ACCESS_TOKEN }}
+      WMS_SUPABASE_DB_PASSWORD: ${{ secrets.WMS_SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      WMS_VERCEL_TOKEN: ${{ secrets.WMS_VERCEL_TOKEN }}
+      WMS_VERCEL_PROJECT_ID: ${{ vars.WMS_VERCEL_PROJECT_ID }}
+      WMS_VERCEL_ORG_ID: ${{ vars.WMS_VERCEL_ORG_ID }}
+    steps:
+      - name: Require final approval and prior staging evidence for production
+        env:
+          APPROVED: ${{ inputs.production_approved }}
+          RUN: ${{ inputs.staging_evidence_run }}
+          SHA: ${{ inputs.candidate_sha || github.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$JRM_APP" = wms-production ]; then
+            test "$GITHUB_EVENT_NAME" = workflow_dispatch
+            if [ "$APPROVED" != true ]; then echo '::error::Falta aprobación expresa final de Producción.'; exit 1; fi
+            if ! [[ "$RUN" =~ ^[0-9]+$ ]]; then echo '::error::Falta run de evidencia Staging.'; exit 1; fi
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN" > /tmp/staging-run.json
+            jq -e '.conclusion == "success" and .path == ".github/workflows/deploy-wms.yml"' /tmp/staging-run.json > /dev/null
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN/artifacts" > /tmp/staging-artifacts.json
+            jq -e --arg name "wms-staging-smoke-$SHA" '.artifacts | any(.name == $name and .expired == false)' /tmp/staging-artifacts.json > /dev/null
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha || github.sha }}
+      - name: Freeze candidate commit
+        id: candidate
+        env:
+          SHA: ${{ inputs.candidate_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SHA"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify all dedicated WMS infrastructure before any database write
+        run: node scripts/wms-environment-audit.cjs
+      - name: Guard database target
+        run: node scripts/check-supabase-target.cjs
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Pull dedicated WMS Vercel configuration
+        env:
+          VERCEL_TOKEN: ${{ secrets.WMS_VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.WMS_VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.WMS_VERCEL_PROJECT_ID }}
+        run: npx --yes vercel@61.1.0 pull --yes --environment=production --token="$VERCEL_TOKEN" > /dev/null
+      - run: node scripts/check-wms-vercel-config.cjs
+
+  validate:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      JRM_APP: wms-staging
+      NEXT_PUBLIC_SUPABASE_URL: https://rquujukgtturdlkuzgdc.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: build-only-not-a-live-credential
+      SUPABASE_SERVICE_ROLE_KEY: build-only-not-a-live-credential
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: node --test scripts/test-supabase-target.cjs scripts/test-app-session.cjs
+      - run: node scripts/test-wms-capacitor.cjs
+      - run: node scripts/test-wms-isolation.mjs && node scripts/test-wms-robot.mjs && node scripts/test-wh-wms.cjs
+      - run: node scripts/test-wms-receipt-excel.cjs && node scripts/test-wms-receipt-transactions.cjs
+      - run: node scripts/check-wms-migrations.cjs
+      - run: node --test scripts/test-wms-migration-scope.cjs
+      - run: node scripts/test-inventario-parse.cjs && node scripts/test-erp-parse.cjs
+      - run: npm run check:guards
+      - run: npm run typecheck
+      - run: npx eslint src/app/almacen/etiquetado/page.tsx src/app/almacen/apt/etiquetado/page.tsx src/app/almacen/apt/etiquetas-impresas/page.tsx src/app/almacen/auditoria/page.tsx src/proxy.ts src/app/login/page.tsx src/app/layout.tsx src/app/almacen/layout.tsx next.config.ts
+      - run: sudo apt-get update -qq && sudo apt-get install -y poppler-utils
+      - run: node scripts/test-wms-print.cjs
+        env:
+          WMS_TEST_CHROMIUM: /usr/bin/google-chrome
+      - run: npm run build
+
+  migrate:
+    needs: [preflight, validate]
+    runs-on: ubuntu-24.04
+    environment: wms-${{ inputs.target || 'staging' }}
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.WMS_SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.WMS_SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+      - run: node scripts/check-supabase-target.cjs
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.118.0
+      - name: Prepare isolated WMS migration files after verifying the target
+        run: node scripts/prepare-wms-migrations.cjs
+      - name: Link only the verified WMS project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+      - name: Preview schema migration plan
+        run: supabase db push --linked --include-all --dry-run --yes >> "$GITHUB_STEP_SUMMARY"
+      - name: Apply pending migrations to WMS only
+        run: supabase db push --linked --include-all --yes
+
+  deploy:
+    needs: [preflight, migrate]
+    runs-on: ubuntu-24.04
+    environment: wms-${{ inputs.target || 'staging' }}
+    env:
+      VERCEL_TOKEN: ${{ secrets.WMS_VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ vars.WMS_VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.WMS_VERCEL_PROJECT_ID }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      CANDIDATE_SHA: ${{ needs.preflight.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx --yes vercel@61.1.0 pull --yes --environment=production --token="$VERCEL_TOKEN" > /dev/null
+      - run: node scripts/check-wms-vercel-config.cjs
+      - name: Deploy the exact validated WMS candidate
+        run: |
+          npx --yes vercel@61.1.0 deploy --prod --yes --token="$VERCEL_TOKEN" --build-env APP_BUILD_ID="$CANDIDATE_SHA" > /tmp/wms-deployment-url.txt
+          echo "WMS candidate $CANDIDATE_SHA deployed in its dedicated project." >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify deployed WMS identity and login response
+        run: |
+          set -euo pipefail
+          if [ "$JRM_APP" = wms-staging ]; then url=https://jrm-wms-staging.vercel.app; else url=https://jrm-wms.vercel.app; fi
+          curl -fsS --max-time 60 -D /tmp/wms-headers.txt "$url/almacen/login" > /tmp/wms-login.html
+          tr -d '\r' < /tmp/wms-headers.txt | grep -iFx 'x-jrm-system: wms'
+          tr -d '\r' < /tmp/wms-headers.txt | grep -iFx "x-jrm-build: $CANDIDATE_SHA"
+          grep -q 'login-username' /tmp/wms-login.html
+          printf '{"sha":"%s","url":"%s","scope":"unauthenticated deployment smoke; functional sign-in still requires an authorized WMS account"}\n' "$CANDIDATE_SHA" "$url" > wms-staging-smoke.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.target != 'production' }}
+        with:
+          name: wms-staging-smoke-${{ needs.preflight.outputs.sha }}
+          path: wms-staging-smoke.json
+          retention-days: 14

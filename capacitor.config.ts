@@ -9,7 +9,9 @@ const config: CapacitorConfig = {
   appName: warehouseApp ? 'JRM Almacén' : 'JRM-TMS',
   webDir: 'out',
   server: {
-    url: 'https://jrm-tms.vercel.app',
+    url: warehouseApp
+      ? (process.env.JRM_APP === 'wms-staging' ? 'https://jrm-wms-staging.vercel.app' : 'https://jrm-wms.vercel.app')
+      : 'https://jrm-tms.vercel.app',
     appStartPath: warehouseApp ? '/almacen/login' : '/app/login'
   }
 };

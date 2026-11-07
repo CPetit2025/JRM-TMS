@@ -5,8 +5,12 @@ import { canOpenPath, hasWebAccess } from '@/lib/nav/web-access'
 import { assertDeploymentIsolation, wmsRouteAllowed } from '@/lib/deployment-isolation.mjs'
 
 export async function proxy(request: NextRequest) {
-  if (process.env.NEXT_PUBLIC_DEPLOYMENT_SYSTEM === 'wms') {
-    assertDeploymentIsolation('wms', process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.VERCEL_ENV)
+  const wmsDeployment = process.env.NEXT_PUBLIC_DEPLOYMENT_SYSTEM === 'wms'
+  if (!wmsDeployment && (request.nextUrl.pathname === '/almacen' || request.nextUrl.pathname.startsWith('/almacen/'))) {
+    return NextResponse.json({error:'WMS requiere su sitio independiente.'},{status:404})
+  }
+  if (wmsDeployment) {
+    assertDeploymentIsolation('wms', process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_WMS_ENVIRONMENT)
     if (!wmsRouteAllowed(request.nextUrl.pathname, request.method)) {
       if (request.nextUrl.pathname.startsWith('/api')) return NextResponse.json({ error: 'Ruta no disponible en WMS' }, { status: 404 })
       return NextResponse.redirect(new URL('/almacen', request.url))
@@ -25,7 +29,7 @@ export async function proxy(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
             request,
           })
@@ -71,7 +75,7 @@ export async function proxy(request: NextRequest) {
     }
     // Sino, mandarlo al login principal (Admin)
     const url = request.nextUrl.clone()
-    url.pathname = isWarehousePath || isLegacyAptPath ? '/almacen/login' : '/login'
+    url.pathname = wmsDeployment && (isWarehousePath || isLegacyAptPath) ? '/almacen/login' : '/login'
     return redirect(url)
   }
 
@@ -89,8 +93,8 @@ export async function proxy(request: NextRequest) {
     const role = Array.isArray(profile.roles) ? profile.roles[0] : profile.roles
     const permissions = Array.isArray(role?.permissions) ? role.permissions : []
     const systemAdmin = role?.name === 'Administrador'
-    const hasWarehouseAccess = systemAdmin || permissions.some(p => ['almacen-lectura', 'almacen-etiquetado', 'almacen-picking', 'almacen-packing', 'almacen-carga', 'almacen-supervisor', 'apt', 'apt-carga'].some(key => p === key || p.startsWith(`${key}:`)))
-    if (isLegacyAptPath) {
+    const hasWarehouseAccess = wmsDeployment && (systemAdmin || permissions.some(p => ['almacen-lectura', 'almacen-etiquetado', 'almacen-picking', 'almacen-packing', 'almacen-carga', 'almacen-supervisor', 'apt', 'apt-carga'].some(key => p === key || p.startsWith(`${key}:`))))
+    if (isLegacyAptPath && wmsDeployment) {
       const url = request.nextUrl.clone()
       url.pathname = `/almacen${request.nextUrl.pathname}`
       return redirect(url)
@@ -106,7 +110,7 @@ export async function proxy(request: NextRequest) {
     }
     if (isWarehousePath && !isWarehouseLoginPage && hasWarehouseAccess) {
       const path = request.nextUrl.pathname
-      const required = path.startsWith('/almacen/maestros') ? ['almacen-supervisor']
+      const required = path.startsWith('/almacen/auditoria') ? ['almacen-supervisor'] : path.startsWith('/almacen/maestros') ? ['almacen-supervisor']
         : path.startsWith('/almacen/conciliacion') ? ['almacen-carga','almacen-supervisor','apt-carga']
         : path.startsWith('/almacen/etiquetado') ? ['almacen-etiquetado','almacen-supervisor']
         : path.startsWith('/almacen/apt') ? ['apt','apt-carga','almacen-lectura','almacen-etiquetado','almacen-picking','almacen-packing','almacen-carga','almacen-supervisor']
