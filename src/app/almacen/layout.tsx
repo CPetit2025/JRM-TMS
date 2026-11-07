@@ -106,8 +106,8 @@ export default function WarehouseLayout({ children }: { children: React.ReactNod
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1 sm:gap-3">
-          <NotificationBell />
-          {hasTmsAccess && <Link href="/" className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"><Boxes size={16}/><span className="hidden sm:inline">Ir al TMS</span></Link>}
+          {process.env.NEXT_PUBLIC_DEPLOYMENT_SYSTEM !== 'wms' && <NotificationBell />}
+          {hasTmsAccess && <a href={process.env.NEXT_PUBLIC_TMS_ORIGIN || 'https://www.jrmlogistica.app'} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"><Boxes size={16}/><span className="hidden sm:inline">Ir al TMS</span></a>}
           <Link href="/perfil" aria-label="Mi perfil" className="flex min-w-0 items-center gap-2 border-l border-slate-200 pl-2 sm:gap-3 sm:pl-3">
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-blue-100 text-blue-700 sm:h-10 sm:w-10"><UserRound size={17}/></div>
             <div className="hidden min-w-0 lg:block"><p className="text-xs font-semibold capitalize text-slate-700">{role || "Usuario"}</p><p className="max-w-40 truncate text-[11px] text-slate-500" title={email}>{email || "Sesión activa"}</p></div>

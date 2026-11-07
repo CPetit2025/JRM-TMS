@@ -13,6 +13,6 @@ La comprobación de compilación y el proxy rechazan proyectos Supabase ajenos a
 
 No cambiar las variables del proyecto Vercel TMS ni usar su deploy hook para publicar WMS. No suministrar claves de TMS al despliegue WMS. La integración de solicitudes/contratos necesita un proceso de lectura independiente antes de tener datos actualizados de TMS; este cambio no lo implementa.
 
-El esquema de la nueva base todavía debe instalarse y validarse. El historial compartido de migraciones no constituye un paquete de instalación independiente de WMS. No ejecutar el workflow deploy-production.yml de TMS para instalar WMS.
+El esquema de producción se instaló y validó con el paquete independiente `wms-db/supabase/migrations`. Incluye las tablas WMS y sus referencias vacías; no usa el historial compartido de migraciones TMS. No ejecutar `deploy-production.yml` ni `supabase db push --include-all` desde la raíz para instalar WMS. Ver `wms-db/README.md`.
 
 Validación local de los bloqueos: `node scripts/test-wms-isolation.mjs`.
