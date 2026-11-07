@@ -1,7 +1,7 @@
 "use client"
 import { Sidebar } from '@/components/layout/sidebar'
 import Link from 'next/link'
-import { User, Menu } from 'lucide-react'
+import { User, Menu, Warehouse } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { NotificationBanner } from './NotificationBanner'
 import { NotificationBell } from './NotificationBell'
@@ -16,7 +16,7 @@ import { setSidebar, useSidebar } from '@/lib/nav/sidebarStore'
 import { usePageOwnsTitle } from '@/lib/nav/pageChromeStore'
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const { role, permissions, isLoaded } = usePermissions()
+  const { role, permissions, isLoaded, hasAccess } = usePermissions()
   const [email, setEmail] = useState('')
   const pathname = usePathname()
 
@@ -86,6 +86,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="flex shrink-0 items-center gap-1 sm:gap-3">
             <AppUpdateNotice placement="header" />
             <NotificationBell />
+            {process.env.NEXT_PUBLIC_WMS_ORIGIN && ['almacen-lectura','almacen-etiquetado','almacen-picking','almacen-packing','almacen-carga','almacen-supervisor','apt','apt-carga'].some(hasAccess) && <a href={process.env.NEXT_PUBLIC_WMS_ORIGIN + '/almacen'} aria-label="Abrir Almacén WMS" title="Abrir Almacén WMS" className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2 text-xs font-bold text-[#002855] hover:bg-blue-100"><Warehouse size={17}/><span className="hidden sm:inline">Almacén WMS</span></a>}
 
             <Link href="/perfil" aria-label="Mi perfil" className="flex min-w-0 items-center gap-3 border-l border-slate-200 pl-1 sm:pl-3">
               <div className="h-11 w-11 shrink-0 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold">
