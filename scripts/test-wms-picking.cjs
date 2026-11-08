@@ -65,6 +65,7 @@ const feed=(status={})=>[
  // 3. Picking por escaneo validado contra la OT
  await as('op1');
  await q("SELECT public.wh_task_action($1,'START_PICKING')",[task.id]);
+ await as('aud'); assert.ok((await one("SELECT public.wh_task_board('auditoria')")).some(r=>r.id===task.id&&r.display_state==='EN_PICKING'),'el auditor ve la tarea apenas inicia el picking, sin LPN'); await as('op1');
  for(const c of ['PKG-1','PKG-2','PKG-3']) await q("SELECT public.wh_record_scan($1,$2,'PICK',gen_random_uuid())",[task.id,c]);
  await fails("SELECT public.wh_record_scan($1,'PKG-4','PICK',gen_random_uuid())",[task.id],/OT/);
  await fails("SELECT public.wh_record_scan($1,'PKG-5','PICK',gen_random_uuid())",[task.id],/no tiene OT/);
