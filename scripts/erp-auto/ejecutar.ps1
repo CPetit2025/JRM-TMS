@@ -62,6 +62,18 @@ try {
   & $node (Join-Path $PSScriptRoot 'cargar.mjs') @extra $actualizable $stock 2>&1 | ForEach-Object { "$_" }
   $ErrorActionPreference = 'Stop'
   if ($LASTEXITCODE) { throw 'La carga en el TMS falló' }
+  # Mismos archivos al WMS (fuente del stock de referencia), con la cuenta del robot de ingresos WMS si está instalado
+  $credWms = Join-Path (Split-Path $PSScriptRoot) 'wms-auto\credencial.xml'
+  if (Test-Path $credWms) {
+    $cw = Import-Clixml $credWms
+    $env:WMS_USUARIO = $cw.UserName
+    $env:WMS_CLAVE = $cw.GetNetworkCredential().Password
+    $ErrorActionPreference = 'Continue'
+    & $node (Join-Path $PSScriptRoot 'cargar-wms.mjs') @extra $actualizable $stock 2>&1 | ForEach-Object { "$_" }
+    $ErrorActionPreference = 'Stop'
+    Remove-Item Env:WMS_CLAVE, Env:WMS_USUARIO -ErrorAction SilentlyContinue
+    if ($LASTEXITCODE) { throw 'La carga en el TMS se aplicó, pero la del WMS falló' }
+  } else { Write-Output 'AVISO Sin cuenta del robot WMS (wms-auto): no se cargó el WMS' }
   $codigo = 0
 } catch {
   Write-Output "ERROR $($_.Exception.Message)"

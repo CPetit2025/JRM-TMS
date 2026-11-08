@@ -22,6 +22,13 @@ Los scripts están en `scripts/erp-auto/`.
 - Los dos Excel en una carpeta fija (no en Descargas). Pueden estar abiertos: el robot copia los dos libros a
   `%LOCALAPPDATA%JRM-TMSerp-auto	rabajo`, refresca y sube esas copias, y no toca los originales.
 
+## Carga también en el WMS
+
+Después de cargar el TMS, el robot sube los mismos dos archivos a **Stock ERP** del WMS (`/almacen/stock-erp`) con
+`cargar-wms.mjs`. Usa la cuenta del robot de ingresos WMS (`%LOCALAPPDATA%JRM-TMSwms-autocredencial.xml`), que
+necesita permiso `almacen-carga`. Si esa cuenta no está instalada, el log dice `AVISO Sin cuenta del robot WMS` y solo
+se carga el TMS. Si la carga del WMS falla, la del TMS ya quedó aplicada y la tarea termina con resultado `1`.
+
 ## Instalar (una vez)
 
 En PowerShell, desde la carpeta del repositorio:
