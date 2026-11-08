@@ -47,3 +47,25 @@ INSERT INTO public.apt_state (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 INSERT INTO public.apt_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 INSERT INTO public.apt_flow_state (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 INSERT INTO public.apt_gantt_meta (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- 5. erp_estado con el formato del TMS (la pestaña ERP lee «activas» e «historial»); conserva can_load, que verifican
+--    las rutas que aplican cargas en el servidor.
+CREATE OR REPLACE FUNCTION public.erp_estado()
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $function$
+BEGIN
+  IF NOT public.apt_can_view() THEN RETURN jsonb_build_object('success', false, 'error', 'Sin acceso a los datos del ERP'); END IF;
+  RETURN jsonb_build_object('success', true, 'can_load', public.apt_can_load(),
+    'activas', COALESCE((SELECT jsonb_object_agg(kind, jsonb_build_object('id', id, 'file_name', file_name, 'cut_at', cut_at, 'applied_at', applied_at,
+       'rows', rows_loaded, 'summary', summary)) FROM public.erp_imports WHERE status = 'ACTIVA'), '{}'::jsonb),
+    'historial', COALESCE((SELECT jsonb_agg(jsonb_build_object('id', id, 'kind', kind, 'status', status, 'file_name', file_name, 'cut_at', cut_at,
+       'applied_at', applied_at, 'created_at', created_at, 'rows', rows_loaded) ORDER BY created_at DESC)
+       FROM (SELECT * FROM public.erp_imports ORDER BY created_at DESC LIMIT 20) h), '[]'::jsonb));
+END $function$;
+
+-- 6. erp_tms_guias cruza las guías con las rutas del TMS; en el WMS no hay despachos del TMS: devuelve vacío.
+CREATE OR REPLACE FUNCTION public.erp_tms_guias(p_from date DEFAULT NULL, p_to date DEFAULT NULL)
+RETURNS TABLE(guia_key text, guia text, fecha date, rutas text, placas text, ot text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $function$
+  SELECT NULL::text, NULL::text, NULL::date, NULL::text, NULL::text, NULL::text WHERE false;
+$function$;
+REVOKE ALL ON FUNCTION public.erp_tms_guias(date, date) FROM PUBLIC, anon, authenticated;
