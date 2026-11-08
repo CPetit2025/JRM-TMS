@@ -184,5 +184,24 @@ const feed=(status={})=>[
   assert.ok(denied,`anon no debe ejecutar ${fn}`);
  }
  console.log('PASS: funciones del flujo bloqueadas para anónimos.');
+ // 11. Tamaños de etiqueta configurables
+ await as('op1');
+ const kinds=Object.fromEntries((await q('SELECT s.kind,f.width_mm::float w,f.height_mm::float h FROM public.wh_label_settings s JOIN public.wh_label_formats f ON f.id=s.format_id')).map(r=>[r.kind,[r.w,r.h]]));
+ assert.deepEqual(kinds,{PAQUETE:[152.4,101.6],LPN:[100,50]},'se conservan los tamaños actuales y el operario puede leerlos');
+ assert.ok((await q("SELECT 1 FROM public.wh_label_formats WHERE name LIKE 'A4%'")).length===1,'incluye A4 y medidas Zebra');
+ await fails("SELECT public.wh_label_format_save(NULL,'Rollo 4x1',101.6,25.4,203)",[],/supervisión/);
+ await fails("UPDATE public.wh_label_formats SET width_mm=1",[],/permission|permiso/);
+ await as('sup');
+ await fails("SELECT public.wh_label_format_save(NULL,'Mini',5,5,203)",[],/rango/);
+ const rollo=await one("SELECT public.wh_label_format_save(NULL,'Rollo 4x1',101.6,25.4,300)");
+ await q("SELECT public.wh_label_setting_set('LPN',$1)",[rollo]);
+ await fails("SELECT public.wh_label_format_save($1,'Rollo 4x1',101.6,25.4,300,false)",[rollo],/asigne otro/);
+ const a4=(await q("SELECT id FROM public.wh_label_formats WHERE name LIKE 'A4%'"))[0].id;
+ await q("SELECT public.wh_label_setting_set('LPN',$1)",[a4]);
+ await q("SELECT public.wh_label_format_save($1,'Rollo 4x1',101.6,25.4,300,false)",[rollo]);
+ await fails("SELECT public.wh_label_setting_set('LPN',$1)",[rollo],/no disponible/);
+ await db.exec('RESET ROLE; SET ROLE anon');
+ await fails('SELECT public.wh_label_setting_set($1,$2)',['LPN',a4],/permission|permiso/);
+ console.log('PASS: tamaños de etiqueta: A4/A5/Zebra disponibles, solo supervisión configura, rango validado, no se desactiva un formato en uso.');
  await db.close();
 })().catch(e=>{console.error('FAIL:',e.message);process.exit(1)});

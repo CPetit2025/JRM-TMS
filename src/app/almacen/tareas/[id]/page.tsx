@@ -9,6 +9,7 @@ import { pendingWarehouseScans, queueWarehouseScan, removeFailedWarehouseScan, s
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import type { WarehouseScanOutbox } from '@/lib/offline/db'
 import { Code128Barcode } from '@/components/warehouse/Code128Barcode'
+import { fitScale, useLabelFormat } from '@/lib/warehouse/label-format'
 import { AUDIT, STATE, buildPackingListPdf, fmt, fmtDate, type BoardRow, type TaskLpn, type TaskLpns } from '@/lib/warehouse/packing-list'
 
 const nativeWarehouseScanner = registerPlugin<{ scan: () => Promise<{ rawValue: string }> }>('WarehouseBarcodeScanner')
@@ -20,6 +21,7 @@ const btn = 'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-bo
 export default function WarehouseTaskPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const { hasAccess } = usePermissions()
+  const labelFormat = useLabelFormat('LPN')
   const [task, setTask] = useState<BoardRow | null>(null)
   const [data, setData] = useState<TaskLpns>({ lpns: [], loose: [], packing_lists: [] })
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -282,6 +284,6 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
       <p style={{ fontSize: 12 }}>{task.client_name || ''}</p>
       <p style={{ fontSize: 12 }}>{label.package_count} paquete(s) · {fmt(label.quantity, 3)} und · {fmt(label.weight_kg)} kg</p>
     </div>}
-    <style jsx global>{`@media print{body *{visibility:hidden}#lpn-label,#lpn-label *{visibility:visible}#lpn-label{position:fixed;left:0;top:0;width:100mm;padding:4mm}}`}</style>
+    <style jsx global>{`@page{size:${labelFormat.width_mm}mm ${labelFormat.height_mm}mm;margin:0}@media print{body *{visibility:hidden}#lpn-label,#lpn-label *{visibility:visible}#lpn-label{position:fixed;left:0;top:0;width:100mm;height:60mm;overflow:hidden;box-sizing:border-box;padding:4mm;zoom:${fitScale(labelFormat, 100, 60)}}}`}</style>
   </div>
 }
