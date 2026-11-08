@@ -23,11 +23,41 @@ const fs=require('fs'); const path=require('node:path');
  const counts=await db.query('SELECT count(*)::int as packages FROM public.wh_packages WHERE label_print_count=1');
  if(counts.rows[0].packages!==2) throw Error('Print audit missing');
  console.log('PASS: authenticated import -> inbox -> validation -> 2 labels -> print audit -> receipt control.');
+ // Robot de ingresos: automática cada 30 min, solicitud manual única, nunca dos ejecuciones a la vez
+ const q1=async(sql,p=[])=>(await db.query(sql,p)).rows[0];
+ const due=async()=>(await q1('SELECT public.wh_receipt_robot_due() AS d')).d;
+ if(!(await due())) throw Error('Robot must be due on an empty history');
+ const auto=(await q1('SELECT public.wh_receipt_robot_start() AS r')).r;
+ if(await due()) throw Error('Robot must not be due while running');
+ if(auto?.kind!=='AUTO') throw Error('First robot cycle must open an AUTO run');
+ if((await q1('SELECT public.wh_receipt_robot_start() AS r')).r!==null) throw Error('Robot started twice');
+ const req=(await q1('SELECT public.wh_receipt_robot_request() AS r')).r;
+ if(req.existing!==true) throw Error('Manual request while running must return the open run');
+ await db.query('SELECT public.wh_receipt_robot_finish($1,true,$2)',[auto.id,'OK prueba']);
+ if((await q1('SELECT public.wh_receipt_robot_start() AS r')).r!==null) throw Error('AUTO run repeated before 30 minutes');
+ if(await due()) throw Error('Robot must not be due right after an AUTO run');
+ const manual=(await q1('SELECT public.wh_receipt_robot_request() AS r')).r;
+ if(!(await due())) throw Error('Robot must be due with a manual request');
+ const again=(await q1('SELECT public.wh_receipt_robot_request() AS r')).r;
+ if(manual.existing||again.id!==manual.id) throw Error('Manual request must be single');
+ const taken=(await q1('SELECT public.wh_receipt_robot_start() AS r')).r;
+ if(taken?.id!==manual.id||taken.kind!=='MANUAL') throw Error('Robot did not take the manual request');
+ await db.query('SELECT public.wh_receipt_robot_finish($1,false,$2)',[manual.id,'ERROR prueba']);
+ await db.exec("RESET ROLE; UPDATE public.wh_receipt_robot_runs SET started_at=started_at-interval '31 minutes' WHERE id>0; SET ROLE authenticated;");
+ if((await q1('SELECT public.wh_receipt_robot_start() AS r')).r?.kind!=='AUTO') throw Error('AUTO run not due after 30 minutes');
+ await db.exec("RESET ROLE; UPDATE public.wh_receipt_robot_runs SET started_at=started_at-interval '31 minutes' WHERE status='RUNNING'; SET ROLE authenticated;");
+ await q1('SELECT public.wh_receipt_robot_start() AS r');
+ const stale=await q1("SELECT count(*)::int AS n FROM public.wh_receipt_robot_runs WHERE status='ERROR' AND message LIKE 'El robot no informó%'");
+ if(stale.n!==1) throw Error('Stale RUNNING run was not closed');
+ console.log('PASS: receipt robot runs every 30 min, single manual request, no overlap, stale runs closed.');
  await db.exec('RESET ROLE; SET ROLE anon');
  let denied=false;try {await db.query('SELECT * FROM public.wh_packages')}catch(e){denied=e.message.includes('permission denied')}
  if(!denied) throw Error('Anonymous data access was not denied');
  denied=false;try{await db.query('SELECT public.wh_receipt_candidates($1)',[''])}catch(e){denied=e.message.includes('permission denied')}
  if(!denied)throw Error('Anonymous RPC was not denied');
+ denied=false;try{await db.query('SELECT public.wh_receipt_robot_request()')}catch(e){denied=e.message.includes('permission denied')}
+ if(!denied)throw Error('Anonymous robot request was not denied');
+ await db.query('SELECT public.wh_receipt_robot_due()');
  await db.exec('RESET ROLE; UPDATE public.profiles SET is_active=false; SET ROLE authenticated;');
  const inactive=await db.query('SELECT count(*)::int AS n FROM public.wh_packages');
  if(inactive.rows[0].n!==0) throw Error('Inactive user can read packages');
