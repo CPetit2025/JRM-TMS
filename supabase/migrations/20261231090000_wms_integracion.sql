@@ -9,6 +9,10 @@ CREATE TABLE IF NOT EXISTS public.integration_keys (
 );
 ALTER TABLE public.integration_keys ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.integration_keys FROM PUBLIC, anon, authenticated;
+CREATE POLICY security_active_account ON public.integration_keys
+ AS RESTRICTIVE FOR ALL TO authenticated
+ USING ((SELECT public.is_active_tms_user()))
+ WITH CHECK ((SELECT public.is_active_tms_user()));
 INSERT INTO public.integration_keys(name, key_hash)
 VALUES ('wms', 'cca55655cc2316bc271ca1b5f587e93ec8a440635a9188811c18319b1a01c227')
 ON CONFLICT (name) DO NOTHING;
@@ -81,6 +85,11 @@ CREATE INDEX IF NOT EXISTS wms_packing_releases_request_idx ON public.wms_packin
 ALTER TABLE public.wms_packing_releases ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.wms_packing_releases FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.wms_packing_releases TO authenticated;
+DROP POLICY IF EXISTS security_active_account ON public.wms_packing_releases;
+CREATE POLICY security_active_account ON public.wms_packing_releases
+ AS RESTRICTIVE FOR ALL TO authenticated
+ USING ((SELECT public.is_active_tms_user()))
+ WITH CHECK ((SELECT public.is_active_tms_user()));
 DROP POLICY IF EXISTS wms_packing_releases_read ON public.wms_packing_releases;
 CREATE POLICY wms_packing_releases_read ON public.wms_packing_releases FOR SELECT TO authenticated
   USING ((public.has_tms_read_permission('solicitudes') OR public.has_tms_read_permission('despacho'))
