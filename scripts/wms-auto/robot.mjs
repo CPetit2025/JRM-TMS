@@ -38,14 +38,16 @@ async function login() {
 try {
   if (cmd === 'inicio') {
     // Sin sesión: cada minuto solo se pregunta si toca (la mayoría de las veces, no)
-    if (!(await rpc('wh_receipt_robot_due', {}))) process.exit(0)
-    const run = await rpc('wh_receipt_robot_start', {}, await login())
-    if (run) console.log(JSON.stringify(run))
+    // Sin process.exit: en Windows, cortar Node con una conexión de fetch abierta lo hace fallar (UV_HANDLE_CLOSING)
+    if (await rpc('wh_receipt_robot_due', {})) {
+      const run = await rpc('wh_receipt_robot_start', {}, await login())
+      if (run) console.log(JSON.stringify(run))
+    }
   } else {
     const [id, result, ...message] = rest
     await rpc('wh_receipt_robot_finish', { p_id: Number(id), p_ok: result === 'ok', p_message: message.join(' ') }, await login())
   }
 } catch (e) {
   console.error('ERROR ' + (e instanceof Error ? e.message : e))
-  process.exit(1)
+  process.exitCode = 1
 }
