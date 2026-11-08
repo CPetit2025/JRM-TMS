@@ -7,5 +7,10 @@ function cred(name) {
   const v = k => (out.match(new RegExp(`export ${k}="?([^"\n]*)"?`)) || [])[1]
   return { host: v('PGHOST'), port: Number(v('PGPORT') || 5432), user: v('PGUSER'), password: v('PGPASSWORD'), database: v('PGDATABASE') || 'postgres', ssl: { rejectUnauthorized: false } }
 }
-async function connect(name) { const c = new Client({ ...cred(name), application_name: 'fase4-replica', statement_timeout: 0 }); await c.connect(); return c }
+// Destino de la copia: usuario temporal wms_replica_copy (lo crea y borra el usuario dueño; contraseña en COPY_PASSWORD)
+// Origen de la copia: usuario temporal de solo lectura wms_replica_read en el TMS (contraseña en READ_PASSWORD)
+function copyCred(name) { const c = cred(name); return name === 'tms'
+  ? { ...c, user: `wms_replica_read.${REFS.tms}`, password: process.env.READ_PASSWORD }
+  : { ...c, user: `wms_replica_copy.${REFS[name]}`, password: process.env.COPY_PASSWORD } }
+async function connect(name, opts = {}) { const c = new Client({ ...(opts.copy ? copyCred(name) : cred(name)), application_name: 'fase4-replica', statement_timeout: 0 }); await c.connect(); return c }
 module.exports = { connect, REFS }

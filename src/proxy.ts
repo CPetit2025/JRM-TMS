@@ -7,6 +7,8 @@ import { assertDeploymentIsolation, wmsRouteAllowed } from '@/lib/deployment-iso
 export async function proxy(request: NextRequest) {
   if (process.env.NEXT_PUBLIC_DEPLOYMENT_SYSTEM === 'wms') {
     assertDeploymentIsolation('wms', process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.VERCEL_ENV)
+    const p = request.nextUrl.pathname
+    if (p === '/apt' || p.startsWith('/apt/')) return NextResponse.redirect(new URL('/almacen' + p + request.nextUrl.search, request.url))
     if (!wmsRouteAllowed(request.nextUrl.pathname, request.method)) {
       if (request.nextUrl.pathname.startsWith('/api')) return NextResponse.json({ error: 'Ruta no disponible en WMS' }, { status: 404 })
       return NextResponse.redirect(new URL('/almacen', request.url))
