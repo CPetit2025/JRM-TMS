@@ -10,6 +10,8 @@ const { pipeline } = require('node:stream/promises')
 const o = require('./esquema.json')
 
 const PARENTS = ['apa_imports', 'apt_uploads', 'erp_derive_days', 'inv_uploads']
+// Un padre se copia en la misma foto que sus hijos: si los hijos siguen vacíos, el padre se vacía y se vuelve a copiar
+const CHILDREN = { apt_uploads: ['apt_movements'], inv_uploads: ['inv_movements', 'inv_stock_snapshots', 'inv_upload_chunks'], erp_derive_days: ['erp_derive_stock', 'erp_derive_guias'] }
 const target = process.argv[2]
 if (target === 'sql') {
   const tables = o.tables.map(t => 'public.' + t.name).join(', ')
@@ -28,15 +30,25 @@ const only = process.argv.slice(3)
 if (!['staging', 'wms'].includes(target)) { console.error('Uso: node copy.cjs <staging|wms> [tabla ...]'); process.exit(2) }
 
 ;(async () => {
-  const src = await connect('tms', { copy: true }), dst = await connect(target, { copy: true })
+  const src = await connect('tms', { copy: true })
+  const prep = await connect(target, { copy: true })
+  for (const [parent, kids] of Object.entries(CHILDREN)) {
+    const filled = (await prep.query(`select ${kids.map(k => `(select count(*) from public.${k})`).join(' + ')} n`)).rows[0].n
+    if (Number(filled) === 0) await prep.query(`DELETE FROM public.${parent}`)
+  }
+  await prep.end()
+  await src.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
   const names = o.tables.map(t => t.name).filter(n => !only.length || only.includes(n))
   const ordered = [...PARENTS.filter(n => names.includes(n)), ...names.filter(n => !PARENTS.includes(n))]
   let total = 0
   for (const name of ordered) {
+   for (let intento = 1; intento <= 3; intento++) {
+    const dst = await connect(target, { copy: true })
+    let ok = false
     const cols = (await dst.query(`select a.attname from pg_attribute a where a.attrelid = $1::regclass and a.attnum > 0 and not a.attisdropped and a.attgenerated = ''
       and a.attname = any($2) order by a.attnum`, [`public.${name}`, o.tables.find(t => t.name === name).cols])).rows.map(r => `"${r.attname}"`)
     const n0 = Number((await dst.query(`select count(*) n from public.${name}`)).rows[0].n)
-    if (n0 > 0) { console.log(`${name}: destino con ${n0} filas, se omite`); continue }
+    if (n0 > 0) { console.log(`${name}: destino con ${n0} filas, se omite`); await dst.end(); break }
     await dst.query('BEGIN')
     try {
       const t0 = Date.now()
@@ -46,8 +58,12 @@ if (!['staging', 'wms'].includes(target)) { console.error('Uso: node copy.cjs <s
       const [a, b] = await Promise.all([src.query(`select count(*) n from public.${name}`), dst.query(`select count(*) n from public.${name}`)])
       total += Number(b.rows[0].n)
       console.log(`${name}: ${b.rows[0].n}/${a.rows[0].n} filas en ${Math.round((Date.now() - t0) / 1000)} s${a.rows[0].n === b.rows[0].n ? '' : '  ← DISTINTO'}`)
-    } catch (e) { await dst.query('ROLLBACK'); console.log(`${name}: ERROR ${e.message}`) }
+      ok = true
+    } catch (e) { await dst.query('ROLLBACK').catch(() => {}); console.log(`${name}: ERROR (intento ${intento}) ${e.message}`) }
+    await dst.end().catch(() => {})
+    if (ok) break
+   }
   }
   console.log(`Total copiado: ${total} filas`)
-  await src.end(); await dst.end()
+  await src.query('COMMIT'); await src.end()
 })().catch(e => { console.error('ERROR', e.message); process.exit(1) })
