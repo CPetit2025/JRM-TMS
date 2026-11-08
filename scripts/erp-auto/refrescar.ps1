@@ -22,7 +22,7 @@ try {
 } catch {
   # Solo errores de red (servidor o instancia inalcanzable); un rechazo de inicio de sesión no aplica: Excel usa su credencial
   $n = $_.Exception.InnerException.Number
-  if ($n -in -1, 2, 26, 53, 64, 10060, 10061, 11001) {
+  if ($n -in -2, -1, 2, 26, 53, 64, 10060, 10061, 11001) {
     Write-Output "ERROR Sin conexión con el ERP (DATAFLEX\FLEXLINE): conecte el equipo a la red de la oficina o a la VPN"
     exit 1
   }

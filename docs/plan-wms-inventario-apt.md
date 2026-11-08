@@ -80,9 +80,11 @@ Pruebas que los cubren: **C38, C145 y C146**.
 ### Fase 2 — Barrido con etiquetado
 
 **Modelo nuevo (WMS):**
-- `wh_count_campaigns`: bodega, zona, **importación ERP usada** (no solo la fecha), responsable y estado
+- **El esperado y el cuadre son por bodega.** El ERP entrega stock por bodega, producto y lote, sin zona ni
+  ubicación; un lote puede estar repartido entre zonas. Las zonas solo ordenan el recorrido y el avance.
+- `wh_count_campaigns`: bodega, zonas del recorrido, **importación ERP usada** (no solo la fecha), responsable y estado
   (`ABIERTA`, `EN_CONTEO`, `EN_REVISION`, `CERRADA`).
-- `wh_count_expected`: **copia inmutable** del stock de la zona tomada de esa importación al abrir la campaña.
+- `wh_count_expected`: **copia inmutable** del stock de la bodega tomada de esa importación al abrir la campaña.
   Las líneas contadas y los paquetes nuevos apuntan a esta copia, no a `erp_stock_lots`, así que las cargas
   siguientes del ERP no afectan el cuadre.
 - `wh_count_lines`: cada bulto contado, con campaña, ubicación, paquete, producto, lote, OT, cantidad, peso,
@@ -103,13 +105,14 @@ bulto no se etiquete dos veces. La garantía es una **identidad física persiste
 - Bulto sin identidad legible: se registra como "no identificado" con foto. Solo supervisión puede etiquetarlo.
 
 **Congelamiento y corte (contra faltantes y sobrantes ficticios):**
-- Mientras la campaña está `EN_CONTEO` o `EN_REVISION`, la zona queda **congelada de forma efectiva**: el WMS
-  bloquea despachos, ingresos y traslados que toquen la zona.
+- Mientras la campaña está `EN_CONTEO` o `EN_REVISION`, la **bodega** queda **congelada de forma efectiva**: el
+  WMS bloquea despachos, ingresos y traslados que la toquen. Para acortar el congelamiento, el barrido de la
+  bodega se planifica en una sola jornada o por turnos seguidos.
 - Si operaciones no puede congelar, se aplica la alternativa de **ajuste al corte**:
   `esperado = stock de la importación − salidas por guía posteriores al corte + ingresos IPT posteriores al corte`.
-  Los traslados entre zonas solo se permiten hacia zonas no contadas o ya cerradas.
+  Dentro de la bodega, los movimientos entre zonas solo se permiten hacia zonas aún no contadas.
 - Los paquetes creados en la campaña quedan **retenidos** (no disponibles para picking) hasta que se apruebe el
-  cuadre de la zona. Recién ahí pasan a `AVAILABLE`.
+  cuadre de la bodega. Recién ahí pasan a `AVAILABLE`.
 
 **Pantalla móvil de barrido:**
 - **Bulto con etiqueta:** se escanea y queda contado (uno por campaña).
@@ -161,9 +164,9 @@ bulto no se etiquete dos veces. La garantía es una **identidad física persiste
 
 | Riesgo | Mitigación |
 |---|---|
-| El stock cambia durante el barrido | Congelamiento efectivo de la zona; si no es posible, esperado ajustado al corte con salidas e ingresos posteriores. |
+| El stock cambia durante el barrido | Congelamiento efectivo de la bodega; si no es posible, esperado ajustado al corte con salidas e ingresos posteriores. |
 | Bulto etiquetado dos veces | Identidad física con clave única y consumo atómico del IPT correspondiente; el saldo por lote es solo una alarma. |
-| Paquete contado dos veces al moverse entre zonas | Restricción única (campaña, paquete); traslados solo hacia zonas no contadas o cerradas. |
+| Paquete contado dos veces al moverse entre zonas | Restricción única (campaña, paquete); movimientos entre zonas solo hacia zonas aún no contadas. |
 | La carga siguiente del ERP borra la base del cuadre | Copia inmutable por campaña (`wh_count_expected`) identificada por importación; retención de importaciones usadas. |
 | Lotes con formato distinto en el ERP | Búsqueda por `lote` y `lote_raw`; normalización con las reglas que ya usa el TMS. |
 | Rótulo ilegible o sin lote | Registro "no identificado" con foto; lo resuelve supervisión. |
@@ -177,20 +180,21 @@ bulto no se etiquete dos veces. La garantía es una **identidad física persiste
 - Pruebas SQL en PGlite (`scripts/test-wms-*.cjs`) de cada fase:
   - campañas, copia esperada inmutable y líneas de conteo;
   - unicidad por campaña y por identidad del bulto, y consumo atómico del IPT;
-  - congelamiento de zona y retención de paquetes hasta el cierre;
+  - congelamiento de la bodega y retención de paquetes hasta el cierre;
   - cuadre por lote (con y sin ajuste al corte) y reconteo;
   - permisos por rol y bloqueo de anónimos.
 - Paridad TMS vs. WMS con los mismos archivos del ERP (fases 1 y 4), incluidas guías y trazabilidad.
 - En el TMS: C38, C145 y C146 con las proyecciones antes del retiro.
-- Piloto en una zona de una bodega antes del barrido completo.
+- Piloto en una bodega antes del barrido completo.
 
 ## 7. Decisiones por defecto (aprobado el plan, 08/11/2026)
 
 Operaciones puede cambiarlas antes del piloto; el diseño las soporta.
 
-1. **Piloto:** bodega `647-04 ALM PT`, una zona. Si aún no hay zonas definidas, la bodega es una zona única.
+1. **Piloto:** bodega `647-04 ALM PT` completa; el esperado y el cuadre son por bodega. Las zonas, si existen,
+   solo ordenan el recorrido.
 2. **Conteo:** por bulto, con la cantidad del rótulo; el peso es opcional y se registra si hay balanza.
-3. **Corte:** congelamiento efectivo de la zona. El ajuste al corte queda fuera de la primera versión.
+3. **Corte:** congelamiento efectivo de la bodega durante el barrido. El ajuste al corte queda fuera de la primera versión.
 4. **Identidad del bulto:** documento IPT y número de bulto (`n/total`) si el rótulo los trae; si no, lote y
    una secuencia asignada en el conteo.
 5. **Aprobación del cierre:** permiso `almacen-supervisor`.
