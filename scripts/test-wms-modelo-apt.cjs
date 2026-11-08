@@ -13,6 +13,9 @@ const {PGlite}=require('@electric-sql/pglite');const fs=require('fs');const path
  assert.match(await one("SELECT pg_get_functiondef('public.apt_can_view()'::regprocedure)"),/wh_any_warehouse_permission/,'apt_can_view usa permisos del WMS');
  assert.match(await one("SELECT pg_get_functiondef('public.apt_can_load()'::regprocedure)"),/almacen-carga/,'apt_can_load del WMS no se pisa');
  assert.equal(await one("SELECT has_table_privilege('anon','public.apt_movements','SELECT')"),false,'anónimo sin acceso');
+ assert.equal(await one("SELECT public.apt_flow_tms(ARRAY['T001-1'])::text"),'{}','sin despachos del TMS, el enriquecimiento queda vacío');
+ assert.ok(await one("SELECT to_regprocedure('public.erp_ot_cliente_erp()') IS NOT NULL"),'erp_ot_cliente_erp para la caché del inventario');
+ for(const v of ['inv_movements_v','apa_v_movimientos_vigentes']) assert.equal(await one(`SELECT has_table_privilege('authenticated','public.${v}','SELECT')`),false,`vista ${v} cerrada`);
  console.log('PASS: réplica del modelo de almacén instalada con permisos del WMS; tablas cerradas a anónimos.');
  await db.close();
 })().catch(e=>{console.error('FAIL:',e.message);process.exit(1)});

@@ -32,7 +32,7 @@ while (left.length) {
 }
 L.push('-- Vistas (orden de dependencia)')
 for (const { n } of [...done].reverse()) L.push(`DROP VIEW IF EXISTS public.${n};`)
-for (const { n, v } of done) L.push(v.trim().replace(/;?$/, ';'), `REVOKE ALL ON public.${n} FROM PUBLIC, anon;`, '')
+for (const { n, v } of done) L.push(v.trim().replace(/;?$/, ';'), `REVOKE ALL ON public.${n} FROM PUBLIC, anon, authenticated;`, '')
 L.push('-- Funciones que usan vistas en su firma')
 for (const f of o.functions.filter(late)) L.push(f.sql, '')
 L.push('-- Disparadores', ...o.triggers, '', '-- Seguridad', ...o.security, '')

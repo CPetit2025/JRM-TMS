@@ -9,11 +9,11 @@ const TABLE_EXTRA = ['erp_derive_days', 'erp_derive_guias', 'erp_derive_stock', 
 // Funciones erp_* del modelo de almacén (las de contratos, clientes, referencias del TMS y carga ya están resueltas)
 const ERP_FUNCS = ['erp_derive', 'erp_derive_core', 'erp_derive_estado', 'erp_bodega', 'erp_doc_key', 'erp_key', 'erp_lineas_stock', 'erp_stock',
   'erp_stock_corte', 'erp_stock_cruce', 'erp_analisis', 'erp_analisis_detalle', 'erp_calidad', 'erp_guias', 'erp_ots', 'erp_ot_detalle',
-  'erp_reglas_comparacion', 'erp_rule_version', 'erp_stamp_rule_version', 'erp_log_start', 'erp_log_finish', 'erp_cargas_log', 'erp_medidas_texto', 'erp_tipo_tms']
+  'erp_reglas_comparacion', 'erp_rule_version', 'erp_stamp_rule_version', 'erp_log_start', 'erp_log_finish', 'erp_cargas_log', 'erp_medidas_texto', 'erp_tipo_tms', 'erp_ot_cliente_erp']
 // Funciones que el WMS define a su manera y no se pisan
 const KEEP_WMS = ['apt_can_load', 'apt_guia_key', 'erp_estado', 'erp_upload_begin', 'erp_upload_rows', 'erp_upload_apply', 'erp_upload_apply_core', 'erp_lote_doc', 'erp_unit_factor', 'erp_active_import']
-// Leen despachos y documentos del TMS: se excluyen (el plan permite dejar fuera este enriquecimiento)
-const TMS_ONLY = ['apt_flow_tms', 'apt_vinculacion_estado']
+// Lee servicios de contratos del TMS: se excluye. apt_flow_tms se replica: sin despachos del TMS devuelve vacío.
+const TMS_ONLY = ['apt_vinculacion_estado']
 
 ;(async () => {
   const db = await connect('tms')
