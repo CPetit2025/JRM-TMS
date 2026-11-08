@@ -196,14 +196,14 @@ Operaciones puede cambiarlas antes del piloto; el diseño las soporta.
 5. **Aprobación del cierre:** permiso `almacen-supervisor`.
 6. **Plazo del barrido completo:** lo define operaciones después del piloto.
 
-## 9. Reparto del trabajo
+## 8. Reparto del trabajo
 
 - **Codex:** implementa fases 1, 2 y 3 (código y pruebas) en PR contra `feature/warehouse-wms-portal`, una fase a
   la vez.
 - **Claude Code:** fase 0, revisión de cada PR, aplicación de migraciones en la base WMS de producción, despliegue
   de `jrm-wms`, ajustes del robot local y fase 4 (requiere acceso a producción).
 
-## 8. Orden de ejecución propuesto
+## 9. Orden de ejecución propuesto
 
 Fase 0 → Fase 1 → piloto de la Fase 2 → Fase 2 completa y Fase 3 → Fase 4. La Fase 4 puede avanzar en paralelo
 desde que termina la Fase 1, porque comparte el cargador.
