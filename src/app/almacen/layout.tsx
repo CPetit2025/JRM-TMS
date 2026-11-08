@@ -18,6 +18,7 @@ const links = [
   { href: '/almacen/apt/etiquetas-impresas', label: '03 · Control de recepción', icon: PackageCheck, permission: 'almacen-etiquetado', group: 'Recepción' },
   { href: '/almacen/tareas', label: 'Tareas', icon: ClipboardList, permission: 'almacen-picking', group: 'Despacho' },
   { href: '/almacen/paquetes', label: 'Paquetes y LPN', icon: PackageCheck, permission: 'almacen-packing', group: 'Despacho' },
+  { href: '/almacen/auditoria', label: 'Auditoría', icon: ShieldCheck, permission: 'almacen-auditoria', group: 'Despacho' },
   { href: '/almacen/conciliacion', label: 'Conciliación', icon: Waypoints, permission: 'almacen-carga', group: 'Control' },
   { href: '/almacen/maestros/embalajes', label: 'Embalajes', icon: Settings2, permission: 'almacen-supervisor', group: 'Configuración' },
 ]
@@ -30,6 +31,8 @@ export default function WarehouseLayout({ children }: { children: React.ReactNod
   const visible = useMemo(() => links.filter(x =>
     x.href === '/almacen/conciliacion'
       ? ['almacen-carga', 'almacen-supervisor', 'apt-carga'].some(hasAccess)
+      : x.href === '/almacen/auditoria'
+        ? ['almacen-auditoria', 'almacen-supervisor'].some(hasAccess)
       : x.href === '/almacen/tareas'
         ? ['almacen-lectura', 'almacen-picking', 'almacen-packing', 'almacen-carga', 'almacen-supervisor'].some(hasAccess)
         : x.href === '/almacen/paquetes'

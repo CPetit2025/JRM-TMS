@@ -15,6 +15,8 @@ for (const path of ['/api/users/create', '/api/erp/aplicar', '/api/inventario/pr
 }
 assert.equal(wmsRouteAllowed('/api/app-version', 'POST'), false)
 assert.equal(wmsRouteAllowed('/api/app-version', 'GET'), true)
+assert.equal(wmsRouteAllowed('/api/wms/sincronizar', 'POST'), true)
+assert.equal(wmsRouteAllowed('/api/wms/sincronizar', 'GET'), false)
 assert.equal(wmsRouteAllowed('/almacen/etiquetado', 'GET'), true)
 assert.equal(wmsRouteAllowed('/almacen-malicioso', 'GET'), false)
 console.log('PASS: WMS production rejects other databases and blocks TMS routes/API mutations; TMS mode is unchanged.')

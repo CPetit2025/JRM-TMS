@@ -1,170 +1,115 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ClipboardList, RefreshCw, Search, UserRoundCheck } from 'lucide-react'
+import { ClipboardList, RefreshCw, Search } from 'lucide-react'
+import { STATE, type BoardRow } from '@/lib/warehouse/packing-list'
+import { syncFromTms } from '@/lib/warehouse/sync'
 
-type Request = {
-  request_number: string
-  requester_name: string | null
-  delivery_address: string | null
-  required_date: string | null
-  required_at: string | null
-  reference_number: string | null
-  request_client?: { business_name: string | null } | null
-  contracts?: { code: string | null } | null
-}
-type Task = {
-  id: string
-  task_code: string
-  status: string
-  created_at: string
-  contract_id: string | null
-  assigned_picker: string | null
-  transport_requests?: Request | null
-}
-type Urgency = { label: string; style: string }
-const labels: Record<string, string> = {
-  PENDING: 'Pendiente', PARTIAL: 'Carga parcial', PICKING: 'En picking', PAUSED: 'Pausada',
-  PACKING: 'En packing', READY_FOR_LOAD: 'Lista para cargar', LOADED: 'Cargada',
-  RECONCILED: 'Conciliada', CANCELLED: 'Cancelada',
-}
-const terminal = ['LOADED', 'RECONCILED', 'CANCELLED']
-function urgency(date: string | null, at: string | null): Urgency {
-  if (!date && !at) return { label: 'Sin fecha', style: 'border-slate-200 bg-slate-100 text-slate-600' }
-  const due = (at || date || '').slice(0, 10)
-  const limaToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
-  const delta = Math.round((Date.parse(due + 'T12:00:00Z') - Date.parse(limaToday + 'T12:00:00Z')) / 86400000)
-  if (delta < 0) return { label: 'Urgente', style: 'border-rose-200 bg-rose-100 text-rose-800' }
-  if (delta === 0) return { label: 'Hoy', style: 'border-orange-200 bg-orange-100 text-orange-800' }
-  if (delta <= 3) return { label: 'Próxima', style: 'border-amber-200 bg-amber-100 text-amber-900' }
-  return { label: 'Programada', style: 'border-emerald-200 bg-emerald-100 text-emerald-800' }
-}
-const dateLabel = (date: string | null, at: string | null) => {
-  if (at) return new Date(at).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'medium', timeStyle: 'short' })
-  if (date) return new Date(date + 'T12:00:00').toLocaleDateString('es-PE', { timeZone: 'America/Lima', dateStyle: 'medium' })
-  return 'Sin fecha'
-}
-const requestRef = (r?: Request | null) => r?.contracts?.code || r?.reference_number || r?.request_number || '—'
-const requestClient = (r?: Request | null) => r?.request_client?.business_name || r?.requester_name || '—'
+const approved = ['APROBADA', 'APROBADO', 'ASIGNADA']
+const dateLabel = (r: BoardRow) => r.required_at
+  ? new Date(r.required_at).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short' })
+  : r.required_date ? new Date(r.required_date + 'T12:00:00').toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : 'Sin fecha'
 
 export default function WarehouseTasksPage() {
-  const [rows, setRows] = useState<Task[]>([])
+  const router = useRouter()
+  const [rows, setRows] = useState<BoardRow[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState('')
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const [warning, setWarning] = useState('')
   const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState('ACTIVE')
+  const [filter, setFilter] = useState('ALL')
   const [userId, setUserId] = useState('')
 
-  const load = useCallback(async (showSpinner = true) => {
-    if (showSpinner) setLoading(true)
-    setError('')
+  const load = useCallback(async (force = false) => {
+    setWarning(await syncFromTms(force))
     const db = createClient()
-    const [{ data: auth }, result] = await Promise.all([
-      db.auth.getUser(),
-      (() => {
-        let req = db.from('wh_tasks')
-          .select('id,task_code,status,created_at,contract_id,assigned_picker,transport_requests(request_number,requester_name,delivery_address,required_date,required_at,reference_number,request_client:clients!client_id(business_name),contracts(code))')
-          .order('created_at', { ascending: false }).limit(500)
-        if (filter === 'ACTIVE') req = req.not('status', 'in', '(LOADED,RECONCILED,CANCELLED)')
-        else if (filter !== 'ALL') req = req.eq('status', filter)
-        return req
-      })(),
-    ])
+    const [{ data: auth }, result] = await Promise.all([db.auth.getUser(), db.rpc('wh_task_board', { p_scope: 'tareas' })])
     if (auth.user) setUserId(auth.user.id)
-    if (result.error) setError(/does not exist|schema cache/i.test(result.error.message)
-      ? 'La migración WMS no está aplicada en el entorno de esta versión.'
-      : result.error.message)
-    else setRows((result.data || []) as unknown as Task[])
+    if (result.error) setError(result.error.message)
+    else { setError(''); setRows((result.data || []) as BoardRow[]) }
     setLoading(false)
-  }, [filter])
+  }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load()
-    const timer = window.setInterval(() => void load(false), 30000)
+    const timer = window.setInterval(() => void load(), 20000)
     return () => window.clearInterval(timer)
   }, [load])
 
-  const assign = async (task: Task) => {
-    setBusyId(task.id)
-    setError('')
-    setNotice('')
-    const { error: assignError } = await createClient().rpc('wh_assign_task', { p_task_id: task.id })
-    if (assignError) setError(assignError.message)
-    else {
-      setNotice(`La tarea ${task.task_code} quedó asignada a tu usuario.`)
-      await load(false)
+  const take = async (task: BoardRow) => {
+    setBusyId(task.id); setError('')
+    const db = createClient()
+    const assigned = await db.rpc('wh_assign_task', { p_task_id: task.id })
+    if (assigned.error) { setError(assigned.error.message); setBusyId(''); await load(); return }
+    if (task.status === 'PENDING') {
+      const started = await db.rpc('wh_task_action', { p_task_id: task.id, p_action: 'START_PICKING' })
+      if (started.error) { setError(started.error.message); setBusyId(''); return }
     }
-    setBusyId('')
+    router.push(`/almacen/tareas/${task.id}`)
   }
 
-  const filtered = rows.filter(task => {
-    const r = task.transport_requests
-    const haystack = [task.task_code, requestRef(r), requestClient(r), r?.delivery_address || '', r?.required_date || ''].join(' ').toLocaleLowerCase()
-    return haystack.includes(query.toLocaleLowerCase())
-  })
+  const needle = query.trim().toLocaleLowerCase()
+  const filtered = rows.filter(r => (filter === 'ALL' || r.display_state === filter) &&
+    (!needle || [r.request_number, r.task_code, r.contract_code, r.components, r.lots, r.client_name].join(' ').toLocaleLowerCase().includes(needle)))
 
-  return <div className="space-y-5">
+  return <div className="space-y-4">
     <header className="flex flex-wrap items-end justify-between gap-3">
       <div>
         <p className="text-xs font-bold uppercase tracking-widest text-blue-700">Despacho</p>
-        <h1 className="mt-1 text-3xl font-black text-[#002855]">Tareas de despacho</h1>
-        <p className="mt-1 text-sm text-slate-600">Las solicitudes de transporte registradas en TMS generan aquí una tarea de almacén.</p>
+        <h1 className="mt-1 text-3xl font-black text-[#002855]">Tareas de almacén</h1>
+        <p className="mt-1 text-sm text-slate-600">Solicitudes de despacho del TMS con OT, listas para preparar. Se actualiza sola.</p>
       </div>
-      <button onClick={() => void load()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold"><RefreshCw size={16}/>Actualizar</button>
+      <button onClick={() => void load(true)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold"><RefreshCw size={16}/>Actualizar</button>
     </header>
 
     <section className="flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white p-3">
       <label className="relative min-w-64 flex-1">
         <Search size={16} className="absolute left-3 top-3 text-slate-400"/>
-        <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar OT, lote, cliente o punto de entrega" className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm"/>
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar solicitud, OT, lote o cliente" className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm"/>
       </label>
-      <select value={filter} onChange={event => setFilter(event.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
-        <option value="ACTIVE">Tareas activas</option><option value="ALL">Todos los estados</option>
-        {Object.entries(labels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+      <select value={filter} onChange={e => setFilter(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" aria-label="Estado">
+        <option value="ALL">Todas las activas</option>
+        {['PENDIENTE', 'EN_PICKING', 'EN_AUDITORIA', 'OBSERVADO', 'LIBERADO'].map(k => <option key={k} value={k}>{STATE[k].label}</option>)}
       </select>
     </section>
     {error && <div role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">{error}</div>}
-    {notice && <div role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</div>}
+    {warning && <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{warning}</div>}
 
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] text-left text-sm">
+        <table className="w-full min-w-[860px] text-left text-sm">
           <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-600">
-            <tr><th className="px-4 py-3">Fecha de Atención</th><th className="px-4 py-3">OT o Lote</th><th className="px-4 py-3">Cliente</th><th className="px-4 py-3">Punto de entrega</th><th className="px-4 py-3 text-right">Acciones</th></tr>
+            <tr><th className="px-3 py-2.5">Fecha</th><th className="px-3 py-2.5">Solicitud</th><th className="px-3 py-2.5">OT / Lote</th><th className="px-3 py-2.5">Cliente</th><th className="px-3 py-2.5">Estado</th><th className="px-3 py-2.5">Responsable</th><th className="px-3 py-2.5 text-right">Acciones</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {loading ? <tr><td colSpan={5} className="p-10 text-center text-slate-500">Cargando tareas…</td></tr>
-              : filtered.length === 0 ? <tr><td colSpan={5} className="p-10 text-center">
+            {loading ? <tr><td colSpan={7} className="p-10 text-center text-slate-500">Cargando tareas…</td></tr>
+              : filtered.length === 0 ? <tr><td colSpan={7} className="p-10 text-center">
                 <ClipboardList className="mx-auto h-8 w-8 text-slate-300"/>
                 <p className="mt-2 font-semibold text-slate-700">No hay tareas para mostrar</p>
-                <p className="mt-1 text-sm text-slate-500">Las solicitudes elegibles de transporte aparecen automáticamente al registrarse en TMS.</p>
               </td></tr>
-              : filtered.map(task => {
-                const request = task.transport_requests
-                const level = urgency(request?.required_date || null, request?.required_at || null)
-                const assignedToMe = Boolean(userId && task.assigned_picker === userId)
-                const unavailable = terminal.includes(task.status)
-                return <tr key={task.id} className="hover:bg-blue-50/40">
-                  <td className="whitespace-nowrap px-4 py-3 text-slate-700">
-                    <span className="block">{dateLabel(request?.required_date || null, request?.required_at || null)}</span>
-                    <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${level.style}`}>{level.label}</span>
-                  </td>
-                  <td className="px-4 py-3 font-semibold text-[#002855]">{requestRef(request)}</td>
-                  <td className="px-4 py-3 text-slate-700">{requestClient(request)}</td>
-                  <td className="max-w-[360px] px-4 py-3 text-slate-700">{request?.delivery_address || 'Sin punto de entrega'}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-2">
-                      <button type="button" disabled={busyId === task.id || unavailable || (Boolean(task.assigned_picker) && !assignedToMe)} onClick={() => void assign(task)} className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50" title={task.assigned_picker && !assignedToMe ? 'Ya está asignada a otro usuario' : 'Asignar la tarea a tu usuario'}>
-                        <UserRoundCheck size={14}/>{busyId === task.id ? 'Asignando…' : assignedToMe ? 'Asignada a mí' : task.assigned_picker ? 'Asignada' : 'Asignar Tarea'}
-                      </button>
-                      <button type="button" aria-label={`Prioridad: ${level.label}`} title={`Urgencia calculada según la fecha de atención: ${level.label}`} className={`inline-flex min-w-[104px] cursor-default justify-center rounded-lg border px-2.5 py-2 text-xs font-extrabold ${level.style}`}>Prioridad · {level.label}</button>
-                    </div>
-                    {!assignedToMe && task.assigned_picker && <Link href={`/almacen/tareas/${task.id}`} className="mt-1 block text-right text-[11px] font-semibold text-blue-800 underline">Ver tarea</Link>}
-                    {assignedToMe && <Link href={`/almacen/tareas/${task.id}`} className="mt-1 block text-right text-[11px] font-semibold text-blue-800 underline">Abrir tarea</Link>}
+              : filtered.map(r => {
+                const state = STATE[r.display_state] || { label: r.display_state, style: 'bg-slate-100 text-slate-700' }
+                const mine = Boolean(userId && r.assigned_picker === userId)
+                const otherOwner = Boolean(r.assigned_picker && !mine)
+                const canTake = !r.assigned_picker && approved.includes(r.request_status?.toUpperCase()) && ['PENDING', 'PICKING', 'PACKING'].includes(r.status)
+                return <tr key={r.id} className="hover:bg-blue-50/40">
+                  <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{dateLabel(r)}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-[#002855]">{r.request_number || r.task_code}</td>
+                  <td className="px-3 py-2.5"><b>{r.contract_code || '—'}</b>{(r.components || r.lots) && <small className="block text-slate-500">{[r.components, r.lots].filter(Boolean).join(' · ')}</small>}</td>
+                  <td className="px-3 py-2.5 text-slate-700">{r.client_name || '—'}</td>
+                  <td className="px-3 py-2.5"><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-bold ${state.style}`}>{state.label}</span>
+                    {r.lpn_total > 0 && <small className="block text-slate-500">{r.lpn_approved}/{r.lpn_total} LPN aprobados</small>}</td>
+                  <td className="px-3 py-2.5 text-slate-700">{r.picker_name || '—'}</td>
+                  <td className="px-3 py-2.5 text-right">
+                    {canTake ? <button type="button" disabled={busyId === r.id} onClick={() => void take(r)} className="whitespace-nowrap rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{busyId === r.id ? 'Tomando…' : 'Tomar tarea'}</button>
+                      : mine ? <Link href={`/almacen/tareas/${r.id}`} className="inline-block whitespace-nowrap rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white">Continuar</Link>
+                      : otherOwner ? <Link href={`/almacen/tareas/${r.id}`} className="text-xs font-semibold text-blue-800 underline">Ver tarea</Link>
+                      : <span className="text-xs text-slate-500" title="La solicitud debe estar aprobada en TMS">Por aprobar en TMS</span>}
                   </td>
                 </tr>
               })}
