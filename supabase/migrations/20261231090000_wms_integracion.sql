@@ -83,7 +83,9 @@ REVOKE ALL ON public.wms_packing_releases FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.wms_packing_releases TO authenticated;
 DROP POLICY IF EXISTS wms_packing_releases_read ON public.wms_packing_releases;
 CREATE POLICY wms_packing_releases_read ON public.wms_packing_releases FOR SELECT TO authenticated
-  USING (public.has_tms_read_permission('solicitudes') OR public.has_tms_read_permission('despacho'));
+  USING ((public.has_tms_read_permission('solicitudes') OR public.has_tms_read_permission('despacho'))
+    -- la subconsulta respeta las políticas de transport_requests (sede, cartera): solo solicitudes visibles
+    AND EXISTS (SELECT 1 FROM public.transport_requests r WHERE r.id = wms_packing_releases.transport_request_id));
 
 CREATE OR REPLACE FUNCTION public.wms_report_packing_list(p_key text, p_row jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
