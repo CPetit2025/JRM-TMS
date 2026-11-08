@@ -125,7 +125,10 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
     setBusy(true); setError(''); setMessage('')
     const { data: lpn, error } = await createClient().rpc('wh_consolidate_lpn', { p_task_id: id, p_package_codes: codes, p_client_event_id: crypto.randomUUID() })
     if (error) setError(error.message)
-    else {
+    else if (lpn.own_label) {
+      setMessage(`${lpn.lpn_code} queda como LPN con su propia etiqueta; no hace falta imprimir otra.`)
+      await load()
+    } else {
       setMessage(`LPN ${lpn.lpn_code} creado con ${lpn.package_count} paquete(s).`)
       await load()
       await printLabel({ ...lpn, print_count: 0, packages: [], audits: [], status: 'CLOSED', audit_status: 'PENDIENTE' } as TaskLpn)

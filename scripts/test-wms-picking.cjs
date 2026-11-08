@@ -95,6 +95,9 @@ const feed=(status={})=>[
  await q("SELECT public.wh_audit_lpn($1,'APROBADO')",[lpn1.id]);
  await as('op1'); await fails("SELECT public.wh_audit_lpn($1,'APROBADO')",[lpn1.id],/permiso/);
  const lpn2=await one('SELECT public.wh_consolidate_lpn($1,$2::text[])',[task.id,['PKG-3']]);
+ assert.ok(lpn1.lpn_code.startsWith('LPN-')&&!lpn1.own_label,'varios paquetes: LPN nuevo con etiqueta');
+ assert.equal(lpn2.lpn_code,'PKG-3','un paquete solo usa el código de su etiqueta'); assert.equal(lpn2.own_label,true);
+ assert.equal((await sys(`SELECT print_count FROM public.wh_lpns WHERE id='${lpn2.id}'`))[0].print_count,1,'no pide imprimir otra etiqueta');
  await as('aud');
  await fails("SELECT public.wh_audit_lpn($1,'OBSERVADO')",[lpn2.id],/Describa/);
  await fails("SELECT public.wh_audit_lpn($1,'OBSERVADO','x',null,ARRAY['otro/foto.jpg'])",[lpn2.id],/Evidencia/);
@@ -122,6 +125,9 @@ const feed=(status={})=>[
  assert.ok((await sys(`SELECT count(*)::int n FROM public.wh_lpn_audits WHERE lpn_id='${lpn2.id}'`))[0].n>=2,'historial conservado');
  await fails("SELECT public.wh_lpn_remove_package($1,'PKG-1',false,'x')",[lpn1.id],/aprobado/);
  const lpn3=await one('SELECT public.wh_consolidate_lpn($1,$2::text[])',[task.id,['PKG-3']]);
+ assert.equal(lpn3.lpn_code,'PKG-3','al deshacer y volver a consolidar reutiliza el código del paquete');
+ assert.match((await sys(`SELECT lpn_code FROM public.wh_lpns WHERE id='${lpn2.id}'`))[0].lpn_code,/^PKG-3-ANULADO-/,'el LPN anulado conserva su historial con otro código');
+ console.log('PASS: paquete que sale solo queda como LPN con su propia etiqueta; deshacer y reconsolidar sin choque de código.');
  await q("SELECT public.wh_task_action($1,'FINISH_PICKING')",[task.id]);
  await as('aud');
  await fails('SELECT public.wh_release_packing_list($1)',[task.id],/pendientes/);
