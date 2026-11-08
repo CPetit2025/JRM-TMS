@@ -32,7 +32,7 @@ try {
     $wb = Com { $excel.Workbooks.Open($ruta, 0) }  # 0 = no actualizar vínculos externos
     try {
       # Copia del robot del TMS (scripts/erp-auto): aquí la tabla Consulta1 está en la hoja «Entrada ALM PT»
-      $lo = Com { foreach ($ws in $wb.Worksheets) { foreach ($l in $ws.ListObjects) { if ($l.Name -eq 'Consulta1') { $l } } } } | Select-Object -First 1
+      $lo = @(Com { foreach ($ws in $wb.Worksheets) { foreach ($l in $ws.ListObjects) { if ($l.Name -eq 'Consulta1') { $l } } } })[0]
       if (-not $lo) { throw 'No se encontró la tabla Consulta1 en el libro' }
       # Power Query no expone RefreshDate: la hora del ERP viene en Fecha_Actualizacion (margen por el reloj del servidor)
       $fresco = { $v = Com { $lo.ListColumns.Item('Fecha_Actualizacion').DataBodyRange.Cells.Item(1).Value2 }; $v -is [double] -and [DateTime]::FromOADate($v) -ge $antes.AddMinutes(-30) }
