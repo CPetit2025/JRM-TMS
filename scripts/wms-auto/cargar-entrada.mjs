@@ -25,7 +25,8 @@ try{
  else{
   const button=page.locator('#wms-receipt-import')
   await button.waitFor({state:'visible',timeout:60000});await button.click()
-  const status=page.locator('[role=status]'),alert=page.locator('[role=alert]')
+  // Solo dentro de <main>: Next.js agrega en cada página un aviso de ruta vacío con role=alert
+  const status=page.locator('main [role=status]'),alert=page.locator('main [role=alert]')
   await status.or(alert).first().waitFor({timeout:10*60000})
   if(await alert.isVisible())throw new Error(await alert.innerText())
   const message=await status.innerText()
