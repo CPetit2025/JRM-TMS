@@ -1,3 +1,4 @@
+-- La tercerización (#490) envuelve schedule_route_resources y delega en schedule_route_resources_before_outsourcing: se revisan ambas.
 -- C170: servicios especiales (Etapa 1) — herencia en la ruta, montacarga vinculado a su línea,
 -- origen por flujo y "sin tarifa" distinto de S/ 0, instalados y protegidos.
 BEGIN;
@@ -26,7 +27,7 @@ BEGIN
   OR NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='public.transport_unloading_costs'::regclass AND tgname='route_forklift_unloading_link' AND NOT tgisinternal) THEN
   RAISE EXCEPTION 'CAJA C170 FAIL: faltan disparadores de origen o vínculo';
  END IF;
- IF position('inherit_route_unloading' IN pg_get_functiondef('public.schedule_route_resources(jsonb)'::regprocedure))=0
+ IF position('inherit_route_unloading' IN (pg_get_functiondef('public.schedule_route_resources(jsonb)'::regprocedure)||coalesce(pg_get_functiondef(to_regprocedure('public.schedule_route_resources_before_outsourcing(jsonb)')),'')))=0
   OR position('estimated_source' IN pg_get_functiondef('public.apply_request_tariff(uuid)'::regprocedure))=0
   OR position('manual_reason' IN pg_get_functiondef('public.save_request_unloading_costs(uuid,jsonb)'::regprocedure))=0 THEN
   RAISE EXCEPTION 'CAJA C170 FAIL: funciones sin la herencia o sin el costo manual protegido';
