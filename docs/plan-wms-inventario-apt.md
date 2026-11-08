@@ -184,14 +184,24 @@ bulto no se etiquete dos veces. La garantía es una **identidad física persiste
 - En el TMS: C38, C145 y C146 con las proyecciones antes del retiro.
 - Piloto en una zona de una bodega antes del barrido completo.
 
-## 7. Pendiente de decidir con operaciones
+## 7. Decisiones por defecto (aprobado el plan, 08/11/2026)
 
-1. Bodega y zona del piloto.
-2. Conteo por bulto con la cantidad del rótulo, por peso, o ambos.
-3. ¿Se puede congelar la zona durante el conteo, o se usa el ajuste al corte?
-4. Qué identifica a cada bulto en el rótulo actual (IPT y número de bulto, lote, otro).
-5. Quién aprueba el cierre y el reporte de diferencias.
-6. Plazo esperado del barrido completo.
+Operaciones puede cambiarlas antes del piloto; el diseño las soporta.
+
+1. **Piloto:** bodega `647-04 ALM PT`, una zona. Si aún no hay zonas definidas, la bodega es una zona única.
+2. **Conteo:** por bulto, con la cantidad del rótulo; el peso es opcional y se registra si hay balanza.
+3. **Corte:** congelamiento efectivo de la zona. El ajuste al corte queda fuera de la primera versión.
+4. **Identidad del bulto:** documento IPT y número de bulto (`n/total`) si el rótulo los trae; si no, lote y
+   una secuencia asignada en el conteo.
+5. **Aprobación del cierre:** permiso `almacen-supervisor`.
+6. **Plazo del barrido completo:** lo define operaciones después del piloto.
+
+## 9. Reparto del trabajo
+
+- **Codex:** implementa fases 1, 2 y 3 (código y pruebas) en PR contra `feature/warehouse-wms-portal`, una fase a
+  la vez.
+- **Claude Code:** fase 0, revisión de cada PR, aplicación de migraciones en la base WMS de producción, despliegue
+  de `jrm-wms`, ajustes del robot local y fase 4 (requiere acceso a producción).
 
 ## 8. Orden de ejecución propuesto
 
