@@ -136,7 +136,9 @@ export async function erpAltaAutomatica(simular = false): Promise<ErpAltaResulta
 async function applyOnServer(id: string): Promise<Applied | null> {
   let res: Response
   try {
-    res = await fetch('/api/erp/aplicar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ upload_id: id }) })
+    // El WMS bloquea las rutas del TMS: aplica con su propia ruta
+    const url = process.env.NEXT_PUBLIC_DEPLOYMENT_SYSTEM === 'wms' ? '/api/wms/erp-aplicar' : '/api/erp/aplicar'
+    res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ upload_id: id }) })
   } catch { return null }
   let out: { success?: boolean; error?: string; partial?: boolean; fallback?: boolean } & Partial<Applied>
   try { out = await res.json() } catch { return null }
