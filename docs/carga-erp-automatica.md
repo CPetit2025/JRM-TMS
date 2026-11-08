@@ -57,6 +57,7 @@ tareas.
 
 | Mensaje | Qué hacer |
 |---|---|
+| `Sin conexión con el ERP (DATAFLEXFLEXLINE)` | El equipo no llega al servidor del ERP (red de la oficina). Conectarlo a la red de la oficina o a la VPN; la siguiente ejecución carga sola. |
 | `Consulta1 no se actualizó` / quedó vacía | Abrir el Excel y actualizar a mano: si pide credenciales, volver a escribirlas en **Datos › Obtener datos › Configuración de origen de datos**. |
 | `No se pudo iniciar sesión` | Cambió la contraseña del usuario del robot: repetir la instalación. |
 | `el usuario no tiene permiso de carga del ERP` | Darle el permiso al usuario del robot. |

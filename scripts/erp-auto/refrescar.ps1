@@ -15,6 +15,19 @@ function Com([scriptblock]$Paso) {
   }
 }
 
+# Sin red de oficina o VPN, Power Query "refresca" sin error pero deja los datos viejos: se avisa antes de abrir Excel
+try {
+  $c = New-Object System.Data.SqlClient.SqlConnection 'Server=DATAFLEX\FLEXLINE;Database=BDFLEXLINE;Integrated Security=SSPI;Connect Timeout=15'
+  $c.Open(); $c.Close()
+} catch {
+  # Solo errores de red (servidor o instancia inalcanzable); un rechazo de inicio de sesión no aplica: Excel usa su credencial
+  $n = $_.Exception.InnerException.Number
+  if ($n -in -1, 2, 26, 53, 64, 10060, 10061, 11001) {
+    Write-Output "ERROR Sin conexión con el ERP (DATAFLEX\FLEXLINE): conecte el equipo a la red de la oficina o a la VPN"
+    exit 1
+  }
+}
+
 $excel = New-Object -ComObject Excel.Application
 # Proceso de este Excel oculto: si Quit no lo cierra, queda vivo y el siguiente archivo que abra el usuario cae en él
 Add-Type -Name W -Namespace ErpAuto -MemberDefinition '[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(System.IntPtr h, out uint p);'
