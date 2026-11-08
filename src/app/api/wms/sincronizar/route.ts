@@ -47,7 +47,7 @@ export async function POST(request: Request) {
   for (const row of (pending.data || []) as Array<{ id: string; status: string }>) {
     try {
       await tmsRpc('wms_report_packing_list', { p_key: key, p_row: row })
-      await db.rpc('wh_packing_list_mark_reported', { p_id: row.id, p_status: row.status })
+      await db.rpc('wh_packing_list_mark_reported', { p_key: key, p_id: row.id, p_status: row.status })
       reported++
     } catch (e) {
       syncError ||= e instanceof Error ? e.message : String(e)

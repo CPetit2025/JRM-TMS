@@ -478,7 +478,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM public.wh_lpns WHERE task_id = t.id AND status <> 'VOID' AND (status <> 'CLOSED' OR audit_status <> 'APROBADO')) THEN
     RAISE EXCEPTION 'Hay LPN pendientes, observados o rechazados';
   END IF;
-  IF EXISTS (SELECT 1 FROM public.wh_packages WHERE task_id = t.id AND status = 'PICKED') THEN RAISE EXCEPTION 'Hay paquetes recogidos sin consolidar'; END IF;
+  IF EXISTS (SELECT 1 FROM public.wh_packages WHERE task_id = t.id AND (status = 'PICKED' OR (status = 'PACKED' AND lpn_id IS NULL))) THEN RAISE EXCEPTION 'Hay paquetes recogidos sin consolidar'; END IF;
   IF EXISTS (SELECT 1 FROM public.wh_lpns l WHERE l.task_id = t.id AND l.status <> 'VOID' AND (
              l.package_count <> (SELECT count(*) FROM public.wh_packages p WHERE p.lpn_id = l.id AND p.status = 'PACKED')
              OR l.quantity <> (SELECT coalesce(sum(p.quantity), 0) FROM public.wh_packages p WHERE p.lpn_id = l.id AND p.status = 'PACKED'))) THEN
@@ -542,11 +542,12 @@ BEGIN
     FROM public.wh_packing_lists WHERE tms_reported_at IS NULL AND public.can_access_site(site_id) LIMIT 50), '[]'::jsonb);
 END $$;
 
-CREATE OR REPLACE FUNCTION public.wh_packing_list_mark_reported(p_id uuid, p_status text)
+CREATE OR REPLACE FUNCTION public.wh_packing_list_mark_reported(p_key text, p_id uuid, p_status text)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
   PERFORM public.security_assert_active_session();
   IF NOT public.wh_any_warehouse_permission() THEN RAISE EXCEPTION 'Sin acceso al almacén' USING ERRCODE = '42501'; END IF;
+  IF NOT public.wh_tms_key_ok(p_key) THEN RAISE EXCEPTION 'Clave de integración inválida' USING ERRCODE = '42501'; END IF;
   -- solo si no cambió desde que se informó (un reemplazo posterior debe volver a informarse)
   UPDATE public.wh_packing_lists SET tms_reported_at = now() WHERE id = p_id AND status = p_status;
 END $$;
@@ -631,6 +632,17 @@ END $$;
 DROP TRIGGER IF EXISTS wh_tasks_cancel_release ON public.wh_tasks;
 CREATE TRIGGER wh_tasks_cancel_release AFTER UPDATE OF status ON public.wh_tasks FOR EACH ROW EXECUTE FUNCTION public.wh_invalidate_release_on_cancel();
 
+CREATE OR REPLACE FUNCTION public.wh_invalidate_release_on_lpn_void()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $fn$
+BEGIN
+  IF NEW.task_id IS NOT NULL THEN PERFORM public.wh_invalidate_release(NEW.task_id, NEW.lpn_code || ' anulado: ' || coalesce(NEW.void_reason, '')); END IF;
+  RETURN NULL;
+END $fn$;
+DROP TRIGGER IF EXISTS wh_lpns_void_release ON public.wh_lpns;
+CREATE TRIGGER wh_lpns_void_release AFTER UPDATE OF status ON public.wh_lpns FOR EACH ROW
+  WHEN (NEW.status = 'VOID' AND OLD.status IS DISTINCT FROM 'VOID') EXECUTE FUNCTION public.wh_invalidate_release_on_lpn_void();
+REVOKE ALL ON FUNCTION public.wh_invalidate_release_on_lpn_void() FROM PUBLIC, anon, authenticated;
+
 -- 4. Evidencias (bucket privado; en el arnés local sin Storage se omite) -------------------------------------
 DO $storage$
 BEGIN
@@ -655,12 +667,12 @@ REVOKE ALL ON FUNCTION public.wh_tms_sync_claim(boolean), public.wh_tms_sync_fai
   public.wh_assign_task(uuid), public.wh_consolidate_lpn(uuid, text[], uuid), public.wh_lpn_remove_package(uuid, text, boolean, text),
   public.wh_lpn_undo(uuid, text), public.wh_print_lpn_label(uuid), public.wh_audit_lpn(uuid, text, text, text, text[], text),
   public.wh_task_lpns(uuid), public.wh_task_board(text, uuid), public.wh_release_packing_list(uuid, text), public.wh_print_packing_list(uuid),
-  public.wh_packing_lists_unreported(), public.wh_packing_list_mark_reported(uuid, text), public.wh_task_action(uuid, text, text) FROM PUBLIC, anon;
+  public.wh_packing_lists_unreported(), public.wh_packing_list_mark_reported(text, uuid, text), public.wh_task_action(uuid, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.wh_tms_sync_claim(boolean), public.wh_tms_sync_fail(text, text), public.wh_tms_sync_apply(text, jsonb),
   public.wh_assign_task(uuid), public.wh_consolidate_lpn(uuid, text[], uuid), public.wh_lpn_remove_package(uuid, text, boolean, text),
   public.wh_lpn_undo(uuid, text), public.wh_print_lpn_label(uuid), public.wh_audit_lpn(uuid, text, text, text, text[], text),
   public.wh_task_lpns(uuid), public.wh_task_board(text, uuid), public.wh_release_packing_list(uuid, text), public.wh_print_packing_list(uuid),
-  public.wh_packing_lists_unreported(), public.wh_packing_list_mark_reported(uuid, text), public.wh_task_action(uuid, text, text) TO authenticated;
+  public.wh_packing_lists_unreported(), public.wh_packing_list_mark_reported(text, uuid, text), public.wh_task_action(uuid, text, text) TO authenticated;
 
 -- 6. Picking validado por OT cuando la solicitud TMS no trae detalle de productos (caso actual del TMS):
 --    el paquete debe tener una OT incluida en la solicitud; con detalle, lo no solicitado sigue requiriendo supervisión.
@@ -680,6 +692,7 @@ BEGIN
  IF nullif(trim(p_code),'') IS NULL OR p_client_event_id IS NULL THEN RAISE EXCEPTION 'Lea un código válido; se requiere identificador de operación'; END IF;
  IF upper(p_event)='PICK' AND t.request_status NOT IN ('APROBADA','APROBADO','ASIGNADA') THEN RAISE EXCEPTION 'La solicitud aún no está aprobada para iniciar el picking'; END IF;
  IF upper(p_event)='LOAD' AND t.dispatch_id IS NULL THEN RAISE EXCEPTION 'Programe la solicitud en un despacho antes de confirmar carga'; END IF;
+ IF upper(p_event)='LOAD' AND NOT EXISTS(SELECT 1 FROM public.wh_packing_lists WHERE task_id=t.id AND status='LIBERADO') THEN RAISE EXCEPTION 'No se puede cargar: el Packing List no está liberado por auditoría'; END IF;
  IF EXISTS(SELECT 1 FROM public.wh_scan_events WHERE site_id=t.site_id AND client_event_id=p_client_event_id AND scanned_code=trim(p_code)
    AND event_type IN (upper(p_event),CASE WHEN upper(p_event)='LOAD' THEN 'LOAD_LPN' ELSE upper(p_event) END) AND task_id=t.id) THEN
   RETURN jsonb_build_object('success',true,'duplicate_retry',true,'code',trim(p_code),'event',upper(p_event));

@@ -138,7 +138,8 @@ const feed=(status={})=>[
  assert.equal(snap.lpn_count,2); assert.equal(snap.package_count,3); assert.equal(Number(snap.total_weight_kg),76.5); assert.equal(snap.auditor_name,'aud'); assert.equal(snap.picker_name,'op1');
  st=(await one("SELECT public.wh_task_board('tareas',$1)",[task.id]))[0]; assert.equal(st.display_state,'LIBERADO');
  await as('op1'); let unrep=await one('SELECT public.wh_packing_lists_unreported()'); assert.equal(unrep.length,1); assert.equal(unrep[0].status,'LIBERADO');
- await q('SELECT public.wh_packing_list_mark_reported($1,$2)',[pl.id,'LIBERADO']);
+ await fails('SELECT public.wh_packing_list_mark_reported($1,$2,$3)',['x'.repeat(40),pl.id,'LIBERADO'],/Clave/);
+ await q('SELECT public.wh_packing_list_mark_reported($1,$2,$3)',[KEY,pl.id,'LIBERADO']);
  assert.equal((await one('SELECT public.wh_packing_lists_unreported()')).length,0);
  console.log('PASS: Packing List liberado con número, versión, totales, responsables; impresión solo de la versión vigente; reporte a TMS pendiente/enviado.');
 
@@ -157,6 +158,7 @@ const feed=(status={})=>[
  const pl2=await one('SELECT public.wh_release_packing_list($1)',[task.id]);
  assert.equal(pl2.packing_list_number,pl.packing_list_number); assert.equal(pl2.version,2);
  assert.equal((await sys(`SELECT count(*)::int n FROM public.wh_packing_lists WHERE task_id='${task.id}'`))[0].n,2,'historial de versiones conservado');
+ await as('sup'); await fails("SELECT public.wh_record_scan($1,$2,'LOAD',gen_random_uuid())",[task.id,lpn3.lpn_code],/despacho|Packing List/);
  await as('aud'); await q("SELECT public.wh_audit_lpn($1,'RECHAZADO','Rechazo tardío')",[lpn3.id]);
  assert.equal((await sys(`SELECT status FROM public.wh_packing_lists WHERE id='${pl2.id}'`))[0].status,'REEMPLAZADO','rechazar tras liberar invalida el Packing List');
  console.log('PASS: un cambio posterior reemplaza la versión liberada, re-audita solo el LPN afectado y emite la versión 2.');
