@@ -19,6 +19,7 @@ const links = [
   { href: '/almacen/tareas', label: 'Tareas', icon: ClipboardList, permission: 'almacen-picking', group: 'Despacho' },
   { href: '/almacen/paquetes', label: 'Paquetes y LPN', icon: PackageCheck, permission: 'almacen-packing', group: 'Despacho' },
   { href: '/almacen/auditoria', label: 'Auditoría', icon: ShieldCheck, permission: 'almacen-auditoria', group: 'Despacho' },
+  { href: '/almacen/inventario', label: 'Inventario', icon: ClipboardList, permission: 'almacen-etiquetado', group: 'Control' },
   { href: '/almacen/stock-erp', label: 'Stock ERP', icon: Boxes, permission: 'almacen-lectura', group: 'Control' },
   { href: '/almacen/conciliacion', label: 'Conciliación', icon: Waypoints, permission: 'almacen-carga', group: 'Control' },
   { href: '/almacen/maestros/embalajes', label: 'Embalajes', icon: Settings2, permission: 'almacen-supervisor', group: 'Configuración' },
@@ -31,7 +32,9 @@ export default function WarehouseLayout({ children }: { children: React.ReactNod
   const [mobileOpen, setMobileOpen] = useState(false)
   const [email, setEmail] = useState('')
   const visible = useMemo(() => links.filter(x =>
-    x.href === '/almacen/stock-erp'
+    x.href === '/almacen/inventario'
+      ? ['almacen-etiquetado', 'almacen-carga', 'almacen-supervisor'].some(hasAccess)
+      : x.href === '/almacen/stock-erp'
       ? ['almacen-lectura', 'almacen-carga', 'almacen-supervisor'].some(hasAccess)
       : x.href === '/almacen/conciliacion'
       ? ['almacen-carga', 'almacen-supervisor', 'apt-carga'].some(hasAccess)
