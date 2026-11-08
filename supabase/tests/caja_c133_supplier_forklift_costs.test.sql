@@ -1,3 +1,4 @@
+-- La tercerización (#490) envuelve schedule_route_resources y delega en schedule_route_resources_before_outsourcing: se revisan ambas.
 -- CAJA C133: costo por hora y horas finales del servicio de montacarga
 DO $$
 DECLARE v_ok boolean;
@@ -28,7 +29,7 @@ BEGIN
    OR NOT (SELECT relrowsecurity FROM pg_class WHERE oid='public.supplier_vehicles'::regclass) THEN
   RAISE EXCEPTION 'CAJA C133 FAIL: seguridad de datos del personal de proveedores';
  END IF;
- SELECT pg_get_functiondef('public.schedule_route_resources(jsonb)'::regprocedure) LIKE '%hourly_rate%'
+ SELECT (pg_get_functiondef('public.schedule_route_resources(jsonb)'::regprocedure)||coalesce(pg_get_functiondef(to_regprocedure('public.schedule_route_resources_before_outsourcing(jsonb)')),'')) LIKE '%hourly_rate%'
    AND pg_get_functiondef('public.close_route_with_forklift(uuid,text,uuid,text,text,text,numeric,numeric)'::regprocedure) LIKE '%final_amount%'
    INTO v_ok;
  IF NOT v_ok THEN RAISE EXCEPTION 'CAJA C133 FAIL: tarifa no llega a programación y cierre'; END IF;

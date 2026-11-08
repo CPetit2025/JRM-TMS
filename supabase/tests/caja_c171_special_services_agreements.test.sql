@@ -1,3 +1,4 @@
+-- La tercerización (#490) envuelve schedule_route_resources y delega en schedule_route_resources_before_outsourcing: se revisan ambas.
 -- C171: servicios especiales (Etapa 2) — costo acordado por proveedor, categorías de grúa y estiba e historial de costos
 -- solo de inserción, instalados y protegidos.
 BEGIN;
@@ -24,8 +25,8 @@ BEGIN
  IF EXISTS(SELECT 1 FROM public.transport_unloading_costs WHERE agreed_rate IS NOT NULL AND (supplier_id IS NULL OR billing_unit IS NULL)) THEN
   RAISE EXCEPTION 'CAJA C171 FAIL: costo acordado sin proveedor o modalidad';
  END IF;
- IF position('set_special_service_agreements' IN pg_get_functiondef('public.schedule_route_resources(jsonb)'::regprocedure))=0
-  OR position('inherit_route_unloading' IN pg_get_functiondef('public.schedule_route_resources(jsonb)'::regprocedure))=0 THEN
+ IF position('set_special_service_agreements' IN (pg_get_functiondef('public.schedule_route_resources(jsonb)'::regprocedure)||coalesce(pg_get_functiondef(to_regprocedure('public.schedule_route_resources_before_outsourcing(jsonb)')),'')))=0
+  OR position('inherit_route_unloading' IN (pg_get_functiondef('public.schedule_route_resources(jsonb)'::regprocedure)||coalesce(pg_get_functiondef(to_regprocedure('public.schedule_route_resources_before_outsourcing(jsonb)')),'')))=0 THEN
   RAISE EXCEPTION 'CAJA C171 FAIL: la programación no registra los costos acordados';
  END IF;
  IF has_table_privilege('authenticated','public.service_cost_events','SELECT')
