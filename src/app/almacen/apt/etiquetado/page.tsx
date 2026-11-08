@@ -1,8 +1,8 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Upload } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, RefreshCw, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 type ReceiptRow = {
@@ -81,6 +81,56 @@ async function parseReceiptBook(file: File): Promise<ReceiptRow[]> {
   return result
 }
 
+type RobotRun = { id: number; kind: 'AUTO' | 'MANUAL'; status: 'PENDING' | 'RUNNING' | 'OK' | 'ERROR'; requested_at: string; started_at: string | null; finished_at: string | null; message: string | null }
+const RUN_STATUS: Record<RobotRun['status'], [string, string]> = {
+  PENDING: ['En espera del robot', 'bg-amber-50 text-amber-900'], RUNNING: ['Actualizando', 'bg-blue-50 text-blue-900'],
+  OK: ['Correcta', 'bg-emerald-50 text-emerald-900'], ERROR: ['Con error', 'bg-rose-50 text-rose-900'],
+}
+const hhmm = (v: string | null) => v ? new Date(v).toLocaleString('es-PE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
+
+// Robot de Windows (scripts/wms-auto): actualiza el Excel desde el ERP y lo importa cada 30 minutos. El botón deja una
+// solicitud en la base y el robot, que consulta cada minuto, la ejecuta. Sin role=status/alert: el robot lee esos.
+function RobotPanel() {
+  const [runs,setRuns]=useState<RobotRun[]>([]), [loadError,setLoadError]=useState(''), [asking,setAsking]=useState(false), [askError,setAskError]=useState('')
+  const load=useCallback(()=>createClient().from('wh_receipt_robot_runs').select('id,kind,status,requested_at,started_at,finished_at,message').order('id',{ascending:false}).limit(6)
+    .then(({data,error})=>{
+      if(error){setLoadError('No se pudo leer el estado del robot.');return}
+      setLoadError('');setRuns((data||[]) as RobotRun[])
+    }),[])
+  const open=runs.find(r=>r.status==='PENDING'||r.status==='RUNNING')
+  // Con una actualización en curso se consulta cada 10 s; si no, cada minuto
+  useEffect(()=>{const t=setInterval(()=>void load(),open?10000:60000);return()=>clearInterval(t)},[load,open])
+  useEffect(()=>{void load()},[load])
+  const ask=async()=>{
+    setAsking(true);setAskError('')
+    const {error}=await createClient().rpc('wh_receipt_robot_request')
+    if(error)setAskError(/permiso/i.test(error.message)?'Su usuario no tiene permiso de carga de ingresos.':'No se pudo pedir la actualización. Intente de nuevo.')
+    setAsking(false);void load()
+  }
+  const lastOk=runs.find(r=>r.status==='OK'), lastAuto=runs.find(r=>r.kind==='AUTO'&&r.started_at)
+  const next=lastAuto?.started_at?new Date(new Date(lastAuto.started_at).getTime()+30*60000).toISOString():null
+  return <section className="rounded-xl border border-slate-200 bg-white p-5">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div><h2 className="font-bold text-[#002855]">Actualización automática</h2>
+        <p className="mt-1 text-xs text-slate-500">El robot actualiza C:\WMS\entrada.xlsx desde el ERP y lo importa cada 30 minutos. Con «Actualizar ahora» lo hace en el próximo minuto.</p></div>
+      <button type="button" disabled={asking||!!open} onClick={()=>void ask()} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#cf152d] px-5 text-sm font-bold text-white disabled:opacity-60">
+        {asking||open?<Loader2 className="h-4 w-4 animate-spin"/>:<RefreshCw className="h-4 w-4"/>}{open?RUN_STATUS[open.status][0]+'…':'Actualizar ahora'}
+      </button>
+    </div>
+    <div aria-live="polite" className="mt-3 space-y-2 text-sm">
+      {askError&&<p className="text-rose-800">{askError}</p>}
+      {loadError&&<p className="text-rose-800">{loadError}</p>}
+      <p className="text-slate-600">Última actualización correcta: <b>{hhmm(lastOk?.finished_at??null)}</b>{next&&<> · próxima automática: <b>{hhmm(next)}</b></>}</p>
+      {!runs.length&&!loadError&&<p className="text-amber-800">El robot todavía no informó ninguna ejecución. Revise que esté instalado y que la PC tenga la sesión de Windows iniciada.</p>}
+      {runs.length>0&&<ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">{runs.map(r=><li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${RUN_STATUS[r.status][1]}`}>{RUN_STATUS[r.status][0]}</span>
+        <span className="text-xs text-slate-500">{r.kind==='AUTO'?'Automática':'Manual'} · {hhmm(r.started_at??r.requested_at)}</span>
+        {r.message&&<span className="min-w-0 flex-1 truncate text-xs text-slate-600" title={r.message}>{r.message.replace(/^(OK|ERROR) /,'')}</span>}
+      </li>)}</ul>}
+    </div>
+  </section>
+}
+
 export default function WmsReceiptImportPage() {
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const [file,setFile]=useState<File|null>(null), [busy,setBusy]=useState(false), [error,setError]=useState(''), [done,setDone]=useState('')
@@ -105,10 +155,10 @@ export default function WmsReceiptImportPage() {
       <p className="mt-1 text-sm text-slate-600">Fuente exclusiva de recepción. Este libro no carga inventario, salidas ni analítica.</p></header>
     {error&&<p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900"><AlertTriangle className="mr-2 inline h-4 w-4"/>{error}</p>}
     {done&&<p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900"><CheckCircle2 className="mr-2 inline h-4 w-4"/>{done}</p>}
+    <RobotPanel/>
     <section className="rounded-xl border border-slate-200 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><h2 className="font-bold text-[#002855]">Actualizar ingresos WMS</h2><p className="mt-1 text-xs text-slate-500">La actualización manual importa el Excel que seleccione y conserva el historial de recepciones y etiquetas. Si el archivo ya fue importado, no duplica registros.</p></div>
-        <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-900">Origen del robot: C:\WMS\entrada.xlsx</span>
+        <div><h2 className="font-bold text-[#002855]">Cargar un Excel a mano</h2><p className="mt-1 text-xs text-slate-500">Solo si el robot no está disponible: importa el Excel que seleccione y conserva el historial de recepciones y etiquetas. Si el archivo ya fue importado, no duplica registros.</p></div>
       </div>
       <input ref={fileInputRef} id="wms-receipt-file" type="file" accept=".xlsx,.xls" className="sr-only" onChange={e=>{setFile(e.target.files?.[0]||null);setError('');setDone('')}}/>
       <div className="mt-4 flex flex-col gap-3 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -116,10 +166,10 @@ export default function WmsReceiptImportPage() {
         <button type="button" onClick={()=>fileInputRef.current?.click()} className="min-h-10 shrink-0 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-[#002855]">Seleccionar Excel</button>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <button type="button" disabled={!file||busy} onClick={()=>void importFile()} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#cf152d] px-5 text-sm font-bold text-white disabled:opacity-50">
-          {busy?<Loader2 className="h-4 w-4 animate-spin"/>:<Upload className="h-4 w-4"/>}{busy?'Actualizando…':'Actualizar manualmente'}
+        {/* El robot de Windows (scripts/wms-auto/cargar-entrada.mjs) pulsa este botón por su id */}
+        <button id="wms-receipt-import" type="button" disabled={!file||busy} onClick={()=>void importFile()} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-bold text-[#002855] disabled:opacity-50">
+          {busy?<Loader2 className="h-4 w-4 animate-spin"/>:<Upload className="h-4 w-4"/>}{busy?'Importando…':'Importar Excel seleccionado'}
         </button>
-        <p className="text-xs text-slate-500">La carga automática del archivo local la ejecuta el robot de Windows; el navegador no puede leer C:\WMS directamente.</p>
       </div>
     </section>
   </div>
