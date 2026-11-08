@@ -23,13 +23,16 @@ async function rpc(name, body, token = anon) {
 // Igual que el login de la web: sin arroba se usa el dominio de JRM (y el antiguo como respaldo)
 async function login() {
   const emails = user.includes('@') ? [user] : [`${user}@jrmsac.com.pe`, `${user}@jrm.com`]
+  let reason = ''
   for (const email of emails) {
     const r = await fetch(`${base}/auth/v1/token?grant_type=password`, {
       method: 'POST', headers: { apikey: anon, 'content-type': 'application/json' }, body: JSON.stringify({ email, password }),
     })
     if (r.ok) return (await r.json()).access_token
+    const body = await r.json().catch(() => ({}))
+    reason = body.error_description || body.msg || body.message || `HTTP ${r.status}`
   }
-  throw new Error('No se pudo iniciar sesión WMS con la cuenta del robot; repita la instalación si cambió la contraseña.')
+  throw new Error(`No se pudo iniciar sesión WMS con la cuenta del robot (${emails[0]}: ${reason}); revise la cuenta o vuelva a guardarla.`)
 }
 
 try {

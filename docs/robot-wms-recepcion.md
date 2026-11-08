@@ -3,9 +3,10 @@
 Hace lo mismo que el robot del ERP del TMS (`scripts/erp-auto`, ver `docs/carga-erp-automatica.md`), pero para el
 WMS y con otra frecuencia:
 
-1. `refrescar.ps1` (copia del TMS): abre una copia de `C:\WMS\entrada.xlsx` con Excel oculto, **actualiza todo**
-   (Power Query `Consulta1`, hoja `Entrada ALM PT`), comprueba que trae filas y que `Fecha_Actualizacion` es de ahora,
-   y guarda. Usa la credencial del origen de datos que Excel ya tiene guardada. El original no se toca.
+1. `refrescar.ps1` (copia del TMS): abre una copia de `C:\WMS\entrada.xlsx` con Excel oculto, actualiza **solo la
+   conexión `Consulta - Consulta1`** en primer plano (Power Query sobre `despacho.usp_Rpt_EntradasBodegaListado`, hoja
+   `Entrada ALM PT`; «Actualizar todo» no la dejaba al día y `Consulta2`, de salidas, no se usa), comprueba que trae
+   filas y que `Fecha_Actualizacion` es de ahora, y guarda. Usa la credencial del origen de datos que Excel ya tiene guardada. El original no se toca.
 2. `cargar-entrada.mjs`: Microsoft Edge sin ventana entra al WMS, abre `/almacen/apt/etiquetado`, selecciona la copia
    y pulsa **Importar Excel seleccionado** (botón `#wms-receipt-import`). Espera el mensaje verde o el de error.
 3. `robot.mjs`: pregunta a la base WMS si toca actualizar y luego informa el resultado (tabla `wh_receipt_robot_runs`).
