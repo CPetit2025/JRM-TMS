@@ -1,10 +1,11 @@
+-- La tercerización (#490) envuelve schedule_route_resources y delega en schedule_route_resources_before_outsourcing: se revisan ambas.
 -- C193: flete según la operación — flota propia sin OT es operación interna (sin flete); tercero sin OT se autoriza
 -- contra la OC, OS o RQ (recojos y traslados).
 BEGIN;
 DO $$
 DECLARE v_src text;
 BEGIN
- SELECT prosrc INTO v_src FROM pg_proc WHERE oid='public.schedule_route_resources(jsonb)'::regprocedure;
+ SELECT string_agg(prosrc,' ') INTO v_src FROM pg_proc WHERE oid IN ('public.schedule_route_resources(jsonb)'::regprocedure, to_regprocedure('public.schedule_route_resources_before_outsourcing(jsonb)'));
  IF position('v_all_internal' IN v_src)=0 OR position('freight_reason' IN v_src)=0 OR position('inherit_route_unloading' IN v_src)=0
   OR position('set_special_service_agreements' IN v_src)=0 THEN
   RAISE EXCEPTION 'CAJA C193 FAIL: la programación no aplica la operación interna con flota propia';
