@@ -1,3 +1,4 @@
+-- La tercerización (#490) envuelve schedule_route_resources y delega en schedule_route_resources_before_outsourcing: se revisan ambas.
 -- C175: sustento del acordado al programar y unidades de cobro UNIDAD y TONELADA (Etapa D).
 BEGIN;
 DO $$
@@ -16,9 +17,9 @@ BEGIN
  IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='dispatch_freight_stages' AND column_name='agreed_reason') THEN
   RAISE EXCEPTION 'CAJA C175 FAIL: falta el motivo del flete acordado';
  END IF;
- IF position('freight_reason' IN (SELECT prosrc FROM pg_proc WHERE oid='public.schedule_route_resources(jsonb)'::regprocedure))=0
-  OR position('inherit_route_unloading' IN (SELECT prosrc FROM pg_proc WHERE oid='public.schedule_route_resources(jsonb)'::regprocedure))=0
-  OR position('set_special_service_agreements' IN (SELECT prosrc FROM pg_proc WHERE oid='public.schedule_route_resources(jsonb)'::regprocedure))=0
+ IF position('freight_reason' IN (SELECT string_agg(prosrc,' ') FROM pg_proc WHERE oid IN ('public.schedule_route_resources(jsonb)'::regprocedure, to_regprocedure('public.schedule_route_resources_before_outsourcing(jsonb)'))))=0
+  OR position('inherit_route_unloading' IN (SELECT string_agg(prosrc,' ') FROM pg_proc WHERE oid IN ('public.schedule_route_resources(jsonb)'::regprocedure, to_regprocedure('public.schedule_route_resources_before_outsourcing(jsonb)'))))=0
+  OR position('set_special_service_agreements' IN (SELECT string_agg(prosrc,' ') FROM pg_proc WHERE oid IN ('public.schedule_route_resources(jsonb)'::regprocedure, to_regprocedure('public.schedule_route_resources_before_outsourcing(jsonb)'))))=0
   OR position('v_referential' IN (SELECT prosrc FROM pg_proc WHERE oid='public.set_special_service_agreements(uuid,jsonb)'::regprocedure))=0
   OR position('agreed_reason' IN (SELECT prosrc FROM pg_proc WHERE oid='public.dispatch_freight_stage_sync()'::regprocedure))=0 THEN
   RAISE EXCEPTION 'CAJA C175 FAIL: la programación no exige el motivo del acordado o del flete';
