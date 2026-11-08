@@ -2,10 +2,17 @@
 const { execFileSync } = require('node:child_process')
 const { Client } = require('pg')
 const REFS = { tms: 'eojfsbogysifxrlrnjvx', staging: 'rquujukgtturdlkuzgdc', wms: 'glecgvomkaqmkfkhtxhi' }
+const cache = {}
 function cred(name) {
+  if (cache[name]) return cache[name]
   const out = execFileSync('supabase', ['db', 'dump', `--remote=${REFS[name]}`, '--dry-run', '-s', 'public'], { encoding: 'utf8', cwd: 'C:/Users/cpetit/JRM-TMS', shell: true, stdio: ['ignore', 'pipe', 'pipe'] })
   const v = k => (out.match(new RegExp(`export ${k}="?([^"\n]*)"?`)) || [])[1]
-  return { host: v('PGHOST'), port: Number(v('PGPORT') || 5432), user: v('PGUSER'), password: v('PGPASSWORD'), database: v('PGDATABASE') || 'postgres', ssl: { rejectUnauthorized: false } }
+  return (cache[name] = { host: v('PGHOST'), port: Number(v('PGPORT') || 5432), user: v('PGUSER'), password: v('PGPASSWORD'), database: v('PGDATABASE') || 'postgres', ssl: { rejectUnauthorized: false } })
 }
-async function connect(name) { const c = new Client({ ...cred(name), application_name: 'fase4-replica', statement_timeout: 0 }); await c.connect(); return c }
+// Destino de la copia: usuario temporal wms_replica_copy (lo crea y borra el usuario dueño; contraseña en COPY_PASSWORD)
+// Origen de la copia: usuario temporal de solo lectura wms_replica_read en el TMS (contraseña en READ_PASSWORD)
+function copyCred(name) { const c = cred(name); return name === 'tms'
+  ? { ...c, user: `wms_replica_read.${REFS.tms}`, password: process.env.READ_PASSWORD }
+  : { ...c, user: `wms_replica_copy.${REFS[name]}`, password: process.env.COPY_PASSWORD } }
+async function connect(name, opts = {}) { const c = new Client({ ...(opts.copy ? copyCred(name) : cred(name)), application_name: 'fase4-replica', statement_timeout: 0, keepAlive: true, keepAliveInitialDelayMillis: 10000 }); c.on('error', e => console.log(`conexión ${name} cortada: ${e.message}`)); await c.connect(); await c.query('SET statement_timeout = 0'); return c }
 module.exports = { connect, REFS }

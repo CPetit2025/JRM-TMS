@@ -18,6 +18,8 @@ export function wmsRouteAllowed(path, method) {
   if (path === '/api/app-version') return method === 'GET'
   if (path === '/api/wms/sincronizar') return method === 'POST'
   if (path === '/api/wms/erp-aplicar') return method === 'POST'
+  // Cadena del modelo de almacén (fase 4): derivar el día, inventario y APT, con la llave de servicio de la base WMS
+  if (['/api/erp/aplicar', '/api/inventario/procesar', '/api/apt/procesar'].includes(path)) return method === 'POST'
   if (path.startsWith('/api/') || path === '/api') return false
   return path === '/almacen' || path.startsWith('/almacen/') || path === '/perfil' || path === '/login/restablecer'
 }

@@ -111,7 +111,8 @@ export default function AptLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [info, setInfo] = useState<AptSettings | null>(null)
   const [secuenciaOk, setSecuenciaOk] = useState(true)
-  const allowed = hasAccess('apt') || hasAccess('apt-carga')
+  // En el WMS ven el APT clásico los usuarios del almacén
+  const allowed = ['apt', 'apt-carga', 'almacen-lectura', 'almacen-carga', 'almacen-supervisor', 'almacen-etiquetado', 'almacen-picking', 'almacen-packing', 'almacen-auditoria'].some(hasAccess)
 
   useEffect(() => {
     if (!allowed) return

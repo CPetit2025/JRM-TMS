@@ -7,6 +7,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { readErpFiles } from '@/components/erp/ErpCarga'
 import { uploadErpFile } from '@/lib/erp/api'
 import { ERP_KIND_LABEL } from '@/lib/erp/parse'
+import { derivarDia } from '@/lib/erp/derive'
 
 type StockRow = { bodega: string; cod_producto: string; producto: string | null; lote: string | null; lote_raw: string | null; ot: string | null; unidad: string | null; stock: number; stock_falla: number; stock_comprometido: number | null; kg: number | null }
 type StockResult = { import_id: string | null; cut_at: string | null; file_name?: string; bodegas: string[]; rows: StockRow[] }
@@ -55,7 +56,13 @@ export default function WarehouseErpStockPage() {
         const out = await uploadErpFile(f, setProgress)
         done.push(`${ERP_KIND_LABEL[f.kind]}: ${fmt(out.rows, 0)} filas`)
       }
-      setNotice(`Carga aplicada. ${done.join(' · ')}.`)
+      // Modelo de almacén (fase 4): movimientos del día → inventario, APT y analítica. No deshace la carga si no se puede.
+      let modelo = ''
+      try {
+        const d = await derivarDia(setProgress)
+        modelo = d ? ` Movimientos del día: ${d.resumen.guias} guías, ${d.resumen.traspasos} traspasos, ${d.resumen.ingresos} ingresos y ${d.resumen.ajustes} ajustes.${d.avisos.length ? ' ' + d.avisos.join(' ') : ''}` : ''
+      } catch (e) { modelo = ` Movimientos del día no derivados: ${e instanceof Error ? e.message : 'error'}` }
+      setNotice(`Carga aplicada. ${done.join(' · ')}.${modelo}`)
       setFiles({ contratos: null, stock: null })
       await load(bodega, search)
     } catch (e) {

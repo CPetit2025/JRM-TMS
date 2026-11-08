@@ -97,7 +97,8 @@ async function derivarDiaCore(onProgress: (m: string) => void): Promise<{ resume
     await revertAnalitica(name)
     const analitica = await syncAnalitica([file], onProgress)
     if (analitica) avisos.push(`Analítica: ${analitica}`)
-    avisos.push(...await syncPesoServicios(onProgress))
+    // El peso de servicios es del TMS; en el WMS no aplica
+    if (process.env.NEXT_PUBLIC_DEPLOYMENT_SYSTEM !== 'wms') avisos.push(...await syncPesoServicios(onProgress))
   }
   const done = await derive(true, resumen)
   if (!done.success) throw new Error(done.error || 'No se pudo guardar el día como base del siguiente')
