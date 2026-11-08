@@ -39,9 +39,11 @@ try {
       # Los libros se refrescan solos al abrirse (en segundo plano): se espera y solo si no quedó al día se refresca de nuevo
       Com { $excel.CalculateUntilAsyncQueriesDone() }
       if (-not (& $fresco)) {
-        Com { foreach ($c in $wb.Connections) { if ($c.Type -eq 1) { $c.OLEDBConnection.BackgroundQuery = $false } } }
-        Com { $wb.RefreshAll() }
-        Com { $excel.CalculateUntilAsyncQueriesDone() }
+        # Solo la conexión de entradas y en primer plano: RefreshAll (como en el TMS) no dejaba Consulta1 al día en este
+        # libro, que además tiene Consulta2 (salidas), que el WMS no usa
+        $con = Com { $wb.Connections.Item('Consulta - Consulta1') }
+        Com { $con.OLEDBConnection.BackgroundQuery = $false }
+        Com { $con.Refresh() }
       }
       $filas = Com { $lo.ListRows.Count }
       if ($filas -lt 1) { throw "Consulta1 quedó vacía" }
