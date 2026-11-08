@@ -21,6 +21,7 @@ const links = [
   { href: '/almacen/auditoria', label: 'Auditoría', icon: ShieldCheck, permission: 'almacen-auditoria', group: 'Despacho' },
   { href: '/almacen/conciliacion', label: 'Conciliación', icon: Waypoints, permission: 'almacen-carga', group: 'Control' },
   { href: '/almacen/maestros/embalajes', label: 'Embalajes', icon: Settings2, permission: 'almacen-supervisor', group: 'Configuración' },
+  { href: '/almacen/maestros/etiquetas', label: 'Etiquetas', icon: Settings2, permission: 'almacen-supervisor', group: 'Configuración' },
 ]
 
 export default function WarehouseLayout({ children }: { children: React.ReactNode }) {

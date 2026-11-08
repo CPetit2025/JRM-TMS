@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { Printer, RotateCcw, ScanLine, ClipboardCheck, X, RefreshCw, UserRound, Weight, Package } from 'lucide-react'
 import { Code128Barcode } from '@/components/warehouse/Code128Barcode'
+import { fitScale, toDots, useLabelFormat } from '@/lib/warehouse/label-format'
 
 type Receipt = {
   receipt_key: string; document_no: string; fecha: string; document_type: string | null; color: string | null; source_updated_at: string | null; bodega: string; lote: string | null
@@ -37,6 +38,9 @@ export default function WarehouseLabelingPage() {
   const [count, setCount] = useState('1')
   const [capacity, setCapacity] = useState('')
   const [labels, setLabels] = useState<Label[]>([])
+  const labelFormat = useLabelFormat('PAQUETE')
+  // El diseño de la etiqueta es de 6 x 4 pulg (152,4 x 101,6 mm); se escala al formato configurado.
+  const labelZoom = fitScale(labelFormat, 152.4, 101.6)
   const [printedLabelCodes, setPrintedLabelCodes] = useState<string[]>([])
   const [printTarget, setPrintTarget] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -218,7 +222,9 @@ export default function WarehouseLabelingPage() {
     if (browser?.getDefaultDevice) {
       browser.getDefaultDevice('printer', device => {
         const clean = (value: string) => value.replace(/[\^~]/g, ' ')
-        const zpl = targetLabels.map(label => `^XA^PW1218^LL812^FO45,35^A0N,52,52^FD${clean(label.source_product_code)}^FS^FO45,105^A0N,38,38^FD${clean(label.description).slice(0, 62)}^FS^FO45,190^BY3,3,210^BCN,210,Y,N,N^FD${label.package_code}^FS^FO45,430^A0N,42,42^FD${label.package_code}^FS^FO45,505^A0N,32,32^FDIPT ${clean(label.source_document_no)}  Fecha ${clean(label.source_date)}^FS^FO45,565^A0N,32,32^FDOT ${clean(label.contract_code || '-')}  Lote ${clean(label.source_lot || '-')}^FS^FO45,625^A0N,30,30^FD${clean(label.customer_name).slice(0, 42)}  ${clean(label.source_warehouse)}^FS^FO45,700^A0N,48,48^FD${label.quantity} ${clean(label.unit || '')}  ${label.weight_kg === null ? 'Peso por registrar' : `${label.weight_kg} kg`}  ${label.sequence_no}/${label.sequence_total}^FS^XZ`).join('')
+        const pw = toDots(labelFormat.width_mm, labelFormat.dpi), ll = toDots(labelFormat.height_mm, labelFormat.dpi)
+        const k = Math.min(pw / 1218, ll / 812), d = (v: number) => Math.max(1, Math.round(v * k))
+        const zpl = targetLabels.map(label => `^XA^PW${pw}^LL${ll}^FO${d(45)},${d(35)}^A0N,${d(52)},${d(52)}^FD${clean(label.source_product_code)}^FS^FO${d(45)},${d(105)}^A0N,${d(38)},${d(38)}^FD${clean(label.description).slice(0, 62)}^FS^FO${d(45)},${d(190)}^BY${d(3)},3,${d(210)}^BCN,${d(210)},Y,N,N^FD${label.package_code}^FS^FO${d(45)},${d(430)}^A0N,${d(42)},${d(42)}^FD${label.package_code}^FS^FO${d(45)},${d(505)}^A0N,${d(32)},${d(32)}^FDIPT ${clean(label.source_document_no)}  Fecha ${clean(label.source_date)}^FS^FO${d(45)},${d(565)}^A0N,${d(32)},${d(32)}^FDOT ${clean(label.contract_code || '-')}  Lote ${clean(label.source_lot || '-')}^FS^FO${d(45)},${d(625)}^A0N,${d(30)},${d(30)}^FD${clean(label.customer_name).slice(0, 42)}  ${clean(label.source_warehouse)}^FS^FO${d(45)},${d(700)}^A0N,${d(48)},${d(48)}^FD${label.quantity} ${clean(label.unit || '')}  ${label.weight_kg === null ? 'Peso por registrar' : `${label.weight_kg} kg`}  ${label.sequence_no}/${label.sequence_total}^FS^XZ`).join('')
         device.send(zpl, () => setMessage('Etiquetas enviadas a Zebra.'), error => { setError(String(error?.message || error)); fallbackPrint() })
       }, () => { setError('No se detectó Zebra Browser Print; se abrirá la impresión PDF del navegador.'); fallbackPrint() })
     } else fallbackPrint()
@@ -419,18 +425,18 @@ export default function WarehouseLabelingPage() {
         </div>
       </section>
     </div>, document.body)}
-    <style jsx global>{`@page{size:6in 4in;margin:0}
+    <style jsx global>{`@page{size:${labelFormat.width_mm}mm ${labelFormat.height_mm}mm;margin:0}
     @media print{
-      html,body{width:6in!important;height:4in!important;min-width:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
+      html,body{width:${labelFormat.width_mm}mm!important;height:${labelFormat.height_mm}mm!important;min-width:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
       body>:not(#wms-label-preview){display:none!important}
       body *{visibility:hidden!important}
       #wms-label-preview,#wms-label-preview *{visibility:visible!important}
-      #wms-label-preview{position:absolute!important;inset:0 auto auto 0!important;z-index:auto!important;display:block!important;width:6in!important;height:4in!important;max-width:none!important;max-height:none!important;overflow:hidden!important;margin:0!important;padding:0!important;background:#fff!important}
-      #wms-label-preview>section{display:block!important;width:6in!important;max-width:none!important;height:4in!important;max-height:none!important;overflow:hidden!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+      #wms-label-preview{position:absolute!important;inset:0 auto auto 0!important;z-index:auto!important;display:block!important;width:${labelFormat.width_mm}mm!important;height:${labelFormat.height_mm}mm!important;max-width:none!important;max-height:none!important;overflow:hidden!important;margin:0!important;padding:0!important;background:#fff!important}
+      #wms-label-preview>section{display:block!important;width:${labelFormat.width_mm}mm!important;max-width:none!important;height:${labelFormat.height_mm}mm!important;max-height:none!important;overflow:hidden!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
       #wms-label-preview header{display:none!important}
-      #wms-label-preview .wms-label-list{display:block!important;width:6in!important;height:4in!important;max-height:none!important;overflow:hidden!important;margin:0!important;padding:0!important}
+      #wms-label-preview .wms-label-list{display:block!important;width:${labelFormat.width_mm}mm!important;height:${labelFormat.height_mm}mm!important;max-height:none!important;overflow:hidden!important;margin:0!important;padding:0!important}
       #wms-label-preview button{display:none!important}
-      .wh-label{box-sizing:border-box;position:relative;display:flex!important;flex-direction:column;break-inside:avoid!important;page-break-inside:avoid!important;break-after:auto!important;page-break-after:auto!important;width:6in!important;height:4in!important;max-width:6in!important;max-height:4in!important;aspect-ratio:auto;border:1px dashed #6b8198!important;border-radius:0!important;padding:2mm!important;margin:0!important;overflow:hidden!important}
+      .wh-label{box-sizing:border-box;position:relative;display:flex!important;flex-direction:column;break-inside:avoid!important;page-break-inside:avoid!important;break-after:auto!important;page-break-after:auto!important;width:6in!important;height:4in!important;max-width:6in!important;max-height:4in!important;aspect-ratio:auto;zoom:${labelZoom}!important;border:1px dashed #6b8198!important;border-radius:0!important;padding:2mm!important;margin:0!important;overflow:hidden!important}
       .wh-label+.wh-label{break-before:page!important;page-break-before:always!important}
       .wh-label-head{height:18mm!important;min-height:18mm!important;flex:none!important}
       .wh-label-sku{height:9mm!important;max-height:9mm!important;margin-top:2mm!important;padding:0 2mm!important;font-size:7mm!important;line-height:9mm!important}
