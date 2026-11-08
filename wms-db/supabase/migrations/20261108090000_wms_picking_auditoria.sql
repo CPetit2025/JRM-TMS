@@ -10,9 +10,19 @@ CREATE TABLE IF NOT EXISTS public.wh_tms_sync_state (
   last_run_at timestamptz,
   last_ok_at timestamptz,
   last_count integer,
-  last_error text
+  last_error text,
+  key_hash text NOT NULL DEFAULT ''
 );
-INSERT INTO public.wh_tms_sync_state(id) VALUES (1) ON CONFLICT DO NOTHING;
+-- Hash SHA-256 de la clave de integración (la misma de la fila 'wms' en TMS): solo el servidor del WMS la conoce,
+-- así un usuario no puede escribir solicitudes llamando la función directamente.
+INSERT INTO public.wh_tms_sync_state(id, key_hash) VALUES (1, 'cca55655cc2316bc271ca1b5f587e93ec8a440635a9188811c18319b1a01c227')
+ON CONFLICT (id) DO UPDATE SET key_hash = EXCLUDED.key_hash;
+
+CREATE OR REPLACE FUNCTION public.wh_tms_key_ok(p_key text)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+  SELECT length(coalesce(p_key, '')) >= 32 AND EXISTS (SELECT 1 FROM public.wh_tms_sync_state
+    WHERE id = 1 AND key_hash = encode(sha256(convert_to(p_key, 'UTF8')), 'hex'))
+$$;
 ALTER TABLE public.wh_tms_sync_state ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.wh_tms_sync_state FROM PUBLIC, anon, authenticated;
 
@@ -43,21 +53,23 @@ BEGIN
   RETURN coalesce((SELECT array_agg(transport_request_id) FROM public.wh_tasks WHERE status NOT IN ('LOADED','RECONCILED','CANCELLED')), '{}');
 END $$;
 
-CREATE OR REPLACE FUNCTION public.wh_tms_sync_fail(p_message text)
+CREATE OR REPLACE FUNCTION public.wh_tms_sync_fail(p_key text, p_message text)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
   PERFORM public.security_assert_active_session();
   IF NOT public.wh_any_warehouse_permission() THEN RAISE EXCEPTION 'Sin acceso al almacén' USING ERRCODE = '42501'; END IF;
+  IF NOT public.wh_tms_key_ok(p_key) THEN RAISE EXCEPTION 'Clave de integración inválida' USING ERRCODE = '42501'; END IF;
   UPDATE public.wh_tms_sync_state SET last_error = left(coalesce(p_message, 'Error'), 500) WHERE id = 1;
 END $$;
 
 -- Copia idempotente (por id del TMS) de solicitudes, clientes, OT y componentes. El disparador crea/actualiza la tarea.
-CREATE OR REPLACE FUNCTION public.wh_tms_sync_apply(p_rows jsonb)
+CREATE OR REPLACE FUNCTION public.wh_tms_sync_apply(p_key text, p_rows jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE r jsonb; c jsonb; v_site uuid; v_n integer := 0; v_contract uuid; v_client uuid;
 BEGIN
   PERFORM public.security_assert_active_session();
   IF NOT public.wh_any_warehouse_permission() THEN RAISE EXCEPTION 'Sin acceso al almacén' USING ERRCODE = '42501'; END IF;
+  IF NOT public.wh_tms_key_ok(p_key) THEN RAISE EXCEPTION 'Clave de integración inválida' USING ERRCODE = '42501'; END IF;
   IF jsonb_typeof(p_rows) IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'Formato de sincronización inválido'; END IF;
   FOR r IN SELECT * FROM jsonb_array_elements(p_rows) LOOP
     v_site := coalesce((SELECT id FROM public.sites WHERE code = r->>'site_code'), public.primary_site_id());
@@ -265,6 +277,7 @@ BEGIN
   PERFORM public.security_assert_active_session();
   IF NOT public.wh_has_permission(ARRAY['almacen-picking','almacen-packing','almacen-supervisor']) THEN RAISE EXCEPTION 'Sin permiso de picking' USING ERRCODE = '42501'; END IF;
   IF nullif(trim(p_reason), '') IS NULL THEN RAISE EXCEPTION 'Registre el motivo'; END IF;
+  PERFORM 1 FROM public.wh_tasks WHERE id = (SELECT task_id FROM public.wh_lpns WHERE id = p_lpn_id) FOR UPDATE; -- mismo orden de bloqueo que la liberación
   SELECT * INTO l FROM public.wh_lpns WHERE id = p_lpn_id FOR UPDATE;
   IF NOT FOUND OR NOT public.can_access_site(l.site_id) THEN RAISE EXCEPTION 'LPN no disponible'; END IF;
   SELECT * INTO t FROM public.wh_tasks WHERE id = l.task_id FOR UPDATE;
@@ -341,9 +354,10 @@ BEGIN
   IF v_result NOT IN ('APROBADO','OBSERVADO','RECHAZADO','COMENTARIO') THEN RAISE EXCEPTION 'Resultado de auditoría no reconocido'; END IF;
   IF v_result IN ('OBSERVADO','RECHAZADO') AND nullif(trim(p_comment), '') IS NULL THEN RAISE EXCEPTION 'Describa la observación o el motivo del rechazo'; END IF;
   IF v_result = 'COMENTARIO' AND nullif(trim(p_comment), '') IS NULL AND coalesce(array_length(p_evidence_paths, 1), 0) = 0 THEN RAISE EXCEPTION 'Agregue un comentario o una foto'; END IF;
+  PERFORM 1 FROM public.wh_tasks WHERE id = (SELECT task_id FROM public.wh_lpns WHERE id = p_lpn_id) FOR UPDATE; -- mismo orden de bloqueo que la liberación
   SELECT * INTO l FROM public.wh_lpns WHERE id = p_lpn_id FOR UPDATE;
   IF NOT FOUND OR NOT public.can_access_site(l.site_id) OR l.status <> 'CLOSED' THEN RAISE EXCEPTION 'LPN no disponible para auditoría'; END IF;
-  SELECT * INTO t FROM public.wh_tasks WHERE id = l.task_id;
+  SELECT * INTO t FROM public.wh_tasks WHERE id = l.task_id FOR UPDATE; -- serializa con la liberación
   IF t.status NOT IN ('PICKING','PACKING','READY_FOR_LOAD') THEN RAISE EXCEPTION 'La tarea no está en preparación'; END IF;
   IF v_result <> 'COMENTARIO' AND public.wh_user_prepared(t.id, l.id) THEN
     IF v_override IS NULL OR NOT public.wh_has_permission(ARRAY['almacen-supervisor']) THEN
@@ -358,6 +372,7 @@ BEGIN
   END IF;
   IF v_result <> 'COMENTARIO' THEN
     UPDATE public.wh_lpns SET audit_status = v_result, audited_by = auth.uid(), audited_at = now() WHERE id = l.id;
+    IF v_result IN ('OBSERVADO','RECHAZADO') THEN PERFORM public.wh_invalidate_release(t.id, l.lpn_code || ' ' || lower(v_result) || ' después de liberar'); END IF;
   END IF;
   INSERT INTO public.wh_lpn_audits(lpn_id, task_id, site_id, audit_rev, result, package_code, comment, evidence_paths, override_reason, actor_id)
   VALUES (l.id, l.task_id, l.site_id, l.audit_rev, v_result, nullif(trim(p_package_code), ''), nullif(trim(p_comment), ''),
@@ -633,15 +648,15 @@ BEGIN
 END $storage$;
 
 -- 5. Permisos de ejecución -------------------------------------------------------------------------------------
-REVOKE ALL ON FUNCTION public.wh_any_warehouse_permission(), public.wh_profile_name(uuid), public.wh_invalidate_release(uuid, text),
+REVOKE ALL ON FUNCTION public.wh_tms_key_ok(text), public.wh_any_warehouse_permission(), public.wh_profile_name(uuid), public.wh_invalidate_release(uuid, text),
   public.wh_user_prepared(uuid, uuid), public.wh_invalidate_release_on_cancel() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.wh_any_warehouse_permission() TO authenticated;
-REVOKE ALL ON FUNCTION public.wh_tms_sync_claim(boolean), public.wh_tms_sync_fail(text), public.wh_tms_sync_apply(jsonb),
+REVOKE ALL ON FUNCTION public.wh_tms_sync_claim(boolean), public.wh_tms_sync_fail(text, text), public.wh_tms_sync_apply(text, jsonb),
   public.wh_assign_task(uuid), public.wh_consolidate_lpn(uuid, text[], uuid), public.wh_lpn_remove_package(uuid, text, boolean, text),
   public.wh_lpn_undo(uuid, text), public.wh_print_lpn_label(uuid), public.wh_audit_lpn(uuid, text, text, text, text[], text),
   public.wh_task_lpns(uuid), public.wh_task_board(text, uuid), public.wh_release_packing_list(uuid, text), public.wh_print_packing_list(uuid),
   public.wh_packing_lists_unreported(), public.wh_packing_list_mark_reported(uuid, text), public.wh_task_action(uuid, text, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.wh_tms_sync_claim(boolean), public.wh_tms_sync_fail(text), public.wh_tms_sync_apply(jsonb),
+GRANT EXECUTE ON FUNCTION public.wh_tms_sync_claim(boolean), public.wh_tms_sync_fail(text, text), public.wh_tms_sync_apply(text, jsonb),
   public.wh_assign_task(uuid), public.wh_consolidate_lpn(uuid, text[], uuid), public.wh_lpn_remove_package(uuid, text, boolean, text),
   public.wh_lpn_undo(uuid, text), public.wh_print_lpn_label(uuid), public.wh_audit_lpn(uuid, text, text, text, text[], text),
   public.wh_task_lpns(uuid), public.wh_task_board(text, uuid), public.wh_release_packing_list(uuid, text), public.wh_print_packing_list(uuid),

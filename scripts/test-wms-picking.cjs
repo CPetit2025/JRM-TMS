@@ -23,6 +23,8 @@ const feed=(status={})=>[
  // Paquetes etiquetados en recepción (OT 16544 x3, OT 16497 x1)
  for(const [i,ot] of [[1,'16544'],[2,'16544'],[3,'16544'],[4,'16497'],[5,'']].entries()) sql+=`INSERT INTO public.wh_packages(package_code,source_document_no,source_contract_code,source_lot,source_product_code,source_warehouse,source_date,source_movement_key,source_key,site_id,description,quantity,unit,weight_kg) SELECT 'PKG-${ot[0]}','IPT-1',nullif('${ot[1]}',''),'16544-S001','PRD-${ot[0]}','APT','2026-11-07','mk${ot[0]}','sk${ot[0]}',id,'Estante ${ot[0]}',10,'UN',25.5 FROM public.sites;`;
  await db.exec(sql);
+ const KEY='k'.repeat(40);
+ await db.exec(`UPDATE public.wh_tms_sync_state SET key_hash=encode(sha256(convert_to('${KEY}','UTF8')),'hex')`);
  const as=async u=>db.exec(`RESET ROLE; SET request.jwt.claim.sub='${U[u]}'; SET ROLE authenticated;`);
  const q=async(s,p=[])=>(await db.query(s,p)).rows;
  const one=async(s,p=[])=>Object.values((await q(s,p))[0]||{})[0];
@@ -33,12 +35,13 @@ const feed=(status={})=>[
  await as('op1');
  const known=await one('SELECT public.wh_tms_sync_claim(true) AS k');
  assert.deepEqual(known,[]);
- await q('SELECT public.wh_tms_sync_apply($1::jsonb)',[JSON.stringify(feed())]);
+ await q('SELECT public.wh_tms_sync_apply($1,$2::jsonb)',[KEY,JSON.stringify(feed())]);
  await db.exec("RESET ROLE; UPDATE public.wh_tms_sync_state SET last_run_at=now()-interval '1 hour'"); await as('op1');
  const known2=await one('SELECT public.wh_tms_sync_claim(false) AS k');
  assert.equal(known2.length,3,'debe informar las 3 solicitudes conocidas');
  assert.equal(await one('SELECT public.wh_tms_sync_claim(false)'),null,'no debe sincronizar dos veces en un minuto');
- await q('SELECT public.wh_tms_sync_apply($1::jsonb)',[JSON.stringify(feed({[REQ_CANCEL]:'CANCELADA'}))]);
+ await q('SELECT public.wh_tms_sync_apply($1,$2::jsonb)',[KEY,JSON.stringify(feed({[REQ_CANCEL]:'CANCELADA'}))]);
+ await fails('SELECT public.wh_tms_sync_apply($1,$2::jsonb)',['x'.repeat(40),JSON.stringify(feed({[REQ]:'CANCELADA'}))],/Clave/);
  assert.equal((await sys('SELECT count(*)::int n FROM public.wh_tasks'))[0].n,3,'sin tareas duplicadas');
  assert.equal((await sys('SELECT count(*)::int n FROM public.transport_requests'))[0].n,3,'sin solicitudes duplicadas');
  const task=(await sys(`SELECT id,status FROM public.wh_tasks WHERE transport_request_id='${REQ}'`))[0];
@@ -154,11 +157,13 @@ const feed=(status={})=>[
  const pl2=await one('SELECT public.wh_release_packing_list($1)',[task.id]);
  assert.equal(pl2.packing_list_number,pl.packing_list_number); assert.equal(pl2.version,2);
  assert.equal((await sys(`SELECT count(*)::int n FROM public.wh_packing_lists WHERE task_id='${task.id}'`))[0].n,2,'historial de versiones conservado');
+ await as('aud'); await q("SELECT public.wh_audit_lpn($1,'RECHAZADO','Rechazo tardío')",[lpn3.id]);
+ assert.equal((await sys(`SELECT status FROM public.wh_packing_lists WHERE id='${pl2.id}'`))[0].status,'REEMPLAZADO','rechazar tras liberar invalida el Packing List');
  console.log('PASS: un cambio posterior reemplaza la versión liberada, re-audita solo el LPN afectado y emite la versión 2.');
 
  // 10. Acceso anónimo bloqueado
  await db.exec('RESET ROLE; SET ROLE anon');
- for(const fn of ["public.wh_task_board('tareas')","public.wh_tms_sync_apply('[]')","public.wh_release_packing_list(gen_random_uuid())"]){
+ for(const fn of ["public.wh_task_board('tareas')","public.wh_tms_sync_apply('x','[]')","public.wh_release_packing_list(gen_random_uuid())"]){
   let denied=false;try{await db.query(`SELECT ${fn}`)}catch(e){denied=/permission denied/.test(e.message)}
   assert.ok(denied,`anon no debe ejecutar ${fn}`);
  }

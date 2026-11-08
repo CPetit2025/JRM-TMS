@@ -33,12 +33,12 @@ export async function POST(request: Request) {
   if (known !== null) {
     try {
       const rows = await tmsRpc('wms_feed_solicitudes', { p_key: key, p_known_ids: known })
-      const applied = await db.rpc('wh_tms_sync_apply', { p_rows: rows })
+      const applied = await db.rpc('wh_tms_sync_apply', { p_key: key, p_rows: rows })
       if (applied.error) throw new Error(applied.error.message)
       synced = applied.data?.requests ?? 0
     } catch (e) {
       syncError = e instanceof Error ? e.message : String(e)
-      await db.rpc('wh_tms_sync_fail', { p_message: syncError })
+      await db.rpc('wh_tms_sync_fail', { p_key: key, p_message: syncError })
     }
   }
 
