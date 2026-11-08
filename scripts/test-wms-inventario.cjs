@@ -1,7 +1,7 @@
 // Fases 2 y 3: inventario por barrido con etiquetado, cuadre y cierre (migraciones de wms-db en PGlite).
 const {PGlite}=require('@electric-sql/pglite');
 const fs=require('fs');const path=require('node:path');const assert=require('node:assert/strict');
-const U={sup:'00000000-0000-0000-0000-0000000000c1',cnt:'00000000-0000-0000-0000-0000000000c2',cnt2:'00000000-0000-0000-0000-0000000000c3',op:'00000000-0000-0000-0000-0000000000c4'};
+const U={sup:'00000000-0000-0000-0000-0000000000c1',cnt:'00000000-0000-0000-0000-0000000000c2',cnt2:'00000000-0000-0000-0000-0000000000c3',op:'00000000-0000-0000-0000-0000000000c4',ext:'00000000-0000-0000-0000-0000000000c5'};
 (async()=>{
  const db=new PGlite();
  await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS; CREATE SCHEMA auth; CREATE SCHEMA extensions; CREATE TABLE auth.users(id uuid primary key); CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE SQL STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; GRANT USAGE ON SCHEMA public,auth TO authenticated,anon,service_role; GRANT EXECUTE ON FUNCTION auth.uid() TO PUBLIC; CREATE FUNCTION public.rls_auto_enable() RETURNS event_trigger LANGUAGE plpgsql AS $$ BEGIN END $$;`);
@@ -10,11 +10,13 @@ const U={sup:'00000000-0000-0000-0000-0000000000c1',cnt:'00000000-0000-0000-0000
  const roles={sup:['almacen-supervisor'],cnt:['almacen-etiquetado'],op:['almacen-picking']};
  let sql="DELETE FROM public.roles; DELETE FROM public.sites; INSERT INTO public.sites(code,name) VALUES('PRINCIPAL','Local');";
  for(const [k,p] of Object.entries(roles)) sql+=`INSERT INTO public.roles(name,permissions) VALUES('${k}','${JSON.stringify(p)}');`;
- const userRole={sup:'sup',cnt:'cnt',cnt2:'cnt',op:'op'};
- for(const [u,id] of Object.entries(U)){ sql+=`INSERT INTO auth.users VALUES('${id}'); INSERT INTO public.profiles(id,email,first_name,role_id,is_active) SELECT '${id}','${u}@x.pe','${u}',id,true FROM public.roles WHERE name='${userRole[u]}'; INSERT INTO public.user_site_access SELECT '${id}',id FROM public.sites;`; }
+ const userRole={sup:'sup',cnt:'cnt',cnt2:'cnt',op:'op',ext:'cnt'};
+ for(const [u,id] of Object.entries(U)){ sql+=`INSERT INTO auth.users VALUES('${id}'); INSERT INTO public.profiles(id,email,first_name,role_id,is_active) SELECT '${id}','${u}@x.pe','${u}',id,true FROM public.roles WHERE name='${userRole[u]}'; ${u==='ext'?'':`INSERT INTO public.user_site_access SELECT '${id}',id FROM public.sites;`}`; }
  // Un bulto ya etiquetado por IPT (bodega 647, bulto 1 de 3) y uno de otra bodega
  sql+=`INSERT INTO public.wh_packages(package_code,source_document_no,source_contract_code,source_lot,source_product_code,source_warehouse,source_date,source_movement_key,source_key,site_id,description,quantity,unit,sequence_no,sequence_total) SELECT 'PKG-IPT-1','IPT-77','16544','0000016544','PT-1','647-04 ALM PT','2026-11-01','mk1','sk1',id,'Bobina',10,'UND',1,3 FROM public.sites;`;
  sql+=`INSERT INTO public.wh_packages(package_code,source_document_no,source_contract_code,source_lot,source_product_code,source_warehouse,source_date,source_movement_key,source_key,site_id,description,quantity,unit) SELECT 'PKG-OTRA','IPT-90','16000','16000','PT-9','ST-VENTAS-IMD','2026-11-01','mk2','sk2',id,'Otro',4,'UND' FROM public.sites;`;
+ // Un bulto ya empacado antes del inventario
+ sql+=`INSERT INTO public.wh_packages(package_code,source_document_no,source_contract_code,source_lot,source_product_code,source_warehouse,source_date,source_movement_key,source_key,site_id,description,quantity,unit,status) SELECT 'PKG-EMP','IPT-55','16544','16544','PT-1','647-04 ALM PT','2026-11-01','mk3','sk3',id,'Empacado',1,'UND','PACKED' FROM public.sites;`;
  await db.exec(sql);
  const as=async u=>db.exec(`RESET ROLE; SET request.jwt.claim.sub='${U[u]}'; SET ROLE authenticated;`);
  const q=async(s,p=[])=>(await db.query(s,p)).rows;
@@ -71,7 +73,10 @@ const U={sup:'00000000-0000-0000-0000-0000000000c1',cnt:'00000000-0000-0000-0000
  await fails("UPDATE public.wh_packages SET status='PICKED' WHERE package_code='PKG-IPT-1'",[],/está en inventario/);
  await fails(`INSERT INTO public.wh_packages(package_code,source_document_no,source_lot,source_product_code,source_warehouse,source_date,source_movement_key,source_key,site_id,description,quantity) SELECT 'PKG-NEW','IPT-88','x','PT-1','647-04 ALM PT','2026-11-08','mk9','sk9',id,'x',1 FROM public.sites`,[],/etiquetado por IPT se reanuda/);
  await fails(`UPDATE public.wh_packages SET status='PICKED' WHERE package_code='${lab.package_code}'`,[],/retenido|está en inventario/);
+ await fails("UPDATE public.wh_packages SET status='LOADED' WHERE package_code='PKG-EMP'",[],/está en inventario/);
+ await db.exec("UPDATE public.wh_packages SET status='PICKED' WHERE package_code='PKG-EMP'"); // deshacer un empaque no se bloquea
  await db.exec("UPDATE public.wh_packages SET status='PICKED' WHERE package_code='PKG-OTRA'"); // otra bodega opera normal
+ await as('ext'); await fails("SELECT public.wh_count_expected_search($1,'16544')",[camp.id],/no disponible/);
  console.log('PASS: la bodega en inventario no despacha ni etiqueta por IPT; los paquetes nuevos quedan retenidos.');
 
  // 4. Cuadre, reconteo por otro operario y cierre
@@ -87,7 +92,12 @@ const U={sup:'00000000-0000-0000-0000-0000000000c1',cnt:'00000000-0000-0000-0000
  await one('SELECT public.wh_count_to_review($1)',[camp.id]);
  await one(`SELECT public.wh_count_recount($1,'[{"cod_producto":"PT-1","lote_key":"16544"}]'::jsonb)`,[camp.id]);
  await as('cnt'); await fails("SELECT public.wh_count_scan($1,'PKG-IPT-1')",[camp.id],/operario distinto/);
- await as('cnt2'); await one("SELECT public.wh_count_scan($1,'PKG-IPT-1')",[camp.id]);
+ await as('cnt2'); await one("SELECT public.wh_count_scan($1,'PKG-IPT-1')",[camp.id]); await one("SELECT public.wh_count_scan($1,$2)",[camp.id,lab.package_code]);
+ await as('sup');
+ const rot=(await one('SELECT public.wh_count_lines_list($1)',[camp.id])).find(l=>l.origin==='ROTULO'&&l.package_code===lab.package_code);
+ await one("SELECT public.wh_count_void_line($1,'Etiqueta duplicada')",[rot.id]);
+ assert.equal((await sys(`SELECT count(*)::int n FROM public.wh_count_lines l JOIN public.wh_packages p ON p.id=l.package_id WHERE p.package_code='${lab.package_code}' AND l.voided_at IS NULL`))[0].n,0,'anular el paquete anula también su reconteo');
+ await as('cnt2');
  await fails("SELECT public.wh_count_unidentified($1,'x')",[camp.id],/no está en conteo/);
  await as('sup');
  sum=await one('SELECT public.wh_count_summary($1)',[camp.id]);
@@ -95,10 +105,10 @@ const U={sup:'00000000-0000-0000-0000-0000000000c1',cnt:'00000000-0000-0000-0000
  await fails("SELECT public.wh_count_close($1,'{}'::jsonb)",[camp.id],/motivo de las 3 diferencias/);
  const reasons={'PT-1|16544':'Dos bultos en otra zona','PT-3|16497-S001':'Pendiente de ubicar','PT-9|16000':'Bulto de ST-VENTAS en zona equivocada'};
  const closed=await one('SELECT public.wh_count_close($1,$2::jsonb)',[camp.id,JSON.stringify(reasons)]);
- assert.equal(closed.released_packages,4,'se liberan los paquetes retenidos');
+ assert.equal(closed.released_packages,3,'se liberan los paquetes retenidos (el anulado no)');
  assert.equal((await sys(`SELECT count(*)::int n FROM public.wh_count_results WHERE campaign_id='${camp.id}' AND result<>'CUADRA' AND reason IS NOT NULL`))[0].n,3);
  assert.equal((await sys('SELECT count(*)::int n FROM public.erp_imports WHERE retained'))[0].n,0,'la carga retenida se libera');
- await db.exec('RESET ROLE'); await db.exec(`UPDATE public.wh_packages SET status='PICKED' WHERE package_code='${lab.package_code}'`);
+ await db.exec('RESET ROLE'); await db.exec(`UPDATE public.wh_packages SET status='PICKED' WHERE package_code='${retry.package_code}'`);
  console.log('PASS: cuadre por lote (cuadra, faltante, sobrante, no en ERP), reconteo por otro operario y cierre con motivos que libera paquetes.');
 
  // 5. Permisos
