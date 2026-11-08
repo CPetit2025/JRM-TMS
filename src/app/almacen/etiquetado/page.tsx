@@ -202,6 +202,8 @@ export default function WarehouseLabelingPage() {
     if (newLabels.length) {
       const { error: rpcError } = await createClient().rpc('wh_print_labels', { p_package_codes: newLabels.map(label => label.package_code) })
       if (rpcError) { setError(rpcError.message); return }
+      // Una recepción ya impresa sale de la bandeja (solo pendientes): se recarga sin esperar los 30 s
+      void search()
     }
     setPrintedLabelCodes(current => [...new Set([...current, ...targetLabels.map(label => label.package_code)])])
     const fallbackPrint = () => {
@@ -273,7 +275,7 @@ export default function WarehouseLabelingPage() {
             <td className="p-3">{receipt.customer_name || 'Por ingresar'}</td><td className="p-3 text-xs">{receipt.validation_status === 'VALIDATED' ? 'Validado' : 'Pendiente'} · {receipt.label_status === 'NOT_LABELED' ? 'Sin etiqueta' : receipt.label_status === 'PENDING_PRINT' ? `${receipt.unprinted_count} por imprimir` : receipt.label_status}</td>
             <td className="p-3"><button type="button" onClick={() => select(receipt)} className="rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white">{receipt.label_status === 'PENDING_PRINT' ? 'Imprimir pendientes' : 'Recibir'}</button></td>
           </tr>)}
-          {!searching && receipts.length===0 && <tr><td colSpan={8} className="p-8 text-center text-sm text-slate-500">{query.trim()?'No se encontraron ingresos para el criterio indicado.':'No hay ingresos pendientes de etiqueta en la última carga.'}</td></tr>}
+          {!searching && receipts.length===0 && <tr><td colSpan={8} className="p-8 text-center text-sm text-slate-500">{query.trim()?'No hay ingresos pendientes de etiqueta para ese criterio. Las recepciones ya etiquetadas se consultan en «03 · Control de recepción».':'No hay ingresos pendientes de etiqueta en la última carga.'}</td></tr>}
           {searching && <tr><td colSpan={8} className="p-8 text-center text-sm text-slate-500">Cargando ingresos…</td></tr>}
           </tbody>
         </table>

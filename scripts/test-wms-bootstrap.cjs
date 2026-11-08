@@ -17,7 +17,13 @@ const fs=require('fs'); const path=require('node:path');
  const labels=await db.query('SELECT public.wh_label_package($1,$2,$3) AS labels',['local-receipt',2,5]);
  const codes=labels.rows[0].labels.package_codes;
  if(codes.length!==2) throw Error('Wrong label count');
+ // Regla: la bandeja solo muestra pendientes de etiquetar (sin etiqueta o con etiquetas sin imprimir)
+ const inbox=async q=>(await db.query('SELECT public.wh_receipt_candidates($1) AS rows',[q])).rows[0].rows;
+ if((await inbox('')).map(r=>r.label_status).join()!=='PENDING_PRINT') throw Error('Unprinted labels must stay in the inbox');
  await db.query('SELECT public.wh_print_labels($1::text[])',[codes]);
+ if((await inbox('')).length!==0||(await inbox('LOCAL-IPT')).length!==0) throw Error('Completed receptions must not appear in the inbox, even when searched');
+ let direct=false;try{await db.query('SELECT public.wh_receipt_candidates_all($1)',[''])}catch(e){direct=e.message.includes('permission denied')}
+ if(!direct) throw Error('wh_receipt_candidates_all must not be callable by users');
  await db.query('SELECT * FROM public.wh_receipt_control_operators($1::text[])',[['local-receipt']]);
  await db.query('SELECT * FROM public.wh_receipt_control_customers($1::text[])',[['local-receipt']]);
  const counts=await db.query('SELECT count(*)::int as packages FROM public.wh_packages WHERE label_print_count=1');
