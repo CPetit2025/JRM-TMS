@@ -124,6 +124,13 @@ const feed=(status={})=>[
  assert.equal((await sys(`SELECT status FROM public.wh_lpns WHERE id='${lpn2.id}'`))[0].status,'VOID');
  assert.ok((await sys(`SELECT count(*)::int n FROM public.wh_lpn_audits WHERE lpn_id='${lpn2.id}'`))[0].n>=2,'historial conservado');
  await fails("SELECT public.wh_lpn_remove_package($1,'PKG-1',false,'x')",[lpn1.id],/aprobado/);
+ // Reagrupar el paquete del LPN deshecho junto con otro libera su código: la carga no debe encontrar el LPN anulado.
+ await db.exec('RESET ROLE; BEGIN'); await as('sup');
+ await q("SELECT public.wh_lpn_undo($1,'Reagrupar')",[lpn1.id]); await as('op1');
+ const mixed=await one('SELECT public.wh_consolidate_lpn($1,$2::text[])',[task.id,['PKG-1','PKG-3']]);
+ assert.ok(mixed.lpn_code.startsWith('LPN-')&&!mixed.own_label,'varios paquetes generan LPN nuevo');
+ assert.equal((await sys("SELECT count(*)::int n FROM public.wh_lpns WHERE lpn_code='PKG-3'"))[0].n,0,'el LPN anulado ya no retiene el código del paquete');
+ await db.exec('RESET ROLE; ROLLBACK'); await as('op1');
  const lpn3=await one('SELECT public.wh_consolidate_lpn($1,$2::text[])',[task.id,['PKG-3']]);
  assert.equal(lpn3.lpn_code,'PKG-3','al deshacer y volver a consolidar reutiliza el código del paquete');
  assert.match((await sys(`SELECT lpn_code FROM public.wh_lpns WHERE id='${lpn2.id}'`))[0].lpn_code,/^PKG-3-ANULADO-/,'el LPN anulado conserva su historial con otro código');
