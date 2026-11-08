@@ -2,10 +2,10 @@ name: WMS standalone database
 on:
   pull_request:
     branches: [master, feature/warehouse-wms-portal]
-    paths: ['wms-db/**', 'scripts/test-wms-bootstrap.cjs', 'scripts/test-register-driver-build.cjs', 'src/app/api/register-driver/route.ts', '.github/workflows/wms-bootstrap-check.yml']
+    paths: ['wms-db/**', 'scripts/test-wms-bootstrap.cjs', 'scripts/test-wms-picking.cjs', 'scripts/test-register-driver-build.cjs', 'src/app/api/register-driver/route.ts', '.github/workflows/wms-bootstrap-check.yml']
   push:
     branches: [feature/warehouse-wms-portal]
-    paths: ['wms-db/**', 'scripts/test-wms-bootstrap.cjs', 'scripts/test-register-driver-build.cjs', 'src/app/api/register-driver/route.ts', '.github/workflows/wms-bootstrap-check.yml']
+    paths: ['wms-db/**', 'scripts/test-wms-bootstrap.cjs', 'scripts/test-wms-picking.cjs', 'scripts/test-register-driver-build.cjs', 'src/app/api/register-driver/route.ts', '.github/workflows/wms-bootstrap-check.yml']
 permissions:
   contents: read
 jobs:
@@ -19,5 +19,6 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: node scripts/test-wms-bootstrap.cjs
+      - run: node scripts/test-wms-picking.cjs
       - run: node scripts/test-wms-isolation.mjs
       - run: node --test scripts/test-register-driver-build.cjs

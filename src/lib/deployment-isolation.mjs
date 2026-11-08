@@ -16,6 +16,7 @@ export function assertDeploymentIsolation(system, supabaseUrl, environment) {
 
 export function wmsRouteAllowed(path, method) {
   if (path === '/api/app-version') return method === 'GET'
+  if (path === '/api/wms/sincronizar') return method === 'POST'
   if (path.startsWith('/api/') || path === '/api') return false
   return path === '/almacen' || path.startsWith('/almacen/') || path === '/perfil' || path === '/login/restablecer'
 }

@@ -125,7 +125,7 @@ export default function LoginPage() {
            permissions = roleObj?.permissions || []
         }
 
-        const hasWarehouseAccess = roleName === 'Administrador' || permissions.some(p => ['almacen-lectura', 'almacen-etiquetado', 'almacen-picking', 'almacen-packing', 'almacen-carga', 'almacen-supervisor', 'apt', 'apt-carga'].some(key => p === key || p.startsWith(`${key}:`)))
+        const hasWarehouseAccess = roleName === 'Administrador' || permissions.some(p => ['almacen-lectura', 'almacen-etiquetado', 'almacen-picking', 'almacen-packing', 'almacen-carga', 'almacen-supervisor', 'almacen-auditoria', 'apt', 'apt-carga'].some(key => p === key || p.startsWith(`${key}:`)))
         const wantsWarehouse = selectedSystem === 'almacen'
         if (profileData?.employee_type === 'CONDUCTOR' || (wantsWarehouse ? !hasWarehouseAccess : !hasWebAccess(roleName, permissions) && !isDispatchAuditorRole(roleName, permissions))) {
           await supabase.auth.signOut()

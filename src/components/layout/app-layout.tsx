@@ -86,7 +86,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="flex shrink-0 items-center gap-1 sm:gap-3">
             <AppUpdateNotice placement="header" />
             <NotificationBell />
-            {['almacen-lectura','almacen-etiquetado','almacen-picking','almacen-packing','almacen-carga','almacen-supervisor','apt','apt-carga'].some(hasAccess) && <Link href="/almacen" aria-label="Ir a Almacén" title="Ir al Portal de Almacén" className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2 text-xs font-bold text-[#002855] hover:bg-blue-100"><Warehouse size={17}/><span className="hidden xl:inline">Almacén</span></Link>}
+            {['almacen-lectura','almacen-etiquetado','almacen-picking','almacen-packing','almacen-carga','almacen-supervisor','almacen-auditoria','apt','apt-carga'].some(hasAccess) && <Link href="/almacen" aria-label="Ir a Almacén" title="Ir al Portal de Almacén" className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2 text-xs font-bold text-[#002855] hover:bg-blue-100"><Warehouse size={17}/><span className="hidden xl:inline">Almacén</span></Link>}
 
             <Link href="/perfil" aria-label="Mi perfil" className="flex min-w-0 items-center gap-3 border-l border-slate-200 pl-1 sm:pl-3">
               <div className="h-11 w-11 shrink-0 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold">

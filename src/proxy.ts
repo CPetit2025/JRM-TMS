@@ -89,7 +89,7 @@ export async function proxy(request: NextRequest) {
     const role = Array.isArray(profile.roles) ? profile.roles[0] : profile.roles
     const permissions = Array.isArray(role?.permissions) ? role.permissions : []
     const systemAdmin = role?.name === 'Administrador'
-    const hasWarehouseAccess = systemAdmin || permissions.some(p => ['almacen-lectura', 'almacen-etiquetado', 'almacen-picking', 'almacen-packing', 'almacen-carga', 'almacen-supervisor', 'apt', 'apt-carga'].some(key => p === key || p.startsWith(`${key}:`)))
+    const hasWarehouseAccess = systemAdmin || permissions.some(p => ['almacen-lectura', 'almacen-etiquetado', 'almacen-picking', 'almacen-packing', 'almacen-carga', 'almacen-supervisor', 'almacen-auditoria', 'apt', 'apt-carga'].some(key => p === key || p.startsWith(`${key}:`)))
     if (isLegacyAptPath) {
       const url = request.nextUrl.clone()
       url.pathname = `/almacen${request.nextUrl.pathname}`
@@ -111,6 +111,7 @@ export async function proxy(request: NextRequest) {
         : path.startsWith('/almacen/etiquetado') ? ['almacen-etiquetado','almacen-supervisor']
         : path.startsWith('/almacen/apt') ? ['apt','apt-carga','almacen-lectura','almacen-etiquetado','almacen-picking','almacen-packing','almacen-carga','almacen-supervisor']
         : path.startsWith('/almacen/paquetes') || path.startsWith('/almacen/lpn') ? ['almacen-lectura','almacen-packing','almacen-carga','almacen-supervisor']
+        : path.startsWith('/almacen/auditoria') ? ['almacen-auditoria','almacen-supervisor']
         : path.startsWith('/almacen/tareas') ? ['almacen-lectura','almacen-picking','almacen-packing','almacen-carga','almacen-supervisor'] : null
       if (required && role?.name !== 'Administrador' && !permissions.some(p => required.some(key => p === key || p.startsWith(`${key}:`)))) {
         return redirect(new URL('/almacen', request.url))
