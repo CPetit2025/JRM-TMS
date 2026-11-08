@@ -39,3 +39,11 @@ REVOKE ALL ON FUNCTION public.apt_flow_tms(text[]), public.erp_ot_cliente_erp() 
 
 REVOKE ALL ON public.apa_v_movimientos_vigentes, public.apa_v_clientes, public.apa_v_documentos, public.apa_v_lotes,
   public.apa_v_ordenes, public.apa_v_productos, public.apa_v_traspasos, public.inv_movements_v FROM PUBLIC, anon, authenticated;
+
+-- 4. Filas únicas de estado y configuración: las funciones solo las actualizan. En producción llegan con la copia de la
+--    historia; en una base nueva se crean con sus valores por defecto (no pisan filas existentes).
+INSERT INTO public.inv_state (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.apt_state (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.apt_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.apt_flow_state (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.apt_gantt_meta (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
