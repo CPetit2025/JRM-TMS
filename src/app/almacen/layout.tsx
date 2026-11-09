@@ -65,6 +65,26 @@ export default function WarehouseLayout({ children }: { children: React.ReactNod
     return () => { live = false }
   }, [pathname])
 
+  // En el celular las tablas se muestran como tarjetas (globals.css, .wms-main): cada celda toma el título de su columna
+  useEffect(() => {
+    const main = document.querySelector('.wms-main')
+    if (!main) return
+    let frame = 0
+    const label = () => {
+      frame = 0
+      main.querySelectorAll('table').forEach(table => {
+        const heads = [...table.querySelectorAll('thead tr:last-child th')].map(th => th.textContent?.trim() || '')
+        table.querySelectorAll('tbody tr').forEach(tr => [...tr.children].forEach((td, i) => {
+          if (heads[i] && td.getAttribute('data-label') !== heads[i]) td.setAttribute('data-label', heads[i])
+        }))
+      })
+    }
+    const observer = new MutationObserver(() => { if (!frame) frame = requestAnimationFrame(label) })
+    observer.observe(main, { childList: true, subtree: true })
+    label()
+    return () => { observer.disconnect(); cancelAnimationFrame(frame) }
+  }, [pathname, isLoaded])
+
   if (pathname === '/almacen/login') return <>{children}</>
   if (!isLoaded) return <div className="grid min-h-dvh place-items-center bg-slate-50 text-sm text-slate-500">Cargando Portal de Almacén…</div>
 
@@ -129,8 +149,8 @@ export default function WarehouseLayout({ children }: { children: React.ReactNod
           </Link>
         </div>
       </header>
-      <main className="relative z-0 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-auto p-3 sm:p-4 lg:p-5">{children}</main>
-      <footer className="shrink-0 border-t border-slate-200 bg-white px-4 py-2.5 text-center text-[11px] text-slate-500">JRM TMS · Portal de Almacén · Trazabilidad de operaciones</footer>
+      <main className="wms-main relative z-0 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-auto p-2.5 sm:p-4 lg:p-5">{children}</main>
+      <footer className="hidden shrink-0 border-t sm:block border-slate-200 bg-white px-4 py-2.5 text-center text-[11px] text-slate-500">JRM TMS · Portal de Almacén · Trazabilidad de operaciones</footer>
     </div>
   </div>
 }

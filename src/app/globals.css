@@ -63,3 +63,20 @@ body {
   #detalle-despacho .detail-panel { height: auto !important; max-width: none !important; box-shadow: none !important; overflow: visible !important; }
   #detalle-despacho .detail-body { overflow: visible !important; background: #fff !important; }
 }
+
+/* WMS en celular: títulos compactos y tablas como tarjetas (las etiquetas data-label las pone almacen/layout.tsx) */
+@media screen and (max-width: 639px) {
+  .wms-main h1 { font-size: 1.5rem; line-height: 1.9rem; }
+  .wms-main table:not(.wms-keep-table) { min-width: 0 !important; width: 100%; font-size: .8125rem; }
+  .wms-main table:not(.wms-keep-table) thead { display: none; }
+  .wms-main table:not(.wms-keep-table) > tbody,
+  .wms-main table:not(.wms-keep-table) > tbody > tr { display: block; }
+  .wms-main table:not(.wms-keep-table) > tbody > tr { padding: .5rem .75rem; border-bottom: 1px solid #e2e8f0; }
+  .wms-main table:not(.wms-keep-table) > tbody > tr > td { display: flow-root; padding: .125rem 0 !important; text-align: left !important; white-space: normal !important; }
+  .wms-main table:not(.wms-keep-table) > tbody > tr > td[data-label] { position: relative; padding-left: 6.5rem !important; min-height: 1.5rem; }
+  .wms-main table:not(.wms-keep-table) > tbody > tr > td[data-label]::before {
+    content: attr(data-label); position: absolute; left: 0; top: .2rem; width: 6rem;
+    font-size: .6875rem; font-weight: 700; text-transform: uppercase; color: #64748b;
+  }
+  .wms-main table:not(.wms-keep-table) > tbody > tr > td:empty { display: none; }
+}
