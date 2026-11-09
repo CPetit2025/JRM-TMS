@@ -71,7 +71,9 @@ BEGIN
   SELECT * INTO u FROM public.wh_load_units WHERE id = p_unit_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'Unidad de carga no encontrada'; END IF;
   PERFORM public.wh_load_unit_task(u.task_id);
-  IF EXISTS (SELECT 1 FROM public.wh_lpns WHERE load_unit_id = u.id AND status = 'LOADED') THEN RAISE EXCEPTION 'La unidad UT% ya tiene bultos cargados', u.seq; END IF;
+  IF EXISTS (SELECT 1 FROM public.wh_lpns l WHERE l.load_unit_id = u.id AND (l.status = 'LOADED' OR EXISTS (SELECT 1 FROM public.wh_packages p WHERE p.lpn_id = l.id AND p.status = 'LOADED'))) THEN
+    RAISE EXCEPTION 'La unidad UT% ya tiene bultos cargados', u.seq;
+  END IF;
   DELETE FROM public.wh_load_units WHERE id = u.id; -- sus bultos quedan sin asignar
 END $$;
 
@@ -82,7 +84,9 @@ BEGIN
   SELECT * INTO l FROM public.wh_lpns WHERE id = p_lpn_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Bulto no encontrado'; END IF;
   PERFORM public.wh_load_unit_task(l.task_id);
-  IF l.status <> 'CLOSED' THEN RAISE EXCEPTION 'Solo se asignan bultos cerrados y aún no cargados (% está %)', l.lpn_code, l.status; END IF;
+  IF l.status <> 'CLOSED' OR EXISTS (SELECT 1 FROM public.wh_packages WHERE lpn_id = l.id AND status = 'LOADED') THEN
+    RAISE EXCEPTION 'Solo se asignan bultos cerrados y aún no cargados (%)', l.lpn_code;
+  END IF;
   IF p_unit_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.wh_load_units WHERE id = p_unit_id AND task_id = l.task_id) THEN
     RAISE EXCEPTION 'La unidad no pertenece a esta tarea';
   END IF;
@@ -101,7 +105,7 @@ BEGIN
       'id', u.id, 'seq', u.seq, 'label', 'UT' || u.seq, 'plate', u.plate,
       'lpn_ids', coalesce((SELECT jsonb_agg(l.id ORDER BY l.lpn_code) FROM public.wh_lpns l WHERE l.load_unit_id = u.id AND l.status <> 'VOID'), '[]'::jsonb),
       'lpn_count', (SELECT count(*) FROM public.wh_lpns l WHERE l.load_unit_id = u.id AND l.status <> 'VOID'),
-      'loaded_count', (SELECT count(*) FROM public.wh_lpns l WHERE l.load_unit_id = u.id AND l.status = 'LOADED'),
+      'loaded_count', (SELECT count(*) FROM public.wh_lpns l WHERE l.load_unit_id = u.id AND (l.status = 'LOADED' OR EXISTS (SELECT 1 FROM public.wh_packages p WHERE p.lpn_id = l.id AND p.status = 'LOADED'))),
       'package_count', (SELECT coalesce(sum(l.package_count), 0) FROM public.wh_lpns l WHERE l.load_unit_id = u.id AND l.status <> 'VOID'),
       'weight_kg', (SELECT coalesce(sum(l.weight_kg), 0) FROM public.wh_lpns l WHERE l.load_unit_id = u.id AND l.status <> 'VOID')
     ) ORDER BY u.seq) FROM public.wh_load_units u WHERE u.task_id = t.id), '[]'::jsonb);
@@ -118,13 +122,21 @@ REVOKE ALL ON FUNCTION public.wh_record_scan_core(uuid, text, text, uuid, jsonb)
 
 CREATE FUNCTION public.wh_record_scan(p_task_id uuid, p_code text, p_event text, p_client_event_id uuid, p_payload jsonb DEFAULT '{}'::jsonb) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
-DECLARE l public.wh_lpns%ROWTYPE; v_unit text := nullif(coalesce(p_payload, '{}'::jsonb)->>'load_unit_id', '');
+DECLARE l public.wh_lpns%ROWTYPE; t public.wh_tasks%ROWTYPE; v_unit text := nullif(coalesce(p_payload, '{}'::jsonb)->>'load_unit_id', '');
 BEGIN
+  IF upper(coalesce(p_event, '')) = 'LOAD' THEN
+    -- Mismas comprobaciones que el registro original, antes de revelar datos de unidades.
+    PERFORM public.security_assert_active_session();
+    SELECT * INTO t FROM public.wh_tasks WHERE id = p_task_id;
+    IF NOT FOUND OR NOT public.can_access_site(t.site_id) THEN RAISE EXCEPTION 'Tarea no disponible'; END IF;
+    IF NOT public.wh_has_permission(ARRAY['almacen-carga','almacen-supervisor']) THEN RAISE EXCEPTION 'Sin permiso para registrar esta lectura' USING ERRCODE = '42501'; END IF;
+  END IF;
   IF upper(coalesce(p_event, '')) = 'LOAD' AND EXISTS (SELECT 1 FROM public.wh_load_units WHERE task_id = p_task_id) THEN
+    -- Se bloquea el bulto: una reasignación simultánea no puede validar contra una unidad obsoleta.
     SELECT * INTO l FROM public.wh_lpns
      WHERE task_id = p_task_id AND status <> 'VOID'
        AND (lpn_code = trim(p_code) OR id = (SELECT lpn_id FROM public.wh_packages WHERE package_code = trim(p_code) AND task_id = p_task_id))
-     LIMIT 1;
+     LIMIT 1 FOR UPDATE;
     -- Una lectura ya registrada (reintento offline) no se vuelve a validar: el registro original la reconoce.
     IF FOUND AND l.status = 'CLOSED' THEN
       IF l.load_unit_id IS NULL THEN RAISE EXCEPTION 'Asigne el bulto % a una unidad de carga antes de cargarlo', l.lpn_code; END IF;

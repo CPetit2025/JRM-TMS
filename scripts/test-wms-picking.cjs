@@ -199,7 +199,15 @@ const feed=(status={})=>[
  assert.equal(units[0].plate,'XYZ-987'); assert.equal(units[0].lpn_count,1); assert.deepEqual(units[0].lpn_ids,[lpn3.id]);
  await q('SELECT public.wh_load_unit_remove($1)',[ut2.id]);
  units=await one('SELECT public.wh_task_load_units($1)',[task.id]); assert.equal(units.length,1,'unidad sin carga eliminada');
- await as('op1'); await fails('SELECT public.wh_load_unit_add($1)',[task.id],/permiso/);
+ // Bulto con un paquete ya cargado (lectura por código de paquete): su unidad queda fija.
+ await sys(`UPDATE public.wh_packages SET status='LOADED' WHERE package_code='PKG-3'`); await as('sup');
+ await fails('SELECT public.wh_lpn_assign_unit($1,null)',[lpn3.id],/aún no cargados/);
+ await fails('SELECT public.wh_load_unit_remove($1)',[ut1.id],/ya tiene bultos cargados/);
+ assert.equal((await one('SELECT public.wh_task_load_units($1)',[task.id]))[0].loaded_count,1,'cuenta el bulto parcialmente cargado');
+ await sys(`UPDATE public.wh_packages SET status='PACKED' WHERE package_code='PKG-3'`);
+ // Sin permiso de carga no se valida ni se revela la unidad del bulto.
+ await as('op1'); await fails(load(ut2.id),[task.id,lpn3.lpn_code],/Sin permiso para registrar/);
+ await fails('SELECT public.wh_load_unit_add($1)',[task.id],/permiso/);
  await fails('SELECT public.wh_record_scan_core($1,$2,$3,gen_random_uuid())',[task.id,lpn3.lpn_code,'LOAD'],/permission denied|permiso/);
  console.log('PASS: unidades de carga UT1/UT2 con placa opcional; asignar bultos; la carga exige la unidad correcta del bulto.');
  await as('aud'); await q("SELECT public.wh_audit_lpn($1,'RECHAZADO','Rechazo tardío')",[lpn3.id]);
