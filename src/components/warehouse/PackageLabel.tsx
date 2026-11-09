@@ -44,6 +44,7 @@ export function PackageLabel({ label, format = { width_mm: 152.4, height_mm: 101
       />
       <b className="wh-package-code">{label.package_code}</b>
       <div className="wh-package-footer">
+        <div className="wh-package-responsible"><b>Responsable de recepción:</b> {label.reception_responsible_name || "No registrado"}</div>
         <div className="wh-package-document">
           <div>
             <b>IPT:</b> {label.source_document_no || "—"}

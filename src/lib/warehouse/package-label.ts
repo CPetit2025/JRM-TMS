@@ -14,18 +14,21 @@ export type PackageLabelData = {
   source_date: string;
   contract_code: string | null;
   customer_name: string;
+  reception_responsible_name: string | null;
 };
 type LabelSource = { package_code: string; [key: string]: unknown };
 const text = (v: unknown) => (v == null ? "" : String(v));
 export function packageLabelData(
   row: LabelSource,
   customer?: string | null,
+  responsible?: string | null,
 ): PackageLabelData {
   if (!row.package_code)
     throw new Error(
       "No se puede imprimir una etiqueta sin el código del bulto original.",
     );
   return {
+    reception_responsible_name: text(responsible || row.reception_responsible_name).trim() || null,
     package_code: row.package_code,
     source_document_no: text(row.source_document_no),
     source_lot: text(row.source_lot),

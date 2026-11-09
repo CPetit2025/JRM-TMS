@@ -152,11 +152,20 @@
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 4px;
-  height: 13%;
-  min-height: 49.134px;
-  margin-top: 7.559px;
+  height: 16%;
+  min-height: 58px;
+  margin-top: 3.5px;
   border-top: 1.134px solid #7a8793;
-  padding-top: 7.559px;
+  padding-top: 4px;
+}
+.wh-package-responsible {
+  grid-column: 1 / -1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .wh-package-document {
   min-width: 0;

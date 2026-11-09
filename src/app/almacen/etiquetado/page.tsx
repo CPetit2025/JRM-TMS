@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { Printer, RotateCcw, ScanLine, ClipboardCheck, X, RefreshCw, UserRound, Weight, Package } from 'lucide-react'
@@ -21,6 +21,7 @@ type Receipt = {
 
 
 export default function WarehouseLabelingPage() {
+  const selectionRequest = useRef(0)
   const [query, setQuery] = useState('')
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [selected, setSelected] = useState<Receipt | null>(null)
@@ -107,8 +108,9 @@ export default function WarehouseLabelingPage() {
   }, [query])
 
 
-  const select = (receipt: Receipt) => {
-    setSelected(receipt); setLabels(receipt.pending_labels || []); setPrintedLabelCodes([]); setShowPreview(false); setMessage(''); setError('')
+  const select = async (receipt: Receipt) => {
+    const request = ++selectionRequest.current
+    setSelected(receipt); setLabels([]); setPrintedLabelCodes([]); setShowPreview(false); setMessage(''); setError('')
     const physical = receipt.physical_quantity ?? Number(receipt.quantity)
     setPhysicalQuantity(String(physical))
     setVarianceReason(receipt.variance_reason || '')
@@ -121,6 +123,13 @@ export default function WarehouseLabelingPage() {
       setCompletePackages(String(Math.floor(physical / units)))
     } else {
       setCapacity(''); setCount('1'); setPackageMode('PACKAGES'); setCompletePackages('0')
+    }
+    const codes = (receipt.pending_labels || []).map(label => label.package_code)
+    setBusy(codes.length > 0)
+    if (codes.length) {
+      try { const pending = await loadPackageLabels(createClient(), codes); if (request === selectionRequest.current) setLabels(pending) }
+      catch(e) { if (request === selectionRequest.current) setError(e instanceof Error ? e.message : String(e)) }
+      finally { if (request === selectionRequest.current) setBusy(false) }
     }
   }
 
