@@ -7,7 +7,7 @@ import { ArrowLeft, CheckCircle2, Loader2, Printer, ScanLine, Search, Tag, Undo2
 import { usePermissions } from '@/hooks/usePermissions'
 import { Code128Barcode } from '@/components/warehouse/Code128Barcode'
 import { fitScale, useLabelFormat } from '@/lib/warehouse/label-format'
-import { CAMPAIGN_STATE, RESULT_STYLE, fmtDate, fmtN, type Campaign, type CountLine, type ExpectedLine, type SummaryRow } from '@/lib/warehouse/inventory'
+import { CAMPAIGN_STATE, INVENTORY_TYPE, RESULT_STYLE, fmtDate, fmtN, type Campaign, type CountLine, type ExpectedLine, type SummaryRow } from '@/lib/warehouse/inventory'
 
 type Label = { package_code: string; product: string; description: string; lote: string | null; ot: string | null; quantity: number; unit: string | null; weight_kg: number | null; document: string; sequence_no: number; sequence_total: number; bodega: string }
 const btn = 'inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold disabled:opacity-50'
@@ -125,7 +125,7 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
         <span className="text-sm text-slate-600">{camp.bodega} · corte ERP {fmtDate(camp.erp_cut_at)}</span>
       </div>
       <p className="mt-1 text-sm text-slate-600">{camp.counted_lines} bultos contados · {camp.labeled} etiquetados · {camp.unidentified} no identificados · {camp.expected_lines} lotes en el ERP
-        {open && <b className="ml-2 text-amber-800">Bodega congelada: no despacha ni etiqueta por IPT hasta el cierre.</b>}</p>
+        {open && <b className="ml-2 text-amber-800">{INVENTORY_TYPE[camp.tipo]?.label || camp.tipo}: {INVENTORY_TYPE[camp.tipo]?.blocks}{camp.tipo === 'CICLICO' ? ` SKU: ${camp.productos.join(', ')}.` : ''}</b>}</p>
       <nav className="mt-3 flex gap-2">
         {(['barrido', 'cuadre'] as const).map(t => <button key={t} type="button" onClick={() => setTab(t)} className={`${btn} ${tab === t ? 'bg-[#002855] text-white' : 'border border-slate-300'}`}>{t === 'barrido' ? 'Barrido' : `Cuadre${diffs.length ? ` · ${diffs.length} diferencias` : ''}`}</button>)}
       </nav>

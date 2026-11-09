@@ -1,6 +1,13 @@
 // Inventario por barrido (fases 2 y 3 de docs/plan-wms-inventario-apt.md): tipos y formato compartidos.
-export type Campaign = { id: string; code: string; bodega: string; zones: string[]; status: string; notes: string | null; created_at: string; closed_at: string | null; close_note: string | null
+export type Campaign = { id: string; code: string; bodega: string; zones: string[]; tipo: InventoryType; productos: string[]; status: string; notes: string | null; created_at: string; closed_at: string | null; close_note: string | null
   erp_cut_at: string | null; created_by_name: string | null; closed_by_name: string | null; expected_lines: number; expected_qty: number; counted_lines: number; labeled: number; unidentified: number; recounts: number }
+export type InventoryType = 'GENERAL' | 'BARRIDO' | 'CICLICO'
+// Qué cuenta y qué bloquea cada tipo (la recepción por IPT solo se detiene en el general o para los SKU del cíclico)
+export const INVENTORY_TYPE: Record<InventoryType, { label: string; scope: string; blocks: string }> = {
+  GENERAL: { label: 'General', scope: '100 % de la bodega', blocks: 'Bodega congelada: no recibe por IPT, no despacha ni carga hasta el cierre.' },
+  BARRIDO: { label: 'Al barrer (zonas)', scope: 'Lo que está en las zonas del recorrido', blocks: 'La bodega sigue operando; solo se bloquean los bultos ya contados hasta el cierre.' },
+  CICLICO: { label: 'Cíclico (SKU)', scope: 'Solo los SKU elegidos', blocks: 'La bodega sigue operando; solo esos SKU no se reciben ni despachan hasta el cierre.' },
+}
 export const CAMPAIGN_STATE: Record<string, { label: string; style: string }> = {
   EN_CONTEO: { label: 'En conteo', style: 'bg-blue-100 text-blue-900' },
   EN_REVISION: { label: 'En revisión', style: 'bg-amber-100 text-amber-900' },
