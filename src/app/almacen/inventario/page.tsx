@@ -78,7 +78,9 @@ export default function WarehouseInventoryPage() {
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">{INVENTORY_TYPE[c.tipo]?.label || c.tipo}{c.tipo === 'CICLICO' && c.productos.length ? ` · ${c.productos.length} SKU` : ''}</span>
             <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${s.style}`}>{s.label}</span>
             <span className="text-slate-600">{c.counted_lines} bultos contados · {c.labeled} etiquetados · {c.expected_lines} lotes ERP</span>
+            <span className="basis-full text-xs text-slate-600 sm:basis-auto">{c.status === 'EN_CONTEO' ? 'Siguiente: barrido y conteo' : c.status === 'EN_REVISION' ? 'Siguiente: abrir Cuadre para recontar, cerrar o anular' : c.status === 'ANULADA' ? (c.close_note || 'Anulada') : `Cerrada ${fmtDate(c.closed_at)}`}</span>
             <span className="ml-auto text-xs text-slate-500">corte ERP {fmtDate(c.erp_cut_at)} · {c.created_by_name || '—'} · {fmtDate(c.created_at)}</span>
+            <span className="rounded-lg bg-[#002855] px-3 py-1.5 text-xs font-bold text-white">Abrir</span>
           </Link>
         })}</div>}
     </section>

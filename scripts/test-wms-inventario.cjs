@@ -138,6 +138,22 @@ const U={sup:'00000000-0000-0000-0000-0000000000c1',cnt:'00000000-0000-0000-0000
  await fails(ipt('PKG-C1','PT-1'),[],/inventario cíclico/);
  await db.exec(ipt('PKG-C2','PT-3')); // otro SKU se recibe normal
  await as('cnt'); await fails("SELECT public.wh_count_scan($1,'PKG-C2')",[cic.id],/no está en este inventario cíclico/);
+ // 7. Anular y volver a conteo
+ await as('sup');
+ await fails('SELECT public.wh_count_to_review($1)',[cic.id],/No hay bultos contados/);
+ await as('cnt'); await fails("SELECT public.wh_count_cancel($1,'x')",[cic.id],/Solo supervisión/);
+ await as('sup'); await fails("SELECT public.wh_count_cancel($1,' ')",[cic.id],/motivo/);
+ const an=await one("SELECT public.wh_count_cancel($1,'Abierta sin conteo')",[cic.id]); assert.equal(an.success,true);
+ const anu=(await sys(`SELECT status, close_note FROM public.wh_count_campaigns WHERE id='${cic.id}'`))[0];
+ assert.deepEqual([anu.status,anu.close_note],['ANULADA','Anulada: Abierta sin conteo']);
+ assert.equal((await sys(`SELECT count(*)::int n FROM public.wh_count_results WHERE campaign_id='${cic.id}'`))[0].n,0,'anular no genera cuadre');
+ assert.equal((await sys('SELECT count(*)::int n FROM public.erp_imports WHERE retained'))[0].n,0,'libera la carga del ERP');
+ await db.exec('RESET ROLE'); await db.exec(ipt('PKG-C3','PT-1')); // el SKU vuelve a recibirse
+ await as('sup'); const re=await one("SELECT public.wh_count_open('647-04 ALM PT','{}',NULL,NULL,'BARRIDO')");
+ await as('cnt'); await one("SELECT public.wh_count_scan($1,'PKG-C3')",[re.id]);
+ await as('sup'); await one('SELECT public.wh_count_to_review($1)',[re.id]); await one('SELECT public.wh_count_reopen($1)',[re.id]);
+ assert.equal((await sys(`SELECT status FROM public.wh_count_campaigns WHERE id='${re.id}'`))[0].status,'EN_CONTEO','vuelve a conteo');
+ console.log('PASS: anular con motivo sin cuadre y liberando carga y SKU; volver a conteo; no se termina un conteo vacío.');
  console.log('PASS: tipos de inventario: general congela la bodega; al barrer solo bloquea lo contado; cíclico solo sus SKU; la recepción sigue.');
  await db.close();
 })().catch(e=>{console.error('FAIL:',e.message);process.exit(1)});

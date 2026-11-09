@@ -33,6 +33,7 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
   const [unknown, setUnknown] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [reasons, setReasons] = useState<Record<string, string>>({})
+  const [bulkReason, setBulkReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -43,7 +44,10 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
     const [b, l, s] = await Promise.all([db.rpc('wh_count_board', { p_campaign: id }), db.rpc('wh_count_lines_list', { p_campaign: id, p_limit: 100 }), db.rpc('wh_count_summary', { p_campaign: id })])
     const e = b.error || l.error || s.error
     if (e) { setError(e.message); return }
-    setCamp(((b.data || []) as Campaign[])[0] || null)
+    const c = ((b.data || []) as Campaign[])[0] || null
+    setCamp(c)
+    // En revisión lo que sigue es el cuadre: se abre directamente esa pestaña
+    if (c?.status === 'EN_REVISION') setTab(t => t === 'barrido' ? 'cuadre' : t)
     setLines((l.data || []) as CountLine[])
     setSummary((s.data || []) as SummaryRow[])
   }, [id])
@@ -115,6 +119,20 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
   const close = () => {
     if (!window.confirm('¿Cerrar el inventario? Se liberan los paquetes retenidos y la bodega vuelve a operar.')) return
     void run(() => createClient().rpc('wh_count_close', { p_campaign: id, p_reasons: reasons }), (d: { released_packages: number }) => `Inventario cerrado. ${d.released_packages} paquete(s) liberados para picking.`)
+  }
+
+  const cancel = () => {
+    const reason = window.prompt('Motivo de la anulación (queda registrado; la campaña no genera cuadre y se libera lo retenido):')
+    if (!reason?.trim()) return
+    if (!window.confirm(`¿Anular el inventario ${camp?.code}? No se puede revertir.`)) return
+    void run(() => createClient().rpc('wh_count_cancel', { p_campaign: id, p_reason: reason }), () => 'Inventario anulado: la bodega queda sin restricciones de esta campaña.')
+  }
+  const reopen = () => { if (window.confirm('¿Volver a conteo? Se podrá seguir contando todos los lotes.')) void run(() => createClient().rpc('wh_count_reopen', { p_campaign: id }), () => 'La campaña volvió a conteo.') }
+  const applyBulk = () => {
+    const r = bulkReason.trim()
+    if (!r) return
+    setReasons(prev => { const next = { ...prev }; for (const row of summary) if (row.result !== 'CUADRA' && !next[lotKey(row)]?.trim()) next[lotKey(row)] = r; return next })
+    setBulkReason('')
   }
 
   if (!camp) return <div className="p-12 text-center text-slate-500">{error || <><Loader2 className="mx-auto animate-spin"/>Cargando inventario…</>}</div>
@@ -206,11 +224,18 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 text-sm">
         {(['CUADRA', 'FALTANTE', 'SOBRANTE', 'NO_EN_ERP'] as const).map(k => <span key={k} className={`rounded-full px-2 py-0.5 text-xs font-bold ${RESULT_STYLE[k]}`}>{k.replace('_', ' ')} {counts[k] || 0}</span>)}
         {isSupervisor && open && <span className="ml-auto flex flex-wrap gap-2">
-          {camp.status === 'EN_CONTEO' && <button type="button" disabled={busy} onClick={toReview} className={`${btn} border border-slate-300`}>Terminar conteo</button>}
+          {camp.status === 'EN_CONTEO' && <button type="button" disabled={busy || camp.counted_lines === 0} title={camp.counted_lines === 0 ? 'Todavía no hay bultos contados' : ''} onClick={toReview} className={`${btn} border border-slate-300`}>Terminar conteo</button>}
+          {camp.status === 'EN_REVISION' && <button type="button" disabled={busy} onClick={reopen} className={`${btn} border border-slate-300`}>Volver a conteo</button>}
           <button type="button" disabled={busy || selected.size === 0} onClick={recount} className={`${btn} border border-amber-400 text-amber-900`}>Recontar {selected.size || ''}</button>
           <button type="button" disabled={busy} onClick={close} className={`${btn} bg-emerald-700 text-white`}><CheckCircle2 size={16}/>Cerrar inventario</button>
+          <button type="button" disabled={busy} onClick={cancel} className={`${btn} border border-rose-300 text-rose-800`}>Anular</button>
         </span>}
       </div>
+      {isSupervisor && open && diffs.length > 0 && <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 text-sm">
+        <span className="text-slate-600">{diffs.filter(r => !reasons[lotKey(r)]?.trim()).length} de {diffs.length} diferencias sin motivo</span>
+        <input value={bulkReason} onChange={e => setBulkReason(e.target.value)} placeholder="Motivo común para las diferencias sin motivo" className="min-w-64 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"/>
+        <button type="button" disabled={!bulkReason.trim()} onClick={applyBulk} className={`${btn} border border-slate-300`}>Aplicar a todas</button>
+      </div>}
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white"><table className="min-w-[820px] lg:min-w-0 w-full text-left text-sm">
         <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-600"><tr>
           {isSupervisor && open && <th className="px-3 py-2"/>}<th className="px-3 py-2">OT</th><th className="px-3 py-2">Lote</th><th className="px-3 py-2">Producto</th>
