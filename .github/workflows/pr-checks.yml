@@ -39,6 +39,8 @@ jobs:
       - run: node scripts/test-outsourcing-wizard.cjs
       - run: node scripts/test-outsourcing-resources.cjs
       - run: node scripts/test-outsourcing-routes.cjs
+      - run: node scripts/test-outsourcing-quick-register.cjs
+      - run: node scripts/test-outsourcing-steps.cjs
       - run: node scripts/test-freight-stages.cjs
       - run: node scripts/test-economic-closure.cjs
       - run: node scripts/test-documents-modal-context.cjs

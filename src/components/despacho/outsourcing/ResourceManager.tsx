@@ -51,6 +51,34 @@ type Context = {
   vehicles: Catalog[];
   personnel: Catalog[];
 };
+// Categorías de proveedor que se ofrecen por servicio (subconjunto de las que acepta outsourcing_assignment_save).
+const ALL_LOGISTIC = ["TRANSPORTE", "GRUA", "MONTACARGA", "ESTIBA", "SERVICIOS"];
+const SERVICE_SUPPLIERS: Record<OutsourcingService, string[]> = {
+  FLETE: ["TRANSPORTE"],
+  MONTACARGAS: ["MONTACARGA"],
+  GRUA: ["GRUA"],
+  ESTIBA: ["ESTIBA"],
+  STOCKA: ALL_LOGISTIC,
+  OTROS: ALL_LOGISTIC,
+};
+type QuickField = [string, string, string?];
+const QUICK_SUPPLIER: QuickField[] = [
+  ["tax_id", "RUC (11 dígitos)"],
+  ["business_name", "Razón social"],
+  ["contact_name", "Contacto"],
+  ["contact_phone", "Teléfono", "tel"],
+  ["contact_email", "Correo", "email"],
+];
+const QUICK_OPERATOR: QuickField[] = [
+  ["full_name", "Nombre completo"],
+  ["document_number", "Documento de identidad"],
+  ["phone", "Teléfono", "tel"],
+];
+const QUICK_DRIVER: QuickField[] = [
+  ...QUICK_OPERATOR,
+  ["license_number", "Licencia"],
+  ["license_expiration", "Vencimiento de licencia", "date"],
+];
 const empty = () => ({
   supplier_id: "",
   quantity: "1",
@@ -84,7 +112,9 @@ export function ResourceManager({
     ),
     [form, setForm] = useState(empty),
     [reason, setReason] = useState(""),
-    [ack, setAck] = useState(false);
+    [ack, setAck] = useState(false),
+    [quick, setQuick] = useState<{ kind: "supplier" | "person"; data: Record<string, string> } | null>(null),
+    [personId, setPersonId] = useState("");
   const load = useCallback(async () => {
     const { data, error } = await db.rpc("outsourcing_assignment_context", {
       p_id: parent,
@@ -97,6 +127,7 @@ export function ResourceManager({
       );
       setError("");
     }
+    return error ? null : (data as Context);
   }, [db, parent, onManaged]);
   useEffect(() => {
     const timer = setTimeout(() => void load(), 0);
@@ -105,6 +136,59 @@ export function ResourceManager({
   const assignments =
       context?.assignments.filter((a) => a.service === service) || [],
     supplier = context?.suppliers.find((s) => s.id === form.supplier_id);
+  const suppliers = (context?.suppliers || []).filter(
+      (s) => SERVICE_SUPPLIERS[service].includes(s.category) || s.id === form.supplier_id,
+    ),
+    people = (context?.personnel || []).filter((p) => p.supplier_id === form.supplier_id),
+    personRole = service === "FLETE" ? "Conductor" : service === "ESTIBA" ? "Responsable" : "Operador";
+  function selectSupplier(id: string) {
+    setPersonId("");
+    setQuick(null);
+    setForm((f) => ({
+      ...f,
+      supplier_id: id,
+      resource: { origin: f.resource.origin || "", destination: f.resource.destination || "" },
+    }));
+  }
+  // Copia los datos del conductor u operador registrado a los campos del recurso según el servicio.
+  function applyPerson(p: Catalog) {
+    const text = (v: unknown) => (v == null ? "" : String(v));
+    setPersonId(p.id);
+    setForm((f) => ({
+      ...f,
+      resource: {
+        ...f.resource,
+        ...(service === "FLETE"
+          ? { driver: text(p.full_name), document: text(p.document_number), phone: text(p.phone), license: text(p.license_number), license_expiration: text(p.license_expiration) }
+          : service === "ESTIBA"
+            ? { responsible: text(p.full_name) }
+            : { operator: text(p.full_name), operator_document: text(p.document_number) }),
+      },
+    }));
+  }
+  async function register() {
+    if (!quick) return;
+    setBusy(true);
+    try {
+      const { data, error } = await db.rpc("outsourcing_quick_register", {
+        p_service: service,
+        p: quick.kind === "person" ? { ...quick.data, supplier_id: form.supplier_id } : quick.data,
+      });
+      if (error) throw error;
+      const fresh = await load();
+      if (quick.kind === "supplier") selectSupplier(data);
+      else {
+        const person = fresh?.personnel.find((p) => p.id === data);
+        if (person) applyPerson(person);
+      }
+      setQuick(null);
+      toast.success(quick.kind === "supplier" ? "Proveedor registrado y seleccionado" : `${personRole} registrado y asignado`);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   const required =
     context?.requirements.find((r) => r.service === service)?.quantity || 0;
   const requested = service==='FLETE' ? context?.outsourcing.specification : (context?.outsourcing.specification.services as {kind:string;details?:Record<string,string>}[]|undefined)?.find(s=>s.kind===service)?.details;
@@ -116,6 +200,8 @@ export function ResourceManager({
     setEditing(a);
     setReason("");
     setAck(false);
+    setQuick(null);
+    setPersonId("");
     setForm(
       a
         ? {
@@ -383,33 +469,26 @@ export function ResourceManager({
             <details open className="rounded-lg border border-blue-200 bg-blue-50 p-3"><summary className="cursor-pointer text-sm font-semibold">Requerimiento original · Cantidad {required}</summary><dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">{RESOURCE_FIELDS[service].filter(([key])=>requested?.[key]!=null&&requested[key]!=='').map(([key,label])=><div key={key}><dt className="text-slate-500">{label}</dt><dd>{String(requested?.[key])}</dd></div>)}</dl><p className="mt-2 text-xs">Registre abajo las características ofrecidas por el proveedor. La aprobación verifica los mínimos técnicos.</p></details>
             <div className="grid gap-3 sm:grid-cols-2">
               <label>
-                Proveedor
+                Proveedor de {OUTSOURCING_SERVICES[service].toLowerCase()}
                 <select
                   aria-label="Proveedor"
                   disabled={!!editing?.dispatch_id}
                   required
                   className={input}
                   value={form.supplier_id}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      supplier_id: e.target.value,
-                      resource: {
-                        origin: form.resource.origin || "",
-                        destination: form.resource.destination || "",
-                      },
-                    })
-                  }
+                  onChange={(e) => selectSupplier(e.target.value)}
                 >
-                  <option value="">Seleccione proveedor activo</option>
-                  {context.suppliers.map((s) => (
+                  <option value="">
+                    {suppliers.length ? "Seleccione proveedor activo" : "Sin proveedores registrados: registre uno nuevo"}
+                  </option>
+                  {suppliers.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.business_name} · {s.tax_id || "Sin RUC"}
                     </option>
                   ))}
                 </select>
               </label>
-              <p className="self-center text-sm text-slate-600">
+              <div className="self-center text-sm text-slate-600">
                 {supplier &&
                   [
                     supplier.contact_name,
@@ -418,7 +497,40 @@ export function ResourceManager({
                   ]
                     .filter(Boolean)
                     .join(" · ")}
-              </p>
+                {!editing?.dispatch_id && (
+                  <button type="button" className="block text-blue-700 underline" onClick={() => setQuick({ kind: "supplier", data: {} })}>
+                    + Registrar proveedor nuevo
+                  </button>
+                )}
+              </div>
+              {quick && (
+                <fieldset className="grid gap-3 rounded-lg border border-emerald-300 bg-emerald-50 p-3 sm:col-span-2 sm:grid-cols-2" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void register(); } }}>
+                  <legend className="px-1 text-sm font-semibold">
+                    {quick.kind === "supplier"
+                      ? `Nuevo proveedor de ${OUTSOURCING_SERVICES[service].toLowerCase()}`
+                      : `Nuevo ${personRole.toLowerCase()} de ${supplier?.business_name}`}
+                  </legend>
+                  {(quick.kind === "supplier" ? QUICK_SUPPLIER : service === "FLETE" ? QUICK_DRIVER : QUICK_OPERATOR).map(([key, label, type]) => (
+                    <label key={key} className="text-sm">
+                      {label}
+                      <input
+                        className={input}
+                        type={type || "text"}
+                        value={quick.data[key] || ""}
+                        onChange={(e) => setQuick({ ...quick, data: { ...quick.data, [key]: e.target.value } })}
+                      />
+                    </label>
+                  ))}
+                  <div className="flex gap-2 sm:col-span-2">
+                    <button type="button" disabled={busy} className={button} onClick={() => void register()}>
+                      {busy ? "Registrando…" : "Registrar y usar"}
+                    </button>
+                    <button type="button" disabled={busy} className="rounded-lg border px-3 py-2 text-sm" onClick={() => setQuick(null)}>
+                      Cancelar
+                    </button>
+                  </div>
+                </fieldset>
+              )}
               <label>
                 Cantidad
                 <input
@@ -476,16 +588,20 @@ export function ResourceManager({
                         const v = context.vehicles.find(
                           (v) => v.id === e.target.value,
                         );
-                        if (v)
-                          setForm({
-                            ...form,
+                        if (v) {
+                          setForm((f) => ({
+                            ...f,
                             resource: {
-                              ...form.resource,
+                              ...f.resource,
                               plate: String(v.plate || ""),
                               unit_type: String(v.unit_type || ""),
                               capacity_t: String(v.capacity_tons || ""),
                             },
-                          });
+                          }));
+                          // La unidad hereda su conductor habitual registrado en el catálogo.
+                          const driver = context.personnel.find((p) => p.id === v.personnel_id);
+                          if (driver) applyPerson(driver);
+                        }
                       }}
                     >
                       <option value="">
@@ -500,44 +616,40 @@ export function ResourceManager({
                         ))}
                     </select>
                   </label>
-                  <label>
-                    Conductor del catálogo (opcional)
-                    <select
-                      className={input}
-                      defaultValue=""
-                      onChange={(e) => {
-                        const v = context.personnel.find(
-                          (v) => v.id === e.target.value,
-                        );
-                        if (v)
-                          setForm({
-                            ...form,
-                            resource: {
-                              ...form.resource,
-                              driver: String(v.full_name || ""),
-                              document: String(v.document_number || ""),
-                              phone: String(v.phone || ""),
-                              license: String(v.license_number || ""),
-                              license_expiration: String(
-                                v.license_expiration || "",
-                              ),
-                            },
-                          });
-                      }}
-                    >
-                      <option value="">
-                        Datos manuales / seleccione conductor
-                      </option>
-                      {context.personnel
-                        .filter((v) => v.supplier_id === form.supplier_id)
-                        .map((v) => (
-                          <option key={v.id} value={v.id}>
-                            {String(v.full_name)}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
                 </>
+              )}
+              {service !== "OTROS" && (
+                <label>
+                  {personRole} del catálogo del proveedor
+                  <select
+                    className={input}
+                    disabled={!form.supplier_id}
+                    value={personId}
+                    onChange={(e) => {
+                      const v = context.personnel.find((p) => p.id === e.target.value);
+                      if (v) applyPerson(v);
+                      else setPersonId("");
+                    }}
+                  >
+                    <option value="">
+                      {!form.supplier_id
+                        ? "Seleccione primero el proveedor"
+                        : people.length
+                          ? `Datos manuales / seleccione ${personRole.toLowerCase()}`
+                          : `Sin ${personRole.toLowerCase()}es registrados: registre uno nuevo`}
+                    </option>
+                    {people.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {String(v.full_name)} · {String(v.document_number || "Sin documento")}
+                      </option>
+                    ))}
+                  </select>
+                  {form.supplier_id && !editing?.dispatch_id && (
+                    <button type="button" className="text-sm text-blue-700 underline" onClick={() => setQuick({ kind: "person", data: {} })}>
+                      + Registrar {personRole.toLowerCase()} nuevo
+                    </button>
+                  )}
+                </label>
               )}
               {RESOURCE_FIELDS[service].map(([key, label, type]) => (
                 <label
