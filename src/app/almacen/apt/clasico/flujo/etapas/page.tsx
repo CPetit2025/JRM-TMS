@@ -209,7 +209,7 @@ function DimSection({ dim, setDim, rows, clickable, onSelect, exportar }: {
             <ExportButton onClick={exportar} disabled={!all.length} />
           </>}>
           <div className="max-h-[560px] overflow-auto">
-            <DataTable className="w-full text-xs">
+            <DataTable className="min-w-[640px] lg:min-w-0 w-full text-xs">
               <thead>
                 <tr>
                   <SortTh label={dimLabel} k="clave" sort={sort} desc={desc} onSort={onSort} align="left" />

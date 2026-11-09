@@ -244,7 +244,7 @@ export default function AptReceiptControlPage() {
       </label>
 
       <div className="w-full overflow-x-auto rounded-lg border border-slate-200">
-        <table className="w-full table-fixed text-left text-sm lg:min-w-0">
+        <table className="min-w-[980px] lg:min-w-0 w-full table-fixed text-left text-sm lg:min-w-0">
           <colgroup><col style={{ width: "9%" }}/><col style={{ width: "10%" }}/><col style={{ width: "17%" }}/><col style={{ width: "29%" }}/><col style={{ width: "7%" }}/><col style={{ width: "10%" }}/><col style={{ width: "8%" }}/><col style={{ width: "10%" }}/></colgroup>
           <thead className="bg-slate-50 text-xs font-semibold text-slate-600"><tr>
             <th className="p-2">Lote</th><th className="p-2">IPT</th><th className="p-2">Cliente</th><th className="p-2">Descripción</th>
@@ -286,7 +286,7 @@ export default function AptReceiptControlPage() {
           </div>
 
           <div className="max-h-[min(36dvh,420px)] overflow-auto rounded-lg border border-slate-200">
-            <table className="w-full text-left text-sm">
+            <table className="min-w-[920px] lg:min-w-0 w-full text-left text-sm">
               <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold text-slate-600"><tr><th className="p-2">Producto · descripción</th><th className="p-3">Lote</th><th className="p-3 text-right">UND</th><th className="p-3 text-right">Kg</th><th className="p-3">Código de barras</th><th className="p-3">Acción</th></tr></thead>
               <tbody className="divide-y divide-slate-200">{detail.packages.map(row => <tr key={row.package_code}>
                 <td className="p-3">{row.source_product_code}<small className="block max-w-xs truncate text-slate-500" title={row.description}>{row.description}</small></td>

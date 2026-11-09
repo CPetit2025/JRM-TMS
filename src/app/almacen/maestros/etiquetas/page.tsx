@@ -102,7 +102,7 @@ export default function WarehouseLabelFormatsPage() {
 
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <header className="flex items-center gap-2 border-b p-4"><Ruler size={18} className="text-blue-700"/><h2 className="font-bold text-[#002855]">Formatos · {formats.length}</h2></header>
-      {loading ? <p className="p-8 text-center text-sm text-slate-500">Cargando formatos…</p> : <div className="overflow-x-auto"><table className="w-full text-left text-sm">
+      {loading ? <p className="p-8 text-center text-sm text-slate-500">Cargando formatos…</p> : <div className="overflow-x-auto"><table className="min-w-[560px] lg:min-w-0 w-full text-left text-sm">
         <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-600"><tr><th className="px-4 py-2">Nombre</th><th className="px-4 py-2">Medida</th><th className="px-4 py-2">Resolución</th><th className="px-4 py-2">Uso</th><th className="px-4 py-2"/></tr></thead>
         <tbody className="divide-y divide-slate-100">{formats.map(f => {
           const usedBy = KINDS.filter(k => settings[k.kind] === f.id).map(k => k.label)
