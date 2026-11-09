@@ -12,7 +12,7 @@ En Recepción y en **Configuración › Tamaños de etiqueta**, «Mi configuraci
 2. **Orientación de la etiqueta**: original, horizontal o vertical. Horizontal coloca la medida mayor como ancho en cualquier formato; vertical hace lo contrario.
 3. **Papel cargado en la impresora**: rollo/papel del tamaño de la etiqueta, hoja A4/A5 vertical u horizontal, o medidas personalizadas. En hojas se configura un margen de 0 a 30 mm. Las medidas personalizadas y el margen se guardan juntos con «Aplicar medidas».
 
-Ejemplo: etiqueta horizontal de **100 × 50 mm** en hoja **A4 de 210 × 297 mm**, con margen de 5 mm. La etiqueta sigue midiendo 100 × 50 mm. Cambiar a A4 no agranda ni reduce su diseño: únicamente cambia el tamaño de la página y la posición de la etiqueta dentro de ella. Se imprime **una etiqueta por hoja**, en la esquina superior izquierda respetando el margen. La vista previa sigue mostrando la etiqueta, no una etiqueta ampliada a toda la hoja.
+Ejemplo: etiqueta horizontal de **100 × 50 mm** en hoja **A4 de 210 × 297 mm**, con margen de 5 mm. La etiqueta sigue midiendo 100 × 50 mm. Cambiar a A4 no agranda ni reduce su diseño: únicamente cambia el tamaño de la página y la posición de la etiqueta dentro de ella. Se imprime **una etiqueta por hoja**, centrada horizontal y verticalmente por defecto, respetando el margen mínimo. El selector «Posición de la etiqueta en la hoja» permite elegir también la esquina superior izquierda. La vista previa sigue mostrando la etiqueta, no una etiqueta ampliada a toda la hoja.
 
 Si la etiqueta no cabe con las medidas/orientación/margen elegidos, la configuración muestra un aviso. La impresión se rechaza **antes de registrar la auditoría**. No se reduce, recorta ni gira automáticamente para encajar. Por ejemplo, una etiqueta de 210 × 148 mm no cabe en A4 vertical con margen de 5 mm; se puede elegir A4 horizontal o un margen compatible.
 
@@ -27,7 +27,7 @@ Al elegir una **hoja**, se usa el diálogo de impresora/PDF incluso con BrowserP
 ## Validación
 
 - `node scripts/test-unified-package-labels.cjs`: datos originales/decimales, raster/ZPL, orientación de diversos formatos, hoja independiente, rechazo de tamaños incompatibles y preferencias antiguas.
-- `node scripts/test-unified-package-labels-browser.cjs`: Chromium con API simulada. Igualdad de HTML y raster Zebra entre cuatro recorridos; cliente largo y descripción legibles; PDFs y dimensiones físicas de etiqueta/hoja; etiqueta 100 × 50 mm inalterada en A4; lote de dos etiquetas/dos hojas; orientación y persistencia por cuenta; rechazo de impresión incompatible sin auditoría; desplegables y móvil.
+- `node scripts/test-unified-package-labels-browser.cjs`: Chromium con API simulada. Igualdad de HTML y raster Zebra entre cuatro recorridos; cliente largo y descripción legibles; PDFs y dimensiones físicas de etiqueta/hoja; etiqueta 100 × 50 mm inalterada y centrada en A4, posición superior izquierda opcional; lote de dos etiquetas/dos hojas; orientación y persistencia por cuenta; rechazo de impresión incompatible sin auditoría; desplegables y móvil.
 - `test-wms-isolation.mjs`, `test-wms-bootstrap.cjs`: aislamiento WMS y ciclo de recepción/permisos.
 - TypeScript, lint de archivos modificados y build WMS; CI guarda capturas, PDF y ZPL.
 

@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { PaperFormatSelect } from './PaperFormatSelect'
 import { usePersonalLabelFormat } from '@/lib/warehouse/label-format'
-import { labelPrintPage, PRINTER_PAPERS, type LabelOrientation, type PrinterPaper, type PrintPreferences } from '@/lib/warehouse/label-print-layout'
+import { labelPrintPage, PRINTER_PAPERS, type LabelOrientation, type PrinterPaper, type PrintPreferences, type LabelPosition } from '@/lib/warehouse/label-print-layout'
 
 function Measure({ label, value, min, max, disabled, onChange }: { label: string; value: string; min: number; max: number; disabled: boolean; onChange: (value: string) => void }) {
   return <label className="block text-sm font-semibold text-[#002855]">{label}
@@ -43,8 +43,11 @@ export function PackageLabelPaperSettings() {
       ]} />
       <PaperFormatSelect label="Papel cargado en la impresora" value={preferences.paper} disabled={disabled} onChange={value => void configure({ paper: value as PrinterPaper })} options={PRINTER_PAPERS} />
     </div>
+    {preferences.paper !== 'LABEL' && <PaperFormatSelect label="Posición de la etiqueta en la hoja" value={preferences.position} disabled={disabled} onChange={value => void configure({ position: value as LabelPosition })} options={[
+      { value: 'CENTER', label: 'Centrada en la hoja (horizontal y vertical)' }, { value: 'TOP_LEFT', label: 'Esquina superior izquierda' },
+    ]} />}
     {preferences.paper !== 'LABEL' && <SheetMeasures key={`${preferences.paper}:${preferences.paperWidth}:${preferences.paperHeight}:${preferences.margin}`} preferences={preferences} disabled={disabled} onSave={patch => void configure(patch)} />}
-    <p className="text-xs text-slate-600">Etiqueta y hoja son independientes. La hoja A4 no agranda ni reduce la etiqueta. Se imprime una etiqueta por hoja, en la esquina superior izquierda con el margen elegido.</p>
+    <p className="text-xs text-slate-600">Etiqueta y hoja son independientes. La hoja A4 no agranda ni reduce la etiqueta. Se imprime una etiqueta por hoja, centrada por defecto, respetando el margen mínimo y sus medidas reales. Puedes cambiar la posición.</p>
     <p className="text-xs text-slate-600">Se guarda solo para tu cuenta en este navegador y se aplica a vista previa, impresión y reimpresión. Imprime a tamaño real / 100 %, sin ajustar a página, sin márgenes adicionales ni encabezados.</p>
     {format.ready && <div role="status" className="text-xs text-slate-600">
       <p>Etiqueta actual: {format.name} · {format.width_mm} × {format.height_mm} mm.</p>

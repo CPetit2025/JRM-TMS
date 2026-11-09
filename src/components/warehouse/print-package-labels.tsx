@@ -71,8 +71,8 @@ export async function printPackageLabels(
               <div
                 style={{
                   position: "absolute",
-                  left: `${page.margin_mm}mm`,
-                  top: `${page.margin_mm}mm`,
+                  left: `${page.position === "TOP_LEFT" ? page.margin_mm : (page.width_mm - format.width_mm) / 2}mm`,
+                  top: `${page.position === "TOP_LEFT" ? page.margin_mm : (page.height_mm - format.height_mm) / 2}mm`,
                   transform: `scale(${scale})`,
                   transformOrigin: "top left",
                   width: labelWidth,
