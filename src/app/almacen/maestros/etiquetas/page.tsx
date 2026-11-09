@@ -58,7 +58,7 @@ export default function WarehouseLabelFormatsPage() {
     void run(() => createClient().rpc('wh_label_setting_set', { p_kind: kind, p_format_id: formatId }), 'Tamaño asignado. Se aplica en la próxima impresión.')
 
   const field = 'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal'
-  return <div className="mx-auto max-w-5xl space-y-5">
+  return <div className="w-full space-y-5">
     <header>
       <p className="text-xs font-bold uppercase tracking-widest text-blue-700">Configuración</p>
       <h1 className="mt-1 text-3xl font-black text-[#002855]">Tamaños de etiqueta</h1>
@@ -102,7 +102,7 @@ export default function WarehouseLabelFormatsPage() {
 
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <header className="flex items-center gap-2 border-b p-4"><Ruler size={18} className="text-blue-700"/><h2 className="font-bold text-[#002855]">Formatos · {formats.length}</h2></header>
-      {loading ? <p className="p-8 text-center text-sm text-slate-500">Cargando formatos…</p> : <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm">
+      {loading ? <p className="p-8 text-center text-sm text-slate-500">Cargando formatos…</p> : <div className="overflow-x-auto"><table className="w-full text-left text-sm">
         <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-600"><tr><th className="px-4 py-2">Nombre</th><th className="px-4 py-2">Medida</th><th className="px-4 py-2">Resolución</th><th className="px-4 py-2">Uso</th><th className="px-4 py-2"/></tr></thead>
         <tbody className="divide-y divide-slate-100">{formats.map(f => {
           const usedBy = KINDS.filter(k => settings[k.kind] === f.id).map(k => k.label)

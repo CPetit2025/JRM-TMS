@@ -31,7 +31,7 @@ const U={carga:'00000000-0000-0000-0000-0000000000b1',op:'00000000-0000-0000-000
  const lots=await sys(`SELECT lote,ot,kg::float kg FROM public.erp_stock_lots WHERE import_id='${s1}' ORDER BY linea`);
  assert.deepEqual(lots.map(l=>[l.lote,l.ot]),[['16544','16544'],['16497-S001','16497'],['16000','16000']],'lote sin ceros y OT raíz');
  assert.equal(lots[0].kg,200,'kg = stock x peso unitario');
- const c1=await load('CONTRATOS',[{nro_documento:'16544-001',secuencia:1,cod_producto:'PT-1001',cant_contrato:100,cant_despachada:10,cant_pendiente:90,nro_guias:1,fecha_contrato:'2026-11-01',fecha_ult_despacho:'2026-11-05',guias:[{g:'T001-000123',c:10,p:1}]}],'2026-11-08T12:00:00Z');
+ const c1=await load('CONTRATOS',[{nro_documento:'16544-001',secuencia:1,cliente:'ACME SAC',cod_producto:'PT-1001',cant_contrato:100,cant_despachada:10,cant_pendiente:90,nro_guias:1,fecha_contrato:'2026-11-01',fecha_ult_despacho:'2026-11-05',guias:[{g:'T001-000123',c:10,p:1}]}],'2026-11-08T12:00:00Z');
  assert.equal((await sys(`SELECT count(*)::int n FROM public.erp_contract_lines WHERE import_id='${c1}'`))[0].n,1);
  const gf=(await sys(`SELECT guia_key,fecha::text,fuente FROM public.erp_guia_fechas WHERE import_id='${c1}'`))[0];
  assert.deepEqual(gf,{guia_key:'T001-123',fecha:'2026-11-05',fuente:'ACTUALIZABLE'},'fecha por guía');
@@ -52,6 +52,8 @@ const U={carga:'00000000-0000-0000-0000-0000000000b1',op:'00000000-0000-0000-000
  const res=await one("SELECT public.erp_stock_query('647-04 ALM PT','16497')");
  assert.equal(new Date(res.cut_at).toISOString(),'2026-11-08T18:00:00.000Z'); assert.equal(res.rows.length,1); assert.equal(res.rows[0].lote,'16497-S001');
  assert.equal((await one('SELECT public.erp_stock_query()')).rows.length,2,'solo el stock activo');
+ const porCliente=await one("SELECT public.erp_stock_query(NULL,'acme')");
+ assert.equal(porCliente.rows.length,1,'busca por cliente'); assert.equal(porCliente.rows[0].cliente,'ACME SAC','cliente del Actualizable por OT');
  assert.ok((await one('SELECT public.erp_imports_recent()')).length>=3);
  console.log('PASS: consulta del stock activo por bodega y búsqueda, con fecha de corte.');
 

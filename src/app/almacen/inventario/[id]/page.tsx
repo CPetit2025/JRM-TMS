@@ -116,7 +116,7 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
   const diffs = summary.filter(r => r.result !== 'CUADRA')
   const counts = summary.reduce((a, r) => ({ ...a, [r.result]: (a[r.result] || 0) + 1 }), {} as Record<string, number>)
 
-  return <div className="mx-auto max-w-5xl space-y-4">
+  return <div className="w-full space-y-4">
     <Link href="/almacen/inventario" className="inline-flex items-center gap-2 text-sm font-semibold text-blue-800 print:hidden"><ArrowLeft size={16}/>Inventario</Link>
     <header className="rounded-xl border border-slate-200 bg-white p-4 print:hidden">
       <div className="flex flex-wrap items-center gap-3">
@@ -204,7 +204,7 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
           <button type="button" disabled={busy} onClick={close} className={`${btn} bg-emerald-700 text-white`}><CheckCircle2 size={16}/>Cerrar inventario</button>
         </span>}
       </div>
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white"><table className="w-full min-w-[820px] text-left text-sm">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white"><table className="w-full text-left text-sm">
         <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-600"><tr>
           {isSupervisor && open && <th className="px-3 py-2"/>}<th className="px-3 py-2">OT</th><th className="px-3 py-2">Lote</th><th className="px-3 py-2">Producto</th>
           <th className="px-3 py-2 text-right">ERP</th><th className="px-3 py-2 text-right">Contado</th><th className="px-3 py-2 text-right">Diferencia</th><th className="px-3 py-2">Resultado</th>{open && isSupervisor && <th className="px-3 py-2">Motivo</th>}
