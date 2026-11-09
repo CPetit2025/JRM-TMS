@@ -5,11 +5,12 @@ import { FormEvent, use, useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, CheckCircle2, Loader2, Printer, ScanLine, Search, Tag, Undo2 } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
-import { Code128Barcode } from '@/components/warehouse/Code128Barcode'
-import { fitScale, useLabelFormat } from '@/lib/warehouse/label-format'
+import { printPackageLabels } from '@/components/warehouse/print-package-labels'
+import { loadPackageLabel } from '@/lib/warehouse/load-package-label'
+import { useLabelFormat } from '@/lib/warehouse/label-format'
 import { CAMPAIGN_STATE, INVENTORY_TYPE, RESULT_STYLE, fmtDate, fmtN, type Campaign, type CountLine, type ExpectedLine, type SummaryRow } from '@/lib/warehouse/inventory'
 
-type Label = { package_code: string; product: string; description: string; lote: string | null; ot: string | null; quantity: number; unit: string | null; weight_kg: number | null; document: string; sequence_no: number; sequence_total: number; bodega: string }
+type CreatedLabel = {package_code:string}
 const btn = 'inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold disabled:opacity-50'
 const field = 'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal'
 const lotKey = (r: { cod_producto: string; lote_key: string }) => `${r.cod_producto}|${r.lote_key}`
@@ -32,7 +33,6 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
   const [unknown, setUnknown] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [reasons, setReasons] = useState<Record<string, string>>({})
-  const [label, setLabel] = useState<Label | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -79,17 +79,24 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
     const d = await run(() => createClient().rpc('wh_count_label', {
       p_campaign: id, p_linea: pick.linea, p_quantity: Number(rot.qty), p_weight_kg: rot.kg ? Number(rot.kg) : null, p_zone: zone || null,
       p_ipt_doc: rot.doc.trim() || null, p_seq: rot.seq ? Number(rot.seq) : null, p_total: rot.total ? Number(rot.total) : null, p_confirm_over: confirmOver, p_client_event_id: event(),
-    }), (x: Label) => `${x.package_code} creado e impreso: pegue la etiqueta en el bulto.`)
+    }), (x: CreatedLabel) => `${x.package_code} creado e impreso: pegue la etiqueta en el bulto.`)
     if (d) {
-      setLabel(d as Label); setRot({ qty: '', kg: '', doc: rot.doc, seq: '', total: rot.total }); setPick(null)
-      window.setTimeout(() => window.print(), 100)
+      setRot({ qty: '', kg: '', doc: rot.doc, seq: '', total: rot.total }); setPick(null)
+      try{await printPackageLabels([await loadPackageLabel(createClient(),d.package_code)],labelFormat)}catch(e){setError(e instanceof Error?e.message:String(e))}
     }
   }
   const supersStock = /supera el stock del ERP/i.test(error)
-  const reprint = (l: CountLine) => {
-    if (!l.package_code) return
-    setLabel({ package_code: l.package_code, product: l.cod_producto || '', description: l.description || '', lote: l.lote_key, ot: l.ot, quantity: Number(l.quantity || 0), unit: l.unit, weight_kg: l.weight_kg, document: camp?.code || '', sequence_no: 0, sequence_total: 0, bodega: camp?.bodega || '' })
-    window.setTimeout(() => window.print(), 100)
+  const reprint = async (l:CountLine) => {
+    if(!l.package_code||busy)return
+    const reason=window.prompt('Motivo de reimpresión de la etiqueta original:')
+    if(!reason?.trim())return
+    setBusy(true);setError('')
+    try{
+      const db=createClient(),label=await loadPackageLabel(db,l.package_code)
+      const {error}=await db.rpc('wh_reprint_label',{p_package_code:label.package_code,p_reason:reason.trim()})
+      if(error)throw error
+      await printPackageLabels([label],labelFormat)
+    }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}
   }
   const voidLine = (l: CountLine) => {
     const reason = window.prompt('Motivo para anular esta línea (si creó una etiqueta, el paquete también se anula):')
@@ -223,15 +230,6 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
       </table></div>
     </section>}
 
-    {label && <div id="inv-label" className="hidden print:block">
-      <b style={{ display: 'block', fontSize: 18 }}>{label.product}</b>
-      <span style={{ fontSize: 12 }}>{label.description}</span>
-      <Code128Barcode value={label.package_code} height={56} className="my-2 w-full"/>
-      <b style={{ display: 'block', textAlign: 'center', fontFamily: 'monospace' }}>{label.package_code}</b>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}><span>OT {label.ot || '—'} · lote {label.lote || '—'} · {label.document}</span><span>{label.sequence_no ? `${label.sequence_no}/${label.sequence_total}` : ''}</span></div>
-      <b style={{ display: 'block', textAlign: 'right' }}>{fmtN(label.quantity)} {label.unit || ''}{label.weight_kg != null ? ` · ${fmtN(label.weight_kg)} kg` : ''}</b>
-    </div>}
-    {/* Diseño de 100 x 50 mm, escalado al formato de etiqueta de paquete configurado */}
-    <style jsx global>{`@media print{@page{size:${labelFormat.width_mm}mm ${labelFormat.height_mm}mm;margin:0}body *{visibility:hidden}#inv-label,#inv-label *{visibility:visible}#inv-label{position:absolute;left:0;top:0;width:100mm;height:50mm;box-sizing:border-box;padding:5mm;color:#000;zoom:${fitScale(labelFormat, 100, 50)}}}`}</style>
+
   </div>
 }
