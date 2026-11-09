@@ -34,6 +34,8 @@ export default function OutsourcingPage() {
  const [events,setEvents] = useState<Event[]>([])
  const [suppliers,setSuppliers] = useState<Supplier[]>([])
  const [note,setNote] = useState('')
+ const [hasResources,setHasResources] = useState(true)
+ const [file,setFile] = useState<File | null>(null)
  const row = rows.find(r => r.id===id)
  const load = useCallback(async () => { setRefresh(v=>v+1) },[])
  const closeDrawer = useCallback(() => { if(!busy) setId('') },[busy])
@@ -68,6 +70,20 @@ export default function OutsourcingPage() {
   if(error) { toast.error(errorMessage(error)); return }
   window.open(data.signedUrl,'_blank','noopener,noreferrer')
  }
+ // Flujo anterior: las solicitudes adjudicadas sin asignaciones (etapas 5–6) solo pueden cerrarse por transición.
+ async function legacyAdvance() {
+  if(!row || busy) return
+  setBusy(true)
+  try {
+   if(!file || file.size>10485760 || !['application/pdf','image/png','image/jpeg'].includes(file.type)) throw new Error('Adjunte la evidencia: PDF, PNG o JPG de hasta 10 MB')
+   const path=`${row.id}/${crypto.randomUUID()}.${file.type==='application/pdf' ? 'pdf' : file.type==='image/png' ? 'png' : 'jpg'}`
+   const upload=await db.storage.from('outsourcing').upload(path,file)
+   if(upload.error) throw upload.error
+   const {error}=await db.rpc('outsourcing_transition',{p_id:row.id,p_version:row.version,p_next:row.stage+1,p_note:note,p_evidence:path,p_quotes:[],p_dispatch:null})
+   if(error) throw error
+   setNote('');setFile(null);await load();await detail();toast.success('Etapa actualizada')
+  }catch(e){toast.error(errorMessage(e))}finally{setBusy(false)}
+ }
  async function review(action:'OBSERVE'|'CANCEL') {
   if(!row || busy) return
   if(note.trim().length<5) {toast.error('Registre el motivo (mínimo 5 caracteres).');return}
@@ -88,7 +104,13 @@ export default function OutsourcingPage() {
    {row && <div key={row.id} className="min-w-0 space-y-4">
     <div className="flex flex-wrap gap-3 text-sm"><span>Solicitud: {row.transport_requests.request_number}</span><span>Cliente: {row.client || 'Sin cliente'}</span><span>Prioridad: {String(row.specification.priority)}</span>{row.transport_requests.contract_id && <Link className="text-blue-700 underline" href={`/despacho/control-presupuestal/movimientos?ot=${row.transport_requests.contract_id}`}>Presupuesto y movimientos de la OT</Link>}{row.dispatch_id && <Link className="text-blue-700 underline" href={`/despacho/documentos/economico?despacho=${row.dispatch_id}`}>Cierre económico del despacho</Link>}</div>
     <button type="button" className={button} onClick={()=>setModalId(row.id)}>{row.stage===0 && row.review_status!=='CANCELLED' && canWrite('despacho') ? 'Abrir / corregir ficha' : 'Consultar ficha completa'}</button>
-    <ResourceManager parent={row.id} service={service} onChanged={()=>{void load();void detail()}}/>
+    <ResourceManager onManaged={setHasResources} parent={row.id} service={service} onChanged={()=>{void load();void detail()}}/>
+    {!hasResources && row.stage>=5 && row.stage<7 && row.review_status!=='CANCELLED' && canWrite(row.stage===5?'despacho':'cierre-economico') && <form className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-3" onSubmit={e=>{e.preventDefault();void legacyAdvance()}}>
+     <h3 className="font-semibold">Solicitud del flujo anterior · continuar a: {OUTSOURCING_STAGES[row.stage+1]}</h3>
+     <label className="block text-sm">Sustento<textarea required minLength={5} className={control} value={note} onChange={e=>setNote(e.target.value)} /></label>
+     <label className="block text-sm">Evidencia (obligatoria) · PDF, PNG o JPG, máximo 10 MB<input required type="file" accept="application/pdf,image/png,image/jpeg" className={control} onChange={e=>setFile(e.target.files?.[0] || null)} /></label>
+     <button disabled={busy} className={button}>{busy ? 'Guardando…' : OUTSOURCING_STAGES[row.stage+1]}</button>
+    </form>}
     <details><summary className="cursor-pointer font-semibold">Ficha técnica y operativa</summary>{SPEC_FIELDS.map(([section,fields]) => <div key={section} className="mt-3"><h3 className="font-medium text-jrm-navy">{section}</h3><dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">{fields.map(([key,label]) => <div key={key}><dt className="text-slate-500">{label}</dt><dd className="whitespace-pre-wrap break-words">{key==='required_at' && row.specification[key] ? cellDateTime(String(row.specification[key])) : String(row.specification[key] || '—')}</dd></div>)}</dl></div>)}{row.specification.services.map(s => <p className="mt-3 text-sm" key={s.kind}><strong>{OUTSOURCING_SERVICES[s.kind]}:</strong> {s.requirements}{(SERVICE_FIELDS[s.kind] || []).map(([key,label]) => <span className="block text-slate-600" key={key}>{label}: {s.details?.[key] || '—'}</span>)}</p>)}</details>
     {quotes.length>0 && <details className="space-y-2 border-t pt-3"><summary className="cursor-pointer font-semibold">Cotizaciones del proceso anterior (histórico)</summary>{services.map(kind => <fieldset key={kind} className="rounded-lg border p-3"><legend className="px-1 text-sm font-semibold">{OUTSOURCING_SERVICES[kind]}</legend>{quotes.filter(q=>q.service===kind).map(q => <p key={q.id} className="my-2 text-sm">{q.selected ? 'Seleccionada · ' : ''}{suppliers.find(s=>s.id===q.supplier_id)?.business_name || q.supplier_id} · {money(q.amount_pen)} · {q.terms} <button className="text-blue-700 underline" onClick={() => void view(q.evidence)}>Ver cotización</button></p>)}{!quotes.some(q=>q.service===kind) && <p className="text-sm text-slate-500">Sin cotización</p>}</fieldset>)}</details>}
     {row.review_status!=='CANCELLED' && row.stage<5 && canWrite(row.stage===0?'despacho':row.stage<=2?'compras-tercerizaciones':'compras-aprobar') && <details className="space-y-3 rounded-lg border border-amber-200 p-3"><summary className="cursor-pointer font-semibold">Observar o cancelar el requerimiento</summary><label className="block text-sm">Motivo de observación o cancelación<textarea className={control} value={note} onChange={e=>setNote(e.target.value)} /></label><div className="flex flex-wrap gap-3">{row.stage>0&&row.stage<=3&&<button disabled={busy} className="rounded-lg border px-3 py-2 text-sm" onClick={()=>void review('OBSERVE')}>Observar ficha técnica</button>}<button disabled={busy} className="rounded-lg border border-red-300 px-3 py-2 text-sm text-red-700" onClick={()=>void review('CANCEL')}>Cancelar solicitud</button></div></details>}

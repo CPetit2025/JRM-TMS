@@ -67,10 +67,12 @@ export function ResourceManager({
   parent,
   service,
   onChanged,
+  onManaged,
 }: {
   parent: string;
   service: OutsourcingService;
   onChanged: () => void;
+  onManaged?: (value: boolean) => void;
 }) {
   const db = useMemo(() => createClient(), []),
     { canWrite } = usePermissions();
@@ -90,9 +92,12 @@ export function ResourceManager({
     if (error) setError(errorMessage(error));
     else {
       setContext(data);
+      onManaged?.(
+        data.assignments.some((a: AssignedResource) => a.state !== "CANCELLED"),
+      );
       setError("");
     }
-  }, [db, parent]);
+  }, [db, parent, onManaged]);
   useEffect(() => {
     const timer = setTimeout(() => void load(), 0);
     return () => clearTimeout(timer);

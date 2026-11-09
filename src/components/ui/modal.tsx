@@ -14,6 +14,8 @@ interface ModalProps {
   side?: boolean
 }
 
+let scrollLocks = 0
+
 export function Modal({ isOpen, onClose, title, children, maxWidth = "max-w-lg", footer, side = false }: ModalProps) {
   const [mounted, setMounted] = useState(false)
   const panel = useRef<HTMLDivElement>(null)
@@ -32,11 +34,12 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "max-w-lg",
     }
     document.addEventListener('keydown', handleKey)
     // Prevent body scroll when modal is open
-    const overflow = document.body.style.overflow
+    // Contador: con ventanas anidadas (que pueden desmontarse juntas) solo la última libera el scroll.
+    scrollLocks++
     document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', handleKey)
-      document.body.style.overflow = overflow
+      if (--scrollLocks === 0) document.body.style.overflow = ''
     }
   }, [isOpen, onClose])
 
