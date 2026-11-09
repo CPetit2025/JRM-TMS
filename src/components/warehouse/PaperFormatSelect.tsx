@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, Check } from 'lucide-react'
 
@@ -21,7 +21,7 @@ export function PaperFormatSelect({ label, value, options, disabled, onChange }:
   const choose = (index: number) => { if (options[index]) onChange(options[index].value); close() }
   const show = () => { setActive(Math.max(0, selected)); setOpen(true) }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return
     const position = () => {
       const rect = trigger.current?.getBoundingClientRect()
@@ -59,10 +59,10 @@ export function PaperFormatSelect({ label, value, options, disabled, onChange }:
   }
   return <div className="min-w-0">
     <span id={`${id}-label`} className="block text-sm font-bold text-[#002855]">{label}</span>
-    <button ref={trigger} type="button" disabled={disabled} aria-label={label} aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? `${id}-list` : undefined}
+    <button ref={trigger} type="button" disabled={disabled} aria-label={label} aria-describedby={`${id}-value`} aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? `${id}-list` : undefined}
       className="mt-2 flex w-full min-w-0 items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white px-4 py-2 text-left text-sm font-normal text-[#002855] disabled:opacity-50"
       onClick={() => open ? close() : show()} onKeyDown={e => { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); show() } }}>
-      <span className="min-w-0 break-words">{options[selected]?.label || 'Usar configuración del almacén'}</span><ChevronDown size={16} className="shrink-0" aria-hidden="true" />
+      <span id={`${id}-value`} className="min-w-0 break-words">{options[selected]?.label || 'Usar configuración del almacén'}</span><ChevronDown size={16} className="shrink-0" aria-hidden="true" />
     </button>
     {open && createPortal(<div ref={list} id={`${id}-list`} role="listbox" aria-labelledby={`${id}-label`} aria-activedescendant={`${id}-option-${active}`} tabIndex={-1}
       className="fixed z-[200] overflow-y-auto rounded-lg border border-slate-300 bg-white p-1 shadow-xl outline-none" style={bounds} onKeyDown={keys}>

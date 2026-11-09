@@ -123,7 +123,7 @@ const server = http.createServer(async (req, res) => {
   else if (path.endsWith("/profiles"))
     out = req.headers.accept?.includes("object") ? profile : [profile];
   else if (path.endsWith("/wh_label_formats")) out = [format];
-  else if (path.endsWith("/wh_label_settings")) out = { format };
+  else if (path.endsWith("/wh_label_settings")) out = new URL(req.url, "http://localhost").searchParams.get("select") === "kind,format_id" ? [{kind:"PAQUETE",format_id:format.id}] : { format };
   else if (path.endsWith("/wh_packages"))
     out = req.headers.accept?.includes("object") ? pkg : [pkg];
   else if (path.endsWith("/rpc/wh_receipt_candidates")) out = [receipt];
@@ -437,6 +437,7 @@ const server = http.createServer(async (req, res) => {
     await page.setViewportSize({width:390,height:844});await paper.click();
     assert.ok(await page.getByRole('listbox').evaluate(n=>{const r=n.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&n.scrollWidth<=n.clientWidth+1}),'mobile popup stays inside screen without horizontal clipping');
     await page.getByRole('listbox').press('Escape');
+    await page.setViewportSize({width:1536,height:1000});await page.goto('http://127.0.0.1:3022/almacen/maestros/etiquetas');await paper.click();await page.getByRole('option',{name:'Usar configuración del almacén',exact:true}).waitFor();await page.screenshot({path:out+'/07-configuracion-desplegable.png',fullPage:true});await page.getByRole('listbox').press('Escape');
     const reprints = calls.filter((c) => c.path.endsWith("/wh_reprint_label"));
     assert.equal(reprints.length, 6);
     assert.ok(
