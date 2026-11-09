@@ -31,6 +31,10 @@ jobs:
       - run: node scripts/test-unified-package-labels-browser.cjs
       - run: node scripts/test-wms-isolation.mjs
       - run: node scripts/test-wms-bootstrap.cjs
+      - name: Regenerate route types after browser test
+        run: |
+          node -e "require('node:fs').rmSync('.next/dev/types', { recursive: true, force: true })"
+          npx next typegen
       - run: npm run typecheck
       - name: Build dedicated WMS
         run: npm run build

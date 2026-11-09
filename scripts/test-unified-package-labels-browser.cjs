@@ -514,7 +514,13 @@ const server = http.createServer(async (req, res) => {
     throw e;
   } finally {
     if (browser) await browser.close();
-    next.kill("SIGTERM");
+    if (next.exitCode === null && next.signalCode === null) {
+      await new Promise(resolve => {
+        const timer = setTimeout(() => next.kill('SIGKILL'), 10000);
+        next.once('exit', () => { clearTimeout(timer); resolve(); });
+        next.kill('SIGTERM');
+      });
+    }
     server.close();
     fs.closeSync(log);
   }
