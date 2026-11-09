@@ -1,6 +1,7 @@
 -- Número de bulto correlativo POR LOTE: cada lote numera sus bultos desde B-0001 (primer ingreso) y sigue la misma
 -- serie al agrupar. Código del bulto = lote-B-0001 (único y escaneable entre lotes); sin lote: SIN-LOTE-B-0001.
---  · Recepción (wh_label_package) e inventario (wh_count_label) numeran cada paquete al generar su etiqueta.
+--  · Recepción (wh_label_package) e inventario (wh_count_label) numeran cada paquete al generar su etiqueta;
+--    regenerar etiquetas ya existentes reutiliza su número y no avanza el contador.
 --  · Picking no genera números: se escanea el bulto.
 --  · Agrupar 2+ paquetes (wh_consolidate_lpn) crea un bulto nuevo con el siguiente número del lote; un paquete que
 --    sale solo conserva el suyo.
@@ -66,7 +67,7 @@ BEGIN
    ELSE least(p_units_per_package,v_remaining) END;
   IF v_qty<=0 THEN RAISE EXCEPTION 'La división produce un paquete vacío'; END IF;
   INSERT INTO public.wh_packages(id,package_code,source_document_no,source_contract_code,source_lot,source_product_code,source_unit,source_warehouse,source_date,source_movement_key,source_label_version,source_key,site_id,contract_id,description,quantity,unit,weight_kg,sequence_no,sequence_total,source_qty_snapshot,source_expected_total,source_expected_count,created_by)
-  VALUES(v_id,public.wh_next_bulto_code(v_receipt.lote),v_receipt.document_no,v_receipt.contract_code,coalesce(v_receipt.lote,''),v_receipt.product_code,coalesce(v_receipt.unit,''),v_receipt.bodega,v_receipt.fecha,p_receipt_key,v_version,v_key,v_site,v_receipt.contract_id,v_receipt.description,v_qty,nullif(v_receipt.unit,''),CASE WHEN v_weight IS NOT NULL AND v_receipt.quantity>0 THEN round(v_weight*v_qty/v_receipt.quantity,3) END,v_i,p_package_count,v_qty,v_total,p_package_count,auth.uid())
+  VALUES(v_id,coalesce((SELECT package_code FROM public.wh_packages WHERE source_key=v_key),public.wh_next_bulto_code(v_receipt.lote)),v_receipt.document_no,v_receipt.contract_code,coalesce(v_receipt.lote,''),v_receipt.product_code,coalesce(v_receipt.unit,''),v_receipt.bodega,v_receipt.fecha,p_receipt_key,v_version,v_key,v_site,v_receipt.contract_id,v_receipt.description,v_qty,nullif(v_receipt.unit,''),CASE WHEN v_weight IS NOT NULL AND v_receipt.quantity>0 THEN round(v_weight*v_qty/v_receipt.quantity,3) END,v_i,p_package_count,v_qty,v_total,p_package_count,auth.uid())
   ON CONFLICT(source_key) DO UPDATE SET source_qty_snapshot=excluded.source_qty_snapshot,source_expected_total=excluded.source_expected_total,source_expected_count=excluded.source_expected_count,
     quantity=CASE WHEN wh_packages.status='AVAILABLE' AND wh_packages.label_print_count=0 THEN excluded.quantity ELSE wh_packages.quantity END,
     sequence_total=CASE WHEN wh_packages.status='AVAILABLE' AND wh_packages.label_print_count=0 THEN excluded.sequence_total ELSE wh_packages.sequence_total END,
