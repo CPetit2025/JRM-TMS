@@ -17,6 +17,15 @@ const fs=require('fs'); const path=require('node:path');
  const labels=await db.query('SELECT public.wh_label_package($1,$2,$3) AS labels',['local-receipt',2,5]);
  const codes=labels.rows[0].labels.package_codes;
  if(codes.length!==2) throw Error('Wrong label count');
+ // Número de bulto correlativo por lote: el primer ingreso del lote empieza en B-0001.
+ if(codes.join()!=='LOCAL-LOT-B-0001,LOCAL-LOT-B-0002') throw Error('Bultos must be numbered per lot from B-0001: '+codes.join());
+ // Regenerar las etiquetas del mismo ingreso reutiliza sus números y no deja saltos en la serie del lote.
+ const relabel=(await db.query('SELECT public.wh_label_package($1,$2,$3) AS labels',['local-receipt',2,5])).rows[0].labels.package_codes;
+ if(relabel.join()!==codes.join()) throw Error('Relabeling must keep the same bulto numbers: '+relabel.join());
+ await db.exec('RESET ROLE');
+ const last=(await db.query("SELECT last_no FROM public.wh_bulto_counters WHERE lot='LOCAL-LOT'")).rows[0].last_no;
+ await db.exec('SET ROLE authenticated');
+ if(last!==2) throw Error('Relabeling must not advance the lot counter: '+last);
  // Regla: la bandeja solo muestra pendientes de etiquetar (sin etiqueta o con etiquetas sin imprimir)
  const inbox=async q=>(await db.query('SELECT public.wh_receipt_candidates($1) AS rows',[q])).rows[0].rows;
  if((await inbox('')).map(r=>r.label_status).join()!=='PENDING_PRINT') throw Error('Unprinted labels must stay in the inbox');

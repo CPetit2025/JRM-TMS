@@ -119,11 +119,11 @@ export default function PackageDetail({
   return (
     <div className="w-full space-y-5">
       <Link
-        href="/almacen/paquetes"
+        href="/almacen/tareas"
         className="inline-flex items-center gap-2 text-sm font-semibold text-blue-800"
       >
         <ArrowLeft size={16} />
-        Paquetes
+        Tareas
       </Link>
       {error && (
         <p className="rounded bg-rose-50 p-3 text-sm text-rose-800">{error}</p>
