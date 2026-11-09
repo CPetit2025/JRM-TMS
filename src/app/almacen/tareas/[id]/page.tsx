@@ -10,7 +10,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core'
 import type { WarehouseScanOutbox } from '@/lib/offline/db'
 import { GroupedBultoLabel } from '@/components/warehouse/GroupedBultoLabel'
 import { fitScale, useLabelFormat } from '@/lib/warehouse/label-format'
-import { AUDIT, STATE, buildBultoContentPdf, buildPackingListPdf, fmt, fmtDate, itemLines, needsContentSheet, type BoardRow, type TaskLpn, type TaskLpns } from '@/lib/warehouse/packing-list'
+import { AUDIT, STATE, buildBultoContentPdf, buildPackingListPdf, fmt, fmtDate, itemLines, needsContentSheet, unitLabel, type LoadUnit, type BoardRow, type PackingSnapshot, type TaskLpn, type TaskLpns } from '@/lib/warehouse/packing-list'
 
 const nativeWarehouseScanner = registerPlugin<{ scan: () => Promise<{ rawValue: string }> }>('WarehouseBarcodeScanner')
 type BarcodeDetectorLike = { detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue: string }>> }
@@ -24,6 +24,8 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
   const labelFormat = useLabelFormat('LPN')
   const [task, setTask] = useState<BoardRow | null>(null)
   const [data, setData] = useState<TaskLpns>({ lpns: [], loose: [], packing_lists: [] })
+  const [units, setUnits] = useState<LoadUnit[]>([])
+  const [loadUnit, setLoadUnit] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState('')
   const [code, setCode] = useState('')
@@ -41,8 +43,9 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
 
   const load = useCallback(async () => {
     const db = createClient()
-    const [board, lpns] = await Promise.all([db.rpc('wh_task_board', { p_scope: 'tareas', p_task_id: id }), db.rpc('wh_task_lpns', { p_task_id: id })])
-    if (board.error || lpns.error) { setError((board.error || lpns.error)!.message); setLoading(false); return null }
+    const [board, lpns, loadUnits] = await Promise.all([db.rpc('wh_task_board', { p_scope: 'tareas', p_task_id: id }), db.rpc('wh_task_lpns', { p_task_id: id }), db.rpc('wh_task_load_units', { p_task_id: id })])
+    if (board.error || lpns.error || loadUnits.error) { setError((board.error || lpns.error || loadUnits.error)!.message); setLoading(false); return null }
+    setUnits((loadUnits.data || []) as LoadUnit[])
     setTask(((board.data || []) as BoardRow[])[0] || null)
     const next = lpns.data as TaskLpns
     setData(next)
@@ -90,8 +93,9 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
     setBusy(true); setError(''); setMessage('')
     const db = createClient()
     const event = task.status === 'READY_FOR_LOAD' ? 'LOAD' : 'PICK'
+    if (event === 'LOAD' && units.length && !loadUnit) { setError('Seleccione la unidad que se está cargando.'); setBusy(false); return }
     const { data: { user } } = await db.auth.getUser()
-    const payload = { source: 'camera-or-keyboard' }
+    const payload = { source: 'camera-or-keyboard', ...(event === 'LOAD' && loadUnit ? { load_unit_id: loadUnit } : {}) }
     const queue = async (text: string) => {
       if (!user) { setError('No hay sesión activa para guardar la lectura offline.'); return }
       await queueWarehouseScan({ profile_id: user.id, task_id: id, scanned_code: value, event_type: event, payload })
@@ -168,12 +172,26 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
     const release = window.confirm('¿Devolver el paquete a stock? (Aceptar = devolver a stock · Cancelar = queda recogido en esta tarea)')
     void run(() => createClient().rpc('wh_lpn_remove_package', { p_lpn_id: lpn.id, p_package_code: pkg, p_release: release, p_reason: reason }), `${pkg} retirado de ${lpn.lpn_code}.`)
   }
-  const downloadPackingList = async () => {
+  const unitOf = (lpnId: string) => units.find(u => u.lpn_ids.includes(lpnId))
+  const unitMap = () => units.length ? Object.fromEntries(units.flatMap(u => u.lpn_ids.map(i => [i, unitLabel(u)]))) : undefined
+  const releasedSnapshot = async () => {
     const current = data.packing_lists.find(p => p.status === 'LIBERADO')
-    if (!current) return
+    if (!current) return null
     const { data: snapshot, error } = await createClient().rpc('wh_print_packing_list', { p_id: current.id })
-    if (error) { setError(error.message); return }
-    ;(await buildPackingListPdf(snapshot)).save(`${current.packing_list_number}-v${current.version}.pdf`)
+    if (error) { setError(error.message); return null }
+    return { current, snapshot: snapshot as PackingSnapshot }
+  }
+  const downloadPackingList = async () => {
+    const r = await releasedSnapshot()
+    if (r) (await buildPackingListPdf(r.snapshot, { unitOf: unitMap() })).save(`${r.current.packing_list_number}-v${r.current.version}.pdf`)
+  }
+  // Guía de carga: los bultos del Packing List liberado que van en una unidad.
+  const loadGuide = async (u: LoadUnit) => {
+    const r = await releasedSnapshot()
+    if (!r) return
+    const lpns = r.snapshot.lpns.filter(l => u.lpn_ids.includes(l.id))
+    const s = { ...r.snapshot, lpns, lpn_count: lpns.length, package_count: lpns.reduce((n, l) => n + l.package_count, 0), total_weight_kg: lpns.reduce((n, l) => n + Number(l.weight_kg), 0) }
+    ;(await buildPackingListPdf(s, { title: `GUÍA DE CARGA ${unitLabel(u)}` })).save(`guia-carga-${r.current.packing_list_number}-${u.label}.pdf`)
   }
 
   const startCamera = async () => {
@@ -213,6 +231,9 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
   const state = STATE[task.display_state] || { label: task.status, style: 'bg-slate-100 text-slate-700' }
   const preparing = ['PICKING', 'PACKING'].includes(task.status)
   const released = data.packing_lists.find(p => p.status === 'LIBERADO')
+  const unitPerm = ['almacen-packing', 'almacen-carga', 'almacen-supervisor'].some(hasAccess)
+  const canUnits = unitPerm && ['PICKING', 'PACKING', 'READY_FOR_LOAD'].includes(task.status)
+  const unassigned = data.lpns.filter(l => l.status === 'CLOSED' && !unitOf(l.id)).length
   const selection = data.loose.filter(p => selected.has(p.package_code))
   const lots = [task.contract_code, task.components, task.lots].filter(Boolean).join(' · ')
 
@@ -248,6 +269,11 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
     </section>}
 
     {(preparing || (task.status === 'READY_FOR_LOAD' && released)) && <section className="rounded-xl border border-slate-200 bg-white p-4 print:hidden">
+      {task.status === 'READY_FOR_LOAD' && units.length > 0 && <label className="mb-3 block text-sm font-semibold text-[#002855]">Unidad que se está cargando
+        <select value={loadUnit} onChange={e => setLoadUnit(e.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 px-2 py-2 text-base">
+          <option value="">Seleccione la unidad…</option>
+          {units.map(u => <option key={u.id} value={u.id}>{unitLabel(u)} · cargados {u.loaded_count}/{u.lpn_count}</option>)}
+        </select></label>}
       <form onSubmit={scan} className="flex gap-2">
         <input ref={input} value={code} onChange={e => setCode(e.target.value)} autoFocus inputMode="text" autoComplete="off" placeholder={task.status === 'READY_FOR_LOAD' ? 'Escanee LPN o paquete para cargar…' : 'Escanee el código del paquete…'} className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-3 text-base"/>
         <button disabled={busy || !code.trim()} className={`${btn} bg-[#002855] text-white`}>{busy ? <Loader2 size={17} className="animate-spin"/> : <ScanLine size={17}/>}<span className="hidden sm:inline">Registrar</span></button>
@@ -269,6 +295,26 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
         </label>)}
     </section>}
 
+    {(units.length > 0 || canUnits) && data.lpns.some(l => l.status !== 'VOID') && <section className="rounded-xl border border-slate-200 bg-white p-3 print:hidden">
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-bold text-[#002855]">Unidades de carga ({units.length})</h2>
+        {canUnits && <button disabled={busy} onClick={() => void run(() => createClient().rpc('wh_load_unit_add', { p_task_id: id }), 'Unidad de carga agregada.')} className={`${btn} border border-slate-300`}><Truck size={16}/>Agregar unidad</button>}
+      </header>
+      <p className="mt-1 text-xs text-slate-500">El Packing List es la lista completa de lo que se despacha. Reparta sus bultos entre las unidades; si aún no conoce la placa, la unidad queda como UT1, UT2…</p>
+      {units.length > 0 && unassigned > 0 && <p className="mt-2 rounded-lg bg-amber-50 px-3 py-1.5 text-sm text-amber-900">{unassigned} bulto(s) sin unidad asignada.</p>}
+      <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{units.map(u => <div key={u.id} className="rounded-lg border border-slate-200 p-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <b className="text-[#002855]">{u.label}</b>
+          <input key={u.plate || ''} defaultValue={u.plate || ''} placeholder="Placa (opcional)" aria-label={`Placa de ${u.label}`} disabled={!unitPerm || busy}
+            onBlur={e => { const v = e.target.value.trim().toUpperCase().replace(/\s+/g, ''); if (v !== (u.plate || '')) void run(() => createClient().rpc('wh_load_unit_set_plate', { p_unit_id: u.id, p_plate: v }), `Placa de ${u.label} actualizada.`) }}
+            className="w-28 rounded border border-slate-300 px-2 py-1 text-xs uppercase"/>
+          {canUnits && u.loaded_count === 0 && <button disabled={busy} onClick={() => { if (window.confirm(`¿Quitar ${u.label}? Sus bultos quedarán sin unidad.`)) void run(() => createClient().rpc('wh_load_unit_remove', { p_unit_id: u.id }), `${u.label} eliminada.`) }} className="ml-auto text-xs text-rose-700 underline">Quitar</button>}
+        </div>
+        <p className="mt-1 text-slate-600">{u.lpn_count} bulto(s) · {u.package_count} paq · {fmt(u.weight_kg)} kg · cargados {u.loaded_count}/{u.lpn_count}</p>
+        {released && u.lpn_count > 0 && <button onClick={() => void loadGuide(u)} className={`${btn} mt-1 border border-slate-300 px-2 py-1 text-xs`}><Download size={14}/>Guía de carga</button>}
+      </div>)}</div>
+    </section>}
+
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white print:hidden">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b p-3">
         <h2 className="font-bold text-[#002855]">LPN ({data.lpns.length})</h2>
@@ -283,7 +329,13 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
             <button onClick={() => setOpen(open === l.id ? '' : l.id)} className="font-mono font-bold text-[#002855] underline-offset-2 hover:underline">{l.lpn_code}</button>
             <span className="text-slate-600">{l.package_count} paq · {fmt(l.quantity, 3)} und · {fmt(l.weight_kg)} kg</span>
             <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${audit.style}`}>{audit.label}</span>
-            <span className="ml-auto flex gap-1.5">
+            <span className="ml-auto flex flex-wrap items-center gap-1.5">
+              {l.status === 'CLOSED' && units.length > 0 && canUnits
+                ? <select aria-label={`Unidad de ${l.lpn_code}`} disabled={busy} value={unitOf(l.id)?.id || ''} onChange={e => void run(() => createClient().rpc('wh_lpn_assign_unit', { p_lpn_id: l.id, p_unit_id: e.target.value || null }), `${l.lpn_code}: ${e.target.value ? unitLabel(units.find(u => u.id === e.target.value)!) : 'sin unidad'}.`)} className="rounded border border-slate-300 px-1 py-1 text-xs">
+                    <option value="">Sin unidad</option>
+                    {units.map(u => <option key={u.id} value={u.id}>{unitLabel(u)}</option>)}
+                  </select>
+                : unitOf(l.id) && <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold">{unitLabel(unitOf(l.id)!)}</span>}
               {l.status === 'CLOSED' && <button disabled={busy} onClick={() => void printLabel(l)} className={`${btn} border border-slate-300 px-2 py-1 text-xs`}><Printer size={14}/>{l.print_count ? 'Reimprimir' : 'Etiqueta'}</button>}
               {l.status === 'CLOSED' && needsContentSheet(l.packages) && <button disabled={busy} onClick={() => void contentSheet(l)} className={`${btn} border border-slate-300 px-2 py-1 text-xs`}><Download size={14}/>Contenido</button>}
               {editable && <button disabled={busy} onClick={() => undo(l)} className={`${btn} border border-slate-300 px-2 py-1 text-xs`}><Undo2 size={14}/>Deshacer</button>}
