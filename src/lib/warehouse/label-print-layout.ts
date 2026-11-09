@@ -1,4 +1,5 @@
 export type LabelOrientation = 'FORMAT' | 'LANDSCAPE' | 'PORTRAIT'
+export type LabelPosition = 'CENTER' | 'TOP_LEFT'
 export type PrinterPaper = 'LABEL' | 'A4_PORTRAIT' | 'A4_LANDSCAPE' | 'A5_PORTRAIT' | 'A5_LANDSCAPE' | 'CUSTOM'
 export type PrintPreferences = {
   formatId: string
@@ -7,9 +8,10 @@ export type PrintPreferences = {
   paperWidth: number
   paperHeight: number
   margin: number
+  position: LabelPosition
 }
-export type SheetSize = { width_mm: number; height_mm: number; margin_mm: number }
-export const DEFAULT_PRINT_PREFERENCES: PrintPreferences = { formatId: '', orientation: 'FORMAT', paper: 'LABEL', paperWidth: 210, paperHeight: 297, margin: 5 }
+export type SheetSize = { width_mm: number; height_mm: number; margin_mm: number; position?: LabelPosition }
+export const DEFAULT_PRINT_PREFERENCES: PrintPreferences = { formatId: '', orientation: 'FORMAT', paper: 'LABEL', paperWidth: 210, paperHeight: 297, margin: 5, position: 'CENTER' }
 export const PRINTER_PAPERS: { value: PrinterPaper; label: string; width?: number; height?: number }[] = [
   { value: 'LABEL', label: 'Rollo / papel del tamaño de la etiqueta' },
   { value: 'A4_PORTRAIT', label: 'Hoja A4 vertical · 210 × 297 mm', width: 210, height: 297 },
@@ -31,6 +33,7 @@ export function readPrintPreferences(raw: string | null, legacyId = ''): PrintPr
     paperWidth: bounded(value.paperWidth, 210, 15, 650),
     paperHeight: bounded(value.paperHeight, 297, 10, 650),
     margin: bounded(value.margin, 5, 0, 30),
+    position: value.position === 'TOP_LEFT' ? 'TOP_LEFT' : 'CENTER',
   }
 }
 export function orientLabel<T extends { width_mm: number; height_mm: number }>(format: T, orientation: LabelOrientation): T {
@@ -41,7 +44,7 @@ export function orientLabel<T extends { width_mm: number; height_mm: number }>(f
 export function printerSheet(prefs: PrintPreferences): SheetSize | undefined {
   if (prefs.paper === 'LABEL') return undefined
   const preset = PRINTER_PAPERS.find(p => p.value === prefs.paper)
-  return { width_mm: preset?.width ?? prefs.paperWidth, height_mm: preset?.height ?? prefs.paperHeight, margin_mm: prefs.margin }
+  return { width_mm: preset?.width ?? prefs.paperWidth, height_mm: preset?.height ?? prefs.paperHeight, margin_mm: prefs.margin, position: prefs.position }
 }
 
 /** La hoja nunca escala, gira ni recorta la etiqueta. Si no cabe, se rechaza. */

@@ -104,7 +104,7 @@ for (const [w,h] of [[100,50],[50,100],[148,210],[152.4,101.6],[105,148],[400,60
 }
 const fixedLabel={width_mm:100,height_mm:50};
 const a4=printerSheet({...DEFAULT_PRINT_PREFERENCES,paper:'A4_PORTRAIT'});
-assert.deepEqual(labelPrintPage({...fixedLabel,paper:a4}),{width_mm:210,height_mm:297,margin_mm:5});
+assert.deepEqual(labelPrintPage({...fixedLabel,paper:a4}),{width_mm:210,height_mm:297,margin_mm:5,position:'CENTER'});
 assert.deepEqual(fixedLabel,{width_mm:100,height_mm:50},'A4 does not resize the label');
 assert.deepEqual(labelPrintPage(fixedLabel),{width_mm:100,height_mm:50,margin_mm:0},'thermal roll remains exact label size');
 assert.throws(()=>labelPrintPage({width_mm:210,height_mm:148,paper:a4}),/no cabe/,'oversize labels are not silently shrunk');
@@ -113,3 +113,7 @@ assert.equal(readPrintPreferences(null,'paper-a5-portrait').formatId,'paper-a5-p
 assert.equal(readPrintPreferences('{bad','legacy').paper,'LABEL');
 assert.equal(readPrintPreferences(JSON.stringify({paperWidth:-100,paper:'INVALID'})).paperWidth,210);
 console.log('PASS: independent label orientation, exact A4/thermal sizes, invalid fit rejected and legacy preferences retained');
+
+assert.equal(readPrintPreferences(null).position,'CENTER','new accounts default to center');
+assert.equal(readPrintPreferences(JSON.stringify({formatId:'saved-label',paper:'A4_PORTRAIT'})).position,'CENTER','existing saved sizes gain centered placement');
+assert.equal(readPrintPreferences(JSON.stringify({position:'TOP_LEFT'})).position,'TOP_LEFT');

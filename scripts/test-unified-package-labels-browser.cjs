@@ -463,11 +463,16 @@ const server = http.createServer(async (req, res) => {
     await page.getByRole('button',{name:'Imprimir lote',exact:true}).click();await printed();
     assert.equal(await printed(),labelBeforeA4,'A4 print retains the exact label markup');
     const actualMm=await page.locator('.wh-package-sheet').first().evaluate(n=>{const p=n.getBoundingClientRect(),l=n.querySelector('.wh-package-label').getBoundingClientRect(),mm=25.4/96;return {pw:p.width*mm,ph:p.height*mm,lw:l.width*mm,lh:l.height*mm,left:(l.left-p.left)*mm,top:(l.top-p.top)*mm}});
-    for(const [field,expected] of Object.entries({pw:210,ph:297,lw:100,lh:50,left:5,top:5}))assert.ok(Math.abs(actualMm[field]-expected)<.1,field+': exact physical size in A4');
+    for(const [field,expected] of Object.entries({pw:210,ph:297,lw:100,lh:50,left:55,top:123.5}))assert.ok(Math.abs(actualMm[field]-expected)<.1,field+': exact physical size in A4');
     await page.emulateMedia({media:'print'});const a4Pdf=await page.pdf({path:out+'/etiquetas-100x50-en-a4.pdf',preferCSSPageSize:true,printBackground:true});await page.emulateMedia({media:'screen'});await done();
     const a4Raw=a4Pdf.toString('latin1'),a4Box=a4Raw.match(/\/MediaBox\s*\[([\d.\s]+)\]/)[1].trim().split(/\s+/).map(Number);assert.equal((a4Raw.match(/\/Type \/Page\b/g)||[]).length,2);
     assert.ok(Math.abs(a4Box[2]-210*72/25.4)<1&&Math.abs(a4Box[3]-297*72/25.4)<1,'PDF is A4 while label remains 100x50');
     await page.getByRole('button',{name:'Cerrar vista previa',exact:true}).first().click();
+    await chooseSetting('Posición de la etiqueta en la hoja',/^Esquina superior izquierda$/);
+    await page.reload();await page.getByRole('button',{name:'Posición de la etiqueta en la hoja',exact:true}).filter({hasText:'Esquina superior izquierda'}).waitFor();
+    await openLabels();await page.getByRole('button',{name:'Imprimir lote',exact:true}).click();await printed();
+    assert.ok(await page.locator('.wh-package-sheet').first().evaluate(n=>{const p=n.getBoundingClientRect(),l=n.querySelector('.wh-package-label').getBoundingClientRect(),mm=25.4/96;return Math.abs((l.left-p.left)*mm-5)<.1&&Math.abs((l.top-p.top)*mm-5)<.1}),'optional top-left placement honors margin');await done();await page.getByRole('button',{name:'Cerrar vista previa',exact:true}).first().click();
+    await chooseSetting('Posición de la etiqueta en la hoja',/^Centrada en la hoja/);
     // A5 landscape label cannot fit an A5 portrait sheet with margins: warn and never audit/print it.
     await chooseSetting('Formato de la etiqueta de bulto',/^A5 horizontal/);
     await chooseSetting('Papel cargado en la impresora',/^Hoja A5 vertical/);
@@ -501,7 +506,7 @@ const server = http.createServer(async (req, res) => {
     );
     assert.deepEqual(errors, []);
     console.log(
-      "PASS browser: identical preview/print/reprint markup across reception, control, package detail and inventory; original identity/reasons; identical Zebra raster bytes across four routes; one PDF page per label; label orientations and independent A4 sheet with exact 100x50 size; oversize rejected before audit; A5 vertical/horizontal and thermal sizes; isolated per-account preferences; black lot badge right of SKU; mobile and screenshots",
+      "PASS browser: identical preview/print/reprint markup across reception, control, package detail and inventory; original identity/reasons; identical Zebra raster bytes across four routes; one PDF page per label; label orientations, centered A4 placement, optional top-left placement and exact 100x50 size; oversize rejected before audit; A5 vertical/horizontal and thermal sizes; isolated per-account preferences; black lot badge right of SKU; mobile and screenshots",
     );
   } catch (e) {
     if (page)
