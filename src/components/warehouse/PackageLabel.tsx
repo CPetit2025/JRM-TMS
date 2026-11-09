@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- El mismo logo original se rasteriza y se imprime sin optimización de tamaño. */
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Code128Barcode } from "./Code128Barcode";
-import type { PackageLabelData } from "@/lib/warehouse/package-label";
+import { bultoNumber, type PackageLabelData } from "@/lib/warehouse/package-label";
 import type { LabelFormat } from "@/lib/warehouse/label-format";
 import { packageLabelLayout } from "@/lib/warehouse/package-label-layout";
 import "./package-label.css";
@@ -65,7 +65,7 @@ export function PackageLabel({ label, format = { width_mm: 152.4, height_mm: 101
           </strong>
         </div>
         <div className="wh-package-sequence">
-          {label.sequence_no}/{label.sequence_total}
+          {bultoNumber(label.package_code) ? <>Bulto <b className="wh-package-bulto">{bultoNumber(label.package_code)}</b></> : `${label.sequence_no}/${label.sequence_total}`}
         </div>
       </div>
     </article>

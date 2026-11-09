@@ -259,3 +259,10 @@
     page-break-after: auto;
   }
 }
+.wh-package-bulto {
+  display: block;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.05;
+  white-space: nowrap;
+}

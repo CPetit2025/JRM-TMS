@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowRight, ClipboardList, Hourglass, Package, PackageCheck, ScanLine, Tag, TriangleAlert, RefreshCw, Truck } from 'lucide-react'
+import { ArrowRight, ClipboardList, Hourglass, Package, ScanLine, Tag, TriangleAlert, RefreshCw, Truck } from 'lucide-react'
 
 type Counts = { toLabel: number | null; receipts: number; tasks: number; pending: number; picking: number; packing: number; load: number; packages: number; discrepancies: number }
 const empty: Counts = { toLabel: null, receipts: 0, tasks: 0, pending: 0, picking: 0, packing: 0, load: 0, packages: 0, discrepancies: 0 }
@@ -36,7 +36,7 @@ export default function WarehouseHome() {
   };void load();return()=>{live=false}},[])
   const reception=counts.toLabel===null?['Ingresos ERP vigentes',counts.receipts,Tag] as const:['Ingresos por etiquetar',counts.toLabel,Tag] as const
   const kpis=[reception,['Tareas activas',counts.tasks,ClipboardList],['Tareas pendientes',counts.pending,Hourglass],['En picking',counts.picking,ScanLine],['En packing',counts.packing,Package],['Listas para carga',counts.load,Truck]] as const
-  const quick=[['Actualizaciones de datos','/almacen/actualizaciones','Cargas del ERP (stock y contratos) e ingresos para etiquetado, en un solo lugar.',RefreshCw],['01 · Recepción por IPT','/almacen/etiquetado','Selecciona un ingreso vigente del actualizable y genera paquetes trazables.',ScanLine],['Tareas','/almacen/tareas','Consulta solicitudes, picking, packing y carga.',ClipboardList],['Paquetes y LPN','/almacen/paquetes','Ubica estado, tarea, movimientos y lecturas.',PackageCheck],['Conciliación','/almacen/conciliacion','Compara las salidas ERP activas con los paquetes WMS cargados.',TriangleAlert]] as const
+  const quick=[['Actualizaciones de datos','/almacen/actualizaciones','Cargas del ERP (stock y contratos) e ingresos para etiquetado, en un solo lugar.',RefreshCw],['01 · Recepción por IPT','/almacen/etiquetado','Selecciona un ingreso vigente del actualizable y genera paquetes trazables.',ScanLine],['Tareas','/almacen/tareas','Consulta solicitudes, picking, packing y carga.',ClipboardList],['Conciliación','/almacen/conciliacion','Compara las salidas ERP activas con los paquetes WMS cargados.',TriangleAlert]] as const
   const dash=(n:number)=>loading||error?'—':n
   return <div className="space-y-4 sm:space-y-6">
     <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-blue-700">Operaciones de almacén · WMS</p><h1 className="mt-1 text-3xl font-black tracking-tight text-[#002855]">Centro de operaciones</h1><p className="mt-1 text-sm text-slate-600">Recepción, preparación y despacho con trazabilidad por paquete y pallet.</p></div><Link href="/almacen/tareas" className="inline-flex items-center gap-2 rounded-lg bg-[#002855] px-4 py-2.5 text-sm font-bold text-white">Ver tareas <ArrowRight size={16}/></Link></div>

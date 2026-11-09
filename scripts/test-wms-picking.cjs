@@ -105,7 +105,7 @@ const feed=(status={})=>[
  await q("SELECT public.wh_audit_lpn($1,'APROBADO')",[lpn1.id]);
  await as('op1'); await fails("SELECT public.wh_audit_lpn($1,'APROBADO')",[lpn1.id],/permiso/);
  const lpn2=await one('SELECT public.wh_consolidate_lpn($1,$2::text[])',[task.id,['PKG-3']]);
- assert.ok(lpn1.lpn_code.startsWith('LPN-')&&!lpn1.own_label,'varios paquetes: LPN nuevo con etiqueta');
+ assert.equal(lpn1.lpn_code,'16544-S001-B-0001','varios paquetes: bulto nuevo con el primer número de la serie de su lote'); assert.equal(lpn1.own_label,false);
  assert.equal(lpn2.lpn_code,'PKG-3','un paquete solo usa el código de su etiqueta'); assert.equal(lpn2.own_label,true);
  assert.equal((await sys(`SELECT print_count FROM public.wh_lpns WHERE id='${lpn2.id}'`))[0].print_count,1,'no pide imprimir otra etiqueta');
  await as('aud');
@@ -138,7 +138,7 @@ const feed=(status={})=>[
  await db.exec('RESET ROLE; BEGIN'); await as('sup');
  await q("SELECT public.wh_lpn_undo($1,'Reagrupar')",[lpn1.id]); await as('op1');
  const mixed=await one('SELECT public.wh_consolidate_lpn($1,$2::text[])',[task.id,['PKG-1','PKG-3']]);
- assert.ok(mixed.lpn_code.startsWith('LPN-')&&!mixed.own_label,'varios paquetes generan LPN nuevo');
+ assert.equal(mixed.lpn_code,'16544-S001-B-0002','el nuevo agrupamiento sigue el correlativo del lote'); assert.equal(mixed.own_label,false);
  assert.equal((await sys("SELECT count(*)::int n FROM public.wh_lpns WHERE lpn_code='PKG-3'"))[0].n,0,'el LPN anulado ya no retiene el código del paquete');
  await db.exec('RESET ROLE; ROLLBACK'); await as('op1');
  const lpn3=await one('SELECT public.wh_consolidate_lpn($1,$2::text[])',[task.id,['PKG-3']]);

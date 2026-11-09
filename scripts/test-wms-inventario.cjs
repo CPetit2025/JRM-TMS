@@ -59,7 +59,7 @@ const U={sup:'00000000-0000-0000-0000-0000000000c1',cnt:'00000000-0000-0000-0000
  // El rótulo dice IPT-77 bulto 1/3: ya tiene etiqueta → se rechaza
  await fails("SELECT public.wh_count_label($1,$2,10,NULL,'A','IPT-77',1,3)",[camp.id,l1],/ya tiene etiqueta PKG-IPT-1/);
  const lab=await one("SELECT public.wh_count_label($1,$2,10,12.5,'A','IPT-77',2,3)",[camp.id,l1]);
- assert.match(lab.package_code,/^PKG-/); assert.equal(lab.sequence_no,2);
+ assert.match(lab.package_code,/-B-\d{4}$/); assert.equal(lab.sequence_no,2);
  await fails("SELECT public.wh_count_label($1,$2,10,NULL,'B','ipt-77',2,3)",[camp.id,l1],/ya tiene etiqueta/);
  const retry=await one("SELECT public.wh_count_label($1,$2,10,NULL,'A','IPT-77',3,3,false,'00000000-0000-0000-0000-00000000e001')",[camp.id,l1]);
  const again=await one("SELECT public.wh_count_label($1,$2,10,NULL,'A','IPT-77',3,3,false,'00000000-0000-0000-0000-00000000e001')",[camp.id,l1]);

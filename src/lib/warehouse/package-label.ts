@@ -46,3 +46,6 @@ export function packageLabelData(
       text(customer || row.customer_name) || "Cliente por registrar",
   };
 }
+
+/** Número de bulto del correlativo por lote ("16544-B-0001" → "B-0001"); los códigos PKG-… anteriores no tienen. */
+export const bultoNumber = (code: string) => /-(B-\d{4,})$/.exec(code)?.[1] ?? null;
