@@ -23,6 +23,8 @@ export default function WarehouseUpdatesPage() {
       {TABS.map(t => <button key={t.key} type="button" onClick={() => setTab(t.key)} aria-current={tab === t.key ? 'page' : undefined} title={t.hint}
         className={`border-b-2 px-3 py-2 text-sm font-bold ${tab === t.key ? 'border-[#cf152d] text-[#002855]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{t.label}</button>)}
     </nav>
-    {tab === 'erp' ? <ErpLoadPanel/> : <WmsReceiptImportPage/>}
+    {/* Las dos pestañas quedan montadas: cambiar de pestaña no corta ni pierde una carga en curso */}
+    <div hidden={tab !== 'erp'}><ErpLoadPanel/></div>
+    <div hidden={tab !== 'ingresos'}><WmsReceiptImportPage/></div>
   </div>
 }
