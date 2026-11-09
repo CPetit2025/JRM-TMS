@@ -24,7 +24,7 @@ Los scripts están en `scripts/erp-auto/`.
 
 ## Carga también en el WMS
 
-Después de cargar el TMS, el robot sube los mismos dos archivos a **Stock ERP** del WMS (`/almacen/stock-erp`) con
+Después de cargar el TMS, el robot sube los mismos dos archivos a **Configuración › Actualizaciones** del WMS (`/almacen/actualizaciones`) con
 `cargar-wms.mjs`. Usa la cuenta del robot de ingresos WMS (`%LOCALAPPDATA%JRM-TMSwms-autocredencial.xml`), que
 necesita permiso `almacen-carga`. Si esa cuenta no está instalada, el log dice `AVISO Sin cuenta del robot WMS` y solo
 se carga el TMS. Si la carga del WMS falla, la del TMS ya quedó aplicada y la tarea termina con resultado `1`.

@@ -1,4 +1,4 @@
-// Robot de carga del ERP en el WMS: entra al WMS con la cuenta del robot de ingresos, abre /almacen/stock-erp, adjunta
+// Robot de carga del ERP en el WMS: entra al WMS con la cuenta del robot de ingresos, abre /almacen/actualizaciones, adjunta
 // los dos Excel y pulsa «Aplicar carga», igual que una persona (fase 1 de docs/plan-wms-inventario-apt.md).
 // Uso: node cargar-wms.mjs [--revisar] <Actualizable.xlsm> <StockBodega.xlsm>
 //   Variables: WMS_URL (por defecto https://wms.jrmlogistica.app), WMS_USUARIO, WMS_CLAVE.
@@ -27,9 +27,9 @@ try {
   await page.waitForURL(u => !u.pathname.endsWith('/login'), { timeout: MIN }).catch(() => {
     throw new Error('No se pudo iniciar sesión en el WMS: verifique la cuenta del robot')
   })
-  await page.goto(`${url}/almacen/stock-erp`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${url}/almacen/actualizaciones`, { waitUntil: 'domcontentloaded' })
   await page.locator('#erp-file-stock').waitFor({ state: 'attached', timeout: 2 * MIN }).catch(() => {
-    throw new Error('La pantalla Stock ERP no muestra la carga: la cuenta del robot necesita permiso almacen-carga')
+    throw new Error('La pantalla Actualizaciones no muestra la carga ERP: la cuenta del robot necesita permiso almacen-carga')
   })
   if (revisar) { console.log('Revisión WMS OK (no se aplicó nada)'); process.exit(0) }
 
