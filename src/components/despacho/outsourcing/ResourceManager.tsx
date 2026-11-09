@@ -170,10 +170,12 @@ export function ResourceManager({
       },
     }));
   }
+  // «Otros» no tiene tarjeta de persona: su responsable va con el recurso.
+  const isPerson = (k: string) => service !== "OTROS" && PERSON_KEYS.has(k);
   const fields = RESOURCE_FIELDS[service],
-    personFields = fields.filter(([k]) => PERSON_KEYS.has(k)),
+    personFields = fields.filter(([k]) => isPerson(k)),
     routeFields = fields.filter(([k]) => ROUTE_KEYS.has(k)),
-    unitFields = fields.filter(([k]) => !PERSON_KEYS.has(k) && !ROUTE_KEYS.has(k));
+    unitFields = fields.filter(([k]) => !isPerson(k) && !ROUTE_KEYS.has(k));
   const card = (Icon: LucideIcon, title: string, body: ReactNode) => (
     <section className="min-w-0 space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
       <h3 className="flex items-center gap-2 font-semibold text-jrm-navy">
