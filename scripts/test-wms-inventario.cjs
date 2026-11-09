@@ -35,7 +35,7 @@ const U={sup:'00000000-0000-0000-0000-0000000000c1',cnt:'00000000-0000-0000-0000
  await load([st(1,'0000016544','PT-1',30),st(2,'16544','PT-2',5),st(3,'16497-S001','PT-3',8)]);
  await as('cnt'); await fails("SELECT public.wh_count_open('647-04 ALM PT')",[],/supervisión/);
  await as('sup');
- const camp=await one("SELECT public.wh_count_open('647-04 ALM PT',ARRAY['A','B'])");
+ const camp=await one("SELECT public.wh_count_open('647-04 ALM PT',ARRAY['A','B'],NULL,NULL,'GENERAL')");
  assert.equal(camp.expected_lines,3);
  await fails("SELECT public.wh_count_open('647-04 ALM PT')",[],/Ya hay un inventario/);
  await load([st(1,'16544','PT-1',99)]);
@@ -71,7 +71,7 @@ const U={sup:'00000000-0000-0000-0000-0000000000c1',cnt:'00000000-0000-0000-0000
  // 3. Congelamiento y retención
  await db.exec('RESET ROLE');
  await fails("UPDATE public.wh_packages SET status='PICKED' WHERE package_code='PKG-IPT-1'",[],/está en inventario/);
- await fails(`INSERT INTO public.wh_packages(package_code,source_document_no,source_lot,source_product_code,source_warehouse,source_date,source_movement_key,source_key,site_id,description,quantity) SELECT 'PKG-NEW','IPT-88','x','PT-1','647-04 ALM PT','2026-11-08','mk9','sk9',id,'x',1 FROM public.sites`,[],/etiquetado por IPT se reanuda/);
+ await fails(`INSERT INTO public.wh_packages(package_code,source_document_no,source_lot,source_product_code,source_warehouse,source_date,source_movement_key,source_key,site_id,description,quantity) SELECT 'PKG-NEW','IPT-88','x','PT-1','647-04 ALM PT','2026-11-08','mk9','sk9',id,'x',1 FROM public.sites`,[],/recepción por IPT se reanuda/);
  await fails(`UPDATE public.wh_packages SET status='PICKED' WHERE package_code='${lab.package_code}'`,[],/retenido|está en inventario/);
  await fails("UPDATE public.wh_packages SET status='LOADED' WHERE package_code='PKG-EMP'",[],/está en inventario/);
  await db.exec("UPDATE public.wh_packages SET status='PICKED' WHERE package_code='PKG-EMP'"); // deshacer un empaque no se bloquea
@@ -120,5 +120,24 @@ const U={sup:'00000000-0000-0000-0000-0000000000c1',cnt:'00000000-0000-0000-0000
   assert.ok(denied,`anon no debe ejecutar ${fn}`);
  }
  console.log('PASS: inventario solo para etiquetado, carga y supervisión; tablas solo por funciones; anónimo bloqueado.');
+
+ // 6. Tipos: al barrer y cíclico no congelan la bodega
+ const ipt=(code,prod)=>`INSERT INTO public.wh_packages(package_code,source_document_no,source_lot,source_product_code,source_warehouse,source_date,source_movement_key,source_key,site_id,description,quantity) SELECT '${code}','IPT-${code}','x','${prod}','647-04 ALM PT','2026-11-09','mk-${code}','sk-${code}',id,'x',1 FROM public.sites`;
+ await as('sup');
+ const bar=await one("SELECT public.wh_count_open('647-04 ALM PT',ARRAY['A'],NULL,NULL,'BARRIDO')"); assert.equal(bar.tipo,'BARRIDO');
+ await db.exec('RESET ROLE'); await db.exec(ipt('PKG-B1','PT-1')); // recepción por IPT libre
+ await as('cnt'); await one("SELECT public.wh_count_scan($1,'PKG-B1','A')",[bar.id]);
+ await db.exec('RESET ROLE');
+ await fails("UPDATE public.wh_packages SET status='PICKED' WHERE package_code='PKG-B1'",[],/ya se contó en el inventario de su zona/);
+ await db.exec(ipt('PKG-B2','PT-1')); await db.exec("UPDATE public.wh_packages SET status='PICKED' WHERE package_code='PKG-B2'"); // no contado: opera
+ await as('sup'); await one('SELECT public.wh_count_close($1,$2::jsonb)',[bar.id,JSON.stringify(Object.fromEntries((await one('SELECT public.wh_count_summary($1)',[bar.id])).filter(r=>r.result!=='CUADRA').map(r=>[r.cod_producto+'|'+r.lote_key,'barrido de prueba'])))]);
+ await fails("SELECT public.wh_count_open('647-04 ALM PT','{}',NULL,NULL,'CICLICO')",[],/Indique los SKU/);
+ const cic=await one("SELECT public.wh_count_open('647-04 ALM PT','{}',NULL,NULL,'CICLICO',ARRAY['pt-1'])");
+ assert.equal((await sys(`SELECT count(*)::int n FROM public.wh_count_expected WHERE campaign_id='${cic.id}'`))[0].n,1,'el cíclico solo copia sus SKU');
+ await db.exec('RESET ROLE');
+ await fails(ipt('PKG-C1','PT-1'),[],/inventario cíclico/);
+ await db.exec(ipt('PKG-C2','PT-3')); // otro SKU se recibe normal
+ await as('cnt'); await fails("SELECT public.wh_count_scan($1,'PKG-C2')",[cic.id],/no está en este inventario cíclico/);
+ console.log('PASS: tipos de inventario: general congela la bodega; al barrer solo bloquea lo contado; cíclico solo sus SKU; la recepción sigue.');
  await db.close();
 })().catch(e=>{console.error('FAIL:',e.message);process.exit(1)});
