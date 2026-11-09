@@ -194,7 +194,7 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
   const selection = data.loose.filter(p => selected.has(p.package_code))
   const lots = [task.contract_code, task.components, task.lots].filter(Boolean).join(' · ')
 
-  return <div className="mx-auto max-w-5xl space-y-4">
+  return <div className="w-full space-y-4">
     <Link href="/almacen/tareas" className="inline-flex items-center gap-2 text-sm font-semibold text-blue-800 print:hidden"><ArrowLeft size={16}/>Tareas</Link>
     <header className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:hidden">
       <div className="flex flex-wrap items-start justify-between gap-3">

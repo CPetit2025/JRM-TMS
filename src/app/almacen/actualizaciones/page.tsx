@@ -13,7 +13,7 @@ const TABS = [
 
 export default function WarehouseUpdatesPage() {
   const [tab, setTab] = useState<(typeof TABS)[number]['key']>('erp')
-  return <div className="mx-auto max-w-5xl space-y-4">
+  return <div className="w-full space-y-4">
     <header>
       <p className="text-xs font-bold uppercase tracking-widest text-blue-700">Configuración</p>
       <h1 className="mt-1 text-3xl font-black text-[#002855]">Actualizaciones de datos</h1>

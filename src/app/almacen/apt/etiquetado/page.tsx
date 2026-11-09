@@ -150,7 +150,7 @@ export default function WmsReceiptImportPage() {
     }catch(e){setError(e instanceof Error?e.message:'No se pudo importar el Excel de ingresos.')}
     finally{setBusy(false)}
   }
-  return <div className="mx-auto max-w-4xl space-y-5">
+  return <div className="w-full space-y-5">
     <header><p className="text-xs font-bold uppercase tracking-widest text-blue-700">WMS · Recepción</p><h1 className="mt-1 text-3xl font-black text-[#002855]">Actualizar ingresos para etiquetado</h1>
       <p className="mt-1 text-sm text-slate-600">Fuente exclusiva de recepción. Este libro no carga inventario, salidas ni analítica.</p></header>
     {error&&<p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900"><AlertTriangle className="mr-2 inline h-4 w-4"/>{error}</p>}

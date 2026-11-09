@@ -42,7 +42,7 @@ export default function WarehouseInventoryPage() {
   }
 
   const field = 'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal'
-  return <div className="mx-auto max-w-5xl space-y-5">
+  return <div className="w-full space-y-5">
     <header>
       <p className="text-xs font-bold uppercase tracking-widest text-blue-700">Control</p>
       <h1 className="mt-1 text-3xl font-black text-[#002855]">Inventario</h1>

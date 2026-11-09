@@ -82,7 +82,7 @@ export default function WarehouseTasksPage() {
 
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px] text-left text-sm">
+        <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-600">
             <tr><th className="px-3 py-2.5">Fecha</th><th className="px-3 py-2.5">Solicitud</th><th className="px-3 py-2.5">OT / Lote</th><th className="px-3 py-2.5">Cliente</th><th className="px-3 py-2.5">Estado</th><th className="px-3 py-2.5">Responsable</th><th className="px-3 py-2.5 text-right">Acciones</th></tr>
           </thead>

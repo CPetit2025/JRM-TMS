@@ -37,7 +37,7 @@ export function PeriodBar({ desde, hasta, onChange, children }: {
 export function Table({ head, children, empty }: { head: ReactNode; children: ReactNode; empty?: boolean }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] text-left text-xs">
+      <table className="w-full text-left text-xs">
         <thead className="border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">{head}</thead>
         <tbody className="divide-y divide-slate-100">{children}</tbody>
       </table>
