@@ -18,7 +18,8 @@ REVOKE ALL ON public.wh_bulto_counters FROM PUBLIC, anon, authenticated;
 -- La fila del lote se bloquea al incrementar: dos etiquetados simultáneos del mismo lote no repiten número.
 CREATE OR REPLACE FUNCTION public.wh_next_bulto_code(p_lot text) RETURNS text
 LANGUAGE plpgsql SET search_path = public, pg_temp AS $$
-DECLARE v_lot text := coalesce(nullif(upper(regexp_replace(btrim(coalesce(p_lot, '')), '\s+', '', 'g')), ''), 'SIN-LOTE'); v_n integer;
+-- El lote se normaliza a A-Z, 0-9 y guiones (Code 128 solo representa ASCII); el lote original queda en source_lot.
+DECLARE v_lot text := coalesce(nullif(btrim(regexp_replace(translate(upper(btrim(coalesce(p_lot, ''))), 'ÁÀÄÂÉÈËÊÍÌÏÎÓÒÖÔÚÙÜÛÑÇ', 'AAAAEEEEIIIIOOOOUUUUNC'), '[^A-Z0-9]+', '-', 'g'), '-'), ''), 'SIN-LOTE'); v_n integer;
 BEGIN
   INSERT INTO public.wh_bulto_counters(lot, last_no) VALUES (v_lot, 1)
   ON CONFLICT (lot) DO UPDATE SET last_no = public.wh_bulto_counters.last_no + 1, updated_at = now()
