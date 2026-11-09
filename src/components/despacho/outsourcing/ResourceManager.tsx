@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Boxes, Info, MapPin, MessageSquare, TriangleAlert, Truck, UserRound, Wallet, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -61,6 +62,9 @@ const SERVICE_SUPPLIERS: Record<OutsourcingService, string[]> = {
   STOCKA: ALL_LOGISTIC,
   OTROS: ALL_LOGISTIC,
 };
+// Agrupación de los campos del recurso en las tarjetas del modal.
+const PERSON_KEYS = new Set(["driver", "document", "phone", "license", "license_category", "license_expiration", "driver_documents", "operator", "operator_document", "certificates", "responsible", "staff"]);
+const ROUTE_KEYS = new Set(["origin", "destination", "stops", "location"]);
 type QuickField = [string, string, string?];
 const QUICK_SUPPLIER: QuickField[] = [
   ["tax_id", "RUC (11 dígitos)"],
@@ -166,6 +170,38 @@ export function ResourceManager({
       },
     }));
   }
+  // «Otros» no tiene tarjeta de persona: su responsable va con el recurso.
+  const isPerson = (k: string) => service !== "OTROS" && PERSON_KEYS.has(k);
+  const fields = RESOURCE_FIELDS[service],
+    personFields = fields.filter(([k]) => isPerson(k)),
+    routeFields = fields.filter(([k]) => ROUTE_KEYS.has(k)),
+    unitFields = fields.filter(([k]) => !isPerson(k) && !ROUTE_KEYS.has(k));
+  const card = (Icon: LucideIcon, title: string, body: ReactNode) => (
+    <section className="min-w-0 space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      <h3 className="flex items-center gap-2 font-semibold text-jrm-navy">
+        <Icon className="h-5 w-5" aria-hidden /> {title}
+      </h3>
+      {body}
+    </section>
+  );
+  // Números en dos columnas; textos largos ocupan el ancho de la tarjeta.
+  const fieldGrid = (list: [string, string, string?][], wide = false) => (
+    <div className="grid grid-cols-2 gap-2">
+      {list.map(([key, label, type]) => (
+        <label key={key} className={`text-sm ${wide || !["number", "date"].includes(type || "") ? "col-span-2" : ""}`}>
+          {label}
+          <input
+            className={input}
+            type={type || "text"}
+            min={type === "number" ? "0" : undefined}
+            step={type === "number" ? "any" : undefined}
+            value={form.resource[key] || ""}
+            onChange={(e) => setForm({ ...form, resource: { ...form.resource, [key]: e.target.value } })}
+          />
+        </label>
+      ))}
+    </div>
+  );
   async function register() {
     if (!quick) return;
     setBusy(true);
@@ -457,7 +493,7 @@ export function ResourceManager({
             if (!busy) setEditing(undefined);
           }}
           title={`${editing ? "Editar" : "Asignar"} ${OUTSOURCING_SERVICES[service]}`}
-          maxWidth="max-w-5xl"
+          maxWidth="max-w-7xl"
         >
           <form
             className="space-y-4"
@@ -466,128 +502,129 @@ export function ResourceManager({
               void save();
             }}
           >
-            <details open className="rounded-lg border border-blue-200 bg-blue-50 p-3"><summary className="cursor-pointer text-sm font-semibold">Requerimiento original · Cantidad {required}</summary><dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">{RESOURCE_FIELDS[service].filter(([key])=>requested?.[key]!=null&&requested[key]!=='').map(([key,label])=><div key={key}><dt className="text-slate-500">{label}</dt><dd>{String(requested?.[key])}</dd></div>)}</dl><p className="mt-2 text-xs">Registre abajo las características ofrecidas por el proveedor. La aprobación verifica los mínimos técnicos.</p></details>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label>
-                Proveedor de {OUTSOURCING_SERVICES[service].toLowerCase()}
-                <select
-                  aria-label="Proveedor"
-                  disabled={!!editing?.dispatch_id}
-                  required
-                  className={input}
-                  value={form.supplier_id}
-                  onChange={(e) => selectSupplier(e.target.value)}
-                >
-                  <option value="">
-                    {suppliers.length ? "Seleccione proveedor activo" : "Sin proveedores registrados: registre uno nuevo"}
-                  </option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.business_name} · {s.tax_id || "Sin RUC"}
-                    </option>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+              <dl className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+                <dt className="font-semibold text-jrm-navy">Requerimiento original · Cantidad {required}</dt>
+                {RESOURCE_FIELDS[service]
+                  .filter(([key]) => requested?.[key] != null && requested[key] !== "")
+                  .map(([key, label]) => (
+                    <div key={key}>
+                      <dt className="text-xs text-slate-500">{label}</dt>
+                      <dd className="font-semibold">{String(requested?.[key])}</dd>
+                    </div>
                   ))}
-                </select>
-              </label>
-              <div className="self-center text-sm text-slate-600">
-                {supplier &&
-                  [
-                    supplier.contact_name,
-                    supplier.contact_phone,
-                    supplier.contact_email,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
+              </dl>
+              <p className="mt-2 flex items-center gap-1 text-xs text-slate-600">
+                <Info className="h-4 w-4" aria-hidden /> Registre abajo las características ofrecidas por el proveedor. La aprobación verifica los mínimos técnicos.
+              </p>
+            </div>
+            {quick && (
+              <fieldset className="grid gap-3 rounded-lg border border-emerald-300 bg-emerald-50 p-3 sm:grid-cols-2 lg:grid-cols-3" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void register(); } }}>
+                <legend className="px-1 text-sm font-semibold">
+                  {quick.kind === "supplier"
+                    ? `Nuevo proveedor de ${OUTSOURCING_SERVICES[service].toLowerCase()}`
+                    : `Nuevo ${personRole.toLowerCase()} de ${supplier?.business_name}`}
+                </legend>
+                {(quick.kind === "supplier" ? QUICK_SUPPLIER : service === "FLETE" ? QUICK_DRIVER : QUICK_OPERATOR).map(([key, label, type]) => (
+                  <label key={key} className="text-sm">
+                    {label}
+                    <input
+                      className={input}
+                      type={type || "text"}
+                      value={quick.data[key] || ""}
+                      onChange={(e) => setQuick({ ...quick, data: { ...quick.data, [key]: e.target.value } })}
+                    />
+                  </label>
+                ))}
+                <div className="flex items-end gap-2">
+                  <button type="button" disabled={busy} className={button} onClick={() => void register()}>
+                    {busy ? "Registrando…" : "Registrar y usar"}
+                  </button>
+                  <button type="button" disabled={busy} className="rounded-lg border px-3 py-2 text-sm" onClick={() => setQuick(null)}>
+                    Cancelar
+                  </button>
+                </div>
+              </fieldset>
+            )}
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {card(Truck, "Proveedor y disponibilidad", <>
+                <label className="block text-sm">
+                  Proveedor de {OUTSOURCING_SERVICES[service].toLowerCase()}
+                  <select
+                    aria-label="Proveedor"
+                    disabled={!!editing?.dispatch_id}
+                    required
+                    className={input}
+                    value={form.supplier_id}
+                    onChange={(e) => selectSupplier(e.target.value)}
+                  >
+                    <option value="">
+                      {suppliers.length ? "Seleccione proveedor activo" : "Sin proveedores registrados: registre uno nuevo"}
+                    </option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.business_name} · {s.tax_id || "Sin RUC"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {supplier && (
+                  <p className="flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-1 text-sm text-slate-600">
+                    <UserRound className="h-4 w-4 shrink-0" aria-hidden />
+                    {[supplier.contact_name, supplier.contact_phone, supplier.contact_email].filter(Boolean).join(" · ") || "Sin contacto registrado"}
+                  </p>
+                )}
                 {!editing?.dispatch_id && (
-                  <button type="button" className="block text-blue-700 underline" onClick={() => setQuick({ kind: "supplier", data: {} })}>
+                  <button type="button" className="text-sm text-blue-700 underline" onClick={() => setQuick({ kind: "supplier", data: {} })}>
                     + Registrar proveedor nuevo
                   </button>
                 )}
-              </div>
-              {quick && (
-                <fieldset className="grid gap-3 rounded-lg border border-emerald-300 bg-emerald-50 p-3 sm:col-span-2 sm:grid-cols-2" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void register(); } }}>
-                  <legend className="px-1 text-sm font-semibold">
-                    {quick.kind === "supplier"
-                      ? `Nuevo proveedor de ${OUTSOURCING_SERVICES[service].toLowerCase()}`
-                      : `Nuevo ${personRole.toLowerCase()} de ${supplier?.business_name}`}
-                  </legend>
-                  {(quick.kind === "supplier" ? QUICK_SUPPLIER : service === "FLETE" ? QUICK_DRIVER : QUICK_OPERATOR).map(([key, label, type]) => (
-                    <label key={key} className="text-sm">
-                      {label}
-                      <input
-                        className={input}
-                        type={type || "text"}
-                        value={quick.data[key] || ""}
-                        onChange={(e) => setQuick({ ...quick, data: { ...quick.data, [key]: e.target.value } })}
-                      />
-                    </label>
-                  ))}
-                  <div className="flex gap-2 sm:col-span-2">
-                    <button type="button" disabled={busy} className={button} onClick={() => void register()}>
-                      {busy ? "Registrando…" : "Registrar y usar"}
-                    </button>
-                    <button type="button" disabled={busy} className="rounded-lg border px-3 py-2 text-sm" onClick={() => setQuick(null)}>
-                      Cancelar
-                    </button>
-                  </div>
-                </fieldset>
-              )}
-              <label>
-                Cantidad
-                <input
-                  disabled={!!editing?.dispatch_id}
-                  required
-                  type="number"
-                  min={service === "OTROS" ? "0.01" : "1"}
-                  step={service === "OTROS" ? "any" : "1"}
-                  max={
-                    ["FLETE", "MONTACARGAS", "GRUA", "STOCKA"].includes(service)
-                      ? 1
-                      : undefined
-                  }
-                  className={input}
-                  value={form.quantity}
-                  onChange={(e) =>
-                    setForm({ ...form, quantity: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Inicio de disponibilidad (Lima)
-                <input
-                  disabled={!!editing?.dispatch_id}
-                  required
-                  type="datetime-local"
-                  className={input}
-                  value={form.starts_at}
-                  onChange={(e) =>
-                    setForm({ ...form, starts_at: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Fin de disponibilidad (Lima)
-                <input
-                  disabled={!!editing?.dispatch_id}
-                  required
-                  type="datetime-local"
-                  className={input}
-                  value={form.ends_at}
-                  onChange={(e) =>
-                    setForm({ ...form, ends_at: e.target.value })
-                  }
-                />
-              </label>
-              {service === "FLETE" && (
-                <>
-                  <label>
+                <div className="grid grid-cols-[5rem_1fr] gap-2">
+                  <label className="text-sm">
+                    Cantidad
+                    <input
+                      disabled={!!editing?.dispatch_id}
+                      required
+                      type="number"
+                      min={service === "OTROS" ? "0.01" : "1"}
+                      step={service === "OTROS" ? "any" : "1"}
+                      max={["FLETE", "MONTACARGAS", "GRUA", "STOCKA"].includes(service) ? 1 : undefined}
+                      className={input}
+                      value={form.quantity}
+                      onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                    />
+                  </label>
+                  <label className="text-sm">
+                    Inicio de disponibilidad (Lima)
+                    <input
+                      disabled={!!editing?.dispatch_id}
+                      required
+                      type="datetime-local"
+                      className={input}
+                      value={form.starts_at}
+                      onChange={(e) => setForm({ ...form, starts_at: e.target.value })}
+                    />
+                  </label>
+                </div>
+                <label className="block text-sm">
+                  Fin de disponibilidad (Lima)
+                  <input
+                    disabled={!!editing?.dispatch_id}
+                    required
+                    type="datetime-local"
+                    className={input}
+                    value={form.ends_at}
+                    onChange={(e) => setForm({ ...form, ends_at: e.target.value })}
+                  />
+                </label>
+                {service === "FLETE" && (
+                  <label className="block text-sm">
                     Unidad del catálogo (opcional)
                     <select
                       className={input}
                       defaultValue=""
                       onChange={(e) => {
-                        const v = context.vehicles.find(
-                          (v) => v.id === e.target.value,
-                        );
+                        const v = context.vehicles.find((v) => v.id === e.target.value);
                         if (v) {
                           setForm((f) => ({
                             ...f,
@@ -604,9 +641,7 @@ export function ResourceManager({
                         }
                       }}
                     >
-                      <option value="">
-                        Datos manuales / seleccione unidad
-                      </option>
+                      <option value="">Datos manuales / seleccione unidad</option>
                       {context.vehicles
                         .filter((v) => v.supplier_id === form.supplier_id)
                         .map((v) => (
@@ -616,10 +651,11 @@ export function ResourceManager({
                         ))}
                     </select>
                   </label>
-                </>
-              )}
-              {service !== "OTROS" && (
-                <label>
+                )}
+              </>)}
+              {card(Boxes, service === "FLETE" ? "Unidad y configuración" : service === "ESTIBA" ? "Servicio" : "Equipo", fieldGrid(unitFields))}
+              {service !== "OTROS" && card(UserRound, `${personRole} y documentación`, <>
+                <label className="block text-sm">
                   {personRole} del catálogo del proveedor
                   <select
                     className={input}
@@ -644,34 +680,15 @@ export function ResourceManager({
                       </option>
                     ))}
                   </select>
-                  {form.supplier_id && !editing?.dispatch_id && (
-                    <button type="button" className="text-sm text-blue-700 underline" onClick={() => setQuick({ kind: "person", data: {} })}>
-                      + Registrar {personRole.toLowerCase()} nuevo
-                    </button>
-                  )}
                 </label>
-              )}
-              {RESOURCE_FIELDS[service].map(([key, label, type]) => (
-                <label
-                  key={key}
-                  className={key === "maneuver_review" ? "sm:col-span-2" : ""}
-                >
-                  {label}
-                  <input
-                    className={input}
-                    type={type || "text"}
-                    min={type === "number" ? "0" : undefined}
-                    step={type === "number" ? "any" : undefined}
-                    value={form.resource[key] || ""}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        resource: { ...form.resource, [key]: e.target.value },
-                      })
-                    }
-                  />
-                </label>
-              ))}
+                {form.supplier_id && !editing?.dispatch_id && (
+                  <button type="button" className="text-sm text-blue-700 underline" onClick={() => setQuick({ kind: "person", data: {} })}>
+                    + Registrar {personRole.toLowerCase()} nuevo
+                  </button>
+                )}
+                {fieldGrid(personFields)}
+              </>)}
+              {routeFields.length > 0 && card(MapPin, service === "FLETE" ? "Ruta, asignación y puntos" : "Lugar de operación", fieldGrid(routeFields, true))}
             </div>
             <label className="flex gap-2 text-sm">
               <input
@@ -680,121 +697,110 @@ export function ResourceManager({
                 onChange={(e) =>
                   setForm({
                     ...form,
-                    resource: {
-                      ...form.resource,
-                      documents_verified: String(e.target.checked),
-                    },
+                    resource: { ...form.resource, documents_verified: String(e.target.checked) },
                   })
                 }
               />
-              Documentación revisada internamente y vigente para la atención. No
-              implica consulta a una entidad externa.
+              Documentación revisada internamente y vigente para la atención. No implica consulta a una entidad externa.
             </label>
-            <fieldset
-              disabled={!!editing?.dispatch_id}
-              className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2"
-            >
-              <legend className="px-1 font-semibold">Acuerdo económico</legend>
-              <label>
-                Moneda
-                <select
-                  className={input}
-                  value={form.currency}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      currency: e.target.value,
-                      exchange_rate: "1",
-                    })
-                  }
-                >
-                  <option>PEN</option>
-                  <option>USD</option>
-                </select>
-              </label>
-              <label>
-                Tipo de cambio a PEN
-                <input
-                  required
-                  disabled={form.currency === "PEN"}
-                  type="number"
-                  min="0.001"
-                  step="any"
-                  className={input}
-                  value={form.exchange_rate}
-                  onChange={(e) =>
-                    setForm({ ...form, exchange_rate: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Monto total cotizado
-                <input
-                  required
-                  className={input}
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={form.quoted_amount}
-                  onChange={(e) =>
-                    setForm({ ...form, quoted_amount: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Monto total confirmado
-                <input
-                  className={input}
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={form.confirmed_amount}
-                  onChange={(e) =>
-                    setForm({ ...form, confirmed_amount: e.target.value })
-                  }
-                />
-              </label>
-              <label className="sm:col-span-2">
-                Unidad de cobro, alcance, impuestos, inclusiones y exclusiones
+            <div className="grid gap-3 lg:grid-cols-[2fr_1fr]">
+              <fieldset disabled={!!editing?.dispatch_id} className="grid gap-3 rounded-xl border p-3 sm:grid-cols-2 lg:grid-cols-4">
+                <legend className="flex items-center gap-2 px-1 font-semibold text-jrm-navy">
+                  <Wallet className="h-5 w-5" aria-hidden /> Acuerdo económico
+                </legend>
+                <label className="text-sm">
+                  Moneda
+                  <select
+                    className={input}
+                    value={form.currency}
+                    onChange={(e) => setForm({ ...form, currency: e.target.value, exchange_rate: "1" })}
+                  >
+                    <option>PEN</option>
+                    <option>USD</option>
+                  </select>
+                </label>
+                <label className="text-sm">
+                  Tipo de cambio a PEN
+                  <input
+                    required
+                    disabled={form.currency === "PEN"}
+                    type="number"
+                    min="0.001"
+                    step="any"
+                    className={input}
+                    value={form.exchange_rate}
+                    onChange={(e) => setForm({ ...form, exchange_rate: e.target.value })}
+                  />
+                </label>
+                <label className="text-sm">
+                  Monto total cotizado
+                  <input
+                    required
+                    className={input}
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={form.quoted_amount}
+                    onChange={(e) => setForm({ ...form, quoted_amount: e.target.value })}
+                  />
+                </label>
+                <label className="text-sm">
+                  Monto total confirmado
+                  <input
+                    className={input}
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={form.confirmed_amount}
+                    onChange={(e) => setForm({ ...form, confirmed_amount: e.target.value })}
+                  />
+                </label>
+                <label className="text-sm sm:col-span-2 lg:col-span-4">
+                  Unidad de cobro, alcance, impuestos, inclusiones y exclusiones
+                  <textarea
+                    required
+                    minLength={5}
+                    rows={2}
+                    className={input}
+                    value={form.terms}
+                    onChange={(e) => setForm({ ...form, terms: e.target.value })}
+                  />
+                </label>
+              </fieldset>
+              <label className="flex flex-col rounded-xl border p-3 text-sm">
+                <span className="flex items-center gap-2 font-semibold text-jrm-navy">
+                  <MessageSquare className="h-5 w-5" aria-hidden /> Motivo de registro / cambio
+                </span>
                 <textarea
                   required
                   minLength={5}
-                  className={input}
-                  value={form.terms}
-                  onChange={(e) => setForm({ ...form, terms: e.target.value })}
+                  rows={4}
+                  className={`${input} mt-2 flex-1`}
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
                 />
               </label>
-            </fieldset>
+            </div>
             {editing?.dispatch_id && (
               <label className="flex gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-                <input
-                  type="checkbox"
-                  required
-                  checked={ack}
-                  onChange={(e) => setAck(e.target.checked)}
-                />
-                Autorizo actualizar los datos operativos del despacho{" "}
-                {editing.dispatch_id}. El cambio y su motivo quedarán en ambos
-                historiales; no altera el costo aprobado.
+                <input type="checkbox" required checked={ack} onChange={(e) => setAck(e.target.checked)} />
+                Autorizo actualizar los datos operativos del despacho {editing.dispatch_id}. El cambio y su motivo quedarán en ambos historiales; no altera el costo aprobado.
               </label>
             )}
-            <label className="block">
-              Motivo de registro / cambio
-              <textarea
-                required
-                minLength={5}
-                className={input}
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-              />
-            </label>
-            <p className="text-sm text-amber-800">
-              Editar un recurso aprobado reinicia su aprobación. Los recursos ya
-              programados deben rectificarse desde su despacho.
-            </p>
-            <button disabled={busy} className={button}>
-              {busy ? "Guardando…" : "Guardar asignación"}
-            </button>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="flex flex-1 items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
+                Editar un recurso aprobado reinicia su aprobación. Los recursos ya programados deben rectificarse desde su despacho.
+              </p>
+              <div className="flex gap-2">
+                <button type="button" disabled={busy} className="rounded-lg border px-4 py-2 text-sm" onClick={() => setEditing(undefined)}>
+                  Cancelar
+                </button>
+                <button disabled={busy} className={button}>
+                  {busy ? "Guardando…" : "Guardar asignación"}
+                </button>
+              </div>
+            </div>
           </form>
         </Modal>
       )}
