@@ -1,0 +1,232 @@
+/* Diseño canónico de Recepción, 6 × 4 pulgadas. Se escala como una sola imagen. */
+.wh-package-label {
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  width: 576px !important;
+  height: 384px !important;
+  min-width: 576px !important;
+  max-width: 576px !important;
+  max-height: 384px !important;
+  overflow: hidden !important;
+  border: 1px dashed #6b8198 !important;
+  border-radius: 0 !important;
+  padding: 7.559px !important;
+  margin: 0 !important;
+  background: #fff !important;
+  color: #000 !important;
+  font-family: ui-sans-serif, system-ui, sans-serif !important;
+  font-weight: 400;
+  text-align: left;
+  line-height: normal;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.wh-package-label * {
+  box-sizing: border-box;
+}
+.wh-package-label b,
+.wh-package-label strong {
+  font-weight: 700;
+}
+.wh-package-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 68.031px;
+  min-height: 68.031px;
+  flex: none;
+  border-bottom: 4px solid #002855;
+  padding-bottom: 4px;
+}
+.wh-package-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22%;
+  height: 100%;
+  flex: none;
+  border-right: 1px solid #94a3b8;
+  background: #002855;
+  padding: 4px;
+}
+.wh-package-logo img {
+  max-height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+}
+.wh-package-meta {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+  line-height: 1.25;
+  font-size: 16px;
+}
+.wh-package-meta > div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wh-package-meta > div:first-child {
+  grid-column: span 2;
+  font-size: 18px;
+}
+.wh-package-meta b {
+  color: #002855;
+}
+.wh-package-sku {
+  display: block;
+  flex: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: fit-content;
+  max-width: 52%;
+  height: 34.016px;
+  max-height: 34.016px;
+  margin-top: 7.559px;
+  padding: 0 7.559px;
+  border-radius: 0 6px 6px 0;
+  background: #002855;
+  color: #fff;
+  font-size: 26.457px;
+  line-height: 34.016px;
+}
+.wh-package-description {
+  height: 71.811px;
+  max-height: 71.811px;
+  min-height: 0;
+  margin-top: 7.559px;
+  flex: 1;
+  overflow: hidden;
+  font-size: 18.898px;
+  line-height: 20.409px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.wh-package-barcode {
+  display: block !important;
+  width: 92% !important;
+  height: 83.15px !important;
+  max-height: 83.15px !important;
+  min-height: 83.15px !important;
+  margin: 0 auto !important;
+  flex: none !important;
+}
+.wh-package-code {
+  display: block;
+  flex: none;
+  height: 37.795px;
+  font-family: monospace;
+  font-size: 27.213px;
+  line-height: 37.795px;
+  text-align: center;
+  white-space: nowrap;
+}
+.wh-package-footer {
+  display: grid;
+  flex: none;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 4px;
+  height: 49.134px;
+  min-height: 49.134px;
+  margin-top: 7.559px;
+  border-top: 1.134px solid #7a8793;
+  padding-top: 7.559px;
+}
+.wh-package-document {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.25;
+}
+.wh-package-document > div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wh-package-document b {
+  color: #002855;
+}
+.wh-package-totals {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.wh-package-totals b,
+.wh-package-totals strong {
+  font-size: 30.236px;
+  font-weight: 800;
+  line-height: 1;
+}
+.wh-package-sequence {
+  text-align: right;
+  font-size: 14px;
+}
+.wh-package-preview {
+  width: 100%;
+  overflow: hidden;
+  background: #fff;
+  border-radius: 8px;
+}
+#wh-label-print-root {
+  position: fixed;
+  left: -100000px;
+  top: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: #fff;
+}
+.wh-package-sheet {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  background: #fff;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.wh-package-sheet > .wh-package-label {
+  transform-origin: top left;
+}
+@media print {
+  body:has(#wh-label-print-root) > :not(#wh-label-print-root) {
+    display: none !important;
+  }
+  html:has(#wh-label-print-root),
+  body:has(#wh-label-print-root) {
+    margin: 0 !important;
+    padding: 0 !important;
+    min-width: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+  #wh-label-print-root {
+    position: static !important;
+    display: block !important;
+    left: auto !important;
+    top: auto !important;
+    z-index: auto !important;
+    pointer-events: auto;
+    visibility: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  #wh-label-print-root * {
+    visibility: visible !important;
+  }
+  .wh-package-sheet {
+    break-after: page;
+    page-break-after: always;
+  }
+  .wh-package-sheet:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+}

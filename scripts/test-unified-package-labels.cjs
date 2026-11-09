@@ -1,0 +1,87 @@
+const assert = require("node:assert/strict"),
+  fs = require("node:fs"),
+  ts = require("typescript");
+function load(file) {
+  const m = { exports: {} };
+  new Function(
+    "exports",
+    "module",
+    ts.transpileModule(fs.readFileSync(file, "utf8"), {
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText,
+  )(m.exports, m);
+  return m.exports;
+}
+const { packageLabelData } = load("src/lib/warehouse/package-label.ts");
+const { monochromeRaster, rasterZpl } = load(
+  "src/lib/warehouse/label-raster.ts",
+);
+const row = {
+  package_code: "PKG-ORIGINAL-001",
+  source_document_no: "IPT-1",
+  source_contract_code: "16516",
+  source_lot: "L-1",
+  source_warehouse: "647-04",
+  source_date: "2026-11-09",
+  source_product_code: "P-1",
+  description: "Mercadería con ñ y acentos",
+  quantity: "0.334",
+  weight_kg: "2.5",
+  sequence_no: 3,
+  sequence_total: 3,
+  unit: "UND",
+};
+const receipt = packageLabelData({
+  ...row,
+  contract_code: "16516",
+  customer_name: "Cliente original",
+});
+const reprint = packageLabelData(row, "Cliente original");
+assert.deepEqual(
+  receipt,
+  reprint,
+  "initial, detail, inventory and receipt control normalize the same original fields",
+);
+assert.equal(
+  reprint.quantity,
+  0.334,
+  "no recalculation or floating point drift on reprint",
+);
+assert.equal(
+  packageLabelData({ ...row, weight_kg: null }).weight_kg,
+  null,
+  "missing weight is not zero",
+);
+assert.throws(() => packageLabelData({ ...row, package_code: "" }), /código/);
+const data = new Uint8ClampedArray([
+  0, 40, 85, 255, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255,
+  255, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 255,
+]);
+const { bytes, bytesPerRow } = monochromeRaster(data, 9, 1);
+assert.equal(bytesPerRow, 2);
+assert.deepEqual(
+  [...bytes],
+  [0x94, 0x80],
+  "white/transparent pixels and padding remain white, navy/black print",
+);
+const zpl = rasterZpl(data, 9, 1);
+assert.match(zpl, /\^PW9\^LL1/);
+assert.match(zpl, /\^GFA,2,2,2,9480/);
+assert.throws(() => rasterZpl(data, 100, 100), /inválida/);
+console.log(
+  "PASS: original package identity and data, decimal quantities, customer/OT normalization, missing weight, thermal raster bits, transparent pixels, row padding and ZPL dimensions",
+);
+;(async()=>{
+ const module={exports:{}};new Function('require','exports','module',ts.transpileModule(fs.readFileSync('src/lib/warehouse/load-package-label.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText)(()=>({packageLabelData}),module.exports,module)
+ const {loadPackageLabels,hydratePackageLabel}=module.exports
+ const raw=[{...row,source_movement_key:'movement-1'},{...row,package_code:'PKG-ORIGINAL-002',quantity:'0.333',source_movement_key:'movement-1'}]
+ const db={from:()=>({select:()=>({in:async()=>({data:[...raw].reverse(),error:null})})}),rpc:async()=>({data:[{source_movement_key:'movement-1',customer_name:'Cliente original'}],error:null})}
+ const actual=await loadPackageLabels(db,raw.map(r=>r.package_code))
+ assert.deepEqual(actual,[packageLabelData(raw[0],'Cliente original'),packageLabelData(raw[1],'Cliente original')],'first print reads persisted decimals/customer and preserves requested order')
+ await assert.rejects(loadPackageLabels({...db,from:()=>({select:()=>({in:async()=>({data:[],error:null})})})},[row.package_code]),/bulto original/,'missing original is not reconstructed with guessed data')
+ await assert.rejects(hydratePackageLabel({...db,rpc:async()=>({data:null,error:new Error('Sin acceso')})},raw[0]),/Sin acceso/,'customer read errors cannot silently change reprint content')
+ console.log('PASS: original database values, authoritative customer, requested print order, missing records and access errors')
+})().catch(e=>{console.error(e);process.exitCode=1})

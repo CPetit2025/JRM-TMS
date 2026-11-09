@@ -1,0 +1,112 @@
+"use client";
+/* eslint-disable @next/next/no-img-element -- El mismo logo original se rasteriza y se imprime sin optimización de tamaño. */
+import { useEffect, useRef, useState } from "react";
+import { Code128Barcode } from "./Code128Barcode";
+import type { PackageLabelData } from "@/lib/warehouse/package-label";
+import type { LabelFormat } from "@/lib/warehouse/label-format";
+import "./package-label.css";
+/** Única plantilla: recepción, vista previa, inventario, detalle y reimpresión. */
+export function PackageLabel({ label }: { label: PackageLabelData }) {
+  return (
+    <article
+      className="wh-package-label"
+      data-package-code={label.package_code}
+    >
+      <div className="wh-package-head">
+        <div className="wh-package-logo">
+          <img
+            src="/logo-jrm.png"
+            alt="JRM Soluciones Integrales de Almacenamiento"
+          />
+        </div>
+        <div className="wh-package-meta">
+          <div>
+            <b>Cliente:</b> <strong>{label.customer_name}</strong>
+          </div>
+          <div>
+            <b>OT:</b> <strong>{label.contract_code || "—"}</strong>
+          </div>
+          <div>
+            <b>Lote:</b>{" "}
+            <strong>
+              {label.source_lot || "—"} · {label.source_warehouse}
+            </strong>
+          </div>
+        </div>
+      </div>
+      <b className="wh-package-sku">{label.source_product_code}</b>
+      <div className="wh-package-description">{label.description}</div>
+      <Code128Barcode
+        value={label.package_code}
+        height={84}
+        className="wh-package-barcode"
+      />
+      <b className="wh-package-code">{label.package_code}</b>
+      <div className="wh-package-footer">
+        <div className="wh-package-document">
+          <div>
+            <b>IPT:</b> {label.source_document_no || "—"}
+          </div>
+          <div>
+            <b>Fecha:</b> {label.source_date || "—"}
+          </div>
+        </div>
+        <div className="wh-package-totals">
+          <b>
+            {label.quantity} {label.unit || ""}
+          </b>
+          <strong>
+            ·{" "}
+            {label.weight_kg === null
+              ? "Peso por registrar"
+              : label.weight_kg + " kg"}
+          </strong>
+        </div>
+        <div className="wh-package-sequence">
+          {label.sequence_no}/{label.sequence_total}
+        </div>
+      </div>
+    </article>
+  );
+}
+/** La vista previa reduce la misma etiqueta completa, sin alterar tipografía ni distribución. */
+export function PackageLabelPreview({
+  label,
+  format,
+}: {
+  label: PackageLabelData;
+  format: Pick<LabelFormat, "width_mm" | "height_mm">;
+}) {
+  const ref = useRef<HTMLDivElement>(null),
+    [width, setWidth] = useState(0);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const observer = new ResizeObserver((entries) =>
+      setWidth(entries[0].contentRect.width),
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  const scale = width
+    ? Math.min(width / 576, (width * format.height_mm) / format.width_mm / 384)
+    : 0;
+  return (
+    <div
+      ref={ref}
+      className="wh-package-preview"
+      style={{ aspectRatio: `${format.width_mm}/${format.height_mm}` }}
+    >
+      <div
+        style={{
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+          width: 576,
+          height: 384,
+        }}
+      >
+        <PackageLabel label={label} />
+      </div>
+    </div>
+  );
+}

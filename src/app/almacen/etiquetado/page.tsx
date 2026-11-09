@@ -4,8 +4,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { Printer, RotateCcw, ScanLine, ClipboardCheck, X, RefreshCw, UserRound, Weight, Package } from 'lucide-react'
-import { Code128Barcode } from '@/components/warehouse/Code128Barcode'
-import { fitScale, toDots, useLabelFormat } from '@/lib/warehouse/label-format'
+import { PackageLabelPreview } from '@/components/warehouse/PackageLabel'
+import type { PackageLabelData as Label } from '@/lib/warehouse/package-label'
+import { loadPackageLabels } from '@/lib/warehouse/load-package-label'
+import { printPackageLabels } from '@/components/warehouse/print-package-labels'
+import { useLabelFormat } from '@/lib/warehouse/label-format'
 
 type Receipt = {
   receipt_key: string; document_no: string; fecha: string; document_type: string | null; color: string | null; source_updated_at: string | null; bodega: string; lote: string | null
@@ -14,14 +17,7 @@ type Receipt = {
   physical_quantity: number | null; variance: number | null; variance_reason: string | null
   validation_status: 'PENDING' | 'STALE' | 'VALIDATED'; label_count: number; labeled_qty: number; unprinted_count: number; pending_labels: Label[]; label_status: string
 }
-type BrowserPrinter = { send: (data: string, onSuccess: () => void, onError: (error?: { message?: string }) => void) => void }
-type BrowserPrintApi = { getDefaultDevice: (kind: string, onSuccess: (device: BrowserPrinter) => void, onError: () => void) => void }
-type Label = {
-  package_code: string; source_document_no: string; source_lot: string; source_product_code: string
-  description: string; quantity: number; weight_kg: number | null; unit: string | null
-  sequence_no: number; sequence_total: number; source_warehouse: string; source_date: string
-  contract_code: string | null; customer_name: string
-}
+
 
 export default function WarehouseLabelingPage() {
   const [query, setQuery] = useState('')
@@ -39,10 +35,7 @@ export default function WarehouseLabelingPage() {
   const [capacity, setCapacity] = useState('')
   const [labels, setLabels] = useState<Label[]>([])
   const labelFormat = useLabelFormat('PAQUETE')
-  // El diseño de la etiqueta es de 6 x 4 pulg (152,4 x 101,6 mm); se escala al formato configurado.
-  const labelZoom = fitScale(labelFormat, 152.4, 101.6)
   const [printedLabelCodes, setPrintedLabelCodes] = useState<string[]>([])
-  const [printTarget, setPrintTarget] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState('')
@@ -163,7 +156,6 @@ export default function WarehouseLabelingPage() {
     setBusy(true); setError(''); setMessage('')
     const per = capacity ? Number(capacity) : null
     const packageCount = Number(count)
-    const physical = Number(selected.physical_quantity)
     const { data, error: rpcError } = await createClient().rpc('wh_label_package', {
       p_receipt_key: selected.receipt_key,
       p_package_count: packageCount,
@@ -171,28 +163,17 @@ export default function WarehouseLabelingPage() {
     })
     if (rpcError) { setError(rpcError.message); setBusy(false); return }
     const codes = (data?.package_codes || []) as string[]
-    let remaining = physical
-    const generated = codes.map((package_code, index): Label => {
-      const quantity = per ? Math.min(per, remaining) : index === codes.length - 1 ? remaining : Math.round(physical / packageCount * 1000) / 1000
-      remaining -= quantity
-      const weight = selected.weight_kg !== null && selected.weight_kg !== undefined && Number(selected.quantity) > 0
-        ? Number((selected.weight_kg * quantity / Number(selected.quantity)).toFixed(3)) : null
-      return {
-        package_code, source_document_no: selected.document_no, source_lot: selected.lote || '',
-        source_product_code: selected.product_code, description: selected.description || selected.product_code,
-        quantity, weight_kg: weight, unit: selected.unit, sequence_no: index + 1,
-        sequence_total: codes.length, source_warehouse: selected.bodega, source_date: selected.fecha,
-        contract_code: selected.contract_code, customer_name: selected.customer_name || 'Cliente por registrar',
-      }
-    })
+    let generated:Label[]
+    try{generated=await loadPackageLabels(createClient(),codes)}catch(e){setError(e instanceof Error?e.message:String(e));setBusy(false);return}
     setLabels(generated); setPrintedLabelCodes([]); setShowPreview(false)
     setMessage(`${codes.length} etiqueta(s) únicas generadas desde el conteo físico del IPT ${selected.document_no}.`)
     setBusy(false)
   }
 
   const print = async (targetLabels: Label[] = labels) => {
-    setError('')
-    if (!targetLabels.length) return
+    if(busy||!targetLabels.length)return
+    setBusy(true);setError('')
+    try {
     const alreadyPrinted = targetLabels.filter(label => printedLabelCodes.includes(label.package_code))
     const newLabels = targetLabels.filter(label => !printedLabelCodes.includes(label.package_code))
     if (alreadyPrinted.length) {
@@ -210,24 +191,9 @@ export default function WarehouseLabelingPage() {
       void search()
     }
     setPrintedLabelCodes(current => [...new Set([...current, ...targetLabels.map(label => label.package_code)])])
-    const fallbackPrint = () => {
-      setSelected(null)
-      setShowPreview(true)
-      setPrintTarget(targetLabels.length === 1 ? targetLabels[0].package_code : null)
-      window.addEventListener('afterprint', () => setPrintTarget(null), { once: true })
-      // Let React commit the selected label set before Chrome captures the print tree.
-      window.requestAnimationFrame(() => window.requestAnimationFrame(() => window.print()))
-    }
-    const browser = (window as Window & { BrowserPrint?: BrowserPrintApi }).BrowserPrint
-    if (browser?.getDefaultDevice) {
-      browser.getDefaultDevice('printer', device => {
-        const clean = (value: string) => value.replace(/[\^~]/g, ' ')
-        const pw = toDots(labelFormat.width_mm, labelFormat.dpi), ll = toDots(labelFormat.height_mm, labelFormat.dpi)
-        const k = Math.min(pw / 1218, ll / 812), d = (v: number) => Math.max(1, Math.round(v * k))
-        const zpl = targetLabels.map(label => `^XA^PW${pw}^LL${ll}^FO${d(45)},${d(35)}^A0N,${d(52)},${d(52)}^FD${clean(label.source_product_code)}^FS^FO${d(45)},${d(105)}^A0N,${d(38)},${d(38)}^FD${clean(label.description).slice(0, 62)}^FS^FO${d(45)},${d(190)}^BY${d(3)},3,${d(210)}^BCN,${d(210)},Y,N,N^FD${label.package_code}^FS^FO${d(45)},${d(430)}^A0N,${d(42)},${d(42)}^FD${label.package_code}^FS^FO${d(45)},${d(505)}^A0N,${d(32)},${d(32)}^FDIPT ${clean(label.source_document_no)}  Fecha ${clean(label.source_date)}^FS^FO${d(45)},${d(565)}^A0N,${d(32)},${d(32)}^FDOT ${clean(label.contract_code || '-')}  Lote ${clean(label.source_lot || '-')}^FS^FO${d(45)},${d(625)}^A0N,${d(30)},${d(30)}^FD${clean(label.customer_name).slice(0, 42)}  ${clean(label.source_warehouse)}^FS^FO${d(45)},${d(700)}^A0N,${d(48)},${d(48)}^FD${label.quantity} ${clean(label.unit || '')}  ${label.weight_kg === null ? 'Peso por registrar' : `${label.weight_kg} kg`}  ${label.sequence_no}/${label.sequence_total}^FS^XZ`).join('')
-        device.send(zpl, () => setMessage('Etiquetas enviadas a Zebra.'), error => { setError(String(error?.message || error)); fallbackPrint() })
-      }, () => { setError('No se detectó Zebra Browser Print; se abrirá la impresión PDF del navegador.'); fallbackPrint() })
-    } else fallbackPrint()
+      const method=await printPackageLabels(targetLabels,labelFormat)
+      setMessage(method==='ZEBRA'?'Etiquetas enviadas a Zebra con el mismo diseño de la vista previa.':'Impresión preparada con el mismo diseño de la vista previa.')
+    } catch(e) {setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}
   }
 
   const physicalToValidate = Number(physicalQuantity)
@@ -383,7 +349,7 @@ export default function WarehouseLabelingPage() {
         </div>
         <footer className="flex shrink-0 flex-col gap-1.5 border-t border-slate-200 bg-white p-2 sm:flex-row sm:items-center sm:justify-between sm:px-4">
           <p className="hidden text-xs text-slate-500 sm:block">Conteo físico → distribución → LPN → impresión</p>
-          <div className="flex gap-2">{labels.length > 0 && <button type="button" onClick={() => { setSelected(null); setShowPreview(true) }} className="min-h-10 flex-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855] sm:flex-none">Vista previa</button>}<button type="button" onClick={() => setSelected(null)} className="min-h-10 flex-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 sm:flex-none">Cerrar</button><button type="button" disabled={!labels.length} onClick={() => void print()} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"><Printer size={16}/>{labelsPrinted ? 'Reimprimir lote' : hasPrintedLabels ? 'Imprimir pendientes' : 'Imprimir lote'}</button></div>
+          <div className="flex gap-2">{labels.length > 0 && <button type="button" onClick={() => { setSelected(null); setShowPreview(true) }} className="min-h-10 flex-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855] sm:flex-none">Vista previa</button>}<button type="button" onClick={() => setSelected(null)} className="min-h-10 flex-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 sm:flex-none">Cerrar</button><button type="button" disabled={busy||!labels.length} onClick={() => void print()} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"><Printer size={16}/>{labelsPrinted ? 'Reimprimir lote' : hasPrintedLabels ? 'Imprimir pendientes' : 'Imprimir lote'}</button></div>
         </footer>
       </div>
     </div>, document.body)}
@@ -394,57 +360,18 @@ export default function WarehouseLabelingPage() {
           <div><h2 id="wms-label-preview-title" className="font-bold text-[#002855]">Vista previa de etiquetas · {labels.length}</h2><p className="text-xs text-slate-500">Revise cada bulto, cantidad y código LPN antes de imprimir.</p></div>
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => setShowPreview(false)} className="min-h-10 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">Cerrar vista previa</button>
-            <button type="button" onClick={() => void print()} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#002855] px-4 py-2.5 text-sm font-bold text-white"><Printer size={16} />{labelsPrinted ? 'Reimprimir lote' : 'Imprimir lote'}</button>
+            <button type="button" disabled={busy} onClick={() => void print()} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#002855] px-4 py-2.5 text-sm font-bold text-white"><Printer size={16} />{labelsPrinted ? 'Reimprimir lote' : 'Imprimir lote'}</button>
             <button type="button" aria-label="Cerrar vista previa" onClick={() => setShowPreview(false)} className="grid h-10 w-10 place-items-center rounded-lg border border-slate-300 text-slate-600"><X size={18}/></button>
           </div>
         </header>
         <div className="wms-label-list min-h-0 flex-1 overflow-y-auto p-3 sm:p-6 print:overflow-visible print:p-0">
-          <div className="grid gap-3 sm:grid-cols-2 print:block">{labels.filter(label => printTarget === null || label.package_code === printTarget).map(label => (
-            <article key={label.package_code} className="wh-label flex aspect-[3/2] min-w-0 flex-col overflow-hidden rounded-lg border-2 border-dashed border-slate-500 bg-white p-2.5 text-black sm:p-3">
-              <div className="wh-label-head flex min-h-0 items-center gap-2 border-b-4 border-[#002855] pb-1">
-                <div className="flex h-full w-[22%] shrink-0 items-center justify-center border-r border-slate-400 bg-[#002855] p-1">
-                  <img src="/logo-jrm.png" alt="JRM Soluciones Integrales de Almacenamiento" className="max-h-full max-w-full object-contain" />
-                </div>
-                <div className="grid min-w-0 flex-1 grid-cols-2 gap-x-2 gap-y-1 leading-tight">
-                  <div className="col-span-2 truncate text-sm sm:text-lg"><b className="text-[#002855]">Cliente:</b> <span className="font-bold">{label.customer_name || 'Por registrar'}</span></div>
-                  <div className="truncate text-xs sm:text-base"><b className="text-[#002855]">OT:</b> <span className="font-bold">{label.contract_code || '—'}</span></div>
-                  <div className="truncate text-xs sm:text-base"><b className="text-[#002855]">Lote:</b> <span className="font-bold">{label.source_lot || '—'} · {label.source_warehouse}</span></div>
-                </div>
-              </div>
-              <b className="wh-label-sku mt-1 max-w-[52%] truncate rounded-r-md bg-[#002855] px-2 py-1 text-base text-white sm:text-2xl">{label.source_product_code}</b>
-              <div className="wh-label-description mt-1 line-clamp-2 min-h-0 flex-1 overflow-hidden text-xs leading-tight sm:text-base">{label.description}</div>
-              <Code128Barcode value={label.package_code} height={84} className="wh-label-barcode mx-auto my-0.5 h-9 w-[92%] shrink-0" />
-              <b className="wh-label-lpn block shrink-0 text-center font-mono text-sm sm:text-xl">{label.package_code}</b>
-              <div className="wh-label-footer grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 border-t border-slate-400 pt-1">
-                <div className="min-w-0 text-[9px] leading-tight sm:text-xs"><div className="truncate"><b className="text-[#002855]">IPT:</b> {label.source_document_no}</div><div><b className="text-[#002855]">Fecha:</b> {label.source_date}</div></div>
-                <div className="flex min-w-0 items-baseline justify-center gap-1 whitespace-nowrap"><b className="wh-label-quantity text-lg font-extrabold leading-none sm:text-2xl">{label.quantity} {label.unit || ''}</b><span className="wh-label-weight text-lg font-extrabold leading-none text-black sm:text-2xl">· {label.weight_kg === null ? 'Peso por registrar' : label.weight_kg + ' kg'}</span></div>
-                <div className="text-right text-[10px] sm:text-sm">{label.sequence_no}/{label.sequence_total}<button type="button" onClick={() => void print([label])} className="print:hidden mt-1 block rounded-md border border-slate-300 px-2 py-1 text-[10px] font-bold text-[#002855]">{printedLabelCodes.includes(label.package_code) ? 'Reimprimir etiqueta' : 'Imprimir etiqueta'}</button></div>
-              </div>
-            </article>
-          ))}</div>
+          <div className="grid gap-3 sm:grid-cols-2">{labels.map(label=><div key={label.package_code}>
+            <PackageLabelPreview label={label} format={labelFormat}/>
+            <button type="button" disabled={busy} onClick={()=>void print([label])} className="mt-2 rounded-md border border-slate-300 px-3 py-2 text-xs font-bold text-[#002855]">{printedLabelCodes.includes(label.package_code)?'Reimprimir etiqueta':'Imprimir etiqueta'}</button>
+          </div>)}</div>
         </div>
       </section>
     </div>, document.body)}
-    <style jsx global>{`@page{size:${labelFormat.width_mm}mm ${labelFormat.height_mm}mm;margin:0}
-    @media print{
-      html,body{width:${labelFormat.width_mm}mm!important;height:${labelFormat.height_mm}mm!important;min-width:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
-      body>:not(#wms-label-preview){display:none!important}
-      body *{visibility:hidden!important}
-      #wms-label-preview,#wms-label-preview *{visibility:visible!important}
-      #wms-label-preview{position:absolute!important;inset:0 auto auto 0!important;z-index:auto!important;display:block!important;width:${labelFormat.width_mm}mm!important;height:${labelFormat.height_mm}mm!important;max-width:none!important;max-height:none!important;overflow:hidden!important;margin:0!important;padding:0!important;background:#fff!important}
-      #wms-label-preview>section{display:block!important;width:${labelFormat.width_mm}mm!important;max-width:none!important;height:${labelFormat.height_mm}mm!important;max-height:none!important;overflow:hidden!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
-      #wms-label-preview header{display:none!important}
-      #wms-label-preview .wms-label-list{display:block!important;width:${labelFormat.width_mm}mm!important;height:${labelFormat.height_mm}mm!important;max-height:none!important;overflow:hidden!important;margin:0!important;padding:0!important}
-      #wms-label-preview button{display:none!important}
-      .wh-label{box-sizing:border-box;position:relative;display:flex!important;flex-direction:column;break-inside:avoid!important;page-break-inside:avoid!important;break-after:auto!important;page-break-after:auto!important;width:6in!important;height:4in!important;max-width:6in!important;max-height:4in!important;aspect-ratio:auto;zoom:${labelZoom}!important;border:1px dashed #6b8198!important;border-radius:0!important;padding:2mm!important;margin:0!important;overflow:hidden!important}
-      .wh-label+.wh-label{break-before:page!important;page-break-before:always!important}
-      .wh-label-head{height:18mm!important;min-height:18mm!important;flex:none!important}
-      .wh-label-sku{height:9mm!important;max-height:9mm!important;margin-top:2mm!important;padding:0 2mm!important;font-size:7mm!important;line-height:9mm!important}
-      .wh-label-description{height:19mm!important;max-height:19mm!important;margin-top:2mm!important;font-size:5mm!important;line-height:5.4mm!important}
-      .wh-label-barcode{height:22mm!important;max-height:22mm!important;min-height:22mm!important;margin:0 auto!important}
-      .wh-label-lpn{height:10mm!important;font-size:7.2mm!important;line-height:10mm!important}
-      .wh-label-footer{height:13mm!important;min-height:13mm!important;margin-top:2mm!important;padding-top:2mm!important;border-top:0.3mm solid #7a8793!important}
-      .wh-label-quantity,.wh-label-weight{font-size:8mm!important;line-height:1!important;font-weight:800!important}
-    }`}</style>
+
   </div>
 }

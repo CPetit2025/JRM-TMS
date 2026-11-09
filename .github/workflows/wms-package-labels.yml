@@ -1,0 +1,46 @@
+name: WMS unified package labels
+on:
+  pull_request:
+    branches: [feature/warehouse-wms-portal]
+    paths:
+      - 'src/components/warehouse/**'
+      - 'src/lib/warehouse/**'
+      - 'src/app/almacen/**'
+      - 'scripts/test-unified-package-labels*'
+      - 'package*.json'
+      - '.github/workflows/wms-package-labels.yml'
+permissions:
+  contents: read
+concurrency:
+  group: wms-labels-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  labels:
+    runs-on: ubuntu-latest
+    env:
+      LABEL_ARTIFACT_DIR: artifacts/unified-package-labels
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/test-unified-package-labels.cjs
+      - run: node scripts/test-unified-package-labels-browser.cjs
+      - run: node scripts/test-wms-isolation.mjs
+      - run: node scripts/test-wms-bootstrap.cjs
+      - run: npm run typecheck
+      - name: Build dedicated WMS
+        run: npm run build
+        env:
+          NEXT_PUBLIC_DEPLOYMENT_SYSTEM: wms
+          NEXT_PUBLIC_SUPABASE_URL: https://glecgvomkaqmkfkhtxhi.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: qa-build-only
+          SUPABASE_SERVICE_ROLE_KEY: qa-build-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wms-package-label-evidence
+          path: ${{ env.LABEL_ARTIFACT_DIR }}
