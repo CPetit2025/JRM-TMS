@@ -32,3 +32,9 @@ Al elegir una **hoja**, se usa el diálogo de impresora/PDF incluso con BrowserP
 - TypeScript, lint de archivos modificados y build WMS; CI guarda capturas, PDF y ZPL.
 
 El control global `check:guards` de la rama WMS presenta incidencias C55 previas en migraciones de recepción/picking. Este cambio no altera SQL; se verifica la base WMS independiente y su aislamiento. La Zebra se simula: la prueba no sustituye una impresión física en el almacén.
+
+## Responsable de recepción
+
+Encima de IPT y fecha se imprime **Responsable de recepción: Nombre Apellido**. Se usa el usuario original que generó el bulto, registrado por el servidor con `auth.uid()` en `wh_packages.created_by`. No se atribuye una reimpresión a quien la solicita después. El nombre completo se resuelve desde el perfil de ese usuario original; si no existe nombre disponible se muestra «No registrado», sin inventar un responsable.
+
+La consulta `wh_package_label_responsibles` devuelve únicamente código de bulto y nombre/apellido. Exige sesión activa, los mismos permisos de lectura de bultos, sede autorizada y hasta 100 códigos por llamada. No cambia la RLS de perfiles ni expone correos. Recepción hidrata también las etiquetas pendientes con estos datos, igual que detalle, inventario y control de recepcionados. Se conservan las medidas, orientación y posición de impresión.

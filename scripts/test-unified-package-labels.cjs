@@ -78,11 +78,13 @@ console.log(
  const module={exports:{}};new Function('require','exports','module',ts.transpileModule(fs.readFileSync('src/lib/warehouse/load-package-label.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText)(()=>({packageLabelData}),module.exports,module)
  const {loadPackageLabels,hydratePackageLabel}=module.exports
  const raw=[{...row,source_movement_key:'movement-1'},{...row,package_code:'PKG-ORIGINAL-002',quantity:'0.333',source_movement_key:'movement-1'}]
- const db={from:()=>({select:()=>({in:async()=>({data:[...raw].reverse(),error:null})})}),rpc:async()=>({data:[{source_movement_key:'movement-1',customer_name:'Cliente original'}],error:null})}
+ const db={from:()=>({select:()=>({in:async()=>({data:[...raw].reverse(),error:null})})}),rpc:async(name)=>({data:name==='wh_package_label_responsibles'?raw.map(r=>({package_code:r.package_code,responsible_name:'Carlos Petit'})):[{source_movement_key:'movement-1',customer_name:'Cliente original'}],error:null})}
  const actual=await loadPackageLabels(db,raw.map(r=>r.package_code))
- assert.deepEqual(actual,[packageLabelData(raw[0],'Cliente original'),packageLabelData(raw[1],'Cliente original')],'first print reads persisted decimals/customer and preserves requested order')
+ assert.deepEqual(actual,[packageLabelData(raw[0],'Cliente original','Carlos Petit'),packageLabelData(raw[1],'Cliente original','Carlos Petit')],'first print reads persisted decimals/customer and preserves requested order')
  await assert.rejects(loadPackageLabels({...db,from:()=>({select:()=>({in:async()=>({data:[],error:null})})})},[row.package_code]),/bulto original/,'missing original is not reconstructed with guessed data')
  await assert.rejects(hydratePackageLabel({...db,rpc:async()=>({data:null,error:new Error('Sin acceso')})},raw[0]),/Sin acceso/,'customer read errors cannot silently change reprint content')
+ assert.equal(actual[0].reception_responsible_name,'Carlos Petit','responsible is original creator, never current reprint user');
+ await assert.rejects(hydratePackageLabel({...db,rpc:async(name)=>name==='wh_package_label_responsibles'?{data:null,error:new Error('Sin acceso al responsable')}:db.rpc(name)},raw[0]),/Sin acceso al responsable/);
  console.log('PASS: original database values, authoritative customer, requested print order, missing records and access errors')
 })().catch(e=>{console.error(e);process.exitCode=1})
 

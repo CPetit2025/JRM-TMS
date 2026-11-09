@@ -41,7 +41,8 @@ const profile = {
   id: uid,
   is_active: true,
   employee_type: "STAFF",
-  first_name: "QA",
+  first_name: "Carlos",
+  last_name: "Petit",
   roles: {
     name: "Administrador",
     permissions: ["almacen-etiquetado", "almacen-supervisor"],
@@ -49,6 +50,7 @@ const profile = {
 };
 const pkg = {
   package_code: code,
+  created_by: uid,
   source_document_no: "IPT-001",
   source_contract_code: "16516",
   source_lot: "LOTE-01",
@@ -124,8 +126,11 @@ const server = http.createServer(async (req, res) => {
     out = req.headers.accept?.includes("object") ? profile : [profile];
   else if (path.endsWith("/wh_label_formats")) out = [format];
   else if (path.endsWith("/wh_label_settings")) out = new URL(req.url, "http://localhost").searchParams.get("select") === "kind,format_id" ? [{kind:"PAQUETE",format_id:format.id}] : { format };
-  else if (path.endsWith("/wh_packages"))
-    out = req.headers.accept?.includes("object") ? pkg : [pkg];
+  else if (path.endsWith("/wh_packages")) {
+    const filter=new URL(req.url,'http://localhost').searchParams.get('package_code')||'';
+    out=req.headers.accept?.includes('object')?pkg:filter?receipt.pending_labels.filter(r=>filter.includes(r.package_code)).map(r=>({...pkg,...r})):[pkg];
+  }
+  else if (path.endsWith('/rpc/wh_package_label_responsibles')) out=p.p_package_codes.map(package_code=>({package_code,responsible_name:'Carlos Petit'}));
   else if (path.endsWith("/rpc/wh_receipt_candidates")) out = [receipt];
   else if (path.endsWith("/rpc/wh_receipt_control_customers"))
     out = [{ source_movement_key: key, customer_name: label.customer_name }];
@@ -263,6 +268,10 @@ const server = http.createServer(async (req, res) => {
       .getByRole("button", { name: "Vista previa", exact: true })
       .click();
     await page.locator(".wh-package-label").waitFor();
+    const responsible=page.locator('.wh-package-responsible');
+    assert.match(await responsible.innerText(),/Responsable de recepción: Carlos Petit/);
+    const responsiblePosition=await page.locator('.wh-package-label').evaluate(n=>{const r=n.querySelector('.wh-package-responsible').getBoundingClientRect(),ipt=n.querySelector('.wh-package-document').getBoundingClientRect();return r.bottom<=ipt.top+1});
+    assert.ok(responsiblePosition,'responsible appears above IPT');
     const badges = await page.locator('.wh-package-label').evaluate(n => {
       const sku=n.querySelector('.wh-package-sku'), lot=n.querySelector('.wh-package-lot');
       const a=sku.getBoundingClientRect(), b=lot.getBoundingClientRect();
@@ -419,6 +428,7 @@ const server = http.createServer(async (req, res) => {
     await config.getByText('Etiqueta actual: Zebra 6 x 4',{exact:false}).waitFor();
     await chooseSetting('Formato de la etiqueta de bulto',/^A5 horizontal/);await config.getByText('Etiqueta actual: A5 horizontal',{exact:false}).waitFor();
     await openLabels();await page.getByRole('button',{name:'Imprimir lote',exact:true}).click();await printed();
+    assert.match(await page.locator('#wh-label-print-root .wh-package-responsible').first().innerText(),/Carlos Petit/,'switching logged-in user does not replace original responsible');
     assert.ok(await page.locator('.wh-package-sheet').first().evaluate(n=>{const s=n.getBoundingClientRect(),l=n.querySelector('.wh-package-label').getBoundingClientRect();return Math.abs(s.width-l.width)<.2&&Math.abs(s.height-l.height)<.2}),'A5 horizontal coverage');
     await page.emulateMedia({media:'print'});const horizontalPdf=await page.pdf({path:out+'/etiquetas-a5-horizontal.pdf',preferCSSPageSize:true,printBackground:true});await page.emulateMedia({media:'screen'});await done();
     const horizontalBox=pdfBox(horizontalPdf);assert.ok(Math.abs(horizontalBox[2]-210*72/25.4)<1&&Math.abs(horizontalBox[3]-148*72/25.4)<1,'PDF is A5 horizontal');
