@@ -5,7 +5,7 @@ import { FormEvent, use, useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, CheckCircle2, Loader2, Printer, ScanLine, Search, Tag, Undo2 } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
-import { printPackageLabels } from '@/components/warehouse/print-package-labels'
+import { printPackageLabels, validatePackageLabelPrint } from '@/components/warehouse/print-package-labels'
 import { loadPackageLabel } from '@/lib/warehouse/load-package-label'
 import { useLabelFormat } from '@/lib/warehouse/label-format'
 import { CAMPAIGN_STATE, INVENTORY_TYPE, RESULT_STYLE, fmtDate, fmtN, type Campaign, type CountLine, type ExpectedLine, type SummaryRow } from '@/lib/warehouse/inventory'
@@ -80,6 +80,7 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
   const labelRotulo = async (e: FormEvent, confirmOver = false) => {
     e.preventDefault()
     if (!pick) return
+    try { validatePackageLabelPrint(labelFormat) } catch(e) { setError(e instanceof Error ? e.message : String(e)); return }
     const d = await run(() => createClient().rpc('wh_count_label', {
       p_campaign: id, p_linea: pick.linea, p_quantity: Number(rot.qty), p_weight_kg: rot.kg ? Number(rot.kg) : null, p_zone: zone || null,
       p_ipt_doc: rot.doc.trim() || null, p_seq: rot.seq ? Number(rot.seq) : null, p_total: rot.total ? Number(rot.total) : null, p_confirm_over: confirmOver, p_client_event_id: event(),
@@ -96,6 +97,7 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
     if(!reason?.trim())return
     setBusy(true);setError('')
     try{
+      validatePackageLabelPrint(labelFormat)
       const db=createClient(),label=await loadPackageLabel(db,l.package_code)
       const {error}=await db.rpc('wh_reprint_label',{p_package_code:label.package_code,p_reason:reason.trim()})
       if(error)throw error

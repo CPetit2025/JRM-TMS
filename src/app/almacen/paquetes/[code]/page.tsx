@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ArrowLeft, PackageCheck } from "lucide-react";
 import { usePermissions } from "@/hooks/usePermissions";
 import { PackageLabelPreview } from "@/components/warehouse/PackageLabel";
-import { printPackageLabels } from "@/components/warehouse/print-package-labels";
+import { printPackageLabels, validatePackageLabelPrint } from "@/components/warehouse/print-package-labels";
 import { hydratePackageLabel } from "@/lib/warehouse/load-package-label";
 import type { PackageLabelData } from "@/lib/warehouse/package-label";
 import { useLabelFormat } from "@/lib/warehouse/label-format";
@@ -80,6 +80,7 @@ export default function PackageDetail({
   }, [load]);
   const reprint = async () => {
     if (!row || !label || busy) return;
+    try { validatePackageLabelPrint(labelFormat) } catch(e) { setError(e instanceof Error ? e.message : String(e)); return }
     const reason = window.prompt("Motivo de reimpresión de esta etiqueta:");
     if (!reason?.trim()) return;
     setBusy(true);
