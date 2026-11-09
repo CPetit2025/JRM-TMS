@@ -204,7 +204,7 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
           <button type="button" disabled={busy} onClick={close} className={`${btn} bg-emerald-700 text-white`}><CheckCircle2 size={16}/>Cerrar inventario</button>
         </span>}
       </div>
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white"><table className="w-full text-left text-sm">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white"><table className="min-w-[820px] lg:min-w-0 w-full text-left text-sm">
         <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-600"><tr>
           {isSupervisor && open && <th className="px-3 py-2"/>}<th className="px-3 py-2">OT</th><th className="px-3 py-2">Lote</th><th className="px-3 py-2">Producto</th>
           <th className="px-3 py-2 text-right">ERP</th><th className="px-3 py-2 text-right">Contado</th><th className="px-3 py-2 text-right">Diferencia</th><th className="px-3 py-2">Resultado</th>{open && isSupervisor && <th className="px-3 py-2">Motivo</th>}

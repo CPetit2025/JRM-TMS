@@ -61,7 +61,7 @@ export default function WarehouseErpStockPage() {
       <header className="flex items-center gap-2 border-b p-3"><Database size={16} className="text-blue-700"/><h2 className="font-bold text-[#002855]">Lotes · {fmt(rows.length, 0)}{rows.length >= 2000 ? ' (primeros 2.000: afine la búsqueda)' : ''}</h2></header>
       {loading ? <p className="p-8 text-center text-sm text-slate-500">Cargando stock…</p>
         : !data?.import_id ? <p className="p-8 text-center text-sm text-slate-500">Todavía no hay una carga del Stock Bodega Despacho.</p>
-        : <div className="overflow-x-auto"><table className="w-full text-left text-sm">
+        : <div className="overflow-x-auto"><table className="min-w-[860px] lg:min-w-0 w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-600"><tr>
             <th className="px-3 py-2">Bodega</th><th className="px-3 py-2">OT</th><th className="px-3 py-2">Cliente</th><th className="px-3 py-2">Lote</th><th className="px-3 py-2">Producto</th>
             <th className="px-3 py-2 text-right">Stock</th><th className="px-3 py-2 text-right">Falla</th><th className="px-3 py-2 text-right">Comprometido</th><th className="px-3 py-2 text-right">kg</th>

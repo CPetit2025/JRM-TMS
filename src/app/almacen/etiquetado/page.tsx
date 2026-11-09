@@ -269,7 +269,7 @@ export default function WarehouseLabelingPage() {
         <button disabled={searching || query.trim().length < 2} onClick={() => void search()} className="rounded-lg bg-[#002855] px-4 text-sm font-bold text-white disabled:opacity-50">{searching ? 'Buscando…' : 'Buscar IPT'}</button>
       </div>
       <div className="mt-3 overflow-x-auto rounded-lg border">
-        <table className="w-full text-left text-sm">
+        <table className="min-w-[900px] lg:min-w-0 w-full text-left text-sm">
           <thead className="sticky top-0 bg-slate-50 text-xs text-slate-600"><tr>
             <th className="p-3">IPT · Fecha</th><th className="p-3">OT · Contrato</th><th className="p-3">Producto</th><th className="p-3">Lote</th>
             <th className="p-3 text-right">Cantidad ERP</th><th className="p-3">Cliente</th><th className="p-3">Estado</th><th className="p-3"></th>
@@ -321,7 +321,7 @@ export default function WarehouseLabelingPage() {
               </div>
             </div>
             <div className="max-h-56 overflow-auto rounded-lg border border-slate-200">
-              <table className="w-full text-left text-xs">
+              <table className="min-w-[900px] lg:min-w-0 w-full text-left text-xs">
                 <thead className="sticky top-0 bg-slate-50 text-slate-600"><tr><th className="w-10 p-2"></th><th className="p-2">#</th><th className="p-2">IPT / Código</th><th className="p-2">Descripción</th><th className="p-2">Lote</th><th className="p-2">Cliente</th><th className="p-2 text-right">ERP</th><th className="p-2">Estado</th></tr></thead>
                 <tbody>{selectedIptReceipts.map((receipt, index) => <tr key={receipt.receipt_key} className={receipt.receipt_key === selected.receipt_key ? 'border-t border-blue-200 bg-blue-50' : 'border-t border-slate-200'}>
                   <td className="p-2"><button type="button" onClick={() => select(receipt)} aria-label={'Seleccionar ' + receipt.product_code} aria-pressed={receipt.receipt_key === selected.receipt_key} className={receipt.receipt_key === selected.receipt_key ? 'grid h-6 w-6 place-items-center rounded-full border border-blue-700 bg-blue-700 text-white' : 'grid h-6 w-6 place-items-center rounded-full border border-slate-400 bg-white text-transparent'}>●</button></td>

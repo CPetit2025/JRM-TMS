@@ -216,7 +216,7 @@ export default function AptClientesPage() {
             subtitle="Despliegue cada fila para ver su detalle. Último despacho = última guía de SALIDA de sus lotes; saldo final = ingresado − despachado (FIFO)."
             bodyClassName="p-0">
             <div className="max-h-[70vh] overflow-auto">
-              <DataTable className="w-full text-xs">
+              <DataTable className="min-w-[1250px] lg:min-w-0 w-full text-xs">
                 <thead>
                   <tr>
                     <SortTh label={vista === 'cliente' ? 'Cliente' : vista === 'contrato' ? 'OT' : 'Lote / NumRel'} k="clave" sort={sort} desc={desc} onSort={onSort} align="left" />
