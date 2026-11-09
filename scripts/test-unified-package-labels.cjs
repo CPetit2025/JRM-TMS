@@ -85,3 +85,12 @@ console.log(
  await assert.rejects(hydratePackageLabel({...db,rpc:async()=>({data:null,error:new Error('Sin acceso')})},raw[0]),/Sin acceso/,'customer read errors cannot silently change reprint content')
  console.log('PASS: original database values, authoritative customer, requested print order, missing records and access errors')
 })().catch(e=>{console.error(e);process.exitCode=1})
+
+const { packageLabelLayout } = load('src/lib/warehouse/package-label-layout.ts');
+for (const [w,h] of [[152.4,101.6],[148,210],[210,148],[100,50]]) {
+ const layout = packageLabelLayout({width_mm:w,height_mm:h});
+ assert.ok(Math.abs(layout.width*layout.scale-w*96/25.4)<1e-9, 'fills full paper width');
+ assert.ok(Math.abs(layout.height*layout.scale-h*96/25.4)<1e-9, 'fills full paper height');
+}
+assert.throws(()=>packageLabelLayout({width_mm:0,height_mm:210}),/no válida/);
+assert.throws(()=>packageLabelLayout({width_mm:NaN,height_mm:210}),/no válida/);

@@ -2,27 +2,87 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 export type LabelKind = 'PAQUETE' | 'LPN'
-export type LabelFormat = { id: string; name: string; width_mm: number; height_mm: number; dpi: number; is_active: boolean }
+export type LabelFormat = { id: string; name: string; width_mm: number; height_mm: number; dpi: number; is_active: boolean; ready?: boolean; output?: 'BROWSER' }
 
-// Tamaños con que se imprimía antes de la configuración: se usan si la base aún no responde.
+// Tamaños de respaldo cuando el almacén todavía no tiene un formato asignado.
 export const FALLBACK_FORMAT: Record<LabelKind, LabelFormat> = {
   PAQUETE: { id: '', name: 'Zebra 6 x 4 pulg (horizontal)', width_mm: 152.4, height_mm: 101.6, dpi: 203, is_active: true },
   LPN: { id: '', name: '100 x 50 mm', width_mm: 100, height_mm: 50, dpi: 203, is_active: true },
 }
 
-/** Formato asignado a un tipo de etiqueta en Configuración › Etiquetas. */
-export function useLabelFormat(kind: LabelKind) {
-  const [format, setFormat] = useState<LabelFormat>(FALLBACK_FORMAT[kind])
+export const PERSONAL_PAPER_FORMATS: LabelFormat[] = [
+  { id: 'paper-a5-portrait', output: 'BROWSER', name: 'A5 vertical', width_mm: 148, height_mm: 210, dpi: 203, is_active: true },
+  { id: 'paper-a5-landscape', output: 'BROWSER', name: 'A5 horizontal', width_mm: 210, height_mm: 148, dpi: 203, is_active: true },
+];
+const preferenceKey = (userId: string, kind: LabelKind) => `wh-label-paper:v1:${userId}:${kind}`;
+const preferenceEvent = 'wh-label-paper-change';
+
+/** Preferencia de impresora por cuenta y navegador; nunca cambia el formato de otros usuarios. */
+export function usePersonalLabelFormat(kind: LabelKind) {
+  const [format, setFormat] = useState<LabelFormat>({ ...FALLBACK_FORMAT[kind], ready: false });
+  const [options, setOptions] = useState<LabelFormat[]>(PERSONAL_PAPER_FORMATS);
+  const [selection, setSelection] = useState('');
+  const [error, setError] = useState('');
   useEffect(() => {
-    let alive = true
-    void createClient().from('wh_label_settings').select('format:wh_label_formats(id,name,width_mm,height_mm,dpi,is_active)').eq('kind', kind).maybeSingle()
-      .then(({ data }) => {
-        const f = data?.format as unknown as LabelFormat | null
-        if (alive && f) setFormat({ ...f, width_mm: Number(f.width_mm), height_mm: Number(f.height_mm) })
-      })
-    return () => { alive = false }
-  }, [kind])
-  return format
+    let alive = true, request = 0;
+    const load = async () => {
+      const current = ++request;
+      setFormat(f => ({ ...f, ready: false }));
+      try {
+        const db = createClient();
+        const [auth, assigned, catalog] = await Promise.all([
+          db.auth.getUser(),
+          db.from('wh_label_settings').select('format:wh_label_formats(id,name,width_mm,height_mm,dpi,is_active)').eq('kind', kind).maybeSingle(),
+          db.from('wh_label_formats').select('id,name,width_mm,height_mm,dpi,is_active').eq('is_active', true),
+        ]);
+        if (!alive || current !== request) return;
+        if (auth.error || !auth.data.user) throw new Error('Inicia sesión para cargar tu papel de impresión.');
+        if (assigned.error || catalog.error) throw new Error('No se pudo cargar el papel de impresión. Vuelve a intentarlo.');
+        const normalize = (f: LabelFormat) => ({ ...f, width_mm: Number(f.width_mm), height_mm: Number(f.height_mm), dpi: Number(f.dpi) });
+        const available = [...PERSONAL_PAPER_FORMATS, ...(catalog.data || []).map(normalize)];
+        const saved = localStorage.getItem(preferenceKey(auth.data.user.id, kind)) || '';
+        const personal = available.find(f => f.id === saved);
+        const shared = assigned.data?.format as unknown as LabelFormat | null;
+        setOptions(available);
+        setSelection(personal?.id || '');
+        setFormat({ ...(personal || (shared ? normalize(shared) : FALLBACK_FORMAT[kind])), ready: true });
+        setError('');
+      } catch (e) {
+        if (!alive || current !== request) return;
+        setError(e instanceof Error ? e.message : 'No se pudo cargar tu configuración.');
+        setFormat(f => ({ ...f, ready: false }));
+      }
+    };
+    const refresh = () => { void load(); };
+    refresh();
+    window.addEventListener('storage', refresh);
+    window.addEventListener(preferenceEvent, refresh);
+    window.addEventListener('focus', refresh);
+    const { data: { subscription } } = createClient().auth.onAuthStateChange(() => { setTimeout(refresh, 0); });
+    return () => {
+      alive = false;
+      subscription.unsubscribe();
+      window.removeEventListener('storage', refresh);
+      window.removeEventListener(preferenceEvent, refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [kind]);
+  const select = async (id: string) => {
+    try {
+      const { data: { user }, error } = await createClient().auth.getUser();
+      if (error || !user) throw new Error('Inicia sesión para guardar tu papel.');
+      if (id && !options.some(f => f.id === id)) throw new Error('Formato no disponible.');
+      if (id) localStorage.setItem(preferenceKey(user.id, kind), id);
+      else localStorage.removeItem(preferenceKey(user.id, kind));
+      window.dispatchEvent(new Event(preferenceEvent));
+    } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar el papel.'); }
+  };
+  return { format, options, selection, select, error };
+}
+
+/** Mismo papel personal en recepción, inventario, detalle y control de recepcionados. */
+export function useLabelFormat(kind: LabelKind) {
+  return usePersonalLabelFormat(kind).format;
 }
 
 /** Factor para encajar un diseño de etiqueta (en mm) dentro del formato, sin deformarlo. */

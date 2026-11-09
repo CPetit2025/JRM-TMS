@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Pencil, Ruler, Tag } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
+import { PackageLabelPaperSettings } from '@/components/warehouse/PackageLabelPaperSettings'
 import type { LabelFormat, LabelKind } from '@/lib/warehouse/label-format'
 
 const KINDS: Array<{ kind: LabelKind; label: string; hint: string }> = [
@@ -67,6 +68,8 @@ export default function WarehouseLabelFormatsPage() {
     {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
     {notice && <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
 
+    <PackageLabelPaperSettings />
+    <h2 className="font-bold text-[#002855]">Configuración compartida del almacén</h2>
     <section className="grid gap-3 sm:grid-cols-2">
       {KINDS.map(k => {
         const current = formats.find(f => f.id === settings[k.kind])

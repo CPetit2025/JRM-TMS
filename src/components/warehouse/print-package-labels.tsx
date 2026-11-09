@@ -3,11 +3,11 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { PackageLabel } from "./PackageLabel";
 import {
-  fitScale,
   toDots,
   type LabelFormat,
 } from "@/lib/warehouse/label-format";
 import type { PackageLabelData } from "@/lib/warehouse/package-label";
+import { packageLabelLayout } from "@/lib/warehouse/package-label-layout";
 import { rasterZpl } from "@/lib/warehouse/label-raster";
 type Device = {
   send: (
@@ -28,6 +28,7 @@ export async function printPackageLabels(
   labels: PackageLabelData[],
   format: LabelFormat,
 ): Promise<"ZEBRA" | "BROWSER"> {
+  if (format.ready === false) throw new Error("Espera a que cargue tu configuración de impresión.");
   if (active) throw new Error("Hay una impresión de etiquetas en curso.");
   if (!labels.length) throw new Error("No hay etiquetas para imprimir.");
   active = true;
@@ -47,7 +48,7 @@ export async function printPackageLabels(
     active = false;
   };
   try {
-    const scale = fitScale(format, 152.4, 101.6);
+    const { scale, width: labelWidth, height: labelHeight } = packageLabelLayout(format);
     flushSync(() =>
       root.render(
         <>
@@ -65,11 +66,11 @@ export async function printPackageLabels(
                 style={{
                   transform: `scale(${scale})`,
                   transformOrigin: "top left",
-                  width: 576,
-                  height: 384,
+                  width: labelWidth,
+                  height: labelHeight,
                 }}
               >
-                <PackageLabel label={label} />
+                <PackageLabel label={label} format={format} />
               </div>
             </div>
           ))}
@@ -82,7 +83,7 @@ export async function printPackageLabels(
     );
     const browser = (window as Window & { BrowserPrint?: BrowserPrint })
       .BrowserPrint;
-    if (browser?.getDefaultDevice) {
+    if (format.output !== "BROWSER" && browser?.getDefaultDevice) {
       const device = await new Promise<Device | null>((resolve) => {
         const timeout = setTimeout(() => resolve(null), 3000);
         browser.getDefaultDevice(
