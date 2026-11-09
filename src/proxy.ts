@@ -1,3 +1,4 @@
+import { DISPATCH_STAGES } from '@/lib/warehouse/dispatch'
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { isDispatchAuditorRole, dispatchAuditorPathAllowed, roleDeniesPath } from '@/lib/roles'
@@ -108,7 +109,8 @@ export async function proxy(request: NextRequest) {
     }
     if (isWarehousePath && !isWarehouseLoginPage && hasWarehouseAccess) {
       const path = request.nextUrl.pathname
-      const required = path.startsWith('/almacen/maestros') ? ['almacen-supervisor']
+      const dispatch = Object.values(DISPATCH_STAGES).find(stage => path === stage.path || path.startsWith(stage.path + '/'))
+      const required = dispatch ? [...dispatch.permissions] : path.startsWith('/almacen/maestros') ? ['almacen-supervisor']
         : path.startsWith('/almacen/conciliacion') ? ['almacen-carga','almacen-supervisor','apt-carga']
         : path.startsWith('/almacen/etiquetado') ? ['almacen-etiquetado','almacen-supervisor']
         : path.startsWith('/almacen/apt') ? ['apt','apt-carga','almacen-lectura','almacen-etiquetado','almacen-picking','almacen-packing','almacen-carga','almacen-supervisor']
