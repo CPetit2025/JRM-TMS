@@ -9,6 +9,10 @@ export type PackingListVersion = { id: string; packing_list_number: string; vers
 export type TaskLpns = { lpns: TaskLpn[]; loose: LpnPackage[]; packing_lists: PackingListVersion[] }
 export type BoardRow = { id: string; task_code: string; status: string; request_status: string; request_number: string | null; transport_request_id: string; required_date: string | null; required_at: string | null; created_at: string; contract_code: string | null; components: string | null; lots: string | null; client_name: string | null; delivery_address: string | null; assigned_picker: string | null; picker_name: string | null; assigned_at: string | null; last_activity_at?: string | null; picked: number; loose: number; lpn_total: number; lpn_approved: number; lpn_observed: number; lpn_rejected: number; lpn_pending: number; weight_kg: number; packing_list: { id: string; number: string; version: number; released_at: string } | null; display_state: string }
 
+/** Unidad de carga de la tarea: UT1, UT2… con placa opcional y los bultos (LPN) asignados. */
+export type LoadUnit = { id: string; seq: number; label: string; plate: string | null; lpn_ids: string[]; lpn_count: number; loaded_count: number; package_count: number; weight_kg: number }
+export const unitLabel = (u: Pick<LoadUnit, 'label' | 'plate'>) => u.plate ? `${u.label} · ${u.plate}` : u.label
+
 export const STATE: Record<string, { label: string; style: string }> = {
   PENDIENTE: { label: 'Pendiente', style: 'bg-slate-100 text-slate-700' },
   EN_PICKING: { label: 'En picking', style: 'bg-blue-100 text-blue-900' },
@@ -44,12 +48,13 @@ function barcode(pdf: JsPdf, value: string, x: number, y: number, w: number, h: 
 }
 
 // Packing List (A4). Sin número de liberación = preliminar, marcado como tal y sin validez.
-export async function buildPackingListPdf(s: PackingSnapshot) {
+// unitOf: unidad asignada a cada LPN (por id); title: reemplaza el título, p. ej. para la guía de carga de una unidad.
+export async function buildPackingListPdf(s: PackingSnapshot, opts: { unitOf?: Record<string, string>; title?: string } = {}) {
   const { jsPDF } = await import('jspdf')
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
   const preliminary = !s.packing_list_number
   const logo = await logoDataUrl().catch(() => null)
-  const title = preliminary ? 'PACKING LIST PRELIMINAR' : `PACKING LIST ${s.packing_list_number} · v${s.version}`
+  const title = opts.title || (preliminary ? 'PACKING LIST PRELIMINAR' : `PACKING LIST ${s.packing_list_number} · v${s.version}`)
   pdf.setProperties({ title, creator: 'JRM WMS' })
   const header = () => {
     if (logo) pdf.addImage(logo, 'PNG', 12, 9, 34, 14)
@@ -84,7 +89,7 @@ export async function buildPackingListPdf(s: PackingSnapshot) {
     pdf.setFillColor(238, 242, 248); pdf.rect(12, y, 186, 16, 'F'); pdf.setFillColor(0, 0, 0)
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10); pdf.text(l.lpn_code, 14, y + 6)
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8)
-    pdf.text(`${l.package_count} paquete(s) · ${fmt(l.quantity, 3)} und · ${fmt(l.weight_kg)} kg · ${preliminary ? (AUDIT[l.audit_status]?.label || l.audit_status) : 'Aprobado'}`, 14, y + 12)
+    pdf.text(`${l.package_count} paquete(s) · ${fmt(l.quantity, 3)} und · ${fmt(l.weight_kg)} kg · ${preliminary ? (AUDIT[l.audit_status]?.label || l.audit_status) : 'Aprobado'}${opts.unitOf ? ` · Unidad: ${opts.unitOf[l.id] || 'sin asignar'}` : ''}`, 14, y + 12)
     barcode(pdf, l.lpn_code, 128, y + 2, 68, 12)
     y += 20
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7.5)
@@ -105,6 +110,13 @@ export async function buildPackingListPdf(s: PackingSnapshot) {
   pdf.line(12, y, 198, y)
   pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9.5)
   pdf.text(`Total: ${s.lpn_count} bulto(s) físico(s) (LPN) · ${s.package_count} paquetes · ${fmt(s.total_weight_kg)} kg`, 12, y + 6)
+  // Reparto por unidad de carga: bultos, paquetes y kg de cada una.
+  if (opts.unitOf) {
+    const by = new Map<string, { n: number; p: number; kg: number }>()
+    for (const l of s.lpns) { const k = opts.unitOf[l.id] || 'Sin unidad asignada', v = by.get(k) || { n: 0, p: 0, kg: 0 }; by.set(k, { n: v.n + 1, p: v.p + l.package_count, kg: v.kg + Number(l.weight_kg) }) }
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8.5); y += 12
+    for (const [k, v] of [...by].sort()) { if (y > 285) { pdf.addPage(); header(); y = 32 } pdf.text(`${k}: ${v.n} bulto(s) · ${v.p} paquetes · ${fmt(v.kg)} kg`, 12, y); y += 5 }
+  }
   return pdf
 }
 

@@ -184,7 +184,24 @@ const feed=(status={})=>[
  const pl2=await one('SELECT public.wh_release_packing_list($1)',[task.id]);
  assert.equal(pl2.packing_list_number,pl.packing_list_number); assert.equal(pl2.version,2);
  assert.equal((await sys(`SELECT count(*)::int n FROM public.wh_packing_lists WHERE task_id='${task.id}'`))[0].n,2,'historial de versiones conservado');
- await as('sup'); await fails("SELECT public.wh_record_scan($1,$2,'LOAD',gen_random_uuid())",[task.id,lpn3.lpn_code],/despacho|Packing List/);
+ // Unidades de carga: los bultos del Packing List se reparten en UT1, UT2…; la carga valida la unidad de cada bulto.
+ await as('sup');
+ const ut1=await one('SELECT public.wh_load_unit_add($1)',[task.id]), ut2=await one("SELECT public.wh_load_unit_add($1,' abc 123 ')",[task.id]);
+ assert.equal(ut1.label,'UT1'); assert.equal(ut2.label,'UT2'); assert.equal(ut2.plate,'ABC123','placa normalizada');
+ const load=(unit)=>`SELECT public.wh_record_scan($1,$2,'LOAD',gen_random_uuid(),${unit?`'{"load_unit_id":"${unit}"}'::jsonb`:"'{}'::jsonb"})`;
+ await fails(load(ut1.id),[task.id,lpn3.lpn_code],/Asigne el bulto/);
+ await q('SELECT public.wh_lpn_assign_unit($1,$2)',[lpn3.id,ut1.id]);
+ await fails(load(null),[task.id,lpn3.lpn_code],/Seleccione la unidad/);
+ await fails(load(ut2.id),[task.id,lpn3.lpn_code],/corresponde a UT1/);
+ await fails(load(ut1.id),[task.id,lpn3.lpn_code],/despacho|Packing List/); // la unidad correcta sigue a las reglas de carga
+ await q("SELECT public.wh_load_unit_set_plate($1,'xyz-987')",[ut1.id]);
+ let units=await one('SELECT public.wh_task_load_units($1)',[task.id]);
+ assert.equal(units[0].plate,'XYZ-987'); assert.equal(units[0].lpn_count,1); assert.deepEqual(units[0].lpn_ids,[lpn3.id]);
+ await q('SELECT public.wh_load_unit_remove($1)',[ut2.id]);
+ units=await one('SELECT public.wh_task_load_units($1)',[task.id]); assert.equal(units.length,1,'unidad sin carga eliminada');
+ await as('op1'); await fails('SELECT public.wh_load_unit_add($1)',[task.id],/permiso/);
+ await fails('SELECT public.wh_record_scan_core($1,$2,$3,gen_random_uuid())',[task.id,lpn3.lpn_code,'LOAD'],/permission denied|permiso/);
+ console.log('PASS: unidades de carga UT1/UT2 con placa opcional; asignar bultos; la carga exige la unidad correcta del bulto.');
  await as('aud'); await q("SELECT public.wh_audit_lpn($1,'RECHAZADO','Rechazo tardío')",[lpn3.id]);
  assert.equal((await sys(`SELECT status FROM public.wh_packing_lists WHERE id='${pl2.id}'`))[0].status,'REEMPLAZADO','rechazar tras liberar invalida el Packing List');
  console.log('PASS: un cambio posterior reemplaza la versión liberada, re-audita solo el LPN afectado y emite la versión 2.');
