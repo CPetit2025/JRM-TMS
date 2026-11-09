@@ -18,7 +18,7 @@ const lotKey = (r: { cod_producto: string; lote_key: string }) => `${r.cod_produ
 export default function WarehouseInventoryCampaignPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const { hasAccess } = usePermissions()
-  const isSupervisor = hasAccess('almacen-supervisor')
+  const isSupervisor = hasAccess('almacen-supervisor') || hasAccess('almacen-inventario')
   const labelFormat = useLabelFormat('PAQUETE')
   const [camp, setCamp] = useState<Campaign | null>(null)
   const [lines, setLines] = useState<CountLine[]>([])

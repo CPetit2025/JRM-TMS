@@ -1,16 +1,21 @@
 // Fases 2 y 3: inventario por barrido con etiquetado, cuadre y cierre (migraciones de wms-db en PGlite).
 const {PGlite}=require('@electric-sql/pglite');
 const fs=require('fs');const path=require('node:path');const assert=require('node:assert/strict');
-const U={sup:'00000000-0000-0000-0000-0000000000c1',cnt:'00000000-0000-0000-0000-0000000000c2',cnt2:'00000000-0000-0000-0000-0000000000c3',op:'00000000-0000-0000-0000-0000000000c4',ext:'00000000-0000-0000-0000-0000000000c5'};
+const U={sup:'00000000-0000-0000-0000-0000000000c1',cnt:'00000000-0000-0000-0000-0000000000c2',cnt2:'00000000-0000-0000-0000-0000000000c3',op:'00000000-0000-0000-0000-0000000000c4',ext:'00000000-0000-0000-0000-0000000000c5',ana:'00000000-0000-0000-0000-0000000000c6',rec:'00000000-0000-0000-0000-0000000000c7'};
 (async()=>{
  const db=new PGlite();
  await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS; CREATE SCHEMA auth; CREATE SCHEMA extensions; CREATE TABLE auth.users(id uuid primary key); CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE SQL STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; GRANT USAGE ON SCHEMA public,auth TO authenticated,anon,service_role; GRANT EXECUTE ON FUNCTION auth.uid() TO PUBLIC; CREATE FUNCTION public.rls_auto_enable() RETURNS event_trigger LANGUAGE plpgsql AS $$ BEGIN END $$;`);
  const dir=path.join(__dirname,'../wms-db/supabase/migrations');
  for(const f of fs.readdirSync(dir).filter(f=>f.endsWith('.sql')).sort()) await db.exec(fs.readFileSync(path.join(dir,f),'utf8'));
- const roles={sup:['almacen-supervisor'],cnt:['almacen-etiquetado'],op:['almacen-picking']};
+ // Roles del almacén que crea la migración
+ const creados=Object.fromEntries((await db.query("SELECT name,permissions FROM public.roles")).rows.map(r=>[r.name,r.permissions]));
+ assert.deepEqual(creados['Analista de Inventario'],['almacen-lectura','almacen-etiquetado','almacen-inventario']);
+ assert.deepEqual(creados['Auditor de Despacho'],['almacen-lectura','almacen-auditoria']);
+ assert.deepEqual(creados['Asistente de Recepción'],['almacen-lectura','almacen-etiquetado']);
+ const roles={sup:['almacen-supervisor'],cnt:['almacen-etiquetado'],op:['almacen-picking'],inv:creados['Analista de Inventario'],rec:creados['Asistente de Recepción']};
  let sql="DELETE FROM public.roles; DELETE FROM public.sites; INSERT INTO public.sites(code,name) VALUES('PRINCIPAL','Local');";
  for(const [k,p] of Object.entries(roles)) sql+=`INSERT INTO public.roles(name,permissions) VALUES('${k}','${JSON.stringify(p)}');`;
- const userRole={sup:'sup',cnt:'cnt',cnt2:'cnt',op:'op',ext:'cnt'};
+ const userRole={sup:'sup',cnt:'cnt',cnt2:'cnt',op:'op',ext:'cnt',ana:'inv',rec:'rec'};
  for(const [u,id] of Object.entries(U)){ sql+=`INSERT INTO auth.users VALUES('${id}'); INSERT INTO public.profiles(id,email,first_name,role_id,is_active) SELECT '${id}','${u}@x.pe','${u}',id,true FROM public.roles WHERE name='${userRole[u]}'; ${u==='ext'?'':`INSERT INTO public.user_site_access SELECT '${id}',id FROM public.sites;`}`; }
  // Un bulto ya etiquetado por IPT (bodega 647, bulto 1 de 3) y uno de otra bodega
  sql+=`INSERT INTO public.wh_packages(package_code,source_document_no,source_contract_code,source_lot,source_product_code,source_warehouse,source_date,source_movement_key,source_key,site_id,description,quantity,unit,sequence_no,sequence_total) SELECT 'PKG-IPT-1','IPT-77','16544','0000016544','PT-1','647-04 ALM PT','2026-11-01','mk1','sk1',id,'Bobina',10,'UND',1,3 FROM public.sites;`;
@@ -153,6 +158,12 @@ const U={sup:'00000000-0000-0000-0000-0000000000c1',cnt:'00000000-0000-0000-0000
  await as('cnt'); await one("SELECT public.wh_count_scan($1,'PKG-C3')",[re.id]);
  await as('sup'); await one('SELECT public.wh_count_to_review($1)',[re.id]); await one('SELECT public.wh_count_reopen($1)',[re.id]);
  assert.equal((await sys(`SELECT status FROM public.wh_count_campaigns WHERE id='${re.id}'`))[0].status,'EN_CONTEO','vuelve a conteo');
+ // Analista de Inventario gestiona la campaña sin supervisión; Asistente de Recepción solo cuenta
+ await as('rec'); await fails("SELECT public.wh_count_cancel($1,'x')",[re.id],/Solo supervisión/);
+ await as('ana'); await one('SELECT public.wh_count_to_review($1)',[re.id]); await one('SELECT public.wh_count_reopen($1)',[re.id]); await one("SELECT public.wh_count_cancel($1,'prueba analista')",[re.id]);
+ const an2=await one("SELECT public.wh_count_open('647-04 ALM PT','{}',NULL,NULL,'BARRIDO')"); await one("SELECT public.wh_count_cancel($1,'prueba analista')",[an2.id]);
+ assert.equal((await sys(`SELECT status FROM public.wh_count_campaigns WHERE id='${re.id}'`))[0].status,'ANULADA','el analista anula');
+ console.log('PASS: roles del almacén; el analista abre, revisa, reabre y anula inventarios; recepción no.');
  console.log('PASS: anular con motivo sin cuadre y liberando carga y SKU; volver a conteo; no se termina un conteo vacío.');
  console.log('PASS: tipos de inventario: general congela la bodega; al barrer solo bloquea lo contado; cíclico solo sus SKU; la recepción sigue.');
  await db.close();
