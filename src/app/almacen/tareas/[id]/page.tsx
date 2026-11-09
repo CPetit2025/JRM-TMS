@@ -10,7 +10,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core'
 import type { WarehouseScanOutbox } from '@/lib/offline/db'
 import { GroupedBultoLabel } from '@/components/warehouse/GroupedBultoLabel'
 import { fitScale, useLabelFormat } from '@/lib/warehouse/label-format'
-import { AUDIT, STATE, buildPackingListPdf, fmt, fmtDate, type BoardRow, type TaskLpn, type TaskLpns } from '@/lib/warehouse/packing-list'
+import { AUDIT, STATE, buildBultoContentPdf, buildPackingListPdf, fmt, fmtDate, itemLines, needsContentSheet, type BoardRow, type TaskLpn, type TaskLpns } from '@/lib/warehouse/packing-list'
 
 const nativeWarehouseScanner = registerPlugin<{ scan: () => Promise<{ rawValue: string }> }>('WarehouseBarcodeScanner')
 type BarcodeDetectorLike = { detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue: string }>> }
@@ -42,7 +42,7 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
   const load = useCallback(async () => {
     const db = createClient()
     const [board, lpns] = await Promise.all([db.rpc('wh_task_board', { p_scope: 'tareas', p_task_id: id }), db.rpc('wh_task_lpns', { p_task_id: id })])
-    if (board.error || lpns.error) { setError((board.error || lpns.error)!.message); setLoading(false); return }
+    if (board.error || lpns.error) { setError((board.error || lpns.error)!.message); setLoading(false); return null }
     setTask(((board.data || []) as BoardRow[])[0] || null)
     const next = lpns.data as TaskLpns
     setData(next)
@@ -55,6 +55,7 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
       return keep
     })
     setLoading(false)
+    return next
   }, [id])
 
   const syncQueue = useCallback(async () => {
@@ -117,6 +118,14 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
     return acc
   }, {}))
 
+  // Más de 4 ítems no caben en la etiqueta: se descarga la hoja de contenido (A5 o A4) para pegarla junto a ella.
+  const contentSheet = async (l: TaskLpn) => {
+    if (!task) return
+    const { pdf, format } = await buildBultoContentPdf(l, task)
+    pdf.save(`contenido-${l.lpn_code}.pdf`)
+    setMessage(`El bulto ${l.lpn_code} tiene ${itemLines(l.packages)} ítems: se descargó su hoja de contenido (${format.toUpperCase()}) para imprimirla y pegarla junto a la etiqueta.`)
+  }
+
   const printLabel = async (lpn: TaskLpn) => {
     const db = createClient()
     const { error } = lpn.print_count === 0
@@ -141,7 +150,8 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
       await load()
     } else {
       setMessage(`LPN ${lpn.lpn_code} creado con ${lpn.package_count} paquete(s).`)
-      await load()
+      const full = (await load())?.lpns.find(l => l.id === lpn.id)
+      if (full && needsContentSheet(full.packages)) await contentSheet(full)
       await printLabel({ ...lpn, print_count: 0, packages: [], audits: [], status: 'CLOSED', audit_status: 'PENDIENTE' } as TaskLpn)
     }
     setBusy(false)
@@ -275,6 +285,7 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
             <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${audit.style}`}>{audit.label}</span>
             <span className="ml-auto flex gap-1.5">
               {l.status === 'CLOSED' && <button disabled={busy} onClick={() => void printLabel(l)} className={`${btn} border border-slate-300 px-2 py-1 text-xs`}><Printer size={14}/>{l.print_count ? 'Reimprimir' : 'Etiqueta'}</button>}
+              {l.status === 'CLOSED' && needsContentSheet(l.packages) && <button disabled={busy} onClick={() => void contentSheet(l)} className={`${btn} border border-slate-300 px-2 py-1 text-xs`}><Download size={14}/>Contenido</button>}
               {editable && <button disabled={busy} onClick={() => undo(l)} className={`${btn} border border-slate-300 px-2 py-1 text-xs`}><Undo2 size={14}/>Deshacer</button>}
             </span>
           </div>

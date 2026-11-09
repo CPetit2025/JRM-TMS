@@ -107,3 +107,56 @@ export async function buildPackingListPdf(s: PackingSnapshot) {
   pdf.text(`Total: ${s.lpn_count} bulto(s) físico(s) (LPN) · ${s.package_count} paquetes · ${fmt(s.total_weight_kg)} kg`, 12, y + 6)
   return pdf
 }
+
+/** Líneas (producto + lote) que muestra la etiqueta del bulto agrupado; con más de LABEL_LINES va hoja de contenido. */
+export const LABEL_LINES = 4
+export const itemLines = (packages: Pick<LpnPackage, 'product_code' | 'lot'>[]) => new Set(packages.map(p => `${p.product_code}|${p.lot || ''}`)).size
+export const needsContentSheet = (packages: Pick<LpnPackage, 'product_code' | 'lot'>[]) => itemLines(packages) > LABEL_LINES
+/** A5 alcanza para una hoja de hasta A5_ROWS paquetes; con más se usa A4 (continúa en varias hojas si hace falta). */
+export const A5_ROWS = 18
+export const contentSheetFormat = (rows: number) => (rows <= A5_ROWS ? 'a5' : 'a4') as 'a5' | 'a4'
+
+// Hoja de contenido del bulto agrupado: lista completa de paquetes, pegada al bulto junto con su etiqueta térmica.
+export async function buildBultoContentPdf(l: Pick<TaskLpn, 'lpn_code' | 'package_count' | 'quantity' | 'weight_kg' | 'packages'>, t: { client_name: string | null; contract_code: string | null; request_number: string | null }) {
+  const { jsPDF } = await import('jspdf')
+  const format = contentSheetFormat(l.packages.length)
+  const pdf = new jsPDF({ unit: 'mm', format, compress: true })
+  const W = pdf.internal.pageSize.getWidth(), H = pdf.internal.pageSize.getHeight(), m = 10, right = W - m
+  const logo = await logoDataUrl().catch(() => null)
+  const bulto = /-(B-\d{4,})$/.exec(l.lpn_code)?.[1] || l.lpn_code
+  pdf.setProperties({ title: `Contenido del bulto ${l.lpn_code}`, creator: 'JRM WMS' })
+  // Columnas proporcionales al ancho: paquete, SKU y descripción, lote; cantidad y peso alineados a la derecha.
+  const w = W - 2 * m, size = format === 'a5' ? 6.8 : 7.5
+  const col = { pkg: m + 1, mat: m + w * 0.24, lot: m + w * 0.66, qty: m + w * 0.86, kg: right - 1 }
+  const header = () => {
+    if (logo) pdf.addImage(logo, 'PNG', m, 8, 30, 12)
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(12); pdf.text(`CONTENIDO DEL BULTO ${bulto}`, right, 13, { align: 'right' })
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8)
+    pdf.text(`Cliente ${t.client_name || '—'} · OT ${t.contract_code || '—'} · Solicitud ${t.request_number || '—'}`, right, 18, { align: 'right' })
+    barcode(pdf, l.lpn_code, m, 23, Math.min(70, W - 2 * m), 11)
+    pdf.setFont('courier', 'bold'); pdf.setFontSize(10); pdf.text(l.lpn_code, right, 31, { align: 'right' })
+    pdf.setLineWidth(0.6); pdf.line(m, 37, right, 37); pdf.setLineWidth(0.2)
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(size)
+    pdf.text('Paquete', col.pkg, 42); pdf.text('Material', col.mat, 42); pdf.text('Lote', col.lot, 42); pdf.text('Cantidad', col.qty, 42, { align: 'right' }); pdf.text('Peso kg', col.kg, 42, { align: 'right' })
+    pdf.setFont('helvetica', 'normal')
+    return 46.5
+  }
+  let y = header()
+  for (const p of l.packages) {
+    // Material en hasta 2 líneas para no perder la descripción.
+    const lines = (pdf.splitTextToSize(`${p.product_code} ${p.description}`, col.lot - col.mat - 2) as string[]).slice(0, 2), rowH = 4.6 + (lines.length - 1) * 3.2
+    if (y + rowH > H - 16) { pdf.addPage(format); y = header() }
+    pdf.text(p.package_code.slice(0, 22), col.pkg, y)
+    pdf.text(lines, col.mat, y)
+    pdf.text((p.lot || '—').slice(0, 16), col.lot, y)
+    pdf.text(`${fmt(p.quantity, 3)} ${p.unit || ''}`, col.qty, y, { align: 'right' })
+    pdf.text(p.weight_kg == null ? '—' : fmt(p.weight_kg), col.kg, y, { align: 'right' })
+    pdf.setDrawColor(210); pdf.line(m, y + rowH - 3, right, y + rowH - 3); pdf.setDrawColor(0)
+    y += rowH
+  }
+  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9)
+  pdf.text(`Total: ${l.package_count} paquete(s) · ${itemLines(l.packages)} ítem(s) · ${fmt(l.quantity, 3)} und · ${fmt(l.weight_kg)} kg`, m, Math.min(y + 4, H - 12))
+  const pages = pdf.getNumberOfPages()
+  for (let i = 1; i <= pages; i++) { pdf.setPage(i); pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.text(`Hoja ${i} de ${pages}`, right, H - 6, { align: 'right' }) }
+  return { pdf, format }
+}

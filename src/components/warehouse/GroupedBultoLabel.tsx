@@ -16,7 +16,7 @@ export function GroupedBultoLabel({ code, customer, contract, request, items, pa
 }) {
   const layout = packageLabelLayout({ width_mm: 152.4, height_mm: 101.6 });
   const lots = [...new Set(items.map((i) => i.lot || "—"))];
-  // Caben 4 filas: hasta 4 ítems se listan todos; con más, 3 ítems y una fila «+N más».
+  // Caben 4 filas: hasta 4 ítems se listan todos; con más, 3 ítems y «+N más» (el detalle va en la hoja de contenido).
   const lotText = `${lots.length > 1 ? "Lotes" : "Lote"}: ${lots.join(", ")}`, idSize = identifierFontSize("BULTO AGRUPADO", lotText);
   const shown = items.length > 4 ? items.slice(0, 3) : items;
   return (
@@ -44,7 +44,7 @@ export function GroupedBultoLabel({ code, customer, contract, request, items, pa
               <td>{fmt(i.quantity)} {i.unit || ""}</td>
             </tr>
           ))}
-          {items.length > shown.length && <tr><td colSpan={3}>+{items.length - shown.length} ítem(s) más · ver Packing List</td></tr>}
+          {items.length > shown.length && <tr><td colSpan={3}>+{items.length - shown.length} ítem(s) más · ver hoja de contenido</td></tr>}
         </tbody>
       </table>
       </div>
