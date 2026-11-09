@@ -12,7 +12,7 @@ import { CAMPAIGN_STATE, INVENTORY_TYPE, fmtDate, type Campaign, type InventoryT
 export default function WarehouseInventoryPage() {
   const router = useRouter()
   const { hasAccess } = usePermissions()
-  const isSupervisor = hasAccess('almacen-supervisor')
+  const isSupervisor = hasAccess('almacen-supervisor') || hasAccess('almacen-inventario')
   const [rows, setRows] = useState<Campaign[]>([])
   const [bodegas, setBodegas] = useState<string[]>([])
   const [form, setForm] = useState({ bodega: '', zones: '', notes: '', tipo: 'BARRIDO' as InventoryType, productos: '' })

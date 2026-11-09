@@ -64,6 +64,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     { id: 'almacen-carga', label: 'Carga y conciliación' },
     { id: 'almacen-supervisor', label: 'Supervisión de almacén' },
     { id: 'almacen-auditoria', label: 'Auditoría de despacho (almacén)' },
+    { id: 'almacen-inventario', label: 'Gestión de inventarios (abrir, cuadrar y cerrar campañas)' },
   ] },
   { title: 'Eficiencia de Flota', modules: [
     { id: 'flota-eficiencia', label: 'Costo, uso y decisión de reemplazo' },

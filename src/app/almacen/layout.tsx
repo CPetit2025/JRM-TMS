@@ -38,7 +38,7 @@ export default function WarehouseLayout({ children }: { children: React.ReactNod
       : x.href === '/almacen/apt'
       ? ['almacen-lectura', 'almacen-carga', 'almacen-supervisor', 'almacen-etiquetado', 'almacen-picking', 'almacen-packing', 'almacen-auditoria'].some(hasAccess)
       : x.href === '/almacen/inventario'
-      ? ['almacen-etiquetado', 'almacen-carga', 'almacen-supervisor'].some(hasAccess)
+      ? ['almacen-etiquetado', 'almacen-carga', 'almacen-supervisor', 'almacen-inventario'].some(hasAccess)
       : x.href === '/almacen/stock-erp'
       ? ['almacen-lectura', 'almacen-carga', 'almacen-supervisor'].some(hasAccess)
       : x.href === '/almacen/conciliacion'
