@@ -385,8 +385,9 @@ const server = http.createServer(async (req, res) => {
     // Personal A5 affects the whole paper and survives navigation; another account keeps its own size.
     await page.setViewportSize({width:1536,height:1000});
     await page.goto('http://127.0.0.1:3022/almacen/etiquetado');
-    const paper=page.getByLabel('Mi papel para etiquetas de bulto');
-    await paper.selectOption('paper-a5-portrait');
+    const paper=page.getByRole('button',{name:'Mi papel para etiquetas de bulto',exact:true});
+    await paper.click();
+    await page.getByRole('option',{name:/^A5 vertical/}).click();
     await page.getByText('Papel actual: A5 vertical', {exact:false}).waitFor();
     await page.getByRole('button',{name:'Imprimir pendientes',exact:true}).click();
     await page.getByRole('button',{name:'Vista previa',exact:true}).click();
@@ -413,7 +414,7 @@ const server = http.createServer(async (req, res) => {
     await page.route('**/auth/v1/user',route=>route.fulfill({json:secondUser}));
     await page.goto('http://127.0.0.1:3022/almacen/etiquetado');
     await page.getByText('Papel actual: Zebra 6 x 4', {exact:false}).waitFor();
-    await page.getByLabel('Mi papel para etiquetas de bulto').selectOption('paper-a5-landscape');
+    await paper.click();await page.getByRole('option',{name:/^A5 horizontal/}).click();
     await page.getByText('Papel actual: A5 horizontal', {exact:false}).waitFor();
     await page.getByRole('button',{name:'Imprimir pendientes',exact:true}).click();await page.getByRole('button',{name:'Vista previa',exact:true}).click();
     await page.getByRole('button',{name:'Imprimir lote',exact:true}).click();await printed();
@@ -425,7 +426,17 @@ const server = http.createServer(async (req, res) => {
 
     await page.unroute('**/auth/v1/user');
     await page.reload();await page.getByText('Papel actual: A5 vertical',{exact:false}).waitFor();
-    assert.equal(await page.getByLabel('Mi papel para etiquetas de bulto').inputValue(),'paper-a5-portrait','other account cannot change original user paper');
+    assert.match(await paper.innerText(),/^A5 vertical/,'other account cannot change original user paper');
+    await paper.press('ArrowDown');
+    await page.getByRole('listbox').waitFor();
+    const menuBounds=await page.getByRole('listbox').evaluate(n=>{const r=n.getBoundingClientRect();return {left:r.left,right:r.right,width:innerWidth,textLeft:n.querySelector('[role=option] span').getBoundingClientRect().left}});
+    assert.ok(menuBounds.left>=0&&menuBounds.right<=menuBounds.width&&menuBounds.textLeft>menuBounds.left+12,'dropdown text is padded and fully inside viewport');
+    await page.screenshot({path:out+'/06-papel-desplegable.png',fullPage:true});
+    await page.getByRole('listbox').press('Escape');assert.equal(await paper.getAttribute('aria-expanded'),'false');
+    await paper.press('ArrowDown');await page.getByRole('listbox').press('Home');await page.getByRole('listbox').press('ArrowDown');await page.getByRole('listbox').press('ArrowDown');await page.getByRole('listbox').press('Enter');await page.getByText('Papel actual: A5 horizontal',{exact:false}).waitFor();
+    await page.setViewportSize({width:390,height:844});await paper.click();
+    assert.ok(await page.getByRole('listbox').evaluate(n=>{const r=n.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&n.scrollWidth<=n.clientWidth+1}),'mobile popup stays inside screen without horizontal clipping');
+    await page.getByRole('listbox').press('Escape');
     const reprints = calls.filter((c) => c.path.endsWith("/wh_reprint_label"));
     assert.equal(reprints.length, 6);
     assert.ok(
