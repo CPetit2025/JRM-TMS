@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ClipboardList, PackageCheck, Printer, RefreshCw, Search, X } from 'lucide-react'
-import { printPackageLabels } from '@/components/warehouse/print-package-labels'
+import { printPackageLabels, validatePackageLabelPrint } from '@/components/warehouse/print-package-labels'
 import { useLabelFormat } from '@/lib/warehouse/label-format'
 import { loadPackageLabel } from '@/lib/warehouse/load-package-label'
 import { Code128Barcode } from '@/components/warehouse/Code128Barcode'
@@ -203,6 +203,7 @@ export default function AptReceiptControlPage() {
     if(!reason?.trim())return
     setPrintingCode(row.package_code);setError('')
     try{
+      validatePackageLabelPrint(labelFormat)
       const db=createClient(),label=await loadPackageLabel(db,row.package_code)
       const {error}=await db.rpc('wh_reprint_label',{p_package_code:label.package_code,p_reason:reason.trim()})
       if(error)throw error

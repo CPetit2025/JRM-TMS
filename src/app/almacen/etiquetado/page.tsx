@@ -7,7 +7,7 @@ import { Printer, RotateCcw, ScanLine, ClipboardCheck, X, RefreshCw, UserRound, 
 import { PackageLabelPreview } from '@/components/warehouse/PackageLabel'
 import type { PackageLabelData as Label } from '@/lib/warehouse/package-label'
 import { loadPackageLabels } from '@/lib/warehouse/load-package-label'
-import { printPackageLabels } from '@/components/warehouse/print-package-labels'
+import { printPackageLabels, validatePackageLabelPrint } from '@/components/warehouse/print-package-labels'
 import { PackageLabelPaperSettings } from '@/components/warehouse/PackageLabelPaperSettings'
 import { useLabelFormat } from '@/lib/warehouse/label-format'
 
@@ -175,6 +175,7 @@ export default function WarehouseLabelingPage() {
     if(busy||!targetLabels.length)return
     setBusy(true);setError('')
     try {
+    validatePackageLabelPrint(labelFormat)
     const alreadyPrinted = targetLabels.filter(label => printedLabelCodes.includes(label.package_code))
     const newLabels = targetLabels.filter(label => !printedLabelCodes.includes(label.package_code))
     if (alreadyPrinted.length) {

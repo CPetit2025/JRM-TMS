@@ -1,31 +1,34 @@
 # Etiqueta única de bulto
 
-Recepción (`/almacen/etiquetado`), Control de recepcionados, detalle del paquete e inventario usan `PackageLabel`. Conserva el diseño de Recepción: logo JRM, cliente, OT, lote/bodega, SKU, descripción, Code 128, código original, IPT, fecha, cantidad/peso y secuencia.
+Recepción (`/almacen/etiquetado`), Control de recepcionados, detalle del paquete e inventario usan `PackageLabel`: logo JRM, cliente en hasta dos líneas sin reducir fuente, OT, lote destacado a la derecha del SKU, descripción centrada, Code 128, código original, IPT, fecha, cantidad/peso y secuencia.
 
-La composición canónica es de 6 × 4 pulgadas. `PackageLabelPreview` escala la etiqueta completa, sin cambiar fuentes o proporciones según la pantalla. `printPackageLabels` crea las páginas con esa misma plantilla y el tamaño PAQUETE configurado. Ya no hay etiquetas alternativas de 100 × 50 mm ni un tamaño fijo exclusivo de reimpresión.
+La referencia visual es la etiqueta de Recepción de 6 × 4 pulgadas. La cuadrícula se adapta al **tamaño de etiqueta**, manteniendo proporciones del logo y letras. `PackageLabelPreview` muestra esa misma composición. Primera impresión y reimpresiones recuperan los valores persistidos de `wh_packages`, sin recalcular pesos/cantidades ni sustituir la identidad del bulto.
 
-Zebra Browser Print recibe `^GFA`: imagen de la misma plantilla a la resolución configurada, no una segunda composición de textos ZPL. Una impresora térmica monocromática reproduce el diseño en blanco y negro; no puede producir el azul/amarillo del original en color. Se conserva el contraste del logo. El navegador/PDF conserva los colores. La salida física requiere tamaño real / 100 %, sin ajustes de escala del controlador.
+## Configuración independiente de etiqueta y hoja
 
-Los valores de la primera impresión se recuperan de `wh_packages`, en vez de volver a calcular cantidades y pesos en el navegador. Las reimpresiones usan los mismos campos originales y la resolución de cliente existente. Inventario no sustituye el IPT original por el código de campaña. Se mantienen los permisos, el código y la auditoría de impresión/reimpresión con motivo. No se modifican esquema ni datos históricos.
+En Recepción y en **Configuración › Tamaños de etiqueta**, «Mi configuración de impresión» distingue:
+
+1. **Formato de la etiqueta de bulto**: formato compartido del almacén, A5 o cualquier formato activo del catálogo. Los supervisores pueden agregar medidas al catálogo.
+2. **Orientación de la etiqueta**: original, horizontal o vertical. Horizontal coloca la medida mayor como ancho en cualquier formato; vertical hace lo contrario.
+3. **Papel cargado en la impresora**: rollo/papel del tamaño de la etiqueta, hoja A4/A5 vertical u horizontal, o medidas personalizadas. En hojas se configura un margen de 0 a 30 mm. Las medidas personalizadas y el margen se guardan juntos con «Aplicar medidas».
+
+Ejemplo: etiqueta horizontal de **100 × 50 mm** en hoja **A4 de 210 × 297 mm**, con margen de 5 mm. La etiqueta sigue midiendo 100 × 50 mm. Cambiar a A4 no agranda ni reduce su diseño: únicamente cambia el tamaño de la página y la posición de la etiqueta dentro de ella. Se imprime **una etiqueta por hoja**, en la esquina superior izquierda respetando el margen. La vista previa sigue mostrando la etiqueta, no una etiqueta ampliada a toda la hoja.
+
+Si la etiqueta no cabe con las medidas/orientación/margen elegidos, la configuración muestra un aviso. La impresión se rechaza **antes de registrar la auditoría**. No se reduce, recorta ni gira automáticamente para encajar. Por ejemplo, una etiqueta de 210 × 148 mm no cabe en A4 vertical con margen de 5 mm; se puede elegir A4 horizontal o un margen compatible.
+
+La preferencia se guarda por cuenta autenticada y navegador. Se conserva la selección personal anterior al migrar el almacenamiento local a v2. Formato, orientación y hoja se comparten entre vista previa, impresión y reimpresión. No se modifican tablas, datos históricos ni TMS.
+
+## Salida de impresión
+
+En **rollo**, la página tiene las medidas exactas de la etiqueta. Zebra BrowserPrint recibe la imagen `^GFA` de la misma plantilla a los DPI configurados, sin una segunda composición de texto. Una térmica monocromática reproduce los colores en blanco y negro; conserva el contraste del logo. A5 de los formatos personales usa impresora/PDF.
+
+Al elegir una **hoja**, se usa el diálogo de impresora/PDF incluso con BrowserPrint instalado. El `@page` recibe las medidas de la hoja, mientras el contenido conserva las medidas de etiqueta. En el controlador se debe elegir la misma hoja, **tamaño real / 100 %**, sin «ajustar a página», sin márgenes adicionales ni encabezados/pies. El navegador no puede detectar el papel físico ni impedir que el controlador aplique una escala; la capacidad de imprimir hasta el borde depende del dispositivo.
 
 ## Validación
 
-- `node scripts/test-unified-package-labels.cjs`: datos originales, decimales, cliente/OT, orden del lote, fallos de lectura y conversión binaria/ZPL.
-- `node scripts/test-unified-package-labels-browser.cjs`: Chromium y API local simulada. Compara el HTML completo de vista previa/impresión en los cuatro recorridos. Compara byte por byte la imagen Zebra de los cuatro recorridos. Comprueba una página PDF por etiqueta, tamaño configurable 100 × 50 mm y móvil sin desbordamiento. Conserva código original y motivo auditado, sin generar bultos al reimprimir.
-- `test-wms-isolation.mjs`, `test-wms-bootstrap.cjs`: aislamiento WMS y regresión del ciclo de recepción/permisos.
-- TypeScript, lint de archivos modificados y compilación dedicada WMS.
-- CI `WMS unified package labels` guarda capturas, PDF y ZPL como artefactos.
+- `node scripts/test-unified-package-labels.cjs`: datos originales/decimales, raster/ZPL, orientación de diversos formatos, hoja independiente, rechazo de tamaños incompatibles y preferencias antiguas.
+- `node scripts/test-unified-package-labels-browser.cjs`: Chromium con API simulada. Igualdad de HTML y raster Zebra entre cuatro recorridos; cliente largo y descripción legibles; PDFs y dimensiones físicas de etiqueta/hoja; etiqueta 100 × 50 mm inalterada en A4; lote de dos etiquetas/dos hojas; orientación y persistencia por cuenta; rechazo de impresión incompatible sin auditoría; desplegables y móvil.
+- `test-wms-isolation.mjs`, `test-wms-bootstrap.cjs`: aislamiento WMS y ciclo de recepción/permisos.
+- TypeScript, lint de archivos modificados y build WMS; CI guarda capturas, PDF y ZPL.
 
-El control global `check:guards` de la rama WMS presenta incidencias C55 previas en migraciones de recepción/picking; este cambio no altera SQL. Los controles de esta entrega verifican la base WMS independiente y su aislamiento.
-
-La prueba de Zebra usa un dispositivo simulado y valida los datos enviados. No sustituye una prueba física en la impresora del almacén.
-
-## Lote destacado y papel personal
-
-El lote se muestra a la derecha del SKU, en la misma fila, dentro de un recuadro negro con letras blancas en negrita. La bodega permanece en el encabezado.
-
-En **Recepción, validación y etiquetado** y en **Configuración › Tamaños de etiqueta**, el selector **Mi papel para etiquetas de bulto** permite usar el formato compartido del almacén, A5 vertical (148 × 210 mm), A5 horizontal (210 × 148 mm) o un formato activo del catálogo. La preferencia se guarda por cuenta autenticada **en ese navegador**: otra cuenta o equipo conserva su propia configuración. Seleccionar «Usar configuración del almacén» elimina la preferencia personal. A5 usa el diálogo de impresora/PDF, aunque BrowserPrint esté instalado; los formatos térmicos conservan la integración Zebra.
-
-La plantilla distribuye sus filas en el ancho y alto del papel completo. No recorta una etiqueta de proporción fija ni estira el logo o las letras: ajusta la cuadrícula y conserva la proporción de esos elementos. Vista previa, impresión y reimpresión reciben exactamente el mismo formato. Una etiqueta ocupa una hoja, incluidos los lotes. Al imprimir hay que seleccionar el papel correspondiente en el controlador, escala 100 % / tamaño real, sin márgenes ni encabezados. El área física imprimible depende de la impresora.
-
-Pruebas Chromium: posición y colores del lote, ocupación completa del papel en ambos ejes, PDFs con dimensiones A5 vertical/horizontal y 100 × 50 mm, persistencia entre pantallas y preferencias independientes de dos cuentas. No se modificaron tablas, datos históricos ni TMS.
+El control global `check:guards` de la rama WMS presenta incidencias C55 previas en migraciones de recepción/picking. Este cambio no altera SQL; se verifica la base WMS independiente y su aislamiento. La Zebra se simula: la prueba no sustituye una impresión física en el almacén.

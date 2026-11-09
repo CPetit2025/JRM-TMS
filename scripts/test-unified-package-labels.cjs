@@ -94,3 +94,22 @@ for (const [w,h] of [[152.4,101.6],[148,210],[210,148],[100,50]]) {
 }
 assert.throws(()=>packageLabelLayout({width_mm:0,height_mm:210}),/no válida/);
 assert.throws(()=>packageLabelLayout({width_mm:NaN,height_mm:210}),/no válida/);
+
+const { orientLabel, labelPrintPage, printerSheet, readPrintPreferences, DEFAULT_PRINT_PREFERENCES } = load('src/lib/warehouse/label-print-layout.ts');
+for (const [w,h] of [[100,50],[50,100],[148,210],[152.4,101.6],[105,148],[400,600]]) {
+ const landscape=orientLabel({width_mm:w,height_mm:h},'LANDSCAPE');
+ assert.equal(landscape.width_mm,Math.max(w,h));assert.equal(landscape.height_mm,Math.min(w,h));
+ packageLabelLayout(landscape);
+ const portrait=orientLabel({width_mm:w,height_mm:h},'PORTRAIT');assert.equal(portrait.width_mm,Math.min(w,h));assert.equal(portrait.height_mm,Math.max(w,h));
+}
+const fixedLabel={width_mm:100,height_mm:50};
+const a4=printerSheet({...DEFAULT_PRINT_PREFERENCES,paper:'A4_PORTRAIT'});
+assert.deepEqual(labelPrintPage({...fixedLabel,paper:a4}),{width_mm:210,height_mm:297,margin_mm:5});
+assert.deepEqual(fixedLabel,{width_mm:100,height_mm:50},'A4 does not resize the label');
+assert.deepEqual(labelPrintPage(fixedLabel),{width_mm:100,height_mm:50,margin_mm:0},'thermal roll remains exact label size');
+assert.throws(()=>labelPrintPage({width_mm:210,height_mm:148,paper:a4}),/no cabe/,'oversize labels are not silently shrunk');
+assert.throws(()=>labelPrintPage({...fixedLabel,paper:{width_mm:210,height_mm:297,margin_mm:-1}}),/no son válidas/);
+assert.equal(readPrintPreferences(null,'paper-a5-portrait').formatId,'paper-a5-portrait','old per-user selection is retained');
+assert.equal(readPrintPreferences('{bad','legacy').paper,'LABEL');
+assert.equal(readPrintPreferences(JSON.stringify({paperWidth:-100,paper:'INVALID'})).paperWidth,210);
+console.log('PASS: independent label orientation, exact A4/thermal sizes, invalid fit rejected and legacy preferences retained');

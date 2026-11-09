@@ -393,10 +393,10 @@ const server = http.createServer(async (req, res) => {
     // Personal A5 affects the whole paper and survives navigation; another account keeps its own size.
     await page.setViewportSize({width:1536,height:1000});
     await page.goto('http://127.0.0.1:3022/almacen/etiquetado');
-    const paper=page.getByRole('button',{name:'Mi papel para etiquetas de bulto',exact:true});
+    const paper=page.getByRole('button',{name:'Formato de la etiqueta de bulto',exact:true});
     await paper.click();
     await page.getByRole('option',{name:/^A5 vertical/}).click();
-    await page.getByText('Papel actual: A5 vertical', {exact:false}).waitFor();
+    await page.getByText('Etiqueta actual: A5 vertical', {exact:false}).waitFor();
     await page.getByRole('button',{name:'Imprimir pendientes',exact:true}).click();
     await page.getByRole('button',{name:'Vista previa',exact:true}).click();
     await page.evaluate(()=>{window.BrowserPrint={getDefaultDevice:()=>{throw new Error('A5 must use printer/PDF dialog')}}});
@@ -421,9 +421,9 @@ const server = http.createServer(async (req, res) => {
     const secondUser={...user,id:'00000000-0000-4000-8000-000000000002'};
     await page.route('**/auth/v1/user',route=>route.fulfill({json:secondUser}));
     await page.goto('http://127.0.0.1:3022/almacen/etiquetado');
-    await page.getByText('Papel actual: Zebra 6 x 4', {exact:false}).waitFor();
+    await page.getByText('Etiqueta actual: Zebra 6 x 4', {exact:false}).waitFor();
     await paper.click();await page.getByRole('option',{name:/^A5 horizontal/}).click();
-    await page.getByText('Papel actual: A5 horizontal', {exact:false}).waitFor();
+    await page.getByText('Etiqueta actual: A5 horizontal', {exact:false}).waitFor();
     await page.getByRole('button',{name:'Imprimir pendientes',exact:true}).click();await page.getByRole('button',{name:'Vista previa',exact:true}).click();
     await page.getByRole('button',{name:'Imprimir lote',exact:true}).click();await printed();
     const horizontal=await page.locator('.wh-package-sheet').first().evaluate(n=>{const s=n.getBoundingClientRect(),l=n.querySelector('.wh-package-label').getBoundingClientRect();return Math.abs(s.width-l.width)<.2&&Math.abs(s.height-l.height)<.2});
@@ -433,7 +433,7 @@ const server = http.createServer(async (req, res) => {
     assert.ok(Math.abs(horizontalBox[2]-210*72/25.4)<1&&Math.abs(horizontalBox[3]-148*72/25.4)<1,'actual PDF is A5 horizontal');
 
     await page.unroute('**/auth/v1/user');
-    await page.reload();await page.getByText('Papel actual: A5 vertical',{exact:false}).waitFor();
+    await page.reload();await page.getByText('Etiqueta actual: A5 vertical',{exact:false}).waitFor();
     assert.match(await paper.innerText(),/^A5 vertical/,'other account cannot change original user paper');
     await paper.press('ArrowDown');
     await page.getByRole('listbox').waitFor();
@@ -441,11 +441,54 @@ const server = http.createServer(async (req, res) => {
     assert.ok(menuBounds.left>=0&&menuBounds.right<=menuBounds.width&&menuBounds.textLeft>menuBounds.left+12,'dropdown text is padded and fully inside viewport');
     await page.screenshot({path:out+'/06-papel-desplegable.png',fullPage:true});
     await page.getByRole('listbox').press('Escape');assert.equal(await paper.getAttribute('aria-expanded'),'false');
-    await paper.press('ArrowDown');await page.getByRole('listbox').press('Home');await page.getByRole('listbox').press('ArrowDown');await page.getByRole('listbox').press('ArrowDown');await page.getByRole('listbox').press('Enter');await page.getByText('Papel actual: A5 horizontal',{exact:false}).waitFor();
+    await paper.press('ArrowDown');await page.getByRole('listbox').press('Home');await page.getByRole('listbox').press('ArrowDown');await page.getByRole('listbox').press('ArrowDown');await page.getByRole('listbox').press('Enter');await page.getByText('Etiqueta actual: A5 horizontal',{exact:false}).waitFor();
     await page.setViewportSize({width:390,height:844});await paper.click();
     assert.ok(await page.getByRole('listbox').evaluate(n=>{const r=n.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&n.scrollWidth<=n.clientWidth+1}),'mobile popup stays inside screen without horizontal clipping');
     await page.getByRole('listbox').press('Escape');
     await page.setViewportSize({width:1536,height:1000});await page.goto('http://127.0.0.1:3022/almacen/maestros/etiquetas');await paper.click();await page.getByRole('option',{name:'Usar configuración del almacén',exact:true}).waitFor();await page.screenshot({path:out+'/07-configuracion-desplegable.png',fullPage:true});await page.getByRole('listbox').press('Escape');
+    // Label orientation and printer sheet are independent; A4 must not stretch a 100 x 50 label.
+    await page.goto('http://127.0.0.1:3022/almacen/etiquetado');
+    const chooseSetting=async(name,option)=>{await page.getByRole('button',{name,exact:true}).click();await page.getByRole('option',{name:option}).click()};
+    await chooseSetting('Formato de la etiqueta de bulto',/^Zebra 6 x 4/);
+    await chooseSetting('Orientación de la etiqueta',/^Vertical$/);
+    await page.getByText(/Etiqueta actual: .*50 × 100 mm/).waitFor();
+    await chooseSetting('Orientación de la etiqueta',/^Horizontal$/);
+    await page.getByText(/Etiqueta actual: .*100 × 50 mm/).waitFor();
+    const openLabels=async()=>{await page.getByRole('button',{name:'Imprimir pendientes',exact:true}).click();await page.getByRole('button',{name:'Vista previa',exact:true}).click()};
+    await openLabels();const labelBeforeA4=await page.locator('.wh-package-label').first().evaluate(n=>n.outerHTML);await page.getByRole('button',{name:'Cerrar vista previa',exact:true}).first().click();
+    await chooseSetting('Papel cargado en la impresora',/^Hoja A4 vertical/);
+    await page.getByText(/Hoja de impresión: 210 × 297 mm/).waitFor();
+    await openLabels();assert.equal(await page.locator('.wh-package-label').first().evaluate(n=>n.outerHTML),labelBeforeA4,'A4 leaves the label preview completely unchanged');
+    await page.evaluate(()=>{window.BrowserPrint={getDefaultDevice:()=>{throw new Error('A4 must use printer/PDF')}}});
+    await page.getByRole('button',{name:'Imprimir lote',exact:true}).click();await printed();
+    assert.equal(await printed(),labelBeforeA4,'A4 print retains the exact label markup');
+    const actualMm=await page.locator('.wh-package-sheet').first().evaluate(n=>{const p=n.getBoundingClientRect(),l=n.querySelector('.wh-package-label').getBoundingClientRect(),mm=25.4/96;return {pw:p.width*mm,ph:p.height*mm,lw:l.width*mm,lh:l.height*mm,left:(l.left-p.left)*mm,top:(l.top-p.top)*mm}});
+    for(const [field,expected] of Object.entries({pw:210,ph:297,lw:100,lh:50,left:5,top:5}))assert.ok(Math.abs(actualMm[field]-expected)<.1,field+': exact physical size in A4');
+    await page.emulateMedia({media:'print'});const a4Pdf=await page.pdf({path:out+'/etiquetas-100x50-en-a4.pdf',preferCSSPageSize:true,printBackground:true});await page.emulateMedia({media:'screen'});await done();
+    const a4Raw=a4Pdf.toString('latin1'),a4Box=a4Raw.match(/\/MediaBox\s*\[([\d.\s]+)\]/)[1].trim().split(/\s+/).map(Number);assert.equal((a4Raw.match(/\/Type \/Page\b/g)||[]).length,2);
+    assert.ok(Math.abs(a4Box[2]-210*72/25.4)<1&&Math.abs(a4Box[3]-297*72/25.4)<1,'PDF is A4 while label remains 100x50');
+    await page.getByRole('button',{name:'Cerrar vista previa',exact:true}).first().click();
+    // A5 landscape label cannot fit an A5 portrait sheet with margins: warn and never audit/print it.
+    await chooseSetting('Formato de la etiqueta de bulto',/^A5 horizontal/);
+    await chooseSetting('Papel cargado en la impresora',/^Hoja A5 vertical/);
+    await page.getByRole('alert').filter({hasText:/no cabe/}).waitFor();
+    const beforeInvalid=calls.filter(c=>/wh_(reprint_label|print_labels)$/.test(c.path)).length;
+    await openLabels();await page.getByRole('button',{name:'Imprimir lote',exact:true}).click();await page.waitForTimeout(300);
+    assert.equal(await page.locator('#wh-label-print-root').count(),0,'no print root for an oversized label');
+    assert.equal(calls.filter(c=>/wh_(reprint_label|print_labels)$/.test(c.path)).length,beforeInvalid,'invalid fit is rejected before print audit');
+    await page.getByRole('button',{name:'Cerrar vista previa',exact:true}).first().click();
+    await chooseSetting('Papel cargado en la impresora',/^Hoja A4 horizontal/);
+    await page.getByText(/Hoja de impresión: 297 × 210 mm/).waitFor();
+    await page.reload();await page.getByText(/Etiqueta actual: A5 horizontal.*210 × 148 mm/).waitFor();await page.getByText(/Hoja de impresión: 297 × 210 mm/).waitFor();
+    await chooseSetting('Papel cargado en la impresora',/^Hoja con medidas personalizadas$/);
+    await page.getByLabel('Ancho de la hoja (mm)',{exact:true}).fill('320');
+    await page.getByLabel('Alto de la hoja (mm)',{exact:true}).fill('450');
+    await page.getByLabel('Margen de la hoja (mm)',{exact:true}).fill('10');
+    await page.getByRole('button',{name:'Aplicar medidas',exact:true}).click();
+    await page.getByText(/Hoja de impresión: 320 × 450 mm · margen 10 mm/).waitFor();
+    await page.reload();await page.getByText(/Hoja de impresión: 320 × 450 mm · margen 10 mm/).waitFor();
+    await chooseSetting('Papel cargado en la impresora',/^Hoja A4 horizontal/);await page.getByText(/Hoja de impresión: 297 × 210 mm/).waitFor();
+    await page.screenshot({path:out+'/08-etiqueta-hoja-independientes.png',fullPage:true});
     const reprints = calls.filter((c) => c.path.endsWith("/wh_reprint_label"));
     assert.equal(reprints.length, 6);
     assert.ok(
@@ -458,7 +501,7 @@ const server = http.createServer(async (req, res) => {
     );
     assert.deepEqual(errors, []);
     console.log(
-      "PASS browser: identical preview/print/reprint markup across reception, control, package detail and inventory; original identity/reasons; identical Zebra raster bytes across four routes; one PDF page per label; full-paper A5 vertical/horizontal and thermal sizes; isolated per-account preferences; black lot badge right of SKU; mobile and screenshots",
+      "PASS browser: identical preview/print/reprint markup across reception, control, package detail and inventory; original identity/reasons; identical Zebra raster bytes across four routes; one PDF page per label; label orientations and independent A4 sheet with exact 100x50 size; oversize rejected before audit; A5 vertical/horizontal and thermal sizes; isolated per-account preferences; black lot badge right of SKU; mobile and screenshots",
     );
   } catch (e) {
     if (page)

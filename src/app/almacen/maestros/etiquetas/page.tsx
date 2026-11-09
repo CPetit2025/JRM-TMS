@@ -63,13 +63,13 @@ export default function WarehouseLabelFormatsPage() {
     <header>
       <p className="text-xs font-bold uppercase tracking-widest text-blue-700">Configuración</p>
       <h1 className="mt-1 text-3xl font-black text-[#002855]">Tamaños de etiqueta</h1>
-      <p className="mt-1 text-sm text-slate-600">Elija la medida del papel o rollo de cada etiqueta. El diseño se ajusta al tamaño sin deformarse; en Zebra se usa también su resolución.</p>
+      <p className="mt-1 text-sm text-slate-600">Defina las medidas de la etiqueta y su orientación. Configure por separado la hoja de la impresora: imprimir en A4 no cambia el tamaño de la etiqueta.</p>
     </header>
     {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
     {notice && <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
 
     <PackageLabelPaperSettings />
-    <h2 className="font-bold text-[#002855]">Configuración compartida del almacén</h2>
+    <h2 className="font-bold text-[#002855]">Formatos de etiqueta compartidos del almacén</h2>
     <section className="grid gap-3 sm:grid-cols-2">
       {KINDS.map(k => {
         const current = formats.find(f => f.id === settings[k.kind])
