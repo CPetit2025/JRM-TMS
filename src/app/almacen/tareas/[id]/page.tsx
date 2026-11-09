@@ -109,7 +109,9 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
   }
 
   // Ítems de la etiqueta del bulto agrupado, desde la versión recargada del LPN (producto + lote, cantidades sumadas).
-  const labelItems = Object.values(((label && data.lpns.find(l => l.id === label.id)?.packages) || label?.packages || []).reduce<Record<string, { key: string; product_code: string; lot: string | null; unit: string | null; quantity: number }>>((acc, p) => {
+  // Recién consolidado, el LPN impreso aún no trae autor, fecha ni paquetes: se toman de su versión recargada.
+  const labelLpn = (label && data.lpns.find(l => l.id === label.id)) || label
+  const labelItems = Object.values((labelLpn?.packages || []).reduce<Record<string, { key: string; product_code: string; lot: string | null; unit: string | null; quantity: number }>>((acc, p) => {
     const key = `${p.product_code}|${p.lot || ''}`
     acc[key] = { key, product_code: p.product_code, lot: p.lot, unit: p.unit, quantity: (acc[key]?.quantity || 0) + Number(p.quantity) }
     return acc
@@ -288,7 +290,7 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
 
     {label && <div id="lpn-label" className="hidden print:block">
       <GroupedBultoLabel code={label.lpn_code} customer={task.client_name} contract={task.contract_code} request={task.request_number}
-        items={labelItems} packages={label.package_count} weightKg={Number(label.weight_kg)} preparedBy={label.created_by_name} date={label.created_at || null}/>
+        items={labelItems} packages={label.package_count} weightKg={Number(label.weight_kg)} preparedBy={labelLpn?.created_by_name || null} date={labelLpn?.created_at || null}/>
     </div>}
     <style jsx global>{`@page{size:${labelFormat.width_mm}mm ${labelFormat.height_mm}mm;margin:0}@media print{body *{visibility:hidden}#lpn-label,#lpn-label *{visibility:visible}#lpn-label{position:fixed;left:0;top:0;width:152.4mm;height:101.6mm;overflow:hidden;box-sizing:border-box;padding:0;zoom:${fitScale(labelFormat, 152.4, 101.6)}}}`}</style>
   </div>
