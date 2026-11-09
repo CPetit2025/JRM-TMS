@@ -122,6 +122,7 @@ const server = http.createServer(async (req, res) => {
   else if (path.endsWith("/token")) out = session;
   else if (path.endsWith("/profiles"))
     out = req.headers.accept?.includes("object") ? profile : [profile];
+  else if (path.endsWith("/wh_label_formats")) out = [format];
   else if (path.endsWith("/wh_label_settings")) out = { format };
   else if (path.endsWith("/wh_packages"))
     out = req.headers.accept?.includes("object") ? pkg : [pkg];
@@ -262,6 +263,13 @@ const server = http.createServer(async (req, res) => {
       .getByRole("button", { name: "Vista previa", exact: true })
       .click();
     await page.locator(".wh-package-label").waitFor();
+    const badges = await page.locator('.wh-package-label').evaluate(n => {
+      const sku=n.querySelector('.wh-package-sku'), lot=n.querySelector('.wh-package-lot');
+      const a=sku.getBoundingClientRect(), b=lot.getBoundingClientRect();
+      return {top:a.top,lotTop:b.top,right:a.right,lotLeft:b.left,background:getComputedStyle(lot).backgroundColor,color:getComputedStyle(lot).color,weight:getComputedStyle(lot).fontWeight};
+    });
+    assert.ok(Math.abs(badges.top-badges.lotTop)<1 && badges.lotLeft>badges.right, 'lot is right of SKU on same row');
+    assert.equal(badges.background,'rgb(0, 0, 0)');assert.equal(badges.color,'rgb(255, 255, 255)');assert.equal(badges.weight,'800');
     const preview = await page
       .locator(".wh-package-label")
       .evaluate((n) => n.outerHTML);
@@ -371,8 +379,53 @@ const server = http.createServer(async (req, res) => {
     format.width_mm=100;format.height_mm=50;
     receipt.pending_labels=[{...label,sequence_total:2},{...label,package_code:'PKG-TEST-000002',sequence_no:2,sequence_total:2}];receipt.unprinted_count=2;
     await page.goto('http://127.0.0.1:3022/almacen/etiquetado');await page.getByRole('button',{name:'Imprimir pendientes',exact:true}).click();await page.getByRole('button',{name:'Vista previa',exact:true}).click();await page.getByRole('button',{name:'Imprimir lote',exact:true}).click();await printed();
+    assert.ok(await page.locator('.wh-package-sheet').first().evaluate(n=>{const s=n.getBoundingClientRect(),l=n.querySelector('.wh-package-label').getBoundingClientRect();return Math.abs(s.width-l.width)<.2&&Math.abs(s.height-l.height)<.2}),'100x50 fills whole paper');
     await page.emulateMedia({media:'print'});const batchPdf=await page.pdf({path:out+'/lote-dos-etiquetas-100x50.pdf',preferCSSPageSize:true,printBackground:true});await page.emulateMedia({media:'screen'});await done();
     const raw=batchPdf.toString('latin1');assert.equal((raw.match(/\/Type \/Page\b/g)||[]).length,2,'one page per label');const box=raw.match(/\/MediaBox\s*\[([\d.\s]+)\]/)[1].trim().split(/\s+/).map(Number);assert.ok(Math.abs(box[2]-100*72/25.4)<1&&Math.abs(box[3]-50*72/25.4)<1,'configured paper dimensions apply to complete lot');
+    // Personal A5 affects the whole paper and survives navigation; another account keeps its own size.
+    await page.setViewportSize({width:1536,height:1000});
+    await page.goto('http://127.0.0.1:3022/almacen/etiquetado');
+    const paper=page.getByLabel('Mi papel para etiquetas de bulto');
+    await paper.selectOption('paper-a5-portrait');
+    await page.getByText('Papel actual: A5 vertical', {exact:false}).waitFor();
+    await page.getByRole('button',{name:'Imprimir pendientes',exact:true}).click();
+    await page.getByRole('button',{name:'Vista previa',exact:true}).click();
+    await page.evaluate(()=>{window.BrowserPrint={getDefaultDevice:()=>{throw new Error('A5 must use printer/PDF dialog')}}});
+    const a5Preview=await page.locator('.wh-package-label').first().evaluate(n=>n.outerHTML);
+    await page.getByRole('button',{name:'Imprimir lote',exact:true}).click();await printed();
+    assert.equal(await printed(),a5Preview,'personal A5 preview equals print');
+    const coverage=await page.locator('.wh-package-sheet').first().evaluate(n=>{
+      const s=n.getBoundingClientRect(),l=n.querySelector('.wh-package-label').getBoundingClientRect();
+      return {sw:s.width,sh:s.height,lw:l.width,lh:l.height};
+    });
+    assert.ok(Math.abs(coverage.sw-coverage.lw)<.2&&Math.abs(coverage.sh-coverage.lh)<.2,'label fills 100% of A5 in both dimensions');
+    await page.emulateMedia({media:'print'});
+    const a5Pdf=await page.pdf({path:out+'/etiquetas-a5-vertical.pdf',preferCSSPageSize:true,printBackground:true});
+    await page.emulateMedia({media:'screen'});await done();
+    const a5Raw=a5Pdf.toString('latin1');assert.equal((a5Raw.match(/\/Type \/Page\b/g)||[]).length,2);
+    const a5Box=a5Raw.match(/\/MediaBox\s*\[([\d.\s]+)\]/)[1].trim().split(/\s+/).map(Number);
+    assert.ok(Math.abs(a5Box[2]-148*72/25.4)<1&&Math.abs(a5Box[3]-210*72/25.4)<1,'actual PDF is A5 vertical');
+    await page.goto('http://127.0.0.1:3022/almacen/paquetes/'+code);
+    await page.waitForFunction(()=>parseFloat(document.querySelector('.wh-package-label')?.style.getPropertyValue('--wh-label-height'))>800);
+    assert.ok(await page.locator('.wh-package-label').evaluate(n=>parseFloat(n.style.getPropertyValue('--wh-label-height'))>800),'personal format follows package detail');
+    await page.locator('.wh-package-preview').screenshot({path:out+'/05-etiqueta-a5-vertical.png',style:'body > :not(#wh-label-print-root) footer{visibility:hidden}'});
+    const secondUser={...user,id:'00000000-0000-4000-8000-000000000002'};
+    await page.route('**/auth/v1/user',route=>route.fulfill({json:secondUser}));
+    await page.goto('http://127.0.0.1:3022/almacen/etiquetado');
+    await page.getByText('Papel actual: Zebra 6 x 4', {exact:false}).waitFor();
+    await page.getByLabel('Mi papel para etiquetas de bulto').selectOption('paper-a5-landscape');
+    await page.getByText('Papel actual: A5 horizontal', {exact:false}).waitFor();
+    await page.getByRole('button',{name:'Imprimir pendientes',exact:true}).click();await page.getByRole('button',{name:'Vista previa',exact:true}).click();
+    await page.getByRole('button',{name:'Imprimir lote',exact:true}).click();await printed();
+    const horizontal=await page.locator('.wh-package-sheet').first().evaluate(n=>{const s=n.getBoundingClientRect(),l=n.querySelector('.wh-package-label').getBoundingClientRect();return Math.abs(s.width-l.width)<.2&&Math.abs(s.height-l.height)<.2});
+    assert.ok(horizontal,'100% A5 horizontal coverage');
+    await page.emulateMedia({media:'print'});const horizontalPdf=await page.pdf({path:out+'/etiquetas-a5-horizontal.pdf',preferCSSPageSize:true,printBackground:true});await page.emulateMedia({media:'screen'});await done();
+    const horizontalBox=horizontalPdf.toString('latin1').match(/\/MediaBox\s*\[([\d.\s]+)\]/)[1].trim().split(/\s+/).map(Number);
+    assert.ok(Math.abs(horizontalBox[2]-210*72/25.4)<1&&Math.abs(horizontalBox[3]-148*72/25.4)<1,'actual PDF is A5 horizontal');
+
+    await page.unroute('**/auth/v1/user');
+    await page.reload();await page.getByText('Papel actual: A5 vertical',{exact:false}).waitFor();
+    assert.equal(await page.getByLabel('Mi papel para etiquetas de bulto').inputValue(),'paper-a5-portrait','other account cannot change original user paper');
     const reprints = calls.filter((c) => c.path.endsWith("/wh_reprint_label"));
     assert.equal(reprints.length, 6);
     assert.ok(
@@ -385,7 +438,7 @@ const server = http.createServer(async (req, res) => {
     );
     assert.deepEqual(errors, []);
     console.log(
-      "PASS browser: identical preview/print/reprint markup across reception, control, package detail and inventory; original identity/reasons; identical Zebra raster bytes across four routes; one PDF page per label, configurable size, mobile and screenshots",
+      "PASS browser: identical preview/print/reprint markup across reception, control, package detail and inventory; original identity/reasons; identical Zebra raster bytes across four routes; one PDF page per label; full-paper A5 vertical/horizontal and thermal sizes; isolated per-account preferences; black lot badge right of SKU; mobile and screenshots",
     );
   } catch (e) {
     if (page)

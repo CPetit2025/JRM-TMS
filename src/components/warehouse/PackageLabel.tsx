@@ -1,16 +1,19 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- El mismo logo original se rasteriza y se imprime sin optimización de tamaño. */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Code128Barcode } from "./Code128Barcode";
 import type { PackageLabelData } from "@/lib/warehouse/package-label";
 import type { LabelFormat } from "@/lib/warehouse/label-format";
+import { packageLabelLayout } from "@/lib/warehouse/package-label-layout";
 import "./package-label.css";
 /** Única plantilla: recepción, vista previa, inventario, detalle y reimpresión. */
-export function PackageLabel({ label }: { label: PackageLabelData }) {
+export function PackageLabel({ label, format = { width_mm: 152.4, height_mm: 101.6 } }: { label: PackageLabelData; format?: Pick<LabelFormat, "width_mm" | "height_mm"> }) {
+  const layout = packageLabelLayout(format);
   return (
     <article
       className="wh-package-label"
       data-package-code={label.package_code}
+      style={{ "--wh-label-width": `${layout.width}px`, "--wh-label-height": `${layout.height}px` } as CSSProperties}
     >
       <div className="wh-package-head">
         <div className="wh-package-logo">
@@ -26,15 +29,13 @@ export function PackageLabel({ label }: { label: PackageLabelData }) {
           <div>
             <b>OT:</b> <strong>{label.contract_code || "—"}</strong>
           </div>
-          <div>
-            <b>Lote:</b>{" "}
-            <strong>
-              {label.source_lot || "—"} · {label.source_warehouse}
-            </strong>
-          </div>
+          <div><b>Bodega:</b> <strong>{label.source_warehouse || "—"}</strong></div>
         </div>
       </div>
-      <b className="wh-package-sku">{label.source_product_code}</b>
+      <div className="wh-package-identifiers">
+        <b className="wh-package-sku">{label.source_product_code}</b>
+        <b className="wh-package-lot">Lote: {label.source_lot || "—"}</b>
+      </div>
       <div className="wh-package-description">{label.description}</div>
       <Code128Barcode
         value={label.package_code}
@@ -88,9 +89,8 @@ export function PackageLabelPreview({
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
-  const scale = width
-    ? Math.min(width / 576, (width * format.height_mm) / format.width_mm / 384)
-    : 0;
+  const layout = packageLabelLayout(format);
+  const scale = width ? width / layout.width : 0;
   return (
     <div
       ref={ref}
@@ -101,11 +101,11 @@ export function PackageLabelPreview({
         style={{
           transform: `scale(${scale})`,
           transformOrigin: "top left",
-          width: 576,
-          height: 384,
+          width: layout.width,
+          height: layout.height,
         }}
       >
-        <PackageLabel label={label} />
+        <PackageLabel label={label} format={format} />
       </div>
     </div>
   );

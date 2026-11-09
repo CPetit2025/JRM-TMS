@@ -19,3 +19,13 @@ Los valores de la primera impresión se recuperan de `wh_packages`, en vez de vo
 El control global `check:guards` de la rama WMS presenta incidencias C55 previas en migraciones de recepción/picking; este cambio no altera SQL. Los controles de esta entrega verifican la base WMS independiente y su aislamiento.
 
 La prueba de Zebra usa un dispositivo simulado y valida los datos enviados. No sustituye una prueba física en la impresora del almacén.
+
+## Lote destacado y papel personal
+
+El lote se muestra a la derecha del SKU, en la misma fila, dentro de un recuadro negro con letras blancas en negrita. La bodega permanece en el encabezado.
+
+En **Recepción, validación y etiquetado** y en **Configuración › Tamaños de etiqueta**, el selector **Mi papel para etiquetas de bulto** permite usar el formato compartido del almacén, A5 vertical (148 × 210 mm), A5 horizontal (210 × 148 mm) o un formato activo del catálogo. La preferencia se guarda por cuenta autenticada **en ese navegador**: otra cuenta o equipo conserva su propia configuración. Seleccionar «Usar configuración del almacén» elimina la preferencia personal. A5 usa el diálogo de impresora/PDF, aunque BrowserPrint esté instalado; los formatos térmicos conservan la integración Zebra.
+
+La plantilla distribuye sus filas en el ancho y alto del papel completo. No recorta una etiqueta de proporción fija ni estira el logo o las letras: ajusta la cuadrícula y conserva la proporción de esos elementos. Vista previa, impresión y reimpresión reciben exactamente el mismo formato. Una etiqueta ocupa una hoja, incluidos los lotes. Al imprimir hay que seleccionar el papel correspondiente en el controlador, escala 100 % / tamaño real, sin márgenes ni encabezados. El área física imprimible depende de la impresora.
+
+Pruebas Chromium: posición y colores del lote, ocupación completa del papel en ambos ejes, PDFs con dimensiones A5 vertical/horizontal y 100 × 50 mm, persistencia entre pantallas y preferencias independientes de dos cuentas. No se modificaron tablas, datos históricos ni TMS.
