@@ -61,6 +61,16 @@ const feed=(status={})=>[
  const assigned=(await sys(`SELECT assigned_picker,assigned_at FROM public.wh_tasks WHERE id='${task.id}'`))[0];
  assert.equal(assigned.assigned_picker,U.op1); assert.ok(assigned.assigned_at);
  console.log('PASS: solicitud cancelada o no aprobada no se toma; toma con usuario y hora; sin doble asignación.');
+ // Tarea abandonada: tras 20 min sin actividad del responsable otro operador la toma con motivo
+ await sys(`UPDATE public.wh_tasks SET assigned_at=now()-interval '30 minutes' WHERE id='${task.id}'`); await sys('ALTER TABLE public.wh_scan_events DISABLE TRIGGER USER'); await sys(`UPDATE public.wh_scan_events SET occurred_at=now()-interval '30 minutes' WHERE task_id='${task.id}'`); await sys('ALTER TABLE public.wh_scan_events ENABLE TRIGGER USER');
+ await as('op2'); await fails('SELECT public.wh_assign_task($1)',[task.id],/motivo/);
+ await q("SELECT public.wh_assign_task($1,'op1 salió de turno')",[task.id]);
+ assert.equal((await sys(`SELECT assigned_picker FROM public.wh_tasks WHERE id='${task.id}'`))[0].assigned_picker,U.op2);
+ assert.equal((await sys(`SELECT payload->>'reason' r FROM public.wh_scan_events WHERE task_id='${task.id}' AND event_type='TASK_ASSIGNED' ORDER BY recorded_at DESC LIMIT 1`))[0].r,'op1 salió de turno');
+ await as('op1'); await fails("SELECT public.wh_assign_task($1,'x')",[task.id],/otro operador/);
+ assert.ok((await one("SELECT public.wh_task_board('tareas')")).find(r=>r.id===task.id).last_activity_at,'el tablero informa la última actividad');
+ await sys(`UPDATE public.wh_tasks SET assigned_picker='${U.op1}' WHERE id='${task.id}'`);
+ console.log('PASS: tarea sin actividad 20 min la toma otro operador con motivo; con actividad reciente no.');
 
  // 3. Picking por escaneo validado contra la OT
  await as('op1');

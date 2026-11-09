@@ -165,10 +165,13 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
     }
     try {
       const media = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+      // El <video> está siempre montado: antes solo existía tras setCamera(true) y la cámara nunca se conectaba
       stream.current = media; setCamera(true)
-      if (video.current) { video.current.srcObject = media; await video.current.play() }
+      if (!video.current) throw new Error('No se pudo mostrar la cámara.')
+      video.current.srcObject = media; await video.current.play()
+      // iPhone y Chrome en Windows no traen BarcodeDetector: se usa el lector ZXing (WebAssembly)
       const Detector = (window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector
-      if (!Detector) throw new Error('Este navegador no ofrece lectura por cámara; use el lector o el campo manual.')
+        ?? (await import('barcode-detector/ponyfill')).BarcodeDetector as unknown as BarcodeDetectorConstructor
       const detector = new Detector({ formats: ['code_128', 'qr_code', 'ean_13', 'ean_8'] })
       const loop = async () => {
         if (!video.current || !stream.current) return
@@ -197,8 +200,8 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
   return <div className="w-full space-y-4">
     <Link href="/almacen/tareas" className="inline-flex items-center gap-2 text-sm font-semibold text-blue-800 print:hidden"><ArrowLeft size={16}/>Tareas</Link>
     <header className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:hidden">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <dl className="grid flex-1 grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <dl className="grid min-w-0 flex-1 grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3 sm:gap-x-6">
           <div><dt className="text-xs text-slate-500">Solicitud</dt><dd className="text-lg font-black text-[#002855]">{task.request_number || task.task_code}</dd></div>
           <div><dt className="text-xs text-slate-500">OT / lote</dt><dd className="font-bold">{lots || '—'}</dd></div>
           <div><dt className="text-xs text-slate-500">Cliente</dt><dd className="font-semibold">{task.client_name || '—'}</dd></div>
@@ -228,10 +231,10 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
     {(preparing || (task.status === 'READY_FOR_LOAD' && released)) && <section className="rounded-xl border border-slate-200 bg-white p-4 print:hidden">
       <form onSubmit={scan} className="flex gap-2">
         <input ref={input} value={code} onChange={e => setCode(e.target.value)} autoFocus inputMode="text" autoComplete="off" placeholder={task.status === 'READY_FOR_LOAD' ? 'Escanee LPN o paquete para cargar…' : 'Escanee el código del paquete…'} className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-3 text-base"/>
-        <button disabled={busy || !code.trim()} className={`${btn} bg-[#002855] text-white`}>{busy ? <Loader2 size={17} className="animate-spin"/> : <ScanLine size={17}/>}Registrar</button>
+        <button disabled={busy || !code.trim()} className={`${btn} bg-[#002855] text-white`}>{busy ? <Loader2 size={17} className="animate-spin"/> : <ScanLine size={17}/>}<span className="hidden sm:inline">Registrar</span></button>
         <button type="button" aria-label={camera ? 'Cerrar cámara' : 'Escanear con cámara'} onClick={() => camera ? (stream.current?.getTracks().forEach(t => t.stop()), stream.current = null, setCamera(false)) : void startCamera()} className={`${btn} border border-slate-300`}><Camera size={17}/></button>
       </form>
-      {camera && <video ref={video} playsInline muted className="mt-3 max-h-64 w-full rounded-lg bg-black object-contain"/>}
+      <video ref={video} playsInline muted className={camera ? 'mt-3 max-h-64 w-full rounded-lg bg-black object-contain' : 'hidden'}/>
     </section>}
 
     {preparing && <section className="overflow-hidden rounded-xl border border-slate-200 bg-white print:hidden">
