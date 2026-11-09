@@ -13,7 +13,7 @@ export function monochromeRaster(
       const light =
         (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]) * alpha +
         255 * (1 - alpha);
-      if (light < 128) bytes[y * bytesPerRow + (x >> 3)] |= 0x80 >> (x % 8);
+      if (light < 160) bytes[y * bytesPerRow + (x >> 3)] |= 0x80 >> (x % 8);
     }
   return { bytes, bytesPerRow };
 }

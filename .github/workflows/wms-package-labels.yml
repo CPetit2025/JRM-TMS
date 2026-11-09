@@ -18,7 +18,7 @@ jobs:
   labels:
     runs-on: ubuntu-latest
     env:
-      LABEL_ARTIFACT_DIR: ${{ runner.temp }}/label-evidence
+      LABEL_ARTIFACT_DIR: artifacts/unified-package-labels
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
