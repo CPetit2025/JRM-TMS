@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- Mismo logo que la etiqueta de bulto, impreso sin optimizar. */
 import type { CSSProperties } from "react";
 import { Code128Barcode } from "./Code128Barcode";
-import { bultoNumber } from "@/lib/warehouse/package-label";
+import { bultoNumber, identifierFontSize } from "@/lib/warehouse/package-label";
 import { packageLabelLayout } from "@/lib/warehouse/package-label-layout";
 import "./package-label.css";
 
@@ -17,6 +17,7 @@ export function GroupedBultoLabel({ code, customer, contract, request, items, pa
   const layout = packageLabelLayout({ width_mm: 152.4, height_mm: 101.6 });
   const lots = [...new Set(items.map((i) => i.lot || "—"))];
   // Caben 4 filas: hasta 4 ítems se listan todos; con más, 3 ítems y una fila «+N más».
+  const lotText = `${lots.length > 1 ? "Lotes" : "Lote"}: ${lots.join(", ")}`, idSize = identifierFontSize("BULTO AGRUPADO", lotText);
   const shown = items.length > 4 ? items.slice(0, 3) : items;
   return (
     <article className="wh-package-label" data-package-code={code}
@@ -30,8 +31,8 @@ export function GroupedBultoLabel({ code, customer, contract, request, items, pa
         </div>
       </div>
       <div className="wh-package-identifiers">
-        <b className="wh-package-sku">BULTO AGRUPADO</b>
-        <b className="wh-package-lot">{lots.length > 1 ? "Lotes" : "Lote"}: {lots.join(", ")}</b>
+        <b className="wh-package-sku" style={{ fontSize: idSize }}>BULTO AGRUPADO</b>
+        <b className="wh-package-lot" style={{ fontSize: idSize }}>{lotText}</b>
       </div>
       <div className="wh-grouped-wrap">
       <table className="wh-grouped-items">

@@ -266,15 +266,15 @@
   line-height: 1.05;
   white-space: nowrap;
 }
-/* SKU en una sola línea: toma el espacio que el lote no usa y reduce su letra si es muy largo (ver PackageLabel). */
+/* SKU y lote en una línea y sin recortes: la letra común la calcula identifierFontSize. */
 .wh-package-identifiers .wh-package-sku {
-  max-width: 74%;
+  max-width: none;
   white-space: nowrap;
   overflow-wrap: normal;
 }
 .wh-package-identifiers .wh-package-lot {
   flex: none;
-  max-width: 40%;
+  max-width: none;
   white-space: nowrap;
 }
 /* La lista ocupa el espacio libre; el código de barras del agrupado es más bajo para que entre el pie. */
