@@ -8,8 +8,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { pendingWarehouseScans, queueWarehouseScan, removeFailedWarehouseScan, syncWarehouseScans } from '@/lib/warehouse/offline'
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import type { WarehouseScanOutbox } from '@/lib/offline/db'
-import { Code128Barcode } from '@/components/warehouse/Code128Barcode'
-import { bultoNumber } from '@/lib/warehouse/package-label'
+import { GroupedBultoLabel } from '@/components/warehouse/GroupedBultoLabel'
 import { fitScale, useLabelFormat } from '@/lib/warehouse/label-format'
 import { AUDIT, STATE, buildPackingListPdf, fmt, fmtDate, type BoardRow, type TaskLpn, type TaskLpns } from '@/lib/warehouse/packing-list'
 
@@ -288,17 +287,9 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
     </section>
 
     {label && <div id="lpn-label" className="hidden print:block">
-      <p style={{ fontSize: 13, fontWeight: 700 }}>JRM · {bultoNumber(label.lpn_code) ? `Bulto ${bultoNumber(label.lpn_code)} · agrupado` : 'LPN'}</p>
-      <Code128Barcode value={label.lpn_code} height={44} className="w-full"/>
-      <p style={{ fontSize: 16, fontWeight: 900, fontFamily: 'monospace', textAlign: 'center' }}>{label.lpn_code}</p>
-      <p style={{ fontSize: 10 }}>Solicitud {task.request_number} · OT {task.contract_code || '—'} · {task.client_name || ''}</p>
-      {/* Ítems del bulto agrupado (producto + lote, cantidades sumadas); el detalle completo va en el Packing List. */}
-      <table style={{ width: '100%', fontSize: 9, lineHeight: 1.15, borderCollapse: 'collapse' }}><tbody>
-        {labelItems.slice(0, 5).map(i => <tr key={i.key}><td>{i.product_code}</td><td>{i.lot || '—'}</td><td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(i.quantity, 3)} {i.unit || ''}</td></tr>)}
-      </tbody></table>
-      {labelItems.length > 5 && <p style={{ fontSize: 9 }}>+{labelItems.length - 5} ítem(s) más · ver Packing List</p>}
-      <p style={{ fontSize: 10, fontWeight: 700 }}>{label.package_count} paquete(s) · {fmt(label.quantity, 3)} und · {fmt(label.weight_kg)} kg</p>
+      <GroupedBultoLabel code={label.lpn_code} customer={task.client_name} contract={task.contract_code} request={task.request_number}
+        items={labelItems} packages={label.package_count} weightKg={Number(label.weight_kg)} preparedBy={label.created_by_name} date={label.created_at || null}/>
     </div>}
-    <style jsx global>{`@page{size:${labelFormat.width_mm}mm ${labelFormat.height_mm}mm;margin:0}@media print{body *{visibility:hidden}#lpn-label,#lpn-label *{visibility:visible}#lpn-label{position:fixed;left:0;top:0;width:100mm;height:60mm;overflow:hidden;box-sizing:border-box;padding:4mm;zoom:${fitScale(labelFormat, 100, 60)}}}`}</style>
+    <style jsx global>{`@page{size:${labelFormat.width_mm}mm ${labelFormat.height_mm}mm;margin:0}@media print{body *{visibility:hidden}#lpn-label,#lpn-label *{visibility:visible}#lpn-label{position:fixed;left:0;top:0;width:152.4mm;height:101.6mm;overflow:hidden;box-sizing:border-box;padding:0;zoom:${fitScale(labelFormat, 152.4, 101.6)}}}`}</style>
   </div>
 }

@@ -33,7 +33,8 @@ export function PackageLabel({ label, format = { width_mm: 152.4, height_mm: 101
         </div>
       </div>
       <div className="wh-package-identifiers">
-        <b className="wh-package-sku">{label.source_product_code}</b>
+        {/* Una sola línea: ~411 px útiles y ~0,62 em por carácter; solo los SKU muy largos reducen la letra. */}
+        <b className="wh-package-sku" style={{ fontSize: Math.min(26.457, 411 / (Math.max(1, label.source_product_code.length) * 0.62)) }}>{label.source_product_code}</b>
         <b className="wh-package-lot">Lote: {label.source_lot || "—"}</b>
       </div>
       <div className="wh-package-description">{label.description}</div>
