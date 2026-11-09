@@ -151,9 +151,11 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
       </div>
       <p className="mt-1 text-sm text-slate-600">{camp.counted_lines} bultos contados · {camp.labeled} etiquetados · {camp.unidentified} no identificados · {camp.expected_lines} lotes en el ERP
         {open && <b className="ml-2 text-amber-800">{INVENTORY_TYPE[camp.tipo]?.label || camp.tipo}: {INVENTORY_TYPE[camp.tipo]?.blocks}{camp.tipo === 'CICLICO' ? ` SKU: ${camp.productos.join(', ')}.` : ''}</b>}</p>
-      <nav className="mt-3 flex gap-2">
+      {camp.status === 'ANULADA'
+        ? <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">{camp.close_note || 'Anulada'} · {camp.closed_by_name || '—'} · {fmtDate(camp.closed_at)}. Una campaña anulada no genera cuadre ni ajustes.</p>
+        : <nav className="mt-3 flex gap-2">
         {(['barrido', 'cuadre'] as const).map(t => <button key={t} type="button" onClick={() => setTab(t)} className={`${btn} ${tab === t ? 'bg-[#002855] text-white' : 'border border-slate-300'}`}>{t === 'barrido' ? 'Barrido' : `Cuadre${diffs.length ? ` · ${diffs.length} diferencias` : ''}`}</button>)}
-      </nav>
+      </nav>}
     </header>
     {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900 print:hidden">{error}
       {supersStock && isSupervisor && pick && <button type="button" onClick={e => void labelRotulo(e as unknown as FormEvent, true)} className="ml-3 rounded-md bg-rose-800 px-2 py-1 text-xs font-bold text-white">Confirmar como supervisión</button>}</p>}
@@ -220,7 +222,7 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
       </section>
     </div>}
 
-    {tab === 'cuadre' && <section className="space-y-3 print:hidden">
+    {tab === 'cuadre' && camp.status !== 'ANULADA' && <section className="space-y-3 print:hidden">
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 text-sm">
         {(['CUADRA', 'FALTANTE', 'SOBRANTE', 'NO_EN_ERP'] as const).map(k => <span key={k} className={`rounded-full px-2 py-0.5 text-xs font-bold ${RESULT_STYLE[k]}`}>{k.replace('_', ' ')} {counts[k] || 0}</span>)}
         {isSupervisor && open && <span className="ml-auto flex flex-wrap gap-2">
