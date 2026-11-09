@@ -6,7 +6,7 @@ La referencia visual es la etiqueta de Recepción de 6 × 4 pulgadas. La cuadrí
 
 ## Configuración independiente de etiqueta y hoja
 
-En Recepción y en **Configuración › Tamaños de etiqueta**, «Mi configuración de impresión» distingue:
+Los ajustes se administran únicamente en **Configuración › Etiquetas** (`/almacen/maestros/etiquetas`). Recepción conserva un enlace a ese módulo y aplica las preferencias guardadas a la vista previa, impresión y reimpresión, sin mostrar controles de configuración. «Mi configuración de impresión» distingue:
 
 1. **Formato de la etiqueta de bulto**: formato compartido del almacén, A5 o cualquier formato activo del catálogo. Los supervisores pueden agregar medidas al catálogo.
 2. **Orientación de la etiqueta**: original, horizontal o vertical. Horizontal coloca la medida mayor como ancho en cualquier formato; vertical hace lo contrario.

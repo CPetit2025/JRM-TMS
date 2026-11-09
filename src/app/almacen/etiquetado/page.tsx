@@ -8,7 +8,7 @@ import { PackageLabelPreview } from '@/components/warehouse/PackageLabel'
 import type { PackageLabelData as Label } from '@/lib/warehouse/package-label'
 import { loadPackageLabels } from '@/lib/warehouse/load-package-label'
 import { printPackageLabels, validatePackageLabelPrint } from '@/components/warehouse/print-package-labels'
-import { PackageLabelPaperSettings } from '@/components/warehouse/PackageLabelPaperSettings'
+import Link from 'next/link'
 import { useLabelFormat } from '@/lib/warehouse/label-format'
 
 type Receipt = {
@@ -223,8 +223,8 @@ export default function WarehouseLabelingPage() {
       <p className="text-xs font-bold uppercase tracking-widest text-blue-700">WMS · Recepción APT</p>
       <h1 className="mt-1 text-3xl font-black text-[#002855]">Recepción, validación y etiquetado</h1>
       <p className="mt-1 text-sm text-slate-600">Bandeja de ingresos pendientes de etiqueta. Busque por IPT, OT, contrato o lote; valide lo recibido y genere etiquetas por bulto.</p>
+      <Link href="/almacen/maestros/etiquetas" className="mt-2 inline-flex text-sm font-semibold text-[#002855] underline underline-offset-2">Configuración de etiquetas</Link>
     </header>
-    <PackageLabelPaperSettings />
     {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
     {message && <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">{message}</p>}
 
