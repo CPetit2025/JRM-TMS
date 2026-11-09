@@ -1,5 +1,5 @@
 "use client"
-import { ReactNode, useEffect, useState } from 'react'
+import { ReactNode, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
@@ -10,10 +10,13 @@ interface ModalProps {
   children: ReactNode
   maxWidth?: string
   footer?: ReactNode
+  /** Panel lateral derecho de alto completo en lugar de ventana centrada. */
+  side?: boolean
 }
 
-export function Modal({ isOpen, onClose, title, children, maxWidth = "max-w-lg", footer }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, maxWidth = "max-w-lg", footer, side = false }: ModalProps) {
   const [mounted, setMounted] = useState(false)
+  const panel = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -24,14 +27,16 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "max-w-lg",
   useEffect(() => {
     if (!isOpen) return
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      // Con ventanas anidadas, Escape cierra solo la superior.
+      if (e.key === 'Escape' && panel.current === Array.from(document.querySelectorAll('[role="dialog"]')).at(-1)) onClose()
     }
     document.addEventListener('keydown', handleKey)
     // Prevent body scroll when modal is open
+    const overflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', handleKey)
-      document.body.style.overflow = ''
+      document.body.style.overflow = overflow
     }
   }, [isOpen, onClose])
 
@@ -39,7 +44,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "max-w-lg",
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4"
+      className={`fixed inset-0 z-[9999] flex ${side ? 'justify-end' : 'items-center justify-center p-3 sm:p-4'}`}
     >
       {/* Backdrop */}
       <div
@@ -48,8 +53,8 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "max-w-lg",
       />
       {/* Modal panel */}
       <div
-        role="dialog" aria-modal="true" aria-label={title}
-        className={`relative min-w-0 bg-white rounded-2xl shadow-2xl w-full ${maxWidth} max-h-[calc(100dvh-1.5rem)] overflow-hidden flex flex-col sm:max-h-[90dvh]`}
+        ref={panel} role="dialog" aria-modal="true" aria-label={title}
+        className={`relative min-w-0 bg-white shadow-2xl w-full ${maxWidth} overflow-hidden flex flex-col ${side ? 'h-dvh' : 'rounded-2xl max-h-[calc(100dvh-1.5rem)] sm:max-h-[90dvh]'}`}
       >
         {/* Header */}
         <div className="flex items-center justify-between gap-2 px-4 py-3 sm:px-5 sm:py-4 border-b border-slate-100 bg-slate-50 shrink-0">

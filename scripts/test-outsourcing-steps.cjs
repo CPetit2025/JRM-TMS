@@ -1,0 +1,20 @@
+// Pasos de la tercerización (4): etapa de la ficha y asignaciones por servicio.
+const assert = require('node:assert/strict'), fs = require('node:fs'), ts = require('typescript')
+const m = { exports: {} }
+new Function('exports', 'module', ts.transpileModule(fs.readFileSync('src/lib/outsourcing.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(m.exports, m)
+const { outsourcingStepsDone: done, OUTSOURCING_STEPS } = m.exports
+const a = (state, quantity = 1) => ({ state, quantity })
+assert.equal(OUTSOURCING_STEPS.length, 4)
+assert.equal(done(0, 1, []), 0, 'borrador: paso 1 en curso')
+assert.equal(done(0, 1, [a('CONFIRMED')]), 0, 'observada vuelve al paso 1')
+assert.equal(done(1, 1, []), 1, 'enviada: pasa a cotización')
+assert.equal(done(1, 2, [a('DRAFT')]), 1, 'cotización parcial')
+assert.equal(done(1, 2, [a('DRAFT'), a('APPROVED')]), 2, 'cotización completa')
+assert.equal(done(1, 2, [a('CONFIRMED'), a('APPROVED')]), 2, 'confirmación parcial')
+assert.equal(done(1, 2, [a('CONFIRMED'), a('COMPLETED')]), 3, 'proveedor confirmado')
+assert.equal(done(1, 2, [a('COMPLETED', 2)]), 4, 'ejecutado')
+assert.equal(done(1, 1, [a('CANCELLED')]), 1, 'canceladas no cuentan')
+assert.equal(done(3, 1, []), 1, 'flujo anterior: cotización')
+assert.equal(done(5, 1, []), 3, 'flujo anterior: adjudicado')
+assert.equal(done(7, 1, []), 4, 'flujo anterior: cerrado')
+console.log('test-outsourcing-steps OK')

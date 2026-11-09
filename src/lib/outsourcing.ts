@@ -1,4 +1,13 @@
 export const OUTSOURCING_STAGES = ['Solicitud generada', 'Enviada a Compras', 'En cotización', 'Pendiente de aprobación', 'Servicio adjudicado', 'Proveedor confirmado', 'Servicio ejecutado', 'Cerrado'] as const
+export const OUTSOURCING_STEPS = ['Solicitud generada', 'En cotización', 'Proveedor confirmado', 'Ejecutado / cerrado'] as const
+/** Pasos cumplidos (0–4) de un servicio: la etapa de la ficha (flujo anterior de 8 etapas) o sus asignaciones vigentes. */
+export function outsourcingStepsDone(stage: number, required: number, assignments: { state: string; quantity: number }[]) {
+ if (stage === 0) return 0
+ const sum = (states: string[]) => assignments.filter(a => states.includes(a.state)).reduce((s, a) => s + Number(a.quantity), 0)
+ const legacy = stage >= 7 ? 4 : stage >= 5 ? 3 : 1
+ const resources = required <= 0 ? 0 : sum(['COMPLETED']) >= required ? 4 : sum(['CONFIRMED', 'COMPLETED']) >= required ? 3 : sum(['DRAFT', 'APPROVED', 'CONFIRMED', 'COMPLETED']) >= required ? 2 : 0
+ return Math.max(legacy, resources)
+}
 export const OUTSOURCING_SERVICES = { FLETE: 'Transporte', MONTACARGAS: 'Montacargas', GRUA: 'Grúa', STOCKA: 'Stocka / transpaleta', ESTIBA: 'Estiba y desestiba', OTROS: 'Otros recursos' } as const
 export type OutsourcingService = keyof typeof OUTSOURCING_SERVICES
 export type ServiceRequirement = { kind: OutsourcingService; requirements: string; details?: Record<string,string> }
@@ -26,7 +35,6 @@ export const SERVICE_HINTS: Partial<Record<OutsourcingService, string>> = {
  MONTACARGAS: 'Capacidad (t), altura de elevación (m) y horas de uso.', GRUA: 'Capacidad (t), alcance (m) y condiciones de maniobra.',
  STOCKA: 'Capacidad y características requeridas.', ESTIBA: 'Cantidad de operarios, horario y actividades.', OTROS: 'Equipo o recurso, cantidad y condiciones de uso.',
 }
-export const nextPermission = (stage: number) => [ 'despacho', 'compras-tercerizaciones', 'compras-tercerizaciones', 'compras-aprobar', 'compras-tercerizaciones', 'despacho', 'cierre-economico' ][stage]
 
 export const SERVICE_FIELDS: Partial<Record<OutsourcingService, [string,string,string][]>> = {
  MONTACARGAS: [['capacity','Capacidad (t)','number'],['height','Altura de elevación (m)','number'],['hours','Tiempo de uso (horas)','number']],
