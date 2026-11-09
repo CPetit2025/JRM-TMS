@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- El mismo logo original se rasteriza y se imprime sin optimización de tamaño. */
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Code128Barcode } from "./Code128Barcode";
-import { bultoNumber, type PackageLabelData } from "@/lib/warehouse/package-label";
+import { bultoNumber, identifierFontSize, type PackageLabelData } from "@/lib/warehouse/package-label";
 import type { LabelFormat } from "@/lib/warehouse/label-format";
 import { packageLabelLayout } from "@/lib/warehouse/package-label-layout";
 import "./package-label.css";
@@ -33,8 +33,9 @@ export function PackageLabel({ label, format = { width_mm: 152.4, height_mm: 101
         </div>
       </div>
       <div className="wh-package-identifiers">
-        <b className="wh-package-sku">{label.source_product_code}</b>
-        <b className="wh-package-lot">Lote: {label.source_lot || "—"}</b>
+        {/* SKU y lote completos en una línea: solo se reduce la letra si juntos no caben. */}
+        <b className="wh-package-sku" style={{ fontSize: identifierFontSize(label.source_product_code, `Lote: ${label.source_lot || "—"}`) }}>{label.source_product_code}</b>
+        <b className="wh-package-lot" style={{ fontSize: identifierFontSize(label.source_product_code, `Lote: ${label.source_lot || "—"}`) }}>Lote: {label.source_lot || "—"}</b>
       </div>
       <div className="wh-package-description">{label.description}</div>
       <Code128Barcode

@@ -8,10 +8,9 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { pendingWarehouseScans, queueWarehouseScan, removeFailedWarehouseScan, syncWarehouseScans } from '@/lib/warehouse/offline'
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import type { WarehouseScanOutbox } from '@/lib/offline/db'
-import { Code128Barcode } from '@/components/warehouse/Code128Barcode'
-import { bultoNumber } from '@/lib/warehouse/package-label'
+import { GroupedBultoLabel } from '@/components/warehouse/GroupedBultoLabel'
 import { fitScale, useLabelFormat } from '@/lib/warehouse/label-format'
-import { AUDIT, STATE, buildPackingListPdf, fmt, fmtDate, type BoardRow, type TaskLpn, type TaskLpns } from '@/lib/warehouse/packing-list'
+import { AUDIT, STATE, buildBultoContentPdf, buildPackingListPdf, fmt, fmtDate, itemLines, needsContentSheet, type BoardRow, type TaskLpn, type TaskLpns } from '@/lib/warehouse/packing-list'
 
 const nativeWarehouseScanner = registerPlugin<{ scan: () => Promise<{ rawValue: string }> }>('WarehouseBarcodeScanner')
 type BarcodeDetectorLike = { detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue: string }>> }
@@ -43,7 +42,7 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
   const load = useCallback(async () => {
     const db = createClient()
     const [board, lpns] = await Promise.all([db.rpc('wh_task_board', { p_scope: 'tareas', p_task_id: id }), db.rpc('wh_task_lpns', { p_task_id: id })])
-    if (board.error || lpns.error) { setError((board.error || lpns.error)!.message); setLoading(false); return }
+    if (board.error || lpns.error) { setError((board.error || lpns.error)!.message); setLoading(false); return null }
     setTask(((board.data || []) as BoardRow[])[0] || null)
     const next = lpns.data as TaskLpns
     setData(next)
@@ -56,6 +55,7 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
       return keep
     })
     setLoading(false)
+    return next
   }, [id])
 
   const syncQueue = useCallback(async () => {
@@ -110,11 +110,21 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
   }
 
   // Ítems de la etiqueta del bulto agrupado, desde la versión recargada del LPN (producto + lote, cantidades sumadas).
-  const labelItems = Object.values(((label && data.lpns.find(l => l.id === label.id)?.packages) || label?.packages || []).reduce<Record<string, { key: string; product_code: string; lot: string | null; unit: string | null; quantity: number }>>((acc, p) => {
+  // Recién consolidado, el LPN impreso aún no trae autor, fecha ni paquetes: se toman de su versión recargada.
+  const labelLpn = (label && data.lpns.find(l => l.id === label.id)) || label
+  const labelItems = Object.values((labelLpn?.packages || []).reduce<Record<string, { key: string; product_code: string; lot: string | null; unit: string | null; quantity: number }>>((acc, p) => {
     const key = `${p.product_code}|${p.lot || ''}`
     acc[key] = { key, product_code: p.product_code, lot: p.lot, unit: p.unit, quantity: (acc[key]?.quantity || 0) + Number(p.quantity) }
     return acc
   }, {}))
+
+  // Más de 4 ítems no caben en la etiqueta: se descarga la hoja de contenido (A5 o A4) para pegarla junto a ella.
+  const contentSheet = async (l: TaskLpn) => {
+    if (!task) return
+    const { pdf, format } = await buildBultoContentPdf(l, task)
+    pdf.save(`contenido-${l.lpn_code}.pdf`)
+    setMessage(`El bulto ${l.lpn_code} tiene ${itemLines(l.packages)} ítems: se descargó su hoja de contenido (${format.toUpperCase()}) para imprimirla y pegarla junto a la etiqueta.`)
+  }
 
   const printLabel = async (lpn: TaskLpn) => {
     const db = createClient()
@@ -140,7 +150,8 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
       await load()
     } else {
       setMessage(`LPN ${lpn.lpn_code} creado con ${lpn.package_count} paquete(s).`)
-      await load()
+      const full = (await load())?.lpns.find(l => l.id === lpn.id)
+      if (full && needsContentSheet(full.packages)) await contentSheet(full)
       await printLabel({ ...lpn, print_count: 0, packages: [], audits: [], status: 'CLOSED', audit_status: 'PENDIENTE' } as TaskLpn)
     }
     setBusy(false)
@@ -274,6 +285,7 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
             <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${audit.style}`}>{audit.label}</span>
             <span className="ml-auto flex gap-1.5">
               {l.status === 'CLOSED' && <button disabled={busy} onClick={() => void printLabel(l)} className={`${btn} border border-slate-300 px-2 py-1 text-xs`}><Printer size={14}/>{l.print_count ? 'Reimprimir' : 'Etiqueta'}</button>}
+              {l.status === 'CLOSED' && needsContentSheet(l.packages) && <button disabled={busy} onClick={() => void contentSheet(l)} className={`${btn} border border-slate-300 px-2 py-1 text-xs`}><Download size={14}/>Contenido</button>}
               {editable && <button disabled={busy} onClick={() => undo(l)} className={`${btn} border border-slate-300 px-2 py-1 text-xs`}><Undo2 size={14}/>Deshacer</button>}
             </span>
           </div>
@@ -288,17 +300,9 @@ export default function WarehouseTaskPage({ params }: { params: Promise<{ id: st
     </section>
 
     {label && <div id="lpn-label" className="hidden print:block">
-      <p style={{ fontSize: 13, fontWeight: 700 }}>JRM · {bultoNumber(label.lpn_code) ? `Bulto ${bultoNumber(label.lpn_code)} · agrupado` : 'LPN'}</p>
-      <Code128Barcode value={label.lpn_code} height={44} className="w-full"/>
-      <p style={{ fontSize: 16, fontWeight: 900, fontFamily: 'monospace', textAlign: 'center' }}>{label.lpn_code}</p>
-      <p style={{ fontSize: 10 }}>Solicitud {task.request_number} · OT {task.contract_code || '—'} · {task.client_name || ''}</p>
-      {/* Ítems del bulto agrupado (producto + lote, cantidades sumadas); el detalle completo va en el Packing List. */}
-      <table style={{ width: '100%', fontSize: 9, lineHeight: 1.15, borderCollapse: 'collapse' }}><tbody>
-        {labelItems.slice(0, 5).map(i => <tr key={i.key}><td>{i.product_code}</td><td>{i.lot || '—'}</td><td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(i.quantity, 3)} {i.unit || ''}</td></tr>)}
-      </tbody></table>
-      {labelItems.length > 5 && <p style={{ fontSize: 9 }}>+{labelItems.length - 5} ítem(s) más · ver Packing List</p>}
-      <p style={{ fontSize: 10, fontWeight: 700 }}>{label.package_count} paquete(s) · {fmt(label.quantity, 3)} und · {fmt(label.weight_kg)} kg</p>
+      <GroupedBultoLabel code={label.lpn_code} customer={task.client_name} contract={task.contract_code} request={task.request_number}
+        items={labelItems} packages={label.package_count} weightKg={Number(label.weight_kg)} preparedBy={labelLpn?.created_by_name || null} date={labelLpn?.created_at || null}/>
     </div>}
-    <style jsx global>{`@page{size:${labelFormat.width_mm}mm ${labelFormat.height_mm}mm;margin:0}@media print{body *{visibility:hidden}#lpn-label,#lpn-label *{visibility:visible}#lpn-label{position:fixed;left:0;top:0;width:100mm;height:60mm;overflow:hidden;box-sizing:border-box;padding:4mm;zoom:${fitScale(labelFormat, 100, 60)}}}`}</style>
+    <style jsx global>{`@page{size:${labelFormat.width_mm}mm ${labelFormat.height_mm}mm;margin:0}@media print{body *{visibility:hidden}#lpn-label,#lpn-label *{visibility:visible}#lpn-label{position:fixed;left:0;top:0;width:152.4mm;height:101.6mm;overflow:hidden;box-sizing:border-box;padding:0;zoom:${fitScale(labelFormat, 152.4, 101.6)}}}`}</style>
   </div>
 }

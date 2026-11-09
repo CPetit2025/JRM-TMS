@@ -49,3 +49,7 @@ export function packageLabelData(
 
 /** Número de bulto del correlativo por lote ("16544-B-0001" → "B-0001"); los códigos PKG-… anteriores no tienen. */
 export const bultoNumber = (code: string) => /-(B-\d{4,})$/.exec(code)?.[1] ?? null;
+
+/** Letra común del SKU y del lote para que ambos entren completos en una línea (~534 px útiles, ~0,62 em por carácter). */
+export const identifierFontSize = (left: string, right: string) =>
+  Math.min(26.457, 534 / (0.62 * Math.max(1, left.length + right.length)));
