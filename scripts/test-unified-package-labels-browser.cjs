@@ -55,7 +55,7 @@ const pkg = {
   source_product_code: "SKU-001",
   source_warehouse: "647-04 ALM PT",
   source_date: "2026-11-09",
-  description: "Mercadería JRM · ñ y acentos · producto de prueba",
+  description: "VIGA INICIAL PORTAMADERA VIPM 7 CM X 1.22M MEDIDAD TERMINADO",
   quantity: 12.5,
   unit: "UND",
   weight_kg: 25,
@@ -70,7 +70,7 @@ const pkg = {
 const label = {
   ...pkg,
   contract_code: pkg.source_contract_code,
-  customer_name: "Cliente de prueba S.A.C.",
+  customer_name: "TIENDAS DEL MEJORAMIENTO DEL HOGAR S.A.",
 };
 const receipt = {
   receipt_key: key,
@@ -270,6 +270,14 @@ const server = http.createServer(async (req, res) => {
     });
     assert.ok(Math.abs(badges.top-badges.lotTop)<1 && badges.lotLeft>badges.right, 'lot is right of SKU on same row');
     assert.equal(badges.background,'rgb(0, 0, 0)');assert.equal(badges.color,'rgb(255, 255, 255)');assert.equal(badges.weight,'800');
+    const readability=await page.locator('.wh-package-label').evaluate(n=>{
+      const customer=n.querySelector('.wh-package-meta > div:first-child'),description=n.querySelector('.wh-package-description');
+      const range=document.createRange();range.selectNodeContents(customer.querySelector('strong'));
+      const lines=new Set(Array.from(range.getClientRects()).filter(r=>r.width>0).map(r=>Math.round(r.top)));
+      return {customerFont:getComputedStyle(customer).fontSize,lines:lines.size,customerFits:customer.scrollHeight<=customer.clientHeight+1,descriptionFont:getComputedStyle(description).fontSize,align:getComputedStyle(description).textAlign,descriptionFits:description.scrollHeight<=description.clientHeight+1};
+    });
+    assert.equal(readability.customerFont,'18px','customer keeps original font size');assert.equal(readability.lines,2,'long customer name wraps to two lines');assert.ok(readability.customerFits,'full customer is visible');
+    assert.equal(readability.descriptionFont,'22px');assert.equal(readability.align,'center');assert.ok(readability.descriptionFits,'larger product description fits without cropping');
     const preview = await page
       .locator(".wh-package-label")
       .evaluate((n) => n.outerHTML);
