@@ -7,8 +7,17 @@ import { errorMessage } from "@/lib/caja";
 import { usePermissions } from "@/hooks/usePermissions";
 import {
   OUTSOURCING_SERVICES,
+  OUTSOURCING_STEPS,
+  outsourcingStepsDone,
   type OutsourcingService,
 } from "@/lib/outsourcing";
+const NEXT_ACTION = [
+  "Complete la ficha y envíela a Compras con «Abrir / corregir ficha».",
+  "Compras registra proveedor, recurso y costo con «Asignar proveedor / recurso».",
+  "Apruebe el costo y confirme al proveedor de cada recurso.",
+  "Arme la ruta con el recurso confirmado y, tras el cierre económico, finalice el servicio.",
+  "Servicio ejecutado y cerrado.",
+];
 import {
   RESOURCE_FIELDS,
   RESOURCE_STATES,
@@ -63,7 +72,7 @@ export function ResourceManager({
   parent: string;
   service: OutsourcingService;
   onChanged: () => void;
-  onManaged: (value: boolean) => void;
+  onManaged?: (value: boolean) => void;
 }) {
   const db = useMemo(() => createClient(), []),
     { canWrite } = usePermissions();
@@ -83,7 +92,7 @@ export function ResourceManager({
     if (error) setError(errorMessage(error));
     else {
       setContext(data);
-      onManaged(
+      onManaged?.(
         data.assignments.some((a: AssignedResource) => a.state !== "CANCELLED"),
       );
       setError("");
@@ -198,7 +207,23 @@ export function ResourceManager({
       </p>
     );
   if (!context) return <p role="status">Cargando recursos…</p>;
+  const done = outsourcingStepsDone(context.outsourcing.stage, required, assignments);
   return (
+    <>
+    <ol className="grid grid-cols-4 gap-2" aria-label="Avance del servicio">
+      {OUTSOURCING_STEPS.map((step, i) => (
+        <li
+          key={step}
+          aria-current={i === done ? "step" : undefined}
+          className={`rounded-lg border-t-4 px-2 py-1 text-xs ${i < done ? "border-emerald-500 bg-emerald-50 text-emerald-900" : i === done ? "border-blue-600 bg-blue-50 font-semibold text-blue-900" : "border-slate-200 text-slate-500"}`}
+        >
+          {i + 1}. {step}
+        </li>
+      ))}
+    </ol>
+    {context.outsourcing.review_status !== "CANCELLED" && (
+      <p className="text-sm"><strong>Siguiente acción:</strong> {NEXT_ACTION[done]}</p>
+    )}
     <section
       className="space-y-3 rounded-xl border border-blue-200 bg-blue-50/30 p-4"
       aria-label="Asignaciones por proveedor"
@@ -662,5 +687,6 @@ export function ResourceManager({
         </Modal>
       )}
     </section>
+    </>
   );
 }

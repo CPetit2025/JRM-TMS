@@ -372,8 +372,8 @@ const server = http.createServer(async (req, res) => {
     await page
       .getByRole("button", { name: "Asignar proveedor / recurso" })
       .click();
-    await page.getByRole("dialog").waitFor();
-    const dialog = page.getByRole("dialog");
+    await page.getByRole("dialog", { name: /^Asignar/ }).waitFor();
+    const dialog = page.getByRole("dialog", { name: /^Asignar/ });
     await dialog
       .getByLabel("Proveedor", { exact: true })
       .selectOption("supplier-1");
