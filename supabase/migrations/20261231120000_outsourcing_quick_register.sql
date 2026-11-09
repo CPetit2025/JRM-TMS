@@ -13,6 +13,10 @@ BEGIN
  IF nullif(p->>'supplier_id','') IS NOT NULL THEN
   SELECT * INTO s FROM suppliers WHERE id=(p->>'supplier_id')::uuid AND is_active;
   IF NOT FOUND THEN RAISE EXCEPTION 'Seleccione un proveedor activo antes de registrar su personal'; END IF;
+  -- Mismas categorías que acepta outsourcing_assignment_save: no se registra personal de proveedores comerciales.
+  IF NOT s.category=ANY(CASE p_service WHEN 'FLETE' THEN ARRAY['TRANSPORTE'] WHEN 'GRUA' THEN ARRAY['GRUA','SERVICIOS'] WHEN 'MONTACARGAS' THEN ARRAY['MONTACARGA','SERVICIOS'] WHEN 'ESTIBA' THEN ARRAY['ESTIBA','SERVICIOS'] ELSE ARRAY['TRANSPORTE','GRUA','MONTACARGA','ESTIBA','SERVICIOS'] END) THEN
+   RAISE EXCEPTION 'El proveedor % (categoría %) no corresponde a este servicio',s.business_name,s.category;
+  END IF;
   IF length(btrim(coalesce(p->>'full_name','')))<3 THEN RAISE EXCEPTION 'Registre el nombre completo del conductor u operador'; END IF;
   IF doc !~ '^[0-9A-Za-z-]{8,15}$' THEN RAISE EXCEPTION 'Registre un documento de identidad válido (8 a 15 caracteres)'; END IF;
   IF EXISTS(SELECT 1 FROM supplier_personnel WHERE supplier_id=s.id AND document_number=doc) THEN RAISE EXCEPTION 'El documento % ya está registrado para %',doc,s.business_name; END IF;
