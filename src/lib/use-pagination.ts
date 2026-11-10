@@ -16,9 +16,7 @@ export function usePagination<T>(rows: T[], key: string) {
       if (SIZES.includes(saved)) setSize(saved)
     } catch { /* storage blocked */ }
   }, [storageKey])
-  // shortcut: resets only when the filtered count changes, a same-size filter change keeps the page (clamped below)
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setPage(1) }, [rows.length])
+  // Sin volver a la página 1 cuando cambia la cantidad: las listas se refrescan solas; la página solo se ajusta al máximo.
   const total = rows.length
   const current = Math.min(page, Math.max(1, Math.ceil(total / pageSize)))
   const pageRows = useMemo(() => rows.slice((current - 1) * pageSize, current * pageSize), [rows, current, pageSize])
