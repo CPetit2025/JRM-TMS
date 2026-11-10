@@ -1,31 +1,38 @@
-# Despacho WMS por submódulos
+# Despacho WMS: liberación de LPN y reparto desde Packing List
 
 Todas las etapas comparten la misma tarea y los mismos LPN; no duplican inventario.
 
 | Submódulo | Ruta | Acciones |
 | --- | --- | --- |
-| Picking | `/almacen/picking` | Tomar tarea, recoger paquetes, consolidar LPN, imprimir etiquetas y corregir observaciones. Finalizar Picking. |
-| Auditoría | `/almacen/auditoria` | Aprobar, observar, rechazar y registrar evidencia por LPN mientras continúa Picking. |
-| Packing List | `/almacen/packing-list` | Vista preliminar, consulta y descarga del documento liberado. Liberación exclusiva de auditor/supervisor. |
-| Plan de carga | `/almacen/plan-carga` | Crear UT sin placa o con placa, asignar LPN, modificar la distribución y consultar guías por unidad. |
-| Carga | `/almacen/carga` | Seleccionar UT, escanear LPN/paquetes y confirmar carga completa o excepción parcial supervisada. |
+| Picking / packing | `/almacen/picking` | Recoger y consolidar paquetes en LPN lógicos conservando las etiquetas originales. Corregir observaciones y finalizar Picking. |
+| Auditoría | `/almacen/auditoria` | Liberar cada LPN conforme y su contenido mientras continúa Picking. Observar, rechazar y registrar evidencia. |
+| Packing List | `/almacen/packing-list` | Seleccionar varios LPN liberados, pulsar **Asignar unidad** y elegir UT1, UT2 o placa. Consultar disponibles, asignados por UT, totales y guías. |
+| Carga | `/almacen/carga` | Seleccionar UT y escanear sus LPN o las etiquetas originales de sus paquetes; confirmar la carga física. |
 
-## Trabajo en paralelo
+## LPN lógico y etiquetas
 
-Un LPN cerrado está disponible para Auditoría aunque Picking siga en curso. Plan de carga también puede distribuir los LPN cerrados durante la preparación. Asignar una UT no aprueba un bulto ni libera su contenido.
+Consolidar crea el LPN lógico y relaciona sus paquetes. Ya no abre automáticamente la impresión ni registra una impresión inexistente. Un paquete que viaja solo mantiene el código de su etiqueta. Un LPN de varios paquetes se asigna completo a una sola UT. No se reparte su contenido entre unidades sin deshacer/corregir el packing y volver a auditar lo afectado.
 
-La liberación requiere Picking finalizado, ausencia de paquetes sueltos y todos los LPN aprobados. Se mantienen las validaciones de separación de funciones y permisos de la base de datos.
+Asignar o cambiar de unidad solo cambia el destino del LPN; conserva códigos, etiquetas, cantidades y aprobación. La operación múltiple es atómica: si cualquier LPN no pertenece a la tarea, no está liberado o ya comenzó su carga, no se modifica ninguno.
 
-El Packing List siempre se genera a partir de su snapshot liberado, sin mezclar asignaciones actuales de UT. Las guías de carga son consultas separadas de la distribución actual por unidad; todavía no representan un plan versionado. Esta separación no cambia la compatibilidad de carga sin UT del backend existente: hacer obligatoria al menos UT1 y versionar el plan requieren una migración posterior.
+## Auditoría y documento
+
+El auditor libera LPN, no el Packing List. Lo pendiente, observado o rechazado no es seleccionable para asignación. Puede liberar y el operador puede asignar los LPN conformes mientras continúa Picking. Retirar la aprobación o corregir contenido elimina la asignación del LPN afectado si no comenzó su carga.
+
+El PDF final es una proyección automática: se genera al finalizar Picking si ya están todos los LPN liberados, o al liberar el último LPN después del cierre de Picking. El responsable del documento proviene de Auditoría, aunque quien cierre Picking sea otro usuario. Se conservan las versiones del documento, la invalidación ante cambios y el bloqueo de autoaprobación.
+
+Packing List actualiza de forma segura documentos de tareas anteriores ya conformes, sin volver a liberar LPN ni imprimir etiquetas. La antigua RPC de liberación se conserva para compatibilidad y devuelve el documento vigente sin duplicarlo; no aparece en la nueva interfaz.
+
+El Packing List descargado mantiene el contenido auditado de su versión, sin mezclar asignaciones actuales de UT. Las guías son consultas separadas del reparto actual. El historial de asignaciones se registra como eventos `LPN_UNIT_ASSIGNED`; las guías no constituyen un plan de carga versionado.
 
 ## Permisos y compatibilidad
 
-El menú y el middleware usan los mismos permisos de etapa. Picking no presenta controles de UT/carga; Plan de carga no permite escanear Picking ni aprobar auditoría; Carga no permite editar la preparación o la distribución. Los permisos de lectura de Packing List no autorizan su liberación.
+Auditoría libera; packing/carga/supervisión asignan unidades; Picking o lectura solo consultan el reparto. La selección múltiple se valida también en la base, no solo en la pantalla. Carga no edita preparación ni distribución.
 
-Los enlaces anteriores `/almacen/tareas` y `/almacen/tareas/[id]` siguen funcionando mediante redirección a Picking. Las rutas móviles de picking, packing y carga llevan al submódulo correspondiente. Las pestañas conservan la tarea elegida.
+Las rutas anteriores `/almacen/plan-carga` y `/almacen/plan-carga/[id]` abren Packing List. No hay otra pantalla para repetir la asignación. Los enlaces de Tareas siguen abriendo Picking. Las pestañas conservan la solicitud.
 
 ## Verificación
 
-- `node scripts/test-wms-dispatch-browser.cjs`: Chromium con API local simulada, datos ficticios y sin operaciones reales. Recorre las etapas, auditoría en paralelo, liberación posterior a Picking, selección de UT, permisos, enlaces antiguos y pantalla móvil. Guarda capturas en `/workspace/artifacts/despacho-submodulos`.
-- `node scripts/test-wms-picking.cjs`: integración SQL local que valida las reglas reales de auditoría, liberación y unidades.
-- `npx next typegen` y `npm run typecheck`.
+- `node scripts/test-wms-dispatch-browser.cjs`: Chromium con API local y datos ficticios. Verifica packing sin impresión automática, auditoría en paralelo, selección solo de liberados, asignación múltiple, generación automática del documento, carga por UT, permisos, rutas anteriores y móvil. Guarda capturas en `/workspace/artifacts/despacho-submodulos`.
+- `node scripts/test-wms-picking.cjs`: integración SQL local con las migraciones reales: operación atómica, permisos, separación de funciones, documentos automáticos, versiones y etiquetas conservadas.
+- `npx next typegen`, `npm run typecheck` y compilación de producción con configuración local de prueba.

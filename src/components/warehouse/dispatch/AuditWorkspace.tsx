@@ -1,11 +1,12 @@
 'use client'
 
 import Link from 'next/link'
+import { PackingAssignment } from './PackingAssignment'
 import { DispatchNav } from './DispatchNav'
 import { DISPATCH_STAGES } from '@/lib/warehouse/dispatch'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Camera, Check, Download, Eye, FileCheck2, Loader2, RefreshCw, X } from 'lucide-react'
+import { Camera, Check, Download, Eye, Loader2, RefreshCw, X } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
 import { AUDIT, STATE, buildPackingListPdf, fmt, fmtDate, type BoardRow, type PackingSnapshot, type TaskLpn, type TaskLpns } from '@/lib/warehouse/packing-list'
 import { syncFromTms } from '@/lib/warehouse/sync'
@@ -43,10 +44,14 @@ export function AuditWorkspace({ mode = 'auditoria', initialTaskId = '' }: { mod
   const loadTask = useCallback(async (id: string) => {
     const version = ++requestVersion.current
     if (!id) { setData(null); setLoadedTaskId(''); return }
+    if (packing) {
+      const refreshed = await createClient().rpc('wh_refresh_packing_list', { p_task_id: id })
+      if (refreshed.error) { if (version === requestVersion.current) { setError(refreshed.error.message); setData(null) }; return }
+    }
     const { data: lpns, error } = await createClient().rpc('wh_task_lpns', { p_task_id: id })
     if (version !== requestVersion.current) return
     if (error) { setError(error.message); setData(null) } else { setData(lpns as TaskLpns); setLoadedTaskId(id) }
-  }, [])
+  }, [packing])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -83,7 +88,7 @@ export function AuditWorkspace({ mode = 'auditoria', initialTaskId = '' }: { mod
     }
     const { error } = await withOverride(reason => db.rpc('wh_audit_lpn', { p_lpn_id: lpn.id, p_result: result, p_comment: text || null, p_package_code: pkgCode || null, p_evidence_paths: paths, p_override_reason: reason }))
     if (error) { setError(error.message); if (paths.length) await db.storage.from('wh_audit_evidence').remove(paths) }
-    else { setMessage(`${lpn.lpn_code}: ${result === 'COMENTARIO' ? 'evidencia registrada' : AUDIT[result].label.toLowerCase()}.`); setForm(null); setComment(''); setPkg(''); setFiles([]); await load() }
+    else { setMessage(`${lpn.lpn_code}: ${result === 'COMENTARIO' ? 'evidencia registrada' : (result === 'APROBADO' ? 'liberado por Auditoría' : AUDIT[result].label.toLowerCase())}.`); setForm(null); setComment(''); setPkg(''); setFiles([]); await load() }
     setBusy(false)
   }
 
@@ -94,21 +99,13 @@ export function AuditWorkspace({ mode = 'auditoria', initialTaskId = '' }: { mod
 
   const preview = async () => {
     if (!task || !data) return
-    const lpns = data.lpns
+    const lpns = packing ? data.lpns.filter(l => l.audit_status === 'APROBADO' && l.status !== 'VOID') : data.lpns
     const snapshot: PackingSnapshot = { packing_list_number: null, version: null, task_code: task.task_code, request_number: task.request_number, contract_code: task.contract_code,
       client_name: task.client_name, delivery_address: task.delivery_address, lots: task.lots, prepared_at: task.assigned_at, picker_name: task.picker_name, auditor_name: null, released_at: null,
       lpn_count: lpns.length, package_count: lpns.reduce((s, l) => s + l.package_count, 0), total_weight_kg: lpns.reduce((s, l) => s + Number(l.weight_kg), 0), lpns }
     window.open(String((await buildPackingListPdf(snapshot)).output('bloburl')), '_blank', 'noopener')
   }
 
-  const release = async () => {
-    if (!task || !window.confirm(`¿Liberar el Packing List de ${task.request_number}? Quedará disponible para despacho.`)) return
-    setBusy(true); setError(''); setMessage('')
-    const { data: pl, error } = await withOverride(reason => createClient().rpc('wh_release_packing_list', { p_task_id: task.id, p_override_reason: reason }))
-    if (error) setError(error.message)
-    else { setMessage(`Packing List ${pl.packing_list_number} v${pl.version} liberado.`); await syncFromTms(true); await load(); await download(pl.id) }
-    setBusy(false)
-  }
   const download = async (id: string) => {
     const { data: snapshot, error } = await createClient().rpc('wh_print_packing_list', { p_id: id })
     if (error) { setError(error.message); return }
@@ -116,7 +113,7 @@ export function AuditWorkspace({ mode = 'auditoria', initialTaskId = '' }: { mod
   }
 
   const released = data?.packing_lists.find(p => p.status === 'LIBERADO')
-  const canRelease = loadedTaskId === taskId && packing && (hasAccess('almacen-auditoria') || hasAccess('almacen-supervisor')) && task?.status === 'READY_FOR_LOAD' && !released && !!data && data.loose.length === 0 && data.lpns.length > 0 && data.lpns.every(l => l.audit_status === 'APROBADO')
+
 
   return <div className="space-y-4">
     <DispatchNav stage={mode} taskId={taskId || undefined}/>
@@ -138,7 +135,7 @@ export function AuditWorkspace({ mode = 'auditoria', initialTaskId = '' }: { mod
           return <button key={r.id} onClick={() => setTaskId(r.id)} className={`block w-full border-b px-3 py-2.5 text-left text-sm last:border-0 ${r.id === taskId ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
             <span className="flex items-center justify-between gap-2"><b className="text-[#002855]">{r.request_number}</b><span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${state.style}`}>{state.label}</span></span>
             <span className="block text-xs text-slate-600">OT {r.contract_code || '—'} · {r.client_name || '—'}</span>
-            <span className="block text-xs text-slate-500">{r.picker_name || 'Sin operario'} · {r.picked} paq · LPN {r.lpn_approved}/{r.lpn_total} aprobados{r.lpn_pending ? ` · ${r.lpn_pending} por auditar` : ''}</span>
+            <span className="block text-xs text-slate-500">{r.picker_name || 'Sin operario'} · {r.picked} paq · LPN {r.lpn_approved}/{r.lpn_total} liberados{r.lpn_pending ? ` · ${r.lpn_pending} por auditar` : ''}</span>
           </button>
         })}
       </aside>
@@ -149,21 +146,22 @@ export function AuditWorkspace({ mode = 'auditoria', initialTaskId = '' }: { mod
           <span className="flex gap-2">
             <button onClick={() => void preview()} className={`${btn} border border-slate-300`}><Eye size={14}/>Vista preliminar</button>
             {released ? <button onClick={() => void download(released.id)} className={`${btn} bg-emerald-700 text-white`}><Download size={14}/>{released.packing_list_number} v{released.version}</button>
-              : packing ? <button disabled={busy || !canRelease} title={canRelease ? '' : 'Requiere picking finalizado y todos los LPN aprobados'} onClick={() => void release()} className={`${btn} bg-emerald-700 px-3 py-2 text-sm text-white`}><FileCheck2 size={16}/>Liberar Packing List</button> : <Link href={`/almacen/packing-list/${taskId}`} className={`${btn} border border-slate-300`}>Ir a Packing List</Link>}
+              : packing ? <span className="text-xs text-slate-500">El documento final se genera al terminar Picking y liberar todos los LPN.</span> : <Link href={`/almacen/packing-list/${taskId}`} className={`${btn} border border-slate-300`}>Ir a Packing List</Link>}
           </span>
         </div>
 
         {data.lpns.length === 0 && <p className="rounded-xl border bg-white p-6 text-center text-sm text-slate-500">El operario aún no consolidó LPN.</p>}
-        {data.lpns.map(l => {
+        {packing && <PackingAssignment key={taskId} task={task} data={data} onChanged={async () => { await loadTask(taskId); await load() }}/> }
+        {!packing && data.lpns.map(l => {
           const state = AUDIT[l.audit_status] || AUDIT.PENDIENTE
           return <article key={l.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <header className="flex flex-wrap items-center gap-2 border-b p-3 text-sm">
               <b className="font-mono text-[#002855]">{l.lpn_code}</b>
               <span className="text-slate-600">{l.package_count} paq · {fmt(l.quantity, 3)} und · {fmt(l.weight_kg)} kg · {l.created_by_name}</span>
-              <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${state.style}`}>{state.label}{l.audited_by_name ? ` · ${l.audited_by_name}` : ''}</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${state.style}`}>{l.audit_status === 'APROBADO' ? 'Liberado por Auditoría' : state.label}{l.audited_by_name ? ` · ${l.audited_by_name}` : ''}</span>
               {l.audit_rev > 0 && l.audit_status === 'PENDIENTE' && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-900">Corregido · nueva revisión</span>}
-              {!packing && !released && <span className="ml-auto flex gap-1.5">
-                <button disabled={busy || l.audit_status === 'APROBADO'} onClick={() => void audit(l, 'APROBADO')} className={`${btn} bg-emerald-700 text-white`}><Check size={14}/>Aprobar</button>
+              {!packing && l.status === 'CLOSED' && <span className="ml-auto flex gap-1.5">
+                <button disabled={busy || l.audit_status === 'APROBADO'} onClick={() => void audit(l, 'APROBADO')} className={`${btn} bg-emerald-700 text-white`}><Check size={14}/>Liberar LPN</button>
                 <button disabled={busy} onClick={() => setForm({ lpn: l, result: 'OBSERVADO' })} className={`${btn} border border-amber-400 text-amber-900`}>Observar</button>
                 <button disabled={busy} onClick={() => setForm({ lpn: l, result: 'RECHAZADO' })} className={`${btn} border border-rose-400 text-rose-800`}><X size={14}/>Rechazar</button>
                 <button disabled={busy} onClick={() => setForm({ lpn: l, result: 'COMENTARIO' })} className={`${btn} border border-slate-300`}><Camera size={14}/>Evidencia</button>

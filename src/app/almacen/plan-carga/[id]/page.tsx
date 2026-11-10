@@ -1,5 +1,5 @@
-import { TaskWorkspace } from '@/components/warehouse/dispatch/TaskWorkspace'
+import { redirect } from 'next/navigation'
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  return <TaskWorkspace id={id} stage="plan-carga"/>
+  redirect(`/almacen/packing-list/${id}`)
 }

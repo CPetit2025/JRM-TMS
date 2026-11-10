@@ -122,6 +122,19 @@ const feed=(status={})=>[
  await as('both'); await fails("SELECT public.wh_audit_lpn($1,'APROBADO')",[lpn2.id],/preparó/);
  await db.exec(`RESET ROLE; UPDATE public.wh_tasks SET assigned_picker='${U.op1}' WHERE id='${task.id}'`);
  console.log('PASS: quien preparó no aprueba su propia tarea.');
+ await as('sup');
+ const earlyUnit=await one('SELECT public.wh_load_unit_add($1)',[task.id]);
+ await fails('SELECT public.wh_lpns_assign_unit($1,$2::uuid[],$3)',[task.id,[lpn1.id,lpn2.id],earlyUnit.id],/liberados por Auditoría/);
+ assert.equal((await sys(`SELECT load_unit_id FROM public.wh_lpns WHERE id='${lpn1.id}'`))[0].load_unit_id,null,'la selección mixta no asigna parcialmente');
+ await as('sup');
+ const labelsBefore=await sys(`SELECT id,lpn_code,print_count FROM public.wh_lpns WHERE id='${lpn1.id}'`);
+ await as('sup');
+ await q('SELECT public.wh_lpns_assign_unit($1,$2::uuid[],$3)',[task.id,[lpn1.id],earlyUnit.id]);
+ assert.deepEqual(await sys(`SELECT id,lpn_code,print_count FROM public.wh_lpns WHERE id='${lpn1.id}'`),labelsBefore,'asignar conserva LPN y etiquetas');
+ await as('op1'); await fails('SELECT public.wh_lpns_assign_unit($1,$2::uuid[],$3)',[task.id,[lpn1.id],earlyUnit.id],/permiso/);
+ await as('sup'); await q('SELECT public.wh_load_unit_remove($1)',[earlyUnit.id]);
+ await as('op1');
+ console.log('PASS: asignación múltiple solo de liberados, atómica, durante Picking, sin crear ni reimprimir etiquetas.');
 
  // 7. Finalizar, liberar bloqueado con observación; corrección solo re-audita el LPN cambiado
  await as('op1');
@@ -153,14 +166,20 @@ const feed=(status={})=>[
  await q("SELECT public.wh_audit_lpn($1,'APROBADO')",[lpn3.id]);
  assert.equal((await sys(`SELECT audit_status FROM public.wh_lpns WHERE id='${lpn1.id}'`))[0].audit_status,'APROBADO','LPN sin cambios conserva su aprobación');
  await as('op1'); await fails("SELECT public.wh_task_action($1,'LOAD')",[task.id],/permiso de carga|Packing List/);
- await as('sup'); await fails("SELECT public.wh_task_action($1,'LOAD')",[task.id],/Packing List no está liberado/);
+ await as('sup'); await fails("SELECT public.wh_task_action($1,'LOAD')",[task.id],/escanee todos los paquetes cargados/);
  console.log('PASS: no se libera con observaciones o pendientes; corrección y nueva revisión solo del LPN cambiado; carga bloqueada sin Packing List.');
 
  // 8. Liberación, impresión y versión
  await as('aud');
+ assert.ok(await one('SELECT public.wh_refresh_packing_list($1)',[task.id]),'actualización segura materializa el documento sin volver a auditar');
+ const autoPl=(await sys(`SELECT id, released_by FROM public.wh_packing_lists WHERE task_id='${task.id}' AND status='LIBERADO'`))[0];
+ assert.ok(autoPl,'última liberación de LPN genera el documento automáticamente'); assert.equal(autoPl.released_by,U.aud,'el responsable es auditor, nunca el picker');
+ await as('aud');
  const pl=await one('SELECT public.wh_release_packing_list($1)',[task.id]);
+ assert.equal(pl.id,autoPl.id,'clientes antiguos obtienen el documento generado sin duplicarlo');
  assert.match(pl.packing_list_number,/^PL-\d{4}-\d{6}$/); assert.equal(pl.version,1);
  const snap=await one('SELECT public.wh_print_packing_list($1)',[pl.id]);
+ assert.ok(snap.lpns.every(l=>l.audit_status==='APROBADO'),'el documento automático contiene revisiones liberadas');
  assert.equal(snap.lpn_count,2); assert.equal(snap.package_count,3); assert.equal(Number(snap.total_weight_kg),76.5); assert.equal(snap.auditor_name,'aud'); assert.equal(snap.picker_name,'op1');
  st=(await one("SELECT public.wh_task_board('tareas',$1)",[task.id]))[0]; assert.equal(st.display_state,'LIBERADO');
  await as('op1'); let unrep=await one('SELECT public.wh_packing_lists_unreported()'); assert.equal(unrep.length,1); assert.equal(unrep[0].status,'LIBERADO');
@@ -183,11 +202,24 @@ const feed=(status={})=>[
  for(const l of (await one('SELECT public.wh_task_lpns($1)',[task.id])).lpns.filter(l=>l.audit_status==='PENDIENTE')) await q("SELECT public.wh_audit_lpn($1,'APROBADO')",[l.id]);
  const pl2=await one('SELECT public.wh_release_packing_list($1)',[task.id]);
  assert.equal(pl2.packing_list_number,pl.packing_list_number); assert.equal(pl2.version,2);
+ await db.exec('RESET ROLE; BEGIN'); await as('op1');
+ await q("SELECT public.wh_task_action($1,'REOPEN_PICKING')",[task.id]);
+ await q("SELECT public.wh_task_action($1,'FINISH_PICKING')",[task.id]);
+ const fromPicker=await one('SELECT public.wh_task_lpns($1)',[task.id]);
+ assert.ok(fromPicker.packing_lists.some(p=>p.status==='LIBERADO'),'finalizar Picking genera documento sin permiso de auditoría');
+ assert.equal(fromPicker.packing_lists.find(p=>p.status==='LIBERADO').snapshot.auditor_name,'aud','conserva identidad del auditor');
+ await db.exec('RESET ROLE; ROLLBACK'); await as('aud');
  assert.equal((await sys(`SELECT count(*)::int n FROM public.wh_packing_lists WHERE task_id='${task.id}'`))[0].n,2,'historial de versiones conservado');
  // Unidades de carga: los bultos del Packing List se reparten en UT1, UT2…; la carga valida la unidad de cada bulto.
  await as('sup');
  const ut1=await one('SELECT public.wh_load_unit_add($1)',[task.id]), ut2=await one("SELECT public.wh_load_unit_add($1,' abc 123 ')",[task.id]);
  assert.equal(ut1.label,'UT1'); assert.equal(ut2.label,'UT2'); assert.equal(ut2.plate,'ABC123','placa normalizada');
+ await fails('SELECT public.wh_lpns_assign_unit($1,$2::uuid[],$3)',[task.id,[lpn3.id,REQ_CANCEL],ut1.id],/no pertenecen/);
+ assert.equal((await sys(`SELECT load_unit_id FROM public.wh_lpns WHERE id='${lpn3.id}'`))[0].load_unit_id,null);
+ await as('sup');
+ await fails('SELECT public.wh_lpns_assign_unit($1,$2::uuid[],$3)',[task.id,[],ut1.id],/Seleccione al menos/);
+ await q('SELECT public.wh_lpns_assign_unit($1,$2::uuid[],$3)',[task.id,[lpn1.id,lpn3.id],ut1.id]);
+ await q('SELECT public.wh_lpns_assign_unit($1,$2::uuid[],$3)',[task.id,[lpn1.id,lpn3.id],null]);
  const load=(unit)=>`SELECT public.wh_record_scan($1,$2,'LOAD',gen_random_uuid(),${unit?`'{"load_unit_id":"${unit}"}'::jsonb`:"'{}'::jsonb"})`;
  await fails(load(ut1.id),[task.id,lpn3.lpn_code],/Asigne el bulto/);
  await q('SELECT public.wh_lpn_assign_unit($1,$2)',[lpn3.id,ut1.id]);
@@ -212,11 +244,16 @@ const feed=(status={})=>[
  console.log('PASS: unidades de carga UT1/UT2 con placa opcional; asignar bultos; la carga exige la unidad correcta del bulto.');
  await as('aud'); await q("SELECT public.wh_audit_lpn($1,'RECHAZADO','Rechazo tardío')",[lpn3.id]);
  assert.equal((await sys(`SELECT status FROM public.wh_packing_lists WHERE id='${pl2.id}'`))[0].status,'REEMPLAZADO','rechazar tras liberar invalida el Packing List');
+ assert.equal((await sys(`SELECT load_unit_id FROM public.wh_lpns WHERE id='${lpn3.id}'`))[0].load_unit_id,null,'retirar liberación quita su asignación antes de cargar');
+ await as('aud'); await q("SELECT public.wh_audit_lpn($1,'APROBADO')",[lpn3.id]);
+ const regenerated=(await one('SELECT public.wh_task_lpns($1)',[task.id])).packing_lists.find(p=>p.status==='LIBERADO');
+ assert.equal(regenerated.version,3,'volver a liberar el contenido genera una versión nueva automáticamente');
+ assert.equal(regenerated.packing_list_number,pl.packing_list_number);
  console.log('PASS: un cambio posterior reemplaza la versión liberada, re-audita solo el LPN afectado y emite la versión 2.');
 
  // 10. Acceso anónimo bloqueado
  await db.exec('RESET ROLE; SET ROLE anon');
- for(const fn of ["public.wh_task_board('tareas')","public.wh_tms_sync_apply('x','[]')","public.wh_release_packing_list(gen_random_uuid())"]){
+ for(const fn of ["public.wh_task_board('tareas')","public.wh_tms_sync_apply('x','[]')","public.wh_release_packing_list(gen_random_uuid())","public.wh_lpns_assign_unit(gen_random_uuid(),ARRAY[gen_random_uuid()],gen_random_uuid())","wms_private.refresh_packing_list(gen_random_uuid())","public.wh_refresh_packing_list(gen_random_uuid())"]){
   let denied=false;try{await db.query(`SELECT ${fn}`)}catch(e){denied=/permission denied/.test(e.message)}
   assert.ok(denied,`anon no debe ejecutar ${fn}`);
  }

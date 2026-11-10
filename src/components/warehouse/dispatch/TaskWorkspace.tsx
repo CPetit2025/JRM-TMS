@@ -23,7 +23,6 @@ const btn = 'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-bo
 export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
   const stageConfig = DISPATCH_STAGES[stage]
   const picking = stage === 'picking'
-  const planning = stage === 'plan-carga'
   const loadingStage = stage === 'carga'
   const { hasAccess } = usePermissions()
   const labelFormat = useLabelFormat('LPN')
@@ -55,11 +54,12 @@ export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
     const next = lpns.data as TaskLpns
     setData(next)
     // Lo recién escaneado queda seleccionado para consolidar; lo que salió de la lista, deseleccionado.
+    const loose = new Set(next.loose.map(p => p.package_code))
+    const added = [...loose].filter(c => !known.current.has(c))
+    known.current = loose
     setSelected(prev => {
-      const loose = new Set(next.loose.map(p => p.package_code))
       const keep = new Set([...prev].filter(c => loose.has(c)))
-      for (const c of loose) if (!known.current.has(c)) keep.add(c)
-      known.current = loose
+      for (const c of added) keep.add(c)
       return keep
     })
     setLoading(false)
@@ -155,14 +155,9 @@ export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
     setBusy(true); setError(''); setMessage('')
     const { data: lpn, error } = await createClient().rpc('wh_consolidate_lpn', { p_task_id: id, p_package_codes: codes, p_client_event_id: crypto.randomUUID() })
     if (error) setError(error.message)
-    else if (lpn.own_label) {
-      setMessage(`${lpn.lpn_code} queda como LPN con su propia etiqueta; no hace falta imprimir otra.`)
+    else {
+      setMessage(`LPN lógico ${lpn.lpn_code} creado con ${lpn.package_count} paquete(s). Conserve las etiquetas existentes; no necesita imprimir otra.`)
       await load()
-    } else {
-      setMessage(`LPN ${lpn.lpn_code} creado con ${lpn.package_count} paquete(s).`)
-      const full = (await load())?.lpns.find(l => l.id === lpn.id)
-      if (full && needsContentSheet(full.packages)) await contentSheet(full)
-      await printLabel({ ...lpn, print_count: 0, packages: [], audits: [], status: 'CLOSED', audit_status: 'PENDIENTE' } as TaskLpn)
     }
     setBusy(false)
     requestAnimationFrame(() => input.current?.focus())
@@ -190,15 +185,6 @@ export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
     const r = await releasedSnapshot()
     if (r) (await buildPackingListPdf(r.snapshot)).save(`${r.current.packing_list_number}-v${r.current.version}.pdf`)
   }
-  // Guía de carga: los bultos del Packing List liberado que van en una unidad.
-  const loadGuide = async (u: LoadUnit) => {
-    const r = await releasedSnapshot()
-    if (!r) return
-    const lpns = r.snapshot.lpns.filter(l => u.lpn_ids.includes(l.id))
-    const s = { ...r.snapshot, lpns, lpn_count: lpns.length, package_count: lpns.reduce((n, l) => n + l.package_count, 0), total_weight_kg: lpns.reduce((n, l) => n + Number(l.weight_kg), 0) }
-    ;(await buildPackingListPdf(s, { title: `GUÍA DE CARGA ${unitLabel(u)}` })).save(`guia-carga-${r.current.packing_list_number}-${u.label}.pdf`)
-  }
-
   const startCamera = async () => {
     if (Capacitor.isNativePlatform()) {
       try { const result = await nativeWarehouseScanner.scan(); await scan(undefined, result.rawValue) }
@@ -238,9 +224,6 @@ export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
   const loadPerm = ['almacen-carga', 'almacen-supervisor'].some(hasAccess)
   const preparing = picking && pickPerm && ['PICKING', 'PACKING'].includes(task.status)
   const released = data.packing_lists.find(p => p.status === 'LIBERADO')
-  const unitPerm = ['almacen-packing', 'almacen-carga', 'almacen-supervisor'].some(hasAccess)
-  const canUnits = planning && unitPerm && ['PICKING', 'PACKING', 'READY_FOR_LOAD'].includes(task.status)
-  const unassigned = data.lpns.filter(l => l.status === 'CLOSED' && !unitOf(l.id)).length
   const selection = data.loose.filter(p => selected.has(p.package_code))
   const lots = [task.contract_code, task.components, task.lots].filter(Boolean).join(' · ')
 
@@ -279,7 +262,7 @@ export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
     </section>}
 
     {loadingStage && !released && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 print:hidden">La carga está bloqueada hasta finalizar Picking, aprobar todos los bultos y liberar el Packing List.</p>}
-    {loadingStage && !units.length && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 print:hidden">Todavía no hay unidades de carga. <Link href={`/almacen/plan-carga/${id}`} className="font-bold underline">Ir al Plan de carga</Link> para distribuir los bultos entre UT1, UT2 o placas.</p>}
+    {loadingStage && !units.length && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 print:hidden">Todavía no hay unidades de carga. <Link href={`/almacen/packing-list/${id}`} className="font-bold underline">Ir a Packing List</Link> para distribuir los bultos entre UT1, UT2 o placas.</p>}
     {picking && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 print:hidden">Auditoría puede revisar cada bulto cerrado mientras continúa la preparación. No necesita esperar al fin de Picking.</p>}
 
     {(preparing || (loadingStage && loadPerm && task.status === 'READY_FOR_LOAD' && released)) && <section className="rounded-xl border border-slate-200 bg-white p-4 print:hidden">
@@ -309,25 +292,7 @@ export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
         </label>)}
     </section>}
 
-    {(planning || loadingStage) && (units.length > 0 || canUnits) && data.lpns.some(l => l.status !== 'VOID') && <section className="rounded-xl border border-slate-200 bg-white p-3 print:hidden">
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-bold text-[#002855]">Unidades de carga ({units.length})</h2>
-        {canUnits && <button disabled={busy} onClick={() => void run(() => createClient().rpc('wh_load_unit_add', { p_task_id: id }), 'Unidad de carga agregada.')} className={`${btn} border border-slate-300`}><Truck size={16}/>Agregar unidad</button>}
-      </header>
-      <p className="mt-1 text-xs text-slate-500">El Packing List es la lista completa de lo que se despacha. Reparta sus bultos entre las unidades; si aún no conoce la placa, la unidad queda como UT1, UT2…</p>
-      {units.length > 0 && unassigned > 0 && <p className="mt-2 rounded-lg bg-amber-50 px-3 py-1.5 text-sm text-amber-900">{unassigned} bulto(s) sin unidad asignada.</p>}
-      <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{units.map(u => <div key={u.id} className="rounded-lg border border-slate-200 p-2 text-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <b className="text-[#002855]">{u.label}</b>
-          <input key={u.plate || ''} defaultValue={u.plate || ''} placeholder="Placa (opcional)" aria-label={`Placa de ${u.label}`} disabled={!canUnits || busy}
-            onBlur={e => { const v = e.target.value.trim().toUpperCase().replace(/\s+/g, ''); if (v !== (u.plate || '')) void run(() => createClient().rpc('wh_load_unit_set_plate', { p_unit_id: u.id, p_plate: v }), `Placa de ${u.label} actualizada.`) }}
-            className="w-28 rounded border border-slate-300 px-2 py-1 text-xs uppercase"/>
-          {canUnits && u.loaded_count === 0 && <button disabled={busy} onClick={() => { if (window.confirm(`¿Quitar ${u.label}? Sus bultos quedarán sin unidad.`)) void run(() => createClient().rpc('wh_load_unit_remove', { p_unit_id: u.id }), `${u.label} eliminada.`) }} className="ml-auto text-xs text-rose-700 underline">Quitar</button>}
-        </div>
-        <p className="mt-1 text-slate-600">{u.lpn_count} bulto(s) · {u.package_count} paq · {fmt(u.weight_kg)} kg · cargados {u.loaded_count}/{u.lpn_count}</p>
-        {released && u.lpn_count > 0 && <button onClick={() => void loadGuide(u)} className={`${btn} mt-1 border border-slate-300 px-2 py-1 text-xs`}><Download size={14}/>Guía de carga</button>}
-      </div>)}</div>
-    </section>}
+    {loadingStage && units.length > 0 && <section className="rounded-xl border border-slate-200 bg-white p-3 print:hidden"><h2 className="font-bold text-[#002855]">Unidades asignadas</h2><p className="text-sm text-slate-600">La distribución se gestiona desde Packing List.</p>{units.map(u => <p key={u.id} className="py-1 text-sm">{unitLabel(u)} · {u.lpn_count} LPN · {u.package_count} paquetes · {fmt(u.weight_kg)} kg · cargados {u.loaded_count}/{u.lpn_count}</p>)}</section>}
 
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white print:hidden">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b p-3">
@@ -344,12 +309,7 @@ export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
             <span className="text-slate-600">{l.package_count} paq · {fmt(l.quantity, 3)} und · {fmt(l.weight_kg)} kg</span>
             <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${audit.style}`}>{audit.label}</span>
             <span className="ml-auto flex flex-wrap items-center gap-1.5">
-              {l.status === 'CLOSED' && units.length > 0 && canUnits
-                ? <select aria-label={`Unidad de ${l.lpn_code}`} disabled={busy} value={unitOf(l.id)?.id || ''} onChange={e => void run(() => createClient().rpc('wh_lpn_assign_unit', { p_lpn_id: l.id, p_unit_id: e.target.value || null }), `${l.lpn_code}: ${e.target.value ? unitLabel(units.find(u => u.id === e.target.value)!) : 'sin unidad'}.`)} className="rounded border border-slate-300 px-1 py-1 text-xs">
-                    <option value="">Sin unidad</option>
-                    {units.map(u => <option key={u.id} value={u.id}>{unitLabel(u)}</option>)}
-                  </select>
-                : unitOf(l.id) && <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold">{unitLabel(unitOf(l.id)!)}</span>}
+              {unitOf(l.id) && <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold">{unitLabel(unitOf(l.id)!)}</span>}
               {picking && pickPerm && l.status === 'CLOSED' && <button disabled={busy} onClick={() => void printLabel(l)} className={`${btn} border border-slate-300 px-2 py-1 text-xs`}><Printer size={14}/>{l.print_count ? 'Reimprimir' : 'Etiqueta'}</button>}
               {picking && pickPerm && l.status === 'CLOSED' && needsContentSheet(l.packages) && <button disabled={busy} onClick={() => void contentSheet(l)} className={`${btn} border border-slate-300 px-2 py-1 text-xs`}><Download size={14}/>Contenido</button>}
               {editable && <button disabled={busy} onClick={() => undo(l)} className={`${btn} border border-slate-300 px-2 py-1 text-xs`}><Undo2 size={14}/>Deshacer</button>}

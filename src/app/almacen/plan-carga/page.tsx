@@ -1,2 +1,2 @@
-import { DispatchBoard } from '@/components/warehouse/dispatch/DispatchBoard'
-export default function Page() { return <DispatchBoard stage="plan-carga"/> }
+import { redirect } from 'next/navigation'
+export default function Page() { redirect('/almacen/packing-list') }
