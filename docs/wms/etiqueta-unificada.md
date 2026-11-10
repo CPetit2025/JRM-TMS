@@ -38,3 +38,11 @@ El control global `check:guards` de la rama WMS presenta incidencias C55 previas
 Encima de IPT y fecha se imprime **Responsable de recepción: Nombre Apellido**. Se usa el usuario original que generó el bulto, registrado por el servidor con `auth.uid()` en `wh_packages.created_by`. No se atribuye una reimpresión a quien la solicita después. El nombre completo se resuelve desde el perfil de ese usuario original; si no existe nombre disponible se muestra «No registrado», sin inventar un responsable.
 
 La consulta `wh_package_label_responsibles` devuelve únicamente código de bulto y nombre/apellido. Exige sesión activa, los mismos permisos de lectura de bultos, sede autorizada y hasta 100 códigos por llamada. No cambia la RLS de perfiles ni expone correos. Recepción hidrata también las etiquetas pendientes con estos datos, igual que detalle, inventario y control de recepcionados. Se conservan las medidas, orientación y posición de impresión.
+
+## QR complementario y cliente antes de imprimir
+
+Las etiquetas de bulto y bulto agrupado mantienen Code 128 y agregan un QR con exactamente el mismo identificador, sin enlaces ni datos adicionales. El QR tiene cuatro módulos de margen y corrección M. Se genera localmente; vista previa, impresión/PDF y raster Zebra comparten el SVG. La fila de códigos reserva altura para conservar descripción, las cuatro líneas del agrupado y pie.
+
+La consulta de clientes admite bultos pendientes de primera impresión: no depende de `label_print_count`. Resuelve el nombre por snapshot, lote, OT y validación manual, manteniendo sesión activa, permiso de etiquetado/supervisión, sede, exclusión de anulados y máximo de 100 claves. La migración pertenece únicamente a `wms-db`.
+
+`test-wms-label-codes.cjs` decodifica QR y Code 128 con ZXing en Chromium, en ambas etiquetas y con identificadores actuales/antiguos, y verifica textos dentro del papel. `test-wms-bootstrap.cjs` comprueba el cliente antes de imprimir, la resolución por lote y las restricciones de acceso. La comprobación de impresión física sigue correspondiendo al almacén.
