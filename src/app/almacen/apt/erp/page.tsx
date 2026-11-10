@@ -12,6 +12,8 @@ import { fmtN, fmtPeso } from '@/lib/inventario/format'
 import { fmtDate, fmtDateTime } from '@/lib/apt/format'
 import { exportAptXlsx } from '@/lib/apt/export'
 import { erpApi } from '@/lib/erp/api'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 import type { ErpGuia, ErpSituacion } from '@/lib/erp/types'
 
 // ERP como fuente: Actualizable Despacho (OT, contrato, despachado, pendiente y cada despacho por guía) y Stock Bodega
@@ -79,6 +81,7 @@ function OtsSection() {
   const [open, setOpen] = useState<string | null>(null)
   const args = { q: applied || undefined, estado: todas ? 'TODAS' as const : 'PENDIENTE' as const, incluir_servicios: servicios, incluir_errores: errores }
   const res = useInvQuery(`erp-ots|${JSON.stringify(args)}`, () => erpApi.ots(args))
+  const pager = usePagination(res.data?.ots ?? NONE, 'apt-erp-ots')
   const exportXlsx = () => res.data && exportAptXlsx('OT_pendientes_ERP', {
     OT: res.data.ots.map(o => ({ OT: o.ot, Cliente: o.cliente, RUC: o.ruc, 'Fecha contrato': o.fecha_contrato, 'Fecha vencimiento': o.fecha_vcto, Vigente: o.vigente ? 'Sí' : 'No',
       Líneas: o.lineas, 'Líneas con pendiente': o.lineas_pendientes, Contratado: o.contrato, Despachado: o.despachado, Pendiente: o.pendiente,
@@ -97,7 +100,7 @@ function OtsSection() {
         subtitle="Listo en stock = lo pendiente que ya tiene stock en el ERP con el lote de la OT o subcontrato. Ordenadas por lo listo para despachar.">
         <Table empty={!res.data.ots.length} head={<tr><th className={th}>OT</th><th className={th}>Cliente</th><th className={th}>Contrato</th><th className={`${th} text-right`}>Avance</th>
           <th className={`${th} text-right`}>Pendiente</th><th className={`${th} text-right`}>Listo en stock</th><th className={`${th} text-right`}>Líneas pend.</th><th className={th}>Último despacho</th></tr>}>
-          {res.data.ots.map(o => <Fragment key={o.ot}>
+          {pager.pageRows.map(o => <Fragment key={o.ot}>
             <tr className="cursor-pointer hover:bg-slate-50" onClick={() => setOpen(open === o.ot ? null : o.ot)}>
               <td className={`${td} font-bold text-[#002855]`}>{o.ot}{!o.vigente && <span className="ml-1 rounded bg-slate-100 px-1 text-[10px] text-slate-500">no vigente</span>}</td>
               <td className={`${td} max-w-64`}>{o.cliente || '—'}</td>
@@ -111,6 +114,7 @@ function OtsSection() {
             {open === o.ot && <tr><td colSpan={8} className="bg-slate-50 p-3"><OtDetalle ot={o.ot} /></td></tr>}
           </Fragment>)}
         </Table>
+        <Pager p={pager} label="OT" />
       </ChartCard>}
     </div>
   )
@@ -176,6 +180,7 @@ function GuiasSection() {
   const [applied, setApplied] = useState('')
   const args = { desde, hasta, referencia, origen, tolerancia, q: applied || undefined, limit: 2000 }
   const res = useInvQuery(`erp-guias|${JSON.stringify(args)}`, () => erpApi.guias(args))
+  const pager = usePagination(res.data?.guias ?? NONE, 'apt-erp-guias')
   const r = res.data?.resumen
   const exportXlsx = () => res.data && exportAptXlsx(`Guias_ERP_TMS_${desde}_${hasta}`, {
     Guías: res.data.guias.map(g => ({ Guía: g.guia, 'OT (ERP)': g.ots, 'OT (TMS)': g.ot_tms, Cliente: g.cliente, 'Fecha ERP': g.fecha_erp,
@@ -208,7 +213,7 @@ function GuiasSection() {
         subtitle="Fecha ERP: del Actualizable (exacta si la línea tiene una sola guía) o de las Salidas cargadas. Fecha TMS: salida programada de la ruta que llevó la guía. Solo TMS: guías registradas en rutas que el ERP no muestra (¿mal digitadas o aún no emitidas?).">
         <Table empty={!res.data.guias.length} head={<tr><th className={th}>Guía</th><th className={th}>OT</th><th className={th}>Cliente</th><th className={th}>Fecha ERP</th><th className={th}>Fecha TMS</th>
           <th className={`${th} text-right`}>Dif.</th><th className={th}>Ruta · placa</th><th className={`${th} text-right`}>Cantidad</th><th className={`${th} text-right`}>Peso</th><th className={th}>Origen</th></tr>}>
-          {res.data.guias.map(g => {
+          {pager.pageRows.map(g => {
             const alert = (g.dif_dias != null && Math.abs(g.dif_dias) > tolerancia) || g.ot_distinta
             return <tr key={g.guia} className={alert ? 'bg-amber-50/60' : ''}>
               <td className={`${td} font-semibold`}>{g.guia}</td>
@@ -224,6 +229,7 @@ function GuiasSection() {
             </tr>
           })}
         </Table>
+        <Pager p={pager} label="guías" />
       </ChartCard>}
     </div>
   )
@@ -247,6 +253,7 @@ function StockSection() {
   const [applied, setApplied] = useState('')
   const args = { situacion: situacion || undefined, bodega: bodega || undefined, q: applied || undefined, limit: 2000 }
   const res = useInvQuery(`erp-stock|${JSON.stringify(args)}`, () => erpApi.stock(args))
+  const pager = usePagination(res.data?.lotes ?? NONE, 'apt-erp-stock')
   const resumen = res.data?.resumen || []
   const bodegas = [...new Set(resumen.map(r => r.bodega))]
   const sits = (Object.keys(SITUACION) as ErpSituacion[]).filter(s => resumen.some(r => r.situacion === s))
@@ -277,7 +284,7 @@ function StockSection() {
       {res.loading ? <LoadingBlock /> : res.error ? <ErrorBlock message={res.error} onRetry={res.reload} /> : res.data && <ChartCard title={`${fmtN(res.data.lotes.length)} lote(s)`}>
         <Table empty={!res.data.lotes.length} head={<tr><th className={th}>Bodega</th><th className={th}>Lote</th><th className={th}>SKU</th><th className={th}>Producto</th><th className={`${th} text-right`}>Stock</th>
           <th className={`${th} text-right`}>Pendiente doc.</th><th className={`${th} text-right`}>Listo</th><th className={`${th} text-right`}>Peso</th><th className={th}>Situación</th></tr>}>
-          {res.data.lotes.map((l, i) => <tr key={i}>
+          {pager.pageRows.map((l, i) => <tr key={i}>
             <td className={td}>{l.bodega}</td><td className={`${td} font-semibold`}>{l.lote || '—'}</td><td className={td}>{l.cod_producto}</td><td className={`${td} max-w-72`}>{l.producto}{l.cliente && <span className="block text-[11px] text-slate-500">{l.cliente}</span>}</td>
             <td className={tdNum}>{fmtN(l.stock)}{l.unidad === 'CIEN' && <span className="block text-[10px] text-slate-500">und (ERP en cientos)</span>}</td>
             <td className={tdNum}>{l.pendiente == null ? '—' : fmtN(l.pendiente)}</td><td className={`${tdNum} text-emerald-700`}>{l.listo ? fmtN(l.listo) : '—'}</td>
@@ -285,7 +292,13 @@ function StockSection() {
             <td className={td}><span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${SITUACION[l.situacion].tone}`}>{SITUACION[l.situacion].label}</span></td>
           </tr>)}
         </Table>
+        <Pager p={pager} label="lotes" />
       </ChartCard>}
     </div>
   )
+}
+
+const NONE: never[] = []
+function Pager({ p, label }: { p: ReturnType<typeof usePagination>; label: string }) {
+  return p.total > 0 ? <TablePagination total={p.total} page={p.page} pageSize={p.pageSize} onPageChange={p.setPage} onPageSizeChange={p.setPageSize} itemLabel={label} compact /> : null
 }
