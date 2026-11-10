@@ -17,6 +17,8 @@ function erpSlots(now: Date) {
 }
 export const nextErpRun = (now: Date) => erpSlots(now).find(s => s > now) as Date
 export const lastErpSlot = (now: Date) => [...erpSlots(now)].reverse().find(s => s <= now) as Date
+/** La hora programada anterior a la última: si los datos son más viejos, hay atraso aunque la última aún esté en curso. */
+const previousErpSlot = (now: Date) => [...erpSlots(now)].reverse().filter(s => s <= now)[1] as Date
 
 const date = (v: string | null | undefined) => (v ? new Date(v) : null)
 
@@ -28,7 +30,8 @@ export function erpState(e: { stock_at?: string | null; contratos_at?: string | 
   const lastAt = stock && contratos ? (stock < contratos ? stock : contratos) : stock || contratos
   const loading = date(e.loading_since), req = e.request
   // La carga dura ~15 min: 40 min después de la hora programada ya debería estar aplicada.
-  const slot = lastErpSlot(now), overdue = now.getTime() - slot.getTime() > 40 * MIN && (!lastAt || lastAt < new Date(slot.getTime() - 5 * MIN))
+  const slot = lastErpSlot(now), before = previousErpSlot(now)
+  const overdue = !lastAt || lastAt < new Date(before.getTime() - 5 * MIN) || (now.getTime() - slot.getTime() > 40 * MIN && lastAt < new Date(slot.getTime() - 5 * MIN))
   if (loading && now.getTime() - loading.getTime() > 30 * MIN) return { level: 'error', lastAt, nextAt: next, detail: 'Una carga quedó sin terminar' }
   if (req && req.status === 'ERROR' && (!lastAt || (date(req.finished_at) || now) > lastAt)) return { level: 'error', lastAt, nextAt: next, detail: req.message || 'La última actualización falló' }
   // Una solicitud «en curso» de más de 60 min es un corte del robot: el robot la cierra al consultar.

@@ -86,6 +86,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex shrink-0 items-center gap-1 sm:gap-3">
             <AppUpdateNotice placement="header" />
+            <TmsUpdateBanner/>
             <NotificationBell />
             {process.env.NEXT_PUBLIC_WMS_ORIGIN && ['almacen-lectura','almacen-etiquetado','almacen-picking','almacen-packing','almacen-carga','almacen-supervisor','apt','apt-carga'].some(hasAccess) && <a href={process.env.NEXT_PUBLIC_WMS_ORIGIN + '/almacen'} aria-label="Abrir Almacén WMS" title="Abrir Almacén WMS" className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2 text-xs font-bold text-[#002855] hover:bg-blue-100"><Warehouse size={17}/><span className="hidden sm:inline">Almacén WMS</span></a>}
 
@@ -104,7 +105,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <NotificationBanner />
         <AccessDeniedNotice />
         <main className="relative z-0 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-auto p-3 sm:p-4 lg:p-5">
-          <TmsUpdateBanner/>
           {children}
         </main>
       </div>
