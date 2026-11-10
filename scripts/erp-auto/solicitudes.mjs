@@ -7,7 +7,8 @@
 const [cmd, ...rest] = process.argv.slice(2)
 const env = process.env
 const bases = [
-  { key: 'tms', url: env.TMS_SUPABASE_URL, anon: env.TMS_SUPABASE_ANON, user: env.TMS_USUARIO, password: env.TMS_CLAVE },
+  // En el TMS ninguna función privilegiada es anónima (prueba C55): ahí se pregunta con sesión.
+  { key: 'tms', url: env.TMS_SUPABASE_URL, anon: env.TMS_SUPABASE_ANON, user: env.TMS_USUARIO, password: env.TMS_CLAVE, dueWithSession: true },
   { key: 'wms', url: env.WMS_SUPABASE_URL, anon: env.WMS_SUPABASE_ANON, user: env.WMS_USUARIO, password: env.WMS_CLAVE },
 ].filter(b => b.url && b.anon && b.user && b.password)
 if (!['inicio', 'fin'].includes(cmd) || !bases.some(b => b.key === 'tms')) {
@@ -40,11 +41,14 @@ async function login(b) {
 
 try {
   if (cmd === 'inicio') {
-    // Sin sesión: cada minuto solo se pregunta si toca (la mayoría de las veces, no)
+    // Cada minuto solo se pregunta si toca (la mayoría de las veces, no); en el WMS sin sesión.
     const runs = {}
     for (const b of bases) {
       // Una base caída no impide atender la otra
-      try { if (await rpc(b, 'erp_robot_due', {})) runs[b.key] = (await rpc(b, 'erp_robot_start', {}, await login(b)))?.id ?? null }
+      try {
+        const token = b.dueWithSession ? await login(b) : undefined
+        if (await rpc(b, 'erp_robot_due', {}, token)) runs[b.key] = (await rpc(b, 'erp_robot_start', {}, token || await login(b)))?.id ?? null
+      }
       catch (e) { console.error('ERROR ' + (e instanceof Error ? e.message : e)) }
     }
     if (Object.values(runs).some(Boolean)) console.log(JSON.stringify(runs))

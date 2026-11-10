@@ -13,6 +13,7 @@ const assert = require('node:assert/strict')
       INSERT INTO erp_imports(kind,status,created_at,applied_at) VALUES ('STOCK','ACTIVA',now()-interval '2 hours',now()-interval '2 hours'),('CONTRATOS','ACTIVA',now()-interval '3 hours',now()-interval '3 hours');
       SELECT set_config('test.load','on',false);`)
     await db.exec(readFileSync('supabase/migrations/20261231130000_erp_robot_solicitudes.sql', 'utf8'))
+    await db.exec(readFileSync('supabase/migrations/20261231140000_erp_robot_due_sin_anon.sql', 'utf8'))
     const one = async s => Object.values((await db.query(s)).rows[0])[0]
     assert.equal(await one('SELECT public.erp_robot_due()'), false, 'sin solicitud no toca')
     const r1 = await one('SELECT public.erp_robot_request()'), r2 = await one('SELECT public.erp_robot_request()')
@@ -44,6 +45,8 @@ const assert = require('node:assert/strict')
     // Una carga abandonada no queda «en curso» si después se aplicó otra del mismo tipo.
     await db.exec(`INSERT INTO erp_imports(kind,status,created_at) VALUES ('CONTRATOS','CARGANDO',now()-interval '2 hours'); INSERT INTO erp_imports(kind,status,created_at,applied_at) VALUES ('CONTRATOS','ACTIVA',now()-interval '1 hour',now()-interval '1 hour')`)
     assert.equal((await one('SELECT public.data_update_status()')).erp.loading_since, null, 'carga abandonada superada')
+    // C55: ninguna función privilegiada abierta a anónimos.
+    assert.equal((await db.query("SELECT has_function_privilege('anon','public.erp_robot_due()','EXECUTE') AS x")).rows[0].x, false, 'erp_robot_due cerrada a anon')
     await db.exec(`SELECT set_config('test.load','off',false)`)
     await assert.rejects(db.query('SELECT public.erp_robot_request()'), /permiso/, 'solo quien carga el ERP')
     console.log('PASS: Actualizar ahora del ERP: una solicitud abierta, espera a la carga horaria, robot sin solaparse, estado del banner y permisos.')
