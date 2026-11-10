@@ -1,6 +1,6 @@
 # Etiqueta única de bulto
 
-Recepción (`/almacen/etiquetado`), Control de recepcionados, detalle del paquete e inventario usan `PackageLabel`: logo JRM, cliente en hasta dos líneas sin reducir fuente, OT, lote destacado a la derecha del SKU, descripción centrada, QR del código del bulto, código original, IPT, fecha, cantidad/peso y secuencia.
+Recepción (`/almacen/etiquetado`), Control de recepcionados, detalle del paquete e inventario usan `PackageLabel`: logo JRM, cliente en hasta dos líneas sin reducir fuente, OT, lote destacado a la derecha del SKU, descripción centrada, Code 128, código original, IPT, fecha, cantidad/peso y secuencia.
 
 La referencia visual es la etiqueta de Recepción de 6 × 4 pulgadas. La cuadrícula se adapta al **tamaño de etiqueta**, manteniendo proporciones del logo y letras. `PackageLabelPreview` muestra esa misma composición. Primera impresión y reimpresiones recuperan los valores persistidos de `wh_packages`, sin recalcular pesos/cantidades ni sustituir la identidad del bulto.
 

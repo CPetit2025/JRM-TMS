@@ -1,5 +1,5 @@
 import type { jsPDF as JsPdf } from 'jspdf'
-import { qrMatrix } from '@/components/warehouse/QrCode'
+import { code128Bars } from '@/components/warehouse/Code128Barcode'
 
 export type LpnPackage = { package_code: string; product_code: string; description: string; lot: string | null; document?: string; contract_code?: string | null; quantity: number; unit: string | null; weight_kg: number | null }
 export type LpnAudit = { id: number; result: string; audit_rev: number; package_code: string | null; comment: string | null; evidence_paths: string[]; override_reason: string | null; actor_name: string | null; created_at: string }
@@ -41,13 +41,11 @@ async function logoDataUrl() {
   return new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = reject; r.readAsDataURL(blob) })
 }
 
-// QR cuadrado de lado s (mm) con el mismo valor que el código de barras.
-function qr(pdf: JsPdf, value: string, x: number, y: number, s: number) {
-  const m = qrMatrix(value), k = s / m.length
-  pdf.setFillColor(255, 255, 255); pdf.rect(x, y, s, s, 'F'); pdf.setFillColor(0, 0, 0) // fondo blanco: los recuadros del PDF son grises
-  m.forEach((row, j) => row.forEach((on, i) => { if (on) pdf.rect(x + i * k, y + j * k, k, k, 'F') }))
+function barcode(pdf: JsPdf, value: string, x: number, y: number, w: number, h: number) {
+  const { bars, width } = code128Bars(value)
+  const k = w / (width + 10)
+  for (const b of bars) pdf.rect(x + b.x * k, y, b.w * k, h, 'F')
 }
-
 
 // Packing List (A4). Sin número de liberación = preliminar, marcado como tal y sin validez.
 // unitOf: unidad asignada a cada LPN (por id); title: reemplaza el título, p. ej. para la guía de carga de una unidad.
@@ -92,7 +90,7 @@ export async function buildPackingListPdf(s: PackingSnapshot, opts: { unitOf?: R
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10); pdf.text(l.lpn_code, 14, y + 6)
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8)
     pdf.text(`${l.package_count} paquete(s) · ${fmt(l.quantity, 3)} und · ${fmt(l.weight_kg)} kg · ${preliminary ? (AUDIT[l.audit_status]?.label || l.audit_status) : 'Aprobado'}${opts.unitOf ? ` · Unidad: ${opts.unitOf[l.id] || 'sin asignar'}` : ''}`, 14, y + 12)
-    qr(pdf, l.lpn_code, 182, y + 1, 14)
+    barcode(pdf, l.lpn_code, 128, y + 2, 68, 12)
     y += 20
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7.5)
     pdf.text('Paquete', 14, y); pdf.text('Material', 52, y); pdf.text('Lote', 132, y); pdf.text('Cantidad', 160, y); pdf.text('Peso kg', 196, y, { align: 'right' })
@@ -147,7 +145,7 @@ export async function buildBultoContentPdf(l: Pick<TaskLpn, 'lpn_code' | 'packag
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(12); pdf.text(`CONTENIDO DEL BULTO ${bulto}`, right, 13, { align: 'right' })
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8)
     pdf.text(`Cliente ${t.client_name || '—'} · OT ${t.contract_code || '—'} · Solicitud ${t.request_number || '—'}`, right, 18, { align: 'right' })
-    qr(pdf, l.lpn_code, m, 21, 14)
+    barcode(pdf, l.lpn_code, m, 23, Math.min(70, W - 2 * m), 11)
     pdf.setFont('courier', 'bold'); pdf.setFontSize(10); pdf.text(l.lpn_code, right, 31, { align: 'right' })
     pdf.setLineWidth(0.6); pdf.line(m, 37, right, 37); pdf.setLineWidth(0.2)
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(size)
