@@ -72,3 +72,21 @@ tareas.
 
 Si cambian los textos de la pantalla `/apt/datos` (botón «Aplicar carga y recalcular», mensaje verde), hay que ajustar
 `cargar.mjs`.
+
+## «Actualizar ahora» desde la web (banner de actualización)
+
+El TMS y el WMS muestran arriba de cada pantalla un banner con la última actualización del ERP (stock y contratos),
+cuánto falta para la próxima automática y el botón **Actualizar ahora**. El botón **no reemplaza** las cargas a horas
+fijas (07, 10, 13, 16 y 19 h): deja una solicitud (`erp_robot_runs`) y el robot la atiende en el minuto siguiente con
+la misma carga completa (TMS y luego WMS). Mientras corre otra carga, la solicitud espera; nunca corren dos a la vez
+(`carga.lock`).
+
+Instalar una vez en la PC del robot, además de la instalación de horas fijas (desde la carpeta del repositorio):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\erp-auto\ejecutar.ps1 -InstalarSolicitudes -SupabaseUrl https://eojfsbogysifxrlrnjvx.supabase.co -SupabaseAnon <clave pública anon del TMS>
+```
+
+Registra la tarea **JRM-TMS carga ERP (Actualizar ahora)**, que cada minuto pregunta a las bases TMS y WMS si hay una
+solicitud (sin iniciar sesión; solo responde sí o no). La base y la cuenta WMS se toman del robot de ingresos WMS
+(`wms-auto`) si está instalado. Sin solicitud no deja log.

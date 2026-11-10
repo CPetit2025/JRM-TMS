@@ -1,12 +1,18 @@
 ﻿# Carga automática del ERP a /apt/datos: refresca los dos Excel y los sube con el robot. Ver docs/carga-erp-automatica.md.
 #   Instalar (una vez):  .\ejecutar.ps1 -Instalar -Actualizable <ruta> -Stock <ruta> [-Hora 07:00] (luego cada 3 horas hasta 12 h después)
 #   Ejecutar ahora:      & "$env:LOCALAPPDATA\JRM-TMS\erp-auto\ejecutar.ps1" [-Revisar]
+#   «Actualizar ahora» (una vez, además de lo anterior):  .\ejecutar.ps1 -InstalarSolicitudes -SupabaseUrl <url base TMS> -SupabaseAnon <clave pública>
+#     Agrega una tarea que cada minuto pregunta si alguien pidió una actualización desde la web; las horas fijas no cambian.
 param(
   [switch]$Instalar,
   [string]$Actualizable,
   [string]$Stock,
   [string]$Hora = '07:00',
-  [switch]$Revisar
+  [switch]$Revisar,
+  [switch]$InstalarSolicitudes,
+  [switch]$Solicitudes,
+  [string]$SupabaseUrl,
+  [string]$SupabaseAnon
 )
 $ErrorActionPreference = 'Stop'
 $destino = Join-Path $env:LOCALAPPDATA 'JRM-TMS\erp-auto'
@@ -33,6 +39,67 @@ if ($Instalar) {
   Write-Output "Instalado en $destino; tarea «JRM-TMS carga ERP» cada 3 horas desde las $Hora (5 veces al día). Pruebe con: & `"$destino\ejecutar.ps1`" -Revisar"
   exit 0
 }
+
+if ($InstalarSolicitudes) {
+  if (-not $SupabaseUrl -or -not $SupabaseAnon) { throw 'Indique -SupabaseUrl y -SupabaseAnon (URL y clave pública de la base TMS)' }
+  if ($SupabaseUrl -notmatch 'eojfsbogysifxrlrnjvx') { throw 'Indique la base del TMS (https://eojfsbogysifxrlrnjvx.supabase.co)' }
+  if (-not (Test-Path (Join-Path $destino 'config.json'))) { throw 'Primero instale la carga a horas fijas (-Instalar)' }
+  # Actualiza los scripts sin tocar la configuración ni la cuenta guardadas
+  Copy-Item (Join-Path $PSScriptRoot '*') $destino -Force -Exclude 'config.json', 'credencial.xml'
+  $cfgPath = Join-Path $destino 'config.json'
+  $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
+  $cfg | Add-Member -NotePropertyName supabaseUrl -NotePropertyValue $SupabaseUrl.TrimEnd('/') -Force
+  $cfg | Add-Member -NotePropertyName supabaseAnon -NotePropertyValue $SupabaseAnon -Force
+  $cfg | ConvertTo-Json | Set-Content $cfgPath -Encoding UTF8
+  $accion = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$destino\ejecutar.ps1`" -Solicitudes"
+  $cuando = New-ScheduledTaskTrigger -Daily -At '00:00'
+  $cuando.Repetition = (New-ScheduledTaskTrigger -Once -At '00:00' -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration (New-TimeSpan -Days 1)).Repetition
+  $quien = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive
+  $ajustes = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 55) -MultipleInstances IgnoreNew
+  Register-ScheduledTask -TaskName 'JRM-TMS carga ERP (Actualizar ahora)' -Action $accion -Trigger $cuando -Principal $quien -Settings $ajustes -Force | Out-Null
+  Write-Output 'Instalada la tarea «JRM-TMS carga ERP (Actualizar ahora)»: cada minuto atiende las solicitudes de la web. La carga a horas fijas sigue igual.'
+  exit 0
+}
+
+if ($Solicitudes) {
+  # Corre cada minuto: solo pregunta si toca. Sin solicitud no deja log (serían 1.440 por día).
+  $cfg = Get-Content (Join-Path $PSScriptRoot 'config.json') -Raw | ConvertFrom-Json
+  if (-not $cfg.supabaseUrl) { exit 0 }
+  $cred = Import-Clixml (Join-Path $PSScriptRoot 'credencial.xml')
+  $env:TMS_SUPABASE_URL = $cfg.supabaseUrl; $env:TMS_SUPABASE_ANON = $cfg.supabaseAnon
+  $env:TMS_USUARIO = $cred.UserName; $env:TMS_CLAVE = $cred.GetNetworkCredential().Password
+  # La base WMS y su cuenta salen del robot de ingresos WMS, si está instalado
+  $wmsDir = Join-Path (Split-Path $PSScriptRoot) 'wms-auto'
+  if ((Test-Path (Join-Path $wmsDir 'config.json')) -and (Test-Path (Join-Path $wmsDir 'credencial.xml'))) {
+    $wc = Get-Content (Join-Path $wmsDir 'config.json') -Raw | ConvertFrom-Json
+    $cw = Import-Clixml (Join-Path $wmsDir 'credencial.xml')
+    $env:WMS_SUPABASE_URL = $wc.supabaseUrl; $env:WMS_SUPABASE_ANON = $wc.supabaseAnon
+    $env:WMS_USUARIO = $cw.UserName; $env:WMS_CLAVE = $cw.GetNetworkCredential().Password
+  }
+  [Console]::OutputEncoding = [Text.Encoding]::UTF8
+  $ErrorActionPreference = 'Continue'
+  try {
+    $salida = & $node (Join-Path $PSScriptRoot 'solicitudes.mjs') inicio 2>&1 | ForEach-Object { "$_" }
+    $json = $salida | Where-Object { $_ -like '{*' } | Select-Object -Last 1
+    if ($json) {
+      # Misma carga completa que la de horas fijas, con su propio log
+      & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'ejecutar.ps1')
+      $resultado = if ($LASTEXITCODE -eq 0) { 'ok' } else { 'error' }
+      $ultimo = Get-ChildItem (Join-Path $PSScriptRoot 'logs') -Filter *.log | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+      $linea = if ($ultimo) { (Select-String -Path $ultimo.FullName -Pattern '^(OK|ERROR|AVISO) ' | Select-Object -Last 1).Line }
+      if (-not $linea) { $linea = "Actualización solicitada desde la web: $resultado" }
+      $env:ERP_SOLICITUD = $json
+      & $node (Join-Path $PSScriptRoot 'solicitudes.mjs') fin $resultado ($linea -replace '"', "'") 2>&1 | ForEach-Object { "$_" }
+    }
+  } finally {
+    Remove-Item Env:TMS_CLAVE, Env:WMS_CLAVE, Env:ERP_SOLICITUD -ErrorAction SilentlyContinue
+  }
+  exit 0
+}
+
+# Una sola carga a la vez: la de horas fijas y la de «Actualizar ahora» no se pisan (Excel y la base).
+try { $candado = [IO.File]::Open((Join-Path $PSScriptRoot 'carga.lock'), 'OpenOrCreate', 'ReadWrite', 'None') }
+catch { Write-Output 'ERROR Otra carga del ERP está en curso; se omite esta.'; exit 3 }
 
 $log = Join-Path $PSScriptRoot "logs\$(Get-Date -Format 'yyyy-MM-dd_HHmm').log"
 New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
@@ -81,5 +148,6 @@ try {
 } finally {
   Remove-Item Env:TMS_CLAVE -ErrorAction SilentlyContinue
   Stop-Transcript | Out-Null
+  $candado.Dispose()
 }
 exit $codigo
