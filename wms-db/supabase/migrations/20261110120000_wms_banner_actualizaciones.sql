@@ -44,9 +44,10 @@ END $$;
 
 CREATE OR REPLACE FUNCTION public.erp_robot_due() RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
-  SELECT EXISTS (SELECT 1 FROM public.erp_robot_runs WHERE status = 'PENDING')
-    AND NOT EXISTS (SELECT 1 FROM public.erp_robot_runs WHERE status = 'RUNNING' AND started_at > now() - interval '60 minutes')
-    AND NOT EXISTS (SELECT 1 FROM public.erp_imports WHERE status = 'CARGANDO' AND created_at > now() - interval '30 minutes');
+  SELECT (EXISTS (SELECT 1 FROM public.erp_robot_runs WHERE status = 'PENDING')
+     AND NOT EXISTS (SELECT 1 FROM public.erp_robot_runs WHERE status = 'RUNNING' AND started_at > now() - interval '60 minutes')
+     AND NOT EXISTS (SELECT 1 FROM public.erp_imports WHERE status = 'CARGANDO' AND created_at > now() - interval '30 minutes'))
+    OR EXISTS (SELECT 1 FROM public.erp_robot_runs WHERE status = 'RUNNING' AND started_at <= now() - interval '60 minutes');
 $$;
 
 CREATE OR REPLACE FUNCTION public.erp_robot_start() RETURNS jsonb
@@ -82,7 +83,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
     'erp', jsonb_build_object(
       'stock_at', (SELECT max(coalesce(applied_at, created_at)) FROM public.erp_imports WHERE kind = 'STOCK' AND status = 'ACTIVA'),
       'contratos_at', (SELECT max(coalesce(applied_at, created_at)) FROM public.erp_imports WHERE kind = 'CONTRATOS' AND status = 'ACTIVA'),
-      'loading_since', (SELECT min(created_at) FROM public.erp_imports WHERE status = 'CARGANDO' AND created_at > now() - interval '1 day'),
+      'loading_since', (SELECT min(c.created_at) FROM public.erp_imports c WHERE c.status = 'CARGANDO' AND c.created_at > now() - interval '1 day'
+                          AND NOT EXISTS (SELECT 1 FROM public.erp_imports a WHERE a.kind = c.kind AND a.status = 'ACTIVA' AND a.created_at > c.created_at)),
       'request', (SELECT jsonb_build_object('status', status, 'requested_at', requested_at, 'started_at', started_at, 'finished_at', finished_at, 'message', message)
                     FROM public.erp_robot_runs ORDER BY id DESC LIMIT 1)),
     'ingresos', jsonb_build_object(

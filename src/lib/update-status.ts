@@ -31,6 +31,9 @@ export function erpState(e: { stock_at?: string | null; contratos_at?: string | 
   const slot = lastErpSlot(now), overdue = now.getTime() - slot.getTime() > 40 * MIN && (!lastAt || lastAt < new Date(slot.getTime() - 5 * MIN))
   if (loading && now.getTime() - loading.getTime() > 30 * MIN) return { level: 'error', lastAt, nextAt: next, detail: 'Una carga quedó sin terminar' }
   if (req && req.status === 'ERROR' && (!lastAt || (date(req.finished_at) || now) > lastAt)) return { level: 'error', lastAt, nextAt: next, detail: req.message || 'La última actualización falló' }
+  // Una solicitud «en curso» de más de 60 min es un corte del robot: el robot la cierra al consultar.
+  const started = date(req?.started_at)
+  if (req?.status === 'RUNNING' && started && now.getTime() - started.getTime() > 60 * MIN) return { level: 'error', lastAt, nextAt: next, detail: 'El robot no informó el resultado de la última solicitud' }
   if (loading || (req && ['PENDING', 'RUNNING'].includes(req.status))) return { level: 'running', lastAt, nextAt: next, detail: req?.status === 'PENDING' ? 'Solicitud en cola' : 'Actualizando…' }
   if (!lastAt) return { level: 'late', lastAt, nextAt: next, detail: 'Nunca se cargó' }
   return overdue ? { level: 'late', lastAt, nextAt: next, detail: 'No se actualizó en la última hora programada' } : { level: 'ok', lastAt, nextAt: next, detail: 'Al día' }
