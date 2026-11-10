@@ -88,5 +88,5 @@ powershell -ExecutionPolicy Bypass -File scripts\erp-auto\ejecutar.ps1 -Instalar
 ```
 
 Registra la tarea **JRM-TMS carga ERP (Actualizar ahora)**, que cada minuto pregunta a las bases TMS y WMS si hay una
-solicitud (sin iniciar sesión; solo responde sí o no). La base y la cuenta WMS se toman del robot de ingresos WMS
+solicitud (en el TMS con la cuenta del robot; en el WMS sin sesión, solo responde sí o no). La base y la cuenta WMS se toman del robot de ingresos WMS
 (`wms-auto`) si está instalado. Sin solicitud no deja log.
