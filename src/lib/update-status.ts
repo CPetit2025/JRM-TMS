@@ -34,6 +34,9 @@ export function erpState(e: { stock_at?: string | null; contratos_at?: string | 
   // Una solicitud «en curso» de más de 60 min es un corte del robot: el robot la cierra al consultar.
   const started = date(req?.started_at)
   if (req?.status === 'RUNNING' && started && now.getTime() - started.getTime() > 60 * MIN) return { level: 'error', lastAt, nextAt: next, detail: 'El robot no informó el resultado de la última solicitud' }
+  // Una solicitud que nadie toma en 10 min: el robot de la PC no está atendiendo (apagada o sin «Actualizar ahora»).
+  const asked = date(req?.requested_at)
+  if (req?.status === 'PENDING' && asked && now.getTime() - asked.getTime() > 10 * MIN) return { level: 'error', lastAt, nextAt: next, detail: 'El robot del ERP no tomó la solicitud (PC apagada o sin instalar «Actualizar ahora»)' }
   if (loading || (req && ['PENDING', 'RUNNING'].includes(req.status))) return { level: 'running', lastAt, nextAt: next, detail: req?.status === 'PENDING' ? 'Solicitud en cola' : 'Actualizando…' }
   if (!lastAt) return { level: 'late', lastAt, nextAt: next, detail: 'Nunca se cargó' }
   return overdue ? { level: 'late', lastAt, nextAt: next, detail: 'No se actualizó en la última hora programada' } : { level: 'ok', lastAt, nextAt: next, detail: 'Al día' }
