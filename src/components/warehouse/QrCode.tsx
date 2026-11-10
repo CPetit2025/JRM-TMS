@@ -1,6 +1,9 @@
 import { encode } from "uqr";
 
-/** El QR complementa Code 128 con el mismo identificador y cuatro módulos de margen. */
+/** Matriz QR (true = módulo negro) con cuatro módulos de margen; corrección M. La usan el SVG y los PDF. */
+export const qrMatrix = (value: string) => encode(value, { ecc: "M", border: 4 }).data;
+
+/** QR del identificador del bulto, con cuatro módulos de margen. */
 export function QrCode({ value, className = "" }: { value: string; className?: string }) {
   const qr = encode(value, { ecc: "M", border: 4 });
   const path = qr.data.flatMap((row, y) => row.flatMap((black, x) => black ? [`M${x} ${y}h1v1h-1z`] : [])).join("");

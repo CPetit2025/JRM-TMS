@@ -6,7 +6,7 @@ import { ClipboardList, PackageCheck, Printer, RefreshCw, Search, X } from 'luci
 import { printPackageLabels, validatePackageLabelPrint } from '@/components/warehouse/print-package-labels'
 import { useLabelFormat } from '@/lib/warehouse/label-format'
 import { loadPackageLabel } from '@/lib/warehouse/load-package-label'
-import { Code128Barcode } from '@/components/warehouse/Code128Barcode'
+import { QrCode } from '@/components/warehouse/QrCode'
 
 type ReceiptPackage = {
   package_code: string
@@ -289,7 +289,7 @@ export default function AptReceiptControlPage() {
                 <td className="p-3">{row.source_product_code}<small className="block max-w-xs truncate text-slate-500" title={row.description}>{row.description}</small></td>
                 <td className="p-3">{row.source_lot || '—'}</td><td className="p-3 text-right tabular-nums">{unitIsPiece(row.unit) ? numberFmt.format(row.quantity) : '—'}</td>
                 <td className="p-3 text-right tabular-nums">{row.weight_kg === null ? '—' : numberFmt.format(row.weight_kg)}</td>
-                <td className="p-3"><div className="w-48"><Code128Barcode value={row.package_code} height={48} className="h-9 w-full"/><span className="font-mono text-xs font-bold text-[#002855]">{row.package_code}</span></div></td>
+                <td className="p-3"><div className="flex w-48 items-center gap-2"><QrCode value={row.package_code} className="h-11 w-11 shrink-0"/><span className="font-mono text-xs font-bold text-[#002855]">{row.package_code}</span></div></td>
                 <td className="p-3"><button type="button" disabled={printingCode !== null} onClick={() => void printExistingPackage(row)} className="inline-flex min-h-9 items-center gap-2 whitespace-nowrap rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Printer size={14}/>{printingCode === row.package_code ? 'Preparando…' : 'Reimprimir'}</button><small className="mt-1 block text-slate-500">{Math.max(0, row.label_print_count - 1)} reimpresión(es)</small></td>
               </tr>)}</tbody>
             </table>
