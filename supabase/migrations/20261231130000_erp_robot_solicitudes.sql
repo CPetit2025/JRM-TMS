@@ -36,12 +36,14 @@ BEGIN
   RETURN jsonb_build_object('id', r.id, 'status', r.status, 'existing', false);
 END $$;
 
--- Sin sesión, cada minuto: hay solicitud pendiente, ninguna en curso y ninguna carga horaria cargando ahora.
+-- Sin sesión, cada minuto: hay solicitud pendiente, ninguna en curso y ninguna carga horaria cargando ahora; o hay una
+-- ejecución sin cierre en 60 min, que erp_robot_start da por fallida (así se recupera sola tras un corte del robot).
 CREATE OR REPLACE FUNCTION public.erp_robot_due() RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
-  SELECT EXISTS (SELECT 1 FROM public.erp_robot_runs WHERE status = 'PENDING')
-    AND NOT EXISTS (SELECT 1 FROM public.erp_robot_runs WHERE status = 'RUNNING' AND started_at > now() - interval '60 minutes')
-    AND NOT EXISTS (SELECT 1 FROM public.erp_imports WHERE status = 'CARGANDO' AND created_at > now() - interval '30 minutes');
+  SELECT (EXISTS (SELECT 1 FROM public.erp_robot_runs WHERE status = 'PENDING')
+     AND NOT EXISTS (SELECT 1 FROM public.erp_robot_runs WHERE status = 'RUNNING' AND started_at > now() - interval '60 minutes')
+     AND NOT EXISTS (SELECT 1 FROM public.erp_imports WHERE status = 'CARGANDO' AND created_at > now() - interval '30 minutes'))
+    OR EXISTS (SELECT 1 FROM public.erp_robot_runs WHERE status = 'RUNNING' AND started_at <= now() - interval '60 minutes');
 $$;
 
 CREATE OR REPLACE FUNCTION public.erp_robot_start() RETURNS jsonb
@@ -79,7 +81,8 @@ BEGIN
     'erp', jsonb_build_object(
       'stock_at', (SELECT max(coalesce(applied_at, created_at)) FROM public.erp_imports WHERE kind = 'STOCK' AND status = 'ACTIVA'),
       'contratos_at', (SELECT max(coalesce(applied_at, created_at)) FROM public.erp_imports WHERE kind = 'CONTRATOS' AND status = 'ACTIVA'),
-      'loading_since', (SELECT min(created_at) FROM public.erp_imports WHERE status = 'CARGANDO' AND created_at > now() - interval '1 day'),
+      'loading_since', (SELECT min(c.created_at) FROM public.erp_imports c WHERE c.status = 'CARGANDO' AND c.created_at > now() - interval '1 day'
+                          AND NOT EXISTS (SELECT 1 FROM public.erp_imports a WHERE a.kind = c.kind AND a.status = 'ACTIVA' AND a.created_at > c.created_at)),
       'request', (SELECT jsonb_build_object('status', status, 'requested_at', requested_at, 'started_at', started_at, 'finished_at', finished_at, 'message', message)
                     FROM public.erp_robot_runs ORDER BY id DESC LIMIT 1),
       'can_request', public.apt_can_load()));
