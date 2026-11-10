@@ -1,6 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- Mismo logo que la etiqueta de bulto, impreso sin optimizar. */
 import type { CSSProperties } from "react";
+import { QrCode } from "./QrCode";
 import { Code128Barcode } from "./Code128Barcode";
 import { bultoNumber, identifierFontSize } from "@/lib/warehouse/package-label";
 import { packageLabelLayout } from "@/lib/warehouse/package-label-layout";
@@ -48,7 +49,10 @@ export function GroupedBultoLabel({ code, customer, contract, request, items, pa
         </tbody>
       </table>
       </div>
-      <Code128Barcode value={code} height={64} className="wh-package-barcode wh-grouped-barcode" />
+      <div className="wh-package-codes wh-grouped-codes">
+        <Code128Barcode value={code} height={64} className="wh-package-barcode wh-grouped-barcode" />
+        <QrCode value={code} className="wh-package-qr" />
+      </div>
       <b className="wh-package-code">{code}</b>
       <div className="wh-package-footer">
         <div className="wh-package-responsible"><b>Preparado por:</b> {preparedBy || "No registrado"}</div>
