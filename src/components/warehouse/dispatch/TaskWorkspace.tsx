@@ -131,9 +131,14 @@ export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
   // Más de 4 ítems no caben en la etiqueta: se descarga la hoja de contenido (A5 o A4) para pegarla junto a ella.
   const contentSheet = async (l: TaskLpn) => {
     if (!task) return
-    const { pdf, format } = await buildBultoContentPdf(l, task)
-    pdf.save(`contenido-${l.lpn_code}.pdf`)
-    setMessage(`El bulto ${l.lpn_code} tiene ${itemLines(l.packages)} ítems: se descargó su hoja de contenido (${format.toUpperCase()}) para imprimirla y pegarla junto a la etiqueta.`)
+    setError('')
+    try {
+      const { pdf, format } = await buildBultoContentPdf(l, task)
+      pdf.save(`contenido-${l.lpn_code}.pdf`)
+      setMessage(`El bulto ${l.lpn_code} tiene ${itemLines(l.packages)} ítems: se descargó su hoja de contenido (${format.toUpperCase()}) para imprimirla y pegarla junto a la etiqueta.`)
+    } catch {
+      setError(`El bulto ${l.lpn_code} está conservado. No se pudo descargar su hoja de contenido; vuelva a intentarlo con el botón Contenido.`)
+    }
   }
 
   const printLabel = async (lpn: TaskLpn) => {
@@ -153,14 +158,24 @@ export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
     const codes = [...selected]
     if (!codes.length) return
     setBusy(true); setError(''); setMessage('')
-    const { data: lpn, error } = await createClient().rpc('wh_consolidate_lpn', { p_task_id: id, p_package_codes: codes, p_client_event_id: crypto.randomUUID() })
-    if (error) setError(error.message)
-    else {
+    try {
+      const { data: lpn, error } = await createClient().rpc('wh_consolidate_lpn', { p_task_id: id, p_package_codes: codes, p_client_event_id: crypto.randomUUID() })
+      if (error) { setError(error.message); return }
       setMessage(`LPN lógico ${lpn.lpn_code} creado con ${lpn.package_count} paquete(s). Conserve las etiquetas existentes; no necesita imprimir otra.`)
-      await load()
+      // La RPC de consolidación solo devuelve totales; el detalle autorizado se obtiene al recargar.
+      const refreshed = await load()
+      const grouped = refreshed?.lpns.find(l => l.id === lpn.id)
+      if (!grouped) {
+        setError(`El LPN ${lpn.lpn_code} fue creado, pero no se pudo recuperar su contenido. Actualice la página y use el botón Contenido si tiene más de cuatro ítems.`)
+        return
+      }
+      if (needsContentSheet(grouped.packages)) await contentSheet(grouped)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+      requestAnimationFrame(() => input.current?.focus())
     }
-    setBusy(false)
-    requestAnimationFrame(() => input.current?.focus())
   }
 
   const undo = (lpn: TaskLpn) => {

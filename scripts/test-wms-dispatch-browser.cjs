@@ -27,7 +27,7 @@ const api = http.createServer(async (req,res) => {
   else if(path.endsWith('/rpc/wh_task_load_units')) out=units
   else if(path.endsWith('/rpc/wh_load_unit_add')) { units.push({id:`unit-${units.length+1}`,seq:units.length+1,label:`UT${units.length+1}`,plate:null,lpn_ids:[],lpn_count:0,loaded_count:0,package_count:0,weight_kg:0}); out=units.at(-1) }
   else if(path.endsWith('/rpc/wh_lpns_assign_unit')) { for(const id of p.p_lpn_ids){ for(const u of units) u.lpn_ids=u.lpn_ids.filter(x=>x!==id); if(p.p_unit_id) units.find(u=>u.id===p.p_unit_id).lpn_ids.push(id) } for(const u of units){u.lpn_count=u.lpn_ids.length;u.package_count=data.lpns.filter(l=>u.lpn_ids.includes(l.id)).reduce((n,l)=>n+l.package_count,0);u.weight_kg=u.package_count*5} out={assigned:p.p_lpn_ids.length} }
-  else if(path.endsWith('/rpc/wh_consolidate_lpn')) { const item={...lpn(2),packages:structuredClone(data.loose),package_count:data.loose.length,quantity:10,weight_kg:10,print_count:0,own_label:false};data.lpns.push(item);data.loose=[];out=item }
+  else if(path.endsWith('/rpc/wh_consolidate_lpn')) { const item={...lpn(2),packages:structuredClone(data.loose),package_count:data.loose.length,quantity:10,weight_kg:10,print_count:0,own_label:false};data.lpns.push(item);data.loose=[];out={id:item.id,lpn_code:item.lpn_code,package_count:item.package_count,quantity:item.quantity,weight_kg:item.weight_kg} }
   else if(path.endsWith('/rpc/wh_load_unit_set_plate')) {units.find(u=>u.id===p.p_unit_id).plate=p.p_plate;out=null}
   else if(path.endsWith('/rpc/wh_audit_lpn')) { data.lpns.find(l=>l.id===p.p_lpn_id).audit_status=p.p_result; task.lpn_approved=data.lpns.filter(l=>l.audit_status==='APROBADO').length;task.lpn_pending=2-task.lpn_approved;emitDocument();out=null }
   else if(path.endsWith('/rpc/wh_task_action')) {if(p.p_action==='FINISH_PICKING'){task.status='READY_FOR_LOAD';task.display_state='EN_AUDITORIA';emitDocument()} out=null}
@@ -113,6 +113,29 @@ const api = http.createServer(async (req,res) => {
   await go('/almacen/auditoria/task-1');assert(new URL(page.url()).pathname==='/almacen','middleware bloquea Auditoría al picker')
   await go('/almacen/packing-list/task-1');assert.equal(await page.getByRole('button',{name:'Aprobar',exact:true}).count(),0)
   assert(!calls.some(c=>c.path.endsWith('/wh_release_packing_list')),'no hay liberación manual de Packing List')
+  // La hoja automática usa el LPN recargado (la RPC de consolidación no devuelve paquetes).
+  role={name:'Administrador',permissions:['almacen-supervisor']};task.status='PICKING';task.display_state='EN_PICKING'
+  for(const count of [4,6,19]) {
+    data.lpns=[];data.packing_lists=[];data.loose=Array.from({length:count},(_,i)=>({package_code:`16573-B-${String(i+1).padStart(4,'0')}`,product_code:`SKU-${i}`,description:'Producto de contenido',lot:'16573',quantity:1,unit:'UND',weight_kg:1}))
+    await go('/almacen/picking/task-1')
+    const downloads=[];const onDownload=d=>downloads.push(d);page.on('download',onDownload)
+    const automatic=count>4?page.waitForEvent('download'):null
+    await page.getByRole('button',{name:new RegExp(`Consolidar ${count} en LPN`)}).click()
+    if(automatic) await automatic
+    if(count>4) {
+      await page.getByText(`se descargó su hoja de contenido (${count<=18?'A5':'A4'})`,{exact:false}).waitFor()
+      assert.equal(downloads.length,1,'se descarga una sola hoja al consolidar')
+      assert.equal(downloads[0].suggestedFilename(),'contenido-LPN-QA-2.pdf')
+      const repeat=page.waitForEvent('download');await page.getByRole('button',{name:'Contenido',exact:true}).click();await repeat
+      assert.equal(downloads.length,2,'Contenido permite descargar nuevamente')
+    } else {
+      await page.getByText(/LPN lógico LPN-QA-2 creado/).waitFor()
+      assert.equal(downloads.length,0,'hasta cuatro ítems no descarga hoja')
+      await absent('Contenido')
+    }
+    page.off('download',onDownload)
+    assert.equal(await page.evaluate(()=>window.__prints),0,'descargar contenido no imprime etiquetas')
+  }
   assert.equal(errors.length,0,errors.join('\n'))
   console.log('PASS: LPN lógico sin impresión automática; auditoría libera en paralelo; Packing List selecciona solo liberados y asigna varios a UT; documento automático; carga por UT; permisos, enlaces y móvil.')
  } finally {await browser?.close();next.kill('SIGTERM');api.close();fs.closeSync(log)}
