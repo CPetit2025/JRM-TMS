@@ -8,6 +8,7 @@ import {
   Menu, X, LogOut, UserRound, Warehouse,
 } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
+import { WmsUpdateBanner } from '@/components/WmsUpdateBanner'
 import { canViewStage, DISPATCH_STAGES, type DispatchStage } from '@/lib/warehouse/dispatch'
 import { NotificationBell } from '@/components/layout/NotificationBell'
 import { createClient } from '@/lib/supabase/client'
@@ -148,7 +149,7 @@ export default function WarehouseLayout({ children }: { children: React.ReactNod
           </Link>
         </div>
       </header>
-      <main className="wms-main relative z-0 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-auto p-2.5 sm:p-4 lg:p-5">{children}</main>
+      <main className="wms-main relative z-0 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-auto p-2.5 sm:p-4 lg:p-5"><WmsUpdateBanner/>{children}</main>
       <footer className="hidden shrink-0 border-t sm:block border-slate-200 bg-white px-4 py-2.5 text-center text-[11px] text-slate-500">JRM TMS · Portal de Almacén · Trazabilidad de operaciones</footer>
     </div>
   </div>

@@ -79,7 +79,23 @@ const fs=require('fs'); const path=require('node:path');
  const stale=await q1("SELECT count(*)::int AS n FROM public.wh_receipt_robot_runs WHERE status='ERROR' AND message LIKE 'El robot no informó%'");
  if(stale.n!==1) throw Error('Stale RUNNING run was not closed');
  console.log('PASS: receipt robot runs every 30 min, single manual request, no overlap, stale runs closed.');
+ // «Actualizar ahora» del ERP desde el WMS y estado público del banner.
+ const erpDue=async()=>(await q1('SELECT public.erp_robot_due() AS r')).r;
+ if(await erpDue()) throw Error('ERP robot must not be due without a request');
+ const erpReq=(await q1('SELECT public.erp_robot_request() AS r')).r, erpAgain=(await q1('SELECT public.erp_robot_request() AS r')).r;
+ if(erpReq.existing||erpAgain.id!==erpReq.id||!(await erpDue())) throw Error('ERP manual request must be single and due');
+ const erpRun=(await q1('SELECT public.erp_robot_start() AS r')).r;
+ if(erpRun?.id!==erpReq.id||(await q1('SELECT public.erp_robot_start() AS r')).r!==null) throw Error('ERP robot must take the request once');
+ await db.query('SELECT public.erp_robot_finish($1,true,$2)',[erpRun.id,'OK carga ERP']);
+ console.log('PASS: Actualizar ahora del ERP en el WMS: solicitud única, robot sin solaparse.');
  await db.exec('RESET ROLE; SET ROLE anon');
+ const pub=(await q1('SELECT public.wh_public_update_status() AS r')).r;
+ if(!pub.ingresos||!pub.erp||pub.erp.request?.status!=='OK'||!pub.ingresos.last_error_at||!pub.ingresos.last_auto_at) throw Error('Public update status incomplete: '+JSON.stringify(pub));
+ if(Object.keys(pub).sort().join()!=='erp,ingresos,now') throw Error('Public update status must expose only dates and states');
+ let erpDenied=false;try{await db.query('SELECT public.erp_robot_request()')}catch(e){erpDenied=e.message.includes('permission denied')}
+ if(!erpDenied)throw Error('Anonymous ERP request was not denied');
+ await db.query('SELECT public.erp_robot_due()');
+ console.log('PASS: estado público del banner (solo fechas y estados) y solicitud ERP cerrada a anónimos.');
  let denied=false;try {await db.query('SELECT * FROM public.wh_packages')}catch(e){denied=e.message.includes('permission denied')}
  if(!denied) throw Error('Anonymous data access was not denied');
  denied=false;try{await db.query('SELECT public.wh_receipt_candidates($1)',[''])}catch(e){denied=e.message.includes('permission denied')}
