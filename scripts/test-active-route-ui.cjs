@@ -118,6 +118,7 @@ test('sidebar opens one section, closes the previous section and follows navigat
    if (name === '@/lib/nav/sidebarStore') return store
    if (name === '@/lib/nav/navConfig') return nav
    if (name === '@/lib/nav/useMenuCounts') return { useMenuCounts: () => ({}), COUNT_STYLE: {}, countLabel: () => '' }
+   if (name === '@/lib/use-cached') return { clearCache: () => {} }
    if (name === 'lucide-react') return new Proxy({}, { get: () => () => null })
    return require(name)
  }, { document: { activeElement: null } })
