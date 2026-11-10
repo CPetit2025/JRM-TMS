@@ -12,6 +12,8 @@ import { SEVERITY, STATUS, callRpc, findingActions, type FindingRow, type Kpis }
 import { FindingForm } from './FindingForm'
 import { HallazgosOtPdfButton } from './HallazgosOtPdfButton'
 import { useFindingAbilities } from './useFindingAbilities'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 const limaDay = (date = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
 const FILTERS0 = { from: limaDay(new Date(Date.now() - 30 * 864e5)), to: limaDay(), ot: '', client: '', severity: '', status: '', responsible_id: '', auditor_id: '' }
@@ -59,6 +61,7 @@ export function FindingsView() {
 
   const ot = filters.ot.trim().toLocaleLowerCase('es-PE'), client = filters.client.trim().toLocaleLowerCase('es-PE')
   const visible = (rows || []).filter(r => (!ot || (r.ot_code || '').toLocaleLowerCase('es-PE').includes(ot)) && (!client || (r.client_name || '').toLocaleLowerCase('es-PE').includes(client)))
+  const pg = usePagination(visible, 'hallazgos')
   const kpis = !ot && !client && serverKpis ? serverKpis : countKpis(visible)
   const cards = [
     { label: 'Abiertos', value: kpis.abiertos, icon: Clock, cls: 'text-amber-700 bg-amber-50' },
@@ -100,7 +103,7 @@ export function FindingsView() {
       : <section aria-label="Hallazgos" className="overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card"><div className="overflow-x-auto">
         <DataTable dense className="block w-full text-left text-sm lg:table"><caption className="sr-only">Hallazgos de auditoría de despacho</caption>
           <thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['N.º', 'Fecha', 'OT', 'Cliente', 'Categoría', 'Criticidad', 'Responsable', 'Estado', 'Vence', 'Acciones'].map((l, i) => <th key={l} scope="col" className={`whitespace-nowrap px-3 py-2.5 font-semibold ${i === 9 ? 'text-right' : ''}`}>{l}</th>)}</tr></thead>
-          <tbody className="block divide-y divide-slate-200 lg:table-row-group">{visible.map(r => {
+          <tbody className="block divide-y divide-slate-200 lg:table-row-group">{pg.pageRows.map(r => {
             const a = findingActions(r, can)
             const cell = 'min-w-0 px-3 py-2 align-middle lg:px-2.5'
             const label = (t: string) => <p className="mb-1 text-xs font-semibold text-slate-500 lg:hidden">{t}</p>
@@ -123,7 +126,8 @@ export function FindingsView() {
               </span></td>
             </tr>
           })}</tbody>
-        </DataTable></div></section>}
+        </DataTable></div>
+        <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="hallazgos" compact /></section>}
 
     {shown && <FindingForm key={shown.id || 'nuevo'} findingId={shown.id} initialTab={shown.tab} can={can} onClose={close} onSaved={refresh} />}
   </div>

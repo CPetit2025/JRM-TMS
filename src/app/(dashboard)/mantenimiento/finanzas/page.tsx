@@ -6,6 +6,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Loader2, RefreshCw } from 'lucide-react'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Finanzas y TCO (Fase 11): todo sale del libro de costos por activo (vw_vehicle_cost_ledger):
 // mantenimiento, operación, combustible, neumáticos, multas/siniestros y alquiler (migración 20260928130000).
@@ -37,6 +39,7 @@ export default function FinanzasTcoPage() {
   useEffect(() => { loadAll().then(apply) }, [apply])
 
   const rows = useMemo(() => tco.filter(r => ownership === 'TODOS' || r.ownership_status === ownership), [tco, ownership])
+  const pg = usePagination(rows, 'mantenimiento-finanzas')
   const totals = useMemo(() => {
     const t: Record<string, number> = { total_tco: 0 }
     CATS.forEach(([k]) => { t[k] = 0 })
@@ -102,7 +105,7 @@ export default function FinanzasTcoPage() {
                 <th className="text-left p-3">Unidad</th>{CATS.map(([, l]) => <th key={l} className="text-right p-3">{l}</th>)}<th className="text-right p-3">TCO</th><th className="text-right p-3">Costo/km</th><th className="text-right p-3">Costo/h</th>
               </tr></thead>
               <tbody className="divide-y">
-                {rows.map(r => (
+                {pg.pageRows.map(r => (
                   <tr key={r.vehicle_id}>
                     <td className="p-3"><div className="font-semibold">{r.plate}</div><div className="text-xs text-slate-500">{r.type} · {r.ownership_status}</div></td>
                     {CATS.map(([k]) => <td key={k} className="p-3 text-right">{money(r[k])}</td>)}
@@ -114,6 +117,7 @@ export default function FinanzasTcoPage() {
               </tbody>
             </DataTable>
           </div>
+            <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="unidades" compact />
         </>
       )}
     </div>

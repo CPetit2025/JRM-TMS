@@ -1,5 +1,7 @@
 'use client'
 import { DataTable } from '@/components/ui/data-table'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 import { useMemo, useState, type ReactNode } from 'react'
 import { RouteCrewDetails } from '@/components/despacho/RouteCrewDetails'
@@ -53,7 +55,7 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
   onShareRoutes?: (ids: string[]) => void; onCancelRoute?: (id: string) => void; cancelableRoutes?: string[]
 }) {
   const [search, setSearch] = useState(''), [state, setState] = useState(''), [conformity, setConformity] = useState(''), [service, setService] = useState('')
-  const [page, setPage] = useState(0), [history, setHistory] = useState<DeliveryRow | null>(null)
+  const [history, setHistory] = useState<DeliveryRow | null>(null)
   const [exporting, setExporting] = useState(false)
   const [sort, setSort] = useState<{ column: number; direction: SortDirection } | null>(null)
   const [selectedRoutes, setSelectedRoutes] = useState<string[]>([])
@@ -61,7 +63,6 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
   const toggleRoute = (id: string, checked: boolean) => setSelectedRoutes(ids => checked ? [...new Set([...ids, id])] : ids.filter(x => x !== id))
   const filtered = useMemo(() => filterDeliveries(rows, search, state, conformity).filter(row => !service || deliveryServiceKind(row) === service), [rows, search, state, conformity, service])
   const services = (Object.keys(SERVICE_KINDS) as ServiceKind[]).filter(kind => kind === service || rows.some(row => deliveryServiceKind(row) === kind))
-  const pages = Math.max(1, Math.ceil(filtered.length / 25)), current = Math.min(page, pages - 1)
   // Orden sobre todas las entregas filtradas (no solo la página visible); mismas columnas de la tabla
   const sortedRows = useMemo(() => {
     if (!sort) return filtered
@@ -82,7 +83,7 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
     }
     return [...filtered].sort((a, b) => compareCells(value(a), value(b), sort.direction))
   }, [filtered, sort])
-  const visible = sortedRows.slice(current * 25, (current + 1) * 25)
+  const pg = usePagination(sortedRows, "entregas"), visible = pg.pageRows
   const states = Array.from(new Set(rows.map(row => row.state)))
   const exportRows = async () => {
     setExporting(true)
@@ -110,14 +111,14 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
       </div>
     </div>
     <div className="flex flex-wrap gap-2">
-      <label className="relative flex-1 min-w-48"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><input aria-label="Buscar OT, guía, cliente, placa o proveedor" placeholder="OT, guía, cliente, placa o proveedor…" value={search} onChange={e => { setSearch(e.target.value); setPage(0) }} className="h-10 w-full rounded-lg border bg-white pl-9 pr-3 text-sm" /></label>
-      {(services.length > 1 || !!service) && <select aria-label="Filtrar tipo de servicio" value={service} onChange={e => { setService(e.target.value); setPage(0) }} className="h-10 max-w-full rounded-lg border bg-white px-2 text-sm"><option value="">Todos los servicios</option>{services.map(kind => <option key={kind} value={kind}>{SERVICE_KINDS[kind].short}</option>)}</select>}
-      <select aria-label="Filtrar estado operativo" value={state} onChange={e => { setState(e.target.value); setPage(0) }} className="h-10 max-w-full rounded-lg border bg-white px-2 text-sm"><option value="">Todos los estados</option>{states.map(s => <option key={s} value={s}>{deliveryStatus(s).label}</option>)}</select>
-      <select aria-label="Filtrar conformidad" value={conformity} onChange={e => { setConformity(e.target.value); setPage(0) }} className="h-10 max-w-full rounded-lg border bg-white px-2 text-sm"><option value="">Todas las conformidades</option>{Object.entries(conformityLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
+      <label className="relative flex-1 min-w-48"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><input aria-label="Buscar OT, guía, cliente, placa o proveedor" placeholder="OT, guía, cliente, placa o proveedor…" value={search} onChange={e => { setSearch(e.target.value); pg.setPage(1) }} className="h-10 w-full rounded-lg border bg-white pl-9 pr-3 text-sm" /></label>
+      {(services.length > 1 || !!service) && <select aria-label="Filtrar tipo de servicio" value={service} onChange={e => { setService(e.target.value); pg.setPage(1) }} className="h-10 max-w-full rounded-lg border bg-white px-2 text-sm"><option value="">Todos los servicios</option>{services.map(kind => <option key={kind} value={kind}>{SERVICE_KINDS[kind].short}</option>)}</select>}
+      <select aria-label="Filtrar estado operativo" value={state} onChange={e => { setState(e.target.value); pg.setPage(1) }} className="h-10 max-w-full rounded-lg border bg-white px-2 text-sm"><option value="">Todos los estados</option>{states.map(s => <option key={s} value={s}>{deliveryStatus(s).label}</option>)}</select>
+      <select aria-label="Filtrar conformidad" value={conformity} onChange={e => { setConformity(e.target.value); pg.setPage(1) }} className="h-10 max-w-full rounded-lg border bg-white px-2 text-sm"><option value="">Todas las conformidades</option>{Object.entries(conformityLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
     </div>
     {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error} La información anterior puede estar desactualizada.</p>}
     <div className="overflow-x-auto rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
-      <DataTable dense className="w-full min-w-[1060px] text-left text-xs" onSortChange={next => { setSort(next ? { ...next, column: next.column - (onShareRoutes ? 1 : 0) } : null); setPage(0) }}>
+      <DataTable dense className="w-full min-w-[1060px] text-left text-xs" onSortChange={next => { setSort(next ? { ...next, column: next.column - (onShareRoutes ? 1 : 0) } : null); pg.setPage(1) }}>
         <thead className="bg-slate-50 text-slate-600"><tr>{onShareRoutes && <th><input type="checkbox" aria-label="Seleccionar todas las rutas filtradas" checked={filtered.length > 0 && routeIds(filtered).every(id => selected.includes(id))} onChange={e => { const ids = routeIds(filtered); setSelectedRoutes(prev => e.target.checked ? [...new Set([...prev, ...ids])] : prev.filter(id => !ids.includes(id))) }} /></th>}{['Fecha', 'Servicio', 'OT', 'N.º despacho', 'Unidad', 'Empresa', 'Destino', 'GR / Nota', 'Conformidad', 'Último evento', 'Acciones'].map((label, i) => <th key={label} className={`whitespace-nowrap font-semibold ${i === 10 ? 'text-right' : ''}`}>{label}</th>)}</tr></thead>
         <tbody className="divide-y">
           {!visible.length && <tr><td colSpan={onShareRoutes ? 12 : 11} className="p-8 text-center text-slate-500">{loading ? 'Cargando entregas…' : 'No hay entregas con los filtros seleccionados.'}</td></tr>}
@@ -143,7 +144,7 @@ export function DeliveryTable({ rows, loading, error, refreshedAt, onRefresh, on
         </tbody>
       </DataTable>
     </div>
-    <div className="flex items-center justify-between gap-2 text-xs text-slate-500"><span>{filtered.length} entregas · Página {current + 1} de {pages}</span><div className="flex gap-2"><button type="button" disabled={current === 0} onClick={() => setPage(current - 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Anterior</button><button type="button" disabled={current + 1 >= pages} onClick={() => setPage(current + 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Siguiente</button></div></div>
+    <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="entregas" compact />
     {renderDetail && history && renderDetail(history, { close: () => setHistory(null), select: setHistory })}
     <Modal isOpen={!!history && !renderDetail} onClose={() => setHistory(null)} title={history ? `Detalle · Despacho ${history.dispatch_number} · ${history.request_number}` : 'Detalle'} maxWidth="max-w-7xl"
       footer={history && <div className="flex flex-wrap justify-end gap-2">

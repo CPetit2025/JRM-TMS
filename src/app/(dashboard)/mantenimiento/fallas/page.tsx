@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { DataTable } from '@/components/ui/data-table'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 import { Modal } from '@/components/ui/modal'
 import { EvidenceGallery, type EvidenceItem } from '@/components/evidence/EvidenceGallery'
 import { createClient } from '@/lib/supabase/client'
@@ -72,8 +74,6 @@ export default function FallasBacklogPage() {
   const evaluationId = useRef<string | null>(null)
   const [actionForm, setActionForm] = useState({ note: '', scheduled_for: '', responsible_id: '' })
   const [discarding, setDiscarding] = useState(false)
-  const [page, setPage] = useState(1)
-  const pageSize = 20
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -99,9 +99,8 @@ export default function FallasBacklogPage() {
     (!search || `${item.incident_code} ${item.vehicle_plate} ${item.description} ${item.affected_system || ''} ${item.affected_component || ''} ${item.responsible_name || ''} ${item.work_order_code || ''}`.toLowerCase().includes(search.toLowerCase()))
   ), [items, search, severityFilter, statusFilter])
 
-  const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)))
-  const pages = Math.max(1, Math.ceil(filtered.length / pageSize))
-  const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  const pg = usePagination(filtered, 'mantenimiento-fallas')
+  const visible = pg.pageRows
   const openItem = items.find(item => item.id === selectedId) || null
   const openCount = items.length
   const kpis = useMemo(() => ({
@@ -274,7 +273,7 @@ export default function FallasBacklogPage() {
             </tbody>
           </DataTable>
         </div>
-        <div className="flex items-center justify-between border-t px-4 py-3 text-xs text-slate-500"><span>Página {currentPage} de {pages}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={currentPage <= 1} onClick={() => setPage(p => Math.max(1, Math.min(pages, p - 1)))}>Anterior</Button><Button size="sm" variant="outline" disabled={currentPage >= pages} onClick={() => setPage(p => Math.max(1, Math.min(pages, p + 1)))}>Siguiente</Button></div></div>
+        <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="fallas" compact />
       </>}
     </div>
 

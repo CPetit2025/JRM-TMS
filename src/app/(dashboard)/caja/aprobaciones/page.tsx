@@ -10,6 +10,8 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { ExpenseReview } from '@/components/caja/ExpenseReview'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 import {
   EXPENSE_STATUS, alertsOf, errorMessage, fmtDate, loadCategories, money, rpcOk,
   type ExpenseCategory, type Row,
@@ -117,6 +119,7 @@ export default function AprobacionesPage() {
     } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
   }
 
+  const pg = usePagination(visible, 'caja-aprobaciones')
   if (!isLoaded) return <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>
   if (!allowed) return (
     <div className="p-10 max-w-lg mx-auto text-center">
@@ -199,7 +202,7 @@ export default function AprobacionesPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {visible.length === 0 && <tr><td colSpan={11} className="p-10 text-center text-slate-400">No hay gastos con estos filtros</td></tr>}
-              {visible.map(r => {
+              {pg.pageRows.map(r => {
                 const al = alertsOf(r)
                 const st = EXPENSE_STATUS[r.status] || { label: r.status, cls: 'bg-slate-100' }
                 return (
@@ -239,6 +242,7 @@ export default function AprobacionesPage() {
             </tbody>
           </DataTable>
         )}
+        <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="gastos" compact />
       </div>
 
       {detail && (

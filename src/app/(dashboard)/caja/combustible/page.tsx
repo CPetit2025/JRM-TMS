@@ -11,6 +11,8 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { Modal } from '@/components/ui/modal'
 import { EXPENSE_STATUS, daysAgo, errorMessage, exportXlsx, fmtDate, money, rpcOk, todayLima, type Row } from '@/lib/caja'
 import { evidenceLink } from '@/components/evidence/EvidenceGallery'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Control de combustible (Caja C3): cargas de la app y de Caja web (con o sin viaje), rendimiento por carga
 // y por unidad, grifos con crédito y conciliación de sus facturas contra las cargas registradas.
@@ -61,6 +63,7 @@ function Loads() {
   useEffect(() => { void load() }, [load])
   const visible = rows.filter(r => !f.onlyAlerts || (r.alerts || []).length > 0)
   const tot = visible.filter(r => r.status !== 'RECHAZADO').reduce((a, r) => ({ amount: a.amount + Number(r.amount), gal: a.gal + Number(r.fuel_gallons || 0) }), { amount: 0, gal: 0 })
+  const pg = usePagination(visible, 'caja-combustible')
   return (
     <div className="space-y-3">
       <div className="bg-white border rounded-xl p-3 flex flex-wrap items-end gap-3 text-sm">
@@ -86,7 +89,7 @@ function Loads() {
             </tr></thead>
             <tbody className="divide-y">
               {visible.length === 0 && <tr><td colSpan={10} className="p-8 text-center text-slate-400">Sin cargas en el periodo</td></tr>}
-              {visible.map(r => {
+              {pg.pageRows.map(r => {
                 const e = eff[r.id]
                 const low = e?.km_per_gallon != null && e.expected_km_per_gallon && Math.abs(e.km_per_gallon - e.expected_km_per_gallon) / e.expected_km_per_gallon > 0.25
                 return (
@@ -108,6 +111,7 @@ function Loads() {
             </tbody>
           </DataTable>
         )}
+        <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="cargas" compact />
       </div>
     </div>
   )

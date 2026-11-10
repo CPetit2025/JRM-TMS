@@ -9,6 +9,8 @@ import { PlanesPorActivarAviso } from '@/components/mantenimiento/HistorialResum
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { AlertTriangle, CalendarClock, Gauge, Loader2, Play, Plus, RefreshCw, Trash2, Edit2, Wrench } from 'lucide-react'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Planificación preventiva (Fase 5). Vencimientos, alertas y proyección se calculan en la BD
 // (vw_maintenance_projections); el programador corre por pg_cron (migración 20260927160000).
@@ -81,6 +83,7 @@ export default function PreventivosPage() {
   const filtered = useMemo(() => projections.filter(p =>
     (alertFilter === 'TODAS' || p.alert_status === alertFilter || p.projection_bucket === alertFilter) &&
     (!search || `${p.vehicle_plate} ${p.plan_name}`.toLowerCase().includes(search.toLowerCase()))), [projections, alertFilter, search])
+  const pg = usePagination(filtered, 'mantenimiento-preventivos')
 
   const counts = useMemo(() => ({
     VENCIDO: projections.filter(p => p.alert_status === 'VENCIDO').length,
@@ -162,14 +165,14 @@ export default function PreventivosPage() {
               </div>
               <div className="bg-white border rounded-xl overflow-x-auto">
                 {filtered.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">No hay planes con estos filtros.</p> : (
-                  <DataTable className="w-full text-sm">
+                  <><DataTable className="w-full text-sm">
                     <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
                       <th className="text-left p-3">Unidad / plan</th><th className="text-left p-3">Alerta</th><th className="text-right p-3">Km rest.</th>
                       <th className="text-right p-3">Horas rest.</th><th className="text-right p-3">Días rest.</th><th className="text-left p-3">Fecha proyectada</th>
                       <th className="text-left p-3">OT</th><th className="p-3"></th>
                     </tr></thead>
                     <tbody className="divide-y">
-                      {filtered.map(p => (
+                      {pg.pageRows.map(p => (
                         <tr key={p.plan_id}>
                           <td className="p-3"><div className="font-semibold text-[#002855]">{p.vehicle_plate}</div><div className="text-xs text-slate-500">{p.plan_name}</div></td>
                           <td className="p-3"><span className={`px-2 py-1 rounded text-xs font-bold ${ALERT_STYLE[p.alert_status]}`}>{p.alert_status}</span><div className="text-[11px] text-slate-500 mt-1">por {p.due_driver.toLowerCase()}</div></td>
@@ -189,6 +192,7 @@ export default function PreventivosPage() {
                       ))}
                     </tbody>
                   </DataTable>
+                  <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="proyecciones" compact /></>
                 )}
               </div>
             </div>

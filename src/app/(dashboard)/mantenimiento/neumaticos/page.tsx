@@ -8,6 +8,8 @@ import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { Plus, RefreshCw, Loader2, Activity, History } from 'lucide-react'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Neumáticos (Fase 8): cada evento del ciclo de vida pasa por register_tire_event
 // (instalación, rotación, desmontaje, medición, reencauche, baja); migración 20260927220000.
@@ -66,6 +68,9 @@ export default function NeumaticosPage() {
 
   const filtered = useMemo(() => tires.filter(t => (estado === 'TODOS' || t.estado === estado || t.tread_status === estado) &&
     (!search || `${t.codigo_interno} ${t.marca || ''} ${t.medida || ''} ${t.vehicle_plate || ''}`.toLowerCase().includes(search.toLowerCase()))), [tires, search, estado])
+  const pg = usePagination(filtered, 'mantenimiento-neumaticos')
+  const historyPg = usePagination(history.filter(h => !historyTire || h.tire_id === historyTire), 'mantenimiento-neumaticos:historial')
+
 
   const kpis = useMemo(() => {
     const withKm = tires.filter(t => t.cost_per_km != null)
@@ -123,7 +128,7 @@ export default function NeumaticosPage() {
                     <th className="text-right p-3">Costo total</th><th className="text-right p-3">Costo/km</th><th className="p-3"></th>
                   </tr></thead>
                   <tbody className="divide-y">
-                    {filtered.map(t => (
+                    {pg.pageRows.map(t => (
                       <tr key={t.id}>
                         <td className="p-3"><div className="font-semibold">{t.codigo_interno}</div><div className="text-xs text-slate-500">{[t.marca, t.modelo, t.medida].filter(Boolean).join(' · ')}{t.dot ? ` · DOT ${t.dot}` : ''}</div></td>
                         <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs font-semibold ${ESTADO_STYLE[t.estado]}`}>{t.estado}</span></td>
@@ -149,6 +154,7 @@ export default function NeumaticosPage() {
                   </tbody>
                 </DataTable>
               </div>
+                <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="neumáticos" compact />
             </div>
           )}
 
@@ -185,7 +191,7 @@ export default function NeumaticosPage() {
                     <th className="text-right p-3">Odómetro</th><th className="text-right p-3">Cocada</th><th className="text-right p-3">Km</th><th className="text-right p-3">Costo</th><th className="text-left p-3">Detalle</th>
                   </tr></thead>
                   <tbody className="divide-y">
-                    {history.filter(h => !historyTire || h.tire_id === historyTire).map(h => (
+                    {historyPg.pageRows.map(h => (
                       <tr key={h.id}>
                         <td className="p-3">{format(new Date(h.created_at), 'dd/MM/yyyy HH:mm')}</td>
                         <td className="p-3">{h.codigo_interno}</td>
@@ -201,6 +207,7 @@ export default function NeumaticosPage() {
                   </tbody>
                 </DataTable>
               </div>
+                <TablePagination total={historyPg.total} page={historyPg.page} pageSize={historyPg.pageSize} onPageChange={historyPg.setPage} onPageSizeChange={historyPg.setPageSize} itemLabel="movimientos" compact />
             </div>
           )}
         </>

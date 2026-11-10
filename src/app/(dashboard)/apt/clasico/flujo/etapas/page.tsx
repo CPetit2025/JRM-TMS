@@ -1,5 +1,7 @@
 'use client'
 import { DataTable } from '@/components/ui/data-table'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 
 import { Suspense, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -170,6 +172,7 @@ function DimSection({ dim, setDim, rows, clickable, onSelect, exportar }: {
       return desc ? -c : c
     })
   }, [all, search, sort, desc])
+  const pg = usePagination(shown, `apt-etapas-${dim}`)
 
   const chartRows = useMemo(() => {
     // Por días: solo claves con al menos 1 % de la TN para no rankear retazos
@@ -222,7 +225,7 @@ function DimSection({ dim, setDim, rows, clickable, onSelect, exportar }: {
                 </tr>
               </thead>
               <tbody>
-                {shown.map(r => (
+                {pg.pageRows.map(r => (
                   <tr key={r.clave} onClick={clickable && dim !== 'lote' ? () => onSelect(r.clave) : undefined}
                     className={`border-b border-slate-100 hover:bg-slate-50 ${clickable && dim !== 'lote' ? 'cursor-pointer' : ''}`}>
                     <td className="max-w-[280px] px-3 py-2">
@@ -248,6 +251,7 @@ function DimSection({ dim, setDim, rows, clickable, onSelect, exportar }: {
               </tbody>
             </DataTable>
           </div>
+          <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" compact />
         </ChartCard>
       </div>
     </div>

@@ -7,6 +7,8 @@ import { Zap, DollarSign, Check, X, Loader2, AlertTriangle, LinkIcon, Link2Off, 
 import { createClient } from "@/lib/supabase/client"
 import { TransportTariffManager } from "@/components/tarifas/TransportTariffManager"
 import { toast } from "sonner"
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 interface Vehicle {
   id: string
@@ -141,6 +143,7 @@ export default function TarifasPage() {
   const withoutRate = vehiclesWithRates.filter(vr => !isLinked(vr.vehicle.plate)).length
   const avgRate = rates.filter(r => r.vehicle_plate).reduce((s, r) => s + r.fixed_cost_per_km + r.driver_cost_per_km, 0) / (rates.filter(r => r.vehicle_plate).length || 1)
 
+  const pg = usePagination(filteredVehiclesWithRates, 'maestros-tarifas')
   return (
     <div className="w-full space-y-3">
       <PageHeader showTitle title="Modelos de Tarifario" description="Configura y administra las tarifas de flete para la flota propia y tercerizada." />
@@ -265,7 +268,7 @@ export default function TarifasPage() {
                       No hay vehículos registrados en Flota. <a href="/flota" className="text-[#002855] underline font-semibold">Ir a Flota →</a>
                     </td></tr>
                   ) : (
-                    filteredVehiclesWithRates.map(({ vehicle: v, rate: r }) => (
+                    pg.pageRows.map(({ vehicle: v, rate: r }) => (
                       <React.Fragment key={v.plate}>
                         <tr className={`hover:bg-slate-50 transition-colors ${editingPlate === v.plate ? "bg-blue-50" : ""}`}>
                           <td className="p-4">
@@ -368,6 +371,7 @@ export default function TarifasPage() {
                   )}
                 </tbody>
               </DataTable>
+              <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="vehículos" compact />
             </div>
           </div>
 

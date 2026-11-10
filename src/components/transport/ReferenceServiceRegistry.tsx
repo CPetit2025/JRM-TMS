@@ -7,6 +7,8 @@ import { referenceRegistryTotals, type ReferenceServiceRegistryRow } from '@/lib
 import { DataTable } from '@/components/ui/data-table'
 import { FilterField, FilterToolbar, filterControl } from '@/components/ui/filter-toolbar'
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 const stageLabels = { COMPROMETIDO: 'Comprometido', REALIZADO: 'Realizado', ANULADO: 'Anulado' }
 const stageTones: Record<ReferenceServiceRegistryRow['stage'], StatusTone> = { COMPROMETIDO: 'warning', REALIZADO: 'success', ANULADO: 'danger' }
@@ -56,6 +58,7 @@ export function ReferenceServiceRegistry() {
     (!search.trim() || [row.reference_type, row.reference_number, row.request_number, row.dispatch_number, row.plate, row.driver_name, row.provider_name, row.description].join(' ').toLocaleLowerCase('es').includes(search.trim().toLocaleLowerCase('es'))))
   const totals = referenceRegistryTotals(filtered)
 
+  const pg = usePagination(filtered, "servicios-referencia")
   return <section className="space-y-3" aria-label="Servicios con OC, OS o RQ">
     <p className="text-sm text-slate-600">Recojos y traslados aprobados por el supervisor con OC, OS o RQ. Los importes corresponden al flete y la descarga de la ruta; no descuentan una partida de OT. El cierre operativo no significa pago.</p>
     <FilterToolbar compact label="Filtros de servicios por referencia" onClear={() => { setFrom(''); setTo(''); setSearch(''); setReference('TODOS'); setStage('TODOS') }}>
@@ -75,7 +78,7 @@ export function ReferenceServiceRegistry() {
       <DataTable dense className="min-w-[1050px] text-left">
         <thead><tr>{['Fecha', 'Referencia', 'Solicitud / tipo', 'Servicio', 'Unidad / conductor', 'Proveedor', 'Monto', 'Despacho', 'Etapa'].map(label => <th key={label}>{label}</th>)}</tr></thead>
         <tbody>
-          {loading ? <tr><td colSpan={9} className="p-8 text-center text-slate-500"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Consultando servicios…</td></tr> : error ? <tr><td colSpan={9} className="p-8 text-center text-slate-500">La consulta no está disponible. Use Actualizar para reintentar.</td></tr> : filtered.length === 0 ? <tr><td colSpan={9} className="p-8 text-center text-slate-500">No hay movimientos por OC, OS o RQ para estos filtros.</td></tr> : filtered.map(row => <tr key={`${row.service_type}:${row.id}`} className="hover:bg-slate-50">
+          {loading ? <tr><td colSpan={9} className="p-8 text-center text-slate-500"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Consultando servicios…</td></tr> : error ? <tr><td colSpan={9} className="p-8 text-center text-slate-500">La consulta no está disponible. Use Actualizar para reintentar.</td></tr> : filtered.length === 0 ? <tr><td colSpan={9} className="p-8 text-center text-slate-500">No hay movimientos por OC, OS o RQ para estos filtros.</td></tr> : pg.pageRows.map(row => <tr key={`${row.service_type}:${row.id}`} className="hover:bg-slate-50">
             <td className="whitespace-nowrap" data-sort-value={row.service_date || ''}>{row.service_date ? new Date(`${row.service_date.slice(0, 10)}T12:00:00`).toLocaleDateString('es-PE') : 'Sin fecha'}</td>
             <td className="font-semibold text-jrm-navy">{row.reference_type} · {row.reference_number}</td>
             <td><span className="font-medium">{row.request_number}</span><span className="block text-xs text-slate-500">{row.request_type === 'RECOJO' ? 'Recojo' : 'Traslado punto a punto'}</span></td>
@@ -88,6 +91,7 @@ export function ReferenceServiceRegistry() {
           </tr>)}
         </tbody>
       </DataTable>
+      <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="movimientos" compact />
     </div>
     {rows.length >= 500 && <p className="text-xs text-amber-700">La consulta muestra hasta 500 movimientos. Acote las fechas para revisar un periodo completo.</p>}
   </section>

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ArrowDown, ArrowUp, ArrowUpDown, Download, FileUp, Link2, Loader2, Plus, Search, Trash2, Truck } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 import { Card, Field, Modal, btn2Cls, btnCls, inputCls, useFlow } from './context'
 import { RECARGOS, baseRate, call, fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtNum, today, type CompList, type Concept, type Person, type UnifyIssue, type UnifyReport } from '@/lib/hhee/flujo'
 
@@ -31,6 +33,7 @@ export function Personal() {
   const toggle = (key: SortKey) => setSort(s => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : 1 }))
   const pendientes = ctx.people.filter(p => p.active && !p.rate_ready).length
   const showPay = ctx.caps.remuneration
+  const pg = usePagination(people, 'hhee-personal')
   return (
     <div className="grid gap-4">
       <Card title="Personal" subtitle={`${ctx.people.filter(p => p.active).length} trabajadores activos${pendientes ? ` · ${pendientes} con costo pendiente (completar ficha)` : ''}`}
@@ -53,7 +56,7 @@ export function Personal() {
               <SortTh sort={sort} onSort={toggle} k="comp" label="Bolsa de horas" right /><SortTh sort={sort} onSort={toggle} k="status" label="Estado" /><th className="p-2.5" />
             </tr></thead>
             <tbody className="divide-y divide-slate-100">
-              {people.map(p => <tr key={p.id} className={p.active ? 'hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}>
+              {pg.pageRows.map(p => <tr key={p.id} className={p.active ? 'hover:bg-slate-50' : 'bg-slate-50 text-slate-400'}>
                 <td className="p-2.5 font-mono text-xs">{p.code}</td>
                 <td className="p-2.5"><p className="font-semibold text-slate-800">{p.name}</p><p className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">{p.document_number ? `DNI ${p.document_number}` : 'Sin documento'}
                   {p.master === 'FLOTA' && <span title="Nombre y DNI enlazados al conductor de Flota" className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-800"><Truck className="h-3 w-3" /> Conductor · Flota</span>}
@@ -75,6 +78,7 @@ export function Personal() {
             </tbody>
           </table>
           {!people.length && <p className="p-6 text-center text-sm text-slate-400">Sin trabajadores con ese filtro.</p>}
+          <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="trabajadores" compact />
         </div>
         {!showPay && <p className="mt-3 text-xs text-slate-500">La remuneración y las tarifas solo las ve quien tiene el permiso de costos o administra el personal.</p>}
       </Card>

@@ -59,6 +59,7 @@ async function fixture(database, env = {}) {
     '@/lib/roles': { isDispatchAuditorRole: stub, normalizeRoleName: value => value },
     '@/lib/nav/web-access': { hasWebAccess: stub },
     '@/lib/login-system': routing,
+    '@/lib/use-cached': { clearCache: () => {} },
   }, {
     process: { env: { NEXT_PUBLIC_SUPABASE_URL: database, ...env } },
     window: { location: { origin: 'https://current.example.com', assign: value => navigations.push(value) } },

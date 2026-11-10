@@ -1,4 +1,6 @@
 "use client"
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 import { allPages } from '@/lib/analytics/model'
 import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
@@ -175,6 +177,7 @@ export default function ClientesPage() {
     } finally { setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = '' }
   }
 
+  const pg = usePagination(filtered, "clientes")
   return (
     <div className="space-y-3 w-full mx-auto">
       <PageHeader showTitle title="Clientes" description="Directorio de empresas y solicitantes de servicio" actions={<>
@@ -266,7 +269,7 @@ export default function ClientesPage() {
                   {search || filterStatus !== 'all' ? 'No se encontraron clientes con ese criterio.' : 'No hay clientes registrados en el sistema.'}
                 </td></tr>
               ) : (
-                filtered.map(client => (
+                pg.pageRows.map(client => (
                   <tr key={client.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4">
                       <div className="flex items-center gap-3">
@@ -298,6 +301,7 @@ export default function ClientesPage() {
               )}
             </tbody>
           </DataTable>
+          <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="clientes" compact />
         </div>
       </div>
 

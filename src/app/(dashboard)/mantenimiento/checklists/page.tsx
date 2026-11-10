@@ -10,6 +10,8 @@ import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { Plus, RefreshCw, Loader2, Trash2, Edit2, Camera, Eraser } from 'lucide-react'
 import { PreuseReports } from '@/components/driver/PreuseReports'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Inspecciones y checklist (Fase 6). Toda inspección entra por submit_inspection (web y App);
 // una respuesta crítica genera la falla y bloquea la unidad (migración 20260927180000).
@@ -61,6 +63,7 @@ export default function ChecklistsPage() {
   useEffect(() => { loadAll().then(apply) }, [apply])
 
   const filtered = useMemo(() => inspections.filter(i => resultFilter === 'TODOS' || i.global_result === resultFilter), [inspections, resultFilter])
+  const pg = usePagination(filtered, 'mantenimiento-checklists')
 
   return (
     <div className="space-y-3">
@@ -90,13 +93,13 @@ export default function ChecklistsPage() {
               </select>
               <div className="bg-white border rounded-xl overflow-x-auto">
                 {filtered.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">Sin inspecciones registradas.</p> : (
-                  <DataTable className="w-full text-sm">
+                  <><DataTable className="w-full text-sm">
                     <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
                       <th className="text-left p-3">Fecha</th><th className="text-left p-3">Unidad</th><th className="text-left p-3">Tipo / plantilla</th>
                       <th className="text-left p-3">Resultado</th><th className="text-left p-3">Inspector</th><th className="text-right p-3">Fallas generadas</th>
                     </tr></thead>
                     <tbody className="divide-y">
-                      {filtered.map(i => (
+                      {pg.pageRows.map(i => (
                         <tr key={i.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => setDetail(i)}>
                           <td className="p-3">{format(new Date(i.date), 'dd/MM/yyyy HH:mm')}<div className="text-[11px] text-slate-400">{i.source}</div></td>
                           <td className="p-3 font-semibold">{i.vehicle_plate}<div className="text-[11px] text-slate-500 font-normal">{i.vehicle_type}</div></td>
@@ -108,6 +111,7 @@ export default function ChecklistsPage() {
                       ))}
                     </tbody>
                   </DataTable>
+                  <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="inspecciones" compact /></>
                 )}
               </div>
             </div>

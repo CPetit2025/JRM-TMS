@@ -16,6 +16,9 @@ import { serviceKind, SERVICE_KINDS, type ServiceKind } from '@/lib/request-serv
 import { DISPATCH_STATUS_GROUPS } from '@/lib/dispatch-status'
 import { isTransportUnit, TRANSPORT_VEHICLE_TYPES } from '@/lib/fleet-filters'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { usePagination } from '@/lib/use-pagination'
+import { readCache, writeCache } from '@/lib/use-cached'
+import { TablePagination } from '@/components/ui/table-pagination'
 import { Truck, MapPin, Loader2, Plus, FileText, Search, Clock, Route, PackageCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
@@ -65,10 +68,12 @@ export default function DespachoPage() {
       districtOf(r.pickup_address, r.pickup_district), districtOf(r.delivery_address, r.delivery_district)].join(' ').toLocaleLowerCase('es-PE').includes(term)
     return matchSearch && (!pendingService || serviceKind(r) === pendingService)
   })
+  const pendingPg = usePagination(visiblePending, 'despacho-pendientes')
 
 
   const fetchData = useCallback(async () => {
-    setLoading(true)
+    const hit = readCache<TransportRequest[]>('despacho:pending')
+    if (hit) { setPendingRequests(hit); setLoading(false) } else setLoading(true)
     try {
       // 1. Obtener Solicitudes pendientes de asignar
       // Por páginas: la API entrega como máximo 1.000 filas por consulta
@@ -101,7 +106,8 @@ export default function DespachoPage() {
 
       const { data: history, error: historyError } = reqData?.length ? await supabase.rpc('get_transport_request_rescheduling', { p_request_ids: reqData.map(r => r.id) }) : { data: [], error: null }
       if (historyError) throw historyError
-      setPendingRequests(newestFirst(withRescheduling(reqData || [], history || [])))
+      const pending = newestFirst(withRescheduling(reqData || [], history || []))
+      setPendingRequests(pending); writeCache('despacho:pending', pending)
 
       // 2. Despachos asignados: solo para los contadores y el aviso de retorno (se gestionan en Torre de Control)
       const { data: dispatchData, error: dispatchError } = await supabase
@@ -250,7 +256,7 @@ export default function DespachoPage() {
                   <tr><td colSpan={8} className="p-8 text-center text-slate-500"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Cargando solicitudes…</td></tr>
                 ) : visiblePending.length === 0 ? (
                   <tr><td colSpan={8} className="p-8 text-center text-slate-500">{pendingRequests.length ? 'No hay solicitudes con estos filtros.' : 'No hay solicitudes pendientes de asignación.'}</td></tr>
-                ) : visiblePending.map(req => {
+                ) : pendingPg.pageRows.map(req => {
                   const selected = rb.newDispatch.selected_requests.some(r => r.id === req.id)
                   const balance = req.contracts?.contract_budgets?.[0]?.balance_pen
                   return (
@@ -291,6 +297,7 @@ export default function DespachoPage() {
               </tbody>
             </DataTable>
           </div>
+          <TablePagination total={pendingPg.total} page={pendingPg.page} pageSize={pendingPg.pageSize} onPageChange={pendingPg.setPage} onPageSizeChange={pendingPg.setPageSize} itemLabel="solicitudes" compact />
         </div>
       </section>
 

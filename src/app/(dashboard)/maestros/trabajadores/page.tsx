@@ -7,6 +7,8 @@ import { Plus, Edit2, ShieldAlert, Loader2, Filter, Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 const PUESTOS = [
   'Conductor',
@@ -138,6 +140,7 @@ export default function TrabajadoresPage() {
     setIsModalOpen(true)
   }
 
+  const pg = usePagination(filteredList, 'maestros-trabajadores')
   return (
     <div className="space-y-3">
       <PageHeader showTitle title="Personal Interno" description="Trabajadores propios que se asignan a tareos, HHEE y rutas; separado del personal de empresas proveedoras." actions={<>
@@ -213,7 +216,7 @@ export default function TrabajadoresPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredList.map((t) => (
+              {pg.pageRows.map((t) => (
                 <tr key={t.id} className="hover:bg-slate-50">
                   <td className="px-6 py-4 font-medium text-slate-800">
                     {t.last_name}, {t.first_name}
@@ -255,6 +258,7 @@ export default function TrabajadoresPage() {
             </tbody>
           </DataTable>
         )}
+        <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="trabajadores" compact />
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={formData.id ? 'Editar Trabajador' : 'Nuevo Trabajador'}>

@@ -1,6 +1,9 @@
 "use client"
 import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { readCache, writeCache } from '@/lib/use-cached'
 import { TableActions } from '@/components/ui/table-actions'
 
 import { useState, useEffect, useRef } from 'react'
@@ -75,6 +78,8 @@ export default function FlotaPage() {
   
   const filteredVehicles = filterFleetVehicles(vehicles, drivers, carriers, vehicleFilters, limaDay())
   const filteredDrivers = filterFleetDrivers(drivers, vehicles, carriers, driverFilters)
+  const vehiclePg = usePagination(filteredVehicles, 'mantenimiento-flota:vehicles')
+  const driverPg = usePagination(filteredDrivers, 'mantenimiento-flota:drivers')
 
   // Forms
   const [newVehicle, setNewVehicle] = useState({
@@ -123,7 +128,9 @@ export default function FlotaPage() {
   }, [])
 
   const fetchData = async () => {
-    setIsLoading(true)
+    const hit = readCache<{ carriers: typeof carriers; vehicles: typeof vehicles; drivers: typeof drivers }>('mantenimiento-flota')
+    if (hit) { setCarriers(hit.carriers); setVehicles(hit.vehicles); setDrivers(hit.drivers) }
+    setIsLoading(!hit)
     try {
       // 1. Fetch carriers (Transportistas)
       const { data: carriersData, error: carrierError } = await supabase
@@ -156,6 +163,7 @@ export default function FlotaPage() {
         .order('created_at', { ascending: false })
       if (driversError) throw driversError
       setDrivers(driversData || [])
+      writeCache('mantenimiento-flota', { carriers: carriersData || [], vehicles: vehiclesData || [], drivers: driversData || [] })
 
     } catch (err: any) {
       console.error('Error fetching flota data:', err)
@@ -670,7 +678,7 @@ export default function FlotaPage() {
                         </td>
                       </tr>
                     ) : (
-                      filteredVehicles.map(v => (
+                      vehiclePg.pageRows.map(v => (
                         <tr 
                           key={v.id} 
                           className="hover:bg-slate-50 transition-colors cursor-pointer group"
@@ -720,6 +728,7 @@ export default function FlotaPage() {
                   </tbody>
                 </DataTable>
               </div>
+              <TablePagination total={vehiclePg.total} page={vehiclePg.page} pageSize={vehiclePg.pageSize} onPageChange={vehiclePg.setPage} onPageSizeChange={vehiclePg.setPageSize} itemLabel="unidades" compact />
             </div>
           )}
 
@@ -747,7 +756,7 @@ export default function FlotaPage() {
                         </td>
                       </tr>
                     ) : (
-                      filteredDrivers.map(d => (
+                      driverPg.pageRows.map(d => (
                         <tr key={d.id} className="hover:bg-slate-50 transition-colors">
                           <td className="p-4 font-bold text-[#002855]">{d.first_name} {d.last_name}<div className="mt-1 text-xs font-normal text-slate-500">{vehicles.find(v => v.assigned_driver_id === d.id)?.plate || 'Sin unidad asignada'}</div></td>
                           <td className="p-4 text-sm text-slate-600">{d.document_number}</td>
@@ -813,6 +822,7 @@ export default function FlotaPage() {
                   </tbody>
                 </DataTable>
               </div>
+              <TablePagination total={driverPg.total} page={driverPg.page} pageSize={driverPg.pageSize} onPageChange={driverPg.setPage} onPageSizeChange={driverPg.setPageSize} itemLabel="conductores" compact />
             </div>
           )}
         </div>

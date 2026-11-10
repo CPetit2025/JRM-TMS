@@ -8,6 +8,8 @@ import { Download, FileSpreadsheet, Loader2, RefreshCw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { daysAgo, exportXlsx, fmtDate, money, todayLima, type Row } from '@/lib/caja'
 import { evidenceLink } from '@/components/evidence/EvidenceGallery'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Reportes de la caja de transporte (Caja C3): rentabilidad por viaje (flete + refacturable − gastos aprobados),
 // presupuesto vs real por categoría y exportación contable de gastos aprobados y del libro de caja.
@@ -100,6 +102,7 @@ export default function ReportesCajaPage() {
     })),
   })
 
+  const pg = usePagination(trips, 'caja-reportes-viajes')
   return (
     <div className="space-y-3">
       <PageHeader showTitle title="Reportes de caja" description="Rentabilidad por viaje con gastos aprobados, presupuesto contra real y exportación contable." actions={<>
@@ -151,7 +154,7 @@ export default function ReportesCajaPage() {
             </tr></thead>
             <tbody className="divide-y">
               {trips.length === 0 && <tr><td colSpan={11} className="p-10 text-center text-slate-400">Sin viajes con flete o gastos en el periodo</td></tr>}
-              {trips.map(t => (
+              {pg.pageRows.map(t => (
                 <tr key={t.dispatch_id}>
                   <td className="p-3 font-semibold">{t.dispatch_number}<div className="text-xs text-slate-500 font-normal">{t.vehicle_plate} · {fmtDate(t.departure_at)}</div></td>
                   <td className="p-3">{people[t.driver_id] || '—'}</td>
@@ -169,6 +172,7 @@ export default function ReportesCajaPage() {
             </tbody>
           </DataTable>
         )}
+        <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="viajes" compact />
       </div>
     </div>
   )

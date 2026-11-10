@@ -4,6 +4,7 @@ import { TransportWorkflow, TorreControlButton } from '@/components/transport/Tr
 import { DataTable } from '@/components/ui/data-table'
 import { TableActions, type TableAction } from '@/components/ui/table-actions'
 import { TablePagination } from '@/components/ui/table-pagination'
+import { readCache, writeCache } from '@/lib/use-cached'
 import { PageHeader } from '@/components/ui/page-header'
 import { InlineStatusBar } from '@/components/ui/inline-status-bar'
 import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filter-toolbar'
@@ -192,7 +193,7 @@ export default function SolicitudesPage() {
   const [filterService, setFilterService] = useState('TODOS')
 
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(20)
+  const [pageSize, setPageSize] = useState(25)
   const [sort, setSort] = useState<{ key: 'created_at' | 'required_date' | 'service' | 'ot' | 'requester' | 'client' | 'address' | 'status'; direction: 'asc' | 'desc' }>({ key: 'created_at', direction: 'desc' })
   const statusLabels: Record<string, string> = {
     PENDIENTE: 'Pendiente', 'PENDIENTE DE APROBACIÓN': 'Pendiente', APROBADA: 'Aprobada', APROBADO: 'Aprobada',
@@ -372,7 +373,8 @@ export default function SolicitudesPage() {
   }, [supabase, setNewRequest])
 
   const fetchRequests = useCallback(async () => {
-    setLoading(true)
+    const hit = readCache<TransportRequest[]>('solicitudes:list')
+    if (hit) { setRequests(hit); setLoading(false) } else setLoading(true)
     try {
       // Por páginas: la API entrega como máximo 1.000 filas por consulta
       const data = await allPages<TransportRequest>((o, n) => supabase
@@ -390,7 +392,7 @@ export default function SolicitudesPage() {
         `)
         .order('created_at', { ascending: false }).order('id')
         .range(o, o + n - 1), 1000)
-      setRequests(data)
+      setRequests(data); writeCache('solicitudes:list', data)
       if (data?.length) {
         try {
           const summaries: Record<string, RequestSummary> = {}
@@ -1104,7 +1106,7 @@ export default function SolicitudesPage() {
             </tbody>
           </DataTable>
         </div>
-        <TablePagination total={loading ? 0 : filteredRequests.length} page={currentPage} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1) }} itemLabel="resultados" pageSizeOptions={[10, 20, 50, 100]} compact />
+        <TablePagination total={loading ? 0 : filteredRequests.length} page={currentPage} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1) }} itemLabel="resultados" compact />
       </div>
 
       <Modal

@@ -10,6 +10,8 @@ import { errorMessage, money } from '@/lib/caja'
 import { BudgetAuthorizations, type AuthorizationTarget } from '@/components/despacho/BudgetAuthorizations'
 import { BudgetDeviations } from '@/components/despacho/BudgetDeviations'
 import { ControlPresupuestalTabs } from '@/components/despacho/ControlPresupuestalTabs'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Pendientes con dato que los respalde (budget_pending): causa, importe, antigüedad, quién registró (si consta) y la acción.
 // Los desvíos y las autorizaciones sobre el tope siguen en sus propios flujos, aquí mismo.
@@ -43,6 +45,7 @@ function Pendientes() {
 
   const counts = useMemo(() => (rows || []).reduce<Record<string, number>>((a, r) => ({ ...a, [r.kind]: (a[r.kind] || 0) + 1 }), {}), [rows])
   const shown = (rows || []).filter(r => !kind || r.kind === kind)
+  const pg = usePagination(shown, "control-presupuestal-pendientes")
 
   return (
     <div className="min-w-0 space-y-3">
@@ -64,7 +67,7 @@ function Pendientes() {
               <th className="px-3 py-2">Antigüedad</th><th className="px-3 py-2">Registró</th><th className="px-3 py-2">Acción</th>
             </tr></thead>
             <tbody className="divide-y divide-slate-100">
-              {shown.map((p, i) => { const l = link(p)
+              {pg.pageRows.map((p, i) => { const l = link(p)
                 return <tr key={`${p.kind}:${p.ref || p.contract_id}:${i}`} className="hover:bg-slate-50">
                   <td className="px-3 py-2 text-xs font-semibold">{KIND[p.kind] || p.kind}</td>
                   <td className="px-3 py-2"><Link href={`/despacho/control-presupuestal/movimientos?ot=${p.contract_id}`} className="font-bold text-[#002855] underline">{p.contract_code}</Link></td>
@@ -75,7 +78,8 @@ function Pendientes() {
                   <td className="px-3 py-2 text-xs">{p.action}<Link href={l.href} className="block font-semibold text-[#002855] underline">{l.label}</Link></td>
                 </tr> })}
             </tbody>
-          </table></div>}
+          </table>
+          <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="pendientes" compact /></div>}
       </section>
 
       <div className="grid items-start gap-3 xl:grid-cols-2">

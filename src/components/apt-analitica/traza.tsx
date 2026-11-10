@@ -8,6 +8,8 @@ import { fromDatasetRow } from '@/lib/apt-analitica/dataset'
 import type { TransferKey } from '@/lib/apt-analitica/engine'
 import { AREA_LABEL, CLASS_LABEL, type Movement } from '@/lib/apt-analitica/types'
 import { useAnalitica } from './context'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 import { FlowSankey, type FlowLink, type FlowNode } from './charts'
 import { Card, Empty, Notice, Segmented, fmtDate, fmtNum } from './ui'
 
@@ -80,6 +82,7 @@ export function TrazaTab() {
     return { list: merged, lots, transfers, related }
   }, [query, base, extra])
   const { meta } = useAnalitica()
+  const pg = usePagination(result?.list ?? [], 'apa-traza-eventos')
   const links = useMemo(() => !result ? [] : (meta?.links ?? []).filter(l => [l.fromRef, l.toRef].some(r => r.toUpperCase() === query?.q.trim().toUpperCase() || result.lots.has(r))), [result, meta, query])
   const unit = result?.list[0]?.unidad ?? analysis.unit
   const flowAll = useMemo(() => transferFlow(analysis.transfersInScope, base.byId, analysis.unit), [analysis, base])
@@ -136,11 +139,12 @@ export function TrazaTab() {
             <div className="max-h-[32rem] overflow-auto"><table className="w-full min-w-[44rem] text-xs">
               <thead className="sticky top-0 bg-white"><tr className="text-left text-slate-600"><th className="py-1">Fecha</th><th>Mov.</th><th>Bodega</th><th>Documento</th><th>Producto</th><th>Lote</th>
                 <th className="text-right">Cantidad</th><th>Und.</th><th>Referencias</th></tr></thead>
-              <tbody>{result.list.map(m => <tr key={m.id} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50" onClick={() => setRawRow(m.id)}>
+              <tbody>{pg.pageRows.map(m => <tr key={m.id} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50" onClick={() => setRawRow(m.id)}>
                 <td className="py-1">{fmtDate(m.fecha)}</td><td className={m.side === 'E' ? 'text-[#1d5fae]' : 'text-[#b6461c]'}>{m.side === 'E' ? 'Entrada' : 'Salida'}</td><td>{m.bodega}</td>
                 <td>{m.tipo}<span className="block text-[10px] text-slate-500">{m.numero}</span></td><td>{m.producto}</td><td>{m.lote ?? '—'}</td>
                 <td className="text-right tabular-nums">{fmtNum(m.qty)}</td><td>{m.unidad}</td><td className="text-[10px] text-slate-600">{[m.docRel && `${m.docRel} ${m.numRel ?? ''}`, m.contrato && `Contrato ${m.contrato}`].filter(Boolean).join(' · ')}</td></tr>)}</tbody>
             </table></div>
+            <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="eventos" compact />
           </Card>
         </div>
         {flowSel && <Card title={`Flujo entre almacenes de la búsqueda · ${unit ?? ''}`} subtitle="Línea continua: traspaso conciliado. Punteada: pendiente, con diferencia o sin el otro lado.">

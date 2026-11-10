@@ -1,5 +1,7 @@
 'use client'
 import { DataTable } from '@/components/ui/data-table'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 
 import { useCallback, useEffect, useState } from 'react'
 import { Download } from 'lucide-react'
@@ -41,6 +43,7 @@ function KindCells({ k }: { k?: AptUploadSummaryKind }) {
 export function UploadHistory() {
   const [rows, setRows] = useState<AptUpload[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const pg = usePagination(rows ?? [], 'apt-upload-history')
 
   const load = useCallback(() => {
     aptApi.uploads().then(d => { setRows(d as AptUpload[]); setError(null) }).catch(e => setError(e instanceof Error ? e.message : 'No se pudo cargar el historial'))
@@ -108,7 +111,7 @@ export function UploadHistory() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {rows.map(u => (
+                {pg.pageRows.map(u => (
                   <tr key={u.id} className={`hover:bg-slate-50 ${u.status === 'DESCARTADA' ? 'opacity-60' : ''}`}>
                     <td className="whitespace-nowrap px-3 py-2 tabular-nums text-slate-700">{fmtDateTime(u.applied_at || u.created_at)}</td>
                     <td className="max-w-[260px] truncate px-2 py-2 text-slate-700" title={u.file_name}>{u.file_name}</td>
@@ -124,6 +127,7 @@ export function UploadHistory() {
             </DataTable>
           </div>
         )}
+      {rows && rows.length > 0 && <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="cargas" compact />}
     </ChartCard>
   )
 }

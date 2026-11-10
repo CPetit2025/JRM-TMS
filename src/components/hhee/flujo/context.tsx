@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { BarChart3, CalendarClock, CalendarCheck, ClipboardList, Loader2, Settings2, Users } from 'lucide-react'
 import { call, type FlowContext } from '@/lib/hhee/flujo'
+import { readCache, writeCache } from '@/lib/use-cached'
 
 // Contexto del módulo HHEE (permisos, áreas, causas y personal) y cabecera con las tres ventanas del flujo
 const Ctx = createContext<{ ctx: FlowContext; reload: () => Promise<void> } | null>(null)
@@ -14,11 +15,14 @@ export function FlowProvider({ children }: { children: ReactNode }) {
   const [ctx, setCtx] = useState<FlowContext | null>(null)
   const [error, setError] = useState('')
   const reload = useCallback(async () => {
-    try { setCtx(await call<FlowContext>('hhee_flow_context')); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo cargar HHEE') }
+    try { const c = await call<FlowContext>('hhee_flow_context'); writeCache('hhee-context', c); setCtx(c); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo cargar HHEE') }
   }, [])
   useEffect(() => {
     let alive = true
-    call<FlowContext>('hhee_flow_context').then(c => { if (alive) setCtx(c) }).catch(e => { if (alive) setError(e instanceof Error ? e.message : 'No se pudo cargar HHEE') })
+    const hit = readCache<FlowContext>('hhee-context')
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- cached context shown while it refreshes
+    if (hit) setCtx(hit)
+    call<FlowContext>('hhee_flow_context').then(c => { if (alive) { writeCache('hhee-context', c); setCtx(c) } }).catch(e => { if (alive) setError(e instanceof Error ? e.message : 'No se pudo cargar HHEE') })
     return () => { alive = false }
   }, [])
   const path = usePathname()

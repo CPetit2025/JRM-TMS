@@ -1,6 +1,9 @@
 'use client'
 import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { readCache, writeCache } from '@/lib/use-cached'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -31,6 +34,7 @@ const STATUS_STYLE: Record<string, string> = { SIN_STOCK: 'bg-red-100 text-red-7
 const money = (n: number | null | undefined) => `S/ ${Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const TABS = [['stock', 'Stock'], ['kardex', 'Kardex'], ['reposicion', 'Reposición'], ['garantias', 'Garantías'], ['consumo', 'Consumo']] as const
 
+const CACHE_KEY = 'mantenimiento-inventario'
 function loadAll() {
   return Promise.all([
     supabase.from('vw_spare_parts_stock').select('*').order('internal_code'),
@@ -39,7 +43,7 @@ function loadAll() {
     supabase.from('vw_part_warranties').select('*').order('installed_at', { ascending: false }).limit(200),
     supabase.from('vw_parts_consumption').select('*').order('month', { ascending: false }).limit(300),
     supabase.from('maintenance_providers').select('id, business_name').order('business_name'),
-  ])
+  ]).then(res => { if (res.every(r => !r.error)) writeCache(CACHE_KEY, res); return res })
 }
 
 export default function InventarioPage() {
@@ -63,12 +67,17 @@ export default function InventarioPage() {
     setLoading(false)
   }, [])
   const refresh = useCallback(() => { setLoading(true); return loadAll().then(apply) }, [apply])
-  useEffect(() => { loadAll().then(apply) }, [apply])
+  useEffect(() => {
+    const hit = readCache<Awaited<ReturnType<typeof loadAll>>>(CACHE_KEY)
+    if (hit) queueMicrotask(() => apply(hit)) // async so the effect does not set state synchronously
+    loadAll().then(apply)
+  }, [apply])
 
   const filtered = useMemo(() => stock.filter(p =>
     (statusFilter === 'TODOS' || p.stock_status === statusFilter) &&
     (!search || `${p.internal_code} ${p.name} ${p.brand || ''} ${p.compatibility || ''}`.toLowerCase().includes(search.toLowerCase()))), [stock, search, statusFilter])
 
+  const stockPg = usePagination(filtered, 'mantenimiento-inventario:stock')
   const kpis = useMemo(() => ({
     value: stock.reduce((s, p) => s + Number(p.stock_value || 0), 0),
     below: stock.filter(p => p.stock_status === 'BAJO_MINIMO').length,
@@ -126,7 +135,7 @@ export default function InventarioPage() {
                     <th className="text-right p-3">Mín / Máx</th><th className="text-right p-3">Costo prom.</th><th className="text-left p-3">Estado</th><th className="p-3"></th>
                   </tr></thead>
                   <tbody className="divide-y">
-                    {filtered.map(p => (
+                    {stockPg.pageRows.map(p => (
                       <tr key={p.id} className={p.is_active ? '' : 'opacity-50'}>
                         <td className="p-3"><div className="font-semibold">{p.internal_code}</div><div className="text-xs text-slate-500">{p.name}{p.brand ? ` · ${p.brand}` : ''}{p.location ? ` · ${p.location}` : ''}</div></td>
                         <td className="p-3 text-right">{p.current_stock} <span className="text-xs text-slate-400">{p.unit}</span></td>
@@ -147,6 +156,7 @@ export default function InventarioPage() {
                     {filtered.length === 0 && <tr><td colSpan={8} className="p-8 text-center text-slate-500">Sin repuestos con estos filtros.</td></tr>}
                   </tbody>
                 </DataTable>
+                <TablePagination total={stockPg.total} page={stockPg.page} pageSize={stockPg.pageSize} onPageChange={stockPg.setPage} onPageSizeChange={stockPg.setPageSize} itemLabel="repuestos" compact />
               </div>
             </div>
           )}
@@ -198,13 +208,15 @@ export default function InventarioPage() {
 }
 
 function Table<T extends { id?: string }>({ rows, cols, empty }: { rows: T[]; cols: [string, (r: T) => React.ReactNode][]; empty: string }) {
+  const pg = usePagination(rows, `mantenimiento-inventario:${empty}`)
   if (!rows.length) return <p className="text-sm text-slate-500 p-4">{empty}</p>
   return (
     <div className="bg-white border rounded-xl overflow-x-auto">
       <DataTable className="w-full text-sm">
         <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{cols.map(([h], i) => <th key={i} className="text-left p-3">{h}</th>)}</tr></thead>
-        <tbody className="divide-y">{rows.map((r, i) => <tr key={r.id ?? i}>{cols.map(([, fn], j) => <td key={j} className="p-3">{fn(r)}</td>)}</tr>)}</tbody>
+        <tbody className="divide-y">{pg.pageRows.map((r, i) => <tr key={r.id ?? i}>{cols.map(([, fn], j) => <td key={j} className="p-3">{fn(r)}</td>)}</tr>)}</tbody>
       </DataTable>
+      <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" compact />
     </div>
   )
 }

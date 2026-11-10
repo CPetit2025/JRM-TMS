@@ -1,6 +1,9 @@
 'use client'
 import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { readCache, writeCache } from '@/lib/use-cached'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -19,6 +22,7 @@ const money = (n: unknown) => `S/ ${Number(n || 0).toLocaleString('es-PE', { min
 const pct = (n: unknown) => (n == null ? '—' : `${Number(n).toFixed(1)}%`)
 const field = 'w-full border rounded-lg px-3 py-2 text-sm'
 
+const CACHE_KEY = 'mantenimiento-proveedores'
 function loadAll() {
   return Promise.all([
     supabase.from('vw_provider_performance').select('*').order('business_name'),
@@ -27,7 +31,7 @@ function loadAll() {
     supabase.from('service_quotes').select('*, maintenance_providers(business_name), maintenance_work_orders(ot_code, description, status)').order('created_at', { ascending: false }).limit(200),
     supabase.from('vw_active_warranties').select('*').order('expires_at'),
     supabase.from('vw_work_orders').select('id, ot_code, vehicle_plate, description, status').not('status', 'in', '(CERRADA,CANCELADA)').order('created_at', { ascending: false }).limit(200),
-  ])
+  ]).then(res => { if (res.every(r => !r.error)) writeCache(CACHE_KEY, res); return res })
 }
 
 export default function ProveedoresPage() {
@@ -52,7 +56,11 @@ export default function ProveedoresPage() {
     setLoading(false)
   }, [])
   const refresh = useCallback(() => { setLoading(true); return loadAll().then(apply) }, [apply])
-  useEffect(() => { loadAll().then(apply) }, [apply])
+  useEffect(() => {
+    const hit = readCache<Awaited<ReturnType<typeof loadAll>>>(CACHE_KEY)
+    if (hit) queueMicrotask(() => apply(hit)) // async so the effect does not set state synchronously
+    loadAll().then(apply)
+  }, [apply])
 
   const filtered = useMemo(() => perf.filter(p => !search || `${p.business_name} ${p.ruc} ${p.specialty || ''}`.toLowerCase().includes(search.toLowerCase())), [perf, search])
 
@@ -145,13 +153,15 @@ export default function ProveedoresPage() {
 }
 
 function Table({ rows, cols, empty }: { rows: Row[]; cols: [string, (r: Row) => React.ReactNode][]; empty: string }) {
+  const pg = usePagination(rows, `mantenimiento-proveedores:${empty}`)
   if (!rows.length) return <p className="text-sm text-slate-500 p-4">{empty}</p>
   return (
     <div className="bg-white border rounded-xl overflow-x-auto">
       <DataTable className="w-full text-sm">
         <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{cols.map(([h], i) => <th key={i} className="text-left p-3">{h}</th>)}</tr></thead>
-        <tbody className="divide-y">{rows.map((r, i) => <tr key={r.id ?? r.provider_id ?? i}>{cols.map(([, fn], j) => <td key={j} className="p-3">{fn(r)}</td>)}</tr>)}</tbody>
+        <tbody className="divide-y">{pg.pageRows.map((r, i) => <tr key={r.id ?? r.provider_id ?? i}>{cols.map(([, fn], j) => <td key={j} className="p-3">{fn(r)}</td>)}</tr>)}</tbody>
       </DataTable>
+      <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" compact />
     </div>
   )
 }
