@@ -124,15 +124,37 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
+/* Solo QR: ocupa todo el alto de la zona de códigos; el identificador impreso va a su lado. */
+.wh-package-codes {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  height: 32%;
+  min-height: 120px;
+  flex: none;
+}
+.wh-package-linear {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 0;
+  container-type: inline-size;
+}
+.wh-package-qr {
+  display: block;
+  width: auto;
+  height: 100%;
+  aspect-ratio: 1;
+  align-self: center;
+  flex: none;
+}
 .wh-package-code {
   display: block;
   flex: none;
-  height: 10%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   font-family: monospace;
-  font-size: 27.213px;
+  font-size: min(40px, calc(160cqw / var(--wh-code-length, 20)));
   line-height: 1;
   text-align: center;
   white-space: nowrap;
@@ -268,12 +290,16 @@
   max-width: none;
   white-space: nowrap;
 }
-/* La lista ocupa el espacio libre del agrupado. */
+/* El agrupado conserva el alto total anterior de barras e identificador para mantener sus cuatro filas. */
 .wh-grouped-wrap {
   flex: 1;
   min-height: 0;
   overflow: hidden;
   margin-top: 5px;
+}
+.wh-grouped-codes {
+  height: 26%;
+  min-height: 96px;
 }
 .wh-grouped-items {
   width: 100%;
@@ -289,30 +315,4 @@
 .wh-grouped-items td:last-child {
   text-align: right;
   font-weight: 800;
-}
-/* Fila del QR: el QR a la izquierda y el código impreso grande a su lado (ocupa lo que antes usaban barras y texto). */
-.wh-package-codes {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  height: 30%;
-  min-height: 112px;
-  margin: 2px auto 0;
-}
-.wh-package-codes.wh-grouped-codes {
-  height: 23%;
-  min-height: 84px;
-}
-.wh-package-qr {
-  flex: none;
-  height: 100%;
-  width: auto;
-  aspect-ratio: 1;
-}
-.wh-package-codes .wh-package-code {
-  height: auto;
-  font-size: 34px;
-  white-space: nowrap;
 }

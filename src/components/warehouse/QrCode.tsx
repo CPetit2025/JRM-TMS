@@ -1,15 +1,14 @@
-import { encode } from 'uqr'
+import { encode } from "uqr";
 
-/** Matriz QR (true = módulo negro) con su margen de 1 módulo. Corrección M: se lee aunque se dañe ~15 %. */
-export const qrMatrix = (value: string) => encode(value, { ecc: 'M' }).data
+/** Matriz QR (true = módulo negro) con cuatro módulos de margen; corrección M. La usan el SVG y los PDF. */
+export const qrMatrix = (value: string) => encode(value, { ecc: "M", border: 4 }).data;
 
-/** QR del mismo código que el Code 128: el escáner de celular o tablet lee cualquiera de los dos. */
-export function QrCode({ value, size, className = '' }: { value: string; size: number; className?: string }) {
-  const m = qrMatrix(value)
-  return (
-    <svg role="img" aria-label={`Código QR ${value}`} className={className} width={size} height={size} viewBox={`0 0 ${m.length} ${m.length}`} shapeRendering="crispEdges">
-      <rect width={m.length} height={m.length} fill="#fff" />
-      <path d={m.flatMap((row, y) => row.map((on, x) => (on ? `M${x} ${y}h1v1h-1z` : ''))).join('')} fill="#000" />
-    </svg>
-  )
+/** QR del identificador del bulto, con cuatro módulos de margen. */
+export function QrCode({ value, className = "" }: { value: string; className?: string }) {
+  const qr = encode(value, { ecc: "M", border: 4 });
+  const path = qr.data.flatMap((row, y) => row.flatMap((black, x) => black ? [`M${x} ${y}h1v1h-1z`] : [])).join("");
+  return <svg role="img" aria-label={`Código QR ${value}`} className={className} viewBox={`0 0 ${qr.size} ${qr.size}`} shapeRendering="crispEdges">
+    <rect width={qr.size} height={qr.size} fill="white" />
+    <path d={path} fill="black" />
+  </svg>;
 }

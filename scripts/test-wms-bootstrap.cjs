@@ -26,6 +26,17 @@ const fs=require('fs'); const path=require('node:path');
  const last=(await db.query("SELECT last_no FROM public.wh_bulto_counters WHERE lot='LOCAL-LOT'")).rows[0].last_no;
  await db.exec('SET ROLE authenticated');
  if(last!==2) throw Error('Relabeling must not advance the lot counter: '+last);
+ // El nombre debe existir al generar/vista previa, antes de auditar la primera impresión.
+ const pendingCustomer=(await db.query('SELECT * FROM public.wh_receipt_control_customers($1::text[])',[['local-receipt']])).rows;
+ if(pendingCustomer.length!==1||pendingCustomer[0].customer_name!=='Local customer') throw Error('Customer missing before first print');
+ const originalCustomerFunction=(await db.query("SELECT pg_get_functiondef('public.inv_ot_cliente(text)'::regprocedure) AS definition")).rows[0].definition;
+ // Aislar la resolución por lote, sin depender de OT ni del snapshot de recepción.
+ await db.exec("RESET ROLE; UPDATE public.wh_receipt_sources SET customer_name=NULL,lot='16573' WHERE source_key='local-receipt'; UPDATE public.wh_packages SET source_lot='16573' WHERE source_movement_key='local-receipt'; CREATE OR REPLACE FUNCTION public.inv_ot_cliente(p_raiz text) RETURNS text LANGUAGE sql STABLE AS $$ SELECT CASE WHEN $1='16573' THEN 'Cliente del lote' END $$; SET ROLE authenticated;");
+ const lotCustomer=(await db.query('SELECT * FROM public.wh_receipt_control_customers($1::text[])',[['local-receipt']])).rows;
+ if(lotCustomer[0]?.customer_name!=='Cliente del lote') throw Error('Lot customer fallback missing');
+ await db.exec("RESET ROLE; UPDATE public.wh_receipt_sources SET customer_name='Local customer',lot='LOCAL-LOT' WHERE source_key='local-receipt'; UPDATE public.wh_packages SET source_lot='LOCAL-LOT' WHERE source_movement_key='local-receipt';");
+ await db.exec(originalCustomerFunction); await db.exec('SET ROLE authenticated');
+ console.log('PASS: customer present before first print, including lot fallback.');
  // Regla: la bandeja solo muestra pendientes de etiquetar (sin etiqueta o con etiquetas sin imprimir)
  const inbox=async q=>(await db.query('SELECT public.wh_receipt_candidates($1) AS rows',[q])).rows[0].rows;
  if((await inbox('')).map(r=>r.label_status).join()!=='PENDING_PRINT') throw Error('Unprinted labels must stay in the inbox');
@@ -91,14 +102,19 @@ const fs=require('fs'); const path=require('node:path');
  if(invisibleProfile!==0) throw Error('Profile RLS must remain unchanged');
  const originals=(await db.query('SELECT * FROM public.wh_package_label_responsibles($1::text[])',[codes])).rows;
  if(originals.length!==2||originals.some(r=>r.responsible_name!=='Carlos Petit')) throw Error('Reprint must preserve original responsible for non-admin users');
+ const expectCustomerDenied=async keys=>{let blocked=false;try{await db.query('SELECT * FROM public.wh_receipt_control_customers($1::text[])',[keys])}catch{blocked=true}if(!blocked)throw Error('Customer lookup should be denied');};
+ await expectCustomerDenied(Array(101).fill('local-receipt'));
  let invalid=false;try{await db.query('SELECT * FROM public.wh_package_label_responsibles($1::text[])',[Array(101).fill(codes[0])])}catch{invalid=true}if(!invalid)throw Error('Unbounded responsible query allowed');
  await db.exec(`RESET ROLE; UPDATE public.roles SET permissions='[]' WHERE id='00000000-0000-0000-0000-000000000004'; SET ROLE authenticated;`);
+ await expectCustomerDenied(['local-receipt']);
  let noWarehouse=false;try{await db.query('SELECT * FROM public.wh_package_label_responsibles($1::text[])',[codes])}catch{noWarehouse=true}if(!noWarehouse)throw Error('Non-warehouse user may read responsible');
  await db.exec(`RESET ROLE; UPDATE public.roles SET permissions='["almacen-etiquetado"]' WHERE id='00000000-0000-0000-0000-000000000004'; DELETE FROM public.user_site_access; SET ROLE authenticated;`);
  if((await db.query('SELECT * FROM public.wh_package_label_responsibles($1::text[])',[codes])).rows.length) throw Error('Names leaked across unauthorized sites');
+ await expectCustomerDenied(['local-receipt']);
  await db.exec("RESET ROLE; UPDATE public.profiles SET is_active=false WHERE id='00000000-0000-0000-0000-000000000003'; SET ROLE authenticated;");
+ await expectCustomerDenied(['local-receipt']);
  let blocked=false;try{await db.query('SELECT * FROM public.wh_package_label_responsibles($1::text[])',[codes])}catch{blocked=true}if(!blocked)throw Error('Inactive user may read responsible');
- await db.exec('RESET ROLE; SET ROLE anon');blocked=false;try{await db.query('SELECT * FROM public.wh_package_label_responsibles($1::text[])',[codes])}catch{blocked=true}if(!blocked)throw Error('Anonymous user may read responsible');
+ await db.exec('RESET ROLE; SET ROLE anon');await expectCustomerDenied(['local-receipt']);blocked=false;try{await db.query('SELECT * FROM public.wh_package_label_responsibles($1::text[])',[codes])}catch{blocked=true}if(!blocked)throw Error('Anonymous user may read responsible');
  console.log('PASS: original responsible survives another user; site, profile RLS, inactive and anonymous access respected.');
  await db.close();
 })().catch(e=>{console.error(e.message);process.exit(1)});

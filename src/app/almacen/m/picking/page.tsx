@@ -1,2 +1,2 @@
 import { redirect } from 'next/navigation'
-export default function MobilePicking(){redirect('/almacen/tareas')}
+export default function Page() { redirect('/almacen/picking') }
