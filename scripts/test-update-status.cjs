@@ -14,6 +14,7 @@ assert.equal(erpState({ stock_at: iso('2026-11-10T10:10'), contratos_at: iso('20
 assert.equal(erpState({ stock_at: iso('2026-11-10T10:10'), contratos_at: iso('2026-11-08T16:12') }, now).level, 'late', 'cuenta la carga más antigua')
 assert.equal(erpState({ stock_at: iso('2026-11-10T07:10'), contratos_at: iso('2026-11-10T07:06') }, lima('2026-11-10T10:20')).level, 'ok', 'dentro del margen de la carga de las 10 h')
 assert.equal(erpState({ stock_at: iso('2026-11-10T07:10'), contratos_at: iso('2026-11-10T07:06') }, lima('2026-11-10T10:45')).level, 'late', 'la carga de las 10 h no llegó')
+assert.equal(erpState({ stock_at: iso('2026-11-10T10:10'), contratos_at: iso('2026-11-08T16:12') }, lima('2026-11-10T13:20')).level, 'late', 'datos de hace 2 días: atraso aunque la carga de las 13 h siga en curso')
 assert.equal(erpState({ stock_at: iso('2026-11-10T07:10'), contratos_at: iso('2026-11-10T07:06'), loading_since: iso('2026-11-10T10:17') }, lima('2026-11-10T10:25')).level, 'running')
 assert.equal(erpState({ stock_at: iso('2026-11-10T07:10'), contratos_at: iso('2026-11-10T07:06'), loading_since: iso('2026-11-10T10:17') }, now).level, 'error', 'carga trabada más de 30 min')
 assert.equal(erpState({ stock_at: iso('2026-11-10T10:10'), contratos_at: iso('2026-11-10T10:06'), request: { status: 'PENDING' } }, now).detail, 'Solicitud en cola')
