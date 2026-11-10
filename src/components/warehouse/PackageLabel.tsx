@@ -1,8 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- El mismo logo original se rasteriza y se imprime sin optimización de tamaño. */
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { QrCode } from "./QrCode";
-import { Code128Barcode } from "./Code128Barcode";
+import { LabelCodes } from "./LabelCodes";
 import { bultoNumber, identifierFontSize, type PackageLabelData } from "@/lib/warehouse/package-label";
 import type { LabelFormat } from "@/lib/warehouse/label-format";
 import { packageLabelLayout } from "@/lib/warehouse/package-label-layout";
@@ -39,15 +38,7 @@ export function PackageLabel({ label, format = { width_mm: 152.4, height_mm: 101
         <b className="wh-package-lot" style={{ fontSize: identifierFontSize(label.source_product_code, `Lote: ${label.source_lot || "—"}`) }}>Lote: {label.source_lot || "—"}</b>
       </div>
       <div className="wh-package-description">{label.description}</div>
-      <div className="wh-package-codes">
-        <Code128Barcode
-          value={label.package_code}
-          height={84}
-          className="wh-package-barcode"
-        />
-        <QrCode value={label.package_code} className="wh-package-qr" />
-      </div>
-      <b className="wh-package-code">{label.package_code}</b>
+      <LabelCodes value={label.package_code}/>
       <div className="wh-package-footer">
         <div className="wh-package-responsible"><b>Responsable de recepción:</b> {label.reception_responsible_name || "No registrado"}</div>
         <div className="wh-package-document">
