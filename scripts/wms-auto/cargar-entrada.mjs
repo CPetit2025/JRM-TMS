@@ -15,7 +15,7 @@ if(!wmsHost){console.error('Por seguridad, el robot solo carga en el WMS (wms.jr
 const { chromium } = await import('playwright-core')
 const browser=await chromium.launch({channel:'msedge',headless:true}), page=await browser.newPage()
 try{
- await page.goto(url+'/almacen/login',{waitUntil:'domcontentloaded'})
+ await page.goto(url+'/almacen/login',{waitUntil:'networkidle'})
  await page.locator('#login-username').fill(user);await page.locator('#login-password').fill(password);await page.locator('button[type=submit]').click()
  await page.waitForURL(u=>!u.pathname.endsWith('/login'),{timeout:60000}).catch(()=>{throw new Error('No se pudo iniciar sesión WMS; verifique cuenta aprobada y permisos.')})
  await page.goto(url+'/almacen/apt/etiquetado',{waitUntil:'domcontentloaded'})
