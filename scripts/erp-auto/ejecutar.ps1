@@ -28,7 +28,7 @@ if ($Instalar) {
   @{ actualizable = (Resolve-Path $Actualizable).Path; stock = (Resolve-Path $Stock).Path } | ConvertTo-Json | Set-Content (Join-Path $destino 'config.json') -Encoding UTF8
   # Usuario del TMS para el robot: queda cifrado con DPAPI (solo este usuario de Windows en este equipo puede leerlo)
   Get-Credential -Message 'Usuario y contraseña del TMS para la carga automática del ERP' | Export-Clixml (Join-Path $destino 'credencial.xml')
-  $accion = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$destino\ejecutar.ps1`""
+  $accion = New-ScheduledTaskAction -Execute 'conhost.exe' -Argument "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$destino\ejecutar.ps1`""
   # Todos los días desde -Hora, cada 3 horas durante 12 h (07, 10, 13, 16 y 19 h): cada carga ocupa la base unos 13 min
   $cuando = New-ScheduledTaskTrigger -Daily -At $Hora
   $cuando.Repetition = (New-ScheduledTaskTrigger -Once -At $Hora -RepetitionInterval (New-TimeSpan -Hours 3) -RepetitionDuration (New-TimeSpan -Hours 12 -Minutes 5)).Repetition
@@ -51,7 +51,7 @@ if ($InstalarSolicitudes) {
   $cfg | Add-Member -NotePropertyName supabaseUrl -NotePropertyValue $SupabaseUrl.TrimEnd('/') -Force
   $cfg | Add-Member -NotePropertyName supabaseAnon -NotePropertyValue $SupabaseAnon -Force
   $cfg | ConvertTo-Json | Set-Content $cfgPath -Encoding UTF8
-  $accion = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$destino\ejecutar.ps1`" -Solicitudes"
+  $accion = New-ScheduledTaskAction -Execute 'conhost.exe' -Argument "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$destino\ejecutar.ps1`" -Solicitudes"
   $cuando = New-ScheduledTaskTrigger -Daily -At '00:00'
   $cuando.Repetition = (New-ScheduledTaskTrigger -Once -At '00:00' -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration (New-TimeSpan -Days 1)).Repetition
   $quien = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive
