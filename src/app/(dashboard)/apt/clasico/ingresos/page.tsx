@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 import { Download, Filter, Loader2, PackagePlus, RotateCcw, Search, X } from 'lucide-react'
 import { TablePagination } from '@/components/ui/table-pagination'
-import { readCache, writeCache } from '@/lib/use-cached'
 import { aptApi, type AptIngresoFilters, type AptIngresos } from '@/lib/apt/api'
 import { exportAptXlsx } from '@/lib/apt/export'
 import { fmtDate, fmtInt, fmtTn } from '@/lib/apt/format'
@@ -44,19 +43,18 @@ export default function AptIngresosPage() {
 
   const filters: AptIngresoFilters = { ...period, ...applied, sin_cliente: sinCliente || undefined }
   const key = JSON.stringify([filters, vista, page, nonce, pageSize])
-  const cacheKey = `apt-ingresos:${JSON.stringify([filters, vista, page, pageSize])}`
   useEffect(() => {
     let alive = true
     const query: AptIngresoFilters = JSON.parse(key)[0]
     aptApi.ingresos(query, vista, pageSize, page * pageSize)
-      .then(data => { writeCache(cacheKey, data); if (alive) setState({ key, data }) })
+      .then(data => { if (alive) setState({ key, data }) })
       .catch(error => { if (alive) setState(prev => ({ key, data: prev?.data, error: error instanceof Error ? error.message : String(error) })) })
     return () => { alive = false }
-  }, [key, cacheKey, vista, page, pageSize])
+  }, [key, vista, page, pageSize])
 
   // Se conserva la última respuesta mientras se recalcula (o la copia en caché): la tabla no desaparece al escribir
   const loading = state?.key !== key
-  const d = loading ? readCache<AptIngresos>(cacheKey) ?? state?.data : state?.data
+  const d = state?.data
   const error = !loading ? state?.error : undefined
   const desde = periodDraft.desde ?? d?.desde ?? ''
   const hasta = periodDraft.hasta ?? d?.hasta ?? ''
