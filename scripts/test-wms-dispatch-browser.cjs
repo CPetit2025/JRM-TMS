@@ -1,5 +1,6 @@
 // Prueba del flujo por etapas contra una API local: no usa datos ni credenciales reales.
 const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), { spawn } = require('node:child_process'), { chromium } = require('playwright')
+const artifactDir = (process.env.LABEL_ARTIFACT_DIR || '/tmp/wms-dispatch-artifacts') + '/despacho-submodulos'
 const uid = '00000000-0000-4000-8000-000000000001'
 const user = { id: uid, email: 'qa@example.test', aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: {} }
 const token = [{ alg: 'HS256', typ: 'JWT' }, { sub: uid, role: 'authenticated', aud: 'authenticated', exp: Math.floor(Date.now()/1000)+3600 }, 'signature'].map((x,i) => i<2 ? Buffer.from(JSON.stringify(x)).toString('base64url') : x).join('.')
@@ -101,12 +102,12 @@ const api = http.createServer(async (req,res) => {
   await page.locator('input[placeholder*="Escanee"]').fill('PKG-QA-2');await page.getByRole('button',{name:'Registrar',exact:true}).click()
   await page.getByText('PKG-QA-2 cargado.',{exact:true}).waitFor()
   assert(calls.some(c=>c.path.endsWith('/wh_record_scan')&&c.p.p_event==='LOAD'&&c.p.p_payload.load_unit_id==='unit-1'))
-  fs.mkdirSync('/workspace/artifacts/despacho-submodulos',{recursive:true})
-  for(const [path,file] of [['/almacen/picking/task-1','picking'],['/almacen/auditoria/task-1','auditoria'],['/almacen/packing-list/task-1','packing-list'],['/almacen/carga/task-1','carga']]) {await go(path);if(file==='packing-list') await page.getByLabel('Mostrar',{exact:true}).selectOption('all');await page.screenshot({path:`/workspace/artifacts/despacho-submodulos/${file}.png`,fullPage:true})}
+  fs.mkdirSync(artifactDir,{recursive:true})
+  for(const [path,file] of [['/almacen/picking/task-1','picking'],['/almacen/auditoria/task-1','auditoria'],['/almacen/packing-list/task-1','packing-list'],['/almacen/carga/task-1','carga']]) {await go(path);if(file==='packing-list') await page.getByLabel('Mostrar',{exact:true}).selectOption('all');await page.screenshot({path:`${artifactDir}/${file}.png`,fullPage:true})}
   await go('/almacen/carga');await page.getByRole('link',{name:'Abrir carga',exact:true}).waitFor()
   await go('/almacen/tareas/task-1');assert(page.url().includes('/almacen/picking/task-1'),'enlace antiguo continúa funcionando')
   await page.setViewportSize({width:390,height:844});await go('/almacen/packing-list/task-1');await page.getByRole('button',{name:'Agregar unidad',exact:true}).waitFor()
-  await page.screenshot({path:'/workspace/artifacts/despacho-submodulos/packing-list-movil.png',fullPage:true})
+  await page.screenshot({path:artifactDir+'/packing-list-movil.png',fullPage:true})
   role={name:'Operario WMS',permissions:['almacen-picking']}
   await go('/almacen/plan-carga/task-1');assert(new URL(page.url()).pathname==='/almacen/packing-list/task-1','plan anterior abre Packing List');await absent('Asignar unidad');await absent('Agregar unidad')
   await go('/almacen/carga/task-1');assert(new URL(page.url()).pathname==='/almacen','middleware bloquea Carga al picker')
