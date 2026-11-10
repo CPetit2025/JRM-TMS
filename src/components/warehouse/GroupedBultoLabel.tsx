@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- Mismo logo que la etiqueta de bulto, impreso sin optimizar. */
 import type { CSSProperties } from "react";
-import { Code128Barcode } from "./Code128Barcode";
+import { QrCode } from "./QrCode";
 import { bultoNumber, identifierFontSize } from "@/lib/warehouse/package-label";
 import { packageLabelLayout } from "@/lib/warehouse/package-label-layout";
 import "./package-label.css";
@@ -48,8 +48,10 @@ export function GroupedBultoLabel({ code, customer, contract, request, items, pa
         </tbody>
       </table>
       </div>
-      <Code128Barcode value={code} height={64} className="wh-package-barcode wh-grouped-barcode" />
-      <b className="wh-package-code">{code}</b>
+      <div className="wh-package-codes wh-grouped-codes">
+        <QrCode value={code} size={84} className="wh-package-qr" />
+        <b className="wh-package-code">{code}</b>
+      </div>
       <div className="wh-package-footer">
         <div className="wh-package-responsible"><b>Preparado por:</b> {preparedBy || "No registrado"}</div>
         <div className="wh-package-document"><div><b>Fecha:</b> {date ? new Date(date).toLocaleDateString("es-PE", { timeZone: "America/Lima" }) : "—"}</div></div>

@@ -139,7 +139,7 @@ const feed=(status={})=>[
  await q("SELECT public.wh_lpn_undo($1,'Reagrupar')",[lpn1.id]); await as('op1');
  const mixed=await one('SELECT public.wh_consolidate_lpn($1,$2::text[])',[task.id,['PKG-1','PKG-3']]);
  assert.equal(mixed.lpn_code,'16544-S001-B-0002','el nuevo agrupamiento sigue el correlativo del lote'); assert.equal(mixed.own_label,false);
- assert.equal((await sys("SELECT public.wh_next_bulto_code(' lote ñ / 7 ') AS c"))[0].c,'LOTE-N-7-B-0001','el código del bulto usa solo caracteres de Code 128');
+ assert.equal((await sys("SELECT public.wh_next_bulto_code(' lote ñ / 7 ') AS c"))[0].c,'LOTE-N-7-B-0001','el código del bulto usa solo caracteres seguros para el QR');
  assert.equal((await sys("SELECT public.wh_next_bulto_code('') AS c"))[0].c,'SIN-LOTE-B-0001','sin lote: serie propia');
  assert.equal((await sys("SELECT count(*)::int n FROM public.wh_lpns WHERE lpn_code='PKG-3'"))[0].n,0,'el LPN anulado ya no retiene el código del paquete');
  await db.exec('RESET ROLE; ROLLBACK'); await as('op1');

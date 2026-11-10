@@ -52,6 +52,7 @@
     "sharp": "0.35.5",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.6.0",
+    "uqr": "0.1.2",
     "xlsx": "npm:@e965/xlsx@0.20.3"
   },
   "devDependencies": {
