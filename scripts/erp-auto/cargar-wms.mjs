@@ -20,7 +20,7 @@ const MIN = 60_000
 const browser = await chromium.launch({ channel: 'msedge', headless: true })
 const page = await browser.newPage()
 try {
-  await page.goto(`${url}/almacen/login`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${url}/almacen/login`, { waitUntil: 'networkidle' }) // con domcontentloaded a veces llenaba antes de que React tomara el formulario
   await page.locator('#login-username').fill(usuario)
   await page.locator('#login-password').fill(clave)
   await page.locator('button[type=submit]').click()
