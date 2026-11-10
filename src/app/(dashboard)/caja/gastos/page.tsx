@@ -7,6 +7,8 @@ import { toast } from 'sonner'
 import { AlertTriangle, Camera, CheckCircle2, FileText, Fuel, Loader2, Pencil, Save, Trash2, Truck, Wand2, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 import {
   DOCUMENT_TYPES, EXPENSE_STATUS, alertsOf, errorMessage, fmtDate, groupCategories, isValidRuc, loadCategories, money, parseOcr,
   removeReceipt, todayLima, uploadReceipt, type ExpenseCategory, type Row,
@@ -195,6 +197,7 @@ export default function GastosPage() {
     if (me) void loadMine(me)
   }
 
+  const pg = usePagination(mine, 'caja-gastos-mios')
   if (isLoaded && !canWrite('caja-gastos')) return <div className="p-10 text-center text-slate-500">No tiene permiso para registrar gastos.</div>
 
   return (
@@ -368,7 +371,7 @@ export default function GastosPage() {
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {mine.length === 0 && <tr><td colSpan={7} className="p-10 text-center text-slate-400">Aún no ha registrado gastos</td></tr>}
-                {mine.map(e => {
+                {pg.pageRows.map(e => {
                   const st = EXPENSE_STATUS[e.status] || { label: e.status, cls: '' }
                   return (
                     <tr key={e.id}>
@@ -392,6 +395,7 @@ export default function GastosPage() {
               </tbody>
             </DataTable>
           )}
+          <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="gastos" compact />
         </div>
       )}
     </div>

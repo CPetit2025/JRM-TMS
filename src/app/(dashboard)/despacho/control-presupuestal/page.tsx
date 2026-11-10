@@ -8,6 +8,8 @@ import { createClient } from '@/lib/supabase/client'
 import { PageHeader } from '@/components/ui/page-header'
 import { errorMessage, money } from '@/lib/caja'
 import { ControlPresupuestalTabs } from '@/components/despacho/ControlPresupuestalTabs'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Control presupuestal de transporte por OT: los saldos y niveles vienen del servidor.
 // El corte temporal solo informa ejecutado con movimiento en el rango; los compromisos son vigentes, sin historia por fecha.
@@ -105,6 +107,7 @@ export default function ControlPresupuestalPage() {
       return result * (sort.direction === 'asc' ? 1 : -1)
     })
   }, [searched, level, sort])
+  const pg = usePagination(shown, "control-presupuestal")
   const byOt = useMemo(() => new Map(periodRows.map(r => [r.contract_id, Number(r.executed_pen)])), [periodRows])
   const filteredSaving = useMemo(() => {
     if (!savings?.rows) return savings?.saving_total ?? null
@@ -163,7 +166,7 @@ export default function ControlPresupuestalPage() {
     <section aria-label="Cartera financiera de órdenes de trabajo" className="overflow-hidden rounded-lg border border-slate-200 bg-white">
       <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2"><div><h2 className="text-sm font-semibold text-slate-900">Cartera de OT</h2><p className="text-[10px] text-slate-500">Importes en soles · consumo = ejecutado acumulado + comprometido vigente</p></div><span className="text-xs tabular-nums text-slate-500">{shown.length} de {searched.length}</span></div>
       {rows === null ? <p className="p-8 text-center text-sm text-slate-500">Cargando cartera…</p> : !shown.length ? <p className="p-8 text-center text-sm text-slate-500">No hay OT para los filtros seleccionados.</p> : <>
-        <div className="space-y-2 p-2 lg:hidden">{shown.map(r => <article key={r.contract_id} className="rounded-md border border-slate-200 p-2.5">
+        <div className="space-y-2 p-2 lg:hidden">{pg.pageRows.map(r => <article key={r.contract_id} className="rounded-md border border-slate-200 p-2.5">
           <div className="flex items-start justify-between gap-3"><div className="min-w-0"><Link href={`/despacho/control-presupuestal/${r.contract_id}`} className="font-semibold text-[#002855] underline">{r.code}</Link><p className="truncate text-xs text-slate-600">{r.client || 'Sin cliente'}</p></div><span className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold ${LEVEL[r.level].cls}`}>{LEVEL[r.level].label}</span></div>
           <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:grid-cols-3"><span className="text-slate-500">Presupuesto <b className="float-right text-slate-800">{money(Number(r.allocated_pen))}</b></span><span className="text-slate-500">Límite <b className="float-right text-slate-800">{money(Number(r.cap_pen))}</b></span>
             <span className="text-slate-500">Ejecutado <b className="float-right text-slate-800">{money(Number(r.consumed_pen))}</b></span><span className="text-slate-500">Comprometido <b className="float-right text-slate-800">{money(Number(r.reserved_pen))}</b></span>
@@ -178,7 +181,7 @@ export default function ControlPresupuestalPage() {
             <th className={`${cell} whitespace-nowrap`}>{sortButton('consumed_pen', 'Ejecutado', true)}</th><th className={`${cell} whitespace-nowrap`}>{sortButton('reserved_pen', 'Comprometido', true)}</th>
             <th className={`${cell} whitespace-nowrap`}>{sortButton('available_to_cap_pen', 'Disponible al límite', true)}</th><th className={`${cell} whitespace-nowrap`}>{sortButton('used_pct', 'Consumo', true)}</th>
             <th className="px-2.5 py-2 text-left">{sortButton('level', 'Riesgo')}</th><th className="px-2.5 py-2 text-right">Análisis</th>
-          </tr></thead><tbody className="divide-y divide-slate-100">{shown.map(r => <tr key={r.contract_id} className="hover:bg-slate-50">
+          </tr></thead><tbody className="divide-y divide-slate-100">{pg.pageRows.map(r => <tr key={r.contract_id} className="hover:bg-slate-50">
             <td className="px-2.5 py-2"><Link href={`/despacho/control-presupuestal/${r.contract_id}`} className="font-semibold text-[#002855] underline">{r.code}</Link>{r.override && <span title={r.override.reason || undefined} className="block truncate text-[9px] text-slate-500">Margen pactado {r.override.pct} %</span>}</td>
             <td className="px-2.5 py-2"><span className="block truncate" title={r.client || undefined}>{r.client || '—'}</span></td>
             <td className={cell}>{money(Number(r.allocated_pen))}</td><td className={cell}>{money(Number(r.cap_pen))}</td>
@@ -190,6 +193,7 @@ export default function ControlPresupuestalPage() {
             <td className="px-2.5 py-2 text-right"><Link href={`/despacho/control-presupuestal/${r.contract_id}`} className="font-semibold text-[#002855] underline">Analizar</Link>
               {['ALERTA', 'BLOQUEO'].includes(r.level) && <Link href={`/despacho/control-presupuestal/pendientes?solicitar=${r.contract_id}&codigo=${encodeURIComponent(r.code)}`} className="mt-1 block text-[9px] text-slate-600 underline">Autorizar</Link>}</td>
           </tr>)}</tbody></table></div>
+        <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="OT" compact />
       </>}
     </section>
     <p className="text-[10px] leading-4 text-slate-500">El límite operativo protege el margen de la partida; superarlo no significa que el presupuesto total se haya agotado. “Ejecutado en período” suma movimientos con fecha en el rango y sustento en las fuentes existentes; “ejecutado acumulado” refleja la posición registrada. El responsable de OT no se filtra porque la partida no tiene un responsable asignado.</p>

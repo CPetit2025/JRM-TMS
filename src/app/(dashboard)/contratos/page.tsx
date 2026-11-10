@@ -1,4 +1,6 @@
 "use client"
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 import { allPages } from '@/lib/analytics/model'
 import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
@@ -635,6 +637,7 @@ export default function ContratosPage() {
     toast.success(out.creado ? `Cliente ${out.cliente} registrado desde el ERP` : `Cliente del ERP: ${out.cliente}`)
   }
 
+  const pg = usePagination(filteredContracts, "contratos")
   return (
     <div className="flex h-full min-h-0 w-full flex-col gap-3 mx-auto">
       <PageHeader showTitle title="Alta de Contratos" description="Gestión unificada de Contratos, Subcontratos y Errores (Partidas de Transporte)" actions={<>
@@ -808,7 +811,7 @@ export default function ContratosPage() {
                   </td>
                 </tr>
               ) : (
-                filteredContracts.map((contract) => {
+                pg.pageRows.map((contract) => {
                   const allocated = Number(contract.budget?.allocated_pen || 0)
                   const balance = Number(contract.budget?.balance_pen || 0)
                   const { operating, pct: operatingPct } = operatingFromBalance(allocated, contract.budget?.balance_pen, contract.budget?.family_reserved_pen, contract.budget?.family_consumed_pen)
@@ -907,6 +910,7 @@ export default function ContratosPage() {
               )}
             </tbody>
           </DataTable>
+          <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="contratos" compact />
         </div>
       </div>
 

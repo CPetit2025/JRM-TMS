@@ -9,6 +9,8 @@ import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { buildMaintenanceWorkOrderReport, type MaintenanceReportKind } from '@/lib/maintenance/work-order-report'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 import {
   Loader2, Plus, RefreshCw, Wrench, CheckCircle2, PlayCircle, PauseCircle, Flag, ShieldCheck, XCircle,
   Lock, Trash2, Upload, ClipboardList, Package, FileText,
@@ -134,6 +136,7 @@ export default function GestorOT() {
     (typeFilter === 'TODOS' || o.order_type === typeFilter) &&
     (!search || `${o.ot_code} ${o.vehicle_plate} ${o.description}`.toLowerCase().includes(search.toLowerCase()))
   ), [orders, statusFilter, typeFilter, search])
+  const pg = usePagination(filtered, 'mantenimiento-gestor-ot')
 
   const kpis = useMemo(() => {
     const monthStart = new Date(loadedAt); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0)
@@ -197,7 +200,7 @@ export default function GestorOT() {
         ) : filtered.length === 0 ? (
           <div className="p-10 text-center text-slate-500 text-sm">No hay órdenes de trabajo con estos filtros.</div>
         ) : (
-          <DataTable className="w-full text-sm">
+          <><DataTable className="w-full text-sm">
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
               <tr>
                 <th className="text-left p-3">OT</th><th className="text-left p-3">Unidad</th><th className="text-left p-3">Tipo / prioridad</th>
@@ -206,7 +209,7 @@ export default function GestorOT() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filtered.map(o => (
+              {pg.pageRows.map(o => (
                 <tr key={o.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => setSelectedId(o.id)}>
                   <td className="p-3"><div className="font-semibold text-[#002855]">{o.ot_code}</div><div className="text-xs text-slate-500 line-clamp-1 max-w-xs">{o.description}</div></td>
                   <td className="p-3"><div className="font-medium">{o.vehicle_plate}</div><div className="text-xs text-slate-500">{o.vehicle_status?.replace(/_/g, ' ')}</div></td>
@@ -219,6 +222,7 @@ export default function GestorOT() {
               ))}
             </tbody>
           </DataTable>
+          <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="órdenes" compact /></>
         )}
       </div>
 

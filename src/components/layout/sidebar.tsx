@@ -1,5 +1,6 @@
 "use client"
 
+import { clearCache } from '@/lib/use-cached'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
@@ -260,6 +261,7 @@ export function Sidebar() {
                 const { createClient } = await import('@/lib/supabase/client')
                 const supabase = createClient()
                 await supabase.auth.signOut()
+                clearCache()
                 localStorage.removeItem('userRole')
                 localStorage.removeItem('userPermissions')
                 window.location.href = '/login'

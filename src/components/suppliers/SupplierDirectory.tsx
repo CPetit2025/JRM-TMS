@@ -13,6 +13,8 @@ import { errorMessage } from '@/lib/caja'
 import { isValidRuc, SUPPLIER_CATEGORIES, type Supplier, type SupplierCategory, type SupplierLocation } from '@/lib/suppliers'
 import { SupplierFleetManager } from '@/components/suppliers/SupplierFleetManager'
 import { TerceroDesempeno } from '@/components/despacho/Tercero'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Los directorios comercial y logístico son vistas separadas del registro único de proveedores.
 
@@ -59,6 +61,7 @@ export function SupplierDirectory({ scope }: { scope: 'commercial' | 'logistics'
     return suppliers.filter(s => allowedCategories.includes(s.category) && (!q || [s.business_name, s.tax_id, s.contact_name, ...(s.supplier_locations || []).map(l => `${l.name} ${l.district}`)].join(' ').toLocaleLowerCase('es-PE').includes(q))
       && (!category || s.category === category) && (!status || (status === 'active') === s.is_active))
   }, [suppliers, search, category, status, allowedCategories])
+  const pg = usePagination(visible, "proveedores-" + scope)
 
   const open = (supplier?: Supplier) => {
     setForm(supplier ? { ...supplier } : { ...EMPTY_SUPPLIER, category: scope === 'logistics' ? 'TRANSPORTE' : 'MATERIA_PRIMA' })
@@ -114,7 +117,7 @@ export function SupplierDirectory({ scope }: { scope: 'commercial' | 'logistics'
         <tbody className="divide-y divide-slate-100">
           {loading ? <tr><td colSpan={7} className="p-8 text-center text-slate-500"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Cargando proveedores…</td></tr>
             : !visible.length ? <tr><td colSpan={7} className="p-8 text-center text-slate-500">{suppliers.length ? 'No hay proveedores con estos filtros.' : 'Aún no hay proveedores registrados.'}</td></tr>
-            : visible.map(s => { const points = (s.supplier_locations || []).filter(l => l.is_active); return <tr key={s.id} className="hover:bg-slate-50">
+            : pg.pageRows.map(s => { const points = (s.supplier_locations || []).filter(l => l.is_active); return <tr key={s.id} className="hover:bg-slate-50">
               <td className="max-w-64"><p className="truncate font-semibold text-slate-800" title={s.business_name}>{s.business_name}</p></td>
               <td className="whitespace-nowrap tabular-nums text-slate-700">{s.tax_id}</td>
               <td className="whitespace-nowrap text-slate-700">{SUPPLIER_CATEGORIES[s.category]}</td>
@@ -125,6 +128,7 @@ export function SupplierDirectory({ scope }: { scope: 'commercial' | 'logistics'
             </tr> })}
         </tbody>
       </DataTable>
+      <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="proveedores" compact />
     </div>
     {scope === 'logistics' && <TerceroDesempeno />}
 

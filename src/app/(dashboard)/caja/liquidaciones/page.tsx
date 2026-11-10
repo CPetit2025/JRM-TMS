@@ -13,6 +13,8 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { Modal } from '@/components/ui/modal'
 import { EvidenceGallery } from '@/components/evidence/EvidenceGallery'
 import { EXPENSE_STATUS, PAYMENT_METHODS, errorMessage, fmtDate, money, printCaja, rpcOk, type Row } from '@/lib/caja'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Liquidación financiera del viaje (Caja C2): anticipos − gastos aprobados pagados por el conductor = saldo.
 // No cambia el estado operativo del despacho (LIQUIDADO lo pone el cierre de ruta GPS).
@@ -66,6 +68,7 @@ export default function LiquidacionesPage() {
     return !s || [r.dispatch_number, r.vehicle_plate, people[r.driver_id]].some(v => String(v || '').toLowerCase().includes(s))
   }), [rows, view, q, people])
 
+  const pg = usePagination(visible, 'caja-liquidaciones')
   return (
     <div className="space-y-3">
       <PageHeader showTitle title="Liquidación de viajes" description={<>Cuadre de anticipos contra gastos aprobados y cierre con devolución, reembolso o descuento por planilla. La aprobación de cada gasto se hace en <Link href="/caja/aprobaciones" className="text-blue-600 hover:underline">Aprobación de gastos</Link>.</>} actions={<>
@@ -94,7 +97,7 @@ export default function LiquidacionesPage() {
             </tr></thead>
             <tbody className="divide-y divide-slate-100">
               {visible.length === 0 && <tr><td colSpan={10} className="p-10 text-center text-slate-400">No hay viajes en esta vista</td></tr>}
-              {visible.map(r => (
+              {pg.pageRows.map(r => (
                 <tr key={r.dispatch_id} className="hover:bg-slate-50">
                   <td className="p-3"><div className="font-semibold text-[#002855]">{r.dispatch_number}</div><div className="text-xs text-slate-500">{r.vehicle_plate}</div></td>
                   <td className="p-3">{people[r.driver_id] || '—'}</td>
@@ -124,6 +127,7 @@ export default function LiquidacionesPage() {
             </tbody>
           </DataTable>
         )}
+        <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="viajes" compact />
       </div>
 
       {open && <SettlementModal trip={open} driverName={people[open.driver_id]} canClose={canWrite('caja-liquidaciones')} isAdmin={role === 'admin'}

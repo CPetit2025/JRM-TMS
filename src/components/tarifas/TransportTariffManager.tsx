@@ -9,6 +9,8 @@ import * as XLSX from 'xlsx'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Modal } from '@/components/ui/modal'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Tarifario de Transporte (freight_rates): flete por destino y tipo de unidad, paradas adicionales y descarga.
 // Alcance general / cliente / contrato, vigencias y precio al cliente. Las tarifas no se borran: se desactivan o se
@@ -210,6 +212,7 @@ export function TransportTariffManager() {
   const set = (patch: Partial<typeof EMPTY>) => setForm(f => (f ? { ...f, ...patch } : f))
   const scopeLabel = (r: Rate) => r.scope === 'CLIENTE' ? `Cliente: ${clientName(r.client_id)}` : r.scope === 'CONTRATO' ? `Contrato ${contractName(r.contract_id)}` : 'General'
 
+  const pg = usePagination(visible, "tarifas-transporte")
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -256,7 +259,7 @@ export function TransportTariffManager() {
           <tbody className="divide-y divide-slate-100">
             {rates === null ? <tr><td colSpan={8} className="p-6 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-slate-400" /></td></tr>
               : visible.length === 0 ? <tr><td colSpan={8} className="p-6 text-center text-slate-400">Sin tarifas con estos filtros.</td></tr>
-              : visible.map(r => {
+              : pg.pageRows.map(r => {
                 const margin = r.client_price != null && r.client_price > 0 ? ((r.client_price - r.rate) / r.client_price) * 100 : null
                 return (
                   <tr key={r.id} className={isCurrent(r) ? '' : 'bg-slate-50 text-slate-400'}>
@@ -279,6 +282,7 @@ export function TransportTariffManager() {
               })}
           </tbody>
         </DataTable>
+        <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="tarifas" compact />
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">

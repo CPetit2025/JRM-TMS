@@ -10,6 +10,7 @@ import { PublicRegistrationModal } from '@/components/forms/PublicRegistrationMo
 import { Download } from 'lucide-react'
 import { isDispatchAuditorRole, normalizeRoleName } from '@/lib/roles'
 import { hasWebAccess } from '@/lib/nav/web-access'
+import { clearCache } from '@/lib/use-cached'
 import { loginSystemForDatabase, remoteLoginUrl, type LoginSystem } from '@/lib/login-system'
 
 export default function LoginPage() {
@@ -22,6 +23,7 @@ export default function LoginPage() {
   const [androidInstallerUrl, setAndroidInstallerUrl] = useState<string | null>(null)
   const [androidRelease, setAndroidRelease] = useState<{ version: string; build_number: number | null; release_date: string | null } | null>(null)
 
+  useEffect(() => clearCache(), []) // another user may sign in on this tab
   useEffect(() => {
     fetch('/api/app-version', { cache: 'no-store' }).then(response => response.json()).then(data => {
       const value = data.android?.installer_url

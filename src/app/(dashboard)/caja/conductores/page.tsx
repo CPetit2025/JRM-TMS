@@ -8,6 +8,8 @@ import { AlertTriangle, Loader2, RefreshCw, Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/modal'
 import { fmtDate, money, type Row } from '@/lib/caja'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Cuenta corriente del conductor (Caja C2): anticipos (cargo) − gastos aprobados, devoluciones y descuentos (abono)
 // + reembolsos. Saldo > 0: el conductor tiene dinero por rendir o devolver; < 0: la empresa le debe.
@@ -50,6 +52,7 @@ export default function ConductoresCajaPage() {
   const owed = rows.filter(r => Number(r.balance) > 0).reduce((s, r) => s + Number(r.balance), 0)
   const owing = rows.filter(r => Number(r.balance) < 0).reduce((s, r) => s - Number(r.balance), 0)
 
+  const pg = usePagination(visible, 'caja-conductores')
   return (
     <div className="space-y-3">
       <PageHeader showTitle title="Cuenta corriente de conductores" description="Saldo de cada conductor: anticipos recibidos contra gastos aprobados, devoluciones, reembolsos y descuentos." actions={<>
@@ -79,7 +82,7 @@ export default function ConductoresCajaPage() {
             </tr></thead>
             <tbody className="divide-y">
               {visible.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-slate-400">Sin conductores con movimientos</td></tr>}
-              {visible.map(r => (
+              {pg.pageRows.map(r => (
                 <tr key={r.driver_id} className="hover:bg-slate-50">
                   <td className="p-3 font-semibold">{r.driver_name || '—'}<div className="text-xs text-slate-500 font-normal">Último movimiento {fmtDate(r.last_movement_at)}</div></td>
                   <td className="p-3 text-right">{money(r.total_debit)}</td>
@@ -96,6 +99,7 @@ export default function ConductoresCajaPage() {
             </tbody>
           </DataTable>
         )}
+        <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="conductores" compact />
       </div>
 
       {detail && <Statement account={detail} onClose={() => setDetail(null)} />}

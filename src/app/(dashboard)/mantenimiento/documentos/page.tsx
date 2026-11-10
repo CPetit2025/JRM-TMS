@@ -2,6 +2,9 @@
 import { PageHeader } from '@/components/ui/page-header'
 import { protectedFileHref } from '@/lib/protected-files'
 import { DataTable } from '@/components/ui/data-table'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { readCache, writeCache } from '@/lib/use-cached'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -32,6 +35,7 @@ const money = (n: number | null | undefined) => `S/ ${Number(n || 0).toLocaleStr
 const d = (v: string | null | undefined) => v ? format(new Date(v.length === 10 ? `${v}T12:00:00` : v), 'dd/MM/yyyy') : '—'
 type Row = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
 
+const CACHE_KEY = 'mantenimiento-documentos'
 function loadAll() {
   return Promise.all([
     supabase.from('vw_compliance_alerts').select('*').order('due_date', { ascending: true }),
@@ -41,7 +45,7 @@ function loadAll() {
     supabase.from('vehicle_incidents').select('*, drivers(first_name, last_name)').order('occurred_at', { ascending: false }).limit(200),
     supabase.from('vehicles').select('id, plate').order('plate'),
     supabase.from('drivers').select('id, first_name, last_name').eq('is_active', true).order('first_name'),
-  ])
+  ]).then(res => { if (res.every(r => !r.error)) writeCache(CACHE_KEY, res); return res })
 }
 
 export default function CumplimientoPage() {
@@ -58,7 +62,11 @@ export default function CumplimientoPage() {
     setLoading(false)
   }, [])
   const refresh = useCallback(() => { setLoading(true); return loadAll().then(apply) }, [apply])
-  useEffect(() => { loadAll().then(apply) }, [apply])
+  useEffect(() => {
+    const hit = readCache<Awaited<ReturnType<typeof loadAll>>>(CACHE_KEY)
+    if (hit) queueMicrotask(() => apply(hit)) // async so the effect does not set state synchronously
+    loadAll().then(apply)
+  }, [apply])
 
   const kpis = useMemo(() => ({
     docsExpired: data.vdocs.filter(x => x.status === 'VENCIDO').length,
@@ -166,13 +174,15 @@ function Section({ action, label, children }: { action: () => void; label: strin
   return <div className="space-y-3"><button onClick={action} className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm flex items-center gap-2"><Plus className="w-4 h-4" />{label}</button>{children}</div>
 }
 function Table({ rows, cols, empty }: { rows: Row[]; cols: [string, (r: Row) => React.ReactNode][]; empty: string }) {
+  const pg = usePagination(rows, `mantenimiento-documentos:${empty}`)
   if (!rows.length) return <p className="text-sm text-slate-500 p-4">{empty}</p>
   return (
     <div className="bg-white border rounded-xl overflow-x-auto">
       <DataTable className="w-full text-sm">
         <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{cols.map(([h], i) => <th key={i} className="text-left p-3">{h}</th>)}</tr></thead>
-        <tbody className="divide-y">{rows.map((r, i) => <tr key={r.id ?? r.ref_id ?? i}>{cols.map(([, fn], j) => <td key={j} className="p-3">{fn(r)}</td>)}</tr>)}</tbody>
+        <tbody className="divide-y">{pg.pageRows.map((r, i) => <tr key={r.id ?? r.ref_id ?? i}>{cols.map(([, fn], j) => <td key={j} className="p-3">{fn(r)}</td>)}</tr>)}</tbody>
       </DataTable>
+      <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" compact />
     </div>
   )
 }

@@ -9,6 +9,8 @@ import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Modal } from '@/components/ui/modal'
 import { CHARGE_TO, PAYMENT_METHODS, errorMessage, fmtDate, loadAdvanceReasons, money, receiptUrl, rpcOk, type AdvanceReason, type Row } from '@/lib/caja'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Anticipos (Caja C2–C5): viáticos del viaje (presupuesto según el tarifario) o anticipos por motivo sin viaje
 // (neumático, mecánica, trámites…): solicitud → aprobación del Jefe cuando el motivo lo exige → entrega desde
@@ -91,6 +93,7 @@ export default function AnticiposPage() {
     if (url) window.open(url, '_blank', 'noopener'); else toast.error('No se pudo abrir la evidencia')
   }
 
+  const pg = usePagination(visible, 'caja-anticipos')
   return (
     <div className="space-y-3">
       <PageHeader showTitle title="Anticipos" description="Dinero entregado al conductor a rendir: viáticos del viaje o anticipos por la unidad u otro motivo (neumático, mecánica, trámites), con sus propias reglas de aprobación y rendición." actions={<>
@@ -133,7 +136,7 @@ export default function AnticiposPage() {
             </tr></thead>
             <tbody className="divide-y">
               {visible.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-slate-400">Sin anticipos</td></tr>}
-              {visible.map(r => {
+              {pg.pageRows.map(r => {
                 const overdue = overdueOf(r.driver_id)
                 return (
                   <tr key={r.id} className={r.is_emergency && r.status === 'SOLICITADO' ? 'bg-red-50/40' : ''}>
@@ -182,6 +185,7 @@ export default function AnticiposPage() {
             </tbody>
           </DataTable>
         )}
+        <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="anticipos" compact />
       </div>
 
       {creating && <NewAdvance reasons={reasons} onClose={() => setCreating(false)} onDone={() => { setCreating(false); void load() }} />}

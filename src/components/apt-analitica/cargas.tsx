@@ -9,6 +9,8 @@ import { filePeriod, importAnaliticaFile } from '@/lib/apt-analitica/importFile'
 import { MAX_FILE_BYTES, fileHash, parseWorkbook, type WorkbookParse } from '@/lib/apt-analitica/workbook'
 import type { SourceType } from '@/lib/apt-analitica/types'
 import { Modal } from '@/components/ui/modal'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 import { useAnalitica, type ImportRow } from './context'
 import { Card, Empty, Notice, Segmented, fmtDate, fmtDateTime, fmtNum } from './ui'
 
@@ -40,6 +42,7 @@ export function CargasTab() {
   const [reviewFor, setReviewFor] = useState<ImportRow | null>(null)
   const [revertFor, setRevertFor] = useState<ImportRow | null>(null)
   const canOperate = !!meta?.can_operate
+  const pg = usePagination(imports, 'apa-importaciones')
   const today = new Date().toISOString().slice(0, 10)
 
   const onFiles = async (list: FileList | null) => {
@@ -103,7 +106,7 @@ export function CargasTab() {
       {imports.length === 0 ? <Empty title="Todavía no hay importaciones" /> : <div className="overflow-x-auto"><table className="w-full min-w-[60rem] text-xs">
         <thead><tr className="text-left text-slate-600"><th className="py-1">Archivo</th><th>Tipo</th><th>Período</th><th className="text-right">Filas</th><th className="text-right">Aceptadas</th>
           <th className="text-right">Rechazadas</th><th className="text-right">Revisión</th><th className="text-right">Descartadas</th><th>Estado</th><th>Cargado</th><th></th></tr></thead>
-        <tbody>{imports.map(i => <tr key={i.id} className={`border-t border-slate-100 ${i.status === 'REVERTIDA' ? 'text-slate-500' : ''}`}>
+        <tbody>{pg.pageRows.map(i => <tr key={i.id} className={`border-t border-slate-100 ${i.status === 'REVERTIDA' ? 'text-slate-500' : ''}`}>
           <td className="max-w-[16rem] truncate py-1.5 font-medium" title={`${i.file_name} · huella ${i.file_hash.slice(0, 12)}…`}>{i.file_name}</td><td>{SOURCES.find(s => s.id === i.source_type)?.label ?? i.source_type}</td>
           <td className="whitespace-nowrap">{fmtDate(i.period_from)} – {fmtDate(i.period_to)}</td><td className="text-right tabular-nums">{fmtNum(i.rows_total)}</td>
           <td className="text-right tabular-nums">{fmtNum(i.rows_accepted)}</td><td className="text-right tabular-nums">{fmtNum(i.rows_rejected)}</td>
@@ -115,6 +118,7 @@ export function CargasTab() {
             <button type="button" onClick={() => setRevertFor(i)} className="inline-flex items-center gap-1 font-semibold text-[#cf152d]"><RotateCcw className="h-3 w-3" aria-hidden />Revertir</button></>}</td>
         </tr>)}</tbody>
       </table></div>}
+      {imports.length > 0 && <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="importaciones" compact />}
       {base.all.length > 0 && <p className="mt-2 text-[11px] text-slate-500">En el análisis: {fmtNum(base.all.length)} filas (bodegas con área, traspasos y filas no aceptadas). Fuera del alcance: {fmtNum(meta?.outside_scope ?? 0)} · descartadas: {fmtNum(meta?.discarded ?? 0)}.</p>}
     </Card>
     {reviewFor && <ReviewModal imp={reviewFor} onClose={() => setReviewFor(null)} />}

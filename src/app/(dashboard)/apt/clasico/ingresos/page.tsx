@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, Download, Filter, Loader2, PackagePlus, RotateCcw, Search, X } from 'lucide-react'
+import { Download, Filter, Loader2, PackagePlus, RotateCcw, Search, X } from 'lucide-react'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { readCache, writeCache } from '@/lib/use-cached'
 import { aptApi, type AptIngresoFilters, type AptIngresos } from '@/lib/apt/api'
 import { exportAptXlsx } from '@/lib/apt/export'
 import { fmtDate, fmtInt, fmtTn } from '@/lib/apt/format'
@@ -13,7 +15,6 @@ import { EmptyState, ErrorBlock, KpiCard, LoadingBlock } from '@/components/apt/
 // «Resumen» agrupa por lote y glosa; «Detalle» muestra cada ingreso con su fecha y documento.
 // Los filtros de las tablas (fila bajo los encabezados) se aplican en el servidor: totales, páginas y Excel cuadran.
 
-const PAGE = 200
 const SIN_CLIENTE = '(Sin cliente identificado)'
 type ColumnKey = 'ot' | 'lote' | 'cliente' | 'glosa' | 'documento'
 const COLUMN_LABEL: Record<ColumnKey, string> = { ot: 'OT', lote: 'Lote', cliente: 'Cliente', glosa: 'Glosa / producto', documento: 'Documento' }
@@ -31,6 +32,7 @@ export default function AptIngresosPage() {
   const [sinCliente, setSinCliente] = useState(false)
   const [vista, setVista] = useState<'resumen' | 'detalle'>('resumen')
   const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(25)
   const [nonce, setNonce] = useState(0)
   const [state, setState] = useState<{ key: string; data?: AptIngresos; error?: string } | null>(null)
   const [exporting, setExporting] = useState(false)
@@ -41,19 +43,20 @@ export default function AptIngresosPage() {
   }, [columns])
 
   const filters: AptIngresoFilters = { ...period, ...applied, sin_cliente: sinCliente || undefined }
-  const key = JSON.stringify([filters, vista, page, nonce])
+  const key = JSON.stringify([filters, vista, page, nonce, pageSize])
+  const cacheKey = `apt-ingresos:${JSON.stringify([filters, vista, page, pageSize])}`
   useEffect(() => {
     let alive = true
     const query: AptIngresoFilters = JSON.parse(key)[0]
-    aptApi.ingresos(query, vista, PAGE, page * PAGE)
-      .then(data => { if (alive) setState({ key, data }) })
+    aptApi.ingresos(query, vista, pageSize, page * pageSize)
+      .then(data => { writeCache(cacheKey, data); if (alive) setState({ key, data }) })
       .catch(error => { if (alive) setState(prev => ({ key, data: prev?.data, error: error instanceof Error ? error.message : String(error) })) })
     return () => { alive = false }
-  }, [key, vista, page])
+  }, [key, cacheKey, vista, page, pageSize])
 
-  // Se conserva la última respuesta mientras se recalcula: la tabla y sus filtros no desaparecen al escribir
-  const d = state?.data
+  // Se conserva la última respuesta mientras se recalcula (o la copia en caché): la tabla no desaparece al escribir
   const loading = state?.key !== key
+  const d = loading ? readCache<AptIngresos>(cacheKey) ?? state?.data : state?.data
   const error = !loading ? state?.error : undefined
   const desde = periodDraft.desde ?? d?.desde ?? ''
   const hasta = periodDraft.hasta ?? d?.hasta ?? ''
@@ -67,7 +70,6 @@ export default function AptIngresosPage() {
     else { setSinCliente(false); setColumns(prev => ({ ...prev, cliente })); setApplied(prev => ({ ...prev, cliente })) }
     setPage(0)
   }
-  const pages = d ? Math.max(1, Math.ceil(d.totales.filas / PAGE)) : 1
 
   const exportXlsx = useCallback(async () => {
     if (!d || exporting) return
@@ -181,11 +183,7 @@ export default function AptIngresosPage() {
             </tr>)}
           </tbody>
         </table></div>
-        {pages > 1 && <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-4 py-2 text-xs text-slate-600">
-          <button type="button" disabled={page === 0} onClick={() => setPage(p => p - 1)} aria-label="Página anterior" className="rounded-lg border border-slate-300 p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
-          Página {page + 1} de {pages}
-          <button type="button" disabled={page + 1 >= pages} onClick={() => setPage(p => p + 1)} aria-label="Página siguiente" className="rounded-lg border border-slate-300 p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
-        </div>}
+        <TablePagination total={d.totales.filas} page={page + 1} pageSize={pageSize} onPageChange={n => setPage(n - 1)} onPageSizeChange={n => { setPageSize(n); setPage(0) }} itemLabel="registros" compact />
       </div>
     </>}
   </div>

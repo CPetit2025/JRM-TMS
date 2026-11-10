@@ -1,5 +1,7 @@
 'use client'
 import { DataTable } from '@/components/ui/data-table'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 
 import { useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
@@ -69,6 +71,7 @@ export function StDetenidoTable({ rows }: { rows: Det[] }) {
       && (umbral === 'todo' || (r.dias ?? 0) > (umbral === 'gt1' ? 1 : 3)))
     return sortBy(f as unknown as Row[], sort, desc) as unknown as Det[]
   }, [rows, search, umbral, sort, desc])
+  const pg = usePagination(shown, 'apt-st-detenido')
   const tn = shown.reduce((s, r) => s + r.tn, 0)
   const lotes = new Set(shown.map(r => r.lote)).size
 
@@ -102,7 +105,7 @@ export function StDetenidoTable({ rows }: { rows: Det[] }) {
             </tr>
           </thead>
           <tbody>
-            {shown.map(r => (
+            {pg.pageRows.map(r => (
               <tr key={r.layer_id} className={`border-b border-slate-100 ${rowTone(r.dias)}`}>
                 <td className="whitespace-nowrap px-3 py-2">
                   <Link href={traceHref(r.lote)} className="font-bold text-[#002855] hover:text-[#cf152d] hover:underline">{r.lote}</Link>
@@ -141,6 +144,7 @@ export function StDetenidoTable({ rows }: { rows: Det[] }) {
           )}
         </DataTable>
       </div>
+      <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" compact />
     </ChartCard>
   )
 }
@@ -157,6 +161,7 @@ export function StRetornosTable({ rows, extra }: { rows: Ret[]; extra?: ReactNod
     const f = rows.filter(r => matches(s, r.lote, r.lote_destino, r.producto, r.glosa, r.cliente, r.documento, r.hacia))
     return sortBy(f as unknown as Row[], sort, desc) as unknown as Ret[]
   }, [rows, search, sort, desc])
+  const pg = usePagination(shown, 'apt-st-retornos')
   const tn = shown.reduce((s, r) => s + r.tn, 0)
 
   const exportar = () => exportAptXlsx(`APT_ST_retornos_${hoy()}`, {
@@ -185,7 +190,7 @@ export function StRetornosTable({ rows, extra }: { rows: Ret[]; extra?: ReactNod
             </tr>
           </thead>
           <tbody>
-            {shown.map((r, i) => (
+            {pg.pageRows.map((r, i) => (
               <tr key={`${r.fecha}|${r.lote}|${r.producto}|${r.documento}|${i}`} className={`border-b border-slate-100 ${rowTone(r.dias_st)}`}>
                 <td className="whitespace-nowrap px-3 py-2 text-center tabular-nums">{fmtDate(r.fecha)}</td>
                 <td className="whitespace-nowrap px-3 py-2">
@@ -212,6 +217,7 @@ export function StRetornosTable({ rows, extra }: { rows: Ret[]; extra?: ReactNod
           </tbody>
         </DataTable>
       </div>
+      <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" compact />
     </ChartCard>
   )
 }

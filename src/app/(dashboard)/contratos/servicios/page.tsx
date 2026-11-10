@@ -10,6 +10,9 @@ import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 import { TableActions } from '@/components/ui/table-actions'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { readCache, writeCache } from '@/lib/use-cached'
 import { Plus, Check, Ban, Loader2, Upload, Download, AlertCircle, Search, X, ArrowUp, ArrowDown, ArrowUpDown, RefreshCw, Scale, Info, Layers, Clock, CheckCircle2, FileEdit, CircleDollarSign } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -242,7 +245,9 @@ export default function ContractServicesPage() {
   }
 
     const fetchData = async () => {
-    setLoading(true)
+    const cacheKey = `contratos-servicios:${filterDateFrom}`
+    const hit = readCache<{ rows: ContractService[]; context: Record<string, RegistryContext> }>(cacheKey)
+    if (hit) { setServices(hit.rows); setRegistryContext(hit.context); setLoading(false) } else setLoading(true)
     try {
       // Se lee por páginas: el API devuelve como máximo 1.000 filas por consulta
       const rows: ContractService[] = []
@@ -271,8 +276,10 @@ export default function ContractServicesPage() {
         if (error) throw error
         contexts.push(...((data as RegistryContext[]) || []))
       }
-      setRegistryContext(Object.fromEntries(contexts.map(c => [c.service_id, c])))
+      const context = Object.fromEntries(contexts.map(c => [c.service_id, c]))
+      setRegistryContext(context)
       setServices(rows)
+      writeCache(cacheKey, { rows, context })
       // Leer APT en vivo: el caché puede faltar o no incluir guías documentarias.
       setPesoApt({})
       setPesoAptError(null)
@@ -595,6 +602,7 @@ export default function ContractServicesPage() {
     const cmp = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'es', { numeric: true })
     return sort.dir === 'asc' ? cmp : -cmp
   })
+  const pg = usePagination(sortedServices, "contratos-servicios")
   const toggleSort = (key: SortKey) =>
     setSort(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'fecha' || key === 'monto' ? 'desc' : 'asc' })
   const sortHeader = (label: string, k: SortKey, className = '') => (
@@ -725,7 +733,7 @@ export default function ContractServicesPage() {
                   </td>
                 </tr>
               ) : (
-                sortedServices.map((srv) => {
+                pg.pageRows.map((srv) => {
                   const stage = stageOf(srv);
                   const context = registryContext[srv.id];
                   const correlative = serialOf.get(srv.id);
@@ -808,6 +816,7 @@ export default function ContractServicesPage() {
             </tbody>
           </DataTable>
         </div>
+        <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="servicios" compact />
       </div>
 
       </>}

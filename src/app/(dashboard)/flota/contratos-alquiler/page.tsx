@@ -7,6 +7,8 @@ import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/modal'
 import { toast } from 'sonner'
 import { Plus, RefreshCw, Loader2, RotateCw, Edit2 } from 'lucide-react'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Contratos de alquiler (Fase 11): tarifa mensual/diaria/horaria/por km, km/horas incluidos, excesos,
 // descuento por indisponibilidad, condiciones y renovación encadenada. Sin traslapes por unidad
@@ -44,6 +46,7 @@ export default function ContratosAlquilerPage() {
   useEffect(() => { loadAll().then(apply) }, [apply])
 
   const filtered = useMemo(() => contracts.filter(c => !search || `${c.contract_code} ${c.vehicles?.plate} ${c.carriers?.business_name}`.toLowerCase().includes(search.toLowerCase())), [contracts, search])
+  const pg = usePagination(filtered, 'flota-contratos-alquiler')
 
   const renew = async (c: Row) => {
     const end = prompt('Nueva fecha de término (AAAA-MM-DD):')
@@ -67,13 +70,13 @@ export default function ContratosAlquilerPage() {
         {loading ? <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : filtered.length === 0 ? (
           <p className="p-8 text-center text-sm text-slate-500">Sin contratos.</p>
         ) : (
-          <DataTable className="w-full text-sm">
+          <><DataTable className="w-full text-sm">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
               <th className="text-left p-3">Contrato</th><th className="text-left p-3">Unidad / arrendador</th><th className="text-left p-3">Tarifa</th>
               <th className="text-left p-3">Incluido / excesos</th><th className="text-left p-3">Vigencia</th><th className="text-left p-3">Estado</th><th className="p-3"></th>
             </tr></thead>
             <tbody className="divide-y">
-              {filtered.map(c => (
+              {pg.pageRows.map(c => (
                 <tr key={c.id}>
                   <td className="p-3 font-semibold">{c.contract_code}{c.parent_contract_id && <div className="text-[11px] text-slate-400">renovación</div>}</td>
                   <td className="p-3">{c.vehicles?.plate}<div className="text-xs text-slate-500">{c.carriers?.business_name}</div></td>
@@ -89,6 +92,7 @@ export default function ContratosAlquilerPage() {
               ))}
             </tbody>
           </DataTable>
+          <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="contratos" compact /></>
         )}
       </div>
       {editing && <ContractModal contract={editing === 'new' ? null : editing} vehicles={vehicles} lessors={lessors} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh() }} />}

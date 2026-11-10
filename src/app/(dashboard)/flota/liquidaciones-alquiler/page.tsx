@@ -7,6 +7,8 @@ import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Calculator, Loader2, FileText, Check, X, RefreshCw, Mail, BellRing } from 'lucide-react'
 import { LiquidacionAlquilerView, mesDe } from '@/components/flota/LiquidacionAlquilerDoc'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Liquidación de alquiler seco (Fase 11): cálculo con km/horas REALES del periodo y descuento por
 // indisponibilidad; se registra en BORRADOR y la aprueba un usuario distinto (migración 20260928130000).
@@ -28,6 +30,7 @@ function loadAll() {
 export default function LiquidacionesAlquilerPage() {
   const [contracts, setContracts] = useState<Row[]>([])
   const [settlements, setSettlements] = useState<Row[]>([])
+  const pg = usePagination(settlements, 'flota-liquidaciones-alquiler')
   const [sends, setSends] = useState<Record<string, Row>>({})
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({ contract_id: '', period_start: '', period_end: '', other_discounts: '0', penalties: '0', consumptions: '0', additional_costs: '0', notes: '' })
@@ -156,13 +159,13 @@ export default function LiquidacionesAlquilerPage() {
         {loading ? <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : settlements.length === 0 ? (
           <p className="p-8 text-center text-sm text-slate-500">Sin liquidaciones registradas.</p>
         ) : (
-          <DataTable className="w-full text-sm">
+          <><DataTable className="w-full text-sm">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
               <th className="text-left p-3">Periodo</th><th className="text-left p-3">Contrato / unidad</th><th className="text-right p-3">Km</th><th className="text-right p-3">Horas</th>
               <th className="text-right p-3">Subtotal</th><th className="text-right p-3">Total</th><th className="text-left p-3">Estado</th><th className="text-left p-3">Envío</th><th className="p-3"></th>
             </tr></thead>
             <tbody className="divide-y">
-              {settlements.map(s => (
+              {pg.pageRows.map(s => (
                 <tr key={s.id}>
                   <td className="p-3">{s.period_start} → {s.period_end}<div className="text-xs text-slate-500">{s.days} días</div></td>
                   <td className="p-3">{s.vehicle_lease_contracts?.contract_code} · {s.vehicles?.plate}<div className="text-xs text-slate-500">{s.vehicle_lease_contracts?.carriers?.business_name}</div></td>
@@ -181,6 +184,7 @@ export default function LiquidacionesAlquilerPage() {
               ))}
             </tbody>
           </DataTable>
+          <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="liquidaciones" compact /></>
         )}
       </div>
     </div>

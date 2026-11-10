@@ -10,6 +10,9 @@ import { PlanClose } from '@/components/personal/plan-close'
 import { consolidate, consolidatedEmailDraft, downloadConsolidatedPdf, downloadPdf, emailDraft, folio } from './informe'
 import { CLOSED_BY, STATUS, call, isPendingText, plateLabel, referenceLabel, fmtDate, fmtDateTime, fmtHours, fmtMoney, fmtTime, statusOf, type Consolidated, type Line, type Detail, type RequestRow } from '@/lib/hhee/flujo'
 import { trackingEmailUrl, type EmailClient } from '@/lib/tracking-email'
+import { readCache, writeCache } from '@/lib/use-cached'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Solicitudes y aprobación: el supervisor registra y presenta; el Jefe de Distribución o el Administrador aprueba,
 // observa o rechaza. Cada aprobación guarda una versión del informe (PDF y correo).
@@ -37,9 +40,12 @@ export function Solicitudes() {
   const setOpen = (id: string | null) => router.replace(id ? `/hhee/solicitudes?id=${id}` : '/hhee/solicitudes')
   useEffect(() => {
     let alive = true
+    const key = `hhee-solicitudes:${JSON.stringify({ status, q, from, to })}`
     const t = setTimeout(() => {
+      const hit = readCache<{ rows: RequestRow[]; pending: number }>(key)
+      if (hit) { setRows(hit.rows); setPending(hit.pending) }
       call<{ rows: RequestRow[]; pending: number }>('hhee_flow_list', { p: { status, q, from, to } })
-        .then(r => { if (alive) { setRows(r.rows); setPending(r.pending); setError('') } })
+        .then(r => { if (alive) { writeCache(key, r); setRows(r.rows); setPending(r.pending); setError('') } })
         .catch(e => { if (alive) setError(e instanceof Error ? e.message : 'No se pudo cargar') })
     }, 200)
     return () => { alive = false; clearTimeout(t) }
@@ -48,6 +54,7 @@ export function Solicitudes() {
   const allVisible = visibleSelectable.length > 0 && visibleSelectable.every(r => selected.has(r.id))
   const selectedMinutes = [...selected.values()].reduce((t, r) => t + r.minutes, 0)
   const refresh = () => setNonce(n => n + 1)
+  const pg = usePagination(rows ?? [], 'hhee-solicitudes')
   return (
     <div className="grid gap-4">
       <Card title="Solicitudes de horas extras" subtitle={ctx.caps.approve ? `${pending} pendiente(s) de su aprobación` : 'Registre la solicitud y preséntela para aprobación'}
@@ -81,7 +88,7 @@ export function Solicitudes() {
                 <th className="p-2.5">Placa</th><th className="p-2.5">Referencia</th><th className="p-2.5 text-right">Horas</th>{ctx.caps.costs && <th className="p-2.5 text-right">Costo aprox.</th>}<th className="p-2.5">Estado</th>
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
-                {rows.map(r => { const st = STATUS[statusOf(r)]; return <tr key={r.id} className={`cursor-pointer hover:bg-slate-50 ${selected.has(r.id) ? 'bg-blue-50/60' : ''}`} onClick={() => setOpen(r.id)}>
+                {pg.pageRows.map(r => { const st = STATUS[statusOf(r)]; return <tr key={r.id} className={`cursor-pointer hover:bg-slate-50 ${selected.has(r.id) ? 'bg-blue-50/60' : ''}`} onClick={() => setOpen(r.id)}>
                   <td className="p-2.5" onClick={e => e.stopPropagation()}>{selectable(r) && <input type="checkbox" aria-label={`Incluir HE-${String(r.sequence).padStart(5, '0')} en el consolidado`} className="h-4 w-4"
                     checked={selected.has(r.id)} onChange={() => toggle(r)} />}</td>
                   <td className="whitespace-nowrap p-2.5 font-mono text-xs font-semibold text-[#002855]">HE-{String(r.sequence).padStart(5, '0')}</td>
@@ -98,6 +105,7 @@ export function Solicitudes() {
               </tbody>
             </table>
             {!rows.length && <p className="p-6 text-center text-sm text-slate-400">Sin solicitudes en este filtro.</p>}
+            <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="solicitudes" compact />
           </div>
         )}
       </Card>

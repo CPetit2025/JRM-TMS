@@ -7,6 +7,8 @@ import { Plus, User, Edit2, Search, Filter, Loader2, UserCheck, UserX, UserPlus 
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { UserFormModal, UserData } from '@/components/forms/UserFormModal'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 interface Profile extends Omit<UserData, 'password'> {
   id: string
@@ -121,6 +123,7 @@ export default function UsuariosPage() {
     }
   }
 
+  const pg = usePagination(filteredList, 'usuarios')
   return (
     <div className="space-y-3 max-w-7xl mx-auto">
       <PageHeader showTitle title="Usuarios" description="Gestión de personal y accesos" actions={<>
@@ -211,7 +214,7 @@ export default function UsuariosPage() {
                   </td>
                 </tr>
               ) : (
-                filteredList.map(user => (
+                pg.pageRows.map(user => (
                   <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4">
                       <div className="flex items-center gap-3">
@@ -273,6 +276,7 @@ export default function UsuariosPage() {
               )}
             </tbody>
           </DataTable>
+          <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="usuarios" compact />
         </div>
       </div>
 

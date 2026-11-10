@@ -9,6 +9,9 @@ import { fmtN, fmtQty } from '@/lib/inventario/format'
 import { ErpReferenceError, referenceBatches } from '@/lib/erp/reference-batches'
 import { erpAltaAutomatica, type ErpAltaResultado } from '@/lib/erp/api'
 import { fmtDate, fmtDateTime, fmtPct } from '@/lib/apt/format'
+import { readCache, writeCache } from '@/lib/use-cached'
+import { usePagination } from '@/lib/use-pagination'
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Contratos con el ERP como fuente de verificación (Actualizable + Stock vigentes): por código del TMS, el documento del
 // ERP con la misma numeración, cliente por RUC, avance sin conversiones, stock listo, OT activa (último despacho dentro
@@ -57,7 +60,9 @@ export function useErpContratos(codes: string[]) {
     void referenceBatches<ErpContratoInfo,ErpContratosConfig>(key.split('|'),
       (batch, signal) => supabase.rpc('erp_ref_contratos', { p_codes: batch }).abortSignal(signal), controller.signal)
       .then(result => {
-        if (!controller.signal.aborted) setState({key,estado:result.sin_datos?'sin_datos':'listo',filas:result.filas,config:result.config,error:null})
+        if (controller.signal.aborted) return
+        const next = { key, estado: (result.sin_datos ? 'sin_datos' : 'listo') as ErpContratosEstado, filas: result.filas, config: result.config, error: null }
+        writeCache('erp-contratos:' + key, next); setState(next)
       }).catch(error => {
         if (!controller.signal.aborted) setState({key,estado:error instanceof ErpReferenceError?error.state:'error',filas:{},config:null,
           error:error instanceof ErpReferenceError?error.message:'No se pudo consultar el ERP. Reintente.'})
@@ -66,6 +71,7 @@ export function useErpContratos(codes: string[]) {
   }, [key, tick])
   const reload = useCallback(() => setTick(t => t + 1), [])
   if (!key) return { estado: 'listo' as ErpContratosEstado, filas: {} as Record<string,ErpContratoInfo>, config: null, error:null, reload }
+  if (state.key !== key) { const hit = readCache<typeof state>('erp-contratos:' + key); if (hit) return { ...hit, reload } } // stale while the ERP refreshes
   return state.key === key ? { ...state, reload } : { estado: 'cargando' as ErpContratosEstado, filas: {} as Record<string,ErpContratoInfo>, config: null, error:null, reload }
 }
 
@@ -291,6 +297,7 @@ export function ErpCorreccionesModal({ open, onClose, canSync, onChanged }: { op
   const [tick, setTick] = useState(0)
   const [hecho, setHecho] = useState<{ tick: number; estado: 'listo' | 'pendiente' | 'error' } | null>(null)
   const estado = hecho?.tick === tick ? hecho.estado : 'cargando'
+  const pg = usePagination(rows ?? [], 'erp-correcciones')
   useEffect(() => {
     if (!open) return
     let alive = true
@@ -347,7 +354,7 @@ export function ErpCorreccionesModal({ open, onClose, canSync, onChanged }: { op
                 <th className="px-3 py-2">Estado</th>{admin && <th className="px-3 py-2"><span className="sr-only">Acciones</span></th>}</tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {!rows?.length && <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-400">Sin correcciones registradas.</td></tr>}
-                {rows?.map(c => (
+                {pg.pageRows.map(c => (
                   <tr key={c.id}>
                     <td className="whitespace-nowrap px-3 py-2">{fmtDateTime(c.created_at)}<span className="block text-[10px] text-slate-400">{c.creado_por || ''}</span></td>
                     <td className="px-3 py-2 font-semibold text-[#002855]">{c.ot}</td>
@@ -364,6 +371,7 @@ export function ErpCorreccionesModal({ open, onClose, canSync, onChanged }: { op
                   </tr>))}
               </tbody>
             </table>
+            <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="correcciones" compact />
           </div>)}
       </div>
     </Modal>
