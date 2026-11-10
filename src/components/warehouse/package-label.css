@@ -124,39 +124,46 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
+/* El QR ocupa el alto de barras + identificador; ambas áreas conservan el espacio total anterior. */
 .wh-package-codes {
   display: flex;
   align-items: stretch;
-  gap: 6px;
-  height: 22%;
-  min-height: 83.15px;
+  gap: 8px;
+  height: 32%;
+  min-height: 120px;
   flex: none;
+}
+.wh-package-linear {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 0;
+  container-type: inline-size;
 }
 .wh-package-codes .wh-package-barcode {
   display: block !important;
   min-width: 0;
-  width: 0 !important;
-  height: 100% !important;
+  width: 100% !important;
+  height: 55% !important;
   min-height: 0 !important;
   margin: 0 !important;
-  flex: 1 1 0 !important;
+  flex: none !important;
 }
 .wh-package-qr {
   display: block;
-  width: 76px;
-  height: 76px;
+  width: auto;
+  height: 100%;
+  aspect-ratio: 1;
   align-self: center;
   flex: none;
 }
 .wh-package-code {
   display: block;
   flex: none;
-  height: 10%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   font-family: monospace;
-  font-size: 27.213px;
+  font-size: min(27.213px, calc(155cqw / var(--wh-code-length, 20)));
   line-height: 1;
   text-align: center;
   white-space: nowrap;
@@ -292,7 +299,7 @@
   max-width: none;
   white-space: nowrap;
 }
-/* La lista ocupa el espacio libre; el código de barras del agrupado es más bajo para que entre el pie. */
+/* El agrupado conserva el alto total anterior de barras e identificador para mantener sus cuatro filas. */
 .wh-grouped-wrap {
   flex: 1;
   min-height: 0;
@@ -300,12 +307,8 @@
   margin-top: 5px;
 }
 .wh-grouped-codes {
-  height: 16%;
-  min-height: 60px;
-}
-.wh-grouped-codes .wh-package-qr {
-  width: 60px;
-  height: 60px;
+  height: 26%;
+  min-height: 96px;
 }
 .wh-grouped-items {
   width: 100%;
