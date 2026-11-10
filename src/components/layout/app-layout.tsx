@@ -13,6 +13,7 @@ import { NAV_SECTIONS, SEGUIMIENTO_ITEM, activeEntry, flatEntries } from '@/lib/
 import { usePermissions } from '@/hooks/usePermissions'
 import { isDispatchAuditorRole } from '@/lib/roles'
 import { setSidebar, useSidebar } from '@/lib/nav/sidebarStore'
+import { TmsUpdateBanner } from '@/components/TmsUpdateBanner'
 import { usePageOwnsTitle } from '@/lib/nav/pageChromeStore'
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -103,6 +104,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <NotificationBanner />
         <AccessDeniedNotice />
         <main className="relative z-0 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-auto p-3 sm:p-4 lg:p-5">
+          <TmsUpdateBanner/>
           {children}
         </main>
       </div>
