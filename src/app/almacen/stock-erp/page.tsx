@@ -3,6 +3,9 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
+import { readCache, writeCache } from '@/lib/use-cached'
 import { ArrowDown, ArrowUp, ArrowUpDown, Database, RefreshCw, Search, Upload, X } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
 
@@ -36,8 +39,10 @@ export default function WarehouseErpStockPage() {
 
   const load = useCallback(async (s = '') => {
     setLoading(true)
+    if (!s.trim()) { const cached = await readCache<StockResult>('stock-erp'); if (cached) { setData(d => d ?? cached); setLoading(false) } }
     const stock = await createClient().rpc('erp_stock_query', { p_bodega: null, p_search: s.trim() || null })
-    if (stock.error) setError(stock.error.message); else { setError(''); setData(stock.data as StockResult) }
+    if (stock.error) setError(stock.error.message)
+    else { setError(''); setData(stock.data as StockResult); if (!s.trim()) void writeCache('stock-erp', stock.data) }
     setLoading(false)
   }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -60,6 +65,7 @@ export default function WarehouseErpStockPage() {
       return (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'es', { numeric: true })) * dir
     })
   }, [all, search, bodega, cliente, onlyCommitted, onlyFault, noClient, sort])
+  const pager = usePagination(rows, 'almacen-stock-erp')
   const totals = useMemo(() => ({ stock: rows.reduce((s, r) => s + Number(r.stock || 0), 0), kg: rows.reduce((s, r) => s + Number(r.kg || 0), 0), ots: new Set(rows.map(r => r.ot).filter(Boolean)).size }), [rows])
   const filtered = !!(search || bodega || cliente || onlyCommitted || onlyFault || noClient)
   const clear = () => { setSearch(''); setBodega(''); setCliente(''); setOnlyCommitted(false); setOnlyFault(false); setNoClient(false) }
@@ -125,7 +131,7 @@ export default function WarehouseErpStockPage() {
               </th>
             })}
           </tr></thead>
-          <tbody className="divide-y divide-slate-100">{rows.map((r, i) => <tr key={`${r.bodega}-${r.lote_raw}-${r.cod_producto}-${i}`} className="hover:bg-blue-50/40">
+          <tbody className="divide-y divide-slate-100">{pager.pageRows.map((r, i) => <tr key={`${r.bodega}-${r.lote_raw}-${r.cod_producto}-${i}`} className="hover:bg-blue-50/40">
             <td className="whitespace-nowrap px-3 py-1.5">{r.bodega}</td>
             <td className="px-3 py-1.5 font-semibold">{r.ot
               ? <Link href={`/almacen/apt/contratos?ot=${encodeURIComponent(r.ot)}`} className="text-blue-800 underline-offset-2 hover:underline" title="Ver ficha de la OT">{r.ot}</Link>
@@ -139,6 +145,7 @@ export default function WarehouseErpStockPage() {
             <td className="px-3 py-1.5 text-right">{fmt(r.kg, 1)}</td>
           </tr>)}</tbody>
         </table></div>}
+      {!loading && rows.length > 0 && <TablePagination total={pager.total} page={pager.page} pageSize={pager.pageSize} onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize} itemLabel="lotes" compact />}
     </section>
   </div>
 }

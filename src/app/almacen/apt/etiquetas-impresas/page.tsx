@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
+import { readCache, writeCache } from '@/lib/use-cached'
 import { ClipboardList, PackageCheck, Printer, RefreshCw, Search, X } from 'lucide-react'
 import { printPackageLabels, validatePackageLabelPrint } from '@/components/warehouse/print-package-labels'
 import { useLabelFormat } from '@/lib/warehouse/label-format'
@@ -113,7 +116,8 @@ export default function AptReceiptControlPage() {
     const validationMap = Object.fromEntries(latestByMovement)
     setValidations(validationMap)
     const customerRows = customerChunks.flatMap(result => result.error ? [] : (result.data || []) as { source_movement_key: string; customer_name: string | null }[])
-    setCustomers(Object.fromEntries(customerRows.filter(row => row.customer_name?.trim()).map(row => [row.source_movement_key, row.customer_name!.trim()])))
+    const customerMap = Object.fromEntries(customerRows.filter(row => row.customer_name?.trim()).map(row => [row.source_movement_key, row.customer_name!.trim()]))
+    setCustomers(customerMap)
     const lookupError = [...validationChunks, ...customerChunks].find(result => result.error)?.error
     if (lookupError) setError(`No se pudieron cargar los datos de cliente/recepción: ${lookupError.message}`)
 
@@ -123,12 +127,18 @@ export default function AptReceiptControlPage() {
       names[row.validated_by] = fullName || row.username || `Usuario ${row.validated_by.slice(0, 8)}`
     }
     setProfiles(names)
+    if (!lookupError) void writeCache('apt-etiquetas-impresas', { rows: packages, validations: validationMap, customers: customerMap, profiles: names })
     setLastUpdated(new Date())
     setLoading(false)
     setRefreshing(false)
   }, [])
 
   useEffect(() => {
+    void readCache<{ rows: ReceiptPackage[]; validations: Record<string, Validation>; customers: Record<string, string>; profiles: Record<string, string> }>('apt-etiquetas-impresas').then(c => {
+      if (!c) return
+      setRows(r => r.length ? r : c.rows); setValidations(v => Object.keys(v).length ? v : c.validations)
+      setCustomers(v => Object.keys(v).length ? v : c.customers); setProfiles(v => Object.keys(v).length ? v : c.profiles); setLoading(false)
+    })
     const initial=window.setTimeout(()=>void load(),0)
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') void load()
@@ -193,6 +203,7 @@ export default function AptReceiptControlPage() {
       group.customerName || '', ...group.packages.map(row => row.package_code),
     ].some(value => value.toLocaleLowerCase().includes(q)))
   }, [groups, query])
+  const pager = usePagination(filtered, 'apt-etiquetas-impresas')
 
   const receiverNames = (group: ReceiptGroup) => [...new Set(group.validations.map(row =>
     profiles[row.validated_by] || `Usuario ${row.validated_by.slice(0, 8)}`,
@@ -249,7 +260,7 @@ export default function AptReceiptControlPage() {
             <th className="p-2">Acciones</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-200">
-            {filtered.map(group => <tr key={group.sourceMovementKey} className="hover:bg-blue-50/60">
+            {pager.pageRows.map(group => <tr key={group.sourceMovementKey} className="hover:bg-blue-50/60">
               <td className="break-words p-2">{group.lot || '—'}</td>
               <td className="whitespace-nowrap p-2 font-semibold text-[#002855]">{group.documentNo}</td>
               <td className="break-words p-2">{group.customerName || 'Por registrar'}</td>
@@ -264,6 +275,7 @@ export default function AptReceiptControlPage() {
           </tbody>
         </table>
       </div>
+      {filtered.length > 0 && <TablePagination total={pager.total} page={pager.page} pageSize={pager.pageSize} onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize} itemLabel="líneas de ingreso" compact />}
       <p className="mt-3 text-xs text-slate-500">Cada fila representa un ítem ingresado en el IPT. Sus bultos pendientes de impresión permanecen en «02 · Recepción por IPT».</p>
     </section>
 

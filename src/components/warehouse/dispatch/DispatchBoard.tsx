@@ -4,6 +4,9 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
+import { readCache, writeCache } from '@/lib/use-cached'
 import { ClipboardList, RefreshCw, Search } from 'lucide-react'
 import { STATE, type BoardRow } from '@/lib/warehouse/packing-list'
 import { syncFromTms } from '@/lib/warehouse/sync'
@@ -39,11 +42,12 @@ export function DispatchBoard({ stage }: { stage: TaskStage }) {
     const [{ data: auth }, result] = await Promise.all([db.auth.getUser(), db.rpc('wh_task_board', { p_scope: 'tareas' })])
     if (auth.user) setUserId(auth.user.id)
     if (result.error) setError(result.error.message)
-    else { setError(''); setRows((result.data || []) as BoardRow[]); setNow(Date.now()) }
+    else { setError(''); setRows((result.data || []) as BoardRow[]); setNow(Date.now()); void writeCache('wh-task-board', result.data || []) }
     setLoading(false)
   }, [])
 
   useEffect(() => {
+    void readCache<BoardRow[]>('wh-task-board').then(cached => { if (cached) { setRows(r => r.length ? r : cached); setNow(n => n || Date.now()); setLoading(false) } })
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load()
     const timer = window.setInterval(() => void load(), 20000)
@@ -67,6 +71,7 @@ export function DispatchBoard({ stage }: { stage: TaskStage }) {
   const needle = query.trim().toLocaleLowerCase()
   const filtered = rows.filter(r => taskInStage(r, stage) && (filter === 'ALL' || r.display_state === filter) &&
     (!needle || [r.request_number, r.task_code, r.contract_code, r.components, r.lots, r.client_name].join(' ').toLocaleLowerCase().includes(needle)))
+  const pager = usePagination(filtered, `wh-board-${stage}`)
 
   return <div className="space-y-4">
     <DispatchNav stage={stage}/>
@@ -104,7 +109,7 @@ export function DispatchBoard({ stage }: { stage: TaskStage }) {
                 <ClipboardList className="mx-auto h-8 w-8 text-slate-300"/>
                 <p className="mt-2 font-semibold text-slate-700">No hay tareas para mostrar</p>
               </td></tr>
-              : filtered.map(r => {
+              : pager.pageRows.map(r => {
                 const state = STATE[r.display_state] || { label: r.display_state, style: 'bg-slate-100 text-slate-700' }
                 const mine = Boolean(userId && r.assigned_picker === userId)
                 const otherOwner = Boolean(r.assigned_picker && !mine)
@@ -132,6 +137,7 @@ export function DispatchBoard({ stage }: { stage: TaskStage }) {
           </tbody>
         </table>
       </div>
+      {!loading && filtered.length > 0 && <TablePagination total={pager.total} page={pager.page} pageSize={pager.pageSize} onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize} itemLabel="tareas" compact />}
     </div>
   </div>
 }

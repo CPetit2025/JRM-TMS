@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { FormEvent, use, useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 import { ArrowLeft, CheckCircle2, Loader2, Printer, ScanLine, Search, Tag, Undo2 } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
 import { printPackageLabels, validatePackageLabelPrint } from '@/components/warehouse/print-package-labels'
@@ -53,6 +55,7 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
   }, [id])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load() }, [load])
+  const summaryPager = usePagination(summary, 'almacen-inventario-cuadre')
 
   const run = async <T,>(fn: () => PromiseLike<{ data: unknown; error: { message: string } | null }>, ok: (d: T) => string) => {
     setBusy(true); setError(''); setMessage('')
@@ -245,7 +248,7 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
           {isSupervisor && open && <th className="px-3 py-2"/>}<th className="px-3 py-2">OT</th><th className="px-3 py-2">Lote</th><th className="px-3 py-2">Producto</th>
           <th className="px-3 py-2 text-right">ERP</th><th className="px-3 py-2 text-right">Contado</th><th className="px-3 py-2 text-right">Diferencia</th><th className="px-3 py-2">Resultado</th>{open && isSupervisor && <th className="px-3 py-2">Motivo</th>}
         </tr></thead>
-        <tbody className="divide-y divide-slate-100">{summary.map(r => <tr key={lotKey(r)}>
+        <tbody className="divide-y divide-slate-100">{summaryPager.pageRows.map(r => <tr key={lotKey(r)}>
           {isSupervisor && open && <td className="px-3 py-1.5">{r.result !== 'CUADRA' && <input type="checkbox" aria-label="Recontar" checked={selected.has(lotKey(r))} onChange={e => setSelected(s => { const n = new Set(s); if (e.target.checked) n.add(lotKey(r)); else n.delete(lotKey(r)); return n })}/>}</td>}
           <td className="px-3 py-1.5 font-semibold">{r.ot || '—'}</td>
           <td className="px-3 py-1.5">{r.lote_key || '—'}{r.round > 1 && <small className="block text-amber-800">reconteo {r.round}</small>}</td>
@@ -256,7 +259,8 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
           <td className="px-3 py-1.5"><span className={`rounded-full px-2 py-0.5 text-xs font-bold ${RESULT_STYLE[r.result]}`}>{r.result.replace('_', ' ')}</span></td>
           {open && isSupervisor && <td className="px-3 py-1.5">{r.result !== 'CUADRA' && <input value={reasons[lotKey(r)] || ''} onChange={e => setReasons({ ...reasons, [lotKey(r)]: e.target.value })} placeholder="Motivo" className="w-48 rounded border border-slate-300 px-2 py-1 text-xs"/>}</td>}
         </tr>)}</tbody>
-      </table></div>
+      </table>
+      {summary.length > 0 && <TablePagination total={summaryPager.total} page={summaryPager.page} pageSize={summaryPager.pageSize} onPageChange={summaryPager.setPage} onPageSizeChange={summaryPager.setPageSize} itemLabel="lotes" compact />}</div>
     </section>}
 
 
