@@ -35,6 +35,7 @@ export function UpdateBanner({ load }: { load: () => Promise<UpdateSource[]> }) 
   const [sources, setSources] = useState<UpdateSource[]>([])
   const [now, setNow] = useState(() => new Date())
   const [open, setOpen] = useState(false), [busy, setBusy] = useState(''), [error, setError] = useState('')
+  const [requestError, setRequestError] = useState('') // no lo borra la actualización periódica; se cierra a mano
   const [dismissed, setDismissed] = useState<Record<string, string>>({})
   const [finished, setFinished] = useState<Record<string, boolean>>({}) // solicitudes que terminaron en esta pestaña
   const previous = useRef<Record<string, SourceState['level']>>({})
@@ -47,6 +48,10 @@ export function UpdateBanner({ load }: { load: () => Promise<UpdateSource[]> }) 
       for (const s of next) if (previous.current[s.key] === 'running' && s.state.level === 'ok') done[s.key] = true
       previous.current = Object.fromEntries(next.map(s => [s.key, s.state.level]))
       if (Object.keys(done).length) setFinished(f => ({ ...f, ...done }))
+      // Si una fuente cambió de estado desde que se cerró su aviso, el cierre deja de valer (un error repetido vuelve a avisar)
+      const closed = read(), still = Object.fromEntries(Object.entries(closed).filter(([k, sig]) => { const s = next.find(x => x.key === k); return !s || signature(s) === sig }))
+      if (Object.keys(still).length !== Object.keys(closed).length) write(still)
+      setDismissed(still)
       setSources(next); setNow(new Date()); setError('')
     } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
   }, [load])
@@ -70,8 +75,8 @@ export function UpdateBanner({ load }: { load: () => Promise<UpdateSource[]> }) 
   }, [finished])
   const request = async (s: UpdateSource) => {
     if (!s.request) return
-    setBusy(s.key); setError('')
-    try { await s.request(); await refresh() } catch (e) { setError(`${s.title}: ${e instanceof Error ? e.message : String(e)}`) } finally { setBusy('') }
+    setBusy(s.key); setRequestError('')
+    try { await s.request(); await refresh() } catch (e) { setRequestError(`${s.title}: no se pudo pedir la actualización. ${e instanceof Error ? e.message : String(e)}`) } finally { setBusy('') }
   }
   const dismiss = (s: UpdateSource) => { const v = { ...read(), [s.key]: signature(s) }; write(v); setDismissed(v); setFinished(f => ({ ...f, [s.key]: false })) }
   if (!sources.length) return null
@@ -94,11 +99,15 @@ export function UpdateBanner({ load }: { load: () => Promise<UpdateSource[]> }) 
             {s.state.level !== 'ok' && <p className="font-semibold">{s.state.detail}</p>}
             <div className="flex justify-end"><Action s={s} busy={busy === s.key} onRequest={() => void request(s)}/></div>
           </div>)}
-          {error && <p role="alert" className="text-xs text-rose-700">{error}</p>}
+          {(requestError || error) && <p role="alert" className="text-xs text-rose-700">{requestError || error}</p>}
           <p className="text-[11px] text-slate-500">Las cargas automáticas siguen su horario; «Actualizar ahora» agrega una ejecución.</p>
         </div>}
       </div>
-      {alerts.length > 0 && <div className="fixed bottom-4 right-4 z-50 flex w-[22rem] max-w-[calc(100vw-2rem)] flex-col gap-2 print:hidden" aria-live="polite">
+      {(alerts.length > 0 || (requestError && !open)) && <div className="fixed bottom-4 right-4 z-50 flex w-[22rem] max-w-[calc(100vw-2rem)] flex-col gap-2 print:hidden" aria-live="polite">
+        {requestError && !open && <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900 shadow-lg">
+          <div className="flex items-start gap-2"><p className="min-w-0 flex-1 font-semibold">{requestError}</p>
+            <button type="button" onClick={() => setRequestError('')} aria-label="Cerrar aviso de error" className="rounded p-0.5 hover:bg-white/70"><X size={14}/></button></div>
+        </div>}
         {alerts.map(s => <div key={s.key} role="status" className={`rounded-xl border p-3 text-xs shadow-lg ${CARD[finished[s.key] ? 'ok' : s.state.level]} ${!finished[s.key] ? 'animate-pulse' : ''}`}>
           <div className="flex items-start gap-2">
             <span className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${DOT[finished[s.key] ? 'ok' : s.state.level]}`} aria-hidden/>
