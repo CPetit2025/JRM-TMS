@@ -8,6 +8,7 @@ import {
   Menu, X, LogOut, UserRound, Warehouse,
 } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
+import { canViewStage, DISPATCH_STAGES, type DispatchStage } from '@/lib/warehouse/dispatch'
 import { NotificationBell } from '@/components/layout/NotificationBell'
 import { createClient } from '@/lib/supabase/client'
 
@@ -15,8 +16,7 @@ const links = [
   { href: '/almacen', label: 'Centro WMS', icon: Boxes, permission: 'almacen-lectura', group: 'Inicio' },
   { href: '/almacen/etiquetado', label: '01 · Recepción por IPT', icon: ScanLine, permission: 'almacen-etiquetado', group: 'Recepción' },
   { href: '/almacen/apt/etiquetas-impresas', label: '02 · Control de recepción', icon: PackageCheck, permission: 'almacen-etiquetado', group: 'Recepción' },
-  { href: '/almacen/tareas', label: 'Tareas', icon: ClipboardList, permission: 'almacen-picking', group: 'Despacho' },
-  { href: '/almacen/auditoria', label: 'Auditoría', icon: ShieldCheck, permission: 'almacen-auditoria', group: 'Despacho' },
+  ...Object.values(DISPATCH_STAGES).map(stage => ({ href: stage.path, label: stage.title === 'Auditoría' ? 'Auditoría · en paralelo' : stage.title, icon: stage.title === 'Auditoría' ? ShieldCheck : ClipboardList, permission: stage.permissions[0], group: 'Despacho' })),
   { href: '/almacen/apt', label: 'Inventario APT', icon: Boxes, permission: 'almacen-lectura', group: 'Control' },
   { href: '/almacen/inventario', label: 'Inventario', icon: ClipboardList, permission: 'almacen-etiquetado', group: 'Control' },
   { href: '/almacen/stock-erp', label: 'Stock ERP', icon: Boxes, permission: 'almacen-lectura', group: 'Control' },
@@ -32,7 +32,9 @@ export default function WarehouseLayout({ children }: { children: React.ReactNod
   const [mobileOpen, setMobileOpen] = useState(false)
   const [email, setEmail] = useState('')
   const visible = useMemo(() => links.filter(x =>
-    x.href === '/almacen/actualizaciones'
+    Object.values(DISPATCH_STAGES).some(stage => stage.path === x.href)
+      ? canViewStage((Object.keys(DISPATCH_STAGES) as DispatchStage[]).find(key => DISPATCH_STAGES[key].path === x.href)!, hasAccess)
+      : x.href === '/almacen/actualizaciones'
       ? ['almacen-carga', 'almacen-supervisor'].some(hasAccess)
       : x.href === '/almacen/apt'
       ? ['almacen-lectura', 'almacen-carga', 'almacen-supervisor', 'almacen-etiquetado', 'almacen-picking', 'almacen-packing', 'almacen-auditoria'].some(hasAccess)
