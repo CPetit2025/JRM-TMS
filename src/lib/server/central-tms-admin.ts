@@ -16,5 +16,5 @@ export async function getSystemAdminContext() {
   const { data: profile, error: profileError } = await client.from('profiles').select('is_active, roles(name)').eq('id', user.id).maybeSingle()
   const role = Array.isArray(profile?.roles) ? profile.roles[0] : profile?.roles
   if (profileError || !profile?.is_active || !isSystemAdminRole(role?.name)) return null
-  return { user }
+  return { user, tmsClient: client }
 }

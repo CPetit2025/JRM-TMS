@@ -23,7 +23,10 @@ export default function RestablecerPage() {
     void (async () => {
       const params = new URLSearchParams(window.location.search)
       const tokenHash = params.get('token_hash')
-      if (tokenHash) await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' })
+      if (tokenHash) {
+        const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' })
+        if (error) { if (!cancelled) setStage('invalid'); return }
+      }
       // getSession espera a que el cliente termine de canjear el código (?code=) o el fragmento (#access_token)
       let { data: { session } } = await supabase.auth.getSession()
       const code = params.get('code')
@@ -57,12 +60,12 @@ export default function RestablecerPage() {
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
         <div className="mb-6 flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#002855]/10 text-[#002855]"><KeyRound className="h-5 w-5" /></span>
-          <div><h1 className="text-xl font-bold text-slate-800">Nueva contraseña</h1><p className="text-sm text-slate-500">JRM · Torre de Control TMS</p></div>
+          <div><h1 className="text-xl font-bold text-slate-800">Nueva contraseña</h1><p className="text-sm text-slate-500">JRM · WMS · Almacén</p></div>
         </div>
         {stage === 'checking' && <p className="flex items-center gap-2 text-sm text-slate-600"><Loader2 className="h-4 w-4 animate-spin" />Validando el enlace…</p>}
         {stage === 'invalid' && <div className="space-y-4 text-sm text-slate-700">
           <p className="rounded-lg bg-amber-50 p-3 text-amber-900">El enlace venció, ya se usó o se abrió en otro navegador. Pide uno nuevo desde «¿Olvidaste tu contraseña?» y ábrelo en el mismo navegador.</p>
-          <Link href="/login" className="block w-full rounded-lg bg-[#002855] px-4 py-3 text-center font-medium text-white">Ir a iniciar sesión</Link>
+          <Link href="/almacen/login" className="block w-full rounded-lg bg-[#002855] px-4 py-3 text-center font-medium text-white">Ir a iniciar sesión</Link>
         </div>}
         {stage === 'ready' && <form onSubmit={save} className="space-y-4">
           <label className="block text-sm font-medium text-slate-700">Nueva contraseña
@@ -75,8 +78,7 @@ export default function RestablecerPage() {
         </form>}
         {stage === 'done' && <div className="space-y-4 text-sm text-slate-700">
           <p className="flex items-start gap-2 rounded-lg bg-green-50 p-3 text-green-900"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />Contraseña actualizada. Ingresa con tu nueva contraseña.</p>
-          <Link href="/login" className="block w-full rounded-lg bg-[#002855] px-4 py-3 text-center font-medium text-white">Ir a iniciar sesión</Link>
-          <Link href="/app/login" className="block text-center text-[#002855] hover:underline">Soy conductor: ir al Portal Operativo</Link>
+          <Link href="/almacen/login" className="block w-full rounded-lg bg-[#002855] px-4 py-3 text-center font-medium text-white">Ir a iniciar sesión</Link>
         </div>}
       </div>
     </main>

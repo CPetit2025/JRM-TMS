@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSystemAdminContext } from '@/lib/server/central-tms-admin'
 import { getWmsAdminClient } from '@/lib/server/wms-admin'
 import { isSystemAdminRole } from '@/lib/roles'
+import { provisionTmsUser } from '@/lib/server/provision-tms-user'
 import { validateWmsAccount, validateWmsRole } from '@/lib/wms-administration'
 
 export const dynamic = 'force-dynamic'
@@ -22,9 +23,13 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    if (!await getSystemAdminContext()) return fail(new Error('Solo el Administrador del Sistema puede administrar WMS'), 403)
+    const context = await getSystemAdminContext()
+    if (!context) return fail(new Error('Solo el Administrador del Sistema puede administrar WMS'), 403)
     const body = await request.json()
     const client = getWmsAdminClient()
+    if (body.action === 'provision_tms_user') {
+      return NextResponse.json(await provisionTmsUser(client, context.tmsClient, body), { headers: { 'Cache-Control': 'no-store' } })
+    }
     if (body.action === 'role') {
       const values = validateWmsRole(body)
       if (isSystemAdminRole(values.name)) return fail(new Error('El administrador WMS se gestiona en su entorno de seguridad'))
