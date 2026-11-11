@@ -12,9 +12,9 @@ export type PrintPreferences = {
 }
 export type SheetSize = { width_mm: number; height_mm: number; margin_mm: number; position?: LabelPosition; rotate?: boolean }
 // Por defecto: etiqueta A5 vertical (148 × 210 mm). La hoja A5 entra a la impresora así y la etiqueta sale completa.
-// Por defecto: etiqueta acostada A5 (210 × 148 mm) que ocupa toda la hoja A5; la hoja entra vertical a la impresora,
-// así que se envía una página vertical con la etiqueta girada 90°.
-export const DEFAULT_PRINT_PREFERENCES: PrintPreferences = { formatId: 'paper-a5-landscape', orientation: 'FORMAT', paper: 'A5_PORTRAIT_ROTATED', paperWidth: 210, paperHeight: 297, margin: 0, position: 'CENTER' }
+// Por defecto: etiqueta A5 acostada (210 × 148 mm) en una página del mismo tamaño, sin girar: la hoja A5 entra a la
+// impresora con su lado de 210 mm adelante (igual que el A4), así que la etiqueta se lee de lado a lado y ocupa toda la hoja.
+export const DEFAULT_PRINT_PREFERENCES: PrintPreferences = { formatId: 'paper-a5-landscape', orientation: 'FORMAT', paper: 'LABEL', paperWidth: 210, paperHeight: 297, margin: 0, position: 'CENTER' }
 export const PRINTER_PAPERS: { value: PrinterPaper; label: string; width?: number; height?: number }[] = [
   { value: 'LABEL', label: 'Rollo / papel del tamaño de la etiqueta' },
   { value: 'A4_PORTRAIT', label: 'Hoja A4 vertical · 210 × 297 mm', width: 210, height: 297 },

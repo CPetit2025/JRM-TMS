@@ -113,8 +113,8 @@ assert.throws(()=>labelPrintPage({width_mm:210,height_mm:148,paper:a4}),/no cabe
 assert.throws(()=>labelPrintPage({...fixedLabel,paper:{width_mm:210,height_mm:297,margin_mm:-1}}),/no son válidas/);
 assert.equal(readPrintPreferences(null,'paper-a5-portrait').formatId,'paper-a5-portrait','old per-user selection is retained');
 assert.equal(readPrintPreferences(null).formatId,'paper-a5-landscape','default label: A5 acostada');
-assert.equal(readPrintPreferences(null).paper,'A5_PORTRAIT_ROTATED','default sheet: A5 que entra vertical');
-{const sheet=printerSheet(readPrintPreferences(null));assert.equal(sheet.rotate,true);assert.deepEqual([sheet.width_mm,sheet.height_mm],[148,210]);assert.ok(labelPrintPage({width_mm:210,height_mm:148,paper:sheet}),'acostada 210×148 cabe girada en hoja vertical 148×210');assert.throws(()=>labelPrintPage({width_mm:210,height_mm:160,paper:sheet}))}
+assert.equal(readPrintPreferences(null).paper,'LABEL','default sheet: página del tamaño de la etiqueta, sin girar');
+{const sheet=printerSheet({...readPrintPreferences(null),paper:'A5_PORTRAIT_ROTATED'});assert.equal(sheet.rotate,true);assert.deepEqual([sheet.width_mm,sheet.height_mm],[148,210]);assert.ok(labelPrintPage({width_mm:210,height_mm:148,paper:sheet}),'acostada 210×148 cabe girada en hoja vertical 148×210');assert.throws(()=>labelPrintPage({width_mm:210,height_mm:160,paper:sheet}))}
 assert.equal(readPrintPreferences(JSON.stringify({formatId:''})).formatId,'','a saved warehouse-format choice is kept');
 assert.equal(readPrintPreferences('{bad','legacy').paper,'LABEL');
 assert.equal(readPrintPreferences(JSON.stringify({paperWidth:-100,paper:'INVALID'})).paperWidth,210);
