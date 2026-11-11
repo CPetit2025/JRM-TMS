@@ -16,7 +16,7 @@ export function InvHeader() {
   const apt = useAmbito() === 'apt'
   useEffect(() => {
     let alive = true
-    const load = () => { invApi.status().then(s => { if (alive) setSt(s) }).catch(() => { if (alive) setSt(null) }) }
+    const load = () => { invApi.header().then(s => { if (alive) setSt(s) }).catch(() => { if (alive) setSt(null) }) }
     load()
     window.addEventListener(INV_UPDATED, load)
     return () => { alive = false; window.removeEventListener(INV_UPDATED, load) }
