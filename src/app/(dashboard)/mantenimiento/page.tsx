@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { HistorialResumen } from '@/components/mantenimiento/HistorialResumen'
-import { Activity, AlertTriangle, BarChart3, Gauge, Loader2, RefreshCw, ShieldAlert, Timer, Wrench, CircleDot, Sparkles } from 'lucide-react'
+import { Activity, AlertTriangle, ArrowRight, BarChart3, Gauge, Loader2, Package, Plus, RefreshCw, ShieldAlert, Timer, Wrench, CircleDot, Sparkles } from 'lucide-react'
 
 // Centro de Control CMMS (Fase 12): todos los indicadores se calculan en la BD desde las fuentes
 // reales (get_cmms_kpis / get_cmms_copilot_brief); no hay tablas de dashboard (migración 20260928150000).
@@ -51,6 +51,9 @@ export default function CentroControlPage() {
   }, [kpi])
   const categories = useMemo(() => Object.entries((kpi?.costs?.by_category || {}) as Record<string, number>).sort(([, a], [, b]) => Number(b) - Number(a)), [kpi])
   const maxCat = Math.max(1, ...categories.map(([, v]) => Number(v)))
+  const maintenanceDue = (brief?.maintenance_due || []) as Row[]
+  const partsBelowMinimum = (brief?.parts_below_minimum || []) as Row[]
+  const blockedUnits = (brief?.blocked_or_unavailable || []) as Row[]
 
   const cards: [string, string, React.ReactNode, React.ReactNode][] = kpi ? [
     ['Disponibilidad', kpi.availability_pct != null ? `${num(kpi.availability_pct, 2)}%` : '—', <Gauge key="g" className="w-4 h-4" />, `${num(kpi.downtime_hours)} h fuera de servicio`],
@@ -79,6 +82,37 @@ export default function CentroControlPage() {
       <HistorialResumen />
       {loading || !kpi ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div> : (
         <>
+          <section className="rounded-xl border border-[#002855]/20 bg-white p-4 space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Cola de trabajo priorizada</h2>
+                <p className="text-xs text-slate-500">Acciones calculadas con planes activos, elegibilidad de activos e inventario mínimo.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Link href="/mantenimiento/fallas" className="inline-flex items-center gap-1.5 rounded-lg bg-[#002855] px-3 py-2 text-xs font-semibold text-white"><Plus className="h-3.5 w-3.5" />Registrar falla</Link>
+                <Link href="/mantenimiento/gestor-ot" className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold text-[#002855]"><Wrench className="h-3.5 w-3.5" />Gestionar OT</Link>
+                <Link href="/mantenimiento/preventivos" className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold text-[#002855]"><Timer className="h-3.5 w-3.5" />Planes preventivos</Link>
+              </div>
+            </div>
+            <div className="grid gap-3 lg:grid-cols-3">
+              <article className="rounded-lg border border-red-200 bg-red-50/50 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2"><h3 className="text-sm font-semibold text-slate-800">Preventivos que requieren atención</h3><span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">{maintenanceDue.length}</span></div>
+                {maintenanceDue.length === 0 ? <p className="text-xs text-slate-500">Sin alertas preventivas activas.</p> : <ul className="space-y-2">{maintenanceDue.slice(0, 4).map((p: Row, i: number) => <li key={`${p.plate}-${p.plan}-${i}`} className="flex items-start justify-between gap-2 border-t border-red-100 pt-2 first:border-0 first:pt-0">
+                  <div className="min-w-0"><Link href={`/mantenimiento/flota/${encodeURIComponent(String(p.plate))}`} className="text-xs font-bold text-[#002855] hover:underline">{p.plate}</Link><div className="truncate text-xs text-slate-700">{p.plan}</div><div className="text-[11px] text-red-700">{p.alert} · por {String(p.driver || '').toLowerCase()}</div></div>
+                  <Link href={p.open_work_order ? '/mantenimiento/gestor-ot' : '/mantenimiento/preventivos'} className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold text-[#002855]">{p.open_work_order ? 'Ver OT' : 'Programar'}<ArrowRight className="h-3 w-3" /></Link>
+                </li>)}</ul>}
+              </article>
+              <article className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2"><h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800"><Package className="h-4 w-4 text-amber-700" />Repuestos bajo mínimo</h3><span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">{partsBelowMinimum.length}</span></div>
+                {partsBelowMinimum.length === 0 ? <p className="text-xs text-slate-500">Sin alertas de stock mínimo.</p> : <ul className="space-y-2">{partsBelowMinimum.slice(0, 4).map((p: Row, i: number) => <li key={`${p.code}-${i}`} className="flex justify-between gap-2 border-t border-amber-100 pt-2 first:border-0 first:pt-0"><div className="min-w-0"><div className="truncate text-xs font-semibold text-slate-800">{p.name}</div><div className="text-[11px] text-slate-500">{p.code} · disponible {num(p.available, 0)} / mínimo {num(p.minimum, 0)}</div></div><Link href="/mantenimiento/inventario" className="shrink-0 self-center text-[11px] font-semibold text-[#002855]">Revisar →</Link></li>)}</ul>}
+              </article>
+              <article className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2"><h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800"><ShieldAlert className="h-4 w-4 text-red-600" />Activos bloqueados o no aptos</h3><span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">{blockedUnits.length}</span></div>
+                {blockedUnits.length === 0 ? <p className="text-xs text-slate-500">Todos los activos evaluados están habilitados.</p> : <ul className="space-y-2">{blockedUnits.slice(0, 4).map((u: Row) => <li key={u.plate} className="flex justify-between gap-2 border-t border-slate-200 pt-2 first:border-0 first:pt-0"><div className="min-w-0"><Link href={`/mantenimiento/flota/${encodeURIComponent(String(u.plate))}`} className="text-xs font-bold text-[#002855] hover:underline">{u.plate}</Link><div className="truncate text-[11px] text-slate-600">{u.status} · {(u.motives || [u.eligibility]).filter(Boolean).join(', ')}</div></div><Link href={`/mantenimiento/flota/${encodeURIComponent(String(u.plate))}`} className="shrink-0 self-center text-[11px] font-semibold text-[#002855]">Resolver →</Link></li>)}</ul>}
+              </article>
+            </div>
+          </section>
+
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {cards.map(([label, value, icon, hint]) => (
               <div key={label} className="bg-white border rounded-xl p-3">

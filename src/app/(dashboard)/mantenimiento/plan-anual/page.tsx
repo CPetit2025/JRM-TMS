@@ -103,7 +103,7 @@ function ResumenTab({ d, go }: { d: Data; go: (t: Tab) => void }) {
       <Kpi label="Gasto de los últimos 12 meses" value={soles(r.total)} sub={`Preventivo ${soles(r.preventivo)} · correctivo ${soles(r.correctivo)}`} />
       <Kpi label="Correctivo (12 meses)" value={r.pct_correctivo != null ? `${r.pct_correctivo} %` : '—'} sub={`Meta: menos de ${r.meta_correctivo} % · ${r.eventos_correctivos} reparaciones`}
         tone={(r.pct_correctivo ?? 0) > r.meta_correctivo ? 'bad' : 'ok'} />
-      <Kpi label="Preventivos vencidos" value={fmt(r.vencidos)} sub={`${r.proximos_30} en los próximos 30 días`} tone={r.vencidos > 0 ? 'bad' : 'ok'} onClick={() => go('preventivo')} />
+      <Kpi label="Servicios vencidos (historial)" value={fmt(r.vencidos)} sub={`${r.proximos_30} en los próximos 30 días · proyección histórica`} tone={r.vencidos > 0 ? 'bad' : 'ok'} onClick={() => go('preventivo')} />
       <Kpi label="Unidades en riesgo alto" value={fmt(alto.length)} sub={alto.slice(0, 4).map(a => a.plate).join(', ') || 'Ninguna'} tone={alto.length ? 'bad' : 'ok'} onClick={() => go('correctivo')} />
     </div>
 
@@ -158,7 +158,7 @@ function PreventivoTab({ d, onDone }: { d: Data; onDone: () => void }) {
   return <div className="space-y-4">
     {r.planes && r.planes.por_validar > 0 && <ActivarBanner porValidar={r.planes.por_validar} onDone={onDone} />}
     <div className="grid gap-3 sm:grid-cols-3">
-      <Kpi label="Vencidos" value={fmt(r.vencidos)} sub="Hacer cuanto antes" tone={r.vencidos > 0 ? 'bad' : 'ok'} />
+      <Kpi label="Vencidos según historial" value={fmt(r.vencidos)} sub="Validar contra ejecución reciente" tone={r.vencidos > 0 ? 'bad' : 'ok'} />
       <Kpi label="Próximos 30 días" value={fmt(r.proximos_30)} sub="Incluye vencidos" />
       <Kpi label="Costo estimado 90 días" value={soles(r.presupuesto_90)} sub="Costo de referencia del historial" />
     </div>
