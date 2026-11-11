@@ -112,6 +112,7 @@ assert.deepEqual(labelPrintPage(fixedLabel),{width_mm:100,height_mm:50,margin_mm
 assert.throws(()=>labelPrintPage({width_mm:210,height_mm:148,paper:a4}),/no cabe/,'oversize labels are not silently shrunk');
 assert.throws(()=>labelPrintPage({...fixedLabel,paper:{width_mm:210,height_mm:297,margin_mm:-1}}),/no son válidas/);
 assert.equal(readPrintPreferences(null,'paper-a5-portrait').formatId,'paper-a5-portrait','old per-user selection is retained');
+assert.equal(readPrintPreferences(null).formatId,'paper-a5-portrait','default label: A5 vertical');
 assert.equal(readPrintPreferences('{bad','legacy').paper,'LABEL');
 assert.equal(readPrintPreferences(JSON.stringify({paperWidth:-100,paper:'INVALID'})).paperWidth,210);
 console.log('PASS: independent label orientation, exact A4/thermal sizes, invalid fit rejected and legacy preferences retained');

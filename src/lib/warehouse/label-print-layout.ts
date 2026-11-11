@@ -11,7 +11,8 @@ export type PrintPreferences = {
   position: LabelPosition
 }
 export type SheetSize = { width_mm: number; height_mm: number; margin_mm: number; position?: LabelPosition }
-export const DEFAULT_PRINT_PREFERENCES: PrintPreferences = { formatId: '', orientation: 'FORMAT', paper: 'LABEL', paperWidth: 210, paperHeight: 297, margin: 5, position: 'CENTER' }
+// Por defecto: etiqueta A5 vertical (148 × 210 mm). La hoja A5 entra a la impresora así y la etiqueta sale completa.
+export const DEFAULT_PRINT_PREFERENCES: PrintPreferences = { formatId: 'paper-a5-portrait', orientation: 'FORMAT', paper: 'LABEL', paperWidth: 210, paperHeight: 297, margin: 5, position: 'CENTER' }
 export const PRINTER_PAPERS: { value: PrinterPaper; label: string; width?: number; height?: number }[] = [
   { value: 'LABEL', label: 'Rollo / papel del tamaño de la etiqueta' },
   { value: 'A4_PORTRAIT', label: 'Hoja A4 vertical · 210 × 297 mm', width: 210, height: 297 },
@@ -27,7 +28,7 @@ export function readPrintPreferences(raw: string | null, legacyId = ''): PrintPr
   try { value = raw ? JSON.parse(raw) || {} : {} } catch { /* usar valores seguros */ }
   const bounded = (v: unknown, fallback: number, min: number, max: number) => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : fallback
   return {
-    formatId: typeof value.formatId === 'string' ? value.formatId : legacyId,
+    formatId: typeof value.formatId === 'string' && value.formatId ? value.formatId : legacyId || DEFAULT_PRINT_PREFERENCES.formatId,
     orientation: ['FORMAT', 'LANDSCAPE', 'PORTRAIT'].includes(value.orientation || '') ? value.orientation! : 'FORMAT',
     paper: PRINTER_PAPERS.some(p => p.value === value.paper) ? value.paper! : 'LABEL',
     paperWidth: bounded(value.paperWidth, 210, 15, 650),
