@@ -11,19 +11,27 @@ export interface MenuCount { n: number; tono: MenuCountTone; texto: string; unid
 export type MenuCounts = Record<string, MenuCount>
 
 const REFRESH_MS = 60_000
+// Compartido entre instancias del menú (escritorio y celular) y cambios de pantalla: como mucho un pedido cada 20 s.
+let last: { at: number; promise: Promise<MenuCounts | null> } | null = null
+function fetchCounts(): Promise<MenuCounts | null> {
+  if (last && Date.now() - last.at < 20_000) return last.promise
+  const promise = (async () => {
+    const { data, error } = await createClient().rpc('menu_pending_counts')
+    const out = data as { success?: boolean; counts?: MenuCounts } | null
+    return !error && out?.success ? out.counts || {} : null
+  })().catch(() => null)
+  last = { at: Date.now(), promise }
+  return promise
+}
 
 export function useMenuCounts(pathname: string): MenuCounts {
   const [counts, setCounts] = useState<MenuCounts>({})
   useEffect(() => {
     let alive = true
-    const supabase = createClient()
     const load = async () => {
       if (typeof document !== 'undefined' && document.hidden) return
-      try {
-        const { data, error } = await supabase.rpc('menu_pending_counts')
-        const out = data as { success?: boolean; counts?: MenuCounts } | null
-        if (alive && !error && out?.success) setCounts(out.counts || {})
-      } catch { /* sin contadores */ }
+      const next = await fetchCounts()
+      if (alive && next) setCounts(next)
     }
     void load()
     const timer = window.setInterval(load, REFRESH_MS)
