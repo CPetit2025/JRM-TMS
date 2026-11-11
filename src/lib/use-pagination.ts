@@ -12,8 +12,13 @@ function readSize(key: string) {
   try { const n = Number(localStorage.getItem(storageKey(key))); return SIZES.includes(n) ? n : 25 } catch { return 25 }
 }
 
-/** Sort value of a rendered cell for generic column tables. shortcut: JSX cells (badges) sort as empty, map them explicitly if needed. */
-export const cellValue = (node: unknown) => typeof node === 'string' || typeof node === 'number' ? node : null
+/** Text a cell shows, also through JSX (badges, links), so header sorting matches what the user sees. */
+export const cellValue = (node: unknown): string | number | null => {
+  if (typeof node === 'string' || typeof node === 'number') return node
+  if (Array.isArray(node)) { const parts = node.map(cellValue).filter(v => v != null); return parts.length ? parts.join('').trim() : null }
+  if (node && typeof node === 'object' && 'props' in node) return cellValue((node as { props?: { children?: unknown } }).props?.children)
+  return null
+}
 
 /** Same semantics as DataTable's header sort (compareCells over the cell text); null sort keeps the original order. */
 export function sortRows<T>(rows: readonly T[], sort: PageSort | null, sortValue?: SortValue<T>): readonly T[] {

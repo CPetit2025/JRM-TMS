@@ -28,3 +28,8 @@ test('null sort or no sortValue keeps the original order', () => {
   assert.equal(sortRows(rows, null, value), rows)
   assert.equal(sortRows(rows, { column: 0, direction: 'ascending' }), rows)
 })
+test('celdas con JSX ordenan por su texto', () => {
+  const React = require('react')
+  const { cellValue } = load('src/lib/use-pagination.ts')
+  assert.equal(cellValue(React.createElement('span', null, 'Activo', ' ', 3)), 'Activo 3')
+})
