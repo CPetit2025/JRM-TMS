@@ -10,6 +10,9 @@ import { loadPackageLabels } from '@/lib/warehouse/load-package-label'
 import { printPackageLabels, validatePackageLabelPrint } from '@/components/warehouse/print-package-labels'
 import Link from 'next/link'
 import { useLabelFormat } from '@/lib/warehouse/label-format'
+import { DataTable } from '@/components/ui/data-table'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 
 type Receipt = {
   receipt_key: string; document_no: string; fecha: string; document_type: string | null; color: string | null; source_updated_at: string | null; bodega: string; lote: string | null
@@ -37,6 +40,7 @@ export default function WarehouseLabelingPage() {
   const [capacity, setCapacity] = useState('')
   const [labels, setLabels] = useState<Label[]>([])
   const labelFormat = useLabelFormat('PAQUETE')
+  const pager = usePagination(receipts, 'wms-etiquetado')
   const [printedLabelCodes, setPrintedLabelCodes] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [searching, setSearching] = useState(false)
@@ -247,12 +251,12 @@ export default function WarehouseLabelingPage() {
         <button disabled={searching || query.trim().length < 2} onClick={() => void search()} className="rounded-lg bg-[#002855] px-4 text-sm font-bold text-white disabled:opacity-50">{searching ? 'Buscando…' : 'Buscar IPT'}</button>
       </div>
       <div className="mt-3 overflow-x-auto rounded-lg border">
-        <table className="min-w-[900px] lg:min-w-0 w-full text-left text-sm">
+        <DataTable dense className="min-w-[900px] lg:min-w-0 w-full text-left text-sm">
           <thead className="sticky top-0 bg-slate-50 text-xs text-slate-600"><tr>
             <th className="p-3">IPT · Fecha</th><th className="p-3">OT · Contrato</th><th className="p-3">Producto</th><th className="p-3">Lote</th>
             <th className="p-3 text-right">Cantidad ERP</th><th className="p-3">Cliente</th><th className="p-3">Estado</th><th className="p-3"></th>
           </tr></thead>
-          <tbody className="divide-y">{receipts.map(receipt => <tr key={receipt.receipt_key} className="hover:bg-blue-50">
+          <tbody className="divide-y">{pager.pageRows.map(receipt => <tr key={receipt.receipt_key} className="hover:bg-blue-50">
             <td className="p-3 font-semibold text-[#002855]">{receipt.document_no}<small className="block font-normal text-slate-500">{receipt.fecha} · {receipt.bodega}</small><small className="block font-normal text-slate-500">{receipt.document_type || '—'} · {receipt.color || '—'} · Actualizado {receipt.source_updated_at ? new Date(receipt.source_updated_at).toLocaleString('es-PE') : '—'}</small></td>
             <td className="p-3">{receipt.contract_code || '—'}</td><td className="p-3">{receipt.product_code}<small className="block text-slate-500">{receipt.description || '—'}</small></td>
             <td className="p-3">{receipt.lote || '—'}</td><td className="p-3 text-right tabular-nums">{receipt.quantity} {receipt.unit || ''}</td>
@@ -262,8 +266,9 @@ export default function WarehouseLabelingPage() {
           {!searching && receipts.length===0 && <tr><td colSpan={8} className="p-8 text-center text-sm text-slate-500">{query.trim()?'No hay ingresos pendientes de etiqueta para ese criterio. Las recepciones ya etiquetadas se consultan en «03 · Control de recepción».':'No hay ingresos pendientes de etiqueta en la última carga.'}</td></tr>}
           {searching && <tr><td colSpan={8} className="p-8 text-center text-sm text-slate-500">Cargando ingresos…</td></tr>}
           </tbody>
-        </table>
+        </DataTable>
       </div>
+      {pager.total > 0 && <TablePagination total={pager.total} page={pager.page} pageSize={pager.pageSize} onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize} itemLabel="ingresos" compact />}
     </section>
 
     {selected && typeof document !== 'undefined' && createPortal(<div className="fixed inset-0 z-[2147483000] flex items-center justify-center bg-slate-950/60 p-2 sm:p-3">
