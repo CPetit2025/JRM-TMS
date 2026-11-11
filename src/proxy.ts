@@ -157,13 +157,13 @@ export async function proxy(request: NextRequest) {
   }
 
   // Si YA está autenticado e intenta ir a la página de login (para evitar que vea el login si ya tiene sesión)
-  if (user && isLoginPage && hasDashboardAccess) {
+  if (user && isLoginPage && !isPasswordReset && hasDashboardAccess) {
     const url = request.nextUrl.clone()
     url.pathname = '/'
     return redirect(url)
   }
 
-  if (user && isLoginPage) {
+  if (user && isLoginPage && !isPasswordReset) {
     const { data: profile } = await supabase.from('profiles').select('roles(name, permissions)').eq('id', user.id).maybeSingle()
     const role = Array.isArray(profile?.roles) ? profile.roles[0] : profile?.roles
     const permissions = Array.isArray(role?.permissions) ? role.permissions : []
