@@ -240,7 +240,7 @@ const server = http.createServer(async (req, res) => {
     page.on("pageerror", (e) => errors.push(e.message));
     page.on("dialog", (d) => d.accept("Reimpresión de prueba autorizada"));
     // Esta cuenta ya eligió el formato del almacén (Zebra); una cuenta nueva parte de A5 vertical (ver label-print-layout).
-    await page.addInitScript(id => { for (const k of ['PAQUETE','LPN']) { const key='wh-label-print:v6:'+id+':'+k; if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({formatId:'',orientation:'FORMAT',paper:'LABEL'})) } }, uid);
+    await page.addInitScript(id => { for (const k of ['PAQUETE','LPN']) { const key='wh-label-print:v7:'+id+':'+k; if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({formatId:'',orientation:'FORMAT',paper:'LABEL'})) } }, uid);
     await page.addInitScript(() => {
       window.__printed = [];
       window.print = () => {
@@ -432,9 +432,9 @@ const server = http.createServer(async (req, res) => {
     await chooseSetting('Formato de la etiqueta de bulto',/^A5 horizontal/);await config.getByText('Etiqueta actual: A5 horizontal',{exact:false}).waitFor();
     await openLabels();await page.getByRole('button',{name:'Imprimir lote',exact:true}).click();await printed();
     assert.match(await page.locator('#wh-label-print-root .wh-package-responsible').first().innerText(),/Carlos Petit/,'switching logged-in user does not replace original responsible');
-    assert.ok(await page.locator('.wh-package-sheet').first().evaluate(n=>{const s=n.getBoundingClientRect(),l=n.querySelector('.wh-package-label').getBoundingClientRect();return Math.abs(s.width-l.width)<.2&&Math.abs(s.height-l.height)<.2}),'la etiqueta acostada cubre toda la hoja A5');
+    assert.ok(await page.locator('.wh-package-sheet').first().evaluate(n=>{const s=n.getBoundingClientRect(),l=n.querySelector('.wh-package-label').getBoundingClientRect();return Math.abs(s.width-l.width)<.2&&Math.abs(s.top-l.top)<.2&&Math.abs(s.left-l.left)<.2}),'la etiqueta acostada ocupa el ancho completo arriba de la página (la parte que sale en la hoja A5)');
     await page.emulateMedia({media:'print'});await page.locator('#wh-label-print-root .wh-package-sheet').first().screenshot({path:out+'/etiqueta-a5-acostada.png'});const horizontalPdf=await page.pdf({path:out+'/etiqueta-a5-acostada.pdf',preferCSSPageSize:true,printBackground:true});await page.emulateMedia({media:'screen'});await done();
-    const horizontalBox=pdfBox(horizontalPdf);assert.ok(Math.abs(horizontalBox[2]-148*72/25.4)<1&&Math.abs(horizontalBox[3]-210*72/25.4)<1,'por defecto: página A5 vertical 148 × 210 con la etiqueta girada');
+    const horizontalBox=pdfBox(horizontalPdf);assert.ok(Math.abs(horizontalBox[2]-210*72/25.4)<1&&Math.abs(horizontalBox[3]-297*72/25.4)<1,'por defecto: página A4 con la etiqueta A5 acostada arriba');
     await ctx.unroute('**/auth/v1/user');await config.reload();await config.getByText('Etiqueta actual: A5 vertical',{exact:false}).waitFor();
     assert.match(await paper.innerText(),/^A5 vertical/,'another account cannot change original user preference');
     await paper.press('ArrowDown');await config.getByRole('listbox').waitFor();
