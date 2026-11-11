@@ -8,6 +8,7 @@ import { InlineStatusBar } from '@/components/ui/inline-status-bar'
 import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filter-toolbar'
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
 import { TableActions } from '@/components/ui/table-actions'
+import { excludeIncompleteServiceDuplicates } from '@/lib/contract-services-dedupe'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { usePagination } from '@/lib/use-pagination'
@@ -124,7 +125,9 @@ export default function ContractServicesPage() {
   // Ruta programada cuyo flete aún no tiene monto (flota propia sin tarifa): figura en el registro para valorizarla
   // N.º correlativo por orden de registro: no cambia al ordenar ni filtrar
   // shortcut: numera los servicios cargados (desde la fecha del filtro); si el N.º debe ser fijo entre filtros, numerarlo en la base
-  const serialOf = useMemo(() => new Map([...services].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)).map((x, i) => [x.id, i + 1])), [services])
+  const deduplicated = useMemo(() => excludeIncompleteServiceDuplicates(services) as { services: ContractService[]; suppressedCount: number }, [services])
+  const visibleServices = deduplicated.services
+  const serialOf = useMemo(() => new Map([...visibleServices].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)).map((x, i) => [x.id, i + 1])), [visibleServices])
   const sinValorizar = (s: ContractService) => s.service_type === 'FLETE' && !!s.dispatch_id && s.status !== 'ANULADO' && Number(s.amount_pen) === 0
   const stageOf = (s: ContractService): RegistryContext['stage'] => s.status === 'ANULADO' ? 'ANULADO' : registryContext[s.id]?.stage || (s.dispatch_id ? 'OTRA_SEDE' : 'REGISTRO_MANUAL')
   const [pesoApt, setPesoApt] = useState<Record<string, PesoApt>>({})
@@ -546,8 +549,8 @@ export default function ContractServicesPage() {
     fetchData()
   }
 
-  const erpGuias = useErpGuiasLote(services.map(srv => ({ id: srv.id, ot: srv.contracts?.code, guias: serviceGuides(srv, registryContext).join(',') })))
-  const erpOts = useErpContratos(services.map(srv => srv.contracts?.code || ''))
+  const erpGuias = useErpGuiasLote(visibleServices.map(srv => ({ id: srv.id, ot: srv.contracts?.code, guias: serviceGuides(srv, registryContext).join(',') })))
+  const erpOts = useErpContratos(visibleServices.map(srv => srv.contracts?.code || ''))
   const erpMatches = (srv: ContractService) => {
     if (filterErp === 'TODOS') return true
     const g = erpGuias.items[srv.id]
@@ -560,7 +563,7 @@ export default function ContractServicesPage() {
       default: return true
     }
   }
-  const filteredServices = services.filter(srv => {
+  const filteredServices = visibleServices.filter(srv => {
     const searchString = `${srv.contracts?.code} ${srv.contracts?.clients?.business_name} ${srv.service_type} ${srv.category} ${srv.description} ${srv.plate} ${srv.driver_name} ${srv.provider_name} ${srv.provider_ruc} ${serviceGuides(srv, registryContext).join(' ')}`.toLowerCase()
     const matchesSearch = searchTerm ? searchString.includes(searchTerm.toLowerCase()) : true
     
@@ -683,6 +686,11 @@ export default function ContractServicesPage() {
         </select></FilterField>
         <span className="ml-auto whitespace-nowrap text-xs text-slate-500" aria-live="polite">{loading ? '' : `${filteredServices.length} servicio(s)`}</span>
       </FilterToolbar>
+
+      {deduplicated.suppressedCount > 0 && <div role="status" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+        <span>Se ocultaron {deduplicated.suppressedCount} registro(s) incompleto(s) duplicado(s); se muestra la versión con más datos. El histórico queda conservado en el sistema para mantener la trazabilidad de cargos y presupuestos.</span>
+      </div>}
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-jrm border border-jrm-line bg-jrm-surface px-3 py-2 shadow-jrm-card">
         <label htmlFor="registry-budget" className="flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-jrm-navy"><Scale className="h-4 w-4" aria-hidden="true" />Disponible de la partida · OT</label>
