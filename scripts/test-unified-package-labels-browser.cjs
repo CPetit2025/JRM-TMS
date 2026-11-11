@@ -239,6 +239,8 @@ const server = http.createServer(async (req, res) => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     page.on("dialog", (d) => d.accept("Reimpresión de prueba autorizada"));
+    // Esta cuenta ya eligió el formato del almacén (Zebra); una cuenta nueva parte de A5 vertical (ver label-print-layout).
+    await page.addInitScript(id => { for (const k of ['PAQUETE','LPN']) { const key='wh-label-print:v3:'+id+':'+k; if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({formatId:'',orientation:'FORMAT',paper:'LABEL'})) } }, uid);
     await page.addInitScript(() => {
       window.__printed = [];
       window.print = () => {
@@ -425,7 +427,8 @@ const server = http.createServer(async (req, res) => {
     await page.locator('.wh-package-preview').screenshot({path:out+'/05-etiqueta-a5-vertical.png',style:'body > :not(#wh-label-print-root) footer{visibility:hidden}'});
     const secondUser={...user,id:'00000000-0000-4000-8000-000000000002'};
     await ctx.route('**/auth/v1/user',route=>route.fulfill({json:secondUser}));await config.reload();
-    await config.getByText('Etiqueta actual: Zebra 6 x 4',{exact:false}).waitFor();
+    // Cuenta nueva sin preferencia guardada: parte de A5 vertical (no hereda la elección del primer usuario).
+    await config.getByText('Etiqueta actual: A5 vertical',{exact:false}).waitFor();
     await chooseSetting('Formato de la etiqueta de bulto',/^A5 horizontal/);await config.getByText('Etiqueta actual: A5 horizontal',{exact:false}).waitFor();
     await openLabels();await page.getByRole('button',{name:'Imprimir lote',exact:true}).click();await printed();
     assert.match(await page.locator('#wh-label-print-root .wh-package-responsible').first().innerText(),/Carlos Petit/,'switching logged-in user does not replace original responsible');

@@ -28,7 +28,8 @@ export function readPrintPreferences(raw: string | null, legacyId = ''): PrintPr
   try { value = raw ? JSON.parse(raw) || {} : {} } catch { /* usar valores seguros */ }
   const bounded = (v: unknown, fallback: number, min: number, max: number) => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : fallback
   return {
-    formatId: typeof value.formatId === 'string' && value.formatId ? value.formatId : legacyId || DEFAULT_PRINT_PREFERENCES.formatId,
+    // Sin nada guardado: A5 vertical. Un formatId vacío guardado significa «formato del almacén» y se respeta.
+    formatId: typeof value.formatId === 'string' ? value.formatId : legacyId || (raw ? '' : DEFAULT_PRINT_PREFERENCES.formatId),
     orientation: ['FORMAT', 'LANDSCAPE', 'PORTRAIT'].includes(value.orientation || '') ? value.orientation! : 'FORMAT',
     paper: PRINTER_PAPERS.some(p => p.value === value.paper) ? value.paper! : 'LABEL',
     paperWidth: bounded(value.paperWidth, 210, 15, 650),
