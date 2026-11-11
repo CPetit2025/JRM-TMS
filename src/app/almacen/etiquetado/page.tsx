@@ -24,7 +24,8 @@ type Receipt = {
   validation_status: 'PENDING' | 'STALE' | 'VALIDATED'; label_count: number; labeled_qty: number; unprinted_count: number; pending_labels: (Label & { lpn_code?: string | null })[]; label_status: string
 }
 /** OT/contrato normalizada como en el servidor (sin símbolos ni prefijo OT). */
-const otKey = (value: string | null) => (value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^OT/, '')
+// Número de OT (16571 en «16571-S002-022»): cada línea del contrato trae su propio sufijo. Igual que en wh_receipt_consolidate_lpn.
+const otKey = (value: string | null) => { const v = (value || '').toUpperCase(); return v.match(/[0-9]{5,6}/)?.[0] || v.replace(/[^A-Z0-9]/g, '') }
 const sameText = (a: string | null, b: string | null) => (a || '').trim().toUpperCase() === (b || '').trim().toUpperCase()
 const lpnOf = (receipt: Receipt) => receipt.pending_labels?.find(label => label.lpn_code)?.lpn_code || null
 
@@ -296,6 +297,10 @@ export default function WarehouseLabelingPage() {
   const firstChecked = receipts.find(receipt => receipt.receipt_key === checked[0])
   const canCheck = (receipt: Receipt) => receipt.validation_status === 'VALIDATED' && receipt.label_status === 'NOT_LABELED' && Number(receipt.physical_quantity) > 0 &&
     (!firstChecked || (otKey(receipt.contract_code) === otKey(firstChecked.contract_code) && sameText(receipt.customer_name, firstChecked.customer_name)))
+  // «Marcar todas»: las líneas consolidables del IPT del mismo cliente y OT que la primera marcada (o la primera disponible).
+  const lpnAnchor = firstChecked || selectedIptReceipts.find(r => r.validation_status === 'VALIDATED' && r.label_status === 'NOT_LABELED' && Number(r.physical_quantity) > 0)
+  const lpnCandidates = lpnAnchor ? selectedIptReceipts.filter(r => r.validation_status === 'VALIDATED' && r.label_status === 'NOT_LABELED' && Number(r.physical_quantity) > 0 &&
+    otKey(r.contract_code) === otKey(lpnAnchor.contract_code) && sameText(r.customer_name, lpnAnchor.customer_name)) : []
   const requiresVarianceReason = selected && physicalToValidate !== Number(selected.quantity)
   const canGenerate = selected?.validation_status === 'VALIDATED' && Number(selected.physical_quantity) > 0 && !['DIFFERENCE','MATCH','PENDING_PRINT'].includes(selected.label_status)
   const planQuantity = Number(selected?.physical_quantity || 0)
@@ -392,7 +397,9 @@ export default function WarehouseLabelingPage() {
             </div>
             <div className="max-h-56 overflow-auto rounded-lg border border-slate-200">
               <table className="min-w-[900px] lg:min-w-0 w-full text-left text-xs">
-                <thead className="sticky top-0 bg-slate-50 text-slate-600"><tr><th className="w-10 p-2"></th><th className="w-12 p-2">LPN</th><th className="p-2">#</th><th className="p-2">IPT / Código</th><th className="p-2">Descripción</th><th className="p-2">Lote</th><th className="p-2">Cliente</th><th className="p-2 text-right">ERP</th><th className="p-2">Estado</th></tr></thead>
+                <thead className="sticky top-0 bg-slate-50 text-slate-600"><tr><th className="w-10 p-2"></th><th className="w-12 p-2"><label className="flex items-center gap-1">LPN<input type="checkbox" className="h-4 w-4" aria-label="Marcar todas las líneas que se pueden consolidar"
+                  checked={lpnCandidates.length > 1 && lpnCandidates.every(r => checked.includes(r.receipt_key))} disabled={lpnCandidates.length < 2}
+                  onChange={event => setChecked(event.target.checked ? lpnCandidates.map(r => r.receipt_key) : [])}/></label></th><th className="p-2">#</th><th className="p-2">IPT / Código</th><th className="p-2">Descripción</th><th className="p-2">Lote</th><th className="p-2">Cliente</th><th className="p-2 text-right">ERP</th><th className="p-2">Estado</th></tr></thead>
                 <tbody>{selectedIptReceipts.map((receipt, index) => <tr key={receipt.receipt_key} className={receipt.receipt_key === selected.receipt_key ? 'border-t border-blue-200 bg-blue-50' : 'border-t border-slate-200'}>
                   <td className="p-2"><button type="button" onClick={() => select(receipt)} aria-label={'Seleccionar ' + receipt.product_code} aria-pressed={receipt.receipt_key === selected.receipt_key} className={receipt.receipt_key === selected.receipt_key ? 'grid h-6 w-6 place-items-center rounded-full border border-blue-700 bg-blue-700 text-white' : 'grid h-6 w-6 place-items-center rounded-full border border-slate-400 bg-white text-transparent'}>●</button></td>
                   <td className="p-2"><input type="checkbox" className="h-4 w-4" aria-label={'Consolidar ' + receipt.product_code + ' en el LPN'} checked={checked.includes(receipt.receipt_key)} disabled={busy || (!checked.includes(receipt.receipt_key) && !canCheck(receipt))}

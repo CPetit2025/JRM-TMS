@@ -1,6 +1,6 @@
 ﻿# Robot de ingresos WMS para etiquetado, al estilo del robot del ERP del TMS (scripts/erp-auto). Ver docs/robot-wms-recepcion.md.
 #   Instalar (una vez):  .\ejecutar.ps1 -Instalar -SupabaseUrl <url base WMS> -SupabaseAnon <clave pública> [-Entrada C:\WMS\entrada.xlsx] [-Url https://wms.jrmlogistica.app]
-#   La tarea corre cada minuto y solo pregunta a la base si toca: cada 30 minutos o al pulsar «Actualizar ahora» en la web.
+#   La tarea corre cada minuto y solo pregunta a la base si toca: cada 5 minutos o al pulsar «Actualizar ahora» en la web.
 #   Probar sin cargar:   & "$env:LOCALAPPDATA\JRM-TMS\wms-auto\ejecutar.ps1" -Revisar
 param(
   [switch]$Instalar,
@@ -42,7 +42,7 @@ if ($Instalar) {
   $quien = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive
   $ajustes = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -MultipleInstances IgnoreNew
   Register-ScheduledTask -TaskName $nombreTarea -Action $accion -Trigger $cuando -Principal $quien -Settings $ajustes -Force | Out-Null
-  Write-Output "Instalado en $destino; tarea «$nombreTarea»: actualiza cada 30 minutos y al pulsar «Actualizar ahora». Pruebe con: & `"$destino\ejecutar.ps1`" -Revisar"
+  Write-Output "Instalado en $destino; tarea «$nombreTarea»: actualiza cada 5 minutos y al pulsar «Actualizar ahora». Pruebe con: & `"$destino\ejecutar.ps1`" -Revisar"
   exit 0
 }
 
@@ -59,7 +59,7 @@ $env:WMS_CLAVE = $cred.GetNetworkCredential().Password
 $logs = Join-Path $destino 'logs'
 New-Item -ItemType Directory -Force $logs | Out-Null
 
-# ¿Toca? (cada 30 min o pedido desde la web). Si no, termina sin log: corre cada minuto.
+# ¿Toca? (cada 5 min o pedido desde la web). Si no, termina sin log: corre cada minuto.
 $run = $null
 if (-not $Revisar) {
   $ErrorActionPreference = 'Continue'

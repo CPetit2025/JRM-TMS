@@ -13,10 +13,10 @@ const OT='00000000-0000-0000-0000-00000000c573',CL='00000000-0000-0000-0000-0000
  let sql="DELETE FROM public.roles; DELETE FROM public.sites; INSERT INTO public.sites(code,name) VALUES('PRINCIPAL','Local');";
  for(const [k,p] of Object.entries(roles)) sql+=`INSERT INTO public.roles(name,permissions) VALUES('${k}','${JSON.stringify(p)}');`;
  for(const [u,id] of Object.entries(U)) sql+=`INSERT INTO auth.users VALUES('${id}'); INSERT INTO public.profiles(id,email,first_name,role_id,is_active) SELECT '${id}','${u}@x.pe','${u}',id,true FROM public.roles WHERE name='${u}'; INSERT INTO public.user_site_access SELECT '${id}',id FROM public.sites ON CONFLICT DO NOTHING;`;
- // Líneas del IPT-9 (OT 16573) y otra OT; R6 ya tiene etiqueta individual del lote 16573 (B-0001).
+ // Líneas del IPT-9 (OT 16573) y otra OT; R6 ya tiene etiqueta individual del lote 16573 (B-0001). R8 y R9 son ítems distintos del contrato (sufijos -022/-024) de la misma OT 16573.
  const src=[['R1','P-A','16573','16573',10,100,'Fargoline SAC'],['R2','P-B','16574','16573',5,20,'Fargoline SAC'],['R3','P-C','16573','16573',4,null,'Fargoline SAC'],
   ['R4','P-D','99999','99999',3,null,'Fargoline SAC'],['R5','P-E','16573','16573',2,null,'Otro cliente'],['R6','P-F','16573','16573',1,null,'Fargoline SAC'],
-  ['R8','P-H','16573','16573',6,null,'Fargoline SAC'],['R9','P-I','16573','16573',7,null,'Fargoline SAC']];
+  ['R8','P-H','16573','16573-S002-022',6,null,'Fargoline SAC'],['R9','P-I','16573','16573-S002-024',7,null,'Fargoline SAC']];
  sql+='SET session_replication_role=replica;'; // fuente cargada directa, sin corrida de importación
  for(const [k,p,lot,ot,qty,kg,cust] of src) sql+=`INSERT INTO public.wh_receipt_sources(source_key,site_id,document_no,source_date,warehouse,customer_name,product_code,description,quantity,unit,lot,contract_code,total_weight,source_import_hash) SELECT '${k}',id,'IPT-9','2026-11-11','APT','${cust}','${p}','Producto ${p}',${qty},'UND','${lot}','${ot}',${kg??'NULL'},'h' FROM public.sites;`;
  await db.exec(sql+'SET session_replication_role=origin;');
