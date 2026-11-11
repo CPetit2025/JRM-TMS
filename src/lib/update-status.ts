@@ -1,6 +1,6 @@
 // Estado de las actualizaciones automáticas para el banner del TMS y del WMS (mismo archivo en las dos apps).
 //  · ERP (stock y contratos): robot de la PC del ERP a las 07, 10, 13, 16 y 19 h de Lima (UTC−5, sin horario de verano).
-//  · Ingresos WMS: robot cada 30 minutos.
+//  · Ingresos WMS: robot cada 5 minutos.
 // «Actualizar ahora» agrega una ejecución; no cambia estos horarios.
 export const ERP_HOURS = [7, 10, 13, 16, 19] as const
 const LIMA_OFFSET_H = -5
@@ -45,15 +45,15 @@ export function erpState(e: { stock_at?: string | null; contratos_at?: string | 
   return overdue ? { level: 'late', lastAt, nextAt: next, detail: 'No se actualizó en la última hora programada' } : { level: 'ok', lastAt, nextAt: next, detail: 'Al día' }
 }
 
-/** Ingresos WMS: robot cada 30 min; más de 45 min sin una carga correcta es atraso. */
+/** Ingresos WMS: robot cada 5 min; más de 15 min sin una carga correcta es atraso. */
 export function ingresosState(i: { last_ok_at?: string | null; last_error_at?: string | null; last_error?: string | null; running_since?: string | null; pending?: boolean; last_auto_at?: string | null } | null, now: Date): SourceState {
   if (!i) return { level: 'unknown', lastAt: null, nextAt: null, detail: 'Sin datos' }
   const lastAt = date(i.last_ok_at), lastAuto = date(i.last_auto_at), err = date(i.last_error_at)
-  let nextAt = lastAuto ? new Date(lastAuto.getTime() + 30 * MIN) : null
+  let nextAt = lastAuto ? new Date(lastAuto.getTime() + 5 * MIN) : null
   if (nextAt && nextAt < now) nextAt = new Date(now.getTime() + MIN) // el robot pregunta cada minuto
   if (err && (!lastAt || err > lastAt)) return { level: 'error', lastAt, nextAt, detail: i.last_error || 'La última actualización falló' }
   if (i.running_since || i.pending) return { level: 'running', lastAt, nextAt, detail: i.pending ? 'Solicitud en cola' : 'Actualizando…' }
-  if (!lastAt || now.getTime() - lastAt.getTime() > 45 * MIN) return { level: 'late', lastAt, nextAt, detail: 'Más de 45 minutos sin actualizar' }
+  if (!lastAt || now.getTime() - lastAt.getTime() > 15 * MIN) return { level: 'late', lastAt, nextAt, detail: 'Más de 15 minutos sin actualizar' }
   return { level: 'ok', lastAt, nextAt, detail: 'Al día' }
 }
 

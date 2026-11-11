@@ -22,9 +22,9 @@ assert.equal(erpState({ stock_at: iso('2026-11-10T10:10'), contratos_at: iso('20
 assert.equal(erpState({ stock_at: iso('2026-11-10T10:10'), contratos_at: iso('2026-11-10T10:06'), request: { status: 'RUNNING', started_at: iso('2026-11-10T09:30') } }, now).level, 'error', 'solicitud trabada no queda en curso para siempre')
 assert.equal(erpState({ stock_at: iso('2026-11-10T10:10'), contratos_at: iso('2026-11-10T10:06'), request: { status: 'PENDING', requested_at: iso('2026-11-10T10:45') } }, now).level, 'error', 'solicitud que el robot no toma en 10 min')
 // Ingresos
-assert.equal(ingresosState({ last_ok_at: iso('2026-11-10T10:40'), last_auto_at: iso('2026-11-10T10:40') }, now).level, 'ok')
-assert.equal(ingresosState({ last_ok_at: iso('2026-11-10T10:40'), last_auto_at: iso('2026-11-10T10:40') }, now).nextAt.toISOString(), iso('2026-11-10T11:10'))
-assert.equal(ingresosState({ last_ok_at: iso('2026-11-10T10:00') }, now).level, 'late')
+assert.equal(ingresosState({ last_ok_at: iso('2026-11-10T10:57'), last_auto_at: iso('2026-11-10T10:57') }, now).level, 'ok')
+assert.equal(ingresosState({ last_ok_at: iso('2026-11-10T10:57'), last_auto_at: iso('2026-11-10T10:57') }, now).nextAt.toISOString(), iso('2026-11-10T11:02')) // robot cada 5 min
+assert.equal(ingresosState({ last_ok_at: iso('2026-11-10T10:00') }, now).level, 'late') // más de 15 min sin actualizar
 assert.equal(ingresosState({ last_ok_at: iso('2026-11-10T10:00'), last_error_at: iso('2026-11-10T10:30') }, now).level, 'error')
 assert.equal(ingresosState({ last_ok_at: iso('2026-11-10T10:40'), pending: true }, now).level, 'running')
 // Textos
