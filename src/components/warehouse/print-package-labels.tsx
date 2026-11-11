@@ -55,6 +55,7 @@ export async function printPackageLabels(
   };
   try {
     const { scale, width: labelWidth, height: labelHeight } = packageLabelLayout(format);
+    const rotated = "rotate" in page && page.rotate === true;
     flushSync(() =>
       root.render(
         <>
@@ -71,9 +72,10 @@ export async function printPackageLabels(
               <div
                 style={{
                   position: "absolute",
-                  left: `${page.position === "TOP_LEFT" ? page.margin_mm : (page.width_mm - format.width_mm) / 2}mm`,
-                  top: `${page.position === "TOP_LEFT" ? page.margin_mm : (page.height_mm - format.height_mm) / 2}mm`,
-                  transform: `scale(${scale})`,
+                  // Girada 90°: ocupa alto × ancho en la hoja; se corre su alto a la derecha porque gira sobre la esquina superior izquierda.
+                  left: `${(page.position === "TOP_LEFT" ? page.margin_mm : (page.width_mm - (rotated ? format.height_mm : format.width_mm)) / 2) + (rotated ? format.height_mm : 0)}mm`,
+                  top: `${page.position === "TOP_LEFT" ? page.margin_mm : (page.height_mm - (rotated ? format.width_mm : format.height_mm)) / 2}mm`,
+                  transform: `${rotated ? "rotate(90deg) " : ""}scale(${scale})`,
                   transformOrigin: "top left",
                   width: labelWidth,
                   height: labelHeight,

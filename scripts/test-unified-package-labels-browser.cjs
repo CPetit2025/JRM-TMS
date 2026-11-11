@@ -240,7 +240,7 @@ const server = http.createServer(async (req, res) => {
     page.on("pageerror", (e) => errors.push(e.message));
     page.on("dialog", (d) => d.accept("Reimpresión de prueba autorizada"));
     // Esta cuenta ya eligió el formato del almacén (Zebra); una cuenta nueva parte de A5 vertical (ver label-print-layout).
-    await page.addInitScript(id => { for (const k of ['PAQUETE','LPN']) { const key='wh-label-print:v3:'+id+':'+k; if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({formatId:'',orientation:'FORMAT',paper:'LABEL'})) } }, uid);
+    await page.addInitScript(id => { for (const k of ['PAQUETE','LPN']) { const key='wh-label-print:v4:'+id+':'+k; if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({formatId:'',orientation:'FORMAT',paper:'LABEL'})) } }, uid);
     await page.addInitScript(() => {
       window.__printed = [];
       window.print = () => {
@@ -427,14 +427,14 @@ const server = http.createServer(async (req, res) => {
     await page.locator('.wh-package-preview').screenshot({path:out+'/05-etiqueta-a5-vertical.png',style:'body > :not(#wh-label-print-root) footer{visibility:hidden}'});
     const secondUser={...user,id:'00000000-0000-4000-8000-000000000002'};
     await ctx.route('**/auth/v1/user',route=>route.fulfill({json:secondUser}));await config.reload();
-    // Cuenta nueva sin preferencia guardada: parte de A5 vertical (no hereda la elección del primer usuario).
-    await config.getByText('Etiqueta actual: A5 vertical',{exact:false}).waitFor();
+    // Cuenta nueva sin preferencia guardada: parte de la etiqueta A5 acostada (no hereda la elección del primer usuario).
+    await config.getByText('Etiqueta actual: A5 horizontal',{exact:false}).waitFor();
     await chooseSetting('Formato de la etiqueta de bulto',/^A5 horizontal/);await config.getByText('Etiqueta actual: A5 horizontal',{exact:false}).waitFor();
     await openLabels();await page.getByRole('button',{name:'Imprimir lote',exact:true}).click();await printed();
     assert.match(await page.locator('#wh-label-print-root .wh-package-responsible').first().innerText(),/Carlos Petit/,'switching logged-in user does not replace original responsible');
-    assert.ok(await page.locator('.wh-package-sheet').first().evaluate(n=>{const s=n.getBoundingClientRect(),l=n.querySelector('.wh-package-label').getBoundingClientRect();return Math.abs(s.width-l.width)<.2&&Math.abs(s.height-l.height)<.2}),'A5 horizontal coverage');
-    await page.emulateMedia({media:'print'});const horizontalPdf=await page.pdf({path:out+'/etiquetas-a5-horizontal.pdf',preferCSSPageSize:true,printBackground:true});await page.emulateMedia({media:'screen'});await done();
-    const horizontalBox=pdfBox(horizontalPdf);assert.ok(Math.abs(horizontalBox[2]-210*72/25.4)<1&&Math.abs(horizontalBox[3]-148*72/25.4)<1,'PDF is A5 horizontal');
+    assert.ok(await page.locator('.wh-package-sheet').first().evaluate(n=>{const s=n.getBoundingClientRect(),l=n.querySelector('.wh-package-label').getBoundingClientRect();return Math.abs(s.width-l.width)<.2&&Math.abs(s.height-l.height)<.2}),'la etiqueta acostada cubre toda la hoja A5 vertical');
+    await page.emulateMedia({media:'print'});await page.locator('#wh-label-print-root .wh-package-sheet').first().screenshot({path:out+'/etiqueta-acostada-hoja-a5-vertical.png'});const horizontalPdf=await page.pdf({path:out+'/etiqueta-acostada-hoja-a5-vertical.pdf',preferCSSPageSize:true,printBackground:true});await page.emulateMedia({media:'screen'});await done();
+    const horizontalBox=pdfBox(horizontalPdf);assert.ok(Math.abs(horizontalBox[2]-148*72/25.4)<1&&Math.abs(horizontalBox[3]-210*72/25.4)<1,'por defecto: hoja A5 vertical con la etiqueta acostada (girada 90°)');
     await ctx.unroute('**/auth/v1/user');await config.reload();await config.getByText('Etiqueta actual: A5 vertical',{exact:false}).waitFor();
     assert.match(await paper.innerText(),/^A5 vertical/,'another account cannot change original user preference');
     await paper.press('ArrowDown');await config.getByRole('listbox').waitFor();
