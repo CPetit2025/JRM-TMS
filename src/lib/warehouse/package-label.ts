@@ -15,6 +15,8 @@ export type PackageLabelData = {
   contract_code: string | null;
   customer_name: string;
   reception_responsible_name: string | null;
+  /** Solo en la etiqueta de un LPN de recepción: líneas que contiene (el detalle va en la hoja de contenido). */
+  content_lines?: number;
 };
 type LabelSource = { package_code: string; [key: string]: unknown };
 const text = (v: unknown) => (v == null ? "" : String(v));

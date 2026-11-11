@@ -287,7 +287,7 @@ export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
           {units.map(u => <option key={u.id} value={u.id}>{unitLabel(u)} · cargados {u.loaded_count}/{u.lpn_count}</option>)}
         </select></label>}
       <form onSubmit={scan} className="flex gap-2">
-        <input ref={input} value={code} onChange={e => setCode(e.target.value)} autoFocus inputMode="text" autoComplete="off" placeholder={task.status === 'READY_FOR_LOAD' ? 'Escanee LPN o paquete para cargar…' : 'Escanee el código del paquete…'} className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-3 text-base"/>
+        <input ref={input} value={code} onChange={e => setCode(e.target.value)} autoFocus inputMode="text" autoComplete="off" placeholder={task.status === 'READY_FOR_LOAD' ? 'Escanee LPN o paquete para cargar…' : 'Escanee el código del paquete o del LPN de recepción…'} className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-3 text-base"/>
         <button disabled={busy || !code.trim()} className={`${btn} bg-[#002855] text-white`}>{busy ? <Loader2 size={17} className="animate-spin"/> : <ScanLine size={17}/>}<span className="hidden sm:inline">Registrar</span></button>
         <button type="button" aria-label={camera ? 'Cerrar cámara' : 'Escanear con cámara'} onClick={() => camera ? (stream.current?.getTracks().forEach(t => t.stop()), stream.current = null, setCamera(false)) : void startCamera()} className={`${btn} border border-slate-300`}><Camera size={17}/></button>
       </form>

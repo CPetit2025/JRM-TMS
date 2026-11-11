@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { DataTable } from '@/components/ui/data-table'
 import { TablePagination } from '@/components/ui/table-pagination'
@@ -28,6 +29,7 @@ type ReceiptPackage = {
   sequence_total: number
   source_movement_key: string
   label_print_count: number
+  lpn_id: string | null
   status: string
   created_at: string
 }
@@ -84,9 +86,10 @@ export default function AptReceiptControlPage() {
     const client = createClient()
     const { data, error: queryError } = await client
       .from('wh_packages')
-      .select('package_code,source_document_no,source_contract_code,source_lot,source_product_code,source_warehouse,source_date,description,quantity,unit,weight_kg,sequence_no,sequence_total,source_movement_key,label_print_count,status,created_at')
+      .select('package_code,source_document_no,source_contract_code,source_lot,source_product_code,source_warehouse,source_date,description,quantity,unit,weight_kg,sequence_no,sequence_total,source_movement_key,label_print_count,lpn_id,status,created_at')
       .eq('source_system', 'ERP')
-      .gt('label_print_count', 0)
+      // Las líneas de un LPN de recepción no imprimen etiqueta propia: se identifican con la del LPN.
+      .or('label_print_count.gt.0,lpn_id.not.is.null')
       .neq('status', 'VOID')
       .order('created_at', { ascending: false })
       .limit(2000)
@@ -305,7 +308,7 @@ export default function AptReceiptControlPage() {
                 <td className="p-3">{row.source_lot || '—'}</td><td className="p-3 text-right tabular-nums">{unitIsPiece(row.unit) ? numberFmt.format(row.quantity) : '—'}</td>
                 <td className="p-3 text-right tabular-nums">{row.weight_kg === null ? '—' : numberFmt.format(row.weight_kg)}</td>
                 <td className="p-3"><div className="w-48"><Code128Barcode value={row.package_code} height={48} className="h-9 w-full"/><span className="font-mono text-xs font-bold text-[#002855]">{row.package_code}</span></div></td>
-                <td className="p-3"><button type="button" disabled={printingCode !== null} onClick={() => void printExistingPackage(row)} className="inline-flex min-h-9 items-center gap-2 whitespace-nowrap rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Printer size={14}/>{printingCode === row.package_code ? 'Preparando…' : 'Reimprimir'}</button><small className="mt-1 block text-slate-500">{Math.max(0, row.label_print_count - 1)} reimpresión(es)</small></td>
+                <td className="p-3">{row.lpn_id && row.label_print_count === 0 ? <Link href={`/almacen/paquetes/${encodeURIComponent(row.package_code)}`} className="inline-flex min-h-9 items-center whitespace-nowrap rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-[#002855]">En LPN · ver etiqueta</Link> : <><button type="button" disabled={printingCode !== null} onClick={() => void printExistingPackage(row)} className="inline-flex min-h-9 items-center gap-2 whitespace-nowrap rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Printer size={14}/>{printingCode === row.package_code ? 'Preparando…' : 'Reimprimir'}</button><small className="mt-1 block text-slate-500">{Math.max(0, row.label_print_count - 1)} reimpresión(es)</small></>}</td>
               </tr>)}</tbody>
             </table>
           </div>
