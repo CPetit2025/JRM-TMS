@@ -123,6 +123,8 @@
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+  /* Tope real de 2 líneas: en la impresión el line-clamp no siempre recorta y una 3.ª línea asomaba bajo las barras */
+  max-height: 2.5em;
 }
 /* El QR ocupa el alto de barras + identificador; ambas áreas conservan el espacio total anterior. */
 .wh-package-codes {
