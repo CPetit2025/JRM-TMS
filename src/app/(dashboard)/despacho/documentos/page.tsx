@@ -188,7 +188,7 @@ function DocumentaryQueue() {
       finally { fetching = false }
     }
     void run()
-    const timer = window.setInterval(() => void run(), 30000)
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void run() }, 30000)
     return () => { cancel = true; window.clearInterval(timer) }
   }, [supabase, showDeparted, phase, dateFrom, dateUntil, reload, packingOnly, isLoaded])
 

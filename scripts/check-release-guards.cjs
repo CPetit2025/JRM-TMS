@@ -122,6 +122,19 @@ for (const { file, text } of sources) {
   }
 }
 
+// 7. Estilo único de tablas (docs/estilo-tablas.md): toda <table> nueva en el panel usa DataTable + TablePagination.
+const tableAllow = new Set([ // excepciones existentes al crear la guarda (reportes e impresión)
+  'apt/clasico/ingresos/page.tsx', 'apt/clasico/page.tsx', 'despacho/control-presupuestal/movimientos/page.tsx',
+  'despacho/control-presupuestal/page.tsx', 'despacho/control-presupuestal/pendientes/page.tsx',
+  'despacho/control-presupuestal/[ot]/page.tsx', 'despacho/cubicaje/page.tsx', 'despacho/documentos/economico/page.tsx',
+  'flota/reporte-mensual/page.tsx', 'flota/reporte-unidad/page.tsx',
+])
+for (const { file, text } of sources) {
+  if (!file.startsWith(dashDir + path.sep) || !/<table[\s>]/.test(text)) continue
+  const rel = path.relative(dashDir, file).split(path.sep).join('/')
+  if (!tableAllow.has(rel)) errors.push(`src/app/(dashboard)/${rel}: usa <table>; use DataTable + TablePagination (docs/estilo-tablas.md).`)
+}
+
 if (errors.length) {
   console.error('Guardas fallidas:\n- ' + errors.join('\n- '))
   process.exit(1)
