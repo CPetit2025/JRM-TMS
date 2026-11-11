@@ -1,7 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { DataTable } from '@/components/ui/data-table'
 import { TablePagination } from '@/components/ui/table-pagination'
 import { usePagination } from '@/lib/use-pagination'
 import { readCache, writeCache } from '@/lib/use-cached'
@@ -195,14 +196,16 @@ export default function AptReceiptControlPage() {
     )
   }, [rows, validations, customers])
 
+  // Filtrar no bloquea la escritura: el filtro corre sobre el valor diferido
+  const deferredQuery = useDeferredValue(query)
   const filtered = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase()
+    const q = deferredQuery.trim().toLocaleLowerCase()
     if (!q) return groups
     return groups.filter(group => [
       group.documentNo, group.contractCode || '', group.lot, group.productCode,
       group.customerName || '', ...group.packages.map(row => row.package_code),
     ].some(value => value.toLocaleLowerCase().includes(q)))
-  }, [groups, query])
+  }, [groups, deferredQuery])
   const pager = usePagination(filtered, 'apt-etiquetas-impresas')
 
   const receiverNames = (group: ReceiptGroup) => [...new Set(group.validations.map(row =>
@@ -252,7 +255,7 @@ export default function AptReceiptControlPage() {
       </label>
 
       <div className="w-full overflow-x-auto rounded-lg border border-slate-200">
-        <table className="min-w-[980px] lg:min-w-0 w-full table-fixed text-left text-sm lg:min-w-0">
+        <DataTable dense className="min-w-[980px] lg:min-w-0 w-full table-fixed text-left text-sm">
           <colgroup><col style={{ width: "9%" }}/><col style={{ width: "10%" }}/><col style={{ width: "17%" }}/><col style={{ width: "29%" }}/><col style={{ width: "7%" }}/><col style={{ width: "10%" }}/><col style={{ width: "8%" }}/><col style={{ width: "10%" }}/></colgroup>
           <thead className="bg-slate-50 text-xs font-semibold text-slate-600"><tr>
             <th className="p-2">Lote</th><th className="p-2">IPT</th><th className="p-2">Cliente</th><th className="p-2">Descripción</th>
@@ -273,7 +276,7 @@ export default function AptReceiptControlPage() {
             {!loading && filtered.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-sm text-slate-500">{query ? 'No hay líneas recepcionadas que coincidan con la búsqueda.' : 'Todavía no hay ingresos recepcionados en el APT.'}</td></tr>}
             {loading && <tr><td colSpan={8} className="p-10 text-center text-sm text-slate-500">Cargando recepciones…</td></tr>}
           </tbody>
-        </table>
+        </DataTable>
       </div>
       {filtered.length > 0 && <TablePagination total={pager.total} page={pager.page} pageSize={pager.pageSize} onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize} itemLabel="líneas de ingreso" compact />}
       <p className="mt-3 text-xs text-slate-500">Cada fila representa un ítem ingresado en el IPT. Sus bultos pendientes de impresión permanecen en «02 · Recepción por IPT».</p>
