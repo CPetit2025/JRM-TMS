@@ -137,7 +137,7 @@ BEGIN
   -- T10: lecturas para el usuario con permiso y barreras de permisos
   IF (public.inv_overview()->>'success')::boolean AND (public.inv_dwell('{}')->>'success')::boolean
      AND (public.inv_flow('{}')->>'success')::boolean AND (public.inv_status()->>'success')::boolean
-     AND NOT has_function_privilege('anon', 'public.inv_status()', 'EXECUTE')
+     AND NOT has_function_privilege('anon', 'public.inv_status(boolean)', 'EXECUTE')
      AND NOT has_function_privilege('authenticated', 'public.inv_rebuild()', 'EXECUTE')
      AND NOT has_function_privilege('authenticated', 'public.inv_upload_apply_core(uuid,boolean)', 'EXECUTE')
      AND NOT has_table_privilege('authenticated', 'public.inv_movements', 'SELECT')

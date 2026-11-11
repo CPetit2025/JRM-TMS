@@ -49,3 +49,42 @@ cambio. La sesión de TMS se conserva al salir hacia WMS, y viceversa.
 indicador de sistema, borrado de credenciales, dirección ausente y destinos
 inválidos. La comprobación `scripts/test-wms-isolation.mjs` pertenece a la rama WMS;
 este cambio de TMS no incorpora sus rutas ni sus migraciones.
+
+## Administración central de cuentas
+
+En TMS, **Usuarios del Sistema** y **Roles y Permisos** incluyen un selector TMS/WMS.
+Cada vista consulta su propio directorio: el mismo correo puede existir en ambos,
+pero los identificadores, roles, contraseñas y estados son independientes. No se
+crean cuentas ni se conceden permisos por cambiar de pestaña.
+
+Para dar acceso al almacén: Usuarios → WMS → **Habilitar usuario TMS**. Busque y
+seleccione una persona del directorio TMS; los datos se muestran en lectura.
+Seleccione su rol WMS (por ejemplo, **Auditor de Despacho**) y marque **Habilitar
+acceso al WMS**. El servidor consulta los datos de la persona en TMS por su ID;
+no acepta una identidad inventada por el navegador. No se cambian su rol, estado
+ni contraseña en TMS.
+
+Si el correo ya tiene cuenta WMS, se reutiliza conservando su contraseña. Si es
+nuevo, se crea la cuenta WMS y se muestra un enlace de primer acceso para copiar
+y compartir con esa persona. El usuario configura su propia contraseña WMS. No
+se copian contraseñas TMS ni se envían correos automáticamente. El enlace solo se
+muestra al administrador en esa operación y se limpia al abrir otra alta. Si no
+se puede generar, el acceso guardado se informa con la alternativa de recuperación
+de contraseña WMS. Un registro nuevo queda inactivo si no se marca la casilla.
+
+Roles operativos existentes: **Asistente de Recepción** (recepción y etiquetado),
+**Auditor de Despacho** y **Analista de Inventario**. La pestaña WMS de Roles y
+Permisos permite crear roles operativos y editar sus permisos de almacén. Los
+administradores WMS quedan protegidos y se mantienen desde su entorno de seguridad.
+
+La API de TMS comprueba el administrador activo y remite su token exclusivamente al
+origen fijo `https://wms.jrmlogistica.app`, sin seguir redirecciones. La API WMS
+vuelve a verificar el token y el perfil administrador en la base TMS antes de usar
+su cliente privilegiado local. Se utilizan las variables de integración ya
+existentes en WMS (`TMS_SUPABASE_URL`, `TMS_SUPABASE_ANON_KEY`); las claves
+privilegiadas permanecen en cada despliegue. No hay migraciones de base de datos.
+
+Orden de publicación: primero la API en la rama WMS; luego la administración en
+TMS. WMS valida su referencia de producción y rechaza otras bases. Un error de
+conexión se muestra como error, sin asumir que el acceso fue guardado. Si se pierde
+la respuesta de una escritura, consulte el listado antes de repetirla.

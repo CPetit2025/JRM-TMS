@@ -2,6 +2,27 @@ import { useState, useEffect, useCallback } from 'react';
 import { normalizeRoleName } from '@/lib/roles';
 import { createClient } from '@/lib/supabase/client';
 
+// Un solo pedido compartido: muchos componentes usan este hook y cada uno pedía usuario y perfil por su cuenta.
+type Loaded = { role: string; permissions: string[] } | null
+let shared: { at: number; promise: Promise<Loaded> } | null = null
+function loadShared(): Promise<Loaded> {
+  if (shared && Date.now() - shared.at < 30_000) return shared.promise
+  const promise = (async (): Promise<Loaded> => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data: profile, error } = await supabase.from('profiles')
+      .select('is_active, roles(name, permissions)').eq('id', user.id).maybeSingle();
+    if (error) throw error;
+    if (!profile?.is_active) return null;
+    const linkedRole = Array.isArray(profile.roles) ? profile.roles[0] : profile.roles;
+    return { role: normalizeRoleName(linkedRole?.name), permissions: Array.isArray(linkedRole?.permissions) ? linkedRole.permissions : [] };
+  })();
+  shared = { at: Date.now(), promise }
+  promise.catch(() => { if (shared?.promise === promise) shared = null })
+  return promise
+}
+
 export function usePermissions() {
   const [role, setRole] = useState<string>('');
   const [permissions, setPermissions] = useState<string[]>([]);
@@ -11,24 +32,14 @@ export function usePermissions() {
     let cancelled = false;
     const loadPermissions = async () => {
       try {
-        const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
+        const loaded = await loadShared();
+        if (!loaded) {
           localStorage.removeItem('userRole');
           localStorage.removeItem('userPermissions');
           return;
         }
-        const { data: profile, error } = await supabase.from('profiles')
-          .select('is_active, roles(name, permissions)').eq('id', user.id).maybeSingle();
-        if (error) throw error;
-        if (!profile?.is_active) {
-          localStorage.removeItem('userRole');
-          localStorage.removeItem('userPermissions');
-          return;
-        }
-        const linkedRole = Array.isArray(profile.roles) ? profile.roles[0] : profile.roles;
-        const nextRole = normalizeRoleName(linkedRole?.name);
-        const nextPermissions = Array.isArray(linkedRole?.permissions) ? linkedRole.permissions : [];
+        const nextRole = loaded.role;
+        const nextPermissions = loaded.permissions;
         if (cancelled) return;
         setRole(nextRole);
         setPermissions(nextPermissions);

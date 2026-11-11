@@ -1,4 +1,5 @@
 "use client"
+import { SystemAdministration } from '@/components/admin/SystemAdministration'
 import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
@@ -27,7 +28,7 @@ interface Role {
 // Registro público esperando aprobación: inactivo y sin rol (el administrador asigna el rol y luego activa)
 const isPending = (user: Profile) => user.is_active === false && !user.roles?.id
 
-export default function UsuariosPage() {
+function TmsUsuariosPage() {
   const [supabase] = useState(() => createClient())
   const [users, setUsers] = useState<Profile[]>([])
   const [roles, setRoles] = useState<Role[]>([])
@@ -290,4 +291,8 @@ export default function UsuariosPage() {
       />
     </div>
   )
+}
+
+export default function UsuariosPage() {
+  return <SystemAdministration mode="users"><TmsUsuariosPage /></SystemAdministration>
 }

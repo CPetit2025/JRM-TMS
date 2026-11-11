@@ -1,4 +1,5 @@
 "use client"
+import { SystemAdministration } from '@/components/admin/SystemAdministration'
 import { PageHeader } from '@/components/ui/page-header'
 import { DataTable } from '@/components/ui/data-table'
 
@@ -58,7 +59,7 @@ function diffPermissions(before: string[], after: string[]): string[] {
   return out
 }
 
-export default function PermisosPage() {
+function TmsPermisosPage() {
   const [supabase] = useState(() => createClient())
   const { canWrite } = usePermissions()
   const writable = canWrite('permisos')
@@ -401,4 +402,8 @@ export default function PermisosPage() {
       </Modal>}
     </div>
   )
+}
+
+export default function PermisosPage() {
+  return <SystemAdministration mode="roles"><TmsPermisosPage /></SystemAdministration>
 }
