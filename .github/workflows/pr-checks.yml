@@ -143,7 +143,15 @@ jobs:
       - run: node scripts/test-driver-trip-transaction.cjs
       - run: node scripts/test-delivery-conformity.cjs
       - name: PDF verification tools
-        run: sudo apt-get update -qq && sudo apt-get install -y poppler-utils
+        # El espejo de Azure falla a veces por DNS: se reintenta y, si sigue, se usa archive.ubuntu.com
+        run: |
+          command -v pdftotext && exit 0
+          for i in 1 2 3; do
+            sudo apt-get update -qq && sudo apt-get install -y poppler-utils && break
+            sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#' /etc/apt/sources.list.d/ubuntu.sources || true
+            sleep 15
+          done
+          command -v pdftotext
       - run: node scripts/test-outsourcing-document.cjs
       - run: node scripts/test-preuse.cjs
       - run: node scripts/test-dispatch-auditor.cjs
