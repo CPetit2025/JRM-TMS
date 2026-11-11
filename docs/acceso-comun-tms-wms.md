@@ -57,11 +57,20 @@ Cada vista consulta su propio directorio: el mismo correo puede existir en ambos
 pero los identificadores, roles, contraseñas y estados son independientes. No se
 crean cuentas ni se conceden permisos por cambiar de pestaña.
 
-Para dar acceso al almacén: Usuarios → WMS → Nuevo usuario WMS; registre el correo,
-el documento, una contraseña inicial y su rol WMS. Marque **Habilitar acceso al WMS**
-solo si debe ingresar. Para retirarlo, edite esa cuenta y desmarque la casilla.
-Dar de baja en un sistema no da de baja en el otro. Las nuevas cuentas WMS quedan
-inactivas por defecto. No se copia ni cambia la contraseña del TMS.
+Para dar acceso al almacén: Usuarios → WMS → **Habilitar usuario TMS**. Busque y
+seleccione una persona del directorio TMS; los datos se muestran en lectura.
+Seleccione su rol WMS (por ejemplo, **Auditor de Despacho**) y marque **Habilitar
+acceso al WMS**. El servidor consulta los datos de la persona en TMS por su ID;
+no acepta una identidad inventada por el navegador. No se cambian su rol, estado
+ni contraseña en TMS.
+
+Si el correo ya tiene cuenta WMS, se reutiliza conservando su contraseña. Si es
+nuevo, se crea la cuenta WMS y se muestra un enlace de primer acceso para copiar
+y compartir con esa persona. El usuario configura su propia contraseña WMS. No
+se copian contraseñas TMS ni se envían correos automáticamente. El enlace solo se
+muestra al administrador en esa operación y se limpia al abrir otra alta. Si no
+se puede generar, el acceso guardado se informa con la alternativa de recuperación
+de contraseña WMS. Un registro nuevo queda inactivo si no se marca la casilla.
 
 Roles operativos existentes: **Asistente de Recepción** (recepción y etiquetado),
 **Auditor de Despacho** y **Analista de Inventario**. La pestaña WMS de Roles y

@@ -56,3 +56,16 @@ test('unavailable WMS never reports success', async () => {
   assert.equal(response.status, 503)
   assert.match((await response.json()).error, /No se confirmó/)
 })
+test('successful WMS directory includes TMS users resolved with the TMS schema', async () => {
+  const person = { id: 'tms-person', username: 'ana@jrmsac.com.pe', first_name: 'Ana' }
+  const admin = { adminClient: { from(table) {
+    assert.equal(table, 'profiles')
+    return { select(fields) { assert.ok(!fields.split(', ').includes('email')); return { order: () => ({ range: async () => ({ data: [person] }) }) } } }
+  } } }
+  const api = proxy(admin, async () => Response.json({ users: [], roles: [] }))
+  const response = await api.GET(new Request('https://tms.test/api/admin/wms'))
+  assert.equal(response.status, 200)
+  const result = await response.json()
+  assert.equal(result.tmsUsers[0].id, 'tms-person')
+  assert.equal(result.tmsUsers[0].username, person.username)
+})
