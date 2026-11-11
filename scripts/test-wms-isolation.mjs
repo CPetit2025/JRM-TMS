@@ -26,3 +26,6 @@ for (const path of ['/api/erp/aplicar', '/api/inventario/procesar', '/api/apt/pr
 assert.equal(wmsRouteAllowed('/almacen/etiquetado', 'GET'), true)
 assert.equal(wmsRouteAllowed('/almacen-malicioso', 'GET'), false)
 console.log('PASS: WMS production rejects other databases and blocks TMS routes/API mutations; TMS mode is unchanged.')
+for (const method of ['GET', 'POST']) assert.equal(wmsRouteAllowed('/api/admin/wms', method), true)
+for (const method of ['PUT', 'DELETE', 'PATCH']) assert.equal(wmsRouteAllowed('/api/admin/wms', method), false)
+for (const path of ['/api/admin/wms/extra', '/api/admin/users', '/api/admin/wms-evil']) assert.equal(wmsRouteAllowed(path, 'POST'), false)
