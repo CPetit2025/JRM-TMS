@@ -39,7 +39,7 @@ export default function FinanzasTcoPage() {
   useEffect(() => { loadAll().then(apply) }, [apply])
 
   const rows = useMemo(() => tco.filter(r => ownership === 'TODOS' || r.ownership_status === ownership), [tco, ownership])
-  const pg = usePagination(rows, 'mantenimiento-finanzas')
+  const pg = usePagination(rows, 'mantenimiento-finanzas', (r, c) => [r.plate, ...CATS.map(([k]) => Number(r[k] ?? 0)), Number(r.total_tco ?? 0), r.cpk, r.cost_per_hour][c])
   const totals = useMemo(() => {
     const t: Record<string, number> = { total_tco: 0 }
     CATS.forEach(([k]) => { t[k] = 0 })
@@ -100,7 +100,7 @@ export default function FinanzasTcoPage() {
           </div>
 
           <div className="bg-white border rounded-xl overflow-x-auto">
-            <DataTable className="w-full text-sm">
+            <DataTable className="w-full text-sm" onSortChange={pg.onSortChange}>
               <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
                 <th className="text-left p-3">Unidad</th>{CATS.map(([, l]) => <th key={l} className="text-right p-3">{l}</th>)}<th className="text-right p-3">TCO</th><th className="text-right p-3">Costo/km</th><th className="text-right p-3">Costo/h</th>
               </tr></thead>

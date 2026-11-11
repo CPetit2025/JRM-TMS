@@ -68,7 +68,11 @@ export default function DespachoPage() {
       districtOf(r.pickup_address, r.pickup_district), districtOf(r.delivery_address, r.delivery_district)].join(' ').toLocaleLowerCase('es-PE').includes(term)
     return matchSearch && (!pendingService || serviceKind(r) === pendingService)
   })
-  const pendingPg = usePagination(visiblePending, 'despacho-pendientes')
+  const pendingPg = usePagination(visiblePending, 'despacho-pendientes', (req, c) => [
+    req.created_at, req.required_at || req.required_date, serviceKind(req), req.contracts?.code ? `OT ${req.contracts.code}` : referenceLabel(req) || 'Sin OT',
+    partyName(req, (req.request_client?.business_name || req.contracts?.clients?.business_name), req.suppliers?.business_name),
+    `${districtOf(req.pickup_address, req.pickup_district)} → ${districtOf(req.delivery_address, req.delivery_district)}`,
+    req.contracts?.code ? req.contracts?.contract_budgets?.[0]?.balance_pen : !req.contract_id && referenceLabel(req) ? Number(req.service_cost || 0) : null, null][c])
 
 
   const fetchData = useCallback(async () => {
@@ -245,7 +249,7 @@ export default function DespachoPage() {
             <p className="text-xs text-slate-500">Programados y en ruta: <Link href="/torre-control" className="font-semibold text-jrm-navy hover:underline">Torre de Control</Link> · Servicios realizados: <Link href="/contratos/servicios" className="font-semibold text-jrm-navy hover:underline">Registro de servicios</Link></p>
           </div>
           <div className="overflow-x-auto">
-            <DataTable dense className="w-full border-collapse text-left">
+            <DataTable dense className="w-full border-collapse text-left" onSortChange={pendingPg.onSortChange}>
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                 <tr>
                   {['Registro', 'Atención', 'Servicio', 'OT / OC / OS / RQ', 'Empresa', 'Origen → Destino', 'Partida / costo', 'Acciones'].map((title, i) => <th key={title} className={`whitespace-nowrap font-semibold ${i === 7 ? 'text-right' : ''}`}>{title}</th>)}

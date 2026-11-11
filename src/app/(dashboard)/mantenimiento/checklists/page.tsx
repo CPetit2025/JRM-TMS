@@ -63,7 +63,8 @@ export default function ChecklistsPage() {
   useEffect(() => { loadAll().then(apply) }, [apply])
 
   const filtered = useMemo(() => inspections.filter(i => resultFilter === 'TODOS' || i.global_result === resultFilter), [inspections, resultFilter])
-  const pg = usePagination(filtered, 'mantenimiento-checklists')
+  const pg = usePagination(filtered, 'mantenimiento-checklists', (i, c) => [new Date(i.date).getTime(), i.vehicle_plate, i.inspection_type,
+    RESULT_LABEL[i.global_result] || i.global_result, i.inspector_name || i.driver_name, Number(i.requests_created)][c])
 
   return (
     <div className="space-y-3">
@@ -93,7 +94,7 @@ export default function ChecklistsPage() {
               </select>
               <div className="bg-white border rounded-xl overflow-x-auto">
                 {filtered.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">Sin inspecciones registradas.</p> : (
-                  <><DataTable className="w-full text-sm">
+                  <><DataTable className="w-full text-sm" onSortChange={pg.onSortChange}>
                     <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
                       <th className="text-left p-3">Fecha</th><th className="text-left p-3">Unidad</th><th className="text-left p-3">Tipo / plantilla</th>
                       <th className="text-left p-3">Resultado</th><th className="text-left p-3">Inspector</th><th className="text-right p-3">Fallas generadas</th>

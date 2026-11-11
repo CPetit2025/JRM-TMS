@@ -212,7 +212,7 @@ export function TransportTariffManager() {
   const set = (patch: Partial<typeof EMPTY>) => setForm(f => (f ? { ...f, ...patch } : f))
   const scopeLabel = (r: Rate) => r.scope === 'CLIENTE' ? `Cliente: ${clientName(r.client_id)}` : r.scope === 'CONTRATO' ? `Contrato ${contractName(r.contract_id)}` : 'General'
 
-  const pg = usePagination(visible, "tarifas-transporte")
+  const pg = usePagination(visible, "tarifas-transporte", (r, c) => [CONCEPTS[r.concept] || r.concept, r.district, r.vehicle_class, scopeLabel(r), r.rate, r.client_price, r.valid_from][c])
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -248,7 +248,7 @@ export function TransportTariffManager() {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <DataTable className="w-full text-left text-sm">
+        <DataTable onSortChange={pg.onSortChange} className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-3 py-2.5">Concepto</th><th className="px-3 py-2.5">Destino</th><th className="px-3 py-2.5">Unidad</th>

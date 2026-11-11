@@ -197,7 +197,7 @@ export default function GastosPage() {
     if (me) void loadMine(me)
   }
 
-  const pg = usePagination(mine, 'caja-gastos-mios')
+  const pg = usePagination(mine, 'caja-gastos-mios', (e, c) => [e.expense_date, e.dispatch?.dispatch_number || 'Sin viaje', catLabel[e.expense_type] || e.expense_type, e.document_type ? `${e.document_type} ${e.document_series || ''}-${e.document_number || ''}` : null, Number(e.amount), (EXPENSE_STATUS[e.status] || { label: e.status }).label, null][c])
   if (isLoaded && !canWrite('caja-gastos')) return <div className="p-10 text-center text-slate-500">No tiene permiso para registrar gastos.</div>
 
   return (
@@ -364,7 +364,7 @@ export default function GastosPage() {
       ) : (
         <div className="bg-white border border-slate-200 rounded-xl overflow-auto">
           {loadingMine ? <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div> : (
-            <DataTable className="w-full text-sm">
+            <DataTable className="w-full text-sm" onSortChange={pg.onSortChange}>
               <thead className="bg-slate-50 text-xs text-slate-500"><tr>
                 <th className="p-3 text-left">Fecha</th><th className="p-3 text-left">Viaje / Unidad</th><th className="p-3 text-left">Categoría</th>
                 <th className="p-3 text-left">Comprobante</th><th className="p-3 text-right">Monto</th><th className="p-3 text-left">Estado</th><th className="p-3" />

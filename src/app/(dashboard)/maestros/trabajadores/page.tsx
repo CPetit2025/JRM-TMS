@@ -140,7 +140,8 @@ export default function TrabajadoresPage() {
     setIsModalOpen(true)
   }
 
-  const pg = usePagination(filteredList, 'maestros-trabajadores')
+  const pg = usePagination(filteredList, 'maestros-trabajadores', (t, c) => [`${t.last_name}, ${t.first_name}`, t.document_number, t.employee_type,
+    t.employee_type === 'Conductor' ? t.license_type : null, t.is_active ? 'Activo' : 'Inactivo', null][c])
   return (
     <div className="space-y-3">
       <PageHeader showTitle title="Personal Interno" description="Trabajadores propios que se asignan a tareos, HHEE y rutas; separado del personal de empresas proveedoras." actions={<>
@@ -204,7 +205,7 @@ export default function TrabajadoresPage() {
             No hay trabajadores operativos registrados.
           </div>
         ) : (
-          <DataTable className="w-full text-sm text-left">
+          <DataTable className="w-full text-sm text-left" onSortChange={pg.onSortChange}>
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b">
               <tr>
                 <th className="p-4 font-semibold">Apellidos y Nombres</th>

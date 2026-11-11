@@ -78,8 +78,9 @@ export default function FlotaPage() {
   
   const filteredVehicles = filterFleetVehicles(vehicles, drivers, carriers, vehicleFilters, limaDay())
   const filteredDrivers = filterFleetDrivers(drivers, vehicles, carriers, driverFilters)
-  const vehiclePg = usePagination(filteredVehicles, 'mantenimiento-flota:vehicles')
-  const driverPg = usePagination(filteredDrivers, 'mantenimiento-flota:drivers')
+  const vehiclePg = usePagination(filteredVehicles, 'mantenimiento-flota:vehicles', (v, c) => [v.plate, v.type, Number(v.weight_capacity), v.carriers?.business_name, v.status, null][c])
+  const driverPg = usePagination(filteredDrivers, 'mantenimiento-flota:drivers', (d, c) => [`${d.first_name} ${d.last_name}`, d.document_number, d.license_number, d.license_expiration,
+    d.carriers?.business_name, d.profile_id ? 'Vinculado' : 'Sin cuenta', d.is_active !== false ? 'ACTIVO' : 'INACTIVO', null][c])
 
   // Forms
   const [newVehicle, setNewVehicle] = useState({
@@ -659,7 +660,7 @@ export default function FlotaPage() {
           {activeTab === 'vehicles' && (
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
               <div className="overflow-auto max-h-[calc(100vh-220px)]">
-          <DataTable className="w-full text-left border-collapse relative">
+          <DataTable className="w-full text-left border-collapse relative" onSortChange={vehiclePg.onSortChange}>
             <thead className="sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
               <tr className="bg-slate-50  border-slate-200">
                       <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Placa</th>
@@ -735,7 +736,7 @@ export default function FlotaPage() {
           {activeTab === 'drivers' && (
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
               <div className="overflow-auto max-h-[calc(100vh-220px)]">
-          <DataTable className="w-full text-left border-collapse relative">
+          <DataTable className="w-full text-left border-collapse relative" onSortChange={driverPg.onSortChange}>
             <thead className="sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
               <tr className="bg-slate-50  border-slate-200">
                       <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Nombre Completo</th>

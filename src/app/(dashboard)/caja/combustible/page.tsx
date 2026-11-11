@@ -63,7 +63,7 @@ function Loads() {
   useEffect(() => { void load() }, [load])
   const visible = rows.filter(r => !f.onlyAlerts || (r.alerts || []).length > 0)
   const tot = visible.filter(r => r.status !== 'RECHAZADO').reduce((a, r) => ({ amount: a.amount + Number(r.amount), gal: a.gal + Number(r.fuel_gallons || 0) }), { amount: 0, gal: 0 })
-  const pg = usePagination(visible, 'caja-combustible')
+  const pg = usePagination(visible, 'caja-combustible', (r, c) => [r.expense_date, r.vehicle_plate, r.station?.name || r.provider_name, r.fuel_gallons ? Number(r.fuel_gallons) : null, Number(r.amount), r.fuel_gallons ? Number(r.amount) / Number(r.fuel_gallons) : null, r.fuel_odometer ? Number(r.fuel_odometer) : null, eff[r.id]?.km_per_gallon, r.paid_by === 'CONDUCTOR' ? 'Conductor' : r.paid_by === 'CAJA' ? 'Caja' : 'Empresa', EXPENSE_STATUS[r.status]?.label][c])
   return (
     <div className="space-y-3">
       <div className="bg-white border rounded-xl p-3 flex flex-wrap items-end gap-3 text-sm">
@@ -82,7 +82,7 @@ function Loads() {
       </div>
       <div className="bg-white border rounded-xl overflow-auto max-h-[calc(100vh-340px)]">
         {loading ? <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin" /></div> : (
-          <DataTable className="w-full text-sm">
+          <DataTable className="w-full text-sm" onSortChange={pg.onSortChange}>
             <thead className="bg-slate-50 text-xs text-slate-500 sticky top-0"><tr>
               <th className="p-3 text-left">Fecha</th><th className="p-3 text-left">Unidad / viaje</th><th className="p-3 text-left">Grifo</th><th className="p-3 text-right">Galones</th>
               <th className="p-3 text-right">Importe</th><th className="p-3 text-right">S/ gal</th><th className="p-3 text-right">Odómetro</th><th className="p-3 text-right">Km/gal</th><th className="p-3 text-left">Pagó</th><th className="p-3 text-left">Estado</th>

@@ -93,7 +93,7 @@ export default function AnticiposPage() {
     if (url) window.open(url, '_blank', 'noopener'); else toast.error('No se pudo abrir la evidencia')
   }
 
-  const pg = usePagination(visible, 'caja-anticipos')
+  const pg = usePagination(visible, 'caja-anticipos', (r, c) => [r.code, r.reason_label, r.dispatch_number || r.vehicle_plate, r.driver_name, Number(r.amount), r.awaiting_approval ? 'POR APROBAR' : r.status, r.delivered_at, null][c])
   return (
     <div className="space-y-3">
       <PageHeader showTitle title="Anticipos" description="Dinero entregado al conductor a rendir: viáticos del viaje o anticipos por la unidad u otro motivo (neumático, mecánica, trámites), con sus propias reglas de aprobación y rendición." actions={<>
@@ -129,7 +129,7 @@ export default function AnticiposPage() {
 
       <div className="bg-white border rounded-xl overflow-auto">
         {loading ? <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div> : (
-          <DataTable className="w-full text-sm">
+          <DataTable className="w-full text-sm" onSortChange={pg.onSortChange}>
             <thead className="bg-slate-50 text-xs text-slate-500"><tr>
               <th className="p-3 text-left">Código</th><th className="p-3 text-left">Motivo</th><th className="p-3 text-left">Viaje / unidad</th><th className="p-3 text-left">Conductor</th>
               <th className="p-3 text-right">Monto</th><th className="p-3 text-left">Estado</th><th className="p-3 text-left">Entrega / rendición</th><th className="p-3" />

@@ -68,8 +68,10 @@ export default function NeumaticosPage() {
 
   const filtered = useMemo(() => tires.filter(t => (estado === 'TODOS' || t.estado === estado || t.tread_status === estado) &&
     (!search || `${t.codigo_interno} ${t.marca || ''} ${t.medida || ''} ${t.vehicle_plate || ''}`.toLowerCase().includes(search.toLowerCase()))), [tires, search, estado])
-  const pg = usePagination(filtered, 'mantenimiento-neumaticos')
-  const historyPg = usePagination(history.filter(h => !historyTire || h.tire_id === historyTire), 'mantenimiento-neumaticos:historial')
+  const pg = usePagination(filtered, 'mantenimiento-neumaticos', (t, c) => [t.codigo_interno, t.estado, t.vehicle_plate ? `${t.vehicle_plate} · ${t.position}` : null,
+    t.cocada_actual, Number(t.km_total || 0), Number(t.retread_count), Number(t.cost_total ?? 0), t.cost_per_km, null][c])
+  const historyPg = usePagination(history.filter(h => !historyTire || h.tire_id === historyTire), 'mantenimiento-neumaticos:historial', (h, c) => [new Date(h.created_at).getTime(),
+    h.codigo_interno, h.tipo_movimiento, h.vehicle_plate, h.current_odometer, h.cocada, h.km_accumulated, h.cost, [h.reason, h.created_by_name].filter(Boolean).join(' · ')][c])
 
 
   const kpis = useMemo(() => {
@@ -121,7 +123,7 @@ export default function NeumaticosPage() {
                 </select>
               </div>
               <div className="bg-white border rounded-xl overflow-x-auto">
-                <DataTable className="w-full text-sm">
+                <DataTable className="w-full text-sm" onSortChange={pg.onSortChange}>
                   <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
                     <th className="text-left p-3">Neumático</th><th className="text-left p-3">Estado</th><th className="text-left p-3">Ubicación</th>
                     <th className="text-right p-3">Cocada</th><th className="text-right p-3">Km</th><th className="text-right p-3">Reenc.</th>
@@ -185,7 +187,7 @@ export default function NeumaticosPage() {
                 <option value="">Todos los neumáticos</option>{tires.map(t => <option key={t.id} value={t.id}>{t.codigo_interno}</option>)}
               </select>
               <div className="bg-white border rounded-xl overflow-x-auto">
-                <DataTable className="w-full text-sm">
+                <DataTable className="w-full text-sm" onSortChange={historyPg.onSortChange}>
                   <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>
                     <th className="text-left p-3">Fecha</th><th className="text-left p-3">Neumático</th><th className="text-left p-3">Evento</th><th className="text-left p-3">Unidad / posición</th>
                     <th className="text-right p-3">Odómetro</th><th className="text-right p-3">Cocada</th><th className="text-right p-3">Km</th><th className="text-right p-3">Costo</th><th className="text-left p-3">Detalle</th>
