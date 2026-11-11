@@ -105,7 +105,7 @@ for (const [w,h] of [[100,50],[50,100],[148,210],[152.4,101.6],[105,148],[400,60
  const portrait=orientLabel({width_mm:w,height_mm:h},'PORTRAIT');assert.equal(portrait.width_mm,Math.min(w,h));assert.equal(portrait.height_mm,Math.max(w,h));
 }
 const fixedLabel={width_mm:100,height_mm:50};
-const a4=printerSheet({...DEFAULT_PRINT_PREFERENCES,paper:'A4_PORTRAIT',margin:5});
+const a4=printerSheet({...DEFAULT_PRINT_PREFERENCES,paper:'A4_PORTRAIT',margin:5,position:'CENTER'});
 assert.deepEqual(labelPrintPage({...fixedLabel,paper:a4}),{width_mm:210,height_mm:297,margin_mm:5,position:'CENTER'});
 assert.deepEqual(fixedLabel,{width_mm:100,height_mm:50},'A4 does not resize the label');
 assert.deepEqual(labelPrintPage(fixedLabel),{width_mm:100,height_mm:50,margin_mm:0},'thermal roll remains exact label size');
@@ -113,13 +113,14 @@ assert.throws(()=>labelPrintPage({width_mm:210,height_mm:148,paper:a4}),/no cabe
 assert.throws(()=>labelPrintPage({...fixedLabel,paper:{width_mm:210,height_mm:297,margin_mm:-1}}),/no son válidas/);
 assert.equal(readPrintPreferences(null,'paper-a5-portrait').formatId,'paper-a5-portrait','old per-user selection is retained');
 assert.equal(readPrintPreferences(null).formatId,'paper-a5-landscape','default label: A5 acostada');
-assert.equal(readPrintPreferences(null).paper,'A5_PORTRAIT_ROTATED','default: página A5 vertical con la etiqueta acostada girada');
+assert.equal(readPrintPreferences(null).paper,'A4_PORTRAIT','default: página A4 (mismo ancho real que la hoja A5 que entra acostada)');
+{const p=readPrintPreferences(null),sheet=printerSheet(p);assert.equal(sheet.rotate,undefined);assert.equal(sheet.margin_mm,0);assert.ok(labelPrintPage({width_mm:210,height_mm:148,paper:sheet}),'A5 acostada cabe sin girar en A4');}
 {const sheet=printerSheet({...readPrintPreferences(null),paper:'A5_PORTRAIT_ROTATED'});assert.equal(sheet.rotate,true);assert.deepEqual([sheet.width_mm,sheet.height_mm],[148,210]);assert.ok(labelPrintPage({width_mm:210,height_mm:148,paper:sheet}),'acostada 210×148 cabe girada en hoja vertical 148×210');assert.throws(()=>labelPrintPage({width_mm:210,height_mm:160,paper:sheet}))}
 assert.equal(readPrintPreferences(JSON.stringify({formatId:''})).formatId,'','a saved warehouse-format choice is kept');
 assert.equal(readPrintPreferences('{bad','legacy').paper,'LABEL');
 assert.equal(readPrintPreferences(JSON.stringify({paperWidth:-100,paper:'INVALID'})).paperWidth,210);
 console.log('PASS: independent label orientation, exact A4/thermal sizes, invalid fit rejected and legacy preferences retained');
 
-assert.equal(readPrintPreferences(null).position,'CENTER','new accounts default to center');
+assert.equal(readPrintPreferences(null).position,'TOP_LEFT','cuenta nueva: etiqueta arriba a la izquierda de la página A4');
 assert.equal(readPrintPreferences(JSON.stringify({formatId:'saved-label',paper:'A4_PORTRAIT'})).position,'CENTER','existing saved sizes gain centered placement');
 assert.equal(readPrintPreferences(JSON.stringify({position:'TOP_LEFT'})).position,'TOP_LEFT');

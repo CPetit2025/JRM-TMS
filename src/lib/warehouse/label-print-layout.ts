@@ -12,10 +12,11 @@ export type PrintPreferences = {
 }
 export type SheetSize = { width_mm: number; height_mm: number; margin_mm: number; position?: LabelPosition; rotate?: boolean }
 // Por defecto: etiqueta A5 vertical (148 × 210 mm). La hoja A5 entra a la impresora así y la etiqueta sale completa.
-// Por defecto: etiqueta A5 acostada (210 × 148 mm) enviada en una página A5 vertical (148 × 210) con la etiqueta girada 90°.
-// La hoja A5 entra parada: si la página llega acostada, el navegador o el driver la giran por su cuenta y la imprimen
-// corrida (pasó con la impresora JRM). Con la página ya parada nadie gira nada y sale completa sin configurar la impresora.
-export const DEFAULT_PRINT_PREFERENCES: PrintPreferences = { formatId: 'paper-a5-landscape', orientation: 'FORMAT', paper: 'A5_PORTRAIT_ROTATED', paperWidth: 210, paperHeight: 297, margin: 0, position: 'CENTER' }
+// Por defecto: etiqueta A5 acostada (210 × 148 mm) arriba a la izquierda de una página A4 vertical, sin girar.
+// La hoja A5 entra con su lado de 210 mm a lo ancho (como el A4), pero el driver de la impresora JRM trata el A5 como
+// de 148 mm de ancho y giraba o corría cualquier página A5. El A4 tiene el mismo ancho real: sale la etiqueta completa
+// en los primeros 148 mm, que es toda la hoja A5. Las demás hojas y el giro siguen disponibles en la configuración.
+export const DEFAULT_PRINT_PREFERENCES: PrintPreferences = { formatId: 'paper-a5-landscape', orientation: 'FORMAT', paper: 'A4_PORTRAIT', paperWidth: 210, paperHeight: 297, margin: 0, position: 'TOP_LEFT' }
 export const PRINTER_PAPERS: { value: PrinterPaper; label: string; width?: number; height?: number }[] = [
   { value: 'LABEL', label: 'Rollo / papel del tamaño de la etiqueta' },
   { value: 'A4_PORTRAIT', label: 'Hoja A4 vertical · 210 × 297 mm', width: 210, height: 297 },
@@ -39,7 +40,7 @@ export function readPrintPreferences(raw: string | null, legacyId = ''): PrintPr
     paperWidth: bounded(value.paperWidth, 210, 15, 650),
     paperHeight: bounded(value.paperHeight, 297, 10, 650),
     margin: bounded(value.margin, raw ? 5 : DEFAULT_PRINT_PREFERENCES.margin, 0, 30),
-    position: value.position === 'TOP_LEFT' ? 'TOP_LEFT' : 'CENTER',
+    position: value.position === 'TOP_LEFT' || (!raw && DEFAULT_PRINT_PREFERENCES.position === 'TOP_LEFT') ? 'TOP_LEFT' : 'CENTER',
   }
 }
 export function orientLabel<T extends { width_mm: number; height_mm: number }>(format: T, orientation: LabelOrientation): T {
