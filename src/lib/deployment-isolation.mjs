@@ -15,6 +15,7 @@ export function assertDeploymentIsolation(system, supabaseUrl, environment) {
 }
 
 export function wmsRouteAllowed(path, method) {
+  if (path === '/api/admin/wms') return method === 'GET' || method === 'POST'
   if (path === '/api/app-version') return method === 'GET'
   if (path === '/api/wms/sincronizar') return method === 'POST'
   if (path === '/api/wms/erp-aplicar') return method === 'POST'
