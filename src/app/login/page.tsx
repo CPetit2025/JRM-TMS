@@ -127,9 +127,14 @@ export default function LoginPage() {
            permissions = roleObj?.permissions || []
         }
 
-        if (profileData?.employee_type === 'CONDUCTOR' || (!hasWebAccess(roleName, permissions) && !isDispatchAuditorRole(roleName, permissions))) {
+        if (profileData?.employee_type === 'CONDUCTOR') {
           await supabase.auth.signOut()
           throw new Error('Esta cuenta pertenece al Portal Operativo. Ingresa desde /app/login.')
+        }
+        // Rol sin pantallas del TMS (p. ej. personal de almacén): debe ingresar eligiendo «Almacén»
+        if (!hasWebAccess(roleName, permissions) && !isDispatchAuditorRole(roleName, permissions)) {
+          await supabase.auth.signOut()
+          throw new Error(`Tu rol «${roleName}» no tiene acceso al TMS. Si trabajas en almacén, elige «Almacén» en Sistema; si no, pide al Administrador que asigne permisos a tu rol.`)
         }
         
         // Guardar en localStorage para UI (Sidebar)
