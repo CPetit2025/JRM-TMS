@@ -143,7 +143,8 @@ export default function TarifasPage() {
   const withoutRate = vehiclesWithRates.filter(vr => !isLinked(vr.vehicle.plate)).length
   const avgRate = rates.filter(r => r.vehicle_plate).reduce((s, r) => s + r.fixed_cost_per_km + r.driver_cost_per_km, 0) / (rates.filter(r => r.vehicle_plate).length || 1)
 
-  const pg = usePagination(filteredVehiclesWithRates, 'maestros-tarifas')
+  const pg = usePagination(filteredVehiclesWithRates, 'maestros-tarifas', ({ vehicle: v, rate: r }, c) => [v.plate, v.type, Number(v.weight_capacity), v.carriers?.business_name,
+    r?.fixed_cost_per_km, r?.driver_cost_per_km, r && totalKmCost(r), r?.tolls_estimated_cost, isLinked(v.plate) ? 'Vinculada' : 'Sin tarifa'][c])
   return (
     <div className="w-full space-y-3">
       <PageHeader showTitle title="Modelos de Tarifario" description="Configura y administra las tarifas de flete para la flota propia y tercerizada." />
@@ -244,7 +245,7 @@ export default function TarifasPage() {
           {/* Tabla principal */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="overflow-auto max-h-[calc(100vh-220px)]">
-          <DataTable className="w-full text-left border-collapse relative">
+          <DataTable className="w-full text-left border-collapse relative" onSortChange={pg.onSortChange}>
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0] border-slate-100">
                   <tr>
                     <th className="p-4 font-semibold">Placa</th>

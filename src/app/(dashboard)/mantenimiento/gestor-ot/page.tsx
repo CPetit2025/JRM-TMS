@@ -136,7 +136,7 @@ export default function GestorOT() {
     (typeFilter === 'TODOS' || o.order_type === typeFilter) &&
     (!search || `${o.ot_code} ${o.vehicle_plate} ${o.description}`.toLowerCase().includes(search.toLowerCase()))
   ), [orders, statusFilter, typeFilter, search])
-  const pg = usePagination(filtered, 'mantenimiento-gestor-ot')
+  const pg = usePagination(filtered, 'mantenimiento-gestor-ot', (o, c) => [o.ot_code, o.vehicle_plate, o.order_type, o.status, o.responsible_name, o.downtime_hours, Number(o.total_cost ?? 0)][c])
 
   const kpis = useMemo(() => {
     const monthStart = new Date(loadedAt); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0)
@@ -200,7 +200,7 @@ export default function GestorOT() {
         ) : filtered.length === 0 ? (
           <div className="p-10 text-center text-slate-500 text-sm">No hay órdenes de trabajo con estos filtros.</div>
         ) : (
-          <><DataTable className="w-full text-sm">
+          <><DataTable className="w-full text-sm" onSortChange={pg.onSortChange}>
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
               <tr>
                 <th className="text-left p-3">OT</th><th className="text-left p-3">Unidad</th><th className="text-left p-3">Tipo / prioridad</th>

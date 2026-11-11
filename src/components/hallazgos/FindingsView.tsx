@@ -61,7 +61,7 @@ export function FindingsView() {
 
   const ot = filters.ot.trim().toLocaleLowerCase('es-PE'), client = filters.client.trim().toLocaleLowerCase('es-PE')
   const visible = (rows || []).filter(r => (!ot || (r.ot_code || '').toLocaleLowerCase('es-PE').includes(ot)) && (!client || (r.client_name || '').toLocaleLowerCase('es-PE').includes(client)))
-  const pg = usePagination(visible, 'hallazgos')
+  const pg = usePagination(visible, 'hallazgos', (r, c) => [r.number, r.registered_at, r.ot_code, r.client_name, r.categories?.[0], SEVERITY[r.severity].label, r.responsible_name || 'Sin asignar', STATUS[r.status].label, r.due_date][c])
   const kpis = !ot && !client && serverKpis ? serverKpis : countKpis(visible)
   const cards = [
     { label: 'Abiertos', value: kpis.abiertos, icon: Clock, cls: 'text-amber-700 bg-amber-50' },
@@ -101,7 +101,7 @@ export function FindingsView() {
     {rows === null && !error ? <div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
       : !visible.length ? <p className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">No hay hallazgos para estos filtros.</p>
       : <section aria-label="Hallazgos" className="overflow-hidden rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card"><div className="overflow-x-auto">
-        <DataTable dense className="block w-full text-left text-sm lg:table"><caption className="sr-only">Hallazgos de auditoría de despacho</caption>
+        <DataTable dense onSortChange={pg.onSortChange} className="block w-full text-left text-sm lg:table"><caption className="sr-only">Hallazgos de auditoría de despacho</caption>
           <thead className="hidden bg-slate-50 text-xs text-slate-500 lg:table-header-group"><tr>{['N.º', 'Fecha', 'OT', 'Cliente', 'Categoría', 'Criticidad', 'Responsable', 'Estado', 'Vence', 'Acciones'].map((l, i) => <th key={l} scope="col" className={`whitespace-nowrap px-3 py-2.5 font-semibold ${i === 9 ? 'text-right' : ''}`}>{l}</th>)}</tr></thead>
           <tbody className="block divide-y divide-slate-200 lg:table-row-group">{pg.pageRows.map(r => {
             const a = findingActions(r, can)

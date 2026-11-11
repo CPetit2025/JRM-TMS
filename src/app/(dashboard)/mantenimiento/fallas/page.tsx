@@ -99,7 +99,8 @@ export default function FallasBacklogPage() {
     (!search || `${item.incident_code} ${item.vehicle_plate} ${item.description} ${item.affected_system || ''} ${item.affected_component || ''} ${item.responsible_name || ''} ${item.work_order_code || ''}`.toLowerCase().includes(search.toLowerCase()))
   ), [items, search, severityFilter, statusFilter])
 
-  const pg = usePagination(filtered, 'mantenimiento-fallas')
+  const pg = usePagination(filtered, 'mantenimiento-fallas', (item, c) => [null, item.incident_code || item.id, item.vehicle_plate, sources[item.source] || item.source, item.affected_system,
+    item.description, item.severity, item.status, item.responsible_name, Number(item.age_days), null][c])
   const visible = pg.pageRows
   const openItem = items.find(item => item.id === selectedId) || null
   const openCount = items.length
@@ -251,7 +252,7 @@ export default function FallasBacklogPage() {
     <div className="overflow-hidden rounded-xl border bg-white">
       {loading ? <div className="flex justify-center py-14"><Loader2 className="h-7 w-7 animate-spin text-slate-400" /></div> : filtered.length === 0 ? <div className="py-14 text-center text-sm text-slate-500">No hay fallas con estos filtros.</div> : <>
         <div className="overflow-x-auto">
-          <DataTable className="w-full min-w-[1160px] text-sm">
+          <DataTable className="w-full min-w-[1160px] text-sm" onSortChange={pg.onSortChange}>
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr>
               <th className="w-10 p-3"><input aria-label="Seleccionar fallas de esta página" type="checkbox" checked={visible.filter(item => item.status !== 'CONVERTIDA_OT').length > 0 && visible.filter(item => item.status !== 'CONVERTIDA_OT').every(item => selectedIds.includes(item.id))} onChange={togglePage} /></th>
               <th className="p-3">Código / fecha</th><th className="p-3">Unidad</th><th className="p-3">Origen</th><th className="p-3">Sistema afectado</th><th className="p-3">Descripción</th><th className="p-3">Criticidad</th><th className="p-3">Estado</th><th className="p-3">Responsable</th><th className="p-3">Antigüedad</th><th className="p-3">Acción</th>

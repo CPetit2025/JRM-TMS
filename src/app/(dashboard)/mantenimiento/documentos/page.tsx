@@ -2,7 +2,7 @@
 import { PageHeader } from '@/components/ui/page-header'
 import { protectedFileHref } from '@/lib/protected-files'
 import { DataTable } from '@/components/ui/data-table'
-import { usePagination } from '@/lib/use-pagination'
+import { cellValue, usePagination } from '@/lib/use-pagination'
 import { TablePagination } from '@/components/ui/table-pagination'
 import { readCache, writeCache } from '@/lib/use-cached'
 
@@ -174,11 +174,11 @@ function Section({ action, label, children }: { action: () => void; label: strin
   return <div className="space-y-3"><button onClick={action} className="px-4 py-2 bg-[#002855] text-white rounded-lg text-sm flex items-center gap-2"><Plus className="w-4 h-4" />{label}</button>{children}</div>
 }
 function Table({ rows, cols, empty }: { rows: Row[]; cols: [string, (r: Row) => React.ReactNode][]; empty: string }) {
-  const pg = usePagination(rows, `mantenimiento-documentos:${empty}`)
+  const pg = usePagination(rows, `mantenimiento-documentos:${empty}`, (r, c) => cellValue(cols[c]?.[1](r)))
   if (!rows.length) return <p className="text-sm text-slate-500 p-4">{empty}</p>
   return (
     <div className="bg-white border rounded-xl overflow-x-auto">
-      <DataTable className="w-full text-sm">
+      <DataTable className="w-full text-sm" onSortChange={pg.onSortChange}>
         <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{cols.map(([h], i) => <th key={i} className="text-left p-3">{h}</th>)}</tr></thead>
         <tbody className="divide-y">{pg.pageRows.map((r, i) => <tr key={r.id ?? r.ref_id ?? i}>{cols.map(([, fn], j) => <td key={j} className="p-3">{fn(r)}</td>)}</tr>)}</tbody>
       </DataTable>

@@ -123,7 +123,8 @@ export default function UsuariosPage() {
     }
   }
 
-  const pg = usePagination(filteredList, 'usuarios')
+  const pg = usePagination(filteredList, 'usuarios', (user, c) => [`${user.first_name} ${user.last_name}`, user.document_number, user.phone, user.area, user.roles?.name || 'Sin rol',
+    user.is_active ? 'Activo' : isPending(user) ? 'Pendiente de aprobación' : 'Inactivo', null][c])
   return (
     <div className="space-y-3 max-w-7xl mx-auto">
       <PageHeader showTitle title="Usuarios" description="Gestión de personal y accesos" actions={<>
@@ -187,7 +188,7 @@ export default function UsuariosPage() {
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-auto max-h-[calc(100vh-220px)]">
-          <DataTable className="w-full text-left border-collapse relative">
+          <DataTable className="w-full text-left border-collapse relative" onSortChange={pg.onSortChange}>
             <thead className="sticky top-0 z-10 shadow-[0_1px_0_0_#e2e8f0]">
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider ">
                 <th className="p-4 font-semibold">Usuario</th>

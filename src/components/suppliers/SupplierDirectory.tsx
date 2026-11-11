@@ -61,7 +61,7 @@ export function SupplierDirectory({ scope }: { scope: 'commercial' | 'logistics'
     return suppliers.filter(s => allowedCategories.includes(s.category) && (!q || [s.business_name, s.tax_id, s.contact_name, ...(s.supplier_locations || []).map(l => `${l.name} ${l.district}`)].join(' ').toLocaleLowerCase('es-PE').includes(q))
       && (!category || s.category === category) && (!status || (status === 'active') === s.is_active))
   }, [suppliers, search, category, status, allowedCategories])
-  const pg = usePagination(visible, "proveedores-" + scope)
+  const pg = usePagination(visible, "proveedores-" + scope, (s, c) => [s.business_name, s.tax_id, SUPPLIER_CATEGORIES[s.category], s.contact_name, (s.supplier_locations || []).filter(l => l.is_active).length, s.is_active ? 'Activo' : 'Inactivo'][c])
 
   const open = (supplier?: Supplier) => {
     setForm(supplier ? { ...supplier } : { ...EMPTY_SUPPLIER, category: scope === 'logistics' ? 'TRANSPORTE' : 'MATERIA_PRIMA' })
@@ -112,7 +112,7 @@ export function SupplierDirectory({ scope }: { scope: 'commercial' | 'logistics'
         <option value="active">Activos</option><option value="inactive">Inactivos</option><option value="">Todos</option></select></FilterField>
     </FilterToolbar>
     <div className="overflow-x-auto rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
-      <DataTable dense className="w-full text-left text-sm">
+      <DataTable dense onSortChange={pg.onSortChange} className="w-full text-left text-sm">
         <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500"><tr>{['Razón social', 'RUC', 'Categoría', 'Contacto', scope === 'logistics' ? 'Personal y flota' : 'Puntos de recojo', 'Estado', 'Acciones'].map((t, i) => <th key={t} className={`whitespace-nowrap font-semibold ${i === 6 ? 'text-right' : ''}`}>{t}</th>)}</tr></thead>
         <tbody className="divide-y divide-slate-100">
           {loading ? <tr><td colSpan={7} className="p-8 text-center text-slate-500"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Cargando proveedores…</td></tr>

@@ -58,7 +58,7 @@ export function ReferenceServiceRegistry() {
     (!search.trim() || [row.reference_type, row.reference_number, row.request_number, row.dispatch_number, row.plate, row.driver_name, row.provider_name, row.description].join(' ').toLocaleLowerCase('es').includes(search.trim().toLocaleLowerCase('es'))))
   const totals = referenceRegistryTotals(filtered)
 
-  const pg = usePagination(filtered, "servicios-referencia")
+  const pg = usePagination(filtered, "servicios-referencia", (r, c) => [r.service_date, `${r.reference_type} · ${r.reference_number}`, r.request_number, r.service_type === 'FLETE' ? 'Flete' : 'Descarga', r.plate, r.provider_name, r.amount_pen, r.dispatch_number, stageLabels[r.stage]][c])
   return <section className="space-y-3" aria-label="Servicios con OC, OS o RQ">
     <p className="text-sm text-slate-600">Recojos y traslados aprobados por el supervisor con OC, OS o RQ. Los importes corresponden al flete y la descarga de la ruta; no descuentan una partida de OT. El cierre operativo no significa pago.</p>
     <FilterToolbar compact label="Filtros de servicios por referencia" onClear={() => { setFrom(''); setTo(''); setSearch(''); setReference('TODOS'); setStage('TODOS') }}>
@@ -75,7 +75,7 @@ export function ReferenceServiceRegistry() {
       <span>{loading ? 'Consultando…' : `${filtered.length} movimiento(s)`}</span><span>Reservado: <strong>{money(totals.reserved)}</strong></span><span>Costo registrado: <strong>{money(totals.consumed)}</strong></span><span>Liberado: <strong>{money(totals.released)}</strong></span>
     </div>
     <div className="overflow-auto rounded-jrm border border-jrm-line bg-jrm-surface shadow-jrm-card">
-      <DataTable dense className="min-w-[1050px] text-left">
+      <DataTable dense onSortChange={pg.onSortChange} className="min-w-[1050px] text-left">
         <thead><tr>{['Fecha', 'Referencia', 'Solicitud / tipo', 'Servicio', 'Unidad / conductor', 'Proveedor', 'Monto', 'Despacho', 'Etapa'].map(label => <th key={label}>{label}</th>)}</tr></thead>
         <tbody>
           {loading ? <tr><td colSpan={9} className="p-8 text-center text-slate-500"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Consultando servicios…</td></tr> : error ? <tr><td colSpan={9} className="p-8 text-center text-slate-500">La consulta no está disponible. Use Actualizar para reintentar.</td></tr> : filtered.length === 0 ? <tr><td colSpan={9} className="p-8 text-center text-slate-500">No hay movimientos por OC, OS o RQ para estos filtros.</td></tr> : pg.pageRows.map(row => <tr key={`${row.service_type}:${row.id}`} className="hover:bg-slate-50">

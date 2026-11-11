@@ -119,7 +119,7 @@ export default function AprobacionesPage() {
     } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
   }
 
-  const pg = usePagination(visible, 'caja-aprobaciones')
+  const pg = usePagination(visible, 'caja-aprobaciones', (r, c) => [null, r.expense_date, r.dispatch?.dispatch_number || 'Sin viaje', people[r.driver_id], catLabel[r.expense_type] || r.expense_type, r.document_type ? `${r.document_type} ${r.document_series}-${r.document_number}` : r.receipt_url ? 'Foto adjunta' : 'Sin comprobante', Number(r.amount), alertsOf(r).length || null, r.source === 'WEB' ? 'Caja web' : 'App', (EXPENSE_STATUS[r.status] || { label: r.status }).label, null][c])
   if (!isLoaded) return <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>
   if (!allowed) return (
     <div className="p-10 max-w-lg mx-auto text-center">
@@ -187,7 +187,7 @@ export default function AprobacionesPage() {
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-auto max-h-[calc(100vh-380px)]">
         {loading ? <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div> : (
-          <DataTable className="w-full text-sm">
+          <DataTable className="w-full text-sm" onSortChange={pg.onSortChange}>
             <thead className="bg-slate-50 text-xs text-slate-500 sticky top-0 z-10">
               <tr>
                 <th className="p-3 w-8">

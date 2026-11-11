@@ -68,7 +68,7 @@ export default function LiquidacionesPage() {
     return !s || [r.dispatch_number, r.vehicle_plate, people[r.driver_id]].some(v => String(v || '').toLowerCase().includes(s))
   }), [rows, view, q, people])
 
-  const pg = usePagination(visible, 'caja-liquidaciones')
+  const pg = usePagination(visible, 'caja-liquidaciones', (r, c) => [r.dispatch_number, people[r.driver_id], dispatchStatusLabel(r.dispatch_status), Number(r.advances_delivered), Number(r.driver_approved), Number(r.company_approved), Number(r.balance), r.pending_count + r.observed_count || null, r.settlement_status === 'CERRADA' ? r.settlement_code : r.overdue ? 'Vencida' : r.settlement_status === 'REABIERTA' ? 'Reabierta' : 'Abierta', null][c])
   return (
     <div className="space-y-3">
       <PageHeader showTitle title="Liquidación de viajes" description={<>Cuadre de anticipos contra gastos aprobados y cierre con devolución, reembolso o descuento por planilla. La aprobación de cada gasto se hace en <Link href="/caja/aprobaciones" className="text-blue-600 hover:underline">Aprobación de gastos</Link>.</>} actions={<>
@@ -89,7 +89,7 @@ export default function LiquidacionesPage() {
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-auto max-h-[calc(100vh-280px)]">
         {loading ? <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div> : (
-          <DataTable className="w-full text-sm">
+          <DataTable className="w-full text-sm" onSortChange={pg.onSortChange}>
             <thead className="bg-slate-50 text-xs text-slate-500 sticky top-0"><tr>
               <th className="p-3 text-left">Despacho / Placa</th><th className="p-3 text-left">Conductor</th><th className="p-3 text-left">Viaje</th>
               <th className="p-3 text-right">Anticipos</th><th className="p-3 text-right">Gastos conductor</th><th className="p-3 text-right">Pagado por caja/empresa</th>

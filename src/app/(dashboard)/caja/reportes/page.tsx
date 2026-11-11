@@ -102,7 +102,7 @@ export default function ReportesCajaPage() {
     })),
   })
 
-  const pg = usePagination(trips, 'caja-reportes-viajes')
+  const pg = usePagination(trips, 'caja-reportes-viajes', (t, c) => [t.dispatch_number, people[t.driver_id], Number(t.freight), Number(t.fuel), Number(t.tolls), Number(t.per_diem), Number(t.other_ops) + Number(t.maintenance), Number(t.expenses), t.budget != null ? Number(t.budget) : null, Number(t.margin), t.cost_per_km != null ? Number(t.cost_per_km) : null][c])
   return (
     <div className="space-y-3">
       <PageHeader showTitle title="Reportes de caja" description="Rentabilidad por viaje con gastos aprobados, presupuesto contra real y exportación contable." actions={<>
@@ -146,7 +146,7 @@ export default function ReportesCajaPage() {
 
       <div className="bg-white border rounded-xl overflow-auto max-h-[calc(100vh-420px)]">
         {loading ? <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div> : (
-          <DataTable className="w-full text-sm">
+          <DataTable className="w-full text-sm" onSortChange={pg.onSortChange}>
             <thead className="bg-slate-50 text-xs text-slate-500 sticky top-0"><tr>
               <th className="p-3 text-left">Despacho</th><th className="p-3 text-left">Conductor</th><th className="p-3 text-right">Flete</th><th className="p-3 text-right">Combustible</th>
               <th className="p-3 text-right">Peajes</th><th className="p-3 text-right">Viáticos</th><th className="p-3 text-right">Otros</th><th className="p-3 text-right">Gasto</th>

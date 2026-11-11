@@ -52,7 +52,7 @@ export default function ConductoresCajaPage() {
   const owed = rows.filter(r => Number(r.balance) > 0).reduce((s, r) => s + Number(r.balance), 0)
   const owing = rows.filter(r => Number(r.balance) < 0).reduce((s, r) => s - Number(r.balance), 0)
 
-  const pg = usePagination(visible, 'caja-conductores')
+  const pg = usePagination(visible, 'caja-conductores', (r, c) => [r.driver_name, Number(r.total_debit), Number(r.total_credit), Number(r.balance), Number(r.pending_expenses), Number(r.balance) > 0 ? ageBucket(r.oldest_open_advance_at) : null, r.overdue_trips > 0 ? r.overdue_trips : null, null][c])
   return (
     <div className="space-y-3">
       <PageHeader showTitle title="Cuenta corriente de conductores" description="Saldo de cada conductor: anticipos recibidos contra gastos aprobados, devoluciones, reembolsos y descuentos." actions={<>
@@ -75,7 +75,7 @@ export default function ConductoresCajaPage() {
 
       <div className="bg-white border rounded-xl overflow-auto">
         {loading ? <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div> : (
-          <DataTable className="w-full text-sm">
+          <DataTable className="w-full text-sm" onSortChange={pg.onSortChange}>
             <thead className="bg-slate-50 text-xs text-slate-500"><tr>
               <th className="p-3 text-left">Conductor</th><th className="p-3 text-right">Anticipos y reembolsos</th><th className="p-3 text-right">Gastos, devoluciones y descuentos</th>
               <th className="p-3 text-right">Saldo</th><th className="p-3 text-right">Gastos por aprobar</th><th className="p-3 text-left">Antigüedad</th><th className="p-3 text-left">Alertas</th><th className="p-3" />
