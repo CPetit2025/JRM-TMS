@@ -46,6 +46,11 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12,'0')}`
   const migration = readFileSync('supabase/migrations/20261125090000_control_presupuestal_posicion.sql','utf8')
   assert.doesNotMatch(migration, /^\s*(UPDATE|DELETE) /im, 'read-only stage: no data changes')
   await db.exec(migration); await db.exec(migration)
+  // Versión vigente (margen pactado leído una vez por OT), con funciones de etapas posteriores sin autorizaciones ni cartera
+  await db.exec(`CREATE FUNCTION public.budget_can_read() RETURNS boolean LANGUAGE sql STABLE AS $$SELECT public.has_tms_read_permission('caja') OR public.has_tms_read_permission('despacho')$$;
+   CREATE FUNCTION public.budget_authorized_over_cap(uuid) RETURNS numeric LANGUAGE sql STABLE AS $$SELECT 0::numeric$$;
+   CREATE TABLE public.budget_authorizations(contract_id uuid, status text);`)
+  await db.exec(readFileSync('supabase/migrations/20261231170200_budget_positions_override_una_vez.sql', 'utf8'))
   const positions = async () => (await db.query(`SELECT budget_positions() AS v`)).rows[0].v
 
   assert.equal((await positions()).success, false, 'no access without permission')

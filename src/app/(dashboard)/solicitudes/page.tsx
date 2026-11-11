@@ -449,8 +449,8 @@ export default function SolicitudesPage() {
 
   useEffect(() => {
     const task = window.setTimeout(() => {
-      void fetchRequests()
-      void fetchContracts()
+      // El catálogo de OT (~2 MB) se pide después de la lista para no competir con ella; los formularios lo reintentan si falta
+      void fetchRequests().finally(() => { void fetchContracts() })
       void checkUser()
       void supabase.rpc('get_request_auto_approval').then(({ data }) => setAutoApproval(Boolean(data?.success && data.enabled)))
       void fetchLeadTimeSettings()

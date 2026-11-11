@@ -203,14 +203,16 @@ export function JrmAiAssistant() {
     return () => window.removeEventListener('jrm:open-ai', openAssistant)
   }, [])
 
+  // Diferido: no compite con los datos de la pantalla al abrirla (la burbuja aparece recién a los 7 s)
   useEffect(() => {
-    fetch('/api/jrm-ai', { cache: 'no-store' }).then(response => response.json())
+    const timer = window.setTimeout(() => fetch('/api/jrm-ai', { cache: 'no-store' }).then(response => response.json())
       .then(data => {
         setEnabled(Boolean(data.enabled))
         setAvailable(Array.isArray(data.scopes) && data.scopes.length > 0)
         setSites(data.sites || [])
         setProfile({ name: typeof data.name === 'string' ? data.name : null, isDriver: Boolean(data.isDriver) })
-      }).catch(() => setAvailable(false))
+      }).catch(() => setAvailable(false)), 4000)
+    return () => window.clearTimeout(timer)
   }, [])
 
   useEffect(() => {
