@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { errorMessage, money } from '@/lib/caja'
 import { ControlPresupuestalTabs } from '@/components/despacho/ControlPresupuestalTabs'
 import { usePagination } from '@/lib/use-pagination'
+import { DataTable } from '@/components/ui/data-table'
 import { TablePagination } from '@/components/ui/table-pagination'
 
 // Control presupuestal de transporte por OT: los saldos y niveles vienen del servidor.
@@ -173,7 +174,7 @@ export default function ControlPresupuestalPage() {
             <span className="text-slate-500">Disponible al límite <b className={`float-right ${Number(r.available_to_cap_pen) < 0 ? 'text-red-700' : 'text-slate-800'}`}>{money(Number(r.available_to_cap_pen))}</b></span><span className="text-slate-500">Consumo <b className="float-right text-slate-800">{r.used_pct == null ? '—' : `${r.used_pct} %`}</b></span></div>
           {['ALERTA', 'BLOQUEO'].includes(r.level) && <Link href={`/despacho/control-presupuestal/pendientes?solicitar=${r.contract_id}&codigo=${encodeURIComponent(r.code)}`} className="mt-2 inline-block text-xs font-semibold text-[#002855] underline">Solicitar autorización</Link>}
         </article>)}</div>
-        <div className="hidden overflow-x-auto lg:block"><table className="w-full table-fixed text-xs">
+        <div className="hidden overflow-x-auto lg:block"><DataTable dense sortable={false} className="w-full table-fixed text-xs">
           <colgroup><col className="w-[8%]"/><col className="w-[16%]"/><col className="w-[10%]"/><col className="w-[10%]"/><col className="w-[9%]"/><col className="w-[10%]"/><col className="w-[11%]"/><col className="w-[8%]"/><col className="w-[9%]"/><col className="w-[9%]"/></colgroup>
           <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr>
             <th className="px-2.5 py-2 text-left">{sortButton('code', 'OT')}</th><th className="px-2.5 py-2 text-left">{sortButton('client', 'Cliente')}</th>
@@ -192,7 +193,7 @@ export default function ControlPresupuestalPage() {
               {Number(r.authorized_over_cap_pen) > 0 && <span className="mt-1 block text-[9px] text-slate-500">Autorizado {money(Number(r.authorized_over_cap_pen))}</span>}{Number(r.pending_authorizations) > 0 && <Link href="/despacho/control-presupuestal/pendientes" className="mt-1 block text-[9px] font-semibold text-amber-800 underline">{r.pending_authorizations} pendiente(s)</Link>}</td>
             <td className="px-2.5 py-2 text-right"><Link href={`/despacho/control-presupuestal/${r.contract_id}`} className="font-semibold text-[#002855] underline">Analizar</Link>
               {['ALERTA', 'BLOQUEO'].includes(r.level) && <Link href={`/despacho/control-presupuestal/pendientes?solicitar=${r.contract_id}&codigo=${encodeURIComponent(r.code)}`} className="mt-1 block text-[9px] text-slate-600 underline">Autorizar</Link>}</td>
-          </tr>)}</tbody></table></div>
+          </tr>)}</tbody></DataTable></div>
         <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="OT" compact />
       </>}
     </section>

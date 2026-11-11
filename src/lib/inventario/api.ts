@@ -18,6 +18,8 @@ export const notifyInvUpdated = () => window.dispatchEvent(new Event(INV_UPDATED
 
 export const invApi = {
   status: () => call<InvStatus>('inv_status'),
+  // Cabecera: sin cobertura ni huecos (evita recorrer inv_movements en cada página APT)
+  header: () => call<InvStatus>('inv_status', { p_full: false }),
   overview: (desde?: string, hasta?: string) => call<InvOverview>('inv_overview', { p_desde: desde || null, p_hasta: hasta || null }),
   stock: (f: InvStockFilters) => call<InvStock>('inv_stock', { p: f }),
   dwell: (f: { desde?: string; hasta?: string; bodegas?: string[]; ambito?: 'apt' }) => call<InvDwell>('inv_dwell', { p: f }),
