@@ -33,7 +33,7 @@ try {
   '20261020130000_inventario_recalculo_programado.sql','20261020140000_inventario_verificacion.sql','20261020150000_inventario_carga_sin_bloqueo.sql',
   '20261020160000_inventario_recalculo_rapido.sql','20261020170000_inventario_lecturas_rapidas.sql','20261020180000_inventario_lecturas_sin_sobrecarga.sql',
   '20261020190000_inventario_pruebas_livianas.sql','20261020200000_inventario_tablas_derivadas_sin_wal.sql','20261020230000_inventario_apt_contratos.sql',
-  '20261021010000_inventario_estadia_contratos.sql','20261023120000_apt_vinculacion_estado.sql','20261024140000_inventario_descartar_foto_stock.sql']) sql(readFileSync('supabase/migrations/'+file,'utf8'))
+  '20261021010000_inventario_estadia_contratos.sql','20261023120000_apt_vinculacion_estado.sql','20261024140000_inventario_descartar_foto_stock.sql','20261231160400_inv_status_liviano.sql']) sql(readFileSync('supabase/migrations/'+file,'utf8'))
  // Only part 2 (client of each OT in the APT) is inventory; part 1 is ERP contract onboarding.
  const clientes=readFileSync('supabase/migrations/20261101100000_erp_alta_automatica_cliente_apt.sql','utf8'); assert.ok(clientes.includes('-- ── 2.'))
  sql('BEGIN;\n'+clientes.slice(clientes.indexOf('-- ── 2.')))
