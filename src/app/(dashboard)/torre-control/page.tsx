@@ -161,17 +161,20 @@ export default function TorreControlPage() {
       })
       if (error) throw error
       const list = (data || []) as Dispatch[]
-      const { data: deliveries, error: rowError } = await supabase.rpc('delivery_tracking_rows', { p_dispatches: list.map(d => d.id) })
+      const ids = list.map(d => d.id)
+      const closedIds = list.filter(d => ['LIQUIDADO', 'CERRADO'].includes(d.status)).map(d => d.id).slice(0, 500)
+      // En paralelo (antes iban en serie): filas de entrega, GR / Nota de Despacho, números del Asistente Documentario y cierre
+      const [{ data: deliveries, error: rowError }, { data: docs }, { data: refs }, { data: closureData }] = await Promise.all([
+        supabase.rpc('delivery_tracking_rows', { p_dispatches: ids }),
+        // Sin acceso a esos documentos, la columna usa la guía de entrega
+        ids.length ? supabase.from('dispatch_documents').select('dispatch_id, transport_request_id, doc_type, document_number')
+          .in('dispatch_id', ids).in('doc_type', ['GUIA_REMISION', 'NOTA_DESPACHO']).is('voided_at', null) : Promise.resolve({ data: [] }),
+        ids.length ? supabase.rpc('get_dispatch_document_references_batch', { p_dispatches: ids }) : Promise.resolve({ data: [] }),
+        closedIds.length ? supabase.rpc('dispatch_closure_status', { p_dispatch_ids: closedIds }) : Promise.resolve({ data: null }),
+      ])
       if (rowError) throw rowError
       const types = await fetchServiceTypes(supabase, ((deliveries || []) as DeliveryRow[]).map(r => r.request_id))
-      // GR y Nota de Despacho registradas por Documentos; sin acceso a esos documentos, la columna usa la guía de entrega
-      const { data: docs } = list.length ? await supabase.from('dispatch_documents').select('dispatch_id, transport_request_id, doc_type, document_number')
-        .in('dispatch_id', list.map(d => d.id)).in('doc_type', ['GUIA_REMISION', 'NOTA_DESPACHO']).is('voided_at', null) : { data: [] }
-      // Números que vincula el Asistente Documentario (varios por servicio), en una sola consulta; sin acceso, se omiten
-      const { data: refs } = list.length ? await supabase.rpc('get_dispatch_document_references_batch', { p_dispatches: list.map(d => d.id) }) : { data: [] }
       const numbers = documentNumbersByStop([...(docs || []), ...((refs || []) as { dispatch_id: string; request_id: string; doc_type: string; document_number: string }[])])
-      const closedIds = list.filter(d => ['LIQUIDADO', 'CERRADO'].includes(d.status)).map(d => d.id).slice(0, 500)
-      const { data: closureData } = closedIds.length ? await supabase.rpc('dispatch_closure_status', { p_dispatch_ids: closedIds }) : { data: null }
       if (version !== fetchVersion.current) return
       setClosure(closureData?.success ? closureData.rows : {})
       setDispatches(list); setSelectedDispatch(current => current ? list.find(item => item.id === current.id) || null : null); setRows(((deliveries || []) as DeliveryRow[]).map(r => { const n = numbers.get(`${r.dispatch_id}/${r.request_id}`); return { ...r, ...types.get(r.request_id), guide_number: [...new Set([r.guide_number, ...(n?.guide || '').split(' · ')].filter(Boolean))].join(' · ') || null, note_number: n?.note || null } })); setRefreshedAt(new Date().toISOString()); setLoadError('')
