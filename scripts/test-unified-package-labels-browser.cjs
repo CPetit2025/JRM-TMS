@@ -77,7 +77,8 @@ const label = {
 const receipt = {
   receipt_key: key,
   document_no: pkg.source_document_no,
-  fecha: pkg.source_date,
+  // La bandeja muestra por defecto solo los ingresos de hoy (hora de Lima)
+  fecha: new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" }),
   bodega: pkg.source_warehouse,
   lote: pkg.source_lot,
   product_code: pkg.source_product_code,

@@ -40,7 +40,12 @@ export default function WarehouseLabelingPage() {
   const [capacity, setCapacity] = useState('')
   const [labels, setLabels] = useState<Label[]>([])
   const labelFormat = useLabelFormat('PAQUETE')
-  const pager = usePagination(receipts, 'wms-etiquetado')
+  // Período de la bandeja (por defecto solo hoy) y orden del ingreso más reciente al más antiguo. Una búsqueda ignora el período.
+  const [period, setPeriod] = useState<Period>('HOY')
+  const [from, setFrom] = useState(() => limaDay(0))
+  const [to, setTo] = useState(() => limaDay(0))
+  const visible = filterAndSort(receipts, query.trim() ? null : periodRange(period, from, to))
+  const pager = usePagination(visible, 'wms-etiquetado')
   const [printedLabelCodes, setPrintedLabelCodes] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [searching, setSearching] = useState(false)
@@ -250,6 +255,15 @@ export default function WarehouseLabelingPage() {
         <input value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void search() } }} placeholder="IPT (Nro_Documento), OT/contrato o lote…" className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
         <button disabled={searching || query.trim().length < 2} onClick={() => void search()} className="rounded-lg bg-[#002855] px-4 text-sm font-bold text-white disabled:opacity-50">{searching ? 'Buscando…' : 'Buscar IPT'}</button>
       </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm" role="group" aria-label="Período">
+        {PERIODS.map(([value, label]) => <button key={value} type="button" aria-pressed={period === value} onClick={() => setPeriod(value)}
+          className={`rounded-lg border px-3 py-1.5 font-semibold ${period === value ? 'border-[#002855] bg-[#002855] text-white' : 'border-slate-300 text-[#002855] hover:bg-slate-50'}`}>{label}</button>)}
+        {period === 'RANGO' && <>
+          <label className="flex items-center gap-1 text-xs text-slate-600">Desde<input type="date" value={from} max={to} onChange={e => setFrom(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1 text-sm" /></label>
+          <label className="flex items-center gap-1 text-xs text-slate-600">Hasta<input type="date" value={to} min={from} onChange={e => setTo(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1 text-sm" /></label>
+        </>}
+        {query.trim() && <span className="text-xs text-slate-500">La búsqueda incluye todas las fechas.</span>}
+      </div>
       <div className="mt-3 overflow-x-auto rounded-lg border">
         <DataTable dense className="min-w-[900px] lg:min-w-0 w-full text-left text-sm">
           <thead className="sticky top-0 bg-slate-50 text-xs text-slate-600"><tr>
@@ -263,7 +277,7 @@ export default function WarehouseLabelingPage() {
             <td className="p-3">{receipt.customer_name || 'Por ingresar'}</td><td className="p-3 text-xs">{receipt.validation_status === 'VALIDATED' ? 'Validado' : 'Pendiente'} · {receipt.label_status === 'NOT_LABELED' ? 'Sin etiqueta' : receipt.label_status === 'PENDING_PRINT' ? `${receipt.unprinted_count} por imprimir` : receipt.label_status}</td>
             <td className="p-3"><button type="button" onClick={() => select(receipt)} className="rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white">{receipt.label_status === 'PENDING_PRINT' ? 'Imprimir pendientes' : 'Recibir'}</button></td>
           </tr>)}
-          {!searching && receipts.length===0 && <tr><td colSpan={8} className="p-8 text-center text-sm text-slate-500">{query.trim()?'No hay ingresos pendientes de etiqueta para ese criterio. Las recepciones ya etiquetadas se consultan en «03 · Control de recepción».':'No hay ingresos pendientes de etiqueta en la última carga.'}</td></tr>}
+          {!searching && visible.length===0 && <tr><td colSpan={8} className="p-8 text-center text-sm text-slate-500">{query.trim()?'No hay ingresos pendientes de etiqueta para ese criterio. Las recepciones ya etiquetadas se consultan en «03 · Control de recepción».':'No hay ingresos pendientes de etiqueta en el período elegido. Prueba con Semana, Mes o Personalizado.'}</td></tr>}
           {searching && <tr><td colSpan={8} className="p-8 text-center text-sm text-slate-500">Cargando ingresos…</td></tr>}
           </tbody>
         </DataTable>
@@ -391,4 +405,20 @@ export default function WarehouseLabelingPage() {
     </div>, document.body)}
 
   </div>
+}
+
+type Period = 'HOY' | 'SEMANA' | 'MES' | 'RANGO'
+const PERIODS: [Period, string][] = [['HOY', 'Hoy'], ['SEMANA', 'Semana'], ['MES', 'Mes'], ['RANGO', 'Personalizado']]
+/** Fecha de Lima (YYYY-MM-DD) desplazada `days` días. */
+function limaDay(days: number) { return new Date(Date.now() + days * 86_400_000).toLocaleDateString('en-CA', { timeZone: 'America/Lima' }) }
+function periodRange(period: Period, from: string, to: string): [string, string] {
+  const today = limaDay(0)
+  if (period === 'HOY') return [today, today]
+  if (period === 'SEMANA') return [limaDay(-6), today]
+  if (period === 'MES') return [today.slice(0, 8) + '01', today]
+  return [from || '0000-01-01', to || '9999-12-31']
+}
+function filterAndSort<T extends { fecha: string; document_no: string }>(rows: T[], range: [string, string] | null) {
+  return rows.filter(r => !range || (r.fecha >= range[0] && r.fecha <= range[1]))
+    .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.document_no.localeCompare(a.document_no))
 }
