@@ -25,7 +25,7 @@ async function load(weightFailure) {
     return q
   }
   Object.assign(deps, {
-    filterDateFrom: '', applyPreselect:()=>{},
+    filterDateFrom: '', applyPreselect:()=>{}, readCache:()=>undefined, writeCache:()=>{},
     errorMessage: e => e.message,
     toast: { error: message => state.errors.push(message) },
     allPages: async () => [contract],
