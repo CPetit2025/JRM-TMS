@@ -23,6 +23,8 @@ const task = { client_name: 'RINTI S A', contract_code: '16573', request_number:
   const small = await buildBultoContentPdf(lpn(pkgs(12)), task)
   assert.equal(small.format, 'a5'); assert.equal(small.pdf.getNumberOfPages(), 1)
   assert.equal(Math.round(small.pdf.internal.pageSize.getWidth()), 148, 'A5 de 148 mm')
+  const reception = await buildBultoContentPdf(lpn(pkgs(3).map(p => ({ ...p, document: 'IPT-9' }))), { ...task, request_number: null }, { reception: true })
+  assert.equal(reception.format, 'a5'); assert.equal(reception.pdf.getNumberOfPages(), 1, 'hoja de contenido del LPN de recepción')
   const big = await buildBultoContentPdf(lpn(pkgs(120)), task)
   assert.equal(big.format, 'a4'); assert.ok(big.pdf.getNumberOfPages() >= 3, 'continúa en varias hojas A4')
   assert.equal(bultoNumber('16573-B-0005'), 'B-0005'); assert.equal(bultoNumber('PKG-261102-04B6A4E9'), null)

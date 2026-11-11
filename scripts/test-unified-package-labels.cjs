@@ -124,3 +124,21 @@ console.log('PASS: independent label orientation, exact A4/thermal sizes, invali
 assert.equal(readPrintPreferences(null).position,'TOP_LEFT','cuenta nueva: etiqueta arriba a la izquierda de la página A4');
 assert.equal(readPrintPreferences(JSON.stringify({formatId:'saved-label',paper:'A4_PORTRAIT'})).position,'CENTER','existing saved sizes gain centered placement');
 assert.equal(readPrintPreferences(JSON.stringify({position:'TOP_LEFT'})).position,'TOP_LEFT');
+
+// Etiqueta del LPN de recepción: misma plantilla del bulto, identifica el LPN, sus líneas y los totales.
+{
+ const { lpnLabelData } = load('src/lib/warehouse/receipt-lpn.ts');
+ const line = (code, product, lot, qty, kg, unit = 'UND') => ({ package_code: code, receipt_key: code, document: 'IPT-9', contract_code: '16573', product_code: product, description: 'Producto ' + product, lot, quantity: qty, unit, weight_kg: kg, warehouse: 'APT', date: '2026-11-11' });
+ const lpn = { id: 'x', lpn_code: '16573-B-0002', origin: 'RECEPCION', status: 'CLOSED', task_id: null, print_count: 0, package_count: 2, quantity: 15, weight_kg: 120, created_at: '', created_by_name: 'Carlos Petit',
+  packages: [line('16573-B-0003', 'P-A', '16573', 10, 100), line('16574-B-0001', 'P-B', '16574', 5, 20)] };
+ const label = lpnLabelData(lpn, 'Fargoline SAC');
+ assert.equal(label.package_code, '16573-B-0002', 'el código de barras es el del LPN');
+ assert.equal(label.content_lines, 2); assert.match(label.description, /Contenido: 2 líneas/);
+ assert.equal(label.source_lot, '16573, 16574'); assert.equal(label.source_document_no, 'IPT-9');
+ assert.equal(label.quantity, 15); assert.equal(label.weight_kg, 120); assert.equal(label.unit, 'UND');
+ assert.equal(label.customer_name, 'Fargoline SAC'); assert.equal(label.reception_responsible_name, 'Carlos Petit');
+ const mixed = lpnLabelData({ ...lpn, packages: [line('a', 'P-A', null, 1, null, 'UND'), line('b', 'P-B', null, 2, null, 'KG')] }, null);
+ assert.equal(mixed.unit, 'und', 'unidades distintas: total genérico'); assert.equal(mixed.weight_kg, null, 'sin peso registrado no se imprime 0 kg');
+ assert.equal(mixed.customer_name, 'Cliente por registrar');
+ console.log('PASS: etiqueta del LPN de recepción con su código, líneas, lotes, totales y unidades mixtas');
+}

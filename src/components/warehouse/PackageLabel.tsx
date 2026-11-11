@@ -61,7 +61,7 @@ export function PackageLabel({ label, format = { width_mm: 152.4, height_mm: 101
           </strong>
         </div>
         <div className="wh-package-sequence">
-          {bultoNumber(label.package_code) ? <>Bulto <b className="wh-package-bulto">{bultoNumber(label.package_code)}</b></> : `${label.sequence_no}/${label.sequence_total}`}
+          {bultoNumber(label.package_code) ? <>{label.content_lines ? "LPN" : "Bulto"} <b className="wh-package-bulto">{bultoNumber(label.package_code)}</b></> : `${label.sequence_no}/${label.sequence_total}`}
         </div>
       </div>
     </article>

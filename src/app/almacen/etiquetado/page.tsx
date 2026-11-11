@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
-import { Printer, RotateCcw, ScanLine, ClipboardCheck, X, RefreshCw, UserRound, Weight, Package } from 'lucide-react'
+import { Printer, RotateCcw, ScanLine, ClipboardCheck, X, RefreshCw, UserRound, Weight, Package, PackagePlus, Download, Undo2 } from 'lucide-react'
+import { loadReceiptLpn, type ReceiptLpn } from '@/lib/warehouse/receipt-lpn'
+import { buildBultoContentPdf, contentSheetFormat, fmt } from '@/lib/warehouse/packing-list'
 import { PackageLabelPreview } from '@/components/warehouse/PackageLabel'
 import type { PackageLabelData as Label } from '@/lib/warehouse/package-label'
 import { loadPackageLabels } from '@/lib/warehouse/load-package-label'
@@ -19,8 +21,12 @@ type Receipt = {
   product_code: string; description: string | null; unit: string | null; contract_code: string | null
   quantity: number; weight_kg: number | null; customer_name: string | null; customer_source: 'ERP/OT' | 'MANUAL' | null
   physical_quantity: number | null; variance: number | null; variance_reason: string | null
-  validation_status: 'PENDING' | 'STALE' | 'VALIDATED'; label_count: number; labeled_qty: number; unprinted_count: number; pending_labels: Label[]; label_status: string
+  validation_status: 'PENDING' | 'STALE' | 'VALIDATED'; label_count: number; labeled_qty: number; unprinted_count: number; pending_labels: (Label & { lpn_code?: string | null })[]; label_status: string
 }
+/** OT/contrato normalizada como en el servidor (sin símbolos ni prefijo OT). */
+const otKey = (value: string | null) => (value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^OT/, '')
+const sameText = (a: string | null, b: string | null) => (a || '').trim().toUpperCase() === (b || '').trim().toUpperCase()
+const lpnOf = (receipt: Receipt) => receipt.pending_labels?.find(label => label.lpn_code)?.lpn_code || null
 
 
 export default function WarehouseLabelingPage() {
@@ -39,6 +45,10 @@ export default function WarehouseLabelingPage() {
   const [count, setCount] = useState('1')
   const [capacity, setCapacity] = useState('')
   const [labels, setLabels] = useState<Label[]>([])
+  // LPN de recepción en pantalla: se imprime solo su etiqueta (y su hoja de contenido), no las de sus líneas.
+  const [lpn, setLpn] = useState<ReceiptLpn | null>(null)
+  // Líneas marcadas para consolidar, en el orden en que se marcaron (la primera define el lote del número del LPN).
+  const [checked, setChecked] = useState<string[]>([])
   const labelFormat = useLabelFormat('PAQUETE')
   // Período de la bandeja (por defecto solo hoy) y orden del ingreso más reciente al más antiguo. Una búsqueda ignora el período.
   const [period, setPeriod] = useState<Period>('HOY')
@@ -119,7 +129,8 @@ export default function WarehouseLabelingPage() {
 
   const select = async (receipt: Receipt) => {
     const request = ++selectionRequest.current
-    setSelected(receipt); setLabels([]); setPrintedLabelCodes([]); setShowPreview(false); setMessage(''); setError('')
+    if (selected?.document_no !== receipt.document_no) setChecked([])
+    setSelected(receipt); setLabels([]); setLpn(null); setPrintedLabelCodes([]); setShowPreview(false); setMessage(''); setError('')
     const physical = receipt.physical_quantity ?? Number(receipt.quantity)
     setPhysicalQuantity(String(physical))
     setVarianceReason(receipt.variance_reason || '')
@@ -134,8 +145,13 @@ export default function WarehouseLabelingPage() {
       setCapacity(''); setCount('1'); setPackageMode('PACKAGES'); setCompletePackages('0')
     }
     const codes = (receipt.pending_labels || []).map(label => label.package_code)
+    const lpnCode = lpnOf(receipt)
     setBusy(codes.length > 0)
-    if (codes.length) {
+    if (lpnCode) {
+      try { const loaded = await loadReceiptLpn(createClient(), lpnCode); if (request === selectionRequest.current && loaded) { setLpn(loaded.lpn); setLabels([loaded.label]) } }
+      catch(e) { if (request === selectionRequest.current) setError(e instanceof Error ? e.message : String(e)) }
+      finally { if (request === selectionRequest.current) setBusy(false) }
+    } else if (codes.length) {
       try { const pending = await loadPackageLabels(createClient(), codes); if (request === selectionRequest.current) setLabels(pending) }
       catch(e) { if (request === selectionRequest.current) setError(e instanceof Error ? e.message : String(e)) }
       finally { if (request === selectionRequest.current) setBusy(false) }
@@ -194,6 +210,23 @@ export default function WarehouseLabelingPage() {
     setBusy(true);setError('')
     try {
     validatePackageLabelPrint(labelFormat)
+    if (lpn) {
+      const db = createClient()
+      if (lpn.print_count > 0) {
+        const reason = window.prompt('Motivo de reimpresión de la etiqueta del LPN:')
+        if (!reason?.trim()) return
+        const { error: rpcError } = await db.rpc('wh_reprint_lpn_label', { p_lpn_code: lpn.lpn_code, p_reason: reason.trim() })
+        if (rpcError) { setError(rpcError.message); return }
+      } else {
+        const { error: rpcError } = await db.rpc('wh_print_lpn_label', { p_lpn_id: lpn.id })
+        if (rpcError) { setError(rpcError.message); return }
+        void search()
+      }
+      setLpn({ ...lpn, print_count: lpn.print_count + 1 }); setPrintedLabelCodes([lpn.lpn_code])
+      const method = await printPackageLabels(targetLabels, labelFormat)
+      setMessage(`${method === 'ZEBRA' ? 'Etiqueta del LPN enviada a Zebra.' : 'Impresión de la etiqueta del LPN preparada.'} Imprima también su hoja de contenido y péguela en el pallet.`)
+      return
+    }
     const alreadyPrinted = targetLabels.filter(label => printedLabelCodes.includes(label.package_code))
     const newLabels = targetLabels.filter(label => !printedLabelCodes.includes(label.package_code))
     if (alreadyPrinted.length) {
@@ -216,6 +249,42 @@ export default function WarehouseLabelingPage() {
     } catch(e) {setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}
   }
 
+  // Varias líneas validadas (mismo cliente y OT) en un solo LPN: el servidor vuelve a comprobar todas las reglas.
+  const consolidate = async () => {
+    if (busy || checked.length < 2) return
+    setBusy(true); setError(''); setMessage('')
+    try {
+      const db = createClient()
+      const { data, error: rpcError } = await db.rpc('wh_receipt_consolidate_lpn', { p_receipt_keys: checked, p_client_event_id: crypto.randomUUID() })
+      if (rpcError) { setError(rpcError.message); return }
+      const loaded = await loadReceiptLpn(db, (data as ReceiptLpn).lpn_code)
+      if (!loaded) throw new Error('El LPN se creó, pero no se pudo recuperar su contenido. Actualice la bandeja y ábralo desde una de sus líneas.')
+      setLpn(loaded.lpn); setLabels([loaded.label]); setPrintedLabelCodes([]); setChecked([])
+      setMessage(`LPN ${loaded.lpn.lpn_code} creado con ${loaded.lpn.packages.length} líneas. Imprima solo la etiqueta del LPN y su hoja de contenido.`)
+      void search()
+      setSelected(null); setShowPreview(true)
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)) } finally { setBusy(false) }
+  }
+  const downloadContent = async () => {
+    if (!lpn) return
+    try {
+      const { pdf } = await buildBultoContentPdf(lpn, { client_name: labels[0]?.customer_name || null, contract_code: labels[0]?.contract_code || null, request_number: null }, { reception: true })
+      pdf.save(`contenido-${lpn.lpn_code}.pdf`)
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
+  }
+  const undoLpn = async () => {
+    if (!lpn || busy) return
+    const reason = window.prompt(`Motivo para deshacer el LPN ${lpn.lpn_code} (sus líneas vuelven a la bandeja para etiquetarse por separado):`)
+    if (!reason?.trim()) return
+    setBusy(true); setError('')
+    const { error: rpcError } = await createClient().rpc('wh_lpn_undo', { p_lpn_id: lpn.id, p_reason: reason.trim() })
+    setBusy(false)
+    if (rpcError) { setError(rpcError.message); return }
+    setMessage(`LPN ${lpn.lpn_code} deshecho. Sus líneas vuelven a la bandeja para imprimir sus etiquetas individuales.`)
+    setLpn(null); setLabels([]); setShowPreview(false); setSelected(null)
+    void search()
+  }
+
   const physicalToValidate = Number(physicalQuantity)
   const packageBalance = Number((physicalToValidate - Number(capacity) * Number(completePackages)).toFixed(3))
   const packageBreakdownValid = packageMode !== 'PACKAGES' || (Number.isInteger(Number(completePackages)) && Number(completePackages) >= 0 && Number(capacity) > 0 && packageBalance >= 0 && packageBalance < Number(capacity) && Number(completePackages) + (packageBalance > 0 ? 1 : 0) <= 100)
@@ -224,6 +293,9 @@ export default function WarehouseLabelingPage() {
   const selectedIptReceipts = selected ? receipts.filter(receipt => receipt.document_no === selected.document_no) : []
   const iptErpTotal = selectedIptReceipts.reduce((sum, receipt) => sum + Number(receipt.quantity || 0), 0)
   const iptPendingCount = selectedIptReceipts.filter(receipt => receipt.validation_status !== 'VALIDATED').length
+  const firstChecked = receipts.find(receipt => receipt.receipt_key === checked[0])
+  const canCheck = (receipt: Receipt) => receipt.validation_status === 'VALIDATED' && receipt.label_status === 'NOT_LABELED' && Number(receipt.physical_quantity) > 0 &&
+    (!firstChecked || (otKey(receipt.contract_code) === otKey(firstChecked.contract_code) && sameText(receipt.customer_name, firstChecked.customer_name)))
   const requiresVarianceReason = selected && physicalToValidate !== Number(selected.quantity)
   const canGenerate = selected?.validation_status === 'VALIDATED' && Number(selected.physical_quantity) > 0 && !['DIFFERENCE','MATCH','PENDING_PRINT'].includes(selected.label_status)
   const planQuantity = Number(selected?.physical_quantity || 0)
@@ -315,24 +387,28 @@ export default function WarehouseLabelingPage() {
                 <span className="rounded-lg bg-blue-50 px-3 py-2 font-semibold text-blue-900">{selectedIptReceipts.length} ítems recibidos</span>
                 <span className="rounded-lg bg-blue-50 px-3 py-2 font-semibold text-blue-900">Total ERP: {iptErpTotal} {selected.unit || 'UND'}</span>
                 <span className="rounded-lg bg-amber-50 px-3 py-2 font-semibold text-amber-950">{iptPendingCount} pendiente(s) de validar</span>
+                <button type="button" disabled={busy || checked.length < 2} onClick={() => void consolidate()} title="Marque dos o más líneas validadas sin etiqueta, del mismo cliente y OT" className="inline-flex items-center gap-1.5 rounded-lg bg-[#002855] px-3 py-2 font-bold text-white disabled:opacity-40"><PackagePlus size={15}/>Consolidar en LPN ({checked.length})</button>
               </div>
             </div>
             <div className="max-h-56 overflow-auto rounded-lg border border-slate-200">
               <table className="min-w-[900px] lg:min-w-0 w-full text-left text-xs">
-                <thead className="sticky top-0 bg-slate-50 text-slate-600"><tr><th className="w-10 p-2"></th><th className="p-2">#</th><th className="p-2">IPT / Código</th><th className="p-2">Descripción</th><th className="p-2">Lote</th><th className="p-2">Cliente</th><th className="p-2 text-right">ERP</th><th className="p-2">Estado</th></tr></thead>
+                <thead className="sticky top-0 bg-slate-50 text-slate-600"><tr><th className="w-10 p-2"></th><th className="w-12 p-2">LPN</th><th className="p-2">#</th><th className="p-2">IPT / Código</th><th className="p-2">Descripción</th><th className="p-2">Lote</th><th className="p-2">Cliente</th><th className="p-2 text-right">ERP</th><th className="p-2">Estado</th></tr></thead>
                 <tbody>{selectedIptReceipts.map((receipt, index) => <tr key={receipt.receipt_key} className={receipt.receipt_key === selected.receipt_key ? 'border-t border-blue-200 bg-blue-50' : 'border-t border-slate-200'}>
                   <td className="p-2"><button type="button" onClick={() => select(receipt)} aria-label={'Seleccionar ' + receipt.product_code} aria-pressed={receipt.receipt_key === selected.receipt_key} className={receipt.receipt_key === selected.receipt_key ? 'grid h-6 w-6 place-items-center rounded-full border border-blue-700 bg-blue-700 text-white' : 'grid h-6 w-6 place-items-center rounded-full border border-slate-400 bg-white text-transparent'}>●</button></td>
+                  <td className="p-2"><input type="checkbox" className="h-4 w-4" aria-label={'Consolidar ' + receipt.product_code + ' en el LPN'} checked={checked.includes(receipt.receipt_key)} disabled={busy || (!checked.includes(receipt.receipt_key) && !canCheck(receipt))}
+                    title={canCheck(receipt) || checked.includes(receipt.receipt_key) ? 'Incluir en el LPN' : 'Solo líneas validadas sin etiqueta, del mismo cliente y OT que la primera marcada'}
+                    onChange={event => { const key = receipt.receipt_key; setChecked(current => event.target.checked ? [...current, key] : current.filter(k => k !== key)) }}/></td>
                   <td className="p-2">{index + 1}</td>
                   <td className="p-2 font-semibold text-[#002855]">{receipt.document_no}<span className="block font-normal">{receipt.product_code} · {receipt.contract_code || '—'}</span></td>
                   <td className="max-w-72 p-2">{receipt.description || receipt.product_code}</td>
                   <td className="p-2">{receipt.lote || '—'}</td>
                   <td className="max-w-52 p-2">{receipt.customer_name || 'Por ingresar'}</td>
                   <td className="p-2 text-right font-bold text-blue-800">{receipt.quantity} {receipt.unit || ''}</td>
-                  <td className="p-2"><span className={receipt.validation_status === 'VALIDATED' ? 'whitespace-nowrap rounded-full bg-emerald-100 px-2 py-1 text-emerald-900' : 'whitespace-nowrap rounded-full bg-amber-100 px-2 py-1 text-amber-950'}>{receipt.validation_status === 'VALIDATED' ? 'Validado' : 'Pendiente'}</span></td>
+                  <td className="p-2"><span className={receipt.validation_status === 'VALIDATED' ? 'whitespace-nowrap rounded-full bg-emerald-100 px-2 py-1 text-emerald-900' : 'whitespace-nowrap rounded-full bg-amber-100 px-2 py-1 text-amber-950'}>{receipt.validation_status === 'VALIDATED' ? 'Validado' : 'Pendiente'}</span>{lpnOf(receipt) && <span className="ml-1 whitespace-nowrap rounded-full bg-blue-100 px-2 py-1 text-blue-900">LPN {lpnOf(receipt)}</span>}</td>
                 </tr>)}</tbody>
               </table>
             </div>
-            <p className="mt-2 text-[11px] text-slate-500">Seleccione un ítem para validar su conteo físico y emitir sus etiquetas por separado.</p>
+            <p className="mt-2 text-[11px] text-slate-500">Seleccione un ítem para validar su conteo físico y emitir sus etiquetas por separado. Para armar un solo pallet, marque en «LPN» dos o más líneas validadas sin etiqueta, del mismo cliente y OT, y use «Consolidar en LPN»: se imprime solo la etiqueta del LPN y su hoja de contenido.</p>
           </section>}
           {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
           {message && <p role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">{message}</p>}
@@ -367,7 +443,7 @@ export default function WarehouseLabelingPage() {
       {selected.validation_status === 'VALIDATED' && <section className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
         <h3 className="font-bold text-[#002855]">4. Distribución de bultos y generación de LPN</h3>
         <p className="mt-1 text-sm text-slate-600">La suma de los bultos debe ser igual a la cantidad física confirmada: <b>{selected.physical_quantity} {selected.unit || ''}</b>.</p>
-        {selected.label_status === 'PENDING_PRINT' ? <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{labels.length} etiqueta(s) LPN ya generadas siguen pendientes de impresión. Use Vista previa para revisarlas y luego imprímalas; no se generarán códigos duplicados.</div> : selected.label_status === 'MATCH' ? <div className="mt-3 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-950">Este ingreso ya tiene todas sus etiquetas impresas.</div> : <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        {lpn ? <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">Esta línea está consolidada en el LPN <b>{lpn.lpn_code}</b> con {lpn.packages.length} líneas ({fmt(lpn.quantity, 3)} und · {fmt(lpn.weight_kg)} kg). Se imprime solo la etiqueta del LPN y su hoja de contenido; para etiquetarla por separado, deshaga el LPN desde la Vista previa.</div> : selected.label_status === 'PENDING_PRINT' ? <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{labels.length} etiqueta(s) LPN ya generadas siguen pendientes de impresión. Use Vista previa para revisarlas y luego imprímalas; no se generarán códigos duplicados.</div> : selected.label_status === 'MATCH' ? <div className="mt-3 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-950">Este ingreso ya tiene todas sus etiquetas impresas.</div> : <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <label className="text-sm font-semibold">Unidades por bulto (opcional)<input type="number" min="0.001" step="0.001" value={capacity} onChange={event => { setCapacity(event.target.value); if (event.target.value) setCount(String(Math.ceil(Number(selected.physical_quantity) / Number(event.target.value)))) }} placeholder={sizes[selected.product_code.toUpperCase()] ? String(sizes[selected.product_code.toUpperCase()].units_per_package) : 'Sin estándar'} className="mt-1 w-full rounded-lg border px-3 py-2.5 font-normal" /></label>
           <label className="text-sm font-semibold">Bultos a generar<input type="number" min="1" max="100" value={count} onChange={event => setCount(event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2.5 font-normal" /><small className="mt-1 block font-normal text-slate-500">Embalaje estándar: {sizes[selected.product_code.toUpperCase()] ? `${sizes[selected.product_code.toUpperCase()].units_per_package} ${sizes[selected.product_code.toUpperCase()].unit || selected.unit || ''}` : 'no configurado'}</small></label>
           <div className="flex items-end"><button disabled={busy || !canGenerate || Number(count) < 1 || Number(count) > 100} onClick={() => void generate()} className="inline-flex items-center gap-2 rounded-lg bg-[#002855] px-4 py-2.5 font-bold text-white disabled:opacity-50">{busy ? <RotateCcw className="animate-spin" size={17} /> : <ScanLine size={17} />}Generar bultos y LPN</button></div>
@@ -380,7 +456,7 @@ export default function WarehouseLabelingPage() {
         </div>
         <footer className="flex shrink-0 flex-col gap-1.5 border-t border-slate-200 bg-white p-2 sm:flex-row sm:items-center sm:justify-between sm:px-4">
           <p className="hidden text-xs text-slate-500 sm:block">Conteo físico → distribución → LPN → impresión</p>
-          <div className="flex gap-2">{labels.length > 0 && <button type="button" onClick={() => { setSelected(null); setShowPreview(true) }} className="min-h-10 flex-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855] sm:flex-none">Vista previa</button>}<button type="button" onClick={() => setSelected(null)} className="min-h-10 flex-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 sm:flex-none">Cerrar</button><button type="button" disabled={busy||!labels.length} onClick={() => void print()} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"><Printer size={16}/>{labelsPrinted ? 'Reimprimir lote' : hasPrintedLabels ? 'Imprimir pendientes' : 'Imprimir lote'}</button></div>
+          <div className="flex gap-2">{labels.length > 0 && <button type="button" onClick={() => { setSelected(null); setShowPreview(true) }} className="min-h-10 flex-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-[#002855] sm:flex-none">Vista previa</button>}<button type="button" onClick={() => setSelected(null)} className="min-h-10 flex-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 sm:flex-none">Cerrar</button><button type="button" disabled={busy||!labels.length} onClick={() => void print()} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"><Printer size={16}/>{lpn ? (labelsPrinted ? 'Reimprimir etiqueta LPN' : 'Imprimir etiqueta LPN') : labelsPrinted ? 'Reimprimir lote' : hasPrintedLabels ? 'Imprimir pendientes' : 'Imprimir lote'}</button></div>
         </footer>
       </div>
     </div>, document.body)}
@@ -388,18 +464,29 @@ export default function WarehouseLabelingPage() {
     {labels.length > 0 && showPreview && typeof document !== 'undefined' && createPortal(<div id="wms-label-preview" role="dialog" aria-modal="true" aria-labelledby="wms-label-preview-title" className="fixed inset-0 z-[2147483001] flex items-center justify-center bg-slate-950/60 p-2 sm:p-5 print:static print:block print:bg-transparent print:p-0" onClick={() => setShowPreview(false)}>
       <section className="flex max-h-[96dvh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl print:contents" onClick={event => event.stopPropagation()}>
         <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-6">
-          <div><h2 id="wms-label-preview-title" className="font-bold text-[#002855]">Vista previa de etiquetas · {labels.length}</h2><p className="text-xs text-slate-500">Revise cada bulto, cantidad y código LPN antes de imprimir.</p></div>
+          {lpn ? <div><h2 id="wms-label-preview-title" className="font-bold text-[#002855]">Vista previa · LPN {lpn.lpn_code}</h2><p className="text-xs text-slate-500">Una sola etiqueta para el pallet y su hoja de contenido ({lpn.packages.length} líneas, {contentSheetFormat(lpn.packages.length).toUpperCase()}).</p></div>
+            : <div><h2 id="wms-label-preview-title" className="font-bold text-[#002855]">Vista previa de etiquetas · {labels.length}</h2><p className="text-xs text-slate-500">Revise cada bulto, cantidad y código LPN antes de imprimir.</p></div>}
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => setShowPreview(false)} className="min-h-10 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">Cerrar vista previa</button>
-            <button type="button" disabled={busy} onClick={() => void print()} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#002855] px-4 py-2.5 text-sm font-bold text-white"><Printer size={16} />{labelsPrinted ? 'Reimprimir lote' : 'Imprimir lote'}</button>
+            {lpn && <button type="button" disabled={busy} onClick={() => void downloadContent()} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-[#002855]"><Download size={16}/>Hoja de contenido</button>}
+            {lpn && lpn.status === 'CLOSED' && !lpn.task_id && <button type="button" disabled={busy} onClick={() => void undoLpn()} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700"><Undo2 size={16}/>Deshacer LPN</button>}
+            <button type="button" disabled={busy} onClick={() => void print()} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#002855] px-4 py-2.5 text-sm font-bold text-white"><Printer size={16} />{lpn ? (labelsPrinted ? 'Reimprimir etiqueta LPN' : 'Imprimir etiqueta LPN') : labelsPrinted ? 'Reimprimir lote' : 'Imprimir lote'}</button>
             <button type="button" aria-label="Cerrar vista previa" onClick={() => setShowPreview(false)} className="grid h-10 w-10 place-items-center rounded-lg border border-slate-300 text-slate-600"><X size={18}/></button>
           </div>
         </header>
         <div className="wms-label-list min-h-0 flex-1 overflow-y-auto p-3 sm:p-6 print:overflow-visible print:p-0">
           <div className="grid gap-3 sm:grid-cols-2">{labels.map(label=><div key={label.package_code}>
             <PackageLabelPreview label={label} format={labelFormat}/>
-            <button type="button" disabled={busy} onClick={()=>void print([label])} className="mt-2 rounded-md border border-slate-300 px-3 py-2 text-xs font-bold text-[#002855]">{printedLabelCodes.includes(label.package_code)?'Reimprimir etiqueta':'Imprimir etiqueta'}</button>
-          </div>)}</div>
+            {!lpn && <button type="button" disabled={busy} onClick={()=>void print([label])} className="mt-2 rounded-md border border-slate-300 px-3 py-2 text-xs font-bold text-[#002855]">{printedLabelCodes.includes(label.package_code)?'Reimprimir etiqueta':'Imprimir etiqueta'}</button>}
+          </div>)}
+          {lpn && <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="w-full text-left text-xs">
+              <caption className="bg-slate-50 p-2 text-left font-bold text-[#002855]">Hoja de contenido · {lpn.lpn_code}</caption>
+              <thead className="bg-slate-50 text-slate-600"><tr><th className="p-2">IPT</th><th className="p-2">Código</th><th className="p-2">Descripción</th><th className="p-2">Lote</th><th className="p-2 text-right">Cantidad</th><th className="p-2 text-right">Peso kg</th></tr></thead>
+              <tbody>{lpn.packages.map(row => <tr key={row.package_code} className="border-t border-slate-200"><td className="p-2">{row.document || '—'}</td><td className="p-2 font-semibold">{row.product_code}</td><td className="p-2">{row.description}</td><td className="p-2">{row.lot || '—'}</td><td className="p-2 text-right tabular-nums">{fmt(row.quantity, 3)} {row.unit || ''}</td><td className="p-2 text-right tabular-nums">{row.weight_kg == null ? '—' : fmt(row.weight_kg)}</td></tr>)}</tbody>
+              <tfoot><tr className="border-t border-slate-300 font-bold"><td className="p-2" colSpan={4}>Total · {lpn.packages.length} líneas</td><td className="p-2 text-right tabular-nums">{fmt(lpn.quantity, 3)}</td><td className="p-2 text-right tabular-nums">{fmt(lpn.weight_kg)}</td></tr></tfoot>
+            </table>
+          </div>}</div>
         </div>
       </section>
     </div>, document.body)}

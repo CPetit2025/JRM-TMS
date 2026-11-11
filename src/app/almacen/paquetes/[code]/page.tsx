@@ -10,6 +10,7 @@ import { printPackageLabels, validatePackageLabelPrint } from "@/components/ware
 import { hydratePackageLabel } from "@/lib/warehouse/load-package-label";
 import type { PackageLabelData } from "@/lib/warehouse/package-label";
 import { useLabelFormat } from "@/lib/warehouse/label-format";
+import { loadReceiptLpn, type ReceiptLpn } from "@/lib/warehouse/receipt-lpn";
 
 type PackageRow = {
   package_code: string;
@@ -46,6 +47,9 @@ export default function PackageDetail({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  // LPN al que pertenece el paquete; si es de recepción, su etiqueta es la del LPN (no se reimprime la del paquete).
+  const [lpn, setLpn] = useState<{ lpn: ReceiptLpn; label: PackageLabelData } | null>(null);
+  const receiptLpn = lpn?.lpn.origin === "RECEPCION" && lpn.lpn.status !== "VOID" ? lpn : null;
   const load = useCallback(async () => {
     const db = createClient();
     const [{ data: p, error: e }, { data: s }] = await Promise.all([
@@ -65,6 +69,13 @@ export default function PackageDetail({
     else {
       setRow(p as PackageRow | null);
       setLabel(null);
+      setLpn(null);
+      if (p?.lpn_id)
+        try {
+          setLpn(await loadReceiptLpn(db, p.package_code));
+        } catch (e) {
+          setError(e instanceof Error ? e.message : String(e));
+        }
       if (p)
         try {
           setLabel(await hydratePackageLabel(db, p));
@@ -84,14 +95,16 @@ export default function PackageDetail({
     const reason = window.prompt("Motivo de reimpresión de esta etiqueta:");
     if (!reason?.trim()) return;
     setBusy(true);
-    const { error } = await createClient().rpc("wh_reprint_label", {
-      p_package_code: row.package_code,
-      p_reason: reason,
-    });
+    const { error } = receiptLpn
+      ? await createClient().rpc("wh_reprint_lpn_label", { p_lpn_code: receiptLpn.lpn.lpn_code, p_reason: reason })
+      : await createClient().rpc("wh_reprint_label", {
+          p_package_code: row.package_code,
+          p_reason: reason,
+        });
     if (error) setError(error.message);
     else {
       try {
-        await printPackageLabels([label], labelFormat);
+        await printPackageLabels([receiptLpn ? receiptLpn.label : label], labelFormat);
         setMessage("Reimpresión registrada con motivo.");
         await load();
       } catch (e) {
@@ -152,7 +165,7 @@ export default function PackageDetail({
                       onClick={() => void reprint()}
                       className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold"
                     >
-                      Reimprimir
+                      {receiptLpn ? "Reimprimir etiqueta LPN" : "Reimprimir"}
                     </button>
                     {hasAccess("almacen-supervisor") && (
                       <button
@@ -183,8 +196,13 @@ export default function PackageDetail({
               </p>
             )}
             <div className="mt-5 max-w-2xl">
+              {receiptLpn && (
+                <p className="mb-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">
+                  Este paquete está consolidado en el LPN de recepción <b>{receiptLpn.lpn.lpn_code}</b> ({receiptLpn.lpn.packages.length} líneas): su etiqueta es la del LPN.
+                </p>
+              )}
               {label ? (
-                <PackageLabelPreview label={label} format={labelFormat} />
+                <PackageLabelPreview label={receiptLpn ? receiptLpn.label : label} format={labelFormat} />
               ) : (
                 <p className="text-sm text-slate-500">
                   Cargando etiqueta original…
@@ -198,7 +216,7 @@ export default function PackageDetail({
                 ["Producto", row.source_product_code],
                 ["Cantidad", `${row.quantity} ${row.unit || ""}`],
                 ["Task", row.task_id || "Sin asignar"],
-                ["LPN", row.lpn_id || "Sin LPN"],
+                ["LPN", lpn ? `${lpn.lpn.lpn_code}${lpn.lpn.origin === "RECEPCION" ? " · recepción" : ""}` : row.lpn_id || "Sin LPN"],
               ].map(([k, v]) => (
                 <div key={k} className="rounded-lg bg-slate-50 p-3">
                   <small className="text-slate-500">{k}</small>
