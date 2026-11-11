@@ -49,3 +49,33 @@ cambio. La sesión de TMS se conserva al salir hacia WMS, y viceversa.
 indicador de sistema, borrado de credenciales, dirección ausente y destinos
 inválidos. La comprobación `scripts/test-wms-isolation.mjs` pertenece a la rama WMS;
 este cambio de TMS no incorpora sus rutas ni sus migraciones.
+
+## Administración central de cuentas
+
+En TMS, **Usuarios del Sistema** y **Roles y Permisos** incluyen un selector TMS/WMS.
+Cada vista consulta su propio directorio: el mismo correo puede existir en ambos,
+pero los identificadores, roles, contraseñas y estados son independientes. No se
+crean cuentas ni se conceden permisos por cambiar de pestaña.
+
+Para dar acceso al almacén: Usuarios → WMS → Nuevo usuario WMS; registre el correo,
+el documento, una contraseña inicial y su rol WMS. Marque **Habilitar acceso al WMS**
+solo si debe ingresar. Para retirarlo, edite esa cuenta y desmarque la casilla.
+Dar de baja en un sistema no da de baja en el otro. Las nuevas cuentas WMS quedan
+inactivas por defecto. No se copia ni cambia la contraseña del TMS.
+
+Roles operativos existentes: **Asistente de Recepción** (recepción y etiquetado),
+**Auditor de Despacho** y **Analista de Inventario**. La pestaña WMS de Roles y
+Permisos permite crear roles operativos y editar sus permisos de almacén. Los
+administradores WMS quedan protegidos y se mantienen desde su entorno de seguridad.
+
+La API de TMS comprueba el administrador activo y remite su token exclusivamente al
+origen fijo `https://wms.jrmlogistica.app`, sin seguir redirecciones. La API WMS
+vuelve a verificar el token y el perfil administrador en la base TMS antes de usar
+su cliente privilegiado local. Se utilizan las variables de integración ya
+existentes en WMS (`TMS_SUPABASE_URL`, `TMS_SUPABASE_ANON_KEY`); las claves
+privilegiadas permanecen en cada despliegue. No hay migraciones de base de datos.
+
+Orden de publicación: primero la API en la rama WMS; luego la administración en
+TMS. WMS valida su referencia de producción y rechaza otras bases. Un error de
+conexión se muestra como error, sin asumir que el acceso fue guardado. Si se pierde
+la respuesta de una escritura, consulte el listado antes de repetirla.
