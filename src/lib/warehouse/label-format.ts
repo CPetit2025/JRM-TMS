@@ -15,9 +15,9 @@ export const PERSONAL_LABEL_FORMATS: LabelFormat[] = [
   { id: 'paper-a5-portrait', output: 'BROWSER', name: 'A5 vertical', width_mm: 148, height_mm: 210, dpi: 203, is_active: true },
   { id: 'paper-a5-landscape', output: 'BROWSER', name: 'A5 horizontal', width_mm: 210, height_mm: 148, dpi: 203, is_active: true },
 ];
-const preferenceKey = (userId: string, kind: LabelKind) => `wh-label-paper:v5:${userId}:${kind}`;
-// v5 (11/11/2026): todos parten de la etiqueta A5 acostada sin girar; las preferencias guardadas antes (v1/v2) se dejan de leer una vez.
-const settingsKey = (userId: string, kind: LabelKind) => `wh-label-print:v5:${userId}:${kind}`;
+const preferenceKey = (userId: string, kind: LabelKind) => `wh-label-paper:v6:${userId}:${kind}`;
+// v6 (11/11/2026): todos parten de la página A5 vertical con la etiqueta acostada girada; las preferencias guardadas antes (v1/v2) se dejan de leer una vez.
+const settingsKey = (userId: string, kind: LabelKind) => `wh-label-print:v6:${userId}:${kind}`;
 const preferenceEvent = 'wh-label-paper-change';
 
 /** Preferencia de impresora por cuenta y navegador; nunca cambia el formato de otros usuarios. */
