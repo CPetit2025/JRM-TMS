@@ -98,7 +98,7 @@ export async function proxy(request: NextRequest) {
       url.pathname = `/almacen${request.nextUrl.pathname}`
       return redirect(url)
     }
-    const auditor = profile.employee_type !== 'CONDUCTOR' && isDispatchAuditorRole(role?.name, permissions)
+    const auditor = !hasWarehouseAccess && profile.employee_type !== 'CONDUCTOR' && isDispatchAuditorRole(role?.name, permissions)
     hasDashboardAccess = profile.employee_type !== 'CONDUCTOR' &&
       (hasWebAccess(role?.name, permissions) || auditor)
     if (auditor && !dispatchAuditorPathAllowed(request.nextUrl.pathname)) {
