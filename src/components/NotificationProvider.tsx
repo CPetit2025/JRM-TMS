@@ -156,7 +156,8 @@ export default function NotificationProvider({ role, children }: NotificationPro
     let first: number | undefined
     if (role === 'admin') {
       first = window.setTimeout(() => void loadFeed(), 0)
-      timer = window.setInterval(() => void loadFeed(), 15000)
+      // Cada 60 s y solo con la pestaña visible: los avisos nuevos ya llegan en tiempo real por el canal
+      timer = window.setInterval(() => { if (document.visibilityState === 'visible') void loadFeed() }, 60000)
       channel.on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'notifications' },
