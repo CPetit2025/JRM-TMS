@@ -8,6 +8,7 @@ const session = { access_token: token, refresh_token: 'qa-refresh', expires_at: 
 let role = { name: 'Administrador', permissions: ['almacen-supervisor'] }
 const task = { id: 'task-1', task_code: 'TASK-QA', status: 'PICKING', request_status: 'APROBADA', request_number: 'RT-QA-001', transport_request_id: 'request-1', required_date: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' }) /* el tablero muestra por defecto solo las de hoy */, required_at: null, created_at: '2026-11-09T13:00:00Z', contract_code: 'OT-QA', components: '', lots: 'L1', client_name: 'Cliente de prueba', delivery_address: 'Almacén', assigned_picker: uid, picker_name: 'Operario QA', assigned_at: '2026-11-09T13:00:00Z', picked: 2, loose: 0, lpn_total: 2, lpn_approved: 0, lpn_observed: 0, lpn_rejected: 0, lpn_pending: 2, weight_kg: 10, packing_list: null, display_state: 'EN_PICKING' }
 const lpn = i => ({ id: `lpn-${i}`, lpn_code: `LPN-QA-${i}`, status: 'CLOSED', audit_status: 'PENDIENTE', audit_rev: 0, package_count: 1, quantity: 5, weight_kg: 5, created_by_name: 'Operario QA', created_at: task.created_at, print_count: 1, audits: [], packages: [{ package_code: `PKG-QA-${i}`, product_code: 'SKU-1', description: 'Producto QA', lot: 'L1', quantity: 5, unit: 'UND', weight_kg: 5 }] })
+const history = [] // tareas extra del historial de Picking (p_scope = 'historial')
 const data = { lpns: [lpn(1)], loose: [...lpn(2).packages,...lpn(3).packages], packing_lists: [] }, units = [], calls = []
 function emitDocument() {
  if(task.status !== 'READY_FOR_LOAD' || data.loose.length || data.lpns.some(l=>l.audit_status!=='APROBADO') || data.packing_lists.length) return
@@ -23,7 +24,7 @@ const api = http.createServer(async (req,res) => {
   if(path.endsWith('/user')) out=user
   else if(path.endsWith('/token')) out=session
   else if(path.endsWith('/profiles')) { const profile={id:uid,is_active:true,employee_type:'STAFF',first_name:'QA',last_name:'Usuario',roles:role}; out=req.headers.accept?.includes('object')?profile:[profile] }
-  else if(path.endsWith('/rpc/wh_task_board')) out=[task]
+  else if(path.endsWith('/rpc/wh_task_board')) out=p.p_scope==='historial'?[task,...history]:[task]
   else if(path.endsWith('/rpc/wh_prepicking_checklist')) out={ot:'16571',contratos_at:'2026-11-12T13:00:00Z',stock_at:'2026-11-12T13:00:00Z',items:[
     {item_code:'16571-S002-022',item:'022',lote:'16571-S002',product_code:'E.VOCT04.16.025.3030',description:'CORREA - VIGA "O" 2" x 5" C/ PLIEGUES DE 1.6mm x 3.03',unit:'UND',contract_qty:10,dispatched_qty:2,pending_qty:8,stock_wms:8,stock_wms_packages:4,stock_erp:8},
     {item_code:'16571-S002-024',item:'024',lote:'16571-S002',product_code:'E.VOCT1.16.025.3390',description:'CORREA - VIGA "C" 2" x 5" C/ PLIEGUES DE 1.6mm x 3.39',unit:'UND',contract_qty:6,dispatched_qty:0,pending_qty:6,stock_wms:2,stock_wms_packages:1,stock_erp:6},
@@ -147,6 +148,29 @@ const api = http.createServer(async (req,res) => {
      page.off('download',onDownload);assert.equal(downloads.length,before,'imprimir no descarga')
      await page.evaluate(()=>{window.__prints=0;document.querySelectorAll('iframe').forEach(f=>f.remove())})}
   }
+  // Historial de Picking: grupos con conteo del período, cerradas de solo lectura y «Atendido en TMS (sin WMS)» aparte.
+  {const today=task.required_date,closedAt=new Date().toISOString(),base={...task,assigned_picker:null,picker_name:null,lpn_total:0,packing_list:null}
+   history.push({...base,id:'h-pend',request_number:'RT-QA-P',status:'PENDING',display_state:'PENDIENTE'},
+    {...base,id:'h-load',request_number:'RT-QA-L',status:'LOADED',display_state:'LOADED',closed_at:closedAt,closed_by_name:'Cargador QA'},
+    {...base,id:'h-tms',request_number:'RT-QA-T',status:'CANCELLED',display_state:'CANCELLED',required_date:null,closed_at:closedAt,cancelled_reason:'Solicitud asignada antes del flujo con WMS'},
+    {...base,id:'h-canc',request_number:'RT-QA-C',status:'CANCELLED',display_state:'CANCELLED',closed_at:closedAt,closed_by_name:'Supervisor QA',cancelled_reason:'Solicitud cancelada o rechazada'})
+   const chip=name=>page.getByRole('button',{name,exact:true}), rowsShown=()=>page.locator('tbody tr').count()
+   await page.setViewportSize({width:1440,height:1000});await go('/almacen/picking');await chip('Pendiente + En proceso (2)').waitFor()
+   for(const n of ['Pendiente de picking (1)','En proceso (1)','Atendido (2)','Cancelado (1)','Todos (5)']) await chip(n).waitFor()
+   assert.equal(await page.getByText('RT-QA-L',{exact:true}).count(),0,'por defecto solo pendientes y en proceso')
+   assert(calls.some(c=>c.path.endsWith('/rpc/wh_task_board')&&c.p.p_scope==='historial'&&c.p.p_from===today&&c.p.p_to===today),'pide el historial del período')
+   await chip('Atendido (2)').click();assert.equal(await rowsShown(),2)
+   await page.getByText('Atendido en TMS (sin WMS)',{exact:true}).waitFor();await page.getByText('Atendido (cargada)',{exact:true}).waitFor()
+   await page.getByText(/Cargada .* · Cargador QA/).waitFor()
+   assert.equal(await page.getByRole('button',{name:'Tomar tarea'}).count(),0,'las cerradas no se toman')
+   assert.equal(await page.getByRole('link',{name:'Ver detalle',exact:true}).count(),2,'las cerradas solo se consultan')
+   await chip('Cancelado (1)').click();await page.getByText('Solicitud cancelada o rechazada',{exact:true}).waitFor();assert.equal(await rowsShown(),1)
+   await chip('Todos (5)').click();assert.equal(await rowsShown(),5)
+   fs.mkdirSync(artifactDir,{recursive:true});await page.screenshot({path:artifactDir+'/picking-historial.png',fullPage:true})
+   const week=new Date(Date.now()-6*864e5).toLocaleDateString('en-CA',{timeZone:'America/Lima'})
+   await chip('Semana').click()
+   for(let i=0;i<40&&!calls.some(c=>c.p.p_scope==='historial'&&c.p.p_from===week);i++) await page.waitForTimeout(250)
+   assert(calls.some(c=>c.p.p_scope==='historial'&&c.p.p_from===week&&c.p.p_to===today),'cambiar el período vuelve a pedir ese rango')}
   assert.equal(errors.length,0,errors.join('\n'))
   console.log('PASS: LPN lógico sin impresión automática; auditoría libera en paralelo; Packing List selecciona solo liberados y asigna varios a UT; documento automático; carga por UT; permisos, enlaces y móvil.')
  } finally {await browser?.close();next.kill('SIGTERM');api.close();fs.closeSync(log)}

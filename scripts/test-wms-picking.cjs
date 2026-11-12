@@ -321,5 +321,23 @@ const feed=(status={})=>[
  await db.exec('RESET ROLE; SET ROLE authenticated');
  await fails('SELECT public.wh_tms_sync_claim(false)',[],/almacén|Sesión/);
  console.log('PASS: estados para la salida en el TMS (= tablero), sin tope y con confirmación, cron con llave de servicio, ruta y placa del TMS, corte.');
+ // 14. Historial de Picking: 'historial' suma las cerradas del rango (fecha requerida o, sin ella, de cierre); 'tareas' no cambia.
+ await db.exec(`RESET ROLE; UPDATE public.transport_requests SET required_at=NULL, required_date=NULL WHERE id='${REQ_NEW}';
+   ALTER TABLE public.wh_tasks DISABLE TRIGGER USER; UPDATE public.wh_tasks SET updated_at=now()-interval '40 days', updated_by='${U.sup}' WHERE transport_request_id='${REQ_NEW}'; ALTER TABLE public.wh_tasks ENABLE TRIGGER USER`);
+ await db.exec("SET request.jwt.claim.sub=''"); await as('op1');
+ const lima=d=>new Date(Date.now()+d*864e5).toLocaleDateString('en-CA',{timeZone:'America/Lima'});
+ const active=await one("SELECT public.wh_task_board('tareas')");
+ assert.ok(active.every(b=>!['LOADED','RECONCILED','CANCELLED'].includes(b.status)),'tareas sigue sin cerradas');
+ const hoy=await one("SELECT public.wh_task_board('historial',NULL,$1,$1)",[lima(0)]);
+ assert.ok(active.every(b=>hoy.some(h=>h.id===b.id)),'el historial incluye todas las activas');
+ assert.ok(!hoy.some(h=>h.transport_request_id===REQ_NEW),'cerrada fuera del rango no aparece');
+ const mes=await one("SELECT public.wh_task_board('historial',NULL,$1,$2)",[lima(-45),lima(-30)]);
+ const closed=mes.find(h=>h.transport_request_id===REQ_NEW);
+ assert.equal(closed?.cancelled_reason,'Solicitud asignada antes del flujo con WMS','sin fecha requerida usa la de cierre y trae el motivo');
+ assert.ok(closed.closed_at&&closed.closed_by_name,'informa cuándo y quién la cerró');
+ assert.ok(mes.findIndex(h=>h.closed_at)>=mes.filter(h=>!h.closed_at).length,'activas primero');
+ assert.equal((await one("SELECT public.wh_task_board('historial',NULL,'2000-01-01',$1)",[lima(-60)])).filter(h=>h.closed_at).length,0,'rango acotado');
+ await db.exec('RESET ROLE; SET ROLE anon'); await fails("SELECT public.wh_task_board('historial')",[],/permission denied/);
+ console.log('PASS: historial de Picking: activas + cerradas del período (fecha requerida o de cierre), con motivo y responsable del cierre.');
  await db.close();
 })().catch(e=>{console.error('FAIL:',e.message);process.exit(1)});
