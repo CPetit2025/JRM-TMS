@@ -32,6 +32,14 @@ export function useWmsRelease({ requests, dispatch }: { requests?: string[]; dis
     return () => { alive = false }
   }, [db, key, dispatch, tick])
   const reload = useCallback(() => setTick(t => t + 1), [])
+  // La liberación o una excepción pueden llegar desde otra pantalla: refresca cada 30 s con la pestaña visible.
+  useEffect(() => {
+    if (!key) return
+    const refresh = () => { if (document.visibilityState === 'visible') reload() }
+    const timer = window.setInterval(refresh, 30000)
+    document.addEventListener('visibilitychange', refresh)
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', refresh) }
+  }, [key, reload])
   return { items: state.key === key ? state.items : {}, canOverride: state.canOverride, reload }
 }
 
@@ -100,5 +108,6 @@ export function WmsDepartureNotice({ dispatchId, onBlocked }: { dispatchId: stri
       {blocked.map(i => <li key={i.id}>{i.request_number}: aún no liberada (picking y auditoría en el WMS) · Estado WMS: {i.label}
         {canOverride && <WmsReleaseBadge item={i} canOverride onChanged={reload} />}</li>)}
     </ul>
+    <button type="button" onClick={reload} className="mt-2 min-h-11 rounded-lg border border-red-300 bg-white px-3 text-xs font-semibold text-red-800 hover:bg-red-100">Actualizar estado</button>
   </div>
 }

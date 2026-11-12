@@ -81,8 +81,13 @@ const KEY = 'clave-de-prueba-wms-' + 'x'.repeat(40)
   // Clave incorrecta rechazada; con la clave informa estados y latido.
   await assert.rejects(db.query(`SELECT wms_report_request_status('clave-incorrecta-clave-incorrecta-12345', '[]')`), /Clave de integración inválida/)
   assert.equal((await report(41, 'EN_PICKING', at(1))).applied, 1)
-  assert.equal((await report(41, 'EN_PICKING', at(2))).applied, 0, 'reintento idéntico no escribe')
+  assert.equal((await report(41, 'EN_PICKING', at(1))).applied, 0, 'reintento de la misma foto no escribe')
   await assert.rejects(depart(61), /RT-000041.*Estado WMS: En picking/)
+  // Orden: EN_AUDITORIA 10:02, misma foto con estado igual 10:04 (avanza la marca) y un LIBERADO atrasado de 10:03.
+  await report(41, 'EN_AUDITORIA', at(2))
+  assert.equal((await report(41, 'EN_AUDITORIA', at(4))).applied, 1, 'una foto más nueva avanza la marca aunque no cambie')
+  assert.equal((await report(41, 'LIBERADO', at(3), { released_at: at(3) })).applied, 0, 'un LIBERADO atrasado no reabre la salida')
+  await assert.rejects(depart(61), /RT-000041.*Estado WMS: En auditoría/)
   // Desconocidas y estados inválidos se ignoran sin romper el lote.
   assert.equal((await rpc(`wms_report_request_status($1, $2::jsonb)`, [KEY, JSON.stringify([
     { transport_request_id: id(999), status: 'LIBERADO' }, { transport_request_id: id(41), status: 'OTRO' }])])).applied, 0)

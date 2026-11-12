@@ -221,8 +221,9 @@ BEGIN
   ORDER BY t.id, coalesce((e->>'snapshot_at')::timestamptz, now()) DESC
   ON CONFLICT (transport_request_id) DO UPDATE SET status = EXCLUDED.status, task_code = EXCLUDED.task_code,
     released_at = EXCLUDED.released_at, wms_snapshot_at = EXCLUDED.wms_snapshot_at, reported_at = now()
-  WHERE EXCLUDED.wms_snapshot_at >= s.wms_snapshot_at
-    AND (s.status, s.task_code, s.released_at) IS DISTINCT FROM (EXCLUDED.status, EXCLUDED.task_code, EXCLUDED.released_at);
+  -- Toda foto más nueva avanza la marca de orden aunque el estado no cambie: una foto atrasada (p. ej. un LIBERADO
+  -- viejo que llega tarde) nunca reabre la salida. Una foto igual o más vieja (reintento) no escribe.
+  WHERE EXCLUDED.wms_snapshot_at > s.wms_snapshot_at;
   GET DIAGNOSTICS v_n = ROW_COUNT;
   INSERT INTO public.system_settings(key, value, description, updated_at)
   VALUES ('wms_status_last_report', now()::text, 'Último informe de estados del WMS (latido de la integración).', now())
