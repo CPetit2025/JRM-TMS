@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { TablePagination } from '@/components/ui/table-pagination'
 import { usePagination } from '@/lib/use-pagination'
+import { PeriodFilter, usePeriod } from '@/components/ui/period-filter'
 import { readCache, writeCache } from '@/lib/use-cached'
 import { ClipboardList, RefreshCw, Search } from 'lucide-react'
 import { STATE, type BoardRow } from '@/lib/warehouse/packing-list'
@@ -68,8 +69,12 @@ export function DispatchBoard({ stage }: { stage: TaskStage }) {
     router.push(`${stageConfig.path}/${task.id}`)
   }
 
+  const periodState = usePeriod()
+  // Fecha requerida en hora de Lima; sin fecha siempre se muestra. Una búsqueda incluye todas las fechas.
+  const inPeriod = (r: BoardRow) => { const d = r.required_at ? new Date(r.required_at).toLocaleDateString('en-CA', { timeZone: 'America/Lima' }) : r.required_date
+    return !d || needle !== '' || (d >= periodState.range[0] && d <= periodState.range[1]) }
   const needle = query.trim().toLocaleLowerCase()
-  const filtered = rows.filter(r => taskInStage(r, stage) && (filter === 'ALL' || r.display_state === filter) &&
+  const filtered = rows.filter(r => taskInStage(r, stage) && inPeriod(r) && (filter === 'ALL' || r.display_state === filter) &&
     (!needle || [r.request_number, r.task_code, r.contract_code, r.components, r.lots, r.client_name].join(' ').toLocaleLowerCase().includes(needle)))
   const pager = usePagination(filtered, `wh-board-${stage}`)
 
@@ -93,6 +98,7 @@ export function DispatchBoard({ stage }: { stage: TaskStage }) {
         <option value="ALL">Todas las activas</option>
         {['PENDIENTE', 'EN_PICKING', 'EN_AUDITORIA', 'OBSERVADO', 'LIBERADO'].map(k => <option key={k} value={k}>{STATE[k].label}</option>)}
       </select>
+      <div className="basis-full"><PeriodFilter state={periodState} note={needle ? 'La búsqueda incluye todas las fechas.' : undefined}/></div>
     </section>
     {error && <div role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">{error}</div>}
     {warning && <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{warning}</div>}
