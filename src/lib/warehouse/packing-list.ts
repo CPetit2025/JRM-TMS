@@ -34,7 +34,7 @@ export const AUDIT: Record<string, { label: string; style: string }> = {
 export const fmt = (n: number | null | undefined, d = 2) => Number(n || 0).toLocaleString('es-PE', { maximumFractionDigits: d })
 export const fmtDate = (v: string | null | undefined) => v ? new Date(v).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short' }) : '—'
 
-async function logoDataUrl() {
+export async function logoDataUrl() {
   const response = await fetch('/logo-jrm.png')
   if (!response.ok) return null
   const blob = await response.blob()
