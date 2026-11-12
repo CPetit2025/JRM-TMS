@@ -125,7 +125,9 @@ export function DispatchBoard({ stage }: { stage: TaskStage }) {
                   && (idle >= IDLE_MIN || hasAccess('almacen-supervisor'))
                 return <tr key={r.id} className="hover:bg-blue-50/40">
                   <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{dateLabel(r)}</td>
-                  <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-[#002855]">{r.request_number || r.task_code}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-[#002855]">{r.request_number || r.task_code}
+                    {(r.tms_dispatch_number || r.tms_vehicle_plate) && <small className="block font-normal text-slate-500" title={r.tms_driver_name ? `Conductor: ${r.tms_driver_name}` : 'Unidad asignada en el TMS'}>
+                      Ruta {r.tms_dispatch_number || '—'}{r.tms_vehicle_plate ? ` · ${r.tms_vehicle_plate}` : ''}</small>}</td>
                   <td className="px-3 py-2.5"><b>{r.contract_code || '—'}</b>{(r.components || r.lots) && <small className="block text-slate-500">{[r.components, r.lots].filter(Boolean).join(' · ')}</small>}</td>
                   <td className="px-3 py-2.5 text-slate-700">{r.client_name || '—'}</td>
                   <td className="px-3 py-2.5"><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-bold ${state.style}`}>{state.label}</span>

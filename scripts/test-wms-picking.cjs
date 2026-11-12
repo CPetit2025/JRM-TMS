@@ -19,7 +19,7 @@ const feed=(status={})=>[
  let sql="DELETE FROM public.roles; DELETE FROM public.sites; INSERT INTO public.sites(code,name) VALUES('PRINCIPAL','Local');";
  for(const [k,p] of Object.entries(roles)) sql+=`INSERT INTO public.roles(name,permissions) VALUES('${k}','${JSON.stringify(p)}');`;
  const userRole={op1:'op',op2:'op',aud:'aud',sup:'sup',both:'both'};
- for(const [u,id] of Object.entries(U)){ if(u==='admin')continue; sql+=`INSERT INTO auth.users VALUES('${id}'); INSERT INTO public.profiles(id,email,first_name,role_id,is_active) SELECT '${id}','${u}@x.pe','${u}',id,true FROM public.roles WHERE name='${userRole[u]}'; INSERT INTO public.user_site_access SELECT '${id}',id FROM public.sites;`; }
+ for(const [u,id] of Object.entries(U)){ if(u==='admin')continue; sql+=`INSERT INTO auth.users VALUES('${id}'); INSERT INTO public.profiles(id,email,first_name,role_id,is_active) SELECT '${id}','${u}@x.pe','${u}',id,true FROM public.roles WHERE name='${userRole[u]}'; INSERT INTO public.user_site_access SELECT '${id}',id FROM public.sites ON CONFLICT DO NOTHING;`; }
  // Paquetes etiquetados en recepción (OT 16544 x3, OT 16497 x1)
  for(const [i,ot] of [[1,'16544'],[2,'16544'],[3,'16544'],[4,'16497'],[5,'']].entries()) sql+=`INSERT INTO public.wh_packages(package_code,source_document_no,source_contract_code,source_lot,source_product_code,source_warehouse,source_date,source_movement_key,source_key,site_id,description,quantity,unit,weight_kg) SELECT 'PKG-${ot[0]}','IPT-1',nullif('${ot[1]}',''),'16544-S001','PRD-${ot[0]}','APT','2026-11-07','mk${ot[0]}','sk${ot[0]}',id,'Estante ${ot[0]}',10,'UN',25.5 FROM public.sites;`;
  await db.exec(sql);
@@ -277,5 +277,29 @@ const feed=(status={})=>[
  await db.exec('RESET ROLE; SET ROLE anon');
  await fails('SELECT public.wh_label_setting_set($1,$2)',['LPN',a4],/permission|permiso/);
  console.log('PASS: tamaños de etiqueta: A4/A5/Zebra disponibles, solo supervisión configura, rango validado, no se desactiva un formato en uso.');
+
+ // 13. Flujo con el TMS: estado por solicitud para la salida (misma regla del tablero), ruta asignada y corte.
+ await db.exec('SET ROLE anon'); await fails('SELECT public.wh_tms_request_states()',[],/permission|permiso/);
+ await as('op1');
+ const states=Object.fromEntries((await one('SELECT public.wh_tms_request_states()')).map(s=>[s.transport_request_id,s]));
+ const toTms={LIBERADO:'LIBERADO',OBSERVADO:'OBSERVADO',EN_AUDITORIA:'EN_AUDITORIA',EN_PICKING:'EN_PICKING',PENDIENTE:'PENDIENTE',PAUSED:'PAUSADO',CANCELLED:'CANCELADO'};
+ for(const b of await one("SELECT public.wh_task_board('tareas')")) assert.equal(states[b.transport_request_id]?.status,toTms[b.display_state]||'PENDIENTE',`estado TMS = tablero (${b.request_number})`);
+ assert.equal(states[REQ_CANCEL].status,'CANCELADO','la cancelada se informa');
+ assert.ok(Object.values(states).every(s=>s.snapshot_at&&s.task_code),'foto con hora y tarea');
+ const REQ_NEW='00000000-0000-0000-0000-00000000d009';
+ const newRow=(extra)=>({id:REQ_NEW,request_number:'RT-000909',request_type:'DESPACHO',status:'ASIGNADA',site_code:'PRINCIPAL',client:{id:CL,business_name:'Fargoline SAC',ruc:'20111111111'},contract:{id:OT,code:'16544',type:'CONTRATO',client_id:CL},components:[],...extra});
+ await q('SELECT public.wh_tms_sync_apply($1,$2::jsonb)',[KEY,JSON.stringify([newRow({dispatch:{number:'R-0909',vehicle_plate:' xyz 789 ',driver_name:'Juan Pérez'},legacy_flow:false})])]);
+ let nt=(await sys(`SELECT id,status,tms_dispatch_number,tms_vehicle_plate,tms_driver_name FROM public.wh_tasks WHERE transport_request_id='${REQ_NEW}'`))[0];
+ assert.deepEqual([nt.status,nt.tms_dispatch_number,nt.tms_vehicle_plate,nt.tms_driver_name],['PENDING','R-0909','XYZ789','Juan Pérez'],'asignada antes de liberar: la tarea sigue y recibe la ruta');
+ await as('op1'); assert.equal((await one("SELECT public.wh_task_board('tareas',$1)",[nt.id]))[0].tms_vehicle_plate,'XYZ789');
+ await db.exec(`RESET ROLE; UPDATE public.wh_tasks SET status='PICKING' WHERE id='${nt.id}'`); await as('sup');
+ assert.equal((await one('SELECT public.wh_load_unit_add($1)',[nt.id])).plate,'XYZ789','la UT nueva toma la placa del TMS');
+ assert.equal((await one("SELECT public.wh_load_unit_add($1,'AAA111')",[nt.id])).plate,'AAA111','una placa escrita manda');
+ await db.exec(`RESET ROLE; UPDATE public.wh_tasks SET status='PENDING' WHERE id='${nt.id}'`); await as('op1');
+ await q('SELECT public.wh_tms_sync_apply($1,$2::jsonb)',[KEY,JSON.stringify([newRow({legacy_flow:true})])]);
+ nt=(await sys(`SELECT status,cancelled_reason,tms_vehicle_plate FROM public.wh_tasks WHERE transport_request_id='${REQ_NEW}'`))[0];
+ assert.deepEqual([nt.status,nt.cancelled_reason,nt.tms_vehicle_plate],['CANCELLED','Solicitud asignada antes del flujo con WMS',null],'corte: asignada antes del flujo se cierra');
+ await as('op1'); assert.equal((await one('SELECT public.wh_tms_request_states()')).find(s=>s.transport_request_id===REQ_NEW).status,'CANCELADO');
+ console.log('PASS: estados para la salida en el TMS (= tablero), ruta y placa del TMS en la tarea y la UT, corte de solicitudes asignadas antes del flujo.');
  await db.close();
 })().catch(e=>{console.error('FAIL:',e.message);process.exit(1)});

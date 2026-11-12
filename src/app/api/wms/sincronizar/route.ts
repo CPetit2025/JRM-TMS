@@ -53,5 +53,20 @@ export async function POST(request: Request) {
       syncError ||= e instanceof Error ? e.message : String(e)
     }
   }
-  return Response.json({ ok: !syncError, synced, reported, error: syncError || undefined }, { status: syncError ? 502 : 200 })
+
+  // Estado de picking/auditoría por solicitud: el TMS no deja salir el despacho hasta que esté LIBERADO.
+  // Va en cada sincronización (también es el latido: sin él, el TMS muestra «Sin respuesta del WMS») y apenas se
+  // informa un Packing List, para que la liberación llegue sin esperar el minuto.
+  let states: number | null = null
+  if (known !== null || reported > 0) {
+    try {
+      const rows = await db.rpc('wh_tms_request_states')
+      if (rows.error) throw new Error(rows.error.message)
+      await tmsRpc('wms_report_request_status', { p_key: key, p_rows: rows.data || [] })
+      states = (rows.data || []).length
+    } catch (e) {
+      syncError ||= e instanceof Error ? e.message : String(e)
+    }
+  }
+  return Response.json({ ok: !syncError, synced, reported, states, error: syncError || undefined }, { status: syncError ? 502 : 200 })
 }
