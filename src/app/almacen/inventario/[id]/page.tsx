@@ -5,17 +5,23 @@ import { FormEvent, use, useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { TablePagination } from '@/components/ui/table-pagination'
 import { usePagination } from '@/lib/use-pagination'
-import { ArrowLeft, CheckCircle2, Loader2, Printer, ScanLine, Search, Tag, Undo2 } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Loader2, PackagePlus, Printer, ScanLine, Search, Tag, Undo2 } from 'lucide-react'
 import { usePermissions } from '@/hooks/usePermissions'
 import { printPackageLabels, validatePackageLabelPrint } from '@/components/warehouse/print-package-labels'
-import { loadPackageLabel } from '@/lib/warehouse/load-package-label'
+import { loadPackageLabel, loadPackageLabels } from '@/lib/warehouse/load-package-label'
+import { loadReceiptLpn } from '@/lib/warehouse/receipt-lpn'
+import { buildBultoContentPdf, itemOf, printPdf } from '@/lib/warehouse/packing-list'
 import { useLabelFormat } from '@/lib/warehouse/label-format'
 import { CAMPAIGN_STATE, INVENTORY_TYPE, RESULT_STYLE, fmtDate, fmtN, type Campaign, type CountLine, type ExpectedLine, type SummaryRow } from '@/lib/warehouse/inventory'
 
-type CreatedLabel = {package_code:string}
+type CreatedBultos = { package_codes: string[]; quantity_total: number; weight_total_kg: number | null }
 const btn = 'inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold disabled:opacity-50'
 const field = 'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal'
 const lotKey = (r: { cod_producto: string; lote_key: string }) => `${r.cod_producto}|${r.lote_key}`
+// Un LPN de inventario agrupa bultos con rótulo del mismo SKU, lote e ítem (lo vuelve a comprobar wh_count_consolidate_lpn)
+const lpnKey = (l: CountLine) => `${l.cod_producto}|${l.lote_key}|${l.contract_code || ''}`
+const lpnEligible = (l: CountLine) => l.origin === 'ROTULO' && !!l.package_code && !l.lpn_code
+const WEIGHT_SOURCE = { STOCK_ERP: 'stock ERP del corte', MAESTRO_SKU: 'maestro de SKU' } as const
 
 export default function WarehouseInventoryCampaignPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -31,7 +37,8 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
   const [search, setSearch] = useState('')
   const [expected, setExpected] = useState<ExpectedLine[]>([])
   const [pick, setPick] = useState<ExpectedLine | null>(null)
-  const [rot, setRot] = useState({ qty: '', kg: '', doc: '', seq: '', total: '' })
+  const [rot, setRot] = useState({ qty: '', bultos: '1', doc: '' })
+  const [checked, setChecked] = useState<string[]>([])
   const [unknown, setUnknown] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [reasons, setReasons] = useState<Record<string, string>>({})
@@ -84,14 +91,54 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
     e.preventDefault()
     if (!pick) return
     try { validatePackageLabelPrint(labelFormat) } catch(e) { setError(e instanceof Error ? e.message : String(e)); return }
-    const d = await run(() => createClient().rpc('wh_count_label', {
-      p_campaign: id, p_linea: pick.linea, p_quantity: Number(rot.qty), p_weight_kg: rot.kg ? Number(rot.kg) : null, p_zone: zone || null,
-      p_ipt_doc: rot.doc.trim() || null, p_seq: rot.seq ? Number(rot.seq) : null, p_total: rot.total ? Number(rot.total) : null, p_confirm_over: confirmOver, p_client_event_id: event(),
-    }), (x: CreatedLabel) => `${x.package_code} creado e impreso: pegue la etiqueta en el bulto.`)
+    const d = await run(() => createClient().rpc('wh_count_label_bultos', {
+      p_campaign: id, p_linea: pick.linea, p_item_code: pick.item_code, p_qty_per_bulto: Number(rot.qty), p_bultos: Number(rot.bultos), p_zone: zone || null,
+      p_ipt_doc: rot.doc.trim() || null, p_confirm_over: confirmOver, p_client_event_id: event(),
+    }), (x: CreatedBultos) => `${x.package_codes.length} bulto(s) creados (${fmtN(x.quantity_total)} ${pick.unidad || ''}${x.weight_total_kg == null ? '' : ` · ${fmtN(x.weight_total_kg)} kg`}): pegue cada etiqueta en su bulto.`)
     if (d) {
-      setRot({ qty: '', kg: '', doc: rot.doc, seq: '', total: rot.total }); setPick(null)
-      try{await printPackageLabels([await loadPackageLabel(createClient(),d.package_code)],labelFormat)}catch(e){setError(e instanceof Error?e.message:String(e))}
+      setRot({ qty: '', bultos: '1', doc: rot.doc }); setPick(null)
+      try{await printPackageLabels(await loadPackageLabels(createClient(),d.package_codes),labelFormat)}catch(e){setError(e instanceof Error?e.message:String(e))}
     }
+  }
+  // Etiqueta del LPN + hoja de contenido, como en la recepción (la primera impresión se audita; luego, reimpresión con motivo).
+  const printLpn = async (code: string) => {
+    const db = createClient(), loaded = await loadReceiptLpn(db, code)
+    if (!loaded) throw new Error(`No se encontró el LPN ${code}`)
+    const { lpn, label } = loaded
+    if (lpn.print_count > 0) {
+      const reason = window.prompt(`Motivo de reimpresión de la etiqueta del LPN ${lpn.lpn_code}:`)
+      if (!reason?.trim()) return
+      const { error } = await db.rpc('wh_reprint_lpn_label', { p_lpn_code: lpn.lpn_code, p_reason: reason.trim() })
+      if (error) throw error
+    } else {
+      const { error } = await db.rpc('wh_print_lpn_label', { p_lpn_id: lpn.id })
+      if (error) throw error
+    }
+    await printPackageLabels([label], labelFormat)
+    const { pdf } = await buildBultoContentPdf(lpn, { client_name: null, contract_code: label.contract_code || null, request_number: null }, { reception: true })
+    await printPdf(pdf, `contenido-${lpn.lpn_code}.pdf`)
+  }
+  const consolidate = async () => {
+    if (busy || checked.length < 2) return
+    setBusy(true); setError(''); setMessage('')
+    try {
+      validatePackageLabelPrint(labelFormat)
+      const { data, error } = await createClient().rpc('wh_count_consolidate_lpn', { p_campaign: id, p_package_codes: checked, p_client_event_id: event() })
+      if (error) throw error
+      const code = (data as { lpn_code: string }).lpn_code
+      setChecked([]); setMessage(`LPN ${code} creado con ${checked.length} bultos. Se imprime su etiqueta y su hoja de contenido: péguelas en el pallet.`)
+      await load()
+      await printLpn(code)
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)) } finally { setBusy(false) }
+  }
+  const reprintLpn = async (code: string) => {
+    if (busy) return
+    setBusy(true); setError('')
+    try { validatePackageLabelPrint(labelFormat); await printLpn(code) } catch (e) { setError(e instanceof Error ? e.message : String(e)) } finally { setBusy(false) }
+  }
+  const undoLpn = (lpnId: string, code: string) => {
+    const reason = window.prompt(`Motivo para deshacer el LPN ${code} (sus bultos quedan sueltos con su etiqueta):`)
+    if (reason?.trim()) void run(() => createClient().rpc('wh_lpn_undo', { p_lpn_id: lpnId, p_reason: reason.trim() }), () => `LPN ${code} deshecho.`)
   }
   const supersStock = /supera el stock del ERP/i.test(error)
   const reprint = async (l:CountLine) => {
@@ -144,6 +191,11 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
   const state = CAMPAIGN_STATE[camp.status] || CAMPAIGN_STATE.ANULADA
   const open = ['EN_CONTEO', 'EN_REVISION'].includes(camp.status)
   const diffs = summary.filter(r => r.result !== 'CUADRA')
+  const eligible = lines.filter(lpnEligible)
+  // El primer bulto marcado define SKU, lote e ítem; «Marcar todos» marca los de ese grupo (o del primero agrupable)
+  const anchor = lines.find(l => l.package_code === checked[0]) || eligible[0]
+  const anchorGroup = anchor ? eligible.filter(l => lpnKey(l) === lpnKey(anchor)) : []
+  const lpns = [...new Map(lines.filter(l => l.lpn_id && l.lpn_code).map(l => [l.lpn_id!, l.lpn_code!])).entries()]
   const counts = summary.reduce((a, r) => ({ ...a, [r.result]: (a[r.result] || 0) + 1 }), {} as Record<string, number>)
 
   return <div className="w-full space-y-4">
@@ -185,23 +237,31 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
           <button className={`${btn} border border-slate-300`}>Buscar</button>
         </form>
         {expected.length > 0 && !pick && <ul className="mt-2 max-h-64 divide-y overflow-y-auto rounded-lg border text-sm">{expected.map(x =>
-          <li key={x.linea}><button type="button" onClick={() => setPick(x)} className="flex w-full flex-wrap gap-x-3 px-3 py-2 text-left hover:bg-blue-50">
-            <b>OT {x.ot || '—'}</b><span>lote {x.lote_raw || x.lote || '—'}</span><span className="font-semibold">{x.cod_producto}</span><span className="flex-1 truncate text-slate-600">{x.producto}</span>
-            <span className="whitespace-nowrap text-xs text-slate-500">ERP {fmtN(x.stock)} · contado {fmtN(x.counted)} {x.unidad || ''}</span>
+          <li key={`${x.linea}|${x.item_code || ''}`}><button type="button" onClick={() => setPick(x)} className="flex w-full flex-wrap items-center gap-x-3 px-3 py-2 text-left hover:bg-blue-50">
+            <b>OT {x.ot || '—'}</b><span>lote {x.lote_raw || x.lote || '—'}</span>
+            <span className={`rounded px-1.5 py-0.5 text-xs font-bold ${x.item ? 'bg-blue-100 text-blue-900' : 'bg-slate-100 text-slate-500'}`} title={x.item_code || 'El lote no figura en la carga de contratos'}>Ítem {x.item || '—'}</span>
+            <span className="font-semibold">{x.cod_producto}</span><span className="flex-1 truncate text-slate-600">{x.producto}</span>
+            <span className="whitespace-nowrap text-xs text-slate-500">{x.item ? `contrato ${fmtN(x.contract_qty)} · ` : ''}ERP {fmtN(x.stock)} · contado {fmtN(x.counted)} {x.unidad || ''}</span>
           </button></li>)}</ul>}
-        {pick && <form onSubmit={e => void labelRotulo(e)} className="mt-3 space-y-3 rounded-lg bg-slate-50 p-3">
-          <p className="text-sm"><b>OT {pick.ot || '—'} · lote {pick.lote_raw || pick.lote} · {pick.cod_producto}</b> {pick.producto} <span className="text-slate-500">(ERP {fmtN(pick.stock)}, contado {fmtN(pick.counted)} {pick.unidad || ''})</span>
+        {pick && (() => {
+          const total = Number(rot.qty) * Number(rot.bultos), ok = Number(rot.qty) > 0 && Number(rot.bultos) >= 1
+          const kg = ok && pick.unit_weight_kg ? total * Number(pick.unit_weight_kg) : null
+          return <form onSubmit={e => void labelRotulo(e)} className="mt-3 space-y-3 rounded-lg bg-slate-50 p-3">
+          <p className="text-sm"><b>OT {pick.ot || '—'} · lote {pick.lote_raw || pick.lote} · <span className="text-blue-900">Ítem {pick.item || '—'}</span> · {pick.cod_producto}</b> {pick.producto} <span className="text-slate-500">({pick.item_code ? `${pick.item_code}, contrato ${fmtN(pick.contract_qty)}; ` : ''}ERP {fmtN(pick.stock)}, contado {fmtN(pick.counted)} {pick.unidad || ''})</span>
             <button type="button" onClick={() => setPick(null)} className="ml-2 text-xs font-semibold text-blue-800 underline">Cambiar</button></p>
-          <div className="grid gap-3 sm:grid-cols-5">
-            <label className="text-sm font-semibold">Cantidad*<input required type="number" min="0.001" step="0.001" value={rot.qty} onChange={e => setRot({ ...rot, qty: e.target.value })} className={field}/></label>
-            <label className="text-sm font-semibold">Peso kg<input type="number" min="0" step="0.001" value={rot.kg} onChange={e => setRot({ ...rot, kg: e.target.value })} className={field}/></label>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="text-sm font-semibold">Cantidad por bulto*<input required type="number" min="0.001" step="0.001" value={rot.qty} onChange={e => setRot({ ...rot, qty: e.target.value })} className={field}/></label>
+            <label className="text-sm font-semibold">N° de bultos*<input required type="number" min="1" max="200" step="1" value={rot.bultos} onChange={e => setRot({ ...rot, bultos: e.target.value })} className={field}/></label>
             <label className="text-sm font-semibold">IPT del rótulo<input value={rot.doc} onChange={e => setRot({ ...rot, doc: e.target.value })} placeholder="Si figura" className={field}/></label>
-            <label className="text-sm font-semibold">Bulto n°<input type="number" min="1" required={!!rot.doc.trim()} value={rot.seq} onChange={e => setRot({ ...rot, seq: e.target.value })} className={field}/></label>
-            <label className="text-sm font-semibold">de total<input type="number" min="1" required={!!rot.doc.trim()} value={rot.total} onChange={e => setRot({ ...rot, total: e.target.value })} className={field}/></label>
           </div>
-          <p className="text-xs text-slate-500">Con IPT y número de bulto, el sistema impide etiquetar dos veces el mismo bulto. Sin IPT, asigna una secuencia por lote.</p>
-          <button disabled={busy} className={`${btn} bg-[#002855] text-white`}><Printer size={16}/>Etiquetar e imprimir</button>
-        </form>}
+          <dl aria-label="Totales calculados" className="grid gap-2 rounded-lg border border-blue-200 bg-white p-3 text-sm sm:grid-cols-3">
+            <div><dt className="text-xs text-slate-500">Cantidad total (automático)</dt><dd className="font-bold text-[#002855]">{ok ? `${fmtN(total)} ${pick.unidad || ''}` : '—'}</dd></div>
+            <div><dt className="text-xs text-slate-500">Peso unitario ERP</dt><dd className="font-bold text-[#002855]">{pick.unit_weight_kg ? `${fmtN(pick.unit_weight_kg)} kg · ${WEIGHT_SOURCE[pick.weight_source || 'STOCK_ERP']}` : 'Sin peso en el ERP'}</dd></div>
+            <div><dt className="text-xs text-slate-500">Peso total (automático)</dt><dd className="font-bold text-[#002855]">{kg == null ? '—' : `${fmtN(kg)} kg`}</dd></div>
+          </dl>
+          <p className="text-xs text-slate-500">Se crean {ok ? Number(rot.bultos) : 'N'} bultos (n/N) de {rot.qty || '—'} {pick.unidad || ''} y se imprimen todas sus etiquetas. Con IPT, el sistema impide etiquetar dos veces el mismo bulto; sin IPT, asigna una secuencia por lote.</p>
+          <button disabled={busy || !ok} className={`${btn} bg-[#002855] text-white`}><Printer size={16}/>Etiquetar e imprimir {ok ? `${Number(rot.bultos)} bulto(s)` : ''}</button>
+        </form>})()}
       </section>
 
       {camp.status === 'EN_CONTEO' && <form onSubmit={unidentified} className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-4">
@@ -210,12 +270,29 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
       </form>}
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <h2 className="border-b p-3 font-bold text-[#002855]">Últimos bultos contados</h2>
+        <div className="flex flex-wrap items-center gap-2 border-b p-3">
+          <h2 className="font-bold text-[#002855]">Últimos bultos contados</h2>
+          {eligible.length > 1 && <span className="ml-auto flex flex-wrap items-center gap-2 text-sm">
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600"><input type="checkbox" className="h-4 w-4" aria-label="Marcar todos los bultos que se pueden agrupar"
+              checked={anchorGroup.length > 1 && anchorGroup.every(l => checked.includes(l.package_code!))} disabled={anchorGroup.length < 2}
+              onChange={e => setChecked(e.target.checked ? anchorGroup.map(l => l.package_code!) : [])}/>Marcar todos</label>
+            <button type="button" disabled={busy || checked.length < 2} onClick={() => void consolidate()} title="Marque dos o más bultos con rótulo del mismo SKU, lote e ítem" className={`${btn} bg-[#002855] text-white`}><PackagePlus size={15}/>Consolidar en LPN ({checked.length})</button>
+          </span>}
+        </div>
+        {lpns.length > 0 && <div className="flex flex-wrap gap-2 border-b bg-blue-50/60 px-3 py-2 text-xs">{lpns.map(([lpnId, code]) =>
+          <span key={lpnId} className="inline-flex items-center gap-2 rounded-full bg-white px-2 py-1 font-semibold text-blue-900">LPN {code}
+            <button type="button" disabled={busy} onClick={() => void reprintLpn(code)} className="underline">Imprimir</button>
+            <button type="button" disabled={busy} onClick={() => undoLpn(lpnId, code)} className="inline-flex items-center gap-0.5 text-rose-700"><Undo2 size={12}/>Deshacer</button></span>)}</div>}
         {lines.length === 0 ? <p className="p-4 text-sm text-slate-500">Todavía no hay conteos.</p> : <div className="divide-y text-sm">{lines.map(l =>
           <div key={l.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+            {eligible.length > 1 && <input type="checkbox" className="h-4 w-4" aria-label={`Agrupar ${l.package_code || ''} en el LPN`} checked={!!l.package_code && checked.includes(l.package_code)}
+              disabled={busy || !lpnEligible(l) || (!checked.includes(l.package_code!) && !!anchor && lpnKey(l) !== lpnKey(anchor))}
+              title={lpnEligible(l) ? 'Incluir en el LPN (mismo SKU, lote e ítem que el primero marcado)' : 'Solo bultos con rótulo de este inventario y sin LPN'}
+              onChange={e => setChecked(c => e.target.checked ? [...c, l.package_code!] : c.filter(x => x !== l.package_code))}/>}
             <span className={`rounded px-1.5 py-0.5 text-[11px] font-bold ${l.origin === 'ROTULO' ? 'bg-blue-100 text-blue-900' : l.origin === 'ETIQUETA' ? 'bg-slate-100 text-slate-700' : 'bg-rose-100 text-rose-900'}`}>{l.origin === 'ROTULO' ? 'Etiquetado' : l.origin === 'ETIQUETA' ? 'Escaneado' : 'No identificado'}</span>
             <b className="font-mono">{l.package_code || '—'}</b>
-            <span>{l.cod_producto} · lote {l.lote_key || '—'} · OT {l.ot || '—'}</span>
+            <span>{l.cod_producto} · lote {l.lote_key || '—'} · OT {l.ot || '—'}{l.package_code ? ` · Ítem ${itemOf(l.contract_code) || '—'}` : ''}</span>
+            {l.lpn_code && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-900">LPN {l.lpn_code}</span>}
             <span className="font-semibold">{fmtN(l.quantity)} {l.unit || ''}</span>
             {l.round > 1 && <span className="text-xs text-amber-800">reconteo {l.round}</span>}
             {l.other_bodega && <span className="text-xs text-amber-800">otra bodega</span>}
