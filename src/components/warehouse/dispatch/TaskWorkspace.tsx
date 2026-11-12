@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { DispatchNav } from './DispatchNav'
+import { PrepickingChecklist } from './PrepickingChecklist'
 import { DISPATCH_STAGES, type TaskStage } from '@/lib/warehouse/dispatch'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -278,6 +279,7 @@ export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
 
     {loadingStage && !released && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 print:hidden">La carga está bloqueada hasta finalizar Picking, aprobar todos los bultos y liberar el Packing List.</p>}
     {loadingStage && !units.length && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 print:hidden">Todavía no hay unidades de carga. <Link href={`/almacen/packing-list/${id}`} className="font-bold underline">Ir a Packing List</Link> para distribuir los bultos entre UT1, UT2 o placas.</p>}
+    {picking && <PrepickingChecklist taskId={task.id}/>}
     {picking && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 print:hidden">Auditoría puede revisar cada bulto cerrado mientras continúa la preparación. No necesita esperar al fin de Picking.</p>}
 
     {(preparing || (loadingStage && loadPerm && task.status === 'READY_FOR_LOAD' && released)) && <section className="rounded-xl border border-slate-200 bg-white p-4 print:hidden">
