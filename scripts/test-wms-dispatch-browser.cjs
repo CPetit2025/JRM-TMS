@@ -24,6 +24,11 @@ const api = http.createServer(async (req,res) => {
   else if(path.endsWith('/token')) out=session
   else if(path.endsWith('/profiles')) { const profile={id:uid,is_active:true,employee_type:'STAFF',first_name:'QA',last_name:'Usuario',roles:role}; out=req.headers.accept?.includes('object')?profile:[profile] }
   else if(path.endsWith('/rpc/wh_task_board')) out=[task]
+  else if(path.endsWith('/rpc/wh_prepicking_checklist')) out={ot:'16571',contratos_at:'2026-11-12T13:00:00Z',stock_at:'2026-11-12T13:00:00Z',items:[
+    {item_code:'16571-S002-022',item:'022',lote:'16571-S002',product_code:'E.VOCT04.16.025.3030',description:'CORREA - VIGA "O" 2" x 5" C/ PLIEGUES DE 1.6mm x 3.03',unit:'UND',contract_qty:10,dispatched_qty:2,pending_qty:8,stock_wms:8,stock_wms_packages:4,stock_erp:8},
+    {item_code:'16571-S002-024',item:'024',lote:'16571-S002',product_code:'E.VOCT1.16.025.3390',description:'CORREA - VIGA "C" 2" x 5" C/ PLIEGUES DE 1.6mm x 3.39',unit:'UND',contract_qty:6,dispatched_qty:0,pending_qty:6,stock_wms:2,stock_wms_packages:1,stock_erp:6},
+    {item_code:'16571-S001-069',item:'069',lote:'16571-S001',product_code:'RAPO.20.053.6764',description:'POSTE DE RACK OMEGA DE 5 X 3 DE 2mm x 6.764m',unit:'UND',contract_qty:40,dispatched_qty:0,pending_qty:40,stock_wms:0,stock_wms_packages:0,stock_erp:44},
+    {item_code:'16571-S003-012',item:'012',lote:'16571-S003',product_code:'.RACM.15.0003.0087',description:'PERNO HEXAGONAL 3/8 x 1"',unit:'UND',contract_qty:64,dispatched_qty:0,pending_qty:64,stock_wms:0,stock_wms_packages:0,stock_erp:0}]}
   else if(path.endsWith('/rpc/wh_task_lpns')) out=data
   else if(path.endsWith('/rpc/wh_task_load_units')) out=units
   else if(path.endsWith('/rpc/wh_load_unit_add')) { units.push({id:`unit-${units.length+1}`,seq:units.length+1,label:`UT${units.length+1}`,plate:null,lpn_ids:[],lpn_count:0,loaded_count:0,package_count:0,weight_kg:0}); out=units.at(-1) }
@@ -103,6 +108,7 @@ const api = http.createServer(async (req,res) => {
   await page.getByText('PKG-QA-2 cargado.',{exact:true}).waitFor()
   assert(calls.some(c=>c.path.endsWith('/wh_record_scan')&&c.p.p_event==='LOAD'&&c.p.p_payload.load_unit_id==='unit-1'))
   fs.mkdirSync(artifactDir,{recursive:true})
+  await go('/almacen/picking/task-1');{const c=page.locator('section[aria-labelledby="prepicking-title"]');await c.waitFor();for(const t of ['Listo para picking','Parcial en WMS','En ERP, sin etiquetar','Sin stock'])await c.getByText(t,{exact:true}).waitFor();fs.mkdirSync(artifactDir,{recursive:true});await c.screenshot({path:artifactDir+'/checklist-prepicking.png'})}
   for(const [path,file] of [['/almacen/picking/task-1','picking'],['/almacen/auditoria/task-1','auditoria'],['/almacen/packing-list/task-1','packing-list'],['/almacen/carga/task-1','carga']]) {await go(path);if(file==='packing-list') await page.getByLabel('Mostrar',{exact:true}).selectOption('all');await page.screenshot({path:`${artifactDir}/${file}.png`,fullPage:true})}
   await go('/almacen/carga');await page.getByRole('link',{name:'Abrir carga',exact:true}).waitFor()
   await go('/almacen/tareas/task-1');assert(page.url().includes('/almacen/picking/task-1'),'enlace antiguo continúa funcionando')
