@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { InlineStatusBar } from '@/components/ui/inline-status-bar'
 import { FilterToolbar, FilterField, filterControl } from '@/components/ui/filter-toolbar'
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge'
+import { useWmsRelease, WmsReleaseBadge } from '@/components/despacho/WmsRelease'
 
 import { DEFAULT_LEAD_TIME_SETTINGS, evaluateLeadTime, settingsForRequest, limaDateTimeToIso, limaInputParts, formatLeadTimeStatus, type DeliveryZone, type TransportLeadTimeSettings } from '@/lib/transport-lead-time'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
@@ -217,6 +218,8 @@ export default function SolicitudesPage() {
   })
   const currentPage = Math.min(page, Math.max(1, Math.ceil(filteredRequests.length / pageSize)))
   const visibleRequests = filteredRequests.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  // Estado del almacén (WMS) de los despachos que aún no salen
+  const wms = useWmsRelease({ requests: visibleRequests.filter(r => ['APROBADA', 'ASIGNADA', 'REPROGRAMADA'].includes(r.status)).map(r => r.id) })
   const changeSort = (key: typeof sort.key) => {
     setSort(previous => ({ key, direction: previous.key === key && previous.direction === 'asc' ? 'desc' : 'asc' }))
     setPage(1)
@@ -1096,7 +1099,7 @@ export default function SolicitudesPage() {
                   <td className={`${cell} col-span-2`}>{label('Punto de atención')}<div title={addresses.map(place => `${place.label}: ${place.address}`).join(' → ')} className="text-slate-700">
                     <p className="truncate leading-5">{addresses.map((place, index) => <span key={place.label}>{index > 0 && <span className="text-slate-400"> → </span>}{districtOf(place.address, place.label === 'Entrega' ? req.delivery_district : req.pickup_district)}</span>)}</p>
                   </div></td>
-                  <td className={cell}>{label('Estado')}{getStatusBadge(req.status)}</td>
+                  <td className={cell}>{label('Estado')}{getStatusBadge(req.status)}<span className="block"><WmsReleaseBadge item={wms.items[req.id]} canOverride={wms.canOverride} onChanged={wms.reload} /></span></td>
                   <td className={cell}>{label('Acciones')}<div className="flex flex-wrap items-center gap-1.5 lg:flex-nowrap">
                     <button type="button" onClick={() => void openRequestDetails(req)} title="Ver detalle" aria-label={`Ver detalle de ${req.request_number}`} className="inline-flex min-h-11 items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-jrm-navy hover:border-slate-300 hover:bg-slate-50 lg:min-h-0 lg:h-8"><Eye aria-hidden className="h-3.5 w-3.5" /><span className="lg:hidden 2xl:inline">Ver detalle</span></button>
                     <TableActions compact label={`Más acciones de ${req.request_number}`} actions={actions} />

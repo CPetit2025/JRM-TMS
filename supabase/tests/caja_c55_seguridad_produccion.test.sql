@@ -28,7 +28,8 @@ BEGIN
   OR COALESCE(p.oid=to_regprocedure('public.tracking_portal_sign_in_session(uuid,text,text,uuid)'),false)
   -- Integración WMS: el servidor del WMS llama sin sesión TMS; cada función exige la clave (hash en integration_keys).
   OR COALESCE(p.oid=to_regprocedure('public.wms_feed_solicitudes(text,uuid[])'),false)
-  OR COALESCE(p.oid=to_regprocedure('public.wms_report_packing_list(text,jsonb)'),false))) THEN
+  OR COALESCE(p.oid=to_regprocedure('public.wms_report_packing_list(text,jsonb)'),false)
+  OR COALESCE(p.oid=to_regprocedure('public.wms_report_request_status(text,jsonb)'),false))) THEN
   RAISE EXCEPTION 'CAJA C55 FAIL: RPC privilegiado expuesto a anónimos';
  END IF;
  IF EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.prosecdef

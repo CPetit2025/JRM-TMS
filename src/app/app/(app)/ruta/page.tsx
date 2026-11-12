@@ -10,6 +10,7 @@ import { readRouteQueue, routeQueueKey, syncRoutePoints, saveOfflineAction, sync
 import { useActiveTrip, type ActiveTrip, type ActiveTripContextValue, type TripStop } from '@/contexts/ActiveTripContext'
 import { DriverDelivery } from '@/components/delivery/DriverDelivery'
 import { TripDocuments } from '@/components/evidence/TripDocuments'
+import { WmsDepartureNotice } from '@/components/despacho/WmsRelease'
 
 type RouteStop = TripStop & { transport_requests: Pick<TripStop, 'request_number' | 'request_type' | 'pickup_address' | 'delivery_address'> }
 type RouteDispatch = ActiveTrip & { contract_id?: string; dispatch_requests: RouteStop[]; start_lat?: number; start_lon?: number; return_actual_km?: number | null }
@@ -22,6 +23,7 @@ export default function RutaActivaPage() {
   const [loading, setLoading] = useState(true)
   const [activeStep, setActiveStep] = useState(0)
   const [processing, setProcessing] = useState(false)
+  const [wmsBlocked, setWmsBlocked] = useState(false)
 
   const supabase = useMemo(() => createClient(), [])
   const { driver: contextDriver, user, trip, loading: contextLoading, refresh } = useActiveTrip()
@@ -257,9 +259,10 @@ export default function RutaActivaPage() {
           </div>
           <h3 className="text-lg font-bold text-slate-800 mb-2">Ruta Programada</h3>
           <p className="text-slate-500 text-sm mb-6">Usted tiene {dispatch.dispatch_requests?.length || 0} paradas asignadas. Presione el botón para iniciar la ruta y permitir el registro de las entregas.</p>
+          <div className="mb-4 empty:hidden"><WmsDepartureNotice dispatchId={dispatch.id} onBlocked={setWmsBlocked} /></div>
           <button
             onClick={handleIniciarRuta}
-            disabled={processing}
+            disabled={processing || wmsBlocked}
             className="w-full bg-[#002855] text-white py-3 rounded-xl font-bold shadow hover:bg-[#001d3d] flex justify-center items-center gap-2 disabled:opacity-70"
           >
             {processing ? <Loader2 className="w-5 h-5 animate-spin" /> : "INICIAR RUTA"}

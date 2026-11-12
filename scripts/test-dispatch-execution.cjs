@@ -14,7 +14,7 @@ function load(file, mock) {
   return context.exports
 }
 const rules = load('src/lib/dispatch-execution.ts', require)
-function fixture({ status = 'PROGRAMADO', modalidad, writable = true, response = { data: { success: true }, error: null } } = {}) {
+function fixture({ status = 'PROGRAMADO', modalidad, writable = true, response = { data: { success: true }, error: null }, wmsBlocked = false } = {}) {
   const calls = [], success = [], errors = []
   let changes = 0
   const { DispatchExecutionActions } = load('src/components/transport/DispatchExecutionActions.tsx', name => {
@@ -23,6 +23,8 @@ function fixture({ status = 'PROGRAMADO', modalidad, writable = true, response =
     if (name === '@/lib/caja') return { errorMessage: error => error.message }
     if (name === '@/lib/dispatch-execution') return rules
     if (name === '@/components/despacho/AuditFindingReleaseBadge') return { AuditFindingReleaseBadge: () => null } // F3: consulta propia, fuera de esta prueba
+    // Salida sin liberación del WMS: el aviso informa el bloqueo y el botón queda deshabilitado (la base también bloquea).
+    if (name === '@/components/despacho/WmsRelease') return { WmsDepartureNotice: ({ onBlocked }) => { React.useEffect(() => { onBlocked?.(wmsBlocked) }, [onBlocked]); return null } }
     if (name === 'sonner') return { toast: { success: message => success.push(message), error: message => errors.push(message) } }
     if (name === 'lucide-react') return { CheckCircle2: () => null, Loader2: () => null, PlayCircle: () => null }
     return require(name)
@@ -89,4 +91,11 @@ test('administrative cutoff retains documentary and financial closure action', a
   const f = fixture({ status: 'CIERRE_OPERATIVO' })
   await click(f)
   assert.equal(f.calls[0].rpc, 'close_dispatch_route')
+})
+test('departure button is disabled while the warehouse has not released the requests', async () => {
+  const f = fixture({ wmsBlocked: true })
+  let tree
+  await act(async () => { tree = create(React.createElement(f.Component, f.props)) })
+  assert.equal(tree.root.findByType('button').props.disabled, true)
+  await act(async () => { tree.unmount() })
 })

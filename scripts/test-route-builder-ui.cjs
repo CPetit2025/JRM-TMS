@@ -24,6 +24,8 @@ const mocks = {
  '@/components/ui/modal': { Modal: ({ isOpen, children, footer }) => (isOpen ? h('div', null, children, footer) : null) },
  '@/components/ui/SearchableSelect': { SearchableSelect: ({ value, onChange, options, ariaLabel }) => h('select', { 'aria-label': ariaLabel, value, onChange: e => onChange(e.target.value) }, options.map(o => h('option', { key: o.value, value: o.value }, o.label))) },
  '@/components/tarifas/TransportTariffManager': { QuoteBreakdown: () => null },
+ // Estado WMS: consulta propia (ver scripts/test-wms-release-gate.cjs); aquí solo el armado de ruta
+ '@/components/despacho/WmsRelease': { useWmsRelease: () => ({ items: {}, canOverride: false, reload() {} }), WmsReleaseBadge: () => null, WmsDepartureNotice: () => null },
  '@/components/erp/ErpReferencia': { ErpOtLinea: () => null, ErpStockCorteAviso: () => null },
  '@/lib/routing': { calculateRouteDistance: async () => 12.5, calculateRouteEstimate: async () => ({ km: 12.5, minutes: 20, origin: { lat: -12, lon: -77 }, destination: { lat: -12.1, lon: -77.1 }, geometry: [[-12, -77], [-12.1, -77.1]] }) },
  '@/lib/eligibility': { checkDispatchEligibility: async () => ({ status: 'APTO', blocking_reasons: [], observation_reasons: [] }) },
