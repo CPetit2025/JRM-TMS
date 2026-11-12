@@ -49,7 +49,22 @@ function barcode(pdf: JsPdf, value: string, x: number, y: number, w: number, h: 
 
 // Packing List (A4). Sin número de liberación = preliminar, marcado como tal y sin validez.
 // unitOf: unidad asignada a cada LPN (por id); title: reemplaza el título, p. ej. para la guía de carga de una unidad.
-export async function buildPackingListPdf(s: PackingSnapshot, opts: { unitOf?: Record<string, string>; title?: string } = {}) {
+/** Ítem de la OT/contrato: el último tramo numérico del código («16571-S001-069» y «16571-069» → «069»). */
+export const itemOf = (code?: string | null) => /-(\d+)$/.exec((code || '').trim())?.[1] || null
+export type ItemLine = { item: string | null; product_code: string; description: string; lot: string | null; unit: string | null; packages: number; quantity: number; weight_kg: number }
+/** Consolidado por ítem, código de producto y lote: suma paquetes, cantidad y peso de todos los LPN. */
+export function consolidateItems(lpns: Pick<TaskLpn, 'packages'>[]): ItemLine[] {
+  const by = new Map<string, ItemLine>()
+  for (const p of lpns.flatMap(l => l.packages)) {
+    const item = itemOf(p.contract_code), key = `${item || ''}|${p.product_code}|${p.lot || ''}`
+    const v = by.get(key) || { item, product_code: p.product_code, description: p.description, lot: p.lot, unit: p.unit, packages: 0, quantity: 0, weight_kg: 0 }
+    v.packages += 1; v.quantity += Number(p.quantity) || 0; v.weight_kg += Number(p.weight_kg) || 0
+    by.set(key, v)
+  }
+  return [...by.values()].sort((a, b) => (a.item || '~').localeCompare(b.item || '~') || a.product_code.localeCompare(b.product_code) || (a.lot || '').localeCompare(b.lot || ''))
+}
+
+export async function buildPackingListPdf(s: PackingSnapshot, opts: { unitOf?: Record<string, string>; title?: string; consolidated?: boolean } = {}) {
   const { jsPDF } = await import('jspdf')
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
   const preliminary = !s.packing_list_number
@@ -83,6 +98,29 @@ export async function buildPackingListPdf(s: PackingSnapshot, opts: { unitOf?: R
     if (i % 2) y += 5.5
   })
   y += 3
+  // Guía de carga: primero el consolidado por ítem (código y lote), luego el detalle por LPN.
+  if (opts.consolidated) {
+    const lines = consolidateItems(s.lpns)
+    const cols = () => { pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7.5); pdf.text('Ítem', 14, y); pdf.text('Código / descripción', 26, y); pdf.text('Lote', 118, y); pdf.text('Paq.', 146, y, { align: 'right' }); pdf.text('Cantidad', 172, y, { align: 'right' }); pdf.text('Peso kg', 196, y, { align: 'right' }); pdf.setFont('helvetica', 'normal'); y += 4.5 }
+    pdf.setFillColor(0, 40, 85); pdf.rect(12, y, 186, 7, 'F'); pdf.setTextColor(255, 255, 255); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9.5)
+    pdf.text('CONSOLIDADO POR ÍTEM', 14, y + 5); pdf.setTextColor(0, 0, 0); y += 12
+    cols()
+    for (const r of lines) {
+      if (y > 280) { pdf.addPage(); header(); y = 32; cols() }
+      pdf.setFont('helvetica', 'bold'); pdf.text(r.item || '—', 14, y); pdf.setFont('helvetica', 'normal')
+      pdf.text(`${r.product_code} ${r.description}`.slice(0, 52), 26, y)
+      pdf.text((r.lot || '—').slice(0, 16), 118, y)
+      pdf.text(String(r.packages), 146, y, { align: 'right' })
+      pdf.text(`${fmt(r.quantity, 3)} ${r.unit || ''}`, 172, y, { align: 'right' })
+      pdf.text(fmt(r.weight_kg), 196, y, { align: 'right' })
+      y += 4.5
+    }
+    pdf.line(12, y - 2, 198, y - 2); pdf.setFont('helvetica', 'bold')
+    pdf.text(`${lines.length} ítem(s)`, 14, y + 2.5); pdf.text(String(lines.reduce((n, r) => n + r.packages, 0)), 146, y + 2.5, { align: 'right' })
+    pdf.text(fmt(lines.reduce((n, r) => n + r.weight_kg, 0)), 196, y + 2.5, { align: 'right' }); pdf.setFont('helvetica', 'normal')
+    y += 10
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9.5); pdf.text('DETALLE POR LPN', 14, y); y += 5
+  }
   for (const l of s.lpns) {
     const rows = l.packages.length
     if (y + 22 + rows * 5 > 280) { pdf.addPage(); header(); y = 32 }
