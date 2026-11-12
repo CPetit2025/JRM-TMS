@@ -112,7 +112,7 @@ const fs=require('fs'); const path=require('node:path');
  INSERT INTO auth.users VALUES ('00000000-0000-0000-0000-000000000003');
  INSERT INTO public.roles(id,name,permissions) VALUES ('00000000-0000-0000-0000-000000000004','Etiquetador','["almacen-etiquetado"]');
  INSERT INTO public.profiles(id,email,first_name,last_name,role_id,is_active) VALUES ('00000000-0000-0000-0000-000000000003','other@example.test','Otro','Usuario','00000000-0000-0000-0000-000000000004',true);
- INSERT INTO public.user_site_access(user_id,site_id) SELECT '00000000-0000-0000-0000-000000000003',id FROM public.sites;
+ INSERT INTO public.user_site_access(user_id,site_id) SELECT '00000000-0000-0000-0000-000000000003',id FROM public.sites ON CONFLICT DO NOTHING;
  SET ROLE authenticated; SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000003';`);
  const invisibleProfile=(await db.query("SELECT count(*)::int AS n FROM public.profiles WHERE id='00000000-0000-0000-0000-000000000001'")).rows[0].n;
  if(invisibleProfile!==0) throw Error('Profile RLS must remain unchanged');

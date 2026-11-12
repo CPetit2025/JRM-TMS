@@ -18,6 +18,8 @@ export function wmsRouteAllowed(path, method) {
   if (path === '/api/admin/wms') return method === 'GET' || method === 'POST'
   if (path === '/api/app-version') return method === 'GET'
   if (path === '/api/wms/sincronizar') return method === 'POST'
+  // Cron del servidor (Vercel Cron con CRON_SECRET): sincroniza con el TMS sin navegadores abiertos
+  if (path === '/api/wms/tms-cron') return method === 'GET'
   if (path === '/api/wms/erp-aplicar') return method === 'POST'
   // Cadena del modelo de almacén (fase 4): derivar el día, inventario y APT, con la llave de servicio de la base WMS
   if (['/api/erp/aplicar', '/api/inventario/procesar', '/api/apt/procesar'].includes(path)) return method === 'POST'

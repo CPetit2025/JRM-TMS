@@ -1,14 +1,28 @@
 -- Flujo con el TMS: la SALIDA del despacho en el TMS espera la liberación del almacén (picking + auditoría).
 -- 1) wh_tms_request_states: estado de cada tarea con la misma regla de «display_state» del tablero, para que el servidor
---    del WMS lo informe al TMS (wms_report_request_status, con la clave de integración). La hora de la foto es la de
---    esta base: el TMS descarta fotos más viejas (reintentos fuera de orden).
--- 2) El feed del TMS trae la ruta asignada (N.º, placa, conductor): se guarda en la tarea y la placa se usa por defecto
+--    del WMS lo informe al TMS (wms_report_request_status, con la clave de integración). Incluye TODAS las tareas
+--    activas (sin tope) y las cerradas que cambiaron desde el último envío confirmado (wh_tms_states_mark_sent). La hora
+--    de la foto es la de esta base: el TMS descarta fotos más viejas (reintentos fuera de orden).
+-- 2) Sincronización sin navegador: el cron del servidor (/api/wms/tms-cron, con CRON_SECRET) llama estas funciones con
+--    la llave de servicio. wh_tms_sync_allowed() acepta ese rol o un usuario con permiso de almacén.
+-- 3) El feed del TMS trae la ruta asignada (N.º, placa, conductor): se guarda en la tarea y la placa se usa por defecto
 --    en la unidad de carga (UT1 sin placa la toma; una UT nueva sin placa nace con ella).
--- 3) Corte: si el TMS marca la solicitud como asignada antes del flujo con WMS («legacy_flow»), su tarea pendiente se
+-- 4) Corte: si el TMS marca la solicitud como asignada antes del flujo con WMS («legacy_flow»), su tarea pendiente se
 --    cierra (CANCELLED) con ese motivo; si ya tiene bultos recogidos no se toca (igual que 20261112100000).
 
 ALTER TABLE public.wh_tasks ADD COLUMN IF NOT EXISTS tms_dispatch_number text,
   ADD COLUMN IF NOT EXISTS tms_vehicle_plate text, ADD COLUMN IF NOT EXISTS tms_driver_name text;
+ALTER TABLE public.wh_tms_sync_state ADD COLUMN IF NOT EXISTS states_reported_at timestamptz;
+
+-- Llave de servicio (cron del servidor) o usuario del almacén.
+CREATE OR REPLACE FUNCTION public.wh_tms_sync_service()
+ RETURNS boolean LANGUAGE sql STABLE SET search_path TO 'public', 'pg_temp'
+AS $function$ SELECT coalesce(current_setting('role', true), '') = 'service_role' $function$;
+CREATE OR REPLACE FUNCTION public.wh_tms_sync_allowed()
+ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public', 'pg_temp'
+AS $function$ SELECT public.wh_tms_sync_service() OR public.wh_any_warehouse_permission() $function$;
+REVOKE ALL ON FUNCTION public.wh_tms_sync_allowed() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.wh_tms_sync_service() FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.wh_tms_request_states()
  RETURNS jsonb
@@ -16,9 +30,11 @@ CREATE OR REPLACE FUNCTION public.wh_tms_request_states()
  STABLE SECURITY DEFINER
  SET search_path TO 'public', 'pg_temp'
 AS $function$
+DECLARE v_since timestamptz;
 BEGIN
   PERFORM public.security_assert_active_session();
-  IF NOT public.wh_any_warehouse_permission() THEN RAISE EXCEPTION 'Sin acceso al almacén' USING ERRCODE = '42501'; END IF;
+  IF NOT public.wh_tms_sync_allowed() THEN RAISE EXCEPTION 'Sin acceso al almacén' USING ERRCODE = '42501'; END IF;
+  SELECT coalesce(states_reported_at, now() - interval '3 days') INTO v_since FROM public.wh_tms_sync_state WHERE id = 1;
   RETURN coalesce((SELECT jsonb_agg(jsonb_build_object('transport_request_id', t.transport_request_id, 'task_code', t.task_code,
       'status', CASE
         WHEN pl.id IS NOT NULL THEN 'LIBERADO'
@@ -29,15 +45,90 @@ BEGIN
         WHEN t.status = 'READY_FOR_LOAD' THEN 'EN_AUDITORIA'
         WHEN t.status IN ('PICKING','PACKING') THEN 'EN_PICKING'
         ELSE 'PENDIENTE' END,
-      'released_at', pl.released_at, 'snapshot_at', now()))
-    FROM (SELECT * FROM public.wh_tasks t
-          WHERE public.can_access_site(t.site_id)
-            AND (t.status NOT IN ('LOADED','RECONCILED','CANCELLED') OR t.updated_at > now() - interval '3 days')
-          ORDER BY t.updated_at DESC LIMIT 2000) t
-    LEFT JOIN public.wh_packing_lists pl ON pl.task_id = t.id AND pl.status = 'LIBERADO'), '[]'::jsonb);
+      'released_at', pl.released_at, 'snapshot_at', now()) ORDER BY t.updated_at)
+    FROM public.wh_tasks t
+    LEFT JOIN public.wh_packing_lists pl ON pl.task_id = t.id AND pl.status = 'LIBERADO'
+    WHERE (public.wh_tms_sync_service() OR public.can_access_site(t.site_id))
+      AND (t.status NOT IN ('LOADED','RECONCILED','CANCELLED') OR t.updated_at >= coalesce(v_since, '-infinity'::timestamptz))), '[]'::jsonb);
 END $function$;
 REVOKE ALL ON FUNCTION public.wh_tms_request_states() FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.wh_tms_request_states() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.wh_tms_request_states() TO authenticated, service_role;
+
+-- El TMS confirmó la foto de p_at: las tareas cerradas antes de esa hora ya no se vuelven a enviar.
+CREATE OR REPLACE FUNCTION public.wh_tms_states_mark_sent(p_key text, p_at timestamptz)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+BEGIN
+  PERFORM public.security_assert_active_session();
+  IF NOT public.wh_tms_sync_allowed() THEN RAISE EXCEPTION 'Sin acceso al almacén' USING ERRCODE = '42501'; END IF;
+  IF NOT public.wh_tms_key_ok(p_key) THEN RAISE EXCEPTION 'Clave de integración inválida' USING ERRCODE = '42501'; END IF;
+  UPDATE public.wh_tms_sync_state SET states_reported_at = greatest(coalesce(states_reported_at, '-infinity'::timestamptz), p_at)
+   WHERE id = 1 AND p_at <= now();
+END $function$;
+REVOKE ALL ON FUNCTION public.wh_tms_states_mark_sent(text, timestamptz) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.wh_tms_states_mark_sent(text, timestamptz) TO authenticated, service_role;
+
+-- Las funciones de sincronización existentes aceptan también el cron (llave de servicio). Mismo cuerpo de producción.
+CREATE OR REPLACE FUNCTION public.wh_tms_sync_claim(p_force boolean DEFAULT false)
+ RETURNS uuid[]
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+BEGIN
+  PERFORM public.security_assert_active_session();
+  IF NOT public.wh_tms_sync_allowed() THEN RAISE EXCEPTION 'Sin acceso al almacén' USING ERRCODE = '42501'; END IF;
+  UPDATE public.wh_tms_sync_state SET last_run_at = now()
+   WHERE id = 1 AND (last_run_at IS NULL OR last_run_at < now() - CASE WHEN p_force THEN interval '10 seconds' ELSE interval '60 seconds' END);
+  IF NOT FOUND THEN RETURN NULL; END IF;
+  RETURN coalesce((SELECT array_agg(transport_request_id) FROM public.wh_tasks WHERE status NOT IN ('LOADED','RECONCILED','CANCELLED')), '{}');
+END $function$;
+
+CREATE OR REPLACE FUNCTION public.wh_tms_sync_fail(p_key text, p_message text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+BEGIN
+  PERFORM public.security_assert_active_session();
+  IF NOT public.wh_tms_sync_allowed() THEN RAISE EXCEPTION 'Sin acceso al almacén' USING ERRCODE = '42501'; END IF;
+  IF NOT public.wh_tms_key_ok(p_key) THEN RAISE EXCEPTION 'Clave de integración inválida' USING ERRCODE = '42501'; END IF;
+  UPDATE public.wh_tms_sync_state SET last_error = left(coalesce(p_message, 'Error'), 500) WHERE id = 1;
+END $function$;
+
+CREATE OR REPLACE FUNCTION public.wh_packing_lists_unreported()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+BEGIN
+  PERFORM public.security_assert_active_session();
+  IF NOT public.wh_tms_sync_allowed() THEN RAISE EXCEPTION 'Sin acceso al almacén' USING ERRCODE = '42501'; END IF;
+  RETURN coalesce((SELECT jsonb_agg(jsonb_build_object('id', id, 'transport_request_id', transport_request_id, 'packing_list_number', packing_list_number,
+      'version', version, 'status', status, 'released_at', released_at, 'lpn_count', snapshot->'lpn_count', 'package_count', snapshot->'package_count',
+      'total_weight_kg', snapshot->'total_weight_kg', 'picker_name', snapshot->>'picker_name', 'auditor_name', snapshot->>'auditor_name',
+      'payload', jsonb_build_object('task_code', snapshot->>'task_code', 'replaced_reason', replaced_reason)))
+    FROM public.wh_packing_lists WHERE tms_reported_at IS NULL AND (public.wh_tms_sync_service() OR public.can_access_site(site_id)) LIMIT 50), '[]'::jsonb);
+END $function$;
+
+CREATE OR REPLACE FUNCTION public.wh_packing_list_mark_reported(p_key text, p_id uuid, p_status text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+BEGIN
+  PERFORM public.security_assert_active_session();
+  IF NOT public.wh_tms_sync_allowed() THEN RAISE EXCEPTION 'Sin acceso al almacén' USING ERRCODE = '42501'; END IF;
+  IF NOT public.wh_tms_key_ok(p_key) THEN RAISE EXCEPTION 'Clave de integración inválida' USING ERRCODE = '42501'; END IF;
+  -- solo si no cambió desde que se informó (un reemplazo posterior debe volver a informarse)
+  UPDATE public.wh_packing_lists SET tms_reported_at = now() WHERE id = p_id AND status = p_status;
+END $function$;
 
 -- Unidad de carga nueva sin placa: toma la placa asignada en el TMS.
 CREATE OR REPLACE FUNCTION public.wh_load_unit_add(p_task_id uuid, p_plate text DEFAULT NULL::text)
@@ -65,7 +156,7 @@ AS $function$
 DECLARE r jsonb; c jsonb; v_site uuid; v_n integer := 0; v_contract uuid; v_client uuid; v_plate text;
 BEGIN
   PERFORM public.security_assert_active_session();
-  IF NOT public.wh_any_warehouse_permission() THEN RAISE EXCEPTION 'Sin acceso al almacén' USING ERRCODE = '42501'; END IF;
+  IF NOT public.wh_tms_sync_allowed() THEN RAISE EXCEPTION 'Sin acceso al almacén' USING ERRCODE = '42501'; END IF;
   IF NOT public.wh_tms_key_ok(p_key) THEN RAISE EXCEPTION 'Clave de integración inválida' USING ERRCODE = '42501'; END IF;
   IF jsonb_typeof(p_rows) IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'Formato de sincronización inválido'; END IF;
   FOR r IN SELECT * FROM jsonb_array_elements(p_rows) LOOP
@@ -185,3 +276,8 @@ BEGIN
              ELSE t.status NOT IN ('LOADED','RECONCILED','CANCELLED') END)
     LIMIT 500) q), '[]'::jsonb);
 END $function$;
+
+-- El cron del servidor usa la llave de servicio (en producción ya tiene EXECUTE; se deja explícito).
+GRANT EXECUTE ON FUNCTION public.wh_tms_sync_claim(boolean), public.wh_tms_sync_fail(text, text),
+  public.wh_tms_sync_apply(text, jsonb), public.wh_packing_lists_unreported(),
+  public.wh_packing_list_mark_reported(text, uuid, text) TO service_role;

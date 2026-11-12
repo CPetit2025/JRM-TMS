@@ -300,6 +300,26 @@ const feed=(status={})=>[
  nt=(await sys(`SELECT status,cancelled_reason,tms_vehicle_plate FROM public.wh_tasks WHERE transport_request_id='${REQ_NEW}'`))[0];
  assert.deepEqual([nt.status,nt.cancelled_reason,nt.tms_vehicle_plate],['CANCELLED','Solicitud asignada antes del flujo con WMS',null],'corte: asignada antes del flujo se cierra');
  await as('op1'); assert.equal((await one('SELECT public.wh_tms_request_states()')).find(s=>s.transport_request_id===REQ_NEW).status,'CANCELADO');
- console.log('PASS: estados para la salida en el TMS (= tablero), ruta y placa del TMS en la tarea y la UT, corte de solicitudes asignadas antes del flujo.');
+ // Informe sin tope: todas las activas siempre; las cerradas solo hasta que el TMS confirma la foto (no consumen cupo).
+ const activeIds=(await sys("SELECT transport_request_id::text id FROM public.wh_tasks WHERE status NOT IN ('LOADED','RECONCILED','CANCELLED')")).map(r=>r.id);
+ await db.exec(`RESET ROLE; INSERT INTO public.transport_requests(id,request_number,request_type,status,site_id) SELECT gen_random_uuid(),'RT-X'||g,'DESPACHO','CANCELADA',(SELECT id FROM public.sites LIMIT 1) FROM generate_series(1,2100) g;
+   UPDATE public.wh_tasks SET status='CANCELLED' WHERE request_status='CANCELADA' AND status<>'CANCELLED';`); await as('op1');
+ let all=await one('SELECT public.wh_tms_request_states()');
+ assert.ok(activeIds.length>0 && activeIds.every(id=>all.some(s=>s.transport_request_id===id)),'2.100 cerradas recientes no dejan fuera a las activas');
+ await fails('SELECT public.wh_tms_states_mark_sent($1,$2)',['x'.repeat(40),all[0].snapshot_at],/Clave/);
+ await q('SELECT public.wh_tms_states_mark_sent($1,$2)',[KEY,all[0].snapshot_at]);
+ all=await one('SELECT public.wh_tms_request_states()');
+ assert.ok(activeIds.every(id=>all.some(s=>s.transport_request_id===id)),'activas siempre');
+ assert.ok(!all.some(s=>s.status==='CANCELADO'),'cerradas ya confirmadas no se reenvían');
+ // Cron del servidor (llave de servicio, sin usuario): mismas funciones; anónimo no.
+ await db.exec("RESET ROLE; SET request.jwt.claim.sub=''; UPDATE public.wh_tms_sync_state SET last_run_at=now()-interval '1 hour'; SET ROLE service_role");
+ assert.ok(Array.isArray(await one('SELECT public.wh_tms_sync_claim(false)')),'el cron toma el turno');
+ assert.ok((await one('SELECT public.wh_tms_request_states()')).length>=activeIds.length,'el cron ve todas las sedes');
+ await q('SELECT public.wh_tms_sync_apply($1,$2::jsonb)',[KEY,'[]']);
+ await db.exec('RESET ROLE; SET ROLE anon');
+ await fails('SELECT public.wh_tms_states_mark_sent($1,now())',[KEY],/permission|permiso/);
+ await db.exec('RESET ROLE; SET ROLE authenticated');
+ await fails('SELECT public.wh_tms_sync_claim(false)',[],/almacén|Sesión/);
+ console.log('PASS: estados para la salida en el TMS (= tablero), sin tope y con confirmación, cron con llave de servicio, ruta y placa del TMS, corte.');
  await db.close();
 })().catch(e=>{console.error('FAIL:',e.message);process.exit(1)});

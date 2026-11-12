@@ -17,6 +17,8 @@ assert.equal(wmsRouteAllowed('/api/app-version', 'POST'), false)
 assert.equal(wmsRouteAllowed('/api/app-version', 'GET'), true)
 assert.equal(wmsRouteAllowed('/api/wms/sincronizar', 'POST'), true)
 assert.equal(wmsRouteAllowed('/api/wms/sincronizar', 'GET'), false)
+assert.equal(wmsRouteAllowed('/api/wms/tms-cron', 'GET'), true)
+assert.equal(wmsRouteAllowed('/api/wms/tms-cron', 'POST'), false)
 assert.equal(wmsRouteAllowed('/api/wms/erp-aplicar', 'POST'), true)
 assert.equal(wmsRouteAllowed('/api/wms/erp-aplicar', 'GET'), false)
 for (const path of ['/api/erp/aplicar', '/api/inventario/procesar', '/api/apt/procesar']) {

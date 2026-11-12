@@ -28,3 +28,10 @@ control de recepción. También verifica bloqueo anónimo y de cuentas inactivas
 Configuración Vercel `jrm-wms`: `NEXT_PUBLIC_DEPLOYMENT_SYSTEM=wms`, `JRM_APP=wms-production`,
 URL y clave pública de la base WMS; `NEXT_PUBLIC_TMS_ORIGIN=https://www.jrmlogistica.app`.
 El dominio es `wms.jrmlogistica.app`; el portal TMS usa ese origen para Almacén.
+
+Sincronización con el TMS sin navegador (salida liberada por el WMS): `vercel.json` programa un Vercel Cron cada
+5 minutos a `GET /api/wms/tms-cron`. Crear en el proyecto Vercel `jrm-wms` la variable `CRON_SECRET` (valor aleatorio
+de 32+ caracteres; Vercel la envía como `Authorization: Bearer …` y la ruta responde 401 sin ella) y verificar que
+existan `SUPABASE_SERVICE_ROLE_KEY` (base WMS), `TMS_SUPABASE_URL`, `TMS_SUPABASE_ANON_KEY` y `TMS_INTEGRATION_KEY`.
+Si el plan de Vercel no permite crons cada 5 minutos, el robot de la PC (`scripts/wms-auto`) puede llamar la misma
+ruta con ese encabezado. Sin informes por 15 minutos el TMS bloquea la salida («Sin respuesta del WMS»).
