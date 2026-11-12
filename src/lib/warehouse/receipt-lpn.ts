@@ -4,7 +4,7 @@ import type { LpnPackage } from "./packing-list";
 
 /** LPN de recepción: varias líneas validadas del mismo cliente y OT en un solo bulto físico (wh_lpn_detail). */
 export type ReceiptLpn = {
-  id: string; lpn_code: string; origin: "PICKING" | "RECEPCION"; status: string; task_id: string | null; print_count: number;
+  id: string; lpn_code: string; origin: "PICKING" | "RECEPCION" | "INVENTARIO"; status: string; task_id: string | null; print_count: number;
   package_count: number; quantity: number; weight_kg: number; created_at: string; created_by_name: string | null;
   packages: (LpnPackage & { receipt_key: string; warehouse: string; date: string })[];
 };

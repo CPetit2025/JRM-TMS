@@ -12,6 +12,7 @@ import { printPackageLabels, validatePackageLabelPrint } from '@/components/ware
 import { useLabelFormat } from '@/lib/warehouse/label-format'
 import { loadPackageLabel } from '@/lib/warehouse/load-package-label'
 import { Code128Barcode } from '@/components/warehouse/Code128Barcode'
+import { itemOf } from '@/lib/warehouse/packing-list'
 
 type ReceiptPackage = {
   package_code: string
@@ -205,7 +206,7 @@ export default function AptReceiptControlPage() {
     const q = deferredQuery.trim().toLocaleLowerCase()
     if (!q) return groups
     return groups.filter(group => [
-      group.documentNo, group.contractCode || '', group.lot, group.productCode,
+      group.documentNo, group.contractCode || '', itemOf(group.contractCode) || '', group.lot, group.productCode,
       group.customerName || '', ...group.packages.map(row => row.package_code),
     ].some(value => value.toLocaleLowerCase().includes(q)))
   }, [groups, deferredQuery])
@@ -254,14 +255,14 @@ export default function AptReceiptControlPage() {
 
       <label className="relative mb-4 block">
         <Search size={16} className="absolute left-3 top-3 text-slate-400"/>
-        <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar por lote, IPT, cliente o descripción" className="w-full rounded-lg border border-slate-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500"/>
+        <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar por lote, IPT, ítem, cliente o descripción" className="w-full rounded-lg border border-slate-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500"/>
       </label>
 
       <div className="w-full overflow-x-auto rounded-lg border border-slate-200">
         <DataTable dense className="min-w-[980px] lg:min-w-0 w-full table-fixed text-left text-sm">
-          <colgroup><col style={{ width: "9%" }}/><col style={{ width: "10%" }}/><col style={{ width: "17%" }}/><col style={{ width: "29%" }}/><col style={{ width: "7%" }}/><col style={{ width: "10%" }}/><col style={{ width: "8%" }}/><col style={{ width: "10%" }}/></colgroup>
+          <colgroup><col style={{ width: "9%" }}/><col style={{ width: "10%" }}/><col style={{ width: "6%" }}/><col style={{ width: "16%" }}/><col style={{ width: "24%" }}/><col style={{ width: "7%" }}/><col style={{ width: "10%" }}/><col style={{ width: "8%" }}/><col style={{ width: "10%" }}/></colgroup>
           <thead className="bg-slate-50 text-xs font-semibold text-slate-600"><tr>
-            <th className="p-2">Lote</th><th className="p-2">IPT</th><th className="p-2">Cliente</th><th className="p-2">Descripción</th>
+            <th className="p-2">Lote</th><th className="p-2">IPT</th><th className="p-2">Ítem</th><th className="p-2">Cliente</th><th className="p-2">Descripción</th>
             <th className="p-2 text-right">UND</th><th className="p-2 text-right">Kg / TN</th><th className="p-2 text-right">Bultos</th>
             <th className="p-2">Acciones</th>
           </tr></thead>
@@ -269,6 +270,7 @@ export default function AptReceiptControlPage() {
             {pager.pageRows.map(group => <tr key={group.sourceMovementKey} className="hover:bg-blue-50/60">
               <td className="break-words p-2">{group.lot || '—'}</td>
               <td className="whitespace-nowrap p-2 font-semibold text-[#002855]">{group.documentNo}</td>
+              <td className="whitespace-nowrap p-2 font-semibold tabular-nums" title={group.contractCode || undefined}>{itemOf(group.contractCode) || '—'}</td>
               <td className="break-words p-2">{group.customerName || 'Por registrar'}</td>
               <td className="break-words p-2"><b className="block break-all text-[#002855]">{group.productCode}</b><span className="block text-xs text-slate-500">{group.description || '—'}</span></td>
               <td className="whitespace-nowrap p-2 text-right tabular-nums">{group.units ? numberFmt.format(group.units) : '—'}</td>
@@ -276,8 +278,8 @@ export default function AptReceiptControlPage() {
               <td className="whitespace-nowrap p-2 text-right tabular-nums">{group.packages.length}</td>
               <td className="p-2"><button type="button" onClick={() => setDetail(group)} className="inline-flex min-h-9 items-center gap-2 whitespace-nowrap rounded-lg border border-[#002855] px-3 py-2 text-xs font-bold text-[#002855] hover:bg-blue-50"><ClipboardList size={14}/>Ver detalle</button></td>
             </tr>)}
-            {!loading && filtered.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-sm text-slate-500">{query ? 'No hay líneas recepcionadas que coincidan con la búsqueda.' : 'Todavía no hay ingresos recepcionados en el APT.'}</td></tr>}
-            {loading && <tr><td colSpan={8} className="p-10 text-center text-sm text-slate-500">Cargando recepciones…</td></tr>}
+            {!loading && filtered.length === 0 && <tr><td colSpan={9} className="p-10 text-center text-sm text-slate-500">{query ? 'No hay líneas recepcionadas que coincidan con la búsqueda.' : 'Todavía no hay ingresos recepcionados en el APT.'}</td></tr>}
+            {loading && <tr><td colSpan={9} className="p-10 text-center text-sm text-slate-500">Cargando recepciones…</td></tr>}
           </tbody>
         </DataTable>
       </div>
