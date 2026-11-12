@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AlertCircle, Box, CalendarDays, FileText, Truck, User, Users } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { AuditFindingReleaseBadge } from '@/components/despacho/AuditFindingReleaseBadge'
+import { WmsDepartureNotice } from '@/components/despacho/WmsRelease'
 import { ProgrammingNotes } from '@/components/despacho/programar-ruta/ProgrammingNotes'
 import type { RouteCrewPerson } from '@/components/despacho/RouteCrewDetails'
 import { conformityLabels, deliveryServiceKind, deliveryStatus, type DeliveryRow } from '@/lib/delivery'
@@ -61,6 +62,7 @@ export function ResumenTab({ row, detail }: { row: DeliveryRow; detail: Dispatch
         ]} />
         {detail.dispatch.services_count > 1 && <p className="mt-3 text-xs text-slate-500">La ruta {row.dispatch_number} atiende {detail.dispatch.services_count} servicios; este detalle corresponde a la solicitud {row.request_number}.</p>}
         <div className="mt-3 empty:hidden"><AuditFindingReleaseBadge dispatchId={row.dispatch_id} status={detail.dispatch.status} /></div>
+        {['PROGRAMADO', 'EN_CURSO'].includes(detail.dispatch.status) && <div className="mt-3 empty:hidden"><WmsDepartureNotice dispatchId={row.dispatch_id} /></div>}
         <div className="mt-3 empty:hidden"><ProgrammingNotes dispatchId={row.dispatch_id} /></div>
       </DetailCard>
       <DetailCard title="Unidad y tripulación" icon={<Users />}>

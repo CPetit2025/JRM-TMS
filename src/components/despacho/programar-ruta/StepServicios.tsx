@@ -10,6 +10,7 @@ import { serviceKind, SERVICE_KINDS, type ServiceKind } from '@/lib/request-serv
 import { serviceDate, wasRescheduled } from '@/lib/request-schedule'
 import { partyMissing, requestedAttention, type TransportRequest } from './types'
 import type { RouteBuilder } from './useRouteBuilder'
+import { useWmsRelease, WmsReleaseBadge } from '@/components/despacho/WmsRelease'
 
 const control = 'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#002855]'
 const kg = (n: number) => `${Math.round(n).toLocaleString('es-PE')}`
@@ -67,6 +68,7 @@ export function StepServicios({ rb, onLink }: { rb: RouteBuilder; onLink: (reque
     return !term || [r.request_number, r.contracts?.code, r.contracts?.clients?.business_name, r.suppliers?.business_name, referenceLabel(r),
       districtOf(r.pickup_address, r.pickup_district), districtOf(r.delivery_address, r.delivery_district)].join(' ').toLocaleLowerCase('es-PE').includes(term)
   })
+  const wms = useWmsRelease({ requests: candidates.slice(0, 200).map(r => r.id) })
   const toggle = (r: TransportRequest) => void rb.toggleRequestSelection(r.id, r.pickup_address, r.delivery_address)
   const expand = (id: string) => setExpanded(current => (current === id ? null : id))
   const head = 'px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500'
@@ -120,7 +122,8 @@ export function StepServicios({ rb, onLink }: { rb: RouteBuilder; onLink: (reque
                       </td>
                       <td className="px-2 py-2"><ServiceTypeBadge request={req} />
                         {req.attention_mode === 'RECOJO_CLIENTE' && <span className="block text-[11px] font-medium text-teal-700">Recojo por cliente</span>}
-                        {!req.attention_mode && <span className="block text-[11px] font-medium text-red-700">Modalidad pendiente</span>}</td>
+                        {!req.attention_mode && <span className="block text-[11px] font-medium text-red-700">Modalidad pendiente</span>}
+                        <span className="block"><WmsReleaseBadge item={wms.items[req.id]} /></span></td>
                       <td className="max-w-48 truncate px-2 py-2 text-xs text-slate-700" title={`${req.pickup_address} → ${req.delivery_address}`}>{placeOf(req)}</td>
                       <td className="whitespace-nowrap px-2 py-2 text-xs text-slate-700">{requestedAttention(req)}
                         {wasRescheduled(req) && <span className="ml-1 rounded-full bg-orange-100 px-1.5 text-[10px] font-bold text-orange-800">Reprogramado</span>}</td>

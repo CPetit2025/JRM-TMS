@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { errorMessage } from '@/lib/caja'
 import { dispatchClosureMessage, dispatchExecutionAction } from '@/lib/dispatch-execution'
 import { AuditFindingReleaseBadge } from '@/components/despacho/AuditFindingReleaseBadge'
+import { WmsDepartureNotice } from '@/components/despacho/WmsRelease'
 
 export function DispatchExecutionActions({ dispatch, onChanged }: {
   dispatch: { id: string; status: string; modalidad?: string | null }
@@ -16,6 +17,7 @@ export function DispatchExecutionActions({ dispatch, onChanged }: {
   const db = useMemo(() => createClient(), [])
   const { canWrite } = usePermissions()
   const [busy, setBusy] = useState(false)
+  const [wmsBlocked, setWmsBlocked] = useState(false)
   const running = useRef(false)
   const action = dispatchExecutionAction(dispatch.status, dispatch.modalidad)
   if (!canWrite('despacho') || !action) return null
@@ -50,7 +52,9 @@ export function DispatchExecutionActions({ dispatch, onChanged }: {
     }
   }
 
-  return <>{action.nextStatus === 'EN_CURSO' && <AuditFindingReleaseBadge dispatchId={dispatch.id} status={dispatch.status} />}<button type="button" disabled={busy} onClick={() => void execute()}
+  const departure = action.nextStatus === 'EN_CURSO'
+  return <>{departure && <AuditFindingReleaseBadge dispatchId={dispatch.id} status={dispatch.status} />}
+  {departure && <WmsDepartureNotice dispatchId={dispatch.id} onBlocked={setWmsBlocked} />}<button type="button" disabled={busy || (departure && wmsBlocked)}onClick={() => void execute()}
     className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white hover:bg-[#001d3d] disabled:opacity-50">
     {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : action.rpc === 'close_dispatch_route' ? <CheckCircle2 className="h-4 w-4" /> : <PlayCircle className="h-4 w-4" />}
     {action.label}

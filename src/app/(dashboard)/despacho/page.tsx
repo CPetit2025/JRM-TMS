@@ -31,6 +31,7 @@ import { AddRouteService } from '@/components/despacho/AddRouteService'
 import { OCCUPIED_DISPATCH_STATUSES } from '@/lib/route-assignment'
 import { useRouteBuilder } from '@/components/despacho/programar-ruta/useRouteBuilder'
 import { RouteBuilderModal } from '@/components/despacho/programar-ruta/RouteBuilderModal'
+import { useWmsRelease, WmsReleaseBadge } from '@/components/despacho/WmsRelease'
 import type { Dispatch, PlanningDriver, PlanningVehicle, TransportRequest } from '@/components/despacho/programar-ruta/types'
 
 // Orden de la bandeja: la solicitud registrada más recientemente primero; a igual registro, la atención más reciente.
@@ -196,6 +197,8 @@ export default function DespachoPage() {
 
   // Armado de ruta («Armar ruta y programar unidad»): estado, reglas y programación en useRouteBuilder
   const rb = useRouteBuilder({ supabase, pendingRequests, setPendingRequests, dispatches, vehicles, drivers, fetchData, canAddService, canAuthorizeFreight: canWrite('despacho-aprobacion'), router, onLinkRequest: setLinkRequest })
+  // Estado del almacén (WMS): se puede asignar antes; la salida espera la liberación
+  const wms = useWmsRelease({ requests: pendingPg.pageRows.map(r => r.id) })
 
   return (
     <div className="w-full mx-auto space-y-2.5">
@@ -269,7 +272,7 @@ export default function DespachoPage() {
                       <td className="whitespace-nowrap">
                         <span className={`text-sm ${wasRescheduled(req) ? 'font-semibold text-orange-700' : 'text-slate-700'}`} title={wasRescheduled(req) ? 'Reprogramado' : undefined}>{req.required_at ? cellDateTime(req.required_at) : `${serviceDate(req.required_date).slice(0, 5)}${req.time_window ? ` ${req.time_window}` : ''}`}</span>
                       </td>
-                      <td><ServiceTypeBadge request={req} /></td>
+                      <td><ServiceTypeBadge request={req} /><span className="block"><WmsReleaseBadge item={wms.items[req.id]} canOverride={wms.canOverride} onChanged={wms.reload} /></span></td>
                       <td className="whitespace-nowrap text-sm font-bold text-jrm-navy" title={`Solicitud ${req.request_number} · ${req.requester_name}`}>{req.contracts?.code ? `OT ${req.contracts.code}` : referenceLabel(req) || 'Sin OT'}</td>
                       <td className="max-w-40">{(() => { const party = partyName(req, (req.request_client?.business_name || req.contracts?.clients?.business_name), req.suppliers?.business_name); return <p className="truncate text-sm text-slate-700" title={party ? `${requiresSupplier(req) ? 'Proveedor' : 'Cliente'}: ${party}` : undefined}>{party || <button type="button" onClick={e => { e.stopPropagation(); setLinkRequest(req) }} className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-100" title="Sin esto no se puede programar">{requiresSupplier(req) ? 'Proveedor sin vincular' : 'Sin cliente'} · vincular</button>}</p> })()}</td>
                       <td className="max-w-48">
