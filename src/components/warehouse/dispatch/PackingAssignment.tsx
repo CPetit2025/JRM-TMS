@@ -66,7 +66,7 @@ export function PackingAssignment({ task, data, onChanged }: { task: BoardRow; d
       const snapshot = result.data as PackingSnapshot
       const lpns = snapshot.lpns.filter(l => unit.lpn_ids.includes(l.id))
       const subset = { ...snapshot, lpns, lpn_count: lpns.length, package_count: lpns.reduce((n,l) => n+l.package_count,0), total_weight_kg: lpns.reduce((n,l) => n+Number(l.weight_kg),0) }
-      ;(await buildPackingListPdf(subset, { title: `GUÍA DE CARGA ${unitLabel(unit)}` })).save(`guia-${version.packing_list_number}-${unit.label}.pdf`)
+      ;(await buildPackingListPdf(subset, { title: `GUÍA DE CARGA ${unitLabel(unit)}`, consolidated: true })).save(`guia-${version.packing_list_number}-${unit.label}.pdf`)
       return { error: null }
     }, 'Guía de carga descargada.')
   }
