@@ -17,7 +17,7 @@ const KEY = 'clave-de-prueba-wms-' + 'x'.repeat(40)
   // system_settings con PK key, sin updated_at en dispatches.
   await db.exec(`
    ALTER TABLE contracts ADD COLUMN client_id uuid, ADD COLUMN type text DEFAULT 'CONTRATO';
-   CREATE TABLE clients(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), business_name text, ruc text, commercial_name text);
+   CREATE TABLE clients(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), business_name text, tax_id text, commercial_name text); -- como producción: el RUC está en tax_id (no existe ruc)
    CREATE TABLE transport_requests(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), request_number varchar, requester_name varchar,
      request_type varchar, status varchar, contract_id uuid, pickup_address text, delivery_address text, required_date timestamptz,
      site_id uuid, attention_mode text, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now());
@@ -56,6 +56,7 @@ const KEY = 'clave-de-prueba-wms-' + 'x'.repeat(40)
   const migration = read('supabase/migrations/20261231180000_salida_liberada_por_wms.sql')
   assert.doesNotMatch(migration, /\b(drivers|vehicles|dispatches)\.updated_at\b/, 'no usa columnas inexistentes en producción')
   await db.exec(migration); await db.exec(migration)
+  await db.exec(read('supabase/migrations/20261231190000_feed_wms_ruc_tax_id.sql'))
 
   const one = async (sql, params = []) => (await db.query(sql, params)).rows[0]
   const rpc = async (sql, params = []) => (await one(`SELECT ${sql} AS value`, params)).value
