@@ -98,7 +98,7 @@ export async function buildPackingListPdf(s: PackingSnapshot, opts: { unitOf?: R
     if (i % 2) y += 5.5
   })
   y += 3
-  // Guía de carga: primero el consolidado por ítem (código y lote), luego el detalle por LPN.
+  // Guía de carga: consolidado por ítem (código y lote).
   if (opts.consolidated) {
     const lines = consolidateItems(s.lpns)
     const cols = () => { pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7.5); pdf.text('Ítem', 14, y); pdf.text('Código / descripción', 26, y); pdf.text('Lote', 118, y); pdf.text('Paq.', 146, y, { align: 'right' }); pdf.text('Cantidad', 172, y, { align: 'right' }); pdf.text('Peso kg', 196, y, { align: 'right' }); pdf.setFont('helvetica', 'normal'); y += 4.5 }
@@ -119,9 +119,9 @@ export async function buildPackingListPdf(s: PackingSnapshot, opts: { unitOf?: R
     pdf.text(`${lines.length} ítem(s)`, 14, y + 2.5); pdf.text(String(lines.reduce((n, r) => n + r.packages, 0)), 146, y + 2.5, { align: 'right' })
     pdf.text(fmt(lines.reduce((n, r) => n + r.weight_kg, 0)), 196, y + 2.5, { align: 'right' }); pdf.setFont('helvetica', 'normal')
     y += 10
-    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9.5); pdf.text('DETALLE POR LPN', 14, y); y += 5
   }
-  for (const l of s.lpns) {
+  // La guía de carga lleva solo el consolidado; el detalle por LPN es el Packing List de la unidad (documento aparte).
+  for (const l of opts.consolidated ? [] : s.lpns) {
     const rows = l.packages.length
     if (y + 22 + rows * 5 > 280) { pdf.addPage(); header(); y = 32 }
     pdf.setFillColor(238, 242, 248); pdf.rect(12, y, 186, 16, 'F'); pdf.setFillColor(0, 0, 0)
