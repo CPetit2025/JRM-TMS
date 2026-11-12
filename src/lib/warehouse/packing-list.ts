@@ -34,6 +34,23 @@ export const AUDIT: Record<string, { label: string; style: string }> = {
 export const fmt = (n: number | null | undefined, d = 2) => Number(n || 0).toLocaleString('es-PE', { maximumFractionDigits: d })
 export const fmtDate = (v: string | null | undefined) => v ? new Date(v).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short' }) : '—'
 
+/** Abre el diálogo de impresión de un PDF (iframe oculto); si el navegador no lo permite, lo descarga. */
+export function printPdf(pdf: JsPdf, fileName: string): Promise<'PRINT' | 'DOWNLOAD'> {
+  return new Promise(resolve => {
+    try {
+      const url = URL.createObjectURL(pdf.output('blob'))
+      const frame = document.createElement('iframe')
+      frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
+      frame.onload = () => {
+        try { frame.contentWindow?.focus(); frame.contentWindow?.print(); resolve('PRINT') } catch { pdf.save(fileName); resolve('DOWNLOAD') }
+        setTimeout(() => { frame.remove(); URL.revokeObjectURL(url) }, 60_000) // el diálogo de impresión aún usa el PDF
+      }
+      frame.src = url
+      document.body.append(frame)
+    } catch { pdf.save(fileName); resolve('DOWNLOAD') }
+  })
+}
+
 export async function logoDataUrl() {
   const response = await fetch('/logo-jrm.png')
   if (!response.ok) return null
