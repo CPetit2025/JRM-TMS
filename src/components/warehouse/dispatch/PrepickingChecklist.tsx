@@ -1,6 +1,7 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
-import { ClipboardCheck, RefreshCw } from 'lucide-react'
+import { ClipboardCheck, Download, RefreshCw } from 'lucide-react'
+import { fmt, fmtDate, logoDataUrl } from '@/lib/warehouse/packing-list'
 import { createClient } from '@/lib/supabase/client'
 
 // Checklist previo al picking: por ítem del contrato de la OT, lo que pide el contrato (pendiente) frente al stock
@@ -21,7 +22,51 @@ export function itemState(i: Pick<Item, 'pending_qty' | 'stock_wms' | 'stock_erp
   return { key: 'SIN_STOCK', label: 'Sin stock', style: 'bg-rose-100 text-rose-900' }
 }
 
-export function PrepickingChecklist({ taskId }: { taskId: string }) {
+/** PDF del checklist (A4 horizontal): mismas columnas, estado y marca de revisado, con firmas al pie. */
+export async function buildPrepickingPdf(c: Checklist, rows: Item[], meta: { requestNumber?: string | null; client?: string | null; checked: string[] }) {
+  const { jsPDF } = await import('jspdf')
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape', compress: true })
+  const logo = await logoDataUrl().catch(() => null)
+  const W = 297, right = W - 12
+  const header = () => {
+    if (logo) pdf.addImage(logo, 'PNG', 12, 9, 34, 14)
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(14); pdf.text('CHECKLIST PREVIO AL PICKING', right, 15, { align: 'right' })
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8.5)
+    pdf.text(`OT ${c.ot || '—'} · Solicitud ${meta.requestNumber || '—'}${meta.client ? ' · ' + meta.client : ''}`, right, 21, { align: 'right' })
+    pdf.line(12, 26, right, 26)
+  }
+  const cols = [['✓', 14], ['Ítem', 20], ['Código / descripción', 40], ['Lote', 132], ['Contrato', 168, 'r'], ['Despachado', 186, 'r'], ['Pendiente', 202, 'r'], ['Stock WMS', 226, 'r'], ['Stock ERP', 244, 'r'], ['Estado', 250]] as const
+  const head = (y: number) => { pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7.5); for (const [t, x, a] of cols) if (t !== '✓') pdf.text(t, x, y, a ? { align: 'right' } : undefined); pdf.setFont('helvetica', 'normal') }
+  header()
+  pdf.setFontSize(8.5)
+  pdf.text(`Impreso: ${fmtDate(new Date().toISOString())} · Contratos ERP: ${fmtDate(c.contratos_at)} · Stock ERP: ${fmtDate(c.stock_at)}`, 12, 32)
+  const count = (k: string) => c.items.filter(i => itemState(i).key === k).length
+  pdf.setFont('helvetica', 'bold')
+  pdf.text(`${rows.length} ítems · ${count('LISTO')} listos · ${count('PARCIAL')} parciales · ${count('ERP')} en ERP sin etiquetar · ${count('SIN_STOCK')} sin stock · revisados ${rows.filter(i => meta.checked.includes(i.item_code + i.product_code)).length}/${rows.length}`, 12, 38)
+  let y = 46; head(y); y += 5
+  for (const i of rows) {
+    if (y > 186) { pdf.addPage(); header(); y = 34; head(y); y += 5 }
+    const s = itemState(i), done = meta.checked.includes(i.item_code + i.product_code)
+    pdf.rect(13, y - 3, 3.2, 3.2); if (done) { pdf.line(13.6, y - 1.4, 14.4, y - 0.3); pdf.line(14.4, y - 0.3, 15.8, y - 2.6) }
+    pdf.setFont('helvetica', 'bold'); pdf.text(i.item, 20, y); pdf.setFont('helvetica', 'normal')
+    pdf.text(`${i.product_code} ${i.description || ''}`.slice(0, 56), 40, y)
+    pdf.text(i.lote.slice(0, 16), 132, y)
+    pdf.text(`${fmt(i.contract_qty)} ${i.unit || ''}`, 168, y, { align: 'right' })
+    pdf.text(fmt(i.dispatched_qty), 186, y, { align: 'right' })
+    pdf.setFont('helvetica', 'bold'); pdf.text(fmt(i.pending_qty), 202, y, { align: 'right' }); pdf.setFont('helvetica', 'normal')
+    pdf.text(`${fmt(i.stock_wms)} (${i.stock_wms_packages} paq.)`, 226, y, { align: 'right' })
+    pdf.text(fmt(i.stock_erp), 244, y, { align: 'right' })
+    pdf.text(s.label, 250, y)
+    pdf.setDrawColor(225); pdf.line(12, y + 1.6, right, y + 1.6); pdf.setDrawColor(0)
+    y += 5.6
+  }
+  if (y > 175) { pdf.addPage(); header(); y = 40 }
+  y += 14; pdf.setFontSize(8.5)
+  for (const [t, x] of [['Revisado por (picking)', 12], ['Supervisor de almacén', 110], ['Fecha y hora', 208]] as const) { pdf.line(x, y, x + 75, y); pdf.text(t, x, y + 4.5) }
+  return pdf
+}
+
+export function PrepickingChecklist({ taskId, requestNumber, client }: { taskId: string; requestNumber?: string | null; client?: string | null }) {
   const [data, setData] = useState<Checklist | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -50,7 +95,9 @@ export function PrepickingChecklist({ taskId }: { taskId: string }) {
         <h2 id="prepicking-title" className="flex items-center gap-2 font-bold text-[#002855]"><ClipboardCheck size={18}/>Checklist previo al picking{data?.ot ? ` · OT ${data.ot}` : ''}</h2>
         <p className="mt-1 text-xs text-slate-500">Cantidad que pide el contrato por ítem frente al stock disponible. Contratos ERP: {at(data?.contratos_at ?? null)} · Stock ERP: {at(data?.stock_at ?? null)}</p>
       </div>
-      <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-[#002855] disabled:opacity-50"><RefreshCw size={14} className={loading ? 'animate-spin' : ''}/>Actualizar</button>
+      <div className="flex gap-2"><button type="button" disabled={!data || !rows.length} onClick={async () => { if (data) (await buildPrepickingPdf(data, rows, { requestNumber, client, checked })).save(`checklist-prepicking-${requestNumber || data.ot || 'tarea'}.pdf`) }}
+        className="inline-flex items-center gap-1.5 rounded-lg bg-[#002855] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"><Download size={14}/>Descargar PDF</button>
+      <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-[#002855] disabled:opacity-50"><RefreshCw size={14} className={loading ? 'animate-spin' : ''}/>Actualizar</button></div>
     </div>
     {error && <p className="mt-3 rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
     <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
