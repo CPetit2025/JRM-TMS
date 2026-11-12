@@ -13,7 +13,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core'
 import type { WarehouseScanOutbox } from '@/lib/offline/db'
 import { GroupedBultoLabel } from '@/components/warehouse/GroupedBultoLabel'
 import { fitScale, useLabelFormat } from '@/lib/warehouse/label-format'
-import { AUDIT, STATE, buildBultoContentPdf, buildPackingListPdf, fmt, fmtDate, itemLines, needsContentSheet, unitLabel, type LoadUnit, type BoardRow, type PackingSnapshot, type TaskLpn, type TaskLpns } from '@/lib/warehouse/packing-list'
+import { AUDIT, STATE, buildBultoContentPdf, buildPackingListPdf, printPdf, fmt, fmtDate, itemLines, needsContentSheet, unitLabel, type LoadUnit, type BoardRow, type PackingSnapshot, type TaskLpn, type TaskLpns } from '@/lib/warehouse/packing-list'
 
 const nativeWarehouseScanner = registerPlugin<{ scan: () => Promise<{ rawValue: string }> }>('WarehouseBarcodeScanner')
 type BarcodeDetectorLike = { detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue: string }>> }
@@ -152,7 +152,8 @@ export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
       })()
     if (error) { setError(error.message); return }
     setLabel(lpn)
-    window.setTimeout(() => { window.print(); void load() }, 100)
+    // Con más de 4 ítems la etiqueta va con su hoja de contenido: se imprime a continuación, sin descargarla.
+    window.setTimeout(() => { window.print(); void load(); if (needsContentSheet(lpn.packages) && task) void buildBultoContentPdf(lpn, task).then(({ pdf }) => printPdf(pdf, `contenido-${lpn.lpn_code}.pdf`)).catch(() => setError(`No se pudo imprimir la hoja de contenido de ${lpn.lpn_code}; use el botón Contenido.`)) }, 100)
   }
 
   const consolidate = async () => {
@@ -170,7 +171,7 @@ export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
         setError(`El LPN ${lpn.lpn_code} fue creado, pero no se pudo recuperar su contenido. Actualice la página y use el botón Contenido si tiene más de cuatro ítems.`)
         return
       }
-      if (needsContentSheet(grouped.packages)) await contentSheet(grouped)
+      if (needsContentSheet(grouped.packages)) setMessage(m => `${m} Tiene ${itemLines(grouped.packages)} ítems: su hoja de contenido se imprimirá junto con la etiqueta del LPN.`)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {

@@ -126,15 +126,12 @@ const api = http.createServer(async (req,res) => {
     data.lpns=[];data.packing_lists=[];data.loose=Array.from({length:count},(_,i)=>({package_code:`16573-B-${String(i+1).padStart(4,'0')}`,product_code:`SKU-${i}`,description:'Producto de contenido',lot:'16573',quantity:1,unit:'UND',weight_kg:1}))
     await go('/almacen/picking/task-1')
     const downloads=[];const onDownload=d=>downloads.push(d);page.on('download',onDownload)
-    const automatic=count>4?page.waitForEvent('download'):null
     await page.getByRole('button',{name:new RegExp(`Consolidar ${count} en LPN`)}).click()
-    if(automatic) await automatic
     if(count>4) {
-      await page.getByText(`se descargó su hoja de contenido (${count<=18?'A5':'A4'})`,{exact:false}).waitFor()
-      assert.equal(downloads.length,1,'se descarga una sola hoja al consolidar')
-      assert.equal(downloads[0].suggestedFilename(),'contenido-LPN-QA-2.pdf')
+      await page.getByText('su hoja de contenido se imprimirá junto con la etiqueta del LPN',{exact:false}).waitFor()
+      assert.equal(downloads.length,0,'consolidar ya no descarga la hoja')
       const repeat=page.waitForEvent('download');await page.getByRole('button',{name:'Contenido',exact:true}).click();await repeat
-      assert.equal(downloads.length,2,'Contenido permite descargar nuevamente')
+      assert.equal(downloads.length,1,'Contenido permite descargarla')
     } else {
       await page.getByText(/LPN lógico LPN-QA-2 creado/).waitFor()
       assert.equal(downloads.length,0,'hasta cuatro ítems no descarga hoja')
@@ -142,6 +139,13 @@ const api = http.createServer(async (req,res) => {
     }
     page.off('download',onDownload)
     assert.equal(await page.evaluate(()=>window.__prints),0,'descargar contenido no imprime etiquetas')
+    // Imprimir la etiqueta del LPN: con más de 4 ítems también se manda a imprimir su hoja de contenido (PDF en iframe), sin descargar.
+    {const before=downloads.length;page.on('download',onDownload);await page.getByRole('button',{name:'Etiqueta',exact:true}).first().click()
+     await page.waitForFunction(()=>window.__prints>0)
+     if(count>4) await page.waitForFunction(()=>[...document.querySelectorAll('iframe')].some(f=>f.src.startsWith('blob:')))
+     else assert.equal(await page.evaluate(()=>[...document.querySelectorAll('iframe')].filter(f=>f.src.startsWith('blob:')).length),0,'sin hoja no se imprime PDF')
+     page.off('download',onDownload);assert.equal(downloads.length,before,'imprimir no descarga')
+     await page.evaluate(()=>{window.__prints=0;document.querySelectorAll('iframe').forEach(f=>f.remove())})}
   }
   assert.equal(errors.length,0,errors.join('\n'))
   console.log('PASS: LPN lógico sin impresión automática; auditoría libera en paralelo; Packing List selecciona solo liberados y asigna varios a UT; documento automático; carga por UT; permisos, enlaces y móvil.')

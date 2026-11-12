@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { Printer, RotateCcw, ScanLine, ClipboardCheck, X, RefreshCw, UserRound, Weight, Package, PackagePlus, Download, Undo2 } from 'lucide-react'
 import { loadReceiptLpn, type ReceiptLpn } from '@/lib/warehouse/receipt-lpn'
-import { buildBultoContentPdf, contentSheetFormat, fmt } from '@/lib/warehouse/packing-list'
+import { buildBultoContentPdf, contentSheetFormat, fmt, printPdf } from '@/lib/warehouse/packing-list'
 import { PackageLabelPreview } from '@/components/warehouse/PackageLabel'
 import type { PackageLabelData as Label } from '@/lib/warehouse/package-label'
 import { loadPackageLabels } from '@/lib/warehouse/load-package-label'
@@ -224,7 +224,10 @@ export default function WarehouseLabelingPage() {
       }
       setLpn({ ...lpn, print_count: lpn.print_count + 1 }); setPrintedLabelCodes([lpn.lpn_code])
       const method = await printPackageLabels(targetLabels, labelFormat)
-      setMessage(`${method === 'ZEBRA' ? 'Etiqueta del LPN enviada a Zebra.' : 'Impresión de la etiqueta del LPN preparada.'} Imprima también su hoja de contenido y péguela en el pallet.`)
+      // La hoja de contenido del LPN se imprime a continuación de la etiqueta (sin descargarla).
+      const { pdf } = await buildBultoContentPdf(lpn, { client_name: labels[0]?.customer_name || null, contract_code: labels[0]?.contract_code || null, request_number: null }, { reception: true })
+      const sheet = await printPdf(pdf, `contenido-${lpn.lpn_code}.pdf`)
+      setMessage(`${method === 'ZEBRA' ? 'Etiqueta del LPN enviada a Zebra.' : 'Etiqueta del LPN enviada a impresión.'} ${sheet === 'PRINT' ? 'Su hoja de contenido se abrió para imprimir; péguela en el pallet.' : 'Se descargó su hoja de contenido para imprimirla y pegarla en el pallet.'}`)
       return
     }
     const alreadyPrinted = targetLabels.filter(label => printedLabelCodes.includes(label.package_code))
