@@ -57,7 +57,8 @@ export function PackingAssignment({ task, data, onChanged }: { task: BoardRow; d
     if (!canManage || !ids.length || (unit !== null && !units.some(u => u.id === unit))) return
     void run(() => createClient().rpc('wh_lpns_assign_unit', { p_task_id: task.id, p_lpn_ids: ids, p_unit_id: unit }), unit ? `${ids.length} LPN asignado(s). Se conservaron los códigos y etiquetas existentes.` : 'Asignación retirada; los LPN siguen liberados.')
   }
-  const guide = async (unit: LoadUnit) => {
+  // Documentos de despacho de cada unidad: Guía de carga (consolidado por ítem) y Packing List de la unidad (detalle por LPN).
+  const guide = async (unit: LoadUnit, kind: 'GUIA' | 'PACKING' = 'GUIA') => {
     await run(async () => {
       const version = data.packing_lists.find(p => p.status === 'LIBERADO')
       if (!version) return { error: { message: 'La guía requiere Picking finalizado y todos los LPN liberados por Auditoría.' } }
@@ -66,9 +67,10 @@ export function PackingAssignment({ task, data, onChanged }: { task: BoardRow; d
       const snapshot = result.data as PackingSnapshot
       const lpns = snapshot.lpns.filter(l => unit.lpn_ids.includes(l.id))
       const subset = { ...snapshot, lpns, lpn_count: lpns.length, package_count: lpns.reduce((n,l) => n+l.package_count,0), total_weight_kg: lpns.reduce((n,l) => n+Number(l.weight_kg),0) }
-      ;(await buildPackingListPdf(subset, { title: `GUÍA DE CARGA ${unitLabel(unit)}`, consolidated: true })).save(`guia-${version.packing_list_number}-${unit.label}.pdf`)
+      if (kind === 'GUIA') (await buildPackingListPdf(subset, { title: `GUÍA DE CARGA ${unitLabel(unit)}`, consolidated: true })).save(`guia-${version.packing_list_number}-${unit.label}.pdf`)
+      else (await buildPackingListPdf(subset, { title: `PACKING LIST ${version.packing_list_number} · ${unitLabel(unit)}` })).save(`packing-list-${version.packing_list_number}-${unit.label}.pdf`)
       return { error: null }
-    }, 'Guía de carga descargada.')
+    }, kind === 'GUIA' ? 'Guía de carga descargada.' : 'Packing List de la unidad descargado.')
   }
 
   return <section id="unidades" className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
@@ -105,7 +107,7 @@ export function PackingAssignment({ task, data, onChanged }: { task: BoardRow; d
     <div className="grid gap-2 sm:grid-cols-2">{units.map(u => <article key={u.id} className="space-y-2 rounded-lg border border-slate-200 p-3 text-sm">
       <b>{unitLabel(u)}</b><p>{u.lpn_count} LPN · {u.package_count} paquetes · {fmt(u.weight_kg)} kg · {u.loaded_count} cargados</p>
       {canManage && <label className="block">Placa (opcional)<input key={u.plate || ''} defaultValue={u.plate || ''} aria-label={`Placa de ${u.label}`} maxLength={20} disabled={busy} onBlur={e => { const value = e.target.value.trim().toUpperCase().replace(/\s+/g,''); if (value !== (u.plate || '')) void run(() => createClient().rpc('wh_load_unit_set_plate', { p_unit_id: u.id, p_plate: value }), 'Placa actualizada; etiquetas conservadas.') }} className="ml-2 w-36 rounded border border-slate-300 px-2 py-1"/></label>}
-      <div className="flex flex-wrap gap-2"><button onClick={() => { setFilter(u.id); setSelected([]) }} className={button}>Ver bultos de {u.label}</button>{u.lpn_count > 0 && <button disabled={busy} onClick={() => void guide(u)} className={button}>Guía de {u.label}</button>}
+      <div className="flex flex-wrap gap-2"><button onClick={() => { setFilter(u.id); setSelected([]) }} className={button}>Ver bultos de {u.label}</button>{u.lpn_count > 0 && <><button disabled={busy} onClick={() => void guide(u)} className={button}>Guía de carga {u.label}</button><button disabled={busy} onClick={() => void guide(u, 'PACKING')} className={button}>Packing List {u.label}</button></>}
       {canManage && u.loaded_count === 0 && <button disabled={busy} className={button} onClick={() => { if (window.confirm(`¿Quitar ${u.label}? Sus LPN quedarán disponibles para asignar.`)) void run(() => createClient().rpc('wh_load_unit_remove', { p_unit_id: u.id }), 'Unidad retirada.') }}>Quitar {u.label}</button>}</div>
     </article>)}</div>
   </section>
