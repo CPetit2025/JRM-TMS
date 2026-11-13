@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
-import { Printer, RotateCcw, ScanLine, ClipboardCheck, X, RefreshCw, UserRound, Weight, Package, PackagePlus, Download, Undo2 } from 'lucide-react'
+import { Printer, RotateCcw, ScanLine, ClipboardCheck, X, RefreshCw, UserRound, Weight, Package, PackagePlus, Download, Undo2, CheckCheck } from 'lucide-react'
 import { loadReceiptLpn, type ReceiptLpn } from '@/lib/warehouse/receipt-lpn'
 import { buildBultoContentPdf, contentSheetFormat, fmt, printPdf } from '@/lib/warehouse/packing-list'
 import { PackageLabelPreview } from '@/components/warehouse/PackageLabel'
@@ -257,12 +257,12 @@ export default function WarehouseLabelingPage() {
   }
 
   // Varias líneas validadas (mismo cliente y OT) en un solo LPN: el servidor vuelve a comprobar todas las reglas.
-  const consolidate = async () => {
-    if (busy || checked.length < 2) return
-    setBusy(true); setError(''); setMessage('')
+  const consolidate = async (keys: string[] = checked, keepBusy = false) => {
+    if ((busy && !keepBusy) || keys.length < 2) return
+    setBusy(true); if (!keepBusy) { setError(''); setMessage('') }
     try {
       const db = createClient()
-      const { data, error: rpcError } = await db.rpc('wh_receipt_consolidate_lpn', { p_receipt_keys: checked, p_client_event_id: crypto.randomUUID() })
+      const { data, error: rpcError } = await db.rpc('wh_receipt_consolidate_lpn', { p_receipt_keys: keys, p_client_event_id: crypto.randomUUID() })
       if (rpcError) { setError(rpcError.message); return }
       const loaded = await loadReceiptLpn(db, (data as ReceiptLpn).lpn_code)
       if (!loaded) throw new Error('El LPN se creó, pero no se pudo recuperar su contenido. Actualice la bandeja y ábralo desde una de sus líneas.')
@@ -271,6 +271,22 @@ export default function WarehouseLabelingPage() {
       void search()
       setSelected(null); setShowPreview(true)
     } catch (e) { setError(e instanceof Error ? e.message : String(e)) } finally { setBusy(false) }
+  }
+  // Recepción completa en un paso: valida las líneas pendientes con la cantidad total del ERP («Solo cantidad total»)
+  // y consolida todas las líneas elegibles (mismo cliente y OT, sin etiqueta) en un LPN con su hoja de contenido.
+  const receiveAllAsLpn = async () => {
+    if (busy || fullLpnLines.length < 2) return
+    const pending = fullLpnLines.filter(r => r.validation_status !== 'VALIDATED')
+    if (pending.some(r => !r.customer_name) && !manualCustomer.trim()) { setError('Hay líneas sin cliente detectado: registre el nombre del cliente antes de recibir completo.'); return }
+    const total = fullLpnLines.reduce((n, r) => n + Number(r.validation_status === 'VALIDATED' ? r.physical_quantity : r.quantity), 0)
+    if (!window.confirm(`Se validarán ${pending.length} línea(s) con la cantidad completa del ERP y se generará un LPN con ${fullLpnLines.length} líneas (${fmt(total)} en total). ¿Continuar?`)) return
+    setBusy(true); setError(''); setMessage('')
+    const db = createClient()
+    for (const r of pending) {
+      const { error: rpcError } = await db.rpc('wh_validate_receipt', { p_receipt_key: r.receipt_key, p_physical_quantity: Number(r.quantity), p_variance_reason: null, p_manual_customer_name: r.customer_name ? null : manualCustomer.trim() || null })
+      if (rpcError) { setError(`Línea ${r.product_code}: ${rpcError.message}. Las líneas anteriores quedaron validadas; corrija y vuelva a intentar.`); setBusy(false); void search(); return }
+    }
+    await consolidate(fullLpnLines.map(r => r.receipt_key), true)
   }
   const downloadContent = async () => {
     if (!lpn) return
@@ -307,6 +323,10 @@ export default function WarehouseLabelingPage() {
   const lpnAnchor = firstChecked || selectedIptReceipts.find(r => r.validation_status === 'VALIDATED' && r.label_status === 'NOT_LABELED' && Number(r.physical_quantity) > 0)
   const lpnCandidates = lpnAnchor ? selectedIptReceipts.filter(r => r.validation_status === 'VALIDATED' && r.label_status === 'NOT_LABELED' && Number(r.physical_quantity) > 0 &&
     otKey(r.contract_code) === otKey(lpnAnchor.contract_code) && sameText(r.customer_name, lpnAnchor.customer_name)) : []
+  // Líneas para «Recibir completo y generar LPN»: sin etiqueta, mismo cliente y OT que la primera (pendientes o validadas).
+  const fullAnchor = selectedIptReceipts.find(r => r.label_status === 'NOT_LABELED')
+  const fullLpnLines = fullAnchor ? selectedIptReceipts.filter(r => r.label_status === 'NOT_LABELED' && Number(r.quantity) > 0 &&
+    otKey(r.contract_code) === otKey(fullAnchor.contract_code) && (!r.customer_name || !fullAnchor.customer_name || sameText(r.customer_name, fullAnchor.customer_name))) : []
   const requiresVarianceReason = selected && physicalToValidate !== Number(selected.quantity)
   const canGenerate = selected?.validation_status === 'VALIDATED' && Number(selected.physical_quantity) > 0 && !['DIFFERENCE','MATCH','PENDING_PRINT'].includes(selected.label_status)
   const planQuantity = Number(selected?.physical_quantity || 0)
@@ -395,6 +415,8 @@ export default function WarehouseLabelingPage() {
                 <span className="rounded-lg bg-blue-50 px-3 py-2 font-semibold text-blue-900">{selectedIptReceipts.length} ítems recibidos</span>
                 <span className="rounded-lg bg-blue-50 px-3 py-2 font-semibold text-blue-900">Total ERP: {iptErpTotal} {selected.unit || 'UND'}</span>
                 <span className="rounded-lg bg-amber-50 px-3 py-2 font-semibold text-amber-950">{iptPendingCount} pendiente(s) de validar</span>
+                <button type="button" disabled={busy || fullLpnLines.length < 2} onClick={() => void receiveAllAsLpn()} title="Valida las líneas pendientes con la cantidad completa del ERP y las consolida en un LPN con su hoja de contenido"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 font-bold text-white disabled:opacity-50"><CheckCheck size={14}/>Recibir completo y generar LPN ({fullLpnLines.length})</button>
                 <button type="button" disabled={busy || checked.length < 2} onClick={() => void consolidate()} title="Marque dos o más líneas validadas sin etiqueta, del mismo cliente y OT" className="inline-flex items-center gap-1.5 rounded-lg bg-[#002855] px-3 py-2 font-bold text-white disabled:opacity-40"><PackagePlus size={15}/>Consolidar en LPN ({checked.length})</button>
               </div>
             </div>
