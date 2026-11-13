@@ -40,16 +40,18 @@ async function sha256(data: ArrayBuffer | string) {
 async function parseReceiptBook(file: File): Promise<ReceiptRow[]> {
   const buffer = await file.arrayBuffer()
   const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
-  const sheetName = workbook.SheetNames.find(name => keyOf(name) === 'entradaalmpt')
-  if (!sheetName) throw new Error('No se encontró la hoja «Entrada ALM PT».')
+  // Dos actualizables con las mismas columnas: «Entrada ALM PT» (entrada.xlsx) y el traspaso de pernería
+  // («Traspado de Almacen APT.xlsx», hoja Consulta1). Se usa la hoja que tenga los encabezados del ERP.
+  const isHeader = (row: unknown[]) => { const h = new Set(row.map(keyOf)); return h.has('nrodocumento') && h.has('codproducto') && h.has('cantidad') && h.has('fecha') }
+  const read = (name: string) => XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[name], { header: 1, defval: null, raw: true, blankrows: false })
+  const sheetName = workbook.SheetNames.find(name => keyOf(name) === 'entradaalmpt') ?? workbook.SheetNames.find(name => read(name).slice(0, 10).some(isHeader))
+  if (!sheetName) throw new Error('No se encontró la hoja «Entrada ALM PT» ni una hoja con Nro_Documento, Cod_Producto, Cantidad y Fecha.')
   const sheet = workbook.Sheets[sheetName]
   const sourceRange = XLSX.utils.decode_range(sheet['!ref'] || 'A1')
-  const columnZIndex = 25 - sourceRange.s.c
-  const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, raw: true, blankrows: false })
-  const headerIndex = matrix.slice(0,10).findIndex(row => {
-    const headers = new Set(row.map(keyOf))
-    return headers.has('nrodocumento') && headers.has('codproducto') && headers.has('cantidad') && headers.has('fecha')
-  })
+  // La columna Z es el cliente solo en «Entrada ALM PT»; en el traspaso la Z es Peso_Total.
+  const columnZIndex = keyOf(sheetName) === 'entradaalmpt' ? 25 - sourceRange.s.c : -1
+  const matrix = read(sheetName)
+  const headerIndex = matrix.slice(0,10).findIndex(isHeader)
   if (headerIndex < 0) throw new Error('Faltan las columnas Nro_Documento, Cod_Producto, Cantidad o Fecha.')
   const headers = new Map((matrix[headerIndex] || []).map((value,index)=>[keyOf(value),index] as const))
   const get = (row: unknown[], key: string) => row[headers.get(key) ?? -1]
@@ -59,11 +61,14 @@ async function parseReceiptBook(file: File): Promise<ReceiptRow[]> {
     const qty = number(get(row,'cantidad')), sourceDate = date(get(row,'fecha')), warehouse = text(get(row,'bodega'))
     if (!document && !product && qty === null) continue
     if (!document || !product || !sourceDate || !warehouse || qty === null || qty <= 0) throw new Error(`Fila ${matrix.indexOf(row)+1}: requiere IPT, fecha, bodega, producto y cantidad positiva.`)
-    const lot=text(get(row,'lote')), unit=text(get(row,'unidad')), description=text(get(row,'producto'))
-    const originNumber=text(get(row,'nroorigen')), contract=text(get(row,'contrato'))
+    // El traspaso trae OT con ceros a la izquierda (0000016578 = OT 16578): se normaliza para el lote y la búsqueda del cliente.
+    const unpad = (v: string | null) => v && /^0+\d+$/.test(v) ? v.replace(/^0+/, '') : v
+    const originNumber=text(get(row,'nroorigen')), contract=unpad(text(get(row,'contrato')))
+    // Traspasos de pernería sin lote: el contrato (p. ej. 16101-S013) es su lote, para numerar los bultos por lote.
+    const lot=unpad(text(get(row,'lote'))) ?? contract, unit=text(get(row,'unidad')), description=text(get(row,'producto'))
     // Column Z is the confirmed customer field in the APT workbook; keep header aliases
     // for future workbook versions and legacy Razon_Social as a final fallback.
-    const customerName = text(row[columnZIndex]) ?? text(get(row,'cliente')) ?? text(get(row,'nombrecliente'))
+    const customerName = (columnZIndex >= 0 ? text(row[columnZIndex]) : null) ?? text(get(row,'cliente')) ?? text(get(row,'nombrecliente'))
       ?? text(get(row,'razonsocial')) ?? text(get(row,'clientetms'))
     const identity=JSON.stringify([document,sourceDate,warehouse,product,lot,unit,originNumber,contract])
     const occurrence=(identityCounts.get(identity)||0)+1; identityCounts.set(identity,occurrence)

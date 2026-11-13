@@ -1,10 +1,12 @@
 ﻿# Robot de ingresos WMS para etiquetado, al estilo del robot del ERP del TMS (scripts/erp-auto). Ver docs/robot-wms-recepcion.md.
-#   Instalar (una vez):  .\ejecutar.ps1 -Instalar -SupabaseUrl <url base WMS> -SupabaseAnon <clave pública> [-Entrada C:\WMS\entrada.xlsx] [-Url https://wms.jrmlogistica.app]
+#   Instalar (una vez):  .\ejecutar.ps1 -Instalar -SupabaseUrl <url base WMS> -SupabaseAnon <clave pública> [-Entrada C:\WMS\entrada.xlsx] [-Traspaso 'C:\WMS\Traspado de Almacen APT.xlsx'] [-Url https://wms.jrmlogistica.app]
+#   Carga dos actualizables del ERP: entradas de ALM PT y traspasos de pernería a APT (se reciben y etiquetan igual).
 #   La tarea corre cada minuto y solo pregunta a la base si toca: cada 5 minutos o al pulsar «Actualizar ahora» en la web.
 #   Probar sin cargar:   & "$env:LOCALAPPDATA\JRM-TMS\wms-auto\ejecutar.ps1" -Revisar
 param(
   [switch]$Instalar,
   [string]$Entrada = 'C:\WMS\entrada.xlsx',
+  [string]$Traspaso = 'C:\WMS\Traspado de Almacen APT.xlsx',
   [string]$Url = 'https://wms.jrmlogistica.app',
   [string]$SupabaseUrl,
   [string]$SupabaseAnon,
@@ -28,7 +30,7 @@ if ($Instalar) {
     & (Join-Path (Split-Path $node) 'npm.cmd') install --omit=dev --no-audit --no-fund
     if ($LASTEXITCODE) { throw 'npm install falló.' }
   } finally { Pop-Location }
-  @{ entrada = (Resolve-Path -LiteralPath $Entrada).Path; url = $Url.TrimEnd('/'); supabaseUrl = $SupabaseUrl.TrimEnd('/'); supabaseAnon = $SupabaseAnon } |
+  @{ entrada = (Resolve-Path -LiteralPath $Entrada).Path; traspaso = $(if (Test-Path -LiteralPath $Traspaso -PathType Leaf) { (Resolve-Path -LiteralPath $Traspaso).Path } else { $null }); url = $Url.TrimEnd('/'); supabaseUrl = $SupabaseUrl.TrimEnd('/'); supabaseAnon = $SupabaseAnon } |
     ConvertTo-Json | Set-Content (Join-Path $destino 'config.json') -Encoding UTF8
   # Cuenta WMS del robot (permiso almacen-carga): queda cifrada con DPAPI, solo este usuario de Windows en este equipo la lee
   $cred = Get-Credential -Message 'Cuenta WMS con permiso de carga para el robot de ingresos'
@@ -84,19 +86,27 @@ try {
   # Se trabaja sobre una copia: el original puede estar abierto por el usuario y no se toca
   $trabajo = Join-Path $destino 'trabajo'
   New-Item -ItemType Directory -Force $trabajo | Out-Null
-  $archivo = Join-Path $trabajo 'entrada.xlsx'
-  Copy-Item -LiteralPath $cfg.entrada -Destination $archivo -Force
-  & (Join-Path $destino 'refrescar.ps1') -Archivos $archivo
+  # Libros a cargar: entradas (obligatorio) y traspasos de pernería (si está configurado y existe)
+  $libros = @(@{ nombre = 'entrada'; origen = $cfg.entrada })
+  if ($cfg.traspaso -and (Test-Path -LiteralPath $cfg.traspaso -PathType Leaf)) { $libros += @{ nombre = 'traspaso'; origen = $cfg.traspaso } }
+  foreach ($l in $libros) { $l.archivo = Join-Path $trabajo "$($l.nombre).xlsx"; Copy-Item -LiteralPath $l.origen -Destination $l.archivo -Force }
+  & (Join-Path $destino 'refrescar.ps1') -Archivos ($libros | ForEach-Object { $_.archivo })
   if ($LASTEXITCODE) { throw 'No se actualizó el Excel desde el ERP; no se cargó nada.' }
   $extra = @(); if ($Revisar) { $extra = @('--revisar') }
-  # Lo que Node escribe en stderr es parte del log, no un error de PowerShell
-  $ErrorActionPreference = 'Continue'
-  $lineas = @(& $node (Join-Path $destino 'cargar-entrada.mjs') @extra $archivo 2>&1 | ForEach-Object { "$_" })
-  $ok = -not $LASTEXITCODE
-  $ErrorActionPreference = 'Stop'
-  $lineas | Write-Output
-  $mensaje = $lineas | Where-Object { $_ -match '^(OK|ERROR|Revisión)' } | Select-Object -Last 1
-  if (-not $ok) { throw $(if ($mensaje) { $mensaje -replace '^ERROR ', '' } else { 'Falló la carga WMS; revise el log.' }) }
+  $resumen = @()
+  foreach ($l in $libros) {
+    # Lo que Node escribe en stderr es parte del log, no un error de PowerShell
+    $ErrorActionPreference = 'Continue'
+    $lineas = @(& $node (Join-Path $destino 'cargar-entrada.mjs') @extra $l.archivo 2>&1 | ForEach-Object { "$_" })
+    $ok = -not $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    $lineas | Write-Output
+    $m = $lineas | Where-Object { $_ -match '^(OK|ERROR|Revisión)' } | Select-Object -Last 1
+    if (-not $ok) { throw "$($l.nombre): $(if ($m) { $m -replace '^ERROR ', '' } else { 'falló la carga WMS; revise el log.' })" }
+    $resumen += "$($l.nombre): $($m -replace '^OK ', '')"
+  }
+  $mensaje = "OK $($resumen -join ' · ')"
+  Write-Output $mensaje
   $codigo = 0
 } catch {
   $mensaje = "ERROR $($_.Exception.Message)"
