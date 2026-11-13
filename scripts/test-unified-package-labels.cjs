@@ -133,8 +133,8 @@ assert.equal(readPrintPreferences(JSON.stringify({position:'TOP_LEFT'})).positio
   packages: [line('16573-B-0003', 'P-A', '16573', 10, 100), line('16574-B-0001', 'P-B', '16574', 5, 20)] };
  const label = lpnLabelData(lpn, 'Fargoline SAC');
  assert.equal(label.package_code, '16573-B-0002', 'el código de barras es el del LPN');
- assert.equal(label.content_lines, 2); assert.match(label.description, /Contenido: 2 líneas/);
- assert.equal(label.source_lot, '16573, 16574'); assert.equal(label.source_document_no, 'IPT-9');
+ assert.equal(label.content_lines, 2); assert.equal(label.description, '', 'con 2 lotes no hay línea de contenido: va en la hoja');
+ assert.equal(label.source_lot, 'VER DETALLE'); assert.equal(label.contract_code, ''); assert.equal(label.source_document_no, 'IPT-9');
  assert.equal(label.quantity, 15); assert.equal(label.weight_kg, 120); assert.equal(label.unit, 'UND');
  assert.equal(label.customer_name, 'Fargoline SAC'); assert.equal(label.reception_responsible_name, 'Carlos Petit');
  const mixed = lpnLabelData({ ...lpn, packages: [line('a', 'P-A', null, 1, null, 'UND'), line('b', 'P-B', null, 2, null, 'KG')] }, null);
