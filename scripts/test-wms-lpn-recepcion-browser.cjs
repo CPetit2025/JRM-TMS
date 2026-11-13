@@ -35,6 +35,7 @@ const server = http.createServer(async (req, res) => {
   else if (url.pathname.endsWith('/rpc/wh_receipt_consolidate_lpn')) out = lpn
   else if (url.pathname.endsWith('/rpc/wh_lpn_detail')) out = lpn
   else if (url.pathname.endsWith('/rpc/wh_receipt_control_customers')) out = p.p_source_movement_keys.map(k => ({ source_movement_key: k, customer_name: 'Fargoline SAC' }))
+  else if (url.pathname.endsWith('/rpc/wh_validate_receipt')) out = { customer_name: 'Fargoline SAC', customer_source: 'OT' }
   else if (url.pathname.endsWith('/rpc/wh_print_lpn_label')) out = { lpn_code: lpn.lpn_code, print_count: 1 }
   res.end(JSON.stringify(out))
 })
@@ -100,6 +101,20 @@ const server = http.createServer(async (req, res) => {
     const download = page.waitForEvent('download')
     await preview.getByRole('button', { name: 'Hoja de contenido', exact: true }).click()
     assert.equal((await download).suggestedFilename(), 'contenido-16573-B-0002.pdf')
+    // Recepción completa en un paso: valida la pendiente con la cantidad del ERP y consolida las 3 líneas de la OT 16573 en un LPN
+    await page.goto('http://127.0.0.1:3023/almacen/etiquetado')
+    await page.getByRole('button', { name: 'Ingresos APT (4)', exact: true }).click()
+    await page.getByRole('button', { name: 'Recibir', exact: true }).first().click()
+    const full = page.getByRole('dialog', { name: 'WMS · Recepción APT' }).getByRole('button', { name: /Recibir completo y generar LPN/ })
+    assert.equal(await full.innerText(), 'Recibir completo y generar LPN (3)', 'misma OT y cliente, pendientes incluidas; otra OT queda fuera')
+    await page.getByRole('dialog', { name: 'WMS · Recepción APT' }).screenshot({ path: path.join(os.tmpdir(), 'wms-recepcion-origen', 'recibir-completo.png') })
+    page.once('dialog', d => d.accept())
+    const before = calls.length
+    await full.click()
+    await page.getByRole('dialog', { name: /Vista previa · LPN 16573-B-0002/ }).waitFor()
+    const after = calls.slice(before)
+    assert.deepEqual(after.filter(c => c.path.endsWith('/rpc/wh_validate_receipt')).map(c => [c.p.p_receipt_key, c.p.p_physical_quantity]), [['R4', 2]], 'valida solo la pendiente con la cantidad completa')
+    assert.deepEqual(after.find(c => c.path.endsWith('/rpc/wh_receipt_consolidate_lpn')).p.p_receipt_keys.sort(), ['R1', 'R2', 'R4'])
     assert.deepEqual(errors, [])
     console.log('PASS browser: casillas solo para líneas validadas del mismo cliente y OT; Consolidar en LPN (N); vista previa con una etiqueta del LPN (Contenido: N líneas, totales) y su hoja de contenido; imprime solo el LPN y descarga la hoja.')
   } catch (e) {
