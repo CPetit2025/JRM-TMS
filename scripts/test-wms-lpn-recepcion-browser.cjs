@@ -12,7 +12,8 @@ const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' 
 const line = (key, product, lot, ot, qty, extra = {}) => ({ receipt_key: key, document_no: 'IPT-9', fecha: today, document_type: 'IPT', color: null, source_updated_at: null, bodega: 'APT', lote: lot,
   product_code: product, description: 'Producto ' + product, unit: 'UND', contract_code: ot, quantity: qty, weight_kg: qty * 10, customer_name: 'Fargoline SAC', customer_source: 'EXCEL',
   physical_quantity: qty, variance: 0, variance_reason: null, validation_status: 'VALIDATED', label_count: 0, labeled_qty: 0, unprinted_count: 0, pending_labels: [], label_status: 'NOT_LABELED', ...extra })
-const receipts = [line('R1', 'P-A', '16573', '16573', 10), line('R2', 'P-B', '16574', 'OT-16573', 5), line('R3', 'P-C', '99999', '99999', 3), line('R4', 'P-D', '16573', '16573', 2, { validation_status: 'PENDING', physical_quantity: null })]
+const receipts = [line('R1', 'P-A', '16573', '16573', 10), line('R2', 'P-B', '16574', 'OT-16573', 5), line('R3', 'P-C', '99999', '99999', 3), line('R4', 'P-D', '16573', '16573', 2, { validation_status: 'PENDING', physical_quantity: null }),
+  line('T1', 'PERNO-1', '16101-S013', '16101-S013', 14, { document_no: '0000023133', document_type: 'TRASPASO DE ALMACEN APT', bodega: 'ST-VENTAS-IMD' })]
 const pkgOf = (r, code) => ({ package_code: code, receipt_key: r.receipt_key, document: r.document_no, contract_code: r.contract_code, product_code: r.product_code, description: r.description, lot: r.lote, quantity: r.quantity, unit: r.unit, weight_kg: r.weight_kg, warehouse: r.bodega, date: r.fecha, status: 'AVAILABLE' })
 const lpn = { id: 'lpn-1', lpn_code: '16573-B-0002', origin: 'RECEPCION', status: 'CLOSED', task_id: null, print_count: 0, package_count: 2, quantity: 15, weight_kg: 150, void_reason: null,
   created_at: new Date().toISOString(), created_by_name: 'Carlos Petit', packages: [pkgOf(receipts[0], '16573-B-0003'), pkgOf(receipts[1], '16574-B-0001')] }
@@ -54,6 +55,14 @@ const server = http.createServer(async (req, res) => {
     await page.addInitScript(() => { window.__printed = []; window.print = () => { window.__printed.push(document.querySelector('#wh-label-print-root .wh-package-label').outerHTML) } })
     await page.goto('http://127.0.0.1:3023/almacen/etiquetado')
     await page.getByRole('button', { name: 'Recibir', exact: true }).first().waitFor({ timeout: 180000 })
+    // Origen del ingreso: APT (entradas) y traspasos de pernería, con color por fila
+    await page.getByRole('button', { name: 'Traspasos de pernería (1)', exact: true }).click()
+    assert.equal(await page.getByRole('button', { name: 'Recibir', exact: true }).count(), 1, 'solo el traspaso')
+    await page.getByRole('button', { name: 'Todos (5)', exact: true }).click()
+    assert.equal(await page.getByText('Pernería', { exact: true }).count(), 1)
+    fs.mkdirSync(path.join(os.tmpdir(), 'wms-recepcion-origen'), { recursive: true })
+    await page.locator('section').filter({ hasText: 'Ingresos sin etiqueta impresa' }).first().screenshot({ path: path.join(os.tmpdir(), 'wms-recepcion-origen', 'recepcion-origen.png') })
+    await page.getByRole('button', { name: 'Ingresos APT (4)', exact: true }).click()
     await page.getByRole('button', { name: 'Recibir', exact: true }).first().click()
     const dialog = page.getByRole('dialog', { name: 'WMS · Recepción APT' })
     const box = product => dialog.getByRole('checkbox', { name: `Consolidar ${product} en el LPN` })
