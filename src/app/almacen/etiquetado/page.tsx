@@ -54,7 +54,11 @@ export default function WarehouseLabelingPage() {
   const labelFormat = useLabelFormat('PAQUETE')
   // Período de la bandeja (por defecto solo hoy) y orden del ingreso más reciente al más antiguo. Una búsqueda ignora el período.
   const periodState = usePeriod()
-  const visible = filterAndSort(receipts, query.trim() ? null : periodState.range)
+  // Origen del ingreso: entradas de producción a APT o traspasos desde la pernería (actualizable «Traspado de Almacen APT»).
+  const [origin, setOrigin] = useState<'TODOS' | 'APT' | 'PERNERIA'>('TODOS')
+  const inPeriod = filterAndSort(receipts, query.trim() ? null : periodState.range)
+  const originCount = { TODOS: inPeriod.length, APT: inPeriod.filter(r => !isTraspaso(r)).length, PERNERIA: inPeriod.filter(isTraspaso).length }
+  const visible = origin === 'TODOS' ? inPeriod : inPeriod.filter(r => (origin === 'PERNERIA') === isTraspaso(r))
   const pager = usePagination(visible, 'wms-etiquetado')
   const [printedLabelCodes, setPrintedLabelCodes] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
@@ -335,14 +339,19 @@ export default function WarehouseLabelingPage() {
         <button disabled={searching || query.trim().length < 2} onClick={() => void search()} className="rounded-lg bg-[#002855] px-4 text-sm font-bold text-white disabled:opacity-50">{searching ? 'Buscando…' : 'Buscar IPT'}</button>
       </div>
       <div className="mt-3"><PeriodFilter state={periodState} note={query.trim() ? 'La búsqueda incluye todas las fechas.' : undefined}/></div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-sm" role="group" aria-label="Origen del ingreso">
+        {([['TODOS', 'Todos', 'border-[#002855] bg-[#002855] text-white'], ['APT', 'Ingresos APT', 'border-blue-600 bg-blue-600 text-white'], ['PERNERIA', 'Traspasos de pernería', 'border-amber-500 bg-amber-500 text-white']] as const).map(([value, label, on]) =>
+          <button key={value} type="button" aria-pressed={origin === value} onClick={() => setOrigin(value)}
+            className={`rounded-lg border px-3 py-1.5 font-semibold ${origin === value ? on : 'border-slate-300 text-[#002855] hover:bg-slate-50'}`}>{label} ({originCount[value]})</button>)}
+      </div>
       <div className="mt-3 overflow-x-auto rounded-lg border">
         <DataTable dense className="min-w-[900px] lg:min-w-0 w-full text-left text-sm">
           <thead className="sticky top-0 bg-slate-50 text-xs text-slate-600"><tr>
             <th className="p-3">IPT · Fecha</th><th className="p-3">OT · Contrato</th><th className="p-3">Producto</th><th className="p-3">Lote</th>
             <th className="p-3 text-right">Cantidad ERP</th><th className="p-3">Cliente</th><th className="p-3">Estado</th><th className="p-3"></th>
           </tr></thead>
-          <tbody className="divide-y">{pager.pageRows.map(receipt => <tr key={receipt.receipt_key} className="hover:bg-blue-50">
-            <td className="p-3 font-semibold text-[#002855]">{receipt.document_no}<small className="block font-normal text-slate-500">{receipt.fecha} · {receipt.bodega}</small><small className="block font-normal text-slate-500">{receipt.document_type || '—'} · {receipt.color || '—'} · Actualizado {receipt.source_updated_at ? new Date(receipt.source_updated_at).toLocaleString('es-PE') : '—'}</small></td>
+          <tbody className="divide-y">{pager.pageRows.map(receipt => <tr key={receipt.receipt_key} className={`border-l-4 ${isTraspaso(receipt) ? 'border-l-amber-500 bg-amber-50/40 hover:bg-amber-50' : 'border-l-blue-600 hover:bg-blue-50'}`}>
+            <td className="p-3 font-semibold text-[#002855]"><span className={`mr-2 inline-block rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${isTraspaso(receipt) ? 'bg-amber-100 text-amber-900' : 'bg-blue-100 text-blue-900'}`}>{isTraspaso(receipt) ? 'Pernería' : 'APT'}</span>{receipt.document_no}<small className="block font-normal text-slate-500">{receipt.fecha} · {receipt.bodega}</small><small className="block font-normal text-slate-500">{receipt.document_type || '—'} · {receipt.color || '—'} · Actualizado {receipt.source_updated_at ? new Date(receipt.source_updated_at).toLocaleString('es-PE') : '—'}</small></td>
             <td className="p-3">{receipt.contract_code || '—'}</td><td className="p-3">{receipt.product_code}<small className="block text-slate-500">{receipt.description || '—'}</small></td>
             <td className="p-3">{receipt.lote || '—'}</td><td className="p-3 text-right tabular-nums">{receipt.quantity} {receipt.unit || ''}</td>
             <td className="p-3">{receipt.customer_name || 'Por ingresar'}</td><td className="p-3 text-xs">{receipt.validation_status === 'VALIDATED' ? 'Validado' : 'Pendiente'} · {receipt.label_status === 'NOT_LABELED' ? 'Sin etiqueta' : receipt.label_status === 'PENDING_PRINT' ? `${receipt.unprinted_count} por imprimir` : receipt.label_status}</td>
@@ -495,6 +504,8 @@ export default function WarehouseLabelingPage() {
   </div>
 }
 
+/** Traspaso de pernería a APT (no es una entrada de producción). */
+const isTraspaso = (r: { document_type: string | null }) => /^TRASPASO/i.test(r.document_type || '')
 function filterAndSort<T extends { fecha: string; document_no: string }>(rows: T[], range: [string, string] | null) {
   return rows.filter(r => !range || (r.fecha >= range[0] && r.fecha <= range[1]))
     .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.document_no.localeCompare(a.document_no))
