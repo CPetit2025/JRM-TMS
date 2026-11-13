@@ -196,7 +196,8 @@ export async function buildBultoContentPdf(l: Pick<TaskLpn, 'lpn_code' | 'packag
   pdf.setProperties({ title: `Contenido del bulto ${l.lpn_code}`, creator: 'JRM WMS' })
   // Columnas proporcionales al ancho: paquete, SKU y descripción, lote; cantidad y peso alineados a la derecha.
   const w = W - 2 * m, size = format === 'a5' ? 6.8 : 7.5
-  const col = { pkg: m + 1, mat: m + w * 0.24, lot: m + w * 0.66, qty: m + w * 0.86, kg: right - 1 }
+  // Ítem del contrato (069 de 16571-S001-069) entre el material y el lote.
+  const col = { pkg: m + 1, mat: m + w * 0.24, item: m + w * 0.6, lot: m + w * 0.67, qty: m + w * 0.86, kg: right - 1 }
   const header = () => {
     if (logo) pdf.addImage(logo, 'PNG', m, 8, 30, 12)
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(12); pdf.text(`CONTENIDO DEL ${opts.reception ? 'LPN' : 'BULTO'} ${bulto}`, right, 13, { align: 'right' })
@@ -206,17 +207,18 @@ export async function buildBultoContentPdf(l: Pick<TaskLpn, 'lpn_code' | 'packag
     pdf.setFont('courier', 'bold'); pdf.setFontSize(10); pdf.text(l.lpn_code, right, 31, { align: 'right' })
     pdf.setLineWidth(0.6); pdf.line(m, 37, right, 37); pdf.setLineWidth(0.2)
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(size)
-    pdf.text(opts.reception ? 'IPT' : 'Paquete', col.pkg, 42); pdf.text('Material', col.mat, 42); pdf.text('Lote', col.lot, 42); pdf.text('Cantidad', col.qty, 42, { align: 'right' }); pdf.text('Peso kg', col.kg, 42, { align: 'right' })
+    pdf.text(opts.reception ? 'IPT' : 'Paquete', col.pkg, 42); pdf.text('Material', col.mat, 42); pdf.text('Ítem', col.item, 42); pdf.text('Lote', col.lot, 42); pdf.text('Cantidad', col.qty, 42, { align: 'right' }); pdf.text('Peso kg', col.kg, 42, { align: 'right' })
     pdf.setFont('helvetica', 'normal')
     return 46.5
   }
   let y = header()
   for (const p of l.packages) {
     // Material en hasta 2 líneas para no perder la descripción.
-    const lines = (pdf.splitTextToSize(`${p.product_code} ${p.description}`, col.lot - col.mat - 2) as string[]).slice(0, 2), rowH = 4.6 + (lines.length - 1) * 3.2
+    const lines = (pdf.splitTextToSize(`${p.product_code} ${p.description}`, col.item - col.mat - 2) as string[]).slice(0, 2), rowH = 4.6 + (lines.length - 1) * 3.2
     if (y + rowH > H - 16) { pdf.addPage(format); y = header() }
     pdf.text((opts.reception ? p.document || '—' : p.package_code).slice(0, 22), col.pkg, y)
     pdf.text(lines, col.mat, y)
+    pdf.text(itemOf(p.contract_code) || '—', col.item, y)
     pdf.text((p.lot || '—').slice(0, 16), col.lot, y)
     pdf.text(`${fmt(p.quantity, 3)} ${p.unit || ''}`, col.qty, y, { align: 'right' })
     pdf.text(p.weight_kg == null ? '—' : fmt(p.weight_kg), col.kg, y, { align: 'right' })

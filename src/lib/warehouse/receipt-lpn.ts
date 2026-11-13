@@ -29,7 +29,8 @@ export function lpnLabelData(lpn: ReceiptLpn, customer: string | null): PackageL
     sequence_total: 1,
     source_warehouse: first?.warehouse || "",
     source_date: first?.date || "",
-    contract_code: first?.contract_code || null,
+    // Ítem en la etiqueta solo si todo el LPN es del mismo ítem, producto y lote; si mezcla productos, solo el lote.
+    contract_code: uniq(lpn.packages.map(p => `${p.contract_code}|${p.product_code}|${p.lot}`)).length === 1 ? first?.contract_code || null : uniq(lpn.packages.map(p => p.lot)).join(", ") || null,
     customer_name: customer || "Cliente por registrar",
     reception_responsible_name: lpn.created_by_name,
     content_lines: lpn.packages.length,
