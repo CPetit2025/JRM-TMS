@@ -16,12 +16,14 @@ export function lpnLabelData(lpn: ReceiptLpn, customer: string | null): PackageL
   const units = uniq(lpn.packages.map(p => p.unit));
   const first = lpn.packages[0];
   const anyWeight = lpn.packages.some(p => p.weight_kg != null);
+  // Con 2 o más lotes no caben en la etiqueta: se remite a la hoja de contenido.
+  const lots = uniq(lpn.packages.map(p => p.lot)), multiLot = lots.length > 1;
   return {
     package_code: lpn.lpn_code,
     source_document_no: uniq(lpn.packages.map(p => p.document)).join(", "),
-    source_lot: uniq(lpn.packages.map(p => p.lot)).join(", "),
+    source_lot: multiLot ? "VER DETALLE" : lots.join(", "),
     source_product_code: "LPN",
-    description: `Contenido: ${lpn.packages.length} líneas · ${uniq(lpn.packages.map(p => p.product_code)).length} producto(s) · ver hoja de contenido`,
+    description: multiLot ? "" : `Contenido: ${lpn.packages.length} líneas · ${uniq(lpn.packages.map(p => p.product_code)).length} producto(s) · ver hoja de contenido`,
     quantity: Number(lpn.quantity),
     weight_kg: anyWeight ? Number(lpn.weight_kg) : null,
     unit: units.length === 1 ? units[0] : "und",
@@ -30,7 +32,7 @@ export function lpnLabelData(lpn: ReceiptLpn, customer: string | null): PackageL
     source_warehouse: first?.warehouse || "",
     source_date: first?.date || "",
     // Ítem en la etiqueta solo si todo el LPN es del mismo ítem, producto y lote; si mezcla productos, solo el lote.
-    contract_code: uniq(lpn.packages.map(p => `${p.contract_code}|${p.product_code}|${p.lot}`)).length === 1 ? first?.contract_code || null : uniq(lpn.packages.map(p => p.lot)).join(", ") || null,
+    contract_code: multiLot ? "" : uniq(lpn.packages.map(p => `${p.contract_code}|${p.product_code}|${p.lot}`)).length === 1 ? first?.contract_code || null : lots.join(", ") || null,
     customer_name: customer || "Cliente por registrar",
     reception_responsible_name: lpn.created_by_name,
     content_lines: lpn.packages.length,

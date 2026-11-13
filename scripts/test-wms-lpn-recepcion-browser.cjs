@@ -88,7 +88,7 @@ const server = http.createServer(async (req, res) => {
     assert.equal(await label.count(), 1, 'solo una etiqueta: la del LPN')
     assert.equal(await label.getAttribute('data-package-code'), '16573-B-0002')
     const text = await label.innerText()
-    assert.match(text, /Contenido: 2 líneas/); assert.match(text, /LPN\s*B-0002/); assert.match(text, /15 UND/); assert.match(text, /150 kg/); assert.match(text, /Fargoline SAC/)
+    assert.match(text, /Lote: VER DETALLE/, 'dos lotes: remite a la hoja de contenido'); assert.doesNotMatch(text, /Contenido:/); assert.match(text, /LPN\s*B-0002/); assert.match(text, /15 UND/); assert.match(text, /150 kg/); assert.match(text, /Fargoline SAC/)
     assert.equal(await preview.locator('table tbody tr').count(), 2, 'hoja de contenido con una fila por línea')
     const previewHtml = await label.evaluate(n => n.outerHTML)
     await page.screenshot({ path: path.join(os.tmpdir(), 'wms-lpn-recepcion-preview.png'), fullPage: true, style: 'nextjs-portal{display:none}' })
@@ -98,9 +98,13 @@ const server = http.createServer(async (req, res) => {
     assert.equal(await page.evaluate(() => window.__printed[0]), previewHtml, 'la impresión es la misma etiqueta de la vista previa')
     assert.ok(calls.some(c => c.path.endsWith('/rpc/wh_print_lpn_label') && c.p.p_lpn_id === 'lpn-1'), 'se audita la impresión del LPN')
     assert.ok(!calls.some(c => /wh_(print_labels|label_package)$/.test(c.path)), 'no se generan ni imprimen etiquetas individuales')
+    await label.screenshot({ path: path.join(os.tmpdir(), 'wms-recepcion-origen', 'lpn-ver-detalle.png') })
     const download = page.waitForEvent('download')
     await preview.getByRole('button', { name: 'Hoja de contenido', exact: true }).click()
-    assert.equal((await download).suggestedFilename(), 'contenido-16573-B-0002.pdf')
+    const sheet = await download
+    assert.equal(sheet.suggestedFilename(), 'contenido-16573-B-0002.pdf')
+    await sheet.saveAs(path.join(os.tmpdir(), 'wms-recepcion-origen', 'contenido-lpn.pdf'))
+    assert.ok(fs.readFileSync(path.join(os.tmpdir(), 'wms-recepcion-origen', 'contenido-lpn.pdf')).includes('/Subtype /Image'), 'la hoja de contenido lleva el logo')
     // Recepción completa en un paso: valida la pendiente con la cantidad del ERP y consolida las 3 líneas de la OT 16573 en un LPN
     await page.goto('http://127.0.0.1:3023/almacen/etiquetado')
     await page.getByRole('button', { name: 'Ingresos APT (4)', exact: true }).click()

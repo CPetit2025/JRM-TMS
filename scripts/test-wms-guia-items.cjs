@@ -4,7 +4,7 @@ const file = path.resolve('src/lib/warehouse/packing-list.ts'), m = new Module(f
 m.paths = module.paths; m.require = n => n === '@/components/warehouse/Code128Barcode' ? { code128Bars: () => [] } : require(n)
 m._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: 1, target: 9 } }).outputText, file)
 const { itemOf, consolidateItems } = m.exports
-assert.equal(itemOf('16571-S001-069'), '069'); assert.equal(itemOf('16571-069'), '069'); assert.equal(itemOf('16571'), null); assert.equal(itemOf(null), null)
+assert.equal(itemOf('16571-S001-069'), '069'); assert.equal(itemOf('16571-069'), '069'); assert.equal(itemOf('16571'), null); assert.equal(itemOf('OT-16573'), null, 'una OT sola no es ítem'); assert.equal(itemOf('15304-E029'), null); assert.equal(itemOf(null), null)
 const p = (c, code, lot, q, kg) => ({ package_code: 'x', product_code: code, description: 'd', lot, contract_code: c, quantity: q, unit: 'UND', weight_kg: kg })
 const lines = consolidateItems([{ packages: [p('16571-S001-069', 'A', 'L1', 2, 10), p('16571-069', 'A', 'L1', 3, 15), p('16571-S001-069', 'A', 'L2', 1, 5)] }, { packages: [p('16571-S001-012', 'B', 'L1', 4, 8)] }])
 assert.deepEqual(lines.map(l => [l.item, l.product_code, l.lot, l.packages, l.quantity, l.weight_kg]),
