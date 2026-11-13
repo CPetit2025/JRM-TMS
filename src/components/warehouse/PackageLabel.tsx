@@ -27,7 +27,7 @@ export function PackageLabel({ label, format = { width_mm: 152.4, height_mm: 101
             <b>Cliente:</b> <strong>{label.customer_name}</strong>
           </div>
           <div>
-            <b>OT:</b> <strong>{label.contract_code || "—"}</strong>
+            <b>OT:</b> <strong>{label.contract_code ?? "—"}</strong>
           </div>
           <div><b>Bodega:</b> <strong>{label.source_warehouse || "—"}</strong></div>
         </div>

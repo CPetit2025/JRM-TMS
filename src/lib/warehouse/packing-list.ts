@@ -68,7 +68,7 @@ function barcode(pdf: JsPdf, value: string, x: number, y: number, w: number, h: 
 // Packing List (A4). Sin número de liberación = preliminar, marcado como tal y sin validez.
 // unitOf: unidad asignada a cada LPN (por id); title: reemplaza el título, p. ej. para la guía de carga de una unidad.
 /** Ítem de la OT/contrato: el último tramo numérico del código («16571-S001-069» y «16571-069» → «069»). */
-export const itemOf = (code?: string | null) => /-(\d+)$/.exec((code || '').trim())?.[1] || null
+export const itemOf = (code?: string | null) => /\d{5,6}(?:-[A-Z]+\d+)?-(\d{1,4})$/i.exec((code || '').trim())?.[1] || null
 export type ItemLine = { item: string | null; product_code: string; description: string; lot: string | null; unit: string | null; packages: number; quantity: number; weight_kg: number }
 /** Consolidado por ítem, código de producto y lote: suma paquetes, cantidad y peso de todos los LPN. */
 export function consolidateItems(lpns: Pick<TaskLpn, 'packages'>[]): ItemLine[] {
@@ -202,7 +202,7 @@ export async function buildBultoContentPdf(l: Pick<TaskLpn, 'lpn_code' | 'packag
     if (logo) pdf.addImage(logo, 'PNG', m, 8, 30, 12)
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(12); pdf.text(`CONTENIDO DEL ${opts.reception ? 'LPN' : 'BULTO'} ${bulto}`, right, 13, { align: 'right' })
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8)
-    pdf.text(`Cliente ${t.client_name || '—'} · OT ${t.contract_code || '—'} · ${opts.reception ? 'IPT ' + ([...new Set(l.packages.map(p => p.document).filter(Boolean))].join(', ') || '—') : 'Solicitud ' + (t.request_number || '—')}`, right, 18, { align: 'right' })
+    pdf.text(`Cliente ${t.client_name || '—'} · OT ${t.contract_code || [...new Set(l.packages.map(p => p.lot).filter(Boolean))].join(', ') || '—'} · ${opts.reception ? 'IPT ' + ([...new Set(l.packages.map(p => p.document).filter(Boolean))].join(', ') || '—') : 'Solicitud ' + (t.request_number || '—')}`, right, 18, { align: 'right' })
     barcode(pdf, l.lpn_code, m, 23, Math.min(70, W - 2 * m), 11)
     pdf.setFont('courier', 'bold'); pdf.setFontSize(10); pdf.text(l.lpn_code, right, 31, { align: 'right' })
     pdf.setLineWidth(0.6); pdf.line(m, 37, right, 37); pdf.setLineWidth(0.2)
