@@ -32,7 +32,10 @@ Paso 'Node.js' {
   $n = (Get-Command node -ErrorAction SilentlyContinue).Source
   if (-not $n) { $n = Join-Path $env:LOCALAPPDATA 'Programs\nodejs\node.exe' }
   if (-not (Test-Path $n)) { throw 'No está instalado. Se puede usar Node portable (zip) en la carpeta del usuario sin administrador.' }
-  "$(& $n --version) · $n"
+  # Los robots necesitan Node 18 o superior (playwright-core y fetch global).
+  $v = (& $n --version).Trim()
+  if ([int]($v.TrimStart('v').Split('.')[0]) -lt 18) { throw "Node $v es muy antiguo: los robots requieren Node 18 o superior ($n)" }
+  "$v · $n"
 }
 
 # 4) Crear una tarea programada del propio usuario (y borrarla al instante)
@@ -60,10 +63,11 @@ foreach ($h in @('eojfsbogysifxrlrnjvx.supabase.co', 'glecgvomkaqmkfkhtxhi.supab
 
 # 7) Energía: suspensión con corriente (la PC debe seguir encendida en los horarios de carga)
 Paso 'Suspensión con corriente' {
-  # La salida de powercfg depende del idioma: se toma la primera línea con «0x» del valor de corriente alterna (AC).
-  $hex = powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE 2>$null | Select-String '0x[0-9a-fA-F]{8}' | Select-Object -First 1
-  if (-not $hex) { return 'No se pudo leer: verifique que la PC no se suspenda en los horarios de carga' }
-  $min = [Convert]::ToInt32(($hex.Matches[0].Value), 16) / 60
+  # La salida de powercfg depende del idioma, pero el orden no: mínimo, máximo, incremento, actual AC y actual DC.
+  # El valor de corriente alterna (enchufada) es el penúltimo «0x…».
+  $hex = @(powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE 2>$null | Select-String '0x[0-9a-fA-F]{8}' | ForEach-Object { $_.Matches[0].Value })
+  if ($hex.Count -lt 2) { return 'No se pudo leer: verifique que la PC no se suspenda en los horarios de carga' }
+  $min = [Convert]::ToInt64($hex[-2], 16) / 60
   if ($min -gt 0) { "Se suspende a los $min min sin uso: conviene desactivarla o dejar la sesión activa" } else { 'Nunca se suspende' }
 }
 
