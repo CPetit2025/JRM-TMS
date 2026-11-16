@@ -40,7 +40,8 @@ try {
     // Sin sesión: cada minuto solo se pregunta si toca (la mayoría de las veces, no)
     // Sin process.exit: en Windows, cortar Node con una conexión de fetch abierta lo hace fallar (UV_HANDLE_CLOSING)
     if (await rpc('wh_receipt_robot_due', {})) {
-      const run = await rpc('wh_receipt_robot_start', {}, await login())
+      // Solo la PC autorizada en la base (wh_receipt_robot_config) recibe el turno
+      const run = await rpc('wh_receipt_robot_start', { p_equipo: process.env.COMPUTERNAME || '' }, await login())
       if (run) console.log(JSON.stringify(run))
     }
   } else {
