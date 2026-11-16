@@ -9,7 +9,10 @@ CREATE TABLE IF NOT EXISTS public.erp_robot_config (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.erp_robot_config ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.erp_robot_config FROM anon, authenticated;
+DROP POLICY IF EXISTS security_active_account ON public.erp_robot_config;
+CREATE POLICY security_active_account ON public.erp_robot_config AS RESTRICTIVE FOR ALL TO authenticated
+  USING ((SELECT public.is_active_tms_user())) WITH CHECK ((SELECT public.is_active_tms_user()));
+REVOKE ALL ON public.erp_robot_config FROM PUBLIC, anon, authenticated;
 INSERT INTO public.erp_robot_config (equipo) VALUES ('CHI-DES-001') ON CONFLICT (id) DO NOTHING;
 
 -- Robot antiguo: ya no toma solicitudes
