@@ -13,13 +13,14 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { usePagination } from '@/lib/use-pagination'
 import { TablePagination } from '@/components/ui/table-pagination'
 import { readCache, writeCache } from '@/lib/use-cached'
-import { Plus, Check, Ban, Loader2, Upload, Download, AlertCircle, Search, X, ArrowUp, ArrowDown, ArrowUpDown, RefreshCw, Scale, Info, Layers, Clock, CheckCircle2, FileEdit, CircleDollarSign } from 'lucide-react'
+import { Plus, Check, Ban, Loader2, Upload, Download, AlertCircle, Search, X, ArrowUp, ArrowDown, ArrowUpDown, RefreshCw, Scale, Info, Layers, Clock, CheckCircle2, FileEdit, CircleDollarSign, Truck, Tag, Coins, Package, ClipboardList, Users, IdCard, Car, UserRound, FileText, Wallet, Route, ExternalLink, Pencil } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { GuiaDetalleModal } from '@/components/guias/GuiaDetalleModal'
-import { ErpGuiasValidacion, ErpOtReferencia } from '@/components/erp/ErpReferencia'
+import { ErpGuiasValidacion } from '@/components/erp/ErpReferencia'
+import { DetailSection, StatTile, InfoRow, GuiasTrazabilidad, SituacionContractualErp } from '@/components/contratos/ServicioDetalle'
 import { ErpServicioCelda, useErpContratos, useErpGuiasLote } from '@/components/erp/ErpContratos'
 import { useDropzone } from 'react-dropzone'
 import * as XLSX from 'xlsx'
@@ -96,6 +97,11 @@ function serviceGuides(service: Pick<ContractService, 'id' | 'referral_guide'>, 
   return values.filter((value, index) => values.findIndex(candidate => candidate.toLocaleUpperCase('es-PE') === value.toLocaleUpperCase('es-PE')) === index)
 }
 const stageLabels: Record<RegistryContext['stage'], string> = { COMPROMETIDO: 'Comprometido', REALIZADO: 'Realizado', ANULADO: 'Anulado', REGISTRO_MANUAL: 'Registro manual', OTRA_SEDE: 'Ruta de otra sede' }
+// «Flete tercerizado» cuando lo atiende un proveedor externo
+const serviceTypeLabel = (s: Pick<ContractService, 'service_type' | 'provider_name' | 'provider_ruc'>) => {
+  const t = (s.service_type || 'Servicio').charAt(0).toUpperCase() + (s.service_type || 'Servicio').slice(1).toLowerCase()
+  return s.provider_name || s.provider_ruc ? `${t} tercerizado` : t
+}
 const stageTone: Record<RegistryContext['stage'], StatusTone> = { COMPROMETIDO: 'warning', REALIZADO: 'success', ANULADO: 'danger', REGISTRO_MANUAL: 'neutral', OTRA_SEDE: 'neutral' }
 
 type SortKey = 'fecha' | 'contrato' | 'cliente' | 'servicio' | 'placa' | 'guia' | 'ton' | 'monto' | 'saldo' | 'traza' | 'estado'
@@ -215,6 +221,8 @@ export default function ContractServicesPage() {
     setNewService(prev => ({ ...prev, contract_id: target.id, category: categoryOf(target.type) }))
     setIsModalOpen(true)
   }
+
+  const closeDetail = () => { setViewingService(null); setIsEditingAmount(false); setVoidReason(''); setAuthPassword('') }
 
   const handleVoid = async () => {
     if (!viewingService) return
@@ -1129,152 +1137,116 @@ export default function ContractServicesPage() {
 
       <Modal
         isOpen={!!viewingService}
-        onClose={() => { setViewingService(null); setIsEditingAmount(false); setVoidReason(''); setAuthPassword('') }}
+        onClose={closeDetail}
         title="Detalles del Servicio Registrado"
-        maxWidth="max-w-lg"
+        maxWidth="max-w-6xl"
+        header={viewingService && (
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2">
+            <Truck className="hidden h-9 w-9 shrink-0 text-white/90 sm:block" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg font-bold leading-tight sm:text-xl">Detalles del Servicio Registrado</h2>
+              <p className="text-sm text-white/90">{serviceTypeLabel(viewingService)}{viewingService.contracts?.code ? ` — OT ${viewingService.contracts.code}` : ''}</p>
+              <p className="text-xs text-white/70">{[viewingService.contracts?.clients?.business_name, registryContext[viewingService.id]?.request_numbers?.join(' · ')].filter(Boolean).join(' · ') || 'Sin cliente ni solicitudes vinculadas'}</p>
+            </div>
+            <StatusBadge tone={stageTone[stageOf(viewingService)]}>{stageLabels[stageOf(viewingService)]}</StatusBadge>
+          </div>
+        )}
+        footer={viewingService && (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <a href={`/despacho/control-presupuestal/movimientos?ot=${viewingService.contract_id}&q=${encodeURIComponent(registryContext[viewingService.id]?.dispatch_number || viewingService.id)}`}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-jrm-navy hover:bg-slate-50"><Wallet className="h-4 w-4" aria-hidden />Control presupuestal</a>
+            {canEdit && viewingService.status !== 'ANULADO' && viewingService.dispatch_id && !OPEN_ROUTE.includes(registryContext[viewingService.id]?.operation_state || 'PROGRAMADO') &&
+              <a href={`/despacho/documentos/economico?despacho=${viewingService.dispatch_id}`} title="Corregir el monto en Costos por ruta"
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-jrm-navy hover:bg-slate-50"><Route className="h-4 w-4" aria-hidden />Costos por ruta<ExternalLink className="h-3.5 w-3.5" aria-hidden /></a>}
+            <button type="button" onClick={closeDetail} className="rounded-lg bg-[#002855] px-4 py-2 text-sm font-semibold text-white hover:bg-[#001d3d]">Cerrar</button>
+          </div>
+        )}
       >
-        {viewingService && (
+        {viewingService && (() => {
+          const ctx = registryContext[viewingService.id]
+          const guias = serviceGuides(viewingService, registryContext)
+          const p = pesoApt[viewingService.id]
+          const stage = stageOf(viewingService)
+          const anulado = viewingService.status === 'ANULADO'
+          const canEditAmount = canEdit && !anulado && (!viewingService.dispatch_id || OPEN_ROUTE.includes(ctx?.operation_state || 'PROGRAMADO'))
+          return (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-slate-50 p-3 rounded border border-slate-200">
-                <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Contrato</span>
-                <span className="font-bold text-slate-800">{viewingService.contracts?.code}</span>
-              </div>
-              <div className="bg-slate-50 p-3 rounded border border-slate-200">
-                <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Tipo de Servicio</span>
-                <span className="font-bold text-[#002855]">{viewingService.service_type}</span>
-              </div>
-              <div className="bg-slate-50 p-3 rounded border border-slate-200">
-                <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Despacho y solicitudes</span>
-                <span className="font-bold text-slate-800">{registryContext[viewingService.id]?.dispatch_number || 'Sin despacho'}</span>
-                <span className="block text-xs text-slate-600">{registryContext[viewingService.id]?.request_numbers?.join(' · ') || 'Sin solicitudes vinculadas'}</span>
-              </div>
-              <div className="bg-slate-50 p-3 rounded border border-slate-200">
-                <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Estado</span>
-                <span className="font-bold text-slate-800">{stageLabels[stageOf(viewingService)]}</span>
-                <span className="block text-xs text-slate-600">Financiero: {viewingService.status}</span>
-              </div>
-            </div>
-
-            <div className="bg-white p-3 rounded border border-slate-200">
-              <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Guías de Remisión</span>
-              {serviceGuides(viewingService, registryContext).length ? (
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {serviceGuides(viewingService, registryContext).map((gr: string, idx: number) => (
-                    <button key={idx} type="button" onClick={() => setGuiaAbierta(gr.trim())} title="Ver los SKUs de la guía"
-                      className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded text-sm font-semibold hover:bg-blue-100 hover:underline">
-                      {gr.trim()}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+              <StatTile icon={<ClipboardList />} label="Contrato / OT" value={viewingService.contracts?.code || '—'} />
+              <StatTile icon={<Truck />} label="Despacho" value={ctx?.dispatch_number || <span className="text-slate-400">Sin despacho</span>}
+                sub={ctx?.request_numbers?.join(' · ') || 'Sin solicitudes vinculadas'} />
+              <StatTile icon={<Tag />} label="Tipo de servicio" value={<span className="text-jrm-navy">{viewingService.service_type}</span>} />
+              <StatTile icon={<Coins />} label="Monto del servicio" strong tone={anulado ? 'neutral' : 'navy'}
+                value={isEditingAmount ? (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-sm text-slate-600">S/</span>
+                    <input type="number" step="0.01" aria-label="Nuevo monto del servicio"
+                      className="w-24 rounded border border-slate-300 px-2 py-1 text-right text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-jrm-navy"
+                      value={editAmountValue} onChange={(e) => setEditAmountValue(e.target.value)} autoFocus />
+                    <button onClick={handleSaveAmount} disabled={isSavingAmount} title="Guardar" aria-label="Guardar monto"
+                      className="rounded bg-emerald-600 p-1.5 text-white transition-colors hover:bg-emerald-700 disabled:opacity-50">
+                      {isSavingAmount ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                     </button>
-                  ))}
-                  {serviceGuides(viewingService, registryContext).length > 1 && (
-                    <button type="button" onClick={() => setGuiaAbierta(serviceGuides(viewingService, registryContext).join(','))}
-                      className="px-2 py-1 rounded text-sm font-bold text-[#002855] hover:underline">Ver todas</button>
-                  )}
-                </div>
-              ) : (
-                <span className="text-slate-400 text-sm italic">Sin guías registradas</span>
-              )}
-              {serviceGuides(viewingService, registryContext).length > 0 && <div className="mt-2"><ErpGuiasValidacion guias={serviceGuides(viewingService, registryContext)} ot={viewingService.contracts?.code} /></div>}
-            </div>
-            {viewingService.contracts?.code && <ErpOtReferencia ot={viewingService.contracts.code} />}
-
-            <div className="bg-white p-3 rounded border border-slate-200">
-              <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Detalle / KG</span>
-              <p className="text-slate-800 text-sm whitespace-pre-wrap">{viewingService.description || '-'}</p>
+                    <button onClick={() => setIsEditingAmount(false)} title="Cancelar" aria-label="Cancelar edición"
+                      className="rounded border border-slate-300 bg-white p-1.5 text-slate-500 transition-colors hover:bg-slate-50"><X className="h-4 w-4" /></button>
+                  </div>
+                ) : <span className={anulado ? 'text-slate-400 line-through' : ''}>S/ {Number(viewingService.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>}
+                sub={!isEditingAmount && canEditAmount && <button type="button" onClick={() => { setEditAmountValue(viewingService.amount_pen.toString()); setIsEditingAmount(true) }}
+                  className="inline-flex items-center gap-1 font-semibold text-jrm-navy hover:underline"><Pencil className="h-3 w-3" aria-hidden />Editar monto</button>} />
+              <StatTile icon={<Package />} label="Peso despachado APT" strong tone={p?.faltan ? 'warning' : 'navy'}
+                title={p ? `Calculado el ${new Date(p.calculado_at).toLocaleString('es-PE')}` : undefined}
+                value={p?.kg != null ? `${fmtTon(Number(p.kg))} t` : <span className="text-base text-slate-400">Sin peso</span>}
+                sub={p ? `${p.kg != null ? `${Number(p.kg).toLocaleString('es-PE')} kg · ` : ''}${p.encontradas} guía(s)` : 'Sin cálculo en Almacén APT'} />
+              <StatTile icon={<ClipboardList />} label="Estado" tone={stageTone[stage] === 'success' ? 'success' : stageTone[stage] === 'warning' ? 'warning' : stageTone[stage] === 'danger' ? 'danger' : 'neutral'}
+                value={stageLabels[stage]} sub={`Financiero: ${viewingService.status}`} />
             </div>
 
-            {pesoApt[viewingService.id] && (() => {
-              const p = pesoApt[viewingService.id]
-              return (
-                <div className={`p-3 rounded border ${p.faltan ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
-                  <span className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500"><Scale className="h-3.5 w-3.5" />Peso según Almacén APT (SALIDA)</span>
-                  <p className="text-sm text-slate-800">
-                    <b>{p.kg != null ? `${fmtTon(Number(p.kg))} t` : 'Sin peso'}</b>
-                    {p.kg != null && <span className="text-slate-500"> ({Number(p.kg).toLocaleString('es-PE')} kg)</span>}
-                    {' · '}{p.encontradas} guía(s) encontrada(s)
-                  </p>
-                  {p.faltan && <p className="text-xs text-amber-800">No encontradas en la SALIDA de APT: {p.faltan}. Revise el número de guía o cargue la SALIDA que la contiene.</p>}
-                  <p className="text-[11px] text-slate-500">Calculado el {new Date(p.calculado_at).toLocaleString('es-PE')}</p>
-                </div>
-              )
-            })()}
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,4fr)_minmax(0,5fr)]">
+              <div className="min-w-0 space-y-4">
+                <DetailSection n="01" title="Información del servicio" icon={<Info />}>
+                  <div className="divide-y divide-slate-100">
+                    <InfoRow icon={<Users />} label="Proveedor">{viewingService.provider_name || <span className="font-normal text-slate-400">Flota propia / sin proveedor</span>}</InfoRow>
+                    <InfoRow icon={<IdCard />} label="RUC proveedor">{viewingService.provider_ruc || <span className="font-normal text-slate-400">—</span>}</InfoRow>
+                    <InfoRow icon={<Car />} label="Placa">{viewingService.plate || <span className="font-normal text-slate-400">—</span>}</InfoRow>
+                    <InfoRow icon={<UserRound />} label="Conductor">{viewingService.driver_name || <span className="font-normal text-slate-400">—</span>}</InfoRow>
+                    <InfoRow icon={<FileText />} label="Detalle / KG"><span className="whitespace-pre-wrap font-normal">{viewingService.description || '-'}</span></InfoRow>
+                  </div>
+                </DetailSection>
 
-            {(viewingService.plate || viewingService.driver_name) && (
-              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded border border-slate-200">
-                <div>
-                  <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Placa</span>
-                  <span className="text-slate-800 text-sm">{viewingService.plate || '-'}</span>
-                </div>
-                <div>
-                  <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Conductor</span>
-                  <span className="text-slate-800 text-sm">{viewingService.driver_name || '-'}</span>
-                </div>
+                <GuiasTrazabilidad ot={viewingService.contracts?.code} onGuia={setGuiaAbierta}>
+                  <div>
+                    <p className="mb-1 text-xs text-slate-500">Guías del servicio</p>
+                    {guias.length ? (
+                      <div className="flex flex-wrap gap-2">
+                        {guias.map((gr: string, idx: number) => (
+                          <button key={idx} type="button" onClick={() => setGuiaAbierta(gr.trim())} title="Ver los SKUs de la guía"
+                            className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-sm font-semibold text-blue-700 hover:bg-blue-100 hover:underline">
+                            {gr.trim()}
+                          </button>
+                        ))}
+                        {guias.length > 1 && (
+                          <button type="button" onClick={() => setGuiaAbierta(guias.join(','))}
+                            className="rounded px-2 py-1 text-sm font-bold text-[#002855] hover:underline">Ver todas</button>
+                        )}
+                      </div>
+                    ) : <span className="text-sm italic text-slate-400">Sin guías registradas</span>}
+                    {guias.length > 0 && <div className="mt-2"><ErpGuiasValidacion guias={guias} ot={viewingService.contracts?.code} /></div>}
+                    {p?.faltan && <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                      <Scale className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />No encontradas en la SALIDA de APT: {p.faltan}. Revise el número de guía o cargue la SALIDA que la contiene.</p>}
+                    {p && <p className="mt-1 text-[11px] text-slate-500">Peso APT calculado el {new Date(p.calculado_at).toLocaleString('es-PE')}</p>}
+                  </div>
+                </GuiasTrazabilidad>
               </div>
-            )}
 
-            {(viewingService.provider_name || viewingService.provider_ruc) && (
-              <div className="bg-amber-50 p-3 rounded border border-amber-200">
-                <span className="block text-xs font-semibold text-amber-700 uppercase tracking-wider mb-1">Tercerizado a Proveedor</span>
-                <p className="text-amber-900 font-medium text-sm">{viewingService.provider_name}</p>
-                <p className="text-amber-800 text-xs">RUC: {viewingService.provider_ruc}</p>
-              </div>
-            )}
-
-            <div className="flex justify-between items-center bg-emerald-50 p-3 rounded border border-emerald-200">
-              <span className="block text-sm font-semibold text-emerald-800">Monto del Servicio</span>
-              {isEditingAmount ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-emerald-700 font-bold">S/</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="w-24 px-2 py-1 border border-emerald-300 rounded text-right font-bold text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-500"
-                    value={editAmountValue}
-                    onChange={(e) => setEditAmountValue(e.target.value)}
-                    autoFocus
-                  />
-                  <button 
-                    onClick={handleSaveAmount}
-                    disabled={isSavingAmount}
-                    className="p-1.5 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition-colors disabled:opacity-50"
-                    title="Guardar"
-                  >
-                    {isSavingAmount ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  </button>
-                  <button 
-                    onClick={() => setIsEditingAmount(false)}
-                    className="p-1.5 bg-white text-slate-500 rounded border border-slate-300 hover:bg-slate-50 transition-colors"
-                    title="Cancelar"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3">
-                  <span className={`font-bold text-lg ${viewingService.status === 'ANULADO' ? 'text-slate-400 line-through' : 'text-emerald-700'}`}>S/ {Number(viewingService.amount_pen).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
-                  {canEdit && viewingService.status !== 'ANULADO' && viewingService.dispatch_id && !OPEN_ROUTE.includes(registryContext[viewingService.id]?.operation_state || 'PROGRAMADO') &&
-                    <a href={`/despacho/documentos/economico?despacho=${viewingService.dispatch_id}`} className="px-2 py-1 text-xs font-medium text-[#002855] underline">Corregir en Costos por ruta</a>}
-                  <a href={`/despacho/control-presupuestal/movimientos?ot=${viewingService.contract_id}&q=${encodeURIComponent(registryContext[viewingService.id]?.dispatch_number || viewingService.id)}`}
-                    className="px-2 py-1 text-xs font-medium text-[#002855] underline">Ver en Control presupuestal</a>
-                  {canEdit && viewingService.status !== 'ANULADO' && (!viewingService.dispatch_id || OPEN_ROUTE.includes(registryContext[viewingService.id]?.operation_state || 'PROGRAMADO')) && <button 
-                    onClick={() => {
-                      setEditAmountValue(viewingService.amount_pen.toString());
-                      setIsEditingAmount(true);
-                    }}
-                    className="px-2 py-1 text-xs font-medium bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 transition-colors"
-                  >
-                    Editar
-                  </button>}
-                </div>
-              )}
+              <SituacionContractualErp ot={viewingService.contracts?.code} />
             </div>
 
-            {viewingService.status === 'ANULADO' ? (
-              <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            {anulado ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
                 <span className="font-semibold">Anulado.</span> {viewingService.void_reason || ''} El monto volvió a la partida.
               </div>
             ) : canEdit && !viewingService.dispatch_id && (
-              <div className="rounded border border-slate-200 p-3">
+              <div className="rounded-lg border border-slate-200 p-3">
                 <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Anular gasto (devuelve el monto a la partida)</span>
                 {!canVoidDirect && (
                   <div className="mb-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
@@ -1297,17 +1269,9 @@ export default function ContractServicesPage() {
                 </div>
               </div>
             )}
-
-            <div className="flex justify-end pt-4 border-t border-slate-100">
-              <button
-                onClick={() => { setViewingService(null); setIsEditingAmount(false); setVoidReason(''); setAuthPassword(''); }}
-                className="px-4 py-2 bg-[#002855] text-white rounded-lg font-medium hover:bg-[#001d3d] transition-colors"
-              >
-                Cerrar
-              </button>
-            </div>
           </div>
-        )}
+          )
+        })()}
       </Modal>
 
       <GuiaDetalleModal key={guiaAbierta || 'none'} guias={guiaAbierta} onClose={() => setGuiaAbierta(null)} />
