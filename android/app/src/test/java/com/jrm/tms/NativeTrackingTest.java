@@ -126,5 +126,22 @@ public class NativeTrackingTest {
         new TrackingConfig(DISPATCH, DRIVER, "https://example.supabase.co", "anon-key", TOKEN, System.currentTimeMillis()).save(context);
         new BootReceiver().onReceive(context, new Intent(Intent.ACTION_SCREEN_ON));
         assertNull(Shadows.shadowOf(app).getNextStartedService());
+        // Alarma vigía: revive el servicio de una ruta en curso
+        new BootReceiver().onReceive(context, new Intent(RouteTrackingService.ACTION_WATCHDOG));
+        assertNotNull(Shadows.shadowOf(app).getNextStartedService());
+        TrackingConfig.clearRoute(context);
+        new BootReceiver().onReceive(context, new Intent(RouteTrackingService.ACTION_WATCHDOG));
+        assertNull(Shadows.shadowOf(app).getNextStartedService());
+    }
+
+    @Test public void signalProblemNamesTheCauseOrNothing() {
+        long stale = RouteTrackingService.STALE_MS + 1;
+        assertNull(RouteTrackingService.problem(true, 1000, true, 0, stale, false));
+        assertNull(RouteTrackingService.problem(true, 1000, true, 5, 1000, false));
+        assertTrue(RouteTrackingService.problem(false, 1000, true, 0, 0, false).startsWith("Ubicación apagada"));
+        assertTrue(RouteTrackingService.problem(true, stale, true, 0, 0, false).startsWith("Sin señal GPS"));
+        assertTrue(RouteTrackingService.problem(true, 1000, false, 26, stale, false).contains("26 punto(s)"));
+        assertTrue(RouteTrackingService.problem(true, 1000, true, 0, 0, true).startsWith("Abre la app"));
+        assertTrue(RouteTrackingService.problem(true, 1000, true, 26, stale, false).startsWith("26 punto(s) GPS sin enviar"));
     }
 }
