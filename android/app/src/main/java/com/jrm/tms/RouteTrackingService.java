@@ -1,6 +1,7 @@
 package com.jrm.tms;
 
 import android.Manifest;
+import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -19,11 +20,15 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.os.BatteryManager;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.os.SystemClock;
+import android.provider.Settings;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.location.LocationManagerCompat;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
@@ -44,6 +49,14 @@ public class RouteTrackingService extends Service implements LocationListener {
     private static final String CHANNEL_ID = "jrm_route_tracking";
     private static final long SYNC_SECONDS = 20;
     private static final long HEARTBEAT_MS = 60000;
+    static final String ACTION_WATCHDOG = "com.jrm.tms.ROUTE_WATCHDOG";
+    private static final String ALERT_CHANNEL_ID = "jrm_signal_alerts";
+    private static final int ALERT_ID = 3102;
+    private static final long WATCH_MS = 60000;
+    static final long STALE_MS = 2 * 60000;
+    private static final long REALERT_MS = 10 * 60000;
+    private static final long WATCHDOG_MS = 5 * 60000;
+    private static final long[] VIBRATION = { 0, 400, 200, 400, 200, 800 };
 
     private LocationManager locationManager;
     private FusedLocationProviderClient fused;
@@ -55,6 +68,10 @@ public class RouteTrackingService extends Service implements LocationListener {
     private volatile boolean unauthorized;
     private volatile long lastReport;
     private ScheduledExecutorService sync;
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private ConnectivityManager.NetworkCallback networkCallback;
+    private volatile long lastFixAt = System.currentTimeMillis();
+    private long lastWatch, problemSince, lastAlertAt, lastLocationRestart;
 
     @Override public void onCreate() {
         super.onCreate();
@@ -81,6 +98,8 @@ public class RouteTrackingService extends Service implements LocationListener {
         config = next;
         if (routeChanged || (fused == null && !platformListening)) startLocation();
         startSync();
+        watchNetwork();
+        scheduleWatchdog();
         return START_STICKY;
     }
 
@@ -102,6 +121,7 @@ public class RouteTrackingService extends Service implements LocationListener {
     // Ubicación de Google (GPS + Wi-Fi + antenas); sin Google Play Services, GPS y red del sistema
     private void startLocation() {
         stopLocation();
+        lastFixAt = System.currentTimeMillis();
         try {
             fused = LocationServices.getFusedLocationProviderClient(this);
             LocationRequest request = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000)
@@ -122,10 +142,11 @@ public class RouteTrackingService extends Service implements LocationListener {
     private void startPlatformLocation() {
         if (platformListening || locationManager == null) return;
         try {
-            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 1, this);
+            // Sin distancia mínima: detenido también llegan puntos, y el vigía no confunde "parado" con "sin GPS"
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000, 0, this);
             platformListening = true;
             if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 5000, 5, this);
+                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 5000, 0, this);
             }
         } catch (SecurityException | IllegalArgumentException error) {
             if (!platformListening) stopSelf();
@@ -144,6 +165,7 @@ public class RouteTrackingService extends Service implements LocationListener {
 
     @Override public void onLocationChanged(Location location) {
         lastLocation = location;
+        lastFixAt = System.currentTimeMillis();
         TrackingConfig current = config;
         // La cola solo guarda puntos precisos (≤ 30 m) para los kilómetros; la presencia usa cualquier ubicación
         if (current != null && current.hasRoute()) store.add(current.dispatchId, current.driverId, location);
@@ -157,6 +179,7 @@ public class RouteTrackingService extends Service implements LocationListener {
 
     private void syncOnce() {
         try {
+            if (System.currentTimeMillis() - lastWatch >= WATCH_MS) watch();
             TrackingConfig current = config;
             if (current == null || !current.canSync() || unauthorized) return;
             // Hasta 10 lotes seguidos para ponerse al día tras un corte; si no hay puntos, solo el aviso cada minuto
@@ -170,6 +193,86 @@ public class RouteTrackingService extends Service implements LocationListener {
                 if (pending <= NativeSync.BATCH) return;
             }
         } catch (RuntimeException ignored) { }
+    }
+
+    // Qué impide que la ruta llegue al servidor; null si todo va bien. El orden da la causa más útil para el conductor.
+    static String problem(boolean locationOn, long sinceFix, boolean online, int pending, long sinceReport, boolean blocked) {
+        if (!locationOn) return "Ubicación apagada: actívala para registrar tu ruta";
+        if (sinceFix > STALE_MS) return "Sin señal GPS: reintentando la ubicación";
+        if (!online) return "Sin internet: " + pending + " punto(s) GPS guardados se enviarán solos al volver la red";
+        if (blocked) return "Abre la app JRM para reanudar el envío de tu ruta";
+        if (pending > 0 && sinceReport > STALE_MS) return pending + " punto(s) GPS sin enviar: reintentando el envío";
+        return null;
+    }
+
+    // Vigía de cada minuto: avisa al conductor si la ruta deja de llegar y reintenta por su cuenta
+    private void watch() {
+        long now = System.currentTimeMillis();
+        lastWatch = now;
+        scheduleWatchdog();
+        boolean locationOn = locationManager == null || LocationManagerCompat.isLocationEnabled(locationManager);
+        long sinceFix = now - lastFixAt;
+        if (locationOn && sinceFix > STALE_MS && now - lastLocationRestart > STALE_MS) {
+            lastLocationRestart = now;
+            main.post(this::startLocation);
+        }
+        TrackingConfig current = config;
+        // Sin credencial nativa los puntos los sube la web: el servicio no puede juzgar si se están enviando
+        int pending = current != null && current.canSync() ? store.count() : 0;
+        String problem = problem(locationOn, sinceFix, !"none".equals(networkType()), pending, now - lastReport, unauthorized);
+        NotificationManager notifications = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (problem == null) {
+            if (problemSince != 0 && notifications != null) notifications.cancel(ALERT_ID);
+            problemSince = 0;
+            lastAlertAt = 0;
+            return;
+        }
+        if (problemSince == 0) problemSince = now;
+        // La ubicación apagada se avisa de inmediato; lo demás, si dura más de 2 minutos (los cortes breves no molestan)
+        if ((locationOn && now - problemSince < STALE_MS) || now - lastAlertAt < REALERT_MS || notifications == null) return;
+        lastAlertAt = now;
+        if (Build.VERSION.SDK_INT >= 26) {
+            NotificationChannel channel = new NotificationChannel(ALERT_CHANNEL_ID, "Alertas de señal JRM", NotificationManager.IMPORTANCE_HIGH);
+            channel.enableVibration(true);
+            channel.setVibrationPattern(VIBRATION);
+            notifications.createNotificationChannel(channel);
+        }
+        Intent open = locationOn ? new Intent(this, MainActivity.class) : new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        PendingIntent tap = PendingIntent.getActivity(this, 1, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        notifications.notify(ALERT_ID, new NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setContentTitle("JRM · Tu ruta no se está enviando")
+            .setContentText(problem)
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(problem))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVibrate(VIBRATION)
+            .setDefaults(NotificationCompat.DEFAULT_SOUND)
+            .setAutoCancel(true).setContentIntent(tap).build());
+    }
+
+    // Al volver la red se envía en el acto, sin esperar la siguiente vuelta
+    private void watchNetwork() {
+        if (networkCallback != null) return;
+        ConnectivityManager connectivity = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connectivity == null) return;
+        networkCallback = new ConnectivityManager.NetworkCallback() {
+            @Override public void onAvailable(Network network) {
+                ScheduledExecutorService current = sync;
+                if (current != null) try { current.execute(RouteTrackingService.this::syncOnce); } catch (RuntimeException ignored) { }
+            }
+        };
+        try { connectivity.registerDefaultNetworkCallback(networkCallback); } catch (RuntimeException error) { networkCallback = null; }
+    }
+
+    // Si Android cierra el servicio, esta alarma lo revive (BootReceiver); mientras vive, el vigía la pospone cada minuto
+    private void scheduleWatchdog() {
+        AlarmManager alarms = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        if (alarms == null) return;
+        Intent wake = new Intent(this, BootReceiver.class).setAction(ACTION_WATCHDOG);
+        PendingIntent pending = PendingIntent.getBroadcast(this, 0, wake, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        alarms.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + WATCHDOG_MS, pending);
     }
 
     JSONObject clientInfo(int pending) {
@@ -214,6 +317,13 @@ public class RouteTrackingService extends Service implements LocationListener {
 
     @Override public void onDestroy() {
         stopLocation();
+        if (networkCallback != null) {
+            ConnectivityManager connectivity = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            try { if (connectivity != null) connectivity.unregisterNetworkCallback(networkCallback); } catch (RuntimeException ignored) { }
+            networkCallback = null;
+        }
+        NotificationManager notifications = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (notifications != null) notifications.cancel(ALERT_ID);
         if (sync != null) sync.shutdownNow();
         sync = null;
         if (store != null) store.close();
