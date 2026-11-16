@@ -58,6 +58,12 @@ function useRpc<T>(fn: string, args: Record<string, unknown> | null) {
   return state.key === key ? state : { key, data: null, loading: !!key }
 }
 
+/** Datos del ERP de una OT para presentaciones propias (misma consulta y caché que ErpOtReferencia). */
+export function useErpOt(ot: string | null | undefined) {
+  const { data, loading } = useRpc<ErpRefOt>('erp_ref_ot', ot ? { p_ot: ot } : null)
+  return { data: isPendiente(data) ? null : data, pendiente: isPendiente(data), loading }
+}
+
 const ratio = (v: number | null | undefined) => v == null ? '—' : fmtPct(Number(v) * 100)
 const corte = (c?: Cortes) => c?.CONTRATOS ? `corte ERP ${fmtDateTime(c.CONTRATOS)}` : 'sin corte'
 
