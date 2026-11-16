@@ -47,7 +47,7 @@ try {
       // Una base caída no impide atender la otra
       try {
         const token = b.dueWithSession ? await login(b) : undefined
-        if (await rpc(b, 'erp_robot_due', {}, token)) runs[b.key] = (await rpc(b, 'erp_robot_start', {}, token || await login(b)))?.id ?? null
+        if (await rpc(b, 'erp_robot_due', {}, token)) runs[b.key] = (await rpc(b, 'erp_robot_start', { p_equipo: env.COMPUTERNAME || '' }, token || await login(b)))?.id ?? null
       }
       catch (e) { console.error('ERROR ' + (e instanceof Error ? e.message : e)) }
     }
