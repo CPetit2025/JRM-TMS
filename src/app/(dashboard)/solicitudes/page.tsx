@@ -48,6 +48,7 @@ interface TransportRequest {
   request_number: string
   requester_name: string
   department: string
+  created_by?: string | null
   attention_mode?: AttentionMode | null
   pickup_customer?: string | null
   pickup_contact?: string | null
@@ -168,6 +169,8 @@ export default function SolicitudesPage() {
   // quien puede asignarla (Contratos y OTs con escritura)
   const canCreateOt = role === 'admin' || role === 'administrador de contratos' || canWrite('ot') || canWrite('clientes')
   const canSetOtBudget = role === 'admin' || canWrite('ot')
+  // Quien solo crea solicitudes edita/cancela las suyas sin despacho ni atención (mismo criterio que can_edit_transport_request)
+  const canEditAnyRequest = role === 'admin' || canApprove || canWrite('despacho') || canWrite('ot')
   const [creatingOt, setCreatingOt] = useState(false)
   const supabase = useMemo(() => createClient(), [])
   
@@ -960,7 +963,10 @@ export default function SolicitudesPage() {
   const referenceSupplierPending = (r: TransportRequest) => Boolean(r.reference_type) && !r.reference_supplier_id && !(requiresSupplier(r) && r.supplier_id)
   const referencesWithoutSupplier = requests.filter(referenceSupplierPending)
   // «Completar» abre solo las que el guardado acepta: las asignadas o cerradas ya no se editan
-  const firstEditablePending = referencesWithoutSupplier.find(r => ['PENDIENTE DE APROBACIÓN','PENDIENTE','REPROGRAMADA','APROBADA','OBSERVADA'].includes(r.status))
+  const canEditRequest = (r: TransportRequest) => canEditAnyRequest || (!!userId && r.created_by === userId
+    && ['PENDIENTE DE APROBACIÓN','PENDIENTE','REPROGRAMADA','APROBADA','APROBADO','OBSERVADA'].includes(r.status)
+    && !requestSummaries[r.id]?.dispatch_numbers?.length)
+  const firstEditablePending = referencesWithoutSupplier.filter(canEditRequest).find(r => ['PENDIENTE DE APROBACIÓN','PENDIENTE','REPROGRAMADA','APROBADA','OBSERVADA'].includes(r.status))
 
   return (
     <div className="flex min-h-0 w-full flex-col gap-2.5 mx-auto lg:h-full">
@@ -1080,10 +1086,10 @@ export default function SolicitudesPage() {
                     { id: 'approve', label: 'Aprobar solicitud', icon: <Check className="h-4 w-4" />, onSelect: () => { void updateStatus(req.id, 'APROBADA') } },
                     { id: 'reject', label: 'Rechazar solicitud', icon: <X className="h-4 w-4" />, tone: 'danger' as const, onSelect: () => { void updateStatus(req.id, 'RECHAZADA') } },
                   ] : []),
-                  ...(editable && canWrite('solicitudes') && req.status !== 'ASIGNADA' ? [{ id: 'edit', label: 'Editar solicitud', icon: <Edit2 className="h-4 w-4" />, onSelect: () => { void openEditModal(req) } }] : []),
+                  ...(editable && canWrite('solicitudes') && req.status !== 'ASIGNADA' && canEditRequest(req) ? [{ id: 'edit', label: 'Editar solicitud', icon: <Edit2 className="h-4 w-4" />, onSelect: () => { void openEditModal(req) } }] : []),
                   ...(canWrite('solicitudes') ? [{ id: 'duplicate', label: 'Duplicar como nueva', icon: <Copy className="h-4 w-4" />, onSelect: () => { if (contracts.length === 0) fetchContracts(); void openEditModal(req, true) } }] : []),
                   ...(editable && canReschedule ? [{ id: 'reschedule', label: 'Reprogramar', icon: <CalendarClock className="h-4 w-4" />, onSelect: () => { setSelectedRequestId(req.id); setNewRescheduleDate(req.required_at ? limaInputParts(req.required_at).date : req.required_date.split('T')[0] || ''); setNewRescheduleTime(req.required_at ? limaInputParts(req.required_at).time : ''); setRescheduleZone(req.delivery_zone || 'LIMA'); void fetchLeadTimeSettings(); setIsRescheduleModalOpen(true) } }] : []),
-                  ...(editable ? [{ id: 'cancel', label: 'Cancelar servicio', icon: <Ban className="h-4 w-4" />, tone: 'danger' as const, onSelect: () => { void handleCancelRequest(req.id) } }] : []),
+                  ...(editable && canEditRequest(req) ? [{ id: 'cancel', label: 'Cancelar servicio', icon: <Ban className="h-4 w-4" />, tone: 'danger' as const, onSelect: () => { void handleCancelRequest(req.id) } }] : []),
                 ]
                 return <tr key={req.id} className="grid grid-cols-2 hover:bg-slate-50/70 lg:table-row">
                   <td className={cell}>{label('Solicitada')}<span className="whitespace-nowrap text-slate-700" title={fullDateTime(req.created_at)}>{cellDateTime(req.created_at)}</span></td>
