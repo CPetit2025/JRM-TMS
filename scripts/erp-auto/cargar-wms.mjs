@@ -20,7 +20,14 @@ const MIN = 60_000
 const browser = await chromium.launch({ channel: 'msedge', headless: true })
 const page = await browser.newPage()
 try {
-  await page.goto(`${url}/almacen/login`, { waitUntil: 'networkidle' }) // con domcontentloaded a veces llenaba antes de que React tomara el formulario
+  // Con el WMS lento (p. ej. durante la carga grande del ERP) networkidle a secas vencía a los 30 s: se reintenta hasta
+  // 3 veces con 90 s y se espera la red quieta sin fallar si no llega (con domcontentloaded se llenaba antes que React)
+  page.setDefaultNavigationTimeout(90_000)
+  for (let i = 1; ; i++) {
+    try { await page.goto(`${url}/almacen/login`, { waitUntil: 'load' }); break } catch (e) { if (i >= 3) throw e; await page.waitForTimeout(5000) }
+  }
+  await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {})
+  await page.locator('#login-username').waitFor({ state: 'visible', timeout: 90_000 })
   await page.locator('#login-username').fill(usuario)
   await page.locator('#login-password').fill(clave)
   await page.locator('button[type=submit]').click()
