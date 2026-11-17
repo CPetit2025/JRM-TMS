@@ -1,6 +1,8 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { Children, type ReactNode } from 'react'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 import { KIND_COLOR, KIND_LABEL, diasClass, fmtDias } from '@/lib/inventario/format'
 import type { InvKind } from '@/lib/inventario/types'
 
@@ -34,14 +36,19 @@ export function PeriodBar({ desde, hasta, onChange, children }: {
   )
 }
 
+// Cada hijo es una fila (o un Fragment con su fila de detalle): se paginan de a 25 / 50 / 100
 export function Table({ head, children, empty }: { head: ReactNode; children: ReactNode; empty?: boolean }) {
+  const pg = usePagination(Children.toArray(children), 'apt-inventario')
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] text-left text-xs">
-        <thead className="border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">{head}</thead>
-        <tbody className="divide-y divide-slate-100">{children}</tbody>
-      </table>
-      {empty && <p className="py-6 text-center text-sm text-slate-400">Sin registros</p>}
+    <div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-left text-xs">
+          <thead className="border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">{head}</thead>
+          <tbody className="divide-y divide-slate-100">{pg.pageRows}</tbody>
+        </table>
+        {empty && <p className="py-6 text-center text-sm text-slate-400">Sin registros</p>}
+      </div>
+      {pg.total > 25 && <TablePagination compact total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="filas" />}
     </div>
   )
 }

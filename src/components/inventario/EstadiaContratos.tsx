@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { Download, Search } from 'lucide-react'
 import { ChartCard, ErrorBlock, LoadingBlock } from '@/components/apt/ui'
 import { SortTh } from '@/components/apt/PphShared'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 import { useInvQuery } from '@/components/inventario/useInvQuery'
 import { invApi } from '@/lib/inventario/api'
 import { fmtN } from '@/lib/inventario/format'
@@ -14,7 +16,6 @@ import { exportAptXlsx } from '@/lib/apt/export'
 
 // Semáforo de la estadía (días): hasta 15 verde, hasta 30 amarillo, hasta 60 naranja, más rojo
 export const SEMAFORO_ESTADIA = { verde: 15, amarillo: 30, naranja: 60 }
-const PAGE = 300
 const nf = (d: number) => new Intl.NumberFormat('es-PE', { minimumFractionDigits: d, maximumFractionDigits: d })
 const tn = nf(2), d1 = nf(1)
 
@@ -43,7 +44,6 @@ export function EstadiaContratos() {
   const [q, setQ] = useState('')
   const [bodega, setBodega] = useState('')
   const [sort, setSort] = useState<{ k: Key; desc: boolean }>({ k: 'estadia', desc: true })
-  const [limit, setLimit] = useState(PAGE)
   const all = useMemo(() => r.data?.filas ?? [], [r.data])
   const bodegas = useMemo(() => [...new Set(all.map(f => f.bodega))].sort(), [all])
   const rows = useMemo(() => {
@@ -52,7 +52,8 @@ export function EstadiaContratos() {
     const dir = sort.desc ? -1 : 1
     return out.sort((a, b) => a[sort.k] === b[sort.k] ? b.stock_kg - a.stock_kg : a[sort.k] === null ? 1 : b[sort.k] === null ? -1 : dir * ((a[sort.k] as number) - (b[sort.k] as number)))
   }, [all, q, bodega, sort])
-  const onSort = (k: string) => { setSort(s => ({ k: k as Key, desc: s.k === k ? !s.desc : true })); setLimit(PAGE) }
+  const pg = usePagination(rows, 'apt-estadia-contratos')
+  const onSort = (k: string) => { setSort(s => ({ k: k as Key, desc: s.k === k ? !s.desc : true })); pg.setPage(1) }
   const totalKg = rows.reduce((t, f) => t + f.stock_kg, 0)
   const exportar = () => exportAptXlsx(`estadia-contratos-${r.data?.corte ?? ''}`, { Estadía: rows.map(f => ({
     Contrato: f.contrato ?? 'Sin contrato', Lote: f.contrato ? '' : f.lote ?? '', OT: f.ot ?? '', Cliente: f.cliente ?? '', Bodega: f.bodega,
@@ -66,10 +67,10 @@ export function EstadiaContratos() {
       <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <label className="text-xs font-semibold text-slate-600">Buscar
           <span className="mt-1 flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-2"><Search className="h-4 w-4 text-slate-400" />
-            <input value={q} onChange={e => { setQ(e.target.value); setLimit(PAGE) }} placeholder="Contrato, OT o cliente" className="w-48 text-sm outline-none" /></span>
+            <input value={q} onChange={e => { setQ(e.target.value); pg.setPage(1) }} placeholder="Contrato, OT o cliente" className="w-48 text-sm outline-none" /></span>
         </label>
         <label className="text-xs font-semibold text-slate-600">Bodega
-          <select value={bodega} onChange={e => { setBodega(e.target.value); setLimit(PAGE) }} className="mt-1 block min-h-10 max-w-64 rounded-lg border border-slate-300 px-2 text-sm">
+          <select value={bodega} onChange={e => { setBodega(e.target.value); pg.setPage(1) }} className="mt-1 block min-h-10 max-w-64 rounded-lg border border-slate-300 px-2 text-sm">
             <option value="">Todas</option>{bodegas.map(b => <option key={b} value={b}>{b}</option>)}
           </select>
         </label>
@@ -91,7 +92,7 @@ export function EstadiaContratos() {
                 <SortTh label="% > 60 días" k="pct_60" sort={sort.k} desc={sort.desc} onSort={onSort} title="Stock con más de 60 días ÷ stock total" />
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
-                {rows.slice(0, limit).map(f => <tr key={`${f.bodega}|${f.lote}`} className="hover:bg-slate-50">
+                {pg.pageRows.map(f => <tr key={`${f.bodega}|${f.lote}`} className="hover:bg-slate-50">
                   <td className={`${td} font-semibold text-slate-800`}>{f.contrato ?? <span className="font-normal text-slate-400" title={f.lote ? `Lote ${f.lote}` : 'Sin lote'}>Sin contrato</span>}</td>
                   <td className={td}>{f.ot ? <Link href={`/apt/contratos?ot=${encodeURIComponent(f.ot)}`} className="font-bold text-[#002855] underline">{f.ot}</Link> : <span className="text-slate-400">—</span>}</td>
                   <td className={td}><p className="max-w-64 truncate" title={f.cliente ?? ''}>{f.cliente ?? <span className="text-slate-400">Cliente no identificado</span>}</p></td>
@@ -105,7 +106,7 @@ export function EstadiaContratos() {
             </table>
             {!rows.length && <p className="py-6 text-center text-sm text-slate-400">Sin registros</p>}
           </div>
-          {rows.length > limit && <div className="mt-3 text-right"><button type="button" onClick={() => setLimit(l => l + PAGE)} className="min-h-9 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-[#002855]">Ver {fmtN(Math.min(PAGE, rows.length - limit))} más</button></div>}
+          {pg.total > 25 && <TablePagination compact total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" />}
         </ChartCard>
       )}
     </div>

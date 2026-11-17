@@ -1,5 +1,7 @@
 'use client'
 import { DataTable } from '@/components/ui/data-table'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
@@ -102,6 +104,8 @@ export default function TendenciasPage() {
   }, [rows, dataGrain])
 
   const sorted = useMemo(() => sortRows(rows, sort), [rows, sort])
+  const pg = usePagination(sorted, 'apt-tendencias')
+  const onSort = (s: SortState) => { setSort(s); pg.setPage(1) }
 
   const doExport = () => {
     exportAptXlsx(`APT_tendencias_${dataGrain}`, {
@@ -289,27 +293,27 @@ export default function TendenciasPage() {
           <DataTable className="w-full text-xs">
             <thead className="sticky top-0 z-10 bg-slate-50 text-slate-500 shadow-[0_1px_0_#e2e8f0]">
               <tr>
-                <SortTh k="periodo" sort={sort} onSort={setSort} right={false}>Periodo</SortTh>
+                <SortTh k="periodo" sort={sort} onSort={onSort} right={false}>Periodo</SortTh>
                 <th className="whitespace-nowrap px-3 py-2 text-left font-bold">Desde – Hasta</th>
-                <SortTh k="tn_in" sort={sort} onSort={setSort}>TN ingr.</SortTh>
-                <SortTh k="tn_out" sort={sort} onSort={setSort}>TN desp.</SortTh>
-                <SortTh k="neto" sort={sort} onSort={setSort}>Neto</SortTh>
-                <SortTh k="entradas" sort={sort} onSort={setSort} title="Filas de ENTRADA">Entradas</SortTh>
-                <SortTh k="salidas" sort={sort} onSort={setSort} title="Salidas asignadas a capas">Salidas</SortTh>
-                <SortTh k="lotes_ingresados" sort={sort} onSort={setSort}>NumRel ingr.</SortTh>
-                <SortTh k="lotes_despachados" sort={sort} onSort={setSort}>NumRel desp.</SortTh>
-                <SortTh k="tn_prom_entrada" sort={sort} onSort={setSort}>TN/entrada</SortTh>
-                <SortTh k="tn_prom_salida" sort={sort} onSort={setSort}>TN/salida</SortTh>
-                <SortTh k="dias_prom_despacho" sort={sort} onSort={setSort}>Días desp.</SortTh>
-                <SortTh k="tn_in_acum" sort={sort} onSort={setSort}>Ingr. acum.</SortTh>
-                <SortTh k="tn_out_acum" sort={sort} onSort={setSort}>Desp. acum.</SortTh>
-                <SortTh k="saldo_tn" sort={sort} onSort={setSort}>Saldo TN</SortTh>
-                <SortTh k="aging_pond" sort={sort} onSort={setSort}>Aging pond.</SortTh>
+                <SortTh k="tn_in" sort={sort} onSort={onSort}>TN ingr.</SortTh>
+                <SortTh k="tn_out" sort={sort} onSort={onSort}>TN desp.</SortTh>
+                <SortTh k="neto" sort={sort} onSort={onSort}>Neto</SortTh>
+                <SortTh k="entradas" sort={sort} onSort={onSort} title="Filas de ENTRADA">Entradas</SortTh>
+                <SortTh k="salidas" sort={sort} onSort={onSort} title="Salidas asignadas a capas">Salidas</SortTh>
+                <SortTh k="lotes_ingresados" sort={sort} onSort={onSort}>NumRel ingr.</SortTh>
+                <SortTh k="lotes_despachados" sort={sort} onSort={onSort}>NumRel desp.</SortTh>
+                <SortTh k="tn_prom_entrada" sort={sort} onSort={onSort}>TN/entrada</SortTh>
+                <SortTh k="tn_prom_salida" sort={sort} onSort={onSort}>TN/salida</SortTh>
+                <SortTh k="dias_prom_despacho" sort={sort} onSort={onSort}>Días desp.</SortTh>
+                <SortTh k="tn_in_acum" sort={sort} onSort={onSort}>Ingr. acum.</SortTh>
+                <SortTh k="tn_out_acum" sort={sort} onSort={onSort}>Desp. acum.</SortTh>
+                <SortTh k="saldo_tn" sort={sort} onSort={onSort}>Saldo TN</SortTh>
+                <SortTh k="aging_pond" sort={sort} onSort={onSort}>Aging pond.</SortTh>
                 <th className="px-2 py-2"><span className="sr-only">Ver capas</span></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {sorted.map(r => (
+              {pg.pageRows.map(r => (
                 <tr key={r.periodo} className="hover:bg-slate-50">
                   <td className="whitespace-nowrap px-3 py-1.5 font-semibold text-slate-800">{periodLabel(dataGrain, r.periodo, true)}</td>
                   <td className="whitespace-nowrap px-3 py-1.5 text-slate-500">{dataGrain === 'dia' ? fmtDate(r.periodo) : `${fmtDate(r.periodo)} – ${fmtDate(r.hasta)}`}</td>
@@ -340,6 +344,7 @@ export default function TendenciasPage() {
             </tbody>
           </DataTable>
         </div>
+        {pg.total > 25 && <TablePagination compact total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" />}
       </ChartCard>
     </div>
   )

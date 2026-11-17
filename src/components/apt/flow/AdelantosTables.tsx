@@ -1,5 +1,7 @@
 'use client'
 import { DataTable } from '@/components/ui/data-table'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 
 import { useMemo, useState } from 'react'
 import { ArrowRight, Search } from 'lucide-react'
@@ -17,7 +19,6 @@ type Cambio = FlowAdelantos['cambios'][number]
 type Consumo = FlowAdelantos['consumos'][number]
 type Contrato = FlowAdelantos['contratos'][number]
 
-const PAGE = 100
 const norm = (s: unknown) => String(s ?? '').toLowerCase()
 const matches = (q: string, ...vals: unknown[]) => !q || vals.some(v => norm(v).includes(q))
 
@@ -28,17 +29,6 @@ function SearchBox({ value, onChange, placeholder }: { value: string; onChange: 
       <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
         className="w-56 rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs outline-none focus:border-[#002855] focus:ring-2 focus:ring-[#002855]/10" />
     </label>
-  )
-}
-
-function MoreRows({ shown, total, onMore }: { shown: number; total: number; onMore: () => void }) {
-  if (shown >= total) return null
-  return (
-    <div className="border-t border-slate-100 p-2 text-center">
-      <button type="button" onClick={onMore} className="text-xs font-bold text-[#002855] hover:underline">
-        Ver {fmtInt(Math.min(PAGE, total - shown))} más ({fmtInt(shown)} de {fmtInt(total)})
-      </button>
-    </div>
   )
 }
 
@@ -60,13 +50,14 @@ export function CambiosTable({ rows }: { rows: Cambio[] }) {
   const [clase, setClase] = useState<Clase>('TODAS')
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<SortState>({ key: 'fecha', desc: true })
-  const [limit, setLimit] = useState(PAGE)
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase()
     return sortRows(rows.filter(r => (clase === 'TODAS' || r.clase === clase)
       && matches(s, r.lote, r.lote_destino, r.producto, r.glosa, r.cliente, r.documento)), sort)
   }, [rows, clase, q, sort])
+  const pg = usePagination(filtered, 'apt-adelantos-cambios')
+  const onSort = (s: SortState) => { setSort(s); pg.setPage(1) }
   const tot = filtered.reduce((acc, r) => acc + r.tn, 0)
   const ini = filtered.reduce((acc, r) => acc + (r.inicial_tn || 0), 0)
 
@@ -82,10 +73,10 @@ export function CambiosTable({ rows }: { rows: Cambio[] }) {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
         <div className="flex flex-wrap items-center gap-2">
-          <Segmented<Clase> label="Clase de cambio" value={clase} onChange={v => { setClase(v); setLimit(PAGE) }} options={[
+          <Segmented<Clase> label="Clase de cambio" value={clase} onChange={v => { setClase(v); pg.setPage(1) }} options={[
             { value: 'TODAS', label: 'Todas' }, { value: 'ASIGNACION', label: 'Asignación' }, { value: 'REASIGNACION', label: 'Reasignación' },
           ]} />
-          <SearchBox value={q} onChange={v => { setQ(v); setLimit(PAGE) }} placeholder="Lote, producto, cliente, documento…" />
+          <SearchBox value={q} onChange={v => { setQ(v); pg.setPage(1) }} placeholder="Lote, producto, cliente, documento…" />
         </div>
         <div className="flex items-center gap-3">
           <span className="text-[11px] tabular-nums text-slate-500">{fmtInt(filtered.length)} filas · <b className="text-slate-700">{fmtTn(tot)} TN</b> · {fmtTn(ini)} TN de stock previo</span>
@@ -96,19 +87,19 @@ export function CambiosTable({ rows }: { rows: Cambio[] }) {
         <DataTable className="w-full min-w-[1100px] text-xs">
           <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
             <tr>
-              <SortTh k="fecha" sort={sort} onSort={setSort} right={false}>Fecha</SortTh>
-              <SortTh k="clase" sort={sort} onSort={setSort} right={false}>Clase</SortTh>
+              <SortTh k="fecha" sort={sort} onSort={onSort} right={false}>Fecha</SortTh>
+              <SortTh k="clase" sort={sort} onSort={onSort} right={false}>Clase</SortTh>
               <th className="px-3 py-2 text-left font-bold">Movimiento</th>
-              <SortTh k="lote" sort={sort} onSort={setSort} right={false}>Lote origen → destino</SortTh>
-              <SortTh k="producto" sort={sort} onSort={setSort} right={false}>Producto</SortTh>
-              <SortTh k="cliente" sort={sort} onSort={setSort} right={false}>Cliente</SortTh>
-              <SortTh k="tn" sort={sort} onSort={setSort}>TN</SortTh>
-              <SortTh k="dias_espera" sort={sort} onSort={setSort} title="Días desde la producción del adelanto hasta que se le asignó el contrato">Días espera</SortTh>
-              <SortTh k="inicial_tn" sort={sort} onSort={setSort} title="Parte que venía del stock previo (sin fecha de producción)">Stock previo</SortTh>
+              <SortTh k="lote" sort={sort} onSort={onSort} right={false}>Lote origen → destino</SortTh>
+              <SortTh k="producto" sort={sort} onSort={onSort} right={false}>Producto</SortTh>
+              <SortTh k="cliente" sort={sort} onSort={onSort} right={false}>Cliente</SortTh>
+              <SortTh k="tn" sort={sort} onSort={onSort}>TN</SortTh>
+              <SortTh k="dias_espera" sort={sort} onSort={onSort} title="Días desde la producción del adelanto hasta que se le asignó el contrato">Días espera</SortTh>
+              <SortTh k="inicial_tn" sort={sort} onSort={onSort} title="Parte que venía del stock previo (sin fecha de producción)">Stock previo</SortTh>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filtered.slice(0, limit).map((r, i) => (
+            {pg.pageRows.map((r, i) => (
               <tr key={i} className="hover:bg-slate-50">
                 <td className="whitespace-nowrap px-3 py-2 tabular-nums text-slate-600">{fmtDate(r.fecha)}</td>
                 <td className="px-3 py-2"><ClaseBadge clase={r.clase} /></td>
@@ -137,7 +128,7 @@ export function CambiosTable({ rows }: { rows: Cambio[] }) {
           </tbody>
         </DataTable>
       </div>
-      <MoreRows shown={Math.min(limit, filtered.length)} total={filtered.length} onMore={() => setLimit(l => l + PAGE)} />
+      {pg.total > 25 && <TablePagination compact total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" />}
     </div>
   )
 }
@@ -145,11 +136,12 @@ export function CambiosTable({ rows }: { rows: Cambio[] }) {
 export function ContratosTable({ rows }: { rows: Contrato[] }) {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<SortState>({ key: 'tn', desc: true })
-  const [limit, setLimit] = useState(PAGE)
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase()
     return sortRows(rows.filter(r => matches(s, r.contrato, r.cliente)), sort)
   }, [rows, q, sort])
+  const pg = usePagination(filtered, 'apt-adelantos-contratos')
+  const onSort = (s: SortState) => { setSort(s); pg.setPage(1) }
   const doExport = () => exportAptXlsx('APT_flujo_contratos_asignados', {
     Contratos: filtered.map(r => ({
       Contrato: r.contrato, Cliente: r.cliente, Clase: r.clase === 'ASIGNACION' ? 'Asignación' : 'Reasignación', TN: r.tn,
@@ -159,24 +151,24 @@ export function ContratosTable({ rows }: { rows: Contrato[] }) {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
-        <SearchBox value={q} onChange={v => { setQ(v); setLimit(PAGE) }} placeholder="Contrato o cliente…" />
+        <SearchBox value={q} onChange={v => { setQ(v); pg.setPage(1) }} placeholder="Contrato o cliente…" />
         <ExportButton onClick={doExport} disabled={!filtered.length} />
       </div>
       <div className="max-h-[420px] overflow-auto">
         <DataTable className="w-full min-w-[640px] text-xs">
           <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
             <tr>
-              <SortTh k="contrato" sort={sort} onSort={setSort} right={false}>Contrato</SortTh>
-              <SortTh k="cliente" sort={sort} onSort={setSort} right={false}>Cliente</SortTh>
-              <SortTh k="clase" sort={sort} onSort={setSort} right={false}>Clase</SortTh>
-              <SortTh k="tn" sort={sort} onSort={setSort}>TN</SortTh>
-              <SortTh k="lotes_origen" sort={sort} onSort={setSort} title="Lotes de adelanto u OT de los que vino el material">Lotes origen</SortTh>
-              <SortTh k="primera" sort={sort} onSort={setSort}>Primera</SortTh>
-              <SortTh k="ultima" sort={sort} onSort={setSort}>Última</SortTh>
+              <SortTh k="contrato" sort={sort} onSort={onSort} right={false}>Contrato</SortTh>
+              <SortTh k="cliente" sort={sort} onSort={onSort} right={false}>Cliente</SortTh>
+              <SortTh k="clase" sort={sort} onSort={onSort} right={false}>Clase</SortTh>
+              <SortTh k="tn" sort={sort} onSort={onSort}>TN</SortTh>
+              <SortTh k="lotes_origen" sort={sort} onSort={onSort} title="Lotes de adelanto u OT de los que vino el material">Lotes origen</SortTh>
+              <SortTh k="primera" sort={sort} onSort={onSort}>Primera</SortTh>
+              <SortTh k="ultima" sort={sort} onSort={onSort}>Última</SortTh>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filtered.slice(0, limit).map(r => (
+            {pg.pageRows.map(r => (
               <tr key={`${r.contrato}-${r.clase}`} className="hover:bg-slate-50">
                 <td className="whitespace-nowrap px-3 py-2"><TraceLink q={r.contrato} /></td>
                 <td className="max-w-[220px] truncate px-3 py-2 text-slate-600" title={r.cliente || ''}>{short(r.cliente, 42)}</td>
@@ -191,7 +183,7 @@ export function ContratosTable({ rows }: { rows: Contrato[] }) {
           </tbody>
         </DataTable>
       </div>
-      <MoreRows shown={Math.min(limit, filtered.length)} total={filtered.length} onMore={() => setLimit(l => l + PAGE)} />
+      {pg.total > 25 && <TablePagination compact total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" />}
     </div>
   )
 }
@@ -199,11 +191,12 @@ export function ContratosTable({ rows }: { rows: Contrato[] }) {
 export function ConsumosTable({ rows }: { rows: Consumo[] }) {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<SortState>({ key: 'fecha', desc: true })
-  const [limit, setLimit] = useState(PAGE)
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase()
     return sortRows(rows.filter(r => matches(s, r.lote, r.producto, r.glosa, r.numrel, r.docrel, r.almacen, r.documento)), sort)
   }, [rows, q, sort])
+  const pg = usePagination(filtered, 'apt-adelantos-consumos')
+  const onSort = (s: SortState) => { setSort(s); pg.setPage(1) }
   const tot = filtered.reduce((acc, r) => acc + r.tn, 0)
   const doExport = () => exportAptXlsx('APT_flujo_consumos_internos', {
     Consumos: filtered.map(r => ({
@@ -214,7 +207,7 @@ export function ConsumosTable({ rows }: { rows: Consumo[] }) {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
-        <SearchBox value={q} onChange={v => { setQ(v); setLimit(PAGE) }} placeholder="Lote, OP/OT, DocRel, producto…" />
+        <SearchBox value={q} onChange={v => { setQ(v); pg.setPage(1) }} placeholder="Lote, OP/OT, DocRel, producto…" />
         <div className="flex items-center gap-3">
           <span className="text-[11px] tabular-nums text-slate-500">{fmtInt(filtered.length)} filas · <b className="text-slate-700">{fmtTn(tot)} TN</b></span>
           <ExportButton onClick={doExport} disabled={!filtered.length} />
@@ -224,17 +217,17 @@ export function ConsumosTable({ rows }: { rows: Consumo[] }) {
         <DataTable className="w-full min-w-[900px] text-xs">
           <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
             <tr>
-              <SortTh k="fecha" sort={sort} onSort={setSort} right={false}>Fecha</SortTh>
-              <SortTh k="almacen" sort={sort} onSort={setSort} right={false}>Almacén</SortTh>
-              <SortTh k="lote" sort={sort} onSort={setSort} right={false}>Lote</SortTh>
-              <SortTh k="numrel" sort={sort} onSort={setSort} right={false} title="OP u OT que consumió el material (NumRel)">OP / OT</SortTh>
-              <SortTh k="docrel" sort={sort} onSort={setSort} right={false}>DocRel</SortTh>
-              <SortTh k="producto" sort={sort} onSort={setSort} right={false}>Producto</SortTh>
-              <SortTh k="tn" sort={sort} onSort={setSort}>TN</SortTh>
+              <SortTh k="fecha" sort={sort} onSort={onSort} right={false}>Fecha</SortTh>
+              <SortTh k="almacen" sort={sort} onSort={onSort} right={false}>Almacén</SortTh>
+              <SortTh k="lote" sort={sort} onSort={onSort} right={false}>Lote</SortTh>
+              <SortTh k="numrel" sort={sort} onSort={onSort} right={false} title="OP u OT que consumió el material (NumRel)">OP / OT</SortTh>
+              <SortTh k="docrel" sort={sort} onSort={onSort} right={false}>DocRel</SortTh>
+              <SortTh k="producto" sort={sort} onSort={onSort} right={false}>Producto</SortTh>
+              <SortTh k="tn" sort={sort} onSort={onSort}>TN</SortTh>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filtered.slice(0, limit).map((r, i) => (
+            {pg.pageRows.map((r, i) => (
               <tr key={i} className="hover:bg-slate-50">
                 <td className="whitespace-nowrap px-3 py-2 tabular-nums text-slate-600">{fmtDate(r.fecha)}</td>
                 <td className="px-3 py-2"><AlmacenBadge almacen={r.almacen} short /></td>
@@ -252,7 +245,7 @@ export function ConsumosTable({ rows }: { rows: Consumo[] }) {
           </tbody>
         </DataTable>
       </div>
-      <MoreRows shown={Math.min(limit, filtered.length)} total={filtered.length} onMore={() => setLimit(l => l + PAGE)} />
+      {pg.total > 25 && <TablePagination compact total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" />}
     </div>
   )
 }

@@ -1,5 +1,7 @@
 'use client'
 import { DataTable } from '@/components/ui/data-table'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -127,6 +129,7 @@ export default function CalidadPage() {
   const { data, error, loading, retry } = useAptQuery<AptQuality>(fetcher)
   const [raw, setRaw] = useState<AptQuality['excluidas'][number] | null>(null)
   const closeRaw = useCallback(() => setRaw(null), [])
+  const pgExcl = usePagination(data?.excluidas ?? [], 'apt-calidad-excluidas', (e, c) => [e.tipo, e.fila, e.archivo, e.motivo, null][c])
 
   const clases = useMemo(() => (data?.salidas_por_clase ?? []).map(c => ({
     ...c, label: CLASE_SALIDA_LABEL[c.clase] || c.clase, asignado: Math.max(c.tn - c.tn_sin_entrada, 0),
@@ -337,7 +340,7 @@ export default function CalidadPage() {
       <ChartCard title="Filas excluidas" subtitle={`${fmtInt(data.excluidas.length)} filas${data.excluidas.length >= 200 ? ' (se muestran las primeras 200)' : ''} · no entran al cálculo`} bodyClassName="p-0">
         {data.excluidas.length ? (
           <div className="max-h-[420px] overflow-auto">
-            <DataTable className="w-full text-xs">
+            <DataTable className="w-full text-xs" onSortChange={pgExcl.onSortChange}>
               <thead className="sticky top-0 bg-slate-50 text-slate-500 shadow-[0_1px_0_#e2e8f0]">
                 <tr>
                   <th className="px-3 py-2 text-left font-bold">Hoja</th>
@@ -348,7 +351,7 @@ export default function CalidadPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {data.excluidas.map(e => (
+                {pgExcl.pageRows.map(e => (
                   <tr key={`${e.tipo}-${e.archivo}-${e.fila}`} className="hover:bg-slate-50">
                     <td className="px-3 py-1.5 font-semibold">{e.tipo}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{fmtInt(e.fila)}</td>
@@ -366,6 +369,7 @@ export default function CalidadPage() {
             </DataTable>
           </div>
         ) : <p className="p-4 text-sm text-slate-500">No hay filas excluidas.</p>}
+        {pgExcl.total > 25 && <TablePagination compact total={pgExcl.total} page={pgExcl.page} pageSize={pgExcl.pageSize} onPageChange={pgExcl.setPage} onPageSizeChange={pgExcl.setPageSize} itemLabel="registros" />}
       </ChartCard>
 
       <CalidadFlujo />

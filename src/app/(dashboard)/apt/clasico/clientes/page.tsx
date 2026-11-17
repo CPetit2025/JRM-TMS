@@ -1,5 +1,7 @@
 'use client'
 import { DataTable } from '@/components/ui/data-table'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 
 import { Fragment, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -130,11 +132,13 @@ export default function AptClientesPage() {
   const det = q.data?.[0]
   const alert = q.data?.[1]?.settings.alert_days ?? 60
   const rows = useMemo(() => sortRows(det?.rows || [], sort, desc), [det, sort, desc])
+  const pg = usePagination(rows, 'apt-clientes')
   const conSaldo = rows.filter(r => r.kg_saldo > 0.5)
   const maxSaldo = Math.max(0, ...rows.map(r => Number(r.tn_saldo) || 0))
   const onSort = (k: string) => {
     if (k === sort) setDesc(d => !d)
     else { setSort(k as SortKey); setDesc(k !== 'clave') }
+    pg.setPage(1)
   }
 
   const exportar = async () => {
@@ -171,7 +175,7 @@ export default function AptClientesPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Segmented value={vista} options={VISTAS} onChange={v => { setVista(v); setSort('tn_saldo'); setDesc(true) }} label="Ver" />
+        <Segmented value={vista} options={VISTAS} onChange={v => { setVista(v); setSort('tn_saldo'); setDesc(true); pg.setPage(1) }} label="Ver" />
         <ExportButton onClick={exportar} busy={exporting} disabled={!rows.length} />
       </div>
 
@@ -235,7 +239,7 @@ export default function AptClientesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map(r => <Fila key={`${vista}|${r.clave}`} r={r} vista={vista} depth={0} filters={filters} alert={alert} maxSaldo={maxSaldo} />)}
+                  {pg.pageRows.map(r => <Fila key={`${vista}|${r.clave}`} r={r} vista={vista} depth={0} filters={filters} alert={alert} maxSaldo={maxSaldo} />)}
                 </tbody>
                 <tfoot>
                   <tr className="sticky bottom-0 border-t-2 border-slate-300 bg-slate-100 font-bold">
@@ -252,6 +256,7 @@ export default function AptClientesPage() {
                 </tfoot>
               </DataTable>
             </div>
+            {pg.total > 25 && <TablePagination compact total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" />}
           </ChartCard>
         </div>
       )}

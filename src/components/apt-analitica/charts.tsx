@@ -6,6 +6,8 @@ import { Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, Line, LineChart,
 import { Table2, BarChart3 } from 'lucide-react'
 import type { DayPoint } from '@/lib/apt-analitica/engine'
 import type { Bucket, WeightedPoint } from '@/lib/apt-analitica/stats'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 import { COLORS, ChartTip, Empty, fmtDate, fmtNum, fmtPct } from './ui'
 
 // Gráficos de la analítica: una sola unidad por gráfico, un solo eje de valores, hover con tooltip y vista de tabla.
@@ -17,6 +19,7 @@ const compact = (v: number) => Math.abs(v) >= 1e6 ? `${fmtNum(v / 1e6, 1)} M` : 
 /** Marco con alternancia gráfico / tabla (la tabla es la alternativa accesible y exportable) */
 export function ChartFrame({ chart, table, height = 260, empty }: { chart: ReactNode; table: { head: string[]; rows: Array<Array<string | number>> }; height?: number; empty?: string | null }) {
   const [asTable, setAsTable] = useState(false)
+  const pg = usePagination(table.rows, 'apt-analitica-grafico-tabla')
   if (empty) return <Empty title={empty} />
   return (
     <div>
@@ -27,10 +30,10 @@ export function ChartFrame({ chart, table, height = 260, empty }: { chart: React
         </button>
       </div>
       {asTable
-        ? <div className="max-h-80 overflow-auto rounded border border-slate-200"><table className="w-full text-xs">
+        ? <><div className="max-h-80 overflow-auto rounded border border-slate-200"><table className="w-full text-xs">
             <thead className="sticky top-0 bg-slate-50"><tr>{table.head.map(h => <th key={h} className="px-2 py-1 text-left font-semibold text-slate-700">{h}</th>)}</tr></thead>
-            <tbody>{table.rows.map((r, i) => <tr key={i} className="border-t border-slate-100">{r.map((c, j) => <td key={j} className={`px-2 py-1 ${typeof c === 'number' ? 'text-right tabular-nums' : ''}`}>{typeof c === 'number' ? fmtNum(c) : c}</td>)}</tr>)}</tbody>
-          </table></div>
+            <tbody>{pg.pageRows.map((r, i) => <tr key={i} className="border-t border-slate-100">{r.map((c, j) => <td key={j} className={`px-2 py-1 ${typeof c === 'number' ? 'text-right tabular-nums' : ''}`}>{typeof c === 'number' ? fmtNum(c) : c}</td>)}</tr>)}</tbody>
+          </table></div>{pg.total > 25 && <TablePagination compact total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="filas" />}</>
         : <div style={{ height }} className="w-full min-w-0">{chart}</div>}
     </div>
   )

@@ -166,6 +166,7 @@ function ReviewModal({ imp, onClose }: { imp: ImportRow; onClose: () => void }) 
   const { base, reload, setRawRow } = useAnalitica()
   const supabase = useMemo(() => createClient(), [])
   const rows = base.all.filter(m => m.importId === imp.id && m.status === 'REVISION')
+  const pgRev = usePagination(rows, 'apt-analitica-revision-filas')
   const [sel, setSel] = useState<number[]>([])
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -185,14 +186,14 @@ function ReviewModal({ imp, onClose }: { imp: ImportRow; onClose: () => void }) 
       <button type="button" disabled={busy || note.trim().length < 5} onClick={() => void act('ACEPTAR', sel.length ? sel : null)} className="min-h-10 rounded-lg bg-[#002855] px-3 text-sm font-semibold text-white disabled:opacity-50">
         Aceptar {sel.length ? `${sel.length} seleccionadas` : 'todas'}</button></div>}>
     <p className="mb-2 text-xs text-slate-600">Aceptar: la fila entra a los cálculos. Descartar: queda guardada con su motivo y fuera de los cálculos. Nada se elimina.</p>
-    {rows.length === 0 ? <Empty title="No hay filas en revisión cargadas en el análisis" /> : <div className="max-h-[28rem] overflow-auto rounded border border-slate-200"><table className="w-full text-xs">
+    {rows.length === 0 ? <Empty title="No hay filas en revisión cargadas en el análisis" /> : <><div className="max-h-[28rem] overflow-auto rounded border border-slate-200"><table className="w-full text-xs">
       <thead className="sticky top-0 bg-slate-50"><tr className="text-left"><th className="px-2 py-1"><input type="checkbox" aria-label="Seleccionar todas" checked={sel.length === rows.length} onChange={e => setSel(e.target.checked ? rows.map(r => r.id) : [])} /></th>
         <th>Fila</th><th>Fecha</th><th>Tipo · número</th><th>Producto</th><th className="text-right">Cantidad</th><th>Motivo</th></tr></thead>
-      <tbody>{rows.slice(0, 1000).map(m => <tr key={m.id} className="border-t border-slate-100">
+      <tbody>{pgRev.pageRows.map(m => <tr key={m.id} className="border-t border-slate-100">
         <td className="px-2"><input type="checkbox" aria-label={`Seleccionar fila ${m.row}`} checked={sel.includes(m.id)} onChange={() => setSel(s => s.includes(m.id) ? s.filter(x => x !== m.id) : [...s, m.id])} /></td>
         <td><button type="button" className="text-[#002855] underline" onClick={() => setRawRow(m.id)}>{m.sheet} · {m.row}</button></td><td>{fmtDate(m.fecha)}</td><td>{m.tipo} {m.numero}</td><td>{m.producto}</td>
         <td className="text-right tabular-nums">{fmtNum(m.cantidad)} {m.unidad}</td><td className="text-amber-800">{m.reasons.join(' · ')}</td></tr>)}</tbody>
-    </table></div>}
+    </table></div>{pgRev.total > 25 && <TablePagination compact total={pgRev.total} page={pgRev.page} pageSize={pgRev.pageSize} onPageChange={pgRev.setPage} onPageSizeChange={pgRev.setPageSize} itemLabel="filas" />}</>}
   </Modal>
 }
 
