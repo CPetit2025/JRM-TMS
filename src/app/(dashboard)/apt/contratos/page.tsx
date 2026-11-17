@@ -11,7 +11,7 @@ import { useInvQuery } from '@/components/inventario/useInvQuery'
 import { Kardex } from '@/components/inventario/Kardex'
 import { invApi } from '@/lib/inventario/api'
 import { fmtN, fmtN1, fmtPeso, fmtQty } from '@/lib/inventario/format'
-import type { InvContrato, InvContratoFila } from '@/lib/inventario/types'
+import type { InvContrato, InvContratoFila, InvContratoProducto } from '@/lib/inventario/types'
 import { fmtDate } from '@/lib/apt/format'
 import { exportAptXlsx } from '@/lib/apt/export'
 
@@ -139,6 +139,44 @@ function exportFicha(d: InvContrato) {
   })
 }
 
+// Stock del ID en su propia unidad (el ERP puede llevar el stock en CIEN y el contrato en UND): se avisa si difieren
+function StockApt({ p, unidadContrato }: { p?: InvContratoProducto; unidadContrato: string | null }) {
+  if (!p?.stock) return <span className="text-slate-400">—</span>
+  const distinta = !!p.unidad && !!unidadContrato && p.unidad.trim().toUpperCase() !== unidadContrato.trim().toUpperCase()
+  return <>{fmtQty(p.stock)} <span className={distinta ? 'font-semibold text-amber-700' : 'text-slate-400'} title={distinta ? `El stock está en ${p.unidad} y el contrato en ${unidadContrato}` : undefined}>{p.unidad ?? ''}</span></>
+}
+
+// Todos los ítems del contrato (Actualizable del ERP), con el stock que ya tiene cada ID en el APT
+function ItemsContrato({ q, productos }: { q: string; productos: InvContratoProducto[] }) {
+  const r = useInvQuery(`contrato-lineas|${q}`, () => invApi.contratoLineas(q))
+  const [soloPendientes, setSoloPendientes] = useState(false)
+  if (r.loading) return <LoadingBlock label="Cargando ítems del contrato…" />
+  if (r.error) return <ErrorBlock message={r.error} onRetry={r.reload} />
+  const todas = r.data?.lineas ?? []
+  if (!todas.length) return null
+  const stock = new Map(productos.map(p => [p.producto, p]))
+  const lineas = todas.filter(l => !soloPendientes || l.pendiente > 0)
+  const pendientes = todas.filter(l => l.pendiente > 0).length
+  return <ChartCard title="Ítems del contrato (ERP)" subtitle={`${fmtN(todas.length)} ítems · ${fmtN(pendientes)} con saldo por despachar · Actualizable del ERP${r.data?.corte ? ` al ${fmtDate(r.data.corte)}` : ''}`}
+    info="Todas las líneas del contrato según el ERP, aunque todavía no hayan ingresado al APT. «En APT» es el stock actual del mismo ID en 647 · 540 · ST (compartido entre los ítems con el mismo ID)."
+    actions={<label className="flex items-center gap-2 text-xs font-semibold text-slate-600"><input type="checkbox" checked={soloPendientes} onChange={e => setSoloPendientes(e.target.checked)} className="h-4 w-4" /> Solo con saldo</label>}>
+    <div className="max-h-[32rem] overflow-y-auto">
+      <Table empty={!lineas.length} head={<tr><th className={th}>Ítem</th><th className={th}>ID / glosa</th><th className={`${th} text-right`}>Contratado</th><th className={`${th} text-right`}>Despachado</th>
+        <th className={`${th} text-right`}>Pendiente</th><th className={`${th} text-right`}>En APT</th><th className={th}>Estado</th></tr>}>
+        {lineas.map(l => <tr key={l.item} className="hover:bg-slate-50">
+          <td className={`${td} whitespace-nowrap font-semibold text-[#002855]`}>{l.item}</td>
+          <td className={td}><ProductoCell producto={l.producto} glosa={l.glosa} /></td>
+          <td className={tdNum}>{fmtQty(l.contratado)} <span className="text-slate-400">{l.unidad ?? ''}</span></td>
+          <td className={tdNum}>{fmtQty(l.despachado)}{l.guias ? <p className="text-[10px] text-slate-500">{fmtN(l.guias)} guías</p> : null}</td>
+          <td className={`${tdNum} font-semibold`}>{fmtQty(l.pendiente)}</td>
+          <td className={tdNum}><StockApt p={stock.get(l.producto)} unidadContrato={l.unidad} /></td>
+          <td className={td}><span className="text-[11px] text-slate-600">{l.estado ?? '—'}</span></td>
+        </tr>)}
+      </Table>
+    </div>
+  </ChartCard>
+}
+
 function Ficha({ q, onOpen }: { q: string; onOpen: (q: string) => void }) {
   const r = useInvQuery(`contrato|${q}`, () => invApi.contrato(q))
   const [soloStock, setSoloStock] = useState(false)
@@ -149,7 +187,10 @@ function Ficha({ q, onOpen }: { q: string; onOpen: (q: string) => void }) {
   const d = r.data
   if (!d) return null
   if (!d.encontrado || !d.resumen) {
-    return <EmptyState title={`La OT ${d.ot} no tiene movimientos en el APT`}>Revise el número o búsquelo en <Link href={`/apt/trazabilidad?q=${encodeURIComponent(q)}`} className="font-semibold text-[#002855] underline">Trazabilidad</Link> (todas las bodegas).</EmptyState>
+    return <>
+      <EmptyState title={`La OT ${d.ot} no tiene movimientos en el APT`}>Revise el número o búsquelo en <Link href={`/apt/trazabilidad?q=${encodeURIComponent(q)}`} className="font-semibold text-[#002855] underline">Trazabilidad</Link> (todas las bodegas).</EmptyState>
+      <ItemsContrato q={q} productos={[]} />
+    </>
   }
   const s = d.resumen
   const productos = (d.productos ?? []).filter(p => !soloStock || p.stock > 0)
@@ -177,7 +218,8 @@ function Ficha({ q, onOpen }: { q: string; onOpen: (q: string) => void }) {
         hint={s.fecha_entrega_min ? `Entrega comprometida ${fmtDate(s.fecha_entrega_min)}${s.fecha_entrega_max && s.fecha_entrega_max !== s.fecha_entrega_min ? ` – ${fmtDate(s.fecha_entrega_max)}` : ''}` : 'Sin fecha de entrega en las guías'} />
       <KpiCard label="Movimiento" value={fmtDate(s.ultima_salida ?? s.ultimo_ingreso)} hint={`Primer ingreso ${fmtDate(s.primer_ingreso)} · último ingreso ${fmtDate(s.ultimo_ingreso)} · última salida ${fmtDate(s.ultima_salida)}`} />
     </div>
-    <ChartCard title="IDs de la OT" subtitle={`${fmtN(productos.length)} productos · cantidades en la unidad del ID${descuadres ? ` · ${descuadres} con diferencia` : ''}`}
+    <ItemsContrato q={q} productos={d.productos ?? []} />
+    <ChartCard title="IDs de la OT"subtitle={`${fmtN(productos.length)} productos · cantidades en la unidad del ID${descuadres ? ` · ${descuadres} con diferencia` : ''}`}
       info="Ingresado: producción, compras o asignación de stock a la OT en el APT (el traspaso 647 → ST de la misma OT es interno). Diferencia = ingresado − despachado − otras salidas − stock; distinto de 0 indica saldo anterior a los datos o un ajuste."
       actions={<label className="flex items-center gap-2 text-xs font-semibold text-slate-600"><input type="checkbox" checked={soloStock} onChange={e => setSoloStock(e.target.checked)} className="h-4 w-4" /> Solo con stock</label>}>
       <Table empty={!productos.length} head={<tr><th className={th}>ID / glosa</th><th className={th}>Lotes</th><th className={`${th} text-right`}>Ingresado</th><th className={`${th} text-right`}>Despachado</th>

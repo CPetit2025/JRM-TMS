@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
 import type { InvParsedPart } from './parse'
-import type { InvAptResumen, InvContrato, InvContratos, InvDwellDim, InvDwellDimResult, InvKardex, InvVerify, InvCatalogs, InvDwell, InvFlow, InvOverview, InvStatus, InvStock, InvStockFilters, InvTrace } from './types'
+import type { InvAptResumen, InvContrato, InvContratoLineas, InvContratos, InvDwellDim, InvDwellDimResult, InvKardex, InvVerify, InvCatalogs, InvDwell, InvFlow, InvOverview, InvStatus, InvStock, InvStockFilters, InvTrace } from './types'
 
 // Acceso a las funciones public.inv_* (inventario multi-almacén). Todas devuelven { success, error?, ... }.
 const supabase = createClient()
@@ -27,6 +27,7 @@ export const invApi = {
   trace: (q: string) => call<InvTrace>('inv_trace', { p_q: q }),
   contratos: () => call<InvContratos>('inv_contratos'),
   contrato: (q: string) => call<InvContrato>('inv_contrato', { p_q: q }),
+  contratoLineas: (q: string) => call<InvContratoLineas>('inv_contrato_lineas', { p_q: q }),
   aptResumen: () => call<InvAptResumen>('inv_apt_resumen'),
   dwellDim: (f: { dim: InvDwellDim; ambito?: 'apt'; desde?: string; hasta?: string; ot?: string; q?: string; limit?: number }) =>
     call<InvDwellDimResult>('inv_dwell_dim', { p: f }),
