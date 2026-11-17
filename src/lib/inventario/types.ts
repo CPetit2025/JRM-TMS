@@ -121,6 +121,9 @@ export interface InvContratoFila {
   primer_ingreso: string | null; ultimo_ingreso: string | null; ultima_salida: string | null; fecha_entrega: string | null
 }
 export interface InvContratos { corte: string | null; cache?: InvCacheInfo; contratos: InvContratoFila[] }
+// La misma fila desglosada por OT + producto (código y glosa)
+export type InvContratoProductoFila = Omit<InvContratoFila, 'productos'> & { producto: string; glosa: string | null; unidad: string | null }
+export interface InvContratosProducto { corte: string | null; cache?: InvCacheInfo; filas: InvContratoProductoFila[] }
 
 export interface InvAptResumen {
   corte: string | null; cache?: InvCacheInfo
