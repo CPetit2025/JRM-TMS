@@ -172,6 +172,13 @@ export interface InvDwellDimResult {
   cache?: InvCacheInfo; filas: InvDwellDimRow[]
 }
 
+// Estadía por contrato y bodega (inv_estadia_contratos): stock actual, estadía ponderada y % del stock con más de 60 días
+export interface InvEstadiaContrato {
+  contrato: string | null; lote: string | null; ot: string | null; cliente: string | null; bodega: string; almacen: AptAlmacen
+  stock_kg: number; stock_qty: number; kg_conocido: boolean; estadia: number | null; pct_nd: number | null; pct_60: number | null; kg_60: number
+}
+export interface InvEstadiaContratos { corte: string; filas: InvEstadiaContrato[] }
+
 // Kardex de una OT en el APT: ingresos, salidas y saldo acumulado
 export interface InvKardexMov {
   fecha: string; tipo: string; clase: InvClase; numero: string; almacen: AptAlmacen; bodega: string; producto: string; glosa: string | null
