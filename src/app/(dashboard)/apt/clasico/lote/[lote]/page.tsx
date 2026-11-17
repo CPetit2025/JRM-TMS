@@ -351,7 +351,7 @@ function LoteView({ data, alert, producto, setProducto, onOrigen }: {
               { h: 'Saldo KG', r: true, c: c => <span className={c.kg_saldo > 0.5 ? 'font-bold text-[#002855]' : 'text-slate-400'}>{fmtKg(c.kg_saldo)}</span>, t: rows => fmtKg(sum(rows, c => c.kg_saldo)) },
               { h: 'Días', r: true, c: c => <DiasBadge dias={c.dias} alert={alert} />, s: c => c.dias },
               { h: 'Rango', c: c => c.rango || '—' },
-              { h: 'Estado', c: c => <EstadoBadge estado={c.estado} /> },
+              { h: 'Estado', c: c => <EstadoBadge estado={c.estado} />, s: c => c.estado },
               { h: '', c: c => <OrigenBtn onClick={() => onOrigen({ titulo: `Capa ${c.id} · ${c.producto}`, archivo: c.archivo, fila: c.row_no, hoja: 'ENTRADA', raw: c.raw })} /> },
             ]}
           />

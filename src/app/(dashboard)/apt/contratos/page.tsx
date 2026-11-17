@@ -41,14 +41,12 @@ export default function ContratosPage() {
 
 type Orden = 'stock' | 'dias' | 'avance' | 'reciente' | 'ot'
 type Estado = '' | 'stock' | 'curso' | 'cerradas'
-const PAGE = 100
 
 function Lista({ onOpen }: { onOpen: (q: string) => void }) {
   const q = useInvQuery('contratos', () => invApi.contratos())
   const [filtro, setFiltro] = useState('')
   const [estado, setEstado] = useState<Estado>('stock')
   const [orden, setOrden] = useState<Orden>('stock')
-  const [page, setPage] = useState(0)
   const rows = useMemo(() => {
     const f = filtro.trim().toUpperCase()
     const out = (q.data?.contratos ?? []).filter(c => (!f || c.ot.includes(f) || (c.cliente ?? '').toUpperCase().includes(f))
@@ -74,7 +72,6 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
     'Días en stock': c.dias_stock ?? '', 'Entrega comprometida': c.fecha_entrega ?? '', 'A tiempo %': c.a_tiempo_pct ?? '',
     'Primer ingreso': c.primer_ingreso ?? '', 'Último ingreso': c.ultimo_ingreso ?? '', 'Última salida': c.ultima_salida ?? '',
   })) })
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE))
   return <>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
       <KpiCard label="OT con stock en el APT" value={fmtN(conStock.length)} tone="navy" hint={`de ${fmtN(all.length)} OT con movimiento · corte ${fmtDate(q.data?.corte)}`} />
@@ -83,15 +80,15 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
       <KpiCard label="Despachos a tiempo" value={conFecha.length ? `${fmtN1(conFecha.reduce((t, c) => t + (c.a_tiempo_pct ?? 0), 0) / conFecha.length)} %` : '—'}
         hint="Promedio por OT · guía con fecha ≤ entrega comprometida" />
     </div>
-    <ChartCard title="Contratos / OT" subtitle={`${fmtN(rows.length)} OT · página ${Math.min(page + 1, pages)} de ${pages}`}
+    <ChartCard title="Contratos / OT" subtitle={`${fmtN(rows.length)} OT`}
       info="Avance = kg despachados / kg ingresados al APT (sin contar dos veces el traspaso 647 → ST de la misma OT). Días en stock: desde el ingreso más antiguo que aún tiene saldo."
       actions={<button type="button" onClick={exportar} disabled={!rows.length} className="flex min-h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-[#002855] disabled:opacity-50"><Download className="h-4 w-4" /> Excel</button>}>
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <label className="text-xs font-semibold text-slate-600">Filtrar
-          <input value={filtro} onChange={e => { setFiltro(e.target.value); setPage(0) }} placeholder="OT o cliente" className="mt-1 block min-h-10 w-56 rounded-lg border border-slate-300 px-2 text-sm" />
+          <input value={filtro} onChange={e => { setFiltro(e.target.value) }} placeholder="OT o cliente" className="mt-1 block min-h-10 w-56 rounded-lg border border-slate-300 px-2 text-sm" />
         </label>
         <label className="text-xs font-semibold text-slate-600">Estado
-          <select value={estado} onChange={e => { setEstado(e.target.value as Estado); setPage(0) }} className="mt-1 block min-h-10 rounded-lg border border-slate-300 px-2 text-sm">
+          <select value={estado} onChange={e => { setEstado(e.target.value as Estado) }} className="mt-1 block min-h-10 rounded-lg border border-slate-300 px-2 text-sm">
             <option value="stock">Con stock en el APT</option><option value="curso">En curso (stock o avance &lt; 100 %)</option><option value="cerradas">Sin stock</option><option value="">Todas</option>
           </select>
         </label>
@@ -104,7 +101,7 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
       <Table empty={!rows.length} head={<tr><th className={th}>OT</th><th className={th}>Cliente</th><th className={`${th} text-right`}>Ingresado</th><th className={`${th} text-right`}>Despachado</th><th className={th}>Avance</th>
         <th className={`${th} text-right`}>Stock</th><th className={`${th} text-right`}>647</th><th className={`${th} text-right`}>540</th><th className={`${th} text-right`}>ST</th><th className={th}>Días</th>
         <th className={th}>Entrega</th><th className={`${th} text-right`}>A tiempo</th><th className={th}>Último ingreso</th><th className={th}>Última salida</th></tr>}>
-        {rows.slice(page * PAGE, (page + 1) * PAGE).map(c => <tr key={c.ot} className="hover:bg-slate-50">
+        {rows.map(c => <tr key={c.ot} className="hover:bg-slate-50">
           <td className={td}><button type="button" onClick={() => onOpen(c.ot)} className="font-bold text-[#002855] underline">{c.ot}</button>
             <p className="text-[10px] text-slate-500">{fmtN(c.productos)} ID · {fmtN(c.lotes)} lotes</p></td>
           <td className={td}><p className="max-w-56 truncate" title={c.cliente ?? ''}>{c.cliente ?? '—'}</p></td>
@@ -117,10 +114,6 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
           <td className={td}>{fmtDate(c.ultimo_ingreso)}</td><td className={td}>{fmtDate(c.ultima_salida)}</td>
         </tr>)}
       </Table>
-      <div className="mt-3 flex items-center justify-end gap-2 text-xs">
-        <button type="button" disabled={page === 0} onClick={() => setPage(p => p - 1)} className="min-h-9 rounded-lg border border-slate-300 px-3 disabled:opacity-40">Anterior</button>
-        <button type="button" disabled={page + 1 >= pages} onClick={() => setPage(p => p + 1)} className="min-h-9 rounded-lg border border-slate-300 px-3 disabled:opacity-40">Siguiente</button>
-      </div>
     </ChartCard>
   </>
 }

@@ -9,6 +9,7 @@ import { fmtN, fmtQty } from '@/lib/inventario/format'
 import { fmtDate, fmtDateTime, fmtPct } from '@/lib/apt/format'
 import { exportAptXlsx } from '@/lib/apt/export'
 import { erpApi } from '@/lib/erp/api'
+import { TablePagination } from '@/components/ui/table-pagination'
 import { fetchAllRows } from '@/lib/erp/exportar'
 import { ERP_INDICADORES, ERP_META, ERP_RESPONSABLE } from '@/lib/erp/diccionario'
 import type { ErpAnalisis, ErpAnalisisDoc, ErpAnalisisFiltros, ErpAnalisisOt, ErpCargaLog, ErpControl, ErpCruce, ErpReglas } from '@/lib/erp/types'
@@ -80,17 +81,16 @@ function Marcas() {
 const TIPOS = ['CONTRATO DE VENTAS', 'SUBCONTRATO DE VENTAS', 'GARANTIA DE VENTAS', 'ERROR DE CONTRATO']
 const ESTADOS = ['SIN DESPACHO', 'PARCIAL', 'COMPLETO']
 const BODEGAS = ['647-04 ALM PT', '540-04 APT LB', 'ST-VENTAS-IMD']
-const PAGE = 200
-
 export function AnalisisSection() {
   const [form, setForm] = useState<ErpAnalisisFiltros>({ solo_pendiente: true })
   const [applied, setApplied] = useState<ErpAnalisisFiltros>({ solo_pendiente: true })
   const [vista, setVista] = useState<'DOCUMENTO' | 'OT'>('DOCUMENTO')
   const [offset, setOffset] = useState(0)
+  const [pageSize, setPageSize] = useState(25)
   const [open, setOpen] = useState<string | null>(null)
   const [exporting, setExporting] = useState<string | null>(null)
   const [exportMsg, setExportMsg] = useState<{ ok: boolean; text: string } | null>(null)
-  const args: ErpAnalisisFiltros = { ...applied, vista, limit: PAGE, offset }
+  const args: ErpAnalisisFiltros = { ...applied, vista, limit: pageSize, offset }
   const res = useInvQuery(`erp-analisis|${JSON.stringify(args)}`, () => erpApi.analisis(args), { keepPrevious: true })
   // Mientras llega la otra vista se muestra la anterior solo si tiene la misma forma
   const d = res.data && (res.data.sin_datos || res.data.vista === vista) ? res.data : null
@@ -214,10 +214,9 @@ export function AnalisisSection() {
             {v === 'DOCUMENTO' ? 'Por documento y producto' : 'Por OT, tipo y unidad'}</button>)}
         </div>
         <ChartCard title={`${fmtN(d.total)} ${vista === 'OT' ? 'renglones de OT' : 'documentos y productos'}`}
-          subtitle={vista === 'OT' ? 'Un renglón por OT, tipo de documento y unidad: no se presenta una demanda neta por OT mientras no se defina la relación entre tipos.' : 'Pulse una fila para ver sus líneas del ERP (con su fila de origen), los lotes y las guías.'}
-          actions={<Pager total={d.total} offset={offset} onChange={setOffset} />}>
+          subtitle={vista === 'OT' ? 'Un renglón por OT, tipo de documento y unidad: no se presenta una demanda neta por OT mientras no se defina la relación entre tipos.' : 'Pulse una fila para ver sus líneas del ERP (con su fila de origen), los lotes y las guías.'}>
           {vista === 'OT'
-            ? <Table empty={!d.filas.length} head={<tr><th className={th}>OT</th><th className={th}>Tipo de documento</th><th className={th}>Unidad</th><th className={th}>Cliente</th>
+            ? <Table paginate={false} empty={!d.filas.length} head={<tr><th className={th}>OT</th><th className={th}>Tipo de documento</th><th className={th}>Unidad</th><th className={th}>Cliente</th>
               <th className={`${th} text-right`}>Contratado</th><th className={`${th} text-right`}>Despachado</th><th className={`${th} text-right`}>Pendiente</th>
               <th className={`${th} text-right`}>Stock coincidente</th><th className={`${th} text-right`}>Faltante</th><th className={`${th} text-right`}>Cobertura</th><th className={`${th} text-right`}>Vcto. superado</th></tr>}>
               {(d.filas as ErpAnalisisOt[]).map(r => <tr key={`${r.ot}|${r.tipo_documento}|${r.unidad}`}>
@@ -227,7 +226,7 @@ export function AnalisisSection() {
                 <td className={tdNum}>{r.stock == null && r.validas > 0 ? '—' : <Qty v={r.stock} parcial={r.incompletas} />}</td><td className={tdNum}><Qty v={r.faltante} parcial={r.incompletas} /></td><td className={tdNum}>{ratio(r.cobertura)}</td><td className={tdNum}>{fmtN(r.vencidas)}</td>
               </tr>)}
             </Table>
-            : <Table empty={!d.filas.length} head={<tr><th className={th}>Documento</th><th className={th}>SKU · producto</th><th className={th}>Unidad</th>
+            : <Table paginate={false} empty={!d.filas.length} head={<tr><th className={th}>Documento</th><th className={th}>SKU · producto</th><th className={th}>Unidad</th>
               <th className={`${th} text-right`}>Contratado</th><th className={`${th} text-right`}>Despachado</th><th className={`${th} text-right`}>Pendiente</th>
               <th className={`${th} text-right`}>Stock coincidente</th><th className={`${th} text-right`}>Faltante</th><th className={`${th} text-right`}>Cobertura</th><th className={th}>Cruce</th><th className={th}>Fecha_Vcto</th></tr>}>
               {(d.filas as ErpAnalisisDoc[]).map(r => { const key = `${r.documento}|${r.cod_producto}|${r.unidad}`
@@ -250,19 +249,10 @@ export function AnalisisSection() {
                   {open === key && <tr><td colSpan={11} className="bg-slate-50 p-3"><DocDetalle doc={r} /></td></tr>}
                 </Fragment> })}
             </Table>}
+          <TablePagination compact total={d.total} page={Math.floor(offset / pageSize) + 1} pageSize={pageSize} itemLabel="filas"
+            onPageChange={p => { setOffset((p - 1) * pageSize); setOpen(null) }} onPageSizeChange={n => { setPageSize(n); setOffset(0); setOpen(null) }} />
         </ChartCard>
       </>}
-    </div>
-  )
-}
-
-function Pager({ total, offset, onChange }: { total: number; offset: number; onChange: (o: number) => void }) {
-  if (total <= PAGE) return null
-  return (
-    <div className="flex items-center gap-2 text-xs text-slate-600">
-      <button type="button" disabled={offset === 0} onClick={() => onChange(Math.max(0, offset - PAGE))} className={`${btn} min-h-8 disabled:opacity-40`}>Anterior</button>
-      <span>{fmtN(offset + 1)}–{fmtN(Math.min(offset + PAGE, total))} de {fmtN(total)}</span>
-      <button type="button" disabled={offset + PAGE >= total} onClick={() => onChange(offset + PAGE)} className={`${btn} min-h-8 disabled:opacity-40`}>Siguiente</button>
     </div>
   )
 }
