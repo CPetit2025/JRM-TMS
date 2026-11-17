@@ -30,14 +30,30 @@ BEGIN
       'Producto', 'C224.VIGA', 'GLOSA', 'VIGA C224', 'UNIDAD', 'UND', 'Cantidad', 10, 'Lote', '99984-S001', 'PesoUnitario', 2),
     -- Lote sin contrato (no tiene formato de OT)
     jsonb_build_object('__row', 5, 'TIPODOCTO', 'P/E PRODUCCION ACT.', 'BODEGA', '540-04 C224 APT LB', 'Numero', '924005', 'Fecha', d2,
-      'Producto', 'C224.PLACA', 'GLOSA', 'PLACA C224', 'UNIDAD', 'UND', 'Cantidad', 5, 'Lote', '2224', 'PesoUnitario', 3)));
+      'Producto', 'C224.PLACA', 'GLOSA', 'PLACA C224', 'UNIDAD', 'UND', 'Cantidad', 5, 'Lote', '2224', 'PesoUnitario', 3),
+    -- Traspaso que mezcla dos ingresos (120 y 20 días): la mitad tiene más de 60 días aunque la fecha promedio dé 70
+    jsonb_build_object('__row', 6, 'TIPODOCTO', 'P/E PRODUCCION ACT.', 'BODEGA', '647-04 C224 ALM PT', 'Numero', '924006', 'Fecha', d1,
+      'Producto', 'C224.TUBO', 'GLOSA', 'TUBO C224', 'UNIDAD', 'UND', 'Cantidad', 5, 'Lote', '99983-S001', 'PesoUnitario', 1),
+    jsonb_build_object('__row', 7, 'TIPODOCTO', 'P/E PRODUCCION ACT.', 'BODEGA', '647-04 C224 ALM PT', 'Numero', '924007', 'Fecha', d2 - 20,
+      'Producto', 'C224.TUBO', 'GLOSA', 'TUBO C224', 'UNIDAD', 'UND', 'Cantidad', 5, 'Lote', '99983-S001', 'PesoUnitario', 1),
+    jsonb_build_object('__row', 8, 'TIPODOCTO', 'TRASPASO DE ALMACEN', 'BODEGA', 'ST-VENTAS C224', 'Numero', '924008', 'Fecha', d2 - 19,
+      'Producto', 'C224.TUBO', 'GLOSA', 'TUBO C224', 'UNIDAD', 'UND', 'Cantidad', 10, 'Lote', '99983-S001', 'PesoUnitario', 1),
+    -- Traspaso de 8 con solo 4 ingresados: la mitad sale de un saldo inicial inferido (antigüedad no determinada)
+    jsonb_build_object('__row', 9, 'TIPODOCTO', 'P/E PRODUCCION ACT.', 'BODEGA', '647-04 C224 ALM PT', 'Numero', '924009', 'Fecha', d1,
+      'Producto', 'C224.ANGULO', 'GLOSA', 'ANGULO C224', 'UNIDAD', 'UND', 'Cantidad', 4, 'Lote', '99982-S001', 'PesoUnitario', 1),
+    jsonb_build_object('__row', 10, 'TIPODOCTO', 'TRASPASO DE ALMACEN', 'BODEGA', 'ST-VENTAS C224', 'Numero', '924010', 'Fecha', d1 + 1,
+      'Producto', 'C224.ANGULO', 'GLOSA', 'ANGULO C224', 'UNIDAD', 'UND', 'Cantidad', 8, 'Lote', '99982-S001', 'PesoUnitario', 1)));
   us := (public.inv_upload_begin('S', 'C224 Salidas.xlsx')->>'upload_id')::uuid;
   PERFORM public.inv_upload_rows(us, jsonb_build_array(
     jsonb_build_object('__row', 2, 'TIPODOCTO', 'TRASPASO DE ALMACEN', 'BODEGA', '647-04 C224 ALM PT', 'Numero', '924002', 'Fecha', d1 + 1,
       'Producto', 'C224.VIGA', 'GLOSA', 'VIGA C224', 'UNIDAD', 'UND', 'Cantidad', -6, 'Lote', '99984-S001', 'PesoUnitario', 2),
     jsonb_build_object('__row', 3, 'TIPODOCTO', 'DESPACHO VENTAS', 'BODEGA', 'ST-VENTAS C224', 'Numero', 'T001-924003', 'Fecha', d2,
       'Producto', 'C224.VIGA', 'GLOSA', 'VIGA C224', 'UNIDAD', 'UND', 'Cantidad', -4, 'Lote', '99984-S001', 'RazonSocial', 'CLIENTE C224',
-      'FechaEntrega', d2 + 1, 'PesoUnitario', 2)));
+      'FechaEntrega', d2 + 1, 'PesoUnitario', 2),
+    jsonb_build_object('__row', 4, 'TIPODOCTO', 'TRASPASO DE ALMACEN', 'BODEGA', '647-04 C224 ALM PT', 'Numero', '924008', 'Fecha', d2 - 19,
+      'Producto', 'C224.TUBO', 'GLOSA', 'TUBO C224', 'UNIDAD', 'UND', 'Cantidad', -10, 'Lote', '99983-S001', 'PesoUnitario', 1),
+    jsonb_build_object('__row', 5, 'TIPODOCTO', 'TRASPASO DE ALMACEN', 'BODEGA', '647-04 C224 ALM PT', 'Numero', '924010', 'Fecha', d1 + 1,
+      'Producto', 'C224.ANGULO', 'GLOSA', 'ANGULO C224', 'UNIDAD', 'UND', 'Cantidad', -8, 'Lote', '99982-S001', 'PesoUnitario', 1)));
   PERFORM public.inv_upload_apply_core(ue);
   PERFORM public.inv_upload_apply_core(us);
   PERFORM public.inv_rebuild();
@@ -71,7 +87,18 @@ BEGIN
      AND NOT has_function_privilege('anon', 'public.inv_estadia_contratos()', 'EXECUTE')
   THEN pass := pass + 1; ELSE fails := fails || 'T5 permisos'::text; END IF;
 
-  IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C224 FAIL (%/5): %', pass, array_to_string(fails, ' | '); END IF;
-  RAISE EXCEPTION 'CAJA C224 PASS (5/5) estadía por contrato y bodega ponderada, sin reinicio por traspaso y stock de más de 60 días';
+  -- T6: el % > 60 días usa la edad de cada componente del traspaso (5 kg de 120 d y 5 kg de 20 d → 50 %), no la fecha promedio
+  p := (SELECT x FROM jsonb_array_elements(r->'filas') x WHERE x->>'contrato' = '99983-S001' AND x->>'bodega' = 'ST-VENTAS C224');
+  IF (p->>'stock_kg')::numeric = 10 AND (p->>'pct_60')::numeric = 50 AND (p->>'kg_60')::numeric = 5
+     AND (p->>'estadia')::numeric = round(((c - d1) + (c - (d2 - 20))) / 2.0, 1) AND (p->>'pct_nd')::numeric = 0
+  THEN pass := pass + 1; ELSE fails := fails || ('T6 componentes ' || COALESCE(p::text, 'sin fila')); END IF;
+
+  -- T7: la mitad del traspaso salió de un saldo inferido: 50 % con antigüedad no determinada (no se trata como exacta)
+  p := (SELECT x FROM jsonb_array_elements(r->'filas') x WHERE x->>'contrato' = '99982-S001' AND x->>'bodega' = 'ST-VENTAS C224');
+  IF (p->>'stock_kg')::numeric = 8 AND (p->>'pct_nd')::numeric = 50
+  THEN pass := pass + 1; ELSE fails := fails || ('T7 no determinado ' || COALESCE(p::text, 'sin fila')); END IF;
+
+  IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C224 FAIL (%/7): %', pass, array_to_string(fails, ' | '); END IF;
+  RAISE EXCEPTION 'CAJA C224 PASS (7/7) estadía por contrato y bodega ponderada, sin reinicio por traspaso y stock de más de 60 días';
 END $test$;
 ROLLBACK;
