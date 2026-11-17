@@ -138,6 +138,14 @@ export interface InvContratoProducto {
 }
 export interface InvContratoTms { dispatch_id: string; numero: string | null; estado: string | null; programado: string | null
   salida: string | null; llegada: string | null; placa: string | null; conductor: string | null }
+// Ítems del contrato según el Actualizable del ERP (aunque no tengan movimientos en el APT)
+export interface InvContratoLineas {
+  ot: string
+  corte: string | null
+  lineas: Array<{ item: string; documento: string; secuencia: number; producto: string; glosa: string | null; unidad: string | null
+    contratado: number; despachado: number; pendiente: number; estado: string | null; guias: number | null; fecha_contrato: string | null; ultimo_despacho: string | null }>
+}
+
 export interface InvContrato {
   ot: string; corte: string | null; encontrado: boolean; stock_al_dia?: boolean
   resumen?: { cliente: string | null; ingresado_kg: number; despachado_kg: number; otras_salidas_kg: number; avance_pct: number | null
