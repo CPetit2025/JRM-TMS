@@ -179,6 +179,10 @@ export interface InvEstadiaContrato {
 }
 export interface InvEstadiaContratos { corte: string; filas: InvEstadiaContrato[] }
 
+// Contratos u OT ocultos del modelo APT por errores del sistema (inv_contratos_ocultos)
+export interface InvOculto { codigo: string; motivo: string; fecha: string; usuario: string | null; stock_kg: number }
+export interface InvOcultos { puede_editar: boolean; filas: InvOculto[] }
+
 // Kardex de una OT en el APT: ingresos, salidas y saldo acumulado
 export interface InvKardexMov {
   fecha: string; tipo: string; clase: InvClase; numero: string; almacen: AptAlmacen; bodega: string; producto: string; glosa: string | null
