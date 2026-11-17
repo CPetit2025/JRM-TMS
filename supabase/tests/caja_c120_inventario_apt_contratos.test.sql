@@ -76,6 +76,17 @@ BEGIN
      AND (SELECT (x->>'stock_kg')::numeric FROM jsonb_array_elements(public.inv_apt_resumen()->'almacenes') x WHERE x->>'almacen' = '647') = 9
   THEN pass := pass + 1; ELSE fails := fails || ('T5 contratos ' || left(p::text, 300)); END IF;
 
+  -- T5b: desglose por OT + producto (código y glosa) con las mismas cifras que la fila de la OT
+  r := public.inv_contratos_producto('stock');
+  p := (SELECT x FROM jsonb_array_elements(r->'filas') x WHERE x->>'ot' = '99996' AND x->>'producto' = 'C120.VIGA');
+  IF p IS NOT NULL AND p->>'glosa' = 'VIGA C120' AND (p->>'stock_kg')::numeric = 12 AND (p->>'stock_647_kg')::numeric = 8
+     AND (p->>'stock_st_kg')::numeric = 4 AND (p->>'ingresado_kg')::numeric = 20 AND (p->>'despachado_kg')::numeric = 8
+     AND (p->>'avance_pct')::numeric = 40 AND (p->>'a_tiempo_pct')::numeric = 100 AND p->>'cliente' = 'CLIENTE C120'
+     AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'filas') x WHERE (x->>'stock_kg')::numeric <= 0)
+     AND has_function_privilege('authenticated', 'public.inv_contratos_producto(text)', 'EXECUTE')
+     AND NOT has_function_privilege('authenticated', 'public.inv_contratos_producto_refresh(timestamptz)', 'EXECUTE')
+  THEN pass := pass + 1; ELSE fails := fails || ('T5b por producto ' || left(p::text, 300)); END IF;
+
   -- T6: ámbito APT en Stock y Estadía (sin la planta) y glosa en el stock más antiguo
   r := public.inv_stock('{"ambito":"apt"}');
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'filas') x WHERE public.apt_almacen(x->>'bodega') IS NULL)
@@ -97,7 +108,7 @@ BEGIN
      AND NOT has_function_privilege('authenticated', 'public.inv_contratos_refresh(timestamptz)', 'EXECUTE')
   THEN pass := pass + 1; ELSE fails := fails || 'T8 permisos'::text; END IF;
 
-  IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C120 FAIL (%/8): %', pass, array_to_string(fails, ' | '); END IF;
-  RAISE EXCEPTION 'CAJA C120 PASS (8/8) APT 647·540·ST: ficha de OT con balance por ID, guías, contratos y ámbito APT';
+  IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C120 FAIL (%/9): %', pass, array_to_string(fails, ' | '); END IF;
+  RAISE EXCEPTION 'CAJA C120 PASS (9/9) APT 647·540·ST: ficha de OT con balance por ID, guías, contratos (por OT y por producto) y ámbito APT';
 END $test$;
 ROLLBACK;

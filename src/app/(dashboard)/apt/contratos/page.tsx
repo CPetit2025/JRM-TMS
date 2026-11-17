@@ -11,7 +11,7 @@ import { useInvQuery } from '@/components/inventario/useInvQuery'
 import { Kardex } from '@/components/inventario/Kardex'
 import { invApi } from '@/lib/inventario/api'
 import { fmtN, fmtN1, fmtPeso, fmtQty } from '@/lib/inventario/format'
-import type { InvContrato, InvContratoFila, InvContratoProducto } from '@/lib/inventario/types'
+import type { InvContrato, InvContratoFila, InvContratoProducto, InvContratoProductoFila } from '@/lib/inventario/types'
 import { fmtDate } from '@/lib/apt/format'
 import { exportAptXlsx } from '@/lib/apt/export'
 
@@ -41,23 +41,31 @@ export default function ContratosPage() {
 
 type Orden = 'stock' | 'dias' | 'avance' | 'reciente' | 'ot'
 type Estado = '' | 'stock' | 'curso' | 'cerradas'
+// Por OT, o la misma fila desglosada por OT + producto (código y glosa)
+type Fila = InvContratoFila | InvContratoProductoFila
+const esProducto = (c: Fila): c is InvContratoProductoFila => 'producto' in c
 
 function Lista({ onOpen }: { onOpen: (q: string) => void }) {
   const q = useInvQuery('contratos', () => invApi.contratos())
   const [filtro, setFiltro] = useState('')
   const [estado, setEstado] = useState<Estado>('stock')
   const [orden, setOrden] = useState<Orden>('stock')
+  const [ver, setVer] = useState<'ot' | 'producto'>('ot')
+  const pq = useInvQuery(ver === 'producto' ? `contratos_producto|${estado}` : 'contratos_producto|off',
+    () => ver === 'producto' ? invApi.contratosProducto(estado) : Promise.resolve(null))
   const rows = useMemo(() => {
     const f = filtro.trim().toUpperCase()
-    const out = (q.data?.contratos ?? []).filter(c => (!f || c.ot.includes(f) || (c.cliente ?? '').toUpperCase().includes(f))
+    const base: Fila[] = (ver === 'producto' ? pq.data?.filas : q.data?.contratos) ?? []
+    const out = base.filter(c => (!f || c.ot.includes(f) || (c.cliente ?? '').toUpperCase().includes(f)
+        || (esProducto(c) && (c.producto.toUpperCase().includes(f) || (c.glosa ?? '').toUpperCase().includes(f))))
       && (estado === '' || (estado === 'stock' ? c.stock_kg > 0 : estado === 'curso' ? c.stock_kg > 0 || (c.avance_pct ?? 0) < 100 : c.stock_kg <= 0)))
-    const last = (c: InvContratoFila) => [c.ultima_salida, c.ultimo_ingreso].filter(Boolean).sort().pop() ?? ''
-    const by: Record<Orden, (a: InvContratoFila, b: InvContratoFila) => number> = {
+    const last = (c: Fila) => [c.ultima_salida, c.ultimo_ingreso].filter(Boolean).sort().pop() ?? ''
+    const by: Record<Orden, (a: Fila, b: Fila) => number> = {
       stock: (a, b) => b.stock_kg - a.stock_kg, dias: (a, b) => (b.dias_stock ?? -1) - (a.dias_stock ?? -1),
       avance: (a, b) => (a.avance_pct ?? 0) - (b.avance_pct ?? 0), reciente: (a, b) => last(b).localeCompare(last(a)), ot: (a, b) => b.ot.localeCompare(a.ot),
     }
     return out.sort(by[orden])
-  }, [q.data, filtro, estado, orden])
+  }, [q.data, pq.data, ver, filtro, estado, orden])
   if (q.loading) return <LoadingBlock label="Cargando contratos…" />
   if (q.error) return <ErrorBlock message={q.error} onRetry={q.reload} />
   const all = q.data?.contratos ?? []
@@ -66,8 +74,9 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
   const stockKg = conStock.reduce((t, c) => t + c.stock_kg, 0)
   const viejas = conStock.filter(c => (c.dias_stock ?? 0) > 60)
   const conFecha = all.filter(c => c.a_tiempo_pct !== null)
-  const exportar = () => exportAptXlsx(`contratos-apt-${q.data?.corte ?? ''}`, { Contratos: rows.map(c => ({
-    OT: c.ot, Cliente: c.cliente ?? '', Productos: c.productos, Lotes: c.lotes, Guías: c.guias, 'Ingresado kg': c.ingresado_kg, 'Despachado kg': c.despachado_kg,
+  const exportar = () => exportAptXlsx(`contratos-${ver === 'producto' ? 'producto-' : ''}apt-${q.data?.corte ?? ''}`, { [ver === 'producto' ? 'Por producto' : 'Contratos']: rows.map(c => ({
+    OT: c.ot, Cliente: c.cliente ?? '',
+    ...(esProducto(c) ? { 'Código producto': c.producto, Glosa: c.glosa ?? '', Unidad: c.unidad ?? '' } : { Productos: c.productos }), Lotes: c.lotes, Guías: c.guias, 'Ingresado kg': c.ingresado_kg, 'Despachado kg': c.despachado_kg,
     'Avance %': c.avance_pct ?? '', 'Stock kg': c.stock_kg, 'Stock 647 kg': c.stock_647_kg, 'Stock 540 kg': c.stock_540_kg, 'Stock ST kg': c.stock_st_kg,
     'Días en stock': c.dias_stock ?? '', 'Entrega comprometida': c.fecha_entrega ?? '', 'A tiempo %': c.a_tiempo_pct ?? '',
     'Primer ingreso': c.primer_ingreso ?? '', 'Último ingreso': c.ultimo_ingreso ?? '', 'Última salida': c.ultima_salida ?? '',
@@ -80,12 +89,17 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
       <KpiCard label="Despachos a tiempo" value={conFecha.length ? `${fmtN1(conFecha.reduce((t, c) => t + (c.a_tiempo_pct ?? 0), 0) / conFecha.length)} %` : '—'}
         hint="Promedio por OT · guía con fecha ≤ entrega comprometida" />
     </div>
-    <ChartCard title="Contratos / OT" subtitle={`${fmtN(rows.length)} OT`}
+    <ChartCard title={ver === 'producto' ? 'Contratos / OT por producto' : 'Contratos / OT'} subtitle={ver === 'producto' ? `${fmtN(rows.length)} filas OT · producto` : `${fmtN(rows.length)} OT`}
       info="Avance = kg despachados / kg ingresados al APT (sin contar dos veces el traspaso 647 → ST de la misma OT). Días en stock: desde el ingreso más antiguo que aún tiene saldo."
       actions={<button type="button" onClick={exportar} disabled={!rows.length} className="flex min-h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-[#002855] disabled:opacity-50"><Download className="h-4 w-4" /> Excel</button>}>
       <div className="mb-3 flex flex-wrap items-end gap-3">
+        <label className="text-xs font-semibold text-slate-600">Ver
+          <select value={ver} onChange={e => setVer(e.target.value as 'ot' | 'producto')} className="mt-1 block min-h-10 rounded-lg border border-slate-300 px-2 text-sm">
+            <option value="ot">Por OT</option><option value="producto">Por OT y producto</option>
+          </select>
+        </label>
         <label className="text-xs font-semibold text-slate-600">Filtrar
-          <input value={filtro} onChange={e => { setFiltro(e.target.value) }} placeholder="OT o cliente" className="mt-1 block min-h-10 w-56 rounded-lg border border-slate-300 px-2 text-sm" />
+          <input value={filtro} onChange={e => { setFiltro(e.target.value) }} placeholder={ver === 'producto' ? 'OT, cliente o producto' : 'OT o cliente'}className="mt-1 block min-h-10 w-56 rounded-lg border border-slate-300 px-2 text-sm" />
         </label>
         <label className="text-xs font-semibold text-slate-600">Estado
           <select value={estado} onChange={e => { setEstado(e.target.value as Estado) }} className="mt-1 block min-h-10 rounded-lg border border-slate-300 px-2 text-sm">
@@ -98,13 +112,17 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
           </select>
         </label>
       </div>
-      <Table empty={!rows.length} head={<tr><th className={th}>OT</th><th className={th}>Cliente</th><th className={`${th} text-right`}>Ingresado</th><th className={`${th} text-right`}>Despachado</th><th className={th}>Avance</th>
+      {ver === 'producto' && pq.loading && <LoadingBlock label="Cargando el detalle por producto…" />}
+      {ver === 'producto' && pq.error && <ErrorBlock message={pq.error} onRetry={pq.reload} />}
+      {!(ver === 'producto' && (pq.loading || pq.error)) && <Table empty={!rows.length} head={<tr><th className={th}>OT</th><th className={th}>Cliente</th>{ver === 'producto' && <><th className={th}>Código</th><th className={th}>Glosa</th></>}<th className={`${th} text-right`}>Ingresado</th><th className={`${th} text-right`}>Despachado</th><th className={th}>Avance</th>
         <th className={`${th} text-right`}>Stock</th><th className={`${th} text-right`}>647</th><th className={`${th} text-right`}>540</th><th className={`${th} text-right`}>ST</th><th className={th}>Días</th>
         <th className={th}>Entrega</th><th className={`${th} text-right`}>A tiempo</th><th className={th}>Último ingreso</th><th className={th}>Última salida</th></tr>}>
-        {rows.map(c => <tr key={c.ot} className="hover:bg-slate-50">
+        {rows.map(c => <tr key={esProducto(c) ? `${c.ot}|${c.producto}` : c.ot} className="hover:bg-slate-50">
           <td className={td}><button type="button" onClick={() => onOpen(c.ot)} className="font-bold text-[#002855] underline">{c.ot}</button>
-            <p className="text-[10px] text-slate-500">{fmtN(c.productos)} ID · {fmtN(c.lotes)} lotes</p></td>
+            <p className="text-[10px] text-slate-500">{esProducto(c) ? '' : `${fmtN(c.productos)} ID · `}{fmtN(c.lotes)} lotes</p></td>
           <td className={td}><p className="max-w-56 truncate" title={c.cliente ?? ''}>{c.cliente ?? '—'}</p></td>
+          {esProducto(c) && <><td className={`${td} whitespace-nowrap font-semibold`}>{c.producto}</td>
+            <td className={td}><p className="max-w-64 truncate" title={c.glosa ?? ''}>{c.glosa ?? '—'}</p></td></>}
           <td className={tdNum}>{fmtPeso(c.ingresado_kg)}</td><td className={tdNum}>{fmtPeso(c.despachado_kg)}</td>
           <td className={`${td} min-w-28`}><div className="flex items-center gap-2"><InlineBar value={c.avance_pct ?? 0} max={100} color={(c.avance_pct ?? 0) >= 100 ? '#0d9488' : '#002855'} /><span className="tabular-nums">{c.avance_pct === null ? '—' : `${fmtN(c.avance_pct)} %`}</span></div></td>
           <td className={`${tdNum} font-semibold`}>{c.stock_kg > 0 ? fmtPeso(c.stock_kg) : '—'}</td>
@@ -113,7 +131,7 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
           <td className={td}>{fmtDate(c.fecha_entrega)}</td><td className={tdNum}>{c.a_tiempo_pct === null ? '—' : `${fmtN(c.a_tiempo_pct)} %`}</td>
           <td className={td}>{fmtDate(c.ultimo_ingreso)}</td><td className={td}>{fmtDate(c.ultima_salida)}</td>
         </tr>)}
-      </Table>
+      </Table>}
     </ChartCard>
   </>
 }
