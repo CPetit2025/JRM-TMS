@@ -51,7 +51,7 @@ BEGIN
     AND id NOT IN (SELECT dr.profile_id FROM public.drivers dr WHERE dr.profile_id IS NOT NULL) AND id NOT IN (v_admin, v_sup) ORDER BY id LIMIT 1;
   IF v_contr IS NULL THEN RAISE EXCEPTION 'CAJA C8 FAIL: se requieren 3 perfiles'; END IF;
   INSERT INTO public.roles (name, permissions) VALUES ('ZZ Sup Despacho C8', '["despacho-aprobacion","solicitudes:read"]') RETURNING id INTO v_role_s;
-  INSERT INTO public.roles (name, permissions) VALUES ('ZZ Contratos C8', '["solicitudes"]') RETURNING id INTO v_role_c;
+  INSERT INTO public.roles (name, permissions) VALUES ('ZZ Contratos C8', '["solicitudes", "ot"]') RETURNING id INTO v_role_c;
   UPDATE public.profiles SET role_id = v_role_s, is_active = true WHERE id = v_sup;
   UPDATE public.profiles SET role_id = v_role_c, is_active = true WHERE id = v_contr;
   INSERT INTO public.user_site_access (user_id, site_id) VALUES (v_sup, v_site), (v_contr, v_site) ON CONFLICT DO NOTHING;

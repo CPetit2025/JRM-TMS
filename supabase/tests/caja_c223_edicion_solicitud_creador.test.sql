@@ -78,11 +78,14 @@ BEGIN
        RAISE EXCEPTION 'CAJA C223 FAIL: set_transport_request_status_at cancela una solicitud ajena (%)', v_msg; END IF;
    END IF;
 
-   EXECUTE 'SET LOCAL ROLE authenticated';
-   UPDATE public.transport_requests SET updated_at = updated_at WHERE id = v_other;
-   GET DIAGNOSTICS v_rows = ROW_COUNT;
-   EXECUTE 'RESET ROLE';
-   IF v_rows <> 0 THEN RAISE EXCEPTION 'CAJA C223 FAIL: la API permite escribir una solicitud ajena'; END IF;
+   -- Escritura directa: en producción authenticated no tiene UPDATE sobre la tabla; si lo tiene, la RLS debe frenarla
+   IF has_table_privilege('authenticated', 'public.transport_requests', 'UPDATE') THEN
+     EXECUTE 'SET LOCAL ROLE authenticated';
+     UPDATE public.transport_requests SET updated_at = updated_at WHERE id = v_other;
+     GET DIAGNOSTICS v_rows = ROW_COUNT;
+     EXECUTE 'RESET ROLE';
+     IF v_rows <> 0 THEN RAISE EXCEPTION 'CAJA C223 FAIL: la API permite escribir una solicitud ajena'; END IF;
+   END IF;
 
    -- Contratos/OT (área comercial) conserva la edición de cualquier solicitud
    UPDATE public.roles SET permissions = '["solicitudes:write", "ot:write"]'::jsonb WHERE id = v_role;

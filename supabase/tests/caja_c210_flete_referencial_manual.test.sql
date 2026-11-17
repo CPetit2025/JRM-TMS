@@ -8,7 +8,9 @@ BEGIN
  IF position('tms.manual_freight' IN v_src)=0 OR position('freight_manual_reason' IN v_src)=0 THEN
   RAISE EXCEPTION 'CAJA C210 FAIL: el tarifario no respeta el flete referencial manual sin tarifa';
  END IF;
- SELECT prosrc INTO v_src FROM pg_proc WHERE oid='public.save_transport_request_full(uuid,jsonb,jsonb,jsonb)'::regprocedure;
+ -- El envoltorio del flete manual puede quedar bajo otros envoltorios (p. ej. el control del creador, C223)
+ SELECT string_agg(prosrc, ' ') INTO v_src FROM pg_proc WHERE oid IN ('public.save_transport_request_full(uuid,jsonb,jsonb,jsonb)'::regprocedure,
+   COALESCE(to_regprocedure('public.save_transport_request_full_before_owner_guard(uuid,jsonb,jsonb,jsonb)'), 0::oid));
  IF position('freight_manual_pen' IN v_src)=0 OR to_regprocedure('public.save_transport_request_full_before_manual_freight(uuid,jsonb,jsonb,jsonb)') IS NULL THEN
   RAISE EXCEPTION 'CAJA C210 FAIL: el guardado de la solicitud no recibe el flete manual';
  END IF;
