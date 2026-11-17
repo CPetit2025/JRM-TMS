@@ -71,7 +71,19 @@ BEGIN
      AND NOT (public.inv_ocultos_save('{"codigo":"99975","ocultar":false}')->>'success')::boolean
   THEN pass := pass + 1; ELSE fails := fails || ('T4 mostrar de nuevo ' || r::text); END IF;
 
-  IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C225 FAIL (%/4): %', pass, array_to_string(fails, ' | '); END IF;
-  RAISE EXCEPTION 'CAJA C225 PASS (4/4) contratos ocultos fuera del modelo APT sin borrar movimientos, y se recuperan';
+  -- T5: la foto de stock (saldo inicial) tampoco trae el lote oculto 99975-S002; la del lote visible sí suma
+  INSERT INTO public.inv_uploads (side, file_name, cutoff, created_by, status, applied_at, desde, hasta)
+  VALUES ('STOCK', 'C225 foto.xlsx', DATE '2001-02-28', adm, 'APLICADA', now(), DATE '2001-02-28', DATE '2001-02-28') RETURNING id INTO ue;
+  INSERT INTO public.inv_stock_snapshots (upload_id, bodega, producto, lote, glosa, unidad, cantidad, peso_kg) VALUES
+    (ue, '647-04 C225 ALM PT', 'C225.VIGA', '99975-S002', 'VIGA C225', 'UND', 3, 6),
+    (ue, '647-04 C225 ALM PT', 'C225.PLACA', '99974-S001', 'PLACA C225', 'UND', 2, 6);
+  PERFORM public.inv_rebuild();
+  PERFORM public.inv_cache_refresh();
+  IF NOT EXISTS (SELECT 1 FROM public.inv_stock_cache WHERE lote = '99975-S002')
+     AND (SELECT (x->>'stock_kg')::numeric FROM jsonb_array_elements(public.inv_estadia_contratos()->'filas') x WHERE x->>'contrato' = '99974-S001') = 18
+  THEN pass := pass + 1; ELSE fails := fails || ('T5 foto ' || COALESCE((SELECT json_agg(s)::text FROM public.inv_stock_cache s WHERE lote LIKE '9997%'), 'sin stock')); END IF;
+
+  IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C225 FAIL (%/5): %', pass, array_to_string(fails, ' | '); END IF;
+  RAISE EXCEPTION 'CAJA C225 PASS (5/5) contratos ocultos fuera del modelo APT sin borrar movimientos, y se recuperan';
 END $test$;
 ROLLBACK;

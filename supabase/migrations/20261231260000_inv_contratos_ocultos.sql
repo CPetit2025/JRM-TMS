@@ -40,6 +40,18 @@ BEGIN
   EXECUTE regexp_replace(src, 'public\.inv_movements\M', 'public.inv_movements_v', 'g');
 END $migration$;
 
+-- La foto de stock (saldo inicial del modelo) entra al recálculo sin pasar por la vista: también excluye los ocultos
+DO $migration$
+DECLARE src text := pg_get_functiondef('public.inv_rebuild()'::regprocedure);
+  pat text := 'FROM public.inv_stock_snapshots WHERE upload_id = v_snap';
+BEGIN
+  IF (length(src) - length(replace(src, pat, ''))) / length(pat) <> 1 THEN
+    RAISE EXCEPTION 'inv_rebuild no lee la foto como se esperaba: revisar antes de migrar';
+  END IF;
+  EXECUTE replace(src, pat, pat || ' AND NOT EXISTS (SELECT 1 FROM public.inv_contratos_ocultos o'
+    || ' WHERE o.codigo IN (public.inv_stock_snapshots.lote, public.inv_ot(public.inv_stock_snapshots.lote)))');
+END $migration$;
+
 CREATE OR REPLACE FUNCTION public.inv_ocultos_list()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -67,6 +79,10 @@ DECLARE v_codigo text := upper(btrim(COALESCE(p->>'codigo', ''))); v_motivo text
 BEGIN
   IF NOT public.apt_can_load() THEN RETURN jsonb_build_object('success', false, 'error', 'No tiene permiso para ocultar contratos'); END IF;
   IF v_codigo = '' THEN RETURN jsonb_build_object('success', false, 'error', 'Indique el contrato u OT'); END IF;
+  -- Con un recálculo en curso el cambio y su marca de «pendiente» se perderían: se pide reintentar
+  IF NOT pg_try_advisory_xact_lock(hashtext('inv_rebuild')) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Hay un recálculo del inventario en curso: intente de nuevo en un minuto');
+  END IF;
   IF COALESCE((p->>'ocultar')::boolean, true) THEN
     IF length(v_motivo) < 3 THEN RETURN jsonb_build_object('success', false, 'error', 'Indique el motivo'); END IF;
     IF NOT EXISTS (SELECT 1 FROM public.inv_movements m WHERE m.lote = v_codigo OR m.ot = v_codigo) THEN
