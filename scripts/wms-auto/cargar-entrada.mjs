@@ -15,10 +15,16 @@ if(!wmsHost){console.error('Por seguridad, el robot solo carga en el WMS (wms.jr
 const { chromium } = await import('playwright-core')
 const browser=await chromium.launch({channel:'msedge',headless:true}), page=await browser.newPage()
 try{
- await page.goto(url+'/almacen/login',{waitUntil:'networkidle'})
+ // networkidle a secas vencía a los 30 s con el WMS lento (carga grande del ERP): load + red quieta opcional, 90 s
+ page.setDefaultNavigationTimeout(90000)
+ // Un corte o una recarga de la página (net::ERR_ABORTED, timeout) no hace fallar el ciclo: hasta 3 intentos
+ const abrir=async ruta=>{for(let i=1;;i++){try{return await page.goto(url+ruta,{waitUntil:'load'})}catch(e){if(i>=3)throw e;await page.waitForTimeout(5000)}}}
+ await abrir('/almacen/login')
+ await page.waitForLoadState('networkidle',{timeout:20000}).catch(()=>{}) // que React tome el formulario antes de llenarlo
+ await page.locator('#login-username').waitFor({state:'visible',timeout:90000})
  await page.locator('#login-username').fill(user);await page.locator('#login-password').fill(password);await page.locator('button[type=submit]').click()
  await page.waitForURL(u=>!u.pathname.endsWith('/login'),{timeout:60000}).catch(()=>{throw new Error('No se pudo iniciar sesión WMS; verifique cuenta aprobada y permisos.')})
- await page.goto(url+'/almacen/apt/etiquetado',{waitUntil:'domcontentloaded'})
+ await abrir('/almacen/apt/etiquetado')
  const input=page.locator('input[type=file]').first();await input.waitFor({state:'attached',timeout:60000})
  await input.setInputFiles(files[0])
  if(revisar){console.log('Revisión OK: acceso a la importación de ingresos WMS. No se aplicaron cambios.');process.exitCode=0}
