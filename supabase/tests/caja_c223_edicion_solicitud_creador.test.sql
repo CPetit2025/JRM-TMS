@@ -55,6 +55,28 @@ BEGIN
    EXCEPTION WHEN insufficient_privilege THEN v_msg := SQLERRM; END;
    IF v_msg IS NULL OR v_msg NOT LIKE 'Solo puede cancelar sus propias solicitudes%' THEN
      RAISE EXCEPTION 'CAJA C223 FAIL: cancela una solicitud ajena (%)', v_msg; END IF;
+   -- Entradas alternativas (si están instaladas)
+   IF to_regprocedure('public.save_transport_request_before_owner_guard(uuid,jsonb,jsonb)') IS NOT NULL THEN
+     v_msg := NULL;
+     BEGIN PERFORM public.save_transport_request(v_other, '{}'::jsonb, '[]'::jsonb);
+     EXCEPTION WHEN insufficient_privilege THEN v_msg := SQLERRM; END;
+     IF v_msg IS NULL OR v_msg NOT LIKE 'Solo puede editar sus propias%' THEN
+       RAISE EXCEPTION 'CAJA C223 FAIL: save_transport_request edita una solicitud ajena (%)', v_msg; END IF;
+   END IF;
+   IF to_regprocedure('public.save_transport_request_attention_before_owner_guard(uuid,jsonb,jsonb,jsonb)') IS NOT NULL THEN
+     v_msg := NULL;
+     BEGIN PERFORM public.save_transport_request_attention(v_other, '{}'::jsonb, '[]'::jsonb, '[]'::jsonb);
+     EXCEPTION WHEN insufficient_privilege THEN v_msg := SQLERRM; END;
+     IF v_msg IS NULL OR v_msg NOT LIKE 'Solo puede editar sus propias%' THEN
+       RAISE EXCEPTION 'CAJA C223 FAIL: save_transport_request_attention edita una solicitud ajena (%)', v_msg; END IF;
+   END IF;
+   IF to_regprocedure('public.set_transport_request_status_at_before_owner_guard(uuid,text,date,timestamptz,text)') IS NOT NULL THEN
+     v_msg := NULL;
+     BEGIN PERFORM public.set_transport_request_status_at(v_other, 'CANCELADA');
+     EXCEPTION WHEN insufficient_privilege THEN v_msg := SQLERRM; END;
+     IF v_msg IS NULL OR v_msg NOT LIKE 'Solo puede cancelar sus propias%' THEN
+       RAISE EXCEPTION 'CAJA C223 FAIL: set_transport_request_status_at cancela una solicitud ajena (%)', v_msg; END IF;
+   END IF;
 
    EXECUTE 'SET LOCAL ROLE authenticated';
    UPDATE public.transport_requests SET updated_at = updated_at WHERE id = v_other;
