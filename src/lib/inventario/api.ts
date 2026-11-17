@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
 import type { InvParsedPart } from './parse'
-import type { InvAptResumen, InvContrato, InvContratoLineas, InvContratos, InvDwellDim, InvDwellDimResult, InvEstadiaContratos, InvKardex, InvVerify, InvCatalogs, InvDwell, InvFlow, InvOverview, InvStatus, InvStock, InvStockFilters, InvTrace } from './types'
+import type { InvAptResumen, InvContrato, InvContratoLineas, InvContratos, InvDwellDim, InvDwellDimResult, InvEstadiaContratos, InvKardex, InvOcultos, InvVerify, InvCatalogs, InvDwell, InvFlow, InvOverview, InvStatus, InvStock, InvStockFilters, InvTrace } from './types'
 
 // Acceso a las funciones public.inv_* (inventario multi-almacén). Todas devuelven { success, error?, ... }.
 const supabase = createClient()
@@ -32,6 +32,8 @@ export const invApi = {
   dwellDim: (f: { dim: InvDwellDim; ambito?: 'apt'; desde?: string; hasta?: string; ot?: string; q?: string; limit?: number }) =>
     call<InvDwellDimResult>('inv_dwell_dim', { p: f }),
   estadiaContratos: () => call<InvEstadiaContratos>('inv_estadia_contratos'),
+  ocultos: () => call<InvOcultos>('inv_ocultos_list'),
+  saveOculto: (p: { codigo: string; motivo?: string; ocultar: boolean }) => call<{ success: true; codigo: string }>('inv_ocultos_save', { p }),
   kardex: (q: string, producto?: string) => call<InvKardex>('inv_contrato_kardex', { p_q: q, p_producto: producto || null }),
   catalogs: () => call<InvCatalogs>('inv_catalogs'),
   verify: () => call<InvVerify>('inv_verify'),
