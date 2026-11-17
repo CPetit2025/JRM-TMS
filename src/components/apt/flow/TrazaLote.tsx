@@ -1,5 +1,7 @@
 'use client'
 import { DataTable } from '@/components/ui/data-table'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 
 import { useMemo, useState } from 'react'
 import {
@@ -17,7 +19,6 @@ import { AlmacenBadge, HATCH_BG, SectionTitle, TmsEstado, TraceLink } from './Tr
 // Ficha de un lote: KPIs, saldo por almacén, línea de tiempo de todos sus movimientos y guías con su estado en el TMS
 
 type Evento = FlowTraceLote['eventos'][number]
-const LIMIT = 80
 
 const esSalida = (e: Evento) => e.hacia !== undefined
 function EventoIcon({ e }: { e: Evento }) {
@@ -69,19 +70,20 @@ function TimelineItem({ e }: { e: Evento }) {
 
 export function TrazaLote({ d }: { d: FlowTraceLote }) {
   const [alm, setAlm] = useState<FlowAlmacen | null>(null)
-  const [all, setAll] = useState(false)
   const L = d.lote
 
   const eventos = useMemo(() => (alm ? d.eventos.filter(e => e.almacen === alm) : d.eventos), [d.eventos, alm])
+  const pg = usePagination(eventos, 'apt-traza-lote-eventos')
+  const pgGuias = usePagination(d.guias, 'apt-traza-lote-guias', (g, c) => [g.documento, g.fecha, g.tn, d.tms[g.documento.toUpperCase()]?.estado ?? null][c])
   const porFecha = useMemo(() => {
     const out: Array<{ fecha: string | null; items: Evento[] }> = []
-    ;(all ? eventos : eventos.slice(0, LIMIT)).forEach(e => {
+    pg.pageRows.forEach(e => {
       const last = out[out.length - 1]
       if (last && last.fecha === e.fecha) last.items.push(e)
       else out.push({ fecha: e.fecha, items: [e] })
     })
     return out
-  }, [eventos, all])
+  }, [pg.pageRows])
   const cuenta = useMemo(() => {
     const m: Partial<Record<FlowAlmacen, number>> = {}
     d.eventos.forEach(e => { m[e.almacen] = (m[e.almacen] || 0) + 1 })
@@ -130,7 +132,7 @@ export function TrazaLote({ d }: { d: FlowTraceLote }) {
             const s = saldoMap.get(a)
             const active = alm === a
             return (
-              <button key={a} type="button" onClick={() => setAlm(active ? null : a)} title={ALMACEN_ROL[a]}
+              <button key={a} type="button" onClick={() => { setAlm(active ? null : a); pg.setPage(1) }} title={ALMACEN_ROL[a]}
                 className={`min-w-[150px] rounded-xl border px-3 py-2 text-left transition-all hover:shadow-md ${s ? '' : 'opacity-60'}`}
                 style={{ borderColor: `${ALMACEN_COLOR[a]}55`, background: ALMACEN_BG[a], ...(active ? { boxShadow: `0 0 0 2px ${ALMACEN_COLOR[a]}` } : {}) }}>
                 <p className="text-[10px] font-black uppercase tracking-wider" style={{ color: ALMACEN_COLOR[a] }}>{ALMACEN_LABEL[a]}</p>
@@ -150,7 +152,7 @@ export function TrazaLote({ d }: { d: FlowTraceLote }) {
             <div>
               <h3 className="text-sm font-bold text-slate-800">Línea de tiempo</h3>
               <p className="text-xs text-slate-500">
-                {alm ? <>Solo {ALMACEN_LABEL[alm]} · <button type="button" onClick={() => setAlm(null)} className="font-semibold text-[#002855] hover:underline">ver todos</button></>
+                {alm ? <>Solo {ALMACEN_LABEL[alm]} · <button type="button" onClick={() => { setAlm(null); pg.setPage(1) }} className="font-semibold text-[#002855] hover:underline">ver todos</button></>
                   : 'Ingresos (+) y salidas (−) del lote en cada almacén, en orden'}
               </p>
             </div>
@@ -167,13 +169,7 @@ export function TrazaLote({ d }: { d: FlowTraceLote }) {
                 ))}
               </ol>
             ) : <p className="py-8 text-center text-sm text-slate-500">Sin movimientos.</p>}
-            {eventos.length > LIMIT && (
-              <div className="mt-3 text-center">
-                <button type="button" onClick={() => setAll(a => !a)} className="text-xs font-bold text-[#002855] hover:underline">
-                  {all ? 'Mostrar menos' : `Ver los ${fmtInt(eventos.length)} movimientos`}
-                </button>
-              </div>
-            )}
+            {pg.total > 25 && <TablePagination compact total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" />}
           </div>
         </section>
 
@@ -184,7 +180,7 @@ export function TrazaLote({ d }: { d: FlowTraceLote }) {
           </header>
           {d.guias.length ? (
             <div className="max-h-[640px] overflow-auto">
-              <DataTable className="w-full text-xs">
+              <DataTable className="w-full text-xs" onSortChange={pgGuias.onSortChange}>
                 <thead className="sticky top-0 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
                   <tr>
                     <th className="px-3 py-2 text-left font-bold">Guía</th>
@@ -194,7 +190,7 @@ export function TrazaLote({ d }: { d: FlowTraceLote }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {d.guias.map(g => {
+                  {pgGuias.pageRows.map(g => {
                     const t = d.tms[g.documento.toUpperCase()]
                     return (
                       <tr key={g.documento} className="hover:bg-slate-50">
@@ -215,6 +211,7 @@ export function TrazaLote({ d }: { d: FlowTraceLote }) {
               </DataTable>
             </div>
           ) : <p className="p-6 text-center text-sm text-slate-500">El lote aún no tiene guías.</p>}
+          {pgGuias.total > 25 && <TablePagination compact total={pgGuias.total} page={pgGuias.page} pageSize={pgGuias.pageSize} onPageChange={pgGuias.setPage} onPageSizeChange={pgGuias.setPageSize} itemLabel="registros" />}
         </section>
       </div>
     </div>

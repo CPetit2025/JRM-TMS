@@ -1,7 +1,9 @@
 'use client'
 import { DataTable } from '@/components/ui/data-table'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 
-import { useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, BookOpenCheck, GitBranch, Link2, Network } from 'lucide-react'
 import { fmtDate, fmtDias, fmtInt, fmtTn } from '@/lib/apt/format'
@@ -111,10 +113,10 @@ export function OtFamiliaStrip({ d, selected, onToggle, incluirSosp, onSosp, cur
 // Ficha completa (Trazabilidad al buscar una OT)
 export function OtFamiliaFicha({ d }: { d: OtFamilia }) {
   const r = d.resumen
-  const [verTodos, setVerTodos] = useState(false)
   const miembros = d.miembros.filter(m => m.variante !== 'SOSPECHOSO')
   const sosp = d.miembros.filter(m => m.variante === 'SOSPECHOSO')
-  const vinc = verTodos ? d.vinculados : d.vinculados.slice(0, 12)
+  const pgMiem = usePagination(miembros, 'apt-ot-familia-lotes', (m, c) => [m.lote, m.variante, m.produccion_tn, m.asignado_tn, m.despacho_tn, m.guias, m.consumo_tn + m.cedido_tn + m.otro_almacen_tn, m.saldo_tn, null, m.primera_produccion, null][c])
+  const pgVinc = usePagination(d.vinculados, 'apt-ot-familia-vinculados', (v, c) => [v.lote, v.roles.join(' '), v.hacia, v.glosa, v.tn, v.desde][c])
 
   const exportar = () => exportAptXlsx(`Familia_OT_${d.ot}`, {
     Lotes: d.miembros.map(m => ({
@@ -178,7 +180,7 @@ export function OtFamiliaFicha({ d }: { d: OtFamilia }) {
           <GitBranch className="h-4 w-4 text-[#002855]" /> Lotes de la OT <span className="text-xs font-normal text-slate-400">({miembros.length})</span>
         </header>
         <div className="overflow-x-auto">
-          <DataTable className="w-full min-w-[1100px] text-xs">
+          <DataTable className="w-full min-w-[1100px] text-xs" onSortChange={pgMiem.onSortChange}>
             <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
               <tr>
                 <th className="px-3 py-2 text-left">Lote</th>
@@ -195,7 +197,7 @@ export function OtFamiliaFicha({ d }: { d: OtFamilia }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {miembros.map(m => (
+              {pgMiem.pageRows.map(m => (
                 <tr key={m.lote} className="hover:bg-slate-50">
                   <td className="whitespace-nowrap px-3 py-1.5"><TraceLink q={m.lote} /></td>
                   <td className="px-3 py-1.5"><VarianteBadge v={m.variante} /></td>
@@ -218,6 +220,7 @@ export function OtFamiliaFicha({ d }: { d: OtFamilia }) {
             </tbody>
           </DataTable>
         </div>
+        {pgMiem.total > 25 && <TablePagination compact total={pgMiem.total} page={pgMiem.page} pageSize={pgMiem.pageSize} onPageChange={pgMiem.setPage} onPageSizeChange={pgMiem.setPageSize} itemLabel="registros" />}
       </section>
 
       {d.vinculados.length > 0 && (
@@ -227,7 +230,7 @@ export function OtFamiliaFicha({ d }: { d: OtFamilia }) {
             <p className="text-[11px] text-slate-500">Adelantos que se asignaron a la OT, insumos que consumió, material que pasó a otro lote o movimientos que el ERP marca con el contrato de la OT. No se suman a la familia.</p>
           </header>
           <div className="overflow-x-auto">
-            <DataTable className="w-full min-w-[900px] text-xs">
+            <DataTable className="w-full min-w-[900px] text-xs" onSortChange={pgVinc.onSortChange}>
               <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-3 py-2 text-left">Lote</th>
@@ -239,7 +242,7 @@ export function OtFamiliaFicha({ d }: { d: OtFamilia }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {vinc.map(v => (
+                {pgVinc.pageRows.map(v => (
                   <tr key={v.lote} className="hover:bg-slate-50">
                     <td className="whitespace-nowrap px-3 py-1.5"><TraceLink q={v.lote} /></td>
                     <td className="px-3 py-1.5">
@@ -260,11 +263,7 @@ export function OtFamiliaFicha({ d }: { d: OtFamilia }) {
               </tbody>
             </DataTable>
           </div>
-          {d.vinculados.length > 12 && (
-            <button type="button" onClick={() => setVerTodos(x => !x)} className="w-full border-t border-slate-100 py-2 text-xs font-semibold text-[#002855] hover:bg-slate-50">
-              {verTodos ? 'Ver menos' : `Ver los ${d.vinculados.length}`}
-            </button>
-          )}
+          {pgVinc.total > 25 && <TablePagination compact total={pgVinc.total} page={pgVinc.page} pageSize={pgVinc.pageSize} onPageChange={pgVinc.setPage} onPageSizeChange={pgVinc.setPageSize} itemLabel="registros" />}
         </section>
       )}
     </div>

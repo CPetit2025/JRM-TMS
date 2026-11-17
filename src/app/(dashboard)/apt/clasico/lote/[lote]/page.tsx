@@ -1,5 +1,7 @@
 'use client'
 import { DataTable } from '@/components/ui/data-table'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { cellValue, usePagination } from '@/lib/use-pagination'
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
@@ -334,6 +336,7 @@ function LoteView({ data, alert, producto, setProducto, onOrigen }: {
         <ChartCard title={`Capas FIFO (ingresos) · ${fmtInt(capas.length)}`} bodyClassName="p-0"
           subtitle="Cada fila de ENTRADA es una capa; las salidas consumen primero la más antigua del mismo producto">
           <Table
+            pageKey="apt-lote-capas"
             rows={capas}
             rowKey={c => c.id}
             cols={[
@@ -346,9 +349,9 @@ function LoteView({ data, alert, producto, setProducto, onOrigen }: {
               { h: 'KG ingresado', r: true, c: c => fmtKg(c.kg_in), t: rows => fmtKg(sum(rows, c => c.kg_in)) },
               { h: 'KG despachado', r: true, c: c => fmtKg(c.kg_out), t: rows => fmtKg(sum(rows, c => c.kg_out)) },
               { h: 'Saldo KG', r: true, c: c => <span className={c.kg_saldo > 0.5 ? 'font-bold text-[#002855]' : 'text-slate-400'}>{fmtKg(c.kg_saldo)}</span>, t: rows => fmtKg(sum(rows, c => c.kg_saldo)) },
-              { h: 'Días', r: true, c: c => <DiasBadge dias={c.dias} alert={alert} /> },
+              { h: 'Días', r: true, c: c => <DiasBadge dias={c.dias} alert={alert} />, s: c => c.dias },
               { h: 'Rango', c: c => c.rango || '—' },
-              { h: 'Estado', c: c => <EstadoBadge estado={c.estado} /> },
+              { h: 'Estado', c: c => <EstadoBadge estado={c.estado} />, s: c => c.estado },
               { h: '', c: c => <OrigenBtn onClick={() => onOrigen({ titulo: `Capa ${c.id} · ${c.producto}`, archivo: c.archivo, fila: c.row_no, hoja: 'ENTRADA', raw: c.raw })} /> },
             ]}
           />
@@ -360,6 +363,7 @@ function LoteView({ data, alert, producto, setProducto, onOrigen }: {
         subtitle="Todos los despachos con este NumRel y cuánto de cada uno se asignó a capas de ingreso">
         {salidas.length ? (
           <Table
+            pageKey="apt-lote-salidas"
             rows={salidas}
             rowKey={s => s.id}
             rowClass={s => (s.kg_sin_entrada > 0.5 ? 'bg-amber-50/40' : '')}
@@ -405,6 +409,7 @@ function LoteView({ data, alert, producto, setProducto, onOrigen }: {
           </div>
           {asignaciones.length ? (
             <Table
+              pageKey="apt-lote-asignaciones"
               rows={asignaciones}
               rowKey={a => `${a.capa}-${a.salida}`}
               cols={[
@@ -415,7 +420,7 @@ function LoteView({ data, alert, producto, setProducto, onOrigen }: {
                 { h: 'Fecha salida', c: a => fmtDate(a.fecha_salida) },
                 { h: 'Cliente', c: a => <span className="block max-w-[200px] truncate" title={a.s?.cliente || ''}>{a.s?.cliente || '—'}</span> },
                 { h: 'KG', r: true, c: a => fmtKg(a.kg), t: rows => fmtKg(sum(rows, a => a.kg)) },
-                { h: 'Días en APT', r: true, c: a => <DiasBadge dias={a.dias} alert={alert} /> },
+                { h: 'Días en APT', r: true, c: a => <DiasBadge dias={a.dias} alert={alert} />, s: a => a.dias },
               ]}
             />
           ) : (
@@ -428,14 +433,16 @@ function LoteView({ data, alert, producto, setProducto, onOrigen }: {
 }
 
 // Tabla compacta con encabezado sticky y fila de totales opcional
-function Table<T>({ rows, cols, rowKey, rowClass }: {
-  rows: T[]; rowKey: (r: T) => string | number; rowClass?: (r: T) => string
-  cols: Array<{ h: string; c: (r: T) => ReactNode; r?: boolean; t?: (rows: T[]) => ReactNode }>
+function Table<T>({ pageKey, rows, cols, rowKey, rowClass }: {
+  pageKey: string; rows: T[]; rowKey: (r: T) => string | number; rowClass?: (r: T) => string
+  cols: Array<{ h: string; c: (r: T) => ReactNode; r?: boolean; t?: (rows: T[]) => ReactNode; s?: (r: T) => unknown }>
 }) {
   const hasTotals = cols.some(c => c.t)
+  const pg = usePagination(rows, pageKey, (r, i) => cols[i]?.s ? cols[i].s(r) : cellValue(cols[i]?.c(r)))
   return (
+    <>
     <div className="max-h-[480px] overflow-auto">
-      <DataTable className="w-full border-separate border-spacing-0 text-xs">
+      <DataTable className="w-full border-separate border-spacing-0 text-xs" onSortChange={pg.onSortChange}>
         <thead>
           <tr>
             {cols.map((c, i) => (
@@ -447,7 +454,7 @@ function Table<T>({ rows, cols, rowKey, rowClass }: {
           </tr>
         </thead>
         <tbody>
-          {rows.map(r => (
+          {pg.pageRows.map(r => (
             <tr key={rowKey(r)} className={`hover:bg-slate-50 ${rowClass?.(r) || ''}`}>
               {cols.map((c, i) => (
                 <td key={`${c.h}-${i}`} className={`whitespace-nowrap border-b border-slate-100 px-3 py-1.5 text-slate-700 ${c.r ? 'text-right tabular-nums' : ''}`}>{c.c(r)}</td>
@@ -469,6 +476,8 @@ function Table<T>({ rows, cols, rowKey, rowClass }: {
         )}
       </DataTable>
     </div>
+    {pg.total > 25 && <TablePagination compact total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" />}
+    </>
   )
 }
 

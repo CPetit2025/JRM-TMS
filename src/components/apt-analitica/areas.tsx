@@ -6,6 +6,8 @@ import { commercialProgress, dailySeries, dwellOfExits, matchesFilters, openStoc
 import { summarize, bucketize, ratio, type WeightedPoint } from '@/lib/apt-analitica/stats'
 import { daysBetween } from '@/lib/apt-analitica/normalize'
 import type { Area, Kpi, Movement } from '@/lib/apt-analitica/types'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 import { useAnalitica } from './context'
 import { BucketBars, ClassBars, DwellHistogram, FlowBars, Heatmap, OpenScatter, ParetoBars } from './charts'
 import { CATEGORICAL, Card, Empty, KpiTile, Notice, Segmented, fmtDate, fmtNum, fmtPct } from './ui'
@@ -33,22 +35,22 @@ function dwellByDim(exits: Movement[], fifo: FifoResult, d: Dim) {
 function DwellTable({ exits, fifo, unit }: { exits: Movement[]; fifo: FifoResult; unit: string | null }) {
   const { openDrill } = useAnalitica()
   const [dim, setDim] = useState<Dim>('producto')
-  const [limit, setLimit] = useState(25)
   const rows = useMemo(() => dwellByDim(exits, fifo, dim), [exits, fifo, dim])
+  const pg = usePagination(rows, 'apt-analitica-permanencia')
   return <Card title={`Permanencia por ${DIM_LABEL[dim].toLowerCase()} · ${unit ?? ''}`} subtitle="Media ponderada por cantidad, mediana y p90 (FIFO, días calendario). Lote, producto y orden no se igualan entre sí."
-    actions={<Segmented label="Agrupar por" value={dim} onChange={setDim} options={(['lote', 'producto', 'orden'] as Dim[]).map(id => ({ id, label: DIM_LABEL[id] }))} />}>
-    {rows.length === 0 ? <Empty title="Sin salidas en el alcance" /> : <div className="overflow-x-auto">
+    actions={<Segmented label="Agrupar por" value={dim} onChange={d => { setDim(d); pg.setPage(1) }} options={(['lote', 'producto', 'orden'] as Dim[]).map(id => ({ id, label: DIM_LABEL[id] }))} />}>
+    {rows.length === 0 ? <Empty title="Sin salidas en el alcance" /> : <><div className="overflow-x-auto">
       <table className="w-full min-w-[46rem] text-xs">
         <thead><tr className="text-left text-slate-600"><th className="py-1">{DIM_LABEL[dim]}</th><th className="text-right">Salidas</th><th className="text-right">Enlazado</th>
           <th className="text-right">Media (d)</th><th className="text-right">Mediana</th><th className="text-right">p90</th><th className="text-right">Misma fecha</th><th className="text-right">Sin entrada</th><th className="text-right">Sin lote</th></tr></thead>
-        <tbody>{rows.slice(0, limit).map(r => <tr key={r.key} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50" onClick={() => openDrill(`Salidas de ${r.label}`, r.ids)}>
+        <tbody>{pg.pageRows.map(r => <tr key={r.key} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50" onClick={() => openDrill(`Salidas de ${r.label}`, r.ids)}>
           <td className="max-w-[18rem] truncate py-1.5 font-medium" title={r.label}>{r.label}</td><td className="text-right tabular-nums">{fmtNum(r.qty)}</td>
           <td className="text-right tabular-nums">{fmtPct(ratio(r.s.weight, r.qty - r.noLot))}</td><td className="text-right font-semibold tabular-nums">{fmtNum(r.s.mean, 2)}</td>
           <td className="text-right tabular-nums">{fmtNum(r.s.median)}</td><td className="text-right tabular-nums">{fmtNum(r.s.p90)}</td><td className="text-right tabular-nums">{fmtPct(r.s.sameDay, 0)}</td>
           <td className={`text-right tabular-nums ${r.unmatched > 0 ? 'text-red-700' : ''}`}>{fmtNum(r.unmatched)}</td><td className="text-right tabular-nums">{fmtNum(r.noLot)}</td></tr>)}</tbody>
       </table>
-      {rows.length > limit && <button type="button" onClick={() => setLimit(l => l + 50)} className="mt-2 text-xs font-semibold text-[#002855]">Ver más ({rows.length - limit} restantes)</button>}
-    </div>}
+    </div>
+    {pg.total > 25 && <TablePagination compact total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" />}</>}
   </Card>
 }
 
@@ -85,18 +87,18 @@ function useOpen(areas: Area[], unit: string | null) {
 
 function PriorityTable({ rows, unit }: { rows: ReturnType<typeof useOpen>['list']; unit: string | null }) {
   const { openDrill, setRawRow } = useAnalitica()
-  const [limit, setLimit] = useState(20)
+  const pg = usePagination(rows, 'apt-analitica-prioridades')
   if (!rows.length) return <Empty title="Sin existencias abiertas en el alcance" />
-  return <div className="overflow-x-auto"><table className="w-full min-w-[44rem] text-xs">
+  return <><div className="overflow-x-auto"><table className="w-full min-w-[44rem] text-xs">
     <thead><tr className="text-left text-slate-600"><th className="py-1">Prioridad</th><th>Bodega</th><th>Producto</th><th>Lote</th><th className="text-right">Abierto ({unit})</th>
       <th className="text-right">Antigüedad pond. (d)</th><th className="text-right">Entrada más antigua</th><th>Registros</th></tr></thead>
-    <tbody>{rows.slice(0, limit).map((r, i) => <tr key={r.key} className="border-t border-slate-100">
-      <td className="py-1.5 font-bold tabular-nums">{i + 1}</td><td>{r.bodega}</td><td className="max-w-[16rem] truncate" title={`${r.producto} · ${r.glosa ?? ''}`}>{r.producto}<span className="block truncate text-[10px] text-slate-500">{r.glosa}</span></td>
+    <tbody>{pg.pageRows.map((r, i) => <tr key={r.key} className="border-t border-slate-100">
+      <td className="py-1.5 font-bold tabular-nums">{(pg.page - 1) * pg.pageSize + i + 1}</td><td>{r.bodega}</td><td className="max-w-[16rem] truncate" title={`${r.producto} · ${r.glosa ?? ''}`}>{r.producto}<span className="block truncate text-[10px] text-slate-500">{r.glosa}</span></td>
       <td>{r.lote}</td><td className="text-right font-semibold tabular-nums">{fmtNum(r.qty)}</td><td className="text-right tabular-nums">{fmtNum(r.age, 1)}</td><td className="text-right">{fmtDate(r.oldest)}</td>
       <td className="whitespace-nowrap"><button type="button" className="font-semibold text-[#002855]" onClick={() => openDrill(`Entradas abiertas de ${r.producto} · lote ${r.lote}`, r.ids)}>Ver ({r.ids.length})</button>
         {r.ids[0] !== undefined && <button type="button" className="ml-2 text-slate-600 underline" onClick={() => setRawRow(r.ids[0])}>fila original</button>}</td></tr>)}</tbody>
-  </table>
-  {rows.length > limit && <button type="button" onClick={() => setLimit(l => l + 40)} className="mt-2 text-xs font-semibold text-[#002855]">Ver más</button>}</div>
+  </table></div>
+  {pg.total > 25 && <TablePagination compact total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" />}</>
 }
 
 function simpleKpi(code: string, label: string, value: number | null, unit: string | null, definition: string, ids: number[], extra: Partial<Kpi> = {}): Kpi {
@@ -204,7 +206,8 @@ export function DistTab() {
   const cp = useMemo(() => commercialProgress((meta?.commitments ?? []).map(c => ({ ...c, cantidad: Number(c.cantidad) })), a.scope, meta?.links ?? [],
     (meta?.receipts ?? []).map(r => ({ ...r, aceptada: Number(r.aceptada) }))), [meta, a.scope])
   const open = useOpen(areas, unit)
-  const [limit, setLimit] = useState(20)
+  const pgRefs = usePagination(refs, 'apt-analitica-dist-referencias')
+  const pgLines = usePagination(cp.lines, 'apt-analitica-dist-cumplimiento')
   if (!a.scope.length) return <Notice>No hay movimientos de Distribución en el alcance filtrado{filtersAreas.length ? ' (el filtro de área no incluye Distribución)' : ''}.</Notice>
   const unconfirmed = (meta?.areas ?? []).filter(x => x.area === 'DIST' && !x.confirmed)
   return <div className="space-y-4">
@@ -238,25 +241,25 @@ export function DistTab() {
       </Card>
     </div>
     <Card title="Despachos por referencia comercial" subtitle="Contrato, subcontrato o pedido (DocRel/NumRel/Contrato). Varios documentos para una misma referencia indican fragmentación.">
-      {refs.length === 0 ? <Empty title="Sin despachos" /> : <div className="overflow-x-auto"><table className="w-full min-w-[46rem] text-xs">
+      {refs.length === 0 ? <Empty title="Sin despachos" /> : <><div className="overflow-x-auto"><table className="w-full min-w-[46rem] text-xs">
         <thead><tr className="text-left text-slate-600"><th className="py-1">Referencia</th><th>Cliente</th><th className="text-right">Documentos</th><th className="text-right">Líneas</th>
           <th className="text-right">Despachado ({unit})</th><th className="text-right">Primer</th><th className="text-right">Último</th></tr></thead>
-        <tbody>{refs.slice(0, limit).map(r => <tr key={r.ref} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50" onClick={() => openDrill(`Despachos de ${r.ref}`, r.ids)}>
+        <tbody>{pgRefs.pageRows.map(r => <tr key={r.ref} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50" onClick={() => openDrill(`Despachos de ${r.ref}`, r.ids)}>
           <td className="py-1.5 font-medium">{r.ref}</td><td className="max-w-[16rem] truncate" title={r.cliente}>{r.cliente}</td><td className="text-right tabular-nums">{r.docs.size}</td>
           <td className="text-right tabular-nums">{r.lineas}</td><td className="text-right font-semibold tabular-nums">{fmtNum(r.qty)}</td><td className="text-right">{fmtDate(r.first)}</td><td className="text-right">{fmtDate(r.last)}</td></tr>)}</tbody>
-      </table>{refs.length > limit && <button type="button" onClick={() => setLimit(l => l + 40)} className="mt-2 text-xs font-semibold text-[#002855]">Ver más</button>}</div>}
+      </table></div>{pgRefs.total > 25 && <TablePagination compact total={pgRefs.total} page={pgRefs.page} pageSize={pgRefs.pageSize} onPageChange={pgRefs.setPage} onPageSizeChange={pgRefs.setPageSize} itemLabel="registros" />}</>}
     </Card>
     <Card title="Entregas parciales y cumplimiento" subtitle="Por pedido, línea y unidad. Requiere compromisos comerciales y, para la entrega, recepciones.">
       {!cp.available ? <Notice>No disponible: faltan los compromisos comerciales (pedido, línea, cantidad vigente) y las recepciones o constancias de entrega. Cárguelos en «Cargas»
         (tipos Compromisos y Recepciones) y registre los vínculos pedido → despacho en «Configuración». Sin esa información no se calcula entrega a tiempo, entrega completa ni OTIF.</Notice>
-        : <div className="overflow-x-auto"><table className="w-full min-w-[46rem] text-xs">
+        : <><div className="overflow-x-auto"><table className="w-full min-w-[46rem] text-xs">
           <thead><tr className="text-left text-slate-600"><th className="py-1">Pedido</th><th>Línea</th><th>Producto</th><th>Unidad</th><th className="text-right">Comprometido</th><th className="text-right">Despachado válido</th>
             <th className="text-right">Avance</th><th className="text-right">Exceso</th><th className="text-right">Pendiente</th><th className="text-right">Recibido</th></tr></thead>
-          <tbody>{cp.lines.map(l => <tr key={`${l.pedido}-${l.linea}`} className="border-t border-slate-100"><td className="py-1.5 font-medium">{l.pedido}</td><td>{l.linea}</td><td>{l.producto}</td><td>{l.unidad}</td>
+          <tbody>{pgLines.pageRows.map(l => <tr key={`${l.pedido}-${l.linea}`} className="border-t border-slate-100"><td className="py-1.5 font-medium">{l.pedido}</td><td>{l.linea}</td><td>{l.producto}</td><td>{l.unidad}</td>
             <td className="text-right tabular-nums">{fmtNum(l.comprometido)}</td><td className="text-right tabular-nums">{fmtNum(l.despachado - l.devuelto)}</td>
             <td className={`text-right font-semibold tabular-nums ${(l.avanceDespacho ?? 0) > 1 ? 'text-amber-700' : ''}`}>{fmtPct(l.avanceDespacho)}</td><td className="text-right tabular-nums">{fmtNum(l.exceso)}</td>
             <td className="text-right tabular-nums">{fmtNum(l.pendiente)}</td><td className="text-right tabular-nums">{l.recibido === null ? 'Sin recepción' : fmtNum(l.recibido)}</td></tr>)}</tbody>
-        </table><p className="mt-2 text-xs text-slate-600">Pedidos completos: {cp.orders.filter(o => o.completo).length} de {cp.orders.length}. Un pedido con alguna línea pendiente no está completo aunque la suma global llegue a 100 %.</p></div>}
+        </table></div>{pgLines.total > 25 && <TablePagination compact total={pgLines.total} page={pgLines.page} pageSize={pgLines.pageSize} onPageChange={pgLines.setPage} onPageSizeChange={pgLines.setPageSize} itemLabel="líneas" />}<p className="mt-2 text-xs text-slate-600">Pedidos completos: {cp.orders.filter(o => o.completo).length} de {cp.orders.length}. Un pedido con alguna línea pendiente no está completo aunque la suma global llegue a 100 %.</p></>}
     </Card>
     <Card title="Cantidades abiertas en Distribución" subtitle="Ordenadas por cantidad × días abiertos"><PriorityTable rows={open.list} unit={unit} /></Card>
   </div>

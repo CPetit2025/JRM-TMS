@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
 import { Download } from 'lucide-react'
 import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -16,14 +15,12 @@ import { exportAptXlsx } from '@/lib/apt/export'
 
 const tick = { fontSize: 11, fill: '#64748b' }
 const axisKg = (v: number) => (Math.abs(v) >= 1000 ? `${Math.round(v / 1000)} t` : String(Math.round(v)))
-const PAGE = 200
 
 // Kardex de una OT en el APT: lo que ingresó, lo que salió y el saldo acumulado (total en kg o de un ID en su unidad)
 export function Kardex({ ot, productos, producto, onProducto }: {
   ot: string; productos: InvContratoProducto[]; producto: string; onProducto: (p: string) => void
 }) {
   const r = useInvQuery(`kardex|${ot}|${producto}`, () => invApi.kardex(ot, producto || undefined))
-  const [shown, setShown] = useState(PAGE)
   const d = r.data
   const sel = productos.find(p => p.producto === producto)
   const exportar = () => d && exportAptXlsx(`kardex-ot-${d.ot}${producto ? `-${producto}` : ''}`, { Kardex: d.movimientos.map(m => ({
@@ -34,7 +31,7 @@ export function Kardex({ ot, productos, producto, onProducto }: {
   return (
     <ChartCard title="Kardex de la OT" subtitle="Ingresos, salidas y saldo acumulado en el APT · el traspaso 647 → ST de la misma OT es interno y no cambia el saldo"
       actions={<div className="flex flex-wrap items-center gap-2">
-        <select aria-label="ID" value={producto} onChange={e => { setShown(PAGE); onProducto(e.target.value) }} className="min-h-9 max-w-72 rounded-lg border border-slate-300 px-2 text-xs">
+        <select aria-label="ID" value={producto} onChange={e => { onProducto(e.target.value) }} className="min-h-9 max-w-72 rounded-lg border border-slate-300 px-2 text-xs">
           <option value="">Todos los IDs (saldo en kg)</option>
           {productos.map(p => <option key={p.producto} value={p.producto}>{p.producto} · {p.glosa ?? ''}</option>)}
         </select>
@@ -65,12 +62,12 @@ export function Kardex({ ot, productos, producto, onProducto }: {
         </ResponsiveContainer>}
         <Table empty={!d.movimientos.length} head={<tr><th className={th}>Fecha</th><th className={th}>Documento</th><th className={th}>Almacén</th>{!producto && <th className={th}>ID / glosa</th>}
           <th className={th}>Lote</th><th className={th}>Cliente / proveedor</th><th className={`${th} text-right`}>Entrada</th><th className={`${th} text-right`}>Salida</th><th className={`${th} text-right`}>Saldo</th></tr>}>
-          {d.movimientos.slice(0, shown).map((m, i) => <tr key={i} className={m.interno ? 'bg-slate-50 text-slate-400' : 'hover:bg-slate-50'}>
+          {d.movimientos.map((m, i) => <tr key={i} className={m.interno ? 'bg-slate-50 text-slate-400' : 'hover:bg-slate-50'}>
             <td className={td}>{fmtDate(m.fecha)}</td>
             <td className={td}><Link href={`/apt/trazabilidad?q=${encodeURIComponent(m.numero)}`} className="font-semibold text-[#002855] underline">{m.numero}</Link>
               <p className="text-[10px] text-slate-500">{CLASE_LABEL[m.clase] ?? m.clase}{m.interno ? ' · interno' : ''}</p></td>
             <td className={td}><AlmacenTag almacen={m.almacen} /></td>
-            {!producto && <td className={td}><button type="button" onClick={() => { setShown(PAGE); onProducto(m.producto) }} className="text-left"><ProductoCell producto={m.producto} glosa={m.glosa} /></button></td>}
+            {!producto && <td className={td}><button type="button" onClick={() => { onProducto(m.producto) }} className="text-left"><ProductoCell producto={m.producto} glosa={m.glosa} /></button></td>}
             <td className={td}>{m.lote ?? '—'}</td>
             <td className={td}><p className="max-w-48 truncate" title={m.tercero ?? ''}>{m.tercero ?? '—'}</p></td>
             <td className={tdNum}>{m.entrada !== null ? <>{fmtQty(m.entrada)}<p className="text-[10px] text-slate-500">{fmtPeso(m.kg_entrada)}</p></> : ''}</td>
@@ -78,10 +75,7 @@ export function Kardex({ ot, productos, producto, onProducto }: {
             <td className={`${tdNum} font-semibold`}>{producto ? `${fmtQty(m.saldo_qty)} ${m.unidad ?? ''}` : fmtPeso(m.saldo_kg)}</td>
           </tr>)}
         </Table>
-        {(d.movimientos.length > shown || d.truncado) && <div className="flex items-center justify-end gap-3 text-xs text-slate-500">
-          {d.truncado && <span>Se muestran los 3.000 movimientos más recientes; el Excel incluye los mismos.</span>}
-          {d.movimientos.length > shown && <button type="button" onClick={() => setShown(s => s + PAGE)} className="min-h-9 rounded-lg border border-slate-300 px-3 font-semibold text-[#002855]">Ver {fmtN(Math.min(PAGE, d.movimientos.length - shown))} más</button>}
-        </div>}
+        {d.truncado && <p className="text-right text-xs text-slate-500">Se muestran los 3.000 movimientos más recientes; el Excel incluye los mismos.</p>}
       </div>}
     </ChartCard>
   )

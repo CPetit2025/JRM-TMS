@@ -8,6 +8,8 @@ import { exportWorkbook, movementRow } from '@/lib/apt-analitica/export'
 import { AREA_LABEL, CLASS_LABEL, type Movement } from '@/lib/apt-analitica/types'
 import type { Issue, Severity } from '@/lib/apt-analitica/quality'
 import { Modal } from '@/components/ui/modal'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 import { useAnalitica } from './context'
 import { Card, Empty, Notice, Segmented, SeverityBadge, fmtDate, fmtNum } from './ui'
 
@@ -49,9 +51,7 @@ export function ExplorerTab() {
   const [sort, setSort] = useState<{ id: string; dir: 1 | -1 }>({ id: 'fecha', dir: 1 })
   const [group, setGroup] = useState('none')
   const [q, setQ] = useState('')
-  const [page, setPage] = useState(0)
   const [showCols, setShowCols] = useState(false)
-  const PAGE = 100
   const source = useMemo(() => drill ? drill.ids.map(id => base.byId.get(id)).filter((m): m is Movement => !!m) : analysis.scope, [drill, base, analysis.scope])
   const rows = useMemo(() => {
     const t = q.trim().toUpperCase()
@@ -77,7 +77,10 @@ export function ExplorerTab() {
     }
     return [...by].flatMap(([k, u]) => [...u].map(([unit, v]) => ({ key: k, unit, ...v }))).sort((a, b) => (b.e + b.s) - (a.e + a.s))
   }, [rows, group])
-  useEffect(() => { const t = window.setTimeout(() => setPage(0), 0); return () => window.clearTimeout(t) }, [q, sort, group, drill])
+  const pg = usePagination(rows, 'apt-analitica-explorador')
+  const pgGroup = usePagination(grouped ?? [], 'apt-analitica-explorador-agrupado')
+  const { setPage } = pg, { setPage: setGroupPage } = pgGroup
+  useEffect(() => { const t = window.setTimeout(() => { setPage(1); setGroupPage(1) }, 0); return () => window.clearTimeout(t) }, [q, sort, group, drill, setPage, setGroupPage])
   const shown = COLS.filter(c => cols.includes(c.id))
   const doExport = () => exportWorkbook(`analitica-apt-${new Date().toISOString().slice(0, 10)}.xlsx`, [
     { name: 'Movimientos', rows: rows.map(m => movementRow(m, files)) },
@@ -101,26 +104,22 @@ export function ExplorerTab() {
               onChange={() => setCols(cs => cs.includes(c.id) ? cs.filter(x => x !== c.id) : [...cs, c.id])} />{c.label}</label>)}</div>}</div>
         <button type="button" onClick={doExport} className="flex h-8 items-center gap-1 rounded-lg bg-[#002855] px-3 text-xs font-semibold text-white"><Download className="h-3.5 w-3.5" aria-hidden />Exportar selección</button>
       </>}>
-      {grouped && <div className="mb-3 max-h-80 overflow-auto rounded border border-slate-200"><table className="w-full min-w-[36rem] text-xs">
+      {grouped && <><div className="mb-3 max-h-80 overflow-auto rounded border border-slate-200"><table className="w-full min-w-[36rem] text-xs">
         <thead className="sticky top-0 bg-slate-50"><tr className="text-left"><th className="px-2 py-1">{GROUPS.find(g => g.id === group)!.label}</th><th>Unidad</th><th className="text-right">Entradas</th><th className="text-right">Salidas</th><th className="text-right">Variación</th><th className="px-2 text-right">Líneas</th></tr></thead>
-        <tbody>{grouped.slice(0, 500).map(g => <tr key={`${g.key}${g.unit}`} className="border-t border-slate-100"><td className="max-w-[20rem] truncate px-2 py-1" title={g.key}>{g.key}</td><td>{g.unit}</td>
+        <tbody>{pgGroup.pageRows.map(g => <tr key={`${g.key}${g.unit}`} className="border-t border-slate-100"><td className="max-w-[20rem] truncate px-2 py-1" title={g.key}>{g.key}</td><td>{g.unit}</td>
           <td className="text-right tabular-nums">{fmtNum(g.e)}</td><td className="text-right tabular-nums">{fmtNum(g.s)}</td><td className="text-right font-semibold tabular-nums">{fmtNum(g.e - g.s)}</td><td className="px-2 text-right tabular-nums">{g.n}</td></tr>)}</tbody>
-      </table></div>}
+      </table></div>{pgGroup.total > 25 && <TablePagination compact total={pgGroup.total} page={pgGroup.page} pageSize={pgGroup.pageSize} onPageChange={pgGroup.setPage} onPageSizeChange={pgGroup.setPageSize} itemLabel="grupos" />}</>}
       {rows.length === 0 ? <Empty title="Sin registros para los filtros aplicados" /> : <>
         <div className="max-h-[36rem] overflow-auto rounded border border-slate-200"><table className="w-full text-xs" style={{ minWidth: `${shown.length * 7}rem` }}>
           <thead className="sticky top-0 z-10 bg-slate-50"><tr>{shown.map(c => <th key={c.id} scope="col" aria-sort={sort.id === c.id ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'} className={`px-2 py-1.5 font-semibold text-slate-700 ${c.num ? 'text-right' : 'text-left'}`}>
             <button type="button" onClick={() => setSort(s => ({ id: c.id, dir: s.id === c.id ? (s.dir === 1 ? -1 : 1) : 1 }))} className="whitespace-nowrap hover:underline">
               {c.label}{sort.id === c.id ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}</button></th>)}<th className="px-2">Fila</th></tr></thead>
-          <tbody>{rows.slice(page * PAGE, page * PAGE + PAGE).map(m => <tr key={m.id} className="border-t border-slate-100 hover:bg-slate-50">
+          <tbody>{pg.pageRows.map(m => <tr key={m.id} className="border-t border-slate-100 hover:bg-slate-50">
             {shown.map(c => { const v = c.get(m); return <td key={c.id} className={`max-w-[16rem] truncate px-2 py-1 ${c.num ? 'text-right tabular-nums' : ''}`} title={v === null ? '' : String(v)}>
               {v === null || v === '' ? <span className="text-slate-400">—</span> : c.num ? fmtNum(Number(v)) : c.id === 'fecha' || c.id === 'fechaEntrega' ? fmtDate(String(v)) : String(v)}</td> })}
             <td className="px-2"><button type="button" onClick={() => setRawRow(m.id)} aria-label="Ver fila original" className="text-[#002855]"><FileSearch className="h-4 w-4" /></button></td></tr>)}</tbody>
         </table></div>
-        <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
-          <span>{page * PAGE + 1}–{Math.min(rows.length, (page + 1) * PAGE)} de {rows.length.toLocaleString('es-PE')}</span>
-          <span className="flex gap-1"><button type="button" disabled={page === 0} onClick={() => setPage(p => p - 1)} className="rounded border border-slate-300 px-2 py-1 disabled:opacity-40">Anterior</button>
-            <button type="button" disabled={(page + 1) * PAGE >= rows.length} onClick={() => setPage(p => p + 1)} className="rounded border border-slate-300 px-2 py-1 disabled:opacity-40">Siguiente</button></span>
-        </div>
+        {pg.total > 25 && <TablePagination compact total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" />}
       </>}
     </Card>
   </div>

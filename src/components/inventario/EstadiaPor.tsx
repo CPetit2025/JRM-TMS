@@ -17,7 +17,6 @@ import { exportAptXlsx } from '@/lib/apt/export'
 // Estadía abierta por contrato / OT, ID (glosa) o cliente: días en bodega de lo que salió (FIFO) y stock que queda
 type Ver = InvDwellDim | 'bodega'
 const VER: Array<[Ver, string]> = [['ot', 'Contrato / OT'], ['producto', 'ID / Glosa'], ['cliente', 'Cliente'], ['bodega', 'Bodega']]
-const PAGE = 300
 
 // Selector «Ver por» guardado en la dirección (?ver=ot|producto|cliente|bodega)
 export function VerPor({ bodegas, detalle }: { bodegas: ReactNode; detalle: (dim: InvDwellDim) => ReactNode }) {
@@ -54,9 +53,8 @@ export function EstadiaPor({ dim }: { dim: InvDwellDim }) {
   const [period, setPeriod] = useState({ desde: '', hasta: '' })
   const [draft, setDraft] = useState(sp.get('q') ?? '')
   const [q, setQ] = useState(draft)
-  const [limit, setLimit] = useState(PAGE)
   const filtro = useMemo(() => ({ dim, ...(apt ? { ambito: 'apt' as const } : {}), desde: period.desde || undefined, hasta: period.hasta || undefined,
-    ot: ot || undefined, q: q || undefined, limit }), [dim, apt, period, ot, q, limit])
+    ot: ot || undefined, q: q || undefined, limit: 5000 }), [dim, apt, period, ot, q])
   const r = useInvQuery(`dwelldim|${JSON.stringify(filtro)}`, () => invApi.dwellDim(filtro))
   const d = r.data
   const setOt = (v: string) => {
@@ -82,8 +80,8 @@ export function EstadiaPor({ dim }: { dim: InvDwellDim }) {
   const sum = (k: 'stock_kg' | 'kg_despachado' | 'stock_kg_60') => (d?.filas ?? []).reduce((t, f) => t + f[k], 0)
   return (
     <div className="space-y-4">
-      <PeriodBar desde={period.desde || d?.desde || ''} hasta={period.hasta || d?.hasta || ''} onChange={(a, b) => { setPeriod({ desde: a, hasta: b }); setLimit(PAGE) }}>
-        <form onSubmit={e => { e.preventDefault(); setQ(draft.trim()); setLimit(PAGE) }} className="flex items-end gap-2">
+      <PeriodBar desde={period.desde || d?.desde || ''} hasta={period.hasta || d?.hasta || ''} onChange={(a, b) => { setPeriod({ desde: a, hasta: b }) }}>
+        <form onSubmit={e => { e.preventDefault(); setQ(draft.trim()) }} className="flex items-end gap-2">
           <label className="text-xs font-semibold text-slate-600">Buscar
             <span className="mt-1 flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-2"><Search className="h-4 w-4 text-slate-400" />
               <input value={draft} onChange={e => setDraft(e.target.value)} placeholder={dim === 'ot' ? 'OT o cliente' : dim === 'producto' ? 'ID o glosa' : 'Cliente'} className="w-48 text-sm outline-none" /></span>
@@ -104,7 +102,6 @@ export function EstadiaPor({ dim }: { dim: InvDwellDim }) {
           subtitle={`${fmtN(d.total)} ${dim === 'ot' ? 'OT' : dim === 'producto' ? 'IDs' : 'clientes'}${d.filas.length < d.total ? ` · mostrando ${fmtN(d.filas.length)}` : ''} · ${apt ? 'APT 647 · 540 · ST' : 'todas las bodegas'} · salidas del ${fmtDate(d.desde)} al ${fmtDate(d.hasta)} · stock al ${fmtDate(d.corte)}`}
           info="Stock: lo que queda hoy y cuántos días lleva (promedio ponderado por kg desde su ingreso a la bodega). Salidas: cada salida del período cruzada con el ingreso más antiguo de la misma bodega, producto y lote (FIFO); días en bodega = fecha de salida − fecha de ingreso.">
           <DimTable dim={dim} rows={d.filas} onOt={setOt} />
-          {d.filas.length < d.total && <div className="mt-3 text-right"><button type="button" onClick={() => setLimit(l => l + PAGE)} className="min-h-9 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-[#002855]">Ver {fmtN(Math.min(PAGE, d.total - d.filas.length))} más</button></div>}
         </ChartCard>
       </>}
     </div>
