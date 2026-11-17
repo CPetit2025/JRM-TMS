@@ -15,7 +15,10 @@ if(!wmsHost){console.error('Por seguridad, el robot solo carga en el WMS (wms.jr
 const { chromium } = await import('playwright-core')
 const browser=await chromium.launch({channel:'msedge',headless:true}), page=await browser.newPage()
 try{
- await page.goto(url+'/almacen/login',{waitUntil:'networkidle'})
+ // Sin networkidle (la web consulta en segundo plano y a veces no queda «quieta»): se espera el formulario; 90 s por si el WMS está lento
+ page.setDefaultNavigationTimeout(90000)
+ await page.goto(url+'/almacen/login',{waitUntil:'domcontentloaded'})
+ await page.locator('#login-username').waitFor({state:'visible',timeout:90000})
  await page.locator('#login-username').fill(user);await page.locator('#login-password').fill(password);await page.locator('button[type=submit]').click()
  await page.waitForURL(u=>!u.pathname.endsWith('/login'),{timeout:60000}).catch(()=>{throw new Error('No se pudo iniciar sesión WMS; verifique cuenta aprobada y permisos.')})
  await page.goto(url+'/almacen/apt/etiquetado',{waitUntil:'domcontentloaded'})
