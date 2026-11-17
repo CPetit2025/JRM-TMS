@@ -139,6 +139,13 @@ function exportFicha(d: InvContrato) {
   })
 }
 
+// Stock del ID en su propia unidad (el ERP puede llevar el stock en CIEN y el contrato en UND): se avisa si difieren
+function StockApt({ p, unidadContrato }: { p?: InvContratoProducto; unidadContrato: string | null }) {
+  if (!p?.stock) return <span className="text-slate-400">—</span>
+  const distinta = !!p.unidad && !!unidadContrato && p.unidad.trim().toUpperCase() !== unidadContrato.trim().toUpperCase()
+  return <>{fmtQty(p.stock)} <span className={distinta ? 'font-semibold text-amber-700' : 'text-slate-400'} title={distinta ? `El stock está en ${p.unidad} y el contrato en ${unidadContrato}` : undefined}>{p.unidad ?? ''}</span></>
+}
+
 // Todos los ítems del contrato (Actualizable del ERP), con el stock que ya tiene cada ID en el APT
 function ItemsContrato({ q, productos }: { q: string; productos: InvContratoProducto[] }) {
   const r = useInvQuery(`contrato-lineas|${q}`, () => invApi.contratoLineas(q))
@@ -147,7 +154,7 @@ function ItemsContrato({ q, productos }: { q: string; productos: InvContratoProd
   if (r.error) return <ErrorBlock message={r.error} onRetry={r.reload} />
   const todas = r.data?.lineas ?? []
   if (!todas.length) return null
-  const stock = new Map(productos.map(p => [p.producto, p.stock]))
+  const stock = new Map(productos.map(p => [p.producto, p]))
   const lineas = todas.filter(l => !soloPendientes || l.pendiente > 0)
   const pendientes = todas.filter(l => l.pendiente > 0).length
   return <ChartCard title="Ítems del contrato (ERP)" subtitle={`${fmtN(todas.length)} ítems · ${fmtN(pendientes)} con saldo por despachar · Actualizable del ERP${r.data?.corte ? ` al ${fmtDate(r.data.corte)}` : ''}`}
@@ -162,7 +169,7 @@ function ItemsContrato({ q, productos }: { q: string; productos: InvContratoProd
           <td className={tdNum}>{fmtQty(l.contratado)} <span className="text-slate-400">{l.unidad ?? ''}</span></td>
           <td className={tdNum}>{fmtQty(l.despachado)}{l.guias ? <p className="text-[10px] text-slate-500">{fmtN(l.guias)} guías</p> : null}</td>
           <td className={`${tdNum} font-semibold`}>{fmtQty(l.pendiente)}</td>
-          <td className={tdNum}>{stock.get(l.producto) ? fmtQty(stock.get(l.producto)!) : <span className="text-slate-400">—</span>}</td>
+          <td className={tdNum}><StockApt p={stock.get(l.producto)} unidadContrato={l.unidad} /></td>
           <td className={td}><span className="text-[11px] text-slate-600">{l.estado ?? '—'}</span></td>
         </tr>)}
       </Table>
