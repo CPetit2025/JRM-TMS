@@ -29,7 +29,10 @@ BEGIN
   -- Integración WMS: el servidor del WMS llama sin sesión TMS; cada función exige la clave (hash en integration_keys).
   OR COALESCE(p.oid=to_regprocedure('public.wms_feed_solicitudes(text,uuid[])'),false)
   OR COALESCE(p.oid=to_regprocedure('public.wms_report_packing_list(text,jsonb)'),false)
-  OR COALESCE(p.oid=to_regprocedure('public.wms_report_request_status(text,jsonb)'),false))) THEN
+  OR COALESCE(p.oid=to_regprocedure('public.wms_report_request_status(text,jsonb)'),false)
+  -- Enlace de indicadores para gerencia: valida enlace y PIN (bcrypt, 10 intentos cada 15 min) y solo devuelve fotos
+  -- cerradas y agregadas por equipo, sin nombres ni numeradores (CAJA C226).
+  OR COALESCE(p.oid=to_regprocedure('public.kpi_eq_publico(uuid,text,text,text,date)'),false))) THEN
   RAISE EXCEPTION 'CAJA C55 FAIL: RPC privilegiado expuesto a anónimos';
  END IF;
  IF EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.prosecdef
