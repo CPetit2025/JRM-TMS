@@ -6,7 +6,7 @@ import { Loader2, LogOut, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { publico, type Frecuencia, type Publico } from '@/lib/indicadores/api'
 import { fechaHoraTxt, FRECUENCIAS } from '@/lib/indicadores/format'
-import { ResumenEquipos } from '@/components/indicadores/KpiCard'
+import { TableroEjecutivo } from '@/components/indicadores/TableroEjecutivo'
 
 const NAME_KEY = 'jrm:indicadores-viewer-name'
 const msg = (e: unknown) => e instanceof Error ? e.message : 'No se pudo consultar los indicadores.'
@@ -68,7 +68,7 @@ export default function IndicadoresPublicosPage() {
             {data.periodos.map(p => <option key={p.desde} value={p.desde}>{p.etiqueta}</option>)}</select></label>
           {busy && <Loader2 className="mb-2 h-5 w-5 animate-spin text-slate-500" aria-label="Cargando" />}
         </div>
-        {data.periodo ? <ResumenEquipos kpis={data.kpis} />
+        {data.periodo ? <TableroEjecutivo kpis={data.kpis} />
           : <p className="rounded-xl border bg-white p-8 text-center text-sm text-slate-500">Aún no hay periodos cerrados para esta frecuencia.</p>}
       </>}
     </main>
