@@ -8,6 +8,7 @@ import * as api from '@/lib/indicadores/api'
 import type { Frecuencia, KpiResultado, Tablero } from '@/lib/indicadores/api'
 import { equipoTxt, estadoInfo, estadoPeriodoTxt, fechaHoraTxt, FRECUENCIAS, metaTxt } from '@/lib/indicadores/format'
 import { ResumenEquipos } from './KpiCard'
+import { TableroEjecutivo } from './TableroEjecutivo'
 import { FichaKpi } from './FichaKpi'
 import { ConfigPanel, CorreccionesPanel, EnlacesPanel } from './Paneles'
 
@@ -32,6 +33,7 @@ export default function IndicadoresEquipos() {
   const [error, setError] = useState('')
   const [nonce, setNonce] = useState(0)
   const [tab, setTab] = useState<Tab>('resumen')
+  const [vista, setVista] = useState<'tablero' | 'tarjetas'>('tablero')
   const [ficha, setFicha] = useState<KpiResultado | null>(null)
   const [periodoOp, setPeriodoOp] = useState<'cerrar' | 'reabrir' | null>(null)
   const [motivo, setMotivo] = useState('')
@@ -91,11 +93,16 @@ export default function IndicadoresEquipos() {
 
     {error && !t ? <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-800"><p>{error}</p><button onClick={recargar} className="mt-2 font-semibold">Reintentar</button></div>
       : !t ? <div role="status" className="flex items-center justify-center gap-2 rounded-xl border bg-white p-12 text-sm text-slate-500"><Loader2 className="h-5 w-5 animate-spin" />Calculando indicadores…</div>
-      : tab === 'resumen' ? <ResumenEquipos kpis={t.kpis} onSelect={setFicha} />
       : tab === 'correcciones' ? <CorreccionesPanel onChange={recargar} />
       : tab === 'enlace' && revisor ? <EnlacesPanel equipos={t.equipos} />
       : tab === 'config' && revisor ? <ConfigPanel onSaved={recargar} />
-      : <ResumenEquipos kpis={t.kpis} onSelect={setFicha} />}
+      : <div className="space-y-3">
+        <div role="group" aria-label="Vista del resumen" className="inline-flex rounded-lg border bg-white p-0.5 text-sm">
+          {([['tablero', 'Tablero'], ['tarjetas', 'Tarjetas']] as const).map(([v, l]) =>
+            <button key={v} type="button" aria-pressed={vista === v} onClick={() => setVista(v)} className={`rounded-md px-3 py-1.5 ${vista === v ? 'bg-[#002855] font-semibold text-white' : 'text-slate-600 hover:text-[#002855]'}`}>{l}</button>)}
+        </div>
+        {vista === 'tablero' ? <TableroEjecutivo kpis={t.kpis} onSelect={setFicha} /> : <ResumenEquipos kpis={t.kpis} onSelect={setFicha} />}
+      </div>}
 
     {ficha && t && <FichaKpi kpi={t.kpis.find(k => k.codigo === ficha.codigo) || ficha} desde={t.desde} hasta={t.hasta} cerrado={cerrado} onClose={() => setFicha(null)} onChange={recargar} />}
     {periodoOp && t && <Modal isOpen onClose={() => setPeriodoOp(null)} title={periodoOp === 'cerrar' ? 'Cerrar periodo' : 'Reabrir periodo'} maxWidth="max-w-md">
