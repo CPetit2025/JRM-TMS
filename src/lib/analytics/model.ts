@@ -1,4 +1,4 @@
-export type Perspective = 'resumen' | 'transporte' | 'costos' | 'mantenimiento' | 'apt' | 'eficiencia' | 'desempeno'
+export type Perspective = 'resumen' | 'transporte' | 'costos' | 'mantenimiento' | 'apt' | 'eficiencia' | 'desempeno' | 'indicadores'
 export type Comparison = 'none' | 'previous' | 'year'
 export interface Filters {
   from: string; to: string; compare: Comparison; client: string; contract: string; plate: string
@@ -19,6 +19,8 @@ export const PERSPECTIVES: Array<{ id: Perspective; label: string; permissions: 
   { id: 'apt', label: 'Almacenes y APT', permissions: ['apt'] },
   { id: 'eficiencia', label: 'Eficiencia de activos', permissions: ['flota-eficiencia'] },
   { id: 'desempeno', label: 'Desempeño e informes', permissions: ['dashboard'] },
+  // hasAccess ya trata 'modulo:read' / 'modulo:write' como acceso al módulo.
+  { id: 'indicadores', label: 'Indicadores por equipo', permissions: ['desempeno', 'flota', 'despacho', 'apt', 'hallazgos'] },
 ]
 export const emptyDimensions = { client: '', contract: '', plate: '', driver: '', status: '', route: '', site: '', lot: '', family: '', search: '', incident: '' }
 export function limaToday(now = new Date()): string { return now.toLocaleDateString('en-CA', { timeZone: 'America/Lima' }) }
