@@ -6,7 +6,7 @@ Complementa a **Desempeño** (índice mensual por persona, `docs/desempeno-por-r
 - Pantalla: **Reportes › Indicadores por equipo** (`/indicadores` lleva ahí).
 - Enlace para gerencia: `/tracking/indicadores/<token>` con PIN de 8 dígitos.
 - Migración: `supabase/migrations/20261231290000_indicadores_equipos.sql`.
-- Prueba: `supabase/tests/caja_c224_indicadores_equipos.test.sql`.
+- Prueba: `supabase/tests/caja_c226_indicadores_equipos.test.sql`.
 - Base funcional: propuesta de KPI por equipo del 18-nov-2026.
 
 ## Reglas

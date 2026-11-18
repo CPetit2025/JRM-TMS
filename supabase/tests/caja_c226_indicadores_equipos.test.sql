@@ -1,4 +1,4 @@
--- CAJA C224 — Indicadores por equipo: catálogo, periodos, exactitud contra la fuente, estados honestos (sin datos ≠ cumple),
+-- CAJA C226 — Indicadores por equipo: catálogo, periodos, exactitud contra la fuente, estados honestos (sin datos ≠ cumple),
 -- permisos, correcciones con aprobación, reversión y trazabilidad, cierre/reapertura con versiones, enlace compartido con PIN
 -- sin nombres y cierre automático. Usa datos reales de producción, no depende del día de la semana y siempre se revierte.
 -- Cada paso que escribe va en su propia sentencia: una expresión SQL comparte una sola foto y no vería sus propias escrituras.
@@ -14,7 +14,7 @@ BEGIN
   SELECT p.id INTO sup FROM public.profiles p JOIN public.roles ro ON ro.id = p.role_id WHERE ro.name = 'Supervisor de Despacho' AND p.is_active LIMIT 1;
   SELECT p.id INTO cond FROM public.profiles p JOIN public.roles ro ON ro.id = p.role_id WHERE ro.name = 'Conductor' AND p.is_active LIMIT 1;
   SELECT p.id INTO doc FROM public.profiles p JOIN public.roles ro ON ro.id = p.role_id WHERE ro.name = 'Asistente Documentario' AND p.is_active LIMIT 1;
-  IF adm IS NULL OR sup IS NULL OR cond IS NULL OR doc IS NULL THEN RAISE EXCEPTION 'CAJA C224 FAIL: fixtures (administrador, supervisor de despacho, conductor, asistente documentario) ausentes'; END IF;
+  IF adm IS NULL OR sup IS NULL OR cond IS NULL OR doc IS NULL THEN RAISE EXCEPTION 'CAJA C226 FAIL: fixtures (administrador, supervisor de despacho, conductor, asistente documentario) ausentes'; END IF;
   SELECT * INTO w FROM public.kpi_eq_rango('SEMANAL', hoy);
   SELECT * INTO q FROM public.kpi_eq_rango('QUINCENAL', hoy);
   SELECT * INTO wp FROM public.kpi_eq_rango('SEMANAL', hoy - 7);
@@ -101,7 +101,7 @@ BEGIN
   -- T6: solo lectura no corrige; propuesta del supervisor, aprobación por otro; el dato de origen no cambia; nadie aprueba la suya
   IF fila.ref IS NULL THEN
     pass := pass + 1;  -- inicio de semana y de quincena sin actividad: no hay registro abierto que corregir hoy
-    RAISE NOTICE 'CAJA C224 T6/T7 omitidas: sin registros de Despacho en periodos abiertos';
+    RAISE NOTICE 'CAJA C226 T6/T7 omitidas: sin registros de Despacho en periodos abiertos';
   ELSE
     SELECT * INTO per FROM (SELECT w.desde d, w.hasta h) x WHERE fila.fecha BETWEEN w.desde AND w.hasta UNION ALL SELECT q.desde, q.hasta LIMIT 1;
     PERFORM set_config('request.jwt.claim.sub', doc::text, true); PERFORM set_config('request.jwt.claims', json_build_object('sub', doc, 'role', 'authenticated')::text, true);
@@ -109,7 +109,7 @@ BEGIN
     PERFORM set_config('request.jwt.claim.sub', sup::text, true); PERFORM set_config('request.jwt.claims', json_build_object('sub', sup, 'role', 'authenticated')::text, true);
     SELECT count(*) INTO n_src FROM public.kpi_eq_filas(cod, per.d, per.h);
     v := public.kpi_eq_valor(cod, per.d, per.h);
-    r := public.kpi_eq_proponer(cod, fila.ref, fila.fecha, 'EXCLUIR', NULL, NULL, 'EXCLUIR_PRUEBA', 'Prueba C224');
+    r := public.kpi_eq_proponer(cod, fila.ref, fila.fecha, 'EXCLUIR', NULL, NULL, 'EXCLUIR_PRUEBA', 'Prueba C226');
     cid := (r->>'id')::uuid;
     v2 := public.kpi_eq_valor(cod, per.d, per.h);
     IF NOT COALESCE((r->>'success')::boolean, false) OR (v2->>'n')::int <> (v->>'n')::int OR (v2->>'correcciones_pendientes')::int < 1 THEN fails := fails || ('T6 propuesta ' || r::text); END IF;
@@ -136,7 +136,7 @@ BEGIN
 
     -- T7: revertir una corrección aprobada exige motivo, la deja ANULADA (no se borra) y el registro vuelve a contar
     IF NOT (public.kpi_eq_revertir(cid, '') ->> 'error') ILIKE '%motivo%' THEN fails := fails || 'T7 revertir sin motivo'::text; END IF;
-    r := public.kpi_eq_revertir(cid, 'Aprobada por error en la prueba C224');
+    r := public.kpi_eq_revertir(cid, 'Aprobada por error en la prueba C226');
     v2 := public.kpi_eq_valor(cod, per.d, per.h);
     IF NOT COALESCE((r->>'success')::boolean, false) OR (SELECT estado FROM public.kpi_eq_correcciones WHERE id = cid) <> 'ANULADA'
        OR (v2->>'n')::int <> (v->>'n')::int
@@ -156,7 +156,7 @@ BEGIN
   SELECT * INTO fila2 FROM public.kpi_eq_filas('D2', wp.desde, wp.hasta) LIMIT 1;
   IF fila2.ref IS NOT NULL AND NOT (public.kpi_eq_proponer('D2', fila2.ref, fila2.fecha, 'EXCLUIR', NULL, NULL, 'EXCLUIR_PRUEBA', NULL) ->> 'error') ILIKE '%cerrado%' THEN fails := fails || 'T8 corrección en periodo cerrado'::text; END IF;
   IF NOT (public.kpi_eq_reabrir('SEMANAL', wp.desde, '') ->> 'error') ILIKE '%motivo%' THEN fails := fails || 'T8 reabrir sin motivo'::text; END IF;
-  r := public.kpi_eq_reabrir('SEMANAL', wp.desde, 'Prueba C224 de reapertura');
+  r := public.kpi_eq_reabrir('SEMANAL', wp.desde, 'Prueba C226 de reapertura');
   t := public.kpi_eq_tablero('SEMANAL', wp.desde);
   IF NOT COALESCE((r->>'success')::boolean, false) OR t->>'estado_periodo' <> 'REABIERTO' THEN fails := fails || ('T8 reabrir ' || r::text); END IF;
   r := public.kpi_eq_cerrar('SEMANAL', wp.desde);
@@ -166,8 +166,8 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM unnest(fails) x WHERE x LIKE 'T8%') THEN pass := pass + 1; END IF;
 
   -- T9: enlace compartido — PIN, solo periodos cerrados, solo equipos elegidos, sin num/den, fuentes ni nombres; revocable
-  l := public.kpi_eq_enlace_crear('Gerencia C224', ARRAY['DESPACHO']);
-  l2 := public.kpi_eq_enlace_crear('Bloqueo C224', ARRAY['TRANSPORTE']);
+  l := public.kpi_eq_enlace_crear('Gerencia C226', ARRAY['DESPACHO']);
+  l2 := public.kpi_eq_enlace_crear('Bloqueo C226', ARRAY['TRANSPORTE']);
   PERFORM set_config('request.jwt.claim.sub', '', true); PERFORM set_config('request.jwt.claims', '{"role":"anon"}', true);
   r := public.kpi_eq_publico((l->>'token')::uuid, '00000000', 'Ana Pérez', 'SEMANAL', NULL);
   v := public.kpi_eq_publico((l->>'token')::uuid, l->>'pin', 'Ana Pérez', 'SEMANAL', wp.desde);
@@ -209,7 +209,7 @@ BEGIN
   END LOOP;
   IF ms_max < 8000 AND NOT EXISTS (SELECT 1 FROM unnest(fails) x WHERE x LIKE 'T12%') THEN pass := pass + 1; ELSE fails := fails || ('T12 tiempo ' || ms_max || ' ms'); END IF;
 
-  IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C224 FAIL (%/%): %', pass, total, array_to_string(fails, ' | '); END IF;
-  RAISE EXCEPTION 'CAJA C224 PASS (%/%) indicadores por equipo: catálogo, periodos, exactitud, honestidad, permisos, correcciones, reversión, cierre, enlace, bloqueo y job (tablero más lento % ms)', pass, total, ms_max;
+  IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C226 FAIL (%/%): %', pass, total, array_to_string(fails, ' | '); END IF;
+  RAISE EXCEPTION 'CAJA C226 PASS (%/%) indicadores por equipo: catálogo, periodos, exactitud, honestidad, permisos, correcciones, reversión, cierre, enlace, bloqueo y job (tablero más lento % ms)', pass, total, ms_max;
 END $test$;
 ROLLBACK;
