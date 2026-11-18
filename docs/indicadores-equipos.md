@@ -28,7 +28,8 @@ Complementa a **Desempeño** (índice mensual por persona, `docs/desempeno-por-r
   - `CUMPLE`, `ALERTA` y `NO_CUMPLE`: solo con datos suficientes.
 - **Periodos:**
   - semana de lunes a domingo, quincenas 1–15 y 16–fin de mes, y mes calendario;
-  - cierre automático en hora de Lima: semana y quincena al día siguiente a las 12:00, mes el día 3 a las 12:00
+  - cierre automático en hora de Lima: 3 días después del fin del periodo a las 12:00 (semana: miércoles; mes: día 3),
+    para que venzan antes los plazos que se juzgan dentro del periodo (cargo ≤ 48 h, asignación ≤ 4 h)
     (tarea `kpi-equipos-cierre`, cada hora).
   - El cierre guarda una foto inmutable (`kpi_eq_cierres`). Reabrir exige un motivo y el siguiente cierre crea
     otra versión; las versiones anteriores se conservan.

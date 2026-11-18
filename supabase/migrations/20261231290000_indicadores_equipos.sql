@@ -221,10 +221,11 @@ LANGUAGE sql IMMUTABLE AS $$
     ELSE (ARRAY['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Setiembre','Octubre','Noviembre','Diciembre'])[extract(month FROM p_desde)::int] || ' ' || extract(year FROM p_desde) END;
 $$;
 
--- Momento de cierre automático (hora de Lima): semana y quincena al día siguiente 12:00; mes el día 3 a las 12:00.
+-- Momento de cierre automático (hora de Lima): 3 días después del fin del periodo, a las 12:00. Así vencen antes del
+-- cierre los plazos que se juzgan dentro del periodo (cargo ≤ 48 h, asignación ≤ 4 h) y queda tiempo para corregir.
 CREATE OR REPLACE FUNCTION public.kpi_eq_vence(p_frec text, p_hasta date) RETURNS timestamptz
 LANGUAGE sql IMMUTABLE AS $$
-  SELECT ((p_hasta + CASE p_frec WHEN 'MENSUAL' THEN 3 ELSE 1 END)::timestamp + interval '12 hours') AT TIME ZONE 'America/Lima';
+  SELECT ((p_hasta + 3)::timestamp + interval '12 hours') AT TIME ZONE 'America/Lima';
 $$;
 
 CREATE OR REPLACE FUNCTION public.kpi_eq_hoy() RETURNS date LANGUAGE sql STABLE AS $$ SELECT (now() AT TIME ZONE 'America/Lima')::date $$;
@@ -397,7 +398,7 @@ BEGIN
            jsonb_build_object('estado', c.state, 'observada', obs.observada, 'rechazo', rej.rechazo)
     FROM public.delivery_conformities c
     CROSS JOIN LATERAL (SELECT EXISTS (SELECT 1 FROM public.delivery_reviews rv JOIN public.delivery_submissions s ON s.id = rv.submission_id
-                          WHERE s.dispatch_id = c.dispatch_id AND s.request_id = c.request_id AND upper(rv.decision) = 'OBSERVADA') AS observada) obs
+                          WHERE s.dispatch_id = c.dispatch_id AND s.request_id = c.request_id AND upper(rv.decision) IN ('OBSERVADA','RECHAZADA')) AS observada) obs
     CROSS JOIN LATERAL (SELECT EXISTS (SELECT 1 FROM public.delivery_rejections dj
                           WHERE dj.dispatch_id = c.dispatch_id AND dj.request_id = c.request_id) AS rechazo) rej
     WHERE c.arrived_at >= t0 AND c.arrived_at < t1;
@@ -635,7 +636,7 @@ BEGIN
       BEGIN
         c := public.kpi_eq_cerrar_interno(f, r.desde, NULL, 'AUTOMATICO');
         n := n + 1;
-        IF r.hasta >= hoy - (CASE f WHEN 'MENSUAL' THEN 5 ELSE 3 END) THEN
+        IF r.hasta >= hoy - 5 THEN
           SELECT count(*) INTO malos FROM jsonb_array_elements(c.valores) x WHERE x->>'estado' = 'NO_CUMPLE';
           PERFORM public.notif_emit('KPI_EQUIPOS_CIERRE', 'kpieq-' || f || '-' || r.desde,
             'Indicadores cerrados: ' || public.kpi_eq_etiqueta(f, r.desde, r.hasta),

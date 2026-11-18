@@ -30,7 +30,7 @@ BEGIN
      AND (SELECT row(desde, hasta)::text FROM public.kpi_eq_rango('QUINCENAL', '2027-02-15')) = '(2027-02-01,2027-02-15)'
      AND (SELECT row(desde, hasta)::text FROM public.kpi_eq_rango('QUINCENAL', '2027-02-16')) = '(2027-02-16,2027-02-28)'
      AND (SELECT row(desde, hasta)::text FROM public.kpi_eq_rango('MENSUAL', '2026-12-31')) = '(2026-12-01,2026-12-31)'
-     AND public.kpi_eq_vence('SEMANAL', '2026-11-22') = '2026-11-23 12:00:00-05'::timestamptz
+     AND public.kpi_eq_vence('SEMANAL', '2026-11-22') = '2026-11-25 12:00:00-05'::timestamptz
      AND public.kpi_eq_vence('MENSUAL', '2026-11-30') = '2026-12-03 12:00:00-05'::timestamptz
   THEN pass := pass + 1; ELSE fails := fails || 'T2 periodos'::text; END IF;
 

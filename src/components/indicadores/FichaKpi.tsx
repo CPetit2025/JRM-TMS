@@ -21,7 +21,8 @@ function resultadoFila(f: Pick<FilaDetalle, 'num' | 'den' | 'con_dato'>, unidad:
 }
 
 function Proponer({ kpi, fila, onClose, onDone }: { kpi: KpiResultado; fila: FilaDetalle; onClose: () => void; onDone: () => void }) {
-  const porcentaje = kpi.unidad === '%'
+  // Solo los registros binarios (total 1: cumple o no cumple) usan el selector; los ponderados por kg conservan num/den.
+  const porcentaje = kpi.unidad === '%' && (fila.den_orig ?? fila.den) === 1 && [0, 1].includes(Number(fila.num_orig ?? fila.num))
   const [accion, setAccion] = useState<Accion>('CORREGIR')
   const [cumple, setCumple] = useState<'1' | '0'>(fila.num === 1 ? '0' : '1')
   const [numV, setNum] = useState(fila.num == null ? '' : String(fila.num))
@@ -37,8 +38,8 @@ function Proponer({ kpi, fila, onClose, onDone }: { kpi: KpiResultado; fila: Fil
     if (accion === 'CORREGIR') {
       if (porcentaje) { n = Number(cumple); d = 1 }
       else {
-        n = numV.trim() === '' ? NaN : Number(numV); d = denV.trim() === '' ? null : Number(denV)
-        if (!Number.isFinite(n) || (d != null && !Number.isFinite(d))) return toast.error('Ingrese valores numéricos válidos.')
+        n = numV.trim() === '' ? NaN : Number(numV); d = denV.trim() === '' ? NaN : Number(denV)
+        if (!Number.isFinite(n) || !Number.isFinite(d) || n < 0 || d < 0) return toast.error('Ingrese el numerador y el denominador (números mayores o iguales a 0).')
       }
     }
     setBusy(true)
@@ -62,7 +63,7 @@ function Proponer({ kpi, fila, onClose, onDone }: { kpi: KpiResultado; fila: Fil
           <label className="flex items-center gap-2"><input type="radio" name="cumple" checked={cumple === '0'} onChange={() => setCumple('0')} />Marcar como no cumplido</label></div></fieldset>
         : <div className="grid grid-cols-2 gap-3">
           <label className="font-semibold text-slate-700">Numerador<input inputMode="decimal" className={campo} value={numV} onChange={e => setNum(e.target.value)} required /></label>
-          <label className="font-semibold text-slate-700">Denominador<input inputMode="decimal" className={campo} value={denV} onChange={e => setDen(e.target.value)} /></label>
+          <label className="font-semibold text-slate-700">Denominador<input inputMode="decimal" className={campo} value={denV} onChange={e => setDen(e.target.value)} required /></label>
         </div>)}
       <label className="block font-semibold text-slate-700">Motivo<select className={campo} value={motivo} onChange={e => setMotivo(e.target.value)} required>
         <option value="">Seleccione…</option>{MOTIVOS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
