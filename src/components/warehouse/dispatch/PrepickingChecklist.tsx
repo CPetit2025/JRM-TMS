@@ -7,15 +7,18 @@ import { createClient } from '@/lib/supabase/client'
 // Checklist previo al picking: por ítem del contrato de la OT, lo que pide el contrato (pendiente) frente al stock
 // disponible (WMS etiquetado y ERP). La marca de «revisado» es una ayuda para el operario en este navegador.
 type Item = { item_code: string; item: string; lote: string; product_code: string; description: string | null; unit: string | null
-  contract_qty: number; dispatched_qty: number; pending_qty: number; stock_wms: number; stock_wms_packages: number; stock_erp: number }
-type Checklist = { ot: string | null; contratos_at: string | null; stock_at: string | null; items: Item[] }
+  contract_qty: number; dispatched_qty: number; pending_qty: number; stock_wms: number; stock_wms_packages: number; stock_erp: number
+  avance_pct?: number | null; prepared_qty?: number; loaded_qty?: number; prepared_other_qty?: number; faltante_qty?: number; stock_erp_falla?: number; stock_erp_comprometido?: number | null }
+type Carga = { lpn_asignados: number; lpn_cargados: number; lpn_sin_unidad: number; lpn_total: number; cumplimiento_pct: number | null }
+type Checklist = { ot: string | null; contratos_at: string | null; stock_at: string | null; carga?: Carga | null; items: Item[] }
 
 const n = (v: number) => new Intl.NumberFormat('es-PE', { maximumFractionDigits: 2 }).format(Number(v) || 0)
 const at = (v: string | null) => v ? new Date(v).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'short', timeStyle: 'short' }) : '—'
 /** Estado del ítem frente a lo pendiente del contrato. */
-export function itemState(i: Pick<Item, 'pending_qty' | 'stock_wms' | 'stock_erp'>) {
+export function itemState(i: Pick<Item, 'pending_qty' | 'stock_wms' | 'stock_erp' | 'prepared_qty'>) {
   const pend = Number(i.pending_qty), wms = Number(i.stock_wms), erp = Number(i.stock_erp)
   if (pend <= 0) return { key: 'DESPACHADO', label: 'Sin pendiente', style: 'bg-slate-100 text-slate-700' }
+  if (Number(i.prepared_qty || 0) >= pend) return { key: 'PREPARADO', label: 'Preparado', style: 'bg-emerald-100 text-emerald-900' }
   if (wms >= pend) return { key: 'LISTO', label: 'Listo para picking', style: 'bg-emerald-100 text-emerald-900' }
   if (wms > 0) return { key: 'PARCIAL', label: 'Parcial en WMS', style: 'bg-amber-100 text-amber-900' }
   if (erp > 0) return { key: 'ERP', label: 'En ERP, sin etiquetar', style: 'bg-blue-100 text-blue-900' }
@@ -93,7 +96,7 @@ export function PrepickingChecklist({ taskId, requestNumber, client }: { taskId:
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
         <h2 id="prepicking-title" className="flex items-center gap-2 font-bold text-[#002855]"><ClipboardCheck size={18}/>Checklist previo al picking{data?.ot ? ` · OT ${data.ot}` : ''}</h2>
-        <p className="mt-1 text-xs text-slate-500">Cantidad que pide el contrato por ítem frente al stock disponible. Contratos ERP: {at(data?.contratos_at ?? null)} · Stock ERP: {at(data?.stock_at ?? null)}</p>
+        <p className="mt-1 text-xs text-slate-500">Saldo del contrato ERP por ítem (programado) frente a lo preparado, lo reservado en otras tareas y el stock disponible. Contratos ERP: {at(data?.contratos_at ?? null)} · Stock ERP: {at(data?.stock_at ?? null)}</p>
       </div>
       <div className="flex gap-2"><button type="button" disabled={!data || !rows.length} onClick={async () => { if (data) (await buildPrepickingPdf(data, rows, { requestNumber, client, checked })).save(`checklist-prepicking-${requestNumber || data.ot || 'tarea'}.pdf`) }}
         className="inline-flex items-center gap-1.5 rounded-lg bg-[#002855] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"><Download size={14}/>Descargar PDF</button>
@@ -107,14 +110,17 @@ export function PrepickingChecklist({ taskId, requestNumber, client }: { taskId:
       <span className="rounded-full bg-blue-100 px-3 py-1 text-blue-900">{count('ERP')} en ERP sin etiquetar</span>
       <span className="rounded-full bg-rose-100 px-3 py-1 text-rose-900">{count('SIN_STOCK')} sin stock</span>
       <span className="rounded-full bg-[#002855] px-3 py-1 text-white">Revisados {checked.filter(c => items.some(i => i.item_code + i.product_code === c)).length}/{rows.length}</span>
+      {data?.carga && data.carga.lpn_total > 0 && <span className="rounded-full bg-slate-100 px-3 py-1" title="Cumplimiento de carga: LPN cargados frente a LPN asignados a una unidad">Carga: {data.carga.lpn_cargados}/{data.carga.lpn_asignados} LPN asignados cargados{data.carga.cumplimiento_pct === null ? ' (no calculable: sin asignación)' : ` (${n(data.carga.cumplimiento_pct)} %)`}{data.carga.lpn_sin_unidad > 0 ? ` · ${data.carga.lpn_sin_unidad} sin unidad` : ''}</span>}
       <label className="ml-auto flex items-center gap-1.5 font-normal text-slate-600"><input type="checkbox" checked={onlyPending} onChange={e => setOnlyPending(e.target.checked)}/>Solo con pendiente</label>
     </div>
     <div className="mt-3 max-h-[28rem] overflow-auto rounded-lg border">
-      <table className="w-full min-w-[900px] text-left text-xs">
+      <table className="w-full min-w-[1150px] text-left text-xs">
         <thead className="sticky top-0 bg-slate-50 text-slate-600"><tr>
           <th className="p-2">✓</th><th className="p-2">Ítem</th><th className="p-2">Código / descripción</th><th className="p-2">Lote</th>
           <th className="p-2 text-right">Contrato</th><th className="p-2 text-right">Despachado</th><th className="p-2 text-right">Pendiente</th>
-          <th className="p-2 text-right">Stock WMS</th><th className="p-2 text-right">Stock ERP</th><th className="p-2">Estado</th>
+          <th className="p-2 text-right" title="Paquetes recogidos, empacados o cargados en esta tarea">Preparado</th><th className="p-2 text-right" title="Preparado en otras tareas abiertas de la misma OT">Otras tareas</th>
+          <th className="p-2 text-right" title="Paquetes disponibles en el WMS (no incluye lo reservado ni preparado)">Disponible WMS</th><th className="p-2 text-right">Stock ERP</th>
+          <th className="p-2 text-right" title="Saldo de la OT − preparado en tareas abiertas − disponible WMS">Faltante</th><th className="p-2">Estado</th>
         </tr></thead>
         <tbody>{rows.map(i => { const s = itemState(i), id = i.item_code + i.product_code; return <tr key={id} className="border-t border-slate-100">
           <td className="p-2"><input type="checkbox" className="h-4 w-4" aria-label={`Revisado ${i.item_code}`} checked={checked.includes(id)} onChange={() => toggle(id)}/></td>
@@ -122,13 +128,16 @@ export function PrepickingChecklist({ taskId, requestNumber, client }: { taskId:
           <td className="p-2"><b>{i.product_code}</b><small className="block text-slate-500">{i.description || '—'}</small></td>
           <td className="p-2">{i.lote}</td>
           <td className="p-2 text-right">{n(i.contract_qty)} {i.unit || ''}</td>
-          <td className="p-2 text-right">{n(i.dispatched_qty)}</td>
+          <td className="p-2 text-right">{n(i.dispatched_qty)}{i.avance_pct != null && <small className="block text-slate-500">{n(i.avance_pct)} % avance</small>}</td>
           <td className="p-2 text-right font-bold">{n(i.pending_qty)}</td>
+          <td className="p-2 text-right">{n(i.prepared_qty || 0)}{Number(i.loaded_qty) > 0 && <small className="block text-slate-500">{n(i.loaded_qty || 0)} cargado</small>}</td>
+          <td className="p-2 text-right">{n(i.prepared_other_qty || 0)}</td>
           <td className="p-2 text-right">{n(i.stock_wms)}<small className="block text-slate-500">{i.stock_wms_packages} paq.</small></td>
-          <td className="p-2 text-right">{n(i.stock_erp)}</td>
+          <td className="p-2 text-right">{n(i.stock_erp)}{Number(i.stock_erp_falla) > 0 && <small className="block text-rose-700">{n(i.stock_erp_falla || 0)} con falla</small>}{i.stock_erp_comprometido != null && Number(i.stock_erp_comprometido) > 0 && <small className="block text-slate-500">{n(i.stock_erp_comprometido)} comprometido</small>}</td>
+          <td className={`p-2 text-right font-bold ${Number(i.faltante_qty) > 0 ? 'text-rose-700' : 'text-slate-500'}`}>{i.faltante_qty == null ? '—' : n(i.faltante_qty)}</td>
           <td className="p-2"><span className={`rounded-full px-2 py-0.5 font-semibold ${s.style}`}>{s.label}</span></td>
         </tr> })}
-        {!loading && !rows.length && <tr><td colSpan={10} className="p-6 text-center text-slate-500">{data?.ot ? 'No hay ítems de producto con pendiente para esta OT en la carga de contratos vigente.' : 'La solicitud no tiene OT para consultar el contrato.'}</td></tr>}</tbody>
+        {!loading && !rows.length && <tr><td colSpan={13} className="p-6 text-center text-slate-500">{data?.ot ? 'No hay ítems de producto con pendiente para esta OT en la carga de contratos vigente.' : 'La solicitud no tiene OT para consultar el contrato.'}</td></tr>}</tbody>
       </table>
     </div>
   </section>
