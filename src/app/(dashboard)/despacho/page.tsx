@@ -31,7 +31,7 @@ import { AddRouteService } from '@/components/despacho/AddRouteService'
 import { OCCUPIED_DISPATCH_STATUSES } from '@/lib/route-assignment'
 import { useRouteBuilder } from '@/components/despacho/programar-ruta/useRouteBuilder'
 import { RouteBuilderModal } from '@/components/despacho/programar-ruta/RouteBuilderModal'
-import { useWmsRelease, WmsReleaseBadge } from '@/components/despacho/WmsRelease'
+import { useWmsRelease, WmsReleaseBadge, WmsReleaseModeControl } from '@/components/despacho/WmsRelease'
 import type { Dispatch, PlanningDriver, PlanningVehicle, TransportRequest } from '@/components/despacho/programar-ruta/types'
 
 // Orden de la bandeja: la solicitud registrada más recientemente primero; a igual registro, la atención más reciente.
@@ -203,6 +203,7 @@ export default function DespachoPage() {
   return (
     <div className="w-full mx-auto space-y-2.5">
       <PageHeader showTitle title="Programación de Despachos y Ruteo" description="Asignación de unidades de transporte a Solicitudes" actions={<>
+        <WmsReleaseModeControl />
         <ReportarFallaButton />
         {canWrite('despacho') && (
           <button 
