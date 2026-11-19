@@ -61,6 +61,12 @@ const feed=[{id:REQ,request_number:'RT-000901',request_type:'DESPACHO',status:'A
  k=await kpis(); assert.equal(Number(k.A5.value),1.2,'masa pendiente sin doble conteo: P1 (1000 kg, en dos hallazgos) + P2 (200 kg)');
  k=await kpis({category:'EMBALAJE'}); assert.equal(Number(k.A3.value),1.2); assert.equal(Number(k.A4.value),4.8);
  k=await kpis({category:'CALIDAD'}); assert.equal(Number(k.A3.value),1); assert.equal(Number(k.A4.value),4);
+ k=await kpis({category:'CALIDAD'}); assert.equal(Number(k.A5.value),1,'la masa pendiente respeta la categoría (solo P1 del hallazgo de calidad)');
+ // El detalle de A1 usa la fecha de auditoría: un LPN cerrado ayer y auditado hoy aparece hoy
+ await sys(`UPDATE public.wh_lpns SET closed_at=now()-interval '2 days' WHERE id='${L}'`);
+ await as('lect'); const dA1=await one(`SELECT public.wh_dispatch_kpi_detail('A1',$1::date,$1::date,'{}'::jsonb)`,[today]);
+ assert.ok(dA1.some(x=>x.lpn_code==='LPN-K1'),'el detalle de A1 sigue la fecha de auditoría');
+ assert.equal(Number((await kpis()).A1.value),25,'el total de A1 tampoco depende del cierre del LPN');
  console.log('PASS: filtros por categoría recalculan el mismo universo; la masa pendiente se mide al corte.');
 
  // Detalle concilia con el total y cobertura de control: sin liberaciones no hay desvíos
