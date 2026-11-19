@@ -14,10 +14,12 @@ import { syncFromTms } from '@/lib/warehouse/sync'
 import { DispatchNav } from '@/components/warehouse/dispatch/DispatchNav'
 import { DISPATCH_STAGES, TASK_GROUPS, attendedInTms, taskGroup, taskInStage, type TaskGroup, type TaskStage } from '@/lib/warehouse/dispatch'
 import { usePermissions } from '@/hooks/usePermissions'
+import { PRIORITIES, TaskPlanDialog } from '@/components/warehouse/dispatch/TaskPlanDialog'
 
 const approved = ['APROBADA', 'APROBADO', 'ASIGNADA']
 // Minutos sin actividad del responsable tras los que otro operador puede tomar la tarea (igual que wh_assign_task)
 const IDLE_MIN = 20
+const PRIORITY_STYLE: Record<string, string> = { URGENTE: 'bg-rose-100 text-rose-800', ALTA: 'bg-amber-100 text-amber-900', BAJA: 'bg-slate-100 text-slate-600' }
 // Fecha del tablero en Lima: la requerida o, si falta, la de cierre (tareas cerradas).
 const limaDate = (r: BoardRow) => r.required_at ? new Date(r.required_at).toLocaleDateString('en-CA', { timeZone: 'America/Lima' })
   : r.required_date || (r.closed_at ? new Date(r.closed_at).toLocaleDateString('en-CA', { timeZone: 'America/Lima' }) : null)
@@ -43,6 +45,7 @@ export function DispatchBoard({ stage }: { stage: TaskStage }) {
   const [group, setGroup] = useState('ACTIVAS')
   const [userId, setUserId] = useState('')
   const [now, setNow] = useState(0)
+  const [planning, setPlanning] = useState<BoardRow | null>(null)
 
   const periodState = usePeriod()
   const [from, to] = periodState.range
@@ -152,10 +155,14 @@ export function DispatchBoard({ stage }: { stage: TaskStage }) {
                     {r.lpn_total > 0 && <small className="block text-slate-500">{r.lpn_approved}/{r.lpn_total} LPN aprobados</small>}
                     {r.closed_at && <small className="block text-slate-500">{r.status === 'CANCELLED' ? 'Cerrada' : 'Cargada'} {fmtDate(r.closed_at)}{r.closed_by_name ? ` · ${r.closed_by_name}` : ''}</small>}
                     {r.status === 'CANCELLED' && !attendedInTms(r) && r.cancelled_reason && <small className="block text-rose-700">{r.cancelled_reason}</small>}</td>
-                  <td className="px-3 py-2.5 text-slate-700">{r.picker_name || '—'}{otherOwner && idle >= IDLE_MIN && <small className="block font-semibold text-amber-700">Sin actividad hace {idle} min</small>}</td>
+                  <td className="px-3 py-2.5 text-slate-700">{r.priority && r.priority !== 'NORMAL' && <span className={`mr-1 rounded-full px-2 py-0.5 text-xs font-bold ${PRIORITY_STYLE[r.priority] || ''}`}>{PRIORITIES[r.priority] || r.priority}</span>}{r.picker_name || '—'}{otherOwner && idle >= IDLE_MIN && <small className="block font-semibold text-amber-700">Sin actividad hace {idle} min</small>}
+                    {r.assigned_by_name && r.assigned_by_name !== r.picker_name && <small className="block text-slate-500">Asignó {r.assigned_by_name}</small>}
+                    {r.committed_at && <small className={`block ${!r.closed_at && now > Date.parse(r.committed_at) ? 'font-semibold text-rose-700' : 'text-slate-500'}`}>Compromiso {fmtDate(r.committed_at)}{!r.closed_at && now > Date.parse(r.committed_at) ? ' · vencido' : ''}</small>}
+                    {picking && !readOnly && hasAccess('almacen-supervisor') && <button type="button" onClick={() => setPlanning(r)} className="mt-1 block text-xs font-semibold text-blue-800 underline">Planificar</button>}</td>
                   <td className="px-3 py-2.5 text-right">
                     {readOnly ? <Link href={`${stageConfig.path}/${r.id}`} className="text-xs font-semibold text-blue-800 underline">Ver detalle</Link>
                       : !picking ? <Link href={`${stageConfig.path}/${r.id}`} className="inline-block rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white">Abrir {stageConfig.title.toLowerCase()}</Link> : canTake ? <button type="button" disabled={busyId === r.id} onClick={() => void take(r)} className="whitespace-nowrap rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{busyId === r.id ? 'Tomando…' : 'Tomar tarea'}</button>
+                      : mine && r.status === 'PENDING' ? <button type="button" disabled={busyId === r.id} onClick={() => void take(r)} className="whitespace-nowrap rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{busyId === r.id ? 'Iniciando…' : 'Iniciar'}</button>
                       : mine ? <Link href={`${stageConfig.path}/${r.id}`} className="inline-block whitespace-nowrap rounded-lg bg-[#002855] px-3 py-2 text-xs font-bold text-white">Continuar</Link>
                       : canTakeOver ? <span className="inline-flex flex-wrap items-center justify-end gap-2"><button type="button" disabled={busyId === r.id} onClick={() => void take(r, true)} className="whitespace-nowrap rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 disabled:opacity-50">{busyId === r.id ? 'Tomando…' : 'Tomar tarea'}</button><Link href={`${stageConfig.path}/${r.id}`} className="text-xs font-semibold text-blue-800 underline">Ver</Link></span>
                       : otherOwner ? <Link href={`${stageConfig.path}/${r.id}`} className="text-xs font-semibold text-blue-800 underline">Ver tarea</Link>
@@ -168,5 +175,6 @@ export function DispatchBoard({ stage }: { stage: TaskStage }) {
       </div>
       {!loading && filtered.length > 0 && <TablePagination total={pager.total} page={pager.page} pageSize={pager.pageSize} onPageChange={pager.setPage} onPageSizeChange={pager.setPageSize} itemLabel="tareas" compact />}
     </div>
+    {planning && <TaskPlanDialog task={planning} onClose={() => setPlanning(null)} onSaved={() => load()}/>}
   </div>
 }
