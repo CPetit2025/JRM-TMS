@@ -10,8 +10,13 @@ import { Camera, Check, Download, Eye, Loader2, RefreshCw, X } from 'lucide-reac
 import { usePermissions } from '@/hooks/usePermissions'
 import { AUDIT, STATE, buildPackingListPdf, fmt, fmtDate, type BoardRow, type PackingSnapshot, type TaskLpn, type TaskLpns } from '@/lib/warehouse/packing-list'
 import { syncFromTms } from '@/lib/warehouse/sync'
+import { ScanInput } from './ScanInput'
+import { FindingCard } from './FindingCard'
+import { AREAS, FINDING_CATEGORIES, SEVERITIES, type Finding } from './findings'
 
 type Form = { lpn: TaskLpn; result: 'OBSERVADO' | 'RECHAZADO' | 'COMENTARIO' }
+type Draft = { categories: string[]; severity: string; area: string; qty: Record<string, string>; picked: string[] }
+const emptyDraft: Draft = { categories: [], severity: 'MENOR', area: 'DESPACHO', qty: {}, picked: [] }
 const btn = 'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold disabled:opacity-50'
 
 export function AuditWorkspace({ mode = 'auditoria', initialTaskId = '' }: { mode?: 'auditoria' | 'packing-list'; initialTaskId?: string }) {
@@ -30,6 +35,10 @@ export function AuditWorkspace({ mode = 'auditoria', initialTaskId = '' }: { mod
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [findings, setFindings] = useState<Finding[]>([])
+  const [draft, setDraft] = useState<Draft>(emptyDraft)
+  const [focus, setFocus] = useState('')
+  const [userId, setUserId] = useState('')
 
   const load = useCallback(async () => {
     const warn = await syncFromTms()
@@ -51,6 +60,10 @@ export function AuditWorkspace({ mode = 'auditoria', initialTaskId = '' }: { mod
     const { data: lpns, error } = await createClient().rpc('wh_task_lpns', { p_task_id: id })
     if (version !== requestVersion.current) return
     if (error) { setError(error.message); setData(null) } else { setData(lpns as TaskLpns); setLoadedTaskId(id) }
+    if (!packing) {
+      const fl = await createClient().rpc('wh_findings_list', { p_task_id: id })
+      if (version === requestVersion.current) setFindings(fl.error ? [] : (fl.data || []) as Finding[])
+    }
   }, [packing])
 
   useEffect(() => {
@@ -65,11 +78,42 @@ export function AuditWorkspace({ mode = 'auditoria', initialTaskId = '' }: { mod
   }, [taskId, rows, loadTask])
 
   const task = rows.find(r => r.id === taskId) || null
+  useEffect(() => { void createClient().auth.getUser().then(({ data: d }) => setUserId(d.user?.id || '')) }, [])
+
+  // Escanear identifica la unidad física; no aprueba. Distingue «de otra tarea» de «desconocido» y nunca crea unidades.
+  const locate = async (code: string) => {
+    setError(''); setMessage('')
+    const own = data?.lpns.find(l => l.lpn_code.toUpperCase() === code.toUpperCase() || l.packages.some(p => p.package_code.toUpperCase() === code.toUpperCase()))
+    if (own) { setFocus(own.id); document.getElementById('lpn-' + own.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); setMessage(`${own.lpn_code} identificado.`); return }
+    const r = await createClient().rpc('wh_lpn_locate', { p_code: code })
+    if (r.error) { setError(r.error.message); return }
+    const hit = r.data as { lpn_code: string; task_id: string; request_number: string | null } | null
+    setError(hit ? `${code} pertenece a ${hit.lpn_code} de otra tarea (${hit.request_number || 'sin solicitud'}). No lo audite aquí.` : `Código desconocido: ${code} no corresponde a ningún LPN ni paquete del almacén.`)
+  }
+
+  const createFinding = async (lpn: TaskLpn, reject: boolean) => {
+    if (!draft.categories.length) { setError('Elija al menos una categoría'); return }
+    if (comment.trim().length < 5) { setError('Describa el hallazgo'); return }
+    setBusy(true); setError(''); setMessage('')
+    const db = createClient(); const paths: string[] = []
+    for (const file of files) {
+      const path = `${lpn.id}/${crypto.randomUUID()}.${(file.name.split('.').pop() || 'jpg').toLowerCase()}`
+      const up = await db.storage.from('wh_audit_evidence').upload(path, file, { contentType: file.type, upsert: false })
+      if (up.error) { setError(`No se pudo subir la foto: ${up.error.message}`); setBusy(false); return }
+      paths.push(path)
+    }
+    const lines = draft.picked.map(code => ({ package_code: code, quantity: Number(draft.qty[code] || lpn.packages.find(p => p.package_code === code)?.quantity || 0) }))
+    const r = await db.rpc('wh_finding_create', { p_lpn_id: lpn.id, p_categories: draft.categories, p_severity: draft.severity, p_description: comment.trim(), p_lines: lines,
+      p_area: draft.area, p_assigned_to: null, p_due_at: null, p_evidence_paths: paths, p_reject: reject })
+    setBusy(false)
+    if (r.error) { setError(r.error.message); if (paths.length) await db.storage.from('wh_audit_evidence').remove(paths); return }
+    setMessage(`Hallazgo ${r.data.code} registrado sobre ${lpn.lpn_code}.`); setForm(null); setComment(''); setFiles([]); setDraft(emptyDraft); await load()
+  }
 
   // Quien preparó no audita: la base lo rechaza; un supervisor puede continuar dejando el motivo.
   const withOverride = async <T,>(call: (reason: string | null) => PromiseLike<{ data: T; error: { message: string } | null }>) => {
     let result = await call(null)
-    if (result.error && /preparó/.test(result.error.message) && hasAccess('almacen-supervisor')) {
+    if (result.error && /No puede auditar un LPN que usted preparó/.test(result.error.message) && hasAccess('almacen-supervisor')) {
       const reason = window.prompt('Usted participó en esta preparación. Motivo de la autorización de supervisión:')
       if (reason?.trim()) result = await call(reason.trim())
     }
@@ -150,24 +194,44 @@ export function AuditWorkspace({ mode = 'auditoria', initialTaskId = '' }: { mod
           </span>
         </div>
 
+        {!packing && data.lpns.length > 0 && <div className="rounded-xl border border-slate-200 bg-white p-3"><ScanInput onCode={locate} placeholder="Escanee el QR del LPN o de un paquete" disabled={busy}/></div>}
         {data.lpns.length === 0 && <p className="rounded-xl border bg-white p-6 text-center text-sm text-slate-500">El operario aún no consolidó LPN.</p>}
         {packing && <PackingAssignment key={taskId} task={task} data={data} onChanged={async () => { await loadTask(taskId); await load() }}/> }
         {!packing && data.lpns.map(l => {
           const state = AUDIT[l.audit_status] || AUDIT.PENDIENTE
-          return <article key={l.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          const lpnFindings = findings.filter(x => x.lpn_id === l.id)
+          return <article key={l.id} id={'lpn-' + l.id} className={`overflow-hidden rounded-xl border bg-white ${focus === l.id ? 'border-[#002855] ring-2 ring-[#002855]/30' : 'border-slate-200'}`}>
             <header className="flex flex-wrap items-center gap-2 border-b p-3 text-sm">
               <b className="font-mono text-[#002855]">{l.lpn_code}</b>
               <span className="text-slate-600">{l.package_count} paq · {fmt(l.quantity, 3)} und · {fmt(l.weight_kg)} kg · {l.created_by_name}</span>
               <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${state.style}`}>{l.audit_status === 'APROBADO' ? 'Liberado por Auditoría' : state.label}{l.audited_by_name ? ` · ${l.audited_by_name}` : ''}</span>
               {l.audit_rev > 0 && l.audit_status === 'PENDIENTE' && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-900">Corregido · nueva revisión</span>}
               {!packing && l.status === 'CLOSED' && <span className="ml-auto flex gap-1.5">
-                <button disabled={busy || l.audit_status === 'APROBADO'} onClick={() => void audit(l, 'APROBADO')} className={`${btn} bg-emerald-700 text-white`}><Check size={14}/>Liberar LPN</button>
-                <button disabled={busy} onClick={() => setForm({ lpn: l, result: 'OBSERVADO' })} className={`${btn} border border-amber-400 text-amber-900`}>Observar</button>
-                <button disabled={busy} onClick={() => setForm({ lpn: l, result: 'RECHAZADO' })} className={`${btn} border border-rose-400 text-rose-800`}><X size={14}/>Rechazar</button>
+                <button disabled={busy || l.audit_status === 'APROBADO' || lpnFindings.some(x => x.status !== 'CERRADO')} title={lpnFindings.some(x => x.status !== 'CERRADO') ? 'Tiene hallazgos sin cerrar' : ''} onClick={() => void audit(l, 'APROBADO')} className={`${btn} bg-emerald-700 text-white`}><Check size={14}/>Liberar LPN</button>
+                <button disabled={busy} onClick={() => { setForm({ lpn: l, result: 'OBSERVADO' }); setDraft({ ...emptyDraft, picked: l.packages.map(p => p.package_code) }) }} className={`${btn} border border-amber-400 text-amber-900`}>Observar</button>
+                <button disabled={busy} onClick={() => { setForm({ lpn: l, result: 'RECHAZADO' }); setDraft({ ...emptyDraft, severity: 'MAYOR', picked: l.packages.map(p => p.package_code) }) }} className={`${btn} border border-rose-400 text-rose-800`}><X size={14}/>Rechazar</button>
                 <button disabled={busy} onClick={() => setForm({ lpn: l, result: 'COMENTARIO' })} className={`${btn} border border-slate-300`}><Camera size={14}/>Evidencia</button>
               </span>}
             </header>
-            {!packing && form?.lpn.id === l.id && <form onSubmit={e => { e.preventDefault(); void audit(l, form.result, comment.trim(), pkg, files) }} className="space-y-2 border-b bg-slate-50 p-3 text-sm">
+            {!packing && form?.lpn.id === l.id && form.result !== 'COMENTARIO' && <form onSubmit={e => { e.preventDefault(); void createFinding(l, form.result === 'RECHAZADO') }} className="space-y-2 border-b bg-slate-50 p-3 text-sm">
+              <b>{form.result === 'OBSERVADO' ? 'Hallazgo: el LPN queda observado hasta corregir y verificar' : 'Hallazgo con rechazo: el LPN no se libera'}</b>
+              <fieldset className="flex flex-wrap gap-x-3 gap-y-1"><legend className="mb-1 text-xs font-semibold text-slate-600">Categorías (sobre el mismo alcance no suman masa)</legend>
+                {Object.entries(FINDING_CATEGORIES).map(([k, v]) => <label key={k} className="flex items-center gap-1"><input type="checkbox" checked={draft.categories.includes(k)} onChange={e => setDraft({ ...draft, categories: e.target.checked ? [...draft.categories, k] : draft.categories.filter(c => c !== k) })}/>{v}</label>)}</fieldset>
+              <div className="flex flex-wrap gap-2">
+                <label className="text-xs font-semibold">Severidad<select value={draft.severity} onChange={e => setDraft({ ...draft, severity: e.target.value })} className="ml-1 rounded border px-2 py-1">{Object.entries(SEVERITIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+                <label className="text-xs font-semibold">Área que corrige<select value={draft.area} onChange={e => setDraft({ ...draft, area: e.target.value })} className="ml-1 rounded border px-2 py-1">{Object.entries(AREAS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+              </div>
+              <textarea value={comment} onChange={e => setComment(e.target.value)} required rows={2} placeholder="Describa lo encontrado" className="w-full rounded-lg border border-slate-300 p-2"/>
+              <div className="rounded-lg border bg-white"><p className="border-b px-2 py-1 text-xs font-semibold text-slate-600">Alcance físico: paquetes y cantidad afectada</p>
+                {l.packages.map(p => <label key={p.package_code} className="flex flex-wrap items-center gap-2 px-2 py-1 text-xs"><input type="checkbox" checked={draft.picked.includes(p.package_code)} onChange={e => setDraft({ ...draft, picked: e.target.checked ? [...draft.picked, p.package_code] : draft.picked.filter(c => c !== p.package_code) })}/>
+                  <span className="font-mono">{p.package_code}</span><span className="flex-1 text-slate-500">{p.product_code} · {fmt(p.quantity, 3)} {p.unit} · {p.weight_kg == null ? 'sin peso' : `${fmt(p.weight_kg)} kg`}</span>
+                  {draft.picked.includes(p.package_code) && <input type="number" min="0" max={p.quantity} step="any" placeholder={String(p.quantity)} value={draft.qty[p.package_code] ?? ''} onChange={e => setDraft({ ...draft, qty: { ...draft.qty, [p.package_code]: e.target.value } })} aria-label={`Cantidad afectada ${p.package_code}`} className="w-20 rounded border px-1 py-0.5 text-right"/>}</label>)}</div>
+              <div className="flex flex-wrap gap-2">
+                <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple onChange={e => setFiles([...(e.target.files || [])])} className="text-xs" aria-label="Fotos"/>
+                <span className="ml-auto flex gap-2"><button type="button" onClick={() => setForm(null)} className={`${btn} border border-slate-300`}>Cancelar</button><button disabled={busy || !draft.picked.length} className={`${btn} bg-[#002855] text-white`}>{busy && <Loader2 size={14} className="animate-spin"/>}Registrar hallazgo</button></span>
+              </div>
+            </form>}
+            {!packing && form?.lpn.id === l.id && form.result === 'COMENTARIO' && <form onSubmit={e => { e.preventDefault(); void audit(l, form.result, comment.trim(), pkg, files) }} className="space-y-2 border-b bg-slate-50 p-3 text-sm">
               <b>{form.result === 'COMENTARIO' ? 'Registrar evidencia' : form.result === 'OBSERVADO' ? 'Observación (requiere corrección)' : 'Rechazo (no se libera)'}</b>
               <textarea value={comment} onChange={e => setComment(e.target.value)} required={form.result !== 'COMENTARIO'} rows={2} placeholder="Describa lo encontrado" className="w-full rounded-lg border border-slate-300 p-2"/>
               <div className="flex flex-wrap gap-2">
@@ -176,6 +240,7 @@ export function AuditWorkspace({ mode = 'auditoria', initialTaskId = '' }: { mod
                 <span className="ml-auto flex gap-2"><button type="button" onClick={() => setForm(null)} className={`${btn} border border-slate-300`}>Cancelar</button><button disabled={busy} className={`${btn} bg-[#002855] text-white`}>{busy && <Loader2 size={14} className="animate-spin"/>}Guardar</button></span>
               </div>
             </form>}
+            {lpnFindings.length > 0 && <div className="space-y-2 border-b bg-amber-50/40 p-2">{lpnFindings.map(x => <FindingCard key={x.id} f={x} userId={userId} onChanged={async () => { await loadTask(taskId); await load() }}/>)}</div>}
             <div className="divide-y text-sm">{l.packages.map(p => <div key={p.package_code} className="flex flex-wrap gap-2 px-3 py-1.5"><span className="font-mono">{p.package_code}</span><small className="flex-1 text-slate-500">{p.product_code} · {p.description}{p.lot ? ` · lote ${p.lot}` : ''}</small><span>{fmt(p.quantity, 3)} {p.unit} · {p.weight_kg == null ? '—' : `${fmt(p.weight_kg)} kg`}</span></div>)}</div>
             {l.audits.length > 0 && <ul className="border-t bg-slate-50 px-3 py-2 text-xs text-slate-700">{l.audits.slice(0, 5).map(a => <li key={a.id} className="py-0.5">
               <b>{a.result === 'REINICIADO' ? 'Modificado' : a.result === 'COMENTARIO' ? 'Evidencia' : AUDIT[a.result]?.label}</b> · {a.actor_name} · {fmtDate(a.created_at)}{a.package_code ? ` · ${a.package_code}` : ''}{a.comment ? ` — ${a.comment}` : ''}{a.override_reason ? ` (autorizado: ${a.override_reason})` : ''}
