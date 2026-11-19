@@ -24,6 +24,7 @@ const links = [
   { href: '/almacen/conciliacion', label: 'Conciliación', icon: Waypoints, permission: 'almacen-carga', group: 'Control' },
   { href: '/almacen/actualizaciones', label: 'Actualizaciones', icon: Warehouse, permission: 'almacen-carga', group: 'Configuración' },
   { href: '/almacen/maestros/embalajes', label: 'Embalajes', icon: Settings2, permission: 'almacen-supervisor', group: 'Configuración' },
+  { href: '/almacen/maestros/unidades', label: 'Tipos de unidad', icon: Settings2, permission: 'almacen-supervisor', group: 'Configuración' },
   { href: '/almacen/maestros/etiquetas', label: 'Etiquetas', icon: Settings2, permission: 'almacen-supervisor', group: 'Configuración' },
 ]
 
