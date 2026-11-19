@@ -21,16 +21,16 @@ export function FindingsBoard() {
   const load = useCallback(async () => {
     const db = createClient()
     const [{ data: auth }, r] = await Promise.all([db.auth.getUser(), db.rpc('wh_findings_list', {
-      p_task_id: null, p_status: status === 'TODOS' ? null : status, p_from: status === 'ABIERTOS' ? null : from, p_to: status === 'ABIERTOS' ? null : to })])
+      p_task_id: null, p_status: status === 'TODOS' ? null : status, p_from: status === 'ABIERTOS' ? null : from, p_to: status === 'ABIERTOS' ? null : to, p_mine: mineOnly })])
     setUserId(auth.user?.id || '')
     if (r.error) setError(r.error.message); else { setError(''); setRows((r.data || []) as Finding[]) }
     setLoading(false)
-  }, [status, from, to])
+  }, [status, from, to, mineOnly])
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load()
   }, [load])
-  const shown = mineOnly ? rows.filter(f => f.assigned_to === userId) : rows
+  const shown = rows
   return <div className="space-y-4">
     <DispatchNav stage="auditoria"/>
     <header className="flex flex-wrap items-end justify-between gap-3">

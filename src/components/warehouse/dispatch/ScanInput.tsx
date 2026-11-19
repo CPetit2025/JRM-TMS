@@ -18,6 +18,7 @@ export function ScanInput({ onCode, placeholder, disabled }: { onCode: (code: st
   const video = useRef<HTMLVideoElement>(null)
   const stream = useRef<MediaStream | null>(null)
   const last = useRef({ code: '', at: 0 })
+  const starting = useRef(false)
   const stop = () => { stream.current?.getTracks().forEach(t => t.stop()); stream.current = null; setCamera(false) }
   useEffect(() => {
     const hide = () => { if (document.hidden) stop() }
@@ -32,6 +33,12 @@ export function ScanInput({ onCode, placeholder, disabled }: { onCode: (code: st
   }
   const submit = (e: FormEvent) => { e.preventDefault(); void emit(code) }
   const start = async () => {
+    // Un solo arranque a la vez: dos toques rápidos no deben dejar una cámara encendida sin control
+    if (starting.current || stream.current) return
+    starting.current = true
+    try { await startCamera() } finally { starting.current = false }
+  }
+  const startCamera = async () => {
     setError('')
     if (Capacitor.isNativePlatform()) {
       try { await emit((await nativeWarehouseScanner.scan()).rawValue) }

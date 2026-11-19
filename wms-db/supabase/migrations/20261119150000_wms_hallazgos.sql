@@ -245,12 +245,12 @@ BEGIN
 END $$;
 
 -- Hallazgos con alcance, masa y pendiente (por tarea, o por filtro para la bandeja)
-CREATE OR REPLACE FUNCTION public.wh_findings_list(p_task_id uuid DEFAULT NULL, p_status text DEFAULT NULL, p_from date DEFAULT NULL, p_to date DEFAULT NULL)
+CREATE OR REPLACE FUNCTION public.wh_findings_list(p_task_id uuid DEFAULT NULL, p_status text DEFAULT NULL, p_from date DEFAULT NULL, p_to date DEFAULT NULL, p_mine boolean DEFAULT false)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
   PERFORM public.security_assert_active_session();
   IF NOT public.wh_any_warehouse_permission() THEN RAISE EXCEPTION 'Sin permiso' USING ERRCODE = '42501'; END IF;
-  RETURN coalesce((SELECT jsonb_agg(x ORDER BY x->>'created_at' DESC) FROM (
+  RETURN coalesce((SELECT jsonb_agg(x ORDER BY ord DESC) FROM (
     SELECT jsonb_build_object('id', f.id, 'code', f.code, 'task_id', f.task_id, 'task_code', t.task_code, 'lpn_id', f.lpn_id, 'lpn_code', l.lpn_code,
       'audit_rev', f.audit_rev, 'lpn_rev', l.audit_rev, 'categories', f.categories, 'severity', f.severity, 'exceptionable', f.exceptionable,
       'description', f.description, 'area', f.area, 'status', f.status, 'cause', f.cause, 'reopen_count', f.reopen_count,
@@ -267,13 +267,15 @@ BEGIN
         FROM public.wh_finding_lines fl JOIN public.wh_packages p ON p.id = fl.package_id WHERE fl.finding_id = f.id),
       'events', (SELECT jsonb_agg(jsonb_build_object('action', e.action, 'from', e.from_status, 'to', e.to_status, 'comment', e.comment,
           'evidence_paths', e.evidence_paths, 'by', public.wh_profile_name(e.actor_id), 'by_id', e.actor_id, 'at', e.created_at) ORDER BY e.created_at)
-        FROM public.wh_finding_events e WHERE e.finding_id = f.id)) AS x
+        FROM public.wh_finding_events e WHERE e.finding_id = f.id)) AS x, f.created_at AS ord
     FROM public.wh_findings f JOIN public.wh_tasks t ON t.id = f.task_id JOIN public.wh_lpns l ON l.id = f.lpn_id
     WHERE public.can_access_site(f.site_id) AND (p_task_id IS NULL OR f.task_id = p_task_id)
       AND (p_status IS NULL OR (p_status = 'ABIERTOS' AND f.status <> 'CERRADO') OR f.status = p_status)
       AND (p_from IS NULL OR (f.created_at AT TIME ZONE 'America/Lima')::date >= p_from)
       AND (p_to IS NULL OR (f.created_at AT TIME ZONE 'America/Lima')::date <= p_to)
-    LIMIT 500) s), '[]'::jsonb);
+      AND (NOT coalesce(p_mine, false) OR f.assigned_to = auth.uid())
+    -- Los más recientes primero; shortcut: tope de 500 sin paginar, agregar paginación si una vista lo supera
+    ORDER BY f.created_at DESC LIMIT 500) s), '[]'::jsonb);
 END $$;
 
 -- Evidencia de correcciones: cualquier usuario del almacén sube fotos bajo hallazgos/<id>/
@@ -287,9 +289,9 @@ BEGIN
 END $s$;
 
 REVOKE ALL ON FUNCTION public.wh_finding_create(uuid, text[], text, text, jsonb, text, uuid, timestamptz, text[], boolean),
-  public.wh_finding_action(uuid, text, text, jsonb, text[], uuid, timestamptz, text), public.wh_findings_list(uuid, text, date, date) FROM PUBLIC, anon;
+  public.wh_finding_action(uuid, text, text, jsonb, text[], uuid, timestamptz, text), public.wh_findings_list(uuid, text, date, date, boolean) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.wh_finding_create(uuid, text[], text, text, jsonb, text, uuid, timestamptz, text[], boolean),
-  public.wh_finding_action(uuid, text, text, jsonb, text[], uuid, timestamptz, text), public.wh_findings_list(uuid, text, date, date) TO authenticated;
+  public.wh_finding_action(uuid, text, text, jsonb, text[], uuid, timestamptz, text), public.wh_findings_list(uuid, text, date, date, boolean) TO authenticated;
 
 -- Identificar la unidad física por escaneo (LPN o paquete): distingue «de otra tarea» de «desconocido»; nunca crea unidades
 CREATE OR REPLACE FUNCTION public.wh_lpn_locate(p_code text)
