@@ -20,12 +20,16 @@ BEGIN
   SELECT id, coalesce(applied_at, created_at) INTO v_si, v_si_at FROM public.erp_imports WHERE kind = 'STOCK' AND status = 'ACTIVA' ORDER BY applied_at DESC NULLS LAST LIMIT 1;
   SELECT jsonb_build_object(
       'lpn_asignados', count(*) FILTER (WHERE l.load_unit_id IS NOT NULL),
-      'lpn_cargados', count(*) FILTER (WHERE l.load_unit_id IS NOT NULL AND l.status = 'LOADED'),
+      'lpn_cargados', count(*) FILTER (WHERE l.load_unit_id IS NOT NULL AND k.loaded),
       'lpn_sin_unidad', count(*) FILTER (WHERE l.load_unit_id IS NULL),
       'lpn_total', count(*),
       'cumplimiento_pct', CASE WHEN count(*) FILTER (WHERE l.load_unit_id IS NOT NULL) > 0 THEN round(100.0 *
-        count(*) FILTER (WHERE l.load_unit_id IS NOT NULL AND l.status = 'LOADED') / count(*) FILTER (WHERE l.load_unit_id IS NOT NULL), 1) END)
-    INTO v_carga FROM public.wh_lpns l WHERE l.task_id = p_task_id AND l.status <> 'VOID';
+        count(*) FILTER (WHERE l.load_unit_id IS NOT NULL AND k.loaded) / count(*) FILTER (WHERE l.load_unit_id IS NOT NULL), 1) END)
+    INTO v_carga FROM public.wh_lpns l
+    -- Cargado: el LPN se confirmó entero o todos sus paquetes vigentes se escanearon como cargados uno a uno
+    CROSS JOIN LATERAL (SELECT l.status = 'LOADED' OR (count(*) > 0 AND bool_and(p.status = 'LOADED')) AS loaded
+                        FROM public.wh_packages p WHERE p.lpn_id = l.id AND p.status <> 'VOID') k
+    WHERE l.task_id = p_task_id AND l.status <> 'VOID';
   RETURN jsonb_build_object('ot', v_ot, 'contratos_at', v_ci_at, 'stock_at', v_si_at, 'carga', v_carga, 'items', coalesce((
     SELECT jsonb_agg(to_jsonb(x) || jsonb_build_object('faltante_qty',
         greatest(x.pending_qty - x.prepared_qty - x.prepared_other_qty - x.stock_wms, 0)) ORDER BY x.item_code) FROM (

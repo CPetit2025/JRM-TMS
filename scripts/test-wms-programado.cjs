@@ -60,6 +60,13 @@ const feed=[feed0,{...feed0,id:REQ2,request_number:'RT-000902'},{...feed0,id:REQ
  console.log('PASS: programado = saldo del contrato ERP de la OT; preparado propio, en otras tareas abiertas (no canceladas) y disponible por separado; faltante contra la OT.');
  assert.deepEqual([c.carga.lpn_asignados,c.carga.lpn_cargados,c.carga.lpn_sin_unidad,c.carga.lpn_total,Number(c.carga.cumplimiento_pct)],[2,1,1,3,50]);
  console.log('PASS: cumplimiento de carga = LPN cargados / LPN asignados a unidad (anulados fuera); LPN sin unidad se informan.');
+ // L2 cargado paquete a paquete (el LPN queda CLOSED) cuenta como cargado solo cuando todos sus paquetes están cargados
+ const L2=(await sys(`SELECT id FROM public.wh_lpns WHERE lpn_code='L2'`))[0].id;
+ await sys(pkg('Q1',1,'LOADED',task)+pkg('Q2',1,'PICKED',task)+`UPDATE public.wh_packages SET lpn_id='${L2}' WHERE package_code IN ('Q1','Q2');`);
+ await as('lect'); assert.equal((await one(`SELECT public.wh_prepicking_checklist('${task}')`)).carga.lpn_cargados,1,'un paquete pendiente: aún no cargado');
+ await sys(`UPDATE public.wh_packages SET status='LOADED' WHERE package_code='Q2'`);
+ await as('lect'); assert.equal(Number((await one(`SELECT public.wh_prepicking_checklist('${task}')`)).carga.cumplimiento_pct),100);
+ console.log('PASS: un LPN cargado paquete a paquete cuenta como cargado al completar todos sus paquetes.');
  // Sin unidades asignadas el cumplimiento no se calcula
  await sys(`UPDATE public.wh_lpns SET load_unit_id=NULL WHERE task_id='${task}'`);
  await as('lect'); assert.equal((await one(`SELECT public.wh_prepicking_checklist('${task}')`)).carga.cumplimiento_pct,null);
