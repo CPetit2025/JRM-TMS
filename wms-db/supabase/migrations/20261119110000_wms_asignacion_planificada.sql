@@ -10,13 +10,21 @@ ALTER TABLE public.wh_tasks DROP CONSTRAINT IF EXISTS wh_tasks_priority_check;
 ALTER TABLE public.wh_tasks ADD CONSTRAINT wh_tasks_priority_check CHECK (priority IN ('URGENTE', 'ALTA', 'NORMAL', 'BAJA'));
 CREATE INDEX IF NOT EXISTS wh_tasks_assigned_by_idx ON public.wh_tasks(assigned_by);
 
--- Quien toma la tarea por sí mismo queda también como asignador
+-- Quien toma la tarea por sí mismo queda también como asignador. Si ya era el responsable (tarea planificada) y la
+-- tarea sigue pendiente, se registra el inicio (TASK_STARTED): cuenta como actividad y evita que otro la tome al iniciar.
 DO $m$
 DECLARE def text;
 BEGIN
   def := pg_get_functiondef('public.wh_assign_task(uuid, text)'::regprocedure);
   IF position('assigned_at = now(), updated_by = auth.uid()' IN def) = 0 THEN RAISE EXCEPTION 'wh_assign_task cambió: revisar esta migración'; END IF;
-  EXECUTE replace(def, 'assigned_at = now(), updated_by = auth.uid()', 'assigned_at = now(), assigned_by = auth.uid(), updated_by = auth.uid()');
+  IF position('  RETURN jsonb_build_object(''task_id'', t.id, ''assigned_picker'', auth.uid()' IN def) = 0 THEN RAISE EXCEPTION 'wh_assign_task cambió: revisar esta migración'; END IF;
+  def := replace(def, 'assigned_at = now(), updated_by = auth.uid()', 'assigned_at = now(), assigned_by = auth.uid(), updated_by = auth.uid()');
+  EXECUTE replace(def, '  RETURN jsonb_build_object(''task_id'', t.id, ''assigned_picker'', auth.uid()',
+    '  IF t.assigned_picker = auth.uid() AND t.status = ''PENDING'' THEN
+    INSERT INTO public.wh_scan_events(site_id, task_id, event_type, scanned_code, payload, operator_id, client_event_id)
+    VALUES (t.site_id, t.id, ''TASK_STARTED'', t.task_code, ''{}''::jsonb, auth.uid(), gen_random_uuid());
+  END IF;
+  RETURN jsonb_build_object(''task_id'', t.id, ''assigned_picker'', auth.uid()');
 END $m$;
 
 -- Un usuario puede ser responsable de picking si está activo, tiene permiso de picking o supervisión y acceso a la sede

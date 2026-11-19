@@ -56,6 +56,10 @@ const feed=[{id:REQ,request_number:'RT-000901',request_type:'DESPACHO',status:'A
  await q(`SELECT public.wh_task_plan('${task}',NULL,'URGENTE','${due}')`);
  assert.equal((await one(`SELECT public.wh_task_plan('${task}',NULL,'URGENTE','${due}')`)).changed,false,'sin cambios no registra evento');
  await q(`SELECT public.wh_task_plan('${task}','${U.op2}','URGENTE','2026-11-21T15:00:00Z','Operador op con licencia')`);
+ // Iniciar una tarea planificada mucho después de asignada cuenta como actividad: nadie la toma al instante
+ await sys(`UPDATE public.wh_tasks SET assigned_at=now()-interval '2 hours', status='PENDING' WHERE id='${task}'`);
+ await as('op2'); await q(`SELECT public.wh_assign_task('${task}')`);
+ await as('op'); await fails(`SELECT public.wh_assign_task('${task}','inactiva')`,[],/ya está asignada a otro operador/);
  console.log('PASS: reasignar y mover el compromiso exigen motivo; repetir sin cambios no duplica el historial.');
 
  // 4. Tomar la tarea por sí mismo también registra el asignador; el historial se lee completo
