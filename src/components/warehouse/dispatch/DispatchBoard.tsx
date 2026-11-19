@@ -15,6 +15,7 @@ import { DispatchNav } from '@/components/warehouse/dispatch/DispatchNav'
 import { DISPATCH_STAGES, TASK_GROUPS, attendedInTms, taskGroup, taskInStage, type TaskGroup, type TaskStage } from '@/lib/warehouse/dispatch'
 import { usePermissions } from '@/hooks/usePermissions'
 import { PRIORITIES, TaskPlanDialog } from '@/components/warehouse/dispatch/TaskPlanDialog'
+import { WAIT_REASONS } from '@/components/warehouse/dispatch/TaskTimes'
 
 const approved = ['APROBADA', 'APROBADO', 'ASIGNADA']
 // Minutos sin actividad del responsable tras los que otro operador puede tomar la tarea (igual que wh_assign_task)
@@ -152,6 +153,7 @@ export function DispatchBoard({ stage }: { stage: TaskStage }) {
                   <td className="px-3 py-2.5"><b>{r.contract_code || '—'}</b>{(r.components || r.lots) && <small className="block text-slate-500">{[r.components, r.lots].filter(Boolean).join(' · ')}</small>}</td>
                   <td className="px-3 py-2.5 text-slate-700">{r.client_name || '—'}</td>
                   <td className="px-3 py-2.5"><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-bold ${state.style}`}>{state.label}</span>
+                    {r.wait_reason && <small className="block font-semibold text-amber-700">En espera: {WAIT_REASONS[r.wait_reason] || r.wait_reason}</small>}
                     {r.lpn_total > 0 && <small className="block text-slate-500">{r.lpn_approved}/{r.lpn_total} LPN aprobados</small>}
                     {r.closed_at && <small className="block text-slate-500">{r.status === 'CANCELLED' ? 'Cerrada' : 'Cargada'} {fmtDate(r.closed_at)}{r.closed_by_name ? ` · ${r.closed_by_name}` : ''}</small>}
                     {r.status === 'CANCELLED' && !attendedInTms(r) && r.cancelled_reason && <small className="block text-rose-700">{r.cancelled_reason}</small>}</td>
