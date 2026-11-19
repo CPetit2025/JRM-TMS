@@ -104,6 +104,11 @@ const feed=[{id:REQ,request_number:'RT-000901',request_type:'DESPACHO',status:'A
  assert.equal(c.tarea.sin_unidad_pallets,1);assert.equal(Number(c.tarea.sin_unidad_kg),5);
  assert.equal(c.tarea.capacidad_kg,null,'una unidad sin tipo impide sumar la capacidad total');
  assert.equal(c.tarea.alerta,null);
+ // El volumen conocido ya supera la capacidad: alerta aunque falte el m³ de un paquete (el uso sigue no calculable)
+ await sys("UPDATE public.wh_vehicle_types SET capacity_m3=0.05 WHERE code='FURGON'");
+ await as('lect'); const c2=await one(`SELECT public.wh_task_capacity('${task}')`); const u2=c2.unidades.find(x=>x.label==='UT2');
+ assert.deepEqual(u2.excede,['volumen']);assert.equal(u2.uso_m3,null);assert.match(c2.tarea.alerta,/unidad adicional/);
+ await sys("UPDATE public.wh_vehicle_types SET capacity_m3=1 WHERE code='FURGON'");
  console.log('PASS: reparto dentro de capacidad sin alerta; unidad sin tipo y LPN sin unidad se informan; la capacidad total no se inventa.');
 
  // 6. Nunca bloquea: la asignación y la carga existentes no consultan capacidad

@@ -145,7 +145,7 @@ BEGIN
       'excede', to_jsonb(array_remove(ARRAY[
         CASE WHEN vt.capacity_kg IS NOT NULL AND a.kg > vt.capacity_kg THEN 'peso' END,
         CASE WHEN vt.capacity_pallets IS NOT NULL AND a.pallets > vt.capacity_pallets THEN 'pallets' END,
-        CASE WHEN vt.capacity_m3 IS NOT NULL AND a.sin_m3 = 0 AND a.m3 > vt.capacity_m3 THEN 'volumen' END], NULL)),
+        CASE WHEN vt.capacity_m3 IS NOT NULL AND a.m3 > vt.capacity_m3 THEN 'volumen' END], NULL)),
       'no_calculable', to_jsonb(array_remove(ARRAY[
         CASE WHEN vt.code IS NULL THEN 'Sin tipo de unidad: no se conoce su capacidad' END,
         CASE WHEN vt.code IS NOT NULL AND vt.capacity_kg IS NULL THEN 'Peso: el tipo de unidad no tiene capacidad en kg' END,
@@ -185,7 +185,7 @@ BEGIN
   v_task := v_task || jsonb_build_object('excede', to_jsonb(array_remove(ARRAY[
       CASE WHEN (v_task->>'capacidad_kg') IS NOT NULL AND (v_task->>'kg')::numeric > (v_task->>'capacidad_kg')::numeric THEN 'peso' END,
       CASE WHEN (v_task->>'capacidad_pallets') IS NOT NULL AND (v_task->>'pallets')::numeric > (v_task->>'capacidad_pallets')::numeric THEN 'pallets' END,
-      CASE WHEN (v_task->>'capacidad_m3') IS NOT NULL AND (v_task->>'sin_m3')::int = 0 AND (v_task->>'m3')::numeric > (v_task->>'capacidad_m3')::numeric THEN 'volumen' END], NULL)));
+      CASE WHEN (v_task->>'capacidad_m3') IS NOT NULL AND (v_task->>'m3')::numeric > (v_task->>'capacidad_m3')::numeric THEN 'volumen' END], NULL)));
   v_task := v_task || jsonb_build_object('alerta', CASE
       WHEN jsonb_array_length(v_task->'excede') > 0 OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_units) x WHERE jsonb_array_length(x->'excede') > 0)
         THEN 'Lo preparado supera la capacidad de las unidades (' || coalesce(nullif(array_to_string(ARRAY(SELECT jsonb_array_elements_text(v_task->'excede')), ', '), ''), 'en alguna unidad') || '): solicite una unidad adicional en el TMS.'
