@@ -80,5 +80,14 @@ const feed=[{id:REQ,request_number:'RT-000901',request_type:'DESPACHO',status:'A
  await db.exec("RESET ROLE; SET request.jwt.claim.sub=''; SET ROLE anon;");
  await fails(`SELECT public.wh_task_wait('${task}','START','STOCK')`,[],/permission denied|permiso/i);
  await fails(`SELECT count(*) FROM public.wh_task_waits`,[],/permission denied/i);
+ // Tarea sin responsable: nadie sin supervisión registra esperas (comparación nula)
+ await sys(`UPDATE public.wh_tasks SET status='PICKING', assigned_picker=NULL WHERE id='${task}'`);
+ await as('op2'); await fails(`SELECT public.wh_task_wait('${task}','START','STOCK')`,[],/Solo el responsable/);
+ // Cancelación directa (como la sincronización con el TMS) también cierra la espera; volver a preparación invalida «listo»
+ await as('sup'); await q(`SELECT public.wh_task_wait('${task}','START','SISTEMA')`);
+ await sys(`UPDATE public.wh_tasks SET status='CANCELLED' WHERE id='${task}'`);
+ assert.equal(Number((await sys(`SELECT count(*) n FROM public.wh_task_waits WHERE task_id='${task}' AND ended_at IS NULL`))[0].n),0);
+ await sys(`UPDATE public.wh_tasks SET status='PICKING' WHERE id='${task}'; INSERT INTO public.wh_scan_events(site_id,task_id,event_type,scanned_code,operator_id,client_event_id) SELECT site_id,id,'TASK_FINISH_PICKING',task_code,'${U.sup}',gen_random_uuid() FROM public.wh_tasks WHERE id='${task}'`);
+ await as('lect'); assert.equal((await one(`SELECT public.wh_task_times('${task}')`)).listo_auditoria,null,'de vuelta en preparación no está lista');
  console.log('PASS: cancelar cierra la espera; anónimos y usuarios sin permiso bloqueados.');
 })().catch(e=>{console.error('FAIL:',e.message);process.exit(1)});

@@ -48,6 +48,19 @@ RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp AS 
 $$;
 REVOKE ALL ON FUNCTION wms_private.wh_wait_open(public.wh_tasks, text, text), wms_private.wh_wait_close(uuid) FROM PUBLIC, anon, authenticated;
 
+-- Toda salida de la preparación (finalizar, cargar, cancelar, incluso por sincronización con el TMS) cierra la espera abierta
+CREATE OR REPLACE FUNCTION wms_private.wh_task_close_wait_on_status()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  IF NEW.status IN ('READY_FOR_LOAD','LOADED','PARTIAL','RECONCILED','CANCELLED') AND NEW.status IS DISTINCT FROM OLD.status THEN
+    UPDATE public.wh_task_waits SET ended_at = now(), ended_by = auth.uid() WHERE task_id = NEW.id AND ended_at IS NULL;
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION wms_private.wh_task_close_wait_on_status() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS wh_tasks_close_wait ON public.wh_tasks;
+CREATE TRIGGER wh_tasks_close_wait AFTER UPDATE OF status ON public.wh_tasks FOR EACH ROW EXECUTE FUNCTION wms_private.wh_task_close_wait_on_status();
+
 -- Registrar o cerrar una espera: el responsable de la tarea o supervisión, con la tarea en preparación
 CREATE OR REPLACE FUNCTION public.wh_task_wait(p_task_id uuid, p_action text, p_reason text DEFAULT NULL, p_note text DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -57,7 +70,7 @@ BEGIN
   SELECT * INTO t FROM public.wh_tasks WHERE id = p_task_id FOR UPDATE;
   IF NOT FOUND OR NOT public.can_access_site(t.site_id) THEN RAISE EXCEPTION 'Tarea no disponible'; END IF;
   IF NOT (public.wh_has_permission(ARRAY['almacen-supervisor'])
-      OR (t.assigned_picker = auth.uid() AND public.wh_has_permission(ARRAY['almacen-picking','almacen-packing']))) THEN
+      OR (coalesce(t.assigned_picker = auth.uid(), false) AND public.wh_has_permission(ARRAY['almacen-picking','almacen-packing']))) THEN
     RAISE EXCEPTION 'Solo el responsable de la tarea o supervisión registran esperas' USING ERRCODE = '42501';
   END IF;
   IF upper(p_action) = 'START' THEN
@@ -83,14 +96,14 @@ BEGIN
 END $m$;
 
 -- Pausar abre una espera (motivo de catálogo en p_reason «CODIGO: detalle» o texto libre como «Otro»);
--- reanudar, finalizar o cancelar cierran la espera abierta.
+-- reanudar la cierra (finalizar, cargar o cancelar la cierran por el trigger de estado).
 CREATE OR REPLACE FUNCTION public.wh_task_action(p_task_id uuid, p_action text, p_reason text DEFAULT NULL::text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE v_result jsonb; v_action text := upper(p_action); t public.wh_tasks%ROWTYPE; v_code text;
 BEGIN
   v_result := wms_private.wh_task_action(p_task_id, p_action, p_reason);
   IF v_action IN ('FINISH_PICKING','READY_FOR_LOAD') THEN PERFORM wms_private.refresh_packing_list(p_task_id); END IF;
-  IF v_action IN ('RESUME','FINISH_PICKING','READY_FOR_LOAD','CANCEL','LOAD','LOAD_PARTIAL') THEN PERFORM wms_private.wh_wait_close(p_task_id); END IF;
+  IF v_action = 'RESUME' THEN PERFORM wms_private.wh_wait_close(p_task_id); END IF;
   IF v_action = 'PAUSE' THEN
     SELECT * INTO t FROM public.wh_tasks WHERE id = p_task_id;
     v_code := upper(split_part(btrim(p_reason), ':', 1));
@@ -119,8 +132,8 @@ BEGIN
   SELECT min(occurred_at) INTO v_start FROM public.wh_scan_events
     WHERE task_id = t.id AND event_type IN ('TASK_START_PICKING','TASK_PICK','TASK_STARTED');
   SELECT max(occurred_at) INTO v_ready FROM public.wh_scan_events WHERE task_id = t.id AND event_type IN ('TASK_FINISH_PICKING','TASK_READY_FOR_LOAD');
-  -- Si se reabrió después de finalizar, sigue en preparación
-  IF EXISTS (SELECT 1 FROM public.wh_scan_events WHERE task_id = t.id AND event_type = 'TASK_REOPEN_PICKING' AND occurred_at > v_ready) THEN v_ready := NULL; END IF;
+  -- Si volvió a preparación por cualquier camino (reabrir, quitar un paquete…), aún no está lista para auditoría
+  IF t.status IN ('PENDING','PARTIAL','PICKING','PACKING','PAUSED') THEN v_ready := NULL; END IF;
   v_end := CASE WHEN v_ready IS NOT NULL THEN v_ready WHEN t.status = 'CANCELLED' THEN t.updated_at ELSE now() END;
   v_total := CASE WHEN v_start IS NOT NULL THEN round(extract(epoch FROM v_end - v_start) / 60.0, 1) END;
   SELECT coalesce(jsonb_object_agg(reason_code, min), '{}'::jsonb), coalesce(sum(min), 0) INTO v_by, v_wait FROM (
