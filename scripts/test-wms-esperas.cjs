@@ -63,13 +63,20 @@ const feed=[{id:REQ,request_number:'RT-000901',request_type:'DESPACHO',status:'A
  assert.deepEqual(await ev(),['TASK_START_PICKING','TASK_PAUSE','TASK_RESUME','TASK_PAUSE','TASK_RESUME']);
  console.log('PASS: la pausa de supervisión abre una espera (catálogo o «Otro») y reanudar la cierra; cada transición queda como evento.');
 
+ // Reanudar vuelve al estado en que se pausó (aquí PACKING), no siempre a PICKING
+ await sys(`UPDATE public.wh_tasks SET status='PACKING' WHERE id='${task}'`);
+ await as('sup'); await q(`SELECT public.wh_task_action('${task}','PAUSE','EQUIPO: montacargas')`);
+ await q(`SELECT public.wh_task_action('${task}','RESUME')`);
+ assert.equal((await sys(`SELECT status FROM public.wh_tasks WHERE id='${task}'`))[0].status,'PACKING');
+ await sys(`UPDATE public.wh_tasks SET status='PICKING' WHERE id='${task}'`);
+ console.log('PASS: Reanudar devuelve la tarea al estado en que se pausó.');
  // 4. Tiempos: activo = transcurrido − esperas, por motivo y sin contar esperas fuera del intervalo
  await as('lect'); tm=await one(`SELECT public.wh_task_times('${task}')`);
  assert.ok(tm.inicio);assert.equal(tm.listo_auditoria,null);assert.equal(tm.en_curso,true);
  assert.ok(Number(tm.espera_por_motivo.STOCK)>0 && Number(tm.espera_por_motivo.VEHICULO)>0);
  assert.equal(Math.round((Number(tm.activo_min)+Number(tm.espera_min))*10),Math.round(Number(tm.transcurrido_min)*10));
  assert.ok(Number(tm.activo_min)>=0);
- assert.equal(tm.esperas.length,3);
+ assert.equal(tm.esperas.length,4);
  console.log('PASS: tiempo activo = transcurrido − esperas, desglosado por motivo; nunca negativo.');
 
  // 5. Cancelar cierra la espera abierta; anónimos bloqueados
