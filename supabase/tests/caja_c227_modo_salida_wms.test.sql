@@ -55,6 +55,13 @@ BEGIN
    PERFORM public.wms_release_assert(ARRAY[v_req]);
    SELECT count(*) INTO n FROM public.wms_release_alerts WHERE transport_request_id = v_req AND dispatch_id IS NULL;
    IF n <> 1 THEN RAISE EXCEPTION 'CAJA C227 FAIL: se esperaba 1 alerta y hay %', n; END IF;
+   -- Salida por despacho + cambio de estado de la solicitud del mismo despacho = una sola alerta
+   IF EXISTS (SELECT 1 FROM public.dispatch_requests WHERE transport_request_id = v_req) THEN
+     PERFORM public.wms_release_assert(ARRAY[v_req], (SELECT dispatch_id FROM public.dispatch_requests WHERE transport_request_id = v_req ORDER BY (to_jsonb(dispatch_requests)->>'created_at') DESC NULLS LAST LIMIT 1));
+     PERFORM public.wms_release_assert(ARRAY[v_req], (SELECT dispatch_id FROM public.dispatch_requests WHERE transport_request_id = v_req ORDER BY (to_jsonb(dispatch_requests)->>'created_at') DESC NULLS LAST LIMIT 1));
+     SELECT count(*) INTO n FROM public.wms_release_alerts WHERE transport_request_id = v_req AND dispatch_id IS NOT NULL;
+     IF n <> 1 THEN RAISE EXCEPTION 'CAJA C227 FAIL: salida por despacho dejó % alertas', n; END IF;
+   END IF;
    r := public.wms_release_mode_info();
    IF NOT (r->>'success')::boolean OR r->>'mode' <> 'ALERTAR' OR jsonb_array_length(r->'log') < 1 THEN RAISE EXCEPTION 'CAJA C227 FAIL: lectura del modo (%)', r; END IF;
 

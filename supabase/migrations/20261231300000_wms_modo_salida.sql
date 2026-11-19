@@ -141,3 +141,17 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.wms_release_mode_info() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.wms_release_mode_info() TO authenticated;
+
+-- La solicitud que sale por su despacho registra la alerta con ese mismo despacho: iniciar la ruta (que actualiza
+-- el despacho y sus solicitudes) deja una sola alerta por solicitud y despacho.
+CREATE OR REPLACE FUNCTION public.wms_release_request_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  IF upper(coalesce(NEW.status, '')) IN ('EN TRANSITO', 'EN TRÁNSITO', 'EN_TRANSITO')
+     AND upper(coalesce(OLD.status, '')) IN ('APROBADA', 'APROBADO', 'REPROGRAMADA', 'ASIGNADA') THEN
+    PERFORM public.wms_release_assert(ARRAY[NEW.id],
+      (SELECT dr.dispatch_id FROM public.dispatch_requests dr WHERE dr.transport_request_id = NEW.id
+        ORDER BY (to_jsonb(dr) ->> 'created_at') DESC NULLS LAST LIMIT 1));
+  END IF;
+  RETURN NEW;
+END $$;
