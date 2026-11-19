@@ -48,7 +48,8 @@ export function FindingCard({ f, userId, onChanged }: { f: Finding; userId: stri
     setBusy(true); setError(''); const r = await fn(); setBusy(false)
     if (r.error) { setError(r.error.message); return } setAction(''); setComment(''); setUntil(''); await onChanged()
   }
-  const live = (f.exceptions || []).find(x => x.status === 'SOLICITADA' || x.status === 'APROBADA')
+  // Vigente: pendiente o aprobada, no vencida y sobre la composición actual (las demás se reemplazan al pedir otra)
+  const live = (f.exceptions || []).find(x => (x.status === 'SOLICITADA' || x.status === 'APROBADA') && Date.parse(x.valid_until) > now && x.audit_rev === f.lpn_rev)
   const photo = async (path: string) => {
     const { data, error: e } = await createClient().storage.from('wh_audit_evidence').createSignedUrl(path, 300)
     if (e) setError(e.message); else window.open(data.signedUrl, '_blank', 'noopener')

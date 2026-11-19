@@ -111,6 +111,9 @@ BEGIN
   IF p_valid_until IS NULL OR p_valid_until <= now() OR p_valid_until > now() + interval '30 days' THEN RAISE EXCEPTION 'Indique una vigencia futura de hasta 30 días'; END IF;
   SELECT * INTO l FROM public.wh_lpns WHERE id = f.lpn_id;
   PERFORM wms_private.wh_finding_check_evidence(f.id, f.lpn_id, p_evidence_paths);
+  -- Retira solicitudes que ya no sirven (vencidas o de otra composición) para poder pedir una nueva
+  UPDATE public.wh_finding_exceptions SET status = 'VENCIDA', revoke_reason = 'Reemplazada: vencida o de otra composición', revoked_at = now()
+    WHERE finding_id = f.id AND status IN ('SOLICITADA','APROBADA') AND (valid_until <= now() OR audit_rev <> l.audit_rev);
   INSERT INTO public.wh_finding_exceptions(finding_id, lpn_id, audit_rev, reason, conditions, evidence_paths, valid_until, requested_by)
   VALUES (f.id, f.lpn_id, l.audit_rev, btrim(p_reason), nullif(btrim(p_conditions), ''), coalesce(p_evidence_paths, '{}'), p_valid_until, auth.uid())
   RETURNING id INTO v_id;
@@ -156,6 +159,9 @@ CREATE OR REPLACE FUNCTION wms_private.wh_exceptions_expire()
 RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE x record; n integer := 0;
 BEGIN
+  -- Solicitudes no decididas que vencieron: salen de las vigentes sin efecto sobre el LPN
+  UPDATE public.wh_finding_exceptions SET status = 'VENCIDA', revoke_reason = 'Vencida sin decisión', revoked_at = now()
+    WHERE status = 'SOLICITADA' AND valid_until <= now();
   FOR x IN SELECT id, decided_by FROM public.wh_finding_exceptions WHERE status = 'APROBADA' AND valid_until <= now() ORDER BY id LOOP
     PERFORM wms_private.wh_exception_lapse(x.id, 'VENCIDA', x.decided_by, 'Vencimiento de la vigencia');
     n := n + 1;

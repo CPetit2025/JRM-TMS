@@ -46,15 +46,22 @@ const feed=[{id:REQ,request_number:'RT-000901',request_type:'DESPACHO',status:'A
  await fails(`SELECT public.wh_exception_request('${fMenor}','Cliente acepta así el despacho',now()+interval '40 days')`,[],/hasta 30 días/);
  const e1=(await one(`SELECT public.wh_exception_request('${fMenor}','Cliente acepta la etiqueta corrida',$1)`,[future])).id;
  await fails(`SELECT public.wh_exception_request('${fMenor}','Otra solicitud duplicada',$1)`,[future],/pendiente o vigente/);
+ // Una solicitud pendiente que venció no impide pedir otra; el vencimiento la retira
+ await sys(`UPDATE public.wh_finding_exceptions SET valid_until=now()-interval '1 minute' WHERE id=${e1}`);
+ const e1b=(await one(`SELECT public.wh_exception_request('${fMenor}','Cliente acepta la etiqueta corrida',$1)`,[future])).id;
+ assert.equal((await exc(e1)).status,'VENCIDA');
+ await sys(`UPDATE public.wh_finding_exceptions SET valid_until=now()-interval '1 minute' WHERE id=${e1b}`);
+ await sys('SELECT wms_private.wh_exceptions_expire()'); assert.equal((await exc(e1b)).status,'VENCIDA');
+ await as('op'); const e1c=(await one(`SELECT public.wh_exception_request('${fMenor}','Cliente acepta la etiqueta corrida',$1)`,[future])).id;
  console.log('PASS: solo hallazgos menores admiten excepción, con vigencia de hasta 30 días y una a la vez.');
 
  // 2. Autoriza Jefatura, nunca quien pidió ni quien preparó
  await sys(`UPDATE public.roles SET permissions='["almacen-picking","almacen-supervisor"]' WHERE name='op'`);
- await as('op'); await fails(`SELECT public.wh_exception_decide(${e1},'APPROVE')`,[],/solicitó|preparó/);
+ await as('op'); await fails(`SELECT public.wh_exception_decide(${e1c},'APPROVE')`,[],/solicitó|preparó/);
  await sys(`UPDATE public.roles SET permissions='["almacen-picking"]' WHERE name='op'`);
- await as('aud'); await fails(`SELECT public.wh_exception_decide(${e1},'APPROVE')`,[],/Solo Jefatura/);
- await as('sup'); await q(`SELECT public.wh_exception_decide(${e1},'APPROVE','Autorizado por Jefatura')`);
- assert.equal((await exc(e1)).status,'APROBADA');
+ await as('aud'); await fails(`SELECT public.wh_exception_decide(${e1c},'APPROVE')`,[],/Solo Jefatura/);
+ await as('sup'); await q(`SELECT public.wh_exception_decide(${e1c},'APPROVE','Autorizado por Jefatura')`);
+ assert.equal((await exc(e1c)).status,'APROBADA');
  console.log('PASS: la excepción la autoriza supervisión; nadie autoriza la suya ni la de un LPN que preparó.');
 
  // 3. Con el mayor abierto no se aprueba; corregido y verificado, el menor con excepción no bloquea
@@ -68,8 +75,8 @@ const feed=[{id:REQ,request_number:'RT-000901',request_type:'DESPACHO',status:'A
  console.log('PASS: con excepción vigente el hallazgo menor no bloquea; la liberación automática queda a nombre del sistema.');
 
  // 4. Revocar deja el LPN observado y sin efecto la liberación; vencer igual
- await as('sup'); await fails(`SELECT public.wh_exception_decide(${e1},'REVOKE')`,[],/motivo de la revocación/);
- await q(`SELECT public.wh_exception_decide(${e1},'REVOKE','El cliente ya no acepta')`);
+ await as('sup'); await fails(`SELECT public.wh_exception_decide(${e1c},'REVOKE')`,[],/motivo de la revocación/);
+ await q(`SELECT public.wh_exception_decide(${e1c},'REVOKE','El cliente ya no acepta')`);
  assert.equal(await lpnStatus(),'OBSERVADO'); assert.equal((await plStatus()).status,'REEMPLAZADO');
  await as('op'); const e2=(await one(`SELECT public.wh_exception_request('${fMenor}','Cliente vuelve a aceptar la etiqueta',$1)`,[future])).id;
  await as('sup'); await q(`SELECT public.wh_exception_decide(${e2},'APPROVE')`);
