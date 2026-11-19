@@ -33,7 +33,7 @@ export function PackingAssignment({ task, data, onChanged }: { task: BoardRow; d
     else setUnits((result.data || []) as LoadUnit[])
     // La capacidad solo informa: si falla la consulta, la asignación sigue disponible.
     const cap = await createClient().rpc('wh_task_capacity', { p_task_id: task.id })
-    setCapacity(cap.error ? null : cap.data as Capacity)
+    setCapacity(cap.error || !cap.data?.tarea ? null : cap.data as Capacity)
     const vt = await createClient().from('wh_vehicle_types').select('code,name').eq('active', true).order('name')
     setTypes((vt.data || []) as VehicleType[])
   }, [task.id])
