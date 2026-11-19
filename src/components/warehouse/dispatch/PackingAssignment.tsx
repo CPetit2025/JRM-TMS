@@ -5,6 +5,12 @@ import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { buildPackingListPdf, fmt, unitLabel, type BoardRow, type LoadUnit, type PackingSnapshot, type TaskLpns } from '@/lib/warehouse/packing-list'
 
+type UnitCapacity = { id: string; tipo: { code: string } | null; kg: number | null; pallets: number; m3: number | null; peso_estado: string | null; uso_kg: number | null; uso_pallets: number | null; uso_m3: number | null; excede: string[]; no_calculable: string[] }
+type Capacity = { tarea: { alerta: string | null }; unidades: UnitCapacity[] }
+type VehicleType = { code: string; name: string }
+const pct = (n: number | null) => n === null ? 'no calculable' : `${fmt(n)} %`
+const WEIGHT_STATE: Record<string, string> = { CONFIRMADO: 'confirmado', CALCULADO: 'calculado', PROVISIONAL: 'provisional (faltan pesos)', EN_REVISION: 'en revisión (>5 % vs. maestro)' }
+
 const button = 'rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold disabled:opacity-50'
 
 /** Packing List operativo: selecciona LPN completos ya liberados, conservando sus etiquetas. */
@@ -18,11 +24,18 @@ export function PackingAssignment({ task, data, onChanged }: { task: BoardRow; d
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [capacity, setCapacity] = useState<Capacity | null>(null)
+  const [types, setTypes] = useState<VehicleType[]>([])
   const canManage = ['almacen-packing', 'almacen-carga', 'almacen-supervisor'].some(hasAccess) && ['PICKING', 'PACKING', 'READY_FOR_LOAD'].includes(task.status)
   const load = useCallback(async () => {
     const result = await createClient().rpc('wh_task_load_units', { p_task_id: task.id })
     if (result.error) setError(result.error.message)
     else setUnits((result.data || []) as LoadUnit[])
+    // La capacidad solo informa: si falla la consulta, la asignación sigue disponible.
+    const cap = await createClient().rpc('wh_task_capacity', { p_task_id: task.id })
+    setCapacity(cap.error ? null : cap.data as Capacity)
+    const vt = await createClient().from('wh_vehicle_types').select('code,name').eq('active', true).order('name')
+    setTypes((vt.data || []) as VehicleType[])
   }, [task.id])
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -77,6 +90,7 @@ export function PackingAssignment({ task, data, onChanged }: { task: BoardRow; d
     <h2 className="text-lg font-bold text-[#002855]">Seleccionar liberados y asignar unidad</h2>
     <p className="text-sm text-slate-600">Cada fila representa un LPN lógico completo. Puede usar la etiqueta original de sus paquetes; asignar unidad no genera etiquetas ni confirma la carga física.</p>
     {blocked > 0 && <p className="rounded-lg bg-amber-50 p-2 text-sm text-amber-900">{blocked} LPN pendiente(s), observado(s) o rechazado(s): no se pueden asignar.</p>}
+    {capacity?.tarea.alerta && <p role="status" className="rounded-lg bg-amber-50 p-2 text-sm font-semibold text-amber-900">{capacity.tarea.alerta}</p>}
     {error && <p role="alert" className="rounded-lg bg-rose-50 p-2 text-sm text-rose-900">{error}</p>}
     {message && <p role="status" className="rounded-lg bg-emerald-50 p-2 text-sm text-emerald-900">{message}</p>}
     {canManage && <div className="flex flex-wrap items-end gap-2 rounded-lg bg-slate-50 p-3">
@@ -106,6 +120,14 @@ export function PackingAssignment({ task, data, onChanged }: { task: BoardRow; d
     <h3 className="font-bold text-[#002855]">Reparto por unidad</h3>
     <div className="grid gap-2 sm:grid-cols-2">{units.map(u => <article key={u.id} className="space-y-2 rounded-lg border border-slate-200 p-3 text-sm">
       <b>{unitLabel(u)}</b><p>{u.lpn_count} LPN · {u.package_count} paquetes · {fmt(u.weight_kg)} kg · {u.loaded_count} cargados</p>
+      {(() => { const c = capacity?.unidades.find(x => x.id === u.id); if (!c) return null
+        return <div className={`rounded p-2 ${c.excede.length ? 'bg-amber-50 text-amber-900' : 'bg-slate-50 text-slate-700'}`}>
+          <p>Peso {c.kg === null ? 'sin dato' : `${fmt(c.kg)} kg`}{c.peso_estado ? ` · ${WEIGHT_STATE[c.peso_estado] || c.peso_estado}` : ''} · uso {pct(c.uso_kg)}</p>
+          <p>Pallets {c.pallets} · uso {pct(c.uso_pallets)} · Volumen {c.m3 === null ? 'sin dato' : `${fmt(c.m3)} m³`} · uso {pct(c.uso_m3)}</p>
+          {c.excede.length > 0 && <p className="font-semibold">Excede capacidad en: {c.excede.join(', ')}</p>}
+          {c.no_calculable.map(m => <p key={m} className="text-xs">{m}</p>)}
+        </div> })()}
+      {canManage && <label className="block">Tipo de unidad<select aria-label={`Tipo de ${u.label}`} value={capacity?.unidades.find(x => x.id === u.id)?.tipo?.code || ''} disabled={busy} onChange={e => void run(() => createClient().rpc('wh_load_unit_set_type', { p_unit_id: u.id, p_code: e.target.value || null }), 'Tipo de unidad actualizado.')} className="ml-2 rounded border border-slate-300 px-2 py-1"><option value="">Sin tipo</option>{types.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}</select></label>}
       {canManage && <label className="block">Placa (opcional)<input key={u.plate || ''} defaultValue={u.plate || ''} aria-label={`Placa de ${u.label}`} maxLength={20} disabled={busy} onBlur={e => { const value = e.target.value.trim().toUpperCase().replace(/\s+/g,''); if (value !== (u.plate || '')) void run(() => createClient().rpc('wh_load_unit_set_plate', { p_unit_id: u.id, p_plate: value }), 'Placa actualizada; etiquetas conservadas.') }} className="ml-2 w-36 rounded border border-slate-300 px-2 py-1"/></label>}
       <div className="flex flex-wrap gap-2"><button onClick={() => { setFilter(u.id); setSelected([]) }} className={button}>Ver bultos de {u.label}</button>{u.lpn_count > 0 && <><button disabled={busy} onClick={() => void guide(u)} className={button}>Guía de carga {u.label}</button><button disabled={busy} onClick={() => void guide(u, 'PACKING')} className={button}>Packing List {u.label}</button></>}
       {canManage && u.loaded_count === 0 && <button disabled={busy} className={button} onClick={() => { if (window.confirm(`¿Quitar ${u.label}? Sus LPN quedarán disponibles para asignar.`)) void run(() => createClient().rpc('wh_load_unit_remove', { p_unit_id: u.id }), 'Unidad retirada.') }}>Quitar {u.label}</button>}</div>
