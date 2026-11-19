@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { DispatchNav } from './DispatchNav'
 import { PrepickingChecklist } from './PrepickingChecklist'
+import { TaskTimes } from './TaskTimes'
 import { DISPATCH_STAGES, type TaskStage } from '@/lib/warehouse/dispatch'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -257,7 +258,7 @@ export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
           <div><dt className="text-xs text-slate-500">Cliente</dt><dd className="font-semibold">{task.client_name || '—'}</dd></div>
           <div><dt className="text-xs text-slate-500">Responsable</dt><dd>{task.picker_name || '—'}</dd></div>
           <div><dt className="text-xs text-slate-500">Estado</dt><dd><span className={`rounded-full px-2 py-0.5 text-xs font-bold ${state.style}`}>{state.label}</span></dd></div>
-          <div><dt className="text-xs text-slate-500">Inicio</dt><dd>{fmtDate(task.assigned_at)}</dd></div>
+          <div><dt className="text-xs text-slate-500">Asignada</dt><dd>{fmtDate(task.assigned_at)}</dd></div>
         </dl>
         <div className="flex flex-wrap gap-2">
           {picking && (hasAccess('almacen-picking') || hasAccess('almacen-supervisor')) && ['PENDING', 'PARTIAL'].includes(task.status) && <button disabled={busy || !approved.includes(task.request_status?.toUpperCase())} onClick={() => void action('START_PICKING', 'Picking iniciado.')} className={`${btn} bg-[#002855] text-white`}><Play size={16}/>Iniciar picking</button>}
@@ -266,7 +267,7 @@ export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
           {picking && pickPerm && task.status === 'READY_FOR_LOAD' && !released && <button disabled={busy} onClick={() => void action('REOPEN_PICKING', 'Picking reabierto.')} className={`${btn} border border-slate-300`}><RotateCcw size={16}/>Reabrir picking</button>}
           {loadingStage && loadPerm && task.status === 'READY_FOR_LOAD' && released && <button disabled={busy} onClick={() => void action('LOAD', 'Carga confirmada.')} className={`${btn} bg-emerald-700 text-white`}><Truck size={16}/>Confirmar carga completa</button>}
           {loadingStage && loadPerm && task.status === 'READY_FOR_LOAD' && released && hasAccess('almacen-supervisor') && <button disabled={busy} onClick={() => { const r = window.prompt('Motivo y alcance de la excepción parcial:'); if (r?.trim()) void action('LOAD_PARTIAL', 'Carga parcial registrada.', r) }} className={`${btn} border border-amber-300 text-amber-900`}>Carga parcial</button>}
-          {picking && hasAccess('almacen-supervisor') && ['PICKING', 'PACKING', 'READY_FOR_LOAD'].includes(task.status) && <button disabled={busy} onClick={() => { const r = window.prompt('Motivo de pausa:'); if (r?.trim()) void action('PAUSE', 'Tarea pausada.', r) }} className={`${btn} border border-amber-300 text-amber-900`}>Pausar</button>}
+          {picking && hasAccess('almacen-supervisor') && ['PICKING', 'PACKING', 'READY_FOR_LOAD'].includes(task.status) && <button disabled={busy} onClick={() => { const r = window.prompt('Motivo de pausa. Empiece con STOCK, PROGRAMACION, AUDITORIA, CORRECCION, DOCUMENTACION, VEHICULO, EQUIPO o SISTEMA y dos puntos (p. ej. «VEHICULO: unidad no llega»); si no, se registra como «Otro»:'); if (r?.trim()) void action('PAUSE', 'Tarea pausada.', r) }} className={`${btn} border border-amber-300 text-amber-900`}>Pausar</button>}
         </div>
       </div>
     </header>
@@ -280,6 +281,7 @@ export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
 
     {loadingStage && !released && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 print:hidden">La carga está bloqueada hasta finalizar Picking, aprobar todos los bultos y liberar el Packing List.</p>}
     {loadingStage && !units.length && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 print:hidden">Todavía no hay unidades de carga. <Link href={`/almacen/packing-list/${id}`} className="font-bold underline">Ir a Packing List</Link> para distribuir los bultos entre UT1, UT2 o placas.</p>}
+    {picking && <TaskTimes task={task} onChanged={load}/>}
     {picking && <PrepickingChecklist taskId={task.id} requestNumber={task.request_number} client={task.client_name}/>}
     {picking && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 print:hidden">Auditoría puede revisar cada bulto cerrado mientras continúa la preparación. No necesita esperar al fin de Picking.</p>}
 
