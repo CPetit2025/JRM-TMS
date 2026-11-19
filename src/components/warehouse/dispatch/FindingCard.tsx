@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { usePermissions } from '@/hooks/usePermissions'
 import { fmt, fmtDate } from '@/lib/warehouse/packing-list'
-import { ACTIONS, AREAS, FINDING_CATEGORIES, FINDING_STATUS, SEVERITIES, type Finding } from './findings'
+import { ACTIONS, AREAS, EXCEPTION_STATUS, FINDING_CATEGORIES, FINDING_STATUS, SEVERITIES, type Finding } from './findings'
 
 const btn = 'rounded-lg px-2.5 py-1.5 text-xs font-bold disabled:opacity-50'
 
@@ -18,6 +18,7 @@ export function FindingCard({ f, userId, onChanged }: { f: Finding; userId: stri
   const [files, setFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [until, setUntil] = useState('')
   const audit = hasAccess('almacen-auditoria') || hasAccess('almacen-supervisor')
   const ops = ['almacen-picking', 'almacen-packing', 'almacen-carga', 'almacen-supervisor'].some(hasAccess)
   const mine = f.assigned_to === userId || (!f.assigned_to && ops) || hasAccess('almacen-supervisor')
@@ -42,6 +43,12 @@ export function FindingCard({ f, userId, onChanged }: { f: Finding; userId: stri
     if (r.error) { setError(r.error.message); if (paths.length) await db.storage.from('wh_audit_evidence').remove(paths); return }
     setAction(''); setComment(''); setQty({}); setFiles([]); await onChanged()
   }
+  // Excepción (solo hallazgos menores): la solicita cualquiera del almacén; decide Jefatura (supervisión), nunca quien la pidió
+  const exceptionCall = async (fn: () => PromiseLike<{ error: { message: string } | null }>) => {
+    setBusy(true); setError(''); const r = await fn(); setBusy(false)
+    if (r.error) { setError(r.error.message); return } setAction(''); setComment(''); setUntil(''); await onChanged()
+  }
+  const live = (f.exceptions || []).find(x => x.status === 'SOLICITADA' || x.status === 'APROBADA')
   const photo = async (path: string) => {
     const { data, error: e } = await createClient().storage.from('wh_audit_evidence').createSignedUrl(path, 300)
     if (e) setError(e.message); else window.open(data.signedUrl, '_blank', 'noopener')
@@ -54,6 +61,7 @@ export function FindingCard({ f, userId, onChanged }: { f: Finding; userId: stri
     ['REOPEN', 'Reabrir', f.status === 'CERRADO' && audit],
     ['CAUSE', 'Confirmar causa', audit],
     ['COMMENT', 'Comentar / foto', audit || ops],
+    ['EXCEPTION', 'Solicitar excepción', f.exceptionable && f.status !== 'CERRADO' && !live && (audit || ops)],
   ]
   const needsComment = ['CORRECTED', 'VERIFY_REJECT', 'REOPEN', 'CAUSE'].includes(action)
   const withLines = action === 'CORRECTED' || action === 'VERIFY_OK'
@@ -71,7 +79,7 @@ export function FindingCard({ f, userId, onChanged }: { f: Finding; userId: stri
       <p className="text-xs text-slate-600">Registró {f.created_name} · {fmtDate(f.created_at)} · Área que corrige: {AREAS[f.area] || f.area} · Responsable: {f.assigned_name || 'sin asignar'}
         {f.due_at && <span className={overdue ? 'font-semibold text-rose-700' : ''}> · Compromiso {fmtDate(f.due_at)}{overdue ? ' (vencido)' : ''}</span>}
         {f.audit_rev !== f.lpn_rev && <span className="font-semibold text-amber-800"> · registrado sobre la revisión {f.audit_rev} (vigente: {f.lpn_rev})</span>}
-        {f.exceptionable && ' · admite excepción de Jefatura'}{f.reopen_count > 0 && ` · reabierto ${f.reopen_count} vez/veces`}{f.cause && ` · Causa: ${f.cause}`}</p>
+        {f.exceptionable && (f.excepted ? ' · con excepción vigente' : ' · admite excepción de Jefatura')}{f.reopen_count > 0 && ` · reabierto ${f.reopen_count} vez/veces`}{f.cause && ` · Causa: ${f.cause}`}</p>
       <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-xs">
         <thead className="bg-slate-50 text-slate-600"><tr><th className="p-1.5 text-left">Paquete</th><th className="p-1.5 text-left">SKU · componente</th><th className="p-1.5 text-right">Afectado</th><th className="p-1.5 text-right">Masa</th><th className="p-1.5 text-right">Corregido</th><th className="p-1.5 text-right">Verificado</th>{withLines && <th className="p-1.5 text-right">{action === 'CORRECTED' ? 'Corregido ahora' : 'Verificado ahora'}</th>}</tr></thead>
         <tbody>{f.lines.map(l => <tr key={l.id} className="border-t">
@@ -85,7 +93,20 @@ export function FindingCard({ f, userId, onChanged }: { f: Finding; userId: stri
       {error && <p role="alert" className="rounded-lg bg-rose-50 p-2 text-rose-900">{error}</p>}
       <div className="flex flex-wrap gap-2">{choices.filter(c => c[2]).map(([k, label]) => <button key={k} type="button" disabled={busy}
         onClick={() => k === 'START' ? void run('START') : setAction(action === k ? '' : k)} className={`${btn} ${action === k ? 'bg-[#002855] text-white' : 'border border-slate-300'}`}>{label}</button>)}</div>
-      {action && <div className="space-y-2 rounded-lg bg-slate-50 p-2">
+      {(f.exceptions || []).length > 0 && <ul className="space-y-1 rounded-lg border border-blue-100 bg-blue-50/50 p-2 text-xs">{(f.exceptions || []).map(x => <li key={x.id} className="flex flex-wrap items-center gap-2">
+        <b>Excepción {EXCEPTION_STATUS[x.status] || x.status}</b><span>· {x.reason} · vigente hasta {fmtDate(x.valid_until)} · pidió {x.requested_name}{x.decided_name ? ` · decidió ${x.decided_name}` : ''}{x.revoke_reason ? ` · ${x.revoke_reason}` : ''}{x.audit_rev !== f.lpn_rev && x.status === 'APROBADA' ? ' · sin efecto: el LPN cambió de composición' : ''}</span>
+        {hasAccess('almacen-supervisor') && x.status === 'SOLICITADA' && x.requested_by !== userId && <span className="ml-auto flex gap-1">
+          <button type="button" disabled={busy} onClick={() => void exceptionCall(() => createClient().rpc('wh_exception_decide', { p_id: x.id, p_action: 'APPROVE', p_comment: null }))} className={`${btn} bg-emerald-700 text-white`}>Autorizar</button>
+          <button type="button" disabled={busy} onClick={() => { const c = window.prompt('Motivo del rechazo:'); if (c?.trim()) void exceptionCall(() => createClient().rpc('wh_exception_decide', { p_id: x.id, p_action: 'REJECT', p_comment: c.trim() })) }} className={`${btn} border border-slate-300`}>Rechazar</button></span>}
+        {hasAccess('almacen-supervisor') && x.status === 'APROBADA' && <button type="button" disabled={busy} onClick={() => { const c = window.prompt('Motivo de la revocación:'); if (c?.trim()) void exceptionCall(() => createClient().rpc('wh_exception_decide', { p_id: x.id, p_action: 'REVOKE', p_comment: c.trim() })) }} className={`${btn} ml-auto border border-rose-300 text-rose-800`}>Revocar</button>}
+      </li>)}</ul>}
+      {action === 'EXCEPTION' && <div className="space-y-2 rounded-lg bg-slate-50 p-2">
+        <p className="text-xs text-slate-600">Vale solo para este hallazgo, este LPN y su composición actual. Si vence, se revoca o cambia la composición, el LPN vuelve a quedar observado.</p>
+        <textarea value={comment} onChange={e => setComment(e.target.value)} rows={2} placeholder="Motivo (mín. 10 caracteres)" className="w-full rounded-lg border border-slate-300 p-2"/>
+        <div className="flex flex-wrap items-end gap-2"><label className="text-xs font-semibold">Vigente hasta<input type="datetime-local" value={until} onChange={e => setUntil(e.target.value)} className="ml-1 rounded border px-2 py-1"/></label>
+          <button type="button" disabled={busy || comment.trim().length < 10 || !until} onClick={() => void exceptionCall(() => createClient().rpc('wh_exception_request', { p_finding_id: f.id, p_reason: comment.trim(), p_valid_until: new Date(until).toISOString(), p_conditions: null, p_evidence_paths: [] }))} className={`${btn} ml-auto bg-[#002855] text-white`}>Solicitar</button></div>
+      </div>}
+      {action && action !== 'EXCEPTION' && <div className="space-y-2 rounded-lg bg-slate-50 p-2">
         <textarea value={comment} onChange={e => setComment(e.target.value)} rows={2} placeholder={needsComment ? 'Obligatorio' : 'Comentario (opcional)'} className="w-full rounded-lg border border-slate-300 p-2"/>
         <div className="flex flex-wrap items-center gap-2">
           <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple onChange={e => setFiles([...(e.target.files || [])])} className="text-xs" aria-label="Fotos"/>

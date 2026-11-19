@@ -280,6 +280,10 @@ export function TaskWorkspace({ id, stage }: { id: string; stage: TaskStage }) {
     </section>}
 
     {loadingStage && !released && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 print:hidden">La carga está bloqueada hasta finalizar Picking, aprobar todos los bultos y liberar el Packing List.</p>}
+    {task.close_summary && <section className="rounded-xl border border-slate-200 bg-white p-3 text-sm print:hidden"><b className="text-[#002855]">Cierre {task.close_summary.tipo === 'PARCIAL' ? 'parcial' : 'completo'} · {fmtDate(task.close_summary.at)}</b>
+      <p className="text-slate-700">Cargado: {task.close_summary.lpn_cargados}/{task.close_summary.lpn_preparados} LPN · {task.close_summary.paquetes_cargados}/{task.close_summary.paquetes_preparados} paquetes · {task.close_summary.kg_cargado == null ? 'kg sin dato' : `${fmt(task.close_summary.kg_cargado)} kg`}
+        {task.close_summary.paquetes_cargados < task.close_summary.paquetes_preparados && <> · Pendiente: {task.close_summary.kg_pendiente == null ? 'kg sin dato' : `${fmt(task.close_summary.kg_pendiente)} kg`}</>}{task.close_summary.paquetes_sin_peso > 0 && ` · ${task.close_summary.paquetes_sin_peso} paquete(s) sin peso`}</p>
+      {task.close_summary.motivo && <p className="text-xs text-slate-600">Motivo: {task.close_summary.motivo}</p>}</section>}
     {loadingStage && !units.length && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 print:hidden">Todavía no hay unidades de carga. <Link href={`/almacen/packing-list/${id}`} className="font-bold underline">Ir a Packing List</Link> para distribuir los bultos entre UT1, UT2 o placas.</p>}
     {picking && <TaskTimes task={task} onChanged={load}/>}
     {picking && <PrepickingChecklist taskId={task.id} requestNumber={task.request_number} client={task.client_name}/>}

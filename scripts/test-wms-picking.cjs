@@ -173,7 +173,7 @@ const feed=(status={})=>[
  await as('aud');
  assert.ok(await one('SELECT public.wh_refresh_packing_list($1)',[task.id]),'actualización segura materializa el documento sin volver a auditar');
  const autoPl=(await sys(`SELECT id, released_by FROM public.wh_packing_lists WHERE task_id='${task.id}' AND status='LIBERADO'`))[0];
- assert.ok(autoPl,'última liberación de LPN genera el documento automáticamente'); assert.equal(autoPl.released_by,U.aud,'el responsable es auditor, nunca el picker');
+ assert.ok(autoPl,'última liberación de LPN genera el documento automáticamente'); assert.equal(autoPl.released_by,null,'la liberación automática queda a nombre del sistema (decisión 4), nunca del picker');
  await as('aud');
  const pl=await one('SELECT public.wh_release_packing_list($1)',[task.id]);
  assert.equal(pl.id,autoPl.id,'clientes antiguos obtienen el documento generado sin duplicarlo');
