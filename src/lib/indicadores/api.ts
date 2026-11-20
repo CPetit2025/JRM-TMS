@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/client'
 
 export type Frecuencia = 'SEMANAL' | 'QUINCENAL' | 'MENSUAL'
 export type Equipo = 'TRANSPORTE' | 'DESPACHO' | 'INVENTARIO' | 'AUDITORIA'
-export type EstadoKpi = 'CUMPLE' | 'ALERTA' | 'NO_CUMPLE' | 'DATOS_INSUFICIENTES' | 'SIN_REGISTROS' | 'PENDIENTE_DATOS'
+export type EstadoKpi = 'CUMPLE' | 'ALERTA' | 'NO_CUMPLE' | 'DATOS_INSUFICIENTES' | 'SIN_REGISTROS' | 'PENDIENTE_DATOS' | 'INFORMATIVO'
 export type EstadoDatos = 'ACTIVO' | 'PARCIAL' | 'PENDIENTE_CAPTURA' | 'PENDIENTE_INTEGRACION'
 export type EstadoCorreccion = 'PROPUESTA' | 'APROBADA' | 'RECHAZADA' | 'ANULADA'
 export type Accion = 'CORREGIR' | 'EXCLUIR'

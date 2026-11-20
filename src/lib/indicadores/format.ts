@@ -20,6 +20,7 @@ export const ESTADO: Record<EstadoKpi, { label: string; badge: string; text: str
   NO_CUMPLE: { label: 'No cumple', badge: 'bg-red-50 text-red-800 border-red-200', text: 'text-red-700', dot: '#b91c1c', evaluado: true },
   DATOS_INSUFICIENTES: { label: 'Datos insuficientes', badge: 'bg-sky-50 text-sky-800 border-sky-200', text: 'text-slate-400', dot: '#94a3b8', evaluado: false },
   SIN_REGISTROS: { label: 'Sin registros', badge: 'bg-slate-100 text-slate-700 border-slate-200', text: 'text-slate-400', dot: '#94a3b8', evaluado: false },
+  INFORMATIVO: { label: 'Informativo', badge: 'bg-blue-50 text-blue-800 border-blue-200', text: 'text-slate-900', dot: '#1d4ed8', evaluado: false },
   PENDIENTE_DATOS: { label: 'Pendiente de datos', badge: 'bg-slate-100 text-slate-700 border-slate-200', text: 'text-slate-400', dot: '#94a3b8', evaluado: false },
 }
 export const estadoInfo = (e: string) => ESTADO[e as EstadoKpi] || ESTADO.PENDIENTE_DATOS
