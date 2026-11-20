@@ -278,6 +278,63 @@ BEGIN
   RETURN jsonb_build_object('id', v_id, 'code', v_code);
 END $$;
 
+-- Crea un paquete de material retornado (en cuarentena o disponible)
+CREATE OR REPLACE FUNCTION wms_private.wh_return_new_package(p_line bigint, p_qty numeric, p_kg numeric, p_hold text, p_reason text, p_tag text)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE l public.wh_return_lines%ROWTYPE; r public.wh_returns%ROWTYPE; v_pkg uuid := gen_random_uuid();
+BEGIN
+  SELECT * INTO l FROM public.wh_return_lines WHERE id = p_line;
+  SELECT * INTO r FROM public.wh_returns WHERE id = l.return_id;
+  INSERT INTO public.wh_packages(id, package_code, source_system, source_document_no, source_contract_code, source_lot, source_product_code, source_unit, source_warehouse, source_date,
+    source_movement_key, source_key, site_id, description, quantity, unit, weight_kg, created_by, source_kind, hold_status, hold_reason, hold_by, hold_at)
+  VALUES (v_pkg, public.wh_next_bulto_code(coalesce(l.lote, r.code)), CASE WHEN r.source = 'ERP' THEN 'ERP' ELSE 'WMS' END, coalesce(r.numero, r.code), r.ot, coalesce(l.lote, ''),
+    coalesce(l.producto, 'SIN-IDENTIFICAR'), coalesce(l.unidad, ''), coalesce(r.bodega, '540-04 APT LB'), coalesce(r.fecha, (now() AT TIME ZONE 'America/Lima')::date),
+    'RET:' || l.id || ':' || p_tag, 'RET:' || v_pkg, r.site_id, coalesce(l.glosa, l.producto, 'Material retornado'), p_qty, l.unidad, nullif(p_kg, 0), auth.uid(), 'RETORNO',
+    p_hold, p_reason, auth.uid(), now());
+  RETURN v_pkg;
+END $$;
+REVOKE ALL ON FUNCTION wms_private.wh_return_new_package(bigint, numeric, numeric, text, text, text) FROM PUBLIC, anon, authenticated;
+
+-- Liquida una línea cuando todas sus fracciones tienen resolución final. Si todo se reincorporó verificado, el paquete de
+-- recepción sale de la cuarentena tal cual; si no, se anula y se crean paquetes solo por lo reincorporado/acondicionado y por
+-- lo recuperado en cada orden de reproceso verificada (repartido por la masa de entrada de cada fracción; un ciclo posterior
+-- agrega su propio paquete). Lo dado de baja, devuelto o transferido no vuelve al stock. Nunca libera sin decisión verificada.
+CREATE OR REPLACE FUNCTION wms_private.wh_return_settle_line(p_line bigint)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE l public.wh_return_lines%ROWTYPE; r public.wh_returns%ROWTYPE; x record; v_pkg uuid; v_q numeric; v_kg numeric;
+BEGIN
+  SELECT * INTO l FROM public.wh_return_lines WHERE id = p_line FOR UPDATE;
+  IF l.package_id IS NULL OR l.qty_received IS NULL THEN RETURN; END IF;
+  IF coalesce((SELECT sum(qty) FROM public.wh_return_fractions WHERE line_id = l.id), 0) <> l.qty_received THEN RETURN; END IF;
+  IF EXISTS (SELECT 1 FROM public.wh_return_fractions f WHERE f.line_id = l.id AND NOT coalesce(
+       f.disposition_status = 'VERIFICADA' OR (f.disposition_status = 'EJECUTADA' AND f.disposition IN ('BAJA','DEVOLVER','TRANSFERIR')), false)) THEN RETURN; END IF;
+  SELECT * INTO r FROM public.wh_returns WHERE id = l.return_id;
+  IF (SELECT hold_status FROM public.wh_packages WHERE id = l.package_id) = 'CUARENTENA' THEN
+    IF NOT EXISTS (SELECT 1 FROM public.wh_return_fractions f WHERE f.line_id = l.id AND f.disposition IS DISTINCT FROM 'REINCORPORAR') THEN
+      UPDATE public.wh_packages SET hold_status = NULL, hold_reason = 'Reincorporado (verificado) · ' || r.code, hold_by = auth.uid(), hold_at = now(), updated_at = now() WHERE id = l.package_id;
+      INSERT INTO public.wh_scan_events(site_id, package_id, event_type, scanned_code, payload, operator_id, client_event_id)
+      SELECT p.site_id, p.id, 'RELEASE', p.package_code, jsonb_build_object('from', 'CUARENTENA', 'to', NULL, 'reason', 'Reincorporación verificada ' || r.code), auth.uid(), gen_random_uuid() FROM public.wh_packages p WHERE p.id = l.package_id;
+      RETURN;
+    END IF;
+    UPDATE public.wh_packages SET status = 'VOID', void_reason = 'Retorno ' || r.code || ' resuelto por fracciones', updated_at = now() WHERE id = l.package_id AND status = 'AVAILABLE';
+    FOR x IN SELECT f.* FROM public.wh_return_fractions f WHERE f.line_id = l.id AND f.disposition IN ('REINCORPORAR','ACONDICIONAR') AND f.disposition_status = 'VERIFICADA' LOOP
+      v_pkg := wms_private.wh_return_new_package(l.id, x.qty, x.kg, NULL, 'Reincorporado (verificado) · ' || r.code, 'F' || x.id);
+    END LOOP;
+  ELSIF (SELECT status FROM public.wh_packages WHERE id = l.package_id) <> 'VOID' THEN
+    RETURN; -- liberado entero (todo reincorporado): no hay nada más que liquidar
+  END IF;
+  -- Recuperado de cada orden verificada, una sola vez por orden y fracción
+  FOR x IN SELECT f.id, f.qty, f.kg, o.id oid, o.code, o.kg_recovered * i.kg / nullif((SELECT sum(i2.kg) FROM public.wh_reprocess_inputs i2 WHERE i2.order_id = o.id), 0) share
+           FROM public.wh_return_fractions f JOIN public.wh_reprocess_inputs i ON i.fraction_id = f.id JOIN public.wh_reprocess_orders o ON o.id = i.order_id AND o.status = 'VERIFICADA'
+           WHERE f.line_id = l.id AND f.disposition = 'REPROCESAR' AND o.kg_recovered > 0 AND f.kg > 0 AND i.kg > 0
+             AND NOT EXISTS (SELECT 1 FROM public.wh_packages p WHERE p.source_movement_key = 'RET:' || l.id || ':R' || o.id || ':' || f.id) LOOP
+    v_kg := round(x.share, 3);
+    v_q := round(x.qty * v_kg / x.kg, 3);
+    IF v_q > 0 THEN v_pkg := wms_private.wh_return_new_package(l.id, v_q, v_kg, NULL, 'Recuperado por reproceso ' || x.code || ' (verificado) · ' || r.code, 'R' || x.oid || ':' || x.id); END IF;
+  END LOOP;
+END $$;
+REVOKE ALL ON FUNCTION wms_private.wh_return_settle_line(bigint) FROM PUBLIC, anon, authenticated;
+
 -- Recepción física de una línea (parcial permitida); opcionalmente etiqueta el material como paquete en CUARENTENA
 CREATE OR REPLACE FUNCTION public.wh_return_receive(p_line bigint, p_qty numeric, p_kg numeric, p_method text, p_label boolean DEFAULT true, p_note text DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -294,16 +351,23 @@ BEGIN
   IF EXISTS (SELECT 1 FROM public.wh_return_fractions WHERE line_id = l.id) AND p_qty < (SELECT sum(qty) FROM public.wh_return_fractions WHERE line_id = l.id) THEN
     RAISE EXCEPTION 'Lo recibido no puede ser menor que lo ya inspeccionado';
   END IF;
+  -- Corregir o completar una recepción ya etiquetada: el paquete se ajusta solo si sigue en cuarentena y sin uso
+  IF l.package_id IS NOT NULL THEN
+    IF NOT EXISTS (SELECT 1 FROM public.wh_packages WHERE id = l.package_id AND hold_status = 'CUARENTENA' AND status = 'AVAILABLE' AND task_id IS NULL) THEN
+      RAISE EXCEPTION 'El paquete de esta recepción ya salió de la cuarentena o está en uso: no se puede cambiar la cantidad recibida';
+    END IF;
+    IF p_qty = 0 THEN
+      UPDATE public.wh_packages SET status = 'VOID', void_reason = 'Recepción corregida a 0', updated_at = now() WHERE id = l.package_id;
+      UPDATE public.wh_return_lines SET package_id = NULL WHERE id = l.id; l.package_id := NULL;
+    ELSE
+      UPDATE public.wh_packages SET quantity = p_qty, weight_kg = nullif(p_kg, 0), updated_at = now() WHERE id = l.package_id;
+    END IF;
+  END IF;
   UPDATE public.wh_return_lines SET qty_received = p_qty, kg_received = nullif(p_kg, 0), weight_method = upper(btrim(p_method)), received_by = auth.uid(), received_at = now(), receipt_note = nullif(btrim(p_note), '')
   WHERE id = l.id;
   IF coalesce(p_label, false) AND p_qty > 0 AND l.package_id IS NULL THEN
-    v_pkg := gen_random_uuid();
-    v_code := public.wh_next_bulto_code(coalesce(l.lote, r.code));
-    INSERT INTO public.wh_packages(id, package_code, source_system, source_document_no, source_contract_code, source_lot, source_product_code, source_unit, source_warehouse, source_date,
-      source_movement_key, source_key, site_id, description, quantity, unit, weight_kg, created_by, source_kind, hold_status, hold_reason, hold_by, hold_at)
-    VALUES (v_pkg, v_code, CASE WHEN r.source = 'ERP' THEN 'ERP' ELSE 'WMS' END, coalesce(r.numero, r.code), r.ot, coalesce(l.lote, ''), coalesce(l.producto, 'SIN-IDENTIFICAR'), coalesce(l.unidad, ''),
-      coalesce(r.bodega, '540-04 APT LB'), coalesce(r.fecha, (now() AT TIME ZONE 'America/Lima')::date), 'RET:' || l.id, 'RET:' || v_pkg, r.site_id, coalesce(l.glosa, l.producto, 'Material retornado'),
-      p_qty, l.unidad, nullif(p_kg, 0), auth.uid(), 'RETORNO', 'CUARENTENA', 'Retorno ' || r.code || ' pendiente de inspección y disposición', auth.uid(), now());
+    v_pkg := wms_private.wh_return_new_package(l.id, p_qty, p_kg, 'CUARENTENA', 'Retorno ' || r.code || ' pendiente de inspección y disposición', 'REC');
+    v_code := (SELECT package_code FROM public.wh_packages WHERE id = v_pkg);
     UPDATE public.wh_return_lines SET package_id = v_pkg WHERE id = l.id;
   END IF;
   PERFORM wms_private.wh_return_log(r.id, 'RECIBIR', jsonb_build_object('line', l.id, 'qty', p_qty, 'kg', p_kg, 'method', upper(btrim(p_method)), 'package', v_code), p_note);
@@ -365,22 +429,13 @@ BEGIN
     IF f.disposition_status IS DISTINCT FROM 'AUTORIZADA' THEN RAISE EXCEPTION 'La disposición no está autorizada'; END IF;
     IF f.disposition = 'REPROCESAR' THEN RAISE EXCEPTION 'El reproceso se ejecuta con su orden de reproceso'; END IF;
     UPDATE public.wh_return_fractions SET disposition_status = 'EJECUTADA', executed_by = auth.uid(), executed_at = now(), execution_note = v_reason WHERE id = f.id;
-    -- Baja ejecutada: si toda la línea se da de baja, el paquete se anula (sin tocar el ERP)
-    IF f.disposition = 'BAJA' AND l.package_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.wh_return_fractions x WHERE x.line_id = l.id AND x.id <> f.id AND x.disposition IS DISTINCT FROM 'BAJA') THEN
-      UPDATE public.wh_packages SET status = 'VOID', void_reason = 'Baja autorizada del retorno ' || r.code, updated_at = now() WHERE id = l.package_id AND status = 'AVAILABLE';
-    END IF;
+    PERFORM wms_private.wh_return_settle_line(l.id);
   ELSIF v_action = 'VERIFY' THEN
     IF NOT public.wh_has_permission(ARRAY['almacen-inventario','almacen-supervisor','almacen-auditoria']) THEN RAISE EXCEPTION 'Sin permiso' USING ERRCODE = '42501'; END IF;
     IF f.disposition_status IS DISTINCT FROM 'EJECUTADA' THEN RAISE EXCEPTION 'Primero se ejecuta la disposición'; END IF;
     IF f.executed_by = auth.uid() THEN RAISE EXCEPTION 'Quien ejecutó no verifica'; END IF;
     UPDATE public.wh_return_fractions SET disposition_status = 'VERIFICADA', verified_by = auth.uid(), verified_at = now() WHERE id = f.id;
-    -- Reincorporación verificada: si toda la línea quedó reincorporada, el paquete sale de la cuarentena (disponible)
-    IF f.disposition = 'REINCORPORAR' AND l.package_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.wh_return_fractions x WHERE x.line_id = l.id AND x.id <> f.id
-         AND NOT (x.disposition = 'REINCORPORAR' AND x.disposition_status = 'VERIFICADA')) AND (SELECT sum(qty) FROM public.wh_return_fractions WHERE line_id = l.id) = l.qty_received THEN
-      UPDATE public.wh_packages SET hold_status = NULL, hold_reason = 'Reincorporado (verificado) · ' || r.code, hold_by = auth.uid(), hold_at = now(), updated_at = now() WHERE id = l.package_id;
-      INSERT INTO public.wh_scan_events(site_id, package_id, event_type, scanned_code, payload, operator_id, client_event_id)
-      SELECT p.site_id, p.id, 'RELEASE', p.package_code, jsonb_build_object('from', 'CUARENTENA', 'to', NULL, 'reason', 'Reincorporación verificada ' || r.code), auth.uid(), gen_random_uuid() FROM public.wh_packages p WHERE p.id = l.package_id;
-    END IF;
+    PERFORM wms_private.wh_return_settle_line(l.id);
   ELSE RAISE EXCEPTION 'Acción no reconocida';
   END IF;
   PERFORM wms_private.wh_return_log(r.id, 'DISPOSICION_' || v_action, jsonb_build_object('fraction', f.id, 'disposition', coalesce(upper(p_disposition), f.disposition)), v_reason);
@@ -440,11 +495,8 @@ BEGIN
     UPDATE public.wh_reprocess_orders SET status = CASE WHEN v_action = 'VERIFY' THEN 'VERIFICADA' ELSE 'RECHAZADA' END, verified_by = auth.uid(), verified_at = now(), result_note = nullif(btrim(d->>'note'), '') WHERE id = o.id;
     IF v_action = 'VERIFY' THEN
       UPDATE public.wh_return_fractions SET disposition_status = 'VERIFICADA', verified_by = auth.uid(), verified_at = now() WHERE id IN (SELECT fraction_id FROM public.wh_reprocess_inputs WHERE order_id = o.id);
-      -- Material recuperado y verificado: sale de la cuarentena el paquete cuya línea quedó toda reincorporada o reprocesada y verificada
-      UPDATE public.wh_packages p SET hold_status = NULL, hold_reason = 'Recuperado por reproceso (verificado) · ' || o.code, hold_by = auth.uid(), hold_at = now(), updated_at = now()
-      FROM public.wh_return_lines l
-      WHERE l.package_id = p.id AND p.hold_status = 'CUARENTENA' AND l.id IN (SELECT f.line_id FROM public.wh_reprocess_inputs i JOIN public.wh_return_fractions f ON f.id = i.fraction_id WHERE i.order_id = o.id)
-        AND NOT EXISTS (SELECT 1 FROM public.wh_return_fractions x WHERE x.line_id = l.id AND NOT (x.disposition IN ('REINCORPORAR','REPROCESAR') AND x.disposition_status = 'VERIFICADA'));
+      -- Material recuperado y verificado: se liquida cada línea de las fracciones de entrada
+      PERFORM wms_private.wh_return_settle_line(x2.line_id) FROM (SELECT DISTINCT f.line_id FROM public.wh_reprocess_inputs i JOIN public.wh_return_fractions f ON f.id = i.fraction_id WHERE i.order_id = o.id) x2;
     END IF;
   ELSIF v_action = 'CYCLE' THEN
     IF NOT public.wh_has_permission(ARRAY['almacen-inventario','almacen-supervisor']) THEN RAISE EXCEPTION 'Sin permiso' USING ERRCODE = '42501'; END IF;

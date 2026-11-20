@@ -101,6 +101,12 @@ const feed=[{id:REQ,request_number:'RT-000901',request_type:'DESPACHO',status:'A
  assert.equal(rc.status,'EN_RECEPCION','recepción parcial: falta la línea 2'); assert.ok(rc.package_code);
  assert.equal((await sys(`SELECT hold_status FROM public.wh_packages WHERE package_code='${rc.package_code}'`))[0].hold_status,'CUARENTENA','el retorno no queda disponible');
  await assert.rejects(sys(`UPDATE public.wh_packages SET status='PICKED' WHERE package_code='${rc.package_code}'`),/cuarentena/);
+ // Corregir la recepción ajusta el paquete en cuarentena; el bloqueo manual no puede tocar la cuarentena de un retorno
+ await q(`SELECT public.wh_return_receive(${L1},10,99,'BALANZA')`);
+ assert.equal(Number((await sys(`SELECT weight_kg FROM public.wh_packages WHERE package_code='${rc.package_code}'`))[0].weight_kg),99,'la corrección sincroniza el paquete');
+ await q(`SELECT public.wh_return_receive(${L1},10,98,'BALANZA')`);
+ assert.equal((await sys(`SELECT count(*)::int n FROM public.wh_packages WHERE source_movement_key LIKE 'RET:${L1}:%' AND status<>'VOID'`))[0].n,1,'sin paquetes duplicados');
+ await as('sup'); await fails(`SELECT public.wh_package_hold('${rc.package_code}','BLOQUEADO','Saltar cuarentena')`,[],/Devoluciones/); await as('rec');
  await q(`SELECT public.wh_return_receive(${L2},5,NULL,'ESTIMADO',false)`);
  assert.equal((await det()).status,'PENDIENTE_INSPECCION');
  console.log('PASS: expediente automático por guía, vínculo manual con el RECOJO del TMS, recepción parcial con método de peso y etiqueta en cuarentena; bajas del ERP marcadas.');
@@ -121,6 +127,7 @@ const feed=[{id:REQ,request_number:'RT-000901',request_type:'DESPACHO',status:'A
  await fails(`SELECT public.wh_return_disposition(${F1},'VERIFY')`,[],/Sin permiso|Quien ejecutó no verifica/);
  await fails(`SELECT public.wh_return_disposition(${F2},'EXECUTE')`,[],/orden de reproceso/);
  await as('inv'); await q(`SELECT public.wh_return_disposition(${F1},'VERIFY')`); await q(`SELECT public.wh_return_disposition(${F4},'VERIFY')`);
+ assert.equal((await sys(`SELECT hold_status FROM public.wh_packages WHERE package_code='${rc.package_code}'`))[0].hold_status,'CUARENTENA','una fracción verificada no libera la línea completa');
  console.log('PASS: inspección por fracción sin superar lo recibido; disposición propuesta por Inventario, autorizada por Jefatura y verificada por otra persona.');
 
  // Reproceso con balance de masa, ciclos y verificación independiente
@@ -132,6 +139,10 @@ const feed=[{id:REQ,request_number:'RT-000901',request_type:'DESPACHO',status:'A
  await fails(`SELECT public.wh_reprocess('VERIFY','${RP}')`,[],/Sin permiso|no lo verifica/);
  await as('inv'); await q(`SELECT public.wh_reprocess('VERIFY','${RP}',NULL,$1::jsonb)`,[J({note:'Conforme'})]);
  const o=(await det()).reprocesos[0]; assert.deepEqual([o.status,Number(o.kg_input),Number(o.kg_recovered),Number(o.kg_diff)],['VERIFICADA',29.4,25,0]);
+ const pk=await sys(`SELECT status,hold_status,quantity,weight_kg FROM public.wh_packages WHERE source_movement_key LIKE 'RET:${L1}:%' ORDER BY source_movement_key`);
+ assert.equal(pk.find(p=>p.status==='VOID')?.hold_status,'CUARENTENA','el paquete original se anula, nunca se libera entero');
+ const vivos=pk.filter(p=>p.status!=='VOID'); assert.equal(vivos.length,2); assert.ok(vivos.every(p=>p.hold_status==null));
+ assert.equal(vivos.reduce((a,p)=>a+Number(p.weight_kg),0),83.8,'disponible = reincorporado (58.8) + recuperado (25), sin lo dado de baja');
  console.log('PASS: reproceso con balance de masa (entrada + insumos = recuperado + residuo + diferencia explicada) y verificación por otra persona.');
 
  // Cierre conciliado; el paquete con una fracción dada de baja sigue en cuarentena (no se reincorpora completo)

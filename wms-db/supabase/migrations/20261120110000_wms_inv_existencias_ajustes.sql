@@ -73,8 +73,8 @@ BEGIN
   SELECT * INTO p FROM public.wh_packages WHERE upper(package_code) = upper(btrim(p_code)) AND status <> 'VOID' AND public.can_access_site(site_id) FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Paquete desconocido'; END IF;
   IF v_status IS NOT NULL AND p.status IN ('PICKED','PACKED','LOADED') THEN RAISE EXCEPTION 'El paquete ya está en preparación o cargado: registre un hallazgo en Auditoría'; END IF;
-  -- Un paquete en cuarentena por un retorno se libera solo con la verificación de su disposición
-  IF v_status IS NULL AND p.source_kind = 'RETORNO' AND p.hold_status = 'CUARENTENA' THEN RAISE EXCEPTION 'Material retornado: se libera al verificar su disposición en Devoluciones'; END IF;
+  -- La cuarentena de un retorno se gestiona solo en Devoluciones (ni se cambia ni se libera aquí)
+  IF p.source_kind = 'RETORNO' AND p.hold_status = 'CUARENTENA' THEN RAISE EXCEPTION 'Material retornado en cuarentena: se gestiona en Devoluciones con su disposición verificada'; END IF;
   UPDATE public.wh_packages SET hold_status = v_status, hold_reason = btrim(p_reason), hold_by = auth.uid(), hold_at = now(), updated_at = now() WHERE id = p.id;
   INSERT INTO public.wh_scan_events(site_id, package_id, event_type, scanned_code, payload, operator_id, client_event_id)
   VALUES (p.site_id, p.id, CASE WHEN v_status IS NULL THEN 'RELEASE' ELSE 'HOLD' END, p.package_code, jsonb_build_object('from', p.hold_status, 'to', v_status, 'reason', btrim(p_reason)), auth.uid(), gen_random_uuid());

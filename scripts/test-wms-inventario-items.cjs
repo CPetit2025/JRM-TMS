@@ -36,7 +36,11 @@ const U={sup:'00000000-0000-0000-0000-0000000000c1',cnt:'00000000-0000-0000-0000
 
  // 1. Búsqueda por lote/OT: una fila por ítem del contrato del mismo lote y producto, con peso unitario y su fuente
  await as('cnt');
+ // Conteo ciego: quien cuenta no ve cantidades mientras la campaña está en conteo
+ assert.ok((await one("SELECT public.wh_count_expected_search($1,'16571')",[camp.id])).every(r=>r.contract_qty===null&&r.stock===null));
+ await as('sup');
  const res=await one("SELECT public.wh_count_expected_search($1,'16571')",[camp.id]);
+ await as('cnt');
  assert.deepEqual(res.map(r=>[r.cod_producto,r.item_code,r.item,Number(r.contract_qty)]),
   [['PT-B','16571-069','069',50],['PT-A','16571-S002-022','022',60],['PT-A','16571-S002-024','024',40]],'una fila por ítem; servicios y otros documentos no cuentan');
  assert.deepEqual(res.map(r=>[Number(r.unit_weight_kg),r.weight_source]),[[2.5,'MAESTRO_SKU'],[1.5,'STOCK_ERP'],[1.5,'STOCK_ERP']],'peso del stock del corte; sin él, maestro SKU');

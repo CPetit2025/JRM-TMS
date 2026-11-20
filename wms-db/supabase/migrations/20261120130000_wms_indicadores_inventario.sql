@@ -57,9 +57,12 @@ BEGIN
   -- R7 Recuperación por cohorte: kg reincorporados o recuperados verificados / kg recibidos (retornos recibidos en el período)
   SELECT sum(l.kg_received) den, count(l.id) n, count(l.id) FILTER (WHERE l.kg_received IS NULL) sin_peso,
          (SELECT coalesce(sum(fr.kg), 0) FROM public.wh_return_fractions fr JOIN public.wh_return_lines l2 ON l2.id = fr.line_id JOIN pg_temp.k_ret x2 ON x2.id = l2.return_id
-           WHERE fr.disposition = 'REINCORPORAR' AND fr.disposition_status = 'VERIFICADA' AND (l2.received_at AT TIME ZONE 'America/Lima')::date BETWEEN p_from AND p_to)
-         + (SELECT coalesce(sum(o.kg_recovered), 0) FROM public.wh_reprocess_orders o JOIN pg_temp.k_ret x3 ON x3.id = o.return_id WHERE o.status = 'VERIFICADA'
-           AND EXISTS (SELECT 1 FROM public.wh_return_lines l3 WHERE l3.return_id = x3.id AND (l3.received_at AT TIME ZONE 'America/Lima')::date BETWEEN p_from AND p_to)) num,
+           WHERE fr.disposition IN ('REINCORPORAR','ACONDICIONAR') AND fr.disposition_status = 'VERIFICADA' AND (l2.received_at AT TIME ZONE 'America/Lima')::date BETWEEN p_from AND p_to)
+         -- Recuperado de reproceso asignado a cada fracción de entrada según su masa, y contado solo si su línea es de la cohorte
+         + (SELECT coalesce(sum(o.kg_recovered * i3.kg / nullif((SELECT sum(i4.kg) FROM public.wh_reprocess_inputs i4 WHERE i4.order_id = o.id), 0)), 0) FROM public.wh_reprocess_orders o JOIN public.wh_reprocess_inputs i3 ON i3.order_id = o.id
+              JOIN public.wh_return_fractions fr3 ON fr3.id = i3.fraction_id JOIN public.wh_return_lines l3 ON l3.id = fr3.line_id JOIN pg_temp.k_ret x3 ON x3.id = l3.return_id
+            WHERE o.status = 'VERIFICADA' AND i3.kg > 0
+              AND (l3.received_at AT TIME ZONE 'America/Lima')::date BETWEEN p_from AND p_to) num,
          (SELECT count(*) FROM pg_temp.k_ret x4 WHERE x4.status <> 'CERRADO' AND EXISTS (SELECT 1 FROM public.wh_return_lines l4 WHERE l4.return_id = x4.id AND (l4.received_at AT TIME ZONE 'America/Lima')::date BETWEEN p_from AND p_to)) abiertos INTO r
   FROM pg_temp.k_ret x JOIN public.wh_return_lines l ON l.return_id = x.id WHERE (l.received_at AT TIME ZONE 'America/Lima')::date BETWEEN p_from AND p_to;
   out := out || wms_private.wh_kpi('R7', 'Retornos', 'Recuperación por cohorte', '%', r.num, coalesce(r.den, 0), r.n, 'kg reincorporados o recuperados verificados / kg recibidos de los retornos recibidos en el período', 'Cohorte de recepción',

@@ -25,6 +25,7 @@ export function ReturnFile({ id }: { id: string }) {
   const sup = hasAccess('almacen-supervisor'), inv = hasAccess('almacen-inventario') || sup, rec = hasAccess('almacen-etiquetado') || inv
   const [r, setR] = useState<Ret | null>(null), [uid, setUid] = useState('')
   const [head, setHead] = useState({ motivo: '', tms: '', notes: '' })
+  const [edit, setEdit] = useState<number | null>(null)
   const [recv, setRecv] = useState<Record<number, { qty: string; kg: string; method: string; label: boolean }>>({})
   const [insp, setInsp] = useState<Record<number, { qty: string; condition: string; finding: string }[]>>({})
   const [prop, setProp] = useState<Record<number, { disp: string; reason: string }>>({})
@@ -75,16 +76,18 @@ export function ReturnFile({ id }: { id: string }) {
         {l.erp_state === 'BAJA_ERP' && <span className="rounded-full bg-rose-100 px-2 text-xs font-bold text-rose-900">Anulada en el ERP</span>}
         <span className="ml-auto">Declarado {fmtQ(l.qty_declared)} {l.unidad} · {l.kg_declared == null ? 'peso sin dato' : `${fmtQ(l.kg_declared, 1)} kg (${l.peso_origen.toLowerCase()})`}</span></div>
       {/* Recepción */}
-      {l.qty_received != null ? <p className="rounded bg-slate-50 p-2">Recibido {fmtQ(l.qty_received)} {l.unidad}{l.kg_received != null ? ` · ${fmtQ(l.kg_received, 1)} kg (${l.weight_method?.toLowerCase()})` : ' · peso sin dato'} · {l.recibio} · {fmtD(l.received_at)}
+      {l.qty_received != null && edit !== l.id ? <p className="rounded bg-slate-50 p-2">Recibido {fmtQ(l.qty_received)} {l.unidad}{l.kg_received != null ? ` · ${fmtQ(l.kg_received, 1)} kg (${l.weight_method?.toLowerCase()})` : ' · peso sin dato'} · {l.recibio} · {fmtD(l.received_at)}
           {Number(l.qty_received) !== Number(l.qty_declared) && <b className="ml-1 text-amber-800">· diferencia {fmtQ(Number(l.qty_received) - Number(l.qty_declared))}</b>}
-          {l.package_code && <span className="ml-1">· etiqueta <span className="font-mono">{l.package_code}</span>{l.package_hold ? <span className="ml-1 rounded bg-amber-100 px-1 text-xs font-bold text-amber-900">{l.package_hold.toLowerCase()}</span> : <span className="ml-1 rounded bg-emerald-100 px-1 text-xs font-bold text-emerald-900">disponible</span>}</span>}</p>
+          {l.package_code && <span className="ml-1">· etiqueta <span className="font-mono">{l.package_code}</span>{l.package_hold ? <span className="ml-1 rounded bg-amber-100 px-1 text-xs font-bold text-amber-900">{l.package_hold.toLowerCase()}</span> : <span className="ml-1 rounded bg-emerald-100 px-1 text-xs font-bold text-emerald-900">disponible</span>}</span>}
+          {rec && !closed && (!l.package_code || l.package_hold === 'CUARENTENA') && <button type="button" onClick={() => setEdit(l.id)} className="ml-2 text-xs font-semibold text-blue-800 underline">Corregir recepción</button>}</p>
         : rec && !closed && l.erp_state !== 'BAJA_ERP' && <div className="flex flex-wrap items-end gap-2 rounded bg-blue-50/50 p-2">
           <b className="basis-full text-xs uppercase text-blue-800">Recepción física</b>
           <label className="text-xs font-semibold">Cantidad recibida<input type="number" min="0" step="any" value={rv.qty} onChange={e => setRecv({ ...recv, [l.id]: { ...rv, qty: e.target.value } })} className={`ml-1 w-24 ${field}`}/></label>
           <label className="text-xs font-semibold">kg<input type="number" min="0" step="any" value={rv.kg} onChange={e => setRecv({ ...recv, [l.id]: { ...rv, kg: e.target.value } })} className={`ml-1 w-24 ${field}`}/></label>
           <label className="text-xs font-semibold">Peso por<select value={rv.method} onChange={e => setRecv({ ...recv, [l.id]: { ...rv, method: e.target.value } })} className={`ml-1 ${field}`}><option value="BALANZA">Balanza</option><option value="DOCUMENTO">Documento</option><option value="MAESTRO">Maestro</option><option value="ESTIMADO">Estimado</option></select></label>
           <label className="text-xs"><input type="checkbox" checked={rv.label} onChange={e => setRecv({ ...recv, [l.id]: { ...rv, label: e.target.checked } })}/> Etiquetar en cuarentena</label>
-          <button disabled={busy || rv.qty === ''} onClick={() => void call(rpc('wh_return_receive', { p_line: l.id, p_qty: Number(rv.qty), p_kg: rv.kg ? Number(rv.kg) : null, p_method: rv.method, p_label: rv.label, p_note: null }), 'Recepción registrada.')} className={`${btn} bg-[#002855] text-white`}>Registrar recepción</button></div>}
+          <button disabled={busy || rv.qty === ''} onClick={() => void call(rpc('wh_return_receive', { p_line: l.id, p_qty: Number(rv.qty), p_kg: rv.kg ? Number(rv.kg) : null, p_method: rv.method, p_label: rv.label, p_note: null }), 'Recepción registrada.').then(() => setEdit(null))} className={`${btn} bg-[#002855] text-white`}>Registrar recepción</button>
+          {edit === l.id && <button type="button" onClick={() => setEdit(null)} className={`${btn} border`}>Cancelar</button>}</div>}
       {/* Inspección */}
       {l.qty_received != null && inv && !closed && inspected < Number(l.qty_received) && l.received_by !== uid && <div className="space-y-1 rounded bg-amber-50/60 p-2">
         <b className="text-xs uppercase text-amber-900">Inspección por fracción · pendiente {fmtQ(Number(l.qty_received) - inspected)} {l.unidad}</b>
