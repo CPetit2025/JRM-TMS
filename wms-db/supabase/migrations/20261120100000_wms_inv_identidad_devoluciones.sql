@@ -116,13 +116,19 @@ BEGIN
   RETURN jsonb_build_object('from', p_from, 'to', p_to, 'lines', coalesce((SELECT jsonb_agg(x ORDER BY x->>'fecha' DESC, x->>'numero', x->>'producto') FROM (
     SELECT jsonb_build_object('mkey', m.mkey, 'estado_erp', 'VIGENTE', 'fecha', m.fecha, 'bodega', m.bodega, 'tipodocto', m.tipodocto, 'numero', m.numero,
       'producto', m.producto, 'glosa', m.glosa, 'cantidad', m.cantidad, 'unidad', public.inv_unit_norm(m.unidad), 'unidad_original', m.unidad,
-      'lote', m.lote, 'ot', coalesce(nullif(m.ot, ''), substring(coalesce(m.lote, '') FROM '^([0-9]{5,6})')), 'ot_origen', CASE WHEN nullif(m.ot, '') IS NOT NULL THEN 'ERP' WHEN m.lote ~ '^[0-9]{5,6}' THEN 'LOTE' END,
+      -- La carga deriva la OT del lote (inv_ot): el ERP no envía una OT propia en este reporte
+      'lote', m.lote, 'ot', coalesce(nullif(m.ot, ''), substring(coalesce(m.lote, '') FROM '^([0-9]{5,6})')),
+      'ot_origen', CASE WHEN coalesce(nullif(m.ot, ''), substring(coalesce(m.lote, '') FROM '^([0-9]{5,6})')) IS NOT NULL THEN 'LOTE' END,
       'ruc', m.cod_legal, 'cliente', m.razon_social,
-      'kg', CASE WHEN m.peso_kg > 0 THEN m.peso_kg WHEN s.peso_unit > 0 THEN round(s.peso_unit * m.cantidad, 3) END,
-      'peso_origen', CASE WHEN m.peso_kg > 0 THEN 'ERP' WHEN s.peso_unit > 0 THEN 'MAESTRO' ELSE 'SIN_DATO' END,
-      'alta', (SELECT min(c.created_at) FROM public.inv_movement_changes c WHERE c.mkey = m.mkey AND c.change = 'ALTA')) x
+      'kg', CASE WHEN m.peso_kg > 0 THEN m.peso_kg ELSE w.kg END,
+      'peso_origen', CASE WHEN m.peso_kg > 0 THEN 'ERP' WHEN w.kg IS NOT NULL THEN 'MAESTRO' ELSE 'SIN_DATO' END,
+      -- Lo cargado antes de esta versión no tiene ALTA registrada: se usa la aplicación de su carga
+      'alta', coalesce((SELECT min(c.created_at) FROM public.inv_movement_changes c WHERE c.mkey = m.mkey AND c.change = 'ALTA'),
+                       (SELECT coalesce(up.applied_at, up.created_at) FROM public.inv_uploads up WHERE up.id = m.upload_id))) x
     FROM public.inv_movements m JOIN public.wh_return_scope sc ON sc.bodega = m.bodega AND sc.tipodocto = upper(btrim(m.tipodocto))
     LEFT JOIN public.erp_sku_medidas s ON s.cod_producto = m.producto
+    -- Peso del maestro con la cantidad absoluta; un resultado que redondea a 0 no es un peso conocido
+    LEFT JOIN LATERAL (SELECT nullif(round(s.peso_unit * abs(m.cantidad), 3), 0) AS kg WHERE s.peso_unit > 0) w ON true
     WHERE m.active AND m.side = 'E' AND m.fecha BETWEEN p_from AND p_to
     UNION ALL
     SELECT (r.movement - 'upload_id') || jsonb_build_object('mkey', r.mkey, 'estado_erp', 'BAJA_ERP', 'baja_en', r.removed_at,

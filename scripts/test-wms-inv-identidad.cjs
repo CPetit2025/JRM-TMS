@@ -63,9 +63,13 @@ const feed=[{id:REQ,request_number:'RT-000901',request_type:'DESPACHO',status:'A
  const vig=r.filter(x=>x.estado_erp==='VIGENTE'), baja=r.filter(x=>x.estado_erp==='BAJA_ERP');
  assert.equal(vig.length,2,'la producción de otra bodega queda fuera del alcance'); assert.equal(baja.length,1); assert.equal(baja[0].producto,'PRD-B');
  assert.deepEqual([...new Set(vig.map(x=>x.unidad))],['UND']); assert.equal(vig[0].unidad_original,'UNID');
- assert.equal(vig[0].ot,'16339'); assert.ok(['ERP','LOTE'].includes(vig[0].ot_origen));
+ assert.equal(vig[0].ot,'16339'); assert.equal(vig[0].ot_origen,'LOTE','la OT se deriva del lote, no la envía el ERP');
  assert.equal(Number(vig[0].kg),17.5); assert.equal(vig[0].peso_origen,'MAESTRO');
  assert.ok(vig.every(x=>x.mkey && x.alta),'cada línea vigente tiene firma y fecha de alta');
+ const sinPeso=vig.find(x=>x.producto==='PRD-A'); assert.ok(sinPeso,'las líneas sin peso no se pierden');
+ // Una línea cargada antes de la firma (sin ALTA registrada) toma la fecha de su carga
+ await sys(`DELETE FROM public.inv_movement_changes`); await as('lect');
+ assert.ok((await one(`SELECT public.wh_return_lines('2026-10-01','2026-10-31')`)).lines.filter(x=>x.estado_erp==='VIGENTE').every(x=>x.alta),'sin historial, la fecha de alta sale de la carga');
  console.log('PASS: devoluciones de 540-04 APT LB con firma, unidad normalizada, OT del lote y peso con su origen; las bajas del ERP se ven para conciliar.');
 
  // 5. Permisos
