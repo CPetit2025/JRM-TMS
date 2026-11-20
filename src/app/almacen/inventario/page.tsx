@@ -35,7 +35,7 @@ export default function WarehouseInventoryPage() {
     if (!window.confirm(`¿Abrir inventario ${INVENTORY_TYPE[form.tipo].label.toLowerCase()} de ${form.bodega}? ${INVENTORY_TYPE[form.tipo].blocks}`)) return
     setBusy(true); setError('')
     const zones = form.zones.split(',').map(z => z.trim()).filter(Boolean)
-    const productos = form.productos.split(/[s,;]+/).map(z => z.trim()).filter(Boolean)
+    const productos = form.productos.split(/[\s,;]+/).map(z => z.trim()).filter(Boolean)
     const { data, error } = await createClient().rpc('wh_count_open', { p_bodega: form.bodega, p_zones: zones, p_notes: form.notes || null, p_tipo: form.tipo, p_productos: productos })
     setBusy(false)
     if (error) { setError(error.message); return }
