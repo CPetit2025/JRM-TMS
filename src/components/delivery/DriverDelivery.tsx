@@ -73,7 +73,7 @@ export function DriverDelivery({ dispatchId, requestId, driverId, userId, guide,
     try {
       const position = await deliveryPosition()
       const photos = await Promise.all(draft.files.map(asBase64))
-      saveOfflineAction('delivery_reject_driver', { dispatch_id: dispatchId, request_id: requestId, user_id: userId, kind: draft.kind, reason: draft.reason, note: draft.note,
+      saveOfflineAction('delivery_reject_driver', { dispatch_id: dispatchId, request_id: requestId, user_id: userId, kind: draft.kind, reason: draft.reason, note: draft.note, missing_lines: draft.kind === 'PARCIAL' ? draft.lines : [],
         photos_base64: photos, latitude: position?.coords.latitude ?? null, longitude: position?.coords.longitude ?? null,
         accuracy_m: position ? Math.round(position.coords.accuracy) : null, captured_at: new Date().toISOString() }, draft.operation)
       setRejecting(false); setRejectionQueued(true)

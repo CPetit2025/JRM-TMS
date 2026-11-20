@@ -197,6 +197,12 @@ export function syncOfflineActions(): Promise<number> {
           })
           if (error) throw error
           if (!data?.success) throw new Error(data?.error || 'El servidor no confirmó el rechazo')
+          // Rechazo parcial: líneas no entregadas con su cantidad (los guardados por versiones anteriores no las traen)
+          if (action.payload.kind === 'PARCIAL' && Array.isArray(action.payload.missing_lines) && action.payload.missing_lines.length) {
+            const { data: lines, error: linesError } = await supabase.rpc('delivery_rejection_set_lines', { p_operation: action.id, p_lines: action.payload.missing_lines })
+            if (linesError) throw linesError
+            if (!lines?.success) throw new Error('El servidor no confirmó las líneas no entregadas')
+          }
         } else if (action.type === 'complete_dispatch_stop') {
           // If the payload contains a base64 photo, we must upload it first.
           const dispatchId = String(action.payload.p_dispatch_id || '')
