@@ -84,11 +84,11 @@ BEGIN
   UPDATE public.profiles SET role_id = v_role_desp, is_active = true WHERE id = v_desp;
   UPDATE public.profiles SET role_id = NULL, is_active = true WHERE id IN (v_nobody, v_drv_prof);
   INSERT INTO public.user_site_access (user_id, site_id) VALUES (v_doc, v_site), (v_desp, v_site) ON CONFLICT DO NOTHING;
-  INSERT INTO public.drivers (carrier_id, profile_id, first_name, last_name, document_number, license_number, is_active)
-  VALUES (v_carrier, v_drv_prof, 'Conductor', 'C9', 'ZZC9-DOC', 'ZZC9-LIC', true) RETURNING id INTO v_driver;
-  INSERT INTO public.vehicles (plate, carrier_id, site_id, type, status, current_odometer) VALUES
-    ('ZZC9A', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100), ('ZZC9B', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100),
-    ('ZZC9C', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100);
+  INSERT INTO public.drivers (carrier_id, profile_id, first_name, last_name, document_number, license_number, is_active, license_expiration)
+  VALUES (v_carrier, v_drv_prof, 'Conductor', 'C9', 'ZZC9-DOC', 'ZZC9-LIC', true, current_date + 365) RETURNING id INTO v_driver;
+  INSERT INTO public.vehicles (plate, carrier_id, site_id, type, status, current_odometer, soat_expiration, technical_review_expiration) VALUES
+    ('ZZC9A', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100, current_date + 365, current_date + 365), ('ZZC9B', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100, current_date + 365, current_date + 365),
+    ('ZZC9C', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100, current_date + 365, current_date + 365);
   INSERT INTO public.contracts (code, type, status, site_id) VALUES ('ZZ-C9-OT', 'CONTRATO', 'ACTIVO', v_site) RETURNING id INTO v_ct;
   INSERT INTO public.contract_budgets (contract_id, concept, allocated_pen) VALUES (v_ct, 'PARTIDA_TRANSPORTE', 1250);
   INSERT INTO public.transport_requests (request_number, status, site_id, contract_id, requester_name, department, request_type, cargo_description, pickup_address, pickup_district, delivery_address, delivery_district, required_date) VALUES

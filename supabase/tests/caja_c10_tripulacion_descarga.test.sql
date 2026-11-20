@@ -60,10 +60,10 @@ BEGIN
   INSERT INTO public.profiles (id, first_name, last_name, employee_type, is_active) VALUES
     (w1, 'Ayudante', 'Uno', 'Auxiliar de Transporte', true),
     (w2, 'Estibador', 'Dos', 'Auxiliar de Despacho', true);
-  INSERT INTO public.drivers (carrier_id, profile_id, first_name, last_name, document_number, license_number, is_active)
-  VALUES (v_carrier, v_drv_prof, 'Conductor', 'C10', 'ZZC10-DOC', 'ZZC10-LIC', true) RETURNING id INTO v_driver;
-  INSERT INTO public.vehicles (plate, carrier_id, site_id, type, status, current_odometer) VALUES
-    ('ZZC10A', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100), ('ZZC10B', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100);
+  INSERT INTO public.drivers (carrier_id, profile_id, first_name, last_name, document_number, license_number, is_active, license_expiration)
+  VALUES (v_carrier, v_drv_prof, 'Conductor', 'C10', 'ZZC10-DOC', 'ZZC10-LIC', true, current_date + 365) RETURNING id INTO v_driver;
+  INSERT INTO public.vehicles (plate, carrier_id, site_id, type, status, current_odometer, soat_expiration, technical_review_expiration) VALUES
+    ('ZZC10A', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100, current_date + 365, current_date + 365), ('ZZC10B', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100, current_date + 365, current_date + 365);
   INSERT INTO public.contracts (code, type, status, site_id) VALUES ('ZZ-C10-OT', 'CONTRATO', 'ACTIVO', v_site) RETURNING id INTO v_ct;
   INSERT INTO public.contract_budgets (contract_id, concept, allocated_pen) VALUES (v_ct, 'PARTIDA_TRANSPORTE', 1250);
   INSERT INTO public.transport_requests (request_number, status, site_id, contract_id, service_cost, requester_name, department, request_type, cargo_description, pickup_address, pickup_district, delivery_address, delivery_district, required_date) VALUES

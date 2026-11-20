@@ -28,6 +28,9 @@ BEGIN
   EXCEPTION WHEN raise_exception THEN ok := position('Capacidad insuficiente' IN SQLERRM) = 0; END;
   IF ok THEN RAISE EXCEPTION 'CAJA C229 FAIL: se acepta una carga mayor a la capacidad de %', v.plate; END IF;
 
+  -- Como usuario (sesión authenticated) la guarda del viaje rechaza la unidad no apta
+  IF position('''authenticated''' IN pg_get_functiondef('public.dispatch_eligibility_guard()'::regprocedure)) = 0 THEN RAISE EXCEPTION 'CAJA C229 FAIL: la guarda no distingue la sesión de usuario'; END IF;
+
   -- Fecha comprometida: todas las solicitudes la tienen y no cambia al mover la fecha requerida de una aprobada
   IF EXISTS (SELECT 1 FROM public.transport_requests WHERE committed_date IS NULL) THEN RAISE EXCEPTION 'CAJA C229 FAIL: solicitudes sin fecha comprometida'; END IF;
   SELECT * INTO t FROM public.transport_requests WHERE approved_at IS NOT NULL AND status IN ('ENTREGADA', 'ASIGNADA') ORDER BY created_at DESC LIMIT 1;
