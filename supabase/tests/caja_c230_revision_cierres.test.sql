@@ -42,7 +42,7 @@ BEGIN
   -- Reprogramar otra pendiente: vuelve a programarse y el día comprometido original no cambia
   SELECT * INTO v FROM public.transport_request_reviews WHERE status = 'PENDIENTE' ORDER BY id LIMIT 1;
   IF v.id IS NOT NULL THEN
-    PERFORM public.transport_request_review_resolve(v.id, 'REPROGRAMADA', 'Cliente sin personal para recibir', now() + interval '3 days', 'CLIENTE');
+    PERFORM public.transport_request_review_resolve(v.id, 'REPROGRAMADA', 'Cliente sin personal para recibir', (date_trunc('day', now() AT TIME ZONE 'America/Lima') + interval '3 days 20 hours') AT TIME ZONE 'America/Lima', 'CLIENTE');
     IF (SELECT status FROM public.transport_requests WHERE id = v.request_id) <> 'REPROGRAMADA' THEN RAISE EXCEPTION 'CAJA C230 FAIL: reprogramar no cambió el estado'; END IF;
   END IF;
   RAISE EXCEPTION 'CAJA C230 PASS: % pendientes conciliados con la fuente; solo el Supervisor de Transporte resuelve, con motivo y una sola vez', n_bandeja;

@@ -114,7 +114,7 @@ BEGIN
     IF upper(btrim(coalesce(p_causa, ''))) NOT IN ('CLIENTE','ALMACEN_SIN_STOCK','PRODUCCION','SIN_UNIDAD','SIN_CONDUCTOR','VIA_CLIMA','DOCUMENTOS','OTRO') THEN
       RAISE EXCEPTION 'Indique la causa de la reprogramación'; END IF;
     SELECT (required_date AT TIME ZONE 'America/Lima')::date INTO v_prev FROM public.transport_requests WHERE id = v.request_id;
-    UPDATE public.transport_requests SET status = 'REPROGRAMADA', required_date = p_required_at, required_at = p_required_at, updated_at = now() WHERE id = v.request_id;
+    UPDATE public.transport_requests SET status = 'REPROGRAMADA', required_date = (p_required_at AT TIME ZONE 'America/Lima')::date, required_at = p_required_at, updated_at = now() WHERE id = v.request_id;
     INSERT INTO public.kpi_reprogramaciones(request_id, causa, detalle, fecha_anterior, fecha_nueva, by)
     VALUES (v.request_id, upper(btrim(p_causa)), v_note, v_prev, (p_required_at AT TIME ZONE 'America/Lima')::date, auth.uid());
   ELSE

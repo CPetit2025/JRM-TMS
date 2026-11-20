@@ -43,7 +43,7 @@ export default function RevisionCierresPage() {
     <PageHeader title="Revisión de cierres" showTitle description="Solicitudes de viajes cerrados sin entrega registrada. Cada una se resuelve: entregada (con la guía validada), reprogramada o anulada."
       actions={<button type="button" onClick={() => void load()} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold"><RefreshCw className="h-4 w-4" aria-hidden />Actualizar</button>} />
     <div className="flex gap-2" role="group" aria-label="Estado">
-      {(['PENDIENTE', 'RESUELTA'] as const).map(s => <button key={s} type="button" aria-pressed={status === s} onClick={() => { setLoading(true); setStatus(s) }}
+      {(['PENDIENTE', 'RESUELTA'] as const).map(s => <button key={s} type="button" aria-pressed={status === s} onClick={() => { if (s !== status) { setLoading(true); setStatus(s) } }}
         className={`min-h-11 rounded-full px-4 text-sm font-semibold ${status === s ? 'bg-[#002855] text-white' : 'bg-white ring-1 ring-slate-200'}`}>{s === 'PENDIENTE' ? 'Pendientes' : 'Resueltas'}</button>)}
     </div>
     {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
