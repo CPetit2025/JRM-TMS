@@ -37,13 +37,13 @@ BEGIN
   -- T3: exactitud contra consultas escritas aparte sobre la fuente (mes anterior)
   v := public.kpi_eq_valor('D1', m.desde, m.hasta);
   SELECT count(*) FILTER (WHERE ok), count(*) INTO a, b FROM (
-    SELECT (e.llegada AT TIME ZONE 'America/Lima')::date <= (tr.required_date AT TIME ZONE 'America/Lima')::date AS ok
+    SELECT (e.llegada AT TIME ZONE 'America/Lima')::date <= COALESCE(tr.committed_date, (tr.required_date AT TIME ZONE 'America/Lima')::date) AS ok
     FROM (SELECT request_id, min(arrived_at) llegada FROM public.delivery_conformities WHERE arrived_at IS NOT NULL GROUP BY 1) e
     JOIN public.transport_requests tr ON tr.id = e.request_id
     WHERE (e.llegada AT TIME ZONE 'America/Lima')::date BETWEEN m.desde AND m.hasta AND tr.required_date IS NOT NULL AND upper(COALESCE(tr.status, '')) <> 'CANCELADA'
     UNION ALL
     SELECT false FROM public.transport_requests tr
-    WHERE (tr.required_date AT TIME ZONE 'America/Lima')::date BETWEEN m.desde AND LEAST(m.hasta, hoy - 1)
+    WHERE COALESCE(tr.committed_date, (tr.required_date AT TIME ZONE 'America/Lima')::date) BETWEEN m.desde AND LEAST(m.hasta, hoy - 1)
       AND upper(COALESCE(tr.status, '')) NOT IN ('CANCELADA','ENTREGADA')
       AND NOT EXISTS (SELECT 1 FROM public.delivery_conformities c WHERE c.request_id = tr.id AND c.arrived_at IS NOT NULL)) z;
   IF NOT ((v->>'num')::numeric = a AND (v->>'den')::numeric = b AND (b = 0 OR (v->>'valor')::numeric = round(100 * a / b, 2))) THEN fails := fails || ('T3 D1 ' || a || '/' || b || ' vs ' || v::text); END IF;
