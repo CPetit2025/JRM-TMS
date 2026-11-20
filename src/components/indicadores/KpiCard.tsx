@@ -51,7 +51,7 @@ export function KpiCard({ kpi, onClick }: { kpi: KpiResultado; onClick?: () => v
     </div>
     <div className="mt-2 flex items-baseline gap-2">
       {/* En estados no evaluados el valor (si existe) es solo referencial y va en gris. */}
-      <span className={`text-3xl font-extrabold ${e.evaluado ? 'text-slate-900' : 'text-slate-400'}`}>{kpi.estado === 'PENDIENTE_DATOS' ? '—' : valorTxt(kpi.valor, kpi.unidad)}</span>
+      <span className={`text-3xl font-extrabold ${e.evaluado || kpi.estado === 'INFORMATIVO' ? 'text-slate-900' : 'text-slate-400'}`}>{kpi.estado === 'PENDIENTE_DATOS' ? '—' : valorTxt(kpi.valor, kpi.unidad)}</span>
       {kpi.estado === 'DATOS_INSUFICIENTES' && kpi.valor != null && <span className="text-xs text-slate-400">referencial</span>}
     </div>
     <p className="mt-1 text-xs text-slate-500">Meta {metaTxt(kpi)}{kpi.cobertura != null && <> · Cobertura {num(kpi.cobertura)} %</>}{kpi.n > 0 && <> · {kpi.n_con_dato}/{kpi.n} registros</>}</p>
