@@ -64,6 +64,11 @@ BEGIN
   VALUES (v_carrier, v_drv_prof, 'Conductor', 'C10', 'ZZC10-DOC', 'ZZC10-LIC', true) RETURNING id INTO v_driver;
   INSERT INTO public.vehicles (plate, carrier_id, site_id, type, status, current_odometer) VALUES
     ('ZZC10A', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100), ('ZZC10B', v_carrier, v_site, 'TRACTO', 'DISPONIBLE', 100);
+  -- Documentos vigentes (la programación exige SOAT, revisión técnica y licencia); columnas opcionales según el esquema
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'drivers' AND column_name = 'license_expiration') THEN
+    EXECUTE 'UPDATE public.drivers SET license_expiration = current_date + 365 WHERE id = $1' USING v_driver; END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'vehicles' AND column_name = 'soat_expiration') THEN
+    EXECUTE 'UPDATE public.vehicles SET soat_expiration = current_date + 365, technical_review_expiration = current_date + 365 WHERE plate LIKE ''ZZC10%'''; END IF;
   INSERT INTO public.contracts (code, type, status, site_id) VALUES ('ZZ-C10-OT', 'CONTRATO', 'ACTIVO', v_site) RETURNING id INTO v_ct;
   INSERT INTO public.contract_budgets (contract_id, concept, allocated_pen) VALUES (v_ct, 'PARTIDA_TRANSPORTE', 1250);
   INSERT INTO public.transport_requests (request_number, status, site_id, contract_id, service_cost, requester_name, department, request_type, cargo_description, pickup_address, pickup_district, delivery_address, delivery_district, required_date) VALUES
