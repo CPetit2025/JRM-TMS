@@ -17,7 +17,13 @@ BEGIN
     IF abs((v->>'valor')::numeric - round(kg / 1000, 2)) > 0.01 THEN RAISE EXCEPTION 'CAJA C228 FAIL: valor % t frente a % t de la fuente', v->>'valor', round(kg / 1000, 2); END IF;
     IF v->>'estado' <> 'INFORMATIVO' THEN RAISE EXCEPTION 'CAJA C228 FAIL: estado % (se esperaba INFORMATIVO)', v->>'estado'; END IF;
     IF (v->>'n')::int <> n + 1 THEN RAISE EXCEPTION 'CAJA C228 FAIL: % filas frente a % documentos + 1 base', v->>'n', n; END IF;
+    -- La fila base es técnica: ni se propone su corrección ni la ficha la ofrece
+    IF (public.kpi_eq_proponer('I6', 'base-' || desde, desde, 'EXCLUIR', NULL, NULL, 'OTRO', 'prueba de caja'))->>'error' NOT LIKE 'La fila base es técnica%' THEN RAISE EXCEPTION 'CAJA C228 FAIL: la fila base admite corrección'; END IF;
+    IF EXISTS (SELECT 1 FROM jsonb_array_elements((public.kpi_eq_detalle('I6', desde, (desde + interval '1 month - 1 day')::date))->'filas') x WHERE x->>'ref' LIKE 'base-%' AND (x->>'puede_proponer')::boolean) THEN
+      RAISE EXCEPTION 'CAJA C228 FAIL: la ficha ofrece corregir la fila base'; END IF;
   END IF;
+  -- Tendencia: solo cierres con la misma unidad
+  IF position('IS NOT DISTINCT FROM x->>''unidad''' IN pg_get_functiondef('public.kpi_eq_tablero(text, date)'::regprocedure)) = 0 THEN RAISE EXCEPTION 'CAJA C228 FAIL: la tendencia mezcla unidades'; END IF;
   -- Sin devoluciones en el período: sin registros (nunca 0 t inventadas)
   IF (public.kpi_eq_valor('I6', '2000-01-01', '2000-01-31'))->>'estado' <> 'SIN_REGISTROS' THEN RAISE EXCEPTION 'CAJA C228 FAIL: período vacío no es SIN_REGISTROS'; END IF;
   -- I5 conserva su porcentaje

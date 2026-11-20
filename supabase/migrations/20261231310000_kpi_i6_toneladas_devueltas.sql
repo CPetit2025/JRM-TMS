@@ -40,3 +40,30 @@ BEGIN
   IF position(a IN def) = 0 THEN RAISE EXCEPTION 'kpi_eq_valor cambió: revisar esta migración'; END IF;
   EXECUTE replace(def, a, '    WHEN d.meta IS NULL THEN ''INFORMATIVO''');
 END $m$;
+
+-- La tendencia solo une cierres con la misma unidad (los cierres viejos de I6 en % no se mezclan con toneladas)
+DO $m$
+DECLARE def text; a text := 'WHERE h.v IS NOT NULL), ''[]''::jsonb)';
+BEGIN
+  def := pg_get_functiondef('public.kpi_eq_tablero(text, date)'::regprocedure);
+  IF position(a IN def) = 0 THEN RAISE EXCEPTION 'kpi_eq_tablero cambió: revisar esta migración'; END IF;
+  EXECUTE replace(def, a, 'WHERE h.v IS NOT NULL AND h.v->>''unidad'' IS NOT DISTINCT FROM x->>''unidad''), ''[]''::jsonb)');
+END $m$;
+
+-- Las filas técnicas (base del total) no son registros: no se corrigen ni se excluyen
+DO $m$
+DECLARE def text; a text := '''puede_proponer'', corrige AND f.corr_id IS NULL AND';
+BEGIN
+  def := pg_get_functiondef('public.kpi_eq_detalle(text, date, date)'::regprocedure);
+  IF position(a IN def) = 0 THEN RAISE EXCEPTION 'kpi_eq_detalle cambió: revisar esta migración'; END IF;
+  EXECUTE replace(def, a, '''puede_proponer'', corrige AND f.corr_id IS NULL AND NOT COALESCE((f.dims->>''tecnica'')::boolean, false) AND');
+END $m$;
+
+DO $m$
+DECLARE def text; a text := '  IF d.codigo IS NULL OR NOT d.equipo';
+BEGIN
+  def := pg_get_functiondef('public.kpi_eq_proponer(text, text, date, text, numeric, numeric, text, text)'::regprocedure);
+  IF position(a IN def) = 0 THEN RAISE EXCEPTION 'kpi_eq_proponer cambió: revisar esta migración'; END IF;
+  EXECUTE replace(def, a, '  IF p_ref LIKE ''base-%'' THEN RETURN jsonb_build_object(''success'', false, ''error'', ''La fila base es técnica: no se corrige ni se excluye''); END IF;
+' || a);
+END $m$;
