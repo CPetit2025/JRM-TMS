@@ -22,11 +22,16 @@ const links = [
   { href: '/almacen/indicadores', label: 'Indicadores', icon: ShieldCheck, permission: 'almacen-lectura', group: 'Despacho' },
   { href: '/almacen/apt', label: 'Inventario APT', icon: Boxes, permission: 'almacen-lectura', group: 'Control' },
   { href: '/almacen/inventario', label: 'Inventario', icon: ClipboardList, permission: 'almacen-etiquetado', group: 'Control' },
+  { href: '/almacen/existencias', label: 'Existencias', icon: Boxes, permission: 'almacen-lectura', group: 'Control' },
+  { href: '/almacen/devoluciones', label: 'Devoluciones', icon: ClipboardList, permission: 'almacen-inventario', group: 'Control' },
+  { href: '/almacen/ajustes', label: 'Diferencias y ajustes', icon: ClipboardList, permission: 'almacen-inventario', group: 'Control' },
+  { href: '/almacen/indicadores-inventario', label: 'Indicadores de inventario', icon: ShieldCheck, permission: 'almacen-lectura', group: 'Control' },
   { href: '/almacen/stock-erp', label: 'Stock ERP', icon: Boxes, permission: 'almacen-lectura', group: 'Control' },
   { href: '/almacen/conciliacion', label: 'Conciliación', icon: Waypoints, permission: 'almacen-carga', group: 'Control' },
   { href: '/almacen/actualizaciones', label: 'Actualizaciones', icon: Warehouse, permission: 'almacen-carga', group: 'Configuración' },
   { href: '/almacen/maestros/embalajes', label: 'Embalajes', icon: Settings2, permission: 'almacen-supervisor', group: 'Configuración' },
   { href: '/almacen/maestros/unidades', label: 'Tipos de unidad', icon: Settings2, permission: 'almacen-supervisor', group: 'Configuración' },
+  { href: '/almacen/maestros/ubicaciones', label: 'Ubicaciones', icon: Settings2, permission: 'almacen-inventario', group: 'Configuración' },
   { href: '/almacen/maestros/etiquetas', label: 'Etiquetas', icon: Settings2, permission: 'almacen-supervisor', group: 'Configuración' },
 ]
 
@@ -54,6 +59,14 @@ export default function WarehouseLayout({ children }: { children: React.ReactNod
         ? ['almacen-auditoria', 'almacen-supervisor', 'almacen-picking', 'almacen-packing', 'almacen-carga', 'almacen-lectura'].some(hasAccess)
       : x.href === '/almacen/indicadores'
         ? ['almacen-lectura', 'almacen-supervisor', 'almacen-auditoria'].some(hasAccess)
+      : x.href === '/almacen/existencias'
+        ? ['almacen-lectura', 'almacen-inventario', 'almacen-supervisor', 'almacen-etiquetado', 'almacen-carga', 'almacen-picking', 'almacen-packing'].some(hasAccess)
+      : x.href === '/almacen/devoluciones'
+        ? ['almacen-inventario', 'almacen-supervisor', 'almacen-etiquetado', 'almacen-lectura'].some(hasAccess)
+      : x.href === '/almacen/ajustes' || x.href === '/almacen/maestros/ubicaciones'
+        ? ['almacen-inventario', 'almacen-supervisor'].some(hasAccess)
+      : x.href === '/almacen/indicadores-inventario'
+        ? ['almacen-lectura', 'almacen-supervisor', 'almacen-inventario'].some(hasAccess)
       : x.href === '/almacen/tareas'
         ? ['almacen-lectura', 'almacen-picking', 'almacen-packing', 'almacen-carga', 'almacen-supervisor'].some(hasAccess)
         : x.href === '/almacen' || x.href.startsWith('/almacen/apt/')

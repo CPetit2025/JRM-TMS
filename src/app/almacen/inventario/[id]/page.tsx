@@ -241,7 +241,7 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
             <b>OT {x.ot || '—'}</b><span>lote {x.lote_raw || x.lote || '—'}</span>
             <span className={`rounded px-1.5 py-0.5 text-xs font-bold ${x.item ? 'bg-blue-100 text-blue-900' : 'bg-slate-100 text-slate-500'}`} title={x.item_code || 'El lote no figura en la carga de contratos'}>Ítem {x.item || '—'}</span>
             <span className="font-semibold">{x.cod_producto}</span><span className="flex-1 truncate text-slate-600">{x.producto}</span>
-            <span className="whitespace-nowrap text-xs text-slate-500">{x.item ? `contrato ${fmtN(x.contract_qty)} · ` : ''}ERP {fmtN(x.stock)} · contado {fmtN(x.counted)} {x.unidad || ''}</span>
+            <span className="whitespace-nowrap text-xs text-slate-500">{x.stock == null ? 'Conteo ciego: el stock esperado se ve en la revisión' : <>{x.item ? `contrato ${fmtN(x.contract_qty)} · ` : ''}ERP {fmtN(x.stock)} · contado {fmtN(x.counted)} {x.unidad || ''}</>}</span>
           </button></li>)}</ul>}
         {pick && (() => {
           const total = Number(rot.qty) * Number(rot.bultos), ok = Number(rot.qty) > 0 && Number(rot.bultos) >= 1
@@ -330,9 +330,9 @@ export default function WarehouseInventoryCampaignPage({ params }: { params: Pro
           <td className="px-3 py-1.5 font-semibold">{r.ot || '—'}</td>
           <td className="px-3 py-1.5">{r.lote_key || '—'}{r.round > 1 && <small className="block text-amber-800">reconteo {r.round}</small>}</td>
           <td className="px-3 py-1.5"><b>{r.cod_producto}</b> <span className="text-slate-600">{r.producto}</span></td>
-          <td className="px-3 py-1.5 text-right">{fmtN(r.expected)}</td>
+          <td className="px-3 py-1.5 text-right">{r.expected == null ? '—' : fmtN(r.expected)}</td>
           <td className="px-3 py-1.5 text-right">{fmtN(r.counted)} <small className="text-slate-500">({r.bultos})</small></td>
-          <td className={`px-3 py-1.5 text-right font-semibold ${r.diff < 0 ? 'text-rose-700' : r.diff > 0 ? 'text-amber-800' : ''}`}>{fmtN(r.diff)}</td>
+          <td className={`px-3 py-1.5 text-right font-semibold ${(r.diff ?? 0) < 0 ? 'text-rose-700' : (r.diff ?? 0) > 0 ? 'text-amber-800' : ''}`}>{r.diff == null ? '—' : fmtN(r.diff)}</td>
           <td className="px-3 py-1.5"><span className={`rounded-full px-2 py-0.5 text-xs font-bold ${RESULT_STYLE[r.result]}`}>{r.result.replace('_', ' ')}</span></td>
           {open && isSupervisor && <td className="px-3 py-1.5">{r.result !== 'CUADRA' && <input value={reasons[lotKey(r)] || ''} onChange={e => setReasons({ ...reasons, [lotKey(r)]: e.target.value })} placeholder="Motivo" className="w-48 rounded border border-slate-300 px-2 py-1 text-xs"/>}</td>}
         </tr>)}</tbody>
