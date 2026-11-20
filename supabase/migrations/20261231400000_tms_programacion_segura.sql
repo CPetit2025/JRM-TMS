@@ -26,7 +26,9 @@ BEGIN
   IF TG_OP = 'INSERT' THEN
     PERFORM public.dispatch_assert_eligible(NEW.vehicle_plate, NEW.driver_id, NULL);
   ELSIF NEW.vehicle_plate IS DISTINCT FROM OLD.vehicle_plate THEN
-    PERFORM public.dispatch_assert_eligible(NEW.vehicle_plate, NULL, NULL);
+    -- Cambio de unidad en una ruta ya cargada: la nueva unidad debe soportar la carga declarada
+    PERFORM public.dispatch_assert_eligible(NEW.vehicle_plate, NULL, (SELECT nullif(sum(t.estimated_weight), 0) FROM public.dispatch_requests r
+      JOIN public.transport_requests t ON t.id = r.transport_request_id WHERE r.dispatch_id = NEW.id AND t.estimated_weight > 0));
   END IF;
   RETURN NEW;
 END $$;
@@ -56,29 +58,35 @@ CREATE CONSTRAINT TRIGGER dispatch_capacity_guard AFTER INSERT ON public.dispatc
 
 -- 2. Fecha comprometida original: se fija al crear, se corrige solo antes de aprobar y nunca la cambia una reprogramación
 ALTER TABLE public.transport_requests ADD COLUMN IF NOT EXISTS committed_date date;
+-- Se fija en la primera aprobación y no se libera aunque la aprobación se revoque al editar
+ALTER TABLE public.transport_requests ADD COLUMN IF NOT EXISTS committed_locked_at timestamptz;
 -- Carga inicial de una columna nueva: sin disparar las guardas de negocio de la solicitud
 ALTER TABLE public.transport_requests DISABLE TRIGGER USER;
 UPDATE public.transport_requests t SET committed_date = coalesce(
   (SELECT k.fecha_anterior FROM public.kpi_reprogramaciones k WHERE k.request_id = t.id ORDER BY k.at, k.id LIMIT 1),
   (t.required_date AT TIME ZONE 'America/Lima')::date)
 WHERE t.committed_date IS NULL;
+UPDATE public.transport_requests SET committed_locked_at = coalesce(approved_at, updated_at, created_at)
+WHERE committed_locked_at IS NULL AND (approved_at IS NOT NULL OR upper(coalesce(status, '')) NOT IN ('PENDIENTE', 'PENDIENTE DE APROBACIÓN', 'OBSERVADA', 'RECHAZADA'));
 ALTER TABLE public.transport_requests ENABLE TRIGGER USER;
-COMMENT ON COLUMN public.transport_requests.committed_date IS 'Día comprometido original (hora de Lima). Inmutable tras la aprobación; la puntualidad se mide contra él.';
+COMMENT ON COLUMN public.transport_requests.committed_date IS 'Día comprometido original (hora de Lima). Inmutable desde la primera aprobación; la puntualidad se mide contra él.';
 
 CREATE OR REPLACE FUNCTION public.transport_request_committed_date()
 RETURNS trigger LANGUAGE plpgsql SET search_path = public, pg_temp AS $$
 BEGIN
   IF TG_OP = 'INSERT' THEN
     NEW.committed_date := (NEW.required_date AT TIME ZONE 'America/Lima')::date;
-  ELSIF OLD.committed_date IS NULL OR (OLD.approved_at IS NULL AND OLD.status IN ('PENDIENTE', 'PENDIENTE DE APROBACIÓN', 'OBSERVADA')) THEN
+    NEW.committed_locked_at := CASE WHEN NEW.approved_at IS NOT NULL THEN now() END;
+  ELSIF OLD.committed_locked_at IS NULL THEN
     NEW.committed_date := (NEW.required_date AT TIME ZONE 'America/Lima')::date;
+    NEW.committed_locked_at := CASE WHEN NEW.approved_at IS NOT NULL THEN now() END;
   ELSE
-    NEW.committed_date := OLD.committed_date;
+    NEW.committed_date := OLD.committed_date; NEW.committed_locked_at := OLD.committed_locked_at;
   END IF;
   RETURN NEW;
 END $$;
 DROP TRIGGER IF EXISTS transport_request_committed_date ON public.transport_requests;
-CREATE TRIGGER transport_request_committed_date BEFORE INSERT OR UPDATE OF required_date, committed_date, status ON public.transport_requests
+CREATE TRIGGER transport_request_committed_date BEFORE INSERT OR UPDATE OF required_date, committed_date, committed_locked_at, status, approved_at ON public.transport_requests
   FOR EACH ROW EXECUTE FUNCTION public.transport_request_committed_date();
 
 -- D1 (entrega a tiempo) contra el día comprometido original (decisión 8: solo el día)

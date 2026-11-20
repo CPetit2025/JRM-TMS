@@ -40,6 +40,15 @@ BEGIN
     IF d IS DISTINCT FROM t.committed_date THEN RAISE EXCEPTION 'CAJA C229 FAIL: la reprogramación cambió el día comprometido (% → %)', t.committed_date, d; END IF;
   END IF;
 
+  -- Revocar la aprobación al editar no libera el día comprometido
+  IF t.id IS NOT NULL THEN
+    ALTER TABLE public.transport_requests DISABLE TRIGGER USER;
+    ALTER TABLE public.transport_requests ENABLE TRIGGER transport_request_committed_date;
+    UPDATE public.transport_requests SET approved_at = NULL, status = 'PENDIENTE DE APROBACIÓN' WHERE id = t.id;
+    UPDATE public.transport_requests SET required_date = required_date + interval '2 days' WHERE id = t.id;
+    ALTER TABLE public.transport_requests ENABLE TRIGGER USER;
+    IF (SELECT committed_date FROM public.transport_requests WHERE id = t.id) IS DISTINCT FROM t.committed_date THEN RAISE EXCEPTION 'CAJA C229 FAIL: revocar la aprobación liberó el día comprometido'; END IF;
+  END IF;
   -- D1 contra el día comprometido; 'EN TRANSITO' reconocido en presupuesto y financiamiento
   def := pg_get_functiondef('public.kpi_eq_filas(text, date, date)'::regprocedure);
   IF position('t.committed_date' IN def) = 0 THEN RAISE EXCEPTION 'CAJA C229 FAIL: D1 no usa el día comprometido original'; END IF;
