@@ -193,9 +193,10 @@ export default function FlotaPage() {
       }
 
       if (editingVehicleId) {
-        // SOAT y RT se guardan como documento de la unidad (el vehículo refleja el vigente)
+        // SOAT y RT se guardan como documento de la unidad (el vehículo refleja el vigente); las lecturas se
+        // registran validadas con register_asset_reading (Preventivos › Lecturas), no desde este formulario
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { soat_expiration: _soat, technical_review_expiration: _rt, ...editable } = payload
+        const { soat_expiration: _soat, technical_review_expiration: _rt, current_hours: _hours, ...editable } = payload
         const { error: updateError } = await supabase
           .from('vehicles')
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -315,17 +316,15 @@ export default function FlotaPage() {
     setIsDriverModalOpen(true)
   }
 
-  const handleDeleteVehicle = async (id: string) => {
-    if (!confirm('¿Está seguro de eliminar este vehículo?')) return
-    try {
-      const { error } = await supabase.from('vehicles').delete().eq('id', id)
-      if (error) throw error
-      toast.success('Vehículo eliminado')
-      fetchData()
-    } catch (err: any) {
-      // Un activo con historial operativo no se elimina (trg_guard_vehicle_delete): se da de baja
-      toast.error(err?.message || 'Error al eliminar vehículo.')
-    }
+  // Las unidades no se borran (conservan su historial): se desactivan o reactivan con motivo
+  const handleToggleActive = async (v: any) => {
+    const activar = v.is_active === false
+    const reason = prompt(activar ? `Motivo para reactivar ${v.plate} (entrará OBSERVADA hasta liberarla):` : `Motivo para desactivar ${v.plate}:`)
+    if (!reason?.trim()) return
+    const { data, error } = await supabase.rpc('set_vehicle_active', { p_plate: v.plate, p_active: activar, p_reason: reason.trim() })
+    if (error || !data?.success) return toast.error(error?.message || data?.error || 'No se pudo actualizar la unidad')
+    toast.success(activar ? `${v.plate} reactivada (OBSERVADA)` : `${v.plate} desactivada`)
+    fetchData()
   }
 
   const handleTransitionVehicle = async (plate: string, newStatus: string, confirmText: string) => {
@@ -706,6 +705,7 @@ export default function FlotaPage() {
                             <span className={`px-2 py-1 text-xs font-semibold rounded-full ${STATUS_BADGE[v.status] || 'bg-slate-100 text-slate-700'}`}>
                               {v.status?.replace(/_/g, ' ')}
                             </span>
+                            {v.is_active === false && <div className="mt-1 text-[11px] font-semibold text-slate-500">Inactiva</div>}
                             {v.is_blocked && (
                               <div className="mt-1 text-[11px] text-red-600" title={v.block_reason || ''}>Bloqueo administrativo</div>
                             )}
@@ -719,7 +719,9 @@ export default function FlotaPage() {
                                 ...(!['MANTENIMIENTO', 'FUERA_DE_SERVICIO'].includes(v.status) ? [{ id: 'maintenance', label: 'Enviar a mantenimiento', icon: <Wrench className="h-4 w-4" />, onSelect: () => handleTransitionVehicle(v.plate, 'MANTENIMIENTO', `¿Enviar ${v.plate} a MANTENIMIENTO?`) }] : []),
                                 { id: 'block', label: v.is_blocked ? 'Quitar bloqueo admin.' : 'Bloqueo administrativo', icon: <Lock className="h-4 w-4" />, tone: 'danger', onSelect: () => handleAdministrativeBlock(v.plate, !v.is_blocked) },
                                 ...(v.status !== 'FUERA_DE_SERVICIO' ? [{ id: 'retire', label: 'Fuera de servicio', icon: <Ban className="h-4 w-4" />, onSelect: () => handleTransitionVehicle(v.plate, 'FUERA_DE_SERVICIO', `¿Dar de baja ${v.plate} (FUERA DE SERVICIO)?`) }] : []),
-                                { id: 'delete', label: 'Eliminar vehículo', icon: <Trash2 className="h-4 w-4" />, tone: 'danger', onSelect: () => handleDeleteVehicle(v.id) },
+                                v.is_active === false
+                                  ? { id: 'active', label: 'Reactivar unidad', icon: <ShieldCheck className="h-4 w-4" />, onSelect: () => handleToggleActive(v) }
+                                  : { id: 'active', label: 'Desactivar unidad', icon: <Ban className="h-4 w-4" />, tone: 'danger', onSelect: () => handleToggleActive(v) },
                               ]} />
                             </div>
                           </td>
@@ -963,8 +965,9 @@ export default function FlotaPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Horómetro/Kilometraje Actual</label>
-              <input type="number" step="1" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-[#002855] outline-none" value={newVehicle.current_hours} onChange={e => setNewVehicle({...newVehicle, current_hours: Number(e.target.value)})} />
+              <label className="block text-sm font-medium text-slate-700 mb-1">{editingVehicleId ? 'Horómetro actual' : 'Horómetro inicial'}</label>
+              <input type="number" step="1" min={0} disabled={!!editingVehicleId} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-[#002855] outline-none disabled:bg-slate-100 disabled:text-slate-500" value={newVehicle.current_hours} onChange={e => setNewVehicle({...newVehicle, current_hours: Number(e.target.value)})} />
+              {editingVehicleId && <p className="mt-1 text-[11px] text-slate-500">Se registra como lectura validada en Preventivos › Lecturas.</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Ubicación Actual</label>
