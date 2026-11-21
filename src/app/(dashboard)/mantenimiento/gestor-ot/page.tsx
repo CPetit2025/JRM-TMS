@@ -11,6 +11,7 @@ import { format } from 'date-fns'
 import { buildMaintenanceWorkOrderReport, type MaintenanceReportKind } from '@/lib/maintenance/work-order-report'
 import { usePagination } from '@/lib/use-pagination'
 import { TablePagination } from '@/components/ui/table-pagination'
+import { usePermissions } from '@/hooks/usePermissions'
 import {
   Loader2, Plus, RefreshCw, Wrench, CheckCircle2, PlayCircle, PauseCircle, Flag, ShieldCheck, XCircle,
   Lock, Trash2, Upload, ClipboardList, Package, FileText,
@@ -20,6 +21,8 @@ const supabase = createClient()
 
 // Gestor de OT (Fase 4). El estado, la aprobación, los tiempos y los totales solo cambian por RPC:
 // transition_work_order, complete_maintenance_order, consume_work_order_part (migración 20260927120000).
+// Fases 6–7 (20261231510000/520000): esperas con motivo (work_order_wait_start/end), costos por etapa sin IGV y
+// VALIDACION obligatoria por el Jefe de Distribución (permiso mantenimiento-liberacion), que también cierra y libera.
 
 type WoStatus = 'BORRADOR' | 'APROBADA' | 'PROGRAMADA' | 'EN_PROCESO' | 'EN_ESPERA' | 'TERMINADA' | 'VALIDACION' | 'CERRADA' | 'CANCELADA'
 
@@ -68,7 +71,15 @@ interface WorkOrder {
 }
 interface ActiveWarranty { id: string; warranty_kind: 'REPUESTO' | 'SERVICIO'; scope: string; provider_name: string | null; expires_at: string | null; km_remaining: number | null }
 
-interface CostLine { id: string; cost_type: string; amount: number; quantity: number | null; description: string | null; document_number: string | null; created_at: string }
+type CostStage = 'ESTIMADO' | 'COTIZADO' | 'AUTORIZADO' | 'FACTURADO' | 'PAGADO'
+interface CostLine { id: string; cost_type: string; amount: number; quantity: number | null; description: string | null; document_number: string | null; created_at: string
+  stage: CostStage; estimated_amount: number | null; quoted_amount: number | null; authorized_amount: number | null; invoiced_amount: number | null; paid_amount: number | null
+  igv_amount: number; currency: string; original_amount: number | null; exchange_rate: number | null }
+interface WaitLine { id: string; reason: string; started_at: string; ended_at: string | null; notes: string | null }
+interface Lifecycle { finished_at: string | null; validated_at: string | null; due_date: string | null; due_km: number | null; due_hours: number | null; preventive_compliance: string | null }
+const COST_STAGES: CostStage[] = ['ESTIMADO', 'COTIZADO', 'AUTORIZADO', 'FACTURADO', 'PAGADO']
+const STAGE_COLUMN = { ESTIMADO: 'estimated_amount', COTIZADO: 'quoted_amount', AUTORIZADO: 'authorized_amount', FACTURADO: 'invoiced_amount', PAGADO: 'paid_amount' } as const
+const WAIT_REASONS = [['REPUESTO', 'Repuesto'], ['AUTORIZACION', 'Autorización'], ['TALLER', 'Taller / proveedor'], ['VERIFICACION', 'Verificación']] as const
 interface SparePart { id: string; internal_code: string; name: string; current_stock: number | null; available: number | null }
 interface Option { id: string; label: string }
 interface WorkOrderReport { id: string; report_type: MaintenanceReportKind; version: number; storage_bucket: string; storage_path: string; created_at: string; sha256: string | null }
@@ -330,14 +341,28 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
   const [diagnostic, setDiagnostic] = useState(order.diagnostic || '')
   const [tasks, setTasks] = useState(order.tasks || [])
   const [newTask, setNewTask] = useState('')
-  const [costForm, setCostForm] = useState({ cost_type: 'MANO_OBRA', amount: '', description: '', document_number: '' })
+  const [costForm, setCostForm] = useState({ cost_type: 'MANO_OBRA', stage: 'FACTURADO' as CostStage, amount: '', igv: '', currency: 'PEN', original_amount: '', exchange_rate: '', description: '', document_number: '' })
+  const [waitReason, setWaitReason] = useState('REPUESTO')
+  const [waits, setWaits] = useState<WaitLine[]>([])
+  const [life, setLife] = useState<Lifecycle | null>(null)
+  const { hasAccess } = usePermissions()
+  const canVerify = hasAccess('mantenimiento-liberacion')
   const [partForm, setPartForm] = useState({ part_id: '', quantity: '1' })
   const [budgetForm, setBudgetForm] = useState({ amount: '', reason: '' })
   const [budgetDecisionNotes, setBudgetDecisionNotes] = useState('')
   const [costToRemove, setCostToRemove] = useState<CostLine | null>(null)
   const locked = order.status === 'CERRADA' || order.status === 'CANCELADA'
 
-  const loadCosts = useCallback(() => supabase.from('work_order_costs').select('id, cost_type, amount, quantity, description, document_number, created_at')
+  const loadLifecycle = useCallback(() => {
+    void supabase.from('maintenance_work_order_waits').select('id, reason, started_at, ended_at, notes').eq('work_order_id', order.id).order('started_at')
+      .then(({ data }) => setWaits((data || []) as WaitLine[]))
+    void supabase.from('maintenance_work_orders').select('finished_at, validated_at, due_date, due_km, due_hours, preventive_compliance').eq('id', order.id).maybeSingle()
+      .then(({ data }) => setLife(data as Lifecycle | null))
+  }, [order.id])
+  useEffect(() => { loadLifecycle() }, [loadLifecycle, order.status])
+  const openWait = waits.find(w => !w.ended_at)
+
+  const loadCosts = useCallback(() => supabase.from('work_order_costs').select('id, cost_type, amount, quantity, description, document_number, created_at, stage, estimated_amount, quoted_amount, authorized_amount, invoiced_amount, paid_amount, igv_amount, currency, original_amount, exchange_rate')
     .eq('work_order_id', order.id).order('created_at').then(({ data }) => setCosts((data || []) as CostLine[])), [order.id])
 
   useEffect(() => {
@@ -388,15 +413,19 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
   const submitTransition = async () => {
     const status = transitionForm.status
     if (!status) return
-    const needsNote = ['CANCELADA', 'TERMINADA', 'EN_ESPERA'].includes(status)
-    if (needsNote && !transitionForm.notes.trim()) return toast.error(status === 'CANCELADA' ? 'El motivo de cancelación es obligatorio' : status === 'TERMINADA' ? 'Registre las actividades realizadas' : 'Registre el motivo de espera')
+    const needsNote = ['CANCELADA', 'TERMINADA'].includes(status)
+    if (needsNote && !transitionForm.notes.trim()) return toast.error(status === 'CANCELADA' ? 'El motivo de cancelación es obligatorio' : 'Registre las actividades realizadas')
     let success = false
-    if (status === 'CERRADA') {
+    if (status === 'EN_ESPERA') {
+      success = await rpc('work_order_wait_start', { p_work_order_id: order.id, p_reason: waitReason, p_notes: transitionForm.notes.trim() || null })
+    } else if (status === 'EN_PROCESO' && order.status === 'EN_ESPERA') {
+      success = await rpc('work_order_wait_end', { p_work_order_id: order.id, p_notes: transitionForm.notes.trim() || null })
+    } else if (status === 'CERRADA') {
       success = await rpc('complete_maintenance_order', { p_order_id: order.id, p_used_parts: [], p_closing_notes: transitionForm.notes.trim() || null }, 'OT cerrada; se validó la elegibilidad de la unidad')
     } else {
       success = await rpc('transition_work_order', { p_work_order_id: order.id, p_new_status: status, p_notes: transitionForm.notes.trim() || null }, `OT ${order.ot_code} → ${status}`)
     }
-    if (success) setTransitionForm({ status: null, notes: '' })
+    if (success) { setTransitionForm({ status: null, notes: '' }); loadLifecycle() }
   }
 
   const generateReport = async (kind: MaintenanceReportKind) => {
@@ -448,13 +477,35 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
     e.preventDefault()
     const amount = Number(costForm.amount)
     if (!(amount >= 0)) return toast.error('Monto inválido')
+    // Monto sin IGV en soles en la columna de su etapa; el servidor calcula el costo real (facturado o autorizado)
+    const stageAmounts = costForm.stage === 'PAGADO' ? { invoiced_amount: amount, paid_amount: amount } : { [STAGE_COLUMN[costForm.stage]]: amount }
     const { error } = await supabase.from('work_order_costs').insert({
-      work_order_id: order.id, cost_type: costForm.cost_type, amount,
+      work_order_id: order.id, cost_type: costForm.cost_type, amount: 0, ...stageAmounts,
+      igv_amount: Number(costForm.igv) || 0, currency: costForm.currency,
+      original_amount: costForm.currency === 'PEN' ? null : Number(costForm.original_amount) || null,
+      exchange_rate: costForm.currency === 'PEN' ? null : Number(costForm.exchange_rate) || null,
       description: costForm.description || null, document_number: costForm.document_number || null,
       provider_id: costForm.cost_type === 'SERVICIOS' ? order.provider_id : null,
     })
     if (error) return toast.error(error.message)
-    setCostForm({ cost_type: 'MANO_OBRA', amount: '', description: '', document_number: '' })
+    setCostForm({ cost_type: 'MANO_OBRA', stage: 'FACTURADO', amount: '', igv: '', currency: 'PEN', original_amount: '', exchange_rate: '', description: '', document_number: '' })
+    loadCosts(); loadBudget(); onChanged()
+  }
+
+  // Avanza la línea a una etapa posterior (p. ej. de autorizado a facturado) sin crear otra línea: no se suman
+  const advanceCost = async (line: CostLine, stage: CostStage) => {
+    const value = prompt(`Monto ${stage.toLowerCase()} sin IGV (S/)`, String(line.amount || ''))
+    if (value == null) return
+    const amount = Number(value)
+    if (!(amount >= 0)) return toast.error('Monto inválido')
+    const patch: Record<string, number | null> = { [STAGE_COLUMN[stage]]: amount }
+    if (stage === 'PAGADO' && line.invoiced_amount == null) patch.invoiced_amount = amount
+    if (stage === 'FACTURADO' || stage === 'PAGADO') {
+      const igv = prompt('IGV de la factura (S/), aparte del costo', String(line.igv_amount || 0))
+      if (igv != null) patch.igv_amount = Number(igv) || 0
+    }
+    const { error } = await supabase.from('work_order_costs').update(patch).eq('id', line.id)
+    if (error) return toast.error(error.message)
     loadCosts(); loadBudget(); onChanged()
   }
 
@@ -496,13 +547,16 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
     toast.success('Evidencia adjuntada'); onChanged()
   }
 
-  const actions: Partial<Record<WoStatus, [WoStatus, string, React.ReactNode][]>> = {
-    BORRADOR: [['APROBADA', 'Aprobar', <CheckCircle2 key="a" className="w-4 h-4" />], ['CANCELADA', 'Cancelar', <XCircle key="c" className="w-4 h-4" />]],
-    APROBADA: [['PROGRAMADA', 'Programar', <ClipboardList key="p" className="w-4 h-4" />], ['EN_PROCESO', 'Iniciar', <PlayCircle key="i" className="w-4 h-4" />], ['CANCELADA', 'Cancelar', <XCircle key="c" className="w-4 h-4" />]],
-    PROGRAMADA: [['EN_PROCESO', 'Iniciar', <PlayCircle key="i" className="w-4 h-4" />], ['CANCELADA', 'Cancelar', <XCircle key="c" className="w-4 h-4" />]],
-    EN_PROCESO: [['EN_ESPERA', 'En espera', <PauseCircle key="e" className="w-4 h-4" />], ['TERMINADA', 'Terminar', <Flag key="t" className="w-4 h-4" />]],
+  type Act = [WoStatus, string, React.ReactNode]
+  const waitAction: Act[] = openWait ? [] : [['EN_ESPERA', 'Registrar espera', <PauseCircle key="w" className="w-4 h-4" />]]
+  const actions: Partial<Record<WoStatus, Act[]>> = {
+    BORRADOR: [['APROBADA', 'Aprobar', <CheckCircle2 key="a" className="w-4 h-4" />], ...waitAction, ['CANCELADA', 'Cancelar', <XCircle key="c" className="w-4 h-4" />]],
+    APROBADA: [['PROGRAMADA', 'Programar', <ClipboardList key="p" className="w-4 h-4" />], ['EN_PROCESO', 'Iniciar', <PlayCircle key="i" className="w-4 h-4" />], ...waitAction, ['CANCELADA', 'Cancelar', <XCircle key="c" className="w-4 h-4" />]],
+    PROGRAMADA: [['EN_PROCESO', 'Iniciar', <PlayCircle key="i" className="w-4 h-4" />], ...waitAction, ['CANCELADA', 'Cancelar', <XCircle key="c" className="w-4 h-4" />]],
+    EN_PROCESO: [['EN_ESPERA', 'En espera', <PauseCircle key="e" className="w-4 h-4" />], ['TERMINADA', 'Fin técnico', <Flag key="t" className="w-4 h-4" />]],
     EN_ESPERA: [['EN_PROCESO', 'Reanudar', <PlayCircle key="r" className="w-4 h-4" />], ['CANCELADA', 'Cancelar', <XCircle key="c" className="w-4 h-4" />]],
-    TERMINADA: [['VALIDACION', 'Validar', <ShieldCheck key="v" className="w-4 h-4" />], ['EN_PROCESO', 'Reabrir (retrabajo)', <PlayCircle key="r" className="w-4 h-4" />]],
+    // Verificar es del Jefe de Distribución; quien ejecutó no puede (lo impide el servidor)
+    TERMINADA: [...(canVerify ? [['VALIDACION', 'Verificar', <ShieldCheck key="v" className="w-4 h-4" />] as Act] : []), ['EN_PROCESO', 'Reabrir (retrabajo)', <PlayCircle key="r" className="w-4 h-4" />]],
     VALIDACION: [['EN_PROCESO', 'Retrabajo', <PlayCircle key="r" className="w-4 h-4" />]],
   }
   const field = 'border rounded-lg px-2 py-1.5 text-sm'
@@ -529,19 +583,29 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
                 {icon}{label}
               </button>
             ))}
-            {(order.status === 'TERMINADA' || order.status === 'VALIDACION') && (
+            {order.status === 'VALIDACION' && canVerify && (
               <button disabled={busy} onClick={() => transition('CERRADA')} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm flex items-center gap-1">
-                <Lock className="w-4 h-4" /> Cerrar OT
+                <Lock className="w-4 h-4" /> Cerrar y liberar
               </button>
             )}
+            {openWait && order.status !== 'EN_ESPERA' && openWait.reason !== 'VERIFICACION' && (
+              <button disabled={busy} onClick={() => void rpc('work_order_wait_end', { p_work_order_id: order.id, p_notes: null }).then(ok => { if (ok) loadLifecycle() })} className="px-3 py-1.5 rounded-lg border text-sm flex items-center gap-1 text-slate-700">
+                <PlayCircle className="w-4 h-4" /> Terminar espera ({openWait.reason.toLowerCase()})
+              </button>
+            )}
+            {order.status === 'TERMINADA' && !canVerify && <span className="self-center text-xs text-slate-500">Pendiente de verificación del Jefe de Distribución.</span>}
           </div>
         )}
 
         {transitionForm.status && <div className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
           <div className="font-semibold text-blue-950">{transitionForm.status === 'CERRADA' ? 'Cierre técnico de la OT' : `Confirmar transición a ${transitionForm.status.replace(/_/g, ' ')}`}</div>
-          <p className="text-xs text-blue-900">{transitionForm.status === 'CERRADA' ? 'El sistema verificará elegibilidad y liberación de la unidad. El informe de cierre se emitirá después de confirmar.' : 'El motivo o las actividades quedarán en la bitácora de la orden.'}</p>
+          <p className="text-xs text-blue-900">{transitionForm.status === 'CERRADA' ? 'Solo una unidad APTO se libera; si queda apta con observación, seguirá OBSERVADA hasta liberarla. El informe de cierre se emitirá después de confirmar.' : 'El motivo o las actividades quedarán en la bitácora de la orden.'}</p>
+          {transitionForm.status === 'EN_ESPERA' && <label className="block text-xs text-blue-950">Motivo de la espera
+            <select className="mt-1 w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm" value={waitReason} onChange={e => setWaitReason(e.target.value)}>
+              {WAIT_REASONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </select></label>}
           <textarea rows={3} className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm" value={transitionForm.notes} onChange={e => setTransitionForm({ ...transitionForm, notes: e.target.value })}
-            placeholder={transitionForm.status === 'CANCELADA' ? 'Motivo obligatorio de cancelación' : transitionForm.status === 'TERMINADA' ? 'Actividades realizadas' : transitionForm.status === 'EN_ESPERA' ? 'Motivo de la espera' : 'Observación de la transición (opcional)'} />
+            placeholder={transitionForm.status === 'CANCELADA' ? 'Motivo obligatorio de cancelación' : transitionForm.status === 'TERMINADA' ? 'Actividades realizadas' : transitionForm.status === 'EN_ESPERA' ? 'Detalle de la espera (opcional)' : 'Observación de la transición (opcional)'} />
           <div className="flex justify-end gap-2"><button type="button" className="rounded-lg border bg-white px-3 py-1.5" onClick={() => setTransitionForm({ status: null, notes: '' })}>Volver</button><button type="button" disabled={busy} onClick={() => void submitTransition()} className="rounded-lg bg-[#002855] px-3 py-1.5 text-white disabled:opacity-50">{busy ? 'Procesando…' : transitionForm.status === 'CERRADA' ? 'Confirmar cierre' : 'Confirmar cambio'}</button></div>
         </div>}
 
@@ -577,7 +641,15 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
           <Info label="Fin indisponibilidad" value={order.downtime_end ? format(new Date(order.downtime_end), 'dd/MM/yyyy HH:mm') : '—'} />
           <Info label="Horas fuera de servicio" value={order.downtime_hours != null ? Number(order.downtime_hours).toFixed(1) : '—'} />
           <Info label="Aprobada" value={order.approved_at ? format(new Date(order.approved_at), 'dd/MM/yyyy HH:mm') : '—'} />
+          <Info label="Fin técnico" value={life?.finished_at ? format(new Date(life.finished_at), 'dd/MM/yyyy HH:mm') : '—'} />
+          <Info label="Verificada" value={life?.validated_at ? format(new Date(life.validated_at), 'dd/MM/yyyy HH:mm') : '—'} />
+          <Info label="Vencimiento original" value={life && (life.due_date || life.due_km != null || life.due_hours != null) ? [life.due_date, life.due_km != null ? `${Number(life.due_km).toLocaleString('es-PE')} km` : null, life.due_hours != null ? `${life.due_hours} h` : null].filter(Boolean).join(' · ') : '—'} />
+          <Info label="Cumplimiento" value={life?.preventive_compliance ? life.preventive_compliance.replace('_', ' ') : '—'} />
         </div>
+        {waits.length > 0 && <div className="rounded-lg border p-3">
+          <div className="mb-1 text-xs font-semibold text-slate-600">Esperas</div>
+          <ul className="space-y-0.5 text-xs text-slate-700">{waits.map(w => <li key={w.id}><b>{w.reason}</b> · {format(new Date(w.started_at), 'dd/MM HH:mm')} → {w.ended_at ? format(new Date(w.ended_at), 'dd/MM HH:mm') : 'abierta'}{w.notes ? ` · ${w.notes}` : ''}</li>)}</ul>
+        </div>}
         </>}
 
         {activeTab === 'alcance' && <section className="space-y-4">
@@ -635,7 +707,7 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
             <input required className={`${field} min-w-48 flex-1`} placeholder="Sustento del presupuesto o ampliación" value={budgetForm.reason} onChange={e => setBudgetForm({ ...budgetForm, reason: e.target.value })} />
             <button disabled={busy} className="rounded-lg bg-[#002855] px-3 py-1.5 text-sm text-white">Solicitar aprobación</button>
           </form>}
-          <p className="text-xs text-slate-500">La OT requiere presupuesto aprobado para autorizarse. Al registrar costos, el sistema impide exceder el monto vigente y solicita una ampliación.</p>
+          <p className="text-xs text-slate-500">La OT requiere presupuesto aprobado por el Jefe de Distribución para autorizarse. Los costos van sin IGV en soles: el costo real es lo facturado, o lo autorizado mientras no haya factura (no se suman); estimados y cotizaciones no cuentan como costo.</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <Info label="Mano de obra" value={money(order.labor_cost)} /><Info label="Repuestos" value={money(order.parts_cost)} />
             <Info label="Servicios" value={money(order.services_cost)} /><Info label="Total" value={money(order.total_cost)} />
@@ -646,7 +718,14 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
                 <tr key={c.id}>
                   <td className="py-1.5">{c.cost_type.replace('_', ' ')}</td>
                   <td className="py-1.5 text-slate-600">{c.description}{c.quantity ? ` (x${c.quantity})` : ''}{c.document_number ? ` · doc ${c.document_number}` : ''}</td>
-                  <td className="py-1.5 text-right">{money(c.amount)}</td>
+                  <td className="py-1.5"><span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{c.stage}</span>{c.currency !== 'PEN' ? <span className="ml-1 text-[10px] text-slate-500">{c.currency} {c.original_amount} · TC {c.exchange_rate}</span> : null}</td>
+                  <td className="py-1.5 text-right">{money(c.amount)}{Number(c.amount) === 0 && c[STAGE_COLUMN[c.stage]] != null ? <span className="block text-[10px] text-slate-400">{c.stage.toLowerCase()} {money(Number(c[STAGE_COLUMN[c.stage]]))}</span> : null}{c.igv_amount > 0 ? <span className="block text-[10px] text-slate-400">IGV {money(c.igv_amount)}</span> : null}</td>
+                  <td className="py-1.5 text-right">
+                    {!locked && c.cost_type !== 'REPUESTOS' && c.stage !== 'PAGADO' && <select aria-label="Avanzar etapa" className="rounded border px-1 py-0.5 text-[11px]" value="" onChange={e => { if (e.target.value) void advanceCost(c, e.target.value as CostStage) }}>
+                      <option value="">Etapa…</option>
+                      {COST_STAGES.slice(COST_STAGES.indexOf(c.stage) + 1).map(st => <option key={st} value={st}>{st.toLowerCase()}</option>)}
+                    </select>}
+                  </td>
                   <td className="py-1.5 text-right w-8">
                     {!locked && c.cost_type !== 'REPUESTOS' && <button onClick={() => setCostToRemove(c)} className="text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>}
                   </td>
@@ -660,7 +739,18 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
                 <select className={field} value={costForm.cost_type} onChange={e => setCostForm({ ...costForm, cost_type: e.target.value })}>
                   <option value="MANO_OBRA">Mano de obra</option><option value="SERVICIOS">Servicio externo</option><option value="OTROS">Otros</option>
                 </select>
-                <input required type="number" min={0} step="0.01" className={`${field} w-28`} placeholder="Monto" value={costForm.amount} onChange={e => setCostForm({ ...costForm, amount: e.target.value })} />
+                <select aria-label="Etapa del costo" className={field} value={costForm.stage} onChange={e => setCostForm({ ...costForm, stage: e.target.value as CostStage })}>
+                  {COST_STAGES.map(st => <option key={st} value={st}>{st.charAt(0) + st.slice(1).toLowerCase()}</option>)}
+                </select>
+                <input required type="number" min={0} step="0.01" className={`${field} w-32`} placeholder="Monto sin IGV S/" value={costForm.amount} onChange={e => setCostForm({ ...costForm, amount: e.target.value })} />
+                <input type="number" min={0} step="0.01" className={`${field} w-24`} placeholder="IGV S/" value={costForm.igv} onChange={e => setCostForm({ ...costForm, igv: e.target.value })} />
+                <select aria-label="Moneda original" className={field} value={costForm.currency} onChange={e => setCostForm({ ...costForm, currency: e.target.value })}>
+                  <option value="PEN">PEN</option><option value="USD">USD</option><option value="EUR">EUR</option>
+                </select>
+                {costForm.currency !== 'PEN' && <>
+                  <input required type="number" min={0} step="0.01" className={`${field} w-28`} placeholder={`Monto ${costForm.currency}`} value={costForm.original_amount} onChange={e => setCostForm({ ...costForm, original_amount: e.target.value })} />
+                  <input required type="number" min={0.0001} step="0.0001" className={`${field} w-24`} placeholder="T. cambio" value={costForm.exchange_rate} onChange={e => setCostForm({ ...costForm, exchange_rate: e.target.value })} />
+                </>}
                 <input className={`${field} flex-1 min-w-40`} placeholder="Descripción" value={costForm.description} onChange={e => setCostForm({ ...costForm, description: e.target.value })} />
                 <input className={`${field} w-32`} placeholder="N° comprobante" value={costForm.document_number} onChange={e => setCostForm({ ...costForm, document_number: e.target.value })} />
                 <button className="px-3 border rounded-lg">Agregar costo</button>
