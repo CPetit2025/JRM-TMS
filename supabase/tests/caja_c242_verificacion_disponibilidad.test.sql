@@ -38,6 +38,10 @@ BEGIN
   IF NOT COALESCE((r->>'success')::boolean, false) THEN RAISE EXCEPTION 'CAJA C242 FAIL: no termina la OT (%)', r; END IF;
   r := public.transition_work_order(wo, 'VALIDACION', NULL);
   IF COALESCE((r->>'success')::boolean, true) THEN RAISE EXCEPTION 'CAJA C242 FAIL: quien ejecutó verificó su OT'; END IF;
+  -- Escritura directa de la lectura de ejecución: se ignora
+  UPDATE public.maintenance_work_orders SET executed_odometer = -1, preventive_compliance = 'A_TIEMPO' WHERE id = wo;
+  IF (SELECT executed_odometer = -1 OR preventive_compliance IS NOT NULL FROM public.maintenance_work_orders WHERE id = wo) THEN
+    RAISE EXCEPTION 'CAJA C242 FAIL: la pantalla sobrescribe la lectura de ejecución o el cumplimiento'; END IF;
   r := public.complete_maintenance_order(wo, '[]'::jsonb, NULL);
   IF COALESCE((r->>'success')::boolean, true) THEN RAISE EXCEPTION 'CAJA C242 FAIL: se cerró sin VALIDACION'; END IF;
 

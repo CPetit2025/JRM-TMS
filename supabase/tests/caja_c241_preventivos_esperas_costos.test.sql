@@ -34,6 +34,12 @@ BEGIN
   VALUES ('C241-' || left(gen_random_uuid()::text, 8), v.id, v.plate, 'Prueba C241', 'CORRECTIVA', 'EN_PROCESO', v.site_id) RETURNING id INTO wo;
   r := public.work_order_wait_start(wo, 'OTRO', NULL);
   IF COALESCE((r->>'success')::boolean, true) THEN RAISE EXCEPTION 'CAJA C241 FAIL: motivo de espera libre aceptado'; END IF;
+  r := public.work_order_wait_start(wo, 'VERIFICACION', NULL);
+  IF COALESCE((r->>'success')::boolean, true) THEN RAISE EXCEPTION 'CAJA C241 FAIL: espera de verificación abierta a mano'; END IF;
+  -- La lectura de ejecución y el cumplimiento no se escriben directo desde una sesión (guarda del invocador)
+  IF (SELECT prosecdef FROM pg_proc WHERE oid = 'public.work_order_execution_guard()'::regprocedure)
+     OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_work_order_execution_guard') THEN
+    RAISE EXCEPTION 'CAJA C241 FAIL: la lectura de ejecución se puede sobrescribir desde la pantalla'; END IF;
   r := public.transition_work_order(wo, 'EN_ESPERA', 'sin motivo');
   IF COALESCE((r->>'success')::boolean, true) THEN RAISE EXCEPTION 'CAJA C241 FAIL: espera sin motivo aceptada'; END IF;
   r := public.work_order_wait_start(wo, 'REPUESTO', 'Filtro');

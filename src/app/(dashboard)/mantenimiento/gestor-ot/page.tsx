@@ -79,7 +79,7 @@ interface WaitLine { id: string; reason: string; started_at: string; ended_at: s
 interface Lifecycle { finished_at: string | null; validated_at: string | null; due_date: string | null; due_km: number | null; due_hours: number | null; preventive_compliance: string | null }
 const COST_STAGES: CostStage[] = ['ESTIMADO', 'COTIZADO', 'AUTORIZADO', 'FACTURADO', 'PAGADO']
 const STAGE_COLUMN = { ESTIMADO: 'estimated_amount', COTIZADO: 'quoted_amount', AUTORIZADO: 'authorized_amount', FACTURADO: 'invoiced_amount', PAGADO: 'paid_amount' } as const
-const WAIT_REASONS = [['REPUESTO', 'Repuesto'], ['AUTORIZACION', 'Autorización'], ['TALLER', 'Taller / proveedor'], ['VERIFICACION', 'Verificación']] as const
+const WAIT_REASONS = [['REPUESTO', 'Repuesto'], ['AUTORIZACION', 'Autorización'], ['TALLER', 'Taller / proveedor']] as const
 interface SparePart { id: string; internal_code: string; name: string; current_stock: number | null; available: number | null }
 interface Option { id: string; label: string }
 interface WorkOrderReport { id: string; report_type: MaintenanceReportKind; version: number; storage_bucket: string; storage_path: string; created_at: string; sha256: string | null }

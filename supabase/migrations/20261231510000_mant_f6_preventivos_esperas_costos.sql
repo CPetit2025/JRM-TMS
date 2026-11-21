@@ -38,12 +38,6 @@ BEGIN
     IF OLD.due_date IS NOT NULL OR OLD.due_km IS NOT NULL OR OLD.due_hours IS NOT NULL THEN
       NEW.due_date := OLD.due_date; NEW.due_km := OLD.due_km; NEW.due_hours := OLD.due_hours;
     END IF;
-    IF current_user IN ('authenticated', 'anon') THEN
-      NEW.preventive_compliance := OLD.preventive_compliance;
-      NEW.executed_odometer := OLD.executed_odometer; NEW.executed_hours := OLD.executed_hours;
-    END IF;
-  ELSE
-    NEW.preventive_compliance := NULL; NEW.executed_odometer := NULL; NEW.executed_hours := NULL;
   END IF;
   IF NEW.plan_id IS NOT NULL AND NEW.due_date IS NULL AND NEW.due_km IS NULL AND NEW.due_hours IS NULL THEN
     SELECT * INTO p FROM public.maintenance_plans WHERE id = NEW.plan_id;
@@ -57,6 +51,25 @@ REVOKE ALL ON FUNCTION public.work_order_plan_due() FROM PUBLIC, anon, authentic
 DROP TRIGGER IF EXISTS trg_work_order_plan_due ON public.maintenance_work_orders;
 CREATE TRIGGER trg_work_order_plan_due BEFORE INSERT OR UPDATE ON public.maintenance_work_orders
   FOR EACH ROW EXECUTE FUNCTION public.work_order_plan_due();
+
+-- Cumplimiento y lectura de ejecución: solo los fija el servidor (transition_work_order / complete_maintenance_order).
+-- Función del invocador (no SECURITY DEFINER) para distinguir la escritura directa de una sesión de usuario.
+CREATE OR REPLACE FUNCTION public.work_order_execution_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
+BEGIN
+  IF current_user IN ('authenticated', 'anon') THEN
+    IF TG_OP = 'INSERT' THEN
+      NEW.preventive_compliance := NULL; NEW.executed_odometer := NULL; NEW.executed_hours := NULL;
+    ELSE
+      NEW.preventive_compliance := OLD.preventive_compliance;
+      NEW.executed_odometer := OLD.executed_odometer; NEW.executed_hours := OLD.executed_hours;
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS trg_work_order_execution_guard ON public.maintenance_work_orders;
+CREATE TRIGGER trg_work_order_execution_guard BEFORE INSERT OR UPDATE ON public.maintenance_work_orders
+  FOR EACH ROW EXECUTE FUNCTION public.work_order_execution_guard();
 
 -- OT abiertas de planes: su plan aún no se recalculó, así que su vencimiento vigente es el original.
 -- Las cerradas perdieron el original al recalcularse el plan: quedan sin vencimiento (fuera del cumplimiento).
@@ -130,8 +143,9 @@ BEGIN
   IF v_wo.status IN ('CERRADA', 'CANCELADA') THEN
     RETURN jsonb_build_object('success', false, 'error', 'La OT está ' || v_wo.status);
   END IF;
-  IF v_reason NOT IN ('REPUESTO', 'AUTORIZACION', 'TALLER', 'VERIFICACION') THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Motivo de espera inválido (REPUESTO, AUTORIZACION, TALLER o VERIFICACION)');
+  -- VERIFICACION la abre solo el fin técnico (transition_work_order → TERMINADA) y la cierra la verificación
+  IF v_reason NOT IN ('REPUESTO', 'AUTORIZACION', 'TALLER') THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Motivo de espera inválido (REPUESTO, AUTORIZACION o TALLER; la de verificación se abre al registrar el fin técnico)');
   END IF;
   IF EXISTS (SELECT 1 FROM public.maintenance_work_order_waits WHERE work_order_id = v_wo.id AND ended_at IS NULL) THEN
     RETURN jsonb_build_object('success', false, 'error', 'La OT ya tiene una espera abierta: ciérrela antes de abrir otra');
