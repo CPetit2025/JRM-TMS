@@ -1,10 +1,15 @@
 -- C233: km del viaje por odómetro con foto (salida y llegada obligatorias en sesiones de usuario), GPS como control con
 -- marca de observado, fuente del km registrada; factura de flete de terceros con IGV y moneda aparte. Siempre se revierte.
 BEGIN;
--- Cambio de estado como lo hace una RPC de la app (definer, sesión de usuario)
-CREATE FUNCTION pg_temp.c233_set(p uuid, s text, km numeric DEFAULT NULL, odo numeric DEFAULT NULL) RETURNS void LANGUAGE sql SECURITY DEFINER AS $$
-  UPDATE public.dispatches SET status = coalesce(s, status), actual_distance_km = coalesce(km, actual_distance_km), start_odometer = coalesce(odo, start_odometer) WHERE id = p
-$$;
+-- Cambio de estado en una sesión de usuario de oficina (no el conductor): el preuso del día no es objeto de esta prueba
+CREATE FUNCTION pg_temp.c233_set(p uuid, s text, km numeric DEFAULT NULL, odo numeric DEFAULT NULL) RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE a text := current_setting('request.jwt.claim.sub', true); b text := current_setting('request.jwt.claims', true);
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000000', true);
+  PERFORM set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000000","role":"authenticated"}', true);
+  UPDATE public.dispatches SET status = coalesce(s, status), actual_distance_km = coalesce(km, actual_distance_km), start_odometer = coalesce(odo, start_odometer) WHERE id = p;
+  PERFORM set_config('request.jwt.claim.sub', a, true); PERFORM set_config('request.jwt.claims', b, true);
+END $$;
 GRANT EXECUTE ON FUNCTION pg_temp.c233_set(uuid, text, numeric, numeric) TO authenticated;
 DO $test$
 DECLARE drv record; did uuid; ok boolean; msg text; ph1 text; ph2 text; d record; m uuid; t record; r jsonb; p record;
@@ -65,6 +70,13 @@ BEGIN
   BEGIN PERFORM public.dispatch_freight_invoice_save(did, '{"provider_ruc":"20999999991","document_series":"F001","document_number":"10","issue_date":"2026-11-01","currency":"PEN","base_amount":50,"igv_amount":9}'); ok := true;
   EXCEPTION WHEN OTHERS THEN ok := false; END;
   IF ok THEN RAISE EXCEPTION 'CAJA C233 FAIL: aceptó factura de flete en un viaje de unidad propia'; END IF;
-  RAISE EXCEPTION 'CAJA C233 PASS: odómetro con foto obligatorio al salir y volver, km por odómetro con GPS de control y factura de flete con IGV y moneda aparte';
+  -- Anulación: exige motivo, sale del facturado y libera el número para registrarlo corregido
+  BEGIN PERFORM public.dispatch_freight_invoice_void((r->>'id')::bigint, ''); ok := true; EXCEPTION WHEN OTHERS THEN ok := false; END;
+  IF ok THEN RAISE EXCEPTION 'CAJA C233 FAIL: anuló la factura sin motivo'; END IF;
+  PERFORM public.dispatch_freight_invoice_void((r->>'id')::bigint, 'Monto mal digitado');
+  PERFORM public.dispatch_freight_invoice_save(t.id, '{"provider_ruc":"20999999991","document_series":"F001","document_number":"000123","issue_date":"2026-11-01","currency":"USD","base_amount":110,"igv_amount":19.8,"exchange_rate":3.75}');
+  IF (SELECT count(*) FROM public.dispatch_freight_invoices WHERE dispatch_id = t.id AND provider_ruc = '20999999991' AND voided_at IS NULL) <> 1 THEN
+    RAISE EXCEPTION 'CAJA C233 FAIL: la factura anulada sigue vigente o no se pudo registrar corregida'; END IF;
+  RAISE EXCEPTION 'CAJA C233 PASS: odómetro con foto obligatorio al salir y volver, km por odómetro con GPS de control y factura de flete con IGV y moneda aparte (anulación con motivo)';
 END $test$;
 ROLLBACK;
