@@ -21,16 +21,21 @@ export default function GastosPage() {
   const [loading, setLoading] = useState(true)
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
-  const { user, driver, trip, loading: contextLoading, refresh } = useActiveTrip()
+  const { user, driver, trip, summary, loading: contextLoading, refresh } = useActiveTrip()
+  // Sin viaje activo: los comprobantes del viaje recién cerrado se cargan eligiéndolo (últimos 7 días)
+  const [pickedId, setPickedId] = useState<string | null>(null)
+  const [since] = useState(() => Date.now() - 7 * 86400_000)
+  const recentTrips = useMemo(() => summary.recent.filter(r => !r.scheduled_departure || new Date(r.scheduled_departure).getTime() >= since), [summary.recent, since])
 
   useEffect(() => {
     if (contextLoading) return
     if (!user) { router.push('/app'); return }
-    if (!trip) { setDispatch(null); setLoading(false); return }
-    const current = { id: trip.id, dispatch_number: trip.dispatch_number, vehicle_plate: trip.vehicle_plate, status: trip.status }
+    const source = trip ?? recentTrips.find(r => r.id === pickedId)
+    if (!source) { setDispatch(null); setLoading(false); return }
+    const current = { id: source.id, dispatch_number: source.dispatch_number, vehicle_plate: source.vehicle_plate, status: source.status }
     setDispatch(current)
     void fetchExpenses(current.id)
-  }, [contextLoading, router, trip, user])
+  }, [contextLoading, router, trip, user, pickedId, recentTrips])
 
   const fetchExpenses = async (dispatchId: string) => {
     setLoading(true)
@@ -212,7 +217,9 @@ export default function GastosPage() {
           <DollarSign className="w-8 h-8 text-slate-400" />
         </div>
         <h2 className="text-lg font-black text-slate-800 mb-2">Sin Ruta Activa</h2>
-        <p className="text-slate-500 text-sm mb-6">No tienes despacho activo para registrar gastos.</p>
+        <p className="text-slate-500 text-sm mb-4">{recentTrips.length ? 'Elige el viaje del comprobante:' : 'No tienes despacho activo para registrar gastos.'}</p>
+        {recentTrips.length > 0 && <div className="mb-4 space-y-2">{recentTrips.map(r => <button key={r.id} type="button" onClick={() => setPickedId(r.id)}
+          className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm font-semibold text-[#002855]">{r.dispatch_number} · {r.vehicle_plate || '—'}{r.scheduled_departure ? ` · ${new Date(r.scheduled_departure).toLocaleDateString('es-PE')}` : ''}</button>)}</div>}
         <button onClick={() => router.push('/app/ruta')} className="w-full bg-[#002855] text-white py-3 rounded-xl font-bold">
           Ir a Mi Ruta
         </button>
