@@ -247,6 +247,19 @@ export function syncOfflineActions(): Promise<number> {
           const { error } = await supabase.rpc('route_stop_wait', { p_id: p.wait_id, p_dispatch: p.dispatch_id, p_request: p.request_id,
             p_reason: p.reason ?? null, p_note: p.note ?? null, p_started_at: p.started_at, p_ended_at: p.ended_at ?? null })
           if (error) throw error
+        } else if (action.type === 'dispatch_odometer') {
+          // Odómetro de salida o llegada del viaje: sube la foto del tablero y registra la lectura
+          const { data: auth } = await supabase.auth.getUser()
+          if (!auth.user || auth.user.id !== action.payload.user_id) throw new Error('La sesión no corresponde a esta lectura')
+          const kind = photoKind(action.payload.photo_base64)
+          if (!kind) throw new Error('Foto del odómetro no válida: use JPG, PNG o WEBP')
+          const path = `${auth.user.id}/${action.payload.dispatch_id}/odometro/${action.id}.${kind.ext}`
+          const blob = await (await fetch(String(action.payload.photo_base64))).blob()
+          const { error: upError } = await supabase.storage.from('driver_evidence').upload(path, blob, { upsert: false, contentType: kind.type })
+          if (upError && String(upError.statusCode) !== '409') throw upError
+          const { error } = await supabase.rpc('dispatch_record_odometer', { p_dispatch: action.payload.dispatch_id, p_kind: action.payload.kind,
+            p_value: action.payload.value, p_photo: path, p_at: action.payload.at })
+          if (error) throw error
         } else if (action.type === 'delivery_depart') {
           const p = action.payload
           const { error } = await supabase.rpc('delivery_depart_at', { p_dispatch: p.dispatch_id, p_request: p.request_id, p_at: p.at })
