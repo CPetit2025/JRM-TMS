@@ -241,6 +241,22 @@ export function syncOfflineActions(): Promise<number> {
             p_payload: { dispatch_id: String(action.payload.p_dispatch_id || '') },
           })
           if (error) throw error
+        } else if (action.type === 'route_stop_wait') {
+          // Inicio o fin de una espera: el id de la espera identifica la operación en el servidor
+          const p = action.payload
+          const { error } = await supabase.rpc('route_stop_wait', { p_id: p.wait_id, p_dispatch: p.dispatch_id, p_request: p.request_id,
+            p_reason: p.reason ?? null, p_note: p.note ?? null, p_started_at: p.started_at, p_ended_at: p.ended_at ?? null })
+          if (error) throw error
+        } else if (action.type === 'delivery_depart') {
+          const p = action.payload
+          const { error } = await supabase.rpc('delivery_depart_at', { p_dispatch: p.dispatch_id, p_request: p.request_id, p_at: p.at })
+          if (error) throw error
+        } else if (action.type === 'route_incident_report') {
+          const p = action.payload
+          const { error } = await supabase.rpc('route_incident_report', { p_id: action.id, p_dispatch: p.dispatch_id, p_request: p.request_id ?? null,
+            p_category: p.category, p_description: p.description, p_reported_cause: p.reported_cause ?? null, p_occurred_at: p.occurred_at,
+            p_lat: p.latitude ?? null, p_lon: p.longitude ?? null })
+          if (error) throw error
         } else {
           throw new Error(`Acción offline no soportada: ${action.type}`)
         }
