@@ -9,6 +9,7 @@ import * as api from '@/lib/indicadores/api'
 import type { Accion, Detalle, FilaDetalle, KpiResultado } from '@/lib/indicadores/api'
 import { dimsTxt, equipoTxt, estadoNota,fechaTxt, metaTxt, MOTIVOS, motivoTxt, num, valorTxt } from '@/lib/indicadores/format'
 import { EstadoBadge, Tendencia } from './KpiCard'
+import { aplicarFiltros, DesgloseKpi, resumen, type Filtros } from './DesgloseKpi'
 
 const ORIGEN: Record<string, string> = { AUTO: 'bg-slate-100 text-slate-700', CORREGIDO: 'bg-blue-50 text-blue-800', EXCLUIDO: 'bg-amber-50 text-amber-800' }
 const CORR: Record<string, string> = { PROPUESTA: 'Propuesta', APROBADA: 'Aprobada', RECHAZADA: 'Rechazada' }
@@ -87,12 +88,16 @@ export function FichaKpi({ kpi, desde, hasta, cerrado, onClose, onChange }: { kp
     return () => { vivo = false }
   }, [kpi.codigo, desde, hasta, nonce])
   const bloqueado = cerrado || !!data?.cerrado
+  const [filtros, setFiltros] = useState<Filtros>({})
+  const filas = data ? aplicarFiltros(data.filas, filtros) : []
   const exportar = async () => {
     if (!data) return
     const { exportAptXlsx } = await import('@/lib/apt/export')
+    const r = resumen(filas, kpi)
     exportAptXlsx(`${kpi.codigo} ${desde}`, {
-      Ficha: [{ Código: kpi.codigo, Indicador: kpi.nombre, Equipo: equipoTxt(kpi.equipo), Periodo: `${desde} → ${hasta}`, Valor: kpi.valor ?? '', Unidad: kpi.unidad, Meta: metaTxt(kpi), Estado: kpi.estado, Cobertura: kpi.cobertura ?? '', Fórmula: kpi.formula, Fuente: kpi.fuente, 'Nota de datos': kpi.nota_datos || '' }],
-      Detalle: data.filas.map(f => ({ Referencia: f.ref, Fecha: f.fecha, Etiqueta: f.etiqueta, Numerador: f.num ?? '', Denominador: f.den ?? '', 'Con dato': f.con_dato ? 'Sí' : 'No', 'Numerador original': f.num_orig ?? '', 'Denominador original': f.den_orig ?? '', Detalle: dimsTxt(f.dims).join(' · '), Origen: f.origen, Responsable: f.responsable_nombre || '',
+      Ficha: [{ Código: kpi.codigo, Indicador: kpi.nombre, Equipo: equipoTxt(kpi.equipo), Periodo: `${desde} → ${hasta}`, Valor: kpi.valor ?? '', Unidad: kpi.unidad, Meta: metaTxt(kpi), Estado: kpi.estado, Cobertura: kpi.cobertura ?? '', Fórmula: kpi.formula, Fuente: kpi.fuente, 'Nota de datos': kpi.nota_datos || '',
+        Filtros: Object.entries(filtros).map(([k, v]) => `${k}: ${v}`).join(' · ') || 'Ninguno', 'Valor filtrado': Object.keys(filtros).length ? r.estado || r.valor || '' : '' }],
+      Detalle: filas.map(f => ({ Referencia: f.ref, Fecha: f.fecha, Etiqueta: f.etiqueta, Numerador: f.num ?? '', Denominador: f.den ?? '', 'Con dato': f.con_dato ? 'Sí' : 'No', 'Numerador original': f.num_orig ?? '', 'Denominador original': f.den_orig ?? '', Detalle: dimsTxt(f.dims).join(' · '), Origen: f.origen, Responsable: f.responsable_nombre || '',
         Corrección: f.correccion ? `${CORR[f.correccion.estado]} · ${f.correccion.accion === 'EXCLUIR' ? 'Excluir' : 'Corregir'} · ${motivoTxt(f.correccion.motivo)}` : '' })),
     })
   }
@@ -113,9 +118,10 @@ export function FichaKpi({ kpi, desde, hasta, cerrado, onClose, onChange }: { kp
         {error ? <p role="alert" className="text-red-700">{error} <button onClick={cargar} className="font-semibold underline">Reintentar</button></p>
           : !data ? <p role="status" className="flex items-center gap-2 text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />Cargando detalle…</p>
           : !data.filas.length ? <p className="text-slate-500">Sin registros en el periodo.</p>
-          : <div className="max-h-[50vh] overflow-auto rounded-lg border"><DataTable dense className="w-full min-w-[960px] text-xs">
+          : <div className="space-y-3"><DesgloseKpi kpi={kpi} filas={data.filas} filtros={filtros} onFiltros={setFiltros} />
+          <div className="max-h-[50vh] overflow-auto rounded-lg border"><DataTable dense className="w-full min-w-[960px] text-xs">
             <thead className="sticky top-0 bg-slate-50 text-left text-slate-600"><tr><th className="p-2">Referencia</th><th className="p-2">Fecha</th><th className="p-2">Etiqueta</th><th className="p-2">Resultado</th><th className="p-2">Detalle</th><th className="p-2">Origen</th><th className="p-2">Responsable</th><th className="p-2">Corrección</th><th className="p-2"><span className="sr-only">Acciones</span></th></tr></thead>
-            <tbody>{data.filas.map(f => <tr key={`${f.ref}|${f.fecha}`} className="border-t">
+            <tbody>{filas.map(f => <tr key={`${f.ref}|${f.fecha}`} className="border-t">
               <td className="p-2 font-mono">{f.ref}</td><td className="whitespace-nowrap p-2">{fechaTxt(f.fecha)}</td><td className="p-2">{f.etiqueta}</td>
               <td className="p-2">{f.origen === 'CORREGIDO' && (f.num_orig != null || f.den_orig != null) ? <>{resultadoFila({ num: f.num_orig, den: f.den_orig, con_dato: true }, kpi.unidad)} → <b>{resultadoFila(f, kpi.unidad)}</b></> : resultadoFila(f, kpi.unidad)}</td>
               <td className="max-w-[260px] p-2 text-slate-600">{dimsTxt(f.dims).join(' · ') || '—'}</td>
@@ -124,7 +130,7 @@ export function FichaKpi({ kpi, desde, hasta, cerrado, onClose, onChange }: { kp
               <td className="p-2">{f.correccion ? <span title={f.correccion.detalle || undefined}>{CORR[f.correccion.estado]} · {f.correccion.accion === 'EXCLUIR' ? 'Excluir' : `→ ${resultadoFila({ num: f.correccion.num_nuevo, den: f.correccion.den_nuevo, con_dato: true }, kpi.unidad)}`} · {motivoTxt(f.correccion.motivo)}<br /><span className="text-slate-500">{f.correccion.propuesto_por_nombre}</span></span> : '—'}</td>
               <td className="p-2">{f.puede_proponer && !f.cerrado && !bloqueado &&<button onClick={() => setFila(f)} className="flex items-center gap-1 whitespace-nowrap rounded-lg border px-2 py-1 font-semibold text-[#002855]"><PencilLine className="h-3.5 w-3.5" aria-hidden />Proponer corrección</button>}</td>
             </tr>)}</tbody>
-          </DataTable></div>}
+          </DataTable></div></div>}
       </div>
     </div>
     {fila && <Proponer kpi={kpi} fila={fila} onClose={() => setFila(null)} onDone={() => { setFila(null); cargar(); onChange() }} />}

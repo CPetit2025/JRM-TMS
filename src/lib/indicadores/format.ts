@@ -20,6 +20,7 @@ export const ESTADO: Record<EstadoKpi, { label: string; badge: string; text: str
   NO_CUMPLE: { label: 'No cumple', badge: 'bg-red-50 text-red-800 border-red-200', text: 'text-red-700', dot: '#b91c1c', evaluado: true },
   DATOS_INSUFICIENTES: { label: 'Datos insuficientes', badge: 'bg-sky-50 text-sky-800 border-sky-200', text: 'text-slate-400', dot: '#94a3b8', evaluado: false },
   SIN_REGISTROS: { label: 'Sin registros', badge: 'bg-slate-100 text-slate-700 border-slate-200', text: 'text-slate-400', dot: '#94a3b8', evaluado: false },
+  NO_CALCULABLE: { label: 'No calculable', badge: 'bg-slate-100 text-slate-700 border-slate-200', text: 'text-slate-400', dot: '#94a3b8', evaluado: false },
   INFORMATIVO: { label: 'Informativo', badge: 'bg-blue-50 text-blue-800 border-blue-200', text: 'text-slate-900', dot: '#1d4ed8', evaluado: false },
   PENDIENTE_DATOS: { label: 'Pendiente de datos', badge: 'bg-slate-100 text-slate-700 border-slate-200', text: 'text-slate-400', dot: '#94a3b8', evaluado: false },
 }
@@ -29,6 +30,7 @@ export const estadoInfo = (e: string) => ESTADO[e as EstadoKpi] || ESTADO.PENDIE
 export function estadoNota(k: Pick<KpiResultado, 'estado' | 'nota_datos' | 'cobertura'>): string | null {
   if (k.estado === 'PENDIENTE_DATOS') return `Pendiente de datos${k.nota_datos ? `: ${k.nota_datos}` : ''}`
   if (k.estado === 'SIN_REGISTROS') return 'Sin registros en el periodo'
+  if (k.estado === 'NO_CALCULABLE') return 'No calculable: hay registros en el periodo, pero ninguno con el dato necesario'
   if (k.estado === 'DATOS_INSUFICIENTES') return `Datos insuficientes: cobertura ${num(k.cobertura)} %`
   return null
 }
@@ -43,6 +45,7 @@ export function valorTxt(v: number | null | undefined, unidad: string): string {
   if (unidad === '%') return `${n} %`
   if (unidad === 'n') return n
   if (unidad === 'S/ por km') return `S/ ${n} por km`
+  if (unidad === 'S/ por viaje') return `S/ ${n} por viaje`
   return `${n} ${unidad}`
 }
 export const metaTxt = (k: Pick<KpiResultado, 'meta' | 'sentido' | 'unidad'>) => k.meta == null ? 'Sin meta' : `${k.sentido === 'MENOR' ? '≤' : '≥'} ${valorTxt(k.meta, k.unidad)}`
