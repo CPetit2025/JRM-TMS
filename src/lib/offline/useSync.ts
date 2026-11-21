@@ -14,16 +14,19 @@ export function useSync() {
       const offlineExpenses = await db.expenses.where('synced').equals(0).toArray();
       for (const exp of offlineExpenses) {
         try {
+          // Antes el error se ignoraba y el gasto quedaba como enviado: solo se marca si el servidor lo confirma.
+          // La ruta de la foto usa el id de la operación, así un reintento no duplica la foto ni el gasto.
           let receipt_url = null;
           if (exp.receipt_blob) {
             const { data: userData } = await supabase.auth.getUser();
-            const filePath = `${userData.user?.id}/${exp.dispatch_id}/gastos/${crypto.randomUUID()}-offline.jpg`;
+            const filePath = `${userData.user?.id}/${exp.dispatch_id}/gastos/${exp.client_operation_id}-offline.jpg`;
             const { error: upErr } = await supabase.storage.from('driver_evidence').upload(filePath, exp.receipt_blob, { contentType: 'image/jpeg' });
-            if (!upErr) receipt_url = filePath;
+            if (upErr && String((upErr as { statusCode?: unknown }).statusCode) !== '409') throw upErr;
+            receipt_url = filePath;
           }
-          
+          let saveError: { code?: string; message: string } | null = null;
           if (exp.expense_type === 'COMBUSTIBLE') {
-            await supabase.rpc('register_fuel_expense', {
+            ({ error: saveError } = await supabase.rpc('register_fuel_expense', {
               p_dispatch_id: exp.dispatch_id,
               p_driver_id: exp.driver_id,
               p_amount: exp.amount,
@@ -32,18 +35,21 @@ export function useSync() {
               p_receipt_url: receipt_url,
               p_description: exp.description,
               p_client_operation_id: exp.client_operation_id
-            });
+            }));
           } else {
-            await supabase.from('dispatch_expenses').insert([{ 
+            ({ error: saveError } = await supabase.from('dispatch_expenses').insert([{
               dispatch_id: exp.dispatch_id, driver_id: exp.driver_id, expense_type: exp.expense_type,
               amount: exp.amount, description: exp.description, receipt_url,
-              status: 'PENDIENTE', created_by: (await supabase.auth.getUser()).data.user?.id, 
-              client_operation_id: exp.client_operation_id 
-            }]);
+              status: 'PENDIENTE', created_by: (await supabase.auth.getUser()).data.user?.id,
+              client_operation_id: exp.client_operation_id
+            }]));
           }
+          // 23505: la misma operación ya se registró en un intento anterior
+          if (saveError && saveError.code !== '23505') throw saveError;
           await db.expenses.update(exp.id!, { synced: 1 });
         } catch (e) {
           console.error('Failed to sync expense', e);
+          toast.warning(`Gasto ${exp.expense_type} pendiente de envío: ${e && typeof e === 'object' && 'message' in e ? String(e.message) : 'error de conexión'}`);
         }
       }
 
