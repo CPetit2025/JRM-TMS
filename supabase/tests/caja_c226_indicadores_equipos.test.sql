@@ -20,8 +20,8 @@ BEGIN
   SELECT * INTO wp FROM public.kpi_eq_rango('SEMANAL', hoy - 7);
   SELECT * INTO m FROM public.kpi_eq_rango('MENSUAL', (date_trunc('month', hoy) - interval '1 month')::date);
 
-  -- T1: catálogo de 24 KPI, 6 por equipo
-  IF (SELECT count(*) FROM public.kpi_eq_def) = 24 AND NOT EXISTS (SELECT 1 FROM public.kpi_eq_def GROUP BY equipo HAVING count(*) <> 6)
+  -- T1: catálogo base de 24 KPI (6 por equipo) más los de Transporte de la fase 8 (D7, D8, T7–T10)
+  IF (SELECT count(*) FROM public.kpi_eq_def WHERE codigo !~ '^(D7|D8|T7|T8|T9|T10)$') = 24 AND NOT EXISTS (SELECT 1 FROM public.kpi_eq_def WHERE codigo !~ '^(D7|D8|T7|T8|T9|T10)$' GROUP BY equipo HAVING count(*) <> 6)
   THEN pass := pass + 1; ELSE fails := fails || 'T1 catálogo'::text; END IF;
 
   -- T2: periodos (semana lunes-domingo, quincenas 1-15 / 16-fin, mes) y cierre automático en hora de Lima
