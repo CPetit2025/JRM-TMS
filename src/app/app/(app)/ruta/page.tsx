@@ -9,6 +9,7 @@ import { nativeRouteTracker } from '@/lib/native-route-tracker'
 import { readRouteQueue, routeQueueKey, syncRoutePoints, saveOfflineAction, syncOfflineActions } from '@/lib/route-point-sync'
 import { useActiveTrip, type ActiveTrip, type ActiveTripContextValue, type TripStop } from '@/contexts/ActiveTripContext'
 import { DriverDelivery } from '@/components/delivery/DriverDelivery'
+import { RouteIncidents } from '@/components/delivery/RouteIncidents'
 import { TripDocuments } from '@/components/evidence/TripDocuments'
 import { WmsDepartureNotice } from '@/components/despacho/WmsRelease'
 
@@ -333,6 +334,9 @@ export default function RutaActivaPage() {
           })}
         </div>
       )}
+
+      {['EN RUTA', 'EN_CURSO', 'ESPERANDO_AUTORIZACION', 'RETORNO'].includes(dispatch.status) && <div className="mt-6"><RouteIncidents dispatchId={dispatch.id}
+        stops={(dispatch.dispatch_requests || []).map(r => ({ id: r.transport_request_id, label: `${r.ot_code ? `OT ${r.ot_code}` : r.transport_requests?.request_number || 'Parada'} · ${r.party_name || ''}` }))} /></div>}
 
       {/* Fin de ruta - Esperando Autorización */}
       {dispatch.status === 'EN RUTA' && activeStep >= (dispatch.dispatch_requests?.length || 0) && (

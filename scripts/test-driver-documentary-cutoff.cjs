@@ -17,6 +17,7 @@ function fixture(documentaryOnly) {
       if (name === '@/lib/delivery') return { conformityLabels: {}, arrivalSourceLabel: () => '', deliveryTime: () => '' }
       if (name === './EvidenceForm') return { EvidenceForm: props => React.createElement('form', props) }
       if (name === './RejectionForm') return { RejectionForm: () => null }
+      if (name === './StopTimes') return { StopTimes: () => null }
       if (name === '@/lib/route-point-sync') return { readActionQueue: () => [], readRouteQueue: () => [], routeQueueKey: 'gps', saveOfflineAction: (type, payload) => queued.push({ type, payload }), syncOfflineActions: async () => {}, syncRoutePoints: async () => {} }
       return require(name)
     } }
