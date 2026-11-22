@@ -13,12 +13,12 @@ function load(file, context) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, context)
   return context.exports
 }
-function setup({ known, pl = [], states = [], tmsFails = '', env = {} }) {
+function setup({ known, pl = [], states = [], tmsFails = '', env = {}, applied = { requests: 1 } }) {
   const rpcs = [], posts = [], clients = []
   const db = { rpc: async (name, args) => {
     rpcs.push({ name, args })
     if (name === 'wh_tms_sync_claim') return { data: known, error: null }
-    if (name === 'wh_tms_sync_apply') return { data: { requests: 1 }, error: null }
+    if (name === 'wh_tms_sync_apply') return { data: applied, error: null }
     if (name === 'wh_packing_lists_unreported') return { data: pl, error: null }
     if (name === 'wh_tms_request_states') return { data: states, error: null }
     return { data: null, error: null }
@@ -92,4 +92,12 @@ test('cron del servidor: sin secreto o con secreto errado 401; con secreto sincr
   assert.equal(res.status, 200)
   assert.deepEqual(r.clients, ['admin:https://wms:service'])
   assert.ok(r.posts.some(p => p.name === 'wms_feed_solicitudes') && r.posts.some(p => p.name === 'wms_report_request_status'))
+})
+
+test('solicitudes rechazadas una por una: se aplican las demás, pero la corrida informa el error', async () => {
+  const r = setup({ known: [], applied: { requests: 2, errors: [{ request: 'RT-000901', error: 'Componentes duplicados' }] } })
+  const res = await r.sync()
+  assert.equal(res.status, 502); assert.equal(res.body.ok, false); assert.equal(res.body.synced, 2)
+  assert.match(res.body.error, /1 solicitud\(es\) sin sincronizar: RT-000901/)
+  assert.ok(r.posts.some(p => p.name === 'wms_report_request_status'), 'el latido de estados sigue saliendo')
 })

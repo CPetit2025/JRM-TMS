@@ -39,6 +39,9 @@ export async function syncWithTms(db: SupabaseClient, force: boolean): Promise<{
       const applied = await db.rpc('wh_tms_sync_apply', { p_key: key, p_rows: rows })
       if (applied.error) throw new Error(applied.error.message)
       synced = applied.data?.requests ?? 0
+      // Solicitudes rechazadas una por una: las demás ya se aplicaron, pero la corrida no es limpia (last_error ya quedó).
+      const rejected = (applied.data?.errors ?? []) as Array<{ request: string; error: string }>
+      if (rejected.length) syncError = `${rejected.length} solicitud(es) sin sincronizar: ${rejected.map(e => `${e.request}: ${e.error}`).join('; ').slice(0, 300)}`
     } catch (e) {
       syncError = e instanceof Error ? e.message : String(e)
       await db.rpc('wh_tms_sync_fail', { p_key: key, p_message: syncError })
