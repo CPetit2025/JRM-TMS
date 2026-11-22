@@ -79,10 +79,10 @@ export async function loadDataset(p: Perspective, f: Filters): Promise<Dataset> 
         'Fallas': number(r.failures), 'MTBF (h)': number(r.mtbf_hours), 'Costo': number(r.cost), 'Km': number(r.km), 'Costo/km': number(r.cost_per_km) },
       href: `/mantenimiento/flota/${encodeURIComponent(text(r.plate))}` }))
     return { source: 'get_cmms_kpis', basis: 'Eventos e intervalos del rango (Lima)', rows, metrics: [
-      metric('availability', 'Disponibilidad', d.availability_pct, '%', '1 − horas fuera de servicio / (unidades × horas del rango); intervalos fusionados.', 'up'),
-      metric('mtbf', 'MTBF', d.mtbf_hours, 'h', 'Horas disponibles de la flota / fallas reportadas en el rango.', 'up'),
-      metric('mttr', 'MTTR', d.mttr_hours, 'h', 'Promedio de indisponibilidad de OT correctivas o de emergencia cerradas en el rango.', 'down'),
-      metric('preventive', 'Participación preventiva', d.preventive_pct, '%', 'OT preventivas cerradas / OT preventivas, correctivas y de emergencia cerradas × 100.', 'up'),
+      metric('availability', 'Disponibilidad', d.availability_pct, '%', '1 − horas fuera de servicio (OT y unidades bloqueadas u observadas) / (unidades × horas transcurridas del rango); intervalos fusionados.', 'up'),
+      metric('mtbf', 'MTBF', d.mtbf_hours, 'h', 'Horas disponibles de la flota / fallas funcionales (la unidad no pudo continuar o crítica) en el rango.', 'up'),
+      metric('mttr', 'MTTR', d.mttr_hours, 'h', 'Tiempo técnico activo (sin esperas) promedio de OT correctivas o de emergencia cerradas en el rango.', 'down'),
+      metric('preventive', 'Preventivo a tiempo', d.preventive_pct, '%', 'Preventivos ejecutados antes de su vencimiento original / vencimientos del rango × 100.', 'up'),
       metric('tco', 'Costo total del período', costs.total, 'S/', 'Libro de costos de las unidades visibles en el rango.'),
     ], note: 'Estado de cada unidad: fotografía actual. Disponibilidad y costos: rango elegido. Una placa sin datos no se sustituye por la flota completa.' }
   }

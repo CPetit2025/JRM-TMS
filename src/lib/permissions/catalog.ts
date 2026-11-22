@@ -71,6 +71,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     { id: 'mantenimiento-ot', label: 'Órdenes de trabajo y repuestos' },
     { id: 'mantenimiento-planes', label: 'Preventivos y planificación' },
     { id: 'mantenimiento-finanzas', label: 'Presupuesto y planificación anual' },
+    { id: 'mantenimiento-liberacion', label: 'Mantenimiento: autorizar presupuestos, verificar OT y liberar unidades', mode: 'toggle' },
   ] },
   { title: 'Caja de Transporte', modules: [
     { id: 'caja', label: 'Panel y reportes de Caja' },

@@ -389,7 +389,8 @@ function ReadingForm({ vehicles, onSaved }: {
     })
     setSaving(false)
     if (error || !data?.success) return toast.error(error?.message || data?.error)
-    toast.success('Lectura registrada; las proyecciones se actualizaron')
+    if (data.status === 'REQUIERE_AUDITORIA') toast.warning(data.message || 'Lectura guardada para revisión; no actualiza la unidad')
+    else toast.success('Lectura registrada; las proyecciones se actualizaron')
     setOdometer(''); setHours(''); setNotes(''); onSaved()
   }
 

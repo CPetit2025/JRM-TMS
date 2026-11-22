@@ -273,9 +273,10 @@ export async function executeAiTool(
     const { data, error } = await supabase.rpc('get_cmms_kpis', { p_start: ymd(start), p_end: ymd(end), p_plates: null })
     if (error) throw new Error('KPI de mantenimiento no disponibles.')
     return { asOf, ...data, definitions: {
-      availability_pct: '100 × (1 − horas fuera de servicio por OT (intervalos fusionados) / (unidades × horas del periodo))',
-      mtbf_hours: '(horas disponibles del periodo) / fallas reportadas no descartadas',
-      mttr_hours: 'promedio de horas fuera de servicio de las OT correctivas/emergencia cerradas en el periodo',
+      availability_pct: '100 × (1 − horas fuera de servicio por OT o por estado BLOQUEADA/OBSERVADA/MANTENIMIENTO (intervalos fusionados) / (unidades activas × horas transcurridas del periodo))',
+      mtbf_hours: '(horas disponibles del periodo) / fallas funcionales (la unidad no pudo continuar o severidad crítica)',
+      mttr_hours: 'promedio del tiempo técnico activo (inicio de trabajos → fin técnico, sin esperas) de las OT correctivas/emergencia cerradas en el periodo',
+      preventive_pct: 'preventivos ejecutados a tiempo contra el vencimiento original / vencimientos del periodo',
       cost_per_km: 'costos del libro por activo / km reales (lecturas de odómetro)' }, url: '/mantenimiento' }
   }
   if (name === 'get_cmms_brief') {

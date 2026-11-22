@@ -53,11 +53,11 @@ export default function CentroControlPage() {
   const maxCat = Math.max(1, ...categories.map(([, v]) => Number(v)))
 
   const cards: [string, string, React.ReactNode, React.ReactNode][] = kpi ? [
-    ['Disponibilidad', kpi.availability_pct != null ? `${num(kpi.availability_pct, 2)}%` : '—', <Gauge key="g" className="w-4 h-4" />, `${num(kpi.downtime_hours)} h fuera de servicio`],
-    ['MTBF', kpi.mtbf_hours != null ? `${num(kpi.mtbf_hours)} h` : 'sin fallas', <Activity key="a" className="w-4 h-4" />, `${kpi.failures} fallas en el periodo`],
-    ['MTTR', kpi.mttr_hours != null ? `${num(kpi.mttr_hours)} h` : '—', <Timer key="t" className="w-4 h-4" />, 'OT correctivas cerradas'],
+    ['Disponibilidad', kpi.availability_pct != null ? `${num(kpi.availability_pct, 2)}%` : '—', <Gauge key="g" className="w-4 h-4" />, `${num(kpi.downtime_hours)} h fuera de servicio (OT y bloqueos)`],
+    ['MTBF', kpi.mtbf_hours != null ? `${num(kpi.mtbf_hours)} h` : 'sin fallas', <Activity key="a" className="w-4 h-4" />, `${kpi.failures} fallas funcionales de ${kpi.reported_failures ?? kpi.failures} reportadas`],
+    ['MTTR', kpi.mttr_hours != null ? `${num(kpi.mttr_hours)} h` : '—', <Timer key="t" className="w-4 h-4" />, `tiempo técnico sin esperas · ${kpi.mttr_n ?? 0} OT`],
     ['Backlog', `${kpi.backlog?.open_requests ?? 0}`, <AlertTriangle key="b" className="w-4 h-4" />, `${kpi.backlog?.critical ?? 0} críticas · prom. ${num(kpi.backlog?.avg_age_days)} días`],
-    ['Preventivo', kpi.preventive_pct != null ? `${num(kpi.preventive_pct)}%` : '—', <Wrench key="p" className="w-4 h-4" />, `${kpi.preventive_work_orders} prev. / ${kpi.corrective_work_orders} corr.`],
+    ['Preventivo a tiempo', kpi.preventive_pct != null ? `${num(kpi.preventive_pct)}%` : '—', <Wrench key="p" className="w-4 h-4" />, `${kpi.preventive_on_time ?? 0} de ${kpi.preventive_due ?? 0} vencimientos · ${kpi.preventive_work_orders} prev. / ${kpi.corrective_work_orders} corr.`],
     ['Costo por km', kpi.costs?.cost_per_km != null ? `S/ ${num(kpi.costs.cost_per_km, 3)}` : '—', <BarChart3 key="c" className="w-4 h-4" />, `${num(kpi.costs?.km, 0)} km reales`],
     ['Costo por hora', kpi.costs?.cost_per_hour != null ? `S/ ${num(kpi.costs.cost_per_hour, 2)}` : '—', <Timer key="h" className="w-4 h-4" />, 'equipos con horómetro'],
     ['Mantenimiento por unidad', money(kpi.costs?.maintenance_per_unit), <Wrench key="m" className="w-4 h-4" />, `${kpi.units} unidades activas`],
