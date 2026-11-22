@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/client'
 
 export type Frecuencia = 'SEMANAL' | 'QUINCENAL' | 'MENSUAL'
 export type Equipo = 'TRANSPORTE' | 'DESPACHO' | 'INVENTARIO' | 'AUDITORIA'
-export type EstadoKpi = 'CUMPLE' | 'ALERTA' | 'NO_CUMPLE' | 'DATOS_INSUFICIENTES' | 'SIN_REGISTROS' | 'PENDIENTE_DATOS' | 'INFORMATIVO'
+export type EstadoKpi = 'CUMPLE' | 'ALERTA' | 'NO_CUMPLE' | 'DATOS_INSUFICIENTES' | 'SIN_REGISTROS' | 'NO_CALCULABLE' | 'PENDIENTE_DATOS' | 'INFORMATIVO'
 export type EstadoDatos = 'ACTIVO' | 'PARCIAL' | 'PENDIENTE_CAPTURA' | 'PENDIENTE_INTEGRACION'
 export type EstadoCorreccion = 'PROPUESTA' | 'APROBADA' | 'RECHAZADA' | 'ANULADA'
 export type Accion = 'CORREGIR' | 'EXCLUIR'
@@ -10,7 +10,7 @@ export type Accion = 'CORREGIR' | 'EXCLUIR'
 export interface PuntoTendencia { desde: string; etiqueta: string; valor: number | null; estado: EstadoKpi }
 export interface KpiDef {
   codigo: string; equipo: Equipo; nombre: string; descripcion: string; formula: string; fuente: string; unidad: string
-  sentido: 'MAYOR' | 'MENOR'; meta: number | null; tolerancia: number | null; responsable: string | null
+  sentido: 'MAYOR' | 'MENOR'; meta: number | null; tolerancia: number | null; responsable: string | null; factor?: number
   estado_datos: EstadoDatos; nota_datos: string | null; tipo: 'PERIODO' | 'FOTO'; frecuencias: Frecuencia[]
 }
 export interface KpiResultado extends KpiDef {
