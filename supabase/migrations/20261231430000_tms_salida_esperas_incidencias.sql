@@ -254,7 +254,8 @@ BEGIN
       public.route_incident_can_manage(i.dispatch_id) AS puede_gestionar
     FROM public.route_incidents i JOIN public.dispatches d ON d.id = i.dispatch_id LEFT JOIN public.transport_requests t ON t.id = i.request_id
     WHERE public.delivery_can_read(i.dispatch_id) AND (p_dispatch IS NULL OR i.dispatch_id = p_dispatch)
-      AND (p_status IS NULL OR i.status = p_status)
+      -- ABIERTAS = abiertas y en atención, filtradas antes del límite
+      AND (p_status IS NULL OR i.status = p_status OR (p_status = 'ABIERTAS' AND i.status <> 'CERRADA'))
       AND (p_from IS NULL OR (i.occurred_at AT TIME ZONE 'America/Lima')::date >= p_from)
       AND (p_to IS NULL OR (i.occurred_at AT TIME ZONE 'America/Lima')::date <= p_to)
     ORDER BY i.occurred_at DESC LIMIT 500) x), '[]'::jsonb);

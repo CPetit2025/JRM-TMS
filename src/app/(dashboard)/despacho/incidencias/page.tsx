@@ -15,8 +15,8 @@ export default function IncidenciasPage() {
   const [loading, setLoading] = useState(true), [error, setError] = useState(''), [draft, setDraft] = useState<Record<string, Draft>>({}), [busy, setBusy] = useState<string | null>(null)
   const pending = useRef(false)
   const load = useCallback(async () => {
-    const { data, error: e } = await createClient().rpc('route_incidents_list', { p_status: status === 'CERRADA' ? 'CERRADA' : null })
-    if (e) setError(e.message); else { setError(''); setRows(((data || []) as RouteIncident[]).filter(r => status === 'CERRADA' || r.status !== 'CERRADA')) }
+    const { data, error: e } = await createClient().rpc('route_incidents_list', { p_status: status })
+    if (e) setError(e.message); else { setError(''); setRows((data || []) as RouteIncident[]) }
     setLoading(false)
   }, [status])
   // eslint-disable-next-line react-hooks/set-state-in-effect

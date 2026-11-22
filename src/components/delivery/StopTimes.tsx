@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { readActionQueue, saveOfflineAction, syncOfflineActions } from '@/lib/route-point-sync'
+import { actionQueueKey, readActionQueue, saveOfflineAction, syncOfflineActions, type OfflineAction } from '@/lib/route-point-sync'
 import { WAIT_REASONS } from '@/lib/route-incidents'
 import { deliveryTime } from '@/lib/delivery'
 
@@ -12,16 +12,19 @@ type Times = { arrived_at: string | null; departed_at: string | null; waits: Wai
 /** Esperas y salida de la parada. Se guardan primero en el teléfono (hora del evento) y se envían al haber señal. */
 export function StopTimes({ dispatchId, requestId }: { dispatchId: string; requestId: string }) {
   const [times, setTimes] = useState<Times | null>(null), [error, setError] = useState('')
-  const [reason, setReason] = useState(''), [note, setNote] = useState(''), [busy, setBusy] = useState(false)
+  const [reason, setReason] = useState(''), [note, setNote] = useState(''), [busy, setBusy] = useState(false), [failed, setFailed] = useState<OfflineAction[]>([])
   const load = useCallback(async () => {
     const { data, error: e } = await createClient().rpc('route_stop_times', { p_dispatch: dispatchId, p_request: requestId })
     const server: Times = e || !data ? { arrived_at: null, departed_at: null, waits: [] } : data as Times
     // Lo guardado sin conexión se muestra encima de lo confirmado por el servidor
     const waits = new Map(server.waits.map(w => [w.id, w]))
     let departed = server.departed_at
+    const rejected: OfflineAction[] = []
     for (const a of readActionQueue()) {
       const p = a.payload
-      if (p.dispatch_id !== dispatchId || p.request_id !== requestId) continue
+      if (p.dispatch_id !== dispatchId || p.request_id !== requestId || !['route_stop_wait', 'delivery_depart'].includes(a.type)) continue
+      // Lo rechazado no se muestra como registrado: queda a la vista para descartarlo y volver a registrar
+      if (a.status === 'error') { rejected.push(a); continue }
       if (a.type === 'route_stop_wait') {
         const id = String(p.wait_id), prev = waits.get(id)
         waits.set(id, { id, reason: String(prev?.reason || p.reason || 'OTRO'), note: prev?.note ?? (p.note as string | null) ?? null,
@@ -30,8 +33,13 @@ export function StopTimes({ dispatchId, requestId }: { dispatchId: string; reque
       if (a.type === 'delivery_depart' && !departed) departed = String(p.at)
     }
     setTimes({ ...server, departed_at: departed, waits: [...waits.values()].sort((a, b) => a.started_at.localeCompare(b.started_at)) })
+    setFailed(rejected)
     setError(e ? e.message : '')
   }, [dispatchId, requestId])
+  const discard = async (id: string) => {
+    localStorage.setItem(actionQueueKey, JSON.stringify(readActionQueue().filter(a => a.id !== id)))
+    await load()
+  }
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load() }, [load])
 
@@ -39,8 +47,6 @@ export function StopTimes({ dispatchId, requestId }: { dispatchId: string; reque
     setBusy(true); setError('')
     saveOfflineAction(type, { dispatch_id: dispatchId, request_id: requestId, ...payload })
     if (navigator.onLine) await syncOfflineActions().catch(() => {})
-    const failed = readActionQueue().find(a => a.type === type && a.payload.dispatch_id === dispatchId && a.status === 'error')
-    if (failed?.last_error) setError(failed.last_error)
     await load(); setBusy(false)
   }
   if (!times) return null
@@ -51,6 +57,9 @@ export function StopTimes({ dispatchId, requestId }: { dispatchId: string; reque
     {times.waits.length > 0 && <ul className="space-y-1 text-xs text-slate-700">{times.waits.map(w => <li key={w.id}>
       Espera · {WAIT_REASONS[w.reason] || w.reason}{w.note ? ` (${w.note})` : ''}: {deliveryTime(w.started_at)} → {w.ended_at ? deliveryTime(w.ended_at) : 'en curso'}</li>)}</ul>}
     {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
+    {failed.map(a => <div key={a.id} role="alert" className="rounded-lg bg-red-50 p-2 text-xs text-red-800">
+      {a.type === 'delivery_depart' ? 'Salida' : 'Espera'} no registrada: {a.last_error || 'error de envío'}
+      <button type="button" disabled={busy} onClick={() => void discard(a.id)} className="ml-2 min-h-9 font-semibold underline">Descartar y volver a registrar</button></div>)}
     {times.departed_at ? <p className="text-xs text-emerald-700">Salida de la parada {deliveryTime(times.departed_at)}</p> : open
       ? <button type="button" disabled={busy} onClick={() => void save('route_stop_wait', { wait_id: open.id, started_at: open.started_at, ended_at: now() })}
           className="min-h-11 w-full rounded-lg bg-amber-600 px-3 font-semibold text-white disabled:opacity-50">Terminar espera</button>
