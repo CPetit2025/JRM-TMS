@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Camera, Gauge } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { compressPhoto } from '@/lib/delivery'
-import { actionQueueKey, readActionQueue, saveOfflineAction, syncOfflineActions } from '@/lib/route-point-sync'
+import { actionQueueKey, isPermanentSyncError, readActionQueue, saveOfflineAction, syncOfflineActions } from '@/lib/route-point-sync'
 
 type State = { own_unit: boolean; start_odometer: number | null; end_odometer: number | null; km: number | null; gps_km: number | null; km_check: string | null }
 const asBase64 = (file: File) => new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(new Error('No se pudo leer la foto')); r.readAsDataURL(file) })
@@ -13,15 +13,17 @@ const asBase64 = (file: File) => new Promise<string>((resolve, reject) => { cons
 export function TripOdometer({ dispatchId, userId, kind, onReady }: { dispatchId: string; userId: string; kind: 'SALIDA' | 'LLEGADA'; onReady: (ready: boolean) => void }) {
   const [state, setState] = useState<State | null>(null), [value, setValue] = useState(''), [file, setFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
-  const queued = () => readActionQueue().find(a => a.type === 'dispatch_odometer' && a.payload.dispatch_id === dispatchId && a.payload.kind === kind)
+  // Lectura guardada en el teléfono que aún se enviará (pendiente o con error de red; no un rechazo definitivo)
+  const queued = useCallback(() => readActionQueue().find(a => a.type === 'dispatch_odometer' && a.payload.dispatch_id === dispatchId && a.payload.kind === kind && !isPermanentSyncError(a)), [dispatchId, kind])
   const load = useCallback(async () => {
     const { data, error: e } = await createClient().rpc('dispatch_odometer_state', { p_dispatch: dispatchId })
-    if (e) { setError(e.message); return }
+    // Sin señal, la lectura en cola basta para seguir (el servidor la valida al sincronizar)
+    if (e) { setError(e.message); onReady(!!queued()); return }
     const s = data as State
     setState(s)
     const done = !s.own_unit || (kind === 'SALIDA' ? s.start_odometer != null : s.end_odometer != null || s.start_odometer == null)
-    onReady(done || !!readActionQueue().find(a => a.type === 'dispatch_odometer' && a.payload.dispatch_id === dispatchId && a.payload.kind === kind && a.status === 'pending'))
-  }, [dispatchId, kind, onReady])
+    onReady(done || !!queued())
+  }, [dispatchId, kind, onReady, queued])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load() }, [load])
 
@@ -35,24 +37,25 @@ export function TripOdometer({ dispatchId, userId, kind, onReady }: { dispatchId
       saveOfflineAction('dispatch_odometer', { dispatch_id: dispatchId, user_id: userId, kind, value: km, photo_base64: photo, at: new Date().toISOString() }, id)
       if (navigator.onLine) await syncOfflineActions().catch(() => {})
       const failed = readActionQueue().find(a => a.id === id && a.status === 'error')
-      if (failed) {
-        // Un rechazo del servidor (lectura incoherente) se corrige y se vuelve a enviar: no se deja en cola
+      if (failed && isPermanentSyncError(failed)) {
+        // Rechazo del servidor (lectura incoherente): se corrige y se vuelve a enviar, no se deja en cola
         localStorage.setItem(actionQueueKey, JSON.stringify(readActionQueue().filter(a => a.id !== id)))
         setError(failed.last_error || 'No se pudo registrar el odómetro')
-      } else { setValue(''); setFile(null) }
+      } else { setValue(''); setFile(null) }  // enviada o en cola por un error de red: se reintenta sola
       await load()
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar la lectura') }
     finally { setBusy(false) }
   }
 
+  const pending = queued()
+  if (!state && pending) return <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-amber-800">Odómetro guardado en el teléfono; se enviará al haber señal.</p>
   if (!state || !state.own_unit) return null
   if (kind === 'LLEGADA' && state.start_odometer == null) return null
   const recorded = kind === 'SALIDA' ? state.start_odometer : state.end_odometer
-  const pending = queued()
   return <div className="rounded-xl border border-slate-200 bg-white p-4 text-left text-sm">
     <p className="flex items-center gap-2 font-semibold text-[#002855]"><Gauge className="h-4 w-4" aria-hidden />Odómetro de {kind === 'SALIDA' ? 'salida' : 'llegada a base'}</p>
     {recorded != null ? <p className="mt-1 text-emerald-700">Registrado: {recorded.toLocaleString('es-PE')} km{kind === 'LLEGADA' && state.km != null ? ` · viaje ${state.km.toLocaleString('es-PE')} km` : ''}</p>
-      : pending && pending.status === 'pending' ? <p className="mt-1 text-amber-800">Lectura guardada en el teléfono; se enviará al haber señal.</p>
+      : pending ? <p className="mt-1 text-amber-800">Lectura guardada en el teléfono; se enviará al haber señal.{pending.last_error ? ` Último intento: ${pending.last_error}` : ''}</p>
       : <div className="mt-2 space-y-2">
           <p className="text-xs text-slate-600">Obligatorio: el número que marca el tablero y una foto donde se lea.</p>
           <input inputMode="decimal" placeholder="Ej.: 125430" aria-label="Odómetro (km)" value={value} onChange={e => setValue(e.target.value.replace(/[^0-9.,]/g, ''))} className="min-h-11 w-full rounded-lg border border-slate-300 px-3" />

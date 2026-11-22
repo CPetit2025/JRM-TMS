@@ -26,6 +26,7 @@ export type OfflineAction = {
   retry_count: number
   status: 'pending' | 'error'
   last_error?: string
+  last_code?: string
 }
 
 export function readRouteQueue(): RoutePoint[] {
@@ -58,6 +59,8 @@ export function saveOfflineAction(type: string, payload: Record<string, unknown>
 
 // P0001: regla del servidor (orden, ruta cerrada, plazo); 42501: RLS; 23505/23502/23514/22P02: datos inválidos o repetidos
 const PERMANENT_POINT_CODES = new Set(['P0001', '42501', '23505', '23502', '23514', '22P02'])
+// Rechazo definitivo del servidor (regla o dato inválido): reintentar no sirve; un error de red sí se reintenta
+export const isPermanentSyncError = (a: OfflineAction) => a.status === 'error' && PERMANENT_POINT_CODES.has(a.last_code || '')
 function permanentPointError(error: { code?: string; message?: string }) {
   return PERMANENT_POINT_CODES.has(error.code || '') || /deben llegar en orden|sin conductor activo|fuera de rango|no autorizado|row-level security/i.test(error.message || '')
 }
@@ -284,6 +287,7 @@ export function syncOfflineActions(): Promise<number> {
         if (target) {
           target.retry_count++
           target.status = 'error'
+          target.last_code = err && typeof err === 'object' && 'code' in err ? String(err.code) : undefined
           target.last_error = err && typeof err === 'object' && 'message' in err ? String(err.message).slice(0, 300) : 'Error de sincronización'
           localStorage.setItem(actionQueueKey, JSON.stringify(currentQueue))
         }
